@@ -63,9 +63,19 @@ fn init_panel(app_handle: tauri::AppHandle) {
 async fn start_probe_batch(
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, Mutex<AppState>>,
+    batch_id: Option<String>,
     plugin_ids: Option<Vec<String>>,
 ) -> Result<ProbeBatchStarted, String> {
-    let batch_id = Uuid::new_v4().to_string();
+    let batch_id = batch_id
+        .and_then(|id| {
+            let trimmed = id.trim().to_string();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed)
+            }
+        })
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
 
     let (plugins, app_data_dir, app_version) = {
         let locked = state.lock().map_err(|e| e.to_string())?;

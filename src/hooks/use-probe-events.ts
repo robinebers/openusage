@@ -23,13 +23,13 @@ type UseProbeEventsOptions = {
 }
 
 export function useProbeEvents({ onResult, onBatchComplete }: UseProbeEventsOptions) {
-  const activeBatchId = useRef<string | null>(null)
+  const activeBatchIds = useRef<Set<string>>(new Set())
   const unlisteners = useRef<UnlistenFn[]>([])
 
   useEffect(() => {
     const setup = async () => {
       const resultUnlisten = await listen<ProbeResult>("probe:result", (event) => {
-        if (event.payload.batchId === activeBatchId.current) {
+        if (activeBatchIds.current.has(event.payload.batchId)) {
           onResult(event.payload.output)
         }
       })
@@ -37,8 +37,7 @@ export function useProbeEvents({ onResult, onBatchComplete }: UseProbeEventsOpti
       const completeUnlisten = await listen<ProbeBatchComplete>(
         "probe:batch-complete",
         (event) => {
-          if (event.payload.batchId === activeBatchId.current) {
-            activeBatchId.current = null
+          if (activeBatchIds.current.delete(event.payload.batchId)) {
             onBatchComplete()
           }
         }
@@ -56,10 +55,20 @@ export function useProbeEvents({ onResult, onBatchComplete }: UseProbeEventsOpti
   }, [onBatchComplete, onResult])
 
   const startBatch = useCallback(async (pluginIds?: string[]) => {
-    const args = pluginIds ? { pluginIds } : undefined
-    const result = await invoke<ProbeBatchStarted>("start_probe_batch", args)
-    activeBatchId.current = result.batchId
-    return result.pluginIds
+    const batchId =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `batch-${Date.now()}-${Math.random().toString(16).slice(2)}`
+
+    activeBatchIds.current.add(batchId)
+    const args = pluginIds ? { batchId, pluginIds } : { batchId }
+    try {
+      const result = await invoke<ProbeBatchStarted>("start_probe_batch", args)
+      return result.pluginIds
+    } catch (error) {
+      activeBatchIds.current.delete(batchId)
+      throw error
+    }
   }, [])
 
   return { startBatch }
