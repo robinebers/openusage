@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react"
+import { isTauri } from "@tauri-apps/api/core"
 import { check, type Update } from "@tauri-apps/plugin-updater"
 import { relaunch } from "@tauri-apps/plugin-process"
 
@@ -6,6 +7,7 @@ export type UpdateStatus =
   | { status: "idle" }
   | { status: "available"; version: string }
   | { status: "downloading"; progress: number } // 0-100, or -1 if indeterminate
+  | { status: "installing" }
   | { status: "ready" }
   | { status: "error"; message: string }
 
@@ -17,18 +19,29 @@ interface UseAppUpdateReturn {
 
 export function useAppUpdate(): UseAppUpdateReturn {
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ status: "idle" })
+  const statusRef = useRef<UpdateStatus>({ status: "idle" })
   const updateRef = useRef<Update | null>(null)
+  const mountedRef = useRef(true)
+  const inFlightRef = useRef({ downloading: false, installing: false })
+
+  const setStatus = useCallback((next: UpdateStatus) => {
+    statusRef.current = next
+    if (!mountedRef.current) return
+    setUpdateStatus(next)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
+    mountedRef.current = true
 
     const checkForUpdate = async () => {
+      if (!isTauri()) return
       try {
         const update = await check()
         if (cancelled) return
         if (update) {
           updateRef.current = update
-          setUpdateStatus({ status: "available", version: update.version })
+          setStatus({ status: "available", version: update.version })
         }
       } catch (err) {
         if (cancelled) return
@@ -40,24 +53,29 @@ export function useAppUpdate(): UseAppUpdateReturn {
 
     return () => {
       cancelled = true
+      mountedRef.current = false
     }
-  }, [])
+  }, [setStatus])
 
   const triggerDownload = useCallback(async () => {
     const update = updateRef.current
-    if (!update || updateStatus.status !== "available") return
+    if (!update) return
+    if (statusRef.current.status !== "available") return
+    if (inFlightRef.current.downloading || inFlightRef.current.installing) return
 
-    setUpdateStatus({ status: "downloading", progress: -1 })
+    inFlightRef.current.downloading = true
+    setStatus({ status: "downloading", progress: -1 })
 
     let totalBytes: number | null = null
     let downloadedBytes = 0
 
     try {
       await update.download((event) => {
+        if (!mountedRef.current) return
         if (event.event === "Started") {
           totalBytes = event.data.contentLength ?? null
           downloadedBytes = 0
-          setUpdateStatus({
+          setStatus({
             status: "downloading",
             progress: totalBytes ? 0 : -1,
           })
@@ -65,31 +83,40 @@ export function useAppUpdate(): UseAppUpdateReturn {
           downloadedBytes += event.data.chunkLength
           if (totalBytes && totalBytes > 0) {
             const pct = Math.min(100, Math.round((downloadedBytes / totalBytes) * 100))
-            setUpdateStatus({ status: "downloading", progress: pct })
+            setStatus({ status: "downloading", progress: pct })
           }
         } else if (event.event === "Finished") {
-          setUpdateStatus({ status: "ready" })
+          setStatus({ status: "ready" })
         }
       })
-      setUpdateStatus({ status: "ready" })
+      setStatus({ status: "ready" })
     } catch (err) {
       console.error("Update download failed:", err)
-      setUpdateStatus({ status: "error", message: "Download failed" })
+      setStatus({ status: "error", message: "Download failed" })
+    } finally {
+      inFlightRef.current.downloading = false
     }
-  }, [updateStatus])
+  }, [setStatus])
 
   const triggerInstall = useCallback(async () => {
     const update = updateRef.current
-    if (!update || updateStatus.status !== "ready") return
+    if (!update) return
+    if (statusRef.current.status !== "ready") return
+    if (inFlightRef.current.installing || inFlightRef.current.downloading) return
 
     try {
+      inFlightRef.current.installing = true
+      setStatus({ status: "installing" })
       await update.install()
       await relaunch()
+      setStatus({ status: "idle" })
     } catch (err) {
       console.error("Update install failed:", err)
-      setUpdateStatus({ status: "error", message: "Install failed" })
+      setStatus({ status: "error", message: "Install failed" })
+    } finally {
+      inFlightRef.current.installing = false
     }
-  }, [updateStatus])
+  }, [setStatus])
 
   return { updateStatus, triggerDownload, triggerInstall }
 }

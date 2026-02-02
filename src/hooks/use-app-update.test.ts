@@ -1,5 +1,5 @@
 import { renderHook, act } from "@testing-library/react"
-import { describe, expect, it, vi, beforeEach } from "vitest"
+import { describe, expect, it, vi, beforeEach, afterAll } from "vitest"
 
 const { checkMock, relaunchMock } = vi.hoisted(() => ({
   checkMock: vi.fn(),
@@ -17,9 +17,22 @@ vi.mock("@tauri-apps/plugin-process", () => ({
 import { useAppUpdate } from "@/hooks/use-app-update"
 
 describe("useAppUpdate", () => {
+  const originalIsTauri = globalThis.isTauri
+
   beforeEach(() => {
     checkMock.mockReset()
     relaunchMock.mockReset()
+    // `@tauri-apps/api/core` considers `globalThis.isTauri` the runtime flag.
+    globalThis.isTauri = true
+  })
+
+  afterAll(() => {
+    if (originalIsTauri === undefined) {
+      // @ts-expect-error cleanup undefined flag
+      delete globalThis.isTauri
+    } else {
+      globalThis.isTauri = originalIsTauri
+    }
   })
 
   it("starts in idle state", () => {
@@ -116,6 +129,7 @@ describe("useAppUpdate", () => {
     await act(() => result.current.triggerInstall())
     expect(installMock).toHaveBeenCalled()
     expect(relaunchMock).toHaveBeenCalled()
+    expect(result.current.updateStatus).toEqual({ status: "idle" })
   })
 
   it("transitions to error on install failure", async () => {
@@ -161,5 +175,28 @@ describe("useAppUpdate", () => {
     await act(() => result.current.triggerInstall())
     // Still available, not changed
     expect(result.current.updateStatus).toEqual({ status: "available", version: "1.0.0" })
+  })
+
+  it("prevents concurrent install attempts", async () => {
+    let resolveInstall: (() => void) | null = null
+    const installMock = vi.fn(() => new Promise<void>((resolve) => { resolveInstall = resolve }))
+    const downloadMock = vi.fn(async (onEvent: (event: any) => void) => {
+      onEvent({ event: "Finished", data: {} })
+    })
+    relaunchMock.mockResolvedValue(undefined)
+    checkMock.mockResolvedValue({ version: "1.0.0", download: downloadMock, install: installMock })
+
+    const { result } = renderHook(() => useAppUpdate())
+    await act(() => Promise.resolve())
+    await act(() => result.current.triggerDownload())
+
+    act(() => { void result.current.triggerInstall() })
+    act(() => { void result.current.triggerInstall() })
+    await act(() => Promise.resolve())
+
+    expect(result.current.updateStatus).toEqual({ status: "installing" })
+    expect(installMock).toHaveBeenCalledTimes(1)
+
+    await act(async () => { resolveInstall?.() })
   })
 })

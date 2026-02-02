@@ -96,9 +96,20 @@ describe("PanelFooter", () => {
         onUpdateInstall={noop}
       />
     )
-    expect(container.textContent).toContain("OpenUsage 0.0.0")
-    expect(container.textContent).not.toContain("available")
-    expect(container.textContent).not.toContain("Restart")
-    expect(container.textContent).not.toContain("Downloading")
+    expect(container.textContent).toContain("Update failed")
+    expect(container.textContent).not.toContain("OpenUsage 0.0.0")
+  })
+
+  it("shows installing state", () => {
+    render(
+      <PanelFooter
+        version="0.0.0"
+        onRefresh={noop}
+        updateStatus={{ status: "installing" }}
+        onUpdateDownload={noop}
+        onUpdateInstall={noop}
+      />
+    )
+    expect(screen.getByText("Installing...")).toBeTruthy()
   })
 })

@@ -118,7 +118,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ASSETS="$(gh release view \"$RELEASE_TAG\" --repo \"$GITHUB_REPOSITORY\" --json assets --jq '.assets[].name')"
+          ASSETS="$(gh release view \"$RELEASE_TAG\" --repo \"$GITHUB_REPOSITORY\" --json assets --jq '.assets[].name' | tr -d '\r')"
 
-          echo "$ASSETS" | grep -qx 'latest.json' || { echo "Missing updater manifest: latest.json"; exit 1; }
-          echo "$ASSETS" | grep -Eq '\\.sig$' || { echo "Missing updater signatures (.sig)"; exit 1; }
+          printf '%s\n' "$ASSETS" | grep -Fxq 'latest.json' || { echo "Missing updater manifest: latest.json"; exit 1; }
+          printf '%s\n' "$ASSETS" | grep -Eq '\.sig$' || { echo "Missing updater signatures (.sig)"; exit 1; }

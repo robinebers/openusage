@@ -11,3 +11,4 @@
 - Release version source-of-truth: Git tag `vX.Y.Z`; CI enforces `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` match.
 - Auto-update interval picker placed above Plugins in settings for visibility.
 - Auto-update countdown label format: "Next in Xm Ys"; shows "Paused" when no schedule.
+- App updater state machine includes `installing` and in-flight locks to prevent double download/install; footer surfaces `error` as "Update failed" (tooltip via `title`).
