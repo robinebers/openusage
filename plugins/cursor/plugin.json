@@ -8,7 +8,6 @@
   "lines": [
     { "type": "badge", "label": "Plan" },
     { "type": "progress", "label": "Plan usage" },
-    { "type": "progress", "label": "On-demand" },
-    { "type": "text", "label": "Resets" }
+    { "type": "progress", "label": "On-demand" }
   ]
 }
