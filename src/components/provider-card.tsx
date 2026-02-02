@@ -22,13 +22,13 @@ interface ProviderCardProps {
   onRetry?: () => void
 }
 
-function formatNumber(value: number) {
+export function formatNumber(value: number) {
   if (Number.isNaN(value)) return "0"
   if (Number.isInteger(value)) return String(value)
   return value.toFixed(2)
 }
 
-function formatProgressValue(value: number, unit?: "percent" | "dollars") {
+export function formatProgressValue(value: number, unit?: "percent" | "dollars") {
   if (!Number.isFinite(value) || value < 0) {
     console.error("Invalid progress value:", value)
     return "N/A"
@@ -42,7 +42,7 @@ function formatProgressValue(value: number, unit?: "percent" | "dollars") {
   return formatNumber(value)
 }
 
-function getProgressPercent(value: number, max: number) {
+export function getProgressPercent(value: number, max: number) {
   if (!Number.isFinite(value) || !Number.isFinite(max) || max <= 0) return 0
   return Math.min(100, Math.max(0, (value / max) * 100))
 }
@@ -113,17 +113,22 @@ export function ProviderCard({
                 </Button>
               ) : inCooldown ? (
                 <Tooltip>
-                  <TooltipTrigger className="ml-1">
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      className="pointer-events-none opacity-50"
-                      style={{ transform: "translateZ(0)", backfaceVisibility: "hidden" }}
-                      tabIndex={-1}
-                    >
-                      <Hourglass className="h-3 w-3" />
-                    </Button>
-                  </TooltipTrigger>
+                  <TooltipTrigger
+                    className="ml-1"
+                    render={(props) => (
+                      <span {...props} className={props.className}>
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          className="pointer-events-none opacity-50"
+                          style={{ transform: "translateZ(0)", backfaceVisibility: "hidden" }}
+                          tabIndex={-1}
+                        >
+                          <Hourglass className="h-3 w-3" />
+                        </Button>
+                      </span>
+                    )}
+                  />
                   <TooltipContent side="top">
                     {formatRemainingTime()}
                   </TooltipContent>

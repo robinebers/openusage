@@ -12,10 +12,7 @@
   }
 
   function lineProgress(label, value, max, unit, color) {
-    const line = { type: "progress", label, value, max }
-    if (unit) line.unit = unit
-    if (color) line.color = color
-    return line
+    return { type: "progress", label, value, max, unit, color }
   }
 
   function lineBadge(label, text, color) {

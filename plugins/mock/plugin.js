@@ -13,10 +13,7 @@
   }
 
   function lineProgress(label, value, max, unit, color) {
-    const line = { type: "progress", label, value, max }
-    if (unit) line.unit = unit
-    if (color) line.color = color
-    return line
+    return { type: "progress", label, value, max, unit, color }
   }
 
   function lineBadge(label, text, color) {
@@ -62,7 +59,7 @@
     }
 
     const pinned = typeof parsed.pinned === "boolean" ? parsed.pinned : false
-    const mode = typeof parsed.mode === "string" ? parsed.mode : DEFAULT_CONFIG.mode
+    const mode = parsed.mode ?? DEFAULT_CONFIG.mode
 
     // Auto-migrate legacy configs that were auto-created as { mode: "ok" }.
     if (!pinned && mode === "ok") {
@@ -116,7 +113,7 @@
     const configPath = ctx.app.pluginDataDir + "/config.json"
     const config = readConfig(ctx, configPath)
     const pinned = !!config.pinned
-    const requestedMode = String(config.mode || DEFAULT_CONFIG.mode)
+    const requestedMode = config.mode ?? DEFAULT_CONFIG.mode
     const effectiveMode = pinned ? requestedMode : "chaos"
 
     let mode = effectiveMode
@@ -128,7 +125,7 @@
 
     // Non-throwing modes should always include a “where to change this” hint.
     const hintLines = [
-      lineBadge("Mode", effectiveMode, "#000000"),
+      lineBadge("Mode", safeString(effectiveMode), "#000000"),
       lineText("Config", configPath),
     ]
 
@@ -272,4 +269,3 @@
 
   globalThis.__openusage_plugin = { id: "mock", probe }
 })()
-
