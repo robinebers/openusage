@@ -30,3 +30,6 @@ coverage
 # Agent working files
 docs/choices.md
 docs/breadcrumbs.md
+
+# Build artifacts
+src-tauri/resources/bundled_plugins/
