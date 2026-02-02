@@ -12,13 +12,18 @@ export type PluginSettings = {
 
 export type AutoUpdateIntervalMinutes = 5 | 15 | 30 | 60;
 
+export type ThemeMode = "system" | "light" | "dark";
+
 const SETTINGS_STORE_PATH = "settings.json";
 const PLUGIN_SETTINGS_KEY = "plugins";
 const AUTO_UPDATE_SETTINGS_KEY = "autoUpdateInterval";
+const THEME_MODE_KEY = "themeMode";
 
 export const DEFAULT_AUTO_UPDATE_INTERVAL: AutoUpdateIntervalMinutes = 15;
+export const DEFAULT_THEME_MODE: ThemeMode = "system";
 
 const AUTO_UPDATE_INTERVALS: AutoUpdateIntervalMinutes[] = [5, 15, 30, 60];
+const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
 
 const store = new LazyStore(SETTINGS_STORE_PATH);
 
@@ -99,6 +104,21 @@ export function arePluginSettingsEqual(
     if (a.disabled[i] !== b.disabled[i]) return false;
   }
   return true;
+}
+
+function isThemeMode(value: unknown): value is ThemeMode {
+  return typeof value === "string" && THEME_MODES.includes(value as ThemeMode);
+}
+
+export async function loadThemeMode(): Promise<ThemeMode> {
+  const stored = await store.get<unknown>(THEME_MODE_KEY);
+  if (isThemeMode(stored)) return stored;
+  return DEFAULT_THEME_MODE;
+}
+
+export async function saveThemeMode(mode: ThemeMode): Promise<void> {
+  await store.set(THEME_MODE_KEY, mode);
+  await store.save();
 }
 
 export function getEnabledPluginIds(settings: PluginSettings): string[] {

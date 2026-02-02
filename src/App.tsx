@@ -11,15 +11,19 @@ import { useProbeEvents } from "@/hooks/use-probe-events"
 import {
   arePluginSettingsEqual,
   DEFAULT_AUTO_UPDATE_INTERVAL,
+  DEFAULT_THEME_MODE,
   getEnabledPluginIds,
   loadAutoUpdateInterval,
   loadPluginSettings,
+  loadThemeMode,
   normalizePluginSettings,
   REFRESH_COOLDOWN_MS,
   saveAutoUpdateInterval,
   savePluginSettings,
+  saveThemeMode,
   type AutoUpdateIntervalMinutes,
   type PluginSettings,
+  type ThemeMode,
 } from "@/lib/settings"
 
 const APP_VERSION = "0.0.1 (dev)"
@@ -46,6 +50,7 @@ function App() {
   )
   const [autoUpdateNextAt, setAutoUpdateNextAt] = useState<number | null>(null)
   const [autoUpdateResetToken, setAutoUpdateResetToken] = useState(0)
+  const [themeMode, setThemeMode] = useState<ThemeMode>(DEFAULT_THEME_MODE)
   const [maxPanelHeightPx, setMaxPanelHeightPx] = useState<number | null>(null)
   const maxPanelHeightPxRef = useRef<number | null>(null)
 
@@ -275,9 +280,17 @@ function App() {
           console.error("Failed to load auto-update interval:", error)
         }
 
+        let storedThemeMode = DEFAULT_THEME_MODE
+        try {
+          storedThemeMode = await loadThemeMode()
+        } catch (error) {
+          console.error("Failed to load theme mode:", error)
+        }
+
         if (isMounted) {
           setPluginSettings(normalized)
           setAutoUpdateInterval(storedInterval)
+          setThemeMode(storedThemeMode)
           const enabledIds = getEnabledPluginIds(normalized)
           setLoadingForPlugins(enabledIds)
           try {
@@ -332,6 +345,30 @@ function App() {
     startBatch,
   ])
 
+  // Apply theme mode to document
+  useEffect(() => {
+    const root = document.documentElement
+    const apply = (dark: boolean) => {
+      root.classList.toggle("dark", dark)
+    }
+
+    if (themeMode === "light") {
+      apply(false)
+      return
+    }
+    if (themeMode === "dark") {
+      apply(true)
+      return
+    }
+
+    // "system" — follow OS preference
+    const mq = window.matchMedia("(prefers-color-scheme: dark)")
+    apply(mq.matches)
+    const handler = (e: MediaQueryListEvent) => apply(e.matches)
+    mq.addEventListener("change", handler)
+    return () => mq.removeEventListener("change", handler)
+  }, [themeMode])
+
   const resetAutoUpdateSchedule = useCallback(() => {
     if (!pluginSettings) return
     const enabledIds = getEnabledPluginIds(pluginSettings)
@@ -385,6 +422,13 @@ function App() {
     },
     [resetAutoUpdateSchedule, setLoadingForPlugins, setErrorForPlugins, startBatch]
   )
+
+  const handleThemeModeChange = useCallback((mode: ThemeMode) => {
+    setThemeMode(mode)
+    void saveThemeMode(mode).catch((error) => {
+      console.error("Failed to save theme mode:", error)
+    })
+  }, [])
 
   const handleAutoUpdateIntervalChange = useCallback((value: AutoUpdateIntervalMinutes) => {
     setAutoUpdateInterval(value)
@@ -483,6 +527,8 @@ function App() {
           autoUpdateInterval={autoUpdateInterval}
           onAutoUpdateIntervalChange={handleAutoUpdateIntervalChange}
           autoUpdateNextAt={autoUpdateNextAt}
+          themeMode={themeMode}
+          onThemeModeChange={handleThemeModeChange}
         />
       )
     }

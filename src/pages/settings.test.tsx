@@ -1,7 +1,7 @@
-import { render, screen } from "@testing-library/react"
+import { cleanup, render, screen } from "@testing-library/react"
 import type { ReactNode } from "react"
 import userEvent from "@testing-library/user-event"
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 let latestOnDragEnd: ((event: any) => void) | undefined
 
@@ -43,22 +43,32 @@ vi.mock("@dnd-kit/utilities", () => ({
 
 import { SettingsPage } from "@/pages/settings"
 
+const defaultProps = {
+  plugins: [{ id: "a", name: "Alpha", enabled: true }],
+  onReorder: vi.fn(),
+  onToggle: vi.fn(),
+  autoUpdateInterval: 15 as const,
+  onAutoUpdateIntervalChange: vi.fn(),
+  autoUpdateNextAt: Date.now() + 60_000,
+  themeMode: "system" as const,
+  onThemeModeChange: vi.fn(),
+}
+
+afterEach(() => {
+  cleanup()
+})
+
 describe("SettingsPage", () => {
   it("toggles plugins", async () => {
     const onToggle = vi.fn()
-    const onReorder = vi.fn()
-    const onAutoUpdateIntervalChange = vi.fn()
     render(
       <SettingsPage
+        {...defaultProps}
         plugins={[
           { id: "a", name: "Alpha", enabled: true },
           { id: "b", name: "Beta", enabled: false },
         ]}
-        onReorder={onReorder}
         onToggle={onToggle}
-        autoUpdateInterval={15}
-        onAutoUpdateIntervalChange={onAutoUpdateIntervalChange}
-        autoUpdateNextAt={Date.now() + 60_000}
       />
     )
     const checkboxes = screen.getAllByRole("checkbox")
@@ -67,20 +77,15 @@ describe("SettingsPage", () => {
   })
 
   it("reorders plugins on drag end", () => {
-    const onToggle = vi.fn()
     const onReorder = vi.fn()
-    const onAutoUpdateIntervalChange = vi.fn()
     render(
       <SettingsPage
+        {...defaultProps}
         plugins={[
           { id: "a", name: "Alpha", enabled: true },
           { id: "b", name: "Beta", enabled: true },
         ]}
         onReorder={onReorder}
-        onToggle={onToggle}
-        autoUpdateInterval={15}
-        onAutoUpdateIntervalChange={onAutoUpdateIntervalChange}
-        autoUpdateNextAt={Date.now() + 60_000}
       />
     )
     latestOnDragEnd?.({ active: { id: "a" }, over: { id: "b" } })
@@ -88,17 +93,11 @@ describe("SettingsPage", () => {
   })
 
   it("ignores invalid drag end", () => {
-    const onToggle = vi.fn()
     const onReorder = vi.fn()
-    const onAutoUpdateIntervalChange = vi.fn()
     render(
       <SettingsPage
-        plugins={[{ id: "a", name: "Alpha", enabled: true }]}
+        {...defaultProps}
         onReorder={onReorder}
-        onToggle={onToggle}
-        autoUpdateInterval={15}
-        onAutoUpdateIntervalChange={onAutoUpdateIntervalChange}
-        autoUpdateNextAt={Date.now() + 60_000}
       />
     )
     latestOnDragEnd?.({ active: { id: "a" }, over: null })
@@ -107,38 +106,41 @@ describe("SettingsPage", () => {
   })
 
   it("updates auto-update interval", async () => {
-    const onToggle = vi.fn()
-    const onReorder = vi.fn()
     const onAutoUpdateIntervalChange = vi.fn()
     render(
       <SettingsPage
-        plugins={[{ id: "a", name: "Alpha", enabled: true }]}
-        onReorder={onReorder}
-        onToggle={onToggle}
-        autoUpdateInterval={15}
+        {...defaultProps}
         onAutoUpdateIntervalChange={onAutoUpdateIntervalChange}
-        autoUpdateNextAt={Date.now() + 60_000}
       />
     )
-    await userEvent.click(screen.getByRole("radio", { name: "30 min" }))
+    await userEvent.click(screen.getByText("30 min"))
     expect(onAutoUpdateIntervalChange).toHaveBeenCalledWith(30)
   })
 
   it("shows auto-update helper text and countdown", () => {
-    const onToggle = vi.fn()
-    const onReorder = vi.fn()
-    const onAutoUpdateIntervalChange = vi.fn()
-    render(
-      <SettingsPage
-        plugins={[{ id: "a", name: "Alpha", enabled: true }]}
-        onReorder={onReorder}
-        onToggle={onToggle}
-        autoUpdateInterval={15}
-        onAutoUpdateIntervalChange={onAutoUpdateIntervalChange}
-        autoUpdateNextAt={Date.now() + 60_000}
-      />
-    )
+    render(<SettingsPage {...defaultProps} />)
     expect(screen.getByText("How we update your usage")).toBeInTheDocument()
     expect(screen.getByText(/Next in/)).toBeInTheDocument()
+  })
+
+  it("renders appearance section with theme options", () => {
+    render(<SettingsPage {...defaultProps} />)
+    expect(screen.getByText("Appearance")).toBeInTheDocument()
+    expect(screen.getByText("Choose your color theme")).toBeInTheDocument()
+    expect(screen.getByText("System")).toBeInTheDocument()
+    expect(screen.getByText("Light")).toBeInTheDocument()
+    expect(screen.getByText("Dark")).toBeInTheDocument()
+  })
+
+  it("updates theme mode", async () => {
+    const onThemeModeChange = vi.fn()
+    render(
+      <SettingsPage
+        {...defaultProps}
+        onThemeModeChange={onThemeModeChange}
+      />
+    )
+    await userEvent.click(screen.getByText("Dark"))
+    expect(onThemeModeChange).toHaveBeenCalledWith("dark")
   })
 })

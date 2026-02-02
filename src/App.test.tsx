@@ -12,6 +12,8 @@ const state = vi.hoisted(() => ({
   loadPluginSettingsMock: vi.fn(),
   loadAutoUpdateIntervalMock: vi.fn(),
   saveAutoUpdateIntervalMock: vi.fn(),
+  loadThemeModeMock: vi.fn(),
+  saveThemeModeMock: vi.fn(),
   probeHandlers: null as null | { onResult: (output: any) => void; onBatchComplete: () => void },
 }))
 
@@ -87,6 +89,8 @@ vi.mock("@/lib/settings", async () => {
     savePluginSettings: state.savePluginSettingsMock,
     loadAutoUpdateInterval: state.loadAutoUpdateIntervalMock,
     saveAutoUpdateInterval: state.saveAutoUpdateIntervalMock,
+    loadThemeMode: state.loadThemeModeMock,
+    saveThemeMode: state.saveThemeModeMock,
   }
 })
 
@@ -103,8 +107,12 @@ describe("App", () => {
     state.loadPluginSettingsMock.mockReset()
     state.loadAutoUpdateIntervalMock.mockReset()
     state.saveAutoUpdateIntervalMock.mockReset()
+    state.loadThemeModeMock.mockReset()
+    state.saveThemeModeMock.mockReset()
     state.savePluginSettingsMock.mockResolvedValue(undefined)
     state.saveAutoUpdateIntervalMock.mockResolvedValue(undefined)
+    state.loadThemeModeMock.mockResolvedValue("system")
+    state.saveThemeModeMock.mockResolvedValue(undefined)
     Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
       configurable: true,
       get() {

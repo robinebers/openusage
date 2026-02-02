@@ -2,13 +2,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import {
   DEFAULT_AUTO_UPDATE_INTERVAL,
   DEFAULT_PLUGIN_SETTINGS,
+  DEFAULT_THEME_MODE,
   arePluginSettingsEqual,
   getEnabledPluginIds,
   loadAutoUpdateInterval,
   loadPluginSettings,
+  loadThemeMode,
   normalizePluginSettings,
   saveAutoUpdateInterval,
   savePluginSettings,
+  saveThemeMode,
 } from "@/lib/settings"
 import type { PluginMeta } from "@/lib/plugin-types"
 
@@ -85,5 +88,24 @@ describe("settings", () => {
   it("saves auto-update interval", async () => {
     await saveAutoUpdateInterval(5)
     await expect(loadAutoUpdateInterval()).resolves.toBe(5)
+  })
+
+  it("loads default theme mode when missing", async () => {
+    await expect(loadThemeMode()).resolves.toBe(DEFAULT_THEME_MODE)
+  })
+
+  it("loads stored theme mode", async () => {
+    storeState.set("themeMode", "dark")
+    await expect(loadThemeMode()).resolves.toBe("dark")
+  })
+
+  it("saves theme mode", async () => {
+    await saveThemeMode("light")
+    await expect(loadThemeMode()).resolves.toBe("light")
+  })
+
+  it("falls back to default for invalid theme mode", async () => {
+    storeState.set("themeMode", "invalid")
+    await expect(loadThemeMode()).resolves.toBe(DEFAULT_THEME_MODE)
   })
 })

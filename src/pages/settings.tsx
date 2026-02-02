@@ -19,7 +19,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { GripVertical } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
-import type { AutoUpdateIntervalMinutes } from "@/lib/settings";
+import type { AutoUpdateIntervalMinutes, ThemeMode } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
 interface PluginConfig {
@@ -33,6 +33,12 @@ const AUTO_UPDATE_OPTIONS: { value: AutoUpdateIntervalMinutes; label: string }[]
   { value: 15, label: "15 min" },
   { value: 30, label: "30 min" },
   { value: 60, label: "1 hour" },
+];
+
+const THEME_OPTIONS: { value: ThemeMode; label: string }[] = [
+  { value: "system", label: "System" },
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
 ];
 
 function SortablePluginItem({
@@ -100,6 +106,8 @@ interface SettingsPageProps {
   autoUpdateInterval: AutoUpdateIntervalMinutes;
   onAutoUpdateIntervalChange: (value: AutoUpdateIntervalMinutes) => void;
   autoUpdateNextAt: number | null;
+  themeMode: ThemeMode;
+  onThemeModeChange: (value: ThemeMode) => void;
 }
 
 export function SettingsPage({
@@ -109,6 +117,8 @@ export function SettingsPage({
   autoUpdateInterval,
   onAutoUpdateIntervalChange,
   autoUpdateNextAt,
+  themeMode,
+  onThemeModeChange,
 }: SettingsPageProps) {
   const [now, setNow] = useState(() => Date.now());
   const sensors = useSensors(
@@ -151,6 +161,33 @@ export function SettingsPage({
 
   return (
     <div className="py-3 space-y-4">
+      <section>
+        <h3 className="text-lg font-semibold mb-1">Appearance</h3>
+        <p className="text-sm text-foreground mb-2">
+          Choose your color theme
+        </p>
+        <div className="bg-muted/50 rounded-lg p-1">
+          <div className="flex gap-1" role="radiogroup" aria-label="Theme mode">
+            {THEME_OPTIONS.map((option) => {
+              const isActive = option.value === themeMode;
+              return (
+                <Button
+                  key={option.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={isActive}
+                  variant={isActive ? "default" : "outline"}
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => onThemeModeChange(option.value)}
+                >
+                  {option.label}
+                </Button>
+              );
+            })}
+          </div>
+        </div>
+      </section>
       <section>
         <div className="flex items-center justify-between mb-1">
           <h3 className="text-lg font-semibold">Auto Update</h3>
