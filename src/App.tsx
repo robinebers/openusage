@@ -30,6 +30,7 @@ import {
 const PANEL_WIDTH = 350;
 const MAX_HEIGHT_FALLBACK_PX = 600;
 const MAX_HEIGHT_FRACTION_OF_MONITOR = 0.8;
+const ARROW_OVERHEAD_PX = 13; // .tray-arrow (7px) + wrapper pt-1.5 (6px)
 
 type PluginState = {
   data: PluginOutput | null
@@ -493,7 +494,7 @@ function App() {
       <div className="tray-arrow" />
       <div
         className="bg-card rounded-lg border shadow-lg overflow-hidden select-none w-full"
-        style={maxPanelHeightPx ? { maxHeight: `${maxPanelHeightPx}px` } : undefined}
+        style={maxPanelHeightPx ? { maxHeight: `${maxPanelHeightPx - ARROW_OVERHEAD_PX}px` } : undefined}
       >
         <div className="flex h-full min-h-0 flex-row">
           <SideNav
