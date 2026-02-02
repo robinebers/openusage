@@ -47,40 +47,51 @@ describe("useProbeEvents", () => {
     const originalCrypto = globalThis.crypto
     // @ts-expect-error test fallback path
     delete globalThis.crypto
-    invokeMock.mockImplementation(async (_cmd: string, args: any) => ({
-      batchId: args.batchId,
-      pluginIds: args.pluginIds ?? [],
-    }))
-    const { result } = renderHook(() =>
-      useProbeEvents({ onResult: vi.fn(), onBatchComplete: vi.fn() })
-    )
-    const ids = await act(() => result.current.startBatch())
-    expect(ids).toEqual([])
-    expect(invokeMock).toHaveBeenCalledWith(
-      "start_probe_batch",
-      expect.objectContaining({ batchId: expect.stringMatching(/^batch-/) })
-    )
-    globalThis.crypto = originalCrypto
+    try {
+      invokeMock.mockImplementation(async (_cmd: string, args: any) => ({
+        batchId: args.batchId,
+        pluginIds: args.pluginIds ?? [],
+      }))
+      const { result } = renderHook(() =>
+        useProbeEvents({ onResult: vi.fn(), onBatchComplete: vi.fn() })
+      )
+      const ids = await act(() => result.current.startBatch())
+      expect(ids).toEqual([])
+      expect(invokeMock).toHaveBeenCalledWith(
+        "start_probe_batch",
+        expect.objectContaining({ batchId: expect.stringMatching(/^batch-/) })
+      )
+    } finally {
+      if (originalCrypto === undefined) {
+        // @ts-expect-error cleanup undefined crypto
+        delete globalThis.crypto
+      } else {
+        globalThis.crypto = originalCrypto
+      }
+    }
   })
 
   it("uses crypto randomUUID when available", async () => {
     const originalCrypto = globalThis.crypto
     // @ts-expect-error test randomUUID path
     globalThis.crypto = { randomUUID: vi.fn(() => "uuid-123") }
-    invokeMock.mockImplementation(async (_cmd: string, args: any) => ({
-      batchId: args.batchId,
-      pluginIds: args.pluginIds ?? [],
-    }))
-    const { result } = renderHook(() =>
-      useProbeEvents({ onResult: vi.fn(), onBatchComplete: vi.fn() })
-    )
-    await act(() => result.current.startBatch())
-    expect(globalThis.crypto?.randomUUID).toHaveBeenCalled()
-    expect(invokeMock).toHaveBeenCalledWith(
-      "start_probe_batch",
-      expect.objectContaining({ batchId: "uuid-123" })
-    )
-    globalThis.crypto = originalCrypto
+    try {
+      invokeMock.mockImplementation(async (_cmd: string, args: any) => ({
+        batchId: args.batchId,
+        pluginIds: args.pluginIds ?? [],
+      }))
+      const { result } = renderHook(() =>
+        useProbeEvents({ onResult: vi.fn(), onBatchComplete: vi.fn() })
+      )
+      await act(() => result.current.startBatch())
+      expect(globalThis.crypto?.randomUUID).toHaveBeenCalled()
+      expect(invokeMock).toHaveBeenCalledWith(
+        "start_probe_batch",
+        expect.objectContaining({ batchId: "uuid-123" })
+      )
+    } finally {
+      globalThis.crypto = originalCrypto
+    }
   })
 
   it("starts batch after unmount without waiting for listeners", async () => {
