@@ -328,14 +328,16 @@ pub fn inject_utils(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
                     var len = str.length;
                     var i = 0;
                     while (i < len) {
+                        var chunkStart = i;
                         var a = str.charCodeAt(i++);
                         var b = i < len ? str.charCodeAt(i++) : 0;
                         var c = i < len ? str.charCodeAt(i++) : 0;
+                        var bytesInChunk = i - chunkStart;
                         var n = (a << 16) | (b << 8) | c;
                         result += b64chars.charAt((n >> 18) & 63);
                         result += b64chars.charAt((n >> 12) & 63);
-                        result += i > len + 1 ? "=" : b64chars.charAt((n >> 6) & 63);
-                        result += i > len ? "=" : b64chars.charAt(n & 63);
+                        result += bytesInChunk < 2 ? "=" : b64chars.charAt((n >> 6) & 63);
+                        result += bytesInChunk < 3 ? "=" : b64chars.charAt(n & 63);
                     }
                     return result;
                 }
