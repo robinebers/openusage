@@ -247,9 +247,9 @@
         lines.push(ctx.line.progress({ label: "Credits", value: creditsData, max: 1000 }))
       }
 
-      var plan = null
+      let plan = null
       if (data.plan_type) {
-        var planLabel = ctx.fmt.planLabel(data.plan_type)
+        const planLabel = ctx.fmt.planLabel(data.plan_type)
         if (planLabel) {
           plan = planLabel
         }

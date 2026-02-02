@@ -21,20 +21,23 @@ const makeCtx = () => {
       },
     },
     line: {
-      text: (label, value, color) => {
-        const line = { type: "text", label, value }
-        if (color) line.color = color
+      text: (opts) => {
+        const line = { type: "text", label: opts.label, value: opts.value }
+        if (opts.color) line.color = opts.color
+        if (opts.subtitle) line.subtitle = opts.subtitle
         return line
       },
-      progress: (label, value, max, unit, color) => {
-        const line = { type: "progress", label, value, max }
-        if (unit) line.unit = unit
-        if (color) line.color = color
+      progress: (opts) => {
+        const line = { type: "progress", label: opts.label, value: opts.value, max: opts.max }
+        if (opts.unit) line.unit = opts.unit
+        if (opts.color) line.color = opts.color
+        if (opts.subtitle) line.subtitle = opts.subtitle
         return line
       },
-      badge: (label, text, color) => {
-        const line = { type: "badge", label, text }
-        if (color) line.color = color
+      badge: (opts) => {
+        const line = { type: "badge", label: opts.label, text: opts.text }
+        if (opts.color) line.color = opts.color
+        if (opts.subtitle) line.subtitle = opts.subtitle
         return line
       },
     },
@@ -103,9 +106,9 @@ describe("claude plugin", () => {
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    expect(result.lines.find((line) => line.label === "Plan")).toBeTruthy()
-    expect(result.lines.find((line) => line.label === "Session (5h)")).toBeTruthy()
-    expect(result.lines.find((line) => line.label === "Weekly (7d)")).toBeTruthy()
+    expect(result.plan).toBeTruthy()
+    expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+    expect(result.lines.find((line) => line.label === "Weekly")).toBeTruthy()
   })
 
   it("throws token expired on 401", async () => {
@@ -132,7 +135,7 @@ describe("claude plugin", () => {
     })
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    expect(result.lines.find((line) => line.label === "Sonnet (7d)")).toBeTruthy()
+    expect(result.lines.find((line) => line.label === "Sonnet")).toBeTruthy()
     expect(result.lines.find((line) => line.label === "Extra usage")).toBeTruthy()
   })
 
@@ -187,9 +190,8 @@ describe("claude plugin", () => {
     })
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    const resetLines = result.lines.filter((line) => line.label === "Resets in")
-    expect(resetLines.some((line) => line.value === "<1m")).toBe(true)
-    expect(resetLines.some((line) => line.value === "5m")).toBe(true)
+    expect(result.lines.some((line) => line.subtitle && line.subtitle.includes("<1m"))).toBe(true)
+    expect(result.lines.some((line) => line.subtitle && line.subtitle.includes("5m"))).toBe(true)
     nowSpy.mockRestore()
   })
 
@@ -205,6 +207,6 @@ describe("claude plugin", () => {
     })
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    expect(result.lines.find((line) => line.label === "Opus (7d)")).toBeTruthy()
+    expect(result.lines.find((line) => line.label === "Opus")).toBeTruthy()
   })
 })

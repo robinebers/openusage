@@ -34,20 +34,23 @@ const makeCtx = () => ({
     log: { warn: vi.fn() },
   },
   line: {
-    text: (label, value, color) => {
-      const line = { type: "text", label, value }
-      if (color) line.color = color
+    text: (opts) => {
+      const line = { type: "text", label: opts.label, value: opts.value }
+      if (opts.color) line.color = opts.color
+      if (opts.subtitle) line.subtitle = opts.subtitle
       return line
     },
-    progress: (label, value, max, unit, color) => {
-      const line = { type: "progress", label, value, max }
-      if (unit) line.unit = unit
-      if (color) line.color = color
+    progress: (opts) => {
+      const line = { type: "progress", label: opts.label, value: opts.value, max: opts.max }
+      if (opts.unit) line.unit = opts.unit
+      if (opts.color) line.color = opts.color
+      if (opts.subtitle) line.subtitle = opts.subtitle
       return line
     },
-    badge: (label, text, color) => {
-      const line = { type: "badge", label, text }
-      if (color) line.color = color
+    badge: (opts) => {
+      const line = { type: "badge", label: opts.label, text: opts.text }
+      if (opts.color) line.color = opts.color
+      if (opts.subtitle) line.subtitle = opts.subtitle
       return line
     },
   },
@@ -159,7 +162,7 @@ describe("cursor plugin", () => {
     })
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    expect(result.lines.find((line) => line.label === "Plan")).toBeTruthy()
+    expect(result.plan).toBeTruthy()
     expect(result.lines.find((line) => line.label === "Plan usage")).toBeTruthy()
   })
 
@@ -183,7 +186,7 @@ describe("cursor plugin", () => {
     })
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    expect(result.lines.find((line) => line.label === "Plan")).toBeFalsy()
+    expect(result.plan).toBeFalsy()
   })
 
   it("uses pooled spend limits when individual values missing", async () => {

@@ -197,9 +197,9 @@
       ctx.host.log.warn("plan info fetch failed: " + String(e))
     }
 
-    var plan = null
+    let plan = null
     if (planName) {
-      var planLabel = ctx.fmt.planLabel(planName)
+      const planLabel = ctx.fmt.planLabel(planName)
       if (planLabel) {
         plan = planLabel
       }
@@ -207,10 +207,10 @@
 
     const lines = []
     const pu = usage.planUsage
-    var resetSubtitle = null
+    let resetSubtitle = null
     if (usage.billingCycleEnd) {
-      var resetSec = (usage.billingCycleEnd - Date.now()) / 1000
-      var resetLabel = ctx.fmt.resetIn(resetSec)
+      const resetSec = (usage.billingCycleEnd - Date.now()) / 1000
+      const resetLabel = ctx.fmt.resetIn(resetSec)
       if (resetLabel) resetSubtitle = "Resets in " + resetLabel
     }
     lines.push(ctx.line.progress({

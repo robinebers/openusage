@@ -55,8 +55,7 @@ describe("mock plugin", () => {
     const ctx = createCtx()
     setConfig(ctx, { mode: "ok" })
     const result = plugin.probe(ctx)
-    const modeLine = result.lines.find((line) => line.label === "Mode")
-    expect(modeLine?.text).toBe("chaos")
+    expect(result.plan).toBe("chaos")
     expect(result.lines.find((line) => line.label === "Case")).toBeTruthy()
   })
 
@@ -82,7 +81,7 @@ describe("mock plugin", () => {
     const ctx = createCtx()
     ctx.host.fs.writeText(ctx.app.pluginDataDir + "/config.json", "{bad")
     const result = plugin.probe(ctx)
-    expect(result.lines.find((line) => line.label === "Mode")).toBeTruthy()
+    expect(result.plan).toBeTruthy()
   })
 
   it("handles several pinned modes", async () => {
@@ -124,11 +123,11 @@ describe("mock plugin", () => {
     const plugin = await loadPlugin()
     const ctx = createCtx()
 
-    setConfig(ctx, { pinned: true, mode: "throw" })
-    expect(() => plugin.probe(ctx)).toThrow("mock plugin: thrown error")
+    setConfig(ctx, { pinned: true, mode: "auth_required_cli" })
+    expect(() => plugin.probe(ctx)).toThrow("Not logged in")
 
-    setConfig(ctx, { pinned: true, mode: "reject" })
-    await expect(plugin.probe(ctx)).rejects.toThrow("mock plugin: rejected promise")
+    setConfig(ctx, { pinned: true, mode: "token_expired_cli" })
+    await expect(plugin.probe(ctx)).rejects.toMatch("Token expired")
 
     setConfig(ctx, { pinned: true, mode: "unresolved_promise" })
     const unresolved = plugin.probe(ctx)

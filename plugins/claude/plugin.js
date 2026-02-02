@@ -187,9 +187,9 @@
     }
 
     const lines = []
-    var plan = null
+    let plan = null
     if (creds.oauth.subscriptionType) {
-      var planLabel = ctx.fmt.planLabel(creds.oauth.subscriptionType)
+      const planLabel = ctx.fmt.planLabel(creds.oauth.subscriptionType)
       if (planLabel) {
         plan = planLabel
       }

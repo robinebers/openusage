@@ -134,7 +134,7 @@
       mode = picked
     }
 
-    var plan = safeString(effectiveMode)
+    const plan = safeString(effectiveMode)
 
     // Non-throwing modes should always include a "where to change this" hint.
     const hintLines = [
