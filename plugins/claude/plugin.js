@@ -70,11 +70,13 @@
       try {
         ctx.host.fs.writeText(CRED_FILE, text)
       } catch (e) {
+        ctx.host.log.error("Failed to write Claude credentials file: " + String(e))
       }
     } else if (source === "keychain") {
       try {
         ctx.host.keychain.writeGenericPassword(KEYCHAIN_SERVICE, text)
       } catch (e) {
+        ctx.host.log.error("Failed to write Claude credentials keychain: " + String(e))
       }
     }
   }

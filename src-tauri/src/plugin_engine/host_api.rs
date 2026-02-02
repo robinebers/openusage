@@ -296,6 +296,47 @@ fn inject_keychain<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<
         )?,
     )?;
 
+    keychain_obj.set(
+        "writeGenericPassword",
+        Function::new(
+            ctx.clone(),
+            move |ctx_inner: Ctx<'_>, service: String, value: String| -> rquickjs::Result<()> {
+                if !cfg!(target_os = "macos") {
+                    return Err(Exception::throw_message(
+                        &ctx_inner,
+                        "keychain API is only supported on macOS",
+                    ));
+                }
+                let output = std::process::Command::new("security")
+                    .args([
+                        "add-generic-password",
+                        "-s",
+                        &service,
+                        "-w",
+                        &value,
+                        "-U",
+                    ])
+                    .output()
+                    .map_err(|e| {
+                        Exception::throw_message(
+                            &ctx_inner,
+                            &format!("keychain write failed: {}", e),
+                        )
+                    })?;
+
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    return Err(Exception::throw_message(
+                        &ctx_inner,
+                        &format!("keychain write failed: {}", stderr.trim()),
+                    ));
+                }
+
+                Ok(())
+            },
+        )?,
+    )?;
+
     host.set("keychain", keychain_obj)?;
     Ok(())
 }
@@ -363,4 +404,30 @@ fn expand_path(path: &str) -> String {
         }
     }
     path.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rquickjs::{Context, Function, Object, Runtime};
+
+    #[test]
+    fn keychain_api_exposes_write() {
+        let rt = Runtime::new().expect("runtime");
+        let ctx = Context::full(&rt).expect("context");
+        ctx.with(|ctx| {
+            let app_data = std::env::temp_dir();
+            inject_host_api(ctx, "test", &app_data, "0.0.0").expect("inject host api");
+            let globals = ctx.globals();
+            let probe_ctx: Object = globals.get("__openusage_ctx").expect("probe ctx");
+            let host: Object = probe_ctx.get("host").expect("host");
+            let keychain: Object = host.get("keychain").expect("keychain");
+            let _read: Function = keychain
+                .get("readGenericPassword")
+                .expect("readGenericPassword");
+            let _write: Function = keychain
+                .get("writeGenericPassword")
+                .expect("writeGenericPassword");
+        });
+    }
 }
