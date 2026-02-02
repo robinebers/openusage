@@ -5,3 +5,4 @@
 - Adjusted mock/cursor plugin helpers/config handling to raise branch coverage; coverage run passes.
 - Committing coverage output per explicit user request.
 - Removed generated coverage output and added `coverage/` to `.gitignore`.
+- Reviewed Tauri v2 updater + GitHub Releases publish flow; added publish-time validation (tag/version sync) + post-upload check for `latest.json` + `.sig` assets.

@@ -203,6 +203,7 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_nspanel::init())
         .plugin(tauri_plugin_log::Builder::new().level(log::LevelFilter::Info).build())
+        .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
             init_panel,
             start_probe_batch,
@@ -227,6 +228,8 @@ pub fn run() {
             }));
 
             tray::create(app.handle())?;
+
+            app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
 
             Ok(())
         })

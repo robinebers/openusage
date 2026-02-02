@@ -56,6 +56,27 @@ jobs:
             exit 1
           fi
 
+      - name: Validate app version matches tag
+        run: |
+          TAG_VERSION="${RELEASE_TAG#v}"
+
+          TAURI_CONF_VERSION="$(node -p \"require('./src-tauri/tauri.conf.json').version\")"
+          CARGO_VERSION="$(awk -F\\\" '/^version =/ { print $2; exit }' ./src-tauri/Cargo.toml)"
+          PKG_VERSION="$(node -p \"require('./package.json').version\")"
+
+          if [[ "$TAURI_CONF_VERSION" != "$TAG_VERSION" ]]; then
+            echo "src-tauri/tauri.conf.json version ($TAURI_CONF_VERSION) != tag version ($TAG_VERSION)"
+            exit 1
+          fi
+          if [[ "$CARGO_VERSION" != "$TAG_VERSION" ]]; then
+            echo "src-tauri/Cargo.toml version ($CARGO_VERSION) != tag version ($TAG_VERSION)"
+            exit 1
+          fi
+          if [[ "$PKG_VERSION" != "$TAG_VERSION" ]]; then
+            echo "package.json version ($PKG_VERSION) != tag version ($TAG_VERSION)"
+            exit 1
+          fi
+
       - name: Import Apple Developer Certificate
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -90,5 +111,14 @@ jobs:
           releaseName: ${{ env.RELEASE_TAG }}
           releaseDraft: false
           prerelease: false
-          includeUpdaterJson: false
+          includeUpdaterJson: true
           args: ${{ matrix.args }}
+
+      - name: Verify updater assets uploaded
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ASSETS="$(gh release view \"$RELEASE_TAG\" --repo \"$GITHUB_REPOSITORY\" --json assets --jq '.assets[].name')"
+
+          echo "$ASSETS" | grep -qx 'latest.json' || { echo "Missing updater manifest: latest.json"; exit 1; }
+          echo "$ASSETS" | grep -Eq '\\.sig$' || { echo "Missing updater signatures (.sig)"; exit 1; }

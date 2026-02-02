@@ -8,6 +8,7 @@ import { ProviderDetailPage } from "@/pages/provider-detail"
 import { SettingsPage } from "@/pages/settings"
 import type { PluginMeta, PluginOutput } from "@/lib/plugin-types"
 import { useProbeEvents } from "@/hooks/use-probe-events"
+import { useAppUpdate } from "@/hooks/use-app-update"
 import {
   arePluginSettingsEqual,
   getEnabledPluginIds,
@@ -39,6 +40,8 @@ function App() {
   const [pluginSettings, setPluginSettings] = useState<PluginSettings | null>(null)
   const [maxPanelHeightPx, setMaxPanelHeightPx] = useState<number | null>(null)
   const maxPanelHeightPxRef = useRef<number | null>(null)
+
+  const { updateStatus, triggerDownload, triggerInstall } = useAppUpdate()
 
   // Tick state to force re-evaluation of cooldown status
   const [cooldownTick, setCooldownTick] = useState(0)
@@ -429,6 +432,9 @@ function App() {
             version={APP_VERSION}
             onRefresh={handleRefresh}
             refreshDisabled={!canRefreshAll}
+            updateStatus={updateStatus}
+            onUpdateDownload={triggerDownload}
+            onUpdateInstall={triggerInstall}
           />
         </div>
       </div>
