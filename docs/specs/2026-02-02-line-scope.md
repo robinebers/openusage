@@ -31,19 +31,18 @@ Each line in `plugin.json` must include a `scope` field:
 - `src/pages/overview.tsx` - Passes `scopeFilter="overview"`
 - `src/pages/provider-detail.tsx` - Passes `scopeFilter="all"`
 - `plugins/*/plugin.json` - All plugin manifests updated with scope values
-- `src-tauri/resources/bundled_plugins/*/plugin.json` - Bundled plugins updated
 - `docs/plugins/schema.md` - Documentation updated
 
 ## Plugin Scope Assignments
 
 ### Claude
-- `overview`: Session, Weekly (+ Resets in bundled)
-- `detail`: Sonnet, Extra usage (+ Resets in bundled)
+- `overview`: Session, Weekly
+- `detail`: Sonnet, Extra usage
 
 ### Codex
-- `overview`: Session, Weekly (+ Resets in bundled)
-- `detail`: Reviews, Credits (+ Resets in bundled)
+- `overview`: Session, Weekly
+- `detail`: Reviews, Credits
 
 ### Cursor
 - `overview`: Plan usage
-- `detail`: On-demand, Resets
+- `detail`: On-demand
