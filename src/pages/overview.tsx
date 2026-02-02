@@ -37,6 +37,7 @@ export function OverviewPage({ plugins, onRetryPlugin }: OverviewPageProps) {
           skeletonLines={plugin.meta.lines}
           lastManualRefreshAt={plugin.lastManualRefreshAt}
           onRetry={onRetryPlugin ? () => onRetryPlugin(plugin.meta.id) : undefined}
+          scopeFilter="overview"
         />
       ))}
     </div>

@@ -6,6 +6,7 @@ export type MetricLine =
 export type ManifestLine = {
   type: "text" | "progress" | "badge"
   label: string
+  scope: "overview" | "detail"
 }
 
 export type PluginOutput = {

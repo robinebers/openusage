@@ -34,6 +34,7 @@ pub struct ManifestLineDto {
     #[serde(rename = "type")]
     pub line_type: String,
     pub label: String,
+    pub scope: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -188,6 +189,7 @@ fn list_plugins(state: tauri::State<'_, Mutex<AppState>>) -> Vec<PluginMeta> {
                 .map(|line| ManifestLineDto {
                     line_type: line.line_type.clone(),
                     label: line.label.clone(),
+                    scope: line.scope.clone(),
                 })
                 .collect(),
         })

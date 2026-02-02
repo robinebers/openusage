@@ -49,8 +49,9 @@ Bundled plugins live under `src-tauri/resources/bundled_plugins/<id>/`.
   "entry": "plugin.js",
   "icon": "icon.svg",
   "lines": [
-    { "type": "badge", "label": "Plan" },
-    { "type": "progress", "label": "Usage" }
+    { "type": "badge", "label": "Plan", "scope": "overview" },
+    { "type": "progress", "label": "Usage", "scope": "overview" },
+    { "type": "text", "label": "Details", "scope": "detail" }
   ]
 }
 ```
@@ -83,15 +84,20 @@ loading skeletons instantly while probes execute asynchronously.
 |---------|--------|----------|----------------------------------------------|
 | `type`  | string | Yes      | One of: `text`, `progress`, `badge`          |
 | `label` | string | Yes      | Static label shown in the UI for this line   |
+| `scope` | string | Yes      | `"overview"` or `"detail"` - where line appears |
+
+- `"overview"` - shown on both Overview tab and plugin detail pages
+- `"detail"` - shown only on plugin detail pages
 
 Example:
 
 ```json
 {
   "lines": [
-    { "type": "badge", "label": "Plan" },
-    { "type": "progress", "label": "Plan usage" },
-    { "type": "text", "label": "Resets" }
+    { "type": "badge", "label": "Plan", "scope": "overview" },
+    { "type": "progress", "label": "Plan usage", "scope": "overview" },
+    { "type": "progress", "label": "Extra", "scope": "detail" },
+    { "type": "text", "label": "Resets", "scope": "detail" }
   ]
 }
 ```
@@ -189,7 +195,12 @@ A complete, working plugin that fetches data and displays all three line types.
   "name": "Minimal Example",
   "version": "0.0.1",
   "entry": "plugin.js",
-  "icon": "icon.svg"
+  "icon": "icon.svg",
+  "lines": [
+    { "type": "badge", "label": "Status", "scope": "overview" },
+    { "type": "progress", "label": "Usage", "scope": "overview" },
+    { "type": "text", "label": "Fetched at", "scope": "detail" }
+  ]
 }
 ```
 

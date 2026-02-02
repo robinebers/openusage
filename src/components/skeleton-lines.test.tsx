@@ -6,9 +6,9 @@ import type { ManifestLine } from "@/lib/plugin-types"
 describe("SkeletonLines", () => {
   it("renders lines by type", () => {
     const lines: ManifestLine[] = [
-      { type: "text", label: "Text" },
-      { type: "badge", label: "Badge" },
-      { type: "progress", label: "Progress" },
+      { type: "text", label: "Text", scope: "overview" },
+      { type: "badge", label: "Badge", scope: "overview" },
+      { type: "progress", label: "Progress", scope: "detail" },
     ]
     render(<SkeletonLines lines={lines} />)
     expect(screen.getByText("Text")).toBeInTheDocument()

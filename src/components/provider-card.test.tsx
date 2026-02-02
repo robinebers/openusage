@@ -49,8 +49,8 @@ describe("ProviderCard", () => {
         name="Test"
         loading
         skeletonLines={[
-          { type: "text", label: "One" },
-          { type: "badge", label: "Two" },
+          { type: "text", label: "One", scope: "overview" },
+          { type: "badge", label: "Two", scope: "overview" },
         ]}
       />
     )
@@ -218,5 +218,63 @@ describe("ProviderCard", () => {
       />
     )
     expect(within(container).queryAllByRole("separator")).toHaveLength(0)
+  })
+
+  it("filters lines by scope=overview", () => {
+    render(
+      <ProviderCard
+        name="Filtered"
+        scopeFilter="overview"
+        skeletonLines={[
+          { type: "text", label: "Primary", scope: "overview" },
+          { type: "text", label: "Secondary", scope: "detail" },
+        ]}
+        lines={[
+          { type: "text", label: "Primary", value: "Shown" },
+          { type: "text", label: "Secondary", value: "Hidden" },
+        ]}
+      />
+    )
+    expect(screen.getByText("Primary")).toBeInTheDocument()
+    expect(screen.getByText("Shown")).toBeInTheDocument()
+    expect(screen.queryByText("Secondary")).not.toBeInTheDocument()
+    expect(screen.queryByText("Hidden")).not.toBeInTheDocument()
+  })
+
+  it("shows all lines when scopeFilter=all", () => {
+    render(
+      <ProviderCard
+        name="All"
+        scopeFilter="all"
+        skeletonLines={[
+          { type: "text", label: "Primary", scope: "overview" },
+          { type: "text", label: "Secondary", scope: "detail" },
+        ]}
+        lines={[
+          { type: "text", label: "Primary", value: "One" },
+          { type: "text", label: "Secondary", value: "Two" },
+        ]}
+      />
+    )
+    expect(screen.getByText("Primary")).toBeInTheDocument()
+    expect(screen.getByText("One")).toBeInTheDocument()
+    expect(screen.getByText("Secondary")).toBeInTheDocument()
+    expect(screen.getByText("Two")).toBeInTheDocument()
+  })
+
+  it("filters skeleton lines during loading", () => {
+    render(
+      <ProviderCard
+        name="Loading"
+        loading
+        scopeFilter="overview"
+        skeletonLines={[
+          { type: "progress", label: "Session", scope: "overview" },
+          { type: "progress", label: "Extra", scope: "detail" },
+        ]}
+      />
+    )
+    expect(screen.getByText("Session")).toBeInTheDocument()
+    expect(screen.queryByText("Extra")).not.toBeInTheDocument()
   })
 })

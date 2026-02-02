@@ -8,6 +8,7 @@ pub struct ManifestLine {
     #[serde(rename = "type")]
     pub line_type: String,
     pub label: String,
+    pub scope: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

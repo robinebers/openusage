@@ -34,6 +34,7 @@ export function ProviderDetailPage({ plugin, onRetry }: ProviderDetailPageProps)
       skeletonLines={plugin.meta.lines}
       lastManualRefreshAt={plugin.lastManualRefreshAt}
       onRetry={onRetry}
+      scopeFilter="all"
     />
   )
 }

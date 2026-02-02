@@ -7,8 +7,8 @@
   "icon": "icon.svg",
   "brandColor": "#000000",
   "lines": [
-    { "type": "progress", "label": "Plan usage" },
-    { "type": "progress", "label": "On-demand" },
-    { "type": "text", "label": "Resets in" }
+    { "type": "progress", "label": "Plan usage", "scope": "overview" },
+    { "type": "progress", "label": "On-demand", "scope": "detail" },
+    { "type": "text", "label": "Resets in", "scope": "detail" }
   ]
 }

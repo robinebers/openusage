@@ -129,7 +129,7 @@ describe("App", () => {
     state.invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === "list_plugins") {
         return [
-          { id: "a", name: "Alpha", iconUrl: "icon-a", lines: [{ type: "text", label: "Label" }] },
+          { id: "a", name: "Alpha", iconUrl: "icon-a", lines: [{ type: "text", label: "Now", scope: "overview" }] },
           { id: "b", name: "Beta", iconUrl: "icon-b", lines: [] },
         ]
       }

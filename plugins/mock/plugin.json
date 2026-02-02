@@ -7,11 +7,11 @@
   "icon": "icon.svg",
   "brandColor": "#EF4444",
   "lines": [
-    { "type": "text", "label": "Config" },
-    { "type": "badge", "label": "Case" },
-    { "type": "progress", "label": "Percent" },
-    { "type": "progress", "label": "Dollars" },
-    { "type": "text", "label": "Now" },
-    { "type": "badge", "label": "Warning" }
+    { "type": "text", "label": "Config", "scope": "overview" },
+    { "type": "badge", "label": "Case", "scope": "overview" },
+    { "type": "progress", "label": "Percent", "scope": "overview" },
+    { "type": "progress", "label": "Dollars", "scope": "detail" },
+    { "type": "text", "label": "Now", "scope": "detail" },
+    { "type": "badge", "label": "Warning", "scope": "detail" }
   ]
 }

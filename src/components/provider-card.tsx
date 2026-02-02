@@ -20,6 +20,7 @@ interface ProviderCardProps {
   skeletonLines?: ManifestLine[]
   lastManualRefreshAt?: number | null
   onRetry?: () => void
+  scopeFilter?: "overview" | "all"
 }
 
 export function formatNumber(value: number) {
@@ -57,8 +58,22 @@ export function ProviderCard({
   skeletonLines = [],
   lastManualRefreshAt,
   onRetry,
+  scopeFilter = "all",
 }: ProviderCardProps) {
   const [now, setNow] = useState(Date.now())
+
+  // Filter lines based on scope - match by label since runtime lines can differ from manifest
+  const overviewLabels = new Set(
+    skeletonLines
+      .filter(line => line.scope === "overview")
+      .map(line => line.label)
+  )
+  const filteredSkeletonLines = scopeFilter === "all"
+    ? skeletonLines
+    : skeletonLines.filter(line => line.scope === "overview")
+  const filteredLines = scopeFilter === "all"
+    ? lines
+    : lines.filter(line => overviewLabels.has(line.label))
 
   // Update "now" every second while in cooldown to keep UI in sync
   useEffect(() => {
@@ -159,12 +174,12 @@ export function ProviderCard({
         {error && <PluginError message={error} />}
 
         {loading && !error && (
-          <SkeletonLines lines={skeletonLines} />
+          <SkeletonLines lines={filteredSkeletonLines} />
         )}
 
         {!loading && !error && (
           <div className="space-y-4">
-            {lines.map((line, index) => (
+            {filteredLines.map((line, index) => (
               <MetricLineRenderer key={`${line.label}-${index}`} line={line} />
             ))}
           </div>
