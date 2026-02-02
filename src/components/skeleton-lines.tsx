@@ -47,7 +47,7 @@ export function SkeletonLine({ line }: { line: ManifestLine }) {
 
 export function SkeletonLines({ lines }: { lines: ManifestLine[] }) {
   return (
-    <div className="space-y-1">
+    <div className="space-y-4">
       {lines.map((line, index) => (
         <SkeletonLine key={`${line.label}-${index}`} line={line} />
       ))}
