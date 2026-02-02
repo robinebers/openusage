@@ -197,14 +197,15 @@
       ctx.host.log.warn("plan info fetch failed: " + String(e))
     }
 
-    const lines = []
+    let plan = null
     if (planName) {
       const planLabel = ctx.fmt.planLabel(planName)
       if (planLabel) {
-        lines.push(ctx.line.badge("Plan", planLabel, "#000000"))
+        plan = planLabel
       }
     }
 
+    const lines = []
     const pu = usage.planUsage
     lines.push(
       ctx.line.progress("Plan usage", ctx.fmt.dollars(pu.totalSpend), ctx.fmt.dollars(pu.limit), "dollars")
@@ -227,10 +228,11 @@
     }
 
     if (usage.billingCycleEnd) {
-      lines.push(ctx.line.text("Resets", ctx.fmt.date(usage.billingCycleEnd)))
+      const resetLabel = ctx.fmt.resetIn((usage.billingCycleEnd - Date.now()) / 1000)
+      if (resetLabel) lines.push(ctx.line.text("Resets in", resetLabel))
     }
 
-    return { lines }
+    return { plan: plan, lines: lines }
   }
 
   globalThis.__openusage_plugin = { id: "cursor", probe }

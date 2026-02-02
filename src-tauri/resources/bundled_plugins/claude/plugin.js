@@ -187,10 +187,11 @@
     }
 
     const lines = []
+    let plan = null
     if (creds.oauth.subscriptionType) {
       const planLabel = ctx.fmt.planLabel(creds.oauth.subscriptionType)
       if (planLabel) {
-        lines.push(ctx.line.badge("Plan", planLabel, "#000000"))
+        plan = planLabel
       }
     }
 
@@ -231,7 +232,7 @@
       lines.push(ctx.line.badge("Status", "No usage data", "#a3a3a3"))
     }
 
-    return { lines }
+    return { plan: plan, lines: lines }
   }
 
   globalThis.__openusage_plugin = { id: "claude", probe }

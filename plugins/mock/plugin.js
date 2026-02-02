@@ -134,14 +134,16 @@
       mode = picked
     }
 
+    var plan = safeString(effectiveMode)
+
     // Non-throwing modes should always include a "where to change this" hint.
     const hintLines = [
-      lineBadge({ label: "Mode", text: safeString(effectiveMode), color: "#000000" }),
       lineText({ label: "Config", value: configPath }),
     ]
 
     if (mode === "ok") {
       return {
+        plan: plan,
         lines: [
           ...hintLines,
           effectiveMode === "chaos" ? lineBadge({ label: "Case", text: "ok", color: "#000000" }) : null,
@@ -188,6 +190,7 @@
 
     if (mode === "unknown_line_type") {
       return {
+        plan: plan,
         lines: [
           ...hintLines,
           { type: "nope", label: "Bad", value: "data" },
@@ -205,6 +208,7 @@
     if (mode === "line_not_object") {
       // Host expects each line to be an object. This becomes "invalid line at index N".
       return {
+        plan: plan,
         lines: [
           ...hintLines,
           "definitely not an object",
@@ -216,6 +220,7 @@
       // Common plugin bug: max is not a number (e.g. "N/A"). Host coerces to 0.0.
       // UI will show "42%" but bar stays empty because max <= 0.
       return {
+        plan: plan,
         lines: [
           ...hintLines,
           lineBadge({ label: "Case", text: "progress.max = \"N/A\" (string)", color: "#000000" }),
@@ -228,6 +233,7 @@
       // Common plugin bug: value is a string. Host coerces to 0.0.
       // UI will show 0% even though the plugin tried to say "42".
       return {
+        plan: plan,
         lines: [
           ...hintLines,
           lineBadge({ label: "Case", text: "progress.value = \"42\" (string)", color: "#000000" }),
@@ -240,6 +246,7 @@
       // Common plugin bug: value is NaN. Host detects non-finite -> value=-1, max=0.
       // UI shows N/A.
       return {
+        plan: plan,
         lines: [
           ...hintLines,
           lineBadge({ label: "Case", text: "progress.value = NaN", color: "#000000" }),
@@ -251,6 +258,7 @@
     if (mode === "badge_text_number") {
       // Common plugin bug: badge.text isn't a string. Host reads empty string.
       return {
+        plan: plan,
         lines: [
           ...hintLines,
           lineBadge({ label: "Case", text: "badge.text = 123 (number)", color: "#000000" }),
@@ -262,7 +270,7 @@
     if (mode === "fs_throw") {
       // Uncaught host FS exception -> host should report "probe() failed".
       ctx.host.fs.readText("/definitely/not/a/real/path-" + String(Date.now()))
-      return { lines: hintLines }
+      return { plan: plan, lines: hintLines }
     }
 
     if (mode === "http_throw") {
@@ -272,17 +280,18 @@
         url: "https://example.com/",
         timeoutMs: 1000,
       })
-      return { lines: hintLines }
+      return { plan: plan, lines: hintLines }
     }
 
     if (mode === "sqlite_throw") {
       // Dot-commands are blocked by host -> uncaught -> host should report "probe() failed".
       ctx.host.sqlite.query(ctx.app.appDataDir + "/does-not-matter.db", ".schema")
-      return { lines: hintLines }
+      return { plan: plan, lines: hintLines }
     }
 
     // Unknown mode: don't throw; make it obvious.
     return {
+      plan: plan,
       lines: [
         ...hintLines,
         lineBadge({ label: "Warning", text: "unknown mode: " + safeString(mode), color: "#f59e0b" }),

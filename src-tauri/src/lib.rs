@@ -24,6 +24,7 @@ pub struct PluginMeta {
     pub id: String,
     pub name: String,
     pub icon_url: String,
+    pub brand_color: Option<String>,
     pub lines: Vec<ManifestLineDto>,
 }
 
@@ -179,6 +180,7 @@ fn list_plugins(state: tauri::State<'_, Mutex<AppState>>) -> Vec<PluginMeta> {
             id: plugin.manifest.id,
             name: plugin.manifest.name,
             icon_url: plugin.icon_data_url,
+            brand_color: plugin.manifest.brand_color,
             lines: plugin
                 .manifest
                 .lines

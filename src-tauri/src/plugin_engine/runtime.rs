@@ -34,6 +34,7 @@ pub enum MetricLine {
 pub struct PluginOutput {
     pub provider_id: String,
     pub display_name: String,
+    pub plan: Option<String>,
     pub lines: Vec<MetricLine>,
     pub icon_url: String,
 }
@@ -114,6 +115,8 @@ pub fn run_probe(
             }
         };
 
+        let plan: Option<String> = result.get::<_, String>("plan").ok().filter(|s| !s.is_empty());
+
         let lines = match parse_lines(&result) {
             Ok(lines) if !lines.is_empty() => lines,
             Ok(_) => vec![error_line("no lines returned".to_string())],
@@ -123,6 +126,7 @@ pub fn run_probe(
         PluginOutput {
             provider_id: plugin_id,
             display_name,
+            plan,
             lines,
             icon_url,
         }
@@ -191,6 +195,7 @@ fn error_output(plugin: &LoadedPlugin, message: String) -> PluginOutput {
     PluginOutput {
         provider_id: plugin.manifest.id.clone(),
         display_name: plugin.manifest.name.clone(),
+        plan: None,
         lines: vec![error_line(message)],
         icon_url: plugin.icon_data_url.clone(),
     }
@@ -236,6 +241,7 @@ mod tests {
                 version: "0.0.0".to_string(),
                 entry: "plugin.js".to_string(),
                 icon: "icon.svg".to_string(),
+                brand_color: None,
                 lines: vec![],
             },
             plugin_dir: PathBuf::from("."),

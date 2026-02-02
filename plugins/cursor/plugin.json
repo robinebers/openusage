@@ -5,8 +5,8 @@
   "version": "0.0.1",
   "entry": "plugin.js",
   "icon": "icon.svg",
+  "brandColor": "#000000",
   "lines": [
-    { "type": "badge", "label": "Plan" },
     { "type": "progress", "label": "Plan usage" },
     { "type": "progress", "label": "On-demand" }
   ]

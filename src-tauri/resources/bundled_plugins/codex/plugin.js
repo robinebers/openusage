@@ -222,10 +222,11 @@
         lines.push(ctx.line.progress("Credits", creditsData, 1000))
       }
 
+      let plan = null
       if (data.plan_type) {
         const planLabel = ctx.fmt.planLabel(data.plan_type)
         if (planLabel) {
-          lines.unshift(ctx.line.badge("Plan", planLabel, "#000000"))
+          plan = planLabel
         }
       }
 
@@ -233,7 +234,7 @@
         lines.push(ctx.line.badge("Status", "No usage data", "#a3a3a3"))
       }
 
-      return { lines }
+      return { plan: plan, lines: lines }
     }
 
     if (auth.OPENAI_API_KEY) {

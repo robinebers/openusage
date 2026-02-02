@@ -1,5 +1,7 @@
 import { Home, Settings } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { getRelativeLuminance } from "@/lib/color"
+import { useDarkMode } from "@/hooks/use-dark-mode"
 
 type ActiveView = "home" | "settings" | string
 
@@ -7,6 +9,7 @@ interface NavPlugin {
   id: string
   name: string
   iconUrl: string
+  brandColor?: string
 }
 
 interface SideNavProps {
@@ -39,7 +42,17 @@ function NavButton({ isActive, onClick, children }: NavButtonProps) {
   )
 }
 
+function getIconColor(brandColor: string | undefined, isDark: boolean): string {
+  if (!brandColor) return "currentColor"
+  const luminance = getRelativeLuminance(brandColor)
+  if (isDark && luminance < 0.15) return "currentColor"
+  if (!isDark && luminance > 0.85) return "currentColor"
+  return brandColor
+}
+
 export function SideNav({ activeView, onViewChange, plugins }: SideNavProps) {
+  const isDark = useDarkMode()
+
   return (
     <nav className="flex flex-col w-12 border-r bg-muted/30 py-3">
       {/* Home */}
@@ -57,10 +70,21 @@ export function SideNav({ activeView, onViewChange, plugins }: SideNavProps) {
           isActive={activeView === plugin.id}
           onClick={() => onViewChange(plugin.id)}
         >
-          <img
-            src={plugin.iconUrl}
-            alt={plugin.name}
-            className="size-6"
+          <span
+            role="img"
+            aria-label={plugin.name}
+            className="size-6 inline-block"
+            style={{
+              backgroundColor: getIconColor(plugin.brandColor, isDark),
+              WebkitMaskImage: `url(${plugin.iconUrl})`,
+              WebkitMaskSize: "contain",
+              WebkitMaskRepeat: "no-repeat",
+              WebkitMaskPosition: "center",
+              maskImage: `url(${plugin.iconUrl})`,
+              maskSize: "contain",
+              maskRepeat: "no-repeat",
+              maskPosition: "center",
+            }}
           />
         </NavButton>
       ))}

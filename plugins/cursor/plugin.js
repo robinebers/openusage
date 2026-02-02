@@ -197,21 +197,28 @@
       ctx.host.log.warn("plan info fetch failed: " + String(e))
     }
 
-    const lines = []
+    var plan = null
     if (planName) {
-      const planLabel = ctx.fmt.planLabel(planName)
+      var planLabel = ctx.fmt.planLabel(planName)
       if (planLabel) {
-        lines.push(ctx.line.badge({ label: "Plan", text: planLabel, color: "#000000" }))
+        plan = planLabel
       }
     }
 
+    const lines = []
     const pu = usage.planUsage
+    var resetSubtitle = null
+    if (usage.billingCycleEnd) {
+      var resetSec = (usage.billingCycleEnd - Date.now()) / 1000
+      var resetLabel = ctx.fmt.resetIn(resetSec)
+      if (resetLabel) resetSubtitle = "Resets in " + resetLabel
+    }
     lines.push(ctx.line.progress({
       label: "Plan usage",
       value: ctx.fmt.dollars(pu.totalSpend),
       max: ctx.fmt.dollars(pu.limit),
       unit: "dollars",
-      subtitle: usage.billingCycleEnd ? "Resets " + ctx.fmt.date(usage.billingCycleEnd) : null
+      subtitle: resetSubtitle
     }))
 
     if (typeof pu.bonusSpend === "number" && pu.bonusSpend > 0) {
@@ -233,7 +240,7 @@
       }
     }
 
-    return { lines }
+    return { plan: plan, lines: lines }
   }
 
   globalThis.__openusage_plugin = { id: "cursor", probe }

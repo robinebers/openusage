@@ -19,6 +19,7 @@ pub struct PluginManifest {
     pub version: String,
     pub entry: String,
     pub icon: String,
+    pub brand_color: Option<String>,
     pub lines: Vec<ManifestLine>,
 }
 

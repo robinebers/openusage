@@ -12,6 +12,7 @@ import type { ManifestLine, MetricLine } from "@/lib/plugin-types"
 
 interface ProviderCardProps {
   name: string
+  plan?: string
   showSeparator?: boolean
   loading?: boolean
   error?: string | null
@@ -48,6 +49,7 @@ export function getProgressPercent(value: number, max: number) {
 
 export function ProviderCard({
   name,
+  plan,
   showSeparator = true,
   loading = false,
   error = null,
@@ -147,6 +149,11 @@ export function ProviderCard({
               )
             )}
           </div>
+          {plan && (
+            <Badge variant="outline" className="truncate min-w-0 max-w-[40%]" title={plan}>
+              {plan}
+            </Badge>
+          )}
         </div>
         {error && <PluginError message={error} />}
 

@@ -26,6 +26,7 @@ export function ProviderDetailPage({ plugin, onRetry }: ProviderDetailPageProps)
   return (
     <ProviderCard
       name={plugin.meta.name}
+      plan={plugin.data?.plan}
       showSeparator={false}
       loading={plugin.loading}
       error={plugin.error}

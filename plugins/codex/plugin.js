@@ -247,10 +247,11 @@
         lines.push(ctx.line.progress({ label: "Credits", value: creditsData, max: 1000 }))
       }
 
+      var plan = null
       if (data.plan_type) {
-        const planLabel = ctx.fmt.planLabel(data.plan_type)
+        var planLabel = ctx.fmt.planLabel(data.plan_type)
         if (planLabel) {
-          lines.unshift(ctx.line.badge({ label: "Plan", text: planLabel, color: "#000000" }))
+          plan = planLabel
         }
       }
 
@@ -258,7 +259,7 @@
         lines.push(ctx.line.badge({ label: "Status", text: "No usage data", color: "#a3a3a3" }))
       }
 
-      return { lines }
+      return { plan: plan, lines: lines }
     }
 
     if (auth.OPENAI_API_KEY) {

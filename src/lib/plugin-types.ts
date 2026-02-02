@@ -11,6 +11,7 @@ export type ManifestLine = {
 export type PluginOutput = {
   providerId: string
   displayName: string
+  plan?: string
   lines: MetricLine[]
   iconUrl: string
 }
@@ -19,5 +20,6 @@ export type PluginMeta = {
   id: string
   name: string
   iconUrl: string
+  brandColor?: string
   lines: ManifestLine[]
 }

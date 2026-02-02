@@ -5,8 +5,8 @@
   "version": "0.0.1",
   "entry": "plugin.js",
   "icon": "icon.svg",
+  "brandColor": "#74AA9C",
   "lines": [
-    { "type": "badge", "label": "Plan" },
     { "type": "progress", "label": "Session (5h)" },
     { "type": "text", "label": "Resets in" },
     { "type": "progress", "label": "Weekly (7d)" },

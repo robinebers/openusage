@@ -5,8 +5,8 @@
   "version": "0.0.1",
   "entry": "plugin.js",
   "icon": "icon.svg",
+  "brandColor": "#EF4444",
   "lines": [
-    { "type": "badge", "label": "Mode" },
     { "type": "text", "label": "Config" },
     { "type": "badge", "label": "Case" },
     { "type": "progress", "label": "Percent" },
@@ -15,4 +15,3 @@
     { "type": "badge", "label": "Warning" }
   ]
 }
-
