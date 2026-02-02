@@ -47,6 +47,7 @@ describe("SettingsPage", () => {
   it("toggles plugins", async () => {
     const onToggle = vi.fn()
     const onReorder = vi.fn()
+    const onAutoUpdateIntervalChange = vi.fn()
     render(
       <SettingsPage
         plugins={[
@@ -55,6 +56,9 @@ describe("SettingsPage", () => {
         ]}
         onReorder={onReorder}
         onToggle={onToggle}
+        autoUpdateInterval={15}
+        onAutoUpdateIntervalChange={onAutoUpdateIntervalChange}
+        autoUpdateNextAt={Date.now() + 60_000}
       />
     )
     const checkboxes = screen.getAllByRole("checkbox")
@@ -65,6 +69,7 @@ describe("SettingsPage", () => {
   it("reorders plugins on drag end", () => {
     const onToggle = vi.fn()
     const onReorder = vi.fn()
+    const onAutoUpdateIntervalChange = vi.fn()
     render(
       <SettingsPage
         plugins={[
@@ -73,6 +78,9 @@ describe("SettingsPage", () => {
         ]}
         onReorder={onReorder}
         onToggle={onToggle}
+        autoUpdateInterval={15}
+        onAutoUpdateIntervalChange={onAutoUpdateIntervalChange}
+        autoUpdateNextAt={Date.now() + 60_000}
       />
     )
     latestOnDragEnd?.({ active: { id: "a" }, over: { id: "b" } })
@@ -82,15 +90,55 @@ describe("SettingsPage", () => {
   it("ignores invalid drag end", () => {
     const onToggle = vi.fn()
     const onReorder = vi.fn()
+    const onAutoUpdateIntervalChange = vi.fn()
     render(
       <SettingsPage
         plugins={[{ id: "a", name: "Alpha", enabled: true }]}
         onReorder={onReorder}
         onToggle={onToggle}
+        autoUpdateInterval={15}
+        onAutoUpdateIntervalChange={onAutoUpdateIntervalChange}
+        autoUpdateNextAt={Date.now() + 60_000}
       />
     )
     latestOnDragEnd?.({ active: { id: "a" }, over: null })
     latestOnDragEnd?.({ active: { id: "a" }, over: { id: "a" } })
     expect(onReorder).not.toHaveBeenCalled()
+  })
+
+  it("updates auto-update interval", async () => {
+    const onToggle = vi.fn()
+    const onReorder = vi.fn()
+    const onAutoUpdateIntervalChange = vi.fn()
+    render(
+      <SettingsPage
+        plugins={[{ id: "a", name: "Alpha", enabled: true }]}
+        onReorder={onReorder}
+        onToggle={onToggle}
+        autoUpdateInterval={15}
+        onAutoUpdateIntervalChange={onAutoUpdateIntervalChange}
+        autoUpdateNextAt={Date.now() + 60_000}
+      />
+    )
+    await userEvent.click(screen.getByRole("radio", { name: "30 min" }))
+    expect(onAutoUpdateIntervalChange).toHaveBeenCalledWith(30)
+  })
+
+  it("shows auto-update helper text and countdown", () => {
+    const onToggle = vi.fn()
+    const onReorder = vi.fn()
+    const onAutoUpdateIntervalChange = vi.fn()
+    render(
+      <SettingsPage
+        plugins={[{ id: "a", name: "Alpha", enabled: true }]}
+        onReorder={onReorder}
+        onToggle={onToggle}
+        autoUpdateInterval={15}
+        onAutoUpdateIntervalChange={onAutoUpdateIntervalChange}
+        autoUpdateNextAt={Date.now() + 60_000}
+      />
+    )
+    expect(screen.getByText("How we update your usage")).toBeInTheDocument()
+    expect(screen.getByText(/Next in/)).toBeInTheDocument()
   })
 })

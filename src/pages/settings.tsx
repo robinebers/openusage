@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from "react";
 import {
   DndContext,
   closestCenter,
@@ -17,6 +18,8 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@/components/ui/button";
+import type { AutoUpdateIntervalMinutes } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
 interface PluginConfig {
@@ -24,6 +27,13 @@ interface PluginConfig {
   name: string;
   enabled: boolean;
 }
+
+const AUTO_UPDATE_OPTIONS: { value: AutoUpdateIntervalMinutes; label: string }[] = [
+  { value: 5, label: "5 min" },
+  { value: 15, label: "15 min" },
+  { value: 30, label: "30 min" },
+  { value: 60, label: "1 hour" },
+];
 
 function SortablePluginItem({
   plugin,
@@ -87,19 +97,45 @@ interface SettingsPageProps {
   plugins: PluginConfig[];
   onReorder: (orderedIds: string[]) => void;
   onToggle: (id: string) => void;
+  autoUpdateInterval: AutoUpdateIntervalMinutes;
+  onAutoUpdateIntervalChange: (value: AutoUpdateIntervalMinutes) => void;
+  autoUpdateNextAt: number | null;
 }
 
 export function SettingsPage({
   plugins,
   onReorder,
   onToggle,
+  autoUpdateInterval,
+  onAutoUpdateIntervalChange,
+  autoUpdateNextAt,
 }: SettingsPageProps) {
+  const [now, setNow] = useState(() => Date.now());
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
+
+  useEffect(() => {
+    if (!autoUpdateNextAt) return undefined;
+    setNow(Date.now());
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [autoUpdateNextAt]);
+
+  const countdownLabel = useMemo(() => {
+    if (!autoUpdateNextAt) return "Paused";
+    const remainingMs = Math.max(0, autoUpdateNextAt - now);
+    const totalSeconds = Math.ceil(remainingMs / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    if (minutes > 0) {
+      return `Next in ${minutes}m ${seconds}s`;
+    }
+    return `Next in ${seconds}s`;
+  }, [autoUpdateNextAt, now]);
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -115,6 +151,38 @@ export function SettingsPage({
 
   return (
     <div className="py-3 space-y-4">
+      <section>
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-lg font-semibold">Auto Update</h3>
+          <span className="text-sm text-muted-foreground tabular-nums">
+            {countdownLabel}
+          </span>
+        </div>
+        <p className="text-sm text-foreground mb-2">
+          How we update your usage
+        </p>
+        <div className="bg-muted/50 rounded-lg p-1">
+          <div className="flex gap-1" role="radiogroup" aria-label="Auto-update interval">
+            {AUTO_UPDATE_OPTIONS.map((option) => {
+              const isActive = option.value === autoUpdateInterval;
+              return (
+                <Button
+                  key={option.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={isActive}
+                  variant={isActive ? "default" : "outline"}
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => onAutoUpdateIntervalChange(option.value)}
+                >
+                  {option.label}
+                </Button>
+              );
+            })}
+          </div>
+        </div>
+      </section>
       <section>
         <h3 className="text-lg font-semibold mb-2">Plugins</h3>
         <div className="bg-muted/50 rounded-lg p-1 space-y-1">

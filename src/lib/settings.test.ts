@@ -1,10 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import {
+  DEFAULT_AUTO_UPDATE_INTERVAL,
   DEFAULT_PLUGIN_SETTINGS,
   arePluginSettingsEqual,
   getEnabledPluginIds,
+  loadAutoUpdateInterval,
   loadPluginSettings,
   normalizePluginSettings,
+  saveAutoUpdateInterval,
   savePluginSettings,
 } from "@/lib/settings"
 import type { PluginMeta } from "@/lib/plugin-types"
@@ -68,5 +71,19 @@ describe("settings", () => {
 
   it("returns enabled plugin ids", () => {
     expect(getEnabledPluginIds({ order: ["a", "b"], disabled: ["b"] })).toEqual(["a"])
+  })
+
+  it("loads default auto-update interval when missing", async () => {
+    await expect(loadAutoUpdateInterval()).resolves.toBe(DEFAULT_AUTO_UPDATE_INTERVAL)
+  })
+
+  it("loads stored auto-update interval", async () => {
+    storeState.set("autoUpdateInterval", 30)
+    await expect(loadAutoUpdateInterval()).resolves.toBe(30)
+  })
+
+  it("saves auto-update interval", async () => {
+    await saveAutoUpdateInterval(5)
+    await expect(loadAutoUpdateInterval()).resolves.toBe(5)
   })
 })

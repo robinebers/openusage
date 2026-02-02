@@ -9,3 +9,5 @@
 - Mock plugin treats non-string mode as unknown; display uses safeString for visibility in warnings.
 - Committed generated `coverage/` output per user request.
 - Release version source-of-truth: Git tag `vX.Y.Z`; CI enforces `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` match.
+- Auto-update interval picker placed above Plugins in settings for visibility.
+- Auto-update countdown label format: "Next in Xm Ys"; shows "Paused" when no schedule.

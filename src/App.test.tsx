@@ -10,6 +10,8 @@ const state = vi.hoisted(() => ({
   startBatchMock: vi.fn(),
   savePluginSettingsMock: vi.fn(),
   loadPluginSettingsMock: vi.fn(),
+  loadAutoUpdateIntervalMock: vi.fn(),
+  saveAutoUpdateIntervalMock: vi.fn(),
   probeHandlers: null as null | { onResult: (output: any) => void; onBatchComplete: () => void },
 }))
 
@@ -83,6 +85,8 @@ vi.mock("@/lib/settings", async () => {
     ...actual,
     loadPluginSettings: state.loadPluginSettingsMock,
     savePluginSettings: state.savePluginSettingsMock,
+    loadAutoUpdateInterval: state.loadAutoUpdateIntervalMock,
+    saveAutoUpdateInterval: state.saveAutoUpdateIntervalMock,
   }
 })
 
@@ -97,7 +101,10 @@ describe("App", () => {
     state.startBatchMock.mockReset()
     state.savePluginSettingsMock.mockReset()
     state.loadPluginSettingsMock.mockReset()
+    state.loadAutoUpdateIntervalMock.mockReset()
+    state.saveAutoUpdateIntervalMock.mockReset()
     state.savePluginSettingsMock.mockResolvedValue(undefined)
+    state.saveAutoUpdateIntervalMock.mockResolvedValue(undefined)
     Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
       configurable: true,
       get() {
@@ -116,6 +123,7 @@ describe("App", () => {
       return null
     })
     state.loadPluginSettingsMock.mockResolvedValue({ order: ["a"], disabled: [] })
+    state.loadAutoUpdateIntervalMock.mockResolvedValue(15)
   })
 
   it("loads plugins, normalizes settings, and renders overview", async () => {
@@ -151,6 +159,19 @@ describe("App", () => {
     expect(state.startBatchMock).toHaveBeenLastCalledWith(["a", "b"])
   })
 
+  it("resets auto-update schedule on manual refresh", async () => {
+    const setIntervalSpy = vi.spyOn(global, "setInterval")
+    render(<App />)
+    await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
+    const initialCalls = setIntervalSpy.mock.calls.length
+    const refreshButtons = screen.getAllByRole("button", { name: "Refresh all" })
+    await userEvent.click(refreshButtons[0])
+    await waitFor(() =>
+      expect(setIntervalSpy.mock.calls.length).toBeGreaterThan(initialCalls)
+    )
+    setIntervalSpy.mockRestore()
+  })
+
   it("shows errors when refresh batch fails", async () => {
     state.startBatchMock.mockResolvedValueOnce(["a"])
     state.startBatchMock.mockRejectedValueOnce(new Error("fail refresh"))
@@ -173,6 +194,14 @@ describe("App", () => {
     expect(state.savePluginSettingsMock).toHaveBeenCalled()
     await userEvent.click(checkboxes[0])
     expect(state.savePluginSettingsMock).toHaveBeenCalledTimes(2)
+  })
+
+  it("updates auto-update interval in settings", async () => {
+    render(<App />)
+    const settingsTabs = await screen.findAllByRole("tab", { name: "Settings" })
+    await userEvent.click(settingsTabs[0])
+    await userEvent.click(await screen.findByRole("radio", { name: "30 min" }))
+    expect(state.saveAutoUpdateIntervalMock).toHaveBeenCalledWith(30)
   })
 
   it("retries a plugin on error", async () => {
