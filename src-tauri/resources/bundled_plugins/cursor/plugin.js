@@ -8,33 +8,6 @@
   const CLIENT_ID = "KbZUR41cY7W6zRSdpSUJ7I7mLYBKOCmB"
   const REFRESH_BUFFER_MS = 5 * 60 * 1000 // refresh 5 minutes before expiration
 
-  function lineText(label, value, color) {
-    const line = { type: "text", label, value }
-    if (color) line.color = color
-    return line
-  }
-
-  function lineProgress(label, value, max, unit, color) {
-    const line = { type: "progress", label, value, max }
-    if (unit) line.unit = unit
-    if (color) line.color = color
-    return line
-  }
-
-  function lineBadge(label, text, color) {
-    const line = { type: "badge", label, text }
-    if (color) line.color = color
-    return line
-  }
-
-  function formatPlanLabel(value) {
-    const text = String(value || "").trim()
-    if (!text) return ""
-    return text.replace(/(^|\s)([a-z])/g, function (match, space, letter) {
-      return space + letter.toUpperCase()
-    })
-  }
-
   function readStateValue(ctx, key) {
     try {
       const sql =
@@ -68,67 +41,15 @@
     }
   }
 
-  function decodeJwtPayload(token) {
-    // JWT format: header.payload.signature
-    // We need the payload (base64url encoded)
-    try {
-      const parts = token.split(".")
-      if (parts.length !== 3) return null
-
-      // Base64url decode the payload
-      let payload = parts[1]
-      // Replace base64url chars with base64 chars
-      payload = payload.replace(/-/g, "+").replace(/_/g, "/")
-      // Add padding if needed
-      while (payload.length % 4) payload += "="
-
-      // Decode base64 to string (works in QuickJS)
-      const decoded = decodeBase64(payload)
-      return JSON.parse(decoded)
-    } catch (e) {
-      return null
-    }
-  }
-
-  function decodeBase64(str) {
-    // Simple base64 decoder for QuickJS environment
-    const chars =
-      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-    let result = ""
-
-    // Remove padding
-    str = str.replace(/=+$/, "")
-
-    const len = str.length
-    let i = 0
-
-    while (i < len) {
-      const remaining = len - i
-
-      const a = chars.indexOf(str.charAt(i++))
-      const b = chars.indexOf(str.charAt(i++))
-      const c = remaining > 2 ? chars.indexOf(str.charAt(i++)) : 0
-      const d = remaining > 3 ? chars.indexOf(str.charAt(i++)) : 0
-
-      const n = (a << 18) | (b << 12) | (c << 6) | d
-
-      result += String.fromCharCode((n >> 16) & 0xff)
-      if (remaining > 2) result += String.fromCharCode((n >> 8) & 0xff)
-      if (remaining > 3) result += String.fromCharCode(n & 0xff)
-    }
-
-    return result
-  }
-
-  function getTokenExpiration(token) {
-    const payload = decodeJwtPayload(token)
+  function getTokenExpiration(ctx, token) {
+    const payload = ctx.jwt.decodePayload(token)
     if (!payload || typeof payload.exp !== "number") return null
     return payload.exp * 1000 // Convert to milliseconds
   }
 
-  function needsRefresh(accessToken, nowMs) {
+  function needsRefresh(ctx, accessToken, nowMs) {
     if (!accessToken) return true
-    const expiresAt = getTokenExpiration(accessToken)
+    const expiresAt = getTokenExpiration(ctx, accessToken)
     if (!expiresAt) return true
     return nowMs + REFRESH_BUFFER_MS >= expiresAt
   }
@@ -198,20 +119,6 @@
     })
   }
 
-  function dollarsFromCents(cents) {
-    const d = cents / 100
-    return Math.round(d * 100) / 100
-  }
-
-  function formatResetDate(unixMs) {
-    const d = new Date(Number(unixMs))
-    const months = [
-      "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-    ]
-    return months[d.getMonth()] + " " + String(d.getDate())
-  }
-
   function probe(ctx) {
     let accessToken = readStateValue(ctx, "cursorAuth/accessToken")
     const refreshTokenValue = readStateValue(ctx, "cursorAuth/refreshToken")
@@ -223,7 +130,7 @@
     const nowMs = Date.now()
 
     // Proactively refresh if token is expired or about to expire
-    if (needsRefresh(accessToken, nowMs)) {
+    if (needsRefresh(ctx, accessToken, nowMs)) {
       let refreshed = null
       try {
         refreshed = refreshToken(ctx, refreshTokenValue)
@@ -292,19 +199,19 @@
 
     const lines = []
     if (planName) {
-      const planLabel = formatPlanLabel(planName)
+      const planLabel = ctx.fmt.planLabel(planName)
       if (planLabel) {
-        lines.push(lineBadge("Plan", planLabel, "#000000"))
+        lines.push(ctx.line.badge("Plan", planLabel, "#000000"))
       }
     }
 
     const pu = usage.planUsage
     lines.push(
-      lineProgress("Plan usage", dollarsFromCents(pu.totalSpend), dollarsFromCents(pu.limit), "dollars")
+      ctx.line.progress("Plan usage", ctx.fmt.dollars(pu.totalSpend), ctx.fmt.dollars(pu.limit), "dollars")
     )
 
     if (typeof pu.bonusSpend === "number" && pu.bonusSpend > 0) {
-      lines.push(lineText("Bonus spend", "$" + String(dollarsFromCents(pu.bonusSpend))))
+      lines.push(ctx.line.text("Bonus spend", "$" + String(ctx.fmt.dollars(pu.bonusSpend))))
     }
 
     const su = usage.spendLimitUsage
@@ -314,13 +221,13 @@
       if (limit > 0) {
         const used = limit - remaining
         lines.push(
-          lineProgress("On-demand", dollarsFromCents(used), dollarsFromCents(limit), "dollars")
+          ctx.line.progress("On-demand", ctx.fmt.dollars(used), ctx.fmt.dollars(limit), "dollars")
         )
       }
     }
 
     if (usage.billingCycleEnd) {
-      lines.push(lineText("Resets", formatResetDate(usage.billingCycleEnd)))
+      lines.push(ctx.line.text("Resets", ctx.fmt.date(usage.billingCycleEnd)))
     }
 
     return { lines }

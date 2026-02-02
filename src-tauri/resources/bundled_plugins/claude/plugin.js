@@ -7,33 +7,6 @@
   const SCOPES = "user:profile user:inference user:sessions:claude_code user:mcp_servers"
   const REFRESH_BUFFER_MS = 5 * 60 * 1000 // refresh 5 minutes before expiration
 
-  function lineText(label, value, color) {
-    const line = { type: "text", label, value }
-    if (color) line.color = color
-    return line
-  }
-
-  function lineProgress(label, value, max, unit, color) {
-    const line = { type: "progress", label, value, max }
-    if (unit) line.unit = unit
-    if (color) line.color = color
-    return line
-  }
-
-  function lineBadge(label, text, color) {
-    const line = { type: "badge", label, text }
-    if (color) line.color = color
-    return line
-  }
-
-  function formatPlanLabel(value) {
-    const text = String(value || "").trim()
-    if (!text) return ""
-    return text.replace(/(^|\s)([a-z])/g, function (match, space, letter) {
-      return space + letter.toUpperCase()
-    })
-  }
-
   function loadCredentials(ctx) {
     // Try file first
     if (ctx.host.fs.exists(CRED_FILE)) {
@@ -156,31 +129,12 @@
     })
   }
 
-  function dollarsFromCents(cents) {
-    const d = cents / 100
-    return Math.round(d * 100) / 100
-  }
-
-  function formatResetIn(secondsUntil) {
-    if (!Number.isFinite(secondsUntil) || secondsUntil < 0) return null
-    const totalMinutes = Math.floor(secondsUntil / 60)
-    const totalHours = Math.floor(totalMinutes / 60)
-    const days = Math.floor(totalHours / 24)
-    const hours = totalHours % 24
-    const minutes = totalMinutes % 60
-
-    if (days > 0) return `${days}d ${hours}h`
-    if (totalHours > 0) return `${totalHours}h ${minutes}m`
-    if (totalMinutes > 0) return `${totalMinutes}m`
-    return "<1m"
-  }
-
-  function getResetInFromIso(isoString) {
+  function getResetInFromIso(ctx, isoString) {
     if (!isoString) return null
     const ts = Date.parse(isoString)
     if (!Number.isFinite(ts)) return null
     const diffSeconds = Math.floor((ts - Date.now()) / 1000)
-    return formatResetIn(diffSeconds)
+    return ctx.fmt.resetIn(diffSeconds)
   }
 
   function probe(ctx) {
@@ -234,31 +188,31 @@
 
     const lines = []
     if (creds.oauth.subscriptionType) {
-      const planLabel = formatPlanLabel(creds.oauth.subscriptionType)
+      const planLabel = ctx.fmt.planLabel(creds.oauth.subscriptionType)
       if (planLabel) {
-        lines.push(lineBadge("Plan", planLabel, "#000000"))
+        lines.push(ctx.line.badge("Plan", planLabel, "#000000"))
       }
     }
 
     if (data.five_hour && typeof data.five_hour.utilization === "number") {
-      lines.push(lineProgress("Session (5h)", data.five_hour.utilization, 100, "percent"))
-      const resetIn = getResetInFromIso(data.five_hour.resets_at)
-      if (resetIn) lines.push(lineText("Resets in", resetIn))
+      lines.push(ctx.line.progress("Session (5h)", data.five_hour.utilization, 100, "percent"))
+      const resetIn = getResetInFromIso(ctx, data.five_hour.resets_at)
+      if (resetIn) lines.push(ctx.line.text("Resets in", resetIn))
     }
     if (data.seven_day && typeof data.seven_day.utilization === "number") {
-      lines.push(lineProgress("Weekly (7d)", data.seven_day.utilization, 100, "percent"))
-      const resetIn = getResetInFromIso(data.seven_day.resets_at)
-      if (resetIn) lines.push(lineText("Resets in", resetIn))
+      lines.push(ctx.line.progress("Weekly (7d)", data.seven_day.utilization, 100, "percent"))
+      const resetIn = getResetInFromIso(ctx, data.seven_day.resets_at)
+      if (resetIn) lines.push(ctx.line.text("Resets in", resetIn))
     }
     if (data.seven_day_sonnet && typeof data.seven_day_sonnet.utilization === "number") {
-      lines.push(lineProgress("Sonnet (7d)", data.seven_day_sonnet.utilization, 100, "percent"))
-      const resetIn = getResetInFromIso(data.seven_day_sonnet.resets_at)
-      if (resetIn) lines.push(lineText("Resets in", resetIn))
+      lines.push(ctx.line.progress("Sonnet (7d)", data.seven_day_sonnet.utilization, 100, "percent"))
+      const resetIn = getResetInFromIso(ctx, data.seven_day_sonnet.resets_at)
+      if (resetIn) lines.push(ctx.line.text("Resets in", resetIn))
     }
     if (data.seven_day_opus && typeof data.seven_day_opus.utilization === "number") {
-      lines.push(lineProgress("Opus (7d)", data.seven_day_opus.utilization, 100, "percent"))
-      const resetIn = getResetInFromIso(data.seven_day_opus.resets_at)
-      if (resetIn) lines.push(lineText("Resets in", resetIn))
+      lines.push(ctx.line.progress("Opus (7d)", data.seven_day_opus.utilization, 100, "percent"))
+      const resetIn = getResetInFromIso(ctx, data.seven_day_opus.resets_at)
+      if (resetIn) lines.push(ctx.line.text("Resets in", resetIn))
     }
 
     if (data.extra_usage && data.extra_usage.is_enabled) {
@@ -266,15 +220,15 @@
       const limit = data.extra_usage.monthly_limit
       if (typeof used === "number" && typeof limit === "number" && limit > 0) {
         lines.push(
-          lineProgress("Extra usage", dollarsFromCents(used), dollarsFromCents(limit), "dollars")
+          ctx.line.progress("Extra usage", ctx.fmt.dollars(used), ctx.fmt.dollars(limit), "dollars")
         )
       } else if (typeof used === "number" && used > 0) {
-        lines.push(lineText("Extra usage", "$" + String(dollarsFromCents(used))))
+        lines.push(ctx.line.text("Extra usage", "$" + String(ctx.fmt.dollars(used))))
       }
     }
 
     if (lines.length === 0) {
-      lines.push(lineBadge("Status", "No usage data", "#a3a3a3"))
+      lines.push(ctx.line.badge("Status", "No usage data", "#a3a3a3"))
     }
 
     return { lines }

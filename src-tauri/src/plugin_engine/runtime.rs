@@ -65,6 +65,9 @@ pub fn run_probe(
         if host_api::patch_http_wrapper(&ctx).is_err() {
             return error_output(plugin, "http wrapper patch failed".to_string());
         }
+        if host_api::inject_utils(&ctx).is_err() {
+            return error_output(plugin, "utils injection failed".to_string());
+        }
 
         if ctx.eval::<(), _>(entry_script.as_bytes()).is_err() {
             return error_output(plugin, "script eval failed".to_string());

@@ -241,6 +241,125 @@ pub fn patch_http_wrapper(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
     )
 }
 
+/// Inject utility APIs (line builders, formatters, base64, jwt) onto __openusage_ctx
+pub fn inject_utils(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
+    ctx.eval::<(), _>(
+        r#"
+        (function() {
+            var ctx = __openusage_ctx;
+
+            // Line builders
+            ctx.line = {
+                text: function(label, value, color) {
+                    var line = { type: "text", label: label, value: value };
+                    if (color) line.color = color;
+                    return line;
+                },
+                progress: function(label, value, max, unit, color) {
+                    var line = { type: "progress", label: label, value: value, max: max };
+                    if (unit) line.unit = unit;
+                    if (color) line.color = color;
+                    return line;
+                },
+                badge: function(label, text, color) {
+                    var line = { type: "badge", label: label, text: text };
+                    if (color) line.color = color;
+                    return line;
+                }
+            };
+
+            // Formatters
+            ctx.fmt = {
+                planLabel: function(value) {
+                    var text = String(value || "").trim();
+                    if (!text) return "";
+                    return text.replace(/(^|\s)([a-z])/g, function(match, space, letter) {
+                        return space + letter.toUpperCase();
+                    });
+                },
+                resetIn: function(secondsUntil) {
+                    if (!Number.isFinite(secondsUntil) || secondsUntil < 0) return null;
+                    var totalMinutes = Math.floor(secondsUntil / 60);
+                    var totalHours = Math.floor(totalMinutes / 60);
+                    var days = Math.floor(totalHours / 24);
+                    var hours = totalHours % 24;
+                    var minutes = totalMinutes % 60;
+                    if (days > 0) return days + "d " + hours + "h";
+                    if (totalHours > 0) return totalHours + "h " + minutes + "m";
+                    if (totalMinutes > 0) return totalMinutes + "m";
+                    return "<1m";
+                },
+                dollars: function(cents) {
+                    var d = cents / 100;
+                    return Math.round(d * 100) / 100;
+                },
+                date: function(unixMs) {
+                    var d = new Date(Number(unixMs));
+                    var months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                    return months[d.getMonth()] + " " + String(d.getDate());
+                }
+            };
+
+            // Base64
+            var b64chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+            ctx.base64 = {
+                decode: function(str) {
+                    str = str.replace(/-/g, "+").replace(/_/g, "/");
+                    while (str.length % 4) str += "=";
+                    str = str.replace(/=+$/, "");
+                    var result = "";
+                    var len = str.length;
+                    var i = 0;
+                    while (i < len) {
+                        var remaining = len - i;
+                        var a = b64chars.indexOf(str.charAt(i++));
+                        var b = b64chars.indexOf(str.charAt(i++));
+                        var c = remaining > 2 ? b64chars.indexOf(str.charAt(i++)) : 0;
+                        var d = remaining > 3 ? b64chars.indexOf(str.charAt(i++)) : 0;
+                        var n = (a << 18) | (b << 12) | (c << 6) | d;
+                        result += String.fromCharCode((n >> 16) & 0xff);
+                        if (remaining > 2) result += String.fromCharCode((n >> 8) & 0xff);
+                        if (remaining > 3) result += String.fromCharCode(n & 0xff);
+                    }
+                    return result;
+                },
+                encode: function(str) {
+                    var result = "";
+                    var len = str.length;
+                    var i = 0;
+                    while (i < len) {
+                        var a = str.charCodeAt(i++);
+                        var b = i < len ? str.charCodeAt(i++) : 0;
+                        var c = i < len ? str.charCodeAt(i++) : 0;
+                        var n = (a << 16) | (b << 8) | c;
+                        result += b64chars.charAt((n >> 18) & 63);
+                        result += b64chars.charAt((n >> 12) & 63);
+                        result += i > len + 1 ? "=" : b64chars.charAt((n >> 6) & 63);
+                        result += i > len ? "=" : b64chars.charAt(n & 63);
+                    }
+                    return result;
+                }
+            };
+
+            // JWT
+            ctx.jwt = {
+                decodePayload: function(token) {
+                    try {
+                        var parts = token.split(".");
+                        if (parts.length !== 3) return null;
+                        var decoded = ctx.base64.decode(parts[1]);
+                        return JSON.parse(decoded);
+                    } catch (e) {
+                        return null;
+                    }
+                }
+            };
+        })();
+        "#
+        .as_bytes(),
+    )
+}
+
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct HttpReqParams {

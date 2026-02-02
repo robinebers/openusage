@@ -5,33 +5,6 @@
   const USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
   const REFRESH_AGE_MS = 8 * 24 * 60 * 60 * 1000
 
-  function lineText(label, value, color) {
-    const line = { type: "text", label, value }
-    if (color) line.color = color
-    return line
-  }
-
-  function lineProgress(label, value, max, unit, color) {
-    const line = { type: "progress", label, value, max }
-    if (unit) line.unit = unit
-    if (color) line.color = color
-    return line
-  }
-
-  function lineBadge(label, text, color) {
-    const line = { type: "badge", label, text }
-    if (color) line.color = color
-    return line
-  }
-
-  function formatPlanLabel(value) {
-    const text = String(value || "").trim()
-    if (!text) return ""
-    return text.replace(/(^|\s)([a-z])/g, function (match, space, letter) {
-      return space + letter.toUpperCase()
-    })
-  }
-
   function loadAuth(ctx) {
     if (!ctx.host.fs.exists(AUTH_PATH)) return null
     try {
@@ -134,27 +107,13 @@
     return Number.isFinite(n) ? n : null
   }
 
-  function formatResetIn(secondsUntil) {
-    if (!Number.isFinite(secondsUntil) || secondsUntil < 0) return null
-    const totalMinutes = Math.floor(secondsUntil / 60)
-    const totalHours = Math.floor(totalMinutes / 60)
-    const days = Math.floor(totalHours / 24)
-    const hours = totalHours % 24
-    const minutes = totalMinutes % 60
-
-    if (days > 0) return `${days}d ${hours}h`
-    if (totalHours > 0) return `${totalHours}h ${minutes}m`
-    if (totalMinutes > 0) return `${totalMinutes}m`
-    return "<1m"
-  }
-
-  function getResetIn(nowSec, window) {
+  function getResetIn(ctx, nowSec, window) {
     if (!window) return null
     if (typeof window.reset_at === "number") {
-      return formatResetIn(window.reset_at - nowSec)
+      return ctx.fmt.resetIn(window.reset_at - nowSec)
     }
     if (typeof window.reset_after_seconds === "number") {
-      return formatResetIn(window.reset_after_seconds)
+      return ctx.fmt.resetIn(window.reset_after_seconds)
     }
     return null
   }
@@ -222,35 +181,35 @@
       const headerSecondary = readPercent(resp.headers["x-codex-secondary-used-percent"])
 
       if (headerPrimary !== null) {
-        lines.push(lineProgress("Session (5h)", headerPrimary, 100, "percent"))
-        const resetIn = getResetIn(nowSec, primaryWindow)
-        if (resetIn) lines.push(lineText("Resets in", resetIn))
+        lines.push(ctx.line.progress("Session (5h)", headerPrimary, 100, "percent"))
+        const resetIn = getResetIn(ctx, nowSec, primaryWindow)
+        if (resetIn) lines.push(ctx.line.text("Resets in", resetIn))
       }
       if (headerSecondary !== null) {
-        lines.push(lineProgress("Weekly (7d)", headerSecondary, 100, "percent"))
-        const resetIn = getResetIn(nowSec, secondaryWindow)
-        if (resetIn) lines.push(lineText("Resets in", resetIn))
+        lines.push(ctx.line.progress("Weekly (7d)", headerSecondary, 100, "percent"))
+        const resetIn = getResetIn(ctx, nowSec, secondaryWindow)
+        if (resetIn) lines.push(ctx.line.text("Resets in", resetIn))
       }
 
       if (lines.length === 0 && data.rate_limit) {
         if (data.rate_limit.primary_window && typeof data.rate_limit.primary_window.used_percent === "number") {
-          lines.push(lineProgress("Session (5h)", data.rate_limit.primary_window.used_percent, 100, "percent"))
-          const resetIn = getResetIn(nowSec, primaryWindow)
-          if (resetIn) lines.push(lineText("Resets in", resetIn))
+          lines.push(ctx.line.progress("Session (5h)", data.rate_limit.primary_window.used_percent, 100, "percent"))
+          const resetIn = getResetIn(ctx, nowSec, primaryWindow)
+          if (resetIn) lines.push(ctx.line.text("Resets in", resetIn))
         }
         if (data.rate_limit.secondary_window && typeof data.rate_limit.secondary_window.used_percent === "number") {
-          lines.push(lineProgress("Weekly (7d)", data.rate_limit.secondary_window.used_percent, 100, "percent"))
-          const resetIn = getResetIn(nowSec, secondaryWindow)
-          if (resetIn) lines.push(lineText("Resets in", resetIn))
+          lines.push(ctx.line.progress("Weekly (7d)", data.rate_limit.secondary_window.used_percent, 100, "percent"))
+          const resetIn = getResetIn(ctx, nowSec, secondaryWindow)
+          if (resetIn) lines.push(ctx.line.text("Resets in", resetIn))
         }
       }
 
       if (reviewWindow) {
         const used = reviewWindow.used_percent
         if (typeof used === "number") {
-          lines.push(lineProgress("Reviews (7d)", used, 100, "percent"))
-          const resetIn = getResetIn(nowSec, reviewWindow)
-          if (resetIn) lines.push(lineText("Resets in", resetIn))
+          lines.push(ctx.line.progress("Reviews (7d)", used, 100, "percent"))
+          const resetIn = getResetIn(ctx, nowSec, reviewWindow)
+          if (resetIn) lines.push(ctx.line.text("Resets in", resetIn))
         }
       }
 
@@ -258,20 +217,20 @@
       const creditsHeader = readNumber(creditsBalance)
       const creditsData = data.credits ? readNumber(data.credits.balance) : null
       if (creditsHeader !== null) {
-        lines.push(lineProgress("Credits", creditsHeader, 1000))
+        lines.push(ctx.line.progress("Credits", creditsHeader, 1000))
       } else if (creditsData !== null) {
-        lines.push(lineProgress("Credits", creditsData, 1000))
+        lines.push(ctx.line.progress("Credits", creditsData, 1000))
       }
 
       if (data.plan_type) {
-        const planLabel = formatPlanLabel(data.plan_type)
+        const planLabel = ctx.fmt.planLabel(data.plan_type)
         if (planLabel) {
-          lines.unshift(lineBadge("Plan", planLabel, "#000000"))
+          lines.unshift(ctx.line.badge("Plan", planLabel, "#000000"))
         }
       }
 
       if (lines.length === 0) {
-        lines.push(lineBadge("Status", "No usage data", "#a3a3a3"))
+        lines.push(ctx.line.badge("Status", "No usage data", "#a3a3a3"))
       }
 
       return { lines }
