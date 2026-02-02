@@ -10,6 +10,7 @@
     "core:window:allow-inner-size",
     "core:window:allow-scale-factor",
     "opener:default",
-    "store:default"
+    "store:default",
+    "aptabase:allow-track-event"
   ]
 }
