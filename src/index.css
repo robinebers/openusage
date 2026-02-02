@@ -132,6 +132,28 @@ body,
   padding: 0;
 }
 
+/* Arrow pointing up toward the tray icon */
+.tray-arrow {
+  width: 0;
+  height: 0;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-bottom: 7px solid var(--border);
+  position: relative;
+  flex-shrink: 0;
+}
+.tray-arrow::after {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 1.5px;
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 6px solid var(--card);
+}
+
 /* Remove focus rings - this is a menu bar app, not keyboard-navigated */
 *:focus,
 *:focus-visible {

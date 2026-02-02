@@ -115,7 +115,7 @@ pub fn position_panel_at_tray_icon(
 
     let icon_center_x_phys = icon_phys_x + (icon_width_phys / 2);
     let panel_x_phys = icon_center_x_phys - (window_width_phys / 2);
-    let padding_phys = (8.0 * scale_factor).round() as i32;
+    let padding_phys = (-8.0 * scale_factor).round() as i32;
     let panel_y_phys = icon_phys_y + icon_height_phys + padding_phys;
 
     let final_pos = tauri::PhysicalPosition::new(panel_x_phys, panel_y_phys);

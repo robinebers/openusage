@@ -489,27 +489,29 @@ function App() {
   }
 
   return (
-    <div
-      ref={containerRef}
-      className="bg-card rounded-lg border shadow-lg overflow-hidden select-none"
-      style={maxPanelHeightPx ? { maxHeight: `${maxPanelHeightPx}px` } : undefined}
-    >
-      <div className="flex h-full min-h-0 flex-row">
-        <SideNav
-          activeView={activeView}
-          onViewChange={setActiveView}
-          plugins={navPlugins}
-        />
-        <div className="flex-1 flex flex-col px-3 pt-2 pb-1.5 min-w-0">
-          <div className="flex-1 min-h-0 overflow-y-auto">
-            {renderContent()}
-          </div>
-          <PanelFooter
-            version={appVersion}
-            autoUpdateNextAt={autoUpdateNextAt}
-            updateStatus={updateStatus}
-            onUpdateInstall={triggerInstall}
+    <div ref={containerRef} className="flex flex-col items-center pt-1.5">
+      <div className="tray-arrow" />
+      <div
+        className="bg-card rounded-lg border shadow-lg overflow-hidden select-none w-full"
+        style={maxPanelHeightPx ? { maxHeight: `${maxPanelHeightPx}px` } : undefined}
+      >
+        <div className="flex h-full min-h-0 flex-row">
+          <SideNav
+            activeView={activeView}
+            onViewChange={setActiveView}
+            plugins={navPlugins}
           />
+          <div className="flex-1 flex flex-col px-3 pt-2 pb-1.5 min-w-0">
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              {renderContent()}
+            </div>
+            <PanelFooter
+              version={appVersion}
+              autoUpdateNextAt={autoUpdateNextAt}
+              updateStatus={updateStatus}
+              onUpdateInstall={triggerInstall}
+            />
+          </div>
         </div>
       </div>
     </div>
