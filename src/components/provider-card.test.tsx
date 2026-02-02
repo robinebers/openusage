@@ -39,7 +39,7 @@ describe("ProviderCard", () => {
       />
     )
     expect(screen.getByText("Nope")).toBeInTheDocument()
-    await userEvent.click(screen.getByText("Retry"))
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }))
     expect(onRetry).toHaveBeenCalledTimes(1)
   })
 

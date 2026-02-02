@@ -49,7 +49,6 @@ const defaultProps = {
   onToggle: vi.fn(),
   autoUpdateInterval: 15 as const,
   onAutoUpdateIntervalChange: vi.fn(),
-  autoUpdateNextAt: Date.now() + 60_000,
   themeMode: "system" as const,
   onThemeModeChange: vi.fn(),
 }
@@ -117,10 +116,9 @@ describe("SettingsPage", () => {
     expect(onAutoUpdateIntervalChange).toHaveBeenCalledWith(30)
   })
 
-  it("shows auto-update helper text and countdown", () => {
+  it("shows auto-update helper text", () => {
     render(<SettingsPage {...defaultProps} />)
-    expect(screen.getByText("How we update your usage")).toBeInTheDocument()
-    expect(screen.getByText(/Next in/)).toBeInTheDocument()
+    expect(screen.getByText("How often we update your usage")).toBeInTheDocument()
   })
 
   it("renders appearance section with theme options", () => {

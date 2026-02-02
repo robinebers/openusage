@@ -45,11 +45,21 @@ describe("useAppUpdate", () => {
     expect(result.current.updateStatus).toEqual({ status: "idle" })
   })
 
-  it("transitions to available when check finds an update", async () => {
-    checkMock.mockResolvedValue({ version: "1.0.0", download: vi.fn(), install: vi.fn() })
+  it("auto-downloads when update is available and transitions to ready", async () => {
+    const downloadMock = vi.fn(async (onEvent: (event: any) => void) => {
+      onEvent({ event: "Started", data: { contentLength: 1000 } })
+      onEvent({ event: "Progress", data: { chunkLength: 500 } })
+      onEvent({ event: "Progress", data: { chunkLength: 500 } })
+      onEvent({ event: "Finished", data: {} })
+    })
+    checkMock.mockResolvedValue({ version: "1.0.0", download: downloadMock, install: vi.fn() })
+
     const { result } = renderHook(() => useAppUpdate())
     await act(() => Promise.resolve())
-    expect(result.current.updateStatus).toEqual({ status: "available", version: "1.0.0" })
+    await act(() => Promise.resolve()) // extra tick for download to complete
+
+    expect(downloadMock).toHaveBeenCalled()
+    expect(result.current.updateStatus).toEqual({ status: "ready" })
   })
 
   it("stays idle when check returns null", async () => {
@@ -66,38 +76,15 @@ describe("useAppUpdate", () => {
     expect(result.current.updateStatus).toEqual({ status: "idle" })
   })
 
-  it("tracks download progress through to ready", async () => {
-    const downloadMock = vi.fn(async (onEvent: (event: any) => void) => {
-      onEvent({ event: "Started", data: { contentLength: 1000 } })
-      onEvent({ event: "Progress", data: { chunkLength: 500 } })
-      onEvent({ event: "Progress", data: { chunkLength: 500 } })
-      onEvent({ event: "Finished", data: {} })
-    })
-    const installMock = vi.fn()
-    checkMock.mockResolvedValue({ version: "1.0.0", download: downloadMock, install: installMock })
-
-    const { result } = renderHook(() => useAppUpdate())
-    await act(() => Promise.resolve())
-    expect(result.current.updateStatus.status).toBe("available")
-
-    await act(() => result.current.triggerDownload())
-    expect(result.current.updateStatus).toEqual({ status: "ready" })
-  })
-
   it("reports indeterminate progress when content length is unknown", async () => {
     let resolveDownload: (() => void) | null = null
     const downloadMock = vi.fn((onEvent: (event: any) => void) => {
       onEvent({ event: "Started", data: { contentLength: null } })
-      // Return a promise that doesn't resolve until we say so
       return new Promise<void>((resolve) => { resolveDownload = resolve })
     })
     checkMock.mockResolvedValue({ version: "1.0.0", download: downloadMock, install: vi.fn() })
 
     const { result } = renderHook(() => useAppUpdate())
-    await act(() => Promise.resolve())
-
-    // Start download without awaiting — it will hang until resolveDownload is called
-    act(() => { void result.current.triggerDownload() })
     await act(() => Promise.resolve())
 
     expect(result.current.updateStatus).toEqual({ status: "downloading", progress: -1 })
@@ -112,8 +99,8 @@ describe("useAppUpdate", () => {
 
     const { result } = renderHook(() => useAppUpdate())
     await act(() => Promise.resolve())
+    await act(() => Promise.resolve()) // extra tick for error to propagate
 
-    await act(() => result.current.triggerDownload())
     expect(result.current.updateStatus).toEqual({ status: "error", message: "Download failed" })
   })
 
@@ -127,7 +114,7 @@ describe("useAppUpdate", () => {
 
     const { result } = renderHook(() => useAppUpdate())
     await act(() => Promise.resolve())
-    await act(() => result.current.triggerDownload())
+    await act(() => Promise.resolve()) // wait for download to complete
     expect(result.current.updateStatus.status).toBe("ready")
 
     await act(() => result.current.triggerInstall())
@@ -145,7 +132,7 @@ describe("useAppUpdate", () => {
 
     const { result } = renderHook(() => useAppUpdate())
     await act(() => Promise.resolve())
-    await act(() => result.current.triggerDownload())
+    await act(() => Promise.resolve()) // wait for download
 
     await act(() => result.current.triggerInstall())
     expect(result.current.updateStatus).toEqual({ status: "error", message: "Install failed" })
@@ -162,23 +149,14 @@ describe("useAppUpdate", () => {
     expect(result.current.updateStatus).toEqual({ status: "idle" })
   })
 
-  it("does not trigger download when not in available state", async () => {
+  it("does not trigger install when not in ready state", async () => {
     checkMock.mockResolvedValue(null)
     const { result } = renderHook(() => useAppUpdate())
     await act(() => Promise.resolve())
 
-    await act(() => result.current.triggerDownload())
-    expect(result.current.updateStatus).toEqual({ status: "idle" })
-  })
-
-  it("does not trigger install when not in ready state", async () => {
-    checkMock.mockResolvedValue({ version: "1.0.0", download: vi.fn(), install: vi.fn() })
-    const { result } = renderHook(() => useAppUpdate())
-    await act(() => Promise.resolve())
-
     await act(() => result.current.triggerInstall())
-    // Still available, not changed
-    expect(result.current.updateStatus).toEqual({ status: "available", version: "1.0.0" })
+    // Still idle, install ignored
+    expect(result.current.updateStatus).toEqual({ status: "idle" })
   })
 
   it("prevents concurrent install attempts", async () => {
@@ -192,7 +170,7 @@ describe("useAppUpdate", () => {
 
     const { result } = renderHook(() => useAppUpdate())
     await act(() => Promise.resolve())
-    await act(() => result.current.triggerDownload())
+    await act(() => Promise.resolve()) // wait for download
 
     act(() => { void result.current.triggerInstall() })
     act(() => { void result.current.triggerInstall() })

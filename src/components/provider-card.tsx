@@ -137,6 +137,7 @@ export function ProviderCard({
                 <Button
                   variant="ghost"
                   size="icon-xs"
+                  aria-label="Retry"
                   onClick={(e) => {
                     e.currentTarget.blur()
                     onRetry()

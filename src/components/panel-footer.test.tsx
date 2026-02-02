@@ -8,105 +8,90 @@ const idle: UpdateStatus = { status: "idle" }
 const noop = () => {}
 
 describe("PanelFooter", () => {
-  it("fires refresh when enabled", async () => {
-    const onRefresh = vi.fn()
+  it("shows countdown in minutes when >= 60 seconds", () => {
+    const futureTime = Date.now() + 5 * 60 * 1000 // 5 minutes from now
     render(
       <PanelFooter
         version="0.0.0"
-        onRefresh={onRefresh}
+        autoUpdateNextAt={futureTime}
         updateStatus={idle}
-        onUpdateDownload={noop}
         onUpdateInstall={noop}
       />
     )
-    await userEvent.click(screen.getByText("Refresh all"))
-    expect(onRefresh).toHaveBeenCalledTimes(1)
+    expect(screen.getByText("Next update in 5m")).toBeTruthy()
   })
 
-  it("renders disabled refresh state", () => {
+  it("shows countdown in seconds when < 60 seconds", () => {
+    const futureTime = Date.now() + 30 * 1000 // 30 seconds from now
     render(
       <PanelFooter
         version="0.0.0"
-        onRefresh={noop}
-        refreshDisabled
+        autoUpdateNextAt={futureTime}
         updateStatus={idle}
-        onUpdateDownload={noop}
         onUpdateInstall={noop}
       />
     )
-    const buttons = screen.getAllByRole("button", { name: "Refresh all" })
-    const disabledButton = buttons.find((button) => button.getAttribute("tabindex") === "-1")
-    expect(disabledButton).toBeTruthy()
+    expect(screen.getByText("Next update in 30s")).toBeTruthy()
   })
 
-  it("shows update available link", async () => {
-    const onDownload = vi.fn()
+  it("shows Paused when autoUpdateNextAt is null", () => {
     render(
       <PanelFooter
         version="0.0.0"
-        onRefresh={noop}
-        updateStatus={{ status: "available", version: "1.0.0" }}
-        onUpdateDownload={onDownload}
+        autoUpdateNextAt={null}
+        updateStatus={idle}
         onUpdateInstall={noop}
       />
     )
-    const link = screen.getByText("v1.0.0 available")
-    expect(link).toBeTruthy()
-    await userEvent.click(link)
-    expect(onDownload).toHaveBeenCalledTimes(1)
+    expect(screen.getByText("Paused")).toBeTruthy()
   })
 
   it("shows downloading state", () => {
     render(
       <PanelFooter
         version="0.0.0"
-        onRefresh={noop}
+        autoUpdateNextAt={null}
         updateStatus={{ status: "downloading", progress: 42 }}
-        onUpdateDownload={noop}
         onUpdateInstall={noop}
       />
     )
-    expect(screen.getByText("Downloading... 42%")).toBeTruthy()
+    expect(screen.getByText("Downloading update 42%")).toBeTruthy()
   })
 
-  it("shows restart link when ready", async () => {
+  it("shows restart button when ready", async () => {
     const onInstall = vi.fn()
     render(
       <PanelFooter
         version="0.0.0"
-        onRefresh={noop}
+        autoUpdateNextAt={null}
         updateStatus={{ status: "ready" }}
-        onUpdateDownload={noop}
         onUpdateInstall={onInstall}
       />
     )
-    const link = screen.getByText("Restart to update")
-    expect(link).toBeTruthy()
-    await userEvent.click(link)
+    const button = screen.getByText("Restart to update")
+    expect(button).toBeTruthy()
+    await userEvent.click(button)
     expect(onInstall).toHaveBeenCalledTimes(1)
   })
 
-  it("falls back to version display on error", () => {
+  it("shows error state", () => {
     const { container } = render(
       <PanelFooter
         version="0.0.0"
-        onRefresh={noop}
+        autoUpdateNextAt={null}
         updateStatus={{ status: "error", message: "oops" }}
-        onUpdateDownload={noop}
         onUpdateInstall={noop}
       />
     )
     expect(container.textContent).toContain("Update failed")
-    expect(container.textContent).not.toContain("OpenUsage 0.0.0")
   })
 
   it("shows installing state", () => {
     render(
       <PanelFooter
         version="0.0.0"
-        onRefresh={noop}
+        autoUpdateNextAt={null}
         updateStatus={{ status: "installing" }}
-        onUpdateDownload={noop}
         onUpdateInstall={noop}
       />
     )

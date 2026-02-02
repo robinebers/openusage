@@ -14,3 +14,7 @@
 - Ran `bun run test:coverage`; 8 failed files, 25 failed tests; coverage not met.
 - Fixed publish workflow updater asset verification (robust matching + correct `.sig` regex).
 - Added app-updater in-flight guards + explicit installing/error UI states.
+- Removed "Refresh All" button from footer, replaced with countdown timer (minutes or seconds when <60s).
+- Moved countdown from settings page to footer; removed countdown display from Auto Update section.
+- Added aria-labels to SideNav buttons (Home, Settings, plugin names) for accessibility.
+- Added aria-label="Retry" to provider-card refresh button.

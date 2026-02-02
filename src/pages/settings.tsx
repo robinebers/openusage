@@ -1,4 +1,3 @@
-import { useEffect, useMemo, useState } from "react";
 import {
   DndContext,
   closestCenter,
@@ -105,7 +104,6 @@ interface SettingsPageProps {
   onToggle: (id: string) => void;
   autoUpdateInterval: AutoUpdateIntervalMinutes;
   onAutoUpdateIntervalChange: (value: AutoUpdateIntervalMinutes) => void;
-  autoUpdateNextAt: number | null;
   themeMode: ThemeMode;
   onThemeModeChange: (value: ThemeMode) => void;
 }
@@ -116,36 +114,15 @@ export function SettingsPage({
   onToggle,
   autoUpdateInterval,
   onAutoUpdateIntervalChange,
-  autoUpdateNextAt,
   themeMode,
   onThemeModeChange,
 }: SettingsPageProps) {
-  const [now, setNow] = useState(() => Date.now());
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
-
-  useEffect(() => {
-    if (!autoUpdateNextAt) return undefined;
-    setNow(Date.now());
-    const interval = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(interval);
-  }, [autoUpdateNextAt]);
-
-  const countdownLabel = useMemo(() => {
-    if (!autoUpdateNextAt) return "Paused";
-    const remainingMs = Math.max(0, autoUpdateNextAt - now);
-    const totalSeconds = Math.ceil(remainingMs / 1000);
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    if (minutes > 0) {
-      return `Next in ${minutes}m ${seconds}s`;
-    }
-    return `Next in ${seconds}s`;
-  }, [autoUpdateNextAt, now]);
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -189,14 +166,9 @@ export function SettingsPage({
         </div>
       </section>
       <section>
-        <div className="flex items-center justify-between mb-1">
-          <h3 className="text-lg font-semibold">Auto Update</h3>
-          <span className="text-sm text-muted-foreground tabular-nums">
-            {countdownLabel}
-          </span>
-        </div>
+        <h3 className="text-lg font-semibold mb-1">Auto Update</h3>
         <p className="text-sm text-foreground mb-2">
-          How we update your usage
+          How often we update your usage
         </p>
         <div className="bg-muted/50 rounded-lg p-1">
           <div className="flex gap-1" role="radiogroup" aria-label="Auto-update interval">

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor } from "@testing-library/react"
 import type { ReactNode } from "react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi, beforeEach } from "vitest"
@@ -73,6 +73,10 @@ vi.mock("@tauri-apps/api/window", () => ({
     }
   },
   currentMonitor: state.currentMonitorMock,
+}))
+
+vi.mock("@tauri-apps/api/app", () => ({
+  getVersion: () => Promise.resolve("0.0.0-test"),
 }))
 
 vi.mock("@/hooks/use-probe-events", () => ({
@@ -151,7 +155,7 @@ describe("App", () => {
     expect(state.savePluginSettingsMock).not.toHaveBeenCalled()
   })
 
-  it("handles probe results + refresh", async () => {
+  it("handles probe results", async () => {
     render(<App />)
     await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
     expect(state.probeHandlers).not.toBeNull()
@@ -163,41 +167,12 @@ describe("App", () => {
     })
     state.probeHandlers?.onBatchComplete()
     await screen.findByText("Now")
-    const refreshButtons = screen.getAllByRole("button", { name: "Refresh all" })
-    await userEvent.click(refreshButtons[0])
-    expect(state.startBatchMock).toHaveBeenLastCalledWith(["a", "b"])
-  })
-
-  it("resets auto-update schedule on manual refresh", async () => {
-    const setIntervalSpy = vi.spyOn(global, "setInterval")
-    render(<App />)
-    await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
-    const initialCalls = setIntervalSpy.mock.calls.length
-    const refreshButtons = screen.getAllByRole("button", { name: "Refresh all" })
-    await userEvent.click(refreshButtons[0])
-    await waitFor(() =>
-      expect(setIntervalSpy.mock.calls.length).toBeGreaterThan(initialCalls)
-    )
-    setIntervalSpy.mockRestore()
-  })
-
-  it("shows errors when refresh batch fails", async () => {
-    state.startBatchMock.mockResolvedValueOnce(["a"])
-    state.startBatchMock.mockRejectedValueOnce(new Error("fail refresh"))
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
-    render(<App />)
-    await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
-    const refreshButtons = screen.getAllByRole("button", { name: "Refresh all" })
-    await userEvent.click(refreshButtons[0])
-    const errors = await screen.findAllByText("Failed to start probe")
-    expect(errors.length).toBeGreaterThan(0)
-    errorSpy.mockRestore()
   })
 
   it("toggles plugins in settings", async () => {
     render(<App />)
-    const settingsTabs = await screen.findAllByRole("tab", { name: "Settings" })
-    await userEvent.click(settingsTabs[0])
+    const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
+    await userEvent.click(settingsButtons[0])
     const checkboxes = await screen.findAllByRole("checkbox")
     await userEvent.click(checkboxes[0])
     expect(state.savePluginSettingsMock).toHaveBeenCalled()
@@ -207,8 +182,8 @@ describe("App", () => {
 
   it("updates auto-update interval in settings", async () => {
     render(<App />)
-    const settingsTabs = await screen.findAllByRole("tab", { name: "Settings" })
-    await userEvent.click(settingsTabs[0])
+    const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
+    await userEvent.click(settingsButtons[0])
     await userEvent.click(await screen.findByRole("radio", { name: "30 min" }))
     expect(state.saveAutoUpdateIntervalMock).toHaveBeenCalledWith(30)
   })
@@ -222,7 +197,7 @@ describe("App", () => {
       iconUrl: "icon-a",
       lines: [{ type: "badge", label: "Error", text: "Bad" }],
     })
-    const retry = await screen.findByText("Retry")
+    const retry = await screen.findByRole("button", { name: "Retry" })
     await userEvent.click(retry)
     expect(state.startBatchMock).toHaveBeenCalledWith(["a"])
   })
@@ -231,9 +206,7 @@ describe("App", () => {
     state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a", "b"], disabled: ["a", "b"] })
     render(<App />)
     await screen.findByText("No providers enabled")
-    const refreshButtons = screen.getAllByRole("button", { name: "Refresh all" })
-    const disabledButton = refreshButtons.find((button) => button.getAttribute("tabindex") === "-1")
-    expect(disabledButton).toBeTruthy()
+    expect(screen.getByText("Paused")).toBeInTheDocument()
   })
 
   it("handles plugin list load failure", async () => {
@@ -258,50 +231,6 @@ describe("App", () => {
     errorSpy.mockRestore()
   })
 
-  it("skips refresh when on cooldown", async () => {
-    const now = new Date("2026-02-02T00:00:00.000Z").getTime()
-    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(now)
-    render(<App />)
-    await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
-    const refreshButtons = screen.getAllByRole("button", { name: "Refresh all" })
-    fireEvent.click(refreshButtons[0])
-    expect(state.startBatchMock).toHaveBeenCalledTimes(2)
-    state.probeHandlers?.onResult({
-      providerId: "a",
-      displayName: "Alpha",
-      iconUrl: "icon-a",
-      lines: [{ type: "text", label: "Now", value: "Later" }],
-    })
-    fireEvent.click(refreshButtons[0])
-    expect(state.startBatchMock).toHaveBeenCalledTimes(3)
-    expect(state.startBatchMock).toHaveBeenLastCalledWith(["b"])
-    nowSpy.mockRestore()
-  })
-
-  it("skips refresh when all plugins are on cooldown", async () => {
-    const now = new Date("2026-02-02T00:00:00.000Z").getTime()
-    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(now)
-    render(<App />)
-    await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
-    const refreshButtons = screen.getAllByRole("button", { name: "Refresh all" })
-    await userEvent.click(refreshButtons[0])
-    const callCount = state.startBatchMock.mock.calls.length
-    state.probeHandlers?.onResult({
-      providerId: "a",
-      displayName: "Alpha",
-      iconUrl: "icon-a",
-      lines: [{ type: "text", label: "Now", value: "Later" }],
-    })
-    state.probeHandlers?.onResult({
-      providerId: "b",
-      displayName: "Beta",
-      iconUrl: "icon-b",
-      lines: [{ type: "text", label: "Now", value: "Later" }],
-    })
-    await userEvent.click(refreshButtons[0])
-    expect(state.startBatchMock).toHaveBeenCalledTimes(callCount)
-    nowSpy.mockRestore()
-  })
 
   it("handles enable toggle failures", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
@@ -311,8 +240,8 @@ describe("App", () => {
       .mockRejectedValueOnce(new Error("enable fail"))
     state.savePluginSettingsMock.mockRejectedValueOnce(new Error("save fail"))
     render(<App />)
-    const settingsTabs = await screen.findAllByRole("tab", { name: "Settings" })
-    await userEvent.click(settingsTabs[0])
+    const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
+    await userEvent.click(settingsButtons[0])
     const checkboxes = await screen.findAllByRole("checkbox")
     await userEvent.click(checkboxes[1])
     await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
@@ -323,8 +252,8 @@ describe("App", () => {
   it("enables disabled plugin and starts batch", async () => {
     state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a", "b"], disabled: ["b"] })
     render(<App />)
-    const settingsTabs = await screen.findAllByRole("tab", { name: "Settings" })
-    await userEvent.click(settingsTabs[0])
+    const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
+    await userEvent.click(settingsButtons[0])
     const checkboxes = await screen.findAllByRole("checkbox")
     await userEvent.click(checkboxes[1])
     await waitFor(() => expect(state.startBatchMock).toHaveBeenCalledWith(["b"]))
@@ -349,40 +278,17 @@ describe("App", () => {
     state.savePluginSettingsMock.mockRejectedValueOnce(new Error("save order"))
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
     render(<App />)
-    const settingsTabs = await screen.findAllByRole("tab", { name: "Settings" })
-    await userEvent.click(settingsTabs[0])
+    const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
+    await userEvent.click(settingsButtons[0])
     dndState.latestOnDragEnd?.({ active: { id: "a" }, over: { id: "b" } })
     await waitFor(() => expect(errorSpy).toHaveBeenCalled())
     errorSpy.mockRestore()
   })
 
-  it("cleans up cooldown timer when active", async () => {
-    const now = new Date("2026-02-02T00:00:00.000Z").getTime()
-    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(now)
-    const setIntervalSpy = vi.spyOn(global, "setInterval")
-    const clearIntervalSpy = vi.spyOn(global, "clearInterval")
-    const { unmount } = render(<App />)
-    await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
-    const refreshButtons = screen.getAllByRole("button", { name: "Refresh all" })
-    await userEvent.click(refreshButtons[0])
-    state.probeHandlers?.onResult({
-      providerId: "a",
-      displayName: "Alpha",
-      iconUrl: "icon-a",
-      lines: [{ type: "text", label: "Now", value: "Later" }],
-    })
-    await waitFor(() => expect(setIntervalSpy).toHaveBeenCalled())
-    unmount()
-    expect(clearIntervalSpy).toHaveBeenCalled()
-    clearIntervalSpy.mockRestore()
-    setIntervalSpy.mockRestore()
-    nowSpy.mockRestore()
-  })
-
   it("handles reordering plugins", async () => {
     render(<App />)
-    const settingsTabs = await screen.findAllByRole("tab", { name: "Settings" })
-    await userEvent.click(settingsTabs[0])
+    const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
+    await userEvent.click(settingsButtons[0])
     dndState.latestOnDragEnd?.({ active: { id: "a" }, over: { id: "b" } })
     expect(state.savePluginSettingsMock).toHaveBeenCalled()
   })

@@ -1,11 +1,10 @@
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { UpdateStatus } from "@/hooks/use-app-update";
 
 interface PanelFooterProps {
   version: string;
-  onRefresh: () => void;
-  refreshDisabled?: boolean;
+  autoUpdateNextAt: number | null;
   updateStatus: UpdateStatus;
   onUpdateInstall: () => void;
 }
@@ -59,48 +58,40 @@ function VersionDisplay({
 
 export function PanelFooter({
   version,
-  onRefresh,
-  refreshDisabled,
+  autoUpdateNextAt,
   updateStatus,
   onUpdateInstall,
 }: PanelFooterProps) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!autoUpdateNextAt) return undefined;
+    setNow(Date.now());
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [autoUpdateNextAt]);
+
+  const countdownLabel = useMemo(() => {
+    if (!autoUpdateNextAt) return "Paused";
+    const remainingMs = Math.max(0, autoUpdateNextAt - now);
+    const totalSeconds = Math.ceil(remainingMs / 1000);
+    if (totalSeconds >= 60) {
+      const minutes = Math.ceil(totalSeconds / 60);
+      return `Next update in ${minutes}m`;
+    }
+    return `Next update in ${totalSeconds}s`;
+  }, [autoUpdateNextAt, now]);
+
   return (
-    <div className="flex justify-between items-center pt-1.5 border-t">
+    <div className="flex justify-between items-center h-8 pt-1.5 border-t">
       <VersionDisplay
         version={version}
         updateStatus={updateStatus}
         onUpdateInstall={onUpdateInstall}
       />
-      {refreshDisabled ? (
-        <Tooltip>
-          <TooltipTrigger
-            render={(props) => (
-              <span {...props}>
-                <Button
-                  variant="link"
-                  size="sm"
-                  className="px-0 text-xs pointer-events-none opacity-50"
-                  tabIndex={-1}
-                >
-                  Refresh all
-                </Button>
-              </span>
-            )}
-          />
-          <TooltipContent side="top">
-            All plugins recently refreshed
-          </TooltipContent>
-        </Tooltip>
-      ) : (
-        <Button
-          variant="link"
-          size="sm"
-          onClick={onRefresh}
-          className="px-0 text-xs"
-        >
-          Refresh all
-        </Button>
-      )}
+      <span className="text-xs text-muted-foreground tabular-nums">
+        {countdownLabel}
+      </span>
     </div>
   );
 }
