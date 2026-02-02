@@ -5,7 +5,7 @@ Plugin structure, manifest format, output schema, and lifecycle.
 ## Architecture Overview
 
 ```
-User triggers refresh
+Auto-update timer fires (or app loads)
        |
 Tauri command `run_plugin_probes(pluginIds?)`
        |
@@ -25,7 +25,7 @@ Key points:
 
 - Each probe runs in **isolated QuickJS runtime** (no shared state between plugins or calls)
 - Plugins are **synchronous or Promise-based** (unresolved promises timeout)
-- **No background scheduler** - only runs on app load and when user clicks Refresh
+- **Auto-update timer** - runs on app load and on configurable interval (5/15/30/60 min)
 
 ## Plugin Directory Layout
 

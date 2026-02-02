@@ -266,10 +266,10 @@ try {
 
 ## Execution Timing
 
-There is no background scheduler. `probe(ctx)` is only called when:
+`probe(ctx)` is called when:
 
 - The app loads
-- The user clicks Refresh
+- The auto-update timer fires (configurable: 5/15/30/60 minutes)
 
 Any token refresh logic (e.g., OAuth refresh) must run inside `probe(ctx)` at those times.
 

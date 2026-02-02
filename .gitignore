@@ -26,3 +26,7 @@ coverage
 
 .env*
 !.env.example
+
+# Agent working files
+docs/choices.md
+docs/breadcrumbs.md

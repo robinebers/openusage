@@ -18,9 +18,9 @@ Same idea, but a very different approach:
 
 Each provider (Cursor, Claude, etc.) is a JavaScript plugin running in a QuickJS runtime. Plugins define a `probe()` function that fetches usage data via HTTP, local files, or SQLite databases and returns structured metrics (text, progress bars, badges).
 
-The app calls all plugins on launch and when you hit Refresh — no background polling.
+The app calls all plugins on launch and on a configurable auto-update interval (5/15/30/60 minutes).
 
-See [Plugin API](docs/openusage-api.md) for the full spec.
+See [Plugin API](docs/plugins/api.md) for the full spec.
 
 ## Status
 
@@ -72,7 +72,7 @@ Soon:
 - [Windsurf](https://github.com/robinebers/openusage/issues/15) (?)
 - [Vercel AI Gateway](https://github.com/robinebers/openusage/issues/18) (?)
 
-Adding a provider = adding a plugin. See [Plugin API](docs/openusage-api.md).
+Adding a provider = adding a plugin. See [Plugin API](docs/plugins/api.md).
 
 ## Contributing
 
