@@ -6,19 +6,25 @@
     pinned: false,
   }
 
-  function lineText(label, value, color) {
-    const line = { type: "text", label, value }
-    if (color) line.color = color
+  function lineText(opts) {
+    const line = { type: "text", label: opts.label, value: opts.value }
+    if (opts.color) line.color = opts.color
+    if (opts.subtitle) line.subtitle = opts.subtitle
     return line
   }
 
-  function lineProgress(label, value, max, unit, color) {
-    return { type: "progress", label, value, max, unit, color }
+  function lineProgress(opts) {
+    const line = { type: "progress", label: opts.label, value: opts.value, max: opts.max }
+    if (opts.unit) line.unit = opts.unit
+    if (opts.color) line.color = opts.color
+    if (opts.subtitle) line.subtitle = opts.subtitle
+    return line
   }
 
-  function lineBadge(label, text, color) {
-    const line = { type: "badge", label, text }
-    if (color) line.color = color
+  function lineBadge(opts) {
+    const line = { type: "badge", label: opts.label, text: opts.text }
+    if (opts.color) line.color = opts.color
+    if (opts.subtitle) line.subtitle = opts.subtitle
     return line
   }
 
@@ -128,20 +134,20 @@
       mode = picked
     }
 
-    // Non-throwing modes should always include a “where to change this” hint.
+    // Non-throwing modes should always include a "where to change this" hint.
     const hintLines = [
-      lineBadge("Mode", safeString(effectiveMode), "#000000"),
-      lineText("Config", configPath),
+      lineBadge({ label: "Mode", text: safeString(effectiveMode), color: "#000000" }),
+      lineText({ label: "Config", value: configPath }),
     ]
 
     if (mode === "ok") {
       return {
         lines: [
           ...hintLines,
-          effectiveMode === "chaos" ? lineBadge("Case", "ok", "#000000") : null,
-          lineProgress("Percent", 42, 100, "percent", "#22c55e"),
-          lineProgress("Dollars", 12.34, 100, "dollars", "#3b82f6"),
-          lineText("Now", ctx.nowIso),
+          effectiveMode === "chaos" ? lineBadge({ label: "Case", text: "ok", color: "#000000" }) : null,
+          lineProgress({ label: "Percent", value: 42, max: 100, unit: "percent", color: "#22c55e" }),
+          lineProgress({ label: "Dollars", value: 12.34, max: 100, unit: "dollars", color: "#3b82f6" }),
+          lineText({ label: "Now", value: ctx.nowIso }),
         ].filter(Boolean),
       }
     }
@@ -212,7 +218,7 @@
       return {
         lines: [
           ...hintLines,
-          lineBadge("Case", "progress.max = \"N/A\" (string)", "#000000"),
+          lineBadge({ label: "Case", text: "progress.max = \"N/A\" (string)", color: "#000000" }),
           { type: "progress", label: "Percent", value: 42, max: "N/A", unit: "percent", color: "#ef4444" },
         ],
       }
@@ -224,7 +230,7 @@
       return {
         lines: [
           ...hintLines,
-          lineBadge("Case", "progress.value = \"42\" (string)", "#000000"),
+          lineBadge({ label: "Case", text: "progress.value = \"42\" (string)", color: "#000000" }),
           { type: "progress", label: "Percent", value: "42", max: 100, unit: "percent", color: "#ef4444" },
         ],
       }
@@ -236,7 +242,7 @@
       return {
         lines: [
           ...hintLines,
-          lineBadge("Case", "progress.value = NaN", "#000000"),
+          lineBadge({ label: "Case", text: "progress.value = NaN", color: "#000000" }),
           { type: "progress", label: "Percent", value: 0 / 0, max: 100, unit: "percent", color: "#ef4444" },
         ],
       }
@@ -247,7 +253,7 @@
       return {
         lines: [
           ...hintLines,
-          lineBadge("Case", "badge.text = 123 (number)", "#000000"),
+          lineBadge({ label: "Case", text: "badge.text = 123 (number)", color: "#000000" }),
           { type: "badge", label: "Status", text: 123, color: "#ef4444" },
         ],
       }
@@ -275,11 +281,11 @@
       return { lines: hintLines }
     }
 
-    // Unknown mode: don’t throw; make it obvious.
+    // Unknown mode: don't throw; make it obvious.
     return {
       lines: [
         ...hintLines,
-        lineBadge("Warning", "unknown mode: " + safeString(mode), "#f59e0b"),
+        lineBadge({ label: "Warning", text: "unknown mode: " + safeString(mode), color: "#f59e0b" }),
       ],
     }
   }

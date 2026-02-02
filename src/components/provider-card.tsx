@@ -177,35 +177,45 @@ export function ProviderCard({
 function MetricLineRenderer({ line }: { line: MetricLine }) {
   if (line.type === "text") {
     return (
-      <div className="flex justify-between items-center h-[22px]">
-        <span className="text-sm text-muted-foreground flex-shrink-0">{line.label}</span>
-        <span
-          className="text-sm text-muted-foreground truncate min-w-0 max-w-[60%] text-right"
-          style={line.color ? { color: line.color } : undefined}
-          title={line.value}
-        >
-          {line.value}
-        </span>
+      <div>
+        <div className="flex justify-between items-center h-[22px]">
+          <span className="text-sm text-muted-foreground flex-shrink-0">{line.label}</span>
+          <span
+            className="text-sm text-muted-foreground truncate min-w-0 max-w-[60%] text-right"
+            style={line.color ? { color: line.color } : undefined}
+            title={line.value}
+          >
+            {line.value}
+          </span>
+        </div>
+        {line.subtitle && (
+          <div className="text-xs text-muted-foreground text-right -mt-0.5">{line.subtitle}</div>
+        )}
       </div>
     )
   }
 
   if (line.type === "badge") {
     return (
-      <div className="flex justify-between items-center h-[22px]">
-        <span className="text-sm text-muted-foreground flex-shrink-0">{line.label}</span>
-        <Badge
-          variant="outline"
-          className="truncate min-w-0 max-w-[60%]"
-          style={
-            line.color
-              ? { color: line.color, borderColor: line.color }
-              : undefined
-          }
-          title={line.text}
-        >
-          {line.text}
-        </Badge>
+      <div>
+        <div className="flex justify-between items-center h-[22px]">
+          <span className="text-sm text-muted-foreground flex-shrink-0">{line.label}</span>
+          <Badge
+            variant="outline"
+            className="truncate min-w-0 max-w-[60%]"
+            style={
+              line.color
+                ? { color: line.color, borderColor: line.color }
+                : undefined
+            }
+            title={line.text}
+          >
+            {line.text}
+          </Badge>
+        </div>
+        {line.subtitle && (
+          <div className="text-xs text-muted-foreground text-right -mt-0.5">{line.subtitle}</div>
+        )}
       </div>
     )
   }
@@ -213,18 +223,23 @@ function MetricLineRenderer({ line }: { line: MetricLine }) {
   if (line.type === "progress") {
     const percent = getProgressPercent(line.value, line.max)
     return (
-      <div className="flex justify-between items-center h-[22px]">
-        <span className="text-sm text-muted-foreground">{line.label}</span>
-        <div className="flex items-center gap-2">
-          <span className="text-sm tabular-nums text-muted-foreground">
-            {formatProgressValue(line.value, line.unit)}
-          </span>
-          <Progress
-            className="w-24"
-            value={percent}
-            indicatorColor={line.color}
-          />
+      <div>
+        <div className="flex justify-between items-center h-[22px]">
+          <span className="text-sm text-muted-foreground">{line.label}</span>
+          <div className="flex items-center gap-2">
+            <span className="text-sm tabular-nums text-muted-foreground">
+              {formatProgressValue(line.value, line.unit)}
+            </span>
+            <Progress
+              className="w-24"
+              value={percent}
+              indicatorColor={line.color}
+            />
+          </div>
         </div>
+        {line.subtitle && (
+          <div className="text-xs text-muted-foreground text-right -mt-0.5">{line.subtitle}</div>
+        )}
       </div>
     )
   }

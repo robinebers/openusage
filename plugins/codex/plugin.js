@@ -181,35 +181,60 @@
       const headerSecondary = readPercent(resp.headers["x-codex-secondary-used-percent"])
 
       if (headerPrimary !== null) {
-        lines.push(ctx.line.progress("Session (5h)", headerPrimary, 100, "percent"))
         const resetIn = getResetIn(ctx, nowSec, primaryWindow)
-        if (resetIn) lines.push(ctx.line.text("Resets in", resetIn))
+        lines.push(ctx.line.progress({
+          label: "Session",
+          value: headerPrimary,
+          max: 100,
+          unit: "percent",
+          subtitle: resetIn ? "Resets in " + resetIn : null
+        }))
       }
       if (headerSecondary !== null) {
-        lines.push(ctx.line.progress("Weekly (7d)", headerSecondary, 100, "percent"))
         const resetIn = getResetIn(ctx, nowSec, secondaryWindow)
-        if (resetIn) lines.push(ctx.line.text("Resets in", resetIn))
+        lines.push(ctx.line.progress({
+          label: "Weekly",
+          value: headerSecondary,
+          max: 100,
+          unit: "percent",
+          subtitle: resetIn ? "Resets in " + resetIn : null
+        }))
       }
 
       if (lines.length === 0 && data.rate_limit) {
         if (data.rate_limit.primary_window && typeof data.rate_limit.primary_window.used_percent === "number") {
-          lines.push(ctx.line.progress("Session (5h)", data.rate_limit.primary_window.used_percent, 100, "percent"))
           const resetIn = getResetIn(ctx, nowSec, primaryWindow)
-          if (resetIn) lines.push(ctx.line.text("Resets in", resetIn))
+          lines.push(ctx.line.progress({
+            label: "Session",
+            value: data.rate_limit.primary_window.used_percent,
+            max: 100,
+            unit: "percent",
+            subtitle: resetIn ? "Resets in " + resetIn : null
+          }))
         }
         if (data.rate_limit.secondary_window && typeof data.rate_limit.secondary_window.used_percent === "number") {
-          lines.push(ctx.line.progress("Weekly (7d)", data.rate_limit.secondary_window.used_percent, 100, "percent"))
           const resetIn = getResetIn(ctx, nowSec, secondaryWindow)
-          if (resetIn) lines.push(ctx.line.text("Resets in", resetIn))
+          lines.push(ctx.line.progress({
+            label: "Weekly",
+            value: data.rate_limit.secondary_window.used_percent,
+            max: 100,
+            unit: "percent",
+            subtitle: resetIn ? "Resets in " + resetIn : null
+          }))
         }
       }
 
       if (reviewWindow) {
         const used = reviewWindow.used_percent
         if (typeof used === "number") {
-          lines.push(ctx.line.progress("Reviews (7d)", used, 100, "percent"))
           const resetIn = getResetIn(ctx, nowSec, reviewWindow)
-          if (resetIn) lines.push(ctx.line.text("Resets in", resetIn))
+          lines.push(ctx.line.progress({
+            label: "Reviews",
+            value: used,
+            max: 100,
+            unit: "percent",
+            subtitle: resetIn ? "Resets in " + resetIn : null
+          }))
         }
       }
 
@@ -217,20 +242,20 @@
       const creditsHeader = readNumber(creditsBalance)
       const creditsData = data.credits ? readNumber(data.credits.balance) : null
       if (creditsHeader !== null) {
-        lines.push(ctx.line.progress("Credits", creditsHeader, 1000))
+        lines.push(ctx.line.progress({ label: "Credits", value: creditsHeader, max: 1000 }))
       } else if (creditsData !== null) {
-        lines.push(ctx.line.progress("Credits", creditsData, 1000))
+        lines.push(ctx.line.progress({ label: "Credits", value: creditsData, max: 1000 }))
       }
 
       if (data.plan_type) {
         const planLabel = ctx.fmt.planLabel(data.plan_type)
         if (planLabel) {
-          lines.unshift(ctx.line.badge("Plan", planLabel, "#000000"))
+          lines.unshift(ctx.line.badge({ label: "Plan", text: planLabel, color: "#000000" }))
         }
       }
 
       if (lines.length === 0) {
-        lines.push(ctx.line.badge("Status", "No usage data", "#a3a3a3"))
+        lines.push(ctx.line.badge({ label: "Status", text: "No usage data", color: "#a3a3a3" }))
       }
 
       return { lines }

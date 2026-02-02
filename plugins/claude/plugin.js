@@ -190,45 +190,68 @@
     if (creds.oauth.subscriptionType) {
       const planLabel = ctx.fmt.planLabel(creds.oauth.subscriptionType)
       if (planLabel) {
-        lines.push(ctx.line.badge("Plan", planLabel, "#000000"))
+        lines.push(ctx.line.badge({ label: "Plan", text: planLabel, color: "#000000" }))
       }
     }
 
     if (data.five_hour && typeof data.five_hour.utilization === "number") {
-      lines.push(ctx.line.progress("Session (5h)", data.five_hour.utilization, 100, "percent"))
       const resetIn = getResetInFromIso(ctx, data.five_hour.resets_at)
-      if (resetIn) lines.push(ctx.line.text("Resets in", resetIn))
+      lines.push(ctx.line.progress({
+        label: "Session",
+        value: data.five_hour.utilization,
+        max: 100,
+        unit: "percent",
+        subtitle: resetIn ? "Resets in " + resetIn : null
+      }))
     }
     if (data.seven_day && typeof data.seven_day.utilization === "number") {
-      lines.push(ctx.line.progress("Weekly (7d)", data.seven_day.utilization, 100, "percent"))
       const resetIn = getResetInFromIso(ctx, data.seven_day.resets_at)
-      if (resetIn) lines.push(ctx.line.text("Resets in", resetIn))
+      lines.push(ctx.line.progress({
+        label: "Weekly",
+        value: data.seven_day.utilization,
+        max: 100,
+        unit: "percent",
+        subtitle: resetIn ? "Resets in " + resetIn : null
+      }))
     }
     if (data.seven_day_sonnet && typeof data.seven_day_sonnet.utilization === "number") {
-      lines.push(ctx.line.progress("Sonnet (7d)", data.seven_day_sonnet.utilization, 100, "percent"))
       const resetIn = getResetInFromIso(ctx, data.seven_day_sonnet.resets_at)
-      if (resetIn) lines.push(ctx.line.text("Resets in", resetIn))
+      lines.push(ctx.line.progress({
+        label: "Sonnet",
+        value: data.seven_day_sonnet.utilization,
+        max: 100,
+        unit: "percent",
+        subtitle: resetIn ? "Resets in " + resetIn : null
+      }))
     }
     if (data.seven_day_opus && typeof data.seven_day_opus.utilization === "number") {
-      lines.push(ctx.line.progress("Opus (7d)", data.seven_day_opus.utilization, 100, "percent"))
       const resetIn = getResetInFromIso(ctx, data.seven_day_opus.resets_at)
-      if (resetIn) lines.push(ctx.line.text("Resets in", resetIn))
+      lines.push(ctx.line.progress({
+        label: "Opus",
+        value: data.seven_day_opus.utilization,
+        max: 100,
+        unit: "percent",
+        subtitle: resetIn ? "Resets in " + resetIn : null
+      }))
     }
 
     if (data.extra_usage && data.extra_usage.is_enabled) {
       const used = data.extra_usage.used_credits
       const limit = data.extra_usage.monthly_limit
       if (typeof used === "number" && typeof limit === "number" && limit > 0) {
-        lines.push(
-          ctx.line.progress("Extra usage", ctx.fmt.dollars(used), ctx.fmt.dollars(limit), "dollars")
-        )
+        lines.push(ctx.line.progress({
+          label: "Extra usage",
+          value: ctx.fmt.dollars(used),
+          max: ctx.fmt.dollars(limit),
+          unit: "dollars"
+        }))
       } else if (typeof used === "number" && used > 0) {
-        lines.push(ctx.line.text("Extra usage", "$" + String(ctx.fmt.dollars(used))))
+        lines.push(ctx.line.text({ label: "Extra usage", value: "$" + String(ctx.fmt.dollars(used)) }))
       }
     }
 
     if (lines.length === 0) {
-      lines.push(ctx.line.badge("Status", "No usage data", "#a3a3a3"))
+      lines.push(ctx.line.badge({ label: "Status", text: "No usage data", color: "#a3a3a3" }))
     }
 
     return { lines }

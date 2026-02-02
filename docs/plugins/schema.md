@@ -119,20 +119,22 @@ globalThis.__openusage_plugin = {
 
 ```typescript
 type MetricLine =
-  | { type: "text"; label: string; value: string; color?: string }
-  | { type: "progress"; label: string; value: number; max: number; unit?: "percent" | "dollars"; color?: string }
-  | { type: "badge"; label: string; text: string; color?: string }
+  | { type: "text"; label: string; value: string; color?: string; subtitle?: string }
+  | { type: "progress"; label: string; value: number; max: number; unit?: "percent" | "dollars"; color?: string; subtitle?: string }
+  | { type: "badge"; label: string; text: string; color?: string; subtitle?: string }
 ```
 
 - `color`: optional hex string (e.g. `#22c55e`)
 - `unit`: `"percent"` shows `X%`, `"dollars"` shows `$X.XX`
+- `subtitle`: optional text displayed below the line in smaller muted text
 
 ### Text Line
 
 Simple label/value pair.
 
 ```javascript
-{ type: "text", label: "Account", value: "user@example.com" }
+ctx.line.text({ label: "Account", value: "user@example.com" })
+ctx.line.text({ label: "Status", value: "Active", color: "#22c55e", subtitle: "Since Jan 2024" })
 ```
 
 ### Progress Line
@@ -140,19 +142,24 @@ Simple label/value pair.
 Shows a progress bar with optional formatting.
 
 ```javascript
-{ type: "progress", label: "Usage", value: 42, max: 100, unit: "percent" }
+ctx.line.progress({ label: "Usage", value: 42, max: 100, unit: "percent" })
 // Renders: Usage [████████░░░░░░░░░░░░] 42%
 
-{ type: "progress", label: "Spend", value: 12.34, max: 100, unit: "dollars" }
+ctx.line.progress({ label: "Spend", value: 12.34, max: 100, unit: "dollars" })
 // Renders: Spend [█░░░░░░░░░░░░░░░░░░░] $12.34
+
+ctx.line.progress({ label: "Session", value: 75, max: 100, unit: "percent", subtitle: "Resets in 6d 20h" })
+// Renders: Session [███████████████░░░░░] 75%
+//                                Resets in 6d 20h
 ```
 
 ### Badge Line
 
-Status indicator with colored background.
+Status indicator with colored border.
 
 ```javascript
-{ type: "badge", label: "Status", text: "Connected", color: "#22c55e" }
+ctx.line.badge({ label: "Plan", text: "Pro", color: "#000000" })
+ctx.line.badge({ label: "Status", text: "Connected", color: "#22c55e", subtitle: "Last sync 5m ago" })
 ```
 
 ## Error Handling
@@ -217,9 +224,9 @@ A complete, working plugin that fetches data and displays all three line types.
 
       return {
         lines: [
-          { type: "badge", label: "Status", text: "Connected", color: "#22c55e" },
-          { type: "progress", label: "Usage", value: 42, max: 100, unit: "percent" },
-          { type: "text", label: "Fetched at", value: ctx.nowIso },
+          ctx.line.badge({ label: "Status", text: "Connected", color: "#22c55e" }),
+          ctx.line.progress({ label: "Usage", value: 42, max: 100, unit: "percent", subtitle: "Resets in 2d 5h" }),
+          ctx.line.text({ label: "Fetched at", value: ctx.nowIso }),
         ],
       }
     },

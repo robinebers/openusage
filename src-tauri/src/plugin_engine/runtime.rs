@@ -11,6 +11,7 @@ pub enum MetricLine {
         label: String,
         value: String,
         color: Option<String>,
+        subtitle: Option<String>,
     },
     Progress {
         label: String,
@@ -18,11 +19,13 @@ pub enum MetricLine {
         max: f64,
         unit: Option<String>,
         color: Option<String>,
+        subtitle: Option<String>,
     },
     Badge {
         label: String,
         text: String,
         color: Option<String>,
+        subtitle: Option<String>,
     },
 }
 
@@ -141,11 +144,12 @@ fn parse_lines(result: &Object) -> Result<Vec<MetricLine>, String> {
         let line_type: String = line.get("type").unwrap_or_default();
         let label = line.get::<_, String>("label").unwrap_or_default();
         let color = line.get::<_, String>("color").ok();
+        let subtitle = line.get::<_, String>("subtitle").ok();
 
         match line_type.as_str() {
             "text" => {
                 let value = line.get::<_, String>("value").unwrap_or_default();
-                out.push(MetricLine::Text { label, value, color });
+                out.push(MetricLine::Text { label, value, color, subtitle });
             }
             "progress" => {
                 let mut value = line.get::<_, f64>("value").unwrap_or(0.0);
@@ -167,11 +171,12 @@ fn parse_lines(result: &Object) -> Result<Vec<MetricLine>, String> {
                     max,
                     unit,
                     color,
+                    subtitle,
                 });
             }
             "badge" => {
                 let text = line.get::<_, String>("text").unwrap_or_default();
-                out.push(MetricLine::Badge { label, text, color });
+                out.push(MetricLine::Badge { label, text, color, subtitle });
             }
             _ => {
                 return Err(format!("unknown line type: {}", line_type));
@@ -211,6 +216,7 @@ fn error_line(message: String) -> MetricLine {
         label: "Error".to_string(),
         text: message,
         color: Some("#ef4444".to_string()),
+        subtitle: None,
     }
 }
 

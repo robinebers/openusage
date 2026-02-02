@@ -26,6 +26,12 @@ See [Plugin API](docs/openusage-api.md) for the full spec.
 
 Early development. But somewhat works.
 
+In theory the plugin system and API are already working but I only bundled three plugins so far with no actual way of adding or updating them for now.
+
+I do this because I want to control the API for the beginning of the rollout of this app to see if it is solid enough to allow external plugin developers.
+
+If you're interested in contributing to OpenUsage, you can clone this repo and start developing by putting plugins into `plugins/` which are loaded on launch while developing.
+
 ## Stack
 
 - Tauri 2 + Rust

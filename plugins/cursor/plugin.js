@@ -201,17 +201,21 @@
     if (planName) {
       const planLabel = ctx.fmt.planLabel(planName)
       if (planLabel) {
-        lines.push(ctx.line.badge("Plan", planLabel, "#000000"))
+        lines.push(ctx.line.badge({ label: "Plan", text: planLabel, color: "#000000" }))
       }
     }
 
     const pu = usage.planUsage
-    lines.push(
-      ctx.line.progress("Plan usage", ctx.fmt.dollars(pu.totalSpend), ctx.fmt.dollars(pu.limit), "dollars")
-    )
+    lines.push(ctx.line.progress({
+      label: "Plan usage",
+      value: ctx.fmt.dollars(pu.totalSpend),
+      max: ctx.fmt.dollars(pu.limit),
+      unit: "dollars",
+      subtitle: usage.billingCycleEnd ? "Resets " + ctx.fmt.date(usage.billingCycleEnd) : null
+    }))
 
     if (typeof pu.bonusSpend === "number" && pu.bonusSpend > 0) {
-      lines.push(ctx.line.text("Bonus spend", "$" + String(ctx.fmt.dollars(pu.bonusSpend))))
+      lines.push(ctx.line.text({ label: "Bonus spend", value: "$" + String(ctx.fmt.dollars(pu.bonusSpend)) }))
     }
 
     const su = usage.spendLimitUsage
@@ -220,14 +224,13 @@
       const remaining = su.individualRemaining ?? su.pooledRemaining ?? 0
       if (limit > 0) {
         const used = limit - remaining
-        lines.push(
-          ctx.line.progress("On-demand", ctx.fmt.dollars(used), ctx.fmt.dollars(limit), "dollars")
-        )
+        lines.push(ctx.line.progress({
+          label: "On-demand",
+          value: ctx.fmt.dollars(used),
+          max: ctx.fmt.dollars(limit),
+          unit: "dollars"
+        }))
       }
-    }
-
-    if (usage.billingCycleEnd) {
-      lines.push(ctx.line.text("Resets", ctx.fmt.date(usage.billingCycleEnd)))
     }
 
     return { lines }

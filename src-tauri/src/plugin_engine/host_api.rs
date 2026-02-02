@@ -248,22 +248,25 @@ pub fn inject_utils(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
         (function() {
             var ctx = __openusage_ctx;
 
-            // Line builders
+            // Line builders (options object API)
             ctx.line = {
-                text: function(label, value, color) {
-                    var line = { type: "text", label: label, value: value };
-                    if (color) line.color = color;
+                text: function(opts) {
+                    var line = { type: "text", label: opts.label, value: opts.value };
+                    if (opts.color) line.color = opts.color;
+                    if (opts.subtitle) line.subtitle = opts.subtitle;
                     return line;
                 },
-                progress: function(label, value, max, unit, color) {
-                    var line = { type: "progress", label: label, value: value, max: max };
-                    if (unit) line.unit = unit;
-                    if (color) line.color = color;
+                progress: function(opts) {
+                    var line = { type: "progress", label: opts.label, value: opts.value, max: opts.max };
+                    if (opts.unit) line.unit = opts.unit;
+                    if (opts.color) line.color = opts.color;
+                    if (opts.subtitle) line.subtitle = opts.subtitle;
                     return line;
                 },
-                badge: function(label, text, color) {
-                    var line = { type: "badge", label: label, text: text };
-                    if (color) line.color = color;
+                badge: function(opts) {
+                    var line = { type: "badge", label: opts.label, text: opts.text };
+                    if (opts.color) line.color = opts.color;
+                    if (opts.subtitle) line.subtitle = opts.subtitle;
                     return line;
                 }
             };

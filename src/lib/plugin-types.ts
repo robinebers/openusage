@@ -1,7 +1,7 @@
 export type MetricLine =
-  | { type: "text"; label: string; value: string; color?: string }
-  | { type: "progress"; label: string; value: number; max: number; unit?: "percent" | "dollars"; color?: string }
-  | { type: "badge"; label: string; text: string; color?: string }
+  | { type: "text"; label: string; value: string; color?: string; subtitle?: string }
+  | { type: "progress"; label: string; value: number; max: number; unit?: "percent" | "dollars"; color?: string; subtitle?: string }
+  | { type: "badge"; label: string; text: string; color?: string; subtitle?: string }
 
 export type ManifestLine = {
   type: "text" | "progress" | "badge"

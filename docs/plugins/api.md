@@ -273,6 +273,120 @@ There is no background scheduler. `probe(ctx)` is only called when:
 
 Any token refresh logic (e.g., OAuth refresh) must run inside `probe(ctx)` at those times.
 
+## Line Builders
+
+Helper functions for creating output lines. All builders use an options object pattern.
+
+### `ctx.line.text(opts)`
+
+Creates a text line (label/value pair).
+
+```typescript
+ctx.line.text({
+  label: string,      // Required: label shown on the left
+  value: string,      // Required: value shown on the right
+  color?: string,     // Optional: hex color for value text
+  subtitle?: string   // Optional: smaller text below the line
+}): MetricLine
+```
+
+**Example:**
+
+```javascript
+ctx.line.text({ label: "Account", value: "user@example.com" })
+ctx.line.text({ label: "Status", value: "Active", color: "#22c55e", subtitle: "Since Jan 2024" })
+```
+
+### `ctx.line.progress(opts)`
+
+Creates a progress bar line.
+
+```typescript
+ctx.line.progress({
+  label: string,                    // Required: label shown on the left
+  value: number,                    // Required: current value
+  max: number,                      // Required: maximum value
+  unit?: "percent" | "dollars",     // Optional: format as percentage or dollars
+  color?: string,                   // Optional: hex color for progress bar
+  subtitle?: string                 // Optional: smaller text below the line
+}): MetricLine
+```
+
+**Example:**
+
+```javascript
+ctx.line.progress({ label: "Usage", value: 42, max: 100, unit: "percent" })
+ctx.line.progress({ label: "Spend", value: 12.34, max: 100, unit: "dollars" })
+ctx.line.progress({
+  label: "Session",
+  value: 75,
+  max: 100,
+  unit: "percent",
+  subtitle: "Resets in 6d 20h"
+})
+```
+
+### `ctx.line.badge(opts)`
+
+Creates a badge line (status indicator).
+
+```typescript
+ctx.line.badge({
+  label: string,      // Required: label shown on the left
+  text: string,       // Required: badge text
+  color?: string,     // Optional: hex color for badge border/text
+  subtitle?: string   // Optional: smaller text below the line
+}): MetricLine
+```
+
+**Example:**
+
+```javascript
+ctx.line.badge({ label: "Plan", text: "Pro", color: "#000000" })
+ctx.line.badge({ label: "Status", text: "Connected", color: "#22c55e" })
+```
+
+## Formatters
+
+Helper functions for formatting values.
+
+### `ctx.fmt.planLabel(value)`
+
+Capitalizes a plan name string.
+
+```javascript
+ctx.fmt.planLabel("pro")        // "Pro"
+ctx.fmt.planLabel("team_plan")  // "Team_plan"
+```
+
+### `ctx.fmt.resetIn(seconds)`
+
+Formats seconds until reset as human-readable duration.
+
+```javascript
+ctx.fmt.resetIn(180000)  // "2d 2h"
+ctx.fmt.resetIn(7200)    // "2h 0m"
+ctx.fmt.resetIn(300)     // "5m"
+ctx.fmt.resetIn(30)      // "<1m"
+```
+
+### `ctx.fmt.dollars(cents)`
+
+Converts cents to dollars.
+
+```javascript
+ctx.fmt.dollars(1234)  // 12.34
+ctx.fmt.dollars(500)   // 5
+```
+
+### `ctx.fmt.date(unixMs)`
+
+Formats Unix milliseconds as short date.
+
+```javascript
+ctx.fmt.date(1704067200000)  // "Jan 1"
+```
+
 ## See Also
 
 - [Plugin Schema](./schema.md) - Plugin structure, manifest format, and output schema
