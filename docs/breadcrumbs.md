@@ -11,3 +11,4 @@
 - Aligned Auto Update header size with other section headers; helper text now standard size + foreground color.
 - Manual refresh now resets auto-update schedule; added test coverage.
 - Ran `bun run test:coverage`; 8 failed files, 25 failed tests; coverage not met.
+- Reset auto-update schedule even when selecting the same interval to keep countdown in sync.

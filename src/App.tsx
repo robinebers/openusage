@@ -332,14 +332,14 @@ function App() {
     startBatch,
   ])
 
-  const resetAutoUpdateSchedule = useCallback(() => {
+  const resetAutoUpdateSchedule = useCallback((nextInterval = autoUpdateInterval) => {
     if (!pluginSettings) return
     const enabledIds = getEnabledPluginIds(pluginSettings)
     if (enabledIds.length === 0) {
       setAutoUpdateNextAt(null)
       return
     }
-    setAutoUpdateNextAt(Date.now() + autoUpdateInterval * 60_000)
+    setAutoUpdateNextAt(Date.now() + nextInterval * 60_000)
     setAutoUpdateResetToken((value) => value + 1)
   }, [autoUpdateInterval, pluginSettings])
 
@@ -388,18 +388,11 @@ function App() {
 
   const handleAutoUpdateIntervalChange = useCallback((value: AutoUpdateIntervalMinutes) => {
     setAutoUpdateInterval(value)
-    if (pluginSettings) {
-      const enabledIds = getEnabledPluginIds(pluginSettings)
-      if (enabledIds.length > 0) {
-        setAutoUpdateNextAt(Date.now() + value * 60_000)
-      } else {
-        setAutoUpdateNextAt(null)
-      }
-    }
+    resetAutoUpdateSchedule(value)
     void saveAutoUpdateInterval(value).catch((error) => {
       console.error("Failed to save auto-update interval:", error)
     })
-  }, [pluginSettings])
+  }, [resetAutoUpdateSchedule])
 
   const settingsPlugins = useMemo(() => {
     if (!pluginSettings) return []
