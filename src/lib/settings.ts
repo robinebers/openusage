@@ -10,8 +10,15 @@ export type PluginSettings = {
   disabled: string[];
 };
 
+export type AutoUpdateIntervalMinutes = 5 | 15 | 30 | 60;
+
 const SETTINGS_STORE_PATH = "settings.json";
 const PLUGIN_SETTINGS_KEY = "plugins";
+const AUTO_UPDATE_SETTINGS_KEY = "autoUpdateInterval";
+
+export const DEFAULT_AUTO_UPDATE_INTERVAL: AutoUpdateIntervalMinutes = 15;
+
+const AUTO_UPDATE_INTERVALS: AutoUpdateIntervalMinutes[] = [5, 15, 30, 60];
 
 const store = new LazyStore(SETTINGS_STORE_PATH);
 
@@ -31,6 +38,26 @@ export async function loadPluginSettings(): Promise<PluginSettings> {
 
 export async function savePluginSettings(settings: PluginSettings): Promise<void> {
   await store.set(PLUGIN_SETTINGS_KEY, settings);
+  await store.save();
+}
+
+function isAutoUpdateInterval(value: unknown): value is AutoUpdateIntervalMinutes {
+  return (
+    typeof value === "number" &&
+    AUTO_UPDATE_INTERVALS.includes(value as AutoUpdateIntervalMinutes)
+  );
+}
+
+export async function loadAutoUpdateInterval(): Promise<AutoUpdateIntervalMinutes> {
+  const stored = await store.get<unknown>(AUTO_UPDATE_SETTINGS_KEY);
+  if (isAutoUpdateInterval(stored)) return stored;
+  return DEFAULT_AUTO_UPDATE_INTERVAL;
+}
+
+export async function saveAutoUpdateInterval(
+  interval: AutoUpdateIntervalMinutes
+): Promise<void> {
+  await store.set(AUTO_UPDATE_SETTINGS_KEY, interval);
   await store.save();
 }
 

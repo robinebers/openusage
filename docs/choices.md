@@ -8,3 +8,5 @@
 - Mock/cursor lineProgress now always include unit/color fields to remove branchy conditionals (no change when values are defined).
 - Mock plugin treats non-string mode as unknown; display uses safeString for visibility in warnings.
 - Committed generated `coverage/` output per user request.
+- Auto-update interval picker placed above Plugins in settings for visibility.
+- Auto-update countdown label format: "Next in Xm Ys"; shows "Paused" when no schedule.

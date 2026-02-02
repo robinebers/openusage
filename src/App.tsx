@@ -10,11 +10,15 @@ import type { PluginMeta, PluginOutput } from "@/lib/plugin-types"
 import { useProbeEvents } from "@/hooks/use-probe-events"
 import {
   arePluginSettingsEqual,
+  DEFAULT_AUTO_UPDATE_INTERVAL,
   getEnabledPluginIds,
+  loadAutoUpdateInterval,
   loadPluginSettings,
   normalizePluginSettings,
   REFRESH_COOLDOWN_MS,
+  saveAutoUpdateInterval,
   savePluginSettings,
+  type AutoUpdateIntervalMinutes,
   type PluginSettings,
 } from "@/lib/settings"
 
@@ -37,6 +41,11 @@ function App() {
   const [pluginStates, setPluginStates] = useState<Record<string, PluginState>>({})
   const [pluginsMeta, setPluginsMeta] = useState<PluginMeta[]>([])
   const [pluginSettings, setPluginSettings] = useState<PluginSettings | null>(null)
+  const [autoUpdateInterval, setAutoUpdateInterval] = useState<AutoUpdateIntervalMinutes>(
+    DEFAULT_AUTO_UPDATE_INTERVAL
+  )
+  const [autoUpdateNextAt, setAutoUpdateNextAt] = useState<number | null>(null)
+  const [autoUpdateResetToken, setAutoUpdateResetToken] = useState(0)
   const [maxPanelHeightPx, setMaxPanelHeightPx] = useState<number | null>(null)
   const maxPanelHeightPxRef = useRef<number | null>(null)
 
@@ -259,8 +268,16 @@ function App() {
           await savePluginSettings(normalized)
         }
 
+        let storedInterval = DEFAULT_AUTO_UPDATE_INTERVAL
+        try {
+          storedInterval = await loadAutoUpdateInterval()
+        } catch (error) {
+          console.error("Failed to load auto-update interval:", error)
+        }
+
         if (isMounted) {
           setPluginSettings(normalized)
+          setAutoUpdateInterval(storedInterval)
           const enabledIds = getEnabledPluginIds(normalized)
           setLoadingForPlugins(enabledIds)
           try {
@@ -284,6 +301,48 @@ function App() {
     }
   }, [setLoadingForPlugins, setErrorForPlugins, startBatch])
 
+  useEffect(() => {
+    if (!pluginSettings) {
+      setAutoUpdateNextAt(null)
+      return
+    }
+    const enabledIds = getEnabledPluginIds(pluginSettings)
+    if (enabledIds.length === 0) {
+      setAutoUpdateNextAt(null)
+      return
+    }
+    const intervalMs = autoUpdateInterval * 60_000
+    const scheduleNext = () => setAutoUpdateNextAt(Date.now() + intervalMs)
+    scheduleNext()
+    const interval = setInterval(() => {
+      setLoadingForPlugins(enabledIds)
+      startBatch(enabledIds).catch((error) => {
+        console.error("Failed to start auto-update batch:", error)
+        setErrorForPlugins(enabledIds, "Failed to start probe")
+      })
+      scheduleNext()
+    }, intervalMs)
+    return () => clearInterval(interval)
+  }, [
+    autoUpdateInterval,
+    autoUpdateResetToken,
+    pluginSettings,
+    setLoadingForPlugins,
+    setErrorForPlugins,
+    startBatch,
+  ])
+
+  const resetAutoUpdateSchedule = useCallback(() => {
+    if (!pluginSettings) return
+    const enabledIds = getEnabledPluginIds(pluginSettings)
+    if (enabledIds.length === 0) {
+      setAutoUpdateNextAt(null)
+      return
+    }
+    setAutoUpdateNextAt(Date.now() + autoUpdateInterval * 60_000)
+    setAutoUpdateResetToken((value) => value + 1)
+  }, [autoUpdateInterval, pluginSettings])
+
   const handleRefresh = useCallback(() => {
     if (!pluginSettings) return
     const enabledIds = getEnabledPluginIds(pluginSettings)
@@ -294,6 +353,7 @@ function App() {
       return !lastManual || now - lastManual >= REFRESH_COOLDOWN_MS
     })
     if (refreshableIds.length === 0) return
+    resetAutoUpdateSchedule()
     // Mark as manual refresh
     for (const id of refreshableIds) {
       manualRefreshIdsRef.current.add(id)
@@ -303,10 +363,18 @@ function App() {
       console.error("Failed to refresh plugins:", error)
       setErrorForPlugins(refreshableIds, "Failed to start probe")
     })
-  }, [pluginSettings, pluginStates, setLoadingForPlugins, setErrorForPlugins, startBatch])
+  }, [
+    pluginSettings,
+    pluginStates,
+    resetAutoUpdateSchedule,
+    setLoadingForPlugins,
+    setErrorForPlugins,
+    startBatch,
+  ])
 
   const handleRetryPlugin = useCallback(
     (id: string) => {
+      resetAutoUpdateSchedule()
       // Mark as manual refresh
       manualRefreshIdsRef.current.add(id)
       setLoadingForPlugins([id])
@@ -315,8 +383,23 @@ function App() {
         setErrorForPlugins([id], "Failed to start probe")
       })
     },
-    [setLoadingForPlugins, setErrorForPlugins, startBatch]
+    [resetAutoUpdateSchedule, setLoadingForPlugins, setErrorForPlugins, startBatch]
   )
+
+  const handleAutoUpdateIntervalChange = useCallback((value: AutoUpdateIntervalMinutes) => {
+    setAutoUpdateInterval(value)
+    if (pluginSettings) {
+      const enabledIds = getEnabledPluginIds(pluginSettings)
+      if (enabledIds.length > 0) {
+        setAutoUpdateNextAt(Date.now() + value * 60_000)
+      } else {
+        setAutoUpdateNextAt(null)
+      }
+    }
+    void saveAutoUpdateInterval(value).catch((error) => {
+      console.error("Failed to save auto-update interval:", error)
+    })
+  }, [pluginSettings])
 
   const settingsPlugins = useMemo(() => {
     if (!pluginSettings) return []
@@ -397,6 +480,9 @@ function App() {
           plugins={settingsPlugins}
           onReorder={handleReorder}
           onToggle={handleToggle}
+          autoUpdateInterval={autoUpdateInterval}
+          onAutoUpdateIntervalChange={handleAutoUpdateIntervalChange}
+          autoUpdateNextAt={autoUpdateNextAt}
         />
       )
     }
