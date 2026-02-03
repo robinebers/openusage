@@ -1,6 +1,7 @@
 import type { PluginMeta, PluginOutput } from "@/lib/plugin-types"
 import type { PluginSettings } from "@/lib/settings"
 import type { DisplayMode } from "@/lib/settings"
+import { clamp01 } from "@/lib/utils"
 
 type PluginState = {
   data: PluginOutput | null
@@ -20,13 +21,6 @@ type ProgressLine = Extract<
 
 function isProgressLine(line: PluginOutput["lines"][number]): line is ProgressLine {
   return line.type === "progress"
-}
-
-function clamp01(value: number): number {
-  if (!Number.isFinite(value)) return 0
-  if (value < 0) return 0
-  if (value > 1) return 1
-  return value
 }
 
 export function getTrayPrimaryBars(args: {

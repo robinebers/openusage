@@ -218,6 +218,13 @@ fn parse_lines(result: &Object) -> Result<Vec<MetricLine>, String> {
                     )));
                     continue;
                 }
+                if used > limit {
+                    out.push(error_line(format!(
+                        "progress line at index {} invalid used ({} > limit {})",
+                        idx, used, limit
+                    )));
+                    continue;
+                }
 
                 let format_obj: Object = match line.get("format") {
                     Ok(obj) => obj,
@@ -306,20 +313,50 @@ fn parse_lines(result: &Object) -> Result<Vec<MetricLine>, String> {
                         if v.is_null() || v.is_undefined() {
                             None
                         } else if let Some(s) = v.as_string() {
-                            let value = s.to_string().unwrap_or_default();
-                            let parsed = time::OffsetDateTime::parse(
-                                &value,
-                                &time::format_description::well_known::Rfc3339,
-                            );
-                            if parsed.is_err() {
-                                log::warn!(
-                                    "invalid resetsAt at index {} (value='{}'), omitting",
-                                    idx,
-                                    value
-                                );
+                            let raw = s.to_string().unwrap_or_default();
+                            let value = raw.trim().to_string();
+                            if value.is_empty() {
                                 None
                             } else {
-                                Some(value)
+                                let parsed = time::OffsetDateTime::parse(
+                                    &value,
+                                    &time::format_description::well_known::Rfc3339,
+                                );
+                                if parsed.is_ok() {
+                                    Some(value)
+                                } else {
+                                    // ISO-like but missing timezone: assume UTC.
+                                    let is_missing_tz = value.contains('T')
+                                        && !value.ends_with('Z')
+                                        && {
+                                            let tail = value.splitn(2, 'T').nth(1).unwrap_or("");
+                                            !tail.contains('+') && !tail.contains('-')
+                                        };
+                                    if is_missing_tz {
+                                        let with_z = format!("{}Z", value);
+                                        let parsed_with_z = time::OffsetDateTime::parse(
+                                            &with_z,
+                                            &time::format_description::well_known::Rfc3339,
+                                        );
+                                        if parsed_with_z.is_ok() {
+                                            Some(with_z)
+                                        } else {
+                                            log::warn!(
+                                                "invalid resetsAt at index {} (value='{}'), omitting",
+                                                idx,
+                                                raw
+                                            );
+                                            None
+                                        }
+                                    } else {
+                                        log::warn!(
+                                            "invalid resetsAt at index {} (value='{}'), omitting",
+                                            idx,
+                                            raw
+                                        );
+                                        None
+                                    }
+                                }
                             }
                         } else {
                             log::warn!("invalid resetsAt at index {} (non-string), omitting", idx);

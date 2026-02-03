@@ -238,17 +238,23 @@
       const creditsHeader = readNumber(creditsBalance)
       const creditsData = data.credits ? readNumber(data.credits.balance) : null
       if (creditsHeader !== null) {
+        const remaining = creditsHeader
+        const limit = 1000
+        const used = Math.max(0, Math.min(limit, limit - remaining))
         lines.push(ctx.line.progress({
           label: "Credits",
-          used: creditsHeader,
-          limit: 1000,
+          used: used,
+          limit: limit,
           format: { kind: "count", suffix: "credits" },
         }))
       } else if (creditsData !== null) {
+        const remaining = creditsData
+        const limit = 1000
+        const used = Math.max(0, Math.min(limit, limit - remaining))
         lines.push(ctx.line.progress({
           label: "Credits",
-          used: creditsData,
-          limit: 1000,
+          used: used,
+          limit: limit,
           format: { kind: "count", suffix: "credits" },
         }))
       }

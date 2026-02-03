@@ -4,7 +4,7 @@ import { OverviewPage } from "@/pages/overview"
 
 describe("OverviewPage", () => {
   it("renders empty state", () => {
-    render(<OverviewPage plugins={[]} />)
+    render(<OverviewPage plugins={[]} displayMode="used" />)
     expect(screen.getByText("No providers enabled")).toBeInTheDocument()
   })
 
@@ -18,7 +18,7 @@ describe("OverviewPage", () => {
         lastManualRefreshAt: null,
       },
     ]
-    render(<OverviewPage plugins={plugins} />)
+    render(<OverviewPage plugins={plugins} displayMode="used" />)
     expect(screen.getByText("Alpha")).toBeInTheDocument()
   })
 
@@ -48,7 +48,7 @@ describe("OverviewPage", () => {
         lastManualRefreshAt: null,
       },
     ]
-    render(<OverviewPage plugins={plugins} />)
+    render(<OverviewPage plugins={plugins} displayMode="used" />)
     expect(screen.getByText("Primary")).toBeInTheDocument()
     expect(screen.getByText("Shown")).toBeInTheDocument()
     expect(screen.queryByText("Secondary")).not.toBeInTheDocument()

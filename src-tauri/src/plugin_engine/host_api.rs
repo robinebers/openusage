@@ -368,8 +368,6 @@ pub fn inject_utils(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
                         var s = String(value).trim();
                         if (!s) return null;
 
-                        var original = s;
-
                         // Common variants
                         // - "YYYY-MM-DD HH:MM:SS" -> "YYYY-MM-DDTHH:MM:SS"
                         // - "... UTC" -> "...Z"

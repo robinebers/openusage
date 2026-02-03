@@ -53,8 +53,8 @@ describe("useAppUpdate", () => {
     // First check: no update -> schedules up-to-date timeout.
     checkMock.mockResolvedValueOnce(null)
     // Second check: hang so we can observe "checking".
-    let resolveSecond: ((value: any) => void) | null = null
-    checkMock.mockReturnValueOnce(new Promise((resolve) => { resolveSecond = resolve }))
+    let resolveSecond: ((value: null) => void) | undefined
+    checkMock.mockReturnValueOnce(new Promise<null>((resolve) => { resolveSecond = resolve }))
 
     const { result } = renderHook(() => useAppUpdate())
     await act(() => Promise.resolve())

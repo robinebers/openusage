@@ -5,10 +5,10 @@ import type { DisplayMode } from "@/lib/settings"
 interface OverviewPageProps {
   plugins: PluginDisplayState[]
   onRetryPlugin?: (pluginId: string) => void
-  displayMode?: DisplayMode
+  displayMode: DisplayMode
 }
 
-export function OverviewPage({ plugins, onRetryPlugin, displayMode = "used" }: OverviewPageProps) {
+export function OverviewPage({ plugins, onRetryPlugin, displayMode }: OverviewPageProps) {
   if (plugins.length === 0) {
     return (
       <div className="text-center text-muted-foreground py-8">

@@ -5,10 +5,10 @@ import type { DisplayMode } from "@/lib/settings"
 interface ProviderDetailPageProps {
   plugin: PluginDisplayState | null
   onRetry?: () => void
-  displayMode?: DisplayMode
+  displayMode: DisplayMode
 }
 
-export function ProviderDetailPage({ plugin, onRetry, displayMode = "used" }: ProviderDetailPageProps) {
+export function ProviderDetailPage({ plugin, onRetry, displayMode }: ProviderDetailPageProps) {
   if (!plugin) {
     return (
       <div className="text-center text-muted-foreground py-8">

@@ -34,6 +34,7 @@ describe("ProviderCard", () => {
     render(
       <ProviderCard
         name="Test"
+        displayMode="used"
         error="Nope"
         onRetry={onRetry}
       />
@@ -47,6 +48,7 @@ describe("ProviderCard", () => {
     render(
       <ProviderCard
         name="Test"
+        displayMode="used"
         loading
         skeletonLines={[
           { type: "text", label: "One", scope: "overview" },
@@ -62,6 +64,7 @@ describe("ProviderCard", () => {
     const { container } = render(
       <ProviderCard
         name="Loading"
+        displayMode="used"
         loading
         onRetry={() => {}}
       />
@@ -73,6 +76,7 @@ describe("ProviderCard", () => {
     render(
       <ProviderCard
         name="Metrics"
+        displayMode="used"
         lines={[
           { type: "text", label: "Label", value: "Value" },
           { type: "badge", label: "Plan", text: "Pro" },
@@ -98,6 +102,7 @@ describe("ProviderCard", () => {
     render(
       <ProviderCard
         name="Cooldown"
+        displayMode="used"
         lastManualRefreshAt={lastManualRefreshAt}
         onRetry={() => {}}
       />
@@ -113,6 +118,7 @@ describe("ProviderCard", () => {
     render(
       <ProviderCard
         name="Cooldown"
+        displayMode="used"
         lastManualRefreshAt={lastManualRefreshAt}
         onRetry={() => {}}
       />
@@ -148,6 +154,7 @@ describe("ProviderCard", () => {
     render(
       <ProviderCard
         name="Resets"
+        displayMode="used"
         lines={[
           {
             type: "progress",
@@ -169,6 +176,7 @@ describe("ProviderCard", () => {
     const { container } = render(
       <ProviderCard
         name="Retry"
+        displayMode="used"
         onRetry={onRetry}
         lines={[{ type: "text", label: "Label", value: "Value" }]}
       />
@@ -192,6 +200,7 @@ describe("ProviderCard", () => {
     const { container } = render(
       <ProviderCard
         name="Retry"
+        displayMode="used"
         onRetry={onRetry}
         lastManualRefreshAt={lastManualRefreshAt}
         lines={[{ type: "text", label: "Label", value: "Value" }]}
@@ -215,6 +224,7 @@ describe("ProviderCard", () => {
     const { unmount } = render(
       <ProviderCard
         name="Cooldown"
+        displayMode="used"
         lastManualRefreshAt={lastManualRefreshAt}
         onRetry={() => {}}
       />
@@ -231,6 +241,7 @@ describe("ProviderCard", () => {
     const { container } = render(
       <ProviderCard
         name="NoSep"
+        displayMode="used"
         showSeparator={false}
         lines={[{ type: "text", label: "Label", value: "Value" }]}
       />
@@ -242,6 +253,7 @@ describe("ProviderCard", () => {
     render(
       <ProviderCard
         name="Filtered"
+        displayMode="used"
         scopeFilter="overview"
         skeletonLines={[
           { type: "text", label: "Primary", scope: "overview" },
@@ -263,6 +275,7 @@ describe("ProviderCard", () => {
     render(
       <ProviderCard
         name="All"
+        displayMode="used"
         scopeFilter="all"
         skeletonLines={[
           { type: "text", label: "Primary", scope: "overview" },
@@ -284,6 +297,7 @@ describe("ProviderCard", () => {
     render(
       <ProviderCard
         name="Loading"
+        displayMode="used"
         loading
         scopeFilter="overview"
         skeletonLines={[

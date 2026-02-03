@@ -65,6 +65,9 @@ describe("codex plugin", () => {
     expect(result.plan).toBeTruthy()
     expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
     expect(result.lines.find((line) => line.label === "Weekly")).toBeTruthy()
+    const credits = result.lines.find((line) => line.label === "Credits")
+    expect(credits).toBeTruthy()
+    expect(credits.used).toBe(900)
   })
 
   it("throws token expired when refresh fails", async () => {
@@ -126,7 +129,9 @@ describe("codex plugin", () => {
     const result = plugin.probe(ctx)
     expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
     expect(result.lines.find((line) => line.label === "Reviews")).toBeTruthy()
-    expect(result.lines.find((line) => line.label === "Credits")).toBeTruthy()
+    const credits = result.lines.find((line) => line.label === "Credits")
+    expect(credits).toBeTruthy()
+    expect(credits.used).toBe(500)
   })
 
   it("omits resetsAt when window lacks reset info", async () => {

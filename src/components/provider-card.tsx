@@ -10,6 +10,7 @@ import { PluginError } from "@/components/plugin-error"
 import { useNowTicker } from "@/hooks/use-now-ticker"
 import { REFRESH_COOLDOWN_MS, type DisplayMode } from "@/lib/settings"
 import type { ManifestLine, MetricLine } from "@/lib/plugin-types"
+import { clamp01 } from "@/lib/utils"
 
 interface ProviderCardProps {
   name: string
@@ -22,20 +23,13 @@ interface ProviderCardProps {
   lastManualRefreshAt?: number | null
   onRetry?: () => void
   scopeFilter?: "overview" | "all"
-  displayMode?: DisplayMode
+  displayMode: DisplayMode
 }
 
 export function formatNumber(value: number) {
   if (Number.isNaN(value)) return "0"
   if (Number.isInteger(value)) return String(value)
   return value.toFixed(2)
-}
-
-function clamp01(value: number) {
-  if (!Number.isFinite(value)) return 0
-  if (value < 0) return 0
-  if (value > 1) return 1
-  return value
 }
 
 function formatCount(value: number) {
@@ -74,7 +68,7 @@ export function ProviderCard({
   lastManualRefreshAt,
   onRetry,
   scopeFilter = "all",
-  displayMode = "used",
+  displayMode,
 }: ProviderCardProps) {
   const cooldownRemainingMs = useMemo(() => {
     if (!lastManualRefreshAt) return 0
@@ -264,7 +258,10 @@ function MetricLineRenderer({
   }
 
   if (line.type === "progress") {
-    const shownAmount = displayMode === "used" ? line.used : line.limit - line.used
+    const shownAmount =
+      displayMode === "used"
+        ? line.used
+        : Math.max(0, line.limit - line.used)
     const percent = Math.round(clamp01(shownAmount / line.limit) * 10000) / 100
     const leftSuffix = displayMode === "left" ? " left" : ""
 
