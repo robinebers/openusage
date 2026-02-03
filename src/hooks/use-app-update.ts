@@ -6,6 +6,7 @@ import { relaunch } from "@tauri-apps/plugin-process"
 export type UpdateStatus =
   | { status: "idle" }
   | { status: "checking" }
+  | { status: "up-to-date" }
   | { status: "downloading"; progress: number } // 0-100, or -1 if indeterminate
   | { status: "installing" }
   | { status: "ready" }
@@ -42,7 +43,10 @@ export function useAppUpdate(): UseAppUpdateReturn {
       inFlightRef.current.checking = false
       if (!mountedRef.current) return
       if (!update) {
-        setStatus({ status: "idle" })
+        setStatus({ status: "up-to-date" })
+        setTimeout(() => {
+          if (mountedRef.current) setStatus({ status: "idle" })
+        }, 3000)
         return
       }
       if (update) {

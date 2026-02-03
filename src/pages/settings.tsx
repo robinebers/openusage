@@ -229,9 +229,11 @@ export function SettingsPage({
           size="sm"
           className="w-full"
           onClick={onCheckForUpdates}
-          disabled={updateStatus.status === "checking" || updateStatus.status === "downloading" || updateStatus.status === "installing"}
+          disabled={updateStatus.status === "checking" || updateStatus.status === "downloading" || updateStatus.status === "installing" || updateStatus.status === "ready" || updateStatus.status === "up-to-date"}
         >
-          {updateStatus.status === "checking" ? "Checking..." : "Check for updates"}
+          {updateStatus.status === "checking" ? "Checking..." 
+            : updateStatus.status === "up-to-date" ? "No update available"
+            : "Check for updates"}
         </Button>
       </section>
     </div>
