@@ -36,30 +36,14 @@ fn set_stored_log_level(app_handle: &AppHandle, level: log::LevelFilter) {
         log::LevelFilter::Trace => "trace",
         log::LevelFilter::Off => "off",
     };
+    log::info!("Log level changing to {:?}", level);
     if let Ok(store) = app_handle.store("settings.json") {
         store.set(LOG_LEVEL_STORE_KEY, serde_json::json!(level_str));
         let _ = store.save();
     }
     log::set_max_level(level);
-    log::info!("Log level changed to {:?}", level);
 }
 
-fn update_log_level_menu_checks(app_handle: &AppHandle, level: log::LevelFilter) {
-    let levels = [
-        ("log_error", log::LevelFilter::Error),
-        ("log_warn", log::LevelFilter::Warn),
-        ("log_info", log::LevelFilter::Info),
-        ("log_debug", log::LevelFilter::Debug),
-        ("log_trace", log::LevelFilter::Trace),
-    ];
-    for (id, lvl) in levels {
-        if let Some(item) = app_handle.menu().and_then(|m| m.get(id)) {
-            if let Some(check) = item.as_check_menuitem() {
-                let _ = check.set_checked(lvl == level);
-            }
-        }
-    }
-}
 
 macro_rules! get_or_init_panel {
     ($app_handle:expr) => {
@@ -102,7 +86,7 @@ pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
     let show_stats = MenuItem::with_id(app_handle, "show_stats", "Show Stats", true, None::<&str>)?;
     let go_to_settings = MenuItem::with_id(app_handle, "go_to_settings", "Go to Settings", true, None::<&str>)?;
 
-    // Log level submenu
+    // Log level submenu - clone items for use in event handler
     let log_error = CheckMenuItem::with_id(app_handle, "log_error", "Error", true, current_level == log::LevelFilter::Error, None::<&str>)?;
     let log_warn = CheckMenuItem::with_id(app_handle, "log_warn", "Warn", true, current_level == log::LevelFilter::Warn, None::<&str>)?;
     let log_info = CheckMenuItem::with_id(app_handle, "log_info", "Info", true, current_level == log::LevelFilter::Info, None::<&str>)?;
@@ -114,6 +98,15 @@ pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
         true,
         &[&log_error, &log_warn, &log_info, &log_debug, &log_trace],
     )?;
+
+    // Clone for capture in event handler
+    let log_items = [
+        (log_error.clone(), log::LevelFilter::Error),
+        (log_warn.clone(), log::LevelFilter::Warn),
+        (log_info.clone(), log::LevelFilter::Info),
+        (log_debug.clone(), log::LevelFilter::Debug),
+        (log_trace.clone(), log::LevelFilter::Trace),
+    ];
 
     let separator = PredefinedMenuItem::separator(app_handle)?;
     let about = MenuItem::with_id(app_handle, "about", "About OpenUsage", true, None::<&str>)?;
@@ -127,7 +120,7 @@ pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
         .tooltip("OpenUsage")
         .menu(&menu)
         .show_menu_on_left_click(false)
-        .on_menu_event(|app_handle, event| {
+        .on_menu_event(move |app_handle, event| {
             log::debug!("tray menu: {}", event.id.as_ref());
             match event.id.as_ref() {
                 "show_stats" => {
@@ -146,25 +139,20 @@ pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
                     log::info!("quit requested via tray");
                     app_handle.exit(0);
                 }
-                "log_error" => {
-                    set_stored_log_level(app_handle, log::LevelFilter::Error);
-                    update_log_level_menu_checks(app_handle, log::LevelFilter::Error);
-                }
-                "log_warn" => {
-                    set_stored_log_level(app_handle, log::LevelFilter::Warn);
-                    update_log_level_menu_checks(app_handle, log::LevelFilter::Warn);
-                }
-                "log_info" => {
-                    set_stored_log_level(app_handle, log::LevelFilter::Info);
-                    update_log_level_menu_checks(app_handle, log::LevelFilter::Info);
-                }
-                "log_debug" => {
-                    set_stored_log_level(app_handle, log::LevelFilter::Debug);
-                    update_log_level_menu_checks(app_handle, log::LevelFilter::Debug);
-                }
-                "log_trace" => {
-                    set_stored_log_level(app_handle, log::LevelFilter::Trace);
-                    update_log_level_menu_checks(app_handle, log::LevelFilter::Trace);
+                "log_error" | "log_warn" | "log_info" | "log_debug" | "log_trace" => {
+                    let selected_level = match event.id.as_ref() {
+                        "log_error" => log::LevelFilter::Error,
+                        "log_warn" => log::LevelFilter::Warn,
+                        "log_info" => log::LevelFilter::Info,
+                        "log_debug" => log::LevelFilter::Debug,
+                        "log_trace" => log::LevelFilter::Trace,
+                        _ => unreachable!(),
+                    };
+                    set_stored_log_level(app_handle, selected_level);
+                    // Update all checkmarks - only the selected level should be checked
+                    for (item, level) in &log_items {
+                        let _ = item.set_checked(*level == selected_level);
+                    }
                 }
                 _ => {}
             }

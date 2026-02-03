@@ -1,12 +1,15 @@
 use rquickjs::{Ctx, Exception, Function, Object};
 use std::path::PathBuf;
 
-/// Redact sensitive value to first4...last4 format
+/// Redact sensitive value to first4...last4 format (UTF-8 safe)
 fn redact_value(value: &str) -> String {
-    if value.len() <= 12 {
+    let chars: Vec<char> = value.chars().collect();
+    if chars.len() <= 12 {
         "[REDACTED]".to_string()
     } else {
-        format!("{}...{}", &value[..4], &value[value.len() - 4..])
+        let first4: String = chars.iter().take(4).collect();
+        let last4: String = chars.iter().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect();
+        format!("{}...{}", first4, last4)
     }
 }
 
@@ -49,23 +52,14 @@ fn redact_body(body: &str) -> String {
     // Redact JWTs (eyJ... pattern with dots)
     let jwt_pattern = regex_lite::Regex::new(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+").unwrap();
     result = jwt_pattern.replace_all(&result, |caps: &regex_lite::Captures| {
-        let jwt = &caps[0];
-        if jwt.len() > 12 {
-            format!("{}...{}", &jwt[..4], &jwt[jwt.len() - 4..])
-        } else {
-            "[JWT]".to_string()
-        }
+        redact_value(&caps[0])
     }).to_string();
     
     // Redact common API key patterns (sk-xxx, pk-xxx, api_xxx, etc.)
     let api_key_pattern = regex_lite::Regex::new(r#"["']?(sk-|pk-|api_|key_|secret_)[A-Za-z0-9_-]{12,}["']?"#).unwrap();
     result = api_key_pattern.replace_all(&result, |caps: &regex_lite::Captures| {
         let key = caps[0].trim_matches(|c| c == '"' || c == '\'');
-        if key.len() > 12 {
-            format!("{}...{}", &key[..4], &key[key.len() - 4..])
-        } else {
-            "[KEY]".to_string()
-        }
+        redact_value(key)
     }).to_string();
     
     // Redact JSON values for sensitive keys
@@ -284,7 +278,12 @@ fn inject_http<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rqui
                     .map_err(|e| Exception::throw_message(&ctx_inner, &e.to_string()))?;
 
                 let body_preview = if body.len() > 500 {
-                    format!("{}... ({} bytes total)", &body[..500], body.len())
+                    // UTF-8 safe truncation: find valid char boundary at or before 500
+                    let truncated: String = body.char_indices()
+                        .take_while(|(i, _)| *i < 500)
+                        .map(|(_, c)| c)
+                        .collect();
+                    format!("{}... ({} bytes total)", truncated, body.len())
                 } else {
                     body.clone()
                 };
