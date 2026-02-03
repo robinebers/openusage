@@ -244,7 +244,8 @@
           label: "On-demand",
           value: ctx.fmt.dollars(used),
           max: ctx.fmt.dollars(limit),
-          unit: "dollars"
+          unit: "dollars",
+          subtitle: "$" + String(ctx.fmt.dollars(limit)) + " limit"
         }))
       }
     }

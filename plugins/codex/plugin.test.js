@@ -129,7 +129,7 @@ describe("codex plugin", () => {
     expect(result.lines.find((line) => line.label === "Credits")).toBeTruthy()
   })
 
-  it("skips reset lines when window lacks reset info", async () => {
+  it("shows fallback subtitle when window lacks reset info", async () => {
     const ctx = makeCtx()
     ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
       tokens: { access_token: "token" },
@@ -146,8 +146,9 @@ describe("codex plugin", () => {
     })
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
-    expect(result.lines.every((line) => !line.subtitle)).toBe(true)
+    const sessionLine = result.lines.find((line) => line.label === "Session")
+    expect(sessionLine).toBeTruthy()
+    expect(sessionLine.subtitle).toBe("No active session")
   })
 
   it("uses reset_at when present for subtitles", async () => {

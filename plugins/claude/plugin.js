@@ -324,7 +324,7 @@
         value: data.five_hour.utilization,
         max: 100,
         unit: "percent",
-        subtitle: resetIn ? "Resets in " + resetIn : null
+        subtitle: resetIn ? "Resets in " + resetIn : "No active session"
       }))
     }
     if (data.seven_day && typeof data.seven_day.utilization === "number") {

@@ -188,7 +188,7 @@
           value: headerPrimary,
           max: 100,
           unit: "percent",
-          subtitle: resetIn ? "Resets in " + resetIn : null
+          subtitle: resetIn ? "Resets in " + resetIn : "No active session"
         }))
       }
       if (headerSecondary !== null) {
@@ -210,7 +210,7 @@
             value: data.rate_limit.primary_window.used_percent,
             max: 100,
             unit: "percent",
-            subtitle: resetIn ? "Resets in " + resetIn : null
+            subtitle: resetIn ? "Resets in " + resetIn : "No active session"
           }))
         }
         if (data.rate_limit.secondary_window && typeof data.rate_limit.secondary_window.used_percent === "number") {
@@ -243,9 +243,9 @@
       const creditsHeader = readNumber(creditsBalance)
       const creditsData = data.credits ? readNumber(data.credits.balance) : null
       if (creditsHeader !== null) {
-        lines.push(ctx.line.progress({ label: "Credits", value: creditsHeader, max: 1000 }))
+        lines.push(ctx.line.progress({ label: "Credits", value: creditsHeader, max: 1000, subtitle: "1,000 credits limit" }))
       } else if (creditsData !== null) {
-        lines.push(ctx.line.progress({ label: "Credits", value: creditsData, max: 1000 }))
+        lines.push(ctx.line.progress({ label: "Credits", value: creditsData, max: 1000, subtitle: "1,000 credits limit" }))
       }
 
       let plan = null

@@ -33,6 +33,7 @@ export function AboutDialog({ version, onClose }: AboutDialogProps) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        e.preventDefault();
         onClose();
       }
     };
@@ -60,7 +61,7 @@ export function AboutDialog({ version, onClose }: AboutDialogProps) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm rounded-xl"
       onClick={handleBackdropClick}
     >
       <div className="bg-card rounded-lg border shadow-xl p-6 max-w-xs w-full mx-4 text-center animate-in fade-in zoom-in-95 duration-200">
@@ -80,10 +81,6 @@ export function AboutDialog({ version, onClose }: AboutDialogProps) {
           <p>
             Built by{" "}
             <ExternalLink href="https://itsbyrob.in/x">Robin Ebers</ExternalLink>
-          </p>
-          <p>
-            Tray icon can show up to 4 usage bars. Plugins may declare one
-            primary progress metric.
           </p>
           <p>
             Open source on{" "}

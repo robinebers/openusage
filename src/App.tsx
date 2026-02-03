@@ -646,7 +646,7 @@ function App() {
     <div ref={containerRef} className="flex flex-col items-center p-6 pt-1.5 bg-transparent">
       <div className="tray-arrow" />
       <div
-        className="bg-card rounded-xl overflow-hidden select-none w-full border shadow-lg"
+        className="relative bg-card rounded-xl overflow-hidden select-none w-full border shadow-lg"
         style={maxPanelHeightPx ? { maxHeight: `${maxPanelHeightPx - ARROW_OVERHEAD_PX}px` } : undefined}
       >
         <div className="flex h-full min-h-0 flex-row">
