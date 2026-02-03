@@ -96,18 +96,15 @@
     return out
   }
 
-  function tryParseCredentialJSON(text) {
+  function tryParseCredentialJSON(ctx, text) {
     if (!text) return null
-    const trimmed = String(text).trim()
-    if (!trimmed) return null
-    try {
-      return JSON.parse(trimmed)
-    } catch {}
+    const parsed = ctx.util.tryParseJson(text)
+    if (parsed) return parsed
 
     // Some macOS keychain items are returned by `security ... -w` as hex-encoded UTF-8 bytes.
     // Example prefix: "7b0a" ( "{\\n" ).
     // Support both plain hex and "0x..." forms.
-    let hex = trimmed
+    let hex = String(text).trim()
     if (hex.startsWith("0x") || hex.startsWith("0X")) hex = hex.slice(2)
     if (!hex || hex.length % 2 !== 0) return null
     if (!/^[0-9a-fA-F]+$/.test(hex)) return null
@@ -117,7 +114,8 @@
         bytes.push(parseInt(hex.slice(i, i + 2), 16))
       }
       const decoded = utf8DecodeBytes(bytes)
-      return JSON.parse(decoded)
+      const decodedParsed = ctx.util.tryParseJson(decoded)
+      if (decodedParsed) return decodedParsed
     } catch {}
 
     return null
@@ -128,7 +126,7 @@
     if (ctx.host.fs.exists(CRED_FILE)) {
       try {
         const text = ctx.host.fs.readText(CRED_FILE)
-        const parsed = tryParseCredentialJSON(text)
+        const parsed = tryParseCredentialJSON(ctx, text)
         if (parsed) {
           const oauth = parsed.claudeAiOauth
           if (oauth && oauth.accessToken) {
@@ -143,7 +141,7 @@
     try {
       const keychainValue = ctx.host.keychain.readGenericPassword(KEYCHAIN_SERVICE)
       if (keychainValue) {
-        const parsed = tryParseCredentialJSON(keychainValue)
+        const parsed = tryParseCredentialJSON(ctx, keychainValue)
         if (parsed) {
           const oauth = parsed.claudeAiOauth
           if (oauth && oauth.accessToken) {
@@ -174,11 +172,12 @@
     }
   }
 
-  function needsRefresh(oauth, nowMs) {
-    if (!oauth.expiresAt) return true
-    const expiresAt = Number(oauth.expiresAt)
-    if (!Number.isFinite(expiresAt)) return true
-    return nowMs + REFRESH_BUFFER_MS >= expiresAt
+  function needsRefresh(ctx, oauth, nowMs) {
+    return ctx.util.needsRefreshByExpiry({
+      nowMs,
+      expiresAtMs: oauth.expiresAt,
+      bufferMs: REFRESH_BUFFER_MS,
+    })
   }
 
   function refreshToken(ctx, creds) {
@@ -186,7 +185,7 @@
     if (!oauth.refreshToken) return null
 
     try {
-      const resp = ctx.host.http.request({
+      const resp = ctx.util.request({
         method: "POST",
         url: REFRESH_URL,
         headers: { "Content-Type": "application/json" },
@@ -201,10 +200,8 @@
 
       if (resp.status === 400 || resp.status === 401) {
         let errorCode = null
-        try {
-          const body = JSON.parse(resp.bodyText)
-          errorCode = body.error || body.error_description
-        } catch {}
+        const body = ctx.util.tryParseJson(resp.bodyText)
+        if (body) errorCode = body.error || body.error_description
         if (errorCode === "invalid_grant") {
           throw "Session expired. Run `claude` to log in again."
         }
@@ -212,7 +209,8 @@
       }
       if (resp.status < 200 || resp.status >= 300) return null
 
-      const body = JSON.parse(resp.bodyText)
+      const body = ctx.util.tryParseJson(resp.bodyText)
+      if (!body) return null
       const newAccessToken = body.access_token
       if (!newAccessToken) return null
 
@@ -235,7 +233,7 @@
   }
 
   function fetchUsage(ctx, accessToken) {
-    return ctx.host.http.request({
+    return ctx.util.request({
       method: "GET",
       url: USAGE_URL,
       headers: {
@@ -251,8 +249,8 @@
 
   function getResetInFromIso(ctx, isoString) {
     if (!isoString) return null
-    const ts = Date.parse(isoString)
-    if (!Number.isFinite(ts)) return null
+    const ts = ctx.util.parseDateMs(isoString)
+    if (ts === null) return null
     const diffSeconds = Math.floor((ts - Date.now()) / 1000)
     return ctx.fmt.resetIn(diffSeconds)
   }
@@ -267,32 +265,37 @@
     let accessToken = creds.oauth.accessToken
 
     // Proactively refresh if token is expired or about to expire
-    if (needsRefresh(creds.oauth, nowMs)) {
+    if (needsRefresh(ctx, creds.oauth, nowMs)) {
       const refreshed = refreshToken(ctx, creds)
       if (refreshed) accessToken = refreshed
     }
 
     let resp
+    let didRefresh = false
     try {
-      resp = fetchUsage(ctx, accessToken)
+      resp = ctx.util.retryOnceOnAuth({
+        request: (token) => {
+          try {
+            return fetchUsage(ctx, token || accessToken)
+          } catch (e) {
+            if (didRefresh) {
+              throw "Usage request failed after refresh. Try again."
+            }
+            throw "Usage request failed. Check your connection."
+          }
+        },
+        refresh: () => {
+          didRefresh = true
+          return refreshToken(ctx, creds)
+        },
+      })
     } catch (e) {
+      if (typeof e === "string") throw e
       throw "Usage request failed. Check your connection."
     }
 
-    // On 401/403, try refreshing once and retry
-    if (resp.status === 401 || resp.status === 403) {
-      const refreshed = refreshToken(ctx, creds)
-      if (!refreshed) {
-        throw "Token expired. Run `claude` to log in again."
-      }
-      try {
-        resp = fetchUsage(ctx, refreshed)
-      } catch (e) {
-        throw "Usage request failed after refresh. Try again."
-      }
-      if (resp.status === 401 || resp.status === 403) {
-        throw "Token expired. Run `claude` to log in again."
-      }
+    if (ctx.util.isAuthStatus(resp.status)) {
+      throw "Token expired. Run `claude` to log in again."
     }
 
     if (resp.status < 200 || resp.status >= 300) {
@@ -300,9 +303,8 @@
     }
 
     let data
-    try {
-      data = JSON.parse(resp.bodyText)
-    } catch {
+    data = ctx.util.tryParseJson(resp.bodyText)
+    if (data === null) {
       throw "Usage response invalid. Try again later."
     }
 

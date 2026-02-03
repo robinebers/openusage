@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { AboutDialog } from "@/components/about-dialog";
 import type { UpdateStatus } from "@/hooks/use-app-update";
+import { useNowTicker } from "@/hooks/use-now-ticker";
 
 interface PanelFooterProps {
   version: string;
@@ -75,14 +76,10 @@ export function PanelFooter({
   onShowAbout,
   onCloseAbout,
 }: PanelFooterProps) {
-  const [now, setNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    if (!autoUpdateNextAt) return undefined;
-    setNow(Date.now());
-    const interval = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(interval);
-  }, [autoUpdateNextAt]);
+  const now = useNowTicker({
+    enabled: Boolean(autoUpdateNextAt),
+    resetKey: autoUpdateNextAt,
+  });
 
   const countdownLabel = useMemo(() => {
     if (!autoUpdateNextAt) return "Paused";

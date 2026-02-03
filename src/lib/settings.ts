@@ -25,6 +25,18 @@ export const DEFAULT_THEME_MODE: ThemeMode = "system";
 const AUTO_UPDATE_INTERVALS: AutoUpdateIntervalMinutes[] = [5, 15, 30, 60];
 const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
 
+export const AUTO_UPDATE_OPTIONS: { value: AutoUpdateIntervalMinutes; label: string }[] =
+  AUTO_UPDATE_INTERVALS.map((value) => ({
+    value,
+    label: value === 60 ? "1 hour" : `${value} min`,
+  }));
+
+export const THEME_OPTIONS: { value: ThemeMode; label: string }[] =
+  THEME_MODES.map((value) => ({
+    value,
+    label: value.charAt(0).toUpperCase() + value.slice(1),
+  }));
+
 const store = new LazyStore(SETTINGS_STORE_PATH);
 
 export const DEFAULT_PLUGIN_SETTINGS: PluginSettings = {

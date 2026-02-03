@@ -13,7 +13,10 @@
       const sql =
         "SELECT value FROM ItemTable WHERE key = '" + key + "' LIMIT 1;"
       const json = ctx.host.sqlite.query(STATE_DB, sql)
-      const rows = JSON.parse(json)
+      const rows = ctx.util.tryParseJson(json)
+      if (!Array.isArray(rows)) {
+        throw new Error("sqlite returned invalid json")
+      }
       if (rows.length > 0 && rows[0].value) {
         return rows[0].value
       }
@@ -50,15 +53,18 @@
   function needsRefresh(ctx, accessToken, nowMs) {
     if (!accessToken) return true
     const expiresAt = getTokenExpiration(ctx, accessToken)
-    if (!expiresAt) return true
-    return nowMs + REFRESH_BUFFER_MS >= expiresAt
+    return ctx.util.needsRefreshByExpiry({
+      nowMs,
+      expiresAtMs: expiresAt,
+      bufferMs: REFRESH_BUFFER_MS,
+    })
   }
 
   function refreshToken(ctx, refreshTokenValue) {
     if (!refreshTokenValue) return null
 
     try {
-      const resp = ctx.host.http.request({
+      const resp = ctx.util.request({
         method: "POST",
         url: REFRESH_URL,
         headers: { "Content-Type": "application/json" },
@@ -72,9 +78,7 @@
 
       if (resp.status === 400 || resp.status === 401) {
         let errorInfo = null
-        try {
-          errorInfo = JSON.parse(resp.bodyText)
-        } catch {}
+        errorInfo = ctx.util.tryParseJson(resp.bodyText)
         if (errorInfo && errorInfo.shouldLogout === true) {
           throw "Session expired. Sign in via Cursor app."
         }
@@ -83,7 +87,8 @@
 
       if (resp.status < 200 || resp.status >= 300) return null
 
-      const body = JSON.parse(resp.bodyText)
+      const body = ctx.util.tryParseJson(resp.bodyText)
+      if (!body) return null
 
       // Check if server wants us to logout
       if (body.shouldLogout === true) {
@@ -106,7 +111,7 @@
   }
 
   function connectPost(ctx, url, token) {
-    return ctx.host.http.request({
+    return ctx.util.request({
       method: "POST",
       url: url,
       headers: {
@@ -146,37 +151,41 @@
     }
 
     let usageResp
+    let didRefresh = false
     try {
-      usageResp = connectPost(ctx, USAGE_URL, accessToken)
+      usageResp = ctx.util.retryOnceOnAuth({
+        request: (token) => {
+          try {
+            return connectPost(ctx, USAGE_URL, token || accessToken)
+          } catch (e) {
+            if (didRefresh) {
+              throw "Usage request failed after refresh. Try again."
+            }
+            throw "Usage request failed. Check your connection."
+          }
+        },
+        refresh: () => {
+          didRefresh = true
+          const refreshed = refreshToken(ctx, refreshTokenValue)
+          if (refreshed) accessToken = refreshed
+          return refreshed
+        },
+      })
     } catch (e) {
+      if (typeof e === "string") throw e
       throw "Usage request failed. Check your connection."
     }
 
-    // On 401/403, try refreshing once and retry
-    if (usageResp.status === 401 || usageResp.status === 403) {
-      const refreshed = refreshToken(ctx, refreshTokenValue)
-      if (!refreshed) {
-        throw "Token expired. Sign in via Cursor app."
-      }
-      accessToken = refreshed
-      try {
-        usageResp = connectPost(ctx, USAGE_URL, accessToken)
-      } catch (e) {
-        throw "Usage request failed after refresh. Try again."
-      }
-      if (usageResp.status === 401 || usageResp.status === 403) {
-        throw "Token expired. Sign in via Cursor app."
-      }
+    if (ctx.util.isAuthStatus(usageResp.status)) {
+      throw "Token expired. Sign in via Cursor app."
     }
 
     if (usageResp.status < 200 || usageResp.status >= 300) {
       throw "Usage request failed (HTTP " + String(usageResp.status) + "). Try again later."
     }
 
-    let usage
-    try {
-      usage = JSON.parse(usageResp.bodyText)
-    } catch {
+    const usage = ctx.util.tryParseJson(usageResp.bodyText)
+    if (usage === null) {
       throw "Usage response invalid. Try again later."
     }
 
@@ -188,8 +197,8 @@
     try {
       const planResp = connectPost(ctx, PLAN_URL, accessToken)
       if (planResp.status >= 200 && planResp.status < 300) {
-        const plan = JSON.parse(planResp.bodyText)
-        if (plan.planInfo && plan.planInfo.planName) {
+        const plan = ctx.util.tryParseJson(planResp.bodyText)
+        if (plan && plan.planInfo && plan.planInfo.planName) {
           planName = plan.planInfo.planName
         }
       }

@@ -303,6 +303,78 @@ pub fn inject_utils(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
                 }
             };
 
+            // Shared utilities
+            ctx.util = {
+                tryParseJson: function(text) {
+                    if (text === null || text === undefined) return null;
+                    var trimmed = String(text).trim();
+                    if (!trimmed) return null;
+                    try {
+                        return JSON.parse(trimmed);
+                    } catch (e) {
+                        return null;
+                    }
+                },
+                safeJsonParse: function(text) {
+                    if (text === null || text === undefined) return { ok: false };
+                    var trimmed = String(text).trim();
+                    if (!trimmed) return { ok: false };
+                    try {
+                        return { ok: true, value: JSON.parse(trimmed) };
+                    } catch (e) {
+                        return { ok: false };
+                    }
+                },
+                request: function(opts) {
+                    return ctx.host.http.request(opts);
+                },
+                requestJson: function(opts) {
+                    var resp = ctx.util.request(opts);
+                    var parsed = ctx.util.safeJsonParse(resp.bodyText);
+                    return { resp: resp, json: parsed.ok ? parsed.value : null };
+                },
+                isAuthStatus: function(status) {
+                    return status === 401 || status === 403;
+                },
+                retryOnceOnAuth: function(opts) {
+                    var resp = opts.request();
+                    if (ctx.util.isAuthStatus(resp.status)) {
+                        var token = opts.refresh();
+                        if (token) {
+                            resp = opts.request(token);
+                        }
+                    }
+                    return resp;
+                },
+                parseDateMs: function(value) {
+                    if (value instanceof Date) {
+                        var dateMs = value.getTime();
+                        return Number.isFinite(dateMs) ? dateMs : null;
+                    }
+                    if (typeof value === "number") {
+                        return Number.isFinite(value) ? value : null;
+                    }
+                    if (typeof value === "string") {
+                        var parsed = Date.parse(value);
+                        if (Number.isFinite(parsed)) return parsed;
+                        var n = Number(value);
+                        return Number.isFinite(n) ? n : null;
+                    }
+                    return null;
+                },
+                needsRefreshByExpiry: function(opts) {
+                    if (!opts) return true;
+                    if (opts.expiresAtMs === null || opts.expiresAtMs === undefined) return true;
+                    var nowMs = Number(opts.nowMs);
+                    var expiresAtMs = Number(opts.expiresAtMs);
+                    var bufferMs = Number(opts.bufferMs);
+                    if (!Number.isFinite(nowMs)) return true;
+                    if (!Number.isFinite(expiresAtMs)) return true;
+                    if (!Number.isFinite(bufferMs)) bufferMs = 0;
+                    return nowMs + bufferMs >= expiresAtMs;
+                }
+            };
+
             // Base64
             var b64chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
             ctx.base64 = {

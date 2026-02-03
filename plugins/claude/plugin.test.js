@@ -1,22 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { makePluginTestContext } from "../test-helpers.js"
+import { makeCtx } from "../test-helpers.js"
 
 const loadPlugin = async () => {
-  delete globalThis.__openusage_plugin
   await import("./plugin.js")
-  const plugin = globalThis.__openusage_plugin
-  if (!plugin) {
-    throw new Error("Plugin failed to load - __openusage_plugin not set")
-  }
-  return plugin
+  return globalThis.__openusage_plugin
 }
-
-const makeCtx = (overrides) => makePluginTestContext(overrides, vi)
 
 describe("claude plugin", () => {
   beforeEach(() => {
     delete globalThis.__openusage_plugin
-    if (vi.resetModules) vi.resetModules()
+    vi.resetModules()
   })
 
   it("throws when no credentials", async () => {

@@ -1,18 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { makePluginTestContext } from "../test-helpers.js"
+import { makeCtx } from "../test-helpers.js"
 
 const loadPlugin = async () => {
   await import("./plugin.js")
   return globalThis.__openusage_plugin
 }
 
-const makeCtx = (overrides) => makePluginTestContext(overrides, vi)
-
-
 describe("cursor plugin", () => {
   beforeEach(() => {
     delete globalThis.__openusage_plugin
-    if (vi.resetModules) vi.resetModules()
+    vi.resetModules()
   })
 
   it("throws when no token", async () => {
