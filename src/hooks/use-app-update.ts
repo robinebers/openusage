@@ -24,6 +24,7 @@ export function useAppUpdate(): UseAppUpdateReturn {
   const updateRef = useRef<Update | null>(null)
   const mountedRef = useRef(true)
   const inFlightRef = useRef({ checking: false, downloading: false, installing: false })
+  const upToDateTimeoutRef = useRef<number | null>(null)
 
   const setStatus = useCallback((next: UpdateStatus) => {
     statusRef.current = next
@@ -36,6 +37,11 @@ export function useAppUpdate(): UseAppUpdateReturn {
     if (inFlightRef.current.checking || inFlightRef.current.downloading || inFlightRef.current.installing) return
     if (statusRef.current.status === "ready") return
 
+    // Clear any pending up-to-date timeout
+    if (upToDateTimeoutRef.current !== null) {
+      clearTimeout(upToDateTimeoutRef.current)
+      upToDateTimeoutRef.current = null
+    }
     inFlightRef.current.checking = true
     setStatus({ status: "checking" })
     try {
@@ -44,7 +50,8 @@ export function useAppUpdate(): UseAppUpdateReturn {
       if (!mountedRef.current) return
       if (!update) {
         setStatus({ status: "up-to-date" })
-        setTimeout(() => {
+        upToDateTimeoutRef.current = window.setTimeout(() => {
+          upToDateTimeoutRef.current = null
           if (mountedRef.current) setStatus({ status: "idle" })
         }, 3000)
         return
@@ -98,6 +105,9 @@ export function useAppUpdate(): UseAppUpdateReturn {
     void checkForUpdates()
     return () => {
       mountedRef.current = false
+      if (upToDateTimeoutRef.current !== null) {
+        clearTimeout(upToDateTimeoutRef.current)
+      }
     }
   }, [checkForUpdates])
 
