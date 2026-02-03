@@ -305,25 +305,34 @@ Creates a progress bar line.
 ```typescript
 ctx.line.progress({
   label: string,                    // Required: label shown on the left
-  value: number,                    // Required: current value
-  max: number,                      // Required: maximum value
-  unit?: "percent" | "dollars",     // Optional: format as percentage or dollars
+  used: number,                     // Required: amount used (>= 0)
+  limit: number,                    // Required: limit (> 0)
+  format: {                         // Required: formatting rules
+    kind: "percent" | "dollars" | "count",
+    suffix?: string                 // Required when kind="count" (e.g. "credits")
+  },
+  resetsAt?: string | null,         // Optional: ISO timestamp for when usage resets
   color?: string,                   // Optional: hex color for progress bar
-  subtitle?: string                 // Optional: smaller text below the line
 }): MetricLine
 ```
+
+Notes:
+
+- `used` may exceed `limit` (overages).
+- For `format.kind: "percent"`, `limit` must be `100`.
+- Prefer setting `resetsAt` (via `ctx.util.toIso(...)`) instead of putting reset info in other lines.
 
 **Example:**
 
 ```javascript
-ctx.line.progress({ label: "Usage", value: 42, max: 100, unit: "percent" })
-ctx.line.progress({ label: "Spend", value: 12.34, max: 100, unit: "dollars" })
+ctx.line.progress({ label: "Usage", used: 42, limit: 100, format: { kind: "percent" } })
+ctx.line.progress({ label: "Spend", used: 12.34, limit: 100, format: { kind: "dollars" } })
 ctx.line.progress({
   label: "Session",
-  value: 75,
-  max: 100,
-  unit: "percent",
-  subtitle: "Resets in 6d 20h"
+  used: 75,
+  limit: 100,
+  format: { kind: "percent" },
+  resetsAt: ctx.util.toIso("2026-02-01T00:00:00Z"),
 })
 ```
 
@@ -386,6 +395,30 @@ Formats Unix milliseconds as short date.
 
 ```javascript
 ctx.fmt.date(1704067200000)  // "Jan 1"
+```
+
+## Utilities
+
+### `ctx.util.toIso(value)`
+
+Normalizes a timestamp into an ISO string (or returns `null` if the input can't be parsed).
+
+Accepts common inputs like:
+
+- ISO strings (with or without timezone; timezone-less is treated as UTC)
+- Unix seconds / milliseconds (number or numeric string)
+- `Date` objects
+
+**Example:**
+
+```javascript
+ctx.line.progress({
+  label: "Weekly",
+  used: 24,
+  limit: 100,
+  format: { kind: "percent" },
+  resetsAt: ctx.util.toIso(data.resets_at),
+})
 ```
 
 ## See Also

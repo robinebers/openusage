@@ -137,13 +137,24 @@ globalThis.__openusage_plugin = {
 ```typescript
 type MetricLine =
   | { type: "text"; label: string; value: string; color?: string; subtitle?: string }
-  | { type: "progress"; label: string; value: number; max: number; unit?: "percent" | "dollars"; color?: string; subtitle?: string }
+  | {
+      type: "progress";
+      label: string;
+      used: number;
+      limit: number;
+      format:
+        | { kind: "percent" }
+        | { kind: "dollars" }
+        | { kind: "count"; suffix: string };
+      resetsAt?: string; // ISO timestamp
+      color?: string;
+    }
   | { type: "badge"; label: string; text: string; color?: string; subtitle?: string }
 ```
 
 - `color`: optional hex string (e.g. `#22c55e`)
-- `unit`: `"percent"` shows `X%`, `"dollars"` shows `$X.XX`
 - `subtitle`: optional text displayed below the line in smaller muted text
+- `resetsAt`: optional ISO timestamp (UI shows "Resets in ..." automatically)
 
 ### Text Line
 
@@ -159,15 +170,20 @@ ctx.line.text({ label: "Status", value: "Active", color: "#22c55e", subtitle: "S
 Shows a progress bar with optional formatting.
 
 ```javascript
-ctx.line.progress({ label: "Usage", value: 42, max: 100, unit: "percent" })
-// Renders: Usage [████████░░░░░░░░░░░░] 42%
+ctx.line.progress({ label: "Usage", used: 42, limit: 100, format: { kind: "percent" } })
+// Renders (depending on user settings): "42%" or "58% left"
 
-ctx.line.progress({ label: "Spend", value: 12.34, max: 100, unit: "dollars" })
-// Renders: Spend [█░░░░░░░░░░░░░░░░░░░] $12.34
+ctx.line.progress({ label: "Spend", used: 12.34, limit: 100, format: { kind: "dollars" } })
+// Renders: "$12.34" or "$87.66 left"
 
-ctx.line.progress({ label: "Session", value: 75, max: 100, unit: "percent", subtitle: "Resets in 6d 20h" })
-// Renders: Session [███████████████░░░░░] 75%
-//                                Resets in 6d 20h
+ctx.line.progress({
+  label: "Session",
+  used: 75,
+  limit: 100,
+  format: { kind: "percent" },
+  resetsAt: ctx.util.toIso("2026-02-01T00:00:00Z"),
+})
+// UI will show: "Resets in …"
 ```
 
 ### Badge Line
@@ -189,7 +205,7 @@ ctx.line.badge({ label: "Status", text: "Connected", color: "#22c55e", subtitle:
 | Promise never resolves     | Error badge (timeout)                         |
 | Invalid line type          | Error badge                                   |
 | Missing `lines` array      | Error badge                                   |
-| Non-finite progress values | Coerced to `value: -1, max: 0` (UI shows N/A) |
+| Invalid progress values    | Error badge (line-specific validation error)  |
 
 Prefer throwing short, actionable strings (not `Error` objects).
 
@@ -247,7 +263,13 @@ A complete, working plugin that fetches data and displays all three line types.
       return {
         lines: [
           ctx.line.badge({ label: "Status", text: "Connected", color: "#22c55e" }),
-          ctx.line.progress({ label: "Usage", value: 42, max: 100, unit: "percent", subtitle: "Resets in 2d 5h" }),
+          ctx.line.progress({
+            label: "Usage",
+            used: 42,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: ctx.util.toIso("2026-02-01T00:00:00Z"),
+          }),
           ctx.line.text({ label: "Fetched at", value: ctx.nowIso }),
         ],
       }
