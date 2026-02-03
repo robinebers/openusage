@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
 use tauri::Emitter;
+use tauri_plugin_log::{Target, TargetKind};
 use uuid::Uuid;
 
 pub struct AppState {
@@ -122,6 +123,12 @@ async fn start_probe_batch(
         .map(|plugin| plugin.manifest.id.clone())
         .collect();
 
+    log::info!(
+        "probe batch {} starting: {:?}",
+        batch_id,
+        response_plugin_ids
+    );
+
     if selected_plugins.is_empty() {
         let _ = app_handle.emit(
             "probe:batch-complete",
@@ -153,14 +160,23 @@ async fn start_probe_batch(
 
             match result {
                 Ok(output) => {
+                    let has_error = output.lines.iter().any(|line| {
+                        matches!(line, plugin_engine::runtime::MetricLine::Badge { label, .. } if label == "Error")
+                    });
+                    if has_error {
+                        log::warn!("probe {} completed with error", plugin_id);
+                    } else {
+                        log::info!("probe {} completed ok ({} lines)", plugin_id, output.lines.len());
+                    }
                     let _ = handle.emit("probe:result", ProbeResult { batch_id: bid, output });
                 }
                 Err(_) => {
-                    log::error!("Probe panicked for plugin {}", plugin_id);
+                    log::error!("probe {} panicked", plugin_id);
                 }
             }
 
             if counter.fetch_sub(1, Ordering::SeqCst) == 1 {
+                log::info!("probe batch {} complete", completion_bid);
                 let _ = completion_handle.emit(
                     "probe:batch-complete",
                     ProbeBatchComplete {
@@ -178,11 +194,22 @@ async fn start_probe_batch(
 }
 
 #[tauri::command]
+fn get_log_path(app_handle: tauri::AppHandle) -> Result<String, String> {
+    // macOS log directory: ~/Library/Logs/{bundleIdentifier}
+    let home = dirs::home_dir().ok_or("no home dir")?;
+    let bundle_id = app_handle.config().identifier.clone();
+    let log_dir = home.join("Library").join("Logs").join(&bundle_id);
+    let log_file = log_dir.join(format!("{}.log", app_handle.package_info().name));
+    Ok(log_file.to_string_lossy().to_string())
+}
+
+#[tauri::command]
 fn list_plugins(state: tauri::State<'_, Mutex<AppState>>) -> Vec<PluginMeta> {
     let plugins = {
         let locked = state.lock().expect("plugin state poisoned");
         locked.plugins.clone()
     };
+    log::debug!("list_plugins: {} plugins", plugins.len());
 
     plugins
         .into_iter()
@@ -225,13 +252,25 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_nspanel::init())
-        .plugin(tauri_plugin_log::Builder::new().level(log::LevelFilter::Info).build())
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .targets([
+                    Target::new(TargetKind::Stdout),
+                    Target::new(TargetKind::LogDir { file_name: None }),
+                ])
+                .max_file_size(10_000_000) // 10 MB
+                .level(log::LevelFilter::Trace) // Allow all levels; runtime filter via tray menu
+                .level_for("hyper", log::LevelFilter::Warn)
+                .level_for("reqwest", log::LevelFilter::Warn)
+                .build(),
+        )
         .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
             init_panel,
             hide_panel,
             start_probe_batch,
-            list_plugins
+            list_plugins,
+            get_log_path
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]
@@ -239,10 +278,14 @@ pub fn run() {
 
             use tauri::Manager;
 
+            let version = app.package_info().version.to_string();
+            log::info!("OpenUsage v{} starting", version);
+
             let _ = app.track_event("app_started", None);
 
             let app_data_dir = app.path().app_data_dir().expect("no app data dir");
             let resource_dir = app.path().resource_dir().expect("no resource dir");
+            log::debug!("app_data_dir: {:?}", app_data_dir);
 
             let (_, plugins) = plugin_engine::initialize_plugins(&app_data_dir, &resource_dir);
             app.manage(Mutex::new(AppState {

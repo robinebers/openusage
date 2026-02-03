@@ -1,6 +1,94 @@
 use rquickjs::{Ctx, Exception, Function, Object};
 use std::path::PathBuf;
 
+/// Redact sensitive value to first4...last4 format
+fn redact_value(value: &str) -> String {
+    if value.len() <= 12 {
+        "[REDACTED]".to_string()
+    } else {
+        format!("{}...{}", &value[..4], &value[value.len() - 4..])
+    }
+}
+
+/// Redact sensitive query parameters in URL
+fn redact_url(url: &str) -> String {
+    let sensitive_params = [
+        "key", "api_key", "apikey", "token", "access_token", "secret",
+        "password", "auth", "authorization", "bearer", "credential",
+    ];
+    
+    if let Some(query_start) = url.find('?') {
+        let (base, query) = url.split_at(query_start + 1);
+        let redacted_params: Vec<String> = query
+            .split('&')
+            .map(|param| {
+                if let Some(eq_pos) = param.find('=') {
+                    let (name, value) = param.split_at(eq_pos);
+                    let value = &value[1..]; // skip '='
+                    let name_lower = name.to_lowercase();
+                    if sensitive_params.iter().any(|s| name_lower.contains(s)) && !value.is_empty() {
+                        format!("{}={}", name, redact_value(value))
+                    } else {
+                        param.to_string()
+                    }
+                } else {
+                    param.to_string()
+                }
+            })
+            .collect();
+        format!("{}{}", base, redacted_params.join("&"))
+    } else {
+        url.to_string()
+    }
+}
+
+/// Redact sensitive patterns in response body for logging
+fn redact_body(body: &str) -> String {
+    let mut result = body.to_string();
+    
+    // Redact JWTs (eyJ... pattern with dots)
+    let jwt_pattern = regex_lite::Regex::new(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+").unwrap();
+    result = jwt_pattern.replace_all(&result, |caps: &regex_lite::Captures| {
+        let jwt = &caps[0];
+        if jwt.len() > 12 {
+            format!("{}...{}", &jwt[..4], &jwt[jwt.len() - 4..])
+        } else {
+            "[JWT]".to_string()
+        }
+    }).to_string();
+    
+    // Redact common API key patterns (sk-xxx, pk-xxx, api_xxx, etc.)
+    let api_key_pattern = regex_lite::Regex::new(r#"["']?(sk-|pk-|api_|key_|secret_)[A-Za-z0-9_-]{12,}["']?"#).unwrap();
+    result = api_key_pattern.replace_all(&result, |caps: &regex_lite::Captures| {
+        let key = caps[0].trim_matches(|c| c == '"' || c == '\'');
+        if key.len() > 12 {
+            format!("{}...{}", &key[..4], &key[key.len() - 4..])
+        } else {
+            "[KEY]".to_string()
+        }
+    }).to_string();
+    
+    // Redact JSON values for sensitive keys
+    let sensitive_keys = [
+        "password", "token", "access_token", "refresh_token", "secret",
+        "api_key", "apiKey", "authorization", "bearer", "credential",
+        "session_token", "sessionToken", "auth_token", "authToken",
+        "user_id", "account_id", "email",
+    ];
+    for key in sensitive_keys {
+        // Match "key": "value" or "key":"value"
+        let pattern = format!(r#""{}":\s*"([^"]+)""#, key);
+        if let Ok(re) = regex_lite::Regex::new(&pattern) {
+            result = re.replace_all(&result, |caps: &regex_lite::Captures| {
+                let value = &caps[1];
+                format!("\"{}\": \"{}\"", key, redact_value(value))
+            }).to_string();
+        }
+    }
+    
+    result
+}
+
 pub fn inject_host_api<'js>(
     ctx: &Ctx<'js>,
     plugin_id: &str,
@@ -33,7 +121,7 @@ pub fn inject_host_api<'js>(
     let host = Object::new(ctx.clone())?;
     inject_log(ctx, &host, plugin_id)?;
     inject_fs(ctx, &host)?;
-    inject_http(ctx, &host)?;
+    inject_http(ctx, &host, plugin_id)?;
     inject_keychain(ctx, &host)?;
     inject_sqlite(ctx, &host)?;
 
@@ -119,8 +207,9 @@ fn inject_fs<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
     Ok(())
 }
 
-fn inject_http<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
+fn inject_http<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquickjs::Result<()> {
     let http_obj = Object::new(ctx.clone())?;
+    let pid = plugin_id.to_string();
 
     http_obj.set(
         "_requestRaw",
@@ -130,6 +219,10 @@ fn inject_http<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> 
                 let req: HttpReqParams = serde_json::from_str(&req_json).map_err(|e| {
                     Exception::throw_message(&ctx_inner, &format!("invalid request: {}", e))
                 })?;
+
+                let method_str = req.method.as_deref().unwrap_or("GET");
+                let redacted_url = redact_url(&req.url);
+                log::info!("[plugin:{}] HTTP {} {}", pid, method_str, redacted_url);
 
                 let mut header_map = reqwest::header::HeaderMap::new();
                 if let Some(headers) = &req.headers {
@@ -189,6 +282,21 @@ fn inject_http<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> 
                 let body = response
                     .text()
                     .map_err(|e| Exception::throw_message(&ctx_inner, &e.to_string()))?;
+
+                let body_preview = if body.len() > 500 {
+                    format!("{}... ({} bytes total)", &body[..500], body.len())
+                } else {
+                    body.clone()
+                };
+                let redacted_body = redact_body(&body_preview);
+                log::info!(
+                    "[plugin:{}] HTTP {} {} -> {} | {}",
+                    pid,
+                    method_str,
+                    redacted_url,
+                    status,
+                    redacted_body
+                );
 
                 let resp = HttpRespParams {
                     status,
@@ -785,5 +893,58 @@ mod tests {
                 .get("writeGenericPassword")
                 .expect("writeGenericPassword");
         });
+    }
+
+    #[test]
+    fn redact_value_shows_first_and_last_four() {
+        assert_eq!(redact_value("sk-1234567890abcdef"), "sk-1...cdef");
+        assert_eq!(redact_value("short"), "[REDACTED]");
+    }
+
+    #[test]
+    fn redact_url_redacts_api_key_param() {
+        let url = "https://api.example.com/v1?api_key=sk-1234567890abcdef&other=value";
+        let redacted = redact_url(url);
+        assert!(redacted.contains("api_key=sk-1...cdef"));
+        assert!(redacted.contains("other=value"));
+    }
+
+    #[test]
+    fn redact_url_preserves_non_sensitive_params() {
+        let url = "https://api.example.com/v1?limit=10&offset=20";
+        assert_eq!(redact_url(url), url);
+    }
+
+    #[test]
+    fn redact_body_redacts_jwt() {
+        let body = r#"{"token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"}"#;
+        let redacted = redact_body(body);
+        // JWT gets redacted to first4...last4 format
+        assert!(!redacted.contains("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"), "full JWT should be redacted, got: {}", redacted);
+    }
+
+    #[test]
+    fn redact_body_redacts_api_keys() {
+        let body = r#"{"key": "sk-1234567890abcdefghij"}"#;
+        let redacted = redact_body(body);
+        assert!(redacted.contains("sk-1...ghij"));
+    }
+
+    #[test]
+    fn redact_body_redacts_json_password_field() {
+        let body = r#"{"password": "supersecretpassword123"}"#;
+        let redacted = redact_body(body);
+        assert!(!redacted.contains("supersecretpassword123"), "password should be redacted, got: {}", redacted);
+    }
+
+    #[test]
+    fn redact_body_redacts_user_id_and_email() {
+        let body = r#"{"user_id": "user-iupzZ7KFykMLrnzpkHSq7wjo", "email": "rob@sunstory.com"}"#;
+        let redacted = redact_body(body);
+        assert!(!redacted.contains("user-iupzZ7KFykMLrnzpkHSq7wjo"), "user_id should be redacted, got: {}", redacted);
+        assert!(!redacted.contains("rob@sunstory.com"), "email should be redacted, got: {}", redacted);
+        // Should show first4...last4
+        assert!(redacted.contains("user...7wjo"), "user_id should show first4...last4, got: {}", redacted);
+        assert!(redacted.contains("rob@....com"), "email should show first4...last4, got: {}", redacted);
     }
 }
