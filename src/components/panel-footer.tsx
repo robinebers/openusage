@@ -76,7 +76,10 @@ export function PanelFooter({
   onShowAbout,
   onCloseAbout,
 }: PanelFooterProps) {
-  const now = useNowTicker({ enabled: Boolean(autoUpdateNextAt) });
+  const now = useNowTicker({
+    enabled: Boolean(autoUpdateNextAt),
+    resetKey: autoUpdateNextAt,
+  });
 
   const countdownLabel = useMemo(() => {
     if (!autoUpdateNextAt) return "Paused";

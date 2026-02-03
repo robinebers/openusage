@@ -4,9 +4,15 @@ type UseNowTickerOptions = {
   enabled?: boolean
   intervalMs?: number
   stopAfterMs?: number | null
+  resetKey?: unknown
 }
 
-export function useNowTicker({ enabled = true, intervalMs = 1000, stopAfterMs = null }: UseNowTickerOptions = {}) {
+export function useNowTicker({
+  enabled = true,
+  intervalMs = 1000,
+  stopAfterMs = null,
+  resetKey,
+}: UseNowTickerOptions = {}) {
   const [now, setNow] = useState(() => Date.now())
 
   useEffect(() => {
@@ -29,7 +35,7 @@ export function useNowTicker({ enabled = true, intervalMs = 1000, stopAfterMs = 
       window.clearInterval(interval)
       window.clearTimeout(timeout)
     }
-  }, [enabled, intervalMs, stopAfterMs])
+  }, [enabled, intervalMs, stopAfterMs, resetKey])
 
   return now
 }
