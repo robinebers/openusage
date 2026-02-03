@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react"
 import type { ReactNode } from "react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { ProviderCard, formatNumber, formatProgressValue, getProgressPercent } from "@/components/provider-card"
+import { ProviderCard, formatNumber } from "@/components/provider-card"
 import { REFRESH_COOLDOWN_MS } from "@/lib/settings"
 
 vi.mock("@/components/ui/tooltip", () => ({
@@ -76,8 +76,9 @@ describe("ProviderCard", () => {
         lines={[
           { type: "text", label: "Label", value: "Value" },
           { type: "badge", label: "Plan", text: "Pro" },
-          { type: "progress", label: "Percent", value: 32.4, max: 100, unit: "percent" },
-          { type: "progress", label: "Dollars", value: 12.34, max: 100, unit: "dollars" },
+          { type: "progress", label: "Percent", used: 32.4, limit: 100, format: { kind: "percent" } },
+          { type: "progress", label: "Dollars", used: 12.34, limit: 100, format: { kind: "dollars" } },
+          { type: "progress", label: "Credits", used: 342, limit: 1000, format: { kind: "count", suffix: "credits" } },
           { type: "unknown", label: "Ignored" } as any,
         ]}
       />
@@ -86,6 +87,7 @@ describe("ProviderCard", () => {
     expect(screen.getByText("Pro")).toBeInTheDocument()
     expect(screen.getByText("32%")).toBeInTheDocument()
     expect(screen.getByText("$12.34")).toBeInTheDocument()
+    expect(screen.getByText("342 credits")).toBeInTheDocument()
   })
 
   it("shows cooldown hint", () => {
@@ -119,31 +121,47 @@ describe("ProviderCard", () => {
     vi.useRealTimers()
   })
 
-  it("renders invalid progress as N/A", () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
-    render(
-      <ProviderCard
-        name="Invalid"
-        lines={[
-          { type: "progress", label: "Bad", value: -1, max: 100 },
-        ]}
-      />
-    )
-    expect(screen.getByText("N/A")).toBeInTheDocument()
-    expect(errorSpy).toHaveBeenCalled()
-    errorSpy.mockRestore()
-  })
-
-  it("formats numbers and progress helpers", () => {
+  it("formats numbers", () => {
     expect(formatNumber(Number.NaN)).toBe("0")
     expect(formatNumber(5)).toBe("5")
     expect(formatNumber(5.129)).toBe("5.13")
-    expect(formatProgressValue(33.2, "percent")).toBe("33%")
-    expect(formatProgressValue(1.234, "dollars")).toBe("$1.23")
-    expect(formatProgressValue(1.234)).toBe("1.23")
-    expect(formatProgressValue(-1)).toBe("N/A")
-    expect(getProgressPercent(5, 10)).toBe(50)
-    expect(getProgressPercent(5, 0)).toBe(0)
+  })
+
+  it("supports displayMode=left for percent (number + bar fill)", () => {
+    render(
+      <ProviderCard
+        name="Left"
+        displayMode="left"
+        lines={[
+          { type: "progress", label: "Session", used: 42, limit: 100, format: { kind: "percent" } },
+        ]}
+      />
+    )
+    expect(screen.getByText("58% left")).toBeInTheDocument()
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "58")
+  })
+
+  it("shows resets secondary text when resetsAt is present", () => {
+    vi.useFakeTimers()
+    const now = new Date("2026-02-02T00:00:00.000Z")
+    vi.setSystemTime(now)
+    render(
+      <ProviderCard
+        name="Resets"
+        lines={[
+          {
+            type: "progress",
+            label: "Monthly",
+            used: 12.34,
+            limit: 100,
+            format: { kind: "dollars" },
+            resetsAt: "2026-02-02T01:05:00.000Z",
+          },
+        ]}
+      />
+    )
+    expect(screen.getByText("Resets in 1h 5m")).toBeInTheDocument()
+    vi.useRealTimers()
   })
 
   it("fires retry from header button", () => {

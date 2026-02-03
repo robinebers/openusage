@@ -1,15 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import {
   DEFAULT_AUTO_UPDATE_INTERVAL,
+  DEFAULT_DISPLAY_MODE,
   DEFAULT_PLUGIN_SETTINGS,
   DEFAULT_THEME_MODE,
   arePluginSettingsEqual,
   getEnabledPluginIds,
   loadAutoUpdateInterval,
+  loadDisplayMode,
   loadPluginSettings,
   loadThemeMode,
   normalizePluginSettings,
   saveAutoUpdateInterval,
+  saveDisplayMode,
   savePluginSettings,
   saveThemeMode,
 } from "@/lib/settings"
@@ -107,5 +110,24 @@ describe("settings", () => {
   it("falls back to default for invalid theme mode", async () => {
     storeState.set("themeMode", "invalid")
     await expect(loadThemeMode()).resolves.toBe(DEFAULT_THEME_MODE)
+  })
+
+  it("loads default display mode when missing", async () => {
+    await expect(loadDisplayMode()).resolves.toBe(DEFAULT_DISPLAY_MODE)
+  })
+
+  it("loads stored display mode", async () => {
+    storeState.set("displayMode", "left")
+    await expect(loadDisplayMode()).resolves.toBe("left")
+  })
+
+  it("saves display mode", async () => {
+    await saveDisplayMode("left")
+    await expect(loadDisplayMode()).resolves.toBe("left")
+  })
+
+  it("falls back to default for invalid display mode", async () => {
+    storeState.set("displayMode", "invalid")
+    await expect(loadDisplayMode()).resolves.toBe(DEFAULT_DISPLAY_MODE)
   })
 })

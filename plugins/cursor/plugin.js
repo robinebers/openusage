@@ -216,18 +216,12 @@
 
     const lines = []
     const pu = usage.planUsage
-    let resetSubtitle = null
-    if (usage.billingCycleEnd) {
-      const resetSec = (usage.billingCycleEnd - Date.now()) / 1000
-      const resetLabel = ctx.fmt.resetIn(resetSec)
-      if (resetLabel) resetSubtitle = "Resets in " + resetLabel
-    }
     lines.push(ctx.line.progress({
       label: "Plan usage",
-      value: ctx.fmt.dollars(pu.totalSpend),
-      max: ctx.fmt.dollars(pu.limit),
-      unit: "dollars",
-      subtitle: resetSubtitle
+      used: ctx.fmt.dollars(pu.totalSpend),
+      limit: ctx.fmt.dollars(pu.limit),
+      format: { kind: "dollars" },
+      resetsAt: ctx.util.toIso(usage.billingCycleEnd),
     }))
 
     if (typeof pu.bonusSpend === "number" && pu.bonusSpend > 0) {
@@ -242,10 +236,9 @@
         const used = limit - remaining
         lines.push(ctx.line.progress({
           label: "On-demand",
-          value: ctx.fmt.dollars(used),
-          max: ctx.fmt.dollars(limit),
-          unit: "dollars",
-          subtitle: "$" + String(ctx.fmt.dollars(limit)) + " limit"
+          used: ctx.fmt.dollars(used),
+          limit: ctx.fmt.dollars(limit),
+          format: { kind: "dollars" },
         }))
       }
     }

@@ -5,6 +5,14 @@ use serde::Serialize;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum ProgressFormat {
+    Percent,
+    Dollars,
+    Count { suffix: String },
+}
+
+#[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum MetricLine {
     Text {
@@ -15,11 +23,12 @@ pub enum MetricLine {
     },
     Progress {
         label: String,
-        value: f64,
-        max: f64,
-        unit: Option<String>,
+        used: f64,
+        limit: f64,
+        format: ProgressFormat,
+        #[serde(rename = "resetsAt")]
+        resets_at: Option<String>,
         color: Option<String>,
-        subtitle: Option<String>,
     },
     Badge {
         label: String,
@@ -156,26 +165,177 @@ fn parse_lines(result: &Object) -> Result<Vec<MetricLine>, String> {
                 out.push(MetricLine::Text { label, value, color, subtitle });
             }
             "progress" => {
-                let mut value = line.get::<_, f64>("value").unwrap_or(0.0);
-                let mut max = line.get::<_, f64>("max").unwrap_or(0.0);
-                if !value.is_finite() || !max.is_finite() {
-                    log::error!(
-                        "invalid progress values at index {} (value={}, max={})",
-                        idx,
-                        value,
-                        max
-                    );
-                    value = -1.0;
-                    max = 0.0;
+                let used_value: Value = match line.get("used") {
+                    Ok(v) => v,
+                    Err(_) => {
+                        out.push(error_line(format!("progress line at index {} missing used", idx)));
+                        continue;
+                    }
+                };
+                let used = match used_value.as_number() {
+                    Some(n) => n,
+                    None => {
+                        out.push(error_line(format!(
+                            "progress line at index {} invalid used (expected number)",
+                            idx
+                        )));
+                        continue;
+                    }
+                };
+
+                let limit_value: Value = match line.get("limit") {
+                    Ok(v) => v,
+                    Err(_) => {
+                        out.push(error_line(format!(
+                            "progress line at index {} missing limit",
+                            idx
+                        )));
+                        continue;
+                    }
+                };
+                let limit = match limit_value.as_number() {
+                    Some(n) => n,
+                    None => {
+                        out.push(error_line(format!(
+                            "progress line at index {} invalid limit (expected number)",
+                            idx
+                        )));
+                        continue;
+                    }
+                };
+
+                if !used.is_finite() || used < 0.0 {
+                    out.push(error_line(format!(
+                        "progress line at index {} invalid used: {}",
+                        idx, used
+                    )));
+                    continue;
                 }
-                let unit = line.get::<_, String>("unit").ok();
+                if !limit.is_finite() || limit <= 0.0 {
+                    out.push(error_line(format!(
+                        "progress line at index {} invalid limit: {}",
+                        idx, limit
+                    )));
+                    continue;
+                }
+
+                let format_obj: Object = match line.get("format") {
+                    Ok(obj) => obj,
+                    Err(_) => {
+                        out.push(error_line(format!(
+                            "progress line at index {} missing format",
+                            idx
+                        )));
+                        continue;
+                    }
+                };
+                let kind_value: Value = match format_obj.get("kind") {
+                    Ok(v) => v,
+                    Err(_) => {
+                        out.push(error_line(format!(
+                            "progress line at index {} missing format.kind",
+                            idx
+                        )));
+                        continue;
+                    }
+                };
+                let kind = match kind_value.as_string() {
+                    Some(s) => s.to_string().unwrap_or_default(),
+                    None => {
+                        out.push(error_line(format!(
+                            "progress line at index {} invalid format.kind (expected string)",
+                            idx
+                        )));
+                        continue;
+                    }
+                };
+                let format = match kind.as_str() {
+                    "percent" => {
+                        if limit != 100.0 {
+                            out.push(error_line(format!(
+                                "progress line at index {}: percent format requires limit=100 (got {})",
+                                idx, limit
+                            )));
+                            continue;
+                        }
+                        ProgressFormat::Percent
+                    }
+                    "dollars" => ProgressFormat::Dollars,
+                    "count" => {
+                        let suffix_value: Value = match format_obj.get("suffix") {
+                            Ok(v) => v,
+                            Err(_) => {
+                                out.push(error_line(format!(
+                                    "progress line at index {}: count format missing suffix",
+                                    idx
+                                )));
+                                continue;
+                            }
+                        };
+                        let suffix = match suffix_value.as_string() {
+                            Some(s) => s.to_string().unwrap_or_default(),
+                            None => {
+                                out.push(error_line(format!(
+                                    "progress line at index {}: count format suffix must be a string",
+                                    idx
+                                )));
+                                continue;
+                            }
+                        };
+                        let suffix = suffix.trim().to_string();
+                        if suffix.is_empty() {
+                            out.push(error_line(format!(
+                                "progress line at index {}: count format suffix must be non-empty",
+                                idx
+                            )));
+                            continue;
+                        }
+                        ProgressFormat::Count { suffix }
+                    }
+                    _ => {
+                        out.push(error_line(format!(
+                            "progress line at index {} invalid format.kind: {}",
+                            idx, kind
+                        )));
+                        continue;
+                    }
+                };
+
+                let resets_at = match line.get::<_, Value>("resetsAt") {
+                    Ok(v) => {
+                        if v.is_null() || v.is_undefined() {
+                            None
+                        } else if let Some(s) = v.as_string() {
+                            let value = s.to_string().unwrap_or_default();
+                            let parsed = time::OffsetDateTime::parse(
+                                &value,
+                                &time::format_description::well_known::Rfc3339,
+                            );
+                            if parsed.is_err() {
+                                log::warn!(
+                                    "invalid resetsAt at index {} (value='{}'), omitting",
+                                    idx,
+                                    value
+                                );
+                                None
+                            } else {
+                                Some(value)
+                            }
+                        } else {
+                            log::warn!("invalid resetsAt at index {} (non-string), omitting", idx);
+                            None
+                        }
+                    }
+                    Err(_) => None,
+                };
+
                 out.push(MetricLine::Progress {
                     label,
-                    value,
-                    max,
-                    unit,
+                    used,
+                    limit,
+                    format,
+                    resets_at,
                     color,
-                    subtitle,
                 });
             }
             "badge" => {
@@ -183,7 +343,10 @@ fn parse_lines(result: &Object) -> Result<Vec<MetricLine>, String> {
                 out.push(MetricLine::Badge { label, text, color, subtitle });
             }
             _ => {
-                return Err(format!("unknown line type: {}", line_type));
+                out.push(error_line(format!(
+                    "unknown line type at index {}: {}",
+                    idx, line_type
+                )));
             }
         }
     }
@@ -229,6 +392,7 @@ fn error_line(message: String) -> MetricLine {
 mod tests {
     use super::*;
     use crate::plugin_engine::manifest::{LoadedPlugin, PluginManifest};
+    use serde_json::Value as JsonValue;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -293,5 +457,22 @@ mod tests {
         );
         let output = run_probe(&plugin, &temp_app_dir("async"), "0.0.0");
         assert_eq!(error_text(output), "boom");
+    }
+
+    #[test]
+    fn progress_resets_at_serializes_as_resets_at_camelcase() {
+        let line = MetricLine::Progress {
+            label: "Session".to_string(),
+            used: 1.0,
+            limit: 100.0,
+            format: ProgressFormat::Percent,
+            resets_at: Some("2099-01-01T00:00:00.000Z".to_string()),
+            color: None,
+        };
+
+        let json: JsonValue = serde_json::to_value(&line).expect("serialize");
+        let obj = json.as_object().expect("object");
+        assert!(obj.get("resetsAt").is_some(), "expected resetsAt key");
+        assert!(obj.get("resets_at").is_none(), "did not expect resets_at key");
     }
 }

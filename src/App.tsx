@@ -18,16 +18,20 @@ import { useAppUpdate } from "@/hooks/use-app-update"
 import {
   arePluginSettingsEqual,
   DEFAULT_AUTO_UPDATE_INTERVAL,
+  DEFAULT_DISPLAY_MODE,
   DEFAULT_THEME_MODE,
   getEnabledPluginIds,
   loadAutoUpdateInterval,
+  loadDisplayMode,
   loadPluginSettings,
   loadThemeMode,
   normalizePluginSettings,
   saveAutoUpdateInterval,
+  saveDisplayMode,
   savePluginSettings,
   saveThemeMode,
   type AutoUpdateIntervalMinutes,
+  type DisplayMode,
   type PluginSettings,
   type ThemeMode,
 } from "@/lib/settings"
@@ -58,6 +62,7 @@ function App() {
   const [autoUpdateNextAt, setAutoUpdateNextAt] = useState<number | null>(null)
   const [autoUpdateResetToken, setAutoUpdateResetToken] = useState(0)
   const [themeMode, setThemeMode] = useState<ThemeMode>(DEFAULT_THEME_MODE)
+  const [displayMode, setDisplayMode] = useState<DisplayMode>(DEFAULT_DISPLAY_MODE)
   const [maxPanelHeightPx, setMaxPanelHeightPx] = useState<number | null>(null)
   const maxPanelHeightPxRef = useRef<number | null>(null)
   const [appVersion, setAppVersion] = useState("...")
@@ -75,9 +80,11 @@ function App() {
   const pluginsMetaRef = useRef(pluginsMeta)
   const pluginSettingsRef = useRef(pluginSettings)
   const pluginStatesRef = useRef(pluginStates)
+  const displayModeRef = useRef(displayMode)
   useEffect(() => { pluginsMetaRef.current = pluginsMeta }, [pluginsMeta])
   useEffect(() => { pluginSettingsRef.current = pluginSettings }, [pluginSettings])
   useEffect(() => { pluginStatesRef.current = pluginStates }, [pluginStates])
+  useEffect(() => { displayModeRef.current = displayMode }, [displayMode])
 
   // Fetch app version on mount
   useEffect(() => {
@@ -107,6 +114,7 @@ function App() {
         pluginSettings: pluginSettingsRef.current,
         pluginStates: pluginStatesRef.current,
         maxBars: 4,
+        displayMode: displayModeRef.current,
       })
 
       // 0 bars: revert to the packaged gauge tray icon.
@@ -413,10 +421,18 @@ function App() {
           console.error("Failed to load theme mode:", error)
         }
 
+        let storedDisplayMode = DEFAULT_DISPLAY_MODE
+        try {
+          storedDisplayMode = await loadDisplayMode()
+        } catch (error) {
+          console.error("Failed to load display mode:", error)
+        }
+
         if (isMounted) {
           setPluginSettings(normalized)
           setAutoUpdateInterval(storedInterval)
           setThemeMode(storedThemeMode)
+          setDisplayMode(storedDisplayMode)
           const enabledIds = getEnabledPluginIds(normalized)
           setLoadingForPlugins(enabledIds)
           try {
@@ -530,6 +546,15 @@ function App() {
     })
   }, [])
 
+  const handleDisplayModeChange = useCallback((mode: DisplayMode) => {
+    setDisplayMode(mode)
+    // Display mode is a direct user-facing toggle; update tray immediately.
+    scheduleTrayIconUpdate("settings", 0)
+    void saveDisplayMode(mode).catch((error) => {
+      console.error("Failed to save display mode:", error)
+    })
+  }, [scheduleTrayIconUpdate])
+
   const handleAutoUpdateIntervalChange = useCallback((value: AutoUpdateIntervalMinutes) => {
     setAutoUpdateInterval(value)
     if (pluginSettings) {
@@ -617,6 +642,7 @@ function App() {
         <OverviewPage
           plugins={displayPlugins}
           onRetryPlugin={handleRetryPlugin}
+          displayMode={displayMode}
         />
       )
     }
@@ -630,6 +656,8 @@ function App() {
           onAutoUpdateIntervalChange={handleAutoUpdateIntervalChange}
           themeMode={themeMode}
           onThemeModeChange={handleThemeModeChange}
+          displayMode={displayMode}
+          onDisplayModeChange={handleDisplayModeChange}
           updateStatus={updateStatus}
           onCheckForUpdates={checkForUpdates}
         />
@@ -639,7 +667,13 @@ function App() {
     const handleRetry = selectedPlugin
       ? () => handleRetryPlugin(selectedPlugin.meta.id)
       : /* v8 ignore next */ undefined
-    return <ProviderDetailPage plugin={selectedPlugin} onRetry={handleRetry} />
+    return (
+      <ProviderDetailPage
+        plugin={selectedPlugin}
+        onRetry={handleRetry}
+        displayMode={displayMode}
+      />
+    )
   }
 
   return (

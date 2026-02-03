@@ -1,5 +1,6 @@
 import type { PluginMeta, PluginOutput } from "@/lib/plugin-types"
 import type { PluginSettings } from "@/lib/settings"
+import type { DisplayMode } from "@/lib/settings"
 
 type PluginState = {
   data: PluginOutput | null
@@ -14,7 +15,7 @@ export type TrayPrimaryBar = {
 
 type ProgressLine = Extract<
   PluginOutput["lines"][number],
-  { type: "progress"; label: string; value: number; max: number }
+  { type: "progress"; label: string; used: number; limit: number }
 >
 
 function isProgressLine(line: PluginOutput["lines"][number]): line is ProgressLine {
@@ -33,8 +34,9 @@ export function getTrayPrimaryBars(args: {
   pluginSettings: PluginSettings | null
   pluginStates: Record<string, PluginState | undefined>
   maxBars?: number
+  displayMode?: DisplayMode
 }): TrayPrimaryBar[] {
-  const { pluginsMeta, pluginSettings, pluginStates, maxBars = 4 } = args
+  const { pluginsMeta, pluginSettings, pluginStates, maxBars = 4, displayMode = "used" } = args
   if (!pluginSettings) return []
 
   const metaById = new Map(pluginsMeta.map((p) => [p.id, p]))
@@ -57,8 +59,12 @@ export function getTrayPrimaryBars(args: {
         (line): line is ProgressLine =>
           isProgressLine(line) && line.label === primaryLabel
       )
-      if (primaryLine && primaryLine.max > 0) {
-        fraction = clamp01(primaryLine.value / primaryLine.max)
+      if (primaryLine && primaryLine.limit > 0) {
+        const shownAmount =
+          displayMode === "used"
+            ? primaryLine.used
+            : primaryLine.limit - primaryLine.used
+        fraction = clamp01(shownAmount / primaryLine.limit)
       }
     }
 

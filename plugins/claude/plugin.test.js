@@ -66,7 +66,7 @@ describe("claude plugin", () => {
     expect(result.lines.find((line) => line.label === "Weekly")).toBeTruthy()
   })
 
-  it("shows fallback subtitle when resets_at is missing", async () => {
+  it("omits resetsAt when resets_at is missing", async () => {
     const ctx = makeCtx()
     ctx.host.fs.readText = () =>
       JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
@@ -82,7 +82,7 @@ describe("claude plugin", () => {
     const result = plugin.probe(ctx)
     const sessionLine = result.lines.find((line) => line.label === "Session")
     expect(sessionLine).toBeTruthy()
-    expect(sessionLine.subtitle).toBe("No active session")
+    expect(sessionLine.resetsAt).toBeUndefined()
   })
 
   it("throws token expired on 401", async () => {
@@ -271,39 +271,44 @@ describe("claude plugin", () => {
     expect(result.lines[0].text).toBe("No usage data")
   })
 
-  it("formats reset windows under an hour", async () => {
+  it("passes resetsAt through as ISO when present", async () => {
     const ctx = makeCtx()
     ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
     ctx.host.fs.exists = () => true
     const now = new Date("2026-02-02T00:00:00.000Z").getTime()
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(now)
+    const fiveHourIso = new Date(now + 30_000).toISOString()
+    const sevenDayIso = new Date(now + 5 * 60_000).toISOString()
     ctx.host.http.request.mockReturnValue({
       status: 200,
       bodyText: JSON.stringify({
-        five_hour: { utilization: 10, resets_at: new Date(now + 30_000).toISOString() },
-        seven_day: { utilization: 20, resets_at: new Date(now + 5 * 60_000).toISOString() },
+        five_hour: { utilization: 10, resets_at: fiveHourIso },
+        seven_day: { utilization: 20, resets_at: sevenDayIso },
       }),
     })
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    expect(result.lines.some((line) => line.subtitle && line.subtitle.includes("<1m"))).toBe(true)
-    expect(result.lines.some((line) => line.subtitle && line.subtitle.includes("5m"))).toBe(true)
+    expect(result.lines.find((line) => line.label === "Session")?.resetsAt).toBe(fiveHourIso)
+    expect(result.lines.find((line) => line.label === "Weekly")?.resetsAt).toBe(sevenDayIso)
     nowSpy.mockRestore()
   })
 
-  it("handles invalid reset timestamps", async () => {
+  it("normalizes resets_at without timezone (microseconds) into ISO for resetsAt", async () => {
     const ctx = makeCtx()
-    ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
+    ctx.host.fs.readText = () =>
+      JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
     ctx.host.fs.exists = () => true
     ctx.host.http.request.mockReturnValue({
       status: 200,
       bodyText: JSON.stringify({
-        seven_day_opus: { utilization: 33, resets_at: "not-a-date" },
+        five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.123456" },
       }),
     })
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    expect(result.lines.find((line) => line.label === "Opus")).toBeTruthy()
+    expect(result.lines.find((line) => line.label === "Session")?.resetsAt).toBe(
+      "2099-01-01T00:00:00.123Z"
+    )
   })
 
   it("refreshes token when expired and persists updated credentials", async () => {

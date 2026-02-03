@@ -1,6 +1,19 @@
+export type ProgressFormat =
+  | { kind: "percent" }
+  | { kind: "dollars" }
+  | { kind: "count"; suffix: string }
+
 export type MetricLine =
   | { type: "text"; label: string; value: string; color?: string; subtitle?: string }
-  | { type: "progress"; label: string; value: number; max: number; unit?: "percent" | "dollars"; color?: string; subtitle?: string }
+  | {
+      type: "progress"
+      label: string
+      used: number
+      limit: number
+      format: ProgressFormat
+      resetsAt?: string
+      color?: string
+    }
   | { type: "badge"; label: string; text: string; color?: string; subtitle?: string }
 
 export type ManifestLine = {

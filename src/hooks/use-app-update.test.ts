@@ -46,6 +46,34 @@ describe("useAppUpdate", () => {
     expect(result.current.updateStatus).toEqual({ status: "checking" })
   })
 
+  it("clears a pending up-to-date timeout on re-check", async () => {
+    vi.useFakeTimers()
+    const clearTimeoutSpy = vi.spyOn(window, "clearTimeout")
+
+    // First check: no update -> schedules up-to-date timeout.
+    checkMock.mockResolvedValueOnce(null)
+    // Second check: hang so we can observe "checking".
+    let resolveSecond: ((value: any) => void) | null = null
+    checkMock.mockReturnValueOnce(new Promise((resolve) => { resolveSecond = resolve }))
+
+    const { result } = renderHook(() => useAppUpdate())
+    await act(() => Promise.resolve())
+    await act(() => Promise.resolve())
+    expect(result.current.updateStatus).toEqual({ status: "up-to-date" })
+
+    act(() => { void result.current.checkForUpdates() })
+    await act(() => Promise.resolve())
+    expect(clearTimeoutSpy).toHaveBeenCalled()
+    expect(result.current.updateStatus).toEqual({ status: "checking" })
+
+    // Cleanup: resolve second check so the hook can settle.
+    resolveSecond?.(null)
+    await act(() => Promise.resolve())
+
+    clearTimeoutSpy.mockRestore()
+    vi.useRealTimers()
+  })
+
   it("auto-downloads when update is available and transitions to ready", async () => {
     const downloadMock = vi.fn(async (onEvent: (event: any) => void) => {
       onEvent({ event: "Started", data: { contentLength: 1000 } })
@@ -63,11 +91,34 @@ describe("useAppUpdate", () => {
     expect(result.current.updateStatus).toEqual({ status: "ready" })
   })
 
-  it("stays idle when check returns null", async () => {
+  it("does not check again when already ready", async () => {
+    const downloadMock = vi.fn(async (onEvent: (event: any) => void) => {
+      onEvent({ event: "Finished", data: {} })
+    })
+    checkMock.mockResolvedValue({ version: "1.0.0", download: downloadMock, install: vi.fn() })
+
+    const { result } = renderHook(() => useAppUpdate())
+    await act(() => Promise.resolve())
+    await act(() => Promise.resolve())
+    expect(result.current.updateStatus.status).toBe("ready")
+
+    checkMock.mockClear()
+    await act(() => result.current.checkForUpdates())
+    expect(checkMock).not.toHaveBeenCalled()
+  })
+
+  it("shows up-to-date then returns to idle when check returns null", async () => {
+    vi.useFakeTimers()
     checkMock.mockResolvedValue(null)
     const { result } = renderHook(() => useAppUpdate())
     await act(() => Promise.resolve())
+    await act(() => Promise.resolve())
+    expect(result.current.updateStatus).toEqual({ status: "up-to-date" })
+    await act(async () => {
+      vi.advanceTimersByTime(3000)
+    })
     expect(result.current.updateStatus).toEqual({ status: "idle" })
+    vi.useRealTimers()
   })
 
   it("transitions to error when check throws", async () => {
@@ -153,13 +204,37 @@ describe("useAppUpdate", () => {
   })
 
   it("does not trigger install when not in ready state", async () => {
+    vi.useFakeTimers()
     checkMock.mockResolvedValue(null)
     const { result } = renderHook(() => useAppUpdate())
     await act(() => Promise.resolve())
+    await act(() => Promise.resolve())
 
     await act(() => result.current.triggerInstall())
-    // Still idle, install ignored
-    expect(result.current.updateStatus).toEqual({ status: "idle" })
+    // Install ignored (we're not ready)
+    expect(result.current.updateStatus).toEqual({ status: "up-to-date" })
+    vi.useRealTimers()
+  })
+
+  it("does not trigger install while downloading", async () => {
+    let resolveDownload: (() => void) | null = null
+    const installMock = vi.fn().mockResolvedValue(undefined)
+    const downloadMock = vi.fn((onEvent: (event: any) => void) => {
+      onEvent({ event: "Started", data: { contentLength: 100 } })
+      return new Promise<void>((resolve) => { resolveDownload = resolve })
+    })
+    checkMock.mockResolvedValue({ version: "1.0.0", download: downloadMock, install: installMock })
+
+    const { result } = renderHook(() => useAppUpdate())
+    await act(() => Promise.resolve())
+    await act(() => Promise.resolve())
+    expect(result.current.updateStatus.status).toBe("downloading")
+
+    await act(() => result.current.triggerInstall())
+    expect(installMock).not.toHaveBeenCalled()
+
+    // Cleanup: resolve download
+    await act(async () => { resolveDownload?.() })
   })
 
   it("prevents concurrent install attempts", async () => {

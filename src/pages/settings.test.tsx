@@ -51,6 +51,8 @@ const defaultProps = {
   onAutoUpdateIntervalChange: vi.fn(),
   themeMode: "system" as const,
   onThemeModeChange: vi.fn(),
+  displayMode: "used" as const,
+  onDisplayModeChange: vi.fn(),
   updateStatus: { status: "idle" } as const,
   onCheckForUpdates: vi.fn(),
 }
@@ -142,5 +144,17 @@ describe("SettingsPage", () => {
     )
     await userEvent.click(screen.getByText("Dark"))
     expect(onThemeModeChange).toHaveBeenCalledWith("dark")
+  })
+
+  it("updates display mode", async () => {
+    const onDisplayModeChange = vi.fn()
+    render(
+      <SettingsPage
+        {...defaultProps}
+        onDisplayModeChange={onDisplayModeChange}
+      />
+    )
+    await userEvent.click(screen.getByRole("radio", { name: "Left" }))
+    expect(onDisplayModeChange).toHaveBeenCalledWith("left")
   })
 })

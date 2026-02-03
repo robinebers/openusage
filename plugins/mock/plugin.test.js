@@ -63,13 +63,22 @@ describe("mock plugin", () => {
     const plugin = await loadPlugin()
     const ctx = createCtx()
 
-    setConfig(ctx, { pinned: true, mode: "progress_max_na" })
+    setConfig(ctx, { pinned: true, mode: "progress_missing_format" })
     expect(plugin.probe(ctx).lines.find((line) => line.label === "Case")).toBeTruthy()
 
-    setConfig(ctx, { pinned: true, mode: "progress_value_string" })
+    setConfig(ctx, { pinned: true, mode: "progress_used_negative" })
     expect(plugin.probe(ctx).lines.find((line) => line.label === "Case")).toBeTruthy()
 
-    setConfig(ctx, { pinned: true, mode: "progress_value_nan" })
+    setConfig(ctx, { pinned: true, mode: "progress_limit_zero" })
+    expect(plugin.probe(ctx).lines.find((line) => line.label === "Case")).toBeTruthy()
+
+    setConfig(ctx, { pinned: true, mode: "progress_percent_limit_not_100" })
+    expect(plugin.probe(ctx).lines.find((line) => line.label === "Case")).toBeTruthy()
+
+    setConfig(ctx, { pinned: true, mode: "progress_count_missing_suffix" })
+    expect(plugin.probe(ctx).lines.find((line) => line.label === "Case")).toBeTruthy()
+
+    setConfig(ctx, { pinned: true, mode: "progress_resetsAt_invalid" })
     expect(plugin.probe(ctx).lines.find((line) => line.label === "Case")).toBeTruthy()
 
     setConfig(ctx, { pinned: true, mode: "badge_text_number" })

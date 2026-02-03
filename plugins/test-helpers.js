@@ -5,6 +5,12 @@ export const makeCtx = () => {
 
   const ctx = {
     nowIso: "2026-02-02T00:00:00.000Z",
+    app: {
+      version: "0.0.0",
+      platform: "darwin",
+      appDataDir: "/tmp/openusage-test",
+      pluginDataDir: "/tmp/openusage-test/plugin",
+    },
     host: {
       fs: {
         exists: (path) => files.has(path),
@@ -37,10 +43,9 @@ export const makeCtx = () => {
       return line
     },
     progress: (opts) => {
-      const line = { type: "progress", label: opts.label, value: opts.value, max: opts.max }
-      if (opts.unit) line.unit = opts.unit
+      const line = { type: "progress", label: opts.label, used: opts.used, limit: opts.limit, format: opts.format }
+      if (opts.resetsAt) line.resetsAt = opts.resetsAt
       if (opts.color) line.color = opts.color
-      if (opts.subtitle) line.subtitle = opts.subtitle
       return line
     },
     badge: (opts) => {
@@ -186,6 +191,90 @@ export const makeCtx = () => {
       }
       return null
     },
+    toIso: (value) => {
+      if (value === null || value === undefined) return null
+
+      if (typeof value === "string") {
+        let s = String(value).trim()
+        if (!s) return null
+
+        // Common variants
+        if (s.includes(" ") && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(s)) {
+          s = s.replace(" ", "T")
+        }
+        if (s.endsWith(" UTC")) {
+          s = s.slice(0, -4) + "Z"
+        }
+
+        // Numeric strings: treat as seconds/ms.
+        if (/^-?\d+(\.\d+)?$/.test(s)) {
+          const n = Number(s)
+          if (!Number.isFinite(n)) return null
+          const msNum = Math.abs(n) < 1e10 ? n * 1000 : n
+          const dn = new Date(msNum)
+          const tn = dn.getTime()
+          if (!Number.isFinite(tn)) return null
+          return dn.toISOString()
+        }
+
+        // Normalize timezone offsets without colon: "+0000" -> "+00:00"
+        if (/[+-]\d{4}$/.test(s)) {
+          s = s.replace(/([+-]\d{2})(\d{2})$/, "$1:$2")
+        }
+
+        // Normalize RFC3339 with >3 fractional digits to milliseconds.
+        const m = s.match(
+          /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(\.\d+)?(Z|[+-]\d{2}:\d{2})$/
+        )
+        if (m) {
+          const head = m[1]
+          let frac = m[2] || ""
+          const tz = m[3]
+          if (frac) {
+            let digits = frac.slice(1)
+            if (digits.length > 3) digits = digits.slice(0, 3)
+            while (digits.length < 3) digits += "0"
+            frac = "." + digits
+          }
+          s = head + frac + tz
+        } else {
+          // ISO-like but missing timezone: assume UTC.
+          const mNoTz = s.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(\.\d+)?$/)
+          if (mNoTz) {
+            const head = mNoTz[1]
+            let frac = mNoTz[2] || ""
+            if (frac) {
+              let digits = frac.slice(1)
+              if (digits.length > 3) digits = digits.slice(0, 3)
+              while (digits.length < 3) digits += "0"
+              frac = "." + digits
+            }
+            s = head + frac + "Z"
+          }
+        }
+
+        const parsed = Date.parse(s)
+        if (!Number.isFinite(parsed)) return null
+        return new Date(parsed).toISOString()
+      }
+
+      if (typeof value === "number") {
+        if (!Number.isFinite(value)) return null
+        const ms = Math.abs(value) < 1e10 ? value * 1000 : value
+        const d = new Date(ms)
+        const t = d.getTime()
+        if (!Number.isFinite(t)) return null
+        return d.toISOString()
+      }
+
+      if (value instanceof Date) {
+        const t = value.getTime()
+        if (!Number.isFinite(t)) return null
+        return value.toISOString()
+      }
+
+      return null
+    },
     needsRefreshByExpiry: (opts) => {
       if (!opts) return true
       if (opts.expiresAtMs === null || opts.expiresAtMs === undefined) return true
@@ -200,4 +289,22 @@ export const makeCtx = () => {
   }
 
   return ctx
+}
+
+function mergeInto(target, source) {
+  if (!source || typeof source !== "object") return target
+  for (const [key, value] of Object.entries(source)) {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      if (!target[key] || typeof target[key] !== "object") target[key] = {}
+      mergeInto(target[key], value)
+    } else {
+      target[key] = value
+    }
+  }
+  return target
+}
+
+export const makePluginTestContext = (overrides = {}) => {
+  const ctx = makeCtx()
+  return mergeInto(ctx, overrides)
 }

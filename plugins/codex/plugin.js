@@ -104,13 +104,13 @@
     return Number.isFinite(n) ? n : null
   }
 
-  function getResetIn(ctx, nowSec, window) {
+  function getResetsAtIso(ctx, nowSec, window) {
     if (!window) return null
     if (typeof window.reset_at === "number") {
-      return ctx.fmt.resetIn(window.reset_at - nowSec)
+      return ctx.util.toIso(window.reset_at)
     }
     if (typeof window.reset_after_seconds === "number") {
-      return ctx.fmt.resetIn(window.reset_after_seconds)
+      return ctx.util.toIso(nowSec + window.reset_after_seconds)
     }
     return null
   }
@@ -182,45 +182,41 @@
       const headerSecondary = readPercent(resp.headers["x-codex-secondary-used-percent"])
 
       if (headerPrimary !== null) {
-        const resetIn = getResetIn(ctx, nowSec, primaryWindow)
         lines.push(ctx.line.progress({
           label: "Session",
-          value: headerPrimary,
-          max: 100,
-          unit: "percent",
-          subtitle: resetIn ? "Resets in " + resetIn : "No active session"
+          used: headerPrimary,
+          limit: 100,
+          format: { kind: "percent" },
+          resetsAt: getResetsAtIso(ctx, nowSec, primaryWindow),
         }))
       }
       if (headerSecondary !== null) {
-        const resetIn = getResetIn(ctx, nowSec, secondaryWindow)
         lines.push(ctx.line.progress({
           label: "Weekly",
-          value: headerSecondary,
-          max: 100,
-          unit: "percent",
-          subtitle: resetIn ? "Resets in " + resetIn : null
+          used: headerSecondary,
+          limit: 100,
+          format: { kind: "percent" },
+          resetsAt: getResetsAtIso(ctx, nowSec, secondaryWindow),
         }))
       }
 
       if (lines.length === 0 && data.rate_limit) {
         if (data.rate_limit.primary_window && typeof data.rate_limit.primary_window.used_percent === "number") {
-          const resetIn = getResetIn(ctx, nowSec, primaryWindow)
           lines.push(ctx.line.progress({
             label: "Session",
-            value: data.rate_limit.primary_window.used_percent,
-            max: 100,
-            unit: "percent",
-            subtitle: resetIn ? "Resets in " + resetIn : "No active session"
+            used: data.rate_limit.primary_window.used_percent,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: getResetsAtIso(ctx, nowSec, primaryWindow),
           }))
         }
         if (data.rate_limit.secondary_window && typeof data.rate_limit.secondary_window.used_percent === "number") {
-          const resetIn = getResetIn(ctx, nowSec, secondaryWindow)
           lines.push(ctx.line.progress({
             label: "Weekly",
-            value: data.rate_limit.secondary_window.used_percent,
-            max: 100,
-            unit: "percent",
-            subtitle: resetIn ? "Resets in " + resetIn : null
+            used: data.rate_limit.secondary_window.used_percent,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: getResetsAtIso(ctx, nowSec, secondaryWindow),
           }))
         }
       }
@@ -228,13 +224,12 @@
       if (reviewWindow) {
         const used = reviewWindow.used_percent
         if (typeof used === "number") {
-          const resetIn = getResetIn(ctx, nowSec, reviewWindow)
           lines.push(ctx.line.progress({
             label: "Reviews",
-            value: used,
-            max: 100,
-            unit: "percent",
-            subtitle: resetIn ? "Resets in " + resetIn : null
+            used: used,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: getResetsAtIso(ctx, nowSec, reviewWindow),
           }))
         }
       }
@@ -243,9 +238,19 @@
       const creditsHeader = readNumber(creditsBalance)
       const creditsData = data.credits ? readNumber(data.credits.balance) : null
       if (creditsHeader !== null) {
-        lines.push(ctx.line.progress({ label: "Credits", value: creditsHeader, max: 1000, subtitle: "1,000 credits limit" }))
+        lines.push(ctx.line.progress({
+          label: "Credits",
+          used: creditsHeader,
+          limit: 1000,
+          format: { kind: "count", suffix: "credits" },
+        }))
       } else if (creditsData !== null) {
-        lines.push(ctx.line.progress({ label: "Credits", value: creditsData, max: 1000, subtitle: "1,000 credits limit" }))
+        lines.push(ctx.line.progress({
+          label: "Credits",
+          used: creditsData,
+          limit: 1000,
+          format: { kind: "count", suffix: "credits" },
+        }))
       }
 
       let plan = null

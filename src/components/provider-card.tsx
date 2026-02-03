@@ -8,7 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { SkeletonLines } from "@/components/skeleton-lines"
 import { PluginError } from "@/components/plugin-error"
 import { useNowTicker } from "@/hooks/use-now-ticker"
-import { REFRESH_COOLDOWN_MS } from "@/lib/settings"
+import { REFRESH_COOLDOWN_MS, type DisplayMode } from "@/lib/settings"
 import type { ManifestLine, MetricLine } from "@/lib/plugin-types"
 
 interface ProviderCardProps {
@@ -22,6 +22,7 @@ interface ProviderCardProps {
   lastManualRefreshAt?: number | null
   onRetry?: () => void
   scopeFilter?: "overview" | "all"
+  displayMode?: DisplayMode
 }
 
 export function formatNumber(value: number) {
@@ -30,23 +31,36 @@ export function formatNumber(value: number) {
   return value.toFixed(2)
 }
 
-export function formatProgressValue(value: number, unit?: "percent" | "dollars") {
-  if (!Number.isFinite(value) || value < 0) {
-    console.error("Invalid progress value:", value)
-    return "N/A"
-  }
-  if (unit === "percent") {
-    return `${Math.round(value)}%`
-  }
-  if (unit === "dollars") {
-    return `$${formatNumber(value)}`
-  }
-  return formatNumber(value)
+function clamp01(value: number) {
+  if (!Number.isFinite(value)) return 0
+  if (value < 0) return 0
+  if (value > 1) return 1
+  return value
 }
 
-export function getProgressPercent(value: number, max: number) {
-  if (!Number.isFinite(value) || !Number.isFinite(max) || max <= 0) return 0
-  return Math.min(100, Math.max(0, (value / max) * 100))
+function formatCount(value: number) {
+  if (!Number.isFinite(value)) return "0"
+  const maximumFractionDigits = Number.isInteger(value) ? 0 : 2
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits }).format(value)
+}
+
+function formatResetIn(nowMs: number, resetsAtIso: string): string | null {
+  const resetsAtMs = Date.parse(resetsAtIso)
+  if (!Number.isFinite(resetsAtMs)) return null
+  const deltaMs = resetsAtMs - nowMs
+  if (deltaMs <= 0) return "Resets now"
+
+  const totalSeconds = Math.floor(deltaMs / 1000)
+  const totalMinutes = Math.floor(totalSeconds / 60)
+  const totalHours = Math.floor(totalMinutes / 60)
+  const days = Math.floor(totalHours / 24)
+  const hours = totalHours % 24
+  const minutes = totalMinutes % 60
+
+  if (days > 0) return `Resets in ${days}d ${hours}h`
+  if (totalHours > 0) return `Resets in ${totalHours}h ${minutes}m`
+  if (totalMinutes > 0) return `Resets in ${totalMinutes}m`
+  return "Resets in <1m"
 }
 
 export function ProviderCard({
@@ -60,17 +74,13 @@ export function ProviderCard({
   lastManualRefreshAt,
   onRetry,
   scopeFilter = "all",
+  displayMode = "used",
 }: ProviderCardProps) {
   const cooldownRemainingMs = useMemo(() => {
     if (!lastManualRefreshAt) return 0
     const remaining = REFRESH_COOLDOWN_MS - (Date.now() - lastManualRefreshAt)
     return remaining > 0 ? remaining : 0
   }, [lastManualRefreshAt])
-
-  const now = useNowTicker({
-    enabled: cooldownRemainingMs > 0,
-    stopAfterMs: cooldownRemainingMs,
-  })
 
   // Filter lines based on scope - match by label since runtime lines can differ from manifest
   const overviewLabels = new Set(
@@ -85,7 +95,19 @@ export function ProviderCard({
     ? lines
     : lines.filter(line => overviewLabels.has(line.label))
 
-  const inCooldown = lastManualRefreshAt ? now - lastManualRefreshAt < REFRESH_COOLDOWN_MS : false
+  const hasResetCountdown = filteredLines.some(
+    (line) => line.type === "progress" && Boolean(line.resetsAt)
+  )
+
+  const now = useNowTicker({
+    enabled: cooldownRemainingMs > 0 || hasResetCountdown,
+    intervalMs: cooldownRemainingMs > 0 ? 1000 : 30_000,
+    stopAfterMs: cooldownRemainingMs > 0 && !hasResetCountdown ? cooldownRemainingMs : null,
+  })
+
+  const inCooldown = lastManualRefreshAt
+    ? now - lastManualRefreshAt < REFRESH_COOLDOWN_MS
+    : false
 
   // Format remaining cooldown time as "Xm Ys"
   const formatRemainingTime = () => {
@@ -172,7 +194,12 @@ export function ProviderCard({
         {!loading && !error && (
           <div className="space-y-4">
             {filteredLines.map((line, index) => (
-              <MetricLineRenderer key={`${line.label}-${index}`} line={line} />
+              <MetricLineRenderer
+                key={`${line.label}-${index}`}
+                line={line}
+                displayMode={displayMode}
+                now={now}
+              />
             ))}
           </div>
         )}
@@ -182,7 +209,15 @@ export function ProviderCard({
   )
 }
 
-function MetricLineRenderer({ line }: { line: MetricLine }) {
+function MetricLineRenderer({
+  line,
+  displayMode,
+  now,
+}: {
+  line: MetricLine
+  displayMode: DisplayMode
+  now: number
+}) {
   if (line.type === "text") {
     return (
       <div>
@@ -229,7 +264,26 @@ function MetricLineRenderer({ line }: { line: MetricLine }) {
   }
 
   if (line.type === "progress") {
-    const percent = getProgressPercent(line.value, line.max)
+    const shownAmount = displayMode === "used" ? line.used : line.limit - line.used
+    const percent = Math.round(clamp01(shownAmount / line.limit) * 10000) / 100
+    const leftSuffix = displayMode === "left" ? " left" : ""
+
+    const primaryText =
+      line.format.kind === "percent"
+        ? `${Math.round(shownAmount)}%${leftSuffix}`
+        : line.format.kind === "dollars"
+          ? `$${formatNumber(shownAmount)}${leftSuffix}`
+          : `${formatCount(shownAmount)} ${line.format.suffix}${leftSuffix}`
+
+    const secondaryText =
+      line.resetsAt
+        ? formatResetIn(now, line.resetsAt)
+        : line.format.kind === "percent"
+          ? `${line.limit}% cap`
+          : line.format.kind === "dollars"
+            ? `$${formatNumber(line.limit)} limit`
+            : `${formatCount(line.limit)} ${line.format.suffix}`
+
     return (
       <div>
         <div className="text-sm font-medium mb-1.5">{line.label}</div>
@@ -239,10 +293,10 @@ function MetricLineRenderer({ line }: { line: MetricLine }) {
         />
         <div className="flex justify-between items-center mt-1.5">
           <span className="text-xs text-muted-foreground tabular-nums">
-            {formatProgressValue(line.value, line.unit)}
+            {primaryText}
           </span>
-          {line.subtitle && (
-            <span className="text-xs text-muted-foreground">{line.subtitle}</span>
+          {secondaryText && (
+            <span className="text-xs text-muted-foreground">{secondaryText}</span>
           )}
         </div>
       </div>

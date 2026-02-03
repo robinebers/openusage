@@ -1,12 +1,14 @@
 import { ProviderCard } from "@/components/provider-card"
 import type { PluginDisplayState } from "@/lib/plugin-types"
+import type { DisplayMode } from "@/lib/settings"
 
 interface OverviewPageProps {
   plugins: PluginDisplayState[]
   onRetryPlugin?: (pluginId: string) => void
+  displayMode?: DisplayMode
 }
 
-export function OverviewPage({ plugins, onRetryPlugin }: OverviewPageProps) {
+export function OverviewPage({ plugins, onRetryPlugin, displayMode = "used" }: OverviewPageProps) {
   if (plugins.length === 0) {
     return (
       <div className="text-center text-muted-foreground py-8">
@@ -30,6 +32,7 @@ export function OverviewPage({ plugins, onRetryPlugin }: OverviewPageProps) {
           lastManualRefreshAt={plugin.lastManualRefreshAt}
           onRetry={onRetryPlugin ? () => onRetryPlugin(plugin.meta.id) : undefined}
           scopeFilter="overview"
+          displayMode={displayMode}
         />
       ))}
     </div>

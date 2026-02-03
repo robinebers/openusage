@@ -20,8 +20,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import {
   AUTO_UPDATE_OPTIONS,
+  DISPLAY_MODE_OPTIONS,
   THEME_OPTIONS,
   type AutoUpdateIntervalMinutes,
+  type DisplayMode,
   type ThemeMode,
 } from "@/lib/settings";
 import type { UpdateStatus } from "@/hooks/use-app-update";
@@ -99,6 +101,8 @@ interface SettingsPageProps {
   onAutoUpdateIntervalChange: (value: AutoUpdateIntervalMinutes) => void;
   themeMode: ThemeMode;
   onThemeModeChange: (value: ThemeMode) => void;
+  displayMode: DisplayMode;
+  onDisplayModeChange: (value: DisplayMode) => void;
   updateStatus: UpdateStatus;
   onCheckForUpdates: () => void;
 }
@@ -111,6 +115,8 @@ export function SettingsPage({
   onAutoUpdateIntervalChange,
   themeMode,
   onThemeModeChange,
+  displayMode,
+  onDisplayModeChange,
   updateStatus,
   onCheckForUpdates,
 }: SettingsPageProps) {
@@ -154,6 +160,33 @@ export function SettingsPage({
                   size="sm"
                   className="flex-1"
                   onClick={() => onThemeModeChange(option.value)}
+                >
+                  {option.label}
+                </Button>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+      <section>
+        <h3 className="text-lg font-semibold mb-1">Usage Display</h3>
+        <p className="text-sm text-foreground mb-2">
+          Show how much was used or is left
+        </p>
+        <div className="bg-muted/50 rounded-lg p-1">
+          <div className="flex gap-1" role="radiogroup" aria-label="Usage display mode">
+            {DISPLAY_MODE_OPTIONS.map((option) => {
+              const isActive = option.value === displayMode;
+              return (
+                <Button
+                  key={option.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={isActive}
+                  variant={isActive ? "default" : "outline"}
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => onDisplayModeChange(option.value)}
                 >
                   {option.label}
                 </Button>

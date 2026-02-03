@@ -65,7 +65,15 @@ describe("getTrayPrimaryBars", () => {
             providerId: "a",
             displayName: "A",
             iconUrl: "",
-            lines: [{ type: "progress", label: "Plan usage", value: 150, max: 100 }],
+            lines: [
+              {
+                type: "progress",
+                label: "Plan usage",
+                used: 150,
+                limit: 100,
+                format: { kind: "dollars" },
+              },
+            ],
           },
           loading: false,
           error: null,
@@ -76,7 +84,7 @@ describe("getTrayPrimaryBars", () => {
     expect(bars).toEqual([{ id: "a", fraction: 1 }])
   })
 
-  it("does not compute fraction when max is 0", () => {
+  it("does not compute fraction when limit is 0", () => {
     const bars = getTrayPrimaryBars({
       pluginsMeta: [
         {
@@ -94,7 +102,15 @@ describe("getTrayPrimaryBars", () => {
             providerId: "a",
             displayName: "A",
             iconUrl: "",
-            lines: [{ type: "progress", label: "Plan usage", value: 10, max: 0 }],
+            lines: [
+              {
+                type: "progress",
+                label: "Plan usage",
+                used: 10,
+                limit: 0,
+                format: { kind: "percent" },
+              },
+            ],
           },
           loading: false,
           error: null,
@@ -102,6 +118,43 @@ describe("getTrayPrimaryBars", () => {
       },
     })
     expect(bars).toEqual([{ id: "a", fraction: undefined }])
+  })
+
+  it("respects displayMode=left", () => {
+    const bars = getTrayPrimaryBars({
+      displayMode: "left",
+      pluginsMeta: [
+        {
+          id: "a",
+          name: "A",
+          iconUrl: "",
+          primaryProgressLabel: "Session",
+          lines: [],
+        },
+      ],
+      pluginSettings: { order: ["a"], disabled: [] },
+      pluginStates: {
+        a: {
+          data: {
+            providerId: "a",
+            displayName: "A",
+            iconUrl: "",
+            lines: [
+              {
+                type: "progress",
+                label: "Session",
+                used: 25,
+                limit: 100,
+                format: { kind: "percent" },
+              },
+            ],
+          },
+          loading: false,
+          error: null,
+        },
+      },
+    })
+    expect(bars).toEqual([{ id: "a", fraction: 0.75 }])
   })
 })
 

@@ -14,10 +14,9 @@
   }
 
   function lineProgress(opts) {
-    const line = { type: "progress", label: opts.label, value: opts.value, max: opts.max }
-    if (opts.unit) line.unit = opts.unit
+    const line = { type: "progress", label: opts.label, used: opts.used, limit: opts.limit, format: opts.format }
+    if (opts.resetsAt) line.resetsAt = opts.resetsAt
     if (opts.color) line.color = opts.color
-    if (opts.subtitle) line.subtitle = opts.subtitle
     return line
   }
 
@@ -87,9 +86,12 @@
       "ok",
 
       // Subtle API misuse that doesn't crash but yields wrong UI
-      "progress_max_na",
-      "progress_value_string",
-      "progress_value_nan",
+      "progress_missing_format",
+      "progress_used_negative",
+      "progress_limit_zero",
+      "progress_percent_limit_not_100",
+      "progress_count_missing_suffix",
+      "progress_resetsAt_invalid",
       "badge_text_number",
 
       // Hard schema issues (host returns a single Error badge)
@@ -147,8 +149,8 @@
         lines: [
           ...hintLines,
           effectiveMode === "chaos" ? lineBadge({ label: "Case", text: "ok", color: "#000000" }) : null,
-          lineProgress({ label: "Percent", value: 42, max: 100, unit: "percent", color: "#22c55e" }),
-          lineProgress({ label: "Dollars", value: 12.34, max: 100, unit: "dollars", color: "#3b82f6" }),
+          lineProgress({ label: "Percent", used: 42, limit: 100, format: { kind: "percent" }, color: "#22c55e" }),
+          lineProgress({ label: "Dollars", used: 12.34, limit: 100, format: { kind: "dollars" }, color: "#3b82f6" }),
           lineText({ label: "Now", value: ctx.nowIso }),
         ].filter(Boolean),
       }
@@ -216,41 +218,81 @@
       }
     }
 
-    if (mode === "progress_max_na") {
-      // Common plugin bug: max is not a number (e.g. "N/A"). Host coerces to 0.0.
-      // UI will show "42%" but bar stays empty because max <= 0.
+    if (mode === "progress_missing_format") {
+      // v2 validation: missing format -> error badge line
       return {
         plan: plan,
         lines: [
           ...hintLines,
-          lineBadge({ label: "Case", text: "progress.max = \"N/A\" (string)", color: "#000000" }),
-          { type: "progress", label: "Percent", value: 42, max: "N/A", unit: "percent", color: "#ef4444" },
+          lineBadge({ label: "Case", text: "progress.format missing", color: "#000000" }),
+          { type: "progress", label: "Percent", used: 42, limit: 100, color: "#ef4444" },
         ],
       }
     }
 
-    if (mode === "progress_value_string") {
-      // Common plugin bug: value is a string. Host coerces to 0.0.
-      // UI will show 0% even though the plugin tried to say "42".
+    if (mode === "progress_used_negative") {
+      // v2 validation: used must be >= 0
       return {
         plan: plan,
         lines: [
           ...hintLines,
-          lineBadge({ label: "Case", text: "progress.value = \"42\" (string)", color: "#000000" }),
-          { type: "progress", label: "Percent", value: "42", max: 100, unit: "percent", color: "#ef4444" },
+          lineBadge({ label: "Case", text: "progress.used = -1", color: "#000000" }),
+          lineProgress({ label: "Percent", used: -1, limit: 100, format: { kind: "percent" }, color: "#ef4444" }),
         ],
       }
     }
 
-    if (mode === "progress_value_nan") {
-      // Common plugin bug: value is NaN. Host detects non-finite -> value=-1, max=0.
-      // UI shows N/A.
+    if (mode === "progress_limit_zero") {
+      // v2 validation: limit must be > 0
       return {
         plan: plan,
         lines: [
           ...hintLines,
-          lineBadge({ label: "Case", text: "progress.value = NaN", color: "#000000" }),
-          { type: "progress", label: "Percent", value: 0 / 0, max: 100, unit: "percent", color: "#ef4444" },
+          lineBadge({ label: "Case", text: "progress.limit = 0", color: "#000000" }),
+          lineProgress({ label: "Percent", used: 1, limit: 0, format: { kind: "percent" }, color: "#ef4444" }),
+        ],
+      }
+    }
+
+    if (mode === "progress_percent_limit_not_100") {
+      // v2 validation: percent requires limit=100
+      return {
+        plan: plan,
+        lines: [
+          ...hintLines,
+          lineBadge({ label: "Case", text: "percent format with limit != 100", color: "#000000" }),
+          lineProgress({ label: "Percent", used: 42, limit: 99, format: { kind: "percent" }, color: "#ef4444" }),
+        ],
+      }
+    }
+
+    if (mode === "progress_count_missing_suffix") {
+      // v2 validation: count requires suffix
+      return {
+        plan: plan,
+        lines: [
+          ...hintLines,
+          lineBadge({ label: "Case", text: "count format missing suffix", color: "#000000" }),
+          lineProgress({ label: "Credits", used: 10, limit: 1000, format: { kind: "count" }, color: "#ef4444" }),
+        ],
+      }
+    }
+
+    if (mode === "progress_resetsAt_invalid") {
+      // v2 validation: invalid resetsAt -> warn + omit
+      return {
+        plan: plan,
+        lines: [
+          ...hintLines,
+          lineBadge({ label: "Case", text: "progress.resetsAt = not-a-date", color: "#000000" }),
+          lineProgress({
+            label: "Session",
+            used: 42,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: "not-a-date",
+            color: "#ef4444",
+          }),
         ],
       }
     }

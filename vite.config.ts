@@ -34,6 +34,8 @@ export default defineConfig(async () => ({
         "src-tauri/**",
         "src-tauri/resources/**",
         "src-tauri/icons/**",
+        // Test-only helpers (not production code)
+        "plugins/test-helpers.js",
       ],
       reporter: ["text", "html", "lcov"],
       thresholds: {

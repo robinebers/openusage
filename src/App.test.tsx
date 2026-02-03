@@ -5,6 +5,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest"
 
 const state = vi.hoisted(() => ({
   invokeMock: vi.fn(),
+  isTauriMock: vi.fn(() => false),
   setSizeMock: vi.fn(),
   currentMonitorMock: vi.fn(),
   startBatchMock: vi.fn(),
@@ -14,6 +15,8 @@ const state = vi.hoisted(() => ({
   saveAutoUpdateIntervalMock: vi.fn(),
   loadThemeModeMock: vi.fn(),
   saveThemeModeMock: vi.fn(),
+  loadDisplayModeMock: vi.fn(),
+  saveDisplayModeMock: vi.fn(),
   probeHandlers: null as null | { onResult: (output: any) => void; onBatchComplete: () => void },
   trayGetByIdMock: vi.fn(),
   traySetIconMock: vi.fn(),
@@ -24,6 +27,22 @@ const state = vi.hoisted(() => ({
 const dndState = vi.hoisted(() => ({
   latestOnDragEnd: null as null | ((event: any) => void),
 }))
+
+const updaterState = vi.hoisted(() => ({
+  checkMock: vi.fn(async () => null),
+  relaunchMock: vi.fn(async () => undefined),
+}))
+
+const eventState = vi.hoisted(() => {
+  const handlers = new Map<string, (event: any) => void>()
+  return {
+    handlers,
+    listenMock: vi.fn(async (eventName: string, handler: (event: any) => void) => {
+      handlers.set(eventName, handler)
+      return () => { handlers.delete(eventName) }
+    }),
+  }
+})
 
 vi.mock("@dnd-kit/core", () => ({
   DndContext: ({ children, onDragEnd }: { children: ReactNode; onDragEnd?: (event: any) => void }) => {
@@ -63,7 +82,11 @@ vi.mock("@dnd-kit/utilities", () => ({
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: state.invokeMock,
-  isTauri: () => false,
+  isTauri: state.isTauriMock,
+}))
+
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: eventState.listenMock,
 }))
 
 vi.mock("@tauri-apps/api/tray", () => ({
@@ -93,6 +116,14 @@ vi.mock("@tauri-apps/api/app", () => ({
   getVersion: () => Promise.resolve("0.0.0-test"),
 }))
 
+vi.mock("@tauri-apps/plugin-updater", () => ({
+  check: updaterState.checkMock,
+}))
+
+vi.mock("@tauri-apps/plugin-process", () => ({
+  relaunch: updaterState.relaunchMock,
+}))
+
 vi.mock("@/lib/tray-bars-icon", () => ({
   getTrayIconSizePx: () => 36,
   renderTrayBarsIcon: () => Promise.resolve({}),
@@ -115,6 +146,8 @@ vi.mock("@/lib/settings", async () => {
     saveAutoUpdateInterval: state.saveAutoUpdateIntervalMock,
     loadThemeMode: state.loadThemeModeMock,
     saveThemeMode: state.saveThemeModeMock,
+    loadDisplayMode: state.loadDisplayModeMock,
+    saveDisplayMode: state.saveDisplayModeMock,
   }
 })
 
@@ -124,6 +157,8 @@ describe("App", () => {
   beforeEach(() => {
     state.probeHandlers = null
     state.invokeMock.mockReset()
+    state.isTauriMock.mockReset()
+    state.isTauriMock.mockReturnValue(false)
     state.setSizeMock.mockReset()
     state.currentMonitorMock.mockReset()
     state.startBatchMock.mockReset()
@@ -133,14 +168,23 @@ describe("App", () => {
     state.saveAutoUpdateIntervalMock.mockReset()
     state.loadThemeModeMock.mockReset()
     state.saveThemeModeMock.mockReset()
+    state.loadDisplayModeMock.mockReset()
+    state.saveDisplayModeMock.mockReset()
     state.trayGetByIdMock.mockReset()
     state.traySetIconMock.mockReset()
     state.traySetIconAsTemplateMock.mockReset()
     state.resolveResourceMock.mockReset()
+    eventState.handlers.clear()
+    eventState.listenMock.mockReset()
+    updaterState.checkMock.mockReset()
+    updaterState.relaunchMock.mockReset()
+    updaterState.checkMock.mockResolvedValue(null)
     state.savePluginSettingsMock.mockResolvedValue(undefined)
     state.saveAutoUpdateIntervalMock.mockResolvedValue(undefined)
     state.loadThemeModeMock.mockResolvedValue("system")
     state.saveThemeModeMock.mockResolvedValue(undefined)
+    state.loadDisplayModeMock.mockResolvedValue("used")
+    state.saveDisplayModeMock.mockResolvedValue(undefined)
     Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
       configurable: true,
       get() {
@@ -252,10 +296,45 @@ describe("App", () => {
       providerId: "a",
       displayName: "Alpha",
       iconUrl: "icon-a",
-      lines: [{ type: "progress", label: "Session", value: 50, max: 100 }],
+      lines: [{ type: "progress", label: "Session", used: 50, limit: 100, format: { kind: "percent" } }],
     })
 
     await waitFor(() => expect(state.traySetIconMock.mock.calls.length).toBeGreaterThan(callsBefore))
+  })
+
+  it("covers about open/close callbacks", async () => {
+    render(<App />)
+
+    // Open about via version button in footer
+    await userEvent.click(await screen.findByRole("button", { name: /OpenUsage/i }))
+    await screen.findByText("Built by")
+
+    // Close about via ESC key
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }))
+    await waitFor(() => {
+      expect(screen.queryByText("Built by")).not.toBeInTheDocument()
+    })
+  })
+
+  it("updates display mode in settings", async () => {
+    render(<App />)
+    const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
+    await userEvent.click(settingsButtons[0])
+
+    await userEvent.click(await screen.findByRole("radio", { name: "Left" }))
+    expect(state.saveDisplayModeMock).toHaveBeenCalledWith("left")
+  })
+
+  it("shows provider not found when tray navigates to unknown view", async () => {
+    state.isTauriMock.mockReturnValue(true)
+    render(<App />)
+
+    await waitFor(() => expect(eventState.listenMock).toHaveBeenCalled())
+    const handler = eventState.handlers.get("tray:navigate")
+    expect(handler).toBeTruthy()
+    handler?.({ payload: "nope" })
+
+    await screen.findByText("Provider not found")
   })
 
   it("toggles plugins in settings", async () => {
@@ -682,7 +761,7 @@ describe("App", () => {
       providerId: "a",
       displayName: "Alpha",
       iconUrl: "icon-a",
-      lines: [{ type: "progress", label: "Session", value: 50, max: 100 }],
+      lines: [{ type: "progress", label: "Session", used: 50, limit: 100, format: { kind: "percent" } }],
     })
 
     // Advance timers to trigger the debounced tray update (500ms probe debounce)

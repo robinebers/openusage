@@ -257,10 +257,9 @@ pub fn inject_utils(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
                     return line;
                 },
                 progress: function(opts) {
-                    var line = { type: "progress", label: opts.label, value: opts.value, max: opts.max };
-                    if (opts.unit) line.unit = opts.unit;
+                    var line = { type: "progress", label: opts.label, used: opts.used, limit: opts.limit, format: opts.format };
+                    if (opts.resetsAt) line.resetsAt = opts.resetsAt;
                     if (opts.color) line.color = opts.color;
-                    if (opts.subtitle) line.subtitle = opts.subtitle;
                     return line;
                 },
                 badge: function(opts) {
@@ -360,6 +359,95 @@ pub fn inject_utils(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
                         var n = Number(value);
                         return Number.isFinite(n) ? n : null;
                     }
+                    return null;
+                },
+                toIso: function(value) {
+                    if (value === null || value === undefined) return null;
+
+                    if (typeof value === "string") {
+                        var s = String(value).trim();
+                        if (!s) return null;
+
+                        var original = s;
+
+                        // Common variants
+                        // - "YYYY-MM-DD HH:MM:SS" -> "YYYY-MM-DDTHH:MM:SS"
+                        // - "... UTC" -> "...Z"
+                        if (s.indexOf(" ") !== -1 && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(s)) {
+                            s = s.replace(" ", "T");
+                        }
+                        if (s.endsWith(" UTC")) {
+                            s = s.slice(0, -4) + "Z";
+                        }
+
+                        // Numeric strings: treat as seconds/ms.
+                        if (/^-?\d+(\.\d+)?$/.test(s)) {
+                            var n = Number(s);
+                            if (!Number.isFinite(n)) return null;
+                            var msNum = Math.abs(n) < 1e10 ? n * 1000 : n;
+                            var dn = new Date(msNum);
+                            var tn = dn.getTime();
+                            if (!Number.isFinite(tn)) return null;
+                            return dn.toISOString();
+                        }
+
+                        // Normalize timezone offsets without colon: "+0000" -> "+00:00"
+                        if (/[+-]\d{4}$/.test(s)) {
+                            s = s.replace(/([+-]\d{2})(\d{2})$/, "$1:$2");
+                        }
+
+                        // Some APIs return RFC3339 with >3 fractional digits (e.g. .123456Z).
+                        // Normalize to milliseconds so Date.parse can understand it.
+                        var m = s.match(
+                            /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(\.\d+)?(Z|[+-]\d{2}:\d{2})$/
+                        );
+                        if (m) {
+                            var head = m[1];
+                            var frac = m[2] || "";
+                            var tz = m[3];
+                            if (frac) {
+                                var digits = frac.slice(1);
+                                if (digits.length > 3) digits = digits.slice(0, 3);
+                                while (digits.length < 3) digits = digits + "0";
+                                frac = "." + digits;
+                            }
+                            s = head + frac + tz;
+                        } else {
+                            // ISO-like but missing timezone: assume UTC.
+                            var mNoTz = s.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(\.\d+)?$/);
+                            if (mNoTz) {
+                                var head2 = mNoTz[1];
+                                var frac2 = mNoTz[2] || "";
+                                if (frac2) {
+                                    var digits2 = frac2.slice(1);
+                                    if (digits2.length > 3) digits2 = digits2.slice(0, 3);
+                                    while (digits2.length < 3) digits2 = digits2 + "0";
+                                    frac2 = "." + digits2;
+                                }
+                                s = head2 + frac2 + "Z";
+                            }
+                        }
+
+                        var parsed = Date.parse(s);
+                        if (!Number.isFinite(parsed)) return null;
+                        return new Date(parsed).toISOString();
+                    }
+
+                    if (typeof value === "number") {
+                        if (!Number.isFinite(value)) return null;
+                        var ms = Math.abs(value) < 1e10 ? value * 1000 : value;
+                        var d = new Date(ms);
+                        var t = d.getTime();
+                        if (!Number.isFinite(t)) return null;
+                        return d.toISOString();
+                    }
+
+                    if (value instanceof Date) {
+                        var t = value.getTime();
+                        if (!Number.isFinite(t)) return null;
+                        return value.toISOString();
+                    }
+
                     return null;
                 },
                 needsRefreshByExpiry: function(opts) {

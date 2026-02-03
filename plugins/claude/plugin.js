@@ -247,14 +247,6 @@
     })
   }
 
-  function getResetInFromIso(ctx, isoString) {
-    if (!isoString) return null
-    const ts = ctx.util.parseDateMs(isoString)
-    if (ts === null) return null
-    const diffSeconds = Math.floor((ts - Date.now()) / 1000)
-    return ctx.fmt.resetIn(diffSeconds)
-  }
-
   function probe(ctx) {
     const creds = loadCredentials(ctx)
     if (!creds || !creds.oauth || !creds.oauth.accessToken || !creds.oauth.accessToken.trim()) {
@@ -318,43 +310,30 @@
     }
 
     if (data.five_hour && typeof data.five_hour.utilization === "number") {
-      const resetIn = getResetInFromIso(ctx, data.five_hour.resets_at)
       lines.push(ctx.line.progress({
         label: "Session",
-        value: data.five_hour.utilization,
-        max: 100,
-        unit: "percent",
-        subtitle: resetIn ? "Resets in " + resetIn : "No active session"
+        used: data.five_hour.utilization,
+        limit: 100,
+        format: { kind: "percent" },
+        resetsAt: ctx.util.toIso(data.five_hour.resets_at)
       }))
     }
     if (data.seven_day && typeof data.seven_day.utilization === "number") {
-      const resetIn = getResetInFromIso(ctx, data.seven_day.resets_at)
       lines.push(ctx.line.progress({
         label: "Weekly",
-        value: data.seven_day.utilization,
-        max: 100,
-        unit: "percent",
-        subtitle: resetIn ? "Resets in " + resetIn : null
+        used: data.seven_day.utilization,
+        limit: 100,
+        format: { kind: "percent" },
+        resetsAt: ctx.util.toIso(data.seven_day.resets_at)
       }))
     }
     if (data.seven_day_sonnet && typeof data.seven_day_sonnet.utilization === "number") {
-      const resetIn = getResetInFromIso(ctx, data.seven_day_sonnet.resets_at)
       lines.push(ctx.line.progress({
         label: "Sonnet",
-        value: data.seven_day_sonnet.utilization,
-        max: 100,
-        unit: "percent",
-        subtitle: resetIn ? "Resets in " + resetIn : null
-      }))
-    }
-    if (data.seven_day_opus && typeof data.seven_day_opus.utilization === "number") {
-      const resetIn = getResetInFromIso(ctx, data.seven_day_opus.resets_at)
-      lines.push(ctx.line.progress({
-        label: "Opus",
-        value: data.seven_day_opus.utilization,
-        max: 100,
-        unit: "percent",
-        subtitle: resetIn ? "Resets in " + resetIn : null
+        used: data.seven_day_sonnet.utilization,
+        limit: 100,
+        format: { kind: "percent" },
+        resetsAt: ctx.util.toIso(data.seven_day_sonnet.resets_at)
       }))
     }
 
@@ -364,9 +343,9 @@
       if (typeof used === "number" && typeof limit === "number" && limit > 0) {
         lines.push(ctx.line.progress({
           label: "Extra usage",
-          value: ctx.fmt.dollars(used),
-          max: ctx.fmt.dollars(limit),
-          unit: "dollars"
+          used: ctx.fmt.dollars(used),
+          limit: ctx.fmt.dollars(limit),
+          format: { kind: "dollars" }
         }))
       } else if (typeof used === "number" && used > 0) {
         lines.push(ctx.line.text({ label: "Extra usage", value: "$" + String(ctx.fmt.dollars(used)) }))

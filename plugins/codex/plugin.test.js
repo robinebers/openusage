@@ -129,7 +129,7 @@ describe("codex plugin", () => {
     expect(result.lines.find((line) => line.label === "Credits")).toBeTruthy()
   })
 
-  it("shows fallback subtitle when window lacks reset info", async () => {
+  it("omits resetsAt when window lacks reset info", async () => {
     const ctx = makeCtx()
     ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
       tokens: { access_token: "token" },
@@ -148,10 +148,10 @@ describe("codex plugin", () => {
     const result = plugin.probe(ctx)
     const sessionLine = result.lines.find((line) => line.label === "Session")
     expect(sessionLine).toBeTruthy()
-    expect(sessionLine.subtitle).toBe("No active session")
+    expect(sessionLine.resetsAt).toBeUndefined()
   })
 
-  it("uses reset_at when present for subtitles", async () => {
+  it("uses reset_at when present for resetsAt", async () => {
     const ctx = makeCtx()
     ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
       tokens: { access_token: "token" },
@@ -160,6 +160,7 @@ describe("codex plugin", () => {
     const now = 1_700_000_000_000
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(now)
     const nowSec = Math.floor(now / 1000)
+    const resetsAtExpected = new Date((nowSec + 60) * 1000).toISOString()
 
     ctx.host.http.request.mockReturnValue({
       status: 200,
@@ -175,7 +176,7 @@ describe("codex plugin", () => {
     const result = plugin.probe(ctx)
     const session = result.lines.find((line) => line.label === "Session")
     expect(session).toBeTruthy()
-    expect(session.subtitle).toContain("Resets in")
+    expect(session.resetsAt).toBe(resetsAtExpected)
     nowSpy.mockRestore()
   })
 

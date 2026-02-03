@@ -14,16 +14,21 @@ export type AutoUpdateIntervalMinutes = 5 | 15 | 30 | 60;
 
 export type ThemeMode = "system" | "light" | "dark";
 
+export type DisplayMode = "used" | "left";
+
 const SETTINGS_STORE_PATH = "settings.json";
 const PLUGIN_SETTINGS_KEY = "plugins";
 const AUTO_UPDATE_SETTINGS_KEY = "autoUpdateInterval";
 const THEME_MODE_KEY = "themeMode";
+const DISPLAY_MODE_KEY = "displayMode";
 
 export const DEFAULT_AUTO_UPDATE_INTERVAL: AutoUpdateIntervalMinutes = 15;
 export const DEFAULT_THEME_MODE: ThemeMode = "system";
+export const DEFAULT_DISPLAY_MODE: DisplayMode = "used";
 
 const AUTO_UPDATE_INTERVALS: AutoUpdateIntervalMinutes[] = [5, 15, 30, 60];
 const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
+const DISPLAY_MODES: DisplayMode[] = ["used", "left"];
 
 export const AUTO_UPDATE_OPTIONS: { value: AutoUpdateIntervalMinutes; label: string }[] =
   AUTO_UPDATE_INTERVALS.map((value) => ({
@@ -36,6 +41,11 @@ export const THEME_OPTIONS: { value: ThemeMode; label: string }[] =
     value,
     label: value.charAt(0).toUpperCase() + value.slice(1),
   }));
+
+export const DISPLAY_MODE_OPTIONS: { value: DisplayMode; label: string }[] = [
+  { value: "used", label: "Used" },
+  { value: "left", label: "Left" },
+];
 
 const store = new LazyStore(SETTINGS_STORE_PATH);
 
@@ -130,6 +140,21 @@ export async function loadThemeMode(): Promise<ThemeMode> {
 
 export async function saveThemeMode(mode: ThemeMode): Promise<void> {
   await store.set(THEME_MODE_KEY, mode);
+  await store.save();
+}
+
+function isDisplayMode(value: unknown): value is DisplayMode {
+  return typeof value === "string" && DISPLAY_MODES.includes(value as DisplayMode);
+}
+
+export async function loadDisplayMode(): Promise<DisplayMode> {
+  const stored = await store.get<unknown>(DISPLAY_MODE_KEY);
+  if (isDisplayMode(stored)) return stored;
+  return DEFAULT_DISPLAY_MODE;
+}
+
+export async function saveDisplayMode(mode: DisplayMode): Promise<void> {
+  await store.set(DISPLAY_MODE_KEY, mode);
   await store.save();
 }
 
