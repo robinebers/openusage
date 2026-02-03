@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { AboutDialog } from "@/components/about-dialog";
 import type { UpdateStatus } from "@/hooks/use-app-update";
 
 interface PanelFooterProps {
@@ -13,10 +14,12 @@ function VersionDisplay({
   version,
   updateStatus,
   onUpdateInstall,
+  onVersionClick,
 }: {
   version: string;
   updateStatus: UpdateStatus;
   onUpdateInstall: () => void;
+  onVersionClick: () => void;
 }) {
   switch (updateStatus.status) {
     case "downloading":
@@ -49,9 +52,13 @@ function VersionDisplay({
       );
     default:
       return (
-        <span className="text-xs text-muted-foreground">
+        <button
+          type="button"
+          onClick={onVersionClick}
+          className="text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+        >
           OpenUsage {version}
-        </span>
+        </button>
       );
   }
 }
@@ -63,6 +70,7 @@ export function PanelFooter({
   onUpdateInstall,
 }: PanelFooterProps) {
   const [now, setNow] = useState(() => Date.now());
+  const [showAbout, setShowAbout] = useState(false);
 
   useEffect(() => {
     if (!autoUpdateNextAt) return undefined;
@@ -83,15 +91,21 @@ export function PanelFooter({
   }, [autoUpdateNextAt, now]);
 
   return (
-    <div className="flex justify-between items-center h-8 pt-1.5 border-t">
-      <VersionDisplay
-        version={version}
-        updateStatus={updateStatus}
-        onUpdateInstall={onUpdateInstall}
-      />
-      <span className="text-xs text-muted-foreground tabular-nums">
-        {countdownLabel}
-      </span>
-    </div>
+    <>
+      <div className="flex justify-between items-center h-8 pt-1.5 border-t">
+        <VersionDisplay
+          version={version}
+          updateStatus={updateStatus}
+          onUpdateInstall={onUpdateInstall}
+          onVersionClick={() => setShowAbout(true)}
+        />
+        <span className="text-xs text-muted-foreground tabular-nums">
+          {countdownLabel}
+        </span>
+      </div>
+      {showAbout && (
+        <AboutDialog version={version} onClose={() => setShowAbout(false)} />
+      )}
+    </>
   );
 }
