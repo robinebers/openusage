@@ -198,7 +198,7 @@
       const planResp = connectPost(ctx, PLAN_URL, accessToken)
       if (planResp.status >= 200 && planResp.status < 300) {
         const plan = ctx.util.tryParseJson(planResp.bodyText)
-        if (plan.planInfo && plan.planInfo.planName) {
+        if (plan && plan.planInfo && plan.planInfo.planName) {
           planName = plan.planInfo.planName
         }
       }
