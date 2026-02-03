@@ -218,13 +218,6 @@ fn parse_lines(result: &Object) -> Result<Vec<MetricLine>, String> {
                     )));
                     continue;
                 }
-                if used > limit {
-                    out.push(error_line(format!(
-                        "progress line at index {} invalid used ({} > limit {})",
-                        idx, used, limit
-                    )));
-                    continue;
-                }
 
                 let format_obj: Object = match line.get("format") {
                     Ok(obj) => obj,

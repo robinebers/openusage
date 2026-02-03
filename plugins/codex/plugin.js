@@ -237,18 +237,9 @@
       const creditsBalance = resp.headers["x-codex-credits-balance"]
       const creditsHeader = readNumber(creditsBalance)
       const creditsData = data.credits ? readNumber(data.credits.balance) : null
-      if (creditsHeader !== null) {
-        const remaining = creditsHeader
-        const limit = 1000
-        const used = Math.max(0, Math.min(limit, limit - remaining))
-        lines.push(ctx.line.progress({
-          label: "Credits",
-          used: used,
-          limit: limit,
-          format: { kind: "count", suffix: "credits" },
-        }))
-      } else if (creditsData !== null) {
-        const remaining = creditsData
+      const creditsRemaining = creditsHeader ?? creditsData
+      if (creditsRemaining !== null) {
+        const remaining = creditsRemaining
         const limit = 1000
         const used = Math.max(0, Math.min(limit, limit - remaining))
         lines.push(ctx.line.progress({
