@@ -3,8 +3,8 @@ import { Image } from "@tauri-apps/api/image"
 import type { TrayPrimaryBar } from "@/lib/tray-primary-progress"
 
 function rgbaToImageDataBytes(rgba: Uint8ClampedArray): Uint8Array {
-  // Image.new expects Uint8Array-compatible data.
-  return rgba instanceof Uint8Array ? rgba : new Uint8Array(rgba.buffer)
+  // Image.new expects Uint8Array. Uint8ClampedArray shares the same buffer layout.
+  return new Uint8Array(rgba.buffer)
 }
 
 export function makeTrayBarsSvg(args: {

@@ -69,11 +69,20 @@ function App() {
   const trayUpdatePendingRef = useRef(false)
   const [trayReady, setTrayReady] = useState(false)
 
+  // Store state in refs so scheduleTrayIconUpdate can read current values without recreating the callback
+  const pluginsMetaRef = useRef(pluginsMeta)
+  const pluginSettingsRef = useRef(pluginSettings)
+  const pluginStatesRef = useRef(pluginStates)
+  useEffect(() => { pluginsMetaRef.current = pluginsMeta }, [pluginsMeta])
+  useEffect(() => { pluginSettingsRef.current = pluginSettings }, [pluginSettings])
+  useEffect(() => { pluginStatesRef.current = pluginStates }, [pluginStates])
+
   // Fetch app version on mount
   useEffect(() => {
     getVersion().then(setAppVersion)
   }, [])
 
+  // Stable callback that reads from refs - never recreated, so debounce works correctly
   const scheduleTrayIconUpdate = useCallback((_reason: "probe" | "settings" | "init", delayMs = 0) => {
     if (trayUpdateTimerRef.current !== null) {
       window.clearTimeout(trayUpdateTimerRef.current)
@@ -85,27 +94,35 @@ function App() {
       if (trayUpdatePendingRef.current) return
       trayUpdatePendingRef.current = true
 
-      // Execute directly (no requestAnimationFrame - it's throttled when panel is hidden)
       const tray = trayRef.current
-      trayUpdatePendingRef.current = false
-      if (!tray) return
+      if (!tray) {
+        trayUpdatePendingRef.current = false
+        return
+      }
 
       const bars = getTrayPrimaryBars({
-        pluginsMeta,
-        pluginSettings,
-        pluginStates,
+        pluginsMeta: pluginsMetaRef.current,
+        pluginSettings: pluginSettingsRef.current,
+        pluginStates: pluginStatesRef.current,
         maxBars: 4,
       })
+
       // 0 bars: revert to the packaged gauge tray icon.
       if (bars.length === 0) {
         const gaugePath = trayGaugeIconPathRef.current
         if (gaugePath) {
-          tray.setIcon(gaugePath).catch((e) => {
-            console.error("Failed to restore tray gauge icon:", e)
-          })
-          tray.setIconAsTemplate(true).catch((e) => {
-            console.error("Failed to set tray icon as template:", e)
-          })
+          Promise.all([
+            tray.setIcon(gaugePath),
+            tray.setIconAsTemplate(true),
+          ])
+            .catch((e) => {
+              console.error("Failed to restore tray gauge icon:", e)
+            })
+            .finally(() => {
+              trayUpdatePendingRef.current = false
+            })
+        } else {
+          trayUpdatePendingRef.current = false
         }
         return
       }
@@ -120,8 +137,11 @@ function App() {
         .catch((e) => {
           console.error("Failed to update tray icon:", e)
         })
+        .finally(() => {
+          trayUpdatePendingRef.current = false
+        })
     }, delayMs)
-  }, [pluginSettings, pluginStates, pluginsMeta])
+  }, [])
 
   // Initialize tray handle once (separate from tray updates)
   const trayInitializedRef = useRef(false)
