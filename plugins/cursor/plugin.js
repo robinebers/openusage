@@ -61,8 +61,12 @@
   }
 
   function refreshToken(ctx, refreshTokenValue) {
-    if (!refreshTokenValue) return null
+    if (!refreshTokenValue) {
+      ctx.host.log.warn("refresh skipped: no refresh token")
+      return null
+    }
 
+    ctx.host.log.info("attempting token refresh")
     try {
       const resp = ctx.util.request({
         method: "POST",
@@ -79,33 +83,47 @@
       if (resp.status === 400 || resp.status === 401) {
         let errorInfo = null
         errorInfo = ctx.util.tryParseJson(resp.bodyText)
-        if (errorInfo && errorInfo.shouldLogout === true) {
+        const shouldLogout = errorInfo && errorInfo.shouldLogout === true
+        ctx.host.log.error("refresh failed: status=" + resp.status + " shouldLogout=" + shouldLogout)
+        if (shouldLogout) {
           throw "Session expired. Sign in via Cursor app."
         }
         throw "Token expired. Sign in via Cursor app."
       }
 
-      if (resp.status < 200 || resp.status >= 300) return null
+      if (resp.status < 200 || resp.status >= 300) {
+        ctx.host.log.warn("refresh returned unexpected status: " + resp.status)
+        return null
+      }
 
       const body = ctx.util.tryParseJson(resp.bodyText)
-      if (!body) return null
+      if (!body) {
+        ctx.host.log.warn("refresh response not valid JSON")
+        return null
+      }
 
       // Check if server wants us to logout
       if (body.shouldLogout === true) {
+        ctx.host.log.error("refresh response indicates shouldLogout=true")
         throw "Session expired. Sign in via Cursor app."
       }
 
       const newAccessToken = body.access_token
-      if (!newAccessToken) return null
+      if (!newAccessToken) {
+        ctx.host.log.warn("refresh response missing access_token")
+        return null
+      }
 
       // Persist updated access token to SQLite
       writeStateValue(ctx, "cursorAuth/accessToken", newAccessToken)
+      ctx.host.log.info("refresh succeeded, token persisted")
 
       // Note: Cursor refresh returns access_token which is used as both
       // access and refresh token in some flows
       return newAccessToken
     } catch (e) {
       if (typeof e === "string") throw e
+      ctx.host.log.error("refresh exception: " + String(e))
       return null
     }
   }
@@ -129,23 +147,29 @@
     const refreshTokenValue = readStateValue(ctx, "cursorAuth/refreshToken")
 
     if (!accessToken && !refreshTokenValue) {
+      ctx.host.log.error("probe failed: no access or refresh token in sqlite")
       throw "Not logged in. Sign in via Cursor app."
     }
+    
+    ctx.host.log.info("tokens loaded: accessToken=" + (accessToken ? "yes" : "no") + " refreshToken=" + (refreshTokenValue ? "yes" : "no"))
 
     const nowMs = Date.now()
 
     // Proactively refresh if token is expired or about to expire
     if (needsRefresh(ctx, accessToken, nowMs)) {
+      ctx.host.log.info("token needs refresh (expired or expiring soon)")
       let refreshed = null
       try {
         refreshed = refreshToken(ctx, refreshTokenValue)
       } catch (e) {
         // If refresh fails but we have an access token, try it anyway
+        ctx.host.log.warn("refresh failed but have access token, will try: " + String(e))
         if (!accessToken) throw e
       }
       if (refreshed) {
         accessToken = refreshed
       } else if (!accessToken) {
+        ctx.host.log.error("refresh failed and no access token available")
         throw "Not logged in. Sign in via Cursor app."
       }
     }
@@ -158,6 +182,7 @@
           try {
             return connectPost(ctx, USAGE_URL, token || accessToken)
           } catch (e) {
+            ctx.host.log.error("usage request exception: " + String(e))
             if (didRefresh) {
               throw "Usage request failed after refresh. Try again."
             }
@@ -165,6 +190,7 @@
           }
         },
         refresh: () => {
+          ctx.host.log.info("usage returned 401, attempting refresh")
           didRefresh = true
           const refreshed = refreshToken(ctx, refreshTokenValue)
           if (refreshed) accessToken = refreshed
@@ -173,16 +199,21 @@
       })
     } catch (e) {
       if (typeof e === "string") throw e
+      ctx.host.log.error("usage request failed: " + String(e))
       throw "Usage request failed. Check your connection."
     }
 
     if (ctx.util.isAuthStatus(usageResp.status)) {
+      ctx.host.log.error("usage returned auth error after all retries: status=" + usageResp.status)
       throw "Token expired. Sign in via Cursor app."
     }
 
     if (usageResp.status < 200 || usageResp.status >= 300) {
+      ctx.host.log.error("usage returned error: status=" + usageResp.status)
       throw "Usage request failed (HTTP " + String(usageResp.status) + "). Try again later."
     }
+    
+    ctx.host.log.info("usage fetch succeeded")
 
     const usage = ctx.util.tryParseJson(usageResp.bodyText)
     if (usage === null) {

@@ -6,11 +6,21 @@
   const REFRESH_AGE_MS = 8 * 24 * 60 * 60 * 1000
 
   function loadAuth(ctx) {
-    if (!ctx.host.fs.exists(AUTH_PATH)) return null
+    if (!ctx.host.fs.exists(AUTH_PATH)) {
+      ctx.host.log.warn("auth file not found: " + AUTH_PATH)
+      return null
+    }
     try {
       const text = ctx.host.fs.readText(AUTH_PATH)
-      return ctx.util.tryParseJson(text)
-    } catch {
+      const auth = ctx.util.tryParseJson(text)
+      if (auth) {
+        ctx.host.log.info("auth loaded from file")
+      } else {
+        ctx.host.log.warn("auth file exists but not valid JSON")
+      }
+      return auth
+    } catch (e) {
+      ctx.host.log.warn("auth file read failed: " + String(e))
       return null
     }
   }
@@ -23,8 +33,12 @@
   }
 
   function refreshToken(ctx, auth) {
-    if (!auth.tokens || !auth.tokens.refresh_token) return null
+    if (!auth.tokens || !auth.tokens.refresh_token) {
+      ctx.host.log.warn("refresh skipped: no refresh token")
+      return null
+    }
 
+    ctx.host.log.info("attempting token refresh")
     try {
       const resp = ctx.util.request({
         method: "POST",
@@ -43,6 +57,7 @@
         if (body) {
           code = body.error?.code || body.error || body.code
         }
+        ctx.host.log.error("refresh failed: status=" + resp.status + " code=" + String(code))
         if (code === "refresh_token_expired") {
           throw "Session expired. Run `codex` to log in again."
         }
@@ -54,12 +69,21 @@
         }
         throw "Token expired. Run `codex` to log in again."
       }
-      if (resp.status < 200 || resp.status >= 300) return null
+      if (resp.status < 200 || resp.status >= 300) {
+        ctx.host.log.warn("refresh returned unexpected status: " + resp.status)
+        return null
+      }
 
       const body = ctx.util.tryParseJson(resp.bodyText)
-      if (!body) return null
+      if (!body) {
+        ctx.host.log.warn("refresh response not valid JSON")
+        return null
+      }
       const newAccessToken = body.access_token
-      if (!newAccessToken) return null
+      if (!newAccessToken) {
+        ctx.host.log.warn("refresh response missing access_token")
+        return null
+      }
 
       auth.tokens.access_token = newAccessToken
       if (body.refresh_token) auth.tokens.refresh_token = body.refresh_token
@@ -68,11 +92,15 @@
 
       try {
         ctx.host.fs.writeText(AUTH_PATH, JSON.stringify(auth, null, 2))
-      } catch {}
+        ctx.host.log.info("refresh succeeded, auth file updated")
+      } catch (e) {
+        ctx.host.log.warn("refresh succeeded but failed to save auth: " + String(e))
+      }
 
       return newAccessToken
     } catch (e) {
       if (typeof e === "string") throw e
+      ctx.host.log.error("refresh exception: " + String(e))
       return null
     }
   }
@@ -118,6 +146,7 @@
   function probe(ctx) {
     const auth = loadAuth(ctx)
     if (!auth) {
+      ctx.host.log.error("probe failed: not logged in")
       throw "Not logged in. Run `codex` to authenticate."
     }
 
@@ -127,8 +156,13 @@
       const accountId = auth.tokens.account_id
 
       if (needsRefresh(ctx, auth, nowMs)) {
+        ctx.host.log.info("token needs refresh (age > " + (REFRESH_AGE_MS / 1000 / 60 / 60 / 24) + " days)")
         const refreshed = refreshToken(ctx, auth)
-        if (refreshed) accessToken = refreshed
+        if (refreshed) {
+          accessToken = refreshed
+        } else {
+          ctx.host.log.warn("proactive refresh failed, trying with existing token")
+        }
       }
 
       let resp
@@ -138,7 +172,8 @@
           request: (token) => {
             try {
               return fetchUsage(ctx, token || accessToken, accountId)
-            } catch {
+            } catch (e) {
+              ctx.host.log.error("usage request exception: " + String(e))
               if (didRefresh) {
                 throw "Usage request failed after refresh. Try again."
               }
@@ -146,22 +181,28 @@
             }
           },
           refresh: () => {
+            ctx.host.log.info("usage returned 401, attempting refresh")
             didRefresh = true
             return refreshToken(ctx, auth)
           },
         })
       } catch (e) {
         if (typeof e === "string") throw e
+        ctx.host.log.error("usage request failed: " + String(e))
         throw "Usage request failed. Check your connection."
       }
 
       if (ctx.util.isAuthStatus(resp.status)) {
+        ctx.host.log.error("usage returned auth error after all retries: status=" + resp.status)
         throw "Token expired. Run `codex` to log in again."
       }
 
       if (resp.status < 200 || resp.status >= 300) {
+        ctx.host.log.error("usage returned error: status=" + resp.status)
         throw "Usage request failed (HTTP " + String(resp.status) + "). Try again later."
       }
+      
+      ctx.host.log.info("usage fetch succeeded")
 
       const data = ctx.util.tryParseJson(resp.bodyText)
       if (data === null) {

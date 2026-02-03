@@ -130,10 +130,13 @@
         if (parsed) {
           const oauth = parsed.claudeAiOauth
           if (oauth && oauth.accessToken) {
+            ctx.host.log.info("credentials loaded from file")
             return { oauth, source: "file", fullData: parsed }
           }
         }
+        ctx.host.log.warn("credentials file exists but no valid oauth data")
       } catch (e) {
+        ctx.host.log.warn("credentials file read failed: " + String(e))
       }
     }
 
@@ -145,13 +148,17 @@
         if (parsed) {
           const oauth = parsed.claudeAiOauth
           if (oauth && oauth.accessToken) {
+            ctx.host.log.info("credentials loaded from keychain")
             return { oauth, source: "keychain", fullData: parsed }
           }
         }
+        ctx.host.log.warn("keychain has data but no valid oauth")
       }
     } catch (e) {
+      ctx.host.log.info("keychain read failed (may not exist): " + String(e))
     }
 
+    ctx.host.log.warn("no credentials found")
     return null
   }
 
@@ -184,8 +191,12 @@
 
   function refreshToken(ctx, creds) {
     const { oauth, source, fullData } = creds
-    if (!oauth.refreshToken) return null
+    if (!oauth.refreshToken) {
+      ctx.host.log.warn("refresh skipped: no refresh token")
+      return null
+    }
 
+    ctx.host.log.info("attempting token refresh")
     try {
       const resp = ctx.util.request({
         method: "POST",
@@ -204,17 +215,27 @@
         let errorCode = null
         const body = ctx.util.tryParseJson(resp.bodyText)
         if (body) errorCode = body.error || body.error_description
+        ctx.host.log.error("refresh failed: status=" + resp.status + " error=" + String(errorCode))
         if (errorCode === "invalid_grant") {
           throw "Session expired. Run `claude` to log in again."
         }
         throw "Token expired. Run `claude` to log in again."
       }
-      if (resp.status < 200 || resp.status >= 300) return null
+      if (resp.status < 200 || resp.status >= 300) {
+        ctx.host.log.warn("refresh returned unexpected status: " + resp.status)
+        return null
+      }
 
       const body = ctx.util.tryParseJson(resp.bodyText)
-      if (!body) return null
+      if (!body) {
+        ctx.host.log.warn("refresh response not valid JSON")
+        return null
+      }
       const newAccessToken = body.access_token
-      if (!newAccessToken) return null
+      if (!newAccessToken) {
+        ctx.host.log.warn("refresh response missing access_token")
+        return null
+      }
 
       // Update oauth credentials
       oauth.accessToken = newAccessToken
@@ -227,9 +248,11 @@
       fullData.claudeAiOauth = oauth
       saveCredentials(ctx, source, fullData)
 
+      ctx.host.log.info("refresh succeeded, new token expires in " + (body.expires_in || "unknown") + "s")
       return newAccessToken
     } catch (e) {
       if (typeof e === "string") throw e
+      ctx.host.log.error("refresh exception: " + String(e))
       return null
     }
   }
@@ -252,6 +275,7 @@
   function probe(ctx) {
     const creds = loadCredentials(ctx)
     if (!creds || !creds.oauth || !creds.oauth.accessToken || !creds.oauth.accessToken.trim()) {
+      ctx.host.log.error("probe failed: not logged in")
       throw "Not logged in. Run `claude` to authenticate."
     }
 
@@ -260,8 +284,13 @@
 
     // Proactively refresh if token is expired or about to expire
     if (needsRefresh(ctx, creds.oauth, nowMs)) {
+      ctx.host.log.info("token needs refresh (expired or expiring soon)")
       const refreshed = refreshToken(ctx, creds)
-      if (refreshed) accessToken = refreshed
+      if (refreshed) {
+        accessToken = refreshed
+      } else {
+        ctx.host.log.warn("proactive refresh failed, trying with existing token")
+      }
     }
 
     let resp
@@ -272,6 +301,7 @@
           try {
             return fetchUsage(ctx, token || accessToken)
           } catch (e) {
+            ctx.host.log.error("usage request exception: " + String(e))
             if (didRefresh) {
               throw "Usage request failed after refresh. Try again."
             }
@@ -279,22 +309,28 @@
           }
         },
         refresh: () => {
+          ctx.host.log.info("usage returned 401, attempting refresh")
           didRefresh = true
           return refreshToken(ctx, creds)
         },
       })
     } catch (e) {
       if (typeof e === "string") throw e
+      ctx.host.log.error("usage request failed: " + String(e))
       throw "Usage request failed. Check your connection."
     }
 
     if (ctx.util.isAuthStatus(resp.status)) {
+      ctx.host.log.error("usage returned auth error after all retries: status=" + resp.status)
       throw "Token expired. Run `claude` to log in again."
     }
 
     if (resp.status < 200 || resp.status >= 300) {
+      ctx.host.log.error("usage returned error: status=" + resp.status)
       throw "Usage request failed (HTTP " + String(resp.status) + "). Try again later."
     }
+    
+    ctx.host.log.info("usage fetch succeeded")
 
     let data
     data = ctx.util.tryParseJson(resp.bodyText)
