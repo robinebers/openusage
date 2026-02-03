@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useMemo } from "react"
 import { Hourglass, RefreshCw } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -7,6 +7,7 @@ import { Separator } from "@/components/ui/separator"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { SkeletonLines } from "@/components/skeleton-lines"
 import { PluginError } from "@/components/plugin-error"
+import { useNowTicker } from "@/hooks/use-now-ticker"
 import { REFRESH_COOLDOWN_MS } from "@/lib/settings"
 import type { ManifestLine, MetricLine } from "@/lib/plugin-types"
 
@@ -60,7 +61,16 @@ export function ProviderCard({
   onRetry,
   scopeFilter = "all",
 }: ProviderCardProps) {
-  const [now, setNow] = useState(Date.now())
+  const cooldownRemainingMs = useMemo(() => {
+    if (!lastManualRefreshAt) return 0
+    const remaining = REFRESH_COOLDOWN_MS - (Date.now() - lastManualRefreshAt)
+    return remaining > 0 ? remaining : 0
+  }, [lastManualRefreshAt])
+
+  const now = useNowTicker({
+    enabled: cooldownRemainingMs > 0,
+    stopAfterMs: cooldownRemainingMs,
+  })
 
   // Filter lines based on scope - match by label since runtime lines can differ from manifest
   const overviewLabels = new Set(
@@ -74,24 +84,6 @@ export function ProviderCard({
   const filteredLines = scopeFilter === "all"
     ? lines
     : lines.filter(line => overviewLabels.has(line.label))
-
-  // Update "now" every second while in cooldown to keep UI in sync
-  useEffect(() => {
-    if (!lastManualRefreshAt) return
-    const remaining = REFRESH_COOLDOWN_MS - (Date.now() - lastManualRefreshAt)
-    if (remaining <= 0) return
-
-    // Immediately sync "now" when entering cooldown
-    setNow(Date.now())
-    const interval = setInterval(() => setNow(Date.now()), 1000)
-    // Auto-clear after cooldown expires
-    const timeout = setTimeout(() => clearInterval(interval), remaining)
-
-    return () => {
-      clearInterval(interval)
-      clearTimeout(timeout)
-    }
-  }, [lastManualRefreshAt])
 
   const inCooldown = lastManualRefreshAt ? now - lastManualRefreshAt < REFRESH_COOLDOWN_MS : false
 

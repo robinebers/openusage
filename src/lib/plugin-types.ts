@@ -25,3 +25,11 @@ export type PluginMeta = {
   lines: ManifestLine[]
   primaryProgressLabel?: string | null
 }
+
+export type PluginDisplayState = {
+  meta: PluginMeta
+  data: PluginOutput | null
+  loading: boolean
+  error: string | null
+  lastManualRefreshAt: number | null
+}

@@ -9,28 +9,24 @@
     if (!ctx.host.fs.exists(AUTH_PATH)) return null
     try {
       const text = ctx.host.fs.readText(AUTH_PATH)
-      return JSON.parse(text)
+      return ctx.util.tryParseJson(text)
     } catch {
       return null
     }
   }
 
-  function needsRefresh(auth, nowMs) {
+  function needsRefresh(ctx, auth, nowMs) {
     if (!auth.last_refresh) return true
-    try {
-      const lastMs = new Date(auth.last_refresh).getTime()
-      if (!Number.isFinite(lastMs)) return true
-      return nowMs - lastMs > REFRESH_AGE_MS
-    } catch {
-      return true
-    }
+    const lastMs = ctx.util.parseDateMs(auth.last_refresh)
+    if (lastMs === null) return true
+    return nowMs - lastMs > REFRESH_AGE_MS
   }
 
   function refreshToken(ctx, auth) {
     if (!auth.tokens || !auth.tokens.refresh_token) return null
 
     try {
-      const resp = ctx.host.http.request({
+      const resp = ctx.util.request({
         method: "POST",
         url: REFRESH_URL,
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -43,10 +39,10 @@
 
       if (resp.status === 400 || resp.status === 401) {
         let code = null
-        try {
-          const body = JSON.parse(resp.bodyText)
+        const body = ctx.util.tryParseJson(resp.bodyText)
+        if (body) {
           code = body.error?.code || body.error || body.code
-        } catch {}
+        }
         if (code === "refresh_token_expired") {
           throw "Session expired. Run `codex` to log in again."
         }
@@ -60,7 +56,8 @@
       }
       if (resp.status < 200 || resp.status >= 300) return null
 
-      const body = JSON.parse(resp.bodyText)
+      const body = ctx.util.tryParseJson(resp.bodyText)
+      if (!body) return null
       const newAccessToken = body.access_token
       if (!newAccessToken) return null
 
@@ -89,7 +86,7 @@
     if (accountId) {
       headers["ChatGPT-Account-Id"] = accountId
     }
-    return ctx.host.http.request({
+    return ctx.util.request({
       method: "GET",
       url: USAGE_URL,
       headers,
@@ -129,41 +126,45 @@
       let accessToken = auth.tokens.access_token
       const accountId = auth.tokens.account_id
 
-      if (needsRefresh(auth, nowMs)) {
+      if (needsRefresh(ctx, auth, nowMs)) {
         const refreshed = refreshToken(ctx, auth)
         if (refreshed) accessToken = refreshed
       }
 
       let resp
+      let didRefresh = false
       try {
-        resp = fetchUsage(ctx, accessToken, accountId)
-      } catch {
+        resp = ctx.util.retryOnceOnAuth({
+          request: (token) => {
+            try {
+              return fetchUsage(ctx, token || accessToken, accountId)
+            } catch {
+              if (didRefresh) {
+                throw "Usage request failed after refresh. Try again."
+              }
+              throw "Usage request failed. Check your connection."
+            }
+          },
+          refresh: () => {
+            didRefresh = true
+            return refreshToken(ctx, auth)
+          },
+        })
+      } catch (e) {
+        if (typeof e === "string") throw e
         throw "Usage request failed. Check your connection."
       }
 
-      if (resp.status === 401 || resp.status === 403) {
-        const refreshed = refreshToken(ctx, auth)
-        if (!refreshed) {
-          throw "Token expired. Run `codex` to log in again."
-        }
-        try {
-          resp = fetchUsage(ctx, refreshed, accountId)
-        } catch {
-          throw "Usage request failed after refresh. Try again."
-        }
-        if (resp.status === 401 || resp.status === 403) {
-          throw "Token expired. Run `codex` to log in again."
-        }
+      if (ctx.util.isAuthStatus(resp.status)) {
+        throw "Token expired. Run `codex` to log in again."
       }
 
       if (resp.status < 200 || resp.status >= 300) {
         throw "Usage request failed (HTTP " + String(resp.status) + "). Try again later."
       }
 
-      let data
-      try {
-        data = JSON.parse(resp.bodyText)
-      } catch {
+      const data = ctx.util.tryParseJson(resp.bodyText)
+      if (data === null) {
         throw "Usage response invalid. Try again later."
       }
 

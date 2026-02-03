@@ -1,71 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import { makeCtx } from "../test-helpers.js"
 
 const loadPlugin = async () => {
   await import("./plugin.js")
   return globalThis.__openusage_plugin
-}
-
-const makeCtx = () => {
-  const files = new Map()
-  return {
-    nowIso: "2026-02-02T00:00:00.000Z",
-    host: {
-      fs: {
-        exists: (path) => files.has(path),
-        readText: (path) => files.get(path),
-        writeText: (path, text) => files.set(path, text),
-      },
-      http: {
-        request: vi.fn(),
-      },
-    },
-    line: {
-      text: (opts) => {
-        const line = { type: "text", label: opts.label, value: opts.value }
-        if (opts.color) line.color = opts.color
-        if (opts.subtitle) line.subtitle = opts.subtitle
-        return line
-      },
-      progress: (opts) => {
-        const line = { type: "progress", label: opts.label, value: opts.value, max: opts.max }
-        if (opts.unit) line.unit = opts.unit
-        if (opts.color) line.color = opts.color
-        if (opts.subtitle) line.subtitle = opts.subtitle
-        return line
-      },
-      badge: (opts) => {
-        const line = { type: "badge", label: opts.label, text: opts.text }
-        if (opts.color) line.color = opts.color
-        if (opts.subtitle) line.subtitle = opts.subtitle
-        return line
-      },
-    },
-    fmt: {
-      planLabel: (value) => {
-        const text = String(value || "").trim()
-        if (!text) return ""
-        return text.replace(/(^|\s)([a-z])/g, (match, space, letter) => space + letter.toUpperCase())
-      },
-      resetIn: (secondsUntil) => {
-        if (!Number.isFinite(secondsUntil) || secondsUntil < 0) return null
-        const totalMinutes = Math.floor(secondsUntil / 60)
-        const totalHours = Math.floor(totalMinutes / 60)
-        const days = Math.floor(totalHours / 24)
-        const hours = totalHours % 24
-        const minutes = totalMinutes % 60
-        if (days > 0) return `${days}d ${hours}h`
-        if (totalHours > 0) return `${totalHours}h ${minutes}m`
-        if (totalMinutes > 0) return `${totalMinutes}m`
-        return "<1m"
-      },
-      dollars: (cents) => Math.round((cents / 100) * 100) / 100,
-      date: (unixMs) => {
-        const d = new Date(Number(unixMs))
-        const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-        return months[d.getMonth()] + " " + String(d.getDate())
-      },
-    },
-  }
 }
 
 describe("codex plugin", () => {

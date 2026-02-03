@@ -18,7 +18,12 @@ import { CSS } from "@dnd-kit/utilities";
 import { GripVertical } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
-import type { AutoUpdateIntervalMinutes, ThemeMode } from "@/lib/settings";
+import {
+  AUTO_UPDATE_OPTIONS,
+  THEME_OPTIONS,
+  type AutoUpdateIntervalMinutes,
+  type ThemeMode,
+} from "@/lib/settings";
 import type { UpdateStatus } from "@/hooks/use-app-update";
 import { cn } from "@/lib/utils";
 
@@ -27,19 +32,6 @@ interface PluginConfig {
   name: string;
   enabled: boolean;
 }
-
-const AUTO_UPDATE_OPTIONS: { value: AutoUpdateIntervalMinutes; label: string }[] = [
-  { value: 5, label: "5 min" },
-  { value: 15, label: "15 min" },
-  { value: 30, label: "30 min" },
-  { value: 60, label: "1 hour" },
-];
-
-const THEME_OPTIONS: { value: ThemeMode; label: string }[] = [
-  { value: "system", label: "System" },
-  { value: "light", label: "Light" },
-  { value: "dark", label: "Dark" },
-];
 
 function SortablePluginItem({
   plugin,

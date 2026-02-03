@@ -1,13 +1,5 @@
 import { ProviderCard } from "@/components/provider-card"
-import type { PluginMeta, PluginOutput } from "@/lib/plugin-types"
-
-type PluginDisplayState = {
-  meta: PluginMeta
-  data: PluginOutput | null
-  loading: boolean
-  error: string | null
-  lastManualRefreshAt: number | null
-}
+import type { PluginDisplayState } from "@/lib/plugin-types"
 
 interface ProviderDetailPageProps {
   plugin: PluginDisplayState | null
