@@ -49,6 +49,7 @@ describe("getTrayPrimaryBars", () => {
 
   it("computes fraction from matching progress label and clamps 0..1", () => {
     const bars = getTrayPrimaryBars({
+      displayMode: "used",
       pluginsMeta: [
         {
           id: "a",

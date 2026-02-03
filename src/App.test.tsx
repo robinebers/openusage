@@ -183,7 +183,7 @@ describe("App", () => {
     state.saveAutoUpdateIntervalMock.mockResolvedValue(undefined)
     state.loadThemeModeMock.mockResolvedValue("system")
     state.saveThemeModeMock.mockResolvedValue(undefined)
-    state.loadDisplayModeMock.mockResolvedValue("used")
+    state.loadDisplayModeMock.mockResolvedValue("left")
     state.saveDisplayModeMock.mockResolvedValue(undefined)
     Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
       configurable: true,
@@ -321,8 +321,22 @@ describe("App", () => {
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
 
-    await userEvent.click(await screen.findByRole("radio", { name: "Left" }))
-    expect(state.saveDisplayModeMock).toHaveBeenCalledWith("left")
+    await userEvent.click(await screen.findByRole("radio", { name: "Used" }))
+    expect(state.saveDisplayModeMock).toHaveBeenCalledWith("used")
+  })
+
+  it("logs when saving display mode fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    state.saveDisplayModeMock.mockRejectedValueOnce(new Error("save display mode"))
+
+    render(<App />)
+    const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
+    await userEvent.click(settingsButtons[0])
+
+    await userEvent.click(await screen.findByRole("radio", { name: "Used" }))
+    await waitFor(() => expect(errorSpy).toHaveBeenCalled())
+
+    errorSpy.mockRestore()
   })
 
   it("shows provider not found when tray navigates to unknown view", async () => {
@@ -335,6 +349,17 @@ describe("App", () => {
     handler?.({ payload: "nope" })
 
     await screen.findByText("Provider not found")
+  })
+
+  it("hides the panel on Escape when running in Tauri", async () => {
+    state.isTauriMock.mockReturnValue(true)
+    render(<App />)
+
+    await waitFor(() => expect(state.invokeMock).toHaveBeenCalledWith("list_plugins"))
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }))
+
+    await waitFor(() => expect(state.invokeMock).toHaveBeenCalledWith("hide_panel"))
   })
 
   it("toggles plugins in settings", async () => {
@@ -364,6 +389,17 @@ describe("App", () => {
     await userEvent.click(settingsButtons[0])
     await userEvent.click(await screen.findByRole("radio", { name: "30 min" }))
     await waitFor(() => expect(errorSpy).toHaveBeenCalled())
+    errorSpy.mockRestore()
+  })
+
+  it("logs when loading display mode fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    state.loadDisplayModeMock.mockRejectedValueOnce(new Error("load display mode"))
+
+    render(<App />)
+    await waitFor(() => expect(state.invokeMock).toHaveBeenCalledWith("list_plugins"))
+    await waitFor(() => expect(errorSpy).toHaveBeenCalled())
+
     errorSpy.mockRestore()
   })
 
@@ -453,6 +489,29 @@ describe("App", () => {
     state.currentMonitorMock.mockResolvedValueOnce(null)
     render(<App />)
     await waitFor(() => expect(state.setSizeMock).toHaveBeenCalled())
+  })
+
+  it("resizes again via ResizeObserver callback", async () => {
+    const OriginalResizeObserver = globalThis.ResizeObserver
+    const observeSpy = vi.fn()
+    globalThis.ResizeObserver = class ResizeObserverImmediate {
+      private cb: ResizeObserverCallback
+      constructor(cb: ResizeObserverCallback) {
+        this.cb = cb
+      }
+      observe() {
+        observeSpy()
+        this.cb([], this as unknown as ResizeObserver)
+      }
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver
+
+    render(<App />)
+    await waitFor(() => expect(observeSpy).toHaveBeenCalled())
+    await waitFor(() => expect(state.setSizeMock).toHaveBeenCalled())
+
+    globalThis.ResizeObserver = OriginalResizeObserver
   })
 
   it("logs resize failures", async () => {

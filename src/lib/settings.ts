@@ -24,7 +24,7 @@ const DISPLAY_MODE_KEY = "displayMode";
 
 export const DEFAULT_AUTO_UPDATE_INTERVAL: AutoUpdateIntervalMinutes = 15;
 export const DEFAULT_THEME_MODE: ThemeMode = "system";
-export const DEFAULT_DISPLAY_MODE: DisplayMode = "used";
+export const DEFAULT_DISPLAY_MODE: DisplayMode = "left";
 
 const AUTO_UPDATE_INTERVALS: AutoUpdateIntervalMinutes[] = [5, 15, 30, 60];
 const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
@@ -43,8 +43,8 @@ export const THEME_OPTIONS: { value: ThemeMode; label: string }[] =
   }));
 
 export const DISPLAY_MODE_OPTIONS: { value: DisplayMode; label: string }[] = [
-  { value: "used", label: "Used" },
   { value: "left", label: "Left" },
+  { value: "used", label: "Used" },
 ];
 
 const store = new LazyStore(SETTINGS_STORE_PATH);

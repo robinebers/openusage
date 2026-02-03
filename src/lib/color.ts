@@ -15,3 +15,16 @@ export function getRelativeLuminance(hex: string): number {
   const b = parseInt(h.slice(4, 6), 16) / 255
   return 0.2126 * sRGBtoLinear(r) + 0.7152 * sRGBtoLinear(g) + 0.0722 * sRGBtoLinear(b)
 }
+
+export type BadgeStyle = { background: string; color: string }
+
+export function getBadgeStyle(brandColor: string | undefined, isDark: boolean): BadgeStyle | undefined {
+  if (!brandColor) return undefined
+  const luminance = getRelativeLuminance(brandColor)
+  // Skip colors with poor contrast against the theme background
+  if (isDark && luminance < 0.15) return undefined
+  if (!isDark && luminance > 0.85) return undefined
+  // Use white text on dark backgrounds, dark text on light backgrounds
+  const textColor = luminance > 0.5 ? "#1a1a1a" : "#ffffff"
+  return { background: brandColor, color: textColor }
+}

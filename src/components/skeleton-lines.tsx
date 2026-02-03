@@ -5,7 +5,7 @@ function SkeletonText({ label }: { label: string }) {
   return (
     <div className="flex justify-between items-center h-[22px]">
       <span className="text-sm text-muted-foreground">{label}</span>
-      <Skeleton className="h-4 w-16" />
+      <Skeleton className="h-5 w-16" />
     </div>
   )
 }
@@ -14,7 +14,7 @@ function SkeletonBadge({ label }: { label: string }) {
   return (
     <div className="flex justify-between items-center h-[22px]">
       <span className="text-sm text-muted-foreground">{label}</span>
-      <Skeleton className="h-5 w-16 rounded-full" />
+      <Skeleton className="h-5 w-16 rounded-md" />
     </div>
   )
 }
@@ -25,8 +25,8 @@ function SkeletonProgress({ label }: { label: string }) {
       <div className="text-sm font-medium mb-1.5">{label}</div>
       <Skeleton className="h-3 w-full rounded-full" />
       <div className="flex justify-between items-center mt-1.5">
-        <Skeleton className="h-3 w-8" />
-        <Skeleton className="h-3 w-20" />
+        <Skeleton className="h-4 w-12" />
+        <Skeleton className="h-4 w-24" />
       </div>
     </div>
   )

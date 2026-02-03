@@ -1,6 +1,6 @@
 import type { PluginMeta, PluginOutput } from "@/lib/plugin-types"
 import type { PluginSettings } from "@/lib/settings"
-import type { DisplayMode } from "@/lib/settings"
+import { DEFAULT_DISPLAY_MODE, type DisplayMode } from "@/lib/settings"
 import { clamp01 } from "@/lib/utils"
 
 type PluginState = {
@@ -30,7 +30,7 @@ export function getTrayPrimaryBars(args: {
   maxBars?: number
   displayMode?: DisplayMode
 }): TrayPrimaryBar[] {
-  const { pluginsMeta, pluginSettings, pluginStates, maxBars = 4, displayMode = "used" } = args
+  const { pluginsMeta, pluginSettings, pluginStates, maxBars = 4, displayMode = DEFAULT_DISPLAY_MODE } = args
   if (!pluginSettings) return []
 
   const metaById = new Map(pluginsMeta.map((p) => [p.id, p]))
