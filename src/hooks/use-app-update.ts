@@ -5,6 +5,7 @@ import { relaunch } from "@tauri-apps/plugin-process"
 
 export type UpdateStatus =
   | { status: "idle" }
+  | { status: "checking" }
   | { status: "downloading"; progress: number } // 0-100, or -1 if indeterminate
   | { status: "installing" }
   | { status: "ready" }
@@ -35,10 +36,15 @@ export function useAppUpdate(): UseAppUpdateReturn {
     if (statusRef.current.status === "ready") return
 
     inFlightRef.current.checking = true
+    setStatus({ status: "checking" })
     try {
       const update = await check()
       inFlightRef.current.checking = false
       if (!mountedRef.current) return
+      if (!update) {
+        setStatus({ status: "idle" })
+        return
+      }
       if (update) {
         updateRef.current = update
         inFlightRef.current.downloading = true
@@ -79,6 +85,7 @@ export function useAppUpdate(): UseAppUpdateReturn {
       inFlightRef.current.checking = false
       if (!mountedRef.current) return
       console.error("Update check failed:", err)
+      setStatus({ status: "error", message: "Update check failed" })
     }
   }, [setStatus])
 
