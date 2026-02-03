@@ -156,7 +156,9 @@
   }
 
   function saveCredentials(ctx, source, fullData) {
-    const text = JSON.stringify(fullData, null, 2)
+    // MUST use minified JSON - macOS `security -w` hex-encodes values with newlines,
+    // which Claude Code can't read back, causing it to invalidate the session.
+    const text = JSON.stringify(fullData)
     if (source === "file") {
       try {
         ctx.host.fs.writeText(CRED_FILE, text)
