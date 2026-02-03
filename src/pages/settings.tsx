@@ -19,6 +19,7 @@ import { GripVertical } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import type { AutoUpdateIntervalMinutes, ThemeMode } from "@/lib/settings";
+import type { UpdateStatus } from "@/hooks/use-app-update";
 import { cn } from "@/lib/utils";
 
 interface PluginConfig {
@@ -106,6 +107,8 @@ interface SettingsPageProps {
   onAutoUpdateIntervalChange: (value: AutoUpdateIntervalMinutes) => void;
   themeMode: ThemeMode;
   onThemeModeChange: (value: ThemeMode) => void;
+  updateStatus: UpdateStatus;
+  onCheckForUpdates: () => void;
 }
 
 export function SettingsPage({
@@ -116,6 +119,8 @@ export function SettingsPage({
   onAutoUpdateIntervalChange,
   themeMode,
   onThemeModeChange,
+  updateStatus,
+  onCheckForUpdates,
 }: SettingsPageProps) {
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -193,7 +198,10 @@ export function SettingsPage({
         </div>
       </section>
       <section>
-        <h3 className="text-lg font-semibold mb-2">Plugins</h3>
+        <h3 className="text-lg font-semibold mb-1">Plugins</h3>
+        <p className="text-sm text-foreground mb-2">
+          Manage and reorder sources
+        </p>
         <div className="bg-muted/50 rounded-lg p-1 space-y-1">
           <DndContext
             sensors={sensors}
@@ -214,6 +222,19 @@ export function SettingsPage({
             </SortableContext>
           </DndContext>
         </div>
+      </section>
+      <section>
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full"
+          onClick={onCheckForUpdates}
+          disabled={updateStatus.status === "downloading" || updateStatus.status === "installing"}
+        >
+          {updateStatus.status === "downloading"
+            ? "Checking for updates..."
+            : "Check for updates"}
+        </Button>
       </section>
     </div>
   );

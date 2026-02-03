@@ -6,6 +6,7 @@ import type { UpdateStatus } from "@/hooks/use-app-update"
 
 const idle: UpdateStatus = { status: "idle" }
 const noop = () => {}
+const aboutProps = { showAbout: false, onShowAbout: noop, onCloseAbout: noop }
 
 describe("PanelFooter", () => {
   it("shows countdown in minutes when >= 60 seconds", () => {
@@ -16,6 +17,7 @@ describe("PanelFooter", () => {
         autoUpdateNextAt={futureTime}
         updateStatus={idle}
         onUpdateInstall={noop}
+        {...aboutProps}
       />
     )
     expect(screen.getByText("Next update in 5m")).toBeTruthy()
@@ -29,6 +31,7 @@ describe("PanelFooter", () => {
         autoUpdateNextAt={futureTime}
         updateStatus={idle}
         onUpdateInstall={noop}
+        {...aboutProps}
       />
     )
     expect(screen.getByText("Next update in 30s")).toBeTruthy()
@@ -41,6 +44,7 @@ describe("PanelFooter", () => {
         autoUpdateNextAt={null}
         updateStatus={idle}
         onUpdateInstall={noop}
+        {...aboutProps}
       />
     )
     expect(screen.getByText("Paused")).toBeTruthy()
@@ -53,6 +57,7 @@ describe("PanelFooter", () => {
         autoUpdateNextAt={null}
         updateStatus={{ status: "downloading", progress: 42 }}
         onUpdateInstall={noop}
+        {...aboutProps}
       />
     )
     expect(screen.getByText("Downloading update 42%")).toBeTruthy()
@@ -66,6 +71,7 @@ describe("PanelFooter", () => {
         autoUpdateNextAt={null}
         updateStatus={{ status: "ready" }}
         onUpdateInstall={onInstall}
+        {...aboutProps}
       />
     )
     const button = screen.getByText("Restart to update")
@@ -81,6 +87,7 @@ describe("PanelFooter", () => {
         autoUpdateNextAt={null}
         updateStatus={{ status: "error", message: "oops" }}
         onUpdateInstall={noop}
+        {...aboutProps}
       />
     )
     expect(container.textContent).toContain("Update failed")
@@ -93,6 +100,7 @@ describe("PanelFooter", () => {
         autoUpdateNextAt={null}
         updateStatus={{ status: "installing" }}
         onUpdateInstall={noop}
+        {...aboutProps}
       />
     )
     expect(screen.getByText("Installing...")).toBeTruthy()

@@ -13,6 +13,7 @@ export type UpdateStatus =
 interface UseAppUpdateReturn {
   updateStatus: UpdateStatus
   triggerInstall: () => void
+  checkForUpdates: () => void
 }
 
 export function useAppUpdate(): UseAppUpdateReturn {
@@ -28,65 +29,63 @@ export function useAppUpdate(): UseAppUpdateReturn {
     setUpdateStatus(next)
   }, [])
 
-  useEffect(() => {
-    let cancelled = false
-    mountedRef.current = true
+  const checkForUpdates = useCallback(async () => {
+    if (!isTauri()) return
+    if (inFlightRef.current.downloading || inFlightRef.current.installing) return
+    if (statusRef.current.status === "ready") return
 
-    const checkAndDownload = async () => {
-      if (!isTauri()) return
-      try {
-        const update = await check()
-        if (cancelled) return
-        if (update) {
-          updateRef.current = update
-          // Immediately start downloading (no "available" state)
-          inFlightRef.current.downloading = true
-          setStatus({ status: "downloading", progress: -1 })
+    try {
+      const update = await check()
+      if (!mountedRef.current) return
+      if (update) {
+        updateRef.current = update
+        inFlightRef.current.downloading = true
+        setStatus({ status: "downloading", progress: -1 })
 
-          let totalBytes: number | null = null
-          let downloadedBytes = 0
+        let totalBytes: number | null = null
+        let downloadedBytes = 0
 
-          try {
-            await update.download((event) => {
-              if (!mountedRef.current) return
-              if (event.event === "Started") {
-                totalBytes = event.data.contentLength ?? null
-                downloadedBytes = 0
-                setStatus({
-                  status: "downloading",
-                  progress: totalBytes ? 0 : -1,
-                })
-              } else if (event.event === "Progress") {
-                downloadedBytes += event.data.chunkLength
-                if (totalBytes && totalBytes > 0) {
-                  const pct = Math.min(100, Math.round((downloadedBytes / totalBytes) * 100))
-                  setStatus({ status: "downloading", progress: pct })
-                }
-              } else if (event.event === "Finished") {
-                setStatus({ status: "ready" })
+        try {
+          await update.download((event) => {
+            if (!mountedRef.current) return
+            if (event.event === "Started") {
+              totalBytes = event.data.contentLength ?? null
+              downloadedBytes = 0
+              setStatus({
+                status: "downloading",
+                progress: totalBytes ? 0 : -1,
+              })
+            } else if (event.event === "Progress") {
+              downloadedBytes += event.data.chunkLength
+              if (totalBytes && totalBytes > 0) {
+                const pct = Math.min(100, Math.round((downloadedBytes / totalBytes) * 100))
+                setStatus({ status: "downloading", progress: pct })
               }
-            })
-            setStatus({ status: "ready" })
-          } catch (err) {
-            console.error("Update download failed:", err)
-            setStatus({ status: "error", message: "Download failed" })
-          } finally {
-            inFlightRef.current.downloading = false
-          }
+            } else if (event.event === "Finished") {
+              setStatus({ status: "ready" })
+            }
+          })
+          setStatus({ status: "ready" })
+        } catch (err) {
+          console.error("Update download failed:", err)
+          setStatus({ status: "error", message: "Download failed" })
+        } finally {
+          inFlightRef.current.downloading = false
         }
-      } catch (err) {
-        if (cancelled) return
-        console.error("Update check failed:", err)
       }
-    }
-
-    void checkAndDownload()
-
-    return () => {
-      cancelled = true
-      mountedRef.current = false
+    } catch (err) {
+      if (!mountedRef.current) return
+      console.error("Update check failed:", err)
     }
   }, [setStatus])
+
+  useEffect(() => {
+    mountedRef.current = true
+    void checkForUpdates()
+    return () => {
+      mountedRef.current = false
+    }
+  }, [checkForUpdates])
 
   const triggerInstall = useCallback(async () => {
     const update = updateRef.current
@@ -108,5 +107,5 @@ export function useAppUpdate(): UseAppUpdateReturn {
     }
   }, [setStatus])
 
-  return { updateStatus, triggerInstall }
+  return { updateStatus, triggerInstall, checkForUpdates }
 }

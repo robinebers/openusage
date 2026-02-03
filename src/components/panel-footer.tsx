@@ -8,6 +8,9 @@ interface PanelFooterProps {
   autoUpdateNextAt: number | null;
   updateStatus: UpdateStatus;
   onUpdateInstall: () => void;
+  showAbout: boolean;
+  onShowAbout: () => void;
+  onCloseAbout: () => void;
 }
 
 function VersionDisplay({
@@ -68,9 +71,11 @@ export function PanelFooter({
   autoUpdateNextAt,
   updateStatus,
   onUpdateInstall,
+  showAbout,
+  onShowAbout,
+  onCloseAbout,
 }: PanelFooterProps) {
   const [now, setNow] = useState(() => Date.now());
-  const [showAbout, setShowAbout] = useState(false);
 
   useEffect(() => {
     if (!autoUpdateNextAt) return undefined;
@@ -97,14 +102,14 @@ export function PanelFooter({
           version={version}
           updateStatus={updateStatus}
           onUpdateInstall={onUpdateInstall}
-          onVersionClick={() => setShowAbout(true)}
+          onVersionClick={onShowAbout}
         />
         <span className="text-xs text-muted-foreground tabular-nums">
           {countdownLabel}
         </span>
       </div>
       {showAbout && (
-        <AboutDialog version={version} onClose={() => setShowAbout(false)} />
+        <AboutDialog version={version} onClose={onCloseAbout} />
       )}
     </>
   );

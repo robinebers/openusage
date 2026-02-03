@@ -51,6 +51,8 @@ const defaultProps = {
   onAutoUpdateIntervalChange: vi.fn(),
   themeMode: "system" as const,
   onThemeModeChange: vi.fn(),
+  updateStatus: { status: "idle" } as const,
+  onCheckForUpdates: vi.fn(),
 }
 
 afterEach(() => {

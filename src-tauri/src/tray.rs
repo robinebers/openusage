@@ -1,10 +1,34 @@
 use tauri::image::Image;
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::path::BaseDirectory;
 use tauri::tray::{MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_nspanel::ManagerExt;
 
 use crate::panel::position_panel_at_tray_icon;
+
+fn show_panel(app_handle: &AppHandle) {
+    let panel = match app_handle.get_webview_panel("main") {
+        Ok(panel) => panel,
+        Err(_) => {
+            if let Err(err) = crate::panel::init(app_handle) {
+                log::error!("Failed to init panel: {}", err);
+                return;
+            }
+            match app_handle.get_webview_panel("main") {
+                Ok(panel) => panel,
+                Err(err) => {
+                    log::error!("Panel missing after init: {:?}", err);
+                    return;
+                }
+            }
+        }
+    };
+
+    if !panel.is_visible() {
+        panel.show_and_make_key();
+    }
+}
 
 pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
     let tray_icon_path = app_handle
@@ -12,10 +36,40 @@ pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
         .resolve("icons/tray-icon.png", BaseDirectory::Resource)?;
     let icon = Image::from_path(tray_icon_path)?;
 
+    let show_stats = MenuItem::with_id(app_handle, "show_stats", "Show Stats", true, None::<&str>)?;
+    let go_to_settings = MenuItem::with_id(app_handle, "go_to_settings", "Go to Settings", true, None::<&str>)?;
+    let about = MenuItem::with_id(app_handle, "about", "About OpenUsage", true, None::<&str>)?;
+    let separator = PredefinedMenuItem::separator(app_handle)?;
+    let quit = MenuItem::with_id(app_handle, "quit", "Quit", true, None::<&str>)?;
+
+    let menu = Menu::with_items(app_handle, &[&show_stats, &go_to_settings, &about, &separator, &quit])?;
+
     TrayIconBuilder::with_id("tray")
         .icon(icon)
         .icon_as_template(true)
         .tooltip("OpenUsage")
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app_handle, event| {
+            match event.id.as_ref() {
+                "show_stats" => {
+                    show_panel(app_handle);
+                    let _ = app_handle.emit("tray:navigate", "home");
+                }
+                "go_to_settings" => {
+                    show_panel(app_handle);
+                    let _ = app_handle.emit("tray:navigate", "settings");
+                }
+                "about" => {
+                    show_panel(app_handle);
+                    let _ = app_handle.emit("tray:show-about", ());
+                }
+                "quit" => {
+                    app_handle.exit(0);
+                }
+                _ => {}
+            }
+        })
         .on_tray_icon_event(|tray, event| {
             let app_handle = tray.app_handle();
 
