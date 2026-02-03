@@ -14,7 +14,7 @@
       {
         "label": "main",
         "title": "OpenUsage",
-        "width": 350,
+        "width": 400,
         "height": 500,
         "resizable": false,
         "decorations": false,

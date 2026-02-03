@@ -24,6 +24,11 @@ pub fn init(app_handle: &tauri::AppHandle) -> tauri::Result<()> {
 
     let panel = window.to_panel::<OpenUsagePanel>()?;
 
+    // Disable native shadow - it causes gray border on transparent windows
+    // Let CSS handle shadow via shadow-xl class
+    panel.set_has_shadow(false);
+    panel.set_opaque(false);
+
     // Configure panel behavior
     panel.set_level(PanelLevel::MainMenu.value() + 1);
 
@@ -115,7 +120,7 @@ pub fn position_panel_at_tray_icon(
 
     let icon_center_x_phys = icon_phys_x + (icon_width_phys / 2);
     let panel_x_phys = icon_center_x_phys - (window_width_phys / 2);
-    let padding_phys = (-8.0 * scale_factor).round() as i32;
+    let padding_phys = (0.0 * scale_factor).round() as i32;  // No offset needed with native transparency
     let panel_y_phys = icon_phys_y + icon_height_phys + padding_phys;
 
     let final_pos = tauri::PhysicalPosition::new(panel_x_phys, panel_y_phys);

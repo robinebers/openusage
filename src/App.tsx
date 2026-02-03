@@ -32,7 +32,7 @@ import {
   type ThemeMode,
 } from "@/lib/settings"
 
-const PANEL_WIDTH = 350;
+const PANEL_WIDTH = 400;
 const MAX_HEIGHT_FALLBACK_PX = 600;
 const MAX_HEIGHT_FRACTION_OF_MONITOR = 0.8;
 const ARROW_OVERHEAD_PX = 13; // .tray-arrow (7px) + wrapper pt-1.5 (6px)
@@ -643,10 +643,10 @@ function App() {
   }
 
   return (
-    <div ref={containerRef} className="flex flex-col items-center pt-1.5">
+    <div ref={containerRef} className="flex flex-col items-center p-6 pt-1.5 bg-transparent">
       <div className="tray-arrow" />
       <div
-        className="bg-card rounded-lg border shadow-lg overflow-hidden select-none w-full"
+        className="bg-card rounded-xl overflow-hidden select-none w-full border shadow-lg"
         style={maxPanelHeightPx ? { maxHeight: `${maxPanelHeightPx - ARROW_OVERHEAD_PX}px` } : undefined}
       >
         <div className="flex h-full min-h-0 flex-row">
