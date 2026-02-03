@@ -277,24 +277,25 @@ fn inject_http<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rqui
                     .text()
                     .map_err(|e| Exception::throw_message(&ctx_inner, &e.to_string()))?;
 
-                let body_preview = if body.len() > 500 {
+                // Redact BEFORE truncation to ensure sensitive values are caught while intact
+                let redacted_body = redact_body(&body);
+                let body_preview = if redacted_body.len() > 500 {
                     // UTF-8 safe truncation: find valid char boundary at or before 500
-                    let truncated: String = body.char_indices()
+                    let truncated: String = redacted_body.char_indices()
                         .take_while(|(i, _)| *i < 500)
                         .map(|(_, c)| c)
                         .collect();
                     format!("{}... ({} bytes total)", truncated, body.len())
                 } else {
-                    body.clone()
+                    redacted_body
                 };
-                let redacted_body = redact_body(&body_preview);
                 log::info!(
                     "[plugin:{}] HTTP {} {} -> {} | {}",
                     pid,
                     method_str,
                     redacted_url,
                     status,
-                    redacted_body
+                    body_preview
                 );
 
                 let resp = HttpRespParams {
