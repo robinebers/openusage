@@ -139,6 +139,23 @@ describe("claude plugin", () => {
     expect(result.lines.find((line) => line.label === "Extra usage")).toBeTruthy()
   })
 
+  it("uses keychain credentials when value is hex-encoded JSON", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => false
+    const json = JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } }, null, 2)
+    const hex = Buffer.from(json, "utf8").toString("hex")
+    ctx.host.keychain.readGenericPassword.mockReturnValue(hex)
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        five_hour: { utilization: 1, resets_at: "2099-01-01T00:00:00.000Z" },
+      }),
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+  })
+
   it("throws on http errors and parse failures", async () => {
     const ctx = makeCtx()
     ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })

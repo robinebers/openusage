@@ -7,12 +7,39 @@
   const SCOPES = "user:profile user:inference user:sessions:claude_code user:mcp_servers"
   const REFRESH_BUFFER_MS = 5 * 60 * 1000 // refresh 5 minutes before expiration
 
+  function tryParseCredentialJSON(text) {
+    if (!text) return null
+    const trimmed = String(text).trim()
+    if (!trimmed) return null
+    try {
+      return JSON.parse(trimmed)
+    } catch {}
+
+    // Some macOS keychain items are returned by `security ... -w` as hex-encoded UTF-8 bytes.
+    // Example prefix: "7b0a" ( "{\\n" ).
+    // Support both plain hex and "0x..." forms.
+    let hex = trimmed
+    if (hex.startsWith("0x") || hex.startsWith("0X")) hex = hex.slice(2)
+    if (!hex || hex.length % 2 !== 0) return null
+    if (!/^[0-9a-fA-F]+$/.test(hex)) return null
+    try {
+      let decoded = ""
+      for (let i = 0; i < hex.length; i += 2) {
+        decoded += String.fromCharCode(parseInt(hex.slice(i, i + 2), 16))
+      }
+      return JSON.parse(decoded)
+    } catch {}
+
+    return null
+  }
+
   function loadCredentials(ctx) {
     // Try file first
     if (ctx.host.fs.exists(CRED_FILE)) {
       try {
         const text = ctx.host.fs.readText(CRED_FILE)
-        const parsed = JSON.parse(text)
+        const parsed = tryParseCredentialJSON(text)
+        if (!parsed) return null
         const oauth = parsed.claudeAiOauth
         if (oauth && oauth.accessToken) {
           return { oauth, source: "file", fullData: parsed }
@@ -25,7 +52,8 @@
     try {
       const keychainValue = ctx.host.keychain.readGenericPassword(KEYCHAIN_SERVICE)
       if (keychainValue) {
-        const parsed = JSON.parse(keychainValue)
+        const parsed = tryParseCredentialJSON(keychainValue)
+        if (!parsed) return null
         const oauth = parsed.claudeAiOauth
         if (oauth && oauth.accessToken) {
           return { oauth, source: "keychain", fullData: parsed }
