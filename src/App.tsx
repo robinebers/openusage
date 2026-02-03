@@ -35,7 +35,7 @@ import {
 const PANEL_WIDTH = 400;
 const MAX_HEIGHT_FALLBACK_PX = 600;
 const MAX_HEIGHT_FRACTION_OF_MONITOR = 0.8;
-const ARROW_OVERHEAD_PX = 13; // .tray-arrow (7px) + wrapper pt-1.5 (6px)
+const ARROW_OVERHEAD_PX = 37; // .tray-arrow (7px) + wrapper pt-1.5 (6px) + bottom p-6 (24px)
 const TRAY_SETTINGS_DEBOUNCE_MS = 2000;
 const TRAY_PROBE_DEBOUNCE_MS = 500;
 
