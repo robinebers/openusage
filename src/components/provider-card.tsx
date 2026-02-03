@@ -7,9 +7,7 @@ import { Separator } from "@/components/ui/separator"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { SkeletonLines } from "@/components/skeleton-lines"
 import { PluginError } from "@/components/plugin-error"
-import { useDarkMode } from "@/hooks/use-dark-mode"
 import { useNowTicker } from "@/hooks/use-now-ticker"
-import { getBadgeStyle, getRelativeLuminance } from "@/lib/color"
 import { REFRESH_COOLDOWN_MS, type DisplayMode } from "@/lib/settings"
 import type { ManifestLine, MetricLine } from "@/lib/plugin-types"
 import { clamp01 } from "@/lib/utils"
@@ -17,7 +15,6 @@ import { clamp01 } from "@/lib/utils"
 interface ProviderCardProps {
   name: string
   plan?: string
-  brandColor?: string
   showSeparator?: boolean
   loading?: boolean
   error?: string | null
@@ -63,7 +60,6 @@ function formatResetIn(nowMs: number, resetsAtIso: string): string | null {
 export function ProviderCard({
   name,
   plan,
-  brandColor,
   showSeparator = true,
   loading = false,
   error = null,
@@ -74,9 +70,6 @@ export function ProviderCard({
   scopeFilter = "all",
   displayMode,
 }: ProviderCardProps) {
-  const isDark = useDarkMode()
-  const badgeStyle = getBadgeStyle(brandColor, isDark)
-
   const cooldownRemainingMs = useMemo(() => {
     if (!lastManualRefreshAt) return 0
     const remaining = REFRESH_COOLDOWN_MS - (Date.now() - lastManualRefreshAt)
@@ -182,10 +175,9 @@ export function ProviderCard({
           </div>
           {plan && (
             <Badge
-              variant="secondary"
+              variant="outline"
               className="truncate min-w-0 max-w-[40%]"
               title={plan}
-              style={badgeStyle ? { backgroundColor: badgeStyle.background, color: badgeStyle.color } : undefined}
             >
               {plan}
             </Badge>
@@ -205,7 +197,6 @@ export function ProviderCard({
                 line={line}
                 displayMode={displayMode}
                 now={now}
-                badgeStyle={badgeStyle}
               />
             ))}
           </div>
@@ -220,12 +211,10 @@ function MetricLineRenderer({
   line,
   displayMode,
   now,
-  badgeStyle,
 }: {
   line: MetricLine
   displayMode: DisplayMode
   now: number
-  badgeStyle?: { background: string; color: string }
 }) {
   if (line.type === "text") {
     return (
@@ -248,23 +237,18 @@ function MetricLineRenderer({
   }
 
   if (line.type === "badge") {
-    // Use line.color if provided, otherwise fall back to brand color style
-    const style = line.color
-      ? {
-          backgroundColor: line.color,
-          color: getRelativeLuminance(line.color) > 0.5 ? "#1a1a1a" : "#ffffff",
-        }
-      : badgeStyle
-        ? { backgroundColor: badgeStyle.background, color: badgeStyle.color }
-        : undefined
     return (
       <div>
         <div className="flex justify-between items-center h-[22px]">
           <span className="text-sm text-muted-foreground flex-shrink-0">{line.label}</span>
           <Badge
-            variant="secondary"
+            variant="outline"
             className="truncate min-w-0 max-w-[60%]"
-            style={style}
+            style={
+              line.color
+                ? { color: line.color, borderColor: line.color }
+                : undefined
+            }
             title={line.text}
           >
             {line.text}

@@ -21,7 +21,6 @@ export function ProviderDetailPage({ plugin, onRetry, displayMode }: ProviderDet
     <ProviderCard
       name={plugin.meta.name}
       plan={plugin.data?.plan}
-      brandColor={plugin.meta.brandColor}
       showSeparator={false}
       loading={plugin.loading}
       error={plugin.error}

@@ -24,7 +24,6 @@ export function OverviewPage({ plugins, onRetryPlugin, displayMode }: OverviewPa
           key={plugin.meta.id}
           name={plugin.meta.name}
           plan={plugin.data?.plan}
-          brandColor={plugin.meta.brandColor}
           showSeparator={index < plugins.length - 1}
           loading={plugin.loading}
           error={plugin.error}
