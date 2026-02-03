@@ -154,6 +154,39 @@ body,
   border-bottom: 6px solid var(--card);
 }
 
+/* Border beam for the update button */
+.update-border-beam {
+  position: relative;
+  isolation: isolate;
+}
+.update-border-beam::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(
+    from var(--beam-angle),
+    transparent 70%,
+    var(--destructive) 90%,
+    transparent 100%
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: beam-rotate 2.5s linear infinite;
+}
+@property --beam-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+@keyframes beam-rotate {
+  to {
+    --beam-angle: 360deg;
+  }
+}
+
 /* Remove focus rings - this is a menu bar app, not keyboard-navigated */
 *:focus,
 *:focus-visible {

@@ -39,6 +39,7 @@ function VersionDisplay({
         <Button
           variant="destructive"
           size="xs"
+          className="update-border-beam"
           onClick={onUpdateInstall}
         >
           Restart to update
