@@ -7,25 +7,30 @@ use tauri_nspanel::ManagerExt;
 
 use crate::panel::position_panel_at_tray_icon;
 
-fn show_panel(app_handle: &AppHandle) {
-    let panel = match app_handle.get_webview_panel("main") {
-        Ok(panel) => panel,
-        Err(_) => {
-            if let Err(err) = crate::panel::init(app_handle) {
-                log::error!("Failed to init panel: {}", err);
-                return;
-            }
-            match app_handle.get_webview_panel("main") {
-                Ok(panel) => panel,
-                Err(err) => {
-                    log::error!("Panel missing after init: {:?}", err);
-                    return;
+macro_rules! get_or_init_panel {
+    ($app_handle:expr) => {
+        match $app_handle.get_webview_panel("main") {
+            Ok(panel) => Some(panel),
+            Err(_) => {
+                if let Err(err) = crate::panel::init($app_handle) {
+                    log::error!("Failed to init panel: {}", err);
+                    None
+                } else {
+                    match $app_handle.get_webview_panel("main") {
+                        Ok(panel) => Some(panel),
+                        Err(err) => {
+                            log::error!("Panel missing after init: {:?}", err);
+                            None
+                        }
+                    }
                 }
             }
         }
     };
+}
 
-    if !panel.is_visible() {
+fn show_panel(app_handle: &AppHandle) {
+    if let Some(panel) = get_or_init_panel!(app_handle) {
         panel.show_and_make_key();
     }
 }
@@ -78,21 +83,8 @@ pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
             } = event
             {
                 if button_state == MouseButtonState::Up {
-                    let panel = match app_handle.get_webview_panel("main") {
-                        Ok(panel) => panel,
-                        Err(_) => {
-                            if let Err(err) = crate::panel::init(app_handle) {
-                                log::error!("Failed to init panel: {}", err);
-                                return;
-                            }
-                            match app_handle.get_webview_panel("main") {
-                                Ok(panel) => panel,
-                                Err(err) => {
-                                    log::error!("Panel missing after init: {:?}", err);
-                                    return;
-                                }
-                            }
-                        }
+                    let Some(panel) = get_or_init_panel!(app_handle) else {
+                        return;
                     };
 
                     if panel.is_visible() {

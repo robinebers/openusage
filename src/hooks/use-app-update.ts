@@ -21,7 +21,7 @@ export function useAppUpdate(): UseAppUpdateReturn {
   const statusRef = useRef<UpdateStatus>({ status: "idle" })
   const updateRef = useRef<Update | null>(null)
   const mountedRef = useRef(true)
-  const inFlightRef = useRef({ downloading: false, installing: false })
+  const inFlightRef = useRef({ checking: false, downloading: false, installing: false })
 
   const setStatus = useCallback((next: UpdateStatus) => {
     statusRef.current = next
@@ -31,11 +31,13 @@ export function useAppUpdate(): UseAppUpdateReturn {
 
   const checkForUpdates = useCallback(async () => {
     if (!isTauri()) return
-    if (inFlightRef.current.downloading || inFlightRef.current.installing) return
+    if (inFlightRef.current.checking || inFlightRef.current.downloading || inFlightRef.current.installing) return
     if (statusRef.current.status === "ready") return
 
+    inFlightRef.current.checking = true
     try {
       const update = await check()
+      inFlightRef.current.checking = false
       if (!mountedRef.current) return
       if (update) {
         updateRef.current = update
@@ -74,6 +76,7 @@ export function useAppUpdate(): UseAppUpdateReturn {
         }
       }
     } catch (err) {
+      inFlightRef.current.checking = false
       if (!mountedRef.current) return
       console.error("Update check failed:", err)
     }

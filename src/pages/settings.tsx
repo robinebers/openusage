@@ -231,9 +231,7 @@ export function SettingsPage({
           onClick={onCheckForUpdates}
           disabled={updateStatus.status === "downloading" || updateStatus.status === "installing"}
         >
-          {updateStatus.status === "downloading"
-            ? "Checking for updates..."
-            : "Check for updates"}
+          Check for updates
         </Button>
       </section>
     </div>

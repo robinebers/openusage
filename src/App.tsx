@@ -116,17 +116,26 @@ function App() {
   // Listen for tray menu events
   useEffect(() => {
     if (!isTauri()) return
+    let cancelled = false
     const unlisteners: (() => void)[] = []
 
-    listen<string>("tray:navigate", (event) => {
-      setActiveView(event.payload as ActiveView)
-    }).then((unlisten) => unlisteners.push(unlisten))
+    async function setup() {
+      const u1 = await listen<string>("tray:navigate", (event) => {
+        setActiveView(event.payload as ActiveView)
+      })
+      if (cancelled) { u1(); return }
+      unlisteners.push(u1)
 
-    listen("tray:show-about", () => {
-      setShowAbout(true)
-    }).then((unlisten) => unlisteners.push(unlisten))
+      const u2 = await listen("tray:show-about", () => {
+        setShowAbout(true)
+      })
+      if (cancelled) { u2(); return }
+      unlisteners.push(u2)
+    }
+    void setup()
 
     return () => {
+      cancelled = true
       for (const fn of unlisteners) fn()
     }
   }, [])
