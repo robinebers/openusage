@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { useState } from "react"
 import { describe, expect, it, vi } from "vitest"
 import { PanelFooter } from "@/components/panel-footer"
 import type { UpdateStatus } from "@/hooks/use-app-update"
@@ -74,6 +75,7 @@ describe("PanelFooter", () => {
         autoUpdateNextAt={null}
         updateStatus={{ status: "downloading", progress: -1 }}
         onUpdateInstall={noop}
+        {...aboutProps}
       />
     )
     expect(screen.getByText("Downloading update...")).toBeTruthy()
@@ -123,14 +125,22 @@ describe("PanelFooter", () => {
   })
 
   it("opens About dialog when clicking version in idle state", async () => {
-    render(
-      <PanelFooter
-        version="0.0.0"
-        autoUpdateNextAt={null}
-        updateStatus={idle}
-        onUpdateInstall={noop}
-      />
-    )
+    function Harness() {
+      const [showAbout, setShowAbout] = useState(false)
+      return (
+        <PanelFooter
+          version="0.0.0"
+          autoUpdateNextAt={null}
+          updateStatus={idle}
+          onUpdateInstall={noop}
+          showAbout={showAbout}
+          onShowAbout={() => setShowAbout(true)}
+          onCloseAbout={() => setShowAbout(false)}
+        />
+      )
+    }
+
+    render(<Harness />)
     await userEvent.click(screen.getByRole("button", { name: /OpenUsage/ }))
     expect(screen.getByText("Open source on")).toBeInTheDocument()
 

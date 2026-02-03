@@ -1,37 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import { makePluginTestContext } from "../test-helpers.js"
 
 const loadPlugin = async () => {
   await import("./plugin.js")
   return globalThis.__openusage_plugin
 }
 
-const createCtx = () => {
-  const files = new Map()
-  return {
-    nowIso: "2026-02-02T00:00:00.000Z",
-    app: {
-      pluginDataDir: "/tmp/mock",
-      appDataDir: "/tmp/app",
-    },
-    host: {
-      fs: {
-        exists: (path) => files.has(path),
-        readText: (path) => {
-          const value = files.get(path)
-          if (value === undefined) throw new Error("missing")
-          return value
-        },
-        writeText: (path, text) => files.set(path, text),
-      },
-      http: {
-        request: vi.fn(() => ({})),
-      },
-      sqlite: {
-        query: vi.fn(() => "[]"),
-      },
-    },
-  }
-}
+const createCtx = (overrides) => makePluginTestContext(overrides, vi)
 
 const setConfig = (ctx, value) => {
   ctx.host.fs.writeText(ctx.app.pluginDataDir + "/config.json", JSON.stringify(value))
@@ -40,7 +15,7 @@ const setConfig = (ctx, value) => {
 describe("mock plugin", () => {
   beforeEach(() => {
     delete globalThis.__openusage_plugin
-    vi.resetModules()
+    if (vi.resetModules) vi.resetModules()
   })
 
   it("initializes config and returns ok case", async () => {

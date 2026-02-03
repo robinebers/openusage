@@ -39,10 +39,11 @@ describe("useAppUpdate", () => {
     }
   })
 
-  it("starts in idle state", () => {
+  it("starts checking on mount", async () => {
     checkMock.mockReturnValue(new Promise(() => {})) // never resolves
     const { result } = renderHook(() => useAppUpdate())
-    expect(result.current.updateStatus).toEqual({ status: "idle" })
+    await act(() => Promise.resolve())
+    expect(result.current.updateStatus).toEqual({ status: "checking" })
   })
 
   it("auto-downloads when update is available and transitions to ready", async () => {
@@ -69,11 +70,12 @@ describe("useAppUpdate", () => {
     expect(result.current.updateStatus).toEqual({ status: "idle" })
   })
 
-  it("stays idle when check throws", async () => {
+  it("transitions to error when check throws", async () => {
     checkMock.mockRejectedValue(new Error("network error"))
     const { result } = renderHook(() => useAppUpdate())
     await act(() => Promise.resolve())
-    expect(result.current.updateStatus).toEqual({ status: "idle" })
+    await act(() => Promise.resolve())
+    expect(result.current.updateStatus).toEqual({ status: "error", message: "Update check failed" })
   })
 
   it("reports indeterminate progress when content length is unknown", async () => {
@@ -143,10 +145,11 @@ describe("useAppUpdate", () => {
     checkMock.mockReturnValue(new Promise((resolve) => { resolveRef.current = resolve }))
 
     const { result, unmount } = renderHook(() => useAppUpdate())
+    const statusAtUnmount = result.current.updateStatus
     unmount()
     resolveRef.current?.({ version: "1.0.0", download: vi.fn(), install: vi.fn() })
     await act(() => Promise.resolve())
-    expect(result.current.updateStatus).toEqual({ status: "idle" })
+    expect(result.current.updateStatus).toEqual(statusAtUnmount)
   })
 
   it("does not trigger install when not in ready state", async () => {
