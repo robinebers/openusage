@@ -103,8 +103,15 @@ export function useAppUpdate(): UseAppUpdateReturn {
   useEffect(() => {
     mountedRef.current = true
     void checkForUpdates()
+
+    // Check every 15 minutes
+    const intervalId = setInterval(() => {
+      void checkForUpdates()
+    }, 15 * 60 * 1000)
+
     return () => {
       mountedRef.current = false
+      clearInterval(intervalId)
       if (upToDateTimeoutRef.current !== null) {
         clearTimeout(upToDateTimeoutRef.current)
       }
