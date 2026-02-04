@@ -787,7 +787,13 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                 let expanded = expand_path(&db_path);
                 // Use immutable=1 to bypass WAL/SHM file access issues
                 // (WAL databases can fail with -readonly when shm is locked after macOS sleep)
-                let uri_path = format!("file:{}?immutable=1", expanded);
+                // Percent-encode special chars for valid URI (% must be first!)
+                let encoded = expanded
+                    .replace('%', "%25")
+                    .replace(' ', "%20")
+                    .replace('#', "%23")
+                    .replace('?', "%3F");
+                let uri_path = format!("file:{}?immutable=1", encoded);
                 let output = std::process::Command::new("sqlite3")
                     .args(["-readonly", "-json", &uri_path, &sql])
                     .output()
