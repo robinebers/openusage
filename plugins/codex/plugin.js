@@ -273,18 +273,13 @@
       if (reviewWindow) {
         const used = reviewWindow.used_percent
         if (typeof used === "number") {
-          // Use reset_after_seconds if available, otherwise fall back to session duration
-          var reviewPeriodMs = PERIOD_SESSION_MS
-          if (typeof reviewWindow.reset_after_seconds === "number") {
-            reviewPeriodMs = reviewWindow.reset_after_seconds * 1000
-          }
           lines.push(ctx.line.progress({
             label: "Reviews",
             used: used,
             limit: 100,
             format: { kind: "percent" },
             resetsAt: getResetsAtIso(ctx, nowSec, reviewWindow),
-            periodDurationMs: reviewPeriodMs
+            periodDurationMs: PERIOD_SESSION_MS
           }))
         }
       }

@@ -147,6 +147,7 @@ type MetricLine =
         | { kind: "dollars" }
         | { kind: "count"; suffix: string };
       resetsAt?: string; // ISO timestamp
+      periodDurationMs?: number; // period length in ms for pace tracking
       color?: string;
     }
   | { type: "badge"; label: string; text: string; color?: string; subtitle?: string }
@@ -155,6 +156,7 @@ type MetricLine =
 - `color`: optional hex string (e.g. `#22c55e`)
 - `subtitle`: optional text displayed below the line in smaller muted text
 - `resetsAt`: optional ISO timestamp (UI shows "Resets in ..." automatically)
+- `periodDurationMs`: optional period length in milliseconds (enables pace indicator when combined with `resetsAt`)
 
 ### Text Line
 

@@ -312,6 +312,7 @@ ctx.line.progress({
     suffix?: string                 // Required when kind="count" (e.g. "credits")
   },
   resetsAt?: string | null,         // Optional: ISO timestamp for when usage resets
+  periodDurationMs?: number,        // Optional: period length in ms for pace tracking
   color?: string,                   // Optional: hex color for progress bar
 }): MetricLine
 ```
@@ -321,6 +322,7 @@ Notes:
 - `used` may exceed `limit` (overages).
 - For `format.kind: "percent"`, `limit` must be `100`.
 - Prefer setting `resetsAt` (via `ctx.util.toIso(...)`) instead of putting reset info in other lines.
+- `periodDurationMs`: when provided with `resetsAt`, enables the pace tracking indicator (shows if usage rate will exhaust quota before reset).
 
 **Example:**
 
