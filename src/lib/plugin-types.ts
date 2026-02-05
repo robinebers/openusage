@@ -12,6 +12,7 @@ export type MetricLine =
       limit: number
       format: ProgressFormat
       resetsAt?: string
+      periodDurationMs?: number
       color?: string
     }
   | { type: "badge"; label: string; text: string; color?: string; subtitle?: string }

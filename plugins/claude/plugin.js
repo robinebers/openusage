@@ -353,7 +353,8 @@
         used: data.five_hour.utilization,
         limit: 100,
         format: { kind: "percent" },
-        resetsAt: ctx.util.toIso(data.five_hour.resets_at)
+        resetsAt: ctx.util.toIso(data.five_hour.resets_at),
+        periodDurationMs: 5 * 60 * 60 * 1000 // 5 hours
       }))
     }
     if (data.seven_day && typeof data.seven_day.utilization === "number") {
@@ -362,7 +363,8 @@
         used: data.seven_day.utilization,
         limit: 100,
         format: { kind: "percent" },
-        resetsAt: ctx.util.toIso(data.seven_day.resets_at)
+        resetsAt: ctx.util.toIso(data.seven_day.resets_at),
+        periodDurationMs: 7 * 24 * 60 * 60 * 1000 // 7 days
       }))
     }
     if (data.seven_day_sonnet && typeof data.seven_day_sonnet.utilization === "number") {
@@ -371,7 +373,8 @@
         used: data.seven_day_sonnet.utilization,
         limit: 100,
         format: { kind: "percent" },
-        resetsAt: ctx.util.toIso(data.seven_day_sonnet.resets_at)
+        resetsAt: ctx.util.toIso(data.seven_day_sonnet.resets_at),
+        periodDurationMs: 7 * 24 * 60 * 60 * 1000 // 7 days
       }))
     }
 

@@ -11,6 +11,7 @@ import { useNowTicker } from "@/hooks/use-now-ticker"
 import { REFRESH_COOLDOWN_MS, type DisplayMode } from "@/lib/settings"
 import type { ManifestLine, MetricLine } from "@/lib/plugin-types"
 import { clamp01 } from "@/lib/utils"
+import { calculatePaceStatus, type PaceStatus } from "@/lib/pace-status"
 
 interface ProviderCardProps {
   name: string
@@ -58,6 +59,40 @@ function formatResetIn(nowMs: number, resetsAtIso: string): string | null {
   if (totalHours > 0) return `Resets in ${totalHours}h ${minutes}m`
   if (totalMinutes > 0) return `Resets in ${totalMinutes}m`
   return "Resets in <1m"
+}
+
+/** Colored dot indicator showing pace status */
+function PaceIndicator({ status }: { status: PaceStatus }) {
+  const colorClass =
+    status === "ahead"
+      ? "bg-green-500"
+      : status === "on-track"
+        ? "bg-yellow-500"
+        : "bg-red-500"
+
+  const tooltip =
+    status === "ahead"
+      ? "Ahead of pace"
+      : status === "on-track"
+        ? "On track"
+        : "Using fast"
+
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={(props) => (
+          <span
+            {...props}
+            className={`inline-block w-2 h-2 rounded-full ${colorClass}`}
+            aria-label={tooltip}
+          />
+        )}
+      />
+      <TooltipContent side="top" className="text-xs">
+        {tooltip}
+      </TooltipContent>
+    </Tooltip>
+  )
 }
 
 export function ProviderCard({
@@ -288,9 +323,24 @@ function MetricLineRenderer({
             ? `$${formatNumber(line.limit)} limit`
             : `${formatCount(line.limit)} ${line.format.suffix}`
 
+    // Calculate pace status if we have reset time and period duration
+    const paceResult =
+      line.resetsAt && line.periodDurationMs
+        ? calculatePaceStatus(
+            line.used,
+            line.limit,
+            Date.parse(line.resetsAt),
+            line.periodDurationMs,
+            now
+          )
+        : null
+
     return (
       <div>
-        <div className="text-sm font-medium mb-1.5">{line.label}</div>
+        <div className="text-sm font-medium mb-1.5 flex items-center gap-1.5">
+          {line.label}
+          {paceResult && <PaceIndicator status={paceResult.status} />}
+        </div>
         <Progress
           value={percent}
           indicatorColor={line.color}
@@ -300,7 +350,9 @@ function MetricLineRenderer({
             {primaryText}
           </span>
           {secondaryText && (
-            <span className="text-xs text-muted-foreground">{secondaryText}</span>
+            <span className="text-xs text-muted-foreground">
+              {secondaryText}
+            </span>
           )}
         </div>
       </div>

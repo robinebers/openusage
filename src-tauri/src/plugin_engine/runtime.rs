@@ -28,6 +28,8 @@ pub enum MetricLine {
         format: ProgressFormat,
         #[serde(rename = "resetsAt")]
         resets_at: Option<String>,
+        #[serde(rename = "periodDurationMs")]
+        period_duration_ms: Option<u64>,
         color: Option<String>,
     },
     Badge {
@@ -359,12 +361,34 @@ fn parse_lines(result: &Object) -> Result<Vec<MetricLine>, String> {
                     Err(_) => None,
                 };
 
+                // Parse optional periodDurationMs
+                let period_duration_ms: Option<u64> = match line.get::<_, Value>("periodDurationMs") {
+                    Ok(val) => {
+                        if val.is_null() || val.is_undefined() {
+                            None
+                        } else if let Some(n) = val.as_number() {
+                            let ms = n as u64;
+                            if ms > 0 {
+                                Some(ms)
+                            } else {
+                                log::warn!("periodDurationMs at index {} must be positive, omitting", idx);
+                                None
+                            }
+                        } else {
+                            log::warn!("invalid periodDurationMs at index {} (non-number), omitting", idx);
+                            None
+                        }
+                    }
+                    Err(_) => None,
+                };
+
                 out.push(MetricLine::Progress {
                     label,
                     used,
                     limit,
                     format,
                     resets_at,
+                    period_duration_ms,
                     color,
                 });
             }

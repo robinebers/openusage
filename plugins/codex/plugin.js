@@ -143,6 +143,10 @@
     return null
   }
 
+  // Period durations in milliseconds
+  var PERIOD_SESSION_MS = 5 * 60 * 60 * 1000    // 5 hours
+  var PERIOD_WEEKLY_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
+
   function probe(ctx) {
     const auth = loadAuth(ctx)
     if (!auth) {
@@ -229,6 +233,7 @@
           limit: 100,
           format: { kind: "percent" },
           resetsAt: getResetsAtIso(ctx, nowSec, primaryWindow),
+          periodDurationMs: PERIOD_SESSION_MS
         }))
       }
       if (headerSecondary !== null) {
@@ -238,6 +243,7 @@
           limit: 100,
           format: { kind: "percent" },
           resetsAt: getResetsAtIso(ctx, nowSec, secondaryWindow),
+          periodDurationMs: PERIOD_WEEKLY_MS
         }))
       }
 
@@ -249,6 +255,7 @@
             limit: 100,
             format: { kind: "percent" },
             resetsAt: getResetsAtIso(ctx, nowSec, primaryWindow),
+            periodDurationMs: PERIOD_SESSION_MS
           }))
         }
         if (data.rate_limit.secondary_window && typeof data.rate_limit.secondary_window.used_percent === "number") {
@@ -258,6 +265,7 @@
             limit: 100,
             format: { kind: "percent" },
             resetsAt: getResetsAtIso(ctx, nowSec, secondaryWindow),
+            periodDurationMs: PERIOD_WEEKLY_MS
           }))
         }
       }
@@ -265,12 +273,18 @@
       if (reviewWindow) {
         const used = reviewWindow.used_percent
         if (typeof used === "number") {
+          // Use reset_after_seconds if available, otherwise fall back to session duration
+          var reviewPeriodMs = PERIOD_SESSION_MS
+          if (typeof reviewWindow.reset_after_seconds === "number") {
+            reviewPeriodMs = reviewWindow.reset_after_seconds * 1000
+          }
           lines.push(ctx.line.progress({
             label: "Reviews",
             used: used,
             limit: 100,
             format: { kind: "percent" },
             resetsAt: getResetsAtIso(ctx, nowSec, reviewWindow),
+            periodDurationMs: reviewPeriodMs
           }))
         }
       }
