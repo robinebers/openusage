@@ -336,7 +336,7 @@ function MetricLineRenderer({
           )
         : null
     const paceStatus: PaceStatus | null =
-      line.used === 0 ? "ahead" : (paceResult?.status ?? null)
+      line.used === 0 && line.periodDurationMs ? "ahead" : (paceResult?.status ?? null)
 
     return (
       <div>
