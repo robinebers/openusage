@@ -1,9 +1,6 @@
 (function () {
-  // TODO: revert after testing
   const STATE_DB =
-    "~/Downloads/vscdb_test/state.vscdb"
-  // const STATE_DB =
-  //   "~/Library/Application Support/Cursor/User/globalStorage/state.vscdb"
+    "~/Library/Application Support/Cursor/User/globalStorage/state.vscdb"
   const BASE_URL = "https://api2.cursor.sh"
   const USAGE_URL = BASE_URL + "/aiserver.v1.DashboardService/GetCurrentPeriodUsage"
   const PLAN_URL = BASE_URL + "/aiserver.v1.DashboardService/GetPlanInfo"
