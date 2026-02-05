@@ -283,10 +283,12 @@
       : pu.limit - (pu.remaining ?? 0)
 
     // Calculate billing cycle period duration
-    // Use billingCycleStart/End if available, otherwise default to ~30 days
+    // API returns timestamps as strings in milliseconds
     var billingPeriodMs = 30 * 24 * 60 * 60 * 1000 // 30 days default
-    if (typeof usage.billingCycleStart === "number" && typeof usage.billingCycleEnd === "number") {
-      billingPeriodMs = (usage.billingCycleEnd - usage.billingCycleStart) * 1000
+    var cycleStart = Number(usage.billingCycleStart)
+    var cycleEnd = Number(usage.billingCycleEnd)
+    if (Number.isFinite(cycleStart) && Number.isFinite(cycleEnd) && cycleEnd > cycleStart) {
+      billingPeriodMs = cycleEnd - cycleStart // already in ms
     }
 
     lines.push(ctx.line.progress({

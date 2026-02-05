@@ -279,7 +279,7 @@
             limit: 100,
             format: { kind: "percent" },
             resetsAt: getResetsAtIso(ctx, nowSec, reviewWindow),
-            periodDurationMs: PERIOD_SESSION_MS
+            periodDurationMs: PERIOD_WEEKLY_MS // code_review_rate_limit is a 7-day window
           }))
         }
       }
