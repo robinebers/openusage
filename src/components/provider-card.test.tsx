@@ -127,10 +127,12 @@ describe("ProviderCard", () => {
     vi.useRealTimers()
   })
 
-  it("formats numbers with thousand separators", () => {
+  it("formats numbers with thousand separators and preserves trailing zeros", () => {
     expect(formatNumber(Number.NaN)).toBe("0")
     expect(formatNumber(5)).toBe("5")
     expect(formatNumber(5.129)).toBe("5.13")
+    expect(formatNumber(5.1)).toBe("5.10")
+    expect(formatNumber(5.5)).toBe("5.50")
     expect(formatNumber(1000)).toBe("1,000")
     expect(formatNumber(10000)).toBe("10,000")
     expect(formatNumber(1234567.89)).toBe("1,234,567.89")

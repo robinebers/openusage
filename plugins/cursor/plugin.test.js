@@ -51,6 +51,38 @@ describe("cursor plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Usage tracking disabled")
   })
 
+  it("throws on missing plan usage limit", async () => {
+    const ctx = makeCtx()
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: "token" }]))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        enabled: true,
+        planUsage: { totalSpend: 1200 }, // missing limit
+      }),
+    })
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Plan usage limit missing")
+  })
+
+  it("calculates planUsed from limit - remaining when totalSpend missing", async () => {
+    const ctx = makeCtx()
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: "token" }]))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        enabled: true,
+        planUsage: { limit: 2400, remaining: 1200 }, // no totalSpend
+      }),
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const planLine = result.lines.find((l) => l.label === "Plan usage")
+    expect(planLine).toBeTruthy()
+    // used = limit - remaining = 2400 - 1200 = 1200
+    expect(planLine.used).toBe(12) // ctx.fmt.dollars divides by 100
+  })
+
   it("renders usage + plan info", async () => {
     const ctx = makeCtx()
     ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: "token" }]))

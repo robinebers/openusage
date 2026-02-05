@@ -28,8 +28,11 @@ interface ProviderCardProps {
 
 export function formatNumber(value: number) {
   if (Number.isNaN(value)) return "0"
-  const maximumFractionDigits = Number.isInteger(value) ? 0 : 2
-  return new Intl.NumberFormat("en-US", { maximumFractionDigits }).format(value)
+  const fractionDigits = Number.isInteger(value) ? 0 : 2
+  return new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
+  }).format(value)
 }
 
 function formatCount(value: number) {

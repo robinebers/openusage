@@ -275,9 +275,12 @@
 
     // Plan usage (always present) - fallback primary metric
     // API may return totalSpend directly, or we calculate from limit - remaining
-    const planUsed = typeof pu.totalSpend === "number" 
-      ? pu.totalSpend 
-      : (pu.limit - (pu.remaining ?? 0))
+    if (typeof pu.limit !== "number") {
+      throw "Plan usage limit missing from API response."
+    }
+    const planUsed = typeof pu.totalSpend === "number"
+      ? pu.totalSpend
+      : pu.limit - (pu.remaining ?? 0)
     lines.push(ctx.line.progress({
       label: "Plan usage",
       used: ctx.fmt.dollars(planUsed),
