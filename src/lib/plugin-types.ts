@@ -36,7 +36,8 @@ export type PluginMeta = {
   iconUrl: string
   brandColor?: string
   lines: ManifestLine[]
-  primaryProgressLabel?: string | null
+  /** Ordered list of primary metric candidates. Frontend picks first available. */
+  primaryCandidates: string[]
 }
 
 export type PluginDisplayState = {

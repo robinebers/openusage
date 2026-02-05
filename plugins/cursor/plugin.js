@@ -258,6 +258,22 @@
 
     const lines = []
     const pu = usage.planUsage
+
+    // Credits first (if available) - highest priority primary metric
+    if (creditGrants && creditGrants.hasCreditGrants === true) {
+      const total = parseInt(creditGrants.totalCents, 10)
+      const used = parseInt(creditGrants.usedCents, 10)
+      if (total > 0 && !isNaN(total) && !isNaN(used)) {
+        lines.push(ctx.line.progress({
+          label: "Credits",
+          used: ctx.fmt.dollars(used),
+          limit: ctx.fmt.dollars(total),
+          format: { kind: "dollars" },
+        }))
+      }
+    }
+
+    // Plan usage (always present) - fallback primary metric
     lines.push(ctx.line.progress({
       label: "Plan usage",
       used: ctx.fmt.dollars(pu.totalSpend),
@@ -270,6 +286,7 @@
       lines.push(ctx.line.text({ label: "Bonus spend", value: "$" + String(ctx.fmt.dollars(pu.bonusSpend)) }))
     }
 
+    // On-demand (if available) - not a primary candidate
     const su = usage.spendLimitUsage
     if (su) {
       const limit = su.individualLimit ?? su.pooledLimit ?? 0
@@ -280,19 +297,6 @@
           label: "On-demand",
           used: ctx.fmt.dollars(used),
           limit: ctx.fmt.dollars(limit),
-          format: { kind: "dollars" },
-        }))
-      }
-    }
-
-    if (creditGrants && creditGrants.hasCreditGrants === true) {
-      const total = parseInt(creditGrants.totalCents, 10)
-      const used = parseInt(creditGrants.usedCents, 10)
-      if (total > 0 && !isNaN(total) && !isNaN(used)) {
-        lines.push(ctx.line.progress({
-          label: "Credits",
-          used: ctx.fmt.dollars(used),
-          limit: ctx.fmt.dollars(total),
           format: { kind: "dollars" },
         }))
       }

@@ -7,7 +7,7 @@
   "icon": "icon.svg",
   "brandColor": "#DE7356",
   "lines": [
-    { "type": "progress", "label": "Session", "scope": "overview", "primary": true },
+    { "type": "progress", "label": "Session", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Weekly", "scope": "overview" },
     { "type": "progress", "label": "Sonnet", "scope": "detail" },
     { "type": "progress", "label": "Extra usage", "scope": "detail" }

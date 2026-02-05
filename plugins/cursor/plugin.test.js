@@ -182,6 +182,71 @@ describe("cursor plugin", () => {
     expect(result.lines.find((line) => line.label === "Plan usage")).toBeTruthy()
   })
 
+  it("outputs Credits first when available", async () => {
+    const ctx = makeCtx()
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: "token" }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            enabled: true,
+            planUsage: { totalSpend: 1200, limit: 2400 },
+            spendLimitUsage: { individualLimit: 5000, individualRemaining: 1000 },
+          }),
+        }
+      }
+      if (String(opts.url).includes("GetCreditGrantsBalance")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            hasCreditGrants: true,
+            totalCents: 10000,
+            usedCents: 500,
+          }),
+        }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    
+    // Credits should be first in the lines array
+    expect(result.lines[0].label).toBe("Credits")
+    expect(result.lines[1].label).toBe("Plan usage")
+    // On-demand should come after
+    const onDemandIndex = result.lines.findIndex((l) => l.label === "On-demand")
+    expect(onDemandIndex).toBeGreaterThan(1)
+  })
+
+  it("outputs Plan usage first when Credits not available", async () => {
+    const ctx = makeCtx()
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: "token" }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            enabled: true,
+            planUsage: { totalSpend: 1200, limit: 2400 },
+          }),
+        }
+      }
+      if (String(opts.url).includes("GetCreditGrantsBalance")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({ hasCreditGrants: false }),
+        }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    
+    // Plan usage should be first when Credits not available
+    expect(result.lines[0].label).toBe("Plan usage")
+  })
+
   it("refreshes token when expired and persists new access token", async () => {
     const ctx = makeCtx()
 

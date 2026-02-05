@@ -27,7 +27,9 @@ pub struct PluginMeta {
     pub icon_url: String,
     pub brand_color: Option<String>,
     pub lines: Vec<ManifestLineDto>,
-    pub primary_progress_label: Option<String>,
+    /// Ordered list of primary metric candidates (sorted by primaryOrder).
+    /// Frontend picks the first one that exists in runtime data.
+    pub primary_candidates: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -214,12 +216,16 @@ fn list_plugins(state: tauri::State<'_, Mutex<AppState>>) -> Vec<PluginMeta> {
     plugins
         .into_iter()
         .map(|plugin| {
-            let primary_progress_label = plugin
+            // Extract primary candidates: progress lines with primary_order, sorted by order
+            let mut candidates: Vec<_> = plugin
                 .manifest
                 .lines
                 .iter()
-                .find(|line| line.primary && line.line_type == "progress")
-                .map(|line| line.label.clone());
+                .filter(|line| line.line_type == "progress" && line.primary_order.is_some())
+                .collect();
+            candidates.sort_by_key(|line| line.primary_order.unwrap());
+            let primary_candidates: Vec<String> =
+                candidates.iter().map(|line| line.label.clone()).collect();
 
             PluginMeta {
                 id: plugin.manifest.id,
@@ -236,7 +242,7 @@ fn list_plugins(state: tauri::State<'_, Mutex<AppState>>) -> Vec<PluginMeta> {
                         scope: line.scope.clone(),
                     })
                     .collect(),
-                primary_progress_label,
+                primary_candidates,
             }
         })
         .collect()

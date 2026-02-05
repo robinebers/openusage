@@ -7,7 +7,7 @@
   "icon": "icon.svg",
   "brandColor": "#74AA9C",
   "lines": [
-    { "type": "progress", "label": "Session", "scope": "overview", "primary": true },
+    { "type": "progress", "label": "Session", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Weekly", "scope": "overview" },
     { "type": "progress", "label": "Reviews", "scope": "detail" },
     { "type": "progress", "label": "Credits", "scope": "detail" }

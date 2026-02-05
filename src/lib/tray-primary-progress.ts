@@ -41,24 +41,31 @@ export function getTrayPrimaryBars(args: {
     if (disabled.has(id)) continue
     const meta = metaById.get(id)
     if (!meta) continue
-    const primaryLabel = meta.primaryProgressLabel ?? null
-    if (!primaryLabel) continue
+    
+    // Skip if no primary candidates defined
+    if (!meta.primaryCandidates || meta.primaryCandidates.length === 0) continue
 
     const state = pluginStates[id]
     const data = state?.data ?? null
 
     let fraction: number | undefined
     if (data) {
-      const primaryLine = data.lines.find(
-        (line): line is ProgressLine =>
-          isProgressLine(line) && line.label === primaryLabel
+      // Find first candidate that exists in runtime data
+      const primaryLabel = meta.primaryCandidates.find((label) =>
+        data.lines.some((line) => isProgressLine(line) && line.label === label)
       )
-      if (primaryLine && primaryLine.limit > 0) {
-        const shownAmount =
-          displayMode === "used"
-            ? primaryLine.used
-            : primaryLine.limit - primaryLine.used
-        fraction = clamp01(shownAmount / primaryLine.limit)
+      if (primaryLabel) {
+        const primaryLine = data.lines.find(
+          (line): line is ProgressLine =>
+            isProgressLine(line) && line.label === primaryLabel
+        )
+        if (primaryLine && primaryLine.limit > 0) {
+          const shownAmount =
+            displayMode === "used"
+              ? primaryLine.used
+              : primaryLine.limit - primaryLine.used
+          fraction = clamp01(shownAmount / primaryLine.limit)
+        }
       }
     }
 

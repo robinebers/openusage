@@ -9,7 +9,7 @@
   "lines": [
     { "type": "text", "label": "Config", "scope": "overview" },
     { "type": "badge", "label": "Case", "scope": "overview" },
-    { "type": "progress", "label": "Percent", "scope": "overview" },
+    { "type": "progress", "label": "Percent", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Dollars", "scope": "detail" },
     { "type": "text", "label": "Now", "scope": "detail" },
     { "type": "badge", "label": "Warning", "scope": "detail" }

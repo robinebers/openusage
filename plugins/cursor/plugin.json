@@ -7,8 +7,8 @@
   "icon": "icon.svg",
   "brandColor": "#000000",
   "lines": [
-    { "type": "progress", "label": "Plan usage", "scope": "overview", "primary": true },
-    { "type": "progress", "label": "On-demand", "scope": "detail" },
-    { "type": "progress", "label": "Credits", "scope": "detail" }
+    { "type": "progress", "label": "Credits", "scope": "overview", "primaryOrder": 1 },
+    { "type": "progress", "label": "Plan usage", "scope": "overview", "primaryOrder": 2 },
+    { "type": "progress", "label": "On-demand", "scope": "detail" }
   ]
 }
