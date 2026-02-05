@@ -34,6 +34,15 @@
     writeJson(ctx, ctx.app.pluginDataDir + "/auth.json", { token: token });
   }
 
+  function clearCachedToken(ctx) {
+    try {
+      ctx.host.keychain.deleteGenericPassword(KEYCHAIN_SERVICE);
+    } catch (e) {
+      ctx.host.log.info("keychain delete failed: " + String(e));
+    }
+    writeJson(ctx, ctx.app.pluginDataDir + "/auth.json", null);
+  }
+
   function loadTokenFromKeychain(ctx) {
     try {
       const raw = ctx.host.keychain.readGenericPassword(KEYCHAIN_SERVICE);
@@ -108,7 +117,7 @@
   function makeProgressLine(ctx, label, snapshot, resetDate) {
     if (!snapshot || typeof snapshot.percent_remaining !== "number")
       return null;
-    const usedPercent = Math.max(0, 100 - snapshot.percent_remaining);
+    const usedPercent = Math.min(100, Math.max(0, 100 - snapshot.percent_remaining));
     return ctx.line.progress({
       label: label,
       used: usedPercent,
@@ -123,7 +132,7 @@
     if (typeof remaining !== "number" || typeof total !== "number" || total <= 0)
       return null;
     const used = total - remaining;
-    const usedPercent = Math.round((used / total) * 100);
+    const usedPercent = Math.min(100, Math.max(0, Math.round((used / total) * 100)));
     return ctx.line.progress({
       label: label,
       used: usedPercent,
@@ -140,8 +149,8 @@
       throw "Not logged in. Run `gh auth login` first.";
     }
 
-    const token = cred.token;
-    const source = cred.source;
+    let token = cred.token;
+    let source = cred.source;
 
     let resp;
     try {
@@ -152,7 +161,25 @@
     }
 
     if (resp.status === 401 || resp.status === 403) {
-      throw "Token invalid. Run `gh auth login` to re-authenticate.";
+      // If cached token is stale, clear it and try fallback sources
+      if (source === "keychain") {
+        ctx.host.log.info("cached token invalid, trying fallback sources");
+        clearCachedToken(ctx);
+        const fallback = loadTokenFromGhCli(ctx);
+        if (fallback) {
+          resp = fetchUsage(ctx, fallback.token);
+          if (resp.status >= 200 && resp.status < 300) {
+            // Fallback worked, persist the new token
+            saveToken(ctx, fallback.token);
+            token = fallback.token;
+            source = fallback.source;
+          }
+        }
+      }
+      // Still failing after retry
+      if (resp.status === 401 || resp.status === 403) {
+        throw "Token invalid. Run `gh auth login` to re-authenticate.";
+      }
     }
 
     if (resp.status < 200 || resp.status >= 300) {

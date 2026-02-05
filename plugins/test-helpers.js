@@ -20,6 +20,7 @@ export const makeCtx = () => {
       keychain: {
         readGenericPassword: vi.fn(),
         writeGenericPassword: vi.fn(),
+        deleteGenericPassword: vi.fn(),
       },
       sqlite: {
         query: vi.fn(() => "[]"),

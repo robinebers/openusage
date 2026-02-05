@@ -109,6 +109,8 @@ describe("copilot plugin", () => {
     const plugin = await loadPlugin();
     const result = plugin.probe(ctx);
     expect(result.lines.find((l) => l.label === "Premium")).toBeTruthy();
+    const call = ctx.host.http.request.mock.calls[0][0];
+    expect(call.headers.Authorization).toBe("token ghu_state");
   });
 
   it("prefers keychain over gh-cli", async () => {
@@ -446,5 +448,49 @@ describe("copilot plugin", () => {
     const plugin = await loadPlugin();
     expect(() => plugin.probe(ctx)).not.toThrow();
     expect(ctx.host.log.warn).toHaveBeenCalled();
+  });
+
+  it("retries with gh-cli token when cached keychain token is stale", async () => {
+    const ctx = makePluginTestContext();
+    let callCount = 0;
+    // First call returns stale keychain token, second call returns fresh gh-cli token
+    ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
+      if (service === "OpenUsage-copilot") {
+        return JSON.stringify({ token: "stale_token" });
+      }
+      if (service === "gh:github.com") {
+        return "fresh_gh_token";
+      }
+      return null;
+    });
+    // First request with stale token returns 401, second with fresh token succeeds
+    ctx.host.http.request.mockImplementation((opts) => {
+      callCount++;
+      if (opts.headers.Authorization === "token stale_token") {
+        return { status: 401, bodyText: "" };
+      }
+      return { status: 200, bodyText: JSON.stringify(makeUsageResponse()) };
+    });
+    const plugin = await loadPlugin();
+    const result = plugin.probe(ctx);
+    expect(result.lines.find((l) => l.label === "Premium")).toBeTruthy();
+    expect(callCount).toBe(2);
+    // Should have cleared the stale token
+    expect(ctx.host.keychain.deleteGenericPassword).toHaveBeenCalledWith("OpenUsage-copilot");
+    // Should have saved the fresh token
+    expect(ctx.host.keychain.writeGenericPassword).toHaveBeenCalled();
+  });
+
+  it("throws when stale keychain token and no fallback available", async () => {
+    const ctx = makePluginTestContext();
+    ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
+      if (service === "OpenUsage-copilot") {
+        return JSON.stringify({ token: "stale_token" });
+      }
+      return null; // No gh-cli fallback
+    });
+    ctx.host.http.request.mockReturnValue({ status: 401, bodyText: "" });
+    const plugin = await loadPlugin();
+    expect(() => plugin.probe(ctx)).toThrow("Token invalid");
   });
 });
