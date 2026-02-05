@@ -67,7 +67,7 @@ fn redact_body(body: &str) -> String {
         "password", "token", "access_token", "refresh_token", "secret",
         "api_key", "apiKey", "authorization", "bearer", "credential",
         "session_token", "sessionToken", "auth_token", "authToken",
-        "user_id", "account_id", "email",
+        "user_id", "account_id", "email", "login", "analytics_tracking_id",
     ];
     for key in sensitive_keys {
         // Match "key": "value" or "key":"value"
@@ -80,6 +80,18 @@ fn redact_body(body: &str) -> String {
         }
     }
     
+    result
+}
+
+/// Lightweight redaction for plugin log messages (JWT + API key patterns only).
+fn redact_log_message(msg: &str) -> String {
+    let mut result = msg.to_string();
+    if let Ok(jwt_re) = regex_lite::Regex::new(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+") {
+        result = jwt_re.replace_all(&result, |caps: &regex_lite::Captures| redact_value(&caps[0])).to_string();
+    }
+    if let Ok(api_re) = regex_lite::Regex::new(r#"(sk-|pk-|api_|key_|secret_)[A-Za-z0-9_-]{12,}"#) {
+        result = api_re.replace_all(&result, |caps: &regex_lite::Captures| redact_value(&caps[0])).to_string();
+    }
     result
 }
 
@@ -136,7 +148,7 @@ fn inject_log<'js>(
     log_obj.set(
         "info",
         Function::new(ctx.clone(), move |msg: String| {
-            log::info!("[plugin:{}] {}", pid, msg);
+            log::info!("[plugin:{}] {}", pid, redact_log_message(&msg));
         })?,
     )?;
 
@@ -144,7 +156,7 @@ fn inject_log<'js>(
     log_obj.set(
         "warn",
         Function::new(ctx.clone(), move |msg: String| {
-            log::warn!("[plugin:{}] {}", pid, msg);
+            log::warn!("[plugin:{}] {}", pid, redact_log_message(&msg));
         })?,
     )?;
 
@@ -152,7 +164,7 @@ fn inject_log<'js>(
     log_obj.set(
         "error",
         Function::new(ctx.clone(), move |msg: String| {
-            log::error!("[plugin:{}] {}", pid, msg);
+            log::error!("[plugin:{}] {}", pid, redact_log_message(&msg));
         })?,
     )?;
 
@@ -676,9 +688,10 @@ fn inject_keychain<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<
 
                 if !output.status.success() {
                     let stderr = String::from_utf8_lossy(&output.stderr);
+                    let first_line = stderr.lines().next().unwrap_or("").trim();
                     return Err(Exception::throw_message(
                         &ctx_inner,
-                        &format!("keychain item not found: {}", stderr.trim()),
+                        &format!("keychain item not found: {}", first_line),
                     ));
                 }
 
@@ -756,9 +769,10 @@ fn inject_keychain<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<
 
                 if !output.status.success() {
                     let stderr = String::from_utf8_lossy(&output.stderr);
+                    let first_line = stderr.lines().next().unwrap_or("").trim();
                     return Err(Exception::throw_message(
                         &ctx_inner,
-                        &format!("keychain write failed: {}", stderr.trim()),
+                        &format!("keychain write failed: {}", first_line),
                     ));
                 }
 
@@ -956,5 +970,24 @@ mod tests {
         // Should show first4...last4
         assert!(redacted.contains("user...7wjo"), "user_id should show first4...last4, got: {}", redacted);
         assert!(redacted.contains("rob@....com"), "email should show first4...last4, got: {}", redacted);
+    }
+
+    #[test]
+    fn redact_log_message_redacts_jwt_and_api_key() {
+        let msg = "token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U key=sk-1234567890abcdef";
+        let redacted = redact_log_message(msg);
+        assert!(!redacted.contains("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"), "JWT should be redacted");
+        assert!(!redacted.contains("sk-1234567890abcdef"), "API key should be redacted");
+    }
+
+    #[test]
+    fn redact_body_redacts_login_and_analytics_tracking_id() {
+        let body = r#"{"login":"robinebers","analytics_tracking_id":"c9df3f012bb8c2eb7aae6868ee8da6cf"}"#;
+        let redacted = redact_body(body);
+        assert!(!redacted.contains("robinebers"), "login should be redacted, got: {}", redacted);
+        assert!(!redacted.contains("c9df3f012bb8c2eb7aae6868ee8da6cf"), "analytics_tracking_id should be redacted, got: {}", redacted);
+        // login is short (<=12 chars) so becomes [REDACTED]; analytics_tracking_id is long so first4...last4
+        assert!(redacted.contains("[REDACTED]"), "login should be redacted, got: {}", redacted);
+        assert!(redacted.contains("c9df...a6cf"), "analytics_tracking_id should show first4...last4, got: {}", redacted);
     }
 }

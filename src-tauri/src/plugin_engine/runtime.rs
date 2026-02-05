@@ -521,6 +521,7 @@ mod tests {
             limit: 100.0,
             format: ProgressFormat::Percent,
             resets_at: Some("2099-01-01T00:00:00.000Z".to_string()),
+            period_duration_ms: None,
             color: None,
         };
 

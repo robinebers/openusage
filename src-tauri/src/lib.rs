@@ -268,6 +268,8 @@ pub fn run() {
                 .level(log::LevelFilter::Trace) // Allow all levels; runtime filter via tray menu
                 .level_for("hyper", log::LevelFilter::Warn)
                 .level_for("reqwest", log::LevelFilter::Warn)
+                .level_for("tao", log::LevelFilter::Info)
+                .level_for("tauri_plugin_updater", log::LevelFilter::Info)
                 .build(),
         )
         .plugin(tauri_plugin_process::init())
