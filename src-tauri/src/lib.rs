@@ -1,6 +1,10 @@
+#[cfg(target_os = "macos")]
+mod app_nap;
 mod panel;
 mod plugin_engine;
 mod tray;
+#[cfg(target_os = "macos")]
+mod webkit_config;
 
 use std::collections::{HashMap, HashSet};
 use tauri_plugin_aptabase::EventTracker;
@@ -283,6 +287,12 @@ pub fn run() {
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
+            #[cfg(target_os = "macos")]
+            {
+                app_nap::disable_app_nap();
+                webkit_config::disable_webview_suspension(app.handle());
+            }
 
             use tauri::Manager;
 
