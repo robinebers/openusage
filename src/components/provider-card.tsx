@@ -324,6 +324,7 @@ function MetricLineRenderer({
             : `${formatCount(line.limit)} ${line.format.suffix}`
 
     // Calculate pace status if we have reset time and period duration
+    // If used === 0, always show "ahead" (no usage = definitionally ahead of pace)
     const paceResult =
       line.resetsAt && line.periodDurationMs
         ? calculatePaceStatus(
@@ -334,12 +335,14 @@ function MetricLineRenderer({
             now
           )
         : null
+    const paceStatus: PaceStatus | null =
+      line.used === 0 ? "ahead" : (paceResult?.status ?? null)
 
     return (
       <div>
         <div className="text-sm font-medium mb-1.5 flex items-center gap-1.5">
           {line.label}
-          {paceResult && <PaceIndicator status={paceResult.status} />}
+          {paceStatus && <PaceIndicator status={paceStatus} />}
         </div>
         <Progress
           value={percent}
