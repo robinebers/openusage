@@ -80,10 +80,10 @@ function TrayIconStylePreview({
   isActive: boolean;
   showPercentage: boolean;
 }) {
-  const trackClass = isActive ? "bg-white/30" : "bg-black/30";
-  const remainderClass = isActive ? "bg-white/55" : "bg-black/55";
-  const fillClass = isActive ? "bg-white" : "bg-black";
-  const textClass = isActive ? "text-white" : "text-foreground";
+  const trackClass = isActive ? "bg-primary-foreground/30" : "bg-foreground/30";
+  const remainderClass = isActive ? "bg-primary-foreground/55" : "bg-foreground/55";
+  const fillClass = isActive ? "bg-primary-foreground" : "bg-foreground";
+  const textClass = isActive ? "text-primary-foreground" : "text-foreground";
 
   if (style === "bars") {
     const fractions = [0.83, 0.7, 0.56];
@@ -218,6 +218,8 @@ function SortablePluginItem({
         {plugin.name}
       </span>
 
+      {/* Dynamic key forces remount — workaround for Tauri rendering bug
+         where the checkbox visually disappears after toggling. */}
       <Checkbox
         key={`${plugin.id}-${plugin.enabled}`}
         checked={plugin.enabled}
@@ -368,6 +370,8 @@ export function SettingsPage({
         </div>
         {trayIconStyle !== "textOnly" && (
           <label className="mt-2 inline-flex items-center gap-2 text-sm text-foreground">
+            {/* Dynamic key forces remount — workaround for Tauri rendering bug
+               where the checkbox visually disappears after toggling. */}
             <Checkbox
               key={`tray-show-percentage-${trayShowPercentage}`}
               checked={trayShowPercentage}
