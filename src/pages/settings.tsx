@@ -23,6 +23,7 @@ import {
   DISPLAY_MODE_OPTIONS,
   TRAY_ICON_STYLE_OPTIONS,
   THEME_OPTIONS,
+  isTrayPercentageMandatory,
   type AutoUpdateIntervalMinutes,
   type DisplayMode,
   type ThemeMode,
@@ -74,9 +75,11 @@ function getPreviewBarLayout(fraction: number): { fillPercent: number; remainder
 function TrayIconStylePreview({
   style,
   isActive,
+  providerIconUrl,
 }: {
   style: TrayIconStyle;
   isActive: boolean;
+  providerIconUrl?: string;
 }) {
   const trackClass = isActive ? "bg-primary-foreground/30" : "bg-foreground/15";
   const remainderClass = isActive ? "bg-primary-foreground/55" : "bg-foreground/25";
@@ -151,11 +154,33 @@ function TrayIconStylePreview({
   }
 
   if (style === "provider") {
+    if (providerIconUrl) {
+      return (
+        <div
+          aria-hidden
+          className={cn(
+            "w-[18px] h-[18px] shrink-0",
+            isActive ? "bg-primary-foreground" : "bg-foreground"
+          )}
+          style={{
+            WebkitMaskImage: `url(${providerIconUrl})`,
+            WebkitMaskSize: "contain",
+            WebkitMaskRepeat: "no-repeat",
+            WebkitMaskPosition: "center",
+            maskImage: `url(${providerIconUrl})`,
+            maskSize: "contain",
+            maskRepeat: "no-repeat",
+            maskPosition: "center",
+          }}
+        />
+      );
+    }
+    // Fallback: generic provider icon (Anthropic logo)
     return (
       <svg
         aria-hidden
-        width="13"
-        height="13"
+        width="18"
+        height="18"
         viewBox="0 0 100 100"
         className={cn("shrink-0", textClass)}
       >
@@ -246,6 +271,7 @@ interface SettingsPageProps {
   onTrayIconStyleChange: (value: TrayIconStyle) => void;
   trayShowPercentage: boolean;
   onTrayShowPercentageChange: (value: boolean) => void;
+  providerIconUrl?: string;
 }
 
 export function SettingsPage({
@@ -262,10 +288,10 @@ export function SettingsPage({
   onTrayIconStyleChange,
   trayShowPercentage,
   onTrayShowPercentageChange,
+  providerIconUrl,
 }: SettingsPageProps) {
-  const isTrayPercentageMandatory =
-    trayIconStyle === "provider" || trayIconStyle === "textOnly";
-  const trayShowPercentageChecked = isTrayPercentageMandatory
+  const percentageMandatory = isTrayPercentageMandatory(trayIconStyle);
+  const trayShowPercentageChecked = percentageMandatory
     ? true
     : trayShowPercentage;
 
@@ -368,6 +394,7 @@ export function SettingsPage({
                   <TrayIconStylePreview
                     style={option.value}
                     isActive={isActive}
+                    providerIconUrl={option.value === "provider" ? providerIconUrl : undefined}
                   />
                 </Button>
               );
@@ -377,17 +404,17 @@ export function SettingsPage({
         <label
           className={cn(
             "mt-2 flex items-center gap-2 text-sm select-none",
-            isTrayPercentageMandatory
+            percentageMandatory
               ? "text-muted-foreground cursor-not-allowed"
               : "text-foreground"
           )}
         >
           <Checkbox
-            key={`tray-pct-${trayShowPercentageChecked}-${isTrayPercentageMandatory}`}
+            key={`tray-pct-${trayShowPercentageChecked}-${percentageMandatory}`}
             checked={trayShowPercentageChecked}
-            disabled={isTrayPercentageMandatory}
+            disabled={percentageMandatory}
             onCheckedChange={(checked) => {
-              if (isTrayPercentageMandatory) return;
+              if (percentageMandatory) return;
               onTrayShowPercentageChange(checked === true);
             }}
           />

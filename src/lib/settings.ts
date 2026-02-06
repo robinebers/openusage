@@ -57,7 +57,7 @@ export const DISPLAY_MODE_OPTIONS: { value: DisplayMode; label: string }[] = [
 export const TRAY_ICON_STYLE_OPTIONS: { value: TrayIconStyle; label: string }[] = [
   { value: "bars", label: "Bars" },
   { value: "circle", label: "Circle" },
-  { value: "provider", label: "Claude" },
+  { value: "provider", label: "Provider" },
   { value: "textOnly", label: "%" },
 ];
 

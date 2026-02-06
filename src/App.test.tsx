@@ -532,7 +532,7 @@ describe("App", () => {
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
 
-    await userEvent.click(await screen.findByRole("radio", { name: "Claude" }))
+    await userEvent.click(await screen.findByRole("radio", { name: "Provider" }))
     expect(state.saveTrayIconStyleMock).toHaveBeenCalledWith("provider")
     expect(state.saveTrayShowPercentageMock).toHaveBeenCalledWith(true)
   })
@@ -559,7 +559,7 @@ describe("App", () => {
     expect(textOnlyCheckbox).toHaveAttribute("aria-disabled", "true")
     expect(textOnlyCheckbox).toBeChecked()
 
-    await userEvent.click(await screen.findByRole("radio", { name: "Claude" }))
+    await userEvent.click(await screen.findByRole("radio", { name: "Provider" }))
     const providerCheckbox = getTrayCheckbox()
     expect(providerCheckbox).toBeVisible()
     expect(providerCheckbox).toHaveAttribute("aria-disabled", "true")

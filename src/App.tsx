@@ -786,6 +786,7 @@ function App() {
           onTrayIconStyleChange={handleTrayIconStyleChange}
           trayShowPercentage={trayShowPercentage}
           onTrayShowPercentageChange={handleTrayShowPercentageChange}
+          providerIconUrl={navPlugins[0]?.iconUrl}
         />
       )
     }

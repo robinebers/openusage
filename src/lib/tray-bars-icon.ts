@@ -243,7 +243,7 @@ export function makeTrayBarsSvg(args: {
       }
     }
   } else if (style === "provider") {
-    const iconSize = Math.max(6, sizePx - 2 * layout.pad)
+    const iconSize = Math.max(6, Math.round(sizePx - 2 * layout.pad * 0.5))
     const x = layout.barsX
     const y = Math.round((height - iconSize) / 2) + 1
     const href = typeof providerIconUrl === "string" ? providerIconUrl.trim() : ""

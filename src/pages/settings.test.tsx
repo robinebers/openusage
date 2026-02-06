@@ -131,9 +131,9 @@ describe("SettingsPage", () => {
     expect(screen.getByText("How obsessive are you")).toBeInTheDocument()
   })
 
-  it("renders appearance section with theme options", () => {
+  it("renders app theme section with theme options", () => {
     render(<SettingsPage {...defaultProps} />)
-    expect(screen.getByText("Appearance")).toBeInTheDocument()
+    expect(screen.getByText("App Theme")).toBeInTheDocument()
     expect(screen.getByText("How it looks around here")).toBeInTheDocument()
     expect(screen.getByText("System")).toBeInTheDocument()
     expect(screen.getByText("Light")).toBeInTheDocument()
@@ -166,17 +166,17 @@ describe("SettingsPage", () => {
 
   it("renders tray icon style section", () => {
     render(<SettingsPage {...defaultProps} />)
-    expect(screen.getByText("Menu Bar Icon")).toBeInTheDocument()
+    expect(screen.getByText("Bar Icon")).toBeInTheDocument()
     expect(screen.getByText("The little guy up top")).toBeInTheDocument()
     expect(screen.getByRole("radio", { name: "Bars" })).toBeInTheDocument()
     expect(screen.getByRole("radio", { name: "Circle" })).toBeInTheDocument()
-    expect(screen.getByRole("radio", { name: "Claude" })).toBeInTheDocument()
+    expect(screen.getByRole("radio", { name: "Provider" })).toBeInTheDocument()
     expect(screen.getByRole("radio", { name: "%" })).toBeInTheDocument()
   })
 
   it("renders renamed usage section heading", () => {
     render(<SettingsPage {...defaultProps} />)
-    expect(screen.getByText("Show Usage As")).toBeInTheDocument()
+    expect(screen.getByText("Usage Mode")).toBeInTheDocument()
   })
 
   it("updates tray icon style", async () => {
@@ -211,7 +211,7 @@ describe("SettingsPage", () => {
         onTrayIconStyleChange={onTrayIconStyleChange}
       />
     )
-    await userEvent.click(screen.getByRole("radio", { name: "Claude" }))
+    await userEvent.click(screen.getByRole("radio", { name: "Provider" }))
     expect(onTrayIconStyleChange).toHaveBeenCalledWith("provider")
   })
 
