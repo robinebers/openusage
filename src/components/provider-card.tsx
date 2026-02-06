@@ -12,6 +12,7 @@ import { REFRESH_COOLDOWN_MS, type DisplayMode } from "@/lib/settings"
 import type { ManifestLine, MetricLine } from "@/lib/plugin-types"
 import { clamp01 } from "@/lib/utils"
 import { calculatePaceStatus, type PaceStatus } from "@/lib/pace-status"
+import { buildPaceDetailText, formatCompactDuration, getPaceStatusText } from "@/lib/pace-tooltip"
 
 interface ProviderCardProps {
   name: string
@@ -47,77 +48,11 @@ function formatResetIn(nowMs: number, resetsAtIso: string): string | null {
   if (!Number.isFinite(resetsAtMs)) return null
   const deltaMs = resetsAtMs - nowMs
   if (deltaMs <= 0) return "Resets now"
-
-  const totalSeconds = Math.floor(deltaMs / 1000)
-  const totalMinutes = Math.floor(totalSeconds / 60)
-  const totalHours = Math.floor(totalMinutes / 60)
-  const days = Math.floor(totalHours / 24)
-  const hours = totalHours % 24
-  const minutes = totalMinutes % 60
-
-  if (days > 0) return `Resets in ${days}d ${hours}h`
-  if (totalHours > 0) return `Resets in ${totalHours}h ${minutes}m`
-  if (totalMinutes > 0) return `Resets in ${totalMinutes}m`
-  return "Resets in <1m"
+  const durationText = formatCompactDuration(deltaMs)
+  return durationText ? `Resets in ${durationText}` : "Resets in <1m"
 }
 
 /** Colored dot indicator showing pace status */
-function getPaceStatusText(status: PaceStatus): string {
-  return status === "ahead" ? "Ahead of pace" : status === "on-track" ? "On track" : "Using fast"
-}
-
-function formatCompactDuration(deltaMs: number): string | null {
-  if (!Number.isFinite(deltaMs) || deltaMs <= 0) return null
-  const totalSeconds = Math.floor(deltaMs / 1000)
-  const totalMinutes = Math.floor(totalSeconds / 60)
-  const totalHours = Math.floor(totalMinutes / 60)
-  const days = Math.floor(totalHours / 24)
-  const hours = totalHours % 24
-  const minutes = totalMinutes % 60
-
-  if (days > 0) return `${days}d ${hours}h`
-  if (totalHours > 0) return `${totalHours}h ${minutes}m`
-  if (totalMinutes > 0) return `${totalMinutes}m`
-  return "<1m"
-}
-
-function getLimitHitEtaText(
-  used: number,
-  limit: number,
-  resetsAtMs: number,
-  periodDurationMs: number,
-  nowMs: number
-): string | null {
-  if (
-    !Number.isFinite(used) ||
-    !Number.isFinite(limit) ||
-    !Number.isFinite(resetsAtMs) ||
-    !Number.isFinite(periodDurationMs) ||
-    !Number.isFinite(nowMs) ||
-    limit <= 0 ||
-    periodDurationMs <= 0
-  ) {
-    return null
-  }
-  if (used >= limit) return "at/over 100% now"
-
-  const periodStartMs = resetsAtMs - periodDurationMs
-  const elapsedMs = nowMs - periodStartMs
-  if (elapsedMs <= 0 || nowMs >= resetsAtMs) return null
-
-  const usageRatePerMs = used / elapsedMs
-  if (!Number.isFinite(usageRatePerMs) || usageRatePerMs <= 0) return null
-
-  const msUntilLimit = (limit - used) / usageRatePerMs
-  if (!Number.isFinite(msUntilLimit) || msUntilLimit <= 0) return "at/over 100% now"
-
-  const hitAtMs = nowMs + msUntilLimit
-  if (hitAtMs >= resetsAtMs) return null
-
-  const durationText = formatCompactDuration(hitAtMs - nowMs)
-  return durationText ? `hits 100% in ${durationText}` : null
-}
-
 function PaceIndicator({ status, detailText }: { status: PaceStatus; detailText?: string | null }) {
   const colorClass =
     status === "ahead"
@@ -352,6 +287,8 @@ function MetricLineRenderer({
   }
 
   if (line.type === "progress") {
+    const resetsAtMs = line.resetsAt ? Date.parse(line.resetsAt) : Number.NaN
+    const hasPaceContext = Number.isFinite(resetsAtMs) && Number.isFinite(line.periodDurationMs)
     const shownAmount =
       displayMode === "used"
         ? line.used
@@ -378,32 +315,27 @@ function MetricLineRenderer({
     // Calculate pace status if we have reset time and period duration
     // If used === 0, always show "ahead" (no usage = definitionally ahead of pace)
     const paceResult =
-      line.resetsAt && line.periodDurationMs
+      hasPaceContext && line.periodDurationMs
         ? calculatePaceStatus(
             line.used,
             line.limit,
-            Date.parse(line.resetsAt),
+            resetsAtMs,
             line.periodDurationMs,
             now
           )
         : null
     const paceStatus: PaceStatus | null =
-      line.used === 0 && line.resetsAt && line.periodDurationMs ? "ahead" : (paceResult?.status ?? null)
-    const projectedPercent =
-      paceResult ? Math.round((paceResult.projectedUsage / line.limit) * 100) : null
+      line.used === 0 && hasPaceContext ? "ahead" : (paceResult?.status ?? null)
     const paceDetailText =
-      paceResult && projectedPercent !== null
-        ? projectedPercent > 100 && line.resetsAt && line.periodDurationMs
-          ? (
-              getLimitHitEtaText(
-                line.used,
-                line.limit,
-                Date.parse(line.resetsAt),
-                line.periodDurationMs,
-                now
-              ) ?? `projected ${projectedPercent}% by reset`
-            )
-          : `projected ${projectedPercent}% by reset`
+      hasPaceContext && line.periodDurationMs
+        ? buildPaceDetailText({
+            paceResult,
+            used: line.used,
+            limit: line.limit,
+            resetsAtMs,
+            periodDurationMs: line.periodDurationMs,
+            nowMs: now,
+          })
         : null
 
     return (
