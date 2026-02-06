@@ -218,6 +218,60 @@ describe("ProviderCard", () => {
     expect(screen.getByLabelText("Ahead of pace")).toBeInTheDocument()
     expect(screen.getByLabelText("On track")).toBeInTheDocument()
     expect(screen.getByLabelText("Using fast")).toBeInTheDocument()
+    expect(screen.getByText("Ahead of pace • projected 60% by reset")).toBeInTheDocument()
+    expect(screen.getByText("On track • projected 90% by reset")).toBeInTheDocument()
+    expect(screen.getByText("Using fast • hits 100% in 8h 0m")).toBeInTheDocument()
+    vi.useRealTimers()
+  })
+
+  it("shows over-limit now detail when already at or above 100%", () => {
+    vi.useFakeTimers()
+    const now = new Date("2026-02-02T12:00:00.000Z")
+    vi.setSystemTime(now)
+    render(
+      <ProviderCard
+        name="Pace"
+        displayMode="used"
+        lines={[
+          {
+            type: "progress",
+            label: "Behind",
+            used: 120,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: "2026-02-03T00:00:00.000Z",
+            periodDurationMs: 24 * 60 * 60 * 1000,
+          },
+        ]}
+      />
+    )
+    expect(screen.getByText("Using fast • at/over 100% now")).toBeInTheDocument()
+    vi.useRealTimers()
+  })
+
+  it("keeps status-only tooltip when pace projection is not yet available", () => {
+    vi.useFakeTimers()
+    const now = new Date("2026-02-02T00:45:00.000Z")
+    vi.setSystemTime(now)
+    render(
+      <ProviderCard
+        name="Pace"
+        displayMode="used"
+        lines={[
+          {
+            type: "progress",
+            label: "Ahead",
+            used: 0,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: "2026-02-03T00:00:00.000Z",
+            periodDurationMs: 24 * 60 * 60 * 1000,
+          },
+        ]}
+      />
+    )
+    expect(screen.getByText("Ahead of pace")).toBeInTheDocument()
+    expect(screen.queryByText(/projected .* by reset/)).not.toBeInTheDocument()
     vi.useRealTimers()
   })
 
