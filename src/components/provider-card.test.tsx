@@ -176,6 +176,51 @@ describe("ProviderCard", () => {
     vi.useRealTimers()
   })
 
+  it("shows pace indicators for ahead, on-track, and behind", () => {
+    vi.useFakeTimers()
+    const now = new Date("2026-02-02T12:00:00.000Z")
+    vi.setSystemTime(now)
+    render(
+      <ProviderCard
+        name="Pace"
+        displayMode="used"
+        lines={[
+          {
+            type: "progress",
+            label: "Ahead",
+            used: 30,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: "2026-02-03T00:00:00.000Z",
+            periodDurationMs: 24 * 60 * 60 * 1000,
+          },
+          {
+            type: "progress",
+            label: "On Track",
+            used: 45,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: "2026-02-03T00:00:00.000Z",
+            periodDurationMs: 24 * 60 * 60 * 1000,
+          },
+          {
+            type: "progress",
+            label: "Behind",
+            used: 60,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: "2026-02-03T00:00:00.000Z",
+            periodDurationMs: 24 * 60 * 60 * 1000,
+          },
+        ]}
+      />
+    )
+    expect(screen.getByLabelText("Ahead of pace")).toBeInTheDocument()
+    expect(screen.getByLabelText("On track")).toBeInTheDocument()
+    expect(screen.getByLabelText("Using fast")).toBeInTheDocument()
+    vi.useRealTimers()
+  })
+
   it("fires retry from header button", () => {
     const onRetry = vi.fn()
     const { container } = render(
