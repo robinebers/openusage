@@ -37,20 +37,37 @@ interface PluginConfig {
 }
 
 const PREVIEW_BAR_TRACK_PX = 20;
-const PREVIEW_MIN_REMAINDER_PX = 2;
-const PREVIEW_EDGE_DIVIDER_PX = 2;
+function getPreviewMinVisibleRemainderPx(trackW: number): number {
+  return Math.max(4, Math.round(trackW * 0.2));
+}
 
-function getPreviewBarLayout(fraction: number): { fillPercent: number; showDivider: boolean } {
+function getPreviewVisualBarFraction(fraction: number): number {
   const clamped = Math.max(0, Math.min(1, fraction));
-  if (clamped <= 0) return { fillPercent: 0, showDivider: false };
-  if (clamped >= 1) return { fillPercent: 100, showDivider: false };
+  if (clamped > 0.7 && clamped < 1) {
+    const remainder = 1 - clamped;
+    const quantizedRemainder = Math.min(1, Math.ceil(remainder / 0.15) * 0.15);
+    return Math.max(0, 1 - quantizedRemainder);
+  }
+  return clamped;
+}
+
+function getPreviewBarLayout(fraction: number): { fillPercent: number; remainderPercent: number } {
+  if (!Number.isFinite(fraction) || fraction <= 0) return { fillPercent: 0, remainderPercent: 0 };
+  const visual = getPreviewVisualBarFraction(fraction);
+  if (visual >= 1) return { fillPercent: 100, remainderPercent: 0 };
 
   const minFillW = 1;
-  const maxFillW = Math.max(minFillW, PREVIEW_BAR_TRACK_PX - PREVIEW_MIN_REMAINDER_PX);
-  const fillW = Math.max(minFillW, Math.min(maxFillW, Math.round(PREVIEW_BAR_TRACK_PX * clamped)));
+  const minVisibleRemainderPx = getPreviewMinVisibleRemainderPx(PREVIEW_BAR_TRACK_PX);
+  const maxFillW = Math.max(minFillW, PREVIEW_BAR_TRACK_PX - minVisibleRemainderPx);
+  const fillW = Math.max(minFillW, Math.min(maxFillW, Math.round(PREVIEW_BAR_TRACK_PX * visual)));
+  const trueRemainderW = PREVIEW_BAR_TRACK_PX - fillW;
+  const remainderDrawW = Math.min(
+    PREVIEW_BAR_TRACK_PX - 1,
+    Math.max(trueRemainderW, minVisibleRemainderPx)
+  );
   return {
     fillPercent: (fillW / PREVIEW_BAR_TRACK_PX) * 100,
-    showDivider: fillW > 0 && fillW < PREVIEW_BAR_TRACK_PX,
+    remainderPercent: (remainderDrawW / PREVIEW_BAR_TRACK_PX) * 100,
   };
 }
 
@@ -63,7 +80,8 @@ function TrayIconStylePreview({
   isActive: boolean;
   showPercentage: boolean;
 }) {
-  const trackClass = isActive ? "bg-white/35" : "bg-black/20";
+  const trackClass = isActive ? "bg-white/30" : "bg-black/30";
+  const remainderClass = isActive ? "bg-white/55" : "bg-black/55";
   const fillClass = isActive ? "bg-white" : "bg-black";
   const textClass = isActive ? "text-white" : "text-foreground";
 
@@ -73,27 +91,27 @@ function TrayIconStylePreview({
       <div className="flex items-center gap-1">
         <div className="flex flex-col gap-0.5 w-5">
           {fractions.map((fraction, i) => {
-            const { fillPercent, showDivider } = getPreviewBarLayout(fraction);
+            const { fillPercent, remainderPercent } = getPreviewBarLayout(fraction);
             return (
               <div key={i} className={`relative h-1 rounded-sm ${trackClass}`}>
+                {remainderPercent > 0 && (
+                  <span
+                    aria-hidden
+                    className={remainderClass}
+                    style={{
+                      position: "absolute",
+                      right: 0,
+                      top: 0,
+                      bottom: 0,
+                      width: `${remainderPercent}%`,
+                      borderRadius: "1px 2px 2px 1px",
+                    }}
+                  />
+                )}
                 <div
                   className={`h-1 ${fillClass}`}
                   style={{ width: `${fillPercent}%`, borderRadius: "2px 1px 1px 2px" }}
                 />
-                {showDivider && (
-                  <span
-                    aria-hidden
-                    className={fillClass}
-                    style={{
-                      position: "absolute",
-                      left: `calc(${fillPercent}% - ${PREVIEW_EDGE_DIVIDER_PX / 2}px)`,
-                      top: 0,
-                      bottom: 0,
-                      width: PREVIEW_EDGE_DIVIDER_PX,
-                      opacity: 0.5,
-                    }}
-                  />
-                )}
               </div>
             );
           })}

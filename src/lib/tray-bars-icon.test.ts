@@ -33,18 +33,17 @@ describe("tray-bars-icon", () => {
     // 3 track rects + fill/remainder paths for the defined fraction.
     expect(svg.match(/<rect /g)?.length).toBe(3)
     expect(svg.match(/<path /g)?.length).toBe(2)
-    expect(svg).toContain("<line ")
+    expect(svg).not.toContain("<line ")
   })
 
-  it("compresses 91-99% bar fill to 90% visual width", () => {
+  it("keeps a visible tail for high bar percentages without an edge marker", () => {
     const svg = makeTrayBarsSvg({
       sizePx: 36,
       bars: [{ id: "a", fraction: 0.93 }],
       style: "bars",
     })
-    // For size 36 bars: x starts at 3px, high-end compression + min remainder
-    // lands divider at x=27 (visually ~80% fill).
-    expect(svg).toContain('x1="27"')
+    expect(svg.match(/<path /g)?.length).toBe(2)
+    expect(svg).not.toContain("<line ")
   })
 
   it("makeTrayBarsSvg with bars style + percent text includes text and a non-square viewbox", () => {

@@ -60,7 +60,6 @@ function getMinVisibleRemainderPx(trackW: number): number {
   // Keep remainder clearly visible after tray downsampling.
   return Math.max(4, Math.round(trackW * 0.2))
 }
-const EDGE_DIVIDER_STROKE_PX = 2
 
 function getVisualBarFraction(fraction: number): number {
   if (!Number.isFinite(fraction)) return 0
@@ -286,9 +285,6 @@ export function makeTrayBarsSvg(args: {
             rightRadius: rx,
           })
           parts.push(`<path d="${remainderPath}" fill="black" opacity="${remainderOpacity}" />`)
-          parts.push(
-            `<line x1="${remainderX}" y1="${y + 1}" x2="${remainderX}" y2="${y + trackH - 1}" stroke="black" stroke-width="${EDGE_DIVIDER_STROKE_PX}" opacity="0.88" shape-rendering="crispEdges" />`
-          )
         }
       }
     }
