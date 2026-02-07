@@ -66,7 +66,7 @@ export function SideNav({ activeView, onViewChange, plugins }: SideNavProps) {
   const isDark = useDarkMode()
 
   return (
-    <nav className="flex flex-col w-12 border-r bg-muted/30 py-3">
+    <nav className="flex flex-col w-12 border-r bg-muted/50 dark:bg-card py-3">
       {/* Home */}
       <NavButton
         isActive={activeView === "home"}

@@ -150,6 +150,14 @@ body,
   padding: 0;
 }
 
+/* Hide scrollbar track globally */
+.scrollbar-none {
+  scrollbar-width: none;          /* Firefox */
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;                  /* Chrome / Safari / WebKit */
+}
+
 /* Arrow pointing up toward the tray icon */
 .tray-arrow {
   width: 0;
