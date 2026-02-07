@@ -1,26 +1,28 @@
 <svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" fill="none">
   <defs>
-    <clipPath id="badge-clip">
-      <circle cx="64" cy="64" r="56" />
+    <linearGradient id="kimi-bg" x1="16" y1="10" x2="112" y2="118" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1B2942" />
+      <stop offset="0.38" stop-color="#101827" />
+      <stop offset="1" stop-color="#05070C" />
+    </linearGradient>
+    <clipPath id="kimi-globe-clip">
+      <circle cx="56" cy="64" r="33" />
     </clipPath>
   </defs>
 
-  <circle cx="64" cy="64" r="56" fill="#141414" />
+  <rect x="8" y="8" width="112" height="112" rx="28" fill="url(#kimi-bg)" />
 
-  <g clip-path="url(#badge-clip)" transform="rotate(-18 64 64)">
-    <rect x="4" y="30" width="120" height="10" rx="5" fill="#FFFFFF" />
-    <rect x="-2" y="46" width="132" height="10" rx="5" fill="#FFFFFF" />
-    <rect x="4" y="62" width="120" height="10" rx="5" fill="#FFFFFF" />
-    <rect x="14" y="78" width="102" height="10" rx="5" fill="#FFFFFF" />
+  <circle cx="56" cy="64" r="33" fill="#FFFFFF" />
+
+  <g clip-path="url(#kimi-globe-clip)" stroke="#05070C" stroke-width="7" stroke-linecap="round">
+    <line x1="22" y1="42" x2="94" y2="52" />
+    <line x1="18" y1="56" x2="98" y2="66" />
+    <line x1="18" y1="70" x2="98" y2="80" />
+    <line x1="24" y1="84" x2="92" y2="92" />
   </g>
 
   <path
-    d="M46 18C60 24 70 39 70 57C70 75 60 90 46 96C55 86 60 74 60 57C60 40 55 28 46 18Z"
-    fill="#141414"
-  />
-
-  <path
-    d="M33 64C33 49.6 44.6 38 59 38C61.5 38 63.9 38.4 66.1 39.3C58.6 43.2 53.5 51.1 53.5 60.1C53.5 69.6 59.1 78.1 67.1 81.8C64.6 83 61.8 83.7 59 83.7C44.6 83.7 33 72.1 33 64Z"
-    fill="#FFFFFF"
+    d="M71 41L102 52L82 60L104 69L82 78L101 87L74 96L64 89L80 83L61 74L80 67L58 58Z"
+    fill="#05070C"
   />
 </svg>
