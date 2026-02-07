@@ -70,5 +70,5 @@ describe("SideNav", () => {
     const p2Style = screen.getByRole("img", { name: "P2" }).getAttribute("style") ?? ""
     expect(p2Style).toMatch(/background-color:\s*currentcolor/i)
   })
-})
 
+})

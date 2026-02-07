@@ -157,7 +157,7 @@ export function ProviderCard({
   }
 
   return (
-    <div>
+    <div className="px-3">
       <div className="py-3">
         <div className="flex items-center justify-between mb-2">
           <div className="relative flex items-center">

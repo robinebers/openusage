@@ -11,7 +11,7 @@ interface OverviewPageProps {
 export function OverviewPage({ plugins, onRetryPlugin, displayMode }: OverviewPageProps) {
   if (plugins.length === 0) {
     return (
-      <div className="text-center text-muted-foreground py-8">
+      <div className="text-center text-muted-foreground py-8 px-3">
         No providers enabled
       </div>
     )

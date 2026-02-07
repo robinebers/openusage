@@ -277,6 +277,10 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::AppleScript,
+            None,
+        ))
         .invoke_handler(tauri::generate_handler![
             init_panel,
             hide_panel,
