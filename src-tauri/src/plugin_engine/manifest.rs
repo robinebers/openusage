@@ -1,6 +1,17 @@
 use base64::{engine::general_purpose::STANDARD, Engine};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum IconStyle {
+    Mask,
+    Image,
+}
+
+fn default_icon_style() -> IconStyle {
+    IconStyle::Mask
+}
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -24,6 +35,8 @@ pub struct PluginManifest {
     pub entry: String,
     pub icon: String,
     pub brand_color: Option<String>,
+    #[serde(default = "default_icon_style")]
+    pub icon_style: IconStyle,
     pub lines: Vec<ManifestLine>,
 }
 
@@ -138,6 +151,7 @@ mod tests {
         );
         assert_eq!(manifest.lines.len(), 1);
         assert!(manifest.lines[0].primary_order.is_none());
+        assert_eq!(manifest.icon_style, IconStyle::Mask);
     }
 
     #[test]
@@ -164,6 +178,30 @@ mod tests {
         assert_eq!(manifest.lines[0].primary_order, Some(1));
         assert_eq!(manifest.lines[1].primary_order, Some(2));
         assert!(manifest.lines[2].primary_order.is_none());
+        assert_eq!(manifest.icon_style, IconStyle::Mask);
+    }
+
+    #[test]
+    fn icon_style_parses_image() {
+        let manifest = parse_manifest(
+            r#"
+            {
+              "schemaVersion": 1,
+              "id": "x",
+              "name": "X",
+              "version": "0.0.1",
+              "entry": "plugin.js",
+              "icon": "icon.svg",
+              "brandColor": null,
+              "iconStyle": "image",
+              "lines": [
+                { "type": "progress", "label": "A", "scope": "overview" }
+              ]
+            }
+            "#,
+        );
+
+        assert_eq!(manifest.icon_style, IconStyle::Image);
     }
 
     #[test]

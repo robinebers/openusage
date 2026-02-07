@@ -267,7 +267,7 @@ function App() {
       .filter((id) => !disabledSet.has(id))
       .map((id) => metaById.get(id))
       .filter((p): p is PluginMeta => Boolean(p))
-      .map((p) => ({ id: p.id, name: p.name, iconUrl: p.iconUrl, brandColor: p.brandColor }))
+      .map((p) => ({ id: p.id, name: p.name, iconUrl: p.iconUrl, brandColor: p.brandColor, iconStyle: p.iconStyle }))
   }, [pluginSettings, pluginsMeta])
 
   // If active view is a plugin that got disabled, switch to home

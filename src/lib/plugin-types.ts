@@ -36,6 +36,7 @@ export type PluginMeta = {
   name: string
   iconUrl: string
   brandColor?: string
+  iconStyle?: "mask" | "image"
   lines: ManifestLine[]
   /** Ordered list of primary metric candidates. Frontend picks first available. */
   primaryCandidates: string[]
