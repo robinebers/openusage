@@ -27,7 +27,7 @@ time = { version = "0.3.45", features = ["formatting"] }
 dirs = "6"
 log = "0.4"
 reqwest = { version = "0.12", features = ["blocking"] }
-rquickjs = { version = "0.10", features = ["bindgen"] }
+rquickjs = { version = "0.11", features = ["bindgen"] }
 tauri-plugin-store = "2.4.2"
 base64 = "0.22"
 uuid = { version = "1", features = ["v4"] }
