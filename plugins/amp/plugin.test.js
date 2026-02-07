@@ -264,6 +264,7 @@ describe("amp plugin", () => {
     var plugin = await loadPlugin()
     var result = plugin.probe(ctx)
     expect(result.lines[0].used).toBe(0)
+    expect(result.lines[0].resetsAt).toBeUndefined()
   })
 
   it("returns null resetsAt when hourly rate is zero", async () => {
@@ -275,6 +276,7 @@ describe("amp plugin", () => {
     var plugin = await loadPlugin()
     var result = plugin.probe(ctx)
     expect(result.lines[0].used).toBe(10)
+    expect(result.lines[0].resetsAt).toBeUndefined()
   })
 
   // --- Plan ---
