@@ -54,7 +54,8 @@ import {
 
 const PANEL_WIDTH = 400;
 const MAX_HEIGHT_FALLBACK_PX = 600;
-const MAX_HEIGHT_FRACTION_OF_MONITOR = 0.98;
+const MAX_HEIGHT_FRACTION_OF_MONITOR = 0.8;
+const ARROW_OVERHEAD_PX = 37;
 const TRAY_SETTINGS_DEBOUNCE_MS = 2000;
 const TRAY_PROBE_DEBOUNCE_MS = 500;
 
@@ -100,12 +101,15 @@ function App() {
   const displayModeRef = useRef(displayMode)
   const trayIconStyleRef = useRef(trayIconStyle)
   const trayShowPercentageRef = useRef(trayShowPercentage)
+  const startAtLoginRef = useRef(startAtLogin)
+  const startAtLoginRequestRef = useRef(0)
   useEffect(() => { pluginsMetaRef.current = pluginsMeta }, [pluginsMeta])
   useEffect(() => { pluginSettingsRef.current = pluginSettings }, [pluginSettings])
   useEffect(() => { pluginStatesRef.current = pluginStates }, [pluginStates])
   useEffect(() => { displayModeRef.current = displayMode }, [displayMode])
   useEffect(() => { trayIconStyleRef.current = trayIconStyle }, [trayIconStyle])
   useEffect(() => { trayShowPercentageRef.current = trayShowPercentage }, [trayShowPercentage])
+  useEffect(() => { startAtLoginRef.current = startAtLogin }, [startAtLogin])
 
   // Fetch app version on mount
   useEffect(() => {
@@ -716,12 +720,22 @@ function App() {
   }, [scheduleTrayIconUpdate])
 
   const handleStartAtLoginChange = useCallback((value: boolean) => {
+    const previousValue = startAtLoginRef.current
+    const requestId = startAtLoginRequestRef.current + 1
+    startAtLoginRequestRef.current = requestId
+    startAtLoginRef.current = value
     setStartAtLogin(value)
-    void saveStartAtLogin(value).catch((error) => {
-      console.error("Failed to save start at login:", error)
-    })
 
-    if (!isTauri()) return
+    const persistStartAtLogin = (nextValue: boolean, message: string) => {
+      void saveStartAtLogin(nextValue).catch((error) => {
+        console.error(message, error)
+      })
+    }
+
+    if (!isTauri()) {
+      persistStartAtLogin(value, "Failed to save start at login:")
+      return
+    }
 
     void (async () => {
       try {
@@ -731,13 +745,15 @@ function App() {
           await disableAutostart()
         }
         const actual = await isAutostartEnabled()
-        if (actual !== value) {
-          setStartAtLogin(actual)
-          void saveStartAtLogin(actual).catch((error) => {
-            console.error("Failed to persist start at login:", error)
-          })
-        }
+        if (requestId !== startAtLoginRequestRef.current) return
+        startAtLoginRef.current = actual
+        setStartAtLogin(actual)
+        persistStartAtLogin(actual, "Failed to save start at login:")
       } catch (error) {
+        if (requestId !== startAtLoginRequestRef.current) return
+        startAtLoginRef.current = previousValue
+        setStartAtLogin(previousValue)
+        persistStartAtLogin(previousValue, "Failed to rollback start at login:")
         console.error("Failed to update start at login:", error)
       }
     })()
@@ -870,17 +886,21 @@ function App() {
   }
 
   return (
-    <div ref={containerRef} className="flex flex-col items-center p-6 pt-1.5 bg-transparent">
+    <div ref={containerRef} className="flex flex-col items-center p-6 pt-1.5 bg-transparent overflow-scroll">
       <div className="tray-arrow" />
-      <div className="relative bg-card rounded-xl overflow-hidden select-none w-full border shadow-lg">
-        <div className="flex flex-row">
+      <div className="relative bg-card rounded-xl select-none w-full border shadow-lg">
+        <div className="flex flex-row min-h-0"
+        style={{
+          height: `calc(100vh - ${ARROW_OVERHEAD_PX}px)`,
+        }}
+        >
           <SideNav
             activeView={activeView}
             onViewChange={setActiveView}
             plugins={navPlugins}
           />
-          <div className="flex-1 flex flex-col px-3 pt-2 pb-1.5 min-w-0">
-            <div>
+          <div className="flex-1 flex flex-col w-full pt-2 pb-1.5 min-w-0 min-h-0">
+            <div className="flex-1 min-h-0 overflow-y-auto">
               {renderContent()}
             </div>
             <PanelFooter

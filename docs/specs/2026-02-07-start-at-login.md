@@ -19,6 +19,7 @@ Add a settings toggle to control whether OpenUsage launches at OS login.
   - Read persisted preference.
   - In Tauri runtime, sync OS autostart state to persisted preference.
 - On toggle:
-  - Persist updated preference.
-  - Apply OS autostart enable/disable in Tauri runtime.
+  - In web runtime, persist updated preference directly.
+  - In Tauri runtime, apply OS autostart enable/disable first, then persist confirmed OS state from `isEnabled()`.
+  - If Tauri autostart command fails, rollback UI + persisted preference to prior value.
 - Failures are logged to console and do not crash the app.

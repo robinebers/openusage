@@ -174,7 +174,7 @@ vi.mock("@/lib/settings", async () => {
 })
 
 import App from "@/App"
-const loginToggleLabel = /Open at Login|Start with Windows|Launch at login/i
+const loginToggleLabel = /Open at Login|Start when Windows starts|Open at login/i
 
 function getPluginCheckboxByName(name: string) {
   const row = screen.getByText(name).closest("div")
@@ -576,8 +576,13 @@ describe("App", () => {
     expect(state.saveTrayShowPercentageMock).toHaveBeenCalledWith(true)
   })
 
-  it("updates start at login in settings", async () => {
+  it("updates start at login in settings when autostart enable succeeds", async () => {
     state.isTauriMock.mockReturnValue(true)
+    let isEnabledChecks = 0
+    state.autostartIsEnabledMock.mockImplementation(async () => {
+      isEnabledChecks += 1
+      return isEnabledChecks >= 3
+    })
     render(<App />)
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
@@ -585,6 +590,24 @@ describe("App", () => {
     await userEvent.click(await screen.findByText(loginToggleLabel))
     expect(state.saveStartAtLoginMock).toHaveBeenCalledWith(true)
     expect(state.autostartEnableMock).toHaveBeenCalled()
+  })
+
+  it("rolls back start at login when autostart enable fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    state.isTauriMock.mockReturnValue(true)
+    state.autostartEnableMock.mockRejectedValueOnce(new Error("autostart enable failed"))
+    render(<App />)
+    const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
+    await userEvent.click(settingsButtons[0])
+
+    const loginLabel = await screen.findByText(loginToggleLabel)
+    await userEvent.click(loginLabel)
+
+    await waitFor(() => expect(state.saveStartAtLoginMock).toHaveBeenCalledWith(false))
+    expect(state.saveStartAtLoginMock).not.toHaveBeenCalledWith(true)
+    expect(errorSpy).toHaveBeenCalledWith("Failed to update start at login:", expect.any(Error))
+
+    errorSpy.mockRestore()
   })
 
   it("keeps tray show percentage checkbox visible and disabled for mandatory styles", async () => {

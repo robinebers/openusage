@@ -317,7 +317,7 @@ export function SettingsPage({
   };
 
   return (
-    <div className="py-3 space-y-4">
+    <div className="py-3 space-y-4 px-3">
       <section>
         <h3 className="text-lg font-semibold mb-0">Auto Refresh</h3>
         <p className="text-sm text-muted-foreground mb-2">
