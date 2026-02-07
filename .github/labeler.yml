@@ -1,0 +1,19 @@
+plugin:
+  - changed-files:
+      - any-glob-to-any-file: "plugins/**"
+
+core:
+  - changed-files:
+      - any-glob-to-any-file: "src/**"
+
+rust:
+  - changed-files:
+      - any-glob-to-any-file: "src-tauri/**"
+
+docs:
+  - changed-files:
+      - any-glob-to-any-file: "docs/**"
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file: ".github/**"

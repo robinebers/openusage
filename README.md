@@ -55,13 +55,21 @@ Plugins are currently bundled as we build our the API, but soon will be made fle
 
 Keep it simple. No feature creep, no AI-generated commit messages, test your changes.
 
+## Sponsors
+
+OpenUsage is supported by our sponsors. Become a sponsor to get your logo here and on [openusage.ai](https://openusage.ai).
+
+[Become a Sponsor](https://github.com/sponsors/robinebers)
+
+<!-- Add sponsor logos here -->
+
 ## Credits
 
 Inspired by [CodexBar](https://github.com/steipete/CodexBar) by [@steipete](https://github.com/steipete). Same idea, very different approach.
 
 ## License
 
-MIT
+[MIT](LICENSE)
 
 ---
 

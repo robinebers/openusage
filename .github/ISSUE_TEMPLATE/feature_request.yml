@@ -1,0 +1,34 @@
+name: Feature Request
+description: Suggest a feature or improvement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before requesting a feature, check existing issues to avoid duplicates.
+        OpenUsage focuses on AI subscription usage tracking. Requests outside that scope will be closed.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem does this solve? What is frustrating or missing?
+      placeholder: I want to ...
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: How do you think this should work?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Have you considered other approaches? Why is this one better?
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Screenshots, mockups, links, or anything else that helps explain.

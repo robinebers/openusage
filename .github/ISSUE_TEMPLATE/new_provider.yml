@@ -1,0 +1,48 @@
+name: New Provider Request
+description: Request or propose a new AI provider plugin
+labels: ["provider"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Want to add a new AI provider to OpenUsage? Fill in the details below.
+        You can submit just a request, or build the plugin yourself and open a PR.
+  - type: input
+    id: provider_name
+    attributes:
+      label: Provider Name
+      placeholder: "e.g. Gemini, Windsurf, Devin"
+    validations:
+      required: true
+  - type: input
+    id: provider_url
+    attributes:
+      label: Provider Website
+      placeholder: "https://..."
+    validations:
+      required: true
+  - type: textarea
+    id: data
+    attributes:
+      label: What usage data does this provider expose?
+      description: Describe the usage metrics, limits, and how they are accessed (API, dashboard scraping, etc.)
+      placeholder: |
+        - Monthly request limit: 500
+        - Accessible via: dashboard at provider.com/usage
+        - Auth method: session cookie
+    validations:
+      required: true
+  - type: dropdown
+    id: will_build
+    attributes:
+      label: Will you build the plugin?
+      options:
+        - "Yes, I will submit a PR"
+        - "No, I am just requesting it"
+    validations:
+      required: true
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Links to API docs, screenshots of the usage dashboard, or anything else that helps.
