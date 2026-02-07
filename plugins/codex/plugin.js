@@ -1,24 +1,67 @@
 (function () {
-  const AUTH_PATH = "~/.codex/auth.json"
+  const AUTH_FILE = "auth.json"
+  const CONFIG_AUTH_PATHS = ["~/.config/codex", "~/.codex"]
   const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
   const REFRESH_URL = "https://auth.openai.com/oauth/token"
   const USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
   const REFRESH_AGE_MS = 8 * 24 * 60 * 60 * 1000
 
-  function loadAuth(ctx) {
-    if (!ctx.host.fs.exists(AUTH_PATH)) {
-      ctx.host.log.warn("auth file not found: " + AUTH_PATH)
+  function joinPath(base, leaf) {
+    return base.replace(/[\\/]+$/, "") + "/" + leaf
+  }
+
+  function readCodexHome(ctx) {
+    if (!ctx.host.env || typeof ctx.host.env.get !== "function") {
       return null
     }
+
     try {
-      const text = ctx.host.fs.readText(AUTH_PATH)
+      const value = ctx.host.env.get("CODEX_HOME")
+      if (typeof value !== "string") return null
+      const trimmed = value.trim()
+      return trimmed || null
+    } catch (e) {
+      ctx.host.log.warn("CODEX_HOME read failed: " + String(e))
+      return null
+    }
+  }
+
+  function resolveAuthPath(ctx) {
+    const codexHome = readCodexHome(ctx)
+
+    // If CODEX_HOME is set, use it
+    if (codexHome) {
+      return joinPath(codexHome, AUTH_FILE)
+    }
+
+    // Otherwise, return the first existing auth file path
+    for (const basePath of CONFIG_AUTH_PATHS) {
+      const authPath = joinPath(basePath, AUTH_FILE)
+      if (ctx.host.fs.exists(authPath)) {
+        return authPath
+      }
+    }
+
+    return null
+  }
+
+  function loadAuth(ctx) {
+    const authPath = resolveAuthPath(ctx)
+
+    if (!authPath || !ctx.host.fs.exists(authPath)) {
+      ctx.host.log.warn("auth file not found: " + authPath)
+      return null
+    }
+
+    try {
+      const text = ctx.host.fs.readText(authPath)
       const auth = ctx.util.tryParseJson(text)
       if (auth) {
-        ctx.host.log.info("auth loaded from file")
+        ctx.host.log.info("auth loaded from file: " + authPath)
       } else {
         ctx.host.log.warn("auth file exists but not valid JSON")
       }
-      return auth
+      return { auth, authPath }
     } catch (e) {
       ctx.host.log.warn("auth file read failed: " + String(e))
       return null
@@ -32,7 +75,7 @@
     return nowMs - lastMs > REFRESH_AGE_MS
   }
 
-  function refreshToken(ctx, auth) {
+  function refreshToken(ctx, auth, authPath) {
     if (!auth.tokens || !auth.tokens.refresh_token) {
       ctx.host.log.warn("refresh skipped: no refresh token")
       return null
@@ -91,7 +134,7 @@
       auth.last_refresh = new Date().toISOString()
 
       try {
-        ctx.host.fs.writeText(AUTH_PATH, JSON.stringify(auth, null, 2))
+        ctx.host.fs.writeText(authPath, JSON.stringify(auth, null, 2))
         ctx.host.log.info("refresh succeeded, auth file updated")
       } catch (e) {
         ctx.host.log.warn("refresh succeeded but failed to save auth: " + String(e))
@@ -148,11 +191,13 @@
   var PERIOD_WEEKLY_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
   function probe(ctx) {
-    const auth = loadAuth(ctx)
-    if (!auth) {
+    const authState = loadAuth(ctx)
+    if (!authState || !authState.auth) {
       ctx.host.log.error("probe failed: not logged in")
       throw "Not logged in. Run `codex` to authenticate."
     }
+    const auth = authState.auth
+    const authPath = authState.authPath
 
     if (auth.tokens && auth.tokens.access_token) {
       const nowMs = Date.now()
@@ -161,7 +206,7 @@
 
       if (needsRefresh(ctx, auth, nowMs)) {
         ctx.host.log.info("token needs refresh (age > " + (REFRESH_AGE_MS / 1000 / 60 / 60 / 24) + " days)")
-        const refreshed = refreshToken(ctx, auth)
+        const refreshed = refreshToken(ctx, auth, authPath)
         if (refreshed) {
           accessToken = refreshed
         } else {
@@ -187,7 +232,7 @@
           refresh: () => {
             ctx.host.log.info("usage returned 401, attempting refresh")
             didRefresh = true
-            return refreshToken(ctx, auth)
+            return refreshToken(ctx, auth, authPath)
           },
         })
       } catch (e) {
@@ -205,7 +250,7 @@
         ctx.host.log.error("usage returned error: status=" + resp.status)
         throw "Usage request failed (HTTP " + String(resp.status) + "). Try again later."
       }
-      
+
       ctx.host.log.info("usage fetch succeeded")
 
       const data = ctx.util.tryParseJson(resp.bodyText)

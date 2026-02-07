@@ -18,6 +18,60 @@ describe("codex plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Not logged in")
   })
 
+  it("uses CODEX_HOME auth path when env var is set", async () => {
+    const ctx = makeCtx()
+    ctx.host.env.get.mockImplementation((name) => (name === "CODEX_HOME" ? "/tmp/codex-home" : null))
+    ctx.host.fs.writeText("/tmp/codex-home/auth.json", JSON.stringify({
+      tokens: { access_token: "env-token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.fs.writeText("~/.config/codex/auth.json", JSON.stringify({
+      tokens: { access_token: "config-token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockImplementation((opts) => {
+      expect(opts.headers.Authorization).toBe("Bearer env-token")
+      return { status: 200, headers: {}, bodyText: JSON.stringify({}) }
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+  })
+
+  it("uses ~/.config/codex/auth.json before ~/.codex/auth.json when env is not set", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.config/codex/auth.json", JSON.stringify({
+      tokens: { access_token: "config-token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "legacy-token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockImplementation((opts) => {
+      expect(opts.headers.Authorization).toBe("Bearer config-token")
+      return { status: 200, headers: {}, bodyText: JSON.stringify({}) }
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+  })
+
+  it("does not fall back when CODEX_HOME is set but missing auth file", async () => {
+    const ctx = makeCtx()
+    ctx.host.env.get.mockImplementation((name) => (name === "CODEX_HOME" ? "/tmp/missing-codex-home" : null))
+    ctx.host.fs.writeText("~/.config/codex/auth.json", JSON.stringify({
+      tokens: { access_token: "config-token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "legacy-token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Not logged in")
+  })
+
   it("throws when auth json is invalid", async () => {
     const ctx = makeCtx()
     ctx.host.fs.writeText("~/.codex/auth.json", "{bad")

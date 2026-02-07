@@ -17,6 +17,9 @@ export const makeCtx = () => {
         readText: (path) => files.get(path),
         writeText: vi.fn((path, text) => files.set(path, text)),
       },
+      env: {
+        get: vi.fn(() => null),
+      },
       keychain: {
         readGenericPassword: vi.fn(),
         writeGenericPassword: vi.fn(),
