@@ -43,7 +43,7 @@ describe("SideNav", () => {
     expect(icon).toHaveStyle({ backgroundColor: "#ff0000" })
   })
 
-  it("falls back to currentColor for extremely light/dark brand colors", () => {
+  it("falls back to currentColor (light) or white (dark) for low-contrast brand colors", () => {
     const onViewChange = vi.fn()
 
     // Light mode + very light color => currentColor
@@ -58,7 +58,7 @@ describe("SideNav", () => {
     const pStyle = screen.getByRole("img", { name: "P" }).getAttribute("style") ?? ""
     expect(pStyle).toMatch(/background-color:\s*currentcolor/i)
 
-    // Dark mode + very dark color => currentColor
+    // Dark mode + very dark color => white
     darkModeState.useDarkModeMock.mockReturnValueOnce(true)
     rerender(
       <SideNav
@@ -68,7 +68,7 @@ describe("SideNav", () => {
       />
     )
     const p2Style = screen.getByRole("img", { name: "P2" }).getAttribute("style") ?? ""
-    expect(p2Style).toMatch(/background-color:\s*currentcolor/i)
+    expect(p2Style).toContain("rgb(255, 255, 255)")
   })
 })
 

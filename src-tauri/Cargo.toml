@@ -3,7 +3,7 @@ name = "openusage"
 version = "0.4.2"
 description = "OpenUsage is an open source AI subscription limit tracker"
 authors = ["Robin Ebers"]
-edition = "2026"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
