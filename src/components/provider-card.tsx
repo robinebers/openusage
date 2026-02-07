@@ -12,7 +12,7 @@ import { REFRESH_COOLDOWN_MS, type DisplayMode } from "@/lib/settings"
 import type { ManifestLine, MetricLine } from "@/lib/plugin-types"
 import { clamp01 } from "@/lib/utils"
 import { calculatePaceStatus, type PaceStatus } from "@/lib/pace-status"
-import { buildPaceDetailText, formatCompactDuration, getPaceStatusText } from "@/lib/pace-tooltip"
+import { buildPaceDetailText, formatCompactDuration, getPaceStatusText, LIMIT_REACHED } from "@/lib/pace-tooltip"
 
 interface ProviderCardProps {
   name: string
@@ -62,7 +62,7 @@ function PaceIndicator({ status, detailText }: { status: PaceStatus; detailText?
         : "bg-red-500"
 
   const statusText = getPaceStatusText(status)
-  const tooltip = detailText ? `${statusText} • ${detailText}` : statusText
+  const isLimitReached = detailText === LIMIT_REACHED
 
   return (
     <Tooltip>
@@ -71,12 +71,19 @@ function PaceIndicator({ status, detailText }: { status: PaceStatus; detailText?
           <span
             {...props}
             className={`inline-block w-2 h-2 rounded-full ${colorClass}`}
-            aria-label={statusText}
+            aria-label={isLimitReached ? LIMIT_REACHED : statusText}
           />
         )}
       />
-      <TooltipContent side="top" className="text-xs">
-        {tooltip}
+      <TooltipContent side="top" className="text-xs text-center">
+        {isLimitReached ? (
+          LIMIT_REACHED
+        ) : (
+          <>
+            <div>{statusText}</div>
+            {detailText && <div className="text-[10px] opacity-60">{detailText}</div>}
+          </>
+        )}
       </TooltipContent>
     </Tooltip>
   )
@@ -325,7 +332,9 @@ function MetricLineRenderer({
           )
         : null
     const paceStatus: PaceStatus | null =
-      line.used === 0 && hasPaceContext ? "ahead" : (paceResult?.status ?? null)
+      line.used === 0 && hasPaceContext ? "ahead"
+        : line.used >= line.limit && hasPaceContext ? "behind"
+        : (paceResult?.status ?? null)
     const paceDetailText =
       hasPaceContext && line.periodDurationMs
         ? buildPaceDetailText({
@@ -335,6 +344,7 @@ function MetricLineRenderer({
             resetsAtMs,
             periodDurationMs: line.periodDurationMs,
             nowMs: now,
+            displayMode,
           })
         : null
 

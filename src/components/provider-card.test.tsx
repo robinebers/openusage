@@ -215,12 +215,12 @@ describe("ProviderCard", () => {
         ]}
       />
     )
-    expect(screen.getByLabelText("Ahead of pace")).toBeInTheDocument()
+    expect(screen.getByLabelText("You're good")).toBeInTheDocument()
     expect(screen.getByLabelText("On track")).toBeInTheDocument()
     expect(screen.getByLabelText("Using fast")).toBeInTheDocument()
-    expect(screen.getByText("Ahead of pace • projected 60% by reset")).toBeInTheDocument()
-    expect(screen.getByText("On track • projected 90% by reset")).toBeInTheDocument()
-    expect(screen.getByText("Using fast • hits 100% in 8h 0m")).toBeInTheDocument()
+    expect(screen.getByText("60% used at reset")).toBeInTheDocument()
+    expect(screen.getByText("90% used at reset")).toBeInTheDocument()
+    expect(screen.getByText("Limit in 8h 0m")).toBeInTheDocument()
     vi.useRealTimers()
   })
 
@@ -245,7 +245,8 @@ describe("ProviderCard", () => {
         ]}
       />
     )
-    expect(screen.getByText("Using fast • at/over 100% now")).toBeInTheDocument()
+    expect(screen.getByLabelText("Limit reached")).toBeInTheDocument()
+    expect(screen.getByText("Limit reached")).toBeInTheDocument()
     vi.useRealTimers()
   })
 
@@ -270,8 +271,8 @@ describe("ProviderCard", () => {
         ]}
       />
     )
-    expect(screen.getByText("Ahead of pace")).toBeInTheDocument()
-    expect(screen.queryByText(/projected .* by reset/)).not.toBeInTheDocument()
+    expect(screen.getByText("You're good")).toBeInTheDocument()
+    expect(screen.queryByText(/at reset/)).not.toBeInTheDocument()
     vi.useRealTimers()
   })
 

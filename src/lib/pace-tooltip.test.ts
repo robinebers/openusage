@@ -4,8 +4,9 @@ import { type PaceResult } from "@/lib/pace-status"
 import {
   buildPaceDetailText,
   formatCompactDuration,
-  getLimitHitEtaText,
+  getLimitHitEtaMs,
   getPaceStatusText,
+  LIMIT_REACHED,
 } from "@/lib/pace-tooltip"
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
@@ -14,7 +15,7 @@ const nowMs = Date.parse("2026-02-02T12:00:00.000Z")
 
 describe("pace-tooltip", () => {
   it("maps pace status labels", () => {
-    expect(getPaceStatusText("ahead")).toBe("Ahead of pace")
+    expect(getPaceStatusText("ahead")).toBe("You're good")
     expect(getPaceStatusText("on-track")).toBe("On track")
     expect(getPaceStatusText("behind")).toBe("Using fast")
   })
@@ -31,31 +32,32 @@ describe("pace-tooltip", () => {
     expect(formatCompactDuration(0)).toBeNull()
   })
 
-  it("computes ETA text when 100% is reached before reset", () => {
-    const eta = getLimitHitEtaText({
+  it("computes ETA ms when limit is hit before reset", () => {
+    const eta = getLimitHitEtaMs({
       used: 60,
       limit: 100,
       resetsAtMs,
       periodDurationMs: ONE_DAY_MS,
       nowMs,
     })
-    expect(eta).toBe("hits 100% in 8h 0m")
+    // used=60 at 12h into 24h → rate=5/h → need 40 more → 8h
+    expect(eta).toBe(8 * 60 * 60 * 1000)
   })
 
-  it("returns fallback now text when already at or above limit", () => {
-    const eta = getLimitHitEtaText({
+  it("returns 0 when already at or above limit", () => {
+    const eta = getLimitHitEtaMs({
       used: 120,
       limit: 100,
       resetsAtMs,
       periodDurationMs: ONE_DAY_MS,
       nowMs,
     })
-    expect(eta).toBe("at/over 100% now")
+    expect(eta).toBe(0)
   })
 
   it("returns null when ETA cannot be computed", () => {
     expect(
-      getLimitHitEtaText({
+      getLimitHitEtaMs({
         used: 0,
         limit: 100,
         resetsAtMs,
@@ -65,7 +67,7 @@ describe("pace-tooltip", () => {
     ).toBeNull()
 
     expect(
-      getLimitHitEtaText({
+      getLimitHitEtaMs({
         used: 90,
         limit: 100,
         resetsAtMs,
@@ -75,20 +77,20 @@ describe("pace-tooltip", () => {
     ).toBeNull()
   })
 
-  it("builds projected detail text for <=100% projections", () => {
-    const paceResult: PaceResult = { status: "on-track", projectedUsage: 90 }
+  it("returns LIMIT_REACHED when used >= limit", () => {
     const detail = buildPaceDetailText({
-      paceResult,
-      used: 45,
+      paceResult: { status: "behind", projectedUsage: 240 },
+      used: 120,
       limit: 100,
       resetsAtMs,
       periodDurationMs: ONE_DAY_MS,
       nowMs,
+      displayMode: "used",
     })
-    expect(detail).toBe("projected 90% by reset")
+    expect(detail).toBe(LIMIT_REACHED)
   })
 
-  it("prefers ETA text when projected usage exceeds 100%", () => {
+  it("shows 'Limit in' ETA for behind pace (displayMode=used)", () => {
     const paceResult: PaceResult = { status: "behind", projectedUsage: 120 }
     const detail = buildPaceDetailText({
       paceResult,
@@ -97,11 +99,68 @@ describe("pace-tooltip", () => {
       resetsAtMs,
       periodDurationMs: ONE_DAY_MS,
       nowMs,
+      displayMode: "used",
     })
-    expect(detail).toBe("hits 100% in 8h 0m")
+    expect(detail).toBe("Limit in 8h 0m")
   })
 
-  it("falls back to projected text when projected >100 but ETA is unavailable", () => {
+  it("shows projected % used at reset for on-track (displayMode=used)", () => {
+    const paceResult: PaceResult = { status: "on-track", projectedUsage: 90 }
+    const detail = buildPaceDetailText({
+      paceResult,
+      used: 45,
+      limit: 100,
+      resetsAtMs,
+      periodDurationMs: ONE_DAY_MS,
+      nowMs,
+      displayMode: "used",
+    })
+    expect(detail).toBe("90% used at reset")
+  })
+
+  it("shows projected % left at reset for on-track (displayMode=left)", () => {
+    const paceResult: PaceResult = { status: "on-track", projectedUsage: 90 }
+    const detail = buildPaceDetailText({
+      paceResult,
+      used: 45,
+      limit: 100,
+      resetsAtMs,
+      periodDurationMs: ONE_DAY_MS,
+      nowMs,
+      displayMode: "left",
+    })
+    expect(detail).toBe("10% left at reset")
+  })
+
+  it("shows projected % for ahead (displayMode=used)", () => {
+    const paceResult: PaceResult = { status: "ahead", projectedUsage: 60 }
+    const detail = buildPaceDetailText({
+      paceResult,
+      used: 30,
+      limit: 100,
+      resetsAtMs,
+      periodDurationMs: ONE_DAY_MS,
+      nowMs,
+      displayMode: "used",
+    })
+    expect(detail).toBe("60% used at reset")
+  })
+
+  it("shows projected % for ahead (displayMode=left)", () => {
+    const paceResult: PaceResult = { status: "ahead", projectedUsage: 60 }
+    const detail = buildPaceDetailText({
+      paceResult,
+      used: 30,
+      limit: 100,
+      resetsAtMs,
+      periodDurationMs: ONE_DAY_MS,
+      nowMs,
+      displayMode: "left",
+    })
+    expect(detail).toBe("40% left at reset")
+  })
+
+  it("clamps projected percent to 100% when behind without ETA", () => {
     const paceResult: PaceResult = { status: "behind", projectedUsage: 120 }
     const detail = buildPaceDetailText({
       paceResult,
@@ -110,8 +169,23 @@ describe("pace-tooltip", () => {
       resetsAtMs,
       periodDurationMs: ONE_DAY_MS,
       nowMs,
+      displayMode: "used",
     })
-    expect(detail).toBe("projected 120% by reset")
+    expect(detail).toBe("100% used at reset")
+  })
+
+  it("clamps projected percent in left mode when behind without ETA", () => {
+    const paceResult: PaceResult = { status: "behind", projectedUsage: 120 }
+    const detail = buildPaceDetailText({
+      paceResult,
+      used: 0,
+      limit: 100,
+      resetsAtMs,
+      periodDurationMs: ONE_DAY_MS,
+      nowMs,
+      displayMode: "left",
+    })
+    expect(detail).toBe("0% left at reset")
   })
 
   it("returns null detail when pace result is unavailable", () => {
@@ -122,6 +196,7 @@ describe("pace-tooltip", () => {
       resetsAtMs,
       periodDurationMs: ONE_DAY_MS,
       nowMs,
+      displayMode: "used",
     })
     expect(detail).toBeNull()
   })

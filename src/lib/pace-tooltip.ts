@@ -1,7 +1,11 @@
 import type { PaceResult, PaceStatus } from "@/lib/pace-status"
+import type { DisplayMode } from "@/lib/settings"
+
+/** Sentinel value returned by buildPaceDetailText when usage >= limit */
+export const LIMIT_REACHED = "Limit reached"
 
 export function getPaceStatusText(status: PaceStatus): string {
-  return status === "ahead" ? "Ahead of pace" : status === "on-track" ? "On track" : "Using fast"
+  return status === "ahead" ? "You're good" : status === "on-track" ? "On track" : "Using fast"
 }
 
 export function formatCompactDuration(deltaMs: number): string | null {
@@ -19,7 +23,12 @@ export function formatCompactDuration(deltaMs: number): string | null {
   return "<1m"
 }
 
-export function getLimitHitEtaText({
+/**
+ * Compute ms until usage hits the limit at the current rate.
+ * Returns null if ETA can't be computed or falls after reset.
+ * Returns 0 when already at/over the limit.
+ */
+export function getLimitHitEtaMs({
   used,
   limit,
   resetsAtMs,
@@ -31,7 +40,7 @@ export function getLimitHitEtaText({
   resetsAtMs: number
   periodDurationMs: number
   nowMs: number
-}): string | null {
+}): number | null {
   if (
     !Number.isFinite(used) ||
     !Number.isFinite(limit) ||
@@ -43,7 +52,7 @@ export function getLimitHitEtaText({
   ) {
     return null
   }
-  if (used >= limit) return "at/over 100% now"
+  if (used >= limit) return 0
 
   const periodStartMs = resetsAtMs - periodDurationMs
   const elapsedMs = nowMs - periodStartMs
@@ -53,13 +62,12 @@ export function getLimitHitEtaText({
   if (!Number.isFinite(usageRatePerMs) || usageRatePerMs <= 0) return null
 
   const msUntilLimit = (limit - used) / usageRatePerMs
-  if (!Number.isFinite(msUntilLimit) || msUntilLimit <= 0) return "at/over 100% now"
+  if (!Number.isFinite(msUntilLimit) || msUntilLimit <= 0) return 0
 
   const hitAtMs = nowMs + msUntilLimit
   if (hitAtMs >= resetsAtMs) return null
 
-  const durationText = formatCompactDuration(hitAtMs - nowMs)
-  return durationText ? `hits 100% in ${durationText}` : null
+  return hitAtMs - nowMs
 }
 
 export function buildPaceDetailText({
@@ -69,6 +77,7 @@ export function buildPaceDetailText({
   resetsAtMs,
   periodDurationMs,
   nowMs,
+  displayMode,
 }: {
   paceResult: PaceResult | null
   used: number
@@ -76,18 +85,28 @@ export function buildPaceDetailText({
   resetsAtMs: number
   periodDurationMs: number
   nowMs: number
+  displayMode: DisplayMode
 }): string | null {
-  if (!paceResult || !Number.isFinite(limit) || limit <= 0) return null
+  if (!Number.isFinite(limit) || limit <= 0) return null
 
-  const projectedPercent = Math.round((paceResult.projectedUsage / limit) * 100)
-  if (projectedPercent <= 100) return `projected ${projectedPercent}% by reset`
+  // Limit reached — hard ceiling
+  if (used >= limit) return LIMIT_REACHED
 
-  const etaText = getLimitHitEtaText({
-    used,
-    limit,
-    resetsAtMs,
-    periodDurationMs,
-    nowMs,
-  })
-  return etaText ?? `projected ${projectedPercent}% by reset`
+  if (!paceResult) return null
+
+  // Behind pace → show ETA to hitting limit
+  if (paceResult.status === "behind") {
+    const etaMs = getLimitHitEtaMs({ used, limit, resetsAtMs, periodDurationMs, nowMs })
+    if (etaMs != null && etaMs > 0) {
+      const durationText = formatCompactDuration(etaMs)
+      if (durationText) return `Limit in ${durationText}`
+    }
+    // Can't compute ETA — fall through to projected %
+  }
+
+  // Ahead / on-track (or behind without ETA) → show projected % at reset
+  const projectedPercent = Math.min(100, Math.round((paceResult.projectedUsage / limit) * 100))
+  const shownPercent = displayMode === "left" ? 100 - projectedPercent : projectedPercent
+  const suffix = displayMode === "left" ? "left at reset" : "used at reset"
+  return `${shownPercent}% ${suffix}`
 }
