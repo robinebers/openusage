@@ -15,12 +15,16 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical } from "lucide-react";
+import { useMemo } from "react";
+import { GripVertical, Hourglass, RefreshCw } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useNowTicker } from "@/hooks/use-now-ticker";
 import {
   AUTO_UPDATE_OPTIONS,
   DISPLAY_MODE_OPTIONS,
+  REFRESH_COOLDOWN_MS,
   TRAY_ICON_STYLE_OPTIONS,
   THEME_OPTIONS,
   isTrayPercentageMandatory,
@@ -261,6 +265,8 @@ interface SettingsPageProps {
   onToggle: (id: string) => void;
   autoUpdateInterval: AutoUpdateIntervalMinutes;
   onAutoUpdateIntervalChange: (value: AutoUpdateIntervalMinutes) => void;
+  onRefreshAll: () => void;
+  lastRefreshAllAt: number | null;
   themeMode: ThemeMode;
   onThemeModeChange: (value: ThemeMode) => void;
   displayMode: DisplayMode;
@@ -278,6 +284,8 @@ export function SettingsPage({
   onToggle,
   autoUpdateInterval,
   onAutoUpdateIntervalChange,
+  onRefreshAll,
+  lastRefreshAllAt,
   themeMode,
   onThemeModeChange,
   displayMode,
@@ -288,6 +296,33 @@ export function SettingsPage({
   onTrayShowPercentageChange,
   providerIconUrl,
 }: SettingsPageProps) {
+  const cooldownRemainingMs = useMemo(() => {
+    if (!lastRefreshAllAt) return 0;
+    const remaining = REFRESH_COOLDOWN_MS - (Date.now() - lastRefreshAllAt);
+    return remaining > 0 ? remaining : 0;
+  }, [lastRefreshAllAt]);
+
+  const now = useNowTicker({
+    enabled: cooldownRemainingMs > 0,
+    intervalMs: 1000,
+    stopAfterMs: cooldownRemainingMs > 0 ? cooldownRemainingMs : null,
+  });
+
+  const inCooldown = lastRefreshAllAt
+    ? now - lastRefreshAllAt < REFRESH_COOLDOWN_MS
+    : false;
+
+  const formatCooldownRemaining = () => {
+    if (!lastRefreshAllAt) return "";
+    const remainingMs = REFRESH_COOLDOWN_MS - (now - lastRefreshAllAt);
+    if (remainingMs <= 0) return "";
+    const totalSeconds = Math.ceil(remainingMs / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    if (minutes > 0) return `Available in ${minutes}m ${seconds}s`;
+    return `Available in ${seconds}s`;
+  };
+
   const percentageMandatory = isTrayPercentageMandatory(trayIconStyle);
   const trayShowPercentageChecked = percentageMandatory
     ? true
@@ -315,7 +350,46 @@ export function SettingsPage({
   return (
     <div className="py-3 space-y-4">
       <section>
-        <h3 className="text-lg font-semibold mb-0">Auto Refresh</h3>
+        <div className="flex items-center">
+          <h3 className="text-lg font-semibold mb-0">Auto Refresh</h3>
+          {inCooldown ? (
+            <Tooltip>
+              <TooltipTrigger
+                className="ml-1"
+                render={(props) => (
+                  <span {...props} className={props.className}>
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      className="pointer-events-none opacity-50"
+                      style={{ transform: "translateZ(0)", backfaceVisibility: "hidden" }}
+                      tabIndex={-1}
+                    >
+                      <Hourglass className="h-3 w-3" />
+                    </Button>
+                  </span>
+                )}
+              />
+              <TooltipContent side="top">
+                {formatCooldownRemaining()}
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Refresh now"
+              onClick={(e) => {
+                e.currentTarget.blur()
+                onRefreshAll()
+              }}
+              className="ml-1 opacity-0 hover:opacity-100 focus-visible:opacity-100"
+              style={{ transform: "translateZ(0)", backfaceVisibility: "hidden" }}
+            >
+              <RefreshCw className="h-3 w-3" />
+            </Button>
+          )}
+        </div>
         <p className="text-sm text-muted-foreground mb-2">
           How obsessive are you
         </p>

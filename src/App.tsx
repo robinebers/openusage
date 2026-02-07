@@ -31,6 +31,7 @@ import {
   loadTrayIconStyle,
   loadThemeMode,
   normalizePluginSettings,
+  REFRESH_COOLDOWN_MS,
   saveAutoUpdateInterval,
   saveDisplayMode,
   savePluginSettings,
@@ -81,6 +82,7 @@ function App() {
 
   const { updateStatus, triggerInstall } = useAppUpdate()
   const [showAbout, setShowAbout] = useState(false)
+  const [lastRefreshAllAt, setLastRefreshAllAt] = useState<number | null>(null)
 
   const trayRef = useRef<TrayIcon | null>(null)
   const trayGaugeIconPathRef = useRef<string | null>(null)
@@ -636,6 +638,21 @@ function App() {
     [resetAutoUpdateSchedule, setLoadingForPlugins, setErrorForPlugins, startBatch]
   )
 
+  const handleRefreshAll = useCallback(() => {
+    if (!pluginSettings) return
+    if (lastRefreshAllAt && Date.now() - lastRefreshAllAt < REFRESH_COOLDOWN_MS) return
+    const enabledIds = getEnabledPluginIds(pluginSettings)
+    if (enabledIds.length === 0) return
+    setLastRefreshAllAt(Date.now())
+    resetAutoUpdateSchedule()
+    for (const id of enabledIds) manualRefreshIdsRef.current.add(id)
+    setLoadingForPlugins(enabledIds)
+    startBatch(enabledIds).catch((error) => {
+      console.error("Failed to refresh all plugins:", error)
+      setErrorForPlugins(enabledIds, "Failed to start probe")
+    })
+  }, [pluginSettings, lastRefreshAllAt, resetAutoUpdateSchedule, setLoadingForPlugins, setErrorForPlugins, startBatch])
+
   const handleThemeModeChange = useCallback((mode: ThemeMode) => {
     setThemeMode(mode)
     void saveThemeMode(mode).catch((error) => {
@@ -801,6 +818,8 @@ function App() {
           onToggle={handleToggle}
           autoUpdateInterval={autoUpdateInterval}
           onAutoUpdateIntervalChange={handleAutoUpdateIntervalChange}
+          onRefreshAll={handleRefreshAll}
+          lastRefreshAllAt={lastRefreshAllAt}
           themeMode={themeMode}
           onThemeModeChange={handleThemeModeChange}
           displayMode={displayMode}
