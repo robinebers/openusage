@@ -10,28 +10,9 @@ OpenUsage accepts contributions, but has a high quality bar. Read this entire do
 - Keep it simple. Don't over-engineer.
 - One PR per concern. Don't bundle unrelated changes.
 
-## DCO Sign-Off (Required)
+## License Agreement
 
-All commits must include a `Signed-off-by` line (Developer Certificate of Origin).
-
-This confirms you wrote the code and have the right to submit it. Add it with:
-
-```bash
-git commit -s -m "your commit message"
-```
-
-This appends a line like:
-
-```
-Signed-off-by: Your Name <your@email.com>
-```
-
-PRs without sign-off will be blocked by CI. If you forget, amend:
-
-```bash
-git commit --amend -s
-git push --force
-```
+By submitting a pull request, you agree that your contribution is licensed under the [MIT License](LICENSE) that covers this project.
 
 ## How to Contribute
 

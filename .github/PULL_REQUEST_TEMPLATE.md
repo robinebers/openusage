@@ -28,6 +28,5 @@
 ## Checklist
 
 - [ ] I read [CONTRIBUTING.md](../CONTRIBUTING.md)
-- [ ] My commits are signed off (`git commit -s`)
 - [ ] My PR targets the `main` branch
 - [ ] I did not introduce new dependencies without justification
