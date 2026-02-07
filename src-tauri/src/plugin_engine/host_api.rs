@@ -808,7 +808,7 @@ fn inject_ls<'js>(
                     .copied();
 
                 let ports = if let Some(lsof) = lsof_path {
-                    let lsof_output = match std::process::Command::new(lsof)
+                    match std::process::Command::new(lsof)
                         .args([
                             "-nP",
                             "-iTCP",
@@ -819,15 +819,23 @@ fn inject_ls<'js>(
                         ])
                         .output()
                     {
-                        Ok(o) => o,
+                        Ok(o) if o.status.success() => {
+                            ls_parse_listening_ports(
+                                &String::from_utf8_lossy(&o.stdout),
+                            )
+                        }
+                        Ok(_) => {
+                            log::warn!(
+                                "[plugin:{}] lsof returned non-zero",
+                                pid
+                            );
+                            Vec::new()
+                        }
                         Err(e) => {
                             log::warn!("[plugin:{}] lsof failed: {}", pid, e);
-                            return Ok("null".to_string());
+                            Vec::new()
                         }
-                    };
-                    ls_parse_listening_ports(
-                        &String::from_utf8_lossy(&lsof_output.stdout),
-                    )
+                    }
                 } else {
                     log::warn!("[plugin:{}] lsof not found", pid);
                     Vec::new()
@@ -876,7 +884,9 @@ pub fn patch_ls_wrapper(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
         (function() {
             var rawFn = __openusage_ctx.host.ls._discoverRaw;
             __openusage_ctx.host.ls.discover = function(opts) {
-                var json = rawFn(JSON.stringify(opts));
+                var optsJson;
+                try { optsJson = JSON.stringify(opts); } catch (e) { return null; }
+                var json = rawFn(optsJson);
                 if (json === "null") return null;
                 return JSON.parse(json);
             };

@@ -13,8 +13,9 @@
   }
 
   function findWorkingPort(ctx, discovery) {
-    for (var i = 0; i < discovery.ports.length; i++) {
-      var port = discovery.ports[i]
+    var ports = discovery.ports || []
+    for (var i = 0; i < ports.length; i++) {
+      var port = ports[i]
       try {
         var resp = ctx.host.http.request({
           method: "POST",
@@ -116,8 +117,13 @@
       locale: "en",
     }
 
-    // Try GetUserStatus first
-    var data = callLs(ctx, port, discovery.csrf, "GetUserStatus", { metadata: metadata })
+    // Try GetUserStatus first, fall back to GetCommandModelConfigs
+    var data = null
+    try {
+      data = callLs(ctx, port, discovery.csrf, "GetUserStatus", { metadata: metadata })
+    } catch (e) {
+      ctx.host.log.warn("GetUserStatus threw: " + String(e))
+    }
     var hasUserStatus = data && data.userStatus
 
     if (!hasUserStatus) {
