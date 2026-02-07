@@ -5,6 +5,7 @@ import {
   DEFAULT_PLUGIN_SETTINGS,
   DEFAULT_TRAY_ICON_STYLE,
   DEFAULT_TRAY_SHOW_PERCENTAGE,
+  DEFAULT_START_AT_LOGIN,
   DEFAULT_THEME_MODE,
   arePluginSettingsEqual,
   getEnabledPluginIds,
@@ -13,6 +14,7 @@ import {
   loadPluginSettings,
   loadTrayIconStyle,
   loadTrayShowPercentage,
+  loadStartAtLogin,
   loadThemeMode,
   normalizePluginSettings,
   saveAutoUpdateInterval,
@@ -20,6 +22,7 @@ import {
   savePluginSettings,
   saveTrayIconStyle,
   saveTrayShowPercentage,
+  saveStartAtLogin,
   saveThemeMode,
 } from "@/lib/settings"
 import type { PluginMeta } from "@/lib/plugin-types"
@@ -183,5 +186,24 @@ describe("settings", () => {
   it("falls back to default for invalid tray show percentage", async () => {
     storeState.set("trayShowPercentage", "invalid")
     await expect(loadTrayShowPercentage()).resolves.toBe(DEFAULT_TRAY_SHOW_PERCENTAGE)
+  })
+
+  it("loads default start at login when missing", async () => {
+    await expect(loadStartAtLogin()).resolves.toBe(DEFAULT_START_AT_LOGIN)
+  })
+
+  it("loads stored start at login", async () => {
+    storeState.set("startAtLogin", true)
+    await expect(loadStartAtLogin()).resolves.toBe(true)
+  })
+
+  it("saves start at login", async () => {
+    await saveStartAtLogin(true)
+    await expect(loadStartAtLogin()).resolves.toBe(true)
+  })
+
+  it("falls back to default for invalid start at login", async () => {
+    storeState.set("startAtLogin", "invalid")
+    await expect(loadStartAtLogin()).resolves.toBe(DEFAULT_START_AT_LOGIN)
   })
 })

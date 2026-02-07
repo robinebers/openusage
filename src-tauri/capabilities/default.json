@@ -15,6 +15,7 @@
     "store:default",
     "aptabase:allow-track-event",
     "updater:default",
-    "process:allow-restart"
+    "process:allow-restart",
+    "autostart:default"
   ]
 }

@@ -269,6 +269,8 @@ interface SettingsPageProps {
   onTrayIconStyleChange: (value: TrayIconStyle) => void;
   trayShowPercentage: boolean;
   onTrayShowPercentageChange: (value: boolean) => void;
+  startAtLogin: boolean;
+  onStartAtLoginChange: (value: boolean) => void;
   providerIconUrl?: string;
 }
 
@@ -286,6 +288,8 @@ export function SettingsPage({
   onTrayIconStyleChange,
   trayShowPercentage,
   onTrayShowPercentageChange,
+  startAtLogin,
+  onStartAtLoginChange,
   providerIconUrl,
 }: SettingsPageProps) {
   const percentageMandatory = isTrayPercentageMandatory(trayIconStyle);
@@ -471,6 +475,24 @@ export function SettingsPage({
             </SortableContext>
           </DndContext>
         </div>
+      </section>
+      <section>
+        <h3 className="text-lg font-semibold mb-0">Launch at Startup</h3>
+        <p className="text-sm text-muted-foreground mb-2">
+          Launch OpenUsage when you log in
+        </p>
+        <label className="flex items-center gap-2 text-sm text-foreground select-none">
+          <Checkbox
+            key={`start-at-login-${startAtLogin}`}
+            checked={startAtLogin}
+            onCheckedChange={(checked) => onStartAtLoginChange(checked === true)}
+          />
+          {typeof navigator !== "undefined" && /Mac/i.test(navigator.userAgent)
+            ? "Open at Login"
+            : typeof navigator !== "undefined" && /Windows/i.test(navigator.userAgent)
+              ? "Start when Windows starts"
+              : "Open at login"}
+        </label>
       </section>
     </div>
   );

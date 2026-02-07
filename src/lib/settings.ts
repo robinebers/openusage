@@ -25,12 +25,14 @@ const THEME_MODE_KEY = "themeMode";
 const DISPLAY_MODE_KEY = "displayMode";
 const TRAY_ICON_STYLE_KEY = "trayIconStyle";
 const TRAY_SHOW_PERCENTAGE_KEY = "trayShowPercentage";
+const START_AT_LOGIN_KEY = "startAtLogin";
 
 export const DEFAULT_AUTO_UPDATE_INTERVAL: AutoUpdateIntervalMinutes = 15;
 export const DEFAULT_THEME_MODE: ThemeMode = "system";
 export const DEFAULT_DISPLAY_MODE: DisplayMode = "left";
 export const DEFAULT_TRAY_ICON_STYLE: TrayIconStyle = "bars";
 export const DEFAULT_TRAY_SHOW_PERCENTAGE = false;
+export const DEFAULT_START_AT_LOGIN = false;
 
 const AUTO_UPDATE_INTERVALS: AutoUpdateIntervalMinutes[] = [5, 15, 30, 60];
 const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
@@ -202,6 +204,17 @@ export async function loadTrayShowPercentage(): Promise<boolean> {
 
 export async function saveTrayShowPercentage(value: boolean): Promise<void> {
   await store.set(TRAY_SHOW_PERCENTAGE_KEY, value);
+  await store.save();
+}
+
+export async function loadStartAtLogin(): Promise<boolean> {
+  const stored = await store.get<unknown>(START_AT_LOGIN_KEY);
+  if (typeof stored === "boolean") return stored;
+  return DEFAULT_START_AT_LOGIN;
+}
+
+export async function saveStartAtLogin(value: boolean): Promise<void> {
+  await store.set(START_AT_LOGIN_KEY, value);
   await store.save();
 }
 

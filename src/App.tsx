@@ -5,6 +5,11 @@ import { getCurrentWindow, PhysicalSize, currentMonitor } from "@tauri-apps/api/
 import { getVersion } from "@tauri-apps/api/app"
 import { resolveResource } from "@tauri-apps/api/path"
 import { TrayIcon } from "@tauri-apps/api/tray"
+import {
+  disable as disableAutostart,
+  enable as enableAutostart,
+  isEnabled as isAutostartEnabled,
+} from "@tauri-apps/plugin-autostart"
 import { SideNav, type ActiveView } from "@/components/side-nav"
 import { PanelFooter } from "@/components/panel-footer"
 import { OverviewPage } from "@/pages/overview"
@@ -19,6 +24,7 @@ import {
   arePluginSettingsEqual,
   DEFAULT_AUTO_UPDATE_INTERVAL,
   DEFAULT_DISPLAY_MODE,
+  DEFAULT_START_AT_LOGIN,
   DEFAULT_TRAY_ICON_STYLE,
   DEFAULT_TRAY_SHOW_PERCENTAGE,
   DEFAULT_THEME_MODE,
@@ -28,6 +34,7 @@ import {
   loadDisplayMode,
   loadPluginSettings,
   loadTrayShowPercentage,
+  loadStartAtLogin,
   loadTrayIconStyle,
   loadThemeMode,
   normalizePluginSettings,
@@ -35,6 +42,7 @@ import {
   saveDisplayMode,
   savePluginSettings,
   saveTrayShowPercentage,
+  saveStartAtLogin,
   saveTrayIconStyle,
   saveThemeMode,
   type AutoUpdateIntervalMinutes,
@@ -46,8 +54,7 @@ import {
 
 const PANEL_WIDTH = 400;
 const MAX_HEIGHT_FALLBACK_PX = 600;
-const MAX_HEIGHT_FRACTION_OF_MONITOR = 0.8;
-const ARROW_OVERHEAD_PX = 37; // .tray-arrow (7px) + wrapper pt-1.5 (6px) + bottom p-6 (24px)
+const MAX_HEIGHT_FRACTION_OF_MONITOR = 0.98;
 const TRAY_SETTINGS_DEBOUNCE_MS = 2000;
 const TRAY_PROBE_DEBOUNCE_MS = 500;
 
@@ -73,7 +80,7 @@ function App() {
   const [displayMode, setDisplayMode] = useState<DisplayMode>(DEFAULT_DISPLAY_MODE)
   const [trayIconStyle, setTrayIconStyle] = useState<TrayIconStyle>(DEFAULT_TRAY_ICON_STYLE)
   const [trayShowPercentage, setTrayShowPercentage] = useState(DEFAULT_TRAY_SHOW_PERCENTAGE)
-  const [maxPanelHeightPx, setMaxPanelHeightPx] = useState<number | null>(null)
+  const [startAtLogin, setStartAtLogin] = useState(DEFAULT_START_AT_LOGIN)
   const maxPanelHeightPxRef = useRef<number | null>(null)
   const [appVersion, setAppVersion] = useState("...")
 
@@ -361,7 +368,6 @@ function App() {
 
       if (maxPanelHeightPxRef.current !== maxHeightLogical) {
         maxPanelHeightPxRef.current = maxHeightLogical;
-        setMaxPanelHeightPx(maxHeightLogical);
       }
 
       const desiredHeightPhysical = Math.ceil(desiredHeightLogical * factor);
@@ -508,6 +514,35 @@ function App() {
           console.error("Failed to load tray show percentage:", error)
         }
 
+        let storedStartAtLogin = DEFAULT_START_AT_LOGIN
+        try {
+          storedStartAtLogin = await loadStartAtLogin()
+        } catch (error) {
+          console.error("Failed to load start at login:", error)
+        }
+
+        let effectiveStartAtLogin = storedStartAtLogin
+        if (isTauri()) {
+          try {
+            const systemStartAtLogin = await isAutostartEnabled()
+            if (systemStartAtLogin !== storedStartAtLogin) {
+              if (storedStartAtLogin) {
+                await enableAutostart()
+              } else {
+                await disableAutostart()
+              }
+            }
+            effectiveStartAtLogin = await isAutostartEnabled()
+            if (effectiveStartAtLogin !== storedStartAtLogin) {
+              void saveStartAtLogin(effectiveStartAtLogin).catch((error) => {
+                console.error("Failed to persist start at login:", error)
+              })
+            }
+          } catch (error) {
+            console.error("Failed to sync start at login:", error)
+          }
+        }
+
         const normalizedTrayShowPercentage = isTrayPercentageMandatory(storedTrayIconStyle)
           ? true
           : storedTrayShowPercentage
@@ -519,6 +554,7 @@ function App() {
           setDisplayMode(storedDisplayMode)
           setTrayIconStyle(storedTrayIconStyle)
           setTrayShowPercentage(normalizedTrayShowPercentage)
+          setStartAtLogin(effectiveStartAtLogin)
           const enabledIds = getEnabledPluginIds(normalized)
           setLoadingForPlugins(enabledIds)
           try {
@@ -679,6 +715,34 @@ function App() {
     })
   }, [scheduleTrayIconUpdate])
 
+  const handleStartAtLoginChange = useCallback((value: boolean) => {
+    setStartAtLogin(value)
+    void saveStartAtLogin(value).catch((error) => {
+      console.error("Failed to save start at login:", error)
+    })
+
+    if (!isTauri()) return
+
+    void (async () => {
+      try {
+        if (value) {
+          await enableAutostart()
+        } else {
+          await disableAutostart()
+        }
+        const actual = await isAutostartEnabled()
+        if (actual !== value) {
+          setStartAtLogin(actual)
+          void saveStartAtLogin(actual).catch((error) => {
+            console.error("Failed to persist start at login:", error)
+          })
+        }
+      } catch (error) {
+        console.error("Failed to update start at login:", error)
+      }
+    })()
+  }, [])
+
   const handleAutoUpdateIntervalChange = useCallback((value: AutoUpdateIntervalMinutes) => {
     setAutoUpdateInterval(value)
     if (pluginSettings) {
@@ -786,6 +850,8 @@ function App() {
           onTrayIconStyleChange={handleTrayIconStyleChange}
           trayShowPercentage={trayShowPercentage}
           onTrayShowPercentageChange={handleTrayShowPercentageChange}
+          startAtLogin={startAtLogin}
+          onStartAtLoginChange={handleStartAtLoginChange}
           providerIconUrl={navPlugins[0]?.iconUrl}
         />
       )
@@ -806,18 +872,15 @@ function App() {
   return (
     <div ref={containerRef} className="flex flex-col items-center p-6 pt-1.5 bg-transparent">
       <div className="tray-arrow" />
-      <div
-        className="relative bg-card rounded-xl overflow-hidden select-none w-full border shadow-lg"
-        style={maxPanelHeightPx ? { maxHeight: `${maxPanelHeightPx - ARROW_OVERHEAD_PX}px` } : undefined}
-      >
-        <div className="flex h-full min-h-0 flex-row">
+      <div className="relative bg-card rounded-xl overflow-hidden select-none w-full border shadow-lg">
+        <div className="flex flex-row">
           <SideNav
             activeView={activeView}
             onViewChange={setActiveView}
             plugins={navPlugins}
           />
           <div className="flex-1 flex flex-col px-3 pt-2 pb-1.5 min-w-0">
-            <div className="flex-1 min-h-0 overflow-y-auto">
+            <div>
               {renderContent()}
             </div>
             <PanelFooter

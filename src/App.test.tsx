@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import type { ReactNode } from "react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi, beforeEach } from "vitest"
@@ -21,6 +21,11 @@ const state = vi.hoisted(() => ({
   saveTrayIconStyleMock: vi.fn(),
   loadTrayShowPercentageMock: vi.fn(),
   saveTrayShowPercentageMock: vi.fn(),
+  loadStartAtLoginMock: vi.fn(),
+  saveStartAtLoginMock: vi.fn(),
+  autostartIsEnabledMock: vi.fn(),
+  autostartEnableMock: vi.fn(),
+  autostartDisableMock: vi.fn(),
   renderTrayBarsIconMock: vi.fn(),
   probeHandlers: null as null | { onResult: (output: any) => void; onBatchComplete: () => void },
   trayGetByIdMock: vi.fn(),
@@ -129,6 +134,12 @@ vi.mock("@tauri-apps/plugin-process", () => ({
   relaunch: updaterState.relaunchMock,
 }))
 
+vi.mock("@tauri-apps/plugin-autostart", () => ({
+  isEnabled: state.autostartIsEnabledMock,
+  enable: state.autostartEnableMock,
+  disable: state.autostartDisableMock,
+}))
+
 vi.mock("@/lib/tray-bars-icon", () => ({
   getTrayIconSizePx: () => 36,
   renderTrayBarsIcon: state.renderTrayBarsIconMock,
@@ -157,10 +168,19 @@ vi.mock("@/lib/settings", async () => {
     saveTrayIconStyle: state.saveTrayIconStyleMock,
     loadTrayShowPercentage: state.loadTrayShowPercentageMock,
     saveTrayShowPercentage: state.saveTrayShowPercentageMock,
+    loadStartAtLogin: state.loadStartAtLoginMock,
+    saveStartAtLogin: state.saveStartAtLoginMock,
   }
 })
 
 import App from "@/App"
+const loginToggleLabel = /Open at Login|Start with Windows|Launch at login/i
+
+function getPluginCheckboxByName(name: string) {
+  const row = screen.getByText(name).closest("div")
+  if (!row) throw new Error(`Missing row for plugin: ${name}`)
+  return within(row).getByRole("checkbox")
+}
 
 describe("App", () => {
   beforeEach(() => {
@@ -183,6 +203,11 @@ describe("App", () => {
     state.saveTrayIconStyleMock.mockReset()
     state.loadTrayShowPercentageMock.mockReset()
     state.saveTrayShowPercentageMock.mockReset()
+    state.loadStartAtLoginMock.mockReset()
+    state.saveStartAtLoginMock.mockReset()
+    state.autostartIsEnabledMock.mockReset()
+    state.autostartEnableMock.mockReset()
+    state.autostartDisableMock.mockReset()
     state.renderTrayBarsIconMock.mockReset()
     state.trayGetByIdMock.mockReset()
     state.traySetIconMock.mockReset()
@@ -203,6 +228,11 @@ describe("App", () => {
     state.saveTrayIconStyleMock.mockResolvedValue(undefined)
     state.loadTrayShowPercentageMock.mockResolvedValue(false)
     state.saveTrayShowPercentageMock.mockResolvedValue(undefined)
+    state.loadStartAtLoginMock.mockResolvedValue(false)
+    state.saveStartAtLoginMock.mockResolvedValue(undefined)
+    state.autostartIsEnabledMock.mockResolvedValue(false)
+    state.autostartEnableMock.mockResolvedValue(undefined)
+    state.autostartDisableMock.mockResolvedValue(undefined)
     state.renderTrayBarsIconMock.mockResolvedValue({})
     Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
       configurable: true,
@@ -546,6 +576,17 @@ describe("App", () => {
     expect(state.saveTrayShowPercentageMock).toHaveBeenCalledWith(true)
   })
 
+  it("updates start at login in settings", async () => {
+    state.isTauriMock.mockReturnValue(true)
+    render(<App />)
+    const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
+    await userEvent.click(settingsButtons[0])
+
+    await userEvent.click(await screen.findByText(loginToggleLabel))
+    expect(state.saveStartAtLoginMock).toHaveBeenCalledWith(true)
+    expect(state.autostartEnableMock).toHaveBeenCalled()
+  })
+
   it("keeps tray show percentage checkbox visible and disabled for mandatory styles", async () => {
     const getTrayCheckbox = () => screen.getAllByRole("checkbox")[0]
 
@@ -616,12 +657,11 @@ describe("App", () => {
     render(<App />)
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
-    const checkboxes = await screen.findAllByRole("checkbox")
-    const pluginCheckbox = checkboxes[checkboxes.length - 1]
-    await userEvent.click(pluginCheckbox)
-    expect(state.savePluginSettingsMock).toHaveBeenCalled()
-    await userEvent.click(pluginCheckbox)
-    expect(state.savePluginSettingsMock).toHaveBeenCalledTimes(2)
+    const saveCallsBeforeToggle = state.savePluginSettingsMock.mock.calls.length
+    await userEvent.click(getPluginCheckboxByName("Alpha"))
+    expect(state.savePluginSettingsMock.mock.calls.length).toBe(saveCallsBeforeToggle + 1)
+    await userEvent.click(getPluginCheckboxByName("Alpha"))
+    expect(state.savePluginSettingsMock.mock.calls.length).toBe(saveCallsBeforeToggle + 2)
   })
 
   it("updates auto-update interval in settings", async () => {
@@ -730,9 +770,7 @@ describe("App", () => {
     render(<App />)
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
-    const checkboxes = await screen.findAllByRole("checkbox")
-    const targetCheckbox = checkboxes[checkboxes.length - 1]
-    await userEvent.click(targetCheckbox)
+    await userEvent.click(getPluginCheckboxByName("Beta"))
     await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
     expect(errorSpy).toHaveBeenCalled()
     errorSpy.mockRestore()
@@ -743,9 +781,7 @@ describe("App", () => {
     render(<App />)
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
-    const checkboxes = await screen.findAllByRole("checkbox")
-    const targetCheckbox = checkboxes[checkboxes.length - 1]
-    await userEvent.click(targetCheckbox)
+    await userEvent.click(getPluginCheckboxByName("Beta"))
     await waitFor(() => expect(state.startBatchMock).toHaveBeenCalledWith(["b"]))
   })
 

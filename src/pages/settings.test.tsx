@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, render, screen, within } from "@testing-library/react"
 import type { ReactNode } from "react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -57,6 +57,8 @@ const defaultProps = {
   onTrayIconStyleChange: vi.fn(),
   trayShowPercentage: false,
   onTrayShowPercentageChange: vi.fn(),
+  startAtLogin: false,
+  onStartAtLoginChange: vi.fn(),
 }
 
 afterEach(() => {
@@ -66,6 +68,13 @@ afterEach(() => {
 function getTrayShowPercentageCheckbox() {
   return screen.getAllByRole("checkbox")[0]
 }
+
+function getPluginCheckboxByName(name: string) {
+  const row = screen.getByText(name).closest("div")
+  if (!row) throw new Error(`Missing row for plugin: ${name}`)
+  return within(row).getByRole("checkbox")
+}
+const loginToggleLabel = /Open at Login|Start when Windows starts|Open at login/i
 
 describe("SettingsPage", () => {
   it("toggles plugins", async () => {
@@ -80,8 +89,7 @@ describe("SettingsPage", () => {
         onToggle={onToggle}
       />
     )
-    const checkboxes = screen.getAllByRole("checkbox")
-    await userEvent.click(checkboxes[checkboxes.length - 1])
+    await userEvent.click(getPluginCheckboxByName("Beta"))
     expect(onToggle).toHaveBeenCalledWith("b")
   })
 
@@ -264,5 +272,18 @@ describe("SettingsPage", () => {
     await userEvent.click(screen.getByText("Show percentage"))
     expect(onTrayShowPercentageChange).toHaveBeenCalled()
     expect(onTrayShowPercentageChange.mock.calls[0]?.[0]).toBe(false)
+  })
+
+  it("toggles start at login checkbox", async () => {
+    const onStartAtLoginChange = vi.fn()
+    render(
+      <SettingsPage
+        {...defaultProps}
+        onStartAtLoginChange={onStartAtLoginChange}
+      />
+    )
+    expect(screen.getByText(loginToggleLabel)).toBeInTheDocument()
+    await userEvent.click(screen.getByText(loginToggleLabel))
+    expect(onStartAtLoginChange).toHaveBeenCalledWith(true)
   })
 })
