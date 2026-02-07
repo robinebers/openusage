@@ -2,13 +2,20 @@
 
 OpenUsage accepts contributions, but has a high quality bar. Read this entire document before opening a PR.
 
+## Philosophy
+
+OpenUsage is highly opinionated. It focuses on clean design, fast performance, and a great user experience. The feature set is intentionally limited to core functionality: tracking AI coding subscription usage, nothing more. Contributions that try to expand that scope, add unnecessary complexity, or compromise the UX will be closed.
+
+If you're unsure whether your idea fits, open an issue first.
+
 ## Ground Rules
 
-- No feature creep. OpenUsage does one thing well: track AI coding subscription usage.
+- No feature creep. If it's not about usage tracking, it doesn't belong here.
 - No AI-generated commit messages. Write your own.
 - Test your changes. If it touches UI, include before/after screenshots.
 - Keep it simple. Don't over-engineer.
 - One PR per concern. Don't bundle unrelated changes.
+- Match the existing design language. OpenUsage has a specific look and feel.
 
 ## License Agreement
 
@@ -22,8 +29,7 @@ By submitting a pull request, you agree that your contribution is licensed under
 2. Create a branch (`feat/my-change`, `fix/some-bug`, etc.)
 3. Make your changes
 4. Run `bun run build` and `bun run test` to verify nothing is broken
-5. Commit with sign-off (`git commit -s`)
-6. Open a PR against `main`
+5. Open a PR against `main`
 
 ### Add a provider plugin
 
@@ -59,7 +65,7 @@ Don't open a PR for large features without discussing first. [Open an issue](htt
 ## What Gets Rejected
 
 - Features that expand the scope beyond usage tracking
-- PRs without DCO sign-off
+- Changes that compromise speed, simplicity, or the existing UX
 - PRs without testing evidence
 - Code with no clear purpose or explanation
 - Cosmetic-only changes without prior discussion

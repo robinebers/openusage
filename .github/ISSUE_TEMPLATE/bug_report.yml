@@ -61,7 +61,7 @@ body:
     id: screenshots
     attributes:
       label: Screenshots
-      description: If applicable, add screenshots to help explain the problem.
+      description: If applicable, drag and drop or paste screenshots here.
   - type: textarea
     id: additional
     attributes:
