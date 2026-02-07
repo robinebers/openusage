@@ -1,342 +1,55 @@
 (function () {
-  const DEFAULT_CONFIG = {
-    // By default this plugin is intentionally non-deterministic / failure-prone.
-    // If you want to pin a specific mode, set { pinned: true, mode: "..." }.
-    mode: "chaos",
-    pinned: false,
-  }
-
   function lineText(opts) {
-    const line = { type: "text", label: opts.label, value: opts.value }
+    var line = { type: "text", label: opts.label, value: opts.value }
     if (opts.color) line.color = opts.color
     if (opts.subtitle) line.subtitle = opts.subtitle
     return line
   }
 
   function lineProgress(opts) {
-    const line = { type: "progress", label: opts.label, used: opts.used, limit: opts.limit, format: opts.format }
+    var line = { type: "progress", label: opts.label, used: opts.used, limit: opts.limit, format: opts.format }
     if (opts.resetsAt) line.resetsAt = opts.resetsAt
+    if (opts.periodDurationMs) line.periodDurationMs = opts.periodDurationMs
     if (opts.color) line.color = opts.color
     return line
   }
 
   function lineBadge(opts) {
-    const line = { type: "badge", label: opts.label, text: opts.text }
+    var line = { type: "badge", label: opts.label, text: opts.text }
     if (opts.color) line.color = opts.color
     if (opts.subtitle) line.subtitle = opts.subtitle
     return line
   }
 
-  function safeString(value) {
-    try {
-      if (value === null) return "null"
-      if (value === undefined) return "undefined"
-      if (typeof value === "string") return value
-      return JSON.stringify(value)
-    } catch {
-      return String(value)
-    }
-  }
+  function probe() {
+    var _15d = 15 * 24 * 60 * 60 * 1000
+    var _30d = _15d * 2
+    var _resets = new Date(Date.now() + _15d).toISOString()
+    var _pastReset = new Date(Date.now() - 60000).toISOString()
 
-  function readJson(ctx, path) {
-    try {
-      if (!ctx.host.fs.exists(path)) return null
-      const text = ctx.host.fs.readText(path)
-      return JSON.parse(text)
-    } catch {
-      return null
-    }
-  }
-
-  function writeJson(ctx, path, value) {
-    try {
-      ctx.host.fs.writeText(path, JSON.stringify(value, null, 2))
-    } catch {}
-  }
-
-  function readConfig(ctx, configPath) {
-    const parsed = readJson(ctx, configPath)
-
-    // Initialize config on first run.
-    if (!parsed || typeof parsed !== "object") {
-      writeJson(ctx, configPath, DEFAULT_CONFIG)
-      return DEFAULT_CONFIG
-    }
-
-    const pinned = typeof parsed.pinned === "boolean" ? parsed.pinned : false
-    const mode = parsed.mode ?? DEFAULT_CONFIG.mode
-
-    // Auto-migrate legacy configs that were auto-created as { mode: "ok" }.
-    if (!pinned && mode === "ok") {
-      writeJson(ctx, configPath, DEFAULT_CONFIG)
-      return DEFAULT_CONFIG
-    }
-
-    return { mode, pinned }
-  }
-
-  function chooseChaosCase(ctx, pluginDataDir) {
-    const statePath = pluginDataDir + "/state.json"
-    const state = readJson(ctx, statePath)
-    const prevCounter = Number(state && state.counter)
-    const counter = Number.isFinite(prevCounter) && prevCounter >= 0 ? prevCounter + 1 : 0
-
-    const cases = [
-      // "Looks fine" baseline
-      "ok",
-
-      // Subtle API misuse that doesn't crash but yields wrong UI
-      "progress_missing_format",
-      "progress_used_negative",
-      "progress_limit_zero",
-      "progress_percent_limit_not_100",
-      "progress_count_missing_suffix",
-      "progress_resetsAt_invalid",
-      "badge_text_number",
-
-      // Hard schema issues (host returns a single Error badge)
-      "lines_not_array",
-      "line_not_object",
-
-      // Explicit runtime failures (realistic errors)
-      "auth_required_cli",
-      "token_expired_cli",
-      "refresh_revoked",
-      "network_error",
-      "rate_limited",
-
-      // Promise behavior
-      "unresolved_promise",
-      "http_throw",
-      "sqlite_throw",
-    ]
-
-    const idx = counter % cases.length
-    const picked = cases[idx]
-
-    writeJson(ctx, statePath, { counter, picked, nowIso: ctx.nowIso })
-    return { counter, picked }
-  }
-
-  function writeLastCase(ctx, pluginDataDir, picked) {
-    writeJson(ctx, pluginDataDir + "/last_case.json", { picked, nowIso: ctx.nowIso })
-  }
-
-  function probe(ctx) {
-    const configPath = ctx.app.pluginDataDir + "/config.json"
-    const config = readConfig(ctx, configPath)
-    const pinned = !!config.pinned
-    const requestedMode = config.mode ?? DEFAULT_CONFIG.mode
-    const effectiveMode = pinned ? requestedMode : "chaos"
-
-    let mode = effectiveMode
-    if (effectiveMode === "chaos") {
-      const picked = chooseChaosCase(ctx, ctx.app.pluginDataDir).picked
-      writeLastCase(ctx, ctx.app.pluginDataDir, picked)
-      mode = picked
-    }
-
-    const plan = safeString(effectiveMode)
-
-    // Non-throwing modes should always include a "where to change this" hint.
-    const hintLines = [
-      lineText({ label: "Config", value: configPath }),
-    ]
-
-    if (mode === "ok") {
-      return {
-        plan: plan,
-        lines: [
-          ...hintLines,
-          effectiveMode === "chaos" ? lineBadge({ label: "Case", text: "ok", color: "#000000" }) : null,
-          lineProgress({ label: "Percent", used: 42, limit: 100, format: { kind: "percent" }, color: "#22c55e" }),
-          lineProgress({ label: "Dollars", used: 12.34, limit: 100, format: { kind: "dollars" }, color: "#3b82f6" }),
-          lineText({ label: "Now", value: ctx.nowIso }),
-        ].filter(Boolean),
-      }
-    }
-
-    if (mode === "auth_required_cli") {
-      throw "Not logged in. Run mockctl to authenticate."
-    }
-
-    if (mode === "token_expired_cli") {
-      return Promise.reject("Token expired. Run mockctl to refresh.")
-    }
-
-    if (mode === "refresh_revoked") {
-      throw "Token revoked. Run mockctl to log in again."
-    }
-
-    if (mode === "network_error") {
-      throw "Network error. Check your connection."
-    }
-
-    if (mode === "rate_limited") {
-      throw "Rate limited. Wait a few minutes."
-    }
-
-    if (mode === "unresolved_promise") {
-      return new Promise(function () {
-        // Intentionally never resolves/rejects.
-      })
-    }
-
-    if (mode === "non_object") {
-      return "not an object"
-    }
-
-    if (mode === "missing_lines") {
-      return {}
-    }
-
-    if (mode === "unknown_line_type") {
-      return {
-        plan: plan,
-        lines: [
-          ...hintLines,
-          { type: "nope", label: "Bad", value: "data" },
-        ],
-      }
-    }
-
-    if (mode === "lines_not_array") {
-      // Host expects `lines` to be an Array. This becomes "missing lines".
-      return {
-        lines: "nope",
-      }
-    }
-
-    if (mode === "line_not_object") {
-      // Host expects each line to be an object. This becomes "invalid line at index N".
-      return {
-        plan: plan,
-        lines: [
-          ...hintLines,
-          "definitely not an object",
-        ],
-      }
-    }
-
-    if (mode === "progress_missing_format") {
-      // v2 validation: missing format -> error badge line
-      return {
-        plan: plan,
-        lines: [
-          ...hintLines,
-          lineBadge({ label: "Case", text: "progress.format missing", color: "#000000" }),
-          { type: "progress", label: "Percent", used: 42, limit: 100, color: "#ef4444" },
-        ],
-      }
-    }
-
-    if (mode === "progress_used_negative") {
-      // v2 validation: used must be >= 0
-      return {
-        plan: plan,
-        lines: [
-          ...hintLines,
-          lineBadge({ label: "Case", text: "progress.used = -1", color: "#000000" }),
-          lineProgress({ label: "Percent", used: -1, limit: 100, format: { kind: "percent" }, color: "#ef4444" }),
-        ],
-      }
-    }
-
-    if (mode === "progress_limit_zero") {
-      // v2 validation: limit must be > 0
-      return {
-        plan: plan,
-        lines: [
-          ...hintLines,
-          lineBadge({ label: "Case", text: "progress.limit = 0", color: "#000000" }),
-          lineProgress({ label: "Percent", used: 1, limit: 0, format: { kind: "percent" }, color: "#ef4444" }),
-        ],
-      }
-    }
-
-    if (mode === "progress_percent_limit_not_100") {
-      // v2 validation: percent requires limit=100
-      return {
-        plan: plan,
-        lines: [
-          ...hintLines,
-          lineBadge({ label: "Case", text: "percent format with limit != 100", color: "#000000" }),
-          lineProgress({ label: "Percent", used: 42, limit: 99, format: { kind: "percent" }, color: "#ef4444" }),
-        ],
-      }
-    }
-
-    if (mode === "progress_count_missing_suffix") {
-      // v2 validation: count requires suffix
-      return {
-        plan: plan,
-        lines: [
-          ...hintLines,
-          lineBadge({ label: "Case", text: "count format missing suffix", color: "#000000" }),
-          lineProgress({ label: "Credits", used: 10, limit: 1000, format: { kind: "count" }, color: "#ef4444" }),
-        ],
-      }
-    }
-
-    if (mode === "progress_resetsAt_invalid") {
-      // v2 validation: invalid resetsAt -> warn + omit
-      return {
-        plan: plan,
-        lines: [
-          ...hintLines,
-          lineBadge({ label: "Case", text: "progress.resetsAt = not-a-date", color: "#000000" }),
-          lineProgress({
-            label: "Session",
-            used: 42,
-            limit: 100,
-            format: { kind: "percent" },
-            resetsAt: "not-a-date",
-            color: "#ef4444",
-          }),
-        ],
-      }
-    }
-
-    if (mode === "badge_text_number") {
-      // Common plugin bug: badge.text isn't a string. Host reads empty string.
-      return {
-        plan: plan,
-        lines: [
-          ...hintLines,
-          lineBadge({ label: "Case", text: "badge.text = 123 (number)", color: "#000000" }),
-          { type: "badge", label: "Status", text: 123, color: "#ef4444" },
-        ],
-      }
-    }
-
-    if (mode === "fs_throw") {
-      // Uncaught host FS exception -> host should report "probe() failed".
-      ctx.host.fs.readText("/definitely/not/a/real/path-" + String(Date.now()))
-      return { plan: plan, lines: hintLines }
-    }
-
-    if (mode === "http_throw") {
-      // Invalid HTTP method -> host throws -> host should report "probe() failed".
-      ctx.host.http.request({
-        method: "NOPE_METHOD",
-        url: "https://example.com/",
-        timeoutMs: 1000,
-      })
-      return { plan: plan, lines: hintLines }
-    }
-
-    if (mode === "sqlite_throw") {
-      // Dot-commands are blocked by host -> uncaught -> host should report "probe() failed".
-      ctx.host.sqlite.query(ctx.app.appDataDir + "/does-not-matter.db", ".schema")
-      return { plan: plan, lines: hintLines }
-    }
-
-    // Unknown mode: don't throw; make it obvious.
     return {
-      plan: plan,
+      plan: "stress-test",
       lines: [
-        ...hintLines,
-        lineBadge({ label: "Warning", text: "unknown mode: " + safeString(mode), color: "#f59e0b" }),
+        // Pace statuses
+        lineProgress({ label: "Ahead pace", used: 30, limit: 100, format: { kind: "percent" }, resetsAt: _resets, periodDurationMs: _30d }),
+        lineProgress({ label: "On Track pace", used: 45, limit: 100, format: { kind: "percent" }, resetsAt: _resets, periodDurationMs: _30d }),
+        lineProgress({ label: "Behind pace", used: 65, limit: 100, format: { kind: "percent" }, resetsAt: _resets, periodDurationMs: _30d }),
+        // Edge cases
+        lineProgress({ label: "Empty bar", used: 0, limit: 500, format: { kind: "dollars" } }),
+        lineProgress({ label: "Exactly full", used: 1000, limit: 1000, format: { kind: "count", suffix: "tokens" } }),
+        lineProgress({ label: "Over limit!", used: 1337, limit: 1000, format: { kind: "count", suffix: "requests" } }),
+        lineProgress({ label: "Huge numbers", used: 8429301, limit: 10000000, format: { kind: "count", suffix: "tokens" } }),
+        lineProgress({ label: "Tiny sliver", used: 1, limit: 10000, format: { kind: "percent" } }),
+        lineProgress({ label: "Almost full", used: 9999, limit: 10000, format: { kind: "percent" } }),
+        lineProgress({ label: "Expired reset", used: 42, limit: 100, format: { kind: "percent" }, resetsAt: _pastReset, periodDurationMs: _30d }),
+        // Text lines
+        lineText({ label: "Status", value: "Active" }),
+        lineText({ label: "Very long value", value: "This is an extremely long value string that should test text overflow and wrapping behavior in the card layout" }),
+        lineText({ label: "", value: "Empty label" }),
+        // Badge lines
+        lineBadge({ label: "Tier", text: "Enterprise", color: "#8B5CF6" }),
+        lineBadge({ label: "Alert", text: "Rate limited", color: "#ef4444" }),
+        lineBadge({ label: "Region", text: "us-east-1" }),
       ],
     }
   }

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "antigravity",
+  "name": "Antigravity",
+  "version": "0.0.1",
+  "entry": "plugin.js",
+  "icon": "icon.svg",
+  "brandColor": "#4285F4",
+  "lines": [
+    { "type": "progress", "label": "Gemini 3 Pro", "scope": "overview", "primaryOrder": 1 },
+    { "type": "progress", "label": "Gemini 3 Flash", "scope": "overview" },
+    { "type": "progress", "label": "Claude Opus 4.5", "scope": "overview" }
+  ]
+}

@@ -160,7 +160,7 @@ vi.mock("@/lib/settings", async () => {
   }
 })
 
-import App from "@/App"
+import { App } from "@/App"
 
 describe("App", () => {
   beforeEach(() => {

@@ -32,6 +32,9 @@ export const makeCtx = () => {
       http: {
         request: vi.fn(),
       },
+      ls: {
+        discover: vi.fn(() => null),
+      },
       log: {
         trace: vi.fn(),
         debug: vi.fn(),

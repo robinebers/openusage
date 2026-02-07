@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: General Question
+    url: https://github.com/robinebers/openusage/discussions
+    about: Ask questions and discuss ideas in GitHub Discussions

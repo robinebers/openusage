@@ -23,16 +23,17 @@ OpenUsage lives in your menu bar and shows you how much of your AI coding subscr
 
 ## Supported Providers
 
-- [**Cursor**](docs/providers/cursor.md) / plan, usage, on-demand
+- [**Antigravity**](docs/providers/antigravity.md) / usage tracking
 - [**Claude**](docs/providers/claude.md) / session, weekly, extra usage
 - [**Codex**](docs/providers/codex.md) / session, weekly, code reviews, extra usage
 - [**Copilot**](docs/providers/copilot.md) / usage tracking
+- [**Cursor**](docs/providers/cursor.md) / plan, usage, on-demand
+- [**Windsurf**](docs/providers/windsurf.md) / usage tracking
 
-### Coming Soon
+### Maybe Soon
 
-- [Gemini](https://github.com/robinebers/openusage/issues/13) / [Antigravity](https://github.com/robinebers/openusage/issues/14)
 - [Factory / Droid](https://github.com/robinebers/openusage/issues/16)
-- [Windsurf](https://github.com/robinebers/openusage/issues/15)
+- [Gemini](https://github.com/robinebers/openusage/issues/13)
 - [Vercel AI Gateway](https://github.com/robinebers/openusage/issues/18)
 
 Want a provider that's not listed? [Open an issue.](https://github.com/robinebers/openusage/issues/new)
@@ -55,13 +56,21 @@ Plugins are currently bundled as we build our the API, but soon will be made fle
 
 Keep it simple. No feature creep, no AI-generated commit messages, test your changes.
 
+## Sponsors
+
+OpenUsage is supported by our sponsors. Become a sponsor to get your logo here and on [openusage.ai](https://openusage.ai).
+
+[Become a Sponsor](https://github.com/sponsors/robinebers)
+
+<!-- Add sponsor logos here -->
+
 ## Credits
 
 Inspired by [CodexBar](https://github.com/steipete/CodexBar) by [@steipete](https://github.com/steipete). Same idea, very different approach.
 
 ## License
 
-MIT
+[MIT](LICENSE)
 
 ---
 

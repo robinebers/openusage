@@ -66,7 +66,7 @@ fn redact_body(body: &str) -> String {
     
     // Redact JSON values for sensitive keys
     let sensitive_keys = [
-        "password", "token", "access_token", "refresh_token", "secret",
+        "name", "password", "token", "access_token", "refresh_token", "secret",
         "api_key", "apiKey", "authorization", "bearer", "credential",
         "session_token", "sessionToken", "auth_token", "authToken",
         "user_id", "account_id", "email", "login", "analytics_tracking_id",
@@ -133,6 +133,7 @@ pub fn inject_host_api<'js>(
     inject_http(ctx, &host, plugin_id)?;
     inject_keychain(ctx, &host)?;
     inject_sqlite(ctx, &host)?;
+    inject_ls(ctx, &host, plugin_id)?;
 
     probe_ctx.set("host", host)?;
     globals.set("__openusage_ctx", probe_ctx)?;
@@ -270,9 +271,13 @@ fn inject_http<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rqui
                 }
 
                 let timeout_ms = req.timeout_ms.unwrap_or(10_000);
-                let client = reqwest::blocking::Client::builder()
+                let mut builder = reqwest::blocking::Client::builder()
                     .timeout(std::time::Duration::from_millis(timeout_ms))
-                    .redirect(reqwest::redirect::Policy::none())
+                    .redirect(reqwest::redirect::Policy::none());
+                if req.dangerously_ignore_tls.unwrap_or(false) {
+                    builder = builder.danger_accept_invalid_certs(true);
+                }
+                let client = builder
                     .build()
                     .map_err(|e| Exception::throw_message(&ctx_inner, &e.to_string()))?;
 
@@ -369,7 +374,8 @@ pub fn patch_http_wrapper(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
                     method: req.method || "GET",
                     headers: req.headers || null,
                     bodyText: req.bodyText || null,
-                    timeoutMs: req.timeoutMs || 10000
+                    timeoutMs: req.timeoutMs || 10000,
+                    dangerouslyIgnoreTls: req.dangerouslyIgnoreTls || false
                 });
                 var respJson = rawFn(json);
                 return JSON.parse(respJson);
@@ -671,6 +677,7 @@ struct HttpReqParams {
     headers: Option<std::collections::HashMap<String, String>>,
     body_text: Option<String>,
     timeout_ms: Option<u64>,
+    dangerously_ignore_tls: Option<bool>,
 }
 
 #[derive(serde::Serialize)]
@@ -679,6 +686,295 @@ struct HttpRespParams {
     status: u16,
     headers: std::collections::HashMap<String, String>,
     body_text: String,
+}
+
+// --- Language Server Discovery ---
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LsDiscoverOpts {
+    process_name: String,
+    markers: Vec<String>,
+    csrf_flag: String,
+    port_flag: Option<String>,
+    extra_flags: Option<Vec<String>>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LsDiscoverResult {
+    pid: i32,
+    csrf: String,
+    ports: Vec<i32>,
+    extra: std::collections::HashMap<String, String>,
+    extension_port: Option<i32>,
+}
+
+fn inject_ls<'js>(
+    ctx: &Ctx<'js>,
+    host: &Object<'js>,
+    plugin_id: &str,
+) -> rquickjs::Result<()> {
+    let ls_obj = Object::new(ctx.clone())?;
+    let pid = plugin_id.to_string();
+
+    ls_obj.set(
+        "_discoverRaw",
+        Function::new(
+            ctx.clone(),
+            move |ctx_inner: Ctx<'_>, opts_json: String| -> rquickjs::Result<String> {
+                let opts: LsDiscoverOpts = serde_json::from_str(&opts_json).map_err(|e| {
+                    Exception::throw_message(
+                        &ctx_inner,
+                        &format!("invalid discover opts: {}", e),
+                    )
+                })?;
+
+                log::info!(
+                    "[plugin:{}] LS discover: processName={}, markers={:?}",
+                    pid,
+                    opts.process_name,
+                    opts.markers
+                );
+
+                let ps_output = match std::process::Command::new("/bin/ps")
+                    .args(["-ax", "-o", "pid=,command="])
+                    .output()
+                {
+                    Ok(o) => o,
+                    Err(e) => {
+                        log::warn!("[plugin:{}] ps failed: {}", pid, e);
+                        return Ok("null".to_string());
+                    }
+                };
+
+                if !ps_output.status.success() {
+                    log::warn!("[plugin:{}] ps returned non-zero", pid);
+                    return Ok("null".to_string());
+                }
+
+                let ps_stdout = String::from_utf8_lossy(&ps_output.stdout);
+                let process_name_lower = opts.process_name.to_lowercase();
+                let markers_lower: Vec<String> =
+                    opts.markers.iter().map(|m| m.to_lowercase()).collect();
+
+                // Find the target process. Marker patterns are Codeium-derived
+                // (--app_data_dir <name> and /<name>/ path match). If a future
+                // non-Codeium provider needs LS discovery, extend patterns here.
+                let mut found: Option<(i32, String)> = None;
+
+                for line in ps_stdout.lines() {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        continue;
+                    }
+
+                    let mut parts = trimmed.splitn(2, char::is_whitespace);
+                    let pid_str = match parts.next() {
+                        Some(s) => s.trim(),
+                        None => continue,
+                    };
+                    let command = match parts.next() {
+                        Some(s) => s.trim(),
+                        None => continue,
+                    };
+
+                    let command_lower = command.to_lowercase();
+
+                    if !command_lower.contains(&process_name_lower) {
+                        continue;
+                    }
+
+                    let has_marker = markers_lower.iter().any(|m| {
+                        command_lower.contains(&format!("--app_data_dir {}", m))
+                            || command_lower.contains(&format!("/{}/", m))
+                    });
+                    if !has_marker {
+                        continue;
+                    }
+
+                    if let Ok(p) = pid_str.parse::<i32>() {
+                        found = Some((p, command.to_string()));
+                        break;
+                    }
+                }
+
+                let (process_pid, command) = match found {
+                    Some(pair) => pair,
+                    None => {
+                        log::info!("[plugin:{}] LS process not found", pid);
+                        return Ok("null".to_string());
+                    }
+                };
+
+                // Extract CSRF token
+                let csrf = match ls_extract_flag(&command, &opts.csrf_flag) {
+                    Some(c) => c,
+                    None => {
+                        log::warn!(
+                            "[plugin:{}] CSRF token not found in process args",
+                            pid
+                        );
+                        return Ok("null".to_string());
+                    }
+                };
+
+                // Extract extension port (optional)
+                let extension_port = opts
+                    .port_flag
+                    .as_ref()
+                    .and_then(|flag| {
+                        ls_extract_flag(&command, flag)
+                            .and_then(|v| v.parse::<i32>().ok())
+                    });
+
+                // Extract extra flags (optional)
+                let mut extra = std::collections::HashMap::new();
+                if let Some(ref flags) = opts.extra_flags {
+                    for flag in flags {
+                        if let Some(val) = ls_extract_flag(&command, flag) {
+                            // Use flag name without leading dashes as key
+                            let key = flag.trim_start_matches('-').to_string();
+                            extra.insert(key, val);
+                        }
+                    }
+                }
+
+                // Find lsof binary
+                let lsof_path = ["/usr/sbin/lsof", "/usr/bin/lsof"]
+                    .iter()
+                    .find(|p| std::path::Path::new(p).exists())
+                    .copied();
+
+                let ports = if let Some(lsof) = lsof_path {
+                    match std::process::Command::new(lsof)
+                        .args([
+                            "-nP",
+                            "-iTCP",
+                            "-sTCP:LISTEN",
+                            "-a",
+                            "-p",
+                            &process_pid.to_string(),
+                        ])
+                        .output()
+                    {
+                        Ok(o) if o.status.success() => {
+                            ls_parse_listening_ports(
+                                &String::from_utf8_lossy(&o.stdout),
+                            )
+                        }
+                        Ok(_) => {
+                            log::warn!(
+                                "[plugin:{}] lsof returned non-zero",
+                                pid
+                            );
+                            Vec::new()
+                        }
+                        Err(e) => {
+                            log::warn!("[plugin:{}] lsof failed: {}", pid, e);
+                            Vec::new()
+                        }
+                    }
+                } else {
+                    log::warn!("[plugin:{}] lsof not found", pid);
+                    Vec::new()
+                };
+
+                if ports.is_empty() && extension_port.is_none() {
+                    log::warn!(
+                        "[plugin:{}] no listening ports found for pid {}",
+                        pid,
+                        process_pid
+                    );
+                    return Ok("null".to_string());
+                }
+
+                log::info!(
+                    "[plugin:{}] LS found: pid={}, ports={:?}, csrf=[REDACTED]",
+                    pid,
+                    process_pid,
+                    ports
+                );
+
+                let result = LsDiscoverResult {
+                    pid: process_pid,
+                    csrf,
+                    ports,
+                    extra,
+                    extension_port,
+                };
+
+                serde_json::to_string(&result).map_err(|e| {
+                    Exception::throw_message(
+                        &ctx_inner,
+                        &format!("serialize failed: {}", e),
+                    )
+                })
+            },
+        )?,
+    )?;
+
+    host.set("ls", ls_obj)?;
+    Ok(())
+}
+
+pub fn patch_ls_wrapper(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
+    ctx.eval::<(), _>(
+        r#"
+        (function() {
+            var rawFn = __openusage_ctx.host.ls._discoverRaw;
+            __openusage_ctx.host.ls.discover = function(opts) {
+                var optsJson;
+                try { optsJson = JSON.stringify(opts); } catch (e) { return null; }
+                var json = rawFn(optsJson);
+                if (json === "null") return null;
+                return JSON.parse(json);
+            };
+        })();
+        "#
+        .as_bytes(),
+    )
+}
+
+/// Extract value of a CLI flag from a command string.
+/// Handles both `--flag value` and `--flag=value` forms.
+fn ls_extract_flag(command: &str, flag: &str) -> Option<String> {
+    let parts: Vec<&str> = command.split_whitespace().collect();
+    let flag_eq = format!("{}=", flag);
+    for (i, part) in parts.iter().enumerate() {
+        if *part == flag {
+            if i + 1 < parts.len() {
+                return Some(parts[i + 1].to_string());
+            }
+        } else if part.starts_with(&flag_eq) {
+            return Some(part[flag_eq.len()..].to_string());
+        }
+    }
+    None
+}
+
+/// Parse listening port numbers from `lsof -nP -iTCP -sTCP:LISTEN` output.
+fn ls_parse_listening_ports(output: &str) -> Vec<i32> {
+    let mut ports = std::collections::BTreeSet::new();
+    for line in output.lines() {
+        if !line.contains("LISTEN") {
+            continue;
+        }
+        // lsof -nP output: ... TCP 127.0.0.1:PORT (LISTEN)  or  ... TCP *:PORT
+        // Scan tokens in reverse to find the address:port token.
+        for token in line.split_whitespace().rev() {
+            if let Some(colon_pos) = token.rfind(':') {
+                let port_str = &token[colon_pos + 1..];
+                if let Ok(port) = port_str.parse::<i32>() {
+                    if port > 0 && port < 65536 {
+                        ports.insert(port);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    ports.into_iter().collect()
 }
 
 fn inject_keychain<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
@@ -1042,5 +1338,15 @@ mod tests {
         // login is short (<=12 chars) so becomes [REDACTED]; analytics_tracking_id is long so first4...last4
         assert!(redacted.contains("[REDACTED]"), "login should be redacted, got: {}", redacted);
         assert!(redacted.contains("c9df...a6cf"), "analytics_tracking_id should show first4...last4, got: {}", redacted);
+    }
+
+    #[test]
+    fn redact_body_redacts_name_field() {
+        let body = r#"{"userStatus":{"name":"Robin Ebers","email":"rob@sunstory.com","planStatus":{}}}"#;
+        let redacted = redact_body(body);
+        assert!(!redacted.contains("Robin Ebers"), "name should be redacted, got: {}", redacted);
+        assert!(!redacted.contains("rob@sunstory.com"), "email should be redacted, got: {}", redacted);
+        // "Robin Ebers" is 11 chars (<=12) so becomes [REDACTED]
+        assert!(redacted.contains("\"name\": \"[REDACTED]\""), "name should show [REDACTED], got: {}", redacted);
     }
 }

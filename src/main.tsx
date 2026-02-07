@@ -1,7 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { error as logError, warn as logWarn } from "@tauri-apps/plugin-log";
-import App from "./App";
+import { App } from "./App";
 import "./index.css";
 
 // Forward console.error and console.warn to Tauri log file

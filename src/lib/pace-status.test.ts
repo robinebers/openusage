@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { calculatePaceStatus, getPaceStatusColor } from "@/lib/pace-status"
+import { calculatePaceStatus } from "@/lib/pace-status"
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
 
@@ -45,6 +45,24 @@ describe("pace-status", () => {
     expect(calculatePaceStatus(10, 100, resetsAtMs, periodDurationMs, beforeThresholdNowMs)).toBeNull()
   })
 
+  it("returns ahead for zero usage (skips 5% threshold)", () => {
+    const resetsAtMs = Date.parse("2026-02-03T00:00:00.000Z")
+    const periodDurationMs = ONE_DAY_MS
+    const periodStartMs = resetsAtMs - periodDurationMs
+    // 45 min in = 3.1% < 5%, but used === 0 should still return ahead
+    const earlyNowMs = periodStartMs + 45 * 60 * 1000
+    expect(calculatePaceStatus(0, 100, resetsAtMs, periodDurationMs, earlyNowMs)).toEqual({
+      status: "ahead",
+      projectedUsage: 0,
+    })
+  })
+
+  it("returns behind for over-limit usage (skips 5% threshold)", () => {
+    const { resetsAtMs, nowMs } = midPeriodNowAndReset()
+    const result = calculatePaceStatus(120, 100, resetsAtMs, ONE_DAY_MS, nowMs)
+    expect(result).toEqual({ status: "behind", projectedUsage: 240 })
+  })
+
   it("classifies ahead of pace", () => {
     const { resetsAtMs, nowMs } = midPeriodNowAndReset()
     const result = calculatePaceStatus(30, 100, resetsAtMs, ONE_DAY_MS, nowMs)
@@ -61,11 +79,5 @@ describe("pace-status", () => {
     const { resetsAtMs, nowMs } = midPeriodNowAndReset()
     const result = calculatePaceStatus(60, 100, resetsAtMs, ONE_DAY_MS, nowMs)
     expect(result).toEqual({ status: "behind", projectedUsage: 120 })
-  })
-
-  it("maps pace status to color classes", () => {
-    expect(getPaceStatusColor("ahead")).toBe("text-green-500")
-    expect(getPaceStatusColor("on-track")).toBe("text-yellow-500")
-    expect(getPaceStatusColor("behind")).toBe("text-red-500")
   })
 })

@@ -1,4 +1,6 @@
-import { Settings } from "lucide-react"
+import { CircleHelp, Settings } from "lucide-react"
+import { openUrl } from "@tauri-apps/plugin-opener"
+import { invoke } from "@tauri-apps/api/core"
 
 function GaugeIcon({ className }: { className?: string }) {
   return (
@@ -43,7 +45,7 @@ function NavButton({ isActive, onClick, children, "aria-label": ariaLabel }: Nav
         "relative flex items-center justify-center w-full p-2.5 transition-colors",
         "hover:bg-accent",
         isActive
-          ? "text-foreground before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-0.5 before:bg-primary before:rounded-full"
+          ? "text-foreground before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-0.5 before:bg-primary dark:before:bg-page-accent before:rounded-full"
           : "text-muted-foreground"
       )}
     >
@@ -55,7 +57,7 @@ function NavButton({ isActive, onClick, children, "aria-label": ariaLabel }: Nav
 function getIconColor(brandColor: string | undefined, isDark: boolean): string {
   if (!brandColor) return "currentColor"
   const luminance = getRelativeLuminance(brandColor)
-  if (isDark && luminance < 0.15) return "currentColor"
+  if (isDark && luminance < 0.15) return "#ffffff"
   if (!isDark && luminance > 0.85) return "currentColor"
   return brandColor
 }
@@ -64,7 +66,7 @@ export function SideNav({ activeView, onViewChange, plugins }: SideNavProps) {
   const isDark = useDarkMode()
 
   return (
-    <nav className="flex flex-col w-12 border-r bg-muted/30 py-3">
+    <nav className="flex flex-col w-12 border-r bg-muted/50 dark:bg-card py-3">
       {/* Home */}
       <NavButton
         isActive={activeView === "home"}
@@ -103,6 +105,18 @@ export function SideNav({ activeView, onViewChange, plugins }: SideNavProps) {
 
       {/* Spacer */}
       <div className="flex-1" />
+
+      {/* Help */}
+      <NavButton
+        isActive={false}
+        onClick={() => {
+          openUrl("https://github.com/robinebers/openusage/issues").catch(console.error)
+          invoke("hide_panel").catch(console.error)
+        }}
+        aria-label="Help"
+      >
+        <CircleHelp className="size-6" />
+      </NavButton>
 
       {/* Settings */}
       <NavButton

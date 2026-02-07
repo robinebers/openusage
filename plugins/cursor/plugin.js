@@ -222,7 +222,7 @@
     }
 
     if (!usage.enabled || !usage.planUsage) {
-      throw "Usage tracking disabled for this account."
+      throw "No active Cursor subscription."
     }
 
     let planName = ""

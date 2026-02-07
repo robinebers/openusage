@@ -61,6 +61,8 @@ type PluginState = {
 function App() {
   const [activeView, setActiveView] = useState<ActiveView>("home");
   const containerRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollDown, setCanScrollDown] = useState(false);
   const [pluginStates, setPluginStates] = useState<Record<string, PluginState>>({})
   const [pluginsMeta, setPluginsMeta] = useState<PluginMeta[]>([])
   const [pluginSettings, setPluginSettings] = useState<PluginSettings | null>(null)
@@ -759,6 +761,27 @@ function App() {
     [pluginSettings, setLoadingForPlugins, setErrorForPlugins, startBatch, scheduleTrayIconUpdate]
   )
 
+  // Detect whether the scroll area has overflow below
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const check = () => {
+      setCanScrollDown(el.scrollHeight - el.scrollTop - el.clientHeight > 1)
+    }
+    check()
+    el.addEventListener("scroll", check, { passive: true })
+    const ro = new ResizeObserver(check)
+    ro.observe(el)
+    // Re-check when child content changes (async data loads)
+    const mo = new MutationObserver(check)
+    mo.observe(el, { childList: true, subtree: true })
+    return () => {
+      el.removeEventListener("scroll", check)
+      ro.disconnect()
+      mo.disconnect()
+    }
+  }, [activeView])
+
   // Render content based on active view
   const renderContent = () => {
     if (activeView === "home") {
@@ -807,18 +830,21 @@ function App() {
     <div ref={containerRef} className="flex flex-col items-center p-6 pt-1.5 bg-transparent">
       <div className="tray-arrow" />
       <div
-        className="relative bg-card rounded-xl overflow-hidden select-none w-full border shadow-lg"
+        className="relative bg-card rounded-xl overflow-hidden select-none w-full border shadow-lg flex flex-col"
         style={maxPanelHeightPx ? { maxHeight: `${maxPanelHeightPx - ARROW_OVERHEAD_PX}px` } : undefined}
       >
-        <div className="flex h-full min-h-0 flex-row">
+        <div className="flex flex-1 min-h-0 flex-row">
           <SideNav
             activeView={activeView}
             onViewChange={setActiveView}
             plugins={navPlugins}
           />
-          <div className="flex-1 flex flex-col px-3 pt-2 pb-1.5 min-w-0">
-            <div className="flex-1 min-h-0 overflow-y-auto">
-              {renderContent()}
+          <div className="flex-1 flex flex-col px-3 pt-2 pb-1.5 min-w-0 bg-card dark:bg-muted/50">
+            <div className="relative flex-1 min-h-0">
+              <div ref={scrollRef} className="h-full overflow-y-auto scrollbar-none">
+                {renderContent()}
+              </div>
+              <div className={`pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-card dark:from-muted/50 to-transparent transition-opacity duration-200 ${canScrollDown ? "opacity-100" : "opacity-0"}`} />
             </div>
             <PanelFooter
               version={appVersion}
@@ -836,4 +862,4 @@ function App() {
   );
 }
 
-export default App;
+export { App };

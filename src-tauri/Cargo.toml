@@ -1,9 +1,9 @@
 [package]
 name = "openusage"
-version = "0.4.0"
-description = "A Tauri App"
-authors = ["you"]
-edition = "2021"
+version = "0.4.2"
+description = "OpenUsage is an open source AI subscription limit tracker"
+authors = ["Robin Ebers"]
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -23,11 +23,11 @@ tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }
-time = { version = "0.3.45", features = ["formatting"] }
+time = { version = "0.3.47", features = ["formatting"] }
 dirs = "6"
 log = "0.4"
-reqwest = { version = "0.12", features = ["blocking"] }
-rquickjs = { version = "0.10", features = ["bindgen"] }
+reqwest = { version = "0.13", features = ["blocking"] }
+rquickjs = { version = "0.11", features = ["bindgen"] }
 tauri-plugin-store = "2.4.2"
 base64 = "0.22"
 uuid = { version = "1", features = ["v4"] }

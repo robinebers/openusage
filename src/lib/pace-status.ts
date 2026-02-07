@@ -23,7 +23,6 @@ export function calculatePaceStatus(
   periodDurationMs: number,
   nowMs: number
 ): PaceResult | null {
-  // Validate inputs
   if (
     !Number.isFinite(used) ||
     !Number.isFinite(limit) ||
@@ -34,31 +33,26 @@ export function calculatePaceStatus(
     return null
   }
 
-  if (limit <= 0 || periodDurationMs <= 0) {
-    return null
-  }
+  if (limit <= 0 || periodDurationMs <= 0) return null
 
-  // Calculate period start and elapsed time
   const periodStartMs = resetsAtMs - periodDurationMs
   const elapsedMs = nowMs - periodStartMs
+  if (elapsedMs <= 0 || nowMs >= resetsAtMs) return null
 
-  // Skip if period hasn't started or we're past the reset
-  if (elapsedMs <= 0 || nowMs >= resetsAtMs) {
-    return null
-  }
+  // No usage = definitionally ahead of pace (skip 5% threshold)
+  if (used === 0) return { status: "ahead", projectedUsage: 0 }
 
-  // Skip if less than 5% of period has elapsed (too early to predict accurately)
-  const elapsedFraction = elapsedMs / periodDurationMs
-  if (elapsedFraction < 0.05) {
-    return null
-  }
-
-  // Calculate projected usage at end of period
-  // projectedUsage = (used / elapsedTime) * periodDuration
   const usageRate = used / elapsedMs
   const projectedUsage = usageRate * periodDurationMs
 
-  // Determine status based on projected usage vs limit
+  // Already at/over limit = definitionally behind (skip 5% threshold)
+  if (used >= limit) return { status: "behind", projectedUsage }
+
+  // Too early to predict accurately (< 5% of period elapsed)
+  const elapsedFraction = elapsedMs / periodDurationMs
+  if (elapsedFraction < 0.05) return null
+
+  // Normal classification
   let status: PaceStatus
   if (projectedUsage <= limit * 0.8) {
     status = "ahead"
@@ -69,18 +63,4 @@ export function calculatePaceStatus(
   }
 
   return { status, projectedUsage }
-}
-
-/**
- * Get the CSS color class for a pace status.
- */
-export function getPaceStatusColor(status: PaceStatus): string {
-  switch (status) {
-    case "ahead":
-      return "text-green-500"
-    case "on-track":
-      return "text-yellow-500"
-    case "behind":
-      return "text-red-500"
-  }
 }

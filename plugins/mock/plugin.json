@@ -7,11 +7,21 @@
   "icon": "icon.svg",
   "brandColor": "#EF4444",
   "lines": [
-    { "type": "text", "label": "Config", "scope": "overview" },
-    { "type": "badge", "label": "Case", "scope": "overview" },
-    { "type": "progress", "label": "Percent", "scope": "overview", "primaryOrder": 1 },
-    { "type": "progress", "label": "Dollars", "scope": "detail" },
-    { "type": "text", "label": "Now", "scope": "detail" },
-    { "type": "badge", "label": "Warning", "scope": "detail" }
+    { "type": "progress", "label": "Ahead pace", "scope": "overview", "primaryOrder": 1 },
+    { "type": "progress", "label": "On Track pace", "scope": "overview", "primaryOrder": 2 },
+    { "type": "progress", "label": "Behind pace", "scope": "overview", "primaryOrder": 3 },
+    { "type": "progress", "label": "Empty bar", "scope": "overview", "primaryOrder": 4 },
+    { "type": "progress", "label": "Exactly full", "scope": "overview", "primaryOrder": 5 },
+    { "type": "progress", "label": "Over limit!", "scope": "overview", "primaryOrder": 6 },
+    { "type": "progress", "label": "Huge numbers", "scope": "overview", "primaryOrder": 7 },
+    { "type": "progress", "label": "Tiny sliver", "scope": "overview", "primaryOrder": 8 },
+    { "type": "progress", "label": "Almost full", "scope": "overview", "primaryOrder": 9 },
+    { "type": "progress", "label": "Expired reset", "scope": "overview", "primaryOrder": 10 },
+    { "type": "text", "label": "Status", "scope": "overview" },
+    { "type": "text", "label": "Very long value", "scope": "overview" },
+    { "type": "text", "label": "", "scope": "overview" },
+    { "type": "badge", "label": "Tier", "scope": "overview" },
+    { "type": "badge", "label": "Alert", "scope": "overview" },
+    { "type": "badge", "label": "Region", "scope": "overview" }
   ]
 }
