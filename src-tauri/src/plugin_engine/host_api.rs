@@ -1,6 +1,8 @@
 use rquickjs::{Ctx, Exception, Function, Object};
 use std::path::PathBuf;
 
+const WHITELISTED_ENV_VARS: [&str; 1] = ["CODEX_HOME"];
+
 /// Redact sensitive value to first4...last4 format (UTF-8 safe)
 fn redact_value(value: &str) -> String {
     let chars: Vec<char> = value.chars().collect();
@@ -219,7 +221,11 @@ fn inject_env<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
     env_obj.set(
         "get",
         Function::new(ctx.clone(), move |name: String| -> Option<String> {
-            std::env::var(&name).ok()
+            if WHITELISTED_ENV_VARS.contains(&name.as_str()) {
+                std::env::var(&name).ok()
+            } else {
+                None
+            }
         })?,
     )?;
     host.set("env", env_obj)?;
@@ -933,7 +939,7 @@ mod tests {
     }
 
     #[test]
-    fn env_api_exposes_get() {
+    fn env_api_respects_allowlist_in_host_and_js() {
         let rt = Runtime::new().expect("runtime");
         let ctx = Context::full(&rt).expect("context");
         ctx.with(|ctx| {
@@ -943,7 +949,26 @@ mod tests {
             let probe_ctx: Object = globals.get("__openusage_ctx").expect("probe ctx");
             let host: Object = probe_ctx.get("host").expect("host");
             let env: Object = host.get("env").expect("env");
-            let _get: Function = env.get("get").expect("get");
+            let get: Function = env.get("get").expect("get");
+
+            for name in WHITELISTED_ENV_VARS {
+                let value: Option<String> = get.call((name.to_string(),)).expect("get whitelisted var");
+                assert_eq!(value, std::env::var(name).ok(), "{name} should match process env");
+
+                let js_expr = format!(r#"__openusage_ctx.host.env.get("{}")"#, name);
+                let js_value: Option<String> = ctx.eval(js_expr).expect("js get whitelisted var");
+                assert_eq!(js_value, std::env::var(name).ok(), "{name} should match process env from JS");
+            }
+
+            let blocked: Option<String> = get
+                .call(("__OPENUSAGE_TEST_NOT_WHITELISTED__".to_string(),))
+                .expect("get blocked var");
+            assert!(blocked.is_none(), "non-whitelisted vars must not be exposed");
+
+            let js_blocked: Option<String> = ctx
+                .eval(r#"__openusage_ctx.host.env.get("__OPENUSAGE_TEST_NOT_WHITELISTED__")"#)
+                .expect("js get blocked var");
+            assert!(js_blocked.is_none(), "non-whitelisted vars must not be exposed from JS");
         });
     }
 

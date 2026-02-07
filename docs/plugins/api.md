@@ -111,6 +111,7 @@ Reads an environment variable by name.
 
 - Returns variable value as string when set
 - Returns `null` when missing
+- Variable must be whitelisted first in `src-tauri/src/plugin_engine/host_api.rs`
 
 ### Example
 
