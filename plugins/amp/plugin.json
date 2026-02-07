@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "amp",
+  "name": "Amp",
+  "version": "0.0.1",
+  "entry": "plugin.js",
+  "icon": "icon.svg",
+  "brandColor": "#DC2626",
+  "lines": [
+    { "type": "progress", "label": "Free", "scope": "overview", "primaryOrder": 1 },
+    { "type": "text", "label": "Bonus", "scope": "detail" },
+    { "type": "text", "label": "Credits", "scope": "detail" }
+  ]
+}
