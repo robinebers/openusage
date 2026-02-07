@@ -4,7 +4,7 @@ import type { PluginMeta } from "@/lib/plugin-types";
 // Refresh cooldown duration in milliseconds (5 minutes)
 export const REFRESH_COOLDOWN_MS = 300_000;
 
-// Spec: persist plugin order + disabled list; new plugins append, default enabled.
+// Spec: persist plugin order + disabled list; new plugins append, default disabled unless in DEFAULT_ENABLED_PLUGINS.
 export type PluginSettings = {
   order: string[];
   disabled: string[];
@@ -67,6 +67,8 @@ export function isTrayPercentageMandatory(style: TrayIconStyle): boolean {
 
 const store = new LazyStore(SETTINGS_STORE_PATH);
 
+const DEFAULT_ENABLED_PLUGINS = new Set(["claude", "codex", "cursor"]);
+
 export const DEFAULT_PLUGIN_SETTINGS: PluginSettings = {
   order: [],
   disabled: [],
@@ -120,14 +122,21 @@ export function normalizePluginSettings(
     seen.add(id);
     order.push(id);
   }
+  const newlyAdded: string[] = [];
   for (const id of knownIds) {
     if (!seen.has(id)) {
       seen.add(id);
       order.push(id);
+      newlyAdded.push(id);
     }
   }
 
   const disabled = settings.disabled.filter((id) => knownSet.has(id));
+  for (const id of newlyAdded) {
+    if (!DEFAULT_ENABLED_PLUGINS.has(id) && !disabled.includes(id)) {
+      disabled.push(id);
+    }
+  }
   return { order, disabled };
 }
 

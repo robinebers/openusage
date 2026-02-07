@@ -73,6 +73,17 @@ describe("settings", () => {
     expect(normalized).toEqual({ order: ["b", "a"], disabled: ["a"] })
   })
 
+  it("auto-disables new non-default plugins", () => {
+    const plugins: PluginMeta[] = [
+      { id: "claude", name: "Claude", iconUrl: "", lines: [], primaryCandidates: [] },
+      { id: "copilot", name: "Copilot", iconUrl: "", lines: [], primaryCandidates: [] },
+      { id: "windsurf", name: "Windsurf", iconUrl: "", lines: [], primaryCandidates: [] },
+    ]
+    const result = normalizePluginSettings({ order: [], disabled: [] }, plugins)
+    expect(result.order).toEqual(["claude", "copilot", "windsurf"])
+    expect(result.disabled).toEqual(["copilot", "windsurf"])
+  })
+
   it("compares settings equality", () => {
     const a = { order: ["a"], disabled: [] }
     const b = { order: ["a"], disabled: [] }
