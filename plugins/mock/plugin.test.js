@@ -8,135 +8,44 @@ const loadPlugin = async () => {
 
 const createCtx = (overrides) => makePluginTestContext(overrides, vi)
 
-const setConfig = (ctx, value) => {
-  ctx.host.fs.writeText(ctx.app.pluginDataDir + "/config.json", JSON.stringify(value))
-}
-
 describe("mock plugin", () => {
   beforeEach(() => {
     delete globalThis.__openusage_plugin
     if (vi.resetModules) vi.resetModules()
   })
 
-  it("initializes config and returns ok case", async () => {
-    const ctx = createCtx()
+  it("returns stress-test lines", async () => {
     const plugin = await loadPlugin()
-    const result = plugin.probe(ctx)
-    expect(result.lines.find((line) => line.label === "Percent")).toBeTruthy()
+    const result = plugin.probe(createCtx())
+    expect(result.plan).toBe("stress-test")
+    expect(result.lines.length).toBeGreaterThanOrEqual(16)
   })
 
-  it("auto-migrates legacy ok config", async () => {
+  it("includes progress lines with all edge cases", async () => {
     const plugin = await loadPlugin()
-    const ctx = createCtx()
-    setConfig(ctx, { mode: "ok" })
-    const result = plugin.probe(ctx)
-    expect(result.plan).toBe("chaos")
-    expect(result.lines.find((line) => line.label === "Case")).toBeTruthy()
+    const result = plugin.probe(createCtx())
+    const progressLabels = result.lines
+      .filter((l) => l.type === "progress")
+      .map((l) => l.label)
+    expect(progressLabels).toContain("Ahead pace")
+    expect(progressLabels).toContain("Empty bar")
+    expect(progressLabels).toContain("Over limit!")
+    expect(progressLabels).toContain("Huge numbers")
+    expect(progressLabels).toContain("Expired reset")
   })
 
-  it("renders ok mode when pinned", async () => {
+  it("includes text and badge lines", async () => {
     const plugin = await loadPlugin()
-    const ctx = createCtx()
-    setConfig(ctx, { pinned: true, mode: "ok" })
-    const result = plugin.probe(ctx)
-    expect(result.lines.find((line) => line.label === "Percent")).toBeTruthy()
+    const result = plugin.probe(createCtx())
+    expect(result.lines.find((l) => l.type === "text" && l.label === "Status")).toBeTruthy()
+    expect(result.lines.find((l) => l.type === "badge" && l.label === "Tier")).toBeTruthy()
   })
 
-  it("stringifies non-string modes for warnings", async () => {
+  it("sets resetsAt and periodDurationMs on pace lines", async () => {
     const plugin = await loadPlugin()
-    const ctx = createCtx()
-    setConfig(ctx, { pinned: true, mode: { kind: "weird" } })
-    const result = plugin.probe(ctx)
-    const warning = result.lines.find((line) => line.label === "Warning")
-    expect(warning?.text).toContain("\"kind\":\"weird\"")
-  })
-
-  it("falls back to default when config json is invalid", async () => {
-    const plugin = await loadPlugin()
-    const ctx = createCtx()
-    ctx.host.fs.writeText(ctx.app.pluginDataDir + "/config.json", "{bad")
-    const result = plugin.probe(ctx)
-    expect(result.plan).toBeTruthy()
-  })
-
-  it("handles several pinned modes", async () => {
-    const plugin = await loadPlugin()
-    const ctx = createCtx()
-
-    setConfig(ctx, { pinned: true, mode: "progress_missing_format" })
-    expect(plugin.probe(ctx).lines.find((line) => line.label === "Case")).toBeTruthy()
-
-    setConfig(ctx, { pinned: true, mode: "progress_used_negative" })
-    expect(plugin.probe(ctx).lines.find((line) => line.label === "Case")).toBeTruthy()
-
-    setConfig(ctx, { pinned: true, mode: "progress_limit_zero" })
-    expect(plugin.probe(ctx).lines.find((line) => line.label === "Case")).toBeTruthy()
-
-    setConfig(ctx, { pinned: true, mode: "progress_percent_limit_not_100" })
-    expect(plugin.probe(ctx).lines.find((line) => line.label === "Case")).toBeTruthy()
-
-    setConfig(ctx, { pinned: true, mode: "progress_count_missing_suffix" })
-    expect(plugin.probe(ctx).lines.find((line) => line.label === "Case")).toBeTruthy()
-
-    setConfig(ctx, { pinned: true, mode: "progress_resetsAt_invalid" })
-    expect(plugin.probe(ctx).lines.find((line) => line.label === "Case")).toBeTruthy()
-
-    setConfig(ctx, { pinned: true, mode: "badge_text_number" })
-    expect(plugin.probe(ctx).lines.find((line) => line.label === "Case")).toBeTruthy()
-
-    setConfig(ctx, { pinned: true, mode: "lines_not_array" })
-    expect(plugin.probe(ctx).lines).toBeTruthy()
-
-    setConfig(ctx, { pinned: true, mode: "line_not_object" })
-    expect(plugin.probe(ctx).lines).toBeTruthy()
-
-    setConfig(ctx, { pinned: true, mode: "non_object" })
-    expect(plugin.probe(ctx)).toBe("not an object")
-
-    setConfig(ctx, { pinned: true, mode: "missing_lines" })
-    expect(plugin.probe(ctx).lines).toBeUndefined()
-
-    setConfig(ctx, { pinned: true, mode: "unknown_line_type" })
-    expect(plugin.probe(ctx).lines.find((line) => line.type === "nope")).toBeTruthy()
-
-    setConfig(ctx, { pinned: true, mode: "unknown_mode" })
-    expect(plugin.probe(ctx).lines.find((line) => line.label === "Warning")).toBeTruthy()
-  })
-
-  it("throws or rejects for failure modes", async () => {
-    const plugin = await loadPlugin()
-    const ctx = createCtx()
-
-    setConfig(ctx, { pinned: true, mode: "auth_required_cli" })
-    expect(() => plugin.probe(ctx)).toThrow("Not logged in")
-
-    setConfig(ctx, { pinned: true, mode: "token_expired_cli" })
-    await expect(plugin.probe(ctx)).rejects.toMatch("Token expired")
-
-    setConfig(ctx, { pinned: true, mode: "unresolved_promise" })
-    const unresolved = plugin.probe(ctx)
-    expect(unresolved).toBeInstanceOf(Promise)
-
-    setConfig(ctx, { pinned: true, mode: "http_throw" })
-    ctx.host.http.request.mockImplementationOnce(() => {
-      throw new Error("boom")
-    })
-    expect(() => plugin.probe(ctx)).toThrow()
-
-    setConfig(ctx, { pinned: true, mode: "sqlite_throw" })
-    ctx.host.sqlite.query.mockImplementationOnce(() => {
-      throw new Error("boom")
-    })
-    expect(() => plugin.probe(ctx)).toThrow()
-
-    setConfig(ctx, { pinned: true, mode: "fs_throw" })
-    const originalReadText = ctx.host.fs.readText
-    ctx.host.fs.readText = (path) => {
-      if (String(path).includes("definitely/not")) {
-        throw new Error("boom")
-      }
-      return originalReadText(path)
-    }
-    expect(() => plugin.probe(ctx)).toThrow()
+    const result = plugin.probe(createCtx())
+    const ahead = result.lines.find((l) => l.label === "Ahead pace")
+    expect(ahead.resetsAt).toBeTruthy()
+    expect(ahead.periodDurationMs).toBeGreaterThan(0)
   })
 })

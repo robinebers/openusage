@@ -425,45 +425,6 @@ function App() {
 
   const handleProbeResult = useCallback(
     (output: PluginOutput) => {
-      // DEBUG: stress-test mock plugin only — remove after visual QA
-      if (output.providerId === "mock") {
-        const _15d = 15 * 24 * 60 * 60 * 1000
-        const _30d = _15d * 2
-        const _resets = new Date(Date.now() + _15d).toISOString()
-        const _pastReset = new Date(Date.now() - 60_000).toISOString()
-        output = {
-          ...output,
-          lines: [
-            // Pace statuses
-            { type: "progress", label: "Ahead pace", used: 30, limit: 100, format: { kind: "percent" }, resetsAt: _resets, periodDurationMs: _30d },
-            { type: "progress", label: "On Track pace", used: 45, limit: 100, format: { kind: "percent" }, resetsAt: _resets, periodDurationMs: _30d },
-            { type: "progress", label: "Behind pace", used: 65, limit: 100, format: { kind: "percent" }, resetsAt: _resets, periodDurationMs: _30d },
-            // Edge: 0% used
-            { type: "progress", label: "Empty bar", used: 0, limit: 500, format: { kind: "dollars" } },
-            // Edge: 100% used (exactly at limit)
-            { type: "progress", label: "Exactly full", used: 1000, limit: 1000, format: { kind: "count", suffix: "tokens" } },
-            // Edge: over limit
-            { type: "progress", label: "Over limit!", used: 1337, limit: 1000, format: { kind: "count", suffix: "requests" } },
-            // Edge: huge numbers
-            { type: "progress", label: "Huge numbers", used: 8_429_301, limit: 10_000_000, format: { kind: "count", suffix: "tokens" } },
-            // Edge: tiny sliver
-            { type: "progress", label: "Tiny sliver", used: 1, limit: 10000, format: { kind: "percent" } },
-            // Edge: nearly full
-            { type: "progress", label: "Almost full", used: 9999, limit: 10000, format: { kind: "percent" } },
-            // Edge: reset already passed
-            { type: "progress", label: "Expired reset", used: 42, limit: 100, format: { kind: "percent" }, resetsAt: _pastReset, periodDurationMs: _30d },
-            // Text lines
-            { type: "text", label: "Status", value: "Active" },
-            { type: "text", label: "Very long value", value: "This is an extremely long value string that should test text overflow and wrapping behavior in the card layout" },
-            { type: "text", label: "", value: "Empty label" },
-            // Badge lines
-            { type: "badge", label: "Tier", text: "Enterprise", color: "#8B5CF6" },
-            { type: "badge", label: "Alert", text: "Rate limited", color: "#ef4444" },
-            { type: "badge", label: "Region", text: "us-east-1" },
-          ],
-        }
-      }
-      // END DEBUG
       const errorMessage = getErrorMessage(output)
       const isManual = manualRefreshIdsRef.current.has(output.providerId)
       if (isManual) {
@@ -811,9 +772,13 @@ function App() {
     el.addEventListener("scroll", check, { passive: true })
     const ro = new ResizeObserver(check)
     ro.observe(el)
+    // Re-check when child content changes (async data loads)
+    const mo = new MutationObserver(check)
+    mo.observe(el, { childList: true, subtree: true })
     return () => {
       el.removeEventListener("scroll", check)
       ro.disconnect()
+      mo.disconnect()
     }
   }, [activeView])
 
@@ -897,4 +862,4 @@ function App() {
   );
 }
 
-export default App;
+export { App };
