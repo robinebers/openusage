@@ -180,7 +180,10 @@
       if (xl) lines.push(xl)
     }
 
-    if (lines.length === 0) return null
+    if (lines.length === 0) {
+      // All credits unlimited (negative available) — still return plan, show badge
+      lines.push(ctx.line.badge({ label: "Credits", text: "Unlimited" }))
+    }
 
     return { plan: plan, lines: lines }
   }
