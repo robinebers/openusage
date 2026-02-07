@@ -12,7 +12,7 @@ import { REFRESH_COOLDOWN_MS, type DisplayMode } from "@/lib/settings"
 import type { ManifestLine, MetricLine } from "@/lib/plugin-types"
 import { clamp01 } from "@/lib/utils"
 import { calculatePaceStatus, type PaceStatus } from "@/lib/pace-status"
-import { buildPaceDetailText, formatCompactDuration, getPaceStatusText, LIMIT_REACHED } from "@/lib/pace-tooltip"
+import { buildPaceDetailText, formatCompactDuration, getPaceStatusText } from "@/lib/pace-tooltip"
 
 interface ProviderCardProps {
   name: string
@@ -53,7 +53,15 @@ function formatResetIn(nowMs: number, resetsAtIso: string): string | null {
 }
 
 /** Colored dot indicator showing pace status */
-function PaceIndicator({ status, detailText }: { status: PaceStatus; detailText?: string | null }) {
+function PaceIndicator({
+  status,
+  detailText,
+  isLimitReached,
+}: {
+  status: PaceStatus
+  detailText?: string | null
+  isLimitReached?: boolean
+}) {
   const colorClass =
     status === "ahead"
       ? "bg-green-500"
@@ -62,7 +70,6 @@ function PaceIndicator({ status, detailText }: { status: PaceStatus; detailText?
         : "bg-red-500"
 
   const statusText = getPaceStatusText(status)
-  const isLimitReached = detailText === LIMIT_REACHED
 
   return (
     <Tooltip>
@@ -71,13 +78,13 @@ function PaceIndicator({ status, detailText }: { status: PaceStatus; detailText?
           <span
             {...props}
             className={`inline-block w-2 h-2 rounded-full ${colorClass}`}
-            aria-label={isLimitReached ? LIMIT_REACHED : statusText}
+            aria-label={isLimitReached ? "Limit reached" : statusText}
           />
         )}
       />
       <TooltipContent side="top" className="text-xs text-center">
         {isLimitReached ? (
-          LIMIT_REACHED
+          "Limit reached"
         ) : (
           <>
             <div>{statusText}</div>
@@ -320,29 +327,19 @@ function MetricLineRenderer({
             : `${formatCount(line.limit)} ${line.format.suffix}`
 
     // Calculate pace status if we have reset time and period duration
-    // If used === 0, always show "ahead" (no usage = definitionally ahead of pace)
-    const paceResult =
-      hasPaceContext && line.periodDurationMs
-        ? calculatePaceStatus(
-            line.used,
-            line.limit,
-            resetsAtMs,
-            line.periodDurationMs,
-            now
-          )
-        : null
-    const paceStatus: PaceStatus | null =
-      line.used === 0 && hasPaceContext ? "ahead"
-        : line.used >= line.limit && hasPaceContext ? "behind"
-        : (paceResult?.status ?? null)
+    const paceResult = hasPaceContext
+      ? calculatePaceStatus(line.used, line.limit, resetsAtMs, line.periodDurationMs!, now)
+      : null
+    const paceStatus = paceResult?.status ?? null
+    const isLimitReached = line.used >= line.limit
     const paceDetailText =
-      hasPaceContext && line.periodDurationMs
+      hasPaceContext && !isLimitReached
         ? buildPaceDetailText({
             paceResult,
             used: line.used,
             limit: line.limit,
+            periodDurationMs: line.periodDurationMs!,
             resetsAtMs,
-            periodDurationMs: line.periodDurationMs,
             nowMs: now,
             displayMode,
           })
@@ -352,7 +349,9 @@ function MetricLineRenderer({
       <div>
         <div className="text-sm font-medium mb-1.5 flex items-center gap-1.5">
           {line.label}
-          {paceStatus && <PaceIndicator status={paceStatus} detailText={paceDetailText} />}
+          {paceStatus && (
+            <PaceIndicator status={paceStatus} detailText={paceDetailText} isLimitReached={isLimitReached} />
+          )}
         </div>
         <Progress
           value={percent}

@@ -4,9 +4,7 @@ import { type PaceResult } from "@/lib/pace-status"
 import {
   buildPaceDetailText,
   formatCompactDuration,
-  getLimitHitEtaMs,
   getPaceStatusText,
-  LIMIT_REACHED,
 } from "@/lib/pace-tooltip"
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
@@ -32,72 +30,15 @@ describe("pace-tooltip", () => {
     expect(formatCompactDuration(0)).toBeNull()
   })
 
-  it("computes ETA ms when limit is hit before reset", () => {
-    const eta = getLimitHitEtaMs({
-      used: 60,
-      limit: 100,
-      resetsAtMs,
-      periodDurationMs: ONE_DAY_MS,
-      nowMs,
-    })
-    // used=60 at 12h into 24h → rate=5/h → need 40 more → 8h
-    expect(eta).toBe(8 * 60 * 60 * 1000)
-  })
-
-  it("returns 0 when already at or above limit", () => {
-    const eta = getLimitHitEtaMs({
-      used: 120,
-      limit: 100,
-      resetsAtMs,
-      periodDurationMs: ONE_DAY_MS,
-      nowMs,
-    })
-    expect(eta).toBe(0)
-  })
-
-  it("returns null when ETA cannot be computed", () => {
-    expect(
-      getLimitHitEtaMs({
-        used: 0,
-        limit: 100,
-        resetsAtMs,
-        periodDurationMs: ONE_DAY_MS,
-        nowMs,
-      })
-    ).toBeNull()
-
-    expect(
-      getLimitHitEtaMs({
-        used: 90,
-        limit: 100,
-        resetsAtMs,
-        periodDurationMs: ONE_DAY_MS,
-        nowMs: Date.parse("2026-02-02T23:59:00.000Z"),
-      })
-    ).toBeNull()
-  })
-
-  it("returns LIMIT_REACHED when used >= limit", () => {
-    const detail = buildPaceDetailText({
-      paceResult: { status: "behind", projectedUsage: 240 },
-      used: 120,
-      limit: 100,
-      resetsAtMs,
-      periodDurationMs: ONE_DAY_MS,
-      nowMs,
-      displayMode: "used",
-    })
-    expect(detail).toBe(LIMIT_REACHED)
-  })
-
-  it("shows 'Limit in' ETA for behind pace (displayMode=used)", () => {
+  it("shows 'Limit in' ETA for behind pace", () => {
+    // projectedUsage=120, rate=120/ONE_DAY_MS, ETA=(100-60)/rate = 8h
     const paceResult: PaceResult = { status: "behind", projectedUsage: 120 }
     const detail = buildPaceDetailText({
       paceResult,
       used: 60,
       limit: 100,
-      resetsAtMs,
       periodDurationMs: ONE_DAY_MS,
+      resetsAtMs,
       nowMs,
       displayMode: "used",
     })
@@ -110,8 +51,8 @@ describe("pace-tooltip", () => {
       paceResult,
       used: 45,
       limit: 100,
-      resetsAtMs,
       periodDurationMs: ONE_DAY_MS,
+      resetsAtMs,
       nowMs,
       displayMode: "used",
     })
@@ -124,8 +65,8 @@ describe("pace-tooltip", () => {
       paceResult,
       used: 45,
       limit: 100,
-      resetsAtMs,
       periodDurationMs: ONE_DAY_MS,
+      resetsAtMs,
       nowMs,
       displayMode: "left",
     })
@@ -138,8 +79,8 @@ describe("pace-tooltip", () => {
       paceResult,
       used: 30,
       limit: 100,
-      resetsAtMs,
       periodDurationMs: ONE_DAY_MS,
+      resetsAtMs,
       nowMs,
       displayMode: "used",
     })
@@ -152,8 +93,8 @@ describe("pace-tooltip", () => {
       paceResult,
       used: 30,
       limit: 100,
-      resetsAtMs,
       periodDurationMs: ONE_DAY_MS,
+      resetsAtMs,
       nowMs,
       displayMode: "left",
     })
@@ -161,13 +102,14 @@ describe("pace-tooltip", () => {
   })
 
   it("clamps projected percent to 100% when behind without ETA", () => {
+    // projectedUsage=120 > limit, but used=0 so rate=0 → no ETA → falls through to clamped %
     const paceResult: PaceResult = { status: "behind", projectedUsage: 120 }
     const detail = buildPaceDetailText({
       paceResult,
       used: 0,
       limit: 100,
-      resetsAtMs,
       periodDurationMs: ONE_DAY_MS,
+      resetsAtMs,
       nowMs,
       displayMode: "used",
     })
@@ -180,24 +122,40 @@ describe("pace-tooltip", () => {
       paceResult,
       used: 0,
       limit: 100,
-      resetsAtMs,
       periodDurationMs: ONE_DAY_MS,
+      resetsAtMs,
       nowMs,
       displayMode: "left",
     })
     expect(detail).toBe("0% left at reset")
   })
 
-  it("returns null detail when pace result is unavailable", () => {
+  it("returns null when pace result is unavailable", () => {
     const detail = buildPaceDetailText({
       paceResult: null,
       used: 30,
       limit: 100,
-      resetsAtMs,
       periodDurationMs: ONE_DAY_MS,
+      resetsAtMs,
       nowMs,
       displayMode: "used",
     })
     expect(detail).toBeNull()
+  })
+
+  it("falls through to projected % when ETA exceeds remaining time", () => {
+    // 90% used at 23:59, only 1 min left — ETA would be ~1.1min but limit won't be hit before reset
+    const lateNowMs = Date.parse("2026-02-02T23:59:00.000Z")
+    const paceResult: PaceResult = { status: "behind", projectedUsage: 110 }
+    const detail = buildPaceDetailText({
+      paceResult,
+      used: 90,
+      limit: 100,
+      periodDurationMs: ONE_DAY_MS,
+      resetsAtMs,
+      nowMs: lateNowMs,
+      displayMode: "used",
+    })
+    expect(detail).toBe("100% used at reset")
   })
 })
