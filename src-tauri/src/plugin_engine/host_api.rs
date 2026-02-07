@@ -252,9 +252,13 @@ fn inject_http<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rqui
                 }
 
                 let timeout_ms = req.timeout_ms.unwrap_or(10_000);
-                let client = reqwest::blocking::Client::builder()
+                let mut builder = reqwest::blocking::Client::builder()
                     .timeout(std::time::Duration::from_millis(timeout_ms))
-                    .redirect(reqwest::redirect::Policy::none())
+                    .redirect(reqwest::redirect::Policy::none());
+                if req.dangerously_ignore_tls.unwrap_or(false) {
+                    builder = builder.danger_accept_invalid_certs(true);
+                }
+                let client = builder
                     .build()
                     .map_err(|e| Exception::throw_message(&ctx_inner, &e.to_string()))?;
 
@@ -351,7 +355,8 @@ pub fn patch_http_wrapper(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
                     method: req.method || "GET",
                     headers: req.headers || null,
                     bodyText: req.bodyText || null,
-                    timeoutMs: req.timeoutMs || 10000
+                    timeoutMs: req.timeoutMs || 10000,
+                    dangerouslyIgnoreTls: req.dangerouslyIgnoreTls || false
                 });
                 var respJson = rawFn(json);
                 return JSON.parse(respJson);
@@ -653,6 +658,7 @@ struct HttpReqParams {
     headers: Option<std::collections::HashMap<String, String>>,
     body_text: Option<String>,
     timeout_ms: Option<u64>,
+    dangerously_ignore_tls: Option<bool>,
 }
 
 #[derive(serde::Serialize)]
@@ -672,6 +678,7 @@ struct LsDiscoverOpts {
     markers: Vec<String>,
     csrf_flag: String,
     port_flag: Option<String>,
+    extra_flags: Option<Vec<String>>,
 }
 
 #[derive(serde::Serialize)]
@@ -680,6 +687,7 @@ struct LsDiscoverResult {
     pid: i32,
     csrf: String,
     ports: Vec<i32>,
+    extra: std::collections::HashMap<String, String>,
     extension_port: Option<i32>,
 }
 
@@ -801,6 +809,18 @@ fn inject_ls<'js>(
                             .and_then(|v| v.parse::<i32>().ok())
                     });
 
+                // Extract extra flags (optional)
+                let mut extra = std::collections::HashMap::new();
+                if let Some(ref flags) = opts.extra_flags {
+                    for flag in flags {
+                        if let Some(val) = ls_extract_flag(&command, flag) {
+                            // Use flag name without leading dashes as key
+                            let key = flag.trim_start_matches('-').to_string();
+                            extra.insert(key, val);
+                        }
+                    }
+                }
+
                 // Find lsof binary
                 let lsof_path = ["/usr/sbin/lsof", "/usr/bin/lsof"]
                     .iter()
@@ -861,6 +881,7 @@ fn inject_ls<'js>(
                     pid: process_pid,
                     csrf,
                     ports,
+                    extra,
                     extension_port,
                 };
 

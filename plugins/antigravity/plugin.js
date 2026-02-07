@@ -12,46 +12,50 @@
     })
   }
 
+  function probePort(ctx, scheme, port, csrf) {
+    var resp = ctx.host.http.request({
+      method: "POST",
+      url: scheme + "://127.0.0.1:" + port + "/" + LS_SERVICE + "/GetUnleashData",
+      headers: {
+        "Content-Type": "application/json",
+        "Connect-Protocol-Version": "1",
+        "x-codeium-csrf-token": csrf,
+      },
+      bodyText: JSON.stringify({
+        context: {
+          properties: {
+            devMode: "false",
+            extensionVersion: "unknown",
+            ide: "antigravity",
+            ideVersion: "unknown",
+            os: "macos",
+          },
+        },
+      }),
+      timeoutMs: 5000,
+      dangerouslyIgnoreTls: scheme === "https",
+    })
+    // Any HTTP response means this port is alive (even 400 validation errors).
+    return true
+  }
+
   function findWorkingPort(ctx, discovery) {
     var ports = discovery.ports || []
     for (var i = 0; i < ports.length; i++) {
       var port = ports[i]
-      try {
-        var resp = ctx.host.http.request({
-          method: "POST",
-          url: "http://127.0.0.1:" + port + "/" + LS_SERVICE + "/GetUnleashData",
-          headers: {
-            "Content-Type": "application/json",
-            "Connect-Protocol-Version": "1",
-            "x-codeium-csrf-token": discovery.csrf,
-          },
-          bodyText: JSON.stringify({
-            context: {
-              properties: {
-                devMode: "false",
-                extensionVersion: "unknown",
-                ide: "antigravity",
-                ideVersion: "unknown",
-                os: "macos",
-              },
-            },
-          }),
-          timeoutMs: 5000,
-        })
-        if (resp.status === 200) return port
-      } catch (e) {
-        ctx.host.log.info("port " + port + " probe failed: " + String(e))
-      }
+      // Try HTTPS first (LS may use self-signed cert), then HTTP
+      try { if (probePort(ctx, "https", port, discovery.csrf)) return { port: port, scheme: "https" } } catch (e) { /* ignore */ }
+      try { if (probePort(ctx, "http", port, discovery.csrf)) return { port: port, scheme: "http" } } catch (e) { /* ignore */ }
+      ctx.host.log.info("port " + port + " probe failed on both schemes")
     }
-    // Try extension port as HTTP fallback
-    if (discovery.extensionPort) return discovery.extensionPort
+    if (discovery.extensionPort) return { port: discovery.extensionPort, scheme: "http" }
     return null
   }
 
-  function callLs(ctx, port, csrf, method, body) {
+  function callLs(ctx, port, scheme, csrf, method, body) {
     var resp = ctx.host.http.request({
       method: "POST",
-      url: "http://127.0.0.1:" + port + "/" + LS_SERVICE + "/" + method,
+      url: scheme + "://127.0.0.1:" + port + "/" + LS_SERVICE + "/" + method,
       headers: {
         "Content-Type": "application/json",
         "Connect-Protocol-Version": "1",
@@ -59,6 +63,7 @@
       },
       bodyText: JSON.stringify(body || {}),
       timeoutMs: 10000,
+      dangerouslyIgnoreTls: scheme === "https",
     })
     if (resp.status < 200 || resp.status >= 300) {
       ctx.host.log.warn("callLs " + method + " returned " + resp.status)
@@ -105,10 +110,10 @@
     var discovery = discoverLs(ctx)
     if (!discovery) throw "Start Antigravity and try again."
 
-    var port = findWorkingPort(ctx, discovery)
-    if (!port) throw "Start Antigravity and try again."
+    var found = findWorkingPort(ctx, discovery)
+    if (!found) throw "Start Antigravity and try again."
 
-    ctx.host.log.info("using LS at port " + port)
+    ctx.host.log.info("using LS at " + found.scheme + "://127.0.0.1:" + found.port)
 
     var metadata = {
       ideName: "antigravity",
@@ -120,7 +125,7 @@
     // Try GetUserStatus first, fall back to GetCommandModelConfigs
     var data = null
     try {
-      data = callLs(ctx, port, discovery.csrf, "GetUserStatus", { metadata: metadata })
+      data = callLs(ctx, found.port, found.scheme, discovery.csrf, "GetUserStatus", { metadata: metadata })
     } catch (e) {
       ctx.host.log.warn("GetUserStatus threw: " + String(e))
     }
@@ -128,7 +133,7 @@
 
     if (!hasUserStatus) {
       ctx.host.log.warn("GetUserStatus failed, trying GetCommandModelConfigs")
-      data = callLs(ctx, port, discovery.csrf, "GetCommandModelConfigs", { metadata: metadata })
+      data = callLs(ctx, found.port, found.scheme, discovery.csrf, "GetCommandModelConfigs", { metadata: metadata })
     }
 
     // Parse model configs

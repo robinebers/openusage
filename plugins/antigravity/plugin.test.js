@@ -307,17 +307,19 @@ describe("antigravity plugin", () => {
     expect(line.resetsAt).toBeUndefined()
   })
 
-  it("probes ports in order and picks first 200", async () => {
+  it("probes ports with HTTPS first, then HTTP, picks first success", async () => {
     const ctx = makeCtx()
-    ctx.host.ls.discover.mockReturnValue(makeDiscovery({ ports: [10001, 10002, 10003] }))
+    ctx.host.ls.discover.mockReturnValue(makeDiscovery({ ports: [10001, 10002] }))
 
     const probed = []
     ctx.host.http.request.mockImplementation((opts) => {
       const url = String(opts.url)
       if (url.includes("GetUnleashData")) {
         const port = parseInt(url.match(/:(\d+)\//)[1])
-        probed.push(port)
-        if (port === 10002) return { status: 200, bodyText: "{}" }
+        const scheme = url.startsWith("https") ? "https" : "http"
+        probed.push({ port, scheme })
+        // Port 10001 refuses both, port 10002 accepts HTTPS
+        if (port === 10002 && scheme === "https") return { status: 200, bodyText: "{}" }
         throw new Error("refused")
       }
       return { status: 200, bodyText: JSON.stringify(makeUserStatusResponse()) }
@@ -325,6 +327,11 @@ describe("antigravity plugin", () => {
 
     const plugin = await loadPlugin()
     plugin.probe(ctx)
-    expect(probed).toEqual([10001, 10002])
+    // Should try HTTPS then HTTP on 10001 (both fail), then HTTPS on 10002 (success)
+    expect(probed).toEqual([
+      { port: 10001, scheme: "https" },
+      { port: 10001, scheme: "http" },
+      { port: 10002, scheme: "https" },
+    ])
   })
 })
