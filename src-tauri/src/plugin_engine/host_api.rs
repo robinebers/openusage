@@ -64,7 +64,7 @@ fn redact_body(body: &str) -> String {
     
     // Redact JSON values for sensitive keys
     let sensitive_keys = [
-        "password", "token", "access_token", "refresh_token", "secret",
+        "name", "password", "token", "access_token", "refresh_token", "secret",
         "api_key", "apiKey", "authorization", "bearer", "credential",
         "session_token", "sessionToken", "auth_token", "authToken",
         "user_id", "account_id", "email", "login", "analytics_tracking_id",
@@ -1285,5 +1285,15 @@ mod tests {
         // login is short (<=12 chars) so becomes [REDACTED]; analytics_tracking_id is long so first4...last4
         assert!(redacted.contains("[REDACTED]"), "login should be redacted, got: {}", redacted);
         assert!(redacted.contains("c9df...a6cf"), "analytics_tracking_id should show first4...last4, got: {}", redacted);
+    }
+
+    #[test]
+    fn redact_body_redacts_name_field() {
+        let body = r#"{"userStatus":{"name":"Robin Ebers","email":"rob@sunstory.com","planStatus":{}}}"#;
+        let redacted = redact_body(body);
+        assert!(!redacted.contains("Robin Ebers"), "name should be redacted, got: {}", redacted);
+        assert!(!redacted.contains("rob@sunstory.com"), "email should be redacted, got: {}", redacted);
+        // "Robin Ebers" is 11 chars (<=12) so becomes [REDACTED]
+        assert!(redacted.contains("\"name\": \"[REDACTED]\""), "name should show [REDACTED], got: {}", redacted);
     }
 }

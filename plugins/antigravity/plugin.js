@@ -13,7 +13,7 @@
   }
 
   function probePort(ctx, scheme, port, csrf) {
-    var resp = ctx.host.http.request({
+    ctx.host.http.request({
       method: "POST",
       url: scheme + "://127.0.0.1:" + port + "/" + LS_SERVICE + "/GetUnleashData",
       headers: {
