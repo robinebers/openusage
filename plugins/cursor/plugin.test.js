@@ -37,7 +37,7 @@ describe("cursor plugin", () => {
       bodyText: JSON.stringify({ enabled: false }),
     })
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Usage tracking disabled")
+    expect(() => plugin.probe(ctx)).toThrow("No active Cursor subscription.")
   })
 
   it("throws on missing plan usage data", async () => {
@@ -48,7 +48,7 @@ describe("cursor plugin", () => {
       bodyText: JSON.stringify({ enabled: true }),
     })
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Usage tracking disabled")
+    expect(() => plugin.probe(ctx)).toThrow("No active Cursor subscription.")
   })
 
   it("throws on missing plan usage limit", async () => {
