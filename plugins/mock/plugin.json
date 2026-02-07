@@ -6,6 +6,18 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#EF4444",
+  "permissions": {
+    "fs": {
+      "read": ["pluginDataDir"],
+      "write": ["pluginDataDir"]
+    },
+    "http": {
+      "allowedHosts": ["example.com"]
+    },
+    "sqlite": {
+      "allowedPaths": ["appDataDir"]
+    }
+  },
   "lines": [
     { "type": "progress", "label": "Ahead pace", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "On Track pace", "scope": "overview", "primaryOrder": 2 },

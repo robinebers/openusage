@@ -6,6 +6,15 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#74AA9C",
+  "permissions": {
+    "fs": {
+      "read": ["~/.codex/auth.json"],
+      "write": ["~/.codex/auth.json"]
+    },
+    "http": {
+      "allowedHosts": ["auth.openai.com", "chatgpt.com"]
+    }
+  },
   "lines": [
     { "type": "progress", "label": "Session", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Weekly", "scope": "overview" },

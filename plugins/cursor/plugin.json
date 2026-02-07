@@ -6,6 +6,14 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#000000",
+  "permissions": {
+    "http": {
+      "allowedHosts": ["api2.cursor.sh"]
+    },
+    "sqlite": {
+      "allowedPaths": ["~/Library/Application Support/Cursor/User/globalStorage/state.vscdb"]
+    }
+  },
   "lines": [
     { "type": "progress", "label": "Credits", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Plan usage", "scope": "overview", "primaryOrder": 2 },

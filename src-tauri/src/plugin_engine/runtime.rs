@@ -74,7 +74,15 @@ pub fn run_probe(
     let app_data = app_data_dir.clone();
 
     ctx.with(|ctx| {
-        if host_api::inject_host_api(&ctx, &plugin_id, &app_data, app_version).is_err() {
+        if host_api::inject_host_api(
+            &ctx,
+            &plugin_id,
+            &app_data,
+            app_version,
+            &plugin.permissions,
+        )
+        .is_err()
+        {
             return error_output(plugin, "host api injection failed".to_string());
         }
         if host_api::patch_http_wrapper(&ctx).is_err() {

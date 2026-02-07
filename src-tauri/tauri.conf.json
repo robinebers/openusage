@@ -23,7 +23,7 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https: http://localhost:1420 ws://localhost:1420; font-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
     },
     "macOSPrivateApi": true
   },

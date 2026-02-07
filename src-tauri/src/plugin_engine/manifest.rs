@@ -25,6 +25,8 @@ pub struct PluginManifest {
     pub icon: String,
     pub brand_color: Option<String>,
     pub lines: Vec<ManifestLine>,
+    #[serde(default)]
+    pub permissions: PluginPermissions,
 }
 
 #[derive(Debug, Clone)]
@@ -33,6 +35,52 @@ pub struct LoadedPlugin {
     pub plugin_dir: PathBuf,
     pub entry_script: String,
     pub icon_data_url: String,
+    pub permissions: PluginPermissions,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginPermissions {
+    #[serde(default)]
+    pub fs: FsPermissions,
+    #[serde(default)]
+    pub http: HttpPermissions,
+    #[serde(default)]
+    pub keychain: KeychainPermissions,
+    #[serde(default)]
+    pub sqlite: SqlitePermissions,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct FsPermissions {
+    #[serde(default)]
+    pub read: Vec<String>,
+    #[serde(default)]
+    pub write: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct HttpPermissions {
+    #[serde(default)]
+    pub allowed_hosts: Vec<String>,
+    #[serde(default)]
+    pub allow_http: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct KeychainPermissions {
+    #[serde(default)]
+    pub services: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SqlitePermissions {
+    #[serde(default)]
+    pub allowed_paths: Vec<String>,
 }
 
 pub fn load_plugins_from_dir(plugins_dir: &std::path::Path) -> Vec<LoadedPlugin> {
@@ -102,11 +150,14 @@ fn load_single_plugin(
     let icon_bytes = std::fs::read(&icon_file)?;
     let icon_data_url = format!("data:image/svg+xml;base64,{}", STANDARD.encode(&icon_bytes));
 
+    let permissions = manifest.permissions.clone();
+
     Ok(LoadedPlugin {
         manifest,
         plugin_dir: plugin_dir.to_path_buf(),
         entry_script,
         icon_data_url,
+        permissions,
     })
 }
 

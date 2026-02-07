@@ -6,6 +6,18 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#DE7356",
+  "permissions": {
+    "fs": {
+      "read": ["~/.claude/.credentials.json"],
+      "write": ["~/.claude/.credentials.json"]
+    },
+    "http": {
+      "allowedHosts": ["api.anthropic.com", "platform.claude.com"]
+    },
+    "keychain": {
+      "services": ["Claude Code-credentials"]
+    }
+  },
   "lines": [
     { "type": "progress", "label": "Session", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Weekly", "scope": "overview" },

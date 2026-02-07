@@ -6,6 +6,18 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#A855F7",
+  "permissions": {
+    "fs": {
+      "read": ["pluginDataDir"],
+      "write": ["pluginDataDir"]
+    },
+    "http": {
+      "allowedHosts": ["api.github.com"]
+    },
+    "keychain": {
+      "services": ["OpenUsage-copilot", "gh:github.com"]
+    }
+  },
   "lines": [
     { "type": "progress", "label": "Premium", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Chat", "scope": "overview", "primaryOrder": 2 },

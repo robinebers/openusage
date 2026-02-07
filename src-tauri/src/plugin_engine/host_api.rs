@@ -1,5 +1,6 @@
+use crate::plugin_engine::manifest::PluginPermissions;
 use rquickjs::{Ctx, Exception, Function, Object};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Redact sensitive value to first4...last4 format (UTF-8 safe)
 fn redact_value(value: &str) -> String {
@@ -95,11 +96,27 @@ fn redact_log_message(msg: &str) -> String {
     result
 }
 
+#[derive(Clone)]
+struct AllowedPath {
+    path: PathBuf,
+    allow_children: bool,
+}
+
+struct ResolvedPermissions {
+    fs_read: Vec<AllowedPath>,
+    fs_write: Vec<AllowedPath>,
+    http_hosts: Vec<String>,
+    allow_http: bool,
+    keychain_services: Vec<String>,
+    sqlite_paths: Vec<AllowedPath>,
+}
+
 pub fn inject_host_api<'js>(
     ctx: &Ctx<'js>,
     plugin_id: &str,
     app_data_dir: &PathBuf,
     app_version: &str,
+    permissions: &PluginPermissions,
 ) -> rquickjs::Result<()> {
     let globals = ctx.globals();
     let probe_ctx = Object::new(ctx.clone())?;
@@ -124,17 +141,107 @@ pub fn inject_host_api<'js>(
     )?;
     probe_ctx.set("app", app_obj)?;
 
+    let resolved = resolve_permissions(permissions, app_data_dir, &plugin_data_dir);
     let host = Object::new(ctx.clone())?;
     inject_log(ctx, &host, plugin_id)?;
-    inject_fs(ctx, &host)?;
-    inject_http(ctx, &host, plugin_id)?;
-    inject_keychain(ctx, &host)?;
-    inject_sqlite(ctx, &host)?;
+    inject_fs(ctx, &host, &resolved)?;
+    inject_http(ctx, &host, plugin_id, &resolved)?;
+    inject_keychain(ctx, &host, &resolved)?;
+    inject_sqlite(ctx, &host, &resolved)?;
 
     probe_ctx.set("host", host)?;
     globals.set("__openusage_ctx", probe_ctx)?;
 
     Ok(())
+}
+
+fn resolve_permissions(
+    permissions: &PluginPermissions,
+    app_data_dir: &Path,
+    plugin_data_dir: &Path,
+) -> ResolvedPermissions {
+    ResolvedPermissions {
+        fs_read: resolve_allowed_paths(&permissions.fs.read, app_data_dir, plugin_data_dir),
+        fs_write: resolve_allowed_paths(&permissions.fs.write, app_data_dir, plugin_data_dir),
+        http_hosts: permissions.http.allowed_hosts.clone(),
+        allow_http: permissions.http.allow_http,
+        keychain_services: permissions.keychain.services.clone(),
+        sqlite_paths: resolve_allowed_paths(&permissions.sqlite.allowed_paths, app_data_dir, plugin_data_dir),
+    }
+}
+
+fn resolve_allowed_paths(
+    entries: &[String],
+    app_data_dir: &Path,
+    plugin_data_dir: &Path,
+) -> Vec<AllowedPath> {
+    let mut out = Vec::new();
+    for entry in entries {
+        let mut allow_children = entry.ends_with('/') || entry.ends_with("/*");
+        let trimmed = entry.trim_end_matches("/*").trim_end_matches('/');
+        match trimmed {
+            "appDataDir" => {
+                out.push(AllowedPath {
+                    path: app_data_dir.to_path_buf(),
+                    allow_children: true,
+                });
+                continue;
+            }
+            "pluginDataDir" => {
+                out.push(AllowedPath {
+                    path: plugin_data_dir.to_path_buf(),
+                    allow_children: true,
+                });
+                continue;
+            }
+            _ => {}
+        }
+
+        let expanded = expand_path(trimmed);
+        let path = PathBuf::from(expanded);
+        if let Some(normalized) = normalize_path(&path) {
+            if path.is_dir() {
+                allow_children = true;
+            }
+            out.push(AllowedPath {
+                path: normalized,
+                allow_children,
+            });
+        }
+    }
+    out
+}
+
+fn normalize_path(path: &Path) -> Option<PathBuf> {
+    if path.exists() {
+        return path.canonicalize().ok();
+    }
+    let parent = path.parent()?;
+    let parent = parent.canonicalize().ok()?;
+    let file_name = path.file_name()?;
+    Some(parent.join(file_name))
+}
+
+fn is_path_allowed(target: &Path, allowed: &[AllowedPath]) -> bool {
+    let Some(normalized) = normalize_path(target) else {
+        return false;
+    };
+    allowed.iter().any(|entry| {
+        normalized == entry.path || (entry.allow_children && normalized.starts_with(&entry.path))
+    })
+}
+
+fn is_host_allowed(host: &str, allowed: &[String]) -> bool {
+    let host = host.to_lowercase();
+    allowed.iter().any(|entry| {
+        let entry = entry.to_lowercase();
+        if entry.starts_with("*.") {
+            let suffix = &entry[1..];
+            host.ends_with(suffix)
+        } else {
+            host == entry
+        }
+    })
 }
 
 fn inject_log<'js>(
@@ -172,14 +279,27 @@ fn inject_log<'js>(
     Ok(())
 }
 
-fn inject_fs<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
+fn inject_fs<'js>(
+    ctx: &Ctx<'js>,
+    host: &Object<'js>,
+    permissions: &ResolvedPermissions,
+) -> rquickjs::Result<()> {
     let fs_obj = Object::new(ctx.clone())?;
+    let read_allowed = permissions.fs_read.clone();
+    let write_allowed = permissions.fs_write.clone();
 
     fs_obj.set(
         "exists",
-        Function::new(ctx.clone(), move |path: String| -> bool {
+        Function::new(ctx.clone(), move |ctx_inner: Ctx<'_>, path: String| -> rquickjs::Result<bool> {
             let expanded = expand_path(&path);
-            std::path::Path::new(&expanded).exists()
+            let expanded_path = PathBuf::from(&expanded);
+            if !is_path_allowed(&expanded_path, &read_allowed) {
+                return Err(Exception::throw_message(
+                    &ctx_inner,
+                    "fs access denied for path",
+                ));
+            }
+            Ok(std::path::Path::new(&expanded).exists())
         })?,
     )?;
 
@@ -189,6 +309,13 @@ fn inject_fs<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
             ctx.clone(),
             move |ctx_inner: Ctx<'_>, path: String| -> rquickjs::Result<String> {
                 let expanded = expand_path(&path);
+                let expanded_path = PathBuf::from(&expanded);
+                if !is_path_allowed(&expanded_path, &read_allowed) {
+                    return Err(Exception::throw_message(
+                        &ctx_inner,
+                        "fs read denied for path",
+                    ));
+                }
                 std::fs::read_to_string(&expanded).map_err(|e| {
                     Exception::throw_message(&ctx_inner, &e.to_string())
                 })
@@ -202,6 +329,13 @@ fn inject_fs<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
             ctx.clone(),
             move |ctx_inner: Ctx<'_>, path: String, content: String| -> rquickjs::Result<()> {
                 let expanded = expand_path(&path);
+                let expanded_path = PathBuf::from(&expanded);
+                if !is_path_allowed(&expanded_path, &write_allowed) {
+                    return Err(Exception::throw_message(
+                        &ctx_inner,
+                        "fs write denied for path",
+                    ));
+                }
                 std::fs::write(&expanded, &content).map_err(|e| {
                     Exception::throw_message(&ctx_inner, &e.to_string())
                 })
@@ -213,9 +347,16 @@ fn inject_fs<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
     Ok(())
 }
 
-fn inject_http<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquickjs::Result<()> {
+fn inject_http<'js>(
+    ctx: &Ctx<'js>,
+    host: &Object<'js>,
+    plugin_id: &str,
+    permissions: &ResolvedPermissions,
+) -> rquickjs::Result<()> {
     let http_obj = Object::new(ctx.clone())?;
     let pid = plugin_id.to_string();
+    let allowed_hosts = permissions.http_hosts.clone();
+    let allow_http = permissions.allow_http;
 
     http_obj.set(
         "_requestRaw",
@@ -225,6 +366,26 @@ fn inject_http<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rqui
                 let req: HttpReqParams = serde_json::from_str(&req_json).map_err(|e| {
                     Exception::throw_message(&ctx_inner, &format!("invalid request: {}", e))
                 })?;
+
+                let parsed_url = reqwest::Url::parse(&req.url).map_err(|e| {
+                    Exception::throw_message(&ctx_inner, &format!("invalid url: {}", e))
+                })?;
+                let scheme = parsed_url.scheme();
+                if scheme != "https" && !(allow_http && scheme == "http") {
+                    return Err(Exception::throw_message(
+                        &ctx_inner,
+                        "http access denied for non-https url",
+                    ));
+                }
+                let host = parsed_url
+                    .host_str()
+                    .ok_or_else(|| Exception::throw_message(&ctx_inner, "url missing host"))?;
+                if !is_host_allowed(host, &allowed_hosts) {
+                    return Err(Exception::throw_message(
+                        &ctx_inner,
+                        "http access denied for host",
+                    ));
+                }
 
                 let method_str = req.method.as_deref().unwrap_or("GET");
                 let redacted_url = redact_url(&req.url);
@@ -662,14 +823,25 @@ struct HttpRespParams {
     body_text: String,
 }
 
-fn inject_keychain<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
+fn inject_keychain<'js>(
+    ctx: &Ctx<'js>,
+    host: &Object<'js>,
+    permissions: &ResolvedPermissions,
+) -> rquickjs::Result<()> {
     let keychain_obj = Object::new(ctx.clone())?;
+    let allowed_services = permissions.keychain_services.clone();
 
     keychain_obj.set(
         "readGenericPassword",
         Function::new(
             ctx.clone(),
             move |ctx_inner: Ctx<'_>, service: String| -> rquickjs::Result<String> {
+                if !allowed_services.iter().any(|s| s == &service) {
+                    return Err(Exception::throw_message(
+                        &ctx_inner,
+                        "keychain access denied for service",
+                    ));
+                }
                 if !cfg!(target_os = "macos") {
                     return Err(Exception::throw_message(
                         &ctx_inner,
@@ -705,6 +877,12 @@ fn inject_keychain<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<
         Function::new(
             ctx.clone(),
             move |ctx_inner: Ctx<'_>, service: String, value: String| -> rquickjs::Result<()> {
+                if !allowed_services.iter().any(|s| s == &service) {
+                    return Err(Exception::throw_message(
+                        &ctx_inner,
+                        "keychain access denied for service",
+                    ));
+                }
                 if !cfg!(target_os = "macos") {
                     return Err(Exception::throw_message(
                         &ctx_inner,
@@ -785,8 +963,13 @@ fn inject_keychain<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<
     Ok(())
 }
 
-fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
+fn inject_sqlite<'js>(
+    ctx: &Ctx<'js>,
+    host: &Object<'js>,
+    permissions: &ResolvedPermissions,
+) -> rquickjs::Result<()> {
     let sqlite_obj = Object::new(ctx.clone())?;
+    let allowed_paths = permissions.sqlite_paths.clone();
 
     sqlite_obj.set(
         "query",
@@ -800,6 +983,13 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                     ));
                 }
                 let expanded = expand_path(&db_path);
+                let expanded_path = PathBuf::from(&expanded);
+                if !is_path_allowed(&expanded_path, &allowed_paths) {
+                    return Err(Exception::throw_message(
+                        &ctx_inner,
+                        "sqlite access denied for path",
+                    ));
+                }
                 // Use immutable=1 to bypass WAL/SHM file access issues
                 // (WAL databases can fail with -readonly when shm is locked after macOS sleep)
                 // Percent-encode special chars for valid URI (% must be first!)
@@ -844,6 +1034,13 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                     ));
                 }
                 let expanded = expand_path(&db_path);
+                let expanded_path = PathBuf::from(&expanded);
+                if !is_path_allowed(&expanded_path, &allowed_paths) {
+                    return Err(Exception::throw_message(
+                        &ctx_inner,
+                        "sqlite access denied for path",
+                    ));
+                }
                 let output = std::process::Command::new("sqlite3")
                     .args([&expanded, &sql])
                     .output()
@@ -898,6 +1095,7 @@ fn expand_path(path: &str) -> String {
 mod tests {
     use super::*;
     use rquickjs::{Context, Function, Object, Runtime};
+    use uuid::Uuid;
 
     #[test]
     fn keychain_api_exposes_write() {
@@ -905,7 +1103,9 @@ mod tests {
         let ctx = Context::full(&rt).expect("context");
         ctx.with(|ctx| {
             let app_data = std::env::temp_dir();
-            inject_host_api(&ctx, "test", &app_data, "0.0.0").expect("inject host api");
+            let permissions = PluginPermissions::default();
+            inject_host_api(&ctx, "test", &app_data, "0.0.0", &permissions)
+                .expect("inject host api");
             let globals = ctx.globals();
             let probe_ctx: Object = globals.get("__openusage_ctx").expect("probe ctx");
             let host: Object = probe_ctx.get("host").expect("host");
@@ -937,6 +1137,27 @@ mod tests {
     fn redact_url_preserves_non_sensitive_params() {
         let url = "https://api.example.com/v1?limit=10&offset=20";
         assert_eq!(redact_url(url), url);
+    }
+
+    #[test]
+    fn resolve_allowed_paths_limits_access() {
+        let base = std::env::temp_dir().join(format!("openusage-perm-{}", Uuid::new_v4()));
+        let app_data = base.join("app");
+        let plugin_data = base.join("plugin");
+        std::fs::create_dir_all(&app_data).expect("app dir");
+        std::fs::create_dir_all(&plugin_data).expect("plugin dir");
+
+        let allowed = resolve_allowed_paths(
+            &[String::from("pluginDataDir")],
+            &app_data,
+            &plugin_data,
+        );
+
+        let allowed_path = plugin_data.join("config.json");
+        let denied_path = app_data.join("config.json");
+
+        assert!(is_path_allowed(&allowed_path, &allowed));
+        assert!(!is_path_allowed(&denied_path, &allowed));
     }
 
     #[test]
