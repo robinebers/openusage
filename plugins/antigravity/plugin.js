@@ -9,6 +9,15 @@
   var GOOGLE_OAUTH_URL = "https://oauth2.googleapis.com/token"
   var GOOGLE_CLIENT_ID = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
   var GOOGLE_CLIENT_SECRET = "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"
+  var CC_MODEL_BLACKLIST = {
+    "MODEL_CHAT_20706": true,
+    "MODEL_CHAT_23310": true,
+    "MODEL_GOOGLE_GEMINI_2_5_FLASH": true,
+    "MODEL_GOOGLE_GEMINI_2_5_FLASH_THINKING": true,
+    "MODEL_GOOGLE_GEMINI_2_5_FLASH_LITE": true,
+    "MODEL_GOOGLE_GEMINI_2_5_PRO": true,
+    "MODEL_PLACEHOLDER_M19": true,
+  }
   // --- Protobuf wire-format decoder ---
 
   function readVarint(s, pos) {
@@ -44,7 +53,7 @@
         fields[fieldNum] = { type: 2, data: s.substring(pos, pos + len.v) }
         pos += len.v
       } else {
-        break // unsupported wire type
+        break
       }
     }
     return fields
@@ -145,6 +154,7 @@
       if (data.expiresAtMs <= Date.now()) return null
       return data.accessToken
     } catch (e) {
+      ctx.host.log.warn("failed to read cached token: " + String(e))
       return null
     }
   }
@@ -333,7 +343,12 @@
     var configs = []
     for (var i = 0; i < keys.length; i++) {
       var m = modelsObj[keys[i]]
-      var displayName = m.displayName || keys[i]
+      if (!m || typeof m !== "object") continue
+      if (m.isInternal) continue
+      var modelId = m.model || keys[i]
+      if (CC_MODEL_BLACKLIST[modelId]) continue
+      var displayName = (typeof m.displayName === "string") ? m.displayName.trim() : ""
+      if (!displayName) continue
       var qi = m.quotaInfo
       if (!qi || typeof qi.remainingFraction !== "number") continue
       configs.push({

@@ -400,8 +400,6 @@ describe("antigravity plugin", () => {
     ])
   })
 
-  // --- SQLite + apiKey in LS metadata ---
-
   it("includes apiKey in LS metadata when DB has credentials", async () => {
     const ctx = makeCtx()
     setupSqliteMock(ctx, makeAuthStatusJson())
@@ -457,8 +455,6 @@ describe("antigravity plugin", () => {
     expect(capturedMetadata).toBeTruthy()
     expect(capturedMetadata.apiKey).toBeUndefined()
   })
-
-  // --- Cloud Code API fallback ---
 
   it("falls back to Cloud Code API when LS is not available", async () => {
     const ctx = makeCtx()
@@ -648,8 +644,6 @@ describe("antigravity plugin", () => {
     expect(result.lines.find((l) => l.label === "Gemini 3 Pro")).toBeTruthy()
   })
 
-  // --- Protobuf token decoding ---
-
   it("decodes protobuf tokens from SQLite", async () => {
     const ctx = makeCtx()
     const futureExpiry = Math.floor(Date.now() / 1000) + 3600
@@ -737,8 +731,6 @@ describe("antigravity plugin", () => {
     expect(capturedAuth).toBe("Bearer ya29.access-only")
   })
 
-  // --- Token refresh ---
-
   it("sends correct form-urlencoded POST to Google OAuth", async () => {
     const ctx = makeCtx()
     const futureExpiry = Math.floor(Date.now() / 1000) + 3600
@@ -795,8 +787,6 @@ describe("antigravity plugin", () => {
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Start Antigravity and try again.")
   })
-
-  // --- Fallback chain with refresh ---
 
   it("tries proto token first, then apiKey on auth failure", async () => {
     const ctx = makeCtx()
@@ -912,8 +902,6 @@ describe("antigravity plugin", () => {
     expect(capturedAuth).toBe("Bearer test-api-key-123")
   })
 
-  // --- Token cache ---
-
   it("caches refreshed token to pluginDataDir", async () => {
     const ctx = makeCtx()
     const futureExpiry = Math.floor(Date.now() / 1000) + 3600
@@ -1018,6 +1006,169 @@ describe("antigravity plugin", () => {
     plugin.probe(ctx)
 
     expect(capturedAuth).toBe("Bearer test-api-key-123")
+  })
+
+  it("Cloud Code skips models with isInternal flag", async () => {
+    const ctx = makeCtx()
+    const futureExpiry = Math.floor(Date.now() / 1000) + 3600
+    setupSqliteMock(ctx, makeAuthStatusJson(), makeProtobufBase64(ctx, "ya29.test", "1//r", futureExpiry))
+    ctx.host.ls.discover.mockReturnValue(null)
+
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("fetchAvailableModels")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            models: {
+              "chat_20706": {
+                model: "MODEL_CHAT_20706",
+                isInternal: true,
+                quotaInfo: { remainingFraction: 1, resetTime: "2026-02-08T10:00:00Z" },
+              },
+              "gemini-3-flash": {
+                displayName: "Gemini 3 Flash",
+                model: "MODEL_PLACEHOLDER_M18",
+                quotaInfo: { remainingFraction: 0.9, resetTime: "2026-02-08T10:00:00Z" },
+              },
+            },
+          }),
+        }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    const labels = result.lines.map((l) => l.label)
+    expect(labels).toContain("Gemini 3 Flash")
+    expect(labels).not.toContain("chat_20706")
+    expect(labels).not.toContain("MODEL_CHAT_20706")
+  })
+
+  it("Cloud Code skips models with empty or missing displayName", async () => {
+    const ctx = makeCtx()
+    const futureExpiry = Math.floor(Date.now() / 1000) + 3600
+    setupSqliteMock(ctx, makeAuthStatusJson(), makeProtobufBase64(ctx, "ya29.test", "1//r", futureExpiry))
+    ctx.host.ls.discover.mockReturnValue(null)
+
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("fetchAvailableModels")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            models: {
+              "tab_flash_lite": {
+                displayName: "",
+                model: "SOME_MODEL",
+                quotaInfo: { remainingFraction: 1, resetTime: "2026-02-08T10:00:00Z" },
+              },
+              "no_display_name": {
+                model: "ANOTHER_MODEL",
+                quotaInfo: { remainingFraction: 1, resetTime: "2026-02-08T10:00:00Z" },
+              },
+              "gemini-3-pro": {
+                displayName: "Gemini 3 Pro",
+                model: "MODEL_PLACEHOLDER_M8",
+                quotaInfo: { remainingFraction: 0.5, resetTime: "2026-02-08T10:00:00Z" },
+              },
+            },
+          }),
+        }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    const labels = result.lines.map((l) => l.label)
+    expect(labels).toEqual(["Gemini 3 Pro"])
+  })
+
+  it("Cloud Code skips blacklisted model IDs", async () => {
+    const ctx = makeCtx()
+    const futureExpiry = Math.floor(Date.now() / 1000) + 3600
+    setupSqliteMock(ctx, makeAuthStatusJson(), makeProtobufBase64(ctx, "ya29.test", "1//r", futureExpiry))
+    ctx.host.ls.discover.mockReturnValue(null)
+
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("fetchAvailableModels")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            models: {
+              "gemini-2.5-flash": {
+                displayName: "Gemini 2.5 Flash",
+                model: "MODEL_GOOGLE_GEMINI_2_5_FLASH",
+                quotaInfo: { remainingFraction: 1, resetTime: "2026-02-08T10:00:00Z" },
+              },
+              "gemini-2.5-pro": {
+                displayName: "Gemini 2.5 Pro",
+                model: "MODEL_GOOGLE_GEMINI_2_5_PRO",
+                quotaInfo: { remainingFraction: 0.8, resetTime: "2026-02-08T10:00:00Z" },
+              },
+              "claude-sonnet-4.5": {
+                displayName: "Claude Sonnet 4.5",
+                model: "MODEL_CLAUDE_4_5_SONNET",
+                quotaInfo: { remainingFraction: 0.6, resetTime: "2026-02-08T10:00:00Z" },
+              },
+            },
+          }),
+        }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    const labels = result.lines.map((l) => l.label)
+    expect(labels).toEqual(["Claude Sonnet 4.5"])
+  })
+
+  it("Cloud Code keeps non-blacklisted models with valid displayName", async () => {
+    const ctx = makeCtx()
+    const futureExpiry = Math.floor(Date.now() / 1000) + 3600
+    setupSqliteMock(ctx, makeAuthStatusJson(), makeProtobufBase64(ctx, "ya29.test", "1//r", futureExpiry))
+    ctx.host.ls.discover.mockReturnValue(null)
+
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("fetchAvailableModels")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            models: {
+              "gemini-3-pro-high": {
+                displayName: "Gemini 3 Pro (High)",
+                model: "MODEL_PLACEHOLDER_M8",
+                quotaInfo: { remainingFraction: 0.7, resetTime: "2026-02-08T10:00:00Z" },
+              },
+              "claude-opus-4-5-thinking": {
+                displayName: "Claude Opus 4.5 (Thinking)",
+                model: "MODEL_PLACEHOLDER_M12",
+                quotaInfo: { remainingFraction: 1, resetTime: "2026-02-08T10:00:00Z" },
+              },
+              "gpt-oss-120b": {
+                displayName: "GPT-OSS 120B (Medium)",
+                model: "MODEL_OPENAI_GPT_OSS_120B_MEDIUM",
+                quotaInfo: { remainingFraction: 0.9, resetTime: "2026-02-08T10:00:00Z" },
+              },
+            },
+          }),
+        }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    const labels = result.lines.map((l) => l.label)
+    expect(labels).toContain("Gemini 3 Pro")
+    expect(labels).toContain("Claude Opus 4.5")
+    expect(labels).toContain("GPT-OSS 120B")
+    expect(labels.length).toBe(3)
   })
 
   it("LS still takes priority over Cloud Code with proto tokens (no regression)", async () => {

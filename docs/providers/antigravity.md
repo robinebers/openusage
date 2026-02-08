@@ -249,6 +249,10 @@ Base URLs tried in order:
 
 Returns 401/403 if the token is invalid or expired — triggers reactive refresh.
 
+The response includes all models provisioned for the account. The plugin filters out non-user-facing models using three layers: (1) `isInternal: true` flag from the API, (2) empty `displayName` (catches internal autocomplete models like `chat_20706`, `tab_flash_lite_preview`), and (3) a model-ID blacklist (catches Gemini 2.5 variants and placeholders).
+
+The Cloud Code model set is a superset of the LS model set. The LS returns only cascade-configured chat models, Cloud Code includes all provisioned models. This difference is expected.
+
 ## Plugin Strategy
 
 1. Read `antigravityAuthStatus` from SQLite for API key (optional, may fail)
@@ -263,5 +267,5 @@ Returns 401/403 if the token is invalid or expired — triggers reactive refresh
    a. Build candidate token list: proto access_token, cached refreshed token (if fresh), apiKey (all deduplicated)
    b. Try each token with `fetchAvailableModels`
    c. If all fail with 401/403 and refresh token available: refresh via Google OAuth, cache result to pluginDataDir, retry once
-   d. Parse model quota from response
+   d. Parse model quota: skip `isInternal` models, empty-displayName models, and blacklisted model IDs
 5. If both strategies fail: error "Start Antigravity and try again."
