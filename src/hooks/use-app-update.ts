@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { isTauri } from "@tauri-apps/api/core"
 import { check, type Update } from "@tauri-apps/plugin-updater"
 import { relaunch } from "@tauri-apps/plugin-process"
+import { track } from "@/lib/analytics"
 
 export type UpdateStatus =
   | { status: "idle" }
@@ -123,6 +124,8 @@ export function useAppUpdate(): UseAppUpdateReturn {
     if (!update) return
     if (statusRef.current.status !== "ready") return
     if (inFlightRef.current.installing || inFlightRef.current.downloading) return
+
+    track("update_accepted", { version: update.version })
 
     try {
       inFlightRef.current.installing = true

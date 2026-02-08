@@ -11,6 +11,7 @@ import { OverviewPage } from "@/pages/overview"
 import { ProviderDetailPage } from "@/pages/provider-detail"
 import { SettingsPage } from "@/pages/settings"
 import type { PluginMeta, PluginOutput } from "@/lib/plugin-types"
+import { track } from "@/lib/analytics"
 import { getTrayIconSizePx, renderTrayBarsIcon } from "@/lib/tray-bars-icon"
 import { getTrayPrimaryBars } from "@/lib/tray-primary-progress"
 import { useProbeEvents } from "@/hooks/use-probe-events"
@@ -270,6 +271,19 @@ function App() {
       .map((p) => ({ id: p.id, name: p.name, iconUrl: p.iconUrl, brandColor: p.brandColor }))
   }, [pluginSettings, pluginsMeta])
 
+  // Track page views
+  useEffect(() => {
+    const page =
+      activeView === "home" ? "overview"
+        : activeView === "settings" ? "settings"
+          : "provider_detail"
+    const props: Record<string, string> =
+      activeView !== "home" && activeView !== "settings"
+        ? { page, provider_id: activeView }
+        : { page }
+    track("page_viewed", props)
+  }, [activeView])
+
   // If active view is a plugin that got disabled, switch to home
   useEffect(() => {
     if (activeView === "home" || activeView === "settings") return
@@ -426,6 +440,12 @@ function App() {
   const handleProbeResult = useCallback(
     (output: PluginOutput) => {
       const errorMessage = getErrorMessage(output)
+      if (errorMessage) {
+        track("provider_fetch_error", {
+          provider_id: output.providerId,
+          error: errorMessage.slice(0, 200),
+        })
+      }
       const isManual = manualRefreshIdsRef.current.has(output.providerId)
       if (isManual) {
         manualRefreshIdsRef.current.delete(output.providerId)
@@ -624,6 +644,7 @@ function App() {
 
   const handleRetryPlugin = useCallback(
     (id: string) => {
+      track("provider_refreshed", { provider_id: id })
       resetAutoUpdateSchedule()
       // Mark as manual refresh
       manualRefreshIdsRef.current.add(id)
@@ -637,6 +658,7 @@ function App() {
   )
 
   const handleThemeModeChange = useCallback((mode: ThemeMode) => {
+    track("setting_changed", { setting: "theme", value: mode })
     setThemeMode(mode)
     void saveThemeMode(mode).catch((error) => {
       console.error("Failed to save theme mode:", error)
@@ -644,6 +666,7 @@ function App() {
   }, [])
 
   const handleDisplayModeChange = useCallback((mode: DisplayMode) => {
+    track("setting_changed", { setting: "display_mode", value: mode })
     setDisplayMode(mode)
     // Display mode is a direct user-facing toggle; update tray immediately.
     scheduleTrayIconUpdate("settings", 0)
@@ -653,6 +676,7 @@ function App() {
   }, [scheduleTrayIconUpdate])
 
   const handleTrayIconStyleChange = useCallback((style: TrayIconStyle) => {
+    track("setting_changed", { setting: "tray_icon_style", value: style })
     const mandatory = isTrayPercentageMandatory(style)
     if (mandatory && trayShowPercentageRef.current !== true) {
       trayShowPercentageRef.current = true
@@ -672,6 +696,7 @@ function App() {
   }, [scheduleTrayIconUpdate])
 
   const handleTrayShowPercentageChange = useCallback((value: boolean) => {
+    track("setting_changed", { setting: "tray_show_percentage", value: value ? "true" : "false" })
     trayShowPercentageRef.current = value
     setTrayShowPercentage(value)
     // Tray icon text visibility is a direct user-facing toggle; update tray immediately.
@@ -682,6 +707,7 @@ function App() {
   }, [scheduleTrayIconUpdate])
 
   const handleAutoUpdateIntervalChange = useCallback((value: AutoUpdateIntervalMinutes) => {
+    track("setting_changed", { setting: "auto_refresh", value: String(value) })
     setAutoUpdateInterval(value)
     if (pluginSettings) {
       const enabledIds = getEnabledPluginIds(pluginSettings)
@@ -717,6 +743,7 @@ function App() {
   const handleReorder = useCallback(
     (orderedIds: string[]) => {
       if (!pluginSettings) return
+      track("providers_reordered", { count: orderedIds.length })
       const nextSettings: PluginSettings = {
         ...pluginSettings,
         order: orderedIds,
@@ -734,6 +761,7 @@ function App() {
     (id: string) => {
       if (!pluginSettings) return
       const wasDisabled = pluginSettings.disabled.includes(id)
+      track("provider_toggled", { provider_id: id, enabled: wasDisabled ? "true" : "false" })
       const disabled = new Set(pluginSettings.disabled)
 
       if (wasDisabled) {
