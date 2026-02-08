@@ -19,7 +19,9 @@
         "resizable": false,
         "decorations": false,
         "transparent": true,
-        "visible": false
+        "visible": false,
+        "shadow": false,
+        "skipTaskbar": true
       }
     ],
     "security": {
@@ -39,7 +41,8 @@
     ],
     "resources": [
       "resources/bundled_plugins/**/*",
-      "icons/tray-icon.png"
+      "icons/tray-icon.png",
+      "icons/64x64.png"
     ],
     "createUpdaterArtifacts": true
   },

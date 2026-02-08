@@ -1,8 +1,10 @@
 #[cfg(target_os = "macos")]
 mod app_nap;
+#[cfg(target_os = "macos")]
 mod panel;
 mod plugin_engine;
 mod tray;
+mod window_manager;
 #[cfg(target_os = "macos")]
 mod webkit_config;
 
@@ -13,7 +15,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 use tauri_plugin_log::{Target, TargetKind};
 use uuid::Uuid;
 
@@ -21,6 +23,7 @@ pub struct AppState {
     pub plugins: Vec<plugin_engine::manifest::LoadedPlugin>,
     pub app_data_dir: PathBuf,
     pub app_version: String,
+    pub latest_probe_results: std::collections::HashMap<String, plugin_engine::runtime::PluginOutput>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -67,15 +70,12 @@ pub struct ProbeBatchComplete {
 
 #[tauri::command]
 fn init_panel(app_handle: tauri::AppHandle) {
-    panel::init(&app_handle).expect("Failed to initialize panel");
+    window_manager::WindowManager::init(&app_handle).expect("Failed to initialize window");
 }
 
 #[tauri::command]
 fn hide_panel(app_handle: tauri::AppHandle) {
-    use tauri_nspanel::ManagerExt;
-    if let Ok(panel) = app_handle.get_webview_panel("main") {
-        panel.hide();
-    }
+    window_manager::WindowManager::hide(&app_handle).expect("Failed to hide window");
 }
 
 #[tauri::command]
@@ -174,6 +174,15 @@ async fn start_probe_batch(
                     } else {
                         log::info!("probe {} completed ok ({} lines)", plugin_id, output.lines.len());
                     }
+                    
+                    // Store result in AppState for tray menu access
+                    {
+                        let state = handle.state::<Mutex<AppState>>();
+                        if let Ok(mut app_state) = state.lock() {
+                            app_state.latest_probe_results.insert(plugin_id.clone(), output.clone());
+                        }
+                    }
+                    
                     let _ = handle.emit("probe:result", ProbeResult { batch_id: bid, output });
                 }
                 Err(_) => {
@@ -189,6 +198,8 @@ async fn start_probe_batch(
                         batch_id: completion_bid,
                     },
                 );
+                // Refresh tray menu with new data
+                let _ = tray::update_tray_menu(&completion_handle);
             }
         });
     }
@@ -257,11 +268,12 @@ pub fn run() {
     let runtime = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
     let _guard = runtime.enter();
 
-    tauri::Builder::default()
+    #[cfg_attr(not(target_os = "macos"), allow(unused_mut))]
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_aptabase::Builder::new("A-US-6435241436").build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())
-        .plugin(tauri_nspanel::init())
+        .plugin(tauri_plugin_os::init())
         .plugin(
             tauri_plugin_log::Builder::new()
                 .targets([
@@ -282,8 +294,16 @@ pub fn run() {
             hide_panel,
             start_probe_batch,
             list_plugins,
-            get_log_path
-        ])
+            get_log_path,
+            tray::refresh_tray_menu
+        ]);
+
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.plugin(tauri_nspanel::init());
+    }
+
+    builder
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
@@ -310,6 +330,7 @@ pub fn run() {
                 plugins,
                 app_data_dir,
                 app_version: app.package_info().version.to_string(),
+                latest_probe_results: std::collections::HashMap::new(),
             }));
 
             tray::create(app.handle())?;

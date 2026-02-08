@@ -3,16 +3,17 @@ import { invoke, isTauri } from "@tauri-apps/api/core"
 import { listen } from "@tauri-apps/api/event"
 import { getCurrentWindow, PhysicalSize, currentMonitor } from "@tauri-apps/api/window"
 import { getVersion } from "@tauri-apps/api/app"
-import { resolveResource } from "@tauri-apps/api/path"
 import { TrayIcon } from "@tauri-apps/api/tray"
+import { platform } from "@tauri-apps/plugin-os"
 import { SideNav, type ActiveView } from "@/components/side-nav"
 import { PanelFooter } from "@/components/panel-footer"
 import { OverviewPage } from "@/pages/overview"
 import { ProviderDetailPage } from "@/pages/provider-detail"
 import { SettingsPage } from "@/pages/settings"
 import type { PluginMeta, PluginOutput } from "@/lib/plugin-types"
-import { getTrayIconSizePx, renderTrayBarsIcon } from "@/lib/tray-bars-icon"
-import { getTrayPrimaryBars } from "@/lib/tray-primary-progress"
+// Tray icon updates disabled - backend handles it
+// import { getTrayIconSizePx, renderTrayBarsIcon } from "@/lib/tray-bars-icon"
+// import { getTrayPrimaryBars } from "@/lib/tray-primary-progress"
 import { useProbeEvents } from "@/hooks/use-probe-events"
 import { useAppUpdate } from "@/hooks/use-app-update"
 import {
@@ -74,6 +75,7 @@ function App() {
   const [themeMode, setThemeMode] = useState<ThemeMode>(DEFAULT_THEME_MODE)
   const [displayMode, setDisplayMode] = useState<DisplayMode>(DEFAULT_DISPLAY_MODE)
   const [trayIconStyle, setTrayIconStyle] = useState<TrayIconStyle>(DEFAULT_TRAY_ICON_STYLE)
+  const [isWindows, setIsWindows] = useState(false)
   const [trayShowPercentage, setTrayShowPercentage] = useState(DEFAULT_TRAY_SHOW_PERCENTAGE)
   const [maxPanelHeightPx, setMaxPanelHeightPx] = useState<number | null>(null)
   const maxPanelHeightPxRef = useRef<number | null>(null)
@@ -82,11 +84,8 @@ function App() {
   const { updateStatus, triggerInstall } = useAppUpdate()
   const [showAbout, setShowAbout] = useState(false)
 
+  // Tray icon managed by backend - no frontend refs needed
   const trayRef = useRef<TrayIcon | null>(null)
-  const trayGaugeIconPathRef = useRef<string | null>(null)
-  const trayUpdateTimerRef = useRef<number | null>(null)
-  const trayUpdatePendingRef = useRef(false)
-  const [trayReady, setTrayReady] = useState(false)
 
   // Store state in refs so scheduleTrayIconUpdate can read current values without recreating the callback
   const pluginsMetaRef = useRef(pluginsMeta)
@@ -102,112 +101,19 @@ function App() {
   useEffect(() => { trayIconStyleRef.current = trayIconStyle }, [trayIconStyle])
   useEffect(() => { trayShowPercentageRef.current = trayShowPercentage }, [trayShowPercentage])
 
-  // Fetch app version on mount
+  // Fetch app version and detect platform on mount
   useEffect(() => {
     getVersion().then(setAppVersion)
-  }, [])
-
-  // Stable callback that reads from refs - never recreated, so debounce works correctly
-  const scheduleTrayIconUpdate = useCallback((_reason: "probe" | "settings" | "init", delayMs = 0) => {
-    if (trayUpdateTimerRef.current !== null) {
-      window.clearTimeout(trayUpdateTimerRef.current)
-      trayUpdateTimerRef.current = null
+    // Detect if Windows for arrow positioning
+    try {
+      const p = platform()
+      setIsWindows(p === 'windows')
+    } catch {
+      setIsWindows(false)
     }
-
-    trayUpdateTimerRef.current = window.setTimeout(() => {
-      trayUpdateTimerRef.current = null
-      if (trayUpdatePendingRef.current) return
-      trayUpdatePendingRef.current = true
-
-      const tray = trayRef.current
-      if (!tray) {
-        trayUpdatePendingRef.current = false
-        return
-      }
-
-      const style = trayIconStyleRef.current
-      const maxBars = style === "bars" ? 4 : 1
-      const bars = getTrayPrimaryBars({
-        pluginsMeta: pluginsMetaRef.current,
-        pluginSettings: pluginSettingsRef.current,
-        pluginStates: pluginStatesRef.current,
-        maxBars,
-        displayMode: displayModeRef.current,
-      })
-
-      // 0 bars: revert to the packaged gauge tray icon.
-      if (bars.length === 0) {
-        const gaugePath = trayGaugeIconPathRef.current
-        if (gaugePath) {
-          Promise.all([
-            tray.setIcon(gaugePath),
-            tray.setIconAsTemplate(true),
-          ])
-            .catch((e) => {
-              console.error("Failed to restore tray gauge icon:", e)
-            })
-            .finally(() => {
-              trayUpdatePendingRef.current = false
-            })
-        } else {
-          trayUpdatePendingRef.current = false
-        }
-        return
-      }
-
-      const percentageMandatory = isTrayPercentageMandatory(style)
-
-      let percentText: string | undefined
-      if (percentageMandatory || trayShowPercentageRef.current) {
-        const firstFraction = bars[0]?.fraction
-        if (typeof firstFraction === "number" && Number.isFinite(firstFraction)) {
-          const clamped = Math.max(0, Math.min(1, firstFraction))
-          const rounded = Math.round(clamped * 100)
-          percentText = `${rounded}%`
-        }
-      }
-
-      if (style === "textOnly" && !percentText) {
-        const gaugePath = trayGaugeIconPathRef.current
-        if (gaugePath) {
-          Promise.all([
-            tray.setIcon(gaugePath),
-            tray.setIconAsTemplate(true),
-          ])
-            .catch((e) => {
-              console.error("Failed to restore tray gauge icon:", e)
-            })
-            .finally(() => {
-              trayUpdatePendingRef.current = false
-            })
-        } else {
-          trayUpdatePendingRef.current = false
-        }
-        return
-      }
-
-      const sizePx = getTrayIconSizePx(window.devicePixelRatio)
-      const firstProviderId = bars[0]?.id
-      const providerIconUrl =
-        style === "provider"
-          ? pluginsMetaRef.current.find((plugin) => plugin.id === firstProviderId)?.iconUrl
-          : undefined
-
-      renderTrayBarsIcon({ bars, sizePx, style, percentText, providerIconUrl })
-        .then(async (img) => {
-          await tray.setIcon(img)
-          await tray.setIconAsTemplate(true)
-        })
-        .catch((e) => {
-          console.error("Failed to update tray icon:", e)
-        })
-        .finally(() => {
-          trayUpdatePendingRef.current = false
-        })
-    }, delayMs)
   }, [])
 
-  // Initialize tray handle once (separate from tray updates)
+  // Initialize tray handle once - just get reference, don't update icon
   const trayInitializedRef = useRef(false)
   useEffect(() => {
     if (trayInitializedRef.current) return
@@ -218,12 +124,6 @@ function App() {
         if (cancelled) return
         trayRef.current = tray
         trayInitializedRef.current = true
-        setTrayReady(true)
-        try {
-          trayGaugeIconPathRef.current = await resolveResource("icons/tray-icon.png")
-        } catch (e) {
-          console.error("Failed to resolve tray gauge icon resource:", e)
-        }
       } catch (e) {
         console.error("Failed to load tray icon handle:", e)
       }
@@ -233,14 +133,13 @@ function App() {
     }
   }, [])
 
-  // Trigger tray update once tray + plugin metadata/settings are available.
-  // This prevents missing the first paint if probe results arrive before the tray handle resolves.
-  useEffect(() => {
-    if (!trayReady) return
-    if (!pluginSettings) return
-    if (pluginsMeta.length === 0) return
-    scheduleTrayIconUpdate("init", 0)
-  }, [pluginsMeta.length, pluginSettings, scheduleTrayIconUpdate, trayReady])
+  // Tray icon updates disabled - backend sets icon once on startup
+  const scheduleTrayIconUpdate = useCallback((_reason: "probe" | "settings" | "init", _delayMs = 0) => {
+    // Icon updates disabled to prevent frontend from overriding backend icon
+  }, [])
+
+  // Don't update tray icon on init - backend already set the correct icon
+  // Only update when we have actual probe results (handled by handleProbeResult)
 
 
   const displayPlugins = useMemo(() => {
@@ -827,11 +726,16 @@ function App() {
   }
 
   return (
-    <div ref={containerRef} className="flex flex-col items-center p-6 pt-1.5 bg-transparent">
-      <div className="tray-arrow" />
+    <div ref={containerRef} className="flex flex-col items-center justify-end min-h-[500px] w-full p-6 pt-1.5 bg-transparent">
+      {/* macOS: Arrow at top pointing up | Windows: Arrow at bottom pointing down */}
+      {!isWindows && <div className="tray-arrow" />}
       <div
-        className="relative bg-card rounded-xl overflow-hidden select-none w-full border shadow-lg flex flex-col"
-        style={maxPanelHeightPx ? { maxHeight: `${maxPanelHeightPx - ARROW_OVERHEAD_PX}px` } : undefined}
+        className="relative bg-card rounded-xl overflow-hidden select-none w-full flex flex-col"
+        style={{ 
+          maxHeight: maxPanelHeightPx ? `${maxPanelHeightPx - ARROW_OVERHEAD_PX}px` : undefined,
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+          border: '1px solid rgba(0,0,0,0.08)'
+        }}
       >
         <div className="flex flex-1 min-h-0 flex-row">
           <SideNav
@@ -858,6 +762,8 @@ function App() {
           </div>
         </div>
       </div>
+      {/* Windows: Arrow at bottom pointing down toward taskbar */}
+      {isWindows && <div className="tray-arrow-down" />}
     </div>
   );
 }
