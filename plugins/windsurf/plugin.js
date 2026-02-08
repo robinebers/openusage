@@ -190,7 +190,7 @@
     var flexTotal = ps.availableFlexCredits
     var flexUsed = ps.usedFlexCredits || 0
     if (typeof flexTotal === "number" && flexTotal > 0) {
-      var xl = creditLine(ctx, "Flex credits", flexUsed / 100, flexTotal / 100, planEnd, periodMs)
+      var xl = creditLine(ctx, "Flex credits", flexUsed / 100, flexTotal / 100, null, null)
       if (xl) lines.push(xl)
     }
 

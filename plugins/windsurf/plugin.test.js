@@ -103,6 +103,24 @@ describe("windsurf plugin", () => {
     expect(flex).toBeTruthy()
     expect(flex.used).toBe(1755.5)     // 175550 / 100
     expect(flex.limit).toBe(26750)     // 2675000 / 100
+    expect(flex.resetsAt).toBeUndefined()
+    expect(flex.periodDurationMs).toBeUndefined()
+  })
+
+  it("flex credits have no billing cycle (non-renewing)", async () => {
+    const ctx = makeCtx()
+    setupLsMock(ctx, makeDiscovery(), "sk-ws-01-test", makeLsResponse())
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    const prompt = result.lines.find((l) => l.label === "Prompt credits")
+    expect(prompt.resetsAt).toBe("2026-02-18T09:07:17Z")
+    expect(prompt.periodDurationMs).toBeGreaterThan(0)
+
+    const flex = result.lines.find((l) => l.label === "Flex credits")
+    expect(flex.resetsAt).toBeUndefined()
+    expect(flex.periodDurationMs).toBeUndefined()
   })
 
   it("skips credit lines with negative available (unlimited)", async () => {
