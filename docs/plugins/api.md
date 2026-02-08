@@ -58,12 +58,35 @@ ctx.host.log.error("API request failed: " + error.message)
 host.fs.exists(path: string): boolean
 host.fs.readText(path: string): string   // Throws on error
 host.fs.writeText(path: string, content: string): void  // Throws on error
+host.fs.which(name: string): string | null
+host.fs.realpath(path: string): string | null
 ```
 
 ### Path Expansion
 
 - `~` expands to the user's home directory
 - `~/foo` expands to `$HOME/foo`
+
+### `host.fs.which(name)`
+
+Searches `PATH` for an executable by name. Returns the fully resolved (symlinks followed) absolute path, or `null` if not found.
+
+```javascript
+const geminiPath = ctx.host.fs.which("gemini")
+// e.g. "/opt/homebrew/opt/gemini-cli/libexec/bin/gemini"
+```
+
+- Only bare names are accepted (no `/` or `\`)
+- Symlinks are resolved automatically via `realpath`
+
+### `host.fs.realpath(path)`
+
+Resolves symlinks and returns the canonical absolute path, or `null` if the path doesn't exist.
+
+```javascript
+const resolved = ctx.host.fs.realpath("/usr/local/bin/gemini")
+// e.g. "/opt/homebrew/opt/gemini-cli/libexec/bin/gemini"
+```
 
 ### Error Handling
 

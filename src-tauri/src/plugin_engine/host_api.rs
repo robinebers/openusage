@@ -1,7 +1,7 @@
 use rquickjs::{Ctx, Exception, Function, Object};
 use std::path::PathBuf;
 
-const WHITELISTED_ENV_VARS: [&str; 1] = ["CODEX_HOME"];
+const WHITELISTED_ENV_VARS: [&str; 3] = ["CODEX_HOME", "GEMINI_OAUTH2_JS_PATH", "GEMINI_CLI_PATH"];
 
 /// Redact sensitive value to first4...last4 format (UTF-8 safe)
 fn redact_value(value: &str) -> String {
@@ -213,8 +213,43 @@ fn inject_fs<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
         )?,
     )?;
 
+    fs_obj.set(
+        "which",
+        Function::new(ctx.clone(), move |name: String| -> Option<String> {
+            which_binary(&name)
+        })?,
+    )?;
+
+    fs_obj.set(
+        "realpath",
+        Function::new(ctx.clone(), move |path: String| -> Option<String> {
+            let expanded = expand_path(&path);
+            std::fs::canonicalize(&expanded)
+                .ok()
+                .map(|p| p.to_string_lossy().to_string())
+        })?,
+    )?;
+
     host.set("fs", fs_obj)?;
     Ok(())
+}
+
+/// Search PATH for an executable by name and return its canonicalized absolute path.
+fn which_binary(name: &str) -> Option<String> {
+    if name.is_empty() || name.contains('/') || name.contains('\\') {
+        return None;
+    }
+    let path_var = std::env::var("PATH").ok()?;
+    for dir in std::env::split_paths(&path_var) {
+        let candidate = dir.join(name);
+        if candidate.is_file() {
+            // Return the canonicalized (symlink-resolved) path
+            return std::fs::canonicalize(&candidate)
+                .ok()
+                .map(|p| p.to_string_lossy().to_string());
+        }
+    }
+    None
 }
 
 fn inject_env<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
@@ -1211,6 +1246,8 @@ fn iso_now() -> String {
 }
 
 fn expand_path(path: &str) -> String {
+    // Expand ~-prefixed paths to the user's home directory
+    // This is used by all host.fs.* methods
     if path == "~" {
         if let Some(home) = dirs::home_dir() {
             return home.to_string_lossy().to_string();
@@ -1228,6 +1265,44 @@ fn expand_path(path: &str) -> String {
 mod tests {
     use super::*;
     use rquickjs::{Context, Function, Object, Runtime};
+
+    #[test]
+    fn which_binary_finds_common_executables() {
+        // "ls" should exist on all unix systems
+        let result = which_binary("ls");
+        assert!(result.is_some(), "which_binary should find ls");
+        let path = result.unwrap();
+        assert!(path.starts_with('/'), "should return absolute path, got: {}", path);
+    }
+
+    #[test]
+    fn which_binary_returns_none_for_missing() {
+        let result = which_binary("__openusage_nonexistent_binary_xyz__");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn which_binary_rejects_paths() {
+        assert!(which_binary("/usr/bin/ls").is_none(), "should reject absolute paths");
+        assert!(which_binary("./ls").is_none(), "should reject relative paths");
+        assert!(which_binary("").is_none(), "should reject empty string");
+    }
+
+    #[test]
+    fn fs_api_exposes_which_and_realpath() {
+        let rt = Runtime::new().expect("runtime");
+        let ctx = Context::full(&rt).expect("context");
+        ctx.with(|ctx| {
+            let app_data = std::env::temp_dir();
+            inject_host_api(&ctx, "test", &app_data, "0.0.0").expect("inject host api");
+            let globals = ctx.globals();
+            let probe_ctx: Object = globals.get("__openusage_ctx").expect("probe ctx");
+            let host: Object = probe_ctx.get("host").expect("host");
+            let fs: Object = host.get("fs").expect("fs");
+            let _which: Function = fs.get("which").expect("which should exist on fs");
+            let _realpath: Function = fs.get("realpath").expect("realpath should exist on fs");
+        });
+    }
 
     #[test]
     fn keychain_api_exposes_write() {

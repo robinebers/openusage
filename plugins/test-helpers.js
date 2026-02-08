@@ -16,6 +16,8 @@ export const makeCtx = () => {
         exists: (path) => files.has(path),
         readText: (path) => files.get(path),
         writeText: vi.fn((path, text) => files.set(path, text)),
+        which: vi.fn(() => null),
+        realpath: vi.fn((path) => path),
       },
       env: {
         get: vi.fn(() => null),

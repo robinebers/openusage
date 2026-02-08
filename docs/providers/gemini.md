@@ -7,7 +7,7 @@ No browser cookies required.
 
 - `~/.gemini/settings.json` for auth type.
 - `~/.gemini/oauth_creds.json` for OAuth tokens.
-- OAuth client ID/secret extracted from Gemini CLI `oauth2.js`.
+- OAuth client ID/secret are public constants from the [Gemini CLI source](https://github.com/google-gemini/gemini-cli/blob/main/packages/core/src/code_assist/oauth2.ts).
 
 ## Supported auth modes
 

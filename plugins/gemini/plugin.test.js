@@ -3,7 +3,6 @@ import { makeCtx } from "../test-helpers.js"
 
 const SETTINGS_PATH = "~/.gemini/settings.json"
 const CREDS_PATH = "~/.gemini/oauth_creds.json"
-const OAUTH2_PATH = "~/.bun/install/global/node_modules/@google/gemini-cli-core/dist/src/code_assist/oauth2.js"
 
 const LOAD_CODE_ASSIST_URL = "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist"
 const QUOTA_URL = "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota"
@@ -64,11 +63,6 @@ describe("gemini plugin", () => {
         id_token: makeJwt({ email: "me@example.com" }),
         expiry_date: nowMs - 1000,
       })
-    )
-
-    ctx.host.fs.writeText(
-      OAUTH2_PATH,
-      "const OAUTH_CLIENT_ID='client-id'; const OAUTH_CLIENT_SECRET='client-secret';"
     )
 
     ctx.host.http.request.mockImplementation((opts) => {
@@ -201,11 +195,6 @@ describe("gemini plugin", () => {
         expiry_date: nowMs + 3600_000,
       })
     )
-    ctx.host.fs.writeText(
-      OAUTH2_PATH,
-      "const OAUTH_CLIENT_ID='client-id'; const OAUTH_CLIENT_SECRET='client-secret';"
-    )
-
     let loadCodeAssistCalls = 0
     ctx.host.http.request.mockImplementation((opts) => {
       const url = String(opts.url)
@@ -259,11 +248,6 @@ describe("gemini plugin", () => {
         expiry_date: nowMs + 3600_000,
       })
     )
-    ctx.host.fs.writeText(
-      OAUTH2_PATH,
-      "const OAUTH_CLIENT_ID='client-id'; const OAUTH_CLIENT_SECRET='client-secret';"
-    )
-
     let loadCodeAssistCalls = 0
     ctx.host.http.request.mockImplementation((opts) => {
       const url = String(opts.url)
@@ -299,11 +283,6 @@ describe("gemini plugin", () => {
         expiry_date: nowMs + 3600_000,
       })
     )
-    ctx.host.fs.writeText(
-      OAUTH2_PATH,
-      "const OAUTH_CLIENT_ID='client-id'; const OAUTH_CLIENT_SECRET='client-secret';"
-    )
-
     let quotaCalls = 0
     ctx.host.http.request.mockImplementation((opts) => {
       const url = String(opts.url)
