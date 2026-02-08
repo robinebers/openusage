@@ -4,6 +4,21 @@
 
 Windsurf and [Antigravity](antigravity.md) share the same Codeium language server binary and Connect-RPC protocol. The discovery, port probing, and RPC endpoints are virtually identical — the key differences are authentication (Windsurf requires an API key) and the usage model (credits vs fractions).
 
+## Variants
+
+The plugin supports two Windsurf variants, probed in this order:
+
+| Variant | App | Bundle ID | `--ide_name` | App Support dir |
+|---|---|---|---|---|
+| **Windsurf** | `Windsurf.app` | `com.exafunction.windsurf` | `windsurf` | `~/Library/Application Support/Windsurf/` |
+| **Windsurf Next** | `Windsurf - Next.app` | `com.exafunction.windsurfNext` | `windsurf-next` | `~/Library/Application Support/Windsurf - Next/` |
+
+Both use the same Codeium language server binary (`language_server_macos_arm`), same Connect-RPC service, same CSRF auth, and same `GetUserStatus` RPC. They differ only in:
+
+- **Process marker**: `windsurf` vs `windsurf-next` (matched via `--ide_name` exact value)
+- **SQLite path**: `Windsurf/User/globalStorage/state.vscdb` vs `Windsurf - Next/User/globalStorage/state.vscdb`
+- **ideName in metadata**: `windsurf` vs `windsurf-next`
+
 ## Overview
 
 - **Vendor:** Codeium (Windsurf)
@@ -17,12 +32,13 @@ Windsurf and [Antigravity](antigravity.md) share the same Codeium language serve
 
 ## Discovery
 
-Same process as [Antigravity](antigravity.md) — same binary, same flags. The distinguishing marker is `windsurf` in the process args.
+Same process as [Antigravity](antigravity.md) — same binary, same flags. The distinguishing marker is the `--ide_name` flag value in the process args.
 
 ```bash
 # 1. Find process and extract CSRF token + version
-ps -ax -o pid=,command= | grep 'language_server_macos.*windsurf'
-# Match: --windsurf_version in args  OR  path contains /windsurf/
+ps -ax -o pid=,command= | grep 'language_server_macos'
+# Windsurf:      --ide_name windsurf
+# Windsurf Next: --ide_name windsurf-next
 # Extract: --csrf_token <token>
 # Extract: --windsurf_version <version>
 # Extract: --extension_server_port <port>  (HTTP fallback)
@@ -33,8 +49,12 @@ lsof -nP -iTCP -sTCP:LISTEN -a -p <pid>
 # 3. Probe each port to find the Connect-RPC endpoint
 POST https://127.0.0.1:<port>/.../GetUnleashData  → any response wins
 
-# 4. Get API key from SQLite
+# 4. Get API key from SQLite (path depends on variant)
+# Windsurf:
 sqlite3 ~/Library/Application\ Support/Windsurf/User/globalStorage/state.vscdb \
+  "SELECT value FROM ItemTable WHERE key = 'windsurfAuthStatus'"
+# Windsurf Next:
+sqlite3 ~/Library/Application\ Support/Windsurf\ -\ Next/User/globalStorage/state.vscdb \
   "SELECT value FROM ItemTable WHERE key = 'windsurfAuthStatus'"
 # → JSON: { apiKey: "sk-ws-01-...", ... }
 ```
@@ -73,6 +93,8 @@ POST http://127.0.0.1:{port}/exa.language_server_pb.LanguageServerService/GetUse
   }
 }
 ```
+
+For Windsurf Next, use `"ideName": "windsurf-next"` and `"extensionName": "windsurf-next"`.
 
 Unlike [Antigravity](antigravity.md), Windsurf **requires** `metadata.apiKey`. The LS uses it to authenticate with the cloud backend internally. Antigravity authenticates via the Google OAuth session instead.
 
@@ -123,7 +145,12 @@ Both use the same Codeium language server binary, same Connect-RPC service, same
 
 ## Token Location
 
-SQLite database at `~/Library/Application Support/Windsurf/User/globalStorage/state.vscdb`
+SQLite database — path depends on variant:
+
+| Variant | Path |
+|---|---|
+| Windsurf | `~/Library/Application Support/Windsurf/User/globalStorage/state.vscdb` |
+| Windsurf Next | `~/Library/Application Support/Windsurf - Next/User/globalStorage/state.vscdb` |
 
 | Key | Value |
 |---|---|
@@ -131,9 +158,10 @@ SQLite database at `~/Library/Application Support/Windsurf/User/globalStorage/st
 
 ## Plugin Strategy
 
-1. Discover LS process via `ctx.host.ls.discover()` (ps + lsof)
-2. Read API key from SQLite (`windsurfAuthStatus`)
-3. Probe ports with `GetUnleashData` to find the Connect-RPC endpoint
-4. Call `GetUserStatus` with `apiKey` in metadata
-5. Build prompt + flex credit lines with billing cycle pacing (÷100 for display)
-6. If LS not running: error "Start Windsurf and try again."
+1. Try each variant in order: Windsurf → Windsurf Next
+2. Discover LS process via `ctx.host.ls.discover()` (ps + lsof) with variant-specific marker
+3. Read API key from SQLite (`windsurfAuthStatus`) at variant-specific path
+4. Probe ports with `GetUnleashData` to find the Connect-RPC endpoint
+5. Call `GetUserStatus` with `apiKey` and variant-specific `ideName` in metadata
+6. Build prompt + flex credit lines with billing cycle pacing (÷100 for display)
+7. If no variant's LS is running: error "Start Windsurf and try again."
