@@ -193,6 +193,131 @@ describe("cursor plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Usage response invalid")
   })
 
+  it("handles enterprise account with request-based usage", async () => {
+    const ctx = makeCtx()
+
+    // Build a JWT with a sub claim containing a user ID
+    const jwtPayload = Buffer.from(
+      JSON.stringify({ sub: "google-oauth2|user_abc123", exp: 9999999999 }),
+      "utf8"
+    )
+      .toString("base64")
+      .replace(/=+$/g, "")
+    const accessToken = `a.${jwtPayload}.c`
+
+    ctx.host.sqlite.query.mockReturnValue(
+      JSON.stringify([{ value: accessToken }])
+    )
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("GetCurrentPeriodUsage")) {
+        // Enterprise returns no enabled/planUsage
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            billingCycleStart: "1770539602363",
+            billingCycleEnd: "1770539602363",
+            displayThreshold: 100,
+          }),
+        }
+      }
+      if (String(opts.url).includes("GetPlanInfo")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            planInfo: { planName: "Enterprise", price: "Custom" },
+          }),
+        }
+      }
+      if (String(opts.url).includes("cursor.com/api/usage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            "gpt-4": {
+              numRequests: 422,
+              numRequestsTotal: 422,
+              numTokens: 171664819,
+              maxRequestUsage: 500,
+              maxTokenUsage: null,
+            },
+            startOfMonth: "2026-02-01T06:12:57.000Z",
+          }),
+        }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.plan).toBe("Enterprise")
+    const reqLine = result.lines.find((l) => l.label === "Included requests")
+    expect(reqLine).toBeTruthy()
+    expect(reqLine.used).toBe(422)
+    expect(reqLine.limit).toBe(500)
+    expect(reqLine.format).toEqual({ kind: "count", suffix: "requests" })
+  })
+
+  it("throws when enterprise REST usage API fails", async () => {
+    const ctx = makeCtx()
+
+    const jwtPayload = Buffer.from(
+      JSON.stringify({ sub: "google-oauth2|user_abc123", exp: 9999999999 }),
+      "utf8"
+    )
+      .toString("base64")
+      .replace(/=+$/g, "")
+    const accessToken = `a.${jwtPayload}.c`
+
+    ctx.host.sqlite.query.mockReturnValue(
+      JSON.stringify([{ value: accessToken }])
+    )
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            billingCycleStart: "1770539602363",
+            billingCycleEnd: "1770539602363",
+          }),
+        }
+      }
+      if (String(opts.url).includes("GetPlanInfo")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            planInfo: { planName: "Enterprise" },
+          }),
+        }
+      }
+      if (String(opts.url).includes("cursor.com/api/usage")) {
+        return { status: 500, bodyText: "" }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Enterprise usage data unavailable")
+  })
+
+  it("still throws no subscription for non-enterprise accounts without planUsage", async () => {
+    const ctx = makeCtx()
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: "token" }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({ enabled: false }),
+        }
+      }
+      if (String(opts.url).includes("GetPlanInfo")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({ planInfo: { planName: "Pro" } }),
+        }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("No active Cursor subscription.")
+  })
+
   it("handles plan fetch failure gracefully", async () => {
     const ctx = makeCtx()
     ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: "token" }]))

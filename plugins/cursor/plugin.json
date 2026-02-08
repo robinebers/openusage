@@ -9,6 +9,7 @@
   "lines": [
     { "type": "progress", "label": "Credits", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Plan usage", "scope": "overview", "primaryOrder": 2 },
+    { "type": "progress", "label": "Included requests", "scope": "overview", "primaryOrder": 3 },
     { "type": "progress", "label": "On-demand", "scope": "detail" }
   ]
 }
