@@ -6,13 +6,14 @@ interface OverviewPageProps {
   plugins: PluginDisplayState[]
   onRetryPlugin?: (pluginId: string) => void
   displayMode: DisplayMode
+  emptyMessage?: string
 }
 
-export function OverviewPage({ plugins, onRetryPlugin, displayMode }: OverviewPageProps) {
+export function OverviewPage({ plugins, onRetryPlugin, displayMode, emptyMessage }: OverviewPageProps) {
   if (plugins.length === 0) {
     return (
       <div className="text-center text-muted-foreground py-8">
-        No providers enabled
+        {emptyMessage ?? "No providers enabled"}
       </div>
     )
   }

@@ -685,6 +685,8 @@ describe("App", () => {
       iconUrl: "icon-a",
       lines: [{ type: "badge", label: "Error", text: "Bad" }],
     })
+    // Errored plugins are hidden from overview; navigate to detail view
+    await userEvent.click(await screen.findByRole("button", { name: "Alpha" }))
     const retry = await screen.findByRole("button", { name: "Retry" })
     await userEvent.click(retry)
     expect(state.startBatchMock).toHaveBeenCalledWith(["a"])
@@ -695,6 +697,18 @@ describe("App", () => {
     render(<App />)
     await screen.findByText("No providers enabled")
     expect(screen.getByText("Paused")).toBeInTheDocument()
+  })
+
+  it("shows no logged-in providers when all enabled plugins have errors", async () => {
+    render(<App />)
+    await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
+    state.probeHandlers?.onResult({
+      providerId: "a",
+      displayName: "Alpha",
+      iconUrl: "icon-a",
+      lines: [{ type: "badge", label: "Error", text: "Not logged in" }],
+    })
+    await screen.findByText("No logged-in providers")
   })
 
   it("handles plugin list load failure", async () => {
@@ -714,6 +728,8 @@ describe("App", () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
     state.startBatchMock.mockRejectedValueOnce(new Error("fail"))
     render(<App />)
+    // Errored plugins are hidden from overview; navigate to detail view to see error
+    await userEvent.click(await screen.findByRole("button", { name: "Alpha" }))
     const errors = await screen.findAllByText("Failed to start probe")
     expect(errors.length).toBeGreaterThan(0)
     errorSpy.mockRestore()
@@ -869,6 +885,9 @@ describe("App", () => {
       lines: [{ type: "badge", label: "Error", text: "Something failed" }],
     })
 
+    // Errored plugins are hidden from overview; navigate to detail view
+    await userEvent.click(await screen.findByRole("button", { name: "Alpha" }))
+
     // Make startBatch reject on next call (the retry)
     state.startBatchMock.mockRejectedValueOnce(new Error("retry failed"))
 
@@ -995,6 +1014,9 @@ describe("App", () => {
       lines: [{ type: "badge", label: "Error", text: "Network error" }],
     })
 
+    // Errored plugins are hidden from overview; navigate to detail view
+    await userEvent.click(await screen.findByRole("button", { name: "Alpha" }))
+
     const retryButton = await screen.findByRole("button", { name: "Retry" })
     await userEvent.click(retryButton)
 
@@ -1031,6 +1053,9 @@ describe("App", () => {
       iconUrl: "icon-a",
       lines: [{ type: "badge", label: "Error", text: "Network error" }],
     })
+
+    // Errored plugins are hidden from overview; navigate to detail view
+    await userEvent.click(await screen.findByRole("button", { name: "Alpha" }))
 
     // Find and prepare to click retry
     const retryButton = await screen.findByRole("button", { name: "Retry" })

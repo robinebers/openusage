@@ -258,6 +258,11 @@ function App() {
       .filter((plugin): plugin is { meta: PluginMeta } & PluginState => Boolean(plugin))
   }, [pluginSettings, pluginStates, pluginsMeta])
 
+  // Filter display plugins for overview: only show logged-in (or still loading) accounts
+  const overviewPlugins = useMemo(() => {
+    return displayPlugins.filter((plugin) => !plugin.error || plugin.loading)
+  }, [displayPlugins])
+
   // Derive enabled plugin list for nav icons
   const navPlugins = useMemo(() => {
     if (!pluginSettings) return []
@@ -787,9 +792,10 @@ function App() {
     if (activeView === "home") {
       return (
         <OverviewPage
-          plugins={displayPlugins}
+          plugins={overviewPlugins}
           onRetryPlugin={handleRetryPlugin}
           displayMode={displayMode}
+          emptyMessage={displayPlugins.length > 0 ? "No logged-in providers" : undefined}
         />
       )
     }
