@@ -30,7 +30,6 @@ pub struct PluginMeta {
     pub name: String,
     pub icon_url: String,
     pub brand_color: Option<String>,
-    pub icon_style: plugin_engine::manifest::IconStyle,
     pub lines: Vec<ManifestLineDto>,
     /// Ordered list of primary metric candidates (sorted by primaryOrder).
     /// Frontend picks the first one that exists in runtime data.
@@ -237,7 +236,6 @@ fn list_plugins(state: tauri::State<'_, Mutex<AppState>>) -> Vec<PluginMeta> {
                 name: plugin.manifest.name,
                 icon_url: plugin.icon_data_url,
                 brand_color: plugin.manifest.brand_color,
-                icon_style: plugin.manifest.icon_style,
                 lines: plugin
                     .manifest
                     .lines

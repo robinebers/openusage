@@ -468,7 +468,7 @@ fn error_line(message: String) -> MetricLine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plugin_engine::manifest::{IconStyle, LoadedPlugin, PluginManifest};
+    use crate::plugin_engine::manifest::{LoadedPlugin, PluginManifest};
     use serde_json::Value as JsonValue;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -483,7 +483,6 @@ mod tests {
                 entry: "plugin.js".to_string(),
                 icon: "icon.svg".to_string(),
                 brand_color: None,
-                icon_style: IconStyle::Mask,
                 lines: vec![],
             },
             plugin_dir: PathBuf::from("."),

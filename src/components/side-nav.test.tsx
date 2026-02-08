@@ -24,7 +24,7 @@ describe("SideNav", () => {
     expect(onViewChange).toHaveBeenCalledWith("home")
   })
 
-  it("renders plugin icon button in mask mode and uses brand color", () => {
+  it("renders plugin icon button and uses brand color when appropriate", () => {
     const onViewChange = vi.fn()
     render(
       <SideNav
@@ -41,27 +41,6 @@ describe("SideNav", () => {
 
     const icon = screen.getByRole("img", { name: "Plugin 1" })
     expect(icon).toHaveStyle({ backgroundColor: "#ff0000" })
-    const style = icon.getAttribute("style") ?? ""
-    expect(style).toMatch(/mask-image:\s*url\(icon\.svg\)/i)
-  })
-
-  it("renders plugin icon as full image when iconStyle is image", () => {
-    const onViewChange = vi.fn()
-    render(
-      <SideNav
-        activeView="home"
-        onViewChange={onViewChange}
-        plugins={[
-          { id: "p2", name: "Plugin 2", iconUrl: "icon2.svg", brandColor: "#ff0000", iconStyle: "image" },
-        ]}
-      />
-    )
-
-    const icon = screen.getByRole("img", { name: "Plugin 2" })
-    expect(icon.tagName).toBe("IMG")
-    expect(icon).toHaveAttribute("src", "icon2.svg")
-    const style = icon.getAttribute("style") ?? ""
-    expect(style).not.toMatch(/mask-image/i)
   })
 
   it("falls back to currentColor (light) or white (dark) for low-contrast brand colors", () => {

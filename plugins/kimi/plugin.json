@@ -6,7 +6,6 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#3B82F6",
-  "iconStyle": "image",
   "lines": [
     { "type": "progress", "label": "Session", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Weekly", "scope": "overview", "primaryOrder": 2 }

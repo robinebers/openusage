@@ -20,7 +20,6 @@ interface NavPlugin {
   name: string
   iconUrl: string
   brandColor?: string
-  iconStyle?: "mask" | "image"
 }
 
 interface SideNavProps {
@@ -78,39 +77,31 @@ export function SideNav({ activeView, onViewChange, plugins }: SideNavProps) {
       </NavButton>
 
       {/* Plugin icons */}
-      {plugins.map((plugin) => {
-        const iconStyle = plugin.iconStyle ?? "mask"
-
-        return (
-          <NavButton
-            key={plugin.id}
-            isActive={activeView === plugin.id}
-            onClick={() => onViewChange(plugin.id)}
+      {plugins.map((plugin) => (
+        <NavButton
+          key={plugin.id}
+          isActive={activeView === plugin.id}
+          onClick={() => onViewChange(plugin.id)}
+          aria-label={plugin.name}
+        >
+          <span
+            role="img"
             aria-label={plugin.name}
-          >
-            {iconStyle === "image" ? (
-              <img src={plugin.iconUrl} alt={plugin.name} className="size-6 object-contain" />
-            ) : (
-              <span
-                role="img"
-                aria-label={plugin.name}
-                className="size-6 inline-block"
-                style={{
-                  backgroundColor: getIconColor(plugin.brandColor, isDark),
-                  WebkitMaskImage: `url(${plugin.iconUrl})`,
-                  WebkitMaskSize: "contain",
-                  WebkitMaskRepeat: "no-repeat",
-                  WebkitMaskPosition: "center",
-                  maskImage: `url(${plugin.iconUrl})`,
-                  maskSize: "contain",
-                  maskRepeat: "no-repeat",
-                  maskPosition: "center",
-                }}
-              />
-            )}
-          </NavButton>
-        )
-      })}
+            className="size-6 inline-block"
+            style={{
+              backgroundColor: getIconColor(plugin.brandColor, isDark),
+              WebkitMaskImage: `url(${plugin.iconUrl})`,
+              WebkitMaskSize: "contain",
+              WebkitMaskRepeat: "no-repeat",
+              WebkitMaskPosition: "center",
+              maskImage: `url(${plugin.iconUrl})`,
+              maskSize: "contain",
+              maskRepeat: "no-repeat",
+              maskPosition: "center",
+            }}
+          />
+        </NavButton>
+      ))}
 
       {/* Spacer */}
       <div className="flex-1" />
