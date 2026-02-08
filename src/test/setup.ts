@@ -1,6 +1,11 @@
 import "@testing-library/jest-dom/vitest"
 import { cleanup } from "@testing-library/react"
-import { afterEach } from "vitest"
+import { afterEach, vi } from "vitest"
+
+// Mock @aptabase/tauri globally — it calls window.__TAURI_IPC__ which doesn't exist in jsdom
+vi.mock("@aptabase/tauri", () => ({
+  trackEvent: vi.fn(),
+}))
 
 afterEach(() => {
   cleanup()
