@@ -17,6 +17,7 @@
     "MODEL_GOOGLE_GEMINI_2_5_FLASH_LITE": true,
     "MODEL_GOOGLE_GEMINI_2_5_PRO": true,
     "MODEL_PLACEHOLDER_M19": true,
+    "MODEL_PLACEHOLDER_M9": true,
   }
   // --- Protobuf wire-format decoder ---
 
