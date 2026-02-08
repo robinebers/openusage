@@ -59,17 +59,51 @@
     return null;
   }
 
+  function decodeGhToken(ctx, raw) {
+    let token = raw;
+    if (
+      typeof token === "string" &&
+      token.indexOf("go-keyring-base64:") === 0
+    ) {
+      token = ctx.base64.decode(token.slice("go-keyring-base64:".length));
+    }
+    return token || null;
+  }
+
   function loadTokenFromGhCli(ctx) {
-    try {
-      const raw = ctx.host.keychain.readGenericPassword(GH_KEYCHAIN_SERVICE);
-      if (raw) {
-        let token = raw;
-        if (
-          typeof token === "string" &&
-          token.indexOf("go-keyring-base64:") === 0
-        ) {
-          token = ctx.base64.decode(token.slice("go-keyring-base64:".length));
+    // Try preferred account from config first
+    var config = readJson(ctx, ctx.app.pluginDataDir + "/config.json");
+    if (config && config.githubAccount) {
+      try {
+        var raw = ctx.host.keychain.readGenericPassword(
+          GH_KEYCHAIN_SERVICE,
+          config.githubAccount,
+        );
+        if (raw) {
+          var token = decodeGhToken(ctx, raw);
+          if (token) {
+            ctx.host.log.info(
+              "token loaded from gh CLI keychain (account: " +
+                config.githubAccount +
+                ")",
+            );
+            return { token: token, source: "gh-cli" };
+          }
         }
+      } catch (e) {
+        ctx.host.log.info(
+          "gh CLI keychain read for " +
+            config.githubAccount +
+            " failed: " +
+            String(e),
+        );
+      }
+    }
+    // Fall back to default (active) account
+    try {
+      var raw = ctx.host.keychain.readGenericPassword(GH_KEYCHAIN_SERVICE);
+      if (raw) {
+        var token = decodeGhToken(ctx, raw);
         if (token) {
           ctx.host.log.info("token loaded from gh CLI keychain");
           return { token: token, source: "gh-cli" };
@@ -90,8 +124,24 @@
     return null;
   }
 
+  function loadTokenFromEnv(ctx) {
+    if (ctx.host.env && typeof ctx.host.env.get === "function") {
+      try {
+        var envToken = ctx.host.env.get("GITHUB_TOKEN");
+        if (typeof envToken === "string" && envToken.trim()) {
+          ctx.host.log.info("token loaded from GITHUB_TOKEN env var");
+          return { token: envToken.trim(), source: "env" };
+        }
+      } catch (e) {
+        ctx.host.log.info("GITHUB_TOKEN env read failed: " + String(e));
+      }
+    }
+    return null;
+  }
+
   function loadToken(ctx) {
     return (
+      loadTokenFromEnv(ctx) ||
       loadTokenFromKeychain(ctx) ||
       loadTokenFromGhCli(ctx) ||
       loadTokenFromStateFile(ctx)

@@ -1,5 +1,7 @@
 (function () {
-  const CRED_PATH = "~/.kimi/credentials/kimi-code.json"
+  const CRED_PATHS = ["~/.kimi/credentials/kimi-code.json", "~/.kimi/kimi-code.json"]
+  const CRED_SAVE_PATH = "~/.kimi/kimi-code.json"
+  const KEYCHAIN_SERVICES = ["kimi-code", "oauth/kimi-code", "OpenUsage-kimi"]
   const USAGE_URL = "https://api.kimi.com/coding/v1/usages"
   const REFRESH_URL = "https://auth.kimi.com/api/oauth/token"
   const CLIENT_ID = "17e5f671-d194-4dfb-9706-5516cb48c098"
@@ -34,33 +36,105 @@
     return label || null
   }
 
-  function loadCredentials(ctx) {
-    if (!ctx.host.fs.exists(CRED_PATH)) {
-      ctx.host.log.warn("credentials file not found: " + CRED_PATH)
+  function normalizeCredentials(raw) {
+    if (!raw || typeof raw !== "object") return null
+
+    var accessToken =
+      typeof raw.access_token === "string" && raw.access_token.trim()
+        ? raw.access_token.trim()
+        : typeof raw.accessToken === "string" && raw.accessToken.trim()
+          ? raw.accessToken.trim()
+          : null
+
+    var refreshToken =
+      typeof raw.refresh_token === "string" && raw.refresh_token.trim()
+        ? raw.refresh_token.trim()
+        : typeof raw.refreshToken === "string" && raw.refreshToken.trim()
+          ? raw.refreshToken.trim()
+          : null
+
+    if (!accessToken && !refreshToken) return null
+
+    var creds = {}
+    if (accessToken) creds.access_token = accessToken
+    if (refreshToken) creds.refresh_token = refreshToken
+
+    var expiresAt = readNumber(raw.expires_at)
+    if (expiresAt === null) expiresAt = readNumber(raw.expiresAt)
+    if (expiresAt !== null) creds.expires_at = expiresAt
+
+    var scope =
+      typeof raw.scope === "string" && raw.scope.trim() ? raw.scope.trim() : null
+    if (scope) creds.scope = scope
+
+    var tokenType =
+      typeof raw.token_type === "string" && raw.token_type.trim()
+        ? raw.token_type.trim()
+        : typeof raw.tokenType === "string" && raw.tokenType.trim()
+          ? raw.tokenType.trim()
+          : null
+    if (tokenType) creds.token_type = tokenType
+
+    return creds
+  }
+
+  function loadCredentialsFromFile(ctx, path) {
+    if (!ctx.host.fs.exists(path)) {
       return null
     }
 
     try {
-      const text = ctx.host.fs.readText(CRED_PATH)
+      const text = ctx.host.fs.readText(path)
       const parsed = ctx.util.tryParseJson(text)
-      if (!parsed || typeof parsed !== "object") {
-        ctx.host.log.warn("credentials file is not valid json")
-        return null
-      }
-      if (!parsed.access_token && !parsed.refresh_token) {
-        ctx.host.log.warn("credentials missing access_token and refresh_token")
-        return null
-      }
-      return parsed
+      return normalizeCredentials(parsed)
     } catch (e) {
-      ctx.host.log.warn("credentials read failed: " + String(e))
+      ctx.host.log.warn("credentials read failed (" + path + "): " + String(e))
       return null
     }
   }
 
+  function loadCredentialsFromKeychain(ctx) {
+    if (!ctx.host.keychain || typeof ctx.host.keychain.readGenericPassword !== "function") {
+      return null
+    }
+
+    for (var i = 0; i < KEYCHAIN_SERVICES.length; i += 1) {
+      var service = KEYCHAIN_SERVICES[i]
+      try {
+        var raw = ctx.host.keychain.readGenericPassword(service)
+        if (typeof raw !== "string" || !raw.trim()) {
+          continue
+        }
+
+        var parsed = ctx.util.tryParseJson(raw)
+        var creds = normalizeCredentials(parsed)
+        if (creds) {
+          ctx.host.log.info("credentials loaded from keychain service " + service)
+          return creds
+        }
+      } catch (e) {
+        ctx.host.log.info("keychain read failed for " + service + ": " + String(e))
+      }
+    }
+
+    return null
+  }
+
+  function loadCredentials(ctx) {
+    for (var i = 0; i < CRED_PATHS.length; i += 1) {
+      var fromFile = loadCredentialsFromFile(ctx, CRED_PATHS[i])
+      if (fromFile) {
+        ctx.host.log.info("credentials loaded from file " + CRED_PATHS[i])
+        return fromFile
+      }
+    }
+
+    return loadCredentialsFromKeychain(ctx)
+  }
+
   function saveCredentials(ctx, creds) {
     try {
-      ctx.host.fs.writeText(CRED_PATH, JSON.stringify(creds))
+      ctx.host.fs.writeText(CRED_SAVE_PATH, JSON.stringify(creds))
     } catch (e) {
       ctx.host.log.warn("failed to persist credentials: " + String(e))
     }

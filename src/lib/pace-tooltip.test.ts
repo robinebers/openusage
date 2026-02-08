@@ -4,6 +4,7 @@ import { type PaceResult } from "@/lib/pace-status"
 import {
   buildPaceDetailText,
   formatCompactDuration,
+  getPaceStatusLabel,
   getPaceStatusText,
 } from "@/lib/pace-tooltip"
 
@@ -13,9 +14,15 @@ const nowMs = Date.parse("2026-02-02T12:00:00.000Z")
 
 describe("pace-tooltip", () => {
   it("maps pace status labels", () => {
-    expect(getPaceStatusText("ahead")).toBe("You're good")
+    expect(getPaceStatusText("ahead")).toBe("Behind pace")
     expect(getPaceStatusText("on-track")).toBe("On track")
-    expect(getPaceStatusText("behind")).toBe("Using fast")
+    expect(getPaceStatusText("behind")).toBe("Ahead of pace")
+  })
+
+  it("maps pace status labels for inline summary", () => {
+    expect(getPaceStatusLabel("ahead")).toBe("Behind")
+    expect(getPaceStatusLabel("on-track")).toBe("On track")
+    expect(getPaceStatusLabel("behind")).toBe("Ahead")
   })
 
   it("formats compact durations", () => {
@@ -46,7 +53,7 @@ describe("pace-tooltip", () => {
   })
 
   it("shows projected % used at reset for on-track (displayMode=used)", () => {
-    const paceResult: PaceResult = { status: "on-track", projectedUsage: 90 }
+    const paceResult: PaceResult = { status: "on-track", projectedUsage: 100 }
     const detail = buildPaceDetailText({
       paceResult,
       used: 45,
@@ -56,11 +63,11 @@ describe("pace-tooltip", () => {
       nowMs,
       displayMode: "used",
     })
-    expect(detail).toBe("90% used at reset")
+    expect(detail).toBe("100% used at reset")
   })
 
   it("shows projected % left at reset for on-track (displayMode=left)", () => {
-    const paceResult: PaceResult = { status: "on-track", projectedUsage: 90 }
+    const paceResult: PaceResult = { status: "on-track", projectedUsage: 100 }
     const detail = buildPaceDetailText({
       paceResult,
       used: 45,
@@ -70,7 +77,7 @@ describe("pace-tooltip", () => {
       nowMs,
       displayMode: "left",
     })
-    expect(detail).toBe("10% left at reset")
+    expect(detail).toBe("0% left at reset")
   })
 
   it("shows projected % for ahead (displayMode=used)", () => {
@@ -85,6 +92,21 @@ describe("pace-tooltip", () => {
       displayMode: "used",
     })
     expect(detail).toBe("60% used at reset")
+  })
+
+  it("shows reserve percent for ahead when enabled", () => {
+    const paceResult: PaceResult = { status: "ahead", projectedUsage: 60 }
+    const detail = buildPaceDetailText({
+      paceResult,
+      used: 30,
+      limit: 100,
+      periodDurationMs: ONE_DAY_MS,
+      resetsAtMs,
+      nowMs,
+      displayMode: "used",
+      showReservePercent: true,
+    })
+    expect(detail).toBe("20% in reserve")
   })
 
   it("shows projected % for ahead (displayMode=left)", () => {

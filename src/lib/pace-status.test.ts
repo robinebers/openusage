@@ -37,12 +37,26 @@ describe("pace-status", () => {
     expect(calculatePaceStatus(10, 100, resetsAtMs, periodDurationMs, resetsAtMs + 1)).toBeNull()
   })
 
-  it("returns null when less than 5% of the period has elapsed", () => {
+  it("returns null when less than 5% of a short period has elapsed", () => {
     const resetsAtMs = Date.parse("2026-02-03T00:00:00.000Z")
     const periodDurationMs = ONE_DAY_MS
     const periodStartMs = resetsAtMs - periodDurationMs
     const beforeThresholdNowMs = periodStartMs + Math.floor(periodDurationMs * 0.049)
     expect(calculatePaceStatus(10, 100, resetsAtMs, periodDurationMs, beforeThresholdNowMs)).toBeNull()
+  })
+
+  it("uses 1% threshold for long periods (>24h)", () => {
+    const THIRTY_DAYS_MS = 30 * ONE_DAY_MS
+    const resetsAtMs = Date.parse("2026-03-05T00:00:00.000Z")
+    const periodStartMs = resetsAtMs - THIRTY_DAYS_MS
+    // 0.5% elapsed = too early even for long periods
+    const tooEarlyMs = periodStartMs + Math.floor(THIRTY_DAYS_MS * 0.005)
+    expect(calculatePaceStatus(10, 100, resetsAtMs, THIRTY_DAYS_MS, tooEarlyMs)).toBeNull()
+    // 2% elapsed = enough for long periods (but would fail 5% threshold)
+    const earlyButOkMs = periodStartMs + Math.floor(THIRTY_DAYS_MS * 0.02)
+    const result = calculatePaceStatus(10, 100, resetsAtMs, THIRTY_DAYS_MS, earlyButOkMs)
+    expect(result).not.toBeNull()
+    expect(result!.status).toBe("behind") // 10 used in 2% → projected 500, way over 100
   })
 
   it("returns ahead for zero usage (skips 5% threshold)", () => {
@@ -69,10 +83,10 @@ describe("pace-status", () => {
     expect(result).toEqual({ status: "ahead", projectedUsage: 60 })
   })
 
-  it("classifies on-track", () => {
+  it("classifies on-track at the limit boundary", () => {
     const { resetsAtMs, nowMs } = midPeriodNowAndReset()
-    const result = calculatePaceStatus(45, 100, resetsAtMs, ONE_DAY_MS, nowMs)
-    expect(result).toEqual({ status: "on-track", projectedUsage: 90 })
+    const result = calculatePaceStatus(50, 100, resetsAtMs, ONE_DAY_MS, nowMs)
+    expect(result).toEqual({ status: "on-track", projectedUsage: 100 })
   })
 
   it("classifies behind", () => {

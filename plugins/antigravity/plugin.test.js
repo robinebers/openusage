@@ -334,4 +334,49 @@ describe("antigravity plugin", () => {
       { port: 10002, scheme: "https" },
     ])
   })
+
+  it("uses cached status when LS is not running", async () => {
+    const ctx = makeCtx()
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.fs.writeText(
+      ctx.app.pluginDataDir + "/last-status.json",
+      JSON.stringify({
+        plan: "Pro",
+        lines: [
+          {
+            type: "progress",
+            label: "Gemini 3 Pro",
+            used: 25,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: "2026-02-08T09:10:56Z",
+            periodDurationMs: 18000000,
+          },
+        ],
+      })
+    )
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.plan).toBe("Pro")
+    expect(result.lines).toHaveLength(1)
+    expect(result.lines[0].label).toBe("Gemini 3 Pro")
+  })
+
+  it("writes cache after successful live fetch", async () => {
+    const ctx = makeCtx()
+    const discovery = makeDiscovery()
+    const response = makeUserStatusResponse()
+    setupHttpMock(ctx, discovery, response)
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.length).toBeGreaterThan(0)
+
+    const cachedRaw = ctx.host.fs.readText(ctx.app.pluginDataDir + "/last-status.json")
+    const cached = JSON.parse(cachedRaw)
+    expect(cached.plan).toBe("Pro")
+    expect(Array.isArray(cached.lines)).toBe(true)
+    expect(cached.lines.length).toBeGreaterThan(0)
+  })
 })

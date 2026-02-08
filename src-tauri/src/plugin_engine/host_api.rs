@@ -1,7 +1,7 @@
 use rquickjs::{Ctx, Exception, Function, Object};
 use std::path::PathBuf;
 
-const WHITELISTED_ENV_VARS: [&str; 1] = ["CODEX_HOME"];
+const WHITELISTED_ENV_VARS: [&str; 4] = ["CODEX_HOME", "WARP_API_KEY", "WARP_TOKEN", "GITHUB_TOKEN"];
 
 /// Redact sensitive value to first4...last4 format (UTF-8 safe)
 fn redact_value(value: &str) -> String {
@@ -999,15 +999,22 @@ fn inject_keychain<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<
         "readGenericPassword",
         Function::new(
             ctx.clone(),
-            move |ctx_inner: Ctx<'_>, service: String| -> rquickjs::Result<String> {
+            move |ctx_inner: Ctx<'_>, service: String, account: rquickjs::function::Opt<String>| -> rquickjs::Result<String> {
                 if !cfg!(target_os = "macos") {
                     return Err(Exception::throw_message(
                         &ctx_inner,
                         "keychain API is only supported on macOS",
                     ));
                 }
+                let mut args = vec!["find-generic-password".to_string(), "-s".to_string(), service];
+                if let Some(acct) = account.0 {
+                    args.push("-a".to_string());
+                    args.push(acct);
+                }
+                args.push("-w".to_string());
+                let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
                 let output = std::process::Command::new("security")
-                    .args(["find-generic-password", "-s", &service, "-w"])
+                    .args(&args_ref)
                     .output()
                     .map_err(|e| {
                         Exception::throw_message(

@@ -1,5 +1,6 @@
 (function () {
   var LS_SERVICE = "exa.language_server_pb.LanguageServerService"
+  var CACHE_FILE = "last-status.json"
 
   // --- LS discovery ---
 
@@ -72,6 +73,44 @@
     return ctx.util.tryParseJson(resp.bodyText)
   }
 
+  function cachePath(ctx) {
+    return String(ctx.app.pluginDataDir || "").replace(/[\\/]+$/, "") + "/" + CACHE_FILE
+  }
+
+  function loadCachedStatus(ctx) {
+    var path = cachePath(ctx)
+    if (!ctx.host.fs.exists(path)) return null
+    try {
+      var parsed = ctx.util.tryParseJson(ctx.host.fs.readText(path))
+      if (!parsed || typeof parsed !== "object") return null
+      if (!Array.isArray(parsed.lines) || parsed.lines.length === 0) return null
+      ctx.host.log.info("using cached Antigravity status")
+      return {
+        plan: typeof parsed.plan === "string" ? parsed.plan : null,
+        lines: parsed.lines,
+      }
+    } catch (e) {
+      ctx.host.log.warn("cached status read failed: " + String(e))
+      return null
+    }
+  }
+
+  function saveCachedStatus(ctx, result) {
+    if (!result || typeof result !== "object" || !Array.isArray(result.lines)) return
+    try {
+      ctx.host.fs.writeText(
+        cachePath(ctx),
+        JSON.stringify({
+          plan: typeof result.plan === "string" ? result.plan : null,
+          lines: result.lines,
+          cachedAt: ctx.nowIso || null,
+        })
+      )
+    } catch (e) {
+      ctx.host.log.warn("cached status write failed: " + String(e))
+    }
+  }
+
   // --- Line builders ---
 
   function normalizeLabel(label) {
@@ -108,10 +147,18 @@
 
   function probe(ctx) {
     var discovery = discoverLs(ctx)
-    if (!discovery) throw "Start Antigravity and try again."
+    if (!discovery) {
+      var cachedNoLs = loadCachedStatus(ctx)
+      if (cachedNoLs) return cachedNoLs
+      throw "Start Antigravity and try again."
+    }
 
     var found = findWorkingPort(ctx, discovery)
-    if (!found) throw "Start Antigravity and try again."
+    if (!found) {
+      var cachedNoPort = loadCachedStatus(ctx)
+      if (cachedNoPort) return cachedNoPort
+      throw "Start Antigravity and try again."
+    }
 
     ctx.host.log.info("using LS at " + found.scheme + "://127.0.0.1:" + found.port)
 
@@ -188,9 +235,15 @@
       lines.push(modelLine(ctx, models[i].label, models[i].remainingFraction, models[i].resetTime))
     }
 
-    if (lines.length === 0) throw "No usage data available."
+    if (lines.length === 0) {
+      var cachedNoLines = loadCachedStatus(ctx)
+      if (cachedNoLines) return cachedNoLines
+      throw "No usage data available."
+    }
 
-    return { plan: plan, lines: lines }
+    var result = { plan: plan, lines: lines }
+    saveCachedStatus(ctx, result)
+    return result
   }
 
   globalThis.__openusage_plugin = { id: "antigravity", probe: probe }

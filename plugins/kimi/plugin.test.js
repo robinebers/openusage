@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { makeCtx } from "../test-helpers.js"
 
-const CRED_PATH = "~/.kimi/credentials/kimi-code.json"
+const CRED_LEGACY_PATH = "~/.kimi/credentials/kimi-code.json"
+const CRED_CURRENT_PATH = "~/.kimi/kimi-code.json"
 
 const loadPlugin = async () => {
   await import("./plugin.js")
@@ -23,7 +24,7 @@ describe("kimi plugin", () => {
   it("refreshes token and renders session + weekly usage", async () => {
     const ctx = makeCtx()
     ctx.host.fs.writeText(
-      CRED_PATH,
+      CRED_LEGACY_PATH,
       JSON.stringify({
         access_token: "old-token",
         refresh_token: "refresh-token",
@@ -80,7 +81,7 @@ describe("kimi plugin", () => {
     expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
     expect(result.lines.find((line) => line.label === "Weekly")).toBeTruthy()
 
-    const persisted = JSON.parse(ctx.host.fs.readText(CRED_PATH))
+    const persisted = JSON.parse(ctx.host.fs.readText(CRED_CURRENT_PATH))
     expect(persisted.access_token).toBe("new-token")
     expect(persisted.refresh_token).toBe("new-refresh")
   })
@@ -89,7 +90,7 @@ describe("kimi plugin", () => {
     const ctx = makeCtx()
     const nowSec = Math.floor(Date.now() / 1000)
     ctx.host.fs.writeText(
-      CRED_PATH,
+      CRED_LEGACY_PATH,
       JSON.stringify({
         access_token: "token",
         refresh_token: "refresh-token",
@@ -139,7 +140,7 @@ describe("kimi plugin", () => {
   it("throws session expired when refresh is unauthorized", async () => {
     const ctx = makeCtx()
     ctx.host.fs.writeText(
-      CRED_PATH,
+      CRED_LEGACY_PATH,
       JSON.stringify({
         access_token: "token",
         refresh_token: "refresh-token",
@@ -163,7 +164,7 @@ describe("kimi plugin", () => {
     const ctx = makeCtx()
     const nowSec = Math.floor(Date.now() / 1000)
     ctx.host.fs.writeText(
-      CRED_PATH,
+      CRED_LEGACY_PATH,
       JSON.stringify({
         access_token: "token",
         refresh_token: "refresh-token",
@@ -178,5 +179,38 @@ describe("kimi plugin", () => {
 
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Usage response invalid")
+  })
+
+  it("loads credentials from keychain when file is missing", async () => {
+    const ctx = makeCtx()
+    const nowSec = Math.floor(Date.now() / 1000)
+    ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
+      if (service === "kimi-code") {
+        return JSON.stringify({
+          access_token: "token-from-keychain",
+          refresh_token: "refresh-from-keychain",
+          expires_at: nowSec + 3600,
+        })
+      }
+      return ""
+    })
+
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        usage: { limit: "100", remaining: "80", resetTime: "2099-02-11T00:00:00Z" },
+        limits: [
+          {
+            window: { duration: 300, timeUnit: "TIME_UNIT_MINUTE" },
+            detail: { limit: "100", remaining: "90", resetTime: "2099-02-07T00:00:00Z" },
+          },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+    expect(result.lines.find((line) => line.label === "Weekly")).toBeTruthy()
   })
 })

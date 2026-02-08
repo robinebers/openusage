@@ -197,7 +197,7 @@ describe("ProviderCard", () => {
           {
             type: "progress",
             label: "On Track",
-            used: 45,
+            used: 50,
             limit: 100,
             format: { kind: "percent" },
             resetsAt: "2026-02-03T00:00:00.000Z",
@@ -215,12 +215,41 @@ describe("ProviderCard", () => {
         ]}
       />
     )
-    expect(screen.getByLabelText("You're good")).toBeInTheDocument()
+    expect(screen.getByLabelText("Behind pace")).toBeInTheDocument()
     expect(screen.getByLabelText("On track")).toBeInTheDocument()
-    expect(screen.getByLabelText("Using fast")).toBeInTheDocument()
-    expect(screen.getByText("60% used at reset")).toBeInTheDocument()
-    expect(screen.getByText("90% used at reset")).toBeInTheDocument()
+    expect(screen.getByLabelText("Ahead of pace")).toBeInTheDocument()
+    expect(screen.getByText("Pace: Behind · 20% in reserve")).toBeInTheDocument()
+    expect(screen.getByText("Pace: On track · 100% used at reset")).toBeInTheDocument()
+    expect(screen.getByText("Pace: Ahead · Limit in 8h 0m")).toBeInTheDocument()
+    expect(screen.getByText("20% in reserve")).toBeInTheDocument()
+    expect(screen.getByText("100% used at reset")).toBeInTheDocument()
     expect(screen.getByText("Limit in 8h 0m")).toBeInTheDocument()
+    vi.useRealTimers()
+  })
+
+  it("shows reserve percent for any pace-enabled line when ahead", () => {
+    vi.useFakeTimers()
+    const now = new Date("2026-02-02T12:00:00.000Z")
+    vi.setSystemTime(now)
+    render(
+      <ProviderCard
+        name="Pace"
+        displayMode="used"
+        lines={[
+          {
+            type: "progress",
+            label: "Any Window",
+            used: 30,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: "2026-02-03T00:00:00.000Z",
+            periodDurationMs: 24 * 60 * 60 * 1000,
+          },
+        ]}
+      />
+    )
+    expect(screen.getByText("20% in reserve")).toBeInTheDocument()
+    expect(screen.getByText("Pace: Behind · 20% in reserve")).toBeInTheDocument()
     vi.useRealTimers()
   })
 
@@ -247,6 +276,7 @@ describe("ProviderCard", () => {
     )
     expect(screen.getByLabelText("Limit reached")).toBeInTheDocument()
     expect(screen.getByText("Limit reached")).toBeInTheDocument()
+    expect(screen.getByText("Pace: Limit reached")).toBeInTheDocument()
     vi.useRealTimers()
   })
 
@@ -271,7 +301,8 @@ describe("ProviderCard", () => {
         ]}
       />
     )
-    expect(screen.getByText("You're good")).toBeInTheDocument()
+    expect(screen.getByText("Behind pace")).toBeInTheDocument()
+    expect(screen.getByText("Pace: Behind")).toBeInTheDocument()
     expect(screen.queryByText(/at reset/)).not.toBeInTheDocument()
     vi.useRealTimers()
   })

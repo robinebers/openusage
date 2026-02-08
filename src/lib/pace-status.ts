@@ -48,15 +48,23 @@ export function calculatePaceStatus(
   // Already at/over limit = definitionally behind (skip 5% threshold)
   if (used >= limit) return { status: "behind", projectedUsage }
 
-  // Too early to predict accurately (< 5% of period elapsed)
+  // Too early to predict accurately — use adaptive threshold:
+  // Short periods (<=24h): 5% minimum elapsed
+  // Long periods (>24h): 1% minimum elapsed (to avoid multi-day blindspot)
   const elapsedFraction = elapsedMs / periodDurationMs
-  if (elapsedFraction < 0.05) return null
+  const ONE_DAY_MS = 24 * 60 * 60 * 1000
+  const minElapsedFraction = periodDurationMs > ONE_DAY_MS ? 0.01 : 0.05
+  if (elapsedFraction < minElapsedFraction) return null
 
-  // Normal classification
+  // Normal classification:
+  // - projected below limit => reserve remains (green)
+  // - projected around limit => neutral (amber)
+  // - projected above limit => risk (red)
+  const tolerance = limit * 0.005 // 0.5% band to avoid jitter at boundary
   let status: PaceStatus
-  if (projectedUsage <= limit * 0.8) {
+  if (projectedUsage < limit - tolerance) {
     status = "ahead"
-  } else if (projectedUsage <= limit) {
+  } else if (projectedUsage <= limit + tolerance) {
     status = "on-track"
   } else {
     status = "behind"

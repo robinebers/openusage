@@ -12,7 +12,12 @@ import { REFRESH_COOLDOWN_MS, type DisplayMode } from "@/lib/settings"
 import type { ManifestLine, MetricLine } from "@/lib/plugin-types"
 import { clamp01 } from "@/lib/utils"
 import { calculatePaceStatus, type PaceStatus } from "@/lib/pace-status"
-import { buildPaceDetailText, formatCompactDuration, getPaceStatusText } from "@/lib/pace-tooltip"
+import {
+  buildPaceDetailText,
+  formatCompactDuration,
+  getPaceStatusLabel,
+  getPaceStatusText,
+} from "@/lib/pace-tooltip"
 
 interface ProviderCardProps {
   name: string
@@ -332,6 +337,7 @@ function MetricLineRenderer({
       : null
     const paceStatus = paceResult?.status ?? null
     const isLimitReached = line.used >= line.limit
+    const showReservePercent = hasPaceContext
     const paceDetailText =
       hasPaceContext && !isLimitReached
         ? buildPaceDetailText({
@@ -342,8 +348,23 @@ function MetricLineRenderer({
             resetsAtMs,
             nowMs: now,
             displayMode,
+            showReservePercent,
           })
         : null
+    const paceSummaryText = paceStatus
+      ? isLimitReached
+        ? "Pace: Limit reached"
+        : paceDetailText
+          ? `Pace: ${getPaceStatusLabel(paceStatus)} · ${paceDetailText}`
+          : `Pace: ${getPaceStatusLabel(paceStatus)}`
+      : null
+    const paceSummaryClass = paceStatus
+      ? paceStatus === "ahead"
+        ? "text-emerald-600 dark:text-emerald-400"
+        : paceStatus === "on-track"
+          ? "text-amber-600 dark:text-amber-400"
+          : "text-red-600 dark:text-red-400"
+      : "text-muted-foreground"
 
     return (
       <div>
@@ -367,6 +388,11 @@ function MetricLineRenderer({
             </span>
           )}
         </div>
+        {paceSummaryText && (
+          <div className={`mt-1 text-xs ${paceSummaryClass}`}>
+            {paceSummaryText}
+          </div>
+        )}
       </div>
     )
   }
