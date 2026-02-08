@@ -758,9 +758,11 @@ fn inject_ls<'js>(
                 let markers_lower: Vec<String> =
                     opts.markers.iter().map(|m| m.to_lowercase()).collect();
 
-                // Find the target process. Marker patterns are Codeium-derived
-                // (--app_data_dir <name> and /<name>/ path match). If a future
-                // non-Codeium provider needs LS discovery, extend patterns here.
+                // Find the target process. Marker patterns are Codeium-derived.
+                // Matching priority:
+                //   1. Exact --ide_name / --app_data_dir flag value (prevents
+                //      "windsurf" matching "windsurf-next")
+                //   2. Path substring (/<marker>/) as fallback when no flags found
                 let mut found: Option<(i32, String)> = None;
 
                 for line in ps_stdout.lines() {
@@ -785,9 +787,22 @@ fn inject_ls<'js>(
                         continue;
                     }
 
+                    let ide_name = ls_extract_flag(command, "--ide_name")
+                        .map(|v| v.to_lowercase());
+                    let app_data = ls_extract_flag(command, "--app_data_dir")
+                        .map(|v| v.to_lowercase());
+
                     let has_marker = markers_lower.iter().any(|m| {
-                        command_lower.contains(&format!("--app_data_dir {}", m))
-                            || command_lower.contains(&format!("/{}/", m))
+                        // Prefer exact flag match; skip path fallback when
+                        // a distinguishing flag exists.
+                        if let Some(ref name) = ide_name {
+                            return *name == *m;
+                        }
+                        if let Some(ref dir) = app_data {
+                            return *dir == *m;
+                        }
+                        // Fallback: path substring
+                        command_lower.contains(&format!("/{}/", m))
                     });
                     if !has_marker {
                         continue;

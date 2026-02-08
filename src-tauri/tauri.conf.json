@@ -30,6 +30,22 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "macOS": {
+      "dmg": {
+        "appPosition": {
+          "x": 180,
+          "y": 170
+        },
+        "applicationFolderPosition": {
+          "x": 480,
+          "y": 170
+        },
+        "windowSize": {
+          "width": 660,
+          "height": 400
+        }
+      }
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

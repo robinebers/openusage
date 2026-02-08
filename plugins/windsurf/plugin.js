@@ -1,23 +1,37 @@
 (function () {
   var LS_SERVICE = "exa.language_server_pb.LanguageServerService"
-  var STATE_DB = "~/Library/Application Support/Windsurf/User/globalStorage/state.vscdb"
+
+  // Windsurf variants — tried in order (Windsurf first, then Windsurf Next).
+  // Markers use --ide_name exact matching in the Rust discover code.
+  var VARIANTS = [
+    {
+      marker: "windsurf",
+      ideName: "windsurf",
+      stateDb: "~/Library/Application Support/Windsurf/User/globalStorage/state.vscdb",
+    },
+    {
+      marker: "windsurf-next",
+      ideName: "windsurf-next",
+      stateDb: "~/Library/Application Support/Windsurf - Next/User/globalStorage/state.vscdb",
+    },
+  ]
 
   // --- LS discovery ---
 
-  function discoverLs(ctx) {
+  function discoverLs(ctx, variant) {
     return ctx.host.ls.discover({
       processName: "language_server_macos",
-      markers: ["windsurf"],
+      markers: [variant.marker],
       csrfFlag: "--csrf_token",
       portFlag: "--extension_server_port",
       extraFlags: ["--windsurf_version"],
     })
   }
 
-  function loadApiKey(ctx) {
+  function loadApiKey(ctx, variant) {
     try {
       var rows = ctx.host.sqlite.query(
-        STATE_DB,
+        variant.stateDb,
         "SELECT value FROM ItemTable WHERE key = 'windsurfAuthStatus' LIMIT 1"
       )
       var parsed = ctx.util.tryParseJson(rows)
@@ -26,12 +40,12 @@
       if (!auth || !auth.apiKey) return null
       return auth.apiKey
     } catch (e) {
-      ctx.host.log.warn("failed to read API key: " + String(e))
+      ctx.host.log.warn("failed to read API key from " + variant.marker + ": " + String(e))
       return null
     }
   }
 
-  function probePort(ctx, scheme, port, csrf) {
+  function probePort(ctx, scheme, port, csrf, ideName) {
     ctx.host.http.request({
       method: "POST",
       url: scheme + "://127.0.0.1:" + port + "/" + LS_SERVICE + "/GetUnleashData",
@@ -45,7 +59,7 @@
           properties: {
             devMode: "false",
             extensionVersion: "unknown",
-            ide: "windsurf",
+            ide: ideName,
             ideVersion: "unknown",
             os: "macos",
           },
@@ -57,12 +71,12 @@
     return true
   }
 
-  function findWorkingPort(ctx, discovery) {
+  function findWorkingPort(ctx, discovery, ideName) {
     var ports = discovery.ports || []
     for (var i = 0; i < ports.length; i++) {
       var port = ports[i]
-      try { if (probePort(ctx, "https", port, discovery.csrf)) return { port: port, scheme: "https" } } catch (e) { /* ignore */ }
-      try { if (probePort(ctx, "http", port, discovery.csrf)) return { port: port, scheme: "http" } } catch (e) { /* ignore */ }
+      try { if (probePort(ctx, "https", port, discovery.csrf, ideName)) return { port: port, scheme: "https" } } catch (e) { /* ignore */ }
+      try { if (probePort(ctx, "http", port, discovery.csrf, ideName)) return { port: port, scheme: "http" } } catch (e) { /* ignore */ }
       ctx.host.log.info("port " + port + " probe failed on both schemes")
     }
     if (discovery.extensionPort) return { port: discovery.extensionPort, scheme: "http" }
@@ -106,18 +120,18 @@
     return ctx.line.progress(line)
   }
 
-  // --- LS probe ---
+  // --- LS probe for a specific variant ---
 
-  function probeViaLs(ctx) {
-    var discovery = discoverLs(ctx)
+  function probeVariant(ctx, variant) {
+    var discovery = discoverLs(ctx, variant)
     if (!discovery) return null
 
-    var found = findWorkingPort(ctx, discovery)
+    var found = findWorkingPort(ctx, discovery, variant.ideName)
     if (!found) return null
 
-    var apiKey = loadApiKey(ctx)
+    var apiKey = loadApiKey(ctx, variant)
     if (!apiKey) {
-      ctx.host.log.warn("no API key found in SQLite")
+      ctx.host.log.warn("no API key found in SQLite for " + variant.marker)
       return null
     }
 
@@ -125,9 +139,9 @@
 
     var metadata = {
       apiKey: apiKey,
-      ideName: "windsurf",
+      ideName: variant.ideName,
       ideVersion: version,
-      extensionName: "windsurf",
+      extensionName: variant.ideName,
       extensionVersion: version,
       locale: "en",
     }
@@ -136,7 +150,7 @@
     try {
       data = callLs(ctx, found.port, found.scheme, discovery.csrf, "GetUserStatus", { metadata: metadata })
     } catch (e) {
-      ctx.host.log.warn("GetUserStatus threw: " + String(e))
+      ctx.host.log.warn("GetUserStatus threw for " + variant.marker + ": " + String(e))
     }
 
     if (!data || !data.userStatus) return null
@@ -191,8 +205,11 @@
   // --- Probe ---
 
   function probe(ctx) {
-    var result = probeViaLs(ctx)
-    if (result) return result
+    // Try each variant in order: Windsurf → Windsurf Next
+    for (var i = 0; i < VARIANTS.length; i++) {
+      var result = probeVariant(ctx, VARIANTS[i])
+      if (result) return result
+    }
 
     throw "Start Windsurf and try again."
   }
