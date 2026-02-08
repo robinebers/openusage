@@ -31,6 +31,10 @@
     })
   }
 
+  function parseMoney(s) {
+    return Number(s.replace(/,/g, ""))
+  }
+
   function parseBalanceText(text) {
     if (!text || typeof text !== "string") return null
 
@@ -43,28 +47,36 @@
       credits: null,
     }
 
-    var balanceMatch = text.match(/\$([0-9]+(?:\.[0-9]+)?)\/\$([0-9]+(?:\.[0-9]+)?) remaining/)
+    var balanceMatch = text.match(/\$([0-9][0-9,]*(?:\.[0-9]+)?)\/\$([0-9][0-9,]*(?:\.[0-9]+)?) remaining/)
     if (balanceMatch) {
-      var remaining = Number(balanceMatch[1])
-      var total = Number(balanceMatch[2])
+      var remaining = parseMoney(balanceMatch[1])
+      var total = parseMoney(balanceMatch[2])
       if (Number.isFinite(remaining) && Number.isFinite(total)) {
         result.remaining = remaining
         result.total = total
       }
     }
 
-    var rateMatch = text.match(/replenishes \+\$([0-9]+(?:\.[0-9]+)?)\/hour/)
-    if (rateMatch) result.hourlyRate = Number(rateMatch[1])
+    var rateMatch = text.match(/replenishes \+\$([0-9][0-9,]*(?:\.[0-9]+)?)\/hour/)
+    if (rateMatch) {
+      var rate = parseMoney(rateMatch[1])
+      if (Number.isFinite(rate)) result.hourlyRate = rate
+    }
 
     var bonusMatch = text.match(/\+(\d+)% bonus for (\d+) more days?/)
     if (bonusMatch) {
-      result.bonusPct = Number(bonusMatch[1])
-      result.bonusDays = Number(bonusMatch[2])
+      var pct = Number(bonusMatch[1])
+      var days = Number(bonusMatch[2])
+      if (Number.isFinite(pct) && Number.isFinite(days)) {
+        result.bonusPct = pct
+        result.bonusDays = days
+      }
     }
 
-    var creditsMatch = text.match(/Individual credits: \$([0-9]+(?:\.[0-9]+)?) remaining/)
+    var creditsMatch = text.match(/Individual credits: \$([0-9][0-9,]*(?:\.[0-9]+)?) remaining/)
     if (creditsMatch) {
-      result.credits = Number(creditsMatch[1])
+      var credits = parseMoney(creditsMatch[1])
+      if (Number.isFinite(credits)) result.credits = credits
     }
 
     if (result.total === null && result.credits === null) return null
@@ -109,8 +121,12 @@
 
     var balance = parseBalanceText(json.result.displayText)
     if (!balance) {
-      ctx.host.log.error("failed to parse display text: " + json.result.displayText)
-      throw "Could not parse usage data."
+      if (/Amp Free/.test(json.result.displayText)) {
+        ctx.host.log.error("failed to parse display text: " + json.result.displayText)
+        throw "Could not parse usage data."
+      }
+      ctx.host.log.warn("no balance data found, assuming credits-only: " + json.result.displayText)
+      balance = { remaining: null, total: null, hourlyRate: 0, bonusPct: null, bonusDays: null, credits: 0 }
     }
 
     var lines = []
@@ -143,12 +159,13 @@
       }
     }
 
-    if (balance.credits !== null && balance.credits > 0) {
+    if (balance.credits !== null && balance.total === null) plan = "Credits"
+
+    if (balance.credits !== null && (balance.credits > 0 || balance.total === null)) {
       lines.push(ctx.line.text({
         label: "Credits",
         value: "$" + balance.credits.toFixed(2),
       }))
-      if (balance.total === null) plan = "Credits"
     }
 
     return { plan: plan, lines: lines }

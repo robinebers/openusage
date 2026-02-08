@@ -153,10 +153,10 @@ describe("amp plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Could not parse usage data")
   })
 
-  it("throws when displayText has no balance pattern", async () => {
+  it("throws when free tier present but unparseable", async () => {
     var ctx = makeCtx()
     writeSecrets(ctx)
-    ctx.host.http.request.mockReturnValue(balanceResponse("Some random text with no data"))
+    ctx.host.http.request.mockReturnValue(balanceResponse("Amp Free: unparseable data"))
     var plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Could not parse usage data")
   })
@@ -321,11 +321,45 @@ describe("amp plugin", () => {
     expect(creditsLine.value).toBe("$10.00")
   })
 
-  it("throws when display text has neither balance nor credits", async () => {
+  it("falls back to credits-only when no balance or credits parsed", async () => {
     var ctx = makeCtx()
     writeSecrets(ctx)
     ctx.host.http.request.mockReturnValue(balanceResponse("Signed in as user@test.com (testuser)"))
     var plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Could not parse usage data")
+    var result = plugin.probe(ctx)
+    expect(result.plan).toBe("Credits")
+    expect(result.lines.length).toBe(1)
+    expect(result.lines[0].label).toBe("Credits")
+    expect(result.lines[0].value).toBe("$0.00")
+  })
+
+  // --- Credits-only $0 ---
+
+  it("shows $0.00 for credits-only user with zero balance", async () => {
+    var ctx = makeCtx()
+    writeSecrets(ctx)
+    var text = "Signed in as user@test.com (testuser)\nIndividual credits: $0 remaining - https://ampcode.com/settings"
+    ctx.host.http.request.mockReturnValue(balanceResponse(text))
+    var plugin = await loadPlugin()
+    var result = plugin.probe(ctx)
+    expect(result.plan).toBe("Credits")
+    expect(result.lines.length).toBe(1)
+    expect(result.lines[0].label).toBe("Credits")
+    expect(result.lines[0].value).toBe("$0.00")
+  })
+
+  // --- Regex resilience ---
+
+  it("parses balance with comma-formatted amounts", async () => {
+    var ctx = makeCtx()
+    writeSecrets(ctx)
+    var text = "Signed in as user@test.com (testuser)\n"
+      + "Amp Free: $1,000.50/$2,000 remaining (replenishes +$0.83/hour) - https://ampcode.com/settings#amp-free\n"
+      + "Individual credits: $0 remaining - https://ampcode.com/settings"
+    ctx.host.http.request.mockReturnValue(balanceResponse(text))
+    var plugin = await loadPlugin()
+    var result = plugin.probe(ctx)
+    expect(result.lines[0].limit).toBe(2000)
+    expect(result.lines[0].used).toBeCloseTo(999.50, 2)
   })
 })
