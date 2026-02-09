@@ -85,3 +85,15 @@ This document records opinionated defaults chosen during development.
 **Context:** Taskbar position is already handled in `src/App.tsx` with Rust events and local state; `src/contexts/taskbar-context.tsx` was unused.
 
 **Decision:** Delete the unused context file to avoid dead code.
+
+### Restrict Env Allowlist To CODEX_HOME
+
+**Context:** Plugin host env access is intended to be minimal, and only `CODEX_HOME` is approved for exposure.
+
+**Decision:** Limit the env allowlist to `CODEX_HOME` and switch Windows path probes to `~`-based candidates instead of env vars.
+
+### Re-Enable Frontend Tray Icon Updates
+
+**Context:** Frontend settings/probe flows still call tray update hooks, but the update path was disabled, leaving the icon stale.
+
+**Decision:** Restore frontend tray icon rendering and updates on init/settings/probe to keep the tray icon consistent with state.

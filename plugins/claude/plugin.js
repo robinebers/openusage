@@ -7,6 +7,32 @@
   const SCOPES = "user:profile user:inference user:sessions:claude_code user:mcp_servers"
   const REFRESH_BUFFER_MS = 5 * 60 * 1000 // refresh 5 minutes before expiration
 
+  function getWindowsCredentialCandidates() {
+    return [
+      "~/.claude/.credentials.json",
+      "~/AppData/Roaming/Claude/.credentials.json",
+      "~/AppData/Local/Claude/.credentials.json",
+    ]
+  }
+
+  function getCredentialsPath(ctx) {
+    if (ctx.app && ctx.app.platform === "windows") {
+      const candidates = getWindowsCredentialCandidates()
+      for (const path of candidates) {
+        if (ctx.host.fs.exists(path)) return path
+      }
+
+      if (candidates.length > 0) return candidates[0]
+    }
+
+    return CRED_FILE
+  }
+
+  function isKeychainAvailable(ctx) {
+    if (!ctx.app) return false
+    return ctx.app.platform === "macos" || ctx.app.platform === "darwin"
+  }
+
   function utf8DecodeBytes(bytes) {
     // Prefer native TextDecoder when available (QuickJS may not expose it).
     if (typeof TextDecoder !== "undefined") {
@@ -289,7 +315,7 @@
     if (!creds || !creds.oauth || !creds.oauth.accessToken || !creds.oauth.accessToken.trim()) {
       ctx.host.log.error("probe failed: not logged in")
       if (ctx.app && ctx.app.platform === "windows") {
-        const candidates = getWindowsCredentialCandidates(ctx)
+      const candidates = getWindowsCredentialCandidates()
         const preview = candidates.length > 0
           ? candidates.slice(0, 3).join(", ")
           : "%USERPROFILE%\\.claude\\.credentials.json"
@@ -421,51 +447,3 @@
 
   globalThis.__openusage_plugin = { id: "claude", probe }
 })()
-  function getEnv(ctx, name) {
-    try {
-      if (!ctx.host.env || typeof ctx.host.env.get !== "function") return null
-      const value = ctx.host.env.get(name)
-      if (typeof value !== "string") return null
-      const trimmed = value.trim()
-      return trimmed || null
-    } catch (e) {
-      ctx.host.log.warn(name + " read failed: " + String(e))
-      return null
-    }
-  }
-
-  function getUserProfile(ctx) {
-    const userProfile = getEnv(ctx, "USERPROFILE")
-    if (userProfile) return userProfile
-    const homeDrive = getEnv(ctx, "HOMEDRIVE")
-    const homePath = getEnv(ctx, "HOMEPATH")
-    if (homeDrive && homePath) return homeDrive + homePath
-    return null
-  }
-
-  function getCredentialsPath(ctx) {
-    if (ctx.app && ctx.app.platform === "windows") {
-      const candidates = getWindowsCredentialCandidates(ctx)
-      for (const path of candidates) {
-        if (ctx.host.fs.exists(path)) return path
-      }
-
-      if (candidates.length > 0) return candidates[0]
-    }
-
-    return CRED_FILE
-  }
-
-  function getWindowsCredentialCandidates(ctx) {
-    const appData = getEnv(ctx, "APPDATA")
-    const localAppData = getEnv(ctx, "LOCALAPPDATA")
-    const userProfile = getUserProfile(ctx)
-    const candidates = []
-    if (userProfile) candidates.push(userProfile + "\\.claude\\.credentials.json")
-    if (appData) candidates.push(appData + "\\Claude\\.credentials.json")
-    if (localAppData) candidates.push(localAppData + "\\Claude\\.credentials.json")
-    return candidates
-  }
-  function isKeychainAvailable(ctx) {
-    return ctx.app && ctx.app.platform === "macos"
-  }

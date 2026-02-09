@@ -16,32 +16,18 @@
     return base + separator + leaf
   }
 
-  function getEnv(ctx, name) {
-    try {
-      return ctx.host.env.get(name)
-    } catch {
-      return null
-    }
-  }
-
   function getStateDbPath(ctx) {
     if (ctx.app.platform === "windows") {
-      const appData = getEnv(ctx, "APPDATA")
-      const localAppData = getEnv(ctx, "LOCALAPPDATA")
-      const userProfile = getEnv(ctx, "USERPROFILE")
-      const candidates = []
-      if (appData) candidates.push(joinPath(appData, "Cursor\\User", "\\"))
-      if (localAppData) candidates.push(joinPath(localAppData, "Cursor\\User", "\\"))
-      if (userProfile) {
-        candidates.push(joinPath(userProfile, "AppData\\Roaming\\Cursor\\User", "\\"))
-        candidates.push(joinPath(userProfile, "AppData\\Local\\Cursor\\User", "\\"))
-      }
+      const candidates = [
+        "~/AppData/Roaming/Cursor/User",
+        "~/AppData/Local/Cursor/User",
+      ]
       for (const base of candidates) {
-        const dbPath = joinPath(base, "globalStorage\\state.vscdb", "\\")
+        const dbPath = joinPath(base, "globalStorage/state.vscdb", "/")
         if (ctx.host.fs.exists(dbPath)) return dbPath
       }
       if (candidates.length > 0) {
-        return joinPath(candidates[0], "globalStorage\\state.vscdb", "\\")
+        return joinPath(candidates[0], "globalStorage/state.vscdb", "/")
       }
       return null
     }

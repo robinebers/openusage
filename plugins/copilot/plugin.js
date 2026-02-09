@@ -4,7 +4,8 @@
   const USAGE_URL = "https://api.github.com/copilot_internal/user";
 
   function isKeychainAvailable(ctx) {
-    return ctx.app && ctx.app.platform === "macos";
+    if (!ctx.app) return false;
+    return ctx.app.platform === "macos" || ctx.app.platform === "darwin";
   }
 
   function readJson(ctx, path) {

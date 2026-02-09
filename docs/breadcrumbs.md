@@ -13,3 +13,4 @@
 - Windows updater: documented that production updates require Authenticode signing; marked current state as test-only.
 - Windows signing: added conditional PFX import step and owner follow-up checklist.
 - Cleanup: removed unused `src/contexts/taskbar-context.tsx`.
+- PR 77 fixes: re-enabled tray icon updates, restored Linux tray click handling, guarded window clamp, and replaced env-based Windows probes with `~`-based paths under a CODEX_HOME-only allowlist.

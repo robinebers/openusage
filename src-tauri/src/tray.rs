@@ -507,6 +507,32 @@ pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
                             let _ = window.set_focus();
                         }
                     }
+
+                    #[cfg(target_os = "linux")]
+                    {
+                        // Linux: Use regular window
+                        let window = app_handle.get_webview_window("main");
+
+                        if let Some(window) = window {
+                            if window.is_visible().unwrap_or(false) {
+                                log::debug!("tray click: hiding window");
+                                let _ = window.hide();
+                                return;
+                            }
+
+                            log::debug!("tray click: showing window");
+
+                            // Position window near tray icon
+                            if let (tauri::Position::Physical(pos), tauri::Size::Physical(size)) =
+                                (rect.position, rect.size)
+                            {
+                                let _ = position_window_at_tray(&app_handle, pos, size);
+                            }
+
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
                 }
             }
         })

@@ -3,6 +3,32 @@
   var MAC_STATE_DB = "~/Library/Application Support/Windsurf/User/globalStorage/state.vscdb"
   var LINUX_STATE_DB = "~/.config/Windsurf/User/globalStorage/state.vscdb"
 
+  function joinPath(base, leaf, separator) {
+    if (!base) return leaf
+    if (base.endsWith("/") || base.endsWith("\\")) return base + leaf
+    return base + separator + leaf
+  }
+
+  function getStateDbPath(ctx) {
+    if (ctx.app.platform === "windows") {
+      var candidates = [
+        "~/AppData/Roaming/Windsurf/User",
+        "~/AppData/Local/Windsurf/User",
+      ]
+      for (var i = 0; i < candidates.length; i++) {
+        var dbPath = joinPath(candidates[i], "globalStorage/state.vscdb", "/")
+        if (ctx.host.fs.exists(dbPath)) return dbPath
+      }
+      if (candidates.length > 0) {
+        return joinPath(candidates[0], "globalStorage/state.vscdb", "/")
+      }
+      return null
+    }
+
+    if (ctx.app.platform === "linux") return LINUX_STATE_DB
+    return MAC_STATE_DB
+  }
+
   // --- LS discovery ---
 
   function discoverLs(ctx) {
@@ -215,42 +241,3 @@
 
   globalThis.__openusage_plugin = { id: "windsurf", probe: probe }
 })()
-  function joinPath(base, leaf, separator) {
-    if (!base) return leaf
-    if (base.endsWith("/") || base.endsWith("\\")) return base + leaf
-    return base + separator + leaf
-  }
-
-  function getEnv(ctx, name) {
-    try {
-      return ctx.host.env.get(name)
-    } catch (e) {
-      return null
-    }
-  }
-
-  function getStateDbPath(ctx) {
-    if (ctx.app.platform === "windows") {
-      var appData = getEnv(ctx, "APPDATA")
-      var localAppData = getEnv(ctx, "LOCALAPPDATA")
-      var userProfile = getEnv(ctx, "USERPROFILE")
-      var candidates = []
-      if (appData) candidates.push(joinPath(appData, "Windsurf\\User", "\\"))
-      if (localAppData) candidates.push(joinPath(localAppData, "Windsurf\\User", "\\"))
-      if (userProfile) {
-        candidates.push(joinPath(userProfile, "AppData\\Roaming\\Windsurf\\User", "\\"))
-        candidates.push(joinPath(userProfile, "AppData\\Local\\Windsurf\\User", "\\"))
-      }
-      for (var i = 0; i < candidates.length; i++) {
-        var dbPath = joinPath(candidates[i], "globalStorage\\state.vscdb", "\\")
-        if (ctx.host.fs.exists(dbPath)) return dbPath
-      }
-      if (candidates.length > 0) {
-        return joinPath(candidates[0], "globalStorage\\state.vscdb", "\\")
-      }
-      return null
-    }
-
-    if (ctx.app.platform === "linux") return LINUX_STATE_DB
-    return MAC_STATE_DB
-  }

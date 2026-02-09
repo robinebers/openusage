@@ -11,44 +11,27 @@
     return base.replace(/[\\/]+$/, "") + sep + leaf
   }
 
-  function getEnv(ctx, name) {
+  function getWindowsAuthPaths() {
+    const basePaths = [
+      "~/AppData/Roaming/codex",
+      "~/AppData/Local/codex",
+      "~/.codex",
+      "~/.config/codex",
+    ]
+    return basePaths.map((base) => joinPath(base, AUTH_FILE))
+  }
+
+  function readCodexHome(ctx) {
     try {
       if (!ctx.host.env || typeof ctx.host.env.get !== "function") return null
-      const value = ctx.host.env.get(name)
+      const value = ctx.host.env.get("CODEX_HOME")
       if (typeof value !== "string") return null
       const trimmed = value.trim()
       return trimmed || null
     } catch (e) {
-      ctx.host.log.warn(name + " read failed: " + String(e))
+      ctx.host.log.warn("CODEX_HOME read failed: " + String(e))
       return null
     }
-  }
-
-  function getUserProfile(ctx) {
-    const userProfile = getEnv(ctx, "USERPROFILE")
-    if (userProfile) return userProfile
-    const homeDrive = getEnv(ctx, "HOMEDRIVE")
-    const homePath = getEnv(ctx, "HOMEPATH")
-    if (homeDrive && homePath) return homeDrive + homePath
-    return null
-  }
-
-  function getWindowsAuthPaths(ctx) {
-    const appData = getEnv(ctx, "APPDATA")
-    const localAppData = getEnv(ctx, "LOCALAPPDATA")
-    const userProfile = getUserProfile(ctx)
-    const basePaths = []
-    if (appData) basePaths.push(joinPath(appData, "codex", "\\"))
-    if (localAppData) basePaths.push(joinPath(localAppData, "codex", "\\"))
-    if (userProfile) {
-      basePaths.push(joinPath(userProfile, ".codex", "\\"))
-      basePaths.push(joinPath(userProfile, ".config\\codex", "\\"))
-    }
-    return basePaths.map((base) => joinPath(base, AUTH_FILE, "\\"))
-  }
-
-  function readCodexHome(ctx) {
-    return getEnv(ctx, "CODEX_HOME")
   }
 
   function resolveAuthPath(ctx) {
@@ -61,7 +44,7 @@
     }
 
     if (ctx.app && ctx.app.platform === "windows") {
-      const windowsPaths = getWindowsAuthPaths(ctx)
+      const windowsPaths = getWindowsAuthPaths()
       for (const authPath of windowsPaths) {
         if (ctx.host.fs.exists(authPath)) return authPath
       }

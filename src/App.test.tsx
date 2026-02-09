@@ -7,7 +7,11 @@ const state = vi.hoisted(() => ({
   invokeMock: vi.fn(),
   isTauriMock: vi.fn(() => false),
   setSizeMock: vi.fn(),
+  setPositionMock: vi.fn(),
   currentMonitorMock: vi.fn(),
+  outerSizeMock: vi.fn(async () => ({ width: 400, height: 500 })),
+  outerPositionMock: vi.fn(async () => ({ x: 0, y: 0 })),
+  onFocusChangedMock: vi.fn(async () => () => {}),
   startBatchMock: vi.fn(),
   savePluginSettingsMock: vi.fn(),
   loadPluginSettingsMock: vi.fn(),
@@ -105,7 +109,13 @@ vi.mock("@tauri-apps/api/path", () => ({
 }))
 
 vi.mock("@tauri-apps/api/window", () => ({
-  getCurrentWindow: () => ({ setSize: state.setSizeMock }),
+  getCurrentWindow: () => ({
+    setSize: state.setSizeMock,
+    setPosition: state.setPositionMock,
+    outerSize: state.outerSizeMock,
+    outerPosition: state.outerPositionMock,
+    onFocusChanged: state.onFocusChangedMock,
+  }),
   PhysicalSize: class {
     width: number
     height: number
@@ -141,10 +151,105 @@ vi.mock("@/hooks/use-probe-events", () => ({
   },
 }))
 
-vi.mock("@/lib/settings", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/settings")>("@/lib/settings")
+vi.mock("@/lib/settings", () => {
+  const DEFAULT_AUTO_UPDATE_INTERVAL = 15
+  const DEFAULT_THEME_MODE = "system"
+  const DEFAULT_DISPLAY_MODE = "left"
+  const DEFAULT_TRAY_ICON_STYLE = "bars"
+  const DEFAULT_TRAY_SHOW_PERCENTAGE = false
+  const REFRESH_COOLDOWN_MS = 300000
+  const AUTO_UPDATE_OPTIONS = [
+    { value: 5, label: "5 min" },
+    { value: 15, label: "15 min" },
+    { value: 30, label: "30 min" },
+    { value: 60, label: "1 hour" },
+  ]
+  const THEME_OPTIONS = [
+    { value: "system", label: "System" },
+    { value: "light", label: "Light" },
+    { value: "dark", label: "Dark" },
+  ]
+  const DISPLAY_MODE_OPTIONS = [
+    { value: "left", label: "Left" },
+    { value: "used", label: "Used" },
+  ]
+  const TRAY_ICON_STYLE_OPTIONS = [
+    { value: "bars", label: "Bars" },
+    { value: "circle", label: "Circle" },
+    { value: "provider", label: "Provider" },
+    { value: "textOnly", label: "%" },
+  ]
+  const DEFAULT_ENABLED_PLUGINS = new Set(["claude", "codex", "cursor"])
+
+  function isTrayPercentageMandatory(style: "bars" | "circle" | "provider" | "textOnly") {
+    return style === "provider" || style === "textOnly"
+  }
+
+  function normalizePluginSettings(
+    settings: { order: string[]; disabled: string[] },
+    plugins: { id: string }[]
+  ) {
+    const knownIds = plugins.map((plugin) => plugin.id)
+    const knownSet = new Set(knownIds)
+    const order: string[] = []
+    const seen = new Set<string>()
+    for (const id of settings.order) {
+      if (!knownSet.has(id) || seen.has(id)) continue
+      seen.add(id)
+      order.push(id)
+    }
+    const newlyAdded: string[] = []
+    for (const id of knownIds) {
+      if (!seen.has(id)) {
+        seen.add(id)
+        order.push(id)
+        newlyAdded.push(id)
+      }
+    }
+    const disabled = settings.disabled.filter((id) => knownSet.has(id))
+    for (const id of newlyAdded) {
+      if (!DEFAULT_ENABLED_PLUGINS.has(id) && !disabled.includes(id)) {
+        disabled.push(id)
+      }
+    }
+    return { order, disabled }
+  }
+
+  function arePluginSettingsEqual(
+    a: { order: string[]; disabled: string[] },
+    b: { order: string[]; disabled: string[] }
+  ) {
+    if (a.order.length !== b.order.length) return false
+    if (a.disabled.length !== b.disabled.length) return false
+    for (let i = 0; i < a.order.length; i += 1) {
+      if (a.order[i] !== b.order[i]) return false
+    }
+    for (let i = 0; i < a.disabled.length; i += 1) {
+      if (a.disabled[i] !== b.disabled[i]) return false
+    }
+    return true
+  }
+
+  function getEnabledPluginIds(settings: { order: string[]; disabled: string[] }) {
+    const disabledSet = new Set(settings.disabled)
+    return settings.order.filter((id) => !disabledSet.has(id))
+  }
+
   return {
-    ...actual,
+    DEFAULT_AUTO_UPDATE_INTERVAL,
+    DEFAULT_THEME_MODE,
+    DEFAULT_DISPLAY_MODE,
+    DEFAULT_TRAY_ICON_STYLE,
+    DEFAULT_TRAY_SHOW_PERCENTAGE,
+    REFRESH_COOLDOWN_MS,
+    AUTO_UPDATE_OPTIONS,
+    THEME_OPTIONS,
+    DISPLAY_MODE_OPTIONS,
+    TRAY_ICON_STYLE_OPTIONS,
+    arePluginSettingsEqual,
+    normalizePluginSettings,
+    getEnabledPluginIds,
+    isTrayPercentageMandatory,
     loadPluginSettings: state.loadPluginSettingsMock,
     savePluginSettings: state.savePluginSettingsMock,
     loadAutoUpdateInterval: state.loadAutoUpdateIntervalMock,
@@ -164,12 +269,19 @@ import { App } from "@/App"
 
 describe("App", () => {
   beforeEach(() => {
+    if (typeof HTMLElement === "undefined") {
+      Object.defineProperty(globalThis, "HTMLElement", { value: class {}, configurable: true })
+    }
     state.probeHandlers = null
     state.invokeMock.mockReset()
     state.isTauriMock.mockReset()
     state.isTauriMock.mockReturnValue(false)
     state.setSizeMock.mockReset()
+    state.setPositionMock.mockReset()
     state.currentMonitorMock.mockReset()
+    state.outerSizeMock.mockReset()
+    state.outerPositionMock.mockReset()
+    state.onFocusChangedMock.mockReset()
     state.startBatchMock.mockReset()
     state.savePluginSettingsMock.mockReset()
     state.loadPluginSettingsMock.mockReset()
@@ -220,8 +332,8 @@ describe("App", () => {
     state.invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === "list_plugins") {
         return [
-          { id: "a", name: "Alpha", iconUrl: "icon-a", primaryProgressLabel: null, lines: [{ type: "text", label: "Now", scope: "overview" }] },
-          { id: "b", name: "Beta", iconUrl: "icon-b", primaryProgressLabel: null, lines: [] },
+          { id: "a", name: "Alpha", iconUrl: "icon-a", primaryCandidates: [], lines: [{ type: "text", label: "Now", scope: "overview" }] },
+          { id: "b", name: "Beta", iconUrl: "icon-b", primaryCandidates: [], lines: [] },
         ]
       }
       return null
@@ -292,9 +404,9 @@ describe("App", () => {
       if (cmd === "list_plugins") {
         return [
           {
-            id: "a",
-            name: "Alpha",
-            iconUrl: "icon-a",
+            id: "claude",
+            name: "Claude",
+            iconUrl: "icon-claude",
             primaryCandidates: ["Session"],
             lines: [{ type: "progress", label: "Session", scope: "overview" }],
           },
@@ -302,7 +414,7 @@ describe("App", () => {
       }
       return null
     })
-    state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a"], disabled: [] })
+    state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["claude"], disabled: [] })
 
     render(<App />)
     await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
@@ -312,9 +424,9 @@ describe("App", () => {
     const callsBefore = state.renderTrayBarsIconMock.mock.calls.length
 
     state.probeHandlers?.onResult({
-      providerId: "a",
-      displayName: "Alpha",
-      iconUrl: "icon-a",
+      providerId: "claude",
+      displayName: "Claude",
+      iconUrl: "icon-claude",
       lines: [{ type: "progress", label: "Session", used: 50, limit: 100, format: { kind: "percent" } }],
     })
 
@@ -451,9 +563,9 @@ describe("App", () => {
       if (cmd === "list_plugins") {
         return [
           {
-            id: "a",
-            name: "Alpha",
-            iconUrl: "icon-a",
+            id: "claude",
+            name: "Claude",
+            iconUrl: "icon-claude",
             primaryCandidates: ["Session"],
             lines: [{ type: "progress", label: "Session", scope: "overview" }],
           },
@@ -461,7 +573,7 @@ describe("App", () => {
       }
       return null
     })
-    state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a"], disabled: [] })
+    state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["claude"], disabled: [] })
 
     render(<App />)
     await waitFor(() => expect(state.renderTrayBarsIconMock).toHaveBeenCalled())
@@ -1055,21 +1167,21 @@ describe("App", () => {
     window.requestAnimationFrame = rafSpy
 
     // Setup plugin with primary progress
-    state.invokeMock.mockImplementationOnce(async (cmd: string) => {
+    state.invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === "list_plugins") {
         return [
           {
-            id: "a",
-            name: "Alpha",
-            iconUrl: "icon-a",
-            primaryProgressLabel: "Session",
+            id: "claude",
+            name: "Claude",
+            iconUrl: "icon-claude",
+            primaryCandidates: ["Session"],
             lines: [{ type: "progress", label: "Session", scope: "overview" }],
           },
         ]
       }
       return null
     })
-    state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a"], disabled: [] })
+    state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["claude"], disabled: [] })
 
     render(<App />)
     await vi.waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
@@ -1082,9 +1194,9 @@ describe("App", () => {
 
     // Trigger a probe result
     state.probeHandlers?.onResult({
-      providerId: "a",
-      displayName: "Alpha",
-      iconUrl: "icon-a",
+      providerId: "claude",
+      displayName: "Claude",
+      iconUrl: "icon-claude",
       lines: [{ type: "progress", label: "Session", used: 50, limit: 100, format: { kind: "percent" } }],
     })
 
@@ -1093,7 +1205,7 @@ describe("App", () => {
 
     // Tray icon should have been updated even though requestAnimationFrame was never called
     expect(rafSpy).not.toHaveBeenCalled()
-    expect(state.traySetIconMock).toHaveBeenCalled()
+    await vi.waitFor(() => expect(state.traySetIconMock).toHaveBeenCalled())
 
     window.requestAnimationFrame = originalRaf
     vi.useRealTimers()

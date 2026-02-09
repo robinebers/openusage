@@ -305,8 +305,20 @@ fn calculate_window_position(
     };
 
     // Clamp to work area bounds
-    let final_x = x.clamp(bounds_x, bounds_x + bounds_width - window_width);
-    let final_y = y.clamp(bounds_y, bounds_y + bounds_height - window_height);
+    let max_x = bounds_x + bounds_width - window_width;
+    let max_y = bounds_y + bounds_height - window_height;
+
+    let final_x = if max_x < bounds_x {
+        bounds_x
+    } else {
+        x.clamp(bounds_x, max_x)
+    };
+
+    let final_y = if max_y < bounds_y {
+        bounds_y
+    } else {
+        y.clamp(bounds_y, max_y)
+    };
 
     (final_x, final_y)
 }

@@ -1,14 +1,7 @@
 use rquickjs::{Ctx, Exception, Function, Object};
 use std::path::PathBuf;
 
-const WHITELISTED_ENV_VARS: [&str; 6] = [
-    "CODEX_HOME",
-    "APPDATA",
-    "LOCALAPPDATA",
-    "USERPROFILE",
-    "HOMEDRIVE",
-    "HOMEPATH",
-];
+const WHITELISTED_ENV_VARS: [&str; 1] = ["CODEX_HOME"];
 
 /// Redact sensitive value to first4...last4 format (UTF-8 safe)
 fn redact_value(value: &str) -> String {

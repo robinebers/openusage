@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event"
 import { getCurrentWindow, PhysicalSize, PhysicalPosition, currentMonitor } from "@tauri-apps/api/window"
 import { getVersion } from "@tauri-apps/api/app"
 import { TrayIcon } from "@tauri-apps/api/tray"
+import { resolveResource } from "@tauri-apps/api/path"
 import { platform } from "@tauri-apps/plugin-os"
 import { SideNav, type ActiveView } from "@/components/side-nav"
 import { PanelFooter } from "@/components/panel-footer"
@@ -11,9 +12,8 @@ import { OverviewPage } from "@/pages/overview"
 import { ProviderDetailPage } from "@/pages/provider-detail"
 import { SettingsPage } from "@/pages/settings"
 import type { PluginMeta, PluginOutput } from "@/lib/plugin-types"
-// Tray icon updates disabled - backend handles it
-// import { getTrayIconSizePx, renderTrayBarsIcon } from "@/lib/tray-bars-icon"
-// import { getTrayPrimaryBars } from "@/lib/tray-primary-progress"
+import { getTrayIconSizePx, renderTrayBarsIcon } from "@/lib/tray-bars-icon"
+import { getTrayPrimaryBars } from "@/lib/tray-primary-progress"
 import { useProbeEvents } from "@/hooks/use-probe-events"
 import { useAppUpdate } from "@/hooks/use-app-update"
 import {
@@ -91,8 +91,9 @@ function App() {
   const { updateStatus, triggerInstall } = useAppUpdate()
   const [showAbout, setShowAbout] = useState(false)
 
-  // Tray icon managed by backend - no frontend refs needed
+  // Tray icon handle for frontend updates
   const trayRef = useRef<TrayIcon | null>(null)
+  const trayUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Store state in refs so scheduleTrayIconUpdate can read current values without recreating the callback
   const pluginsMetaRef = useRef(pluginsMeta)
@@ -120,7 +121,91 @@ function App() {
     }
   }, [])
 
-  // Initialize tray handle once - just get reference, don't update icon
+  const [isTrayReady, setIsTrayReady] = useState(false)
+  const scheduleTrayIconUpdate = useCallback((reason: "probe" | "settings" | "init", delayMs = 0) => {
+    if (trayUpdateTimeoutRef.current !== null) {
+      clearTimeout(trayUpdateTimeoutRef.current)
+    }
+
+    trayUpdateTimeoutRef.current = setTimeout(async () => {
+      trayUpdateTimeoutRef.current = null
+      const currentSettings = pluginSettingsRef.current
+      const currentMeta = pluginsMetaRef.current
+      if (!currentSettings || currentMeta.length === 0) return
+
+      const style = trayIconStyleRef.current
+      const maxBars = style === "bars" ? 4 : 1
+      const bars = getTrayPrimaryBars({
+        pluginsMeta: currentMeta,
+        pluginSettings: currentSettings,
+        pluginStates: pluginStatesRef.current,
+        displayMode: displayModeRef.current,
+        maxBars,
+      })
+      if (bars.length === 0) return
+      const shouldShowPercentage = isTrayPercentageMandatory(style)
+        ? true
+        : trayShowPercentageRef.current
+      const primaryFraction = bars[0]?.fraction
+      const percentText =
+        shouldShowPercentage && typeof primaryFraction === "number"
+          ? `${Math.round(primaryFraction * 100)}%`
+          : undefined
+      const providerIconUrl =
+        style === "provider"
+          ? currentMeta.find((plugin) => plugin.id === bars[0]?.id)?.iconUrl
+          : undefined
+      const dpr = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1
+      const sizePx = getTrayIconSizePx(dpr)
+
+      try {
+        const image = await renderTrayBarsIcon({
+          bars,
+          sizePx,
+          style,
+          percentText,
+          providerIconUrl,
+        })
+        let tray = trayRef.current
+        if (!tray) {
+          tray = await TrayIcon.getById("tray").catch(() => null)
+          if (tray) trayRef.current = tray
+        }
+        if (tray) {
+          await tray.setIcon(image)
+        }
+      } catch (error) {
+        console.error(`Failed to update tray icon (${reason}):`, error)
+      }
+    }, delayMs)
+  }, [])
+
+  useEffect(() => {
+    if (!isTrayReady) return
+    if (!pluginSettings || pluginsMeta.length === 0) return
+    scheduleTrayIconUpdate("init", 0)
+  }, [isTrayReady, pluginSettings, pluginsMeta, scheduleTrayIconUpdate])
+
+  useEffect(() => {
+    let cancelled = false
+    resolveResource("icons/tray-icon.png").catch((error) => {
+      if (cancelled) return
+      console.error("Failed to resolve tray icon resource:", error)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (trayUpdateTimeoutRef.current !== null) {
+        clearTimeout(trayUpdateTimeoutRef.current)
+      }
+    }
+  }, [])
+
+  // Initialize tray handle once
   const trayInitializedRef = useRef(false)
   useEffect(() => {
     if (trayInitializedRef.current) return
@@ -131,6 +216,7 @@ function App() {
         if (cancelled) return
         trayRef.current = tray
         trayInitializedRef.current = true
+        setIsTrayReady(true)
       } catch (e) {
         console.error("Failed to load tray icon handle:", e)
       }
@@ -139,14 +225,6 @@ function App() {
       cancelled = true
     }
   }, [])
-
-  // Tray icon updates disabled - backend sets icon once on startup
-  const scheduleTrayIconUpdate = useCallback((_reason: "probe" | "settings" | "init", _delayMs = 0) => {
-    // Icon updates disabled to prevent frontend from overriding backend icon
-  }, [])
-
-  // Don't update tray icon on init - backend already set the correct icon
-  // Only update when we have actual probe results (handled by handleProbeResult)
 
 
   const displayPlugins = useMemo(() => {
@@ -394,25 +472,25 @@ function App() {
   }, [])
 
   const setLoadingForPlugins = useCallback((ids: string[]) => {
-    setPluginStates((prev) => {
-      const next = { ...prev }
-      for (const id of ids) {
-        const existing = prev[id]
-        next[id] = { data: null, loading: true, error: null, lastManualRefreshAt: existing?.lastManualRefreshAt ?? null }
-      }
-      return next
-    })
+    const prev = pluginStatesRef.current
+    const next = { ...prev }
+    for (const id of ids) {
+      const existing = prev[id]
+      next[id] = { data: null, loading: true, error: null, lastManualRefreshAt: existing?.lastManualRefreshAt ?? null }
+    }
+    pluginStatesRef.current = next
+    setPluginStates(next)
   }, [])
 
   const setErrorForPlugins = useCallback((ids: string[], error: string) => {
-    setPluginStates((prev) => {
-      const next = { ...prev }
-      for (const id of ids) {
-        const existing = prev[id]
-        next[id] = { data: null, loading: false, error, lastManualRefreshAt: existing?.lastManualRefreshAt ?? null }
-      }
-      return next
-    })
+    const prev = pluginStatesRef.current
+    const next = { ...prev }
+    for (const id of ids) {
+      const existing = prev[id]
+      next[id] = { data: null, loading: false, error, lastManualRefreshAt: existing?.lastManualRefreshAt ?? null }
+    }
+    pluginStatesRef.current = next
+    setPluginStates(next)
   }, [])
 
   // Track which plugin IDs are being manually refreshed (vs initial load / enable toggle)
@@ -425,7 +503,8 @@ function App() {
       if (isManual) {
         manualRefreshIdsRef.current.delete(output.providerId)
       }
-      setPluginStates((prev) => ({
+      const prev = pluginStatesRef.current
+      const next = {
         ...prev,
         [output.providerId]: {
           data: errorMessage ? null : output,
@@ -436,7 +515,9 @@ function App() {
             ? Date.now()
             : (prev[output.providerId]?.lastManualRefreshAt ?? null),
         },
-      }))
+      }
+      pluginStatesRef.current = next
+      setPluginStates(next)
 
       // Regenerate tray icon on every probe result (debounced to avoid churn).
       scheduleTrayIconUpdate("probe", TRAY_PROBE_DEBOUNCE_MS)
@@ -459,6 +540,7 @@ function App() {
         const availablePlugins = await invoke<PluginMeta[]>("list_plugins")
         if (!isMounted) return
         setPluginsMeta(availablePlugins)
+        pluginsMetaRef.current = availablePlugins
 
         const storedSettings = await loadPluginSettings()
         const normalized = normalizePluginSettings(
@@ -511,11 +593,15 @@ function App() {
 
         if (isMounted) {
           setPluginSettings(normalized)
+          pluginSettingsRef.current = normalized
           setAutoUpdateInterval(storedInterval)
           setThemeMode(storedThemeMode)
           setDisplayMode(storedDisplayMode)
+          displayModeRef.current = storedDisplayMode
           setTrayIconStyle(storedTrayIconStyle)
+          trayIconStyleRef.current = storedTrayIconStyle
           setTrayShowPercentage(normalizedTrayShowPercentage)
+          trayShowPercentageRef.current = normalizedTrayShowPercentage
           const enabledIds = getEnabledPluginIds(normalized)
           setLoadingForPlugins(enabledIds)
           try {
