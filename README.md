@@ -31,6 +31,7 @@ OpenUsage lives in your menu bar and shows you how much of your AI coding subscr
 - [**Cursor**](docs/providers/cursor.md) / credits, plan usage, on-demand
 - [**Kimi Code**](docs/providers/kimi.md) / session, weekly
 - [**Windsurf**](docs/providers/windsurf.md) / prompt credits, flex credits
+- [**Z.ai**](docs/providers/zai.md) / session, web searches
 
 ### Maybe Soon
 
