@@ -73,3 +73,15 @@ This document records opinionated defaults chosen during development.
 **Context:** Testers need actionable path hints when auth/state files cannot be found.
 
 **Decision:** Provide Windows-specific error strings that mention likely file locations (AppData/UserProfile) and ask testers to report actual paths.
+
+### Keep Taskbar Context File For Follow-Up
+
+**Context:** `src/contexts/taskbar-context.tsx` exists but is not yet wired into the app.
+
+**Decision:** Keep the file in place (untracked for now) to integrate once taskbar state is finalized; avoid deleting to prevent churn while Windows support stabilizes.
+
+### Windows Auto-Update Requires Signing
+
+**Context:** Updater flow builds for Windows but CI has no Windows code signing.
+
+**Decision:** Document Windows auto-update as test-only until Authenticode signing is configured.

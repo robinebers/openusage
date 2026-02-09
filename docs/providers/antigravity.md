@@ -21,13 +21,20 @@ The language server listens on a random localhost port. Three values must be dis
 
 ```bash
 # 1. Find process and extract CSRF token
+# macOS/Linux:
 ps -ax -o pid=,command= | grep 'language_server_macos.*antigravity'
+# Windows:
+wmic process where "name='language_server_windows_x64.exe'" get ProcessId,CommandLine
+
 # Match: --app_data_dir antigravity  OR  path contains /antigravity/
 # Extract: --csrf_token <token>
 # Extract: --extension_server_port <port>  (HTTP fallback)
 
 # 2. Find listening ports
+# macOS/Linux:
 lsof -nP -iTCP -sTCP:LISTEN -a -p <pid>
+# Windows:
+netstat -ano | findstr <pid>
 
 # 3. Probe each port to find the Connect-RPC endpoint
 POST https://127.0.0.1:<port>/.../GetUnleashData  → first 200 OK wins
@@ -158,8 +165,10 @@ Interestingly, non-Google models (Claude, GPT-OSS) are proxied through Codeium/W
 
 ## Plugin Strategy
 
-1. Discover LS process via `ctx.host.ls.discover()` (ps + lsof)
+1. Discover LS process via `ctx.host.ls.discover()` (ps/wmic + lsof/netstat)
 2. Probe ports with `GetUnleashData` to find the Connect-RPC endpoint
 3. Call `GetUserStatus` for plan name + per-model quota
 4. Fall back to `GetCommandModelConfigs` if `GetUserStatus` fails
 5. If LS not running: error "Start Antigravity and try again."
+
+**Platform support:** macOS, Linux, Windows

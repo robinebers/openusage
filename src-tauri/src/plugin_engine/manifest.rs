@@ -14,6 +14,15 @@ pub struct ManifestLine {
     pub primary_order: Option<u32>,
 }
 
+/// Supported operating systems for a plugin
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum SupportedOs {
+    Macos,
+    Windows,
+    Linux,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginManifest {
@@ -25,6 +34,8 @@ pub struct PluginManifest {
     pub icon: String,
     pub brand_color: Option<String>,
     pub lines: Vec<ManifestLine>,
+    /// List of supported operating systems. If not specified, all platforms are supported.
+    pub os: Option<Vec<SupportedOs>>,
 }
 
 #[derive(Debug, Clone)]

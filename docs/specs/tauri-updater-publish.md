@@ -23,3 +23,7 @@
 ## Runtime definition-of-done
 - `src-tauri/tauri.conf.json` updater `endpoints` points to `.../releases/latest/download/latest.json`.
 - Release `latest.json` exists and references the same release’s assets.
+
+## Windows notes
+- Windows auto-update requires Authenticode-signed installers.
+- Until signing is configured, treat Windows updater as test-only (downloads may be blocked by SmartScreen/UAC).

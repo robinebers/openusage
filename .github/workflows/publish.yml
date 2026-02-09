@@ -24,6 +24,8 @@ jobs:
             args: "--target aarch64-apple-darwin"
           - platform: macos-latest
             args: "--target x86_64-apple-darwin"
+          - platform: windows-latest
+            args: "--target x86_64-pc-windows-msvc"
     runs-on: ${{ matrix.platform }}
     env:
       RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
@@ -34,7 +36,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || 'x86_64-pc-windows-msvc' }}
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: "./src-tauri -> target"
@@ -46,14 +48,20 @@ jobs:
       - name: Bundle plugins
         run: bun run bundle:plugins
       - name: Verify bundled plugins
+        shell: bash
         run: |
-          COUNT=$(find src-tauri/resources/bundled_plugins -maxdepth 2 -name plugin.json | wc -l | tr -d ' ')
+          if [[ "${{ matrix.platform }}" == "windows-latest" ]]; then
+            COUNT=$(find src-tauri/resources/bundled_plugins -maxdepth 2 -name plugin.json | wc -l | tr -d ' \r')
+          else
+            COUNT=$(find src-tauri/resources/bundled_plugins -maxdepth 2 -name plugin.json | wc -l | tr -d ' ')
+          fi
           if [[ "$COUNT" -lt 1 ]]; then
             echo "No bundled plugins found under src-tauri/resources/bundled_plugins."
             exit 1
           fi
 
       - name: Validate release tag
+        shell: bash
         run: |
           if [[ -z "$RELEASE_TAG" ]]; then
             echo "Missing RELEASE_TAG (push a v* tag, or provide workflow_dispatch input 'tag')."
@@ -65,6 +73,7 @@ jobs:
           fi
 
       - name: Validate app version matches tag
+        shell: bash
         run: |
           TAG_VERSION="${RELEASE_TAG#v}"
 
@@ -86,6 +95,7 @@ jobs:
           fi
 
       - name: Import Apple Developer Certificate
+        if: matrix.platform == 'macos-latest'
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -123,6 +133,7 @@ jobs:
           args: ${{ matrix.args }}
 
       - name: Verify updater assets uploaded
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
