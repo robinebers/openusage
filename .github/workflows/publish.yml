@@ -110,6 +110,22 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
           rm certificate.p12
 
+      - name: Import Windows signing certificate
+        if: matrix.platform == 'windows-latest' && secrets.WINDOWS_CERTIFICATE != ''
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $certDir = Join-Path $env:RUNNER_TEMP "windows-cert"
+          New-Item -ItemType Directory -Path $certDir | Out-Null
+          $certBase64 = Join-Path $certDir "cert.base64"
+          $certPfx = Join-Path $certDir "cert.pfx"
+          Set-Content -Path $certBase64 -Value $env:WINDOWS_CERTIFICATE -NoNewline
+          certutil -decode $certBase64 $certPfx | Out-Null
+          $securePassword = ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+          Import-PfxCertificate -FilePath $certPfx -CertStoreLocation Cert:\CurrentUser\My -Password $securePassword | Out-Null
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

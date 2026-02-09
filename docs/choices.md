@@ -74,14 +74,14 @@ This document records opinionated defaults chosen during development.
 
 **Decision:** Provide Windows-specific error strings that mention likely file locations (AppData/UserProfile) and ask testers to report actual paths.
 
-### Keep Taskbar Context File For Follow-Up
-
-**Context:** `src/contexts/taskbar-context.tsx` exists but is not yet wired into the app.
-
-**Decision:** Keep the file in place (untracked for now) to integrate once taskbar state is finalized; avoid deleting to prevent churn while Windows support stabilizes.
-
 ### Windows Auto-Update Requires Signing
 
 **Context:** Updater flow builds for Windows but CI has no Windows code signing.
 
 **Decision:** Document Windows auto-update as test-only until Authenticode signing is configured.
+
+### Remove Unused Taskbar Context
+
+**Context:** Taskbar position is already handled in `src/App.tsx` with Rust events and local state; `src/contexts/taskbar-context.tsx` was unused.
+
+**Decision:** Delete the unused context file to avoid dead code.
