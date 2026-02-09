@@ -985,6 +985,27 @@ describe("antigravity plugin", () => {
     expect(capturedAuth).toBe("Bearer test-api-key-123")
   })
 
+  it("skips expired proto token and falls back to next token", async () => {
+    const ctx = makeCtx()
+    const pastExpiry = Math.floor(Date.now() / 1000) - 3600
+    setupSqliteMock(ctx, makeAuthStatusJson(), makeProtobufBase64(ctx, "ya29.expired-proto-token", "1//refresh", pastExpiry))
+    ctx.host.ls.discover.mockReturnValue(null)
+
+    let capturedAuth = null
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("fetchAvailableModels")) {
+        capturedAuth = opts.headers.Authorization
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    expect(capturedAuth).toBe("Bearer test-api-key-123")
+  })
+
   it("handles missing/corrupt cache file gracefully", async () => {
     const ctx = makeCtx()
     setupSqliteMock(ctx, makeAuthStatusJson())

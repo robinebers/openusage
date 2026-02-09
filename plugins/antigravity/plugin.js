@@ -426,7 +426,11 @@
     if (lsResult) return lsResult
 
     var tokens = []
-    if (proto && proto.accessToken) tokens.push(proto.accessToken)
+    if (proto && proto.accessToken) {
+      if (!proto.expirySeconds || proto.expirySeconds > Math.floor(Date.now() / 1000)) {
+        tokens.push(proto.accessToken)
+      }
+    }
 
     var cached = loadCachedToken(ctx)
     if (cached && cached !== (proto && proto.accessToken)) tokens.push(cached)
