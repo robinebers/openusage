@@ -3,6 +3,10 @@
   const GH_KEYCHAIN_SERVICE = "gh:github.com";
   const USAGE_URL = "https://api.github.com/copilot_internal/user";
 
+  function isKeychainAvailable(ctx) {
+    return ctx.app && ctx.app.platform === "macos";
+  }
+
   function readJson(ctx, path) {
     try {
       if (!ctx.host.fs.exists(path)) return null;
@@ -23,27 +27,32 @@
   }
 
   function saveToken(ctx, token) {
-    try {
-      ctx.host.keychain.writeGenericPassword(
-        KEYCHAIN_SERVICE,
-        JSON.stringify({ token: token }),
-      );
-    } catch (e) {
-      ctx.host.log.warn("keychain write failed: " + String(e));
+    if (isKeychainAvailable(ctx)) {
+      try {
+        ctx.host.keychain.writeGenericPassword(
+          KEYCHAIN_SERVICE,
+          JSON.stringify({ token: token }),
+        );
+      } catch (e) {
+        ctx.host.log.warn("keychain write failed: " + String(e));
+      }
     }
     writeJson(ctx, ctx.app.pluginDataDir + "/auth.json", { token: token });
   }
 
   function clearCachedToken(ctx) {
-    try {
-      ctx.host.keychain.deleteGenericPassword(KEYCHAIN_SERVICE);
-    } catch (e) {
-      ctx.host.log.info("keychain delete failed: " + String(e));
+    if (isKeychainAvailable(ctx)) {
+      try {
+        ctx.host.keychain.deleteGenericPassword(KEYCHAIN_SERVICE);
+      } catch (e) {
+        ctx.host.log.info("keychain delete failed: " + String(e));
+      }
     }
     writeJson(ctx, ctx.app.pluginDataDir + "/auth.json", null);
   }
 
   function loadTokenFromKeychain(ctx) {
+    if (!isKeychainAvailable(ctx)) return null;
     try {
       const raw = ctx.host.keychain.readGenericPassword(KEYCHAIN_SERVICE);
       if (raw) {
@@ -60,6 +69,7 @@
   }
 
   function loadTokenFromGhCli(ctx) {
+    if (!isKeychainAvailable(ctx)) return null;
     try {
       const raw = ctx.host.keychain.readGenericPassword(GH_KEYCHAIN_SERVICE);
       if (raw) {

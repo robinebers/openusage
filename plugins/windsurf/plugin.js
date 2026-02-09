@@ -1,12 +1,17 @@
 (function () {
   var LS_SERVICE = "exa.language_server_pb.LanguageServerService"
-  var STATE_DB = "~/Library/Application Support/Windsurf/User/globalStorage/state.vscdb"
+  var MAC_STATE_DB = "~/Library/Application Support/Windsurf/User/globalStorage/state.vscdb"
+  var LINUX_STATE_DB = "~/.config/Windsurf/User/globalStorage/state.vscdb"
 
   // --- LS discovery ---
 
   function discoverLs(ctx) {
+    var processName = ctx.app.platform === "windows" 
+      ? "language_server_windows_x64.exe" 
+      : "language_server_macos"
+    
     return ctx.host.ls.discover({
-      processName: "language_server_macos",
+      processName: processName,
       markers: ["windsurf"],
       csrfFlag: "--csrf_token",
       portFlag: "--extension_server_port",
@@ -16,8 +21,13 @@
 
   function loadApiKey(ctx) {
     try {
+      var stateDb = getStateDbPath(ctx)
+      if (!stateDb) {
+        ctx.host.log.warn("state db path not found for Windsurf")
+        return null
+      }
       var rows = ctx.host.sqlite.query(
-        STATE_DB,
+        stateDb,
         "SELECT value FROM ItemTable WHERE key = 'windsurfAuthStatus' LIMIT 1"
       )
       var parsed = ctx.util.tryParseJson(rows)
@@ -47,7 +57,7 @@
             extensionVersion: "unknown",
             ide: "windsurf",
             ideVersion: "unknown",
-            os: "macos",
+            os: ctx.app.platform === "windows" ? "windows" : "macos",
           },
         },
       }),
@@ -191,6 +201,12 @@
   // --- Probe ---
 
   function probe(ctx) {
+    if (ctx.app.platform === "windows") {
+      var stateDb = getStateDbPath(ctx)
+      if (!stateDb || !ctx.host.fs.exists(stateDb)) {
+        throw "Windsurf data store not found on Windows. Expected %APPDATA%\\Windsurf\\User\\globalStorage\\state.vscdb (or Local). Please report the actual path."
+      }
+    }
     var result = probeViaLs(ctx)
     if (result) return result
 
@@ -199,3 +215,42 @@
 
   globalThis.__openusage_plugin = { id: "windsurf", probe: probe }
 })()
+  function joinPath(base, leaf, separator) {
+    if (!base) return leaf
+    if (base.endsWith("/") || base.endsWith("\\")) return base + leaf
+    return base + separator + leaf
+  }
+
+  function getEnv(ctx, name) {
+    try {
+      return ctx.host.env.get(name)
+    } catch (e) {
+      return null
+    }
+  }
+
+  function getStateDbPath(ctx) {
+    if (ctx.app.platform === "windows") {
+      var appData = getEnv(ctx, "APPDATA")
+      var localAppData = getEnv(ctx, "LOCALAPPDATA")
+      var userProfile = getEnv(ctx, "USERPROFILE")
+      var candidates = []
+      if (appData) candidates.push(joinPath(appData, "Windsurf\\User", "\\"))
+      if (localAppData) candidates.push(joinPath(localAppData, "Windsurf\\User", "\\"))
+      if (userProfile) {
+        candidates.push(joinPath(userProfile, "AppData\\Roaming\\Windsurf\\User", "\\"))
+        candidates.push(joinPath(userProfile, "AppData\\Local\\Windsurf\\User", "\\"))
+      }
+      for (var i = 0; i < candidates.length; i++) {
+        var dbPath = joinPath(candidates[i], "globalStorage\\state.vscdb", "\\")
+        if (ctx.host.fs.exists(dbPath)) return dbPath
+      }
+      if (candidates.length > 0) {
+        return joinPath(candidates[0], "globalStorage\\state.vscdb", "\\")
+      }
+      return null
+    }
+
+    if (ctx.app.platform === "linux") return LINUX_STATE_DB
+    return MAC_STATE_DB
+  }

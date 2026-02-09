@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { invoke, isTauri } from "@tauri-apps/api/core"
 import { listen } from "@tauri-apps/api/event"
-import { getCurrentWindow, PhysicalSize, currentMonitor } from "@tauri-apps/api/window"
+import { getCurrentWindow, PhysicalSize, PhysicalPosition, currentMonitor } from "@tauri-apps/api/window"
 import { getVersion } from "@tauri-apps/api/app"
 import { TrayIcon } from "@tauri-apps/api/tray"
 import { platform } from "@tauri-apps/plugin-os"
@@ -48,7 +48,7 @@ import {
 const PANEL_WIDTH = 400;
 const MAX_HEIGHT_FALLBACK_PX = 600;
 const MAX_HEIGHT_FRACTION_OF_MONITOR = 0.8;
-const ARROW_OVERHEAD_PX = 37; // .tray-arrow (7px) + wrapper pt-1.5 (6px) + bottom p-6 (24px)
+const ARROW_OVERHEAD_PX = 32; // Arrow (~16px) + container padding (16px)
 const TRAY_SETTINGS_DEBOUNCE_MS = 2000;
 const TRAY_PROBE_DEBOUNCE_MS = 500;
 
@@ -80,6 +80,13 @@ function App() {
   const [maxPanelHeightPx, setMaxPanelHeightPx] = useState<number | null>(null)
   const maxPanelHeightPxRef = useRef<number | null>(null)
   const [appVersion, setAppVersion] = useState("...")
+  // Track taskbar position for anchor-aware resizing (Windows)
+  type TaskbarPosition = "top" | "bottom" | "left" | "right" | null
+  const [taskbarPosition, setTaskbarPosition] = useState<TaskbarPosition>(null)
+  // Track last window height to calculate delta for repositioning
+  const lastWindowHeightRef = useRef<number | null>(null)
+  // Arrow offset from left edge (in logical px) - where tray icon center is relative to window
+  const [arrowOffset, setArrowOffset] = useState<number | null>(null)
 
   const { updateStatus, triggerInstall } = useAppUpdate()
   const [showAbout, setShowAbout] = useState(false)
@@ -211,7 +218,16 @@ function App() {
     const unlisteners: (() => void)[] = []
 
     async function setup() {
-      const u1 = await listen<string>("tray:navigate", (event) => {
+      const currentWindow = getCurrentWindow()
+      
+      const u1 = await listen<string>("tray:navigate", async (event) => {
+        // Capture current height before navigation so we can calculate delta
+        try {
+          const size = await currentWindow.outerSize()
+          lastWindowHeightRef.current = size.height
+        } catch {
+          lastWindowHeightRef.current = null
+        }
         setActiveView(event.payload as ActiveView)
       })
       if (cancelled) { u1(); return }
@@ -222,6 +238,41 @@ function App() {
       })
       if (cancelled) { u2(); return }
       unlisteners.push(u2)
+
+      // Listen for window focus events to capture current height as baseline
+      // This ensures we can calculate proper deltas for anchor-aware resizing
+      const u3 = await currentWindow.onFocusChanged(async ({ payload: focused }) => {
+        if (focused) {
+          // Window just gained focus - capture current height as baseline for delta calculation
+          try {
+            const size = await currentWindow.outerSize()
+            lastWindowHeightRef.current = size.height
+            console.log('[FOCUS] Window focused, captured baseline height:', size.height)
+
+            // Fetch latest positioning info (in case event was missed)
+            const pos = await invoke<string | null>('get_taskbar_position');
+            if (pos) setTaskbarPosition(pos as TaskbarPosition);
+            
+            const offset = await invoke<number | null>('get_arrow_offset');
+            if (offset !== null) setArrowOffset(offset);
+          } catch {
+            // Fallback: null will cause first resize to just set size without repositioning
+            lastWindowHeightRef.current = null
+            console.log('[FOCUS] Window focused, failed to capture height')
+          }
+        }
+      })
+      if (cancelled) { u3(); return }
+      unlisteners.push(u3)
+
+      // Listen for window positioning events to align arrow with tray icon
+      const u4 = await listen<{ arrowOffset: number; taskbarPosition: string }>("window:positioned", (event) => {
+        setArrowOffset(event.payload.arrowOffset)
+        setTaskbarPosition(event.payload.taskbarPosition as TaskbarPosition)
+        console.log('[POSITIONED] Arrow offset:', event.payload.arrowOffset, 'Taskbar:', event.payload.taskbarPosition)
+      })
+      if (cancelled) { u4(); return }
+      unlisteners.push(u4)
     }
     void setup()
 
@@ -232,60 +283,105 @@ function App() {
   }, [])
 
   // Auto-resize window to fit content using ResizeObserver
+  // CRITICAL: Anchor-aware resizing - keep the edge closest to taskbar fixed
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    let isResizing = false;
+
     const resizeWindow = async () => {
-      const factor = window.devicePixelRatio;
+      // Prevent concurrent resize operations
+      if (isResizing) return;
+      isResizing = true;
 
-      const width = Math.ceil(PANEL_WIDTH * factor);
-      const desiredHeightLogical = Math.max(1, container.scrollHeight);
-
-      let maxHeightPhysical: number | null = null;
-      let maxHeightLogical: number | null = null;
       try {
-        const monitor = await currentMonitor();
-        if (monitor) {
-          maxHeightPhysical = Math.floor(monitor.size.height * MAX_HEIGHT_FRACTION_OF_MONITOR);
-          maxHeightLogical = Math.floor(maxHeightPhysical / factor);
+        const factor = window.devicePixelRatio;
+        const width = Math.ceil(PANEL_WIDTH * factor);
+        const desiredHeightLogical = Math.max(1, container.scrollHeight);
+
+        let maxHeightPhysical: number | null = null;
+        let maxHeightLogical: number | null = null;
+        try {
+          const monitor = await currentMonitor();
+          if (monitor) {
+            maxHeightPhysical = Math.floor(monitor.size.height * MAX_HEIGHT_FRACTION_OF_MONITOR);
+            maxHeightLogical = Math.floor(maxHeightPhysical / factor);
+          }
+        } catch {
+          // fall through to fallback
         }
-      } catch {
-        // fall through to fallback
-      }
 
-      if (maxHeightLogical === null) {
-        const screenAvailHeight = Number(window.screen?.availHeight) || MAX_HEIGHT_FALLBACK_PX;
-        maxHeightLogical = Math.floor(screenAvailHeight * MAX_HEIGHT_FRACTION_OF_MONITOR);
-        maxHeightPhysical = Math.floor(maxHeightLogical * factor);
-      }
+        if (maxHeightLogical === null) {
+          const screenAvailHeight = Number(window.screen?.availHeight) || MAX_HEIGHT_FALLBACK_PX;
+          maxHeightLogical = Math.floor(screenAvailHeight * MAX_HEIGHT_FRACTION_OF_MONITOR);
+          maxHeightPhysical = Math.floor(maxHeightLogical * factor);
+        }
 
-      if (maxPanelHeightPxRef.current !== maxHeightLogical) {
-        maxPanelHeightPxRef.current = maxHeightLogical;
-        setMaxPanelHeightPx(maxHeightLogical);
-      }
+        if (maxPanelHeightPxRef.current !== maxHeightLogical) {
+          maxPanelHeightPxRef.current = maxHeightLogical;
+          setMaxPanelHeightPx(maxHeightLogical);
+        }
 
-      const desiredHeightPhysical = Math.ceil(desiredHeightLogical * factor);
-      const height = Math.ceil(Math.min(desiredHeightPhysical, maxHeightPhysical!));
+        const desiredHeightPhysical = Math.ceil(desiredHeightLogical * factor);
+        const newHeight = Math.ceil(Math.min(desiredHeightPhysical, maxHeightPhysical!));
+        const previousHeight = lastWindowHeightRef.current;
 
-      try {
         const currentWindow = getCurrentWindow();
-        await currentWindow.setSize(new PhysicalSize(width, height));
+
+        // Fetch current taskbar position from backend (Windows stores this on tray click)
+        let currentTaskbarPos: TaskbarPosition = null;
+        try {
+          currentTaskbarPos = await invoke<TaskbarPosition>("get_taskbar_position");
+          setTaskbarPosition(currentTaskbarPos);
+        } catch {
+          // Fallback: not available or macOS
+        }
+
+        // On Windows with bottom/right taskbar, we need to reposition when height changes
+        // to keep the bottom/right edge anchored
+        if (previousHeight !== null && previousHeight !== newHeight && currentTaskbarPos) {
+          const heightDelta = newHeight - previousHeight;
+
+          // Get current window position
+          const pos = await currentWindow.outerPosition();
+
+          if (currentTaskbarPos === "bottom") {
+            // Bottom taskbar: keep bottom edge fixed → move window UP when growing
+            const newY = pos.y - heightDelta;
+            await currentWindow.setPosition(new PhysicalPosition(pos.x, newY));
+          }
+          // Top/Left taskbar: default behavior (top-left anchored)
+          // Right taskbar: no vertical adjustment needed for height changes
+        }
+
+        await currentWindow.setSize(new PhysicalSize(width, newHeight));
+        lastWindowHeightRef.current = newHeight;
       } catch (e) {
         console.error("Failed to resize window:", e);
+      } finally {
+        isResizing = false;
       }
     };
 
-    // Initial resize
+    // Debounced resize to prevent rapid consecutive calls
+    const debouncedResize = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(resizeWindow, 16); // ~1 frame at 60fps
+    };
+
+    // Initial resize (no debounce)
     resizeWindow();
 
-    // Observe size changes
-    const observer = new ResizeObserver(() => {
-      resizeWindow();
-    });
+    // Observe size changes with debouncing
+    const observer = new ResizeObserver(debouncedResize);
     observer.observe(container);
 
-    return () => observer.disconnect();
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      observer.disconnect();
+    };
   }, [activeView, displayPlugins]);
 
   const getErrorMessage = useCallback((output: PluginOutput) => {
@@ -725,10 +821,42 @@ function App() {
     )
   }
 
+  const isSideTaskbar = taskbarPosition === "left" || taskbarPosition === "right"
+  const isTopTaskbar = taskbarPosition === "top"
+  const isLeftTaskbar = taskbarPosition === "left"
+  const isRightTaskbar = taskbarPosition === "right"
+
+  // Padding for shadow: needs ~16px to not clip the box-shadow
+  // Arrow side gets 8px (arrow is 16px), opposite side gets 16px for shadow
+  const containerClasses = isWindows
+    ? isSideTaskbar
+      ? "flex flex-row items-center w-full py-4 px-2 bg-transparent"
+      : isTopTaskbar
+        ? "flex flex-col items-center justify-start w-full px-4 pt-2 pb-4 bg-transparent"
+        : "flex flex-col items-center justify-end w-full px-4 pt-4 pb-2 bg-transparent"
+    : "flex flex-col items-center justify-start w-full px-4 pt-2 pb-4 bg-transparent";
+  
+  // Dynamic arrow positioning to align with tray icon
+  const ARROW_HALF_SIZE_PX = 7;
+  const PANEL_HORIZONTAL_PADDING_PX = 16; // px-4
+  const PANEL_VERTICAL_PADDING_PX = 16; // py-4
+  const arrowStyle = arrowOffset !== null
+    ? isSideTaskbar
+      ? ({
+          alignSelf: "flex-start",
+          marginTop: `${arrowOffset - ARROW_HALF_SIZE_PX - PANEL_VERTICAL_PADDING_PX}px`,
+        } as const)
+      : ({
+          alignSelf: "flex-start",
+          marginLeft: `${arrowOffset - ARROW_HALF_SIZE_PX - PANEL_HORIZONTAL_PADDING_PX}px`,
+        } as const)
+    : undefined;
+
   return (
-    <div ref={containerRef} className="flex flex-col items-center justify-end min-h-[500px] w-full p-6 pt-1.5 bg-transparent">
-      {/* macOS: Arrow at top pointing up | Windows: Arrow at bottom pointing down */}
-      {!isWindows && <div className="tray-arrow" />}
+    <div ref={containerRef} className={containerClasses}>
+      {/* macOS: top arrow; Windows: top/bottom/side based on taskbar */}
+      {(!isWindows || isTopTaskbar) && <div className="tray-arrow" style={arrowStyle} />}
+      {isWindows && isLeftTaskbar && <div className="tray-arrow-left" style={arrowStyle} />}
       <div
         className="relative bg-card rounded-xl overflow-hidden select-none w-full flex flex-col"
         style={{ 
@@ -762,8 +890,9 @@ function App() {
           </div>
         </div>
       </div>
+      {isWindows && isRightTaskbar && <div className="tray-arrow-right" style={arrowStyle} />}
       {/* Windows: Arrow at bottom pointing down toward taskbar */}
-      {isWindows && <div className="tray-arrow-down" />}
+      {isWindows && !isSideTaskbar && !isTopTaskbar && <div className="tray-arrow-down" style={arrowStyle} />}
     </div>
   );
 }

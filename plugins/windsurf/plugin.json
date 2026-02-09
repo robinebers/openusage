@@ -6,6 +6,7 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#111111",
+  "os": ["macos", "windows"],
   "lines": [
     { "type": "progress", "label": "Prompt credits", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Flex credits", "scope": "overview" }

@@ -10,21 +10,42 @@ mod webkit_config;
 
 use std::collections::{HashMap, HashSet};
 use tauri_plugin_aptabase::EventTracker;
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, Manager, State};
 use tauri_plugin_log::{Target, TargetKind};
 use uuid::Uuid;
 
+use crate::plugin_engine::manifest::LoadedPlugin;
+use crate::plugin_engine::runtime::PluginOutput;
+use crate::window_manager::TaskbarPosition;
+
 pub struct AppState {
-    pub plugins: Vec<plugin_engine::manifest::LoadedPlugin>,
-    pub app_data_dir: PathBuf,
+    pub plugins: Vec<LoadedPlugin>,
+    pub app_data_dir: std::path::PathBuf,
     pub app_version: String,
-    pub latest_probe_results: std::collections::HashMap<String, plugin_engine::runtime::PluginOutput>,
+    pub latest_probe_results: std::collections::HashMap<String, PluginOutput>,
+    pub last_taskbar_position: Option<TaskbarPosition>,
+    pub last_arrow_offset: Option<i32>,
 }
+
+#[tauri::command]
+fn get_taskbar_position(state: State<'_, Mutex<AppState>>) -> Option<String> {
+    state.lock().unwrap().last_taskbar_position.as_ref().map(|p| match p {
+        TaskbarPosition::Top => "top",
+        TaskbarPosition::Bottom => "bottom", 
+        TaskbarPosition::Left => "left",
+        TaskbarPosition::Right => "right",
+    }.to_string())
+}
+
+#[tauri::command]
+fn get_arrow_offset(state: State<'_, Mutex<AppState>>) -> Option<i32> {
+    state.lock().unwrap().last_arrow_offset
+}
+
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -78,6 +99,8 @@ fn hide_panel(app_handle: tauri::AppHandle) {
     window_manager::WindowManager::hide(&app_handle).expect("Failed to hide window");
 }
 
+
+
 #[tauri::command]
 async fn start_probe_batch(
     app_handle: tauri::AppHandle,
@@ -107,7 +130,7 @@ async fn start_probe_batch(
 
     let selected_plugins = match plugin_ids {
         Some(ids) => {
-            let mut by_id: HashMap<String, plugin_engine::manifest::LoadedPlugin> = plugins
+            let mut by_id: HashMap<String, LoadedPlugin> = plugins
                 .into_iter()
                 .map(|plugin| (plugin.manifest.id.clone(), plugin))
                 .collect();
@@ -292,6 +315,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             init_panel,
             hide_panel,
+            get_taskbar_position,
+            get_arrow_offset,
             start_probe_batch,
             list_plugins,
             get_log_path,
@@ -331,7 +356,10 @@ pub fn run() {
                 app_data_dir,
                 app_version: app.package_info().version.to_string(),
                 latest_probe_results: std::collections::HashMap::new(),
+                last_taskbar_position: None,
+                last_arrow_offset: None,
             }));
+
 
             tray::create(app.handle())?;
 

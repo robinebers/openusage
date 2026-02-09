@@ -212,6 +212,50 @@ webview {
   border-top: 6px solid var(--card);
 }
 
+/* Arrow pointing left toward the tray icon (Windows - left taskbar) */
+.tray-arrow-left {
+  width: 0;
+  height: 0;
+  border-top: 7px solid transparent;
+  border-bottom: 7px solid transparent;
+  border-right: 7px solid var(--border);
+  position: relative;
+  flex-shrink: 0;
+}
+.tray-arrow-left::after {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: 1.5px;
+  width: 0;
+  height: 0;
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+  border-right: 6px solid var(--card);
+}
+
+/* Arrow pointing right toward the tray icon (Windows - right taskbar) */
+.tray-arrow-right {
+  width: 0;
+  height: 0;
+  border-top: 7px solid transparent;
+  border-bottom: 7px solid transparent;
+  border-left: 7px solid var(--border);
+  position: relative;
+  flex-shrink: 0;
+}
+.tray-arrow-right::after {
+  content: "";
+  position: absolute;
+  top: -6px;
+  right: 1.5px;
+  width: 0;
+  height: 0;
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+  border-left: 6px solid var(--card);
+}
+
 /* Border beam for the update button */
 .update-border-beam {
   position: relative;

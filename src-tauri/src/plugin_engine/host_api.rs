@@ -1,7 +1,14 @@
 use rquickjs::{Ctx, Exception, Function, Object};
 use std::path::PathBuf;
 
-const WHITELISTED_ENV_VARS: [&str; 1] = ["CODEX_HOME"];
+const WHITELISTED_ENV_VARS: [&str; 6] = [
+    "CODEX_HOME",
+    "APPDATA",
+    "LOCALAPPDATA",
+    "USERPROFILE",
+    "HOMEDRIVE",
+    "HOMEPATH",
+];
 
 /// Redact sensitive value to first4...last4 format (UTF-8 safe)
 fn redact_value(value: &str) -> String {
@@ -10,7 +17,14 @@ fn redact_value(value: &str) -> String {
         "[REDACTED]".to_string()
     } else {
         let first4: String = chars.iter().take(4).collect();
-        let last4: String = chars.iter().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect();
+        let last4: String = chars
+            .iter()
+            .rev()
+            .take(4)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
         format!("{}...{}", first4, last4)
     }
 }
@@ -18,10 +32,19 @@ fn redact_value(value: &str) -> String {
 /// Redact sensitive query parameters in URL
 fn redact_url(url: &str) -> String {
     let sensitive_params = [
-        "key", "api_key", "apikey", "token", "access_token", "secret",
-        "password", "auth", "authorization", "bearer", "credential",
+        "key",
+        "api_key",
+        "apikey",
+        "token",
+        "access_token",
+        "secret",
+        "password",
+        "auth",
+        "authorization",
+        "bearer",
+        "credential",
     ];
-    
+
     if let Some(query_start) = url.find('?') {
         let (base, query) = url.split_at(query_start + 1);
         let redacted_params: Vec<String> = query
@@ -31,7 +54,8 @@ fn redact_url(url: &str) -> String {
                     let (name, value) = param.split_at(eq_pos);
                     let value = &value[1..]; // skip '='
                     let name_lower = name.to_lowercase();
-                    if sensitive_params.iter().any(|s| name_lower.contains(s)) && !value.is_empty() {
+                    if sensitive_params.iter().any(|s| name_lower.contains(s)) && !value.is_empty()
+                    {
                         format!("{}={}", name, redact_value(value))
                     } else {
                         param.to_string()
@@ -50,49 +74,83 @@ fn redact_url(url: &str) -> String {
 /// Redact sensitive patterns in response body for logging
 fn redact_body(body: &str) -> String {
     let mut result = body.to_string();
-    
+
     // Redact JWTs (eyJ... pattern with dots)
-    let jwt_pattern = regex_lite::Regex::new(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+").unwrap();
-    result = jwt_pattern.replace_all(&result, |caps: &regex_lite::Captures| {
-        redact_value(&caps[0])
-    }).to_string();
-    
+    let jwt_pattern =
+        regex_lite::Regex::new(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+").unwrap();
+    result = jwt_pattern
+        .replace_all(&result, |caps: &regex_lite::Captures| {
+            redact_value(&caps[0])
+        })
+        .to_string();
+
     // Redact common API key patterns (sk-xxx, pk-xxx, api_xxx, etc.)
-    let api_key_pattern = regex_lite::Regex::new(r#"["']?(sk-|pk-|api_|key_|secret_)[A-Za-z0-9_-]{12,}["']?"#).unwrap();
-    result = api_key_pattern.replace_all(&result, |caps: &regex_lite::Captures| {
-        let key = caps[0].trim_matches(|c| c == '"' || c == '\'');
-        redact_value(key)
-    }).to_string();
-    
+    let api_key_pattern =
+        regex_lite::Regex::new(r#"["']?(sk-|pk-|api_|key_|secret_)[A-Za-z0-9_-]{12,}["']?"#)
+            .unwrap();
+    result = api_key_pattern
+        .replace_all(&result, |caps: &regex_lite::Captures| {
+            let key = caps[0].trim_matches(|c| c == '"' || c == '\'');
+            redact_value(key)
+        })
+        .to_string();
+
     // Redact JSON values for sensitive keys
     let sensitive_keys = [
-        "name", "password", "token", "access_token", "refresh_token", "secret",
-        "api_key", "apiKey", "authorization", "bearer", "credential",
-        "session_token", "sessionToken", "auth_token", "authToken",
-        "user_id", "account_id", "email", "login", "analytics_tracking_id",
+        "name",
+        "password",
+        "token",
+        "access_token",
+        "refresh_token",
+        "secret",
+        "api_key",
+        "apiKey",
+        "authorization",
+        "bearer",
+        "credential",
+        "session_token",
+        "sessionToken",
+        "auth_token",
+        "authToken",
+        "user_id",
+        "account_id",
+        "email",
+        "login",
+        "analytics_tracking_id",
     ];
     for key in sensitive_keys {
         // Match "key": "value" or "key":"value"
         let pattern = format!(r#""{}":\s*"([^"]+)""#, key);
         if let Ok(re) = regex_lite::Regex::new(&pattern) {
-            result = re.replace_all(&result, |caps: &regex_lite::Captures| {
-                let value = &caps[1];
-                format!("\"{}\": \"{}\"", key, redact_value(value))
-            }).to_string();
+            result = re
+                .replace_all(&result, |caps: &regex_lite::Captures| {
+                    let value = &caps[1];
+                    format!("\"{}\": \"{}\"", key, redact_value(value))
+                })
+                .to_string();
         }
     }
-    
+
     result
 }
 
 /// Lightweight redaction for plugin log messages (JWT + API key patterns only).
 fn redact_log_message(msg: &str) -> String {
     let mut result = msg.to_string();
-    if let Ok(jwt_re) = regex_lite::Regex::new(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+") {
-        result = jwt_re.replace_all(&result, |caps: &regex_lite::Captures| redact_value(&caps[0])).to_string();
+    if let Ok(jwt_re) = regex_lite::Regex::new(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+")
+    {
+        result = jwt_re
+            .replace_all(&result, |caps: &regex_lite::Captures| {
+                redact_value(&caps[0])
+            })
+            .to_string();
     }
     if let Ok(api_re) = regex_lite::Regex::new(r#"(sk-|pk-|api_|key_|secret_)[A-Za-z0-9_-]{12,}"#) {
-        result = api_re.replace_all(&result, |caps: &regex_lite::Captures| redact_value(&caps[0])).to_string();
+        result = api_re
+            .replace_all(&result, |caps: &regex_lite::Captures| {
+                redact_value(&caps[0])
+            })
+            .to_string();
     }
     result
 }
@@ -141,11 +199,7 @@ pub fn inject_host_api<'js>(
     Ok(())
 }
 
-fn inject_log<'js>(
-    ctx: &Ctx<'js>,
-    host: &Object<'js>,
-    plugin_id: &str,
-) -> rquickjs::Result<()> {
+fn inject_log<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquickjs::Result<()> {
     let log_obj = Object::new(ctx.clone())?;
 
     let pid = plugin_id.to_string();
@@ -193,9 +247,8 @@ fn inject_fs<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
             ctx.clone(),
             move |ctx_inner: Ctx<'_>, path: String| -> rquickjs::Result<String> {
                 let expanded = expand_path(&path);
-                std::fs::read_to_string(&expanded).map_err(|e| {
-                    Exception::throw_message(&ctx_inner, &e.to_string())
-                })
+                std::fs::read_to_string(&expanded)
+                    .map_err(|e| Exception::throw_message(&ctx_inner, &e.to_string()))
             },
         )?,
     )?;
@@ -206,9 +259,8 @@ fn inject_fs<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
             ctx.clone(),
             move |ctx_inner: Ctx<'_>, path: String, content: String| -> rquickjs::Result<()> {
                 let expanded = expand_path(&path);
-                std::fs::write(&expanded, &content).map_err(|e| {
-                    Exception::throw_message(&ctx_inner, &e.to_string())
-                })
+                std::fs::write(&expanded, &content)
+                    .map_err(|e| Exception::throw_message(&ctx_inner, &e.to_string()))
             },
         )?,
     )?;
@@ -317,7 +369,8 @@ fn inject_http<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rqui
                 let redacted_body = redact_body(&body);
                 let body_preview = if redacted_body.len() > 500 {
                     // UTF-8 safe truncation: find valid char boundary at or before 500
-                    let truncated: String = redacted_body.char_indices()
+                    let truncated: String = redacted_body
+                        .char_indices()
                         .take_while(|(i, _)| *i < 500)
                         .map(|(_, c)| c)
                         .collect();
@@ -710,11 +763,7 @@ struct LsDiscoverResult {
     extension_port: Option<i32>,
 }
 
-fn inject_ls<'js>(
-    ctx: &Ctx<'js>,
-    host: &Object<'js>,
-    plugin_id: &str,
-) -> rquickjs::Result<()> {
+fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquickjs::Result<()> {
     let ls_obj = Object::new(ctx.clone())?;
     let pid = plugin_id.to_string();
 
@@ -724,10 +773,7 @@ fn inject_ls<'js>(
             ctx.clone(),
             move |ctx_inner: Ctx<'_>, opts_json: String| -> rquickjs::Result<String> {
                 let opts: LsDiscoverOpts = serde_json::from_str(&opts_json).map_err(|e| {
-                    Exception::throw_message(
-                        &ctx_inner,
-                        &format!("invalid discover opts: {}", e),
-                    )
+                    Exception::throw_message(&ctx_inner, &format!("invalid discover opts: {}", e))
                 })?;
 
                 log::info!(
@@ -737,19 +783,33 @@ fn inject_ls<'js>(
                     opts.markers
                 );
 
-                let ps_output = match std::process::Command::new("/bin/ps")
-                    .args(["-ax", "-o", "pid=,command="])
-                    .output()
-                {
-                    Ok(o) => o,
-                    Err(e) => {
-                        log::warn!("[plugin:{}] ps failed: {}", pid, e);
-                        return Ok("null".to_string());
+                // Platform-specific process listing
+                let ps_output = if cfg!(target_os = "windows") {
+                    match std::process::Command::new("wmic")
+                        .args(["process", "get", "ProcessId,CommandLine", "/format:list"])
+                        .output()
+                    {
+                        Ok(o) => o,
+                        Err(e) => {
+                            log::warn!("[plugin:{}] wmic failed: {}", pid, e);
+                            return Ok("null".to_string());
+                        }
+                    }
+                } else {
+                    match std::process::Command::new("/bin/ps")
+                        .args(["-ax", "-o", "pid=,command="])
+                        .output()
+                    {
+                        Ok(o) => o,
+                        Err(e) => {
+                            log::warn!("[plugin:{}] ps failed: {}", pid, e);
+                            return Ok("null".to_string());
+                        }
                     }
                 };
 
                 if !ps_output.status.success() {
-                    log::warn!("[plugin:{}] ps returned non-zero", pid);
+                    log::warn!("[plugin:{}] process listing returned non-zero", pid);
                     return Ok("null".to_string());
                 }
 
@@ -763,39 +823,80 @@ fn inject_ls<'js>(
                 // non-Codeium provider needs LS discovery, extend patterns here.
                 let mut found: Option<(i32, String)> = None;
 
-                for line in ps_stdout.lines() {
-                    let trimmed = line.trim();
-                    if trimmed.is_empty() {
-                        continue;
+                if cfg!(target_os = "windows") {
+                    // Parse wmic output: key=value pairs separated by blank lines
+                    let mut current_pid: Option<i32> = None;
+                    let mut current_command: Option<String> = None;
+
+                    for line in ps_stdout.lines() {
+                        let trimmed = line.trim();
+                        if trimmed.is_empty() {
+                            // End of record - check if it matches
+                            if let (Some(pid), Some(cmd)) = (current_pid, &current_command) {
+                                let cmd_lower = cmd.to_lowercase();
+                                if cmd_lower.contains(&process_name_lower) {
+                                    let has_marker = markers_lower.iter().any(|m| {
+                                        cmd_lower.contains(&format!("--app_data_dir {}", m))
+                                            || cmd_lower.contains(&format!("\\{}\\", m))
+                                    });
+                                    if has_marker {
+                                        found = Some((pid, cmd.clone()));
+                                        break;
+                                    }
+                                }
+                            }
+                            current_pid = None;
+                            current_command = None;
+                            continue;
+                        }
+
+                        if let Some(eq_pos) = trimmed.find('=') {
+                            let key = &trimmed[..eq_pos];
+                            let value = &trimmed[eq_pos + 1..];
+
+                            if key == "ProcessId" {
+                                current_pid = value.parse::<i32>().ok();
+                            } else if key == "CommandLine" {
+                                current_command = Some(value.to_string());
+                            }
+                        }
                     }
+                } else {
+                    // Unix: parse ps output (space-separated pid + command)
+                    for line in ps_stdout.lines() {
+                        let trimmed = line.trim();
+                        if trimmed.is_empty() {
+                            continue;
+                        }
 
-                    let mut parts = trimmed.splitn(2, char::is_whitespace);
-                    let pid_str = match parts.next() {
-                        Some(s) => s.trim(),
-                        None => continue,
-                    };
-                    let command = match parts.next() {
-                        Some(s) => s.trim(),
-                        None => continue,
-                    };
+                        let mut parts = trimmed.splitn(2, char::is_whitespace);
+                        let pid_str = match parts.next() {
+                            Some(s) => s.trim(),
+                            None => continue,
+                        };
+                        let command = match parts.next() {
+                            Some(s) => s.trim(),
+                            None => continue,
+                        };
 
-                    let command_lower = command.to_lowercase();
+                        let command_lower = command.to_lowercase();
 
-                    if !command_lower.contains(&process_name_lower) {
-                        continue;
-                    }
+                        if !command_lower.contains(&process_name_lower) {
+                            continue;
+                        }
 
-                    let has_marker = markers_lower.iter().any(|m| {
-                        command_lower.contains(&format!("--app_data_dir {}", m))
-                            || command_lower.contains(&format!("/{}/", m))
-                    });
-                    if !has_marker {
-                        continue;
-                    }
+                        let has_marker = markers_lower.iter().any(|m| {
+                            command_lower.contains(&format!("--app_data_dir {}", m))
+                                || command_lower.contains(&format!("/{}/", m))
+                        });
+                        if !has_marker {
+                            continue;
+                        }
 
-                    if let Ok(p) = pid_str.parse::<i32>() {
-                        found = Some((p, command.to_string()));
-                        break;
+                        if let Ok(p) = pid_str.parse::<i32>() {
+                            found = Some((p, command.to_string()));
+                            break;
+                        }
                     }
                 }
 
@@ -811,22 +912,15 @@ fn inject_ls<'js>(
                 let csrf = match ls_extract_flag(&command, &opts.csrf_flag) {
                     Some(c) => c,
                     None => {
-                        log::warn!(
-                            "[plugin:{}] CSRF token not found in process args",
-                            pid
-                        );
+                        log::warn!("[plugin:{}] CSRF token not found in process args", pid);
                         return Ok("null".to_string());
                     }
                 };
 
                 // Extract extension port (optional)
-                let extension_port = opts
-                    .port_flag
-                    .as_ref()
-                    .and_then(|flag| {
-                        ls_extract_flag(&command, flag)
-                            .and_then(|v| v.parse::<i32>().ok())
-                    });
+                let extension_port = opts.port_flag.as_ref().and_then(|flag| {
+                    ls_extract_flag(&command, flag).and_then(|v| v.parse::<i32>().ok())
+                });
 
                 // Extract extra flags (optional)
                 let mut extra = std::collections::HashMap::new();
@@ -840,44 +934,60 @@ fn inject_ls<'js>(
                     }
                 }
 
-                // Find lsof binary
-                let lsof_path = ["/usr/sbin/lsof", "/usr/bin/lsof"]
-                    .iter()
-                    .find(|p| std::path::Path::new(p).exists())
-                    .copied();
-
-                let ports = if let Some(lsof) = lsof_path {
-                    match std::process::Command::new(lsof)
-                        .args([
-                            "-nP",
-                            "-iTCP",
-                            "-sTCP:LISTEN",
-                            "-a",
-                            "-p",
-                            &process_pid.to_string(),
-                        ])
+                // Find listening ports
+                let ports = if cfg!(target_os = "windows") {
+                    // Use netstat on Windows
+                    match std::process::Command::new("netstat")
+                        .args(["-ano", "-p", "TCP"])
                         .output()
                     {
                         Ok(o) if o.status.success() => {
-                            ls_parse_listening_ports(
-                                &String::from_utf8_lossy(&o.stdout),
-                            )
+                            ls_parse_netstat_ports(&String::from_utf8_lossy(&o.stdout), process_pid)
                         }
                         Ok(_) => {
-                            log::warn!(
-                                "[plugin:{}] lsof returned non-zero",
-                                pid
-                            );
+                            log::warn!("[plugin:{}] netstat returned non-zero", pid);
                             Vec::new()
                         }
                         Err(e) => {
-                            log::warn!("[plugin:{}] lsof failed: {}", pid, e);
+                            log::warn!("[plugin:{}] netstat failed: {}", pid, e);
                             Vec::new()
                         }
                     }
                 } else {
-                    log::warn!("[plugin:{}] lsof not found", pid);
-                    Vec::new()
+                    // Find lsof binary on Unix
+                    let lsof_path = ["/usr/sbin/lsof", "/usr/bin/lsof"]
+                        .iter()
+                        .find(|p| std::path::Path::new(p).exists())
+                        .copied();
+
+                    if let Some(lsof) = lsof_path {
+                        match std::process::Command::new(lsof)
+                            .args([
+                                "-nP",
+                                "-iTCP",
+                                "-sTCP:LISTEN",
+                                "-a",
+                                "-p",
+                                &process_pid.to_string(),
+                            ])
+                            .output()
+                        {
+                            Ok(o) if o.status.success() => {
+                                ls_parse_listening_ports(&String::from_utf8_lossy(&o.stdout))
+                            }
+                            Ok(_) => {
+                                log::warn!("[plugin:{}] lsof returned non-zero", pid);
+                                Vec::new()
+                            }
+                            Err(e) => {
+                                log::warn!("[plugin:{}] lsof failed: {}", pid, e);
+                                Vec::new()
+                            }
+                        }
+                    } else {
+                        log::warn!("[plugin:{}] lsof not found", pid);
+                        Vec::new()
+                    }
                 };
 
                 if ports.is_empty() && extension_port.is_none() {
@@ -905,10 +1015,7 @@ fn inject_ls<'js>(
                 };
 
                 serde_json::to_string(&result).map_err(|e| {
-                    Exception::throw_message(
-                        &ctx_inner,
-                        &format!("serialize failed: {}", e),
-                    )
+                    Exception::throw_message(&ctx_inner, &format!("serialize failed: {}", e))
                 })
             },
         )?,
@@ -969,6 +1076,43 @@ fn ls_parse_listening_ports(output: &str) -> Vec<i32> {
                     if port > 0 && port < 65536 {
                         ports.insert(port);
                         break;
+                    }
+                }
+            }
+        }
+    }
+    ports.into_iter().collect()
+}
+
+/// Parse listening port numbers from Windows `netstat -ano` output.
+fn ls_parse_netstat_ports(output: &str, target_pid: i32) -> Vec<i32> {
+    let mut ports = std::collections::BTreeSet::new();
+    for line in output.lines() {
+        if !line.contains("LISTENING") {
+            continue;
+        }
+        // netstat output: TCP  127.0.0.1:PORT  0.0.0.0:0  LISTENING  PID
+        let tokens: Vec<&str> = line.split_whitespace().collect();
+        if tokens.len() < 5 {
+            continue;
+        }
+
+        // Last token is the PID
+        if let Ok(pid) = tokens[tokens.len() - 1].parse::<i32>() {
+            if pid != target_pid {
+                continue;
+            }
+        } else {
+            continue;
+        }
+
+        // Second token should be the local address (127.0.0.1:PORT or 0.0.0.0:PORT)
+        if let Some(addr_port) = tokens.get(1) {
+            if let Some(colon_pos) = addr_port.rfind(':') {
+                let port_str = &addr_port[colon_pos + 1..];
+                if let Ok(port) = port_str.parse::<i32>() {
+                    if port > 0 && port < 65536 {
+                        ports.insert(port);
                     }
                 }
             }
@@ -1065,21 +1209,11 @@ fn inject_keychain<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<
                         .output()
                 } else {
                     std::process::Command::new("security")
-                        .args([
-                            "add-generic-password",
-                            "-s",
-                            &service,
-                            "-w",
-                            &value,
-                            "-U",
-                        ])
+                        .args(["add-generic-password", "-s", &service, "-w", &value, "-U"])
                         .output()
                 }
                 .map_err(|e| {
-                    Exception::throw_message(
-                        &ctx_inner,
-                        &format!("keychain write failed: {}", e),
-                    )
+                    Exception::throw_message(&ctx_inner, &format!("keychain write failed: {}", e))
                 })?;
 
                 if !output.status.success() {
@@ -1128,10 +1262,7 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                     .args(["-readonly", "-json", &uri_path, &sql])
                     .output()
                     .map_err(|e| {
-                        Exception::throw_message(
-                            &ctx_inner,
-                            &format!("sqlite3 exec failed: {}", e),
-                        )
+                        Exception::throw_message(&ctx_inner, &format!("sqlite3 exec failed: {}", e))
                     })?;
 
                 if !output.status.success() {
@@ -1163,10 +1294,7 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                     .args([&expanded, &sql])
                     .output()
                     .map_err(|e| {
-                        Exception::throw_message(
-                            &ctx_inner,
-                            &format!("sqlite3 exec failed: {}", e),
-                        )
+                        Exception::throw_message(&ctx_inner, &format!("sqlite3 exec failed: {}", e))
                     })?;
 
                 if !output.status.success() {
@@ -1248,23 +1376,38 @@ mod tests {
             let get: Function = env.get("get").expect("get");
 
             for name in WHITELISTED_ENV_VARS {
-                let value: Option<String> = get.call((name.to_string(),)).expect("get whitelisted var");
-                assert_eq!(value, std::env::var(name).ok(), "{name} should match process env");
+                let value: Option<String> =
+                    get.call((name.to_string(),)).expect("get whitelisted var");
+                assert_eq!(
+                    value,
+                    std::env::var(name).ok(),
+                    "{name} should match process env"
+                );
 
                 let js_expr = format!(r#"__openusage_ctx.host.env.get("{}")"#, name);
                 let js_value: Option<String> = ctx.eval(js_expr).expect("js get whitelisted var");
-                assert_eq!(js_value, std::env::var(name).ok(), "{name} should match process env from JS");
+                assert_eq!(
+                    js_value,
+                    std::env::var(name).ok(),
+                    "{name} should match process env from JS"
+                );
             }
 
             let blocked: Option<String> = get
                 .call(("__OPENUSAGE_TEST_NOT_WHITELISTED__".to_string(),))
                 .expect("get blocked var");
-            assert!(blocked.is_none(), "non-whitelisted vars must not be exposed");
+            assert!(
+                blocked.is_none(),
+                "non-whitelisted vars must not be exposed"
+            );
 
             let js_blocked: Option<String> = ctx
                 .eval(r#"__openusage_ctx.host.env.get("__OPENUSAGE_TEST_NOT_WHITELISTED__")"#)
                 .expect("js get blocked var");
-            assert!(js_blocked.is_none(), "non-whitelisted vars must not be exposed from JS");
+            assert!(
+                js_blocked.is_none(),
+                "non-whitelisted vars must not be exposed from JS"
+            );
         });
     }
 
@@ -1293,7 +1436,11 @@ mod tests {
         let body = r#"{"token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"}"#;
         let redacted = redact_body(body);
         // JWT gets redacted to first4...last4 format
-        assert!(!redacted.contains("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"), "full JWT should be redacted, got: {}", redacted);
+        assert!(
+            !redacted.contains("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
+            "full JWT should be redacted, got: {}",
+            redacted
+        );
     }
 
     #[test]
@@ -1307,46 +1454,102 @@ mod tests {
     fn redact_body_redacts_json_password_field() {
         let body = r#"{"password": "supersecretpassword123"}"#;
         let redacted = redact_body(body);
-        assert!(!redacted.contains("supersecretpassword123"), "password should be redacted, got: {}", redacted);
+        assert!(
+            !redacted.contains("supersecretpassword123"),
+            "password should be redacted, got: {}",
+            redacted
+        );
     }
 
     #[test]
     fn redact_body_redacts_user_id_and_email() {
         let body = r#"{"user_id": "user-iupzZ7KFykMLrnzpkHSq7wjo", "email": "rob@sunstory.com"}"#;
         let redacted = redact_body(body);
-        assert!(!redacted.contains("user-iupzZ7KFykMLrnzpkHSq7wjo"), "user_id should be redacted, got: {}", redacted);
-        assert!(!redacted.contains("rob@sunstory.com"), "email should be redacted, got: {}", redacted);
+        assert!(
+            !redacted.contains("user-iupzZ7KFykMLrnzpkHSq7wjo"),
+            "user_id should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            !redacted.contains("rob@sunstory.com"),
+            "email should be redacted, got: {}",
+            redacted
+        );
         // Should show first4...last4
-        assert!(redacted.contains("user...7wjo"), "user_id should show first4...last4, got: {}", redacted);
-        assert!(redacted.contains("rob@....com"), "email should show first4...last4, got: {}", redacted);
+        assert!(
+            redacted.contains("user...7wjo"),
+            "user_id should show first4...last4, got: {}",
+            redacted
+        );
+        assert!(
+            redacted.contains("rob@....com"),
+            "email should show first4...last4, got: {}",
+            redacted
+        );
     }
 
     #[test]
     fn redact_log_message_redacts_jwt_and_api_key() {
         let msg = "token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U key=sk-1234567890abcdef";
         let redacted = redact_log_message(msg);
-        assert!(!redacted.contains("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"), "JWT should be redacted");
-        assert!(!redacted.contains("sk-1234567890abcdef"), "API key should be redacted");
+        assert!(
+            !redacted.contains("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
+            "JWT should be redacted"
+        );
+        assert!(
+            !redacted.contains("sk-1234567890abcdef"),
+            "API key should be redacted"
+        );
     }
 
     #[test]
     fn redact_body_redacts_login_and_analytics_tracking_id() {
-        let body = r#"{"login":"robinebers","analytics_tracking_id":"c9df3f012bb8c2eb7aae6868ee8da6cf"}"#;
+        let body =
+            r#"{"login":"robinebers","analytics_tracking_id":"c9df3f012bb8c2eb7aae6868ee8da6cf"}"#;
         let redacted = redact_body(body);
-        assert!(!redacted.contains("robinebers"), "login should be redacted, got: {}", redacted);
-        assert!(!redacted.contains("c9df3f012bb8c2eb7aae6868ee8da6cf"), "analytics_tracking_id should be redacted, got: {}", redacted);
+        assert!(
+            !redacted.contains("robinebers"),
+            "login should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            !redacted.contains("c9df3f012bb8c2eb7aae6868ee8da6cf"),
+            "analytics_tracking_id should be redacted, got: {}",
+            redacted
+        );
         // login is short (<=12 chars) so becomes [REDACTED]; analytics_tracking_id is long so first4...last4
-        assert!(redacted.contains("[REDACTED]"), "login should be redacted, got: {}", redacted);
-        assert!(redacted.contains("c9df...a6cf"), "analytics_tracking_id should show first4...last4, got: {}", redacted);
+        assert!(
+            redacted.contains("[REDACTED]"),
+            "login should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            redacted.contains("c9df...a6cf"),
+            "analytics_tracking_id should show first4...last4, got: {}",
+            redacted
+        );
     }
 
     #[test]
     fn redact_body_redacts_name_field() {
-        let body = r#"{"userStatus":{"name":"Robin Ebers","email":"rob@sunstory.com","planStatus":{}}}"#;
+        let body =
+            r#"{"userStatus":{"name":"Robin Ebers","email":"rob@sunstory.com","planStatus":{}}}"#;
         let redacted = redact_body(body);
-        assert!(!redacted.contains("Robin Ebers"), "name should be redacted, got: {}", redacted);
-        assert!(!redacted.contains("rob@sunstory.com"), "email should be redacted, got: {}", redacted);
+        assert!(
+            !redacted.contains("Robin Ebers"),
+            "name should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            !redacted.contains("rob@sunstory.com"),
+            "email should be redacted, got: {}",
+            redacted
+        );
         // "Robin Ebers" is 11 chars (<=12) so becomes [REDACTED]
-        assert!(redacted.contains("\"name\": \"[REDACTED]\""), "name should show [REDACTED], got: {}", redacted);
+        assert!(
+            redacted.contains("\"name\": \"[REDACTED]\""),
+            "name should show [REDACTED], got: {}",
+            redacted
+        );
     }
 }

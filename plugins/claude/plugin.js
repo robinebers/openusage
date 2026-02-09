@@ -123,9 +123,10 @@
 
   function loadCredentials(ctx) {
     // Try file first
-    if (ctx.host.fs.exists(CRED_FILE)) {
+    const credPath = getCredentialsPath(ctx)
+    if (credPath && ctx.host.fs.exists(credPath)) {
       try {
-        const text = ctx.host.fs.readText(CRED_FILE)
+        const text = ctx.host.fs.readText(credPath)
         const parsed = tryParseCredentialJSON(ctx, text)
         if (parsed) {
           const oauth = parsed.claudeAiOauth
@@ -141,21 +142,23 @@
     }
 
     // Try keychain fallback
-    try {
-      const keychainValue = ctx.host.keychain.readGenericPassword(KEYCHAIN_SERVICE)
-      if (keychainValue) {
-        const parsed = tryParseCredentialJSON(ctx, keychainValue)
-        if (parsed) {
-          const oauth = parsed.claudeAiOauth
-          if (oauth && oauth.accessToken) {
-            ctx.host.log.info("credentials loaded from keychain")
-            return { oauth, source: "keychain", fullData: parsed }
+    if (isKeychainAvailable(ctx)) {
+      try {
+        const keychainValue = ctx.host.keychain.readGenericPassword(KEYCHAIN_SERVICE)
+        if (keychainValue) {
+          const parsed = tryParseCredentialJSON(ctx, keychainValue)
+          if (parsed) {
+            const oauth = parsed.claudeAiOauth
+            if (oauth && oauth.accessToken) {
+              ctx.host.log.info("credentials loaded from keychain")
+              return { oauth, source: "keychain", fullData: parsed }
+            }
           }
+          ctx.host.log.warn("keychain has data but no valid oauth")
         }
-        ctx.host.log.warn("keychain has data but no valid oauth")
+      } catch (e) {
+        ctx.host.log.info("keychain read failed (may not exist): " + String(e))
       }
-    } catch (e) {
-      ctx.host.log.info("keychain read failed (may not exist): " + String(e))
     }
 
     ctx.host.log.warn("no credentials found")
@@ -168,13 +171,22 @@
     const text = JSON.stringify(fullData)
     if (source === "file") {
       try {
-        ctx.host.fs.writeText(CRED_FILE, text)
+        const credPath = getCredentialsPath(ctx)
+        if (credPath) {
+          ctx.host.fs.writeText(credPath, text)
+        } else {
+          ctx.host.log.error("Failed to resolve Claude credentials path")
+        }
       } catch (e) {
         ctx.host.log.error("Failed to write Claude credentials file: " + String(e))
       }
     } else if (source === "keychain") {
       try {
-        ctx.host.keychain.writeGenericPassword(KEYCHAIN_SERVICE, text)
+        if (isKeychainAvailable(ctx)) {
+          ctx.host.keychain.writeGenericPassword(KEYCHAIN_SERVICE, text)
+        } else {
+          ctx.host.log.error("Keychain not available on this platform")
+        }
       } catch (e) {
         ctx.host.log.error("Failed to write Claude credentials keychain: " + String(e))
       }
@@ -276,6 +288,13 @@
     const creds = loadCredentials(ctx)
     if (!creds || !creds.oauth || !creds.oauth.accessToken || !creds.oauth.accessToken.trim()) {
       ctx.host.log.error("probe failed: not logged in")
+      if (ctx.app && ctx.app.platform === "windows") {
+        const candidates = getWindowsCredentialCandidates(ctx)
+        const preview = candidates.length > 0
+          ? candidates.slice(0, 3).join(", ")
+          : "%USERPROFILE%\\.claude\\.credentials.json"
+        throw "Claude credentials not found on Windows. Expected one of: " + preview + ". Run `claude` to authenticate or report the actual path."
+      }
       throw "Not logged in. Run `claude` to authenticate."
     }
 
@@ -402,3 +421,51 @@
 
   globalThis.__openusage_plugin = { id: "claude", probe }
 })()
+  function getEnv(ctx, name) {
+    try {
+      if (!ctx.host.env || typeof ctx.host.env.get !== "function") return null
+      const value = ctx.host.env.get(name)
+      if (typeof value !== "string") return null
+      const trimmed = value.trim()
+      return trimmed || null
+    } catch (e) {
+      ctx.host.log.warn(name + " read failed: " + String(e))
+      return null
+    }
+  }
+
+  function getUserProfile(ctx) {
+    const userProfile = getEnv(ctx, "USERPROFILE")
+    if (userProfile) return userProfile
+    const homeDrive = getEnv(ctx, "HOMEDRIVE")
+    const homePath = getEnv(ctx, "HOMEPATH")
+    if (homeDrive && homePath) return homeDrive + homePath
+    return null
+  }
+
+  function getCredentialsPath(ctx) {
+    if (ctx.app && ctx.app.platform === "windows") {
+      const candidates = getWindowsCredentialCandidates(ctx)
+      for (const path of candidates) {
+        if (ctx.host.fs.exists(path)) return path
+      }
+
+      if (candidates.length > 0) return candidates[0]
+    }
+
+    return CRED_FILE
+  }
+
+  function getWindowsCredentialCandidates(ctx) {
+    const appData = getEnv(ctx, "APPDATA")
+    const localAppData = getEnv(ctx, "LOCALAPPDATA")
+    const userProfile = getUserProfile(ctx)
+    const candidates = []
+    if (userProfile) candidates.push(userProfile + "\\.claude\\.credentials.json")
+    if (appData) candidates.push(appData + "\\Claude\\.credentials.json")
+    if (localAppData) candidates.push(localAppData + "\\Claude\\.credentials.json")
+    return candidates
+  }
+  function isKeychainAvailable(ctx) {
+    return ctx.app && ctx.app.platform === "macos"
+  }

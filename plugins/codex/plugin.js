@@ -6,24 +6,49 @@
   const USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
   const REFRESH_AGE_MS = 8 * 24 * 60 * 60 * 1000
 
-  function joinPath(base, leaf) {
-    return base.replace(/[\\/]+$/, "") + "/" + leaf
+  function joinPath(base, leaf, separator) {
+    const sep = separator || "/"
+    return base.replace(/[\\/]+$/, "") + sep + leaf
   }
 
-  function readCodexHome(ctx) {
-    if (!ctx.host.env || typeof ctx.host.env.get !== "function") {
-      return null
-    }
-
+  function getEnv(ctx, name) {
     try {
-      const value = ctx.host.env.get("CODEX_HOME")
+      if (!ctx.host.env || typeof ctx.host.env.get !== "function") return null
+      const value = ctx.host.env.get(name)
       if (typeof value !== "string") return null
       const trimmed = value.trim()
       return trimmed || null
     } catch (e) {
-      ctx.host.log.warn("CODEX_HOME read failed: " + String(e))
+      ctx.host.log.warn(name + " read failed: " + String(e))
       return null
     }
+  }
+
+  function getUserProfile(ctx) {
+    const userProfile = getEnv(ctx, "USERPROFILE")
+    if (userProfile) return userProfile
+    const homeDrive = getEnv(ctx, "HOMEDRIVE")
+    const homePath = getEnv(ctx, "HOMEPATH")
+    if (homeDrive && homePath) return homeDrive + homePath
+    return null
+  }
+
+  function getWindowsAuthPaths(ctx) {
+    const appData = getEnv(ctx, "APPDATA")
+    const localAppData = getEnv(ctx, "LOCALAPPDATA")
+    const userProfile = getUserProfile(ctx)
+    const basePaths = []
+    if (appData) basePaths.push(joinPath(appData, "codex", "\\"))
+    if (localAppData) basePaths.push(joinPath(localAppData, "codex", "\\"))
+    if (userProfile) {
+      basePaths.push(joinPath(userProfile, ".codex", "\\"))
+      basePaths.push(joinPath(userProfile, ".config\\codex", "\\"))
+    }
+    return basePaths.map((base) => joinPath(base, AUTH_FILE, "\\"))
+  }
+
+  function readCodexHome(ctx) {
+    return getEnv(ctx, "CODEX_HOME")
   }
 
   function resolveAuthPath(ctx) {
@@ -31,7 +56,15 @@
 
     // If CODEX_HOME is set, use it
     if (codexHome) {
-      return joinPath(codexHome, AUTH_FILE)
+      const sep = codexHome.includes("\\") ? "\\" : "/"
+      return joinPath(codexHome, AUTH_FILE, sep)
+    }
+
+    if (ctx.app && ctx.app.platform === "windows") {
+      const windowsPaths = getWindowsAuthPaths(ctx)
+      for (const authPath of windowsPaths) {
+        if (ctx.host.fs.exists(authPath)) return authPath
+      }
     }
 
     // Otherwise, return the first existing auth file path
@@ -194,6 +227,13 @@
     const authState = loadAuth(ctx)
     if (!authState || !authState.auth) {
       ctx.host.log.error("probe failed: not logged in")
+      if (ctx.app && ctx.app.platform === "windows") {
+        const candidates = getWindowsAuthPaths(ctx)
+        const preview = candidates.length > 0
+          ? candidates.slice(0, 3).join(", ")
+          : "%USERPROFILE%\\.codex\\auth.json"
+        throw "Codex auth file not found on Windows. Expected one of: " + preview + ". Run `codex` to authenticate or report the actual path."
+      }
       throw "Not logged in. Run `codex` to authenticate."
     }
     const auth = authState.auth
