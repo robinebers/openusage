@@ -34,6 +34,7 @@ OpenUsage lives in your menu bar and shows you how much of your AI coding subscr
 - [**Windsurf**](docs/providers/windsurf.md) / prompt credits, flex credits
 
 ### Maybe Soon
+
 - [Gemini](https://github.com/robinebers/openusage/issues/13)
 - [Vercel AI Gateway](https://github.com/robinebers/openusage/issues/18)
 

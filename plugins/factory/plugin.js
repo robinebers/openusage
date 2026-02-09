@@ -37,15 +37,14 @@
     }
   }
 
-  function needsRefresh(ctx, accessToken) {
+  function needsRefresh(ctx, accessToken, nowMs) {
     const payload = ctx.jwt.decodePayload(accessToken)
-    if (!payload || typeof payload.exp !== "number") {
-      // Can't determine expiry, assume refresh needed
-      return true
-    }
-    const expiryMs = payload.exp * 1000
-    const nowMs = Date.now()
-    return (expiryMs - nowMs) < TOKEN_REFRESH_THRESHOLD_MS
+    const expiresAtMs = payload && typeof payload.exp === "number" ? payload.exp * 1000 : null
+    return ctx.util.needsRefreshByExpiry({
+      nowMs,
+      expiresAtMs,
+      bufferMs: TOKEN_REFRESH_THRESHOLD_MS,
+    })
   }
 
   function refreshToken(ctx, auth) {
@@ -135,7 +134,8 @@
     let accessToken = auth.access_token
 
     // Check if token needs refresh
-    if (needsRefresh(ctx, accessToken)) {
+    const nowMs = Date.now()
+    if (needsRefresh(ctx, accessToken, nowMs)) {
       ctx.host.log.info("token near expiry, refreshing")
       const refreshed = refreshToken(ctx, auth)
       if (refreshed) {
@@ -199,7 +199,7 @@
     // Calculate reset time and period from usage dates
     const endDate = usage.endDate
     const startDate = usage.startDate
-    const resetsAt = typeof endDate === "number" ? ctx.util.toIso(Math.floor(endDate / 1000)) : null
+    const resetsAt = typeof endDate === "number" ? ctx.util.toIso(endDate) : null
     const periodDurationMs = (typeof endDate === "number" && typeof startDate === "number")
       ? (endDate - startDate)
       : null
