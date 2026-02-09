@@ -21,6 +21,8 @@ const state = vi.hoisted(() => ({
   saveTrayIconStyleMock: vi.fn(),
   loadTrayShowPercentageMock: vi.fn(),
   saveTrayShowPercentageMock: vi.fn(),
+  loadGlobalShortcutMock: vi.fn(),
+  saveGlobalShortcutMock: vi.fn(),
   renderTrayBarsIconMock: vi.fn(),
   probeHandlers: null as null | { onResult: (output: any) => void; onBatchComplete: () => void },
   trayGetByIdMock: vi.fn(),
@@ -157,6 +159,8 @@ vi.mock("@/lib/settings", async () => {
     saveTrayIconStyle: state.saveTrayIconStyleMock,
     loadTrayShowPercentage: state.loadTrayShowPercentageMock,
     saveTrayShowPercentage: state.saveTrayShowPercentageMock,
+    loadGlobalShortcut: state.loadGlobalShortcutMock,
+    saveGlobalShortcut: state.saveGlobalShortcutMock,
   }
 })
 
@@ -183,6 +187,8 @@ describe("App", () => {
     state.saveTrayIconStyleMock.mockReset()
     state.loadTrayShowPercentageMock.mockReset()
     state.saveTrayShowPercentageMock.mockReset()
+    state.loadGlobalShortcutMock.mockReset()
+    state.saveGlobalShortcutMock.mockReset()
     state.renderTrayBarsIconMock.mockReset()
     state.trayGetByIdMock.mockReset()
     state.traySetIconMock.mockReset()
@@ -203,6 +209,8 @@ describe("App", () => {
     state.saveTrayIconStyleMock.mockResolvedValue(undefined)
     state.loadTrayShowPercentageMock.mockResolvedValue(false)
     state.saveTrayShowPercentageMock.mockResolvedValue(undefined)
+    state.loadGlobalShortcutMock.mockResolvedValue(null)
+    state.saveGlobalShortcutMock.mockResolvedValue(undefined)
     state.renderTrayBarsIconMock.mockResolvedValue({})
     Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
       configurable: true,
