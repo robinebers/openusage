@@ -1,8 +1,8 @@
 import { LazyStore } from "@tauri-apps/plugin-store";
 import type { PluginMeta } from "@/lib/plugin-types";
 
-// Refresh cooldown duration in milliseconds (5 minutes)
-export const REFRESH_COOLDOWN_MS = 300_000;
+// Refresh cooldown duration in milliseconds (1 minute)
+export const REFRESH_COOLDOWN_MS = 60_000;
 
 // Spec: persist plugin order + disabled list; new plugins append, default disabled unless in DEFAULT_ENABLED_PLUGINS.
 export type PluginSettings = {
@@ -10,7 +10,7 @@ export type PluginSettings = {
   disabled: string[];
 };
 
-export type AutoUpdateIntervalMinutes = 5 | 15 | 30 | 60;
+export type AutoUpdateIntervalMinutes = 1 | 5 | 15 | 30;
 
 export type ThemeMode = "system" | "light" | "dark";
 
@@ -32,7 +32,7 @@ export const DEFAULT_DISPLAY_MODE: DisplayMode = "left";
 export const DEFAULT_TRAY_ICON_STYLE: TrayIconStyle = "bars";
 export const DEFAULT_TRAY_SHOW_PERCENTAGE = false;
 
-const AUTO_UPDATE_INTERVALS: AutoUpdateIntervalMinutes[] = [5, 15, 30, 60];
+const AUTO_UPDATE_INTERVALS: AutoUpdateIntervalMinutes[] = [1, 5, 15, 30];
 const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
 const DISPLAY_MODES: DisplayMode[] = ["used", "left"];
 const TRAY_ICON_STYLES: TrayIconStyle[] = ["bars", "circle", "provider", "textOnly"];
@@ -40,7 +40,7 @@ const TRAY_ICON_STYLES: TrayIconStyle[] = ["bars", "circle", "provider", "textOn
 export const AUTO_UPDATE_OPTIONS: { value: AutoUpdateIntervalMinutes; label: string }[] =
   AUTO_UPDATE_INTERVALS.map((value) => ({
     value,
-    label: value === 60 ? "1 hour" : `${value} min`,
+    label: `${value} min`,
   }));
 
 export const THEME_OPTIONS: { value: ThemeMode; label: string }[] =

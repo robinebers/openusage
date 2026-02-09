@@ -906,9 +906,9 @@ describe("App", () => {
     await userEvent.click(settingsButtons[0])
 
     // Change interval - this triggers the if branch (enabledIds.length > 0)
-    await userEvent.click(await screen.findByRole("radio", { name: "1 hour" }))
+    await userEvent.click(await screen.findByRole("radio", { name: "1 min" }))
 
-    expect(state.saveAutoUpdateIntervalMock).toHaveBeenCalledWith(60)
+    expect(state.saveAutoUpdateIntervalMock).toHaveBeenCalledWith(1)
   })
 
   it("fires auto-update interval and schedules next", async () => {
