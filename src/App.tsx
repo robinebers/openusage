@@ -35,6 +35,7 @@ import {
   getEnabledPluginIds,
   isTrayPercentageMandatory,
   loadAutoUpdateInterval,
+  loadCliProxyAccountSelections,
   loadDisplayMode,
   loadGlobalShortcut,
   loadPluginSettings,
@@ -45,6 +46,7 @@ import {
   loadThemeMode,
   normalizePluginSettings,
   saveAutoUpdateInterval,
+  saveCliProxyAccountSelections,
   saveDisplayMode,
   saveGlobalShortcut,
   savePluginSettings,
@@ -54,6 +56,7 @@ import {
   saveTrayIconStyle,
   saveThemeMode,
   type AutoUpdateIntervalMinutes,
+  type CliProxyAccountSelections,
   type DisplayMode,
   type GlobalShortcut,
   type PluginSettings,
@@ -74,6 +77,72 @@ type PluginState = {
   loading: boolean
   error: string | null
   lastManualRefreshAt: number | null
+}
+
+type CliProxyConfigView = {
+  configured: boolean
+  baseUrl: string | null
+}
+
+type CliProxyAuthFile = {
+  id: string
+  name: string
+  provider: string
+  email?: string | null
+  authIndex?: string | null
+  disabled: boolean
+  unavailable: boolean
+  runtimeOnly?: boolean
+}
+
+type AccountOption = {
+  value: string
+  label: string
+}
+
+const OVERLAY_ENABLED_PLUGIN_IDS = new Set(["codex", "claude", "kimi", "antigravity"])
+const HIDDEN_PLUGIN_IDS = new Set(["cliproxyapi"])
+const LOCAL_ACCOUNT_VALUE = "__local__"
+const LOCAL_ACCOUNT_LABEL = "Local account"
+
+function mapAuthProviderToPluginId(provider: string) {
+  const normalized = provider.trim().toLowerCase()
+  if (normalized === "anthropic") return "claude"
+  return normalized
+}
+
+function buildAccountOptionsByPlugin(authFiles: CliProxyAuthFile[]) {
+  const byPlugin: Record<string, AccountOption[]> = {}
+  const seen: Record<string, Set<string>> = {}
+
+  for (const pluginId of OVERLAY_ENABLED_PLUGIN_IDS) {
+    byPlugin[pluginId] = [{ value: LOCAL_ACCOUNT_VALUE, label: LOCAL_ACCOUNT_LABEL }]
+    seen[pluginId] = new Set([LOCAL_ACCOUNT_VALUE])
+  }
+
+  for (const file of authFiles) {
+    if (file.disabled || file.unavailable) continue
+    if (!file.name || !file.name.toLowerCase().endsWith(".json")) continue
+
+    const pluginId = mapAuthProviderToPluginId(file.provider || "")
+    if (!OVERLAY_ENABLED_PLUGIN_IDS.has(pluginId)) continue
+
+    const rawSelection = (file.authIndex || file.id || file.name || "").trim()
+    if (!rawSelection) continue
+
+    const label = file.email?.trim()
+      ? `${file.email.trim()} (${file.name})`
+      : file.name
+
+    if (!seen[pluginId]) seen[pluginId] = new Set<string>()
+    if (seen[pluginId].has(rawSelection)) continue
+    seen[pluginId].add(rawSelection)
+
+    if (!byPlugin[pluginId]) byPlugin[pluginId] = []
+    byPlugin[pluginId].push({ value: rawSelection, label })
+  }
+
+  return byPlugin
 }
 
 function App() {
@@ -101,6 +170,13 @@ function App() {
   const [maxPanelHeightPx, setMaxPanelHeightPx] = useState<number | null>(null)
   const maxPanelHeightPxRef = useRef<number | null>(null)
   const [appVersion, setAppVersion] = useState("...")
+  const [cliProxyConfigured, setCliProxyConfigured] = useState(false)
+  const [cliProxyBaseUrl, setCliProxyBaseUrl] = useState("")
+  const [cliProxyApiKey, setCliProxyApiKey] = useState("")
+  const [cliProxyAuthFiles, setCliProxyAuthFiles] = useState<CliProxyAuthFile[]>([])
+  const [cliProxyBusy, setCliProxyBusy] = useState(false)
+  const [cliProxyError, setCliProxyError] = useState<string | null>(null)
+  const [cliProxySelections, setCliProxySelections] = useState<CliProxyAccountSelections>({})
 
   const { updateStatus, triggerInstall, checkForUpdates } = useAppUpdate()
   const [showAbout, setShowAbout] = useState(false)
@@ -118,12 +194,14 @@ function App() {
   const displayModeRef = useRef(displayMode)
   const trayIconStyleRef = useRef(trayIconStyle)
   const trayShowPercentageRef = useRef(trayShowPercentage)
+  const cliProxySelectionsRef = useRef<CliProxyAccountSelections>(cliProxySelections)
   useEffect(() => { pluginsMetaRef.current = pluginsMeta }, [pluginsMeta])
   useEffect(() => { pluginSettingsRef.current = pluginSettings }, [pluginSettings])
   useEffect(() => { pluginStatesRef.current = pluginStates }, [pluginStates])
   useEffect(() => { displayModeRef.current = displayMode }, [displayMode])
   useEffect(() => { trayIconStyleRef.current = trayIconStyle }, [trayIconStyle])
   useEffect(() => { trayShowPercentageRef.current = trayShowPercentage }, [trayShowPercentage])
+  useEffect(() => { cliProxySelectionsRef.current = cliProxySelections }, [cliProxySelections])
 
   // Fetch app version on mount
   useEffect(() => {
@@ -271,7 +349,7 @@ function App() {
     const disabledSet = new Set(pluginSettings.disabled)
     const metaById = new Map(pluginsMeta.map((plugin) => [plugin.id, plugin]))
     return pluginSettings.order
-      .filter((id) => !disabledSet.has(id))
+      .filter((id) => !disabledSet.has(id) && !HIDDEN_PLUGIN_IDS.has(id))
       .map((id) => {
         const meta = metaById.get(id)
         if (!meta) return null
@@ -287,11 +365,43 @@ function App() {
     const disabledSet = new Set(pluginSettings.disabled)
     const metaById = new Map(pluginsMeta.map((p) => [p.id, p]))
     return pluginSettings.order
-      .filter((id) => !disabledSet.has(id))
+      .filter((id) => !disabledSet.has(id) && !HIDDEN_PLUGIN_IDS.has(id))
       .map((id) => metaById.get(id))
       .filter((p): p is PluginMeta => Boolean(p))
       .map((p) => ({ id: p.id, name: p.name, iconUrl: p.iconUrl, brandColor: p.brandColor }))
   }, [pluginSettings, pluginsMeta])
+
+  const accountOptionsByPlugin = useMemo(
+    () => buildAccountOptionsByPlugin(cliProxyAuthFiles),
+    [cliProxyAuthFiles]
+  )
+
+  const selectedAccountByPlugin = useMemo(() => {
+    const selected: Record<string, string> = {}
+    for (const [pluginId, options] of Object.entries(accountOptionsByPlugin)) {
+      if (options.length === 0) continue
+      const configured = (cliProxySelections[pluginId] || "").trim()
+      if (configured && options.some((option) => option.value === configured)) {
+        selected[pluginId] = configured
+      } else {
+        selected[pluginId] = options[0].value
+      }
+    }
+    return selected
+  }, [accountOptionsByPlugin, cliProxySelections])
+
+  // Track page views
+  useEffect(() => {
+    const page =
+      activeView === "home" ? "overview"
+        : activeView === "settings" ? "settings"
+          : "provider_detail"
+    const props: Record<string, string> =
+      activeView !== "home" && activeView !== "settings"
+        ? { page, provider_id: activeView }
+        : { page }
+    track("page_viewed", props)
+  }, [activeView])
 
   // If active view is a plugin that got disabled, switch to home
   useEffect(() => {
@@ -491,6 +601,25 @@ function App() {
     await disableAutostart()
   }, [])
 
+  const startBatchWithSelections = useCallback(
+    (pluginIds?: string[], selections?: CliProxyAccountSelections) => {
+      const accountSelections = selections ?? cliProxySelectionsRef.current
+      const cliProxySelectionsOnly = Object.fromEntries(
+        Object.entries(accountSelections).filter(
+          ([pluginId, value]) =>
+            OVERLAY_ENABLED_PLUGIN_IDS.has(pluginId) &&
+            typeof value === "string" &&
+            value.trim() !== "" &&
+            value !== LOCAL_ACCOUNT_VALUE
+        )
+      )
+      return startBatch(pluginIds, {
+        accountSelections: cliProxySelectionsOnly,
+      })
+    },
+    [startBatch]
+  )
+
   useEffect(() => {
     let isMounted = true
 
@@ -572,6 +701,48 @@ function App() {
           console.error("Failed to apply start on login setting:", error)
         }
 
+        let storedCliProxySelections: CliProxyAccountSelections = {}
+        try {
+          storedCliProxySelections = await loadCliProxyAccountSelections()
+        } catch (error) {
+          console.error("Failed to load CLIProxy account selections:", error)
+        }
+
+        let cliProxyConfig: CliProxyConfigView = { configured: false, baseUrl: null }
+        try {
+          cliProxyConfig = await invoke<CliProxyConfigView>("cliproxyapi_get_config")
+        } catch (error) {
+          console.error("Failed to load CLIProxy config:", error)
+        }
+
+        let authFiles: CliProxyAuthFile[] = []
+        if (cliProxyConfig.configured) {
+          try {
+            authFiles = await invoke<CliProxyAuthFile[]>("cliproxyapi_list_auth_files")
+          } catch (error) {
+            console.error("Failed to load CLIProxy auth files:", error)
+          }
+        }
+
+        const accountOptionsByPlugin = buildAccountOptionsByPlugin(authFiles)
+        const effectiveSelections: CliProxyAccountSelections = { ...storedCliProxySelections }
+        for (const [pluginId, options] of Object.entries(accountOptionsByPlugin)) {
+          if (options.length === 0) continue
+          const current = (effectiveSelections[pluginId] || "").trim()
+          if (!current) {
+            effectiveSelections[pluginId] = options[0].value
+            continue
+          }
+          const exists = options.some((option) => option.value === current)
+          if (!exists) {
+            effectiveSelections[pluginId] = options[0].value
+          }
+        }
+        for (const pluginId of OVERLAY_ENABLED_PLUGIN_IDS) {
+          if (accountOptionsByPlugin[pluginId]?.length) continue
+          delete effectiveSelections[pluginId]
+        }
+
         const normalizedTrayShowPercentage = isTrayPercentageMandatory(storedTrayIconStyle)
           ? true
           : storedTrayShowPercentage
@@ -586,10 +757,21 @@ function App() {
           setTrayShowPercentage(normalizedTrayShowPercentage)
           setGlobalShortcut(storedGlobalShortcut)
           setStartOnLogin(storedStartOnLogin)
+          setStartOnLogin(storedStartOnLogin)
+          setCliProxyConfigured(cliProxyConfig.configured)
+          setCliProxyBaseUrl(cliProxyConfig.baseUrl ?? "")
+          setCliProxyApiKey("")
+          setCliProxyAuthFiles(authFiles)
+          setCliProxySelections(effectiveSelections)
+          setCliProxyError(null)
+          cliProxySelectionsRef.current = effectiveSelections
+          void saveCliProxyAccountSelections(effectiveSelections).catch((error) => {
+            console.error("Failed to save CLIProxy account selections:", error)
+          })
           const enabledIds = getEnabledPluginIds(normalized)
           setLoadingForPlugins(enabledIds)
           try {
-            await startBatch(enabledIds)
+            await startBatchWithSelections(enabledIds, effectiveSelections)
           } catch (error) {
             console.error("Failed to start probe batch:", error)
             if (isMounted) {
@@ -616,7 +798,7 @@ function App() {
     return () => {
       isMounted = false
     }
-  }, [setLoadingForPlugins, setErrorForPlugins, startBatch, applyStartOnLogin])
+  }, [setLoadingForPlugins, setErrorForPlugins, startBatchWithSelections, applyStartOnLogin])
 
   useEffect(() => {
     if (!pluginSettings) {
@@ -633,7 +815,7 @@ function App() {
     scheduleNext()
     const interval = setInterval(() => {
       setLoadingForPlugins(enabledIds)
-      startBatch(enabledIds).catch((error) => {
+      startBatchWithSelections(enabledIds).catch((error) => {
         console.error("Failed to start auto-update batch:", error)
         setErrorForPlugins(enabledIds, "Failed to start probe")
       })
@@ -646,7 +828,7 @@ function App() {
     pluginSettings,
     setLoadingForPlugins,
     setErrorForPlugins,
-    startBatch,
+    startBatchWithSelections,
   ])
 
   // Apply theme mode to document
@@ -693,7 +875,7 @@ function App() {
         manualRefreshIdsRef.current.add(id)
       }
       setLoadingForPlugins(ids)
-      startBatch(ids).catch((error) => {
+      startBatchWithSelections(ids).catch((error) => {
         for (const id of ids) {
           manualRefreshIdsRef.current.delete(id)
         }
@@ -701,7 +883,7 @@ function App() {
         setErrorForPlugins(ids, "Failed to start probe")
       })
     },
-    [setLoadingForPlugins, setErrorForPlugins, startBatch]
+    [setLoadingForPlugins, setErrorForPlugins, startBatchWithSelections]
   )
 
   const handleRetryPlugin = useCallback(
@@ -837,10 +1019,129 @@ function App() {
     })
   }, [applyStartOnLogin])
 
+  const refreshCliProxyAuthFiles = useCallback(async () => {
+    const authFiles = await invoke<CliProxyAuthFile[]>("cliproxyapi_list_auth_files")
+    setCliProxyAuthFiles(authFiles)
+
+    const optionsByPlugin = buildAccountOptionsByPlugin(authFiles)
+    const nextSelections: CliProxyAccountSelections = { ...cliProxySelectionsRef.current }
+    for (const [pluginId, options] of Object.entries(optionsByPlugin)) {
+      if (options.length === 0) continue
+      const current = (nextSelections[pluginId] || "").trim()
+      if (!current || !options.some((option) => option.value === current)) {
+        nextSelections[pluginId] = options[0].value
+      }
+    }
+    for (const pluginId of OVERLAY_ENABLED_PLUGIN_IDS) {
+      if (optionsByPlugin[pluginId]?.length) continue
+      delete nextSelections[pluginId]
+    }
+
+    cliProxySelectionsRef.current = nextSelections
+    setCliProxySelections(nextSelections)
+    await saveCliProxyAccountSelections(nextSelections)
+    return { authFiles, nextSelections }
+  }, [])
+
+  const handleCliProxySave = useCallback(async () => {
+    setCliProxyBusy(true)
+    setCliProxyError(null)
+    try {
+      await invoke("cliproxyapi_set_config", {
+        baseUrl: cliProxyBaseUrl,
+        apiKey: cliProxyApiKey,
+      })
+
+      const config = await invoke<CliProxyConfigView>("cliproxyapi_get_config")
+      setCliProxyConfigured(config.configured)
+      setCliProxyBaseUrl(config.baseUrl ?? "")
+      setCliProxyApiKey("")
+
+      const { nextSelections } = await refreshCliProxyAuthFiles()
+      const activePluginSettings = pluginSettingsRef.current
+      if (activePluginSettings) {
+        const enabledIds = getEnabledPluginIds(activePluginSettings)
+        if (enabledIds.length > 0) {
+          setLoadingForPlugins(enabledIds)
+          await startBatchWithSelections(enabledIds, nextSelections)
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      setCliProxyError(message)
+    } finally {
+      setCliProxyBusy(false)
+    }
+  }, [cliProxyApiKey, cliProxyBaseUrl, refreshCliProxyAuthFiles, setLoadingForPlugins, startBatchWithSelections])
+
+  const handleCliProxyRefresh = useCallback(async () => {
+    setCliProxyBusy(true)
+    setCliProxyError(null)
+    try {
+      await refreshCliProxyAuthFiles()
+      setCliProxyConfigured(true)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      setCliProxyError(message)
+    } finally {
+      setCliProxyBusy(false)
+    }
+  }, [refreshCliProxyAuthFiles])
+
+  const handleCliProxyClear = useCallback(async () => {
+    setCliProxyBusy(true)
+    setCliProxyError(null)
+    try {
+      await invoke("cliproxyapi_clear_config")
+      setCliProxyConfigured(false)
+      setCliProxyBaseUrl("")
+      setCliProxyApiKey("")
+      setCliProxyAuthFiles([])
+      const nextSelections: CliProxyAccountSelections = { ...cliProxySelectionsRef.current }
+      for (const pluginId of OVERLAY_ENABLED_PLUGIN_IDS) {
+        delete nextSelections[pluginId]
+      }
+      cliProxySelectionsRef.current = nextSelections
+      setCliProxySelections(nextSelections)
+      await saveCliProxyAccountSelections(nextSelections)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      setCliProxyError(message)
+    } finally {
+      setCliProxyBusy(false)
+    }
+  }, [])
+
+  const handleAccountSelectionChange = useCallback(
+    (pluginId: string, account: string) => {
+      const selected = account.trim()
+      const current = (cliProxySelectionsRef.current[pluginId] || "").trim()
+      if (!selected || selected === current) return
+
+      const nextSelections: CliProxyAccountSelections = {
+        ...cliProxySelectionsRef.current,
+        [pluginId]: selected,
+      }
+      cliProxySelectionsRef.current = nextSelections
+      setCliProxySelections(nextSelections)
+      void saveCliProxyAccountSelections(nextSelections).catch((error) => {
+        console.error("Failed to save CLIProxy account selections:", error)
+      })
+
+      setLoadingForPlugins([pluginId])
+      startBatchWithSelections([pluginId], nextSelections).catch((error) => {
+        console.error("Failed to refresh plugin with selected account:", error)
+        setErrorForPlugins([pluginId], "Failed to start probe")
+      })
+    },
+    [setErrorForPlugins, setLoadingForPlugins, startBatchWithSelections]
+  )
+
   const settingsPlugins = useMemo(() => {
     if (!pluginSettings) return []
     const pluginMap = new Map(pluginsMeta.map((plugin) => [plugin.id, plugin]))
     return pluginSettings.order
+      .filter((id) => !HIDDEN_PLUGIN_IDS.has(id))
       .map((id) => {
         const meta = pluginMap.get(id)
         if (!meta) return null
@@ -882,7 +1183,7 @@ function App() {
       if (wasDisabled) {
         disabled.delete(id)
         setLoadingForPlugins([id])
-        startBatch([id]).catch((error) => {
+        startBatchWithSelections([id]).catch((error) => {
           console.error("Failed to start probe for enabled plugin:", error)
           setErrorForPlugins([id], "Failed to start probe")
         })
@@ -901,7 +1202,13 @@ function App() {
         console.error("Failed to save plugin toggle:", error)
       })
     },
-    [pluginSettings, setLoadingForPlugins, setErrorForPlugins, startBatch, scheduleTrayIconUpdate]
+    [
+      pluginSettings,
+      setLoadingForPlugins,
+      setErrorForPlugins,
+      startBatchWithSelections,
+      scheduleTrayIconUpdate,
+    ]
   )
 
   // Detect whether the scroll area has overflow below
@@ -935,6 +1242,9 @@ function App() {
           displayMode={displayMode}
           resetTimerDisplayMode={resetTimerDisplayMode}
           onResetTimerDisplayModeToggle={handleResetTimerDisplayModeToggle}
+          accountOptionsByPlugin={accountOptionsByPlugin}
+          selectedAccountByPlugin={selectedAccountByPlugin}
+          onAccountChange={handleAccountSelectionChange}
         />
       )
     }
@@ -961,6 +1271,23 @@ function App() {
           startOnLogin={startOnLogin}
           onStartOnLoginChange={handleStartOnLoginChange}
           providerIconUrl={navPlugins[0]?.iconUrl}
+          cliProxyConfigured={cliProxyConfigured}
+          cliProxyBaseUrl={cliProxyBaseUrl}
+          cliProxyApiKey={cliProxyApiKey}
+          cliProxyAuthFileCount={cliProxyAuthFiles.length}
+          cliProxyBusy={cliProxyBusy}
+          cliProxyError={cliProxyError}
+          onCliProxyBaseUrlChange={setCliProxyBaseUrl}
+          onCliProxyApiKeyChange={setCliProxyApiKey}
+          onCliProxySave={() => {
+            void handleCliProxySave()
+          }}
+          onCliProxyRefresh={() => {
+            void handleCliProxyRefresh()
+          }}
+          onCliProxyClear={() => {
+            void handleCliProxyClear()
+          }}
         />
       )
     }
@@ -975,6 +1302,13 @@ function App() {
         displayMode={displayMode}
         resetTimerDisplayMode={resetTimerDisplayMode}
         onResetTimerDisplayModeToggle={handleResetTimerDisplayModeToggle}
+        accountOptions={selectedPlugin ? accountOptionsByPlugin[selectedPlugin.meta.id] : undefined}
+        selectedAccount={selectedPlugin ? selectedAccountByPlugin[selectedPlugin.meta.id] : undefined}
+        onAccountChange={
+          selectedPlugin
+            ? (account) => handleAccountSelectionChange(selectedPlugin.meta.id, account)
+            : undefined
+        }
       />
     )
   }
@@ -994,7 +1328,7 @@ function App() {
           />
           <div className="flex-1 flex flex-col px-3 pt-2 pb-1.5 min-w-0 bg-card dark:bg-muted/50">
             <div className="relative flex-1 min-h-0">
-              <div ref={scrollRef} className="h-full overflow-y-auto scrollbar-none">
+              <div ref={scrollRef} className="h-full overflow-y-auto overflow-x-hidden scrollbar-none">
                 {renderContent()}
               </div>
               <div className={`pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-card dark:from-muted/50 to-transparent transition-opacity duration-200 ${canScrollDown ? "opacity-100" : "opacity-0"}`} />
