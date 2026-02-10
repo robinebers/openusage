@@ -141,7 +141,7 @@
       try {
         if (!ctx.host.fs.exists(path)) continue;
         const text = ctx.host.fs.readText(path);
-        const token = parseGhHostsToken(text);
+        const token = parseGhHostsToken(text, "github.com");
         if (token) return token;
       } catch (e) {
         ctx.host.log.warn("gh hosts file read failed: " + String(e));
@@ -150,12 +150,25 @@
     return null;
   }
 
-  function parseGhHostsToken(text) {
+  function parseGhHostsToken(text, host) {
     const lines = String(text || "").split(/\r?\n/);
+    let currentHost = null;
     for (const line of lines) {
-      const trimmed = line.trim();
+      const raw = String(line || "");
+      const trimmed = raw.trim();
       if (!trimmed || trimmed.startsWith("#")) continue;
-      if (trimmed.startsWith("oauth_token:")) {
+
+      const isTopLevel = raw.length > 0 && raw[0] !== " " && raw[0] !== "\t";
+      if (isTopLevel && trimmed.endsWith(":")) {
+        let key = trimmed.slice(0, -1).trim();
+        if ((key.startsWith("\"") && key.endsWith("\"")) || (key.startsWith("'") && key.endsWith("'"))) {
+          key = key.slice(1, -1);
+        }
+        currentHost = key || null;
+        continue;
+      }
+
+      if (currentHost === host && trimmed.startsWith("oauth_token:")) {
         let value = trimmed.slice("oauth_token:".length).trim();
         if (!value) return null;
         if ((value.startsWith("\"") && value.endsWith("\"")) || (value.startsWith("'") && value.endsWith("'"))) {
