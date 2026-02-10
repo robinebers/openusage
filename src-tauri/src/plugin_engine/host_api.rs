@@ -782,13 +782,14 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
 
                 // Platform-specific process listing
                 let ps_output = if cfg!(target_os = "windows") {
-                    match std::process::Command::new("wmic")
-                        .args(["process", "get", "ProcessId,CommandLine", "/format:list"])
+                    const WINDOWS_PS_CMD: &str = "[Console]::OutputEncoding=[System.Text.UTF8Encoding]::UTF8; Get-CimInstance Win32_Process | Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress";
+                    match std::process::Command::new("powershell")
+                        .args(["-NoProfile", "-Command", WINDOWS_PS_CMD])
                         .output()
                     {
                         Ok(o) => o,
                         Err(e) => {
-                            log::warn!("[plugin:{}] wmic failed: {}", pid, e);
+                            log::warn!("[plugin:{}] powershell process listing failed: {}", pid, e);
                             return Ok("null".to_string());
                         }
                     }
@@ -821,41 +822,26 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
                 let mut found: Option<(i32, String)> = None;
 
                 if cfg!(target_os = "windows") {
-                    // Parse wmic output: key=value pairs separated by blank lines
-                    let mut current_pid: Option<i32> = None;
-                    let mut current_command: Option<String> = None;
+                    let entries = match ls_windows_process_list(&ps_output.stdout) {
+                        Ok(list) => list,
+                        Err(err) => {
+                            log::warn!("[plugin:{}] powershell parse failed: {}", pid, err);
+                            return Ok("null".to_string());
+                        }
+                    };
 
-                    for line in ps_stdout.lines() {
-                        let trimmed = line.trim();
-                        if trimmed.is_empty() {
-                            // End of record - check if it matches
-                            if let (Some(pid), Some(cmd)) = (current_pid, &current_command) {
-                                let cmd_lower = cmd.to_lowercase();
-                                if cmd_lower.contains(&process_name_lower) {
-                                    let has_marker = markers_lower.iter().any(|m| {
-                                        cmd_lower.contains(&format!("--app_data_dir {}", m))
-                                            || cmd_lower.contains(&format!("\\{}\\", m))
-                                    });
-                                    if has_marker {
-                                        found = Some((pid, cmd.clone()));
-                                        break;
-                                    }
-                                }
-                            }
-                            current_pid = None;
-                            current_command = None;
+                    for (pid, command) in entries {
+                        let cmd_lower = command.to_lowercase();
+                        if !cmd_lower.contains(&process_name_lower) {
                             continue;
                         }
-
-                        if let Some(eq_pos) = trimmed.find('=') {
-                            let key = &trimmed[..eq_pos];
-                            let value = &trimmed[eq_pos + 1..];
-
-                            if key == "ProcessId" {
-                                current_pid = value.parse::<i32>().ok();
-                            } else if key == "CommandLine" {
-                                current_command = Some(value.to_string());
-                            }
+                        let has_marker = markers_lower.iter().any(|m| {
+                            cmd_lower.contains(&format!("--app_data_dir {}", m))
+                                || cmd_lower.contains(&format!("\\{}\\", m))
+                        });
+                        if has_marker {
+                            found = Some((pid, command));
+                            break;
                         }
                     }
                 } else {
@@ -1055,6 +1041,39 @@ fn ls_extract_flag(command: &str, flag: &str) -> Option<String> {
         }
     }
     None
+}
+
+#[derive(serde::Deserialize)]
+struct WindowsProcessEntry {
+    #[serde(rename = "ProcessId")]
+    process_id: i32,
+    #[serde(rename = "CommandLine")]
+    command_line: Option<String>,
+}
+
+fn ls_windows_process_list(output: &[u8]) -> Result<Vec<(i32, String)>, String> {
+    if output.iter().all(|b| b.is_ascii_whitespace()) {
+        return Ok(Vec::new());
+    }
+
+    let value: serde_json::Value =
+        serde_json::from_slice(output).map_err(|e| format!("invalid JSON: {}", e))?;
+
+    let entries: Vec<WindowsProcessEntry> = match value {
+        serde_json::Value::Array(items) => items
+            .into_iter()
+            .map(|item| serde_json::from_value(item).map_err(|e| format!("invalid entry: {}", e)))
+            .collect::<Result<Vec<_>, _>>()?,
+        serde_json::Value::Object(_) => {
+            vec![serde_json::from_value(value).map_err(|e| format!("invalid entry: {}", e))?]
+        }
+        _ => return Err("unexpected JSON shape".to_string()),
+    };
+
+    Ok(entries
+        .into_iter()
+        .filter_map(|entry| entry.command_line.map(|cmd| (entry.process_id, cmd)))
+        .collect())
 }
 
 /// Parse listening port numbers from `lsof -nP -iTCP -sTCP:LISTEN` output.
@@ -1319,11 +1338,14 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
 
 fn sqlite_row_to_json(row: &Row<'_>) -> rusqlite::Result<Value> {
     let mut obj = serde_json::Map::new();
-    let col_count = row.column_count();
+    let stmt = row.as_ref();
+    let col_count = stmt.column_count();
     for i in 0..col_count {
-        let name = match row.column_name(i) {
-            Ok(n) => n.to_string(),
-            Err(_) => format!("col{}", i),
+        let name = stmt.column_name(i).unwrap_or("");
+        let name = if name.is_empty() {
+            format!("col{}", i)
+        } else {
+            name.to_string()
         };
         let value = sqlite_value_to_json(row.get_ref(i)?);
         obj.insert(name, value);

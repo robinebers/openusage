@@ -110,3 +110,13 @@ This document records opinionated defaults chosen during development.
 - Read-only queries open `file:...?...immutable=1` with `SQLITE_OPEN_URI`.
 - Writes use `SQLITE_OPEN_READ_WRITE | SQLITE_OPEN_CREATE` and `execute_batch`.
 - Blob columns serialize to base64 strings to keep JSON output stable.
+
+### Replace WMIC With PowerShell CIM
+
+**Context:** Windows LS discovery used `wmic`, which is deprecated and scheduled for removal.
+
+**Decision:** Use PowerShell `Get-CimInstance Win32_Process` with `ConvertTo-Json` for process listings.
+
+**Technical details:**
+- Force UTF-8 output via `[Console]::OutputEncoding`.
+- Parse JSON into `{ ProcessId, CommandLine }` entries; skip null command lines.
