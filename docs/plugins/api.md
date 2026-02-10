@@ -345,7 +345,7 @@ Notes:
 - `used` may exceed `limit` (overages).
 - For `format.kind: "percent"`, `limit` must be `100`.
 - Prefer setting `resetsAt` (via `ctx.util.toIso(...)`) instead of putting reset info in other lines.
-- `periodDurationMs`: when provided with `resetsAt`, enables the pace tracking indicator (shows if usage rate will exhaust quota before reset).
+- `periodDurationMs`: when provided with `resetsAt`, enables pace visuals (Dot Pacing status + in-bar pace marker) and projected-rate messaging.
 
 **Example:**
 

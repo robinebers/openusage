@@ -1,14 +1,22 @@
 import { ProviderCard } from "@/components/provider-card"
 import type { PluginDisplayState } from "@/lib/plugin-types"
-import type { DisplayMode } from "@/lib/settings"
+import type { DisplayMode, ResetTimerDisplayMode } from "@/lib/settings"
 
 interface OverviewPageProps {
   plugins: PluginDisplayState[]
   onRetryPlugin?: (pluginId: string) => void
   displayMode: DisplayMode
+  resetTimerDisplayMode: ResetTimerDisplayMode
+  onResetTimerDisplayModeToggle?: () => void
 }
 
-export function OverviewPage({ plugins, onRetryPlugin, displayMode }: OverviewPageProps) {
+export function OverviewPage({
+  plugins,
+  onRetryPlugin,
+  displayMode,
+  resetTimerDisplayMode,
+  onResetTimerDisplayModeToggle,
+}: OverviewPageProps) {
   if (plugins.length === 0) {
     return (
       <div className="text-center text-muted-foreground py-8">
@@ -33,6 +41,8 @@ export function OverviewPage({ plugins, onRetryPlugin, displayMode }: OverviewPa
           onRetry={onRetryPlugin ? () => onRetryPlugin(plugin.meta.id) : undefined}
           scopeFilter="overview"
           displayMode={displayMode}
+          resetTimerDisplayMode={resetTimerDisplayMode}
+          onResetTimerDisplayModeToggle={onResetTimerDisplayModeToggle}
         />
       ))}
     </div>

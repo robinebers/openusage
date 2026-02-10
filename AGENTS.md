@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Version: 0.24 (2026-02-01)
+Version: 0.26 (2026-02-10)
 
 Start: say hi + 1 motivating line.
 Work style: Be radically precise. No fluff. Pure information only (drop grammar; min tokens).
@@ -16,6 +16,7 @@ Work style: Be radically precise. No fluff. Pure information only (drop grammar;
 
 ## Guardrails
 - Use `trash` for deletes.
+- Use `mv` / `cp` to move and copy files.
 - Bugs: add regression test when it fits.
 - Keep files <~400 LOC; split/refactor as needed.
 - Simplicity first: handle only important cases; no enterprise over-engineering.
@@ -24,7 +25,7 @@ Work style: Be radically precise. No fluff. Pure information only (drop grammar;
 - Before writing code, stricly follow the blow research rules
 
 ## Research
-- Always create a spec, even if minimal
+- Always create a spec in-memory (no files), even if minimal
 - Prefer skills if available over research
 - Prefer researched knowledge over existing knowledge when skills are unavailable
 - Research: Exa to websearch early, and Ref to seek specific documention or web fetch.
@@ -90,3 +91,4 @@ Use below list to store and recall user notes when asked to do so.
 - Tauri IPC: JS must use camelCase (`{ batchId, pluginIds }`), Tauri auto-converts to Rust's snake_case. Never send snake_case from JS—params silently won't match.
 - tauri-action `latest.json`: Parallel matrix builds are safe—action fetches existing `latest.json`, merges platform entries, re-uploads. No `max-parallel: 1` needed.
 - Before creating a PR or pushing to main, ensure that `README.md` is updated with what plugins are supported.
+- On any plugin change/new plugin, audit plugin-exposed request/response fields against `src-tauri/src/plugin_engine/host_api.rs` redaction lists and add/update tests for gaps.

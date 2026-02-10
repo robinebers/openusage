@@ -17,6 +17,8 @@ const state = vi.hoisted(() => ({
   saveThemeModeMock: vi.fn(),
   loadDisplayModeMock: vi.fn(),
   saveDisplayModeMock: vi.fn(),
+  loadResetTimerDisplayModeMock: vi.fn(),
+  saveResetTimerDisplayModeMock: vi.fn(),
   loadTrayIconStyleMock: vi.fn(),
   saveTrayIconStyleMock: vi.fn(),
   loadTrayShowPercentageMock: vi.fn(),
@@ -153,6 +155,8 @@ vi.mock("@/lib/settings", async () => {
     saveThemeMode: state.saveThemeModeMock,
     loadDisplayMode: state.loadDisplayModeMock,
     saveDisplayMode: state.saveDisplayModeMock,
+    loadResetTimerDisplayMode: state.loadResetTimerDisplayModeMock,
+    saveResetTimerDisplayMode: state.saveResetTimerDisplayModeMock,
     loadTrayIconStyle: state.loadTrayIconStyleMock,
     saveTrayIconStyle: state.saveTrayIconStyleMock,
     loadTrayShowPercentage: state.loadTrayShowPercentageMock,
@@ -179,6 +183,8 @@ describe("App", () => {
     state.saveThemeModeMock.mockReset()
     state.loadDisplayModeMock.mockReset()
     state.saveDisplayModeMock.mockReset()
+    state.loadResetTimerDisplayModeMock.mockReset()
+    state.saveResetTimerDisplayModeMock.mockReset()
     state.loadTrayIconStyleMock.mockReset()
     state.saveTrayIconStyleMock.mockReset()
     state.loadTrayShowPercentageMock.mockReset()
@@ -199,6 +205,8 @@ describe("App", () => {
     state.saveThemeModeMock.mockResolvedValue(undefined)
     state.loadDisplayModeMock.mockResolvedValue("left")
     state.saveDisplayModeMock.mockResolvedValue(undefined)
+    state.loadResetTimerDisplayModeMock.mockResolvedValue("relative")
+    state.saveResetTimerDisplayModeMock.mockResolvedValue(undefined)
     state.loadTrayIconStyleMock.mockResolvedValue("bars")
     state.saveTrayIconStyleMock.mockResolvedValue(undefined)
     state.loadTrayShowPercentageMock.mockResolvedValue(false)
@@ -981,6 +989,114 @@ describe("App", () => {
       expect(errorSpy).toHaveBeenCalledWith("Failed to load theme mode:", expect.any(Error))
     )
     errorSpy.mockRestore()
+  })
+
+  it("refreshes all enabled providers when clicking next update label", async () => {
+    state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a", "b"], disabled: [] })
+    render(<App />)
+    await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
+    state.probeHandlers?.onResult({
+      providerId: "a",
+      displayName: "Alpha",
+      iconUrl: "icon-a",
+      lines: [{ type: "text", label: "Now", value: "OK" }],
+    })
+    state.probeHandlers?.onResult({
+      providerId: "b",
+      displayName: "Beta",
+      iconUrl: "icon-b",
+      lines: [],
+    })
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(2))
+
+    const initialCalls = state.startBatchMock.mock.calls.length
+    const refreshButton = await screen.findByRole("button", { name: /Next update in/i })
+    await userEvent.click(refreshButton)
+
+    await waitFor(() =>
+      expect(state.startBatchMock.mock.calls.length).toBe(initialCalls + 1)
+    )
+    const lastCall = state.startBatchMock.mock.calls[state.startBatchMock.mock.calls.length - 1]
+    expect(lastCall[0]).toEqual(["a", "b"])
+  })
+
+  it("ignores repeated refresh-all clicks while providers are already refreshing", async () => {
+    state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a", "b"], disabled: [] })
+    render(<App />)
+    await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
+    state.probeHandlers?.onResult({
+      providerId: "a",
+      displayName: "Alpha",
+      iconUrl: "icon-a",
+      lines: [{ type: "text", label: "Now", value: "OK" }],
+    })
+    state.probeHandlers?.onResult({
+      providerId: "b",
+      displayName: "Beta",
+      iconUrl: "icon-b",
+      lines: [],
+    })
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(2))
+
+    const initialCalls = state.startBatchMock.mock.calls.length
+    state.startBatchMock.mockImplementation(() => new Promise(() => {}))
+
+    const refreshButton = await screen.findByRole("button", { name: /Next update in/i })
+    await userEvent.click(refreshButton)
+    await userEvent.click(refreshButton)
+    await userEvent.click(refreshButton)
+
+    await waitFor(() =>
+      expect(state.startBatchMock.mock.calls.length).toBe(initialCalls + 1)
+    )
+    const lastCall = state.startBatchMock.mock.calls[state.startBatchMock.mock.calls.length - 1]
+    expect(lastCall[0]).toEqual(["a", "b"])
+  })
+
+  it("does not leak manual refresh cooldown state when refresh-all start fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    try {
+      state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a"], disabled: [] })
+      render(<App />)
+      await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
+      state.probeHandlers?.onResult({
+        providerId: "a",
+        displayName: "Alpha",
+        iconUrl: "icon-a",
+        lines: [{ type: "text", label: "Now", value: "OK" }],
+      })
+      await screen.findByRole("button", { name: "Retry" })
+
+      state.startBatchMock.mockRejectedValueOnce(new Error("refresh all failed"))
+      const refreshButton = await screen.findByRole("button", { name: /Next update in/i })
+      await userEvent.click(refreshButton)
+
+      await waitFor(() =>
+        expect(errorSpy).toHaveBeenCalledWith("Failed to start refresh batch:", expect.any(Error))
+      )
+      expect(state.startBatchMock).toHaveBeenCalledTimes(2)
+      await screen.findByText("Failed to start probe")
+
+      // Simulate non-manual success after the failed refresh attempt.
+      state.probeHandlers?.onResult({
+        providerId: "a",
+        displayName: "Alpha",
+        iconUrl: "icon-a",
+        lines: [{ type: "text", label: "Now", value: "OK" }],
+      })
+      await screen.findByText("Now")
+
+      // If manual state leaked, cooldown would hide Retry here.
+      state.probeHandlers?.onResult({
+        providerId: "a",
+        displayName: "Alpha",
+        iconUrl: "icon-a",
+        lines: [{ type: "badge", label: "Error", text: "Network error" }],
+      })
+      await screen.findByRole("button", { name: "Retry" })
+    } finally {
+      errorSpy.mockRestore()
+    }
   })
 
   it("tracks manual refresh and clears cooldown flag on result", async () => {
