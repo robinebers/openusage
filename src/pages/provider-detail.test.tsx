@@ -5,7 +5,7 @@ import { ProviderDetailPage } from "@/pages/provider-detail"
 
 describe("ProviderDetailPage", () => {
   it("shows not found when plugin missing", () => {
-    render(<ProviderDetailPage plugin={null} displayMode="used" />)
+    render(<ProviderDetailPage plugin={null} displayMode="used" resetTimerDisplayMode="relative" />)
     expect(screen.getByText("Provider not found")).toBeInTheDocument()
   })
 
@@ -13,6 +13,7 @@ describe("ProviderDetailPage", () => {
     render(
       <ProviderDetailPage
         displayMode="used"
+        resetTimerDisplayMode="relative"
         plugin={{
           meta: { id: "a", name: "Alpha", iconUrl: "", lines: [] },
           data: { providerId: "a", displayName: "Alpha", iconUrl: "", lines: [] },
@@ -29,6 +30,7 @@ describe("ProviderDetailPage", () => {
     render(
       <ProviderDetailPage
         displayMode="used"
+        resetTimerDisplayMode="relative"
         plugin={{
           meta: { id: "a", name: "Alpha", iconUrl: "", lines: [] },
           data: null,

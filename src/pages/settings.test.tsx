@@ -53,6 +53,8 @@ const defaultProps = {
   onThemeModeChange: vi.fn(),
   displayMode: "used" as const,
   onDisplayModeChange: vi.fn(),
+  resetTimerDisplayMode: "relative" as const,
+  onResetTimerDisplayModeChange: vi.fn(),
   trayIconStyle: "bars" as const,
   onTrayIconStyleChange: vi.fn(),
   trayShowPercentage: false,
@@ -164,6 +166,18 @@ describe("SettingsPage", () => {
     expect(onDisplayModeChange).toHaveBeenCalledWith("left")
   })
 
+  it("updates reset timer display mode", async () => {
+    const onResetTimerDisplayModeChange = vi.fn()
+    render(
+      <SettingsPage
+        {...defaultProps}
+        onResetTimerDisplayModeChange={onResetTimerDisplayModeChange}
+      />
+    )
+    await userEvent.click(screen.getByRole("radio", { name: "Absolute" }))
+    expect(onResetTimerDisplayModeChange).toHaveBeenCalledWith("absolute")
+  })
+
   it("renders tray icon style section", () => {
     render(<SettingsPage {...defaultProps} />)
     expect(screen.getByText("Bar Icon")).toBeInTheDocument()
@@ -177,6 +191,11 @@ describe("SettingsPage", () => {
   it("renders renamed usage section heading", () => {
     render(<SettingsPage {...defaultProps} />)
     expect(screen.getByText("Usage Mode")).toBeInTheDocument()
+  })
+
+  it("renders reset timers section heading", () => {
+    render(<SettingsPage {...defaultProps} />)
+    expect(screen.getByText("Reset Timers")).toBeInTheDocument()
   })
 
   it("updates tray icon style", async () => {

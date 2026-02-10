@@ -176,6 +176,40 @@ describe("ProviderCard", () => {
     vi.useRealTimers()
   })
 
+  it("toggles reset timer display mode from reset label", async () => {
+    vi.useFakeTimers()
+    const now = new Date("2026-02-02T00:00:00.000Z")
+    vi.setSystemTime(now)
+    const onToggle = vi.fn()
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    })
+    const expected = `Resets at ${formatter.format(new Date("2026-02-02T01:05:00.000Z"))}`
+    render(
+      <ProviderCard
+        name="Resets"
+        displayMode="used"
+        resetTimerDisplayMode="absolute"
+        onResetTimerDisplayModeToggle={onToggle}
+        lines={[
+          {
+            type: "progress",
+            label: "Monthly",
+            used: 12.34,
+            limit: 100,
+            format: { kind: "dollars" },
+            resetsAt: "2026-02-02T01:05:00.000Z",
+          },
+        ]}
+      />
+    )
+    await userEvent.click(screen.getByRole("button", { name: expected }))
+    expect(onToggle).toHaveBeenCalledTimes(1)
+    vi.useRealTimers()
+  })
+
   it("shows pace indicators for ahead, on-track, and behind", () => {
     vi.useFakeTimers()
     const now = new Date("2026-02-02T12:00:00.000Z")

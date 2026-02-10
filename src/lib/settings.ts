@@ -16,6 +16,8 @@ export type ThemeMode = "system" | "light" | "dark";
 
 export type DisplayMode = "used" | "left";
 
+export type ResetTimerDisplayMode = "relative" | "absolute";
+
 export type TrayIconStyle = "bars" | "circle" | "provider" | "textOnly";
 
 const SETTINGS_STORE_PATH = "settings.json";
@@ -23,18 +25,21 @@ const PLUGIN_SETTINGS_KEY = "plugins";
 const AUTO_UPDATE_SETTINGS_KEY = "autoUpdateInterval";
 const THEME_MODE_KEY = "themeMode";
 const DISPLAY_MODE_KEY = "displayMode";
+const RESET_TIMER_DISPLAY_MODE_KEY = "resetTimerDisplayMode";
 const TRAY_ICON_STYLE_KEY = "trayIconStyle";
 const TRAY_SHOW_PERCENTAGE_KEY = "trayShowPercentage";
 
 export const DEFAULT_AUTO_UPDATE_INTERVAL: AutoUpdateIntervalMinutes = 15;
 export const DEFAULT_THEME_MODE: ThemeMode = "system";
 export const DEFAULT_DISPLAY_MODE: DisplayMode = "left";
+export const DEFAULT_RESET_TIMER_DISPLAY_MODE: ResetTimerDisplayMode = "relative";
 export const DEFAULT_TRAY_ICON_STYLE: TrayIconStyle = "bars";
 export const DEFAULT_TRAY_SHOW_PERCENTAGE = false;
 
 const AUTO_UPDATE_INTERVALS: AutoUpdateIntervalMinutes[] = [5, 15, 30, 60];
 const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
 const DISPLAY_MODES: DisplayMode[] = ["used", "left"];
+const RESET_TIMER_DISPLAY_MODES: ResetTimerDisplayMode[] = ["relative", "absolute"];
 const TRAY_ICON_STYLES: TrayIconStyle[] = ["bars", "circle", "provider", "textOnly"];
 
 export const AUTO_UPDATE_OPTIONS: { value: AutoUpdateIntervalMinutes; label: string }[] =
@@ -52,6 +57,11 @@ export const THEME_OPTIONS: { value: ThemeMode; label: string }[] =
 export const DISPLAY_MODE_OPTIONS: { value: DisplayMode; label: string }[] = [
   { value: "left", label: "Left" },
   { value: "used", label: "Used" },
+];
+
+export const RESET_TIMER_DISPLAY_OPTIONS: { value: ResetTimerDisplayMode; label: string }[] = [
+  { value: "relative", label: "Relative" },
+  { value: "absolute", label: "Absolute" },
 ];
 
 export const TRAY_ICON_STYLE_OPTIONS: { value: TrayIconStyle; label: string }[] = [
@@ -182,6 +192,24 @@ export async function loadDisplayMode(): Promise<DisplayMode> {
 
 export async function saveDisplayMode(mode: DisplayMode): Promise<void> {
   await store.set(DISPLAY_MODE_KEY, mode);
+  await store.save();
+}
+
+function isResetTimerDisplayMode(value: unknown): value is ResetTimerDisplayMode {
+  return (
+    typeof value === "string" &&
+    RESET_TIMER_DISPLAY_MODES.includes(value as ResetTimerDisplayMode)
+  );
+}
+
+export async function loadResetTimerDisplayMode(): Promise<ResetTimerDisplayMode> {
+  const stored = await store.get<unknown>(RESET_TIMER_DISPLAY_MODE_KEY);
+  if (isResetTimerDisplayMode(stored)) return stored;
+  return DEFAULT_RESET_TIMER_DISPLAY_MODE;
+}
+
+export async function saveResetTimerDisplayMode(mode: ResetTimerDisplayMode): Promise<void> {
+  await store.set(RESET_TIMER_DISPLAY_MODE_KEY, mode);
   await store.save();
 }
 

@@ -17,6 +17,8 @@ const state = vi.hoisted(() => ({
   saveThemeModeMock: vi.fn(),
   loadDisplayModeMock: vi.fn(),
   saveDisplayModeMock: vi.fn(),
+  loadResetTimerDisplayModeMock: vi.fn(),
+  saveResetTimerDisplayModeMock: vi.fn(),
   loadTrayIconStyleMock: vi.fn(),
   saveTrayIconStyleMock: vi.fn(),
   loadTrayShowPercentageMock: vi.fn(),
@@ -153,6 +155,8 @@ vi.mock("@/lib/settings", async () => {
     saveThemeMode: state.saveThemeModeMock,
     loadDisplayMode: state.loadDisplayModeMock,
     saveDisplayMode: state.saveDisplayModeMock,
+    loadResetTimerDisplayMode: state.loadResetTimerDisplayModeMock,
+    saveResetTimerDisplayMode: state.saveResetTimerDisplayModeMock,
     loadTrayIconStyle: state.loadTrayIconStyleMock,
     saveTrayIconStyle: state.saveTrayIconStyleMock,
     loadTrayShowPercentage: state.loadTrayShowPercentageMock,
@@ -179,6 +183,8 @@ describe("App", () => {
     state.saveThemeModeMock.mockReset()
     state.loadDisplayModeMock.mockReset()
     state.saveDisplayModeMock.mockReset()
+    state.loadResetTimerDisplayModeMock.mockReset()
+    state.saveResetTimerDisplayModeMock.mockReset()
     state.loadTrayIconStyleMock.mockReset()
     state.saveTrayIconStyleMock.mockReset()
     state.loadTrayShowPercentageMock.mockReset()
@@ -199,6 +205,8 @@ describe("App", () => {
     state.saveThemeModeMock.mockResolvedValue(undefined)
     state.loadDisplayModeMock.mockResolvedValue("left")
     state.saveDisplayModeMock.mockResolvedValue(undefined)
+    state.loadResetTimerDisplayModeMock.mockResolvedValue("relative")
+    state.saveResetTimerDisplayModeMock.mockResolvedValue(undefined)
     state.loadTrayIconStyleMock.mockResolvedValue("bars")
     state.saveTrayIconStyleMock.mockResolvedValue(undefined)
     state.loadTrayShowPercentageMock.mockResolvedValue(false)
