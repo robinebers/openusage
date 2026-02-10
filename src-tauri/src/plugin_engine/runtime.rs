@@ -4,6 +4,11 @@ use rquickjs::{Array, Context, Ctx, Error, Object, Promise, Runtime, Value};
 use serde::Serialize;
 use std::path::PathBuf;
 
+#[derive(Debug, Clone, Default)]
+pub struct RunProbeOptions {
+    pub credential_overlay: Option<host_api::SharedCredentialOverlay>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum ProgressFormat {
@@ -54,6 +59,7 @@ pub fn run_probe(
     plugin: &LoadedPlugin,
     app_data_dir: &PathBuf,
     app_version: &str,
+    options: RunProbeOptions,
 ) -> PluginOutput {
     let fallback = error_output(plugin, "runtime error".to_string());
 
@@ -72,9 +78,10 @@ pub fn run_probe(
     let entry_script = plugin.entry_script.clone();
     let icon_url = plugin.icon_data_url.clone();
     let app_data = app_data_dir.clone();
+    let overlay = options.credential_overlay.clone();
 
     ctx.with(|ctx| {
-        if host_api::inject_host_api(&ctx, &plugin_id, &app_data, app_version).is_err() {
+        if host_api::inject_host_api(&ctx, &plugin_id, &app_data, app_version, overlay).is_err() {
             return error_output(plugin, "host api injection failed".to_string());
         }
         if host_api::patch_http_wrapper(&ctx).is_err() {
@@ -113,12 +120,14 @@ pub fn run_probe(
         let result: Object = if result_value.is_promise() {
             let promise: Promise = match result_value.into_promise() {
                 Some(promise) => promise,
-                None => return error_output(plugin, "probe() returned invalid promise".to_string()),
+                None => {
+                    return error_output(plugin, "probe() returned invalid promise".to_string());
+                }
             };
             match promise.finish::<Object>() {
                 Ok(obj) => obj,
                 Err(Error::WouldBlock) => {
-                    return error_output(plugin, "probe() returned unresolved promise".to_string())
+                    return error_output(plugin, "probe() returned unresolved promise".to_string());
                 }
                 Err(_) => return error_output(plugin, extract_error_string(&ctx)),
             }
@@ -129,7 +138,10 @@ pub fn run_probe(
             }
         };
 
-        let plan: Option<String> = result.get::<_, String>("plan").ok().filter(|s| !s.is_empty());
+        let plan: Option<String> = result
+            .get::<_, String>("plan")
+            .ok()
+            .filter(|s| !s.is_empty());
 
         let lines = match parse_lines(&result) {
             Ok(lines) if !lines.is_empty() => lines,
@@ -167,13 +179,21 @@ fn parse_lines(result: &Object) -> Result<Vec<MetricLine>, String> {
         match line_type.as_str() {
             "text" => {
                 let value = line.get::<_, String>("value").unwrap_or_default();
-                out.push(MetricLine::Text { label, value, color, subtitle });
+                out.push(MetricLine::Text {
+                    label,
+                    value,
+                    color,
+                    subtitle,
+                });
             }
             "progress" => {
                 let used_value: Value = match line.get("used") {
                     Ok(v) => v,
                     Err(_) => {
-                        out.push(error_line(format!("progress line at index {} missing used", idx)));
+                        out.push(error_line(format!(
+                            "progress line at index {} missing used",
+                            idx
+                        )));
                         continue;
                     }
                 };
@@ -324,9 +344,8 @@ fn parse_lines(result: &Object) -> Result<Vec<MetricLine>, String> {
                                     Some(value)
                                 } else {
                                     // ISO-like but missing timezone: assume UTC.
-                                    let is_missing_tz = value.contains('T')
-                                        && !value.ends_with('Z')
-                                        && {
+                                    let is_missing_tz =
+                                        value.contains('T') && !value.ends_with('Z') && {
                                             let tail = value.splitn(2, 'T').nth(1).unwrap_or("");
                                             !tail.contains('+') && !tail.contains('-')
                                         };
@@ -365,7 +384,8 @@ fn parse_lines(result: &Object) -> Result<Vec<MetricLine>, String> {
                 };
 
                 // Parse optional periodDurationMs
-                let period_duration_ms: Option<u64> = match line.get::<_, Value>("periodDurationMs") {
+                let period_duration_ms: Option<u64> = match line.get::<_, Value>("periodDurationMs")
+                {
                     Ok(val) => {
                         if val.is_null() || val.is_undefined() {
                             None
@@ -374,11 +394,17 @@ fn parse_lines(result: &Object) -> Result<Vec<MetricLine>, String> {
                             if ms > 0 {
                                 Some(ms)
                             } else {
-                                log::warn!("periodDurationMs at index {} must be positive, omitting", idx);
+                                log::warn!(
+                                    "periodDurationMs at index {} must be positive, omitting",
+                                    idx
+                                );
                                 None
                             }
                         } else {
-                            log::warn!("invalid periodDurationMs at index {} (non-number), omitting", idx);
+                            log::warn!(
+                                "invalid periodDurationMs at index {} (non-number), omitting",
+                                idx
+                            );
                             None
                         }
                     }
@@ -397,7 +423,12 @@ fn parse_lines(result: &Object) -> Result<Vec<MetricLine>, String> {
             }
             "badge" => {
                 let text = line.get::<_, String>("text").unwrap_or_default();
-                out.push(MetricLine::Badge { label, text, color, subtitle });
+                out.push(MetricLine::Badge {
+                    label,
+                    text,
+                    color,
+                    subtitle,
+                });
             }
             _ => {
                 out.push(error_line(format!(
@@ -498,7 +529,12 @@ mod tests {
             };
             "#,
         );
-        let output = run_probe(&plugin, &temp_app_dir("sync"), "0.0.0");
+        let output = run_probe(
+            &plugin,
+            &temp_app_dir("sync"),
+            "0.0.0",
+            RunProbeOptions::default(),
+        );
         assert_eq!(error_text(output), "boom");
     }
 
@@ -513,7 +549,12 @@ mod tests {
             };
             "#,
         );
-        let output = run_probe(&plugin, &temp_app_dir("async"), "0.0.0");
+        let output = run_probe(
+            &plugin,
+            &temp_app_dir("async"),
+            "0.0.0",
+            RunProbeOptions::default(),
+        );
         assert_eq!(error_text(output), "boom");
     }
 
@@ -532,6 +573,9 @@ mod tests {
         let json: JsonValue = serde_json::to_value(&line).expect("serialize");
         let obj = json.as_object().expect("object");
         assert!(obj.get("resetsAt").is_some(), "expected resetsAt key");
-        assert!(obj.get("resets_at").is_none(), "did not expect resets_at key");
+        assert!(
+            obj.get("resets_at").is_none(),
+            "did not expect resets_at key"
+        );
     }
 }
