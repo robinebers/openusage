@@ -1132,8 +1132,23 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                     ));
                 }
                 let expanded = expand_path(&db_path);
-                // Use immutable=1 to bypass WAL/SHM file access issues
-                // (WAL databases can fail with -readonly when shm is locked after macOS sleep)
+
+                // Prefer a normal read-only open so WAL contents are visible (common for app state DBs).
+                // Fall back to immutable=1 to bypass WAL/SHM lock issues after macOS sleep.
+                let primary = std::process::Command::new("sqlite3")
+                    .args(["-readonly", "-json", &expanded, &sql])
+                    .output()
+                    .map_err(|e| {
+                        Exception::throw_message(
+                            &ctx_inner,
+                            &format!("sqlite3 exec failed: {}", e),
+                        )
+                    })?;
+
+                if primary.status.success() {
+                    return Ok(String::from_utf8_lossy(&primary.stdout).to_string());
+                }
+
                 // Percent-encode special chars for valid URI (% must be first!)
                 let encoded = expanded
                     .replace('%', "%25")
@@ -1141,7 +1156,7 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                     .replace('#', "%23")
                     .replace('?', "%3F");
                 let uri_path = format!("file:{}?immutable=1", encoded);
-                let output = std::process::Command::new("sqlite3")
+                let fallback = std::process::Command::new("sqlite3")
                     .args(["-readonly", "-json", &uri_path, &sql])
                     .output()
                     .map_err(|e| {
@@ -1151,15 +1166,20 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                         )
                     })?;
 
-                if !output.status.success() {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
+                if !fallback.status.success() {
+                    let stderr_primary = String::from_utf8_lossy(&primary.stderr);
+                    let stderr_fallback = String::from_utf8_lossy(&fallback.stderr);
                     return Err(Exception::throw_message(
                         &ctx_inner,
-                        &format!("sqlite3 error: {}", stderr.trim()),
+                        &format!(
+                            "sqlite3 error: {} (fallback: {})",
+                            stderr_primary.trim(),
+                            stderr_fallback.trim()
+                        ),
                     ));
                 }
 
-                Ok(String::from_utf8_lossy(&output.stdout).to_string())
+                Ok(String::from_utf8_lossy(&fallback.stdout).to_string())
             },
         )?,
     )?;
