@@ -39,10 +39,10 @@ export function formatNumber(value: number) {
   }).format(value)
 }
 
-const PACE_VISUALS: Record<PaceStatus, { dotClass: string; markerColor: string }> = {
-  ahead: { dotClass: "bg-green-500", markerColor: "#22c55e" },
-  "on-track": { dotClass: "bg-yellow-500", markerColor: "#eab308" },
-  behind: { dotClass: "bg-red-500", markerColor: "#ef4444" },
+const PACE_VISUALS: Record<PaceStatus, { dotClass: string }> = {
+  ahead: { dotClass: "bg-green-500" },
+  "on-track": { dotClass: "bg-yellow-500" },
+  behind: { dotClass: "bg-red-500" },
 }
 
 function formatCount(value: number) {
@@ -358,7 +358,9 @@ function MetricLineRenderer({
 
   if (line.type === "progress") {
     const resetsAtMs = line.resetsAt ? Date.parse(line.resetsAt) : Number.NaN
-    const hasPaceContext = Number.isFinite(resetsAtMs) && Number.isFinite(line.periodDurationMs)
+    const periodDurationMs = line.periodDurationMs
+    const hasPaceContext = Number.isFinite(resetsAtMs) && Number.isFinite(periodDurationMs)
+    const hasTimeMarkerContext = hasPaceContext && periodDurationMs! > 0
     const shownAmount =
       displayMode === "used"
         ? line.used
@@ -389,16 +391,17 @@ function MetricLineRenderer({
 
     // Calculate pace status if we have reset time and period duration
     const paceResult = hasPaceContext
-      ? calculatePaceStatus(line.used, line.limit, resetsAtMs, line.periodDurationMs!, now)
+      ? calculatePaceStatus(line.used, line.limit, resetsAtMs, periodDurationMs!, now)
       : null
     const paceStatus = paceResult?.status ?? null
-    const paceMarkerValue = paceResult && paceStatus
+    const paceMarkerValue = hasTimeMarkerContext
       ? (() => {
-          const projectedUsedPercent = Math.max(0, Math.min(100, (paceResult.projectedUsage / line.limit) * 100))
-          return displayMode === "used" ? projectedUsedPercent : 100 - projectedUsedPercent
+          const periodStartMs = resetsAtMs - periodDurationMs!
+          const elapsedFraction = clamp01((now - periodStartMs) / periodDurationMs!)
+          const elapsedPercent = elapsedFraction * 100
+          return displayMode === "used" ? elapsedPercent : 100 - elapsedPercent
         })()
       : undefined
-    const paceMarkerColor = paceStatus ? PACE_VISUALS[paceStatus].markerColor : undefined
     const isLimitReached = line.used >= line.limit
     const paceDetailText =
       hasPaceContext && !isLimitReached
@@ -406,7 +409,7 @@ function MetricLineRenderer({
             paceResult,
             used: line.used,
             limit: line.limit,
-            periodDurationMs: line.periodDurationMs!,
+            periodDurationMs: periodDurationMs!,
             resetsAtMs,
             nowMs: now,
             displayMode,
@@ -425,7 +428,6 @@ function MetricLineRenderer({
           value={percent}
           indicatorColor={line.color}
           markerValue={paceMarkerValue}
-          markerColor={paceMarkerColor}
         />
         <div className="flex justify-between items-center mt-1.5">
           <span className="text-xs text-muted-foreground tabular-nums">

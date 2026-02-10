@@ -29,6 +29,7 @@ describe("mock plugin", () => {
       .filter((l) => l.type === "progress")
       .map((l) => l.label)
     expect(progressLabels).toContain("Ahead pace")
+    expect(progressLabels).toContain("Time marker empty-side demo")
     expect(progressLabels).toContain("Empty bar")
     expect(progressLabels).toContain("Over limit!")
     expect(progressLabels).toContain("Huge numbers")
@@ -48,6 +49,24 @@ describe("mock plugin", () => {
     const ahead = result.lines.find((l) => l.label === "Ahead pace")
     expect(ahead.resetsAt).toBeTruthy()
     expect(ahead.periodDurationMs).toBeGreaterThan(0)
+  })
+
+  it("configures an empty-side time marker demo line", async () => {
+    vi.useFakeTimers()
+    const baseNow = new Date("2026-02-02T00:00:00.000Z")
+    vi.setSystemTime(baseNow)
+    const plugin = await loadPlugin()
+    const result = plugin.probe(createCtx())
+    const demo = result.lines.find((l) => l.label === "Time marker empty-side demo")
+    expect(demo).toBeTruthy()
+    expect(demo?.used).toBe(20)
+    expect(demo?.limit).toBe(100)
+    expect(demo?.periodDurationMs).toBe(24 * 60 * 60 * 1000)
+    expect(Date.parse(demo.resetsAt) - Date.now()).toBe(12 * 60 * 60 * 1000)
+
+    // In default "used" mode this places the time marker (50%) to the right of fill (20%).
+    const elapsedPercent = ((demo.periodDurationMs - (Date.parse(demo.resetsAt) - Date.now())) / demo.periodDurationMs) * 100
+    expect(elapsedPercent).toBeGreaterThan(demo.used)
   })
 
   it("includes reset ranges for minute/hour/day/week outputs", async () => {

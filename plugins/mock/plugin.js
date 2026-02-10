@@ -24,12 +24,15 @@
   function probe() {
     var _10m = 10 * 60 * 1000
     var _6h = 6 * 60 * 60 * 1000
+    var _12h = 12 * 60 * 60 * 1000
+    var _24h = 24 * 60 * 60 * 1000
     var _2d3h = (2 * 24 + 3) * 60 * 60 * 1000
     var _8d = 8 * 24 * 60 * 60 * 1000
     var _15d = 15 * 24 * 60 * 60 * 1000
     var _30d = _15d * 2
     var _soonReset = new Date(Date.now() + _10m).toISOString()
     var _hourReset = new Date(Date.now() + _6h).toISOString()
+    var _halfDayReset = new Date(Date.now() + _12h).toISOString()
     var _multiDayReset = new Date(Date.now() + _2d3h).toISOString()
     var _weekReset = new Date(Date.now() + _8d).toISOString()
     var _resets = new Date(Date.now() + _15d).toISOString()
@@ -42,6 +45,8 @@
         lineProgress({ label: "Ahead pace", used: 30, limit: 100, format: { kind: "percent" }, resetsAt: _resets, periodDurationMs: _30d }),
         lineProgress({ label: "On Track pace", used: 45, limit: 100, format: { kind: "percent" }, resetsAt: _resets, periodDurationMs: _30d }),
         lineProgress({ label: "Behind pace", used: 65, limit: 100, format: { kind: "percent" }, resetsAt: _resets, periodDurationMs: _30d }),
+        // Marker demo: in default "used" mode, time marker sits on the empty side
+        lineProgress({ label: "Time marker empty-side demo", used: 20, limit: 100, format: { kind: "percent" }, resetsAt: _halfDayReset, periodDurationMs: _24h }),
         // Edge cases
         lineProgress({ label: "Empty bar", used: 0, limit: 500, format: { kind: "dollars" } }),
         lineProgress({ label: "Exactly full", used: 1000, limit: 1000, format: { kind: "count", suffix: "tokens" } }),

@@ -6,11 +6,10 @@ interface ProgressProps extends React.HTMLAttributes<HTMLDivElement> {
   value?: number
   indicatorColor?: string
   markerValue?: number
-  markerColor?: string
 }
 
 const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
-  ({ className, value = 0, indicatorColor, markerValue, markerColor, ...props }, ref) => {
+  ({ className, value = 0, indicatorColor, markerValue, ...props }, ref) => {
     const clamped = Math.min(100, Math.max(0, value))
     const clampedMarker =
       typeof markerValue === "number" && Number.isFinite(markerValue)
@@ -24,14 +23,13 @@ const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
       clampedMarker === null
         ? undefined
         : clampedMarker <= 0
-          ? "translateX(0)"
+          ? "translate(0, -50%)"
           : clampedMarker >= 100
-            ? "translateX(-100%)"
-            : "translateX(-50%)"
+            ? "translate(-100%, -50%)"
+            : "translate(-50%, -50%)"
     const markerStyle = showMarker
       ? {
           left: `${clampedMarker}%`,
-          backgroundColor: markerColor ?? "currentColor",
           transform: markerTransform,
         }
       : undefined
@@ -54,7 +52,7 @@ const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
           <div
             data-slot="progress-marker"
             aria-hidden="true"
-            className="absolute top-0 bottom-0 w-[3px] z-10 pointer-events-none"
+            className="absolute top-1/2 size-1.5 rounded-full z-10 pointer-events-none bg-primary border border-muted dark:border-[#353537]"
             style={markerStyle}
           />
         )}

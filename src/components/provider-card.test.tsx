@@ -170,7 +170,7 @@ describe("ProviderCard", () => {
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "58")
   })
 
-  it("uses projected left-at-reset for pace marker in displayMode=left", () => {
+  it("uses elapsed-time marker position in displayMode=left", () => {
     vi.useFakeTimers()
     const now = new Date("2026-02-02T18:00:00.000Z")
     vi.setSystemTime(now)
@@ -193,7 +193,7 @@ describe("ProviderCard", () => {
     )
     const marker = document.querySelector<HTMLElement>('[data-slot="progress-marker"]')
     expect(marker).toBeTruthy()
-    expect(marker?.style.left).toBe("60%")
+    expect(marker?.style.left).toBe("25%")
     vi.useRealTimers()
   })
 
@@ -472,21 +472,21 @@ describe("ProviderCard", () => {
         ]}
       />
     )
-    expect(screen.getByLabelText("You're good")).toBeInTheDocument()
-    expect(screen.getByLabelText("On track")).toBeInTheDocument()
-    expect(screen.getByLabelText("Using fast")).toBeInTheDocument()
+    expect(screen.getByLabelText("Plenty of room")).toBeInTheDocument()
+    expect(screen.getByLabelText("Right on target")).toBeInTheDocument()
+    expect(screen.getByLabelText("Will run out")).toBeInTheDocument()
     expect(screen.getByText("60% used at reset")).toBeInTheDocument()
     expect(screen.getByText("90% used at reset")).toBeInTheDocument()
     expect(screen.getByText("Limit in 8h 0m")).toBeInTheDocument()
 
     const markers = document.querySelectorAll<HTMLElement>('[data-slot="progress-marker"]')
     expect(markers).toHaveLength(3)
-    expect(markers[0]?.style.left).toBe("60%")
-    expect(markers[1]?.style.left).toBe("90%")
-    expect(markers[2]?.style.left).toBe("100%")
-    expect(markers[0]?.style.backgroundColor).toBe("rgb(34, 197, 94)")
-    expect(markers[1]?.style.backgroundColor).toBe("rgb(234, 179, 8)")
-    expect(markers[2]?.style.backgroundColor).toBe("rgb(239, 68, 68)")
+    expect(markers[0]?.style.left).toBe("50%")
+    expect(markers[1]?.style.left).toBe("50%")
+    expect(markers[2]?.style.left).toBe("50%")
+    expect(markers[0]).toHaveClass("bg-primary")
+    expect(markers[1]).toHaveClass("bg-primary")
+    expect(markers[2]).toHaveClass("bg-primary")
     vi.useRealTimers()
   })
 
@@ -537,12 +537,12 @@ describe("ProviderCard", () => {
         ]}
       />
     )
-    expect(screen.getByText("You're good")).toBeInTheDocument()
+    expect(screen.getByText("Plenty of room")).toBeInTheDocument()
     expect(screen.queryByText(/at reset/)).not.toBeInTheDocument()
     vi.useRealTimers()
   })
 
-  it("hides pace marker when pace is unavailable early in period", () => {
+  it("shows time marker when reset metadata exists even early in period", () => {
     vi.useFakeTimers()
     const now = new Date("2026-02-02T00:45:00.000Z")
     vi.setSystemTime(now)
@@ -563,8 +563,11 @@ describe("ProviderCard", () => {
         ]}
       />
     )
-    expect(screen.queryByLabelText("You're good")).not.toBeInTheDocument()
-    expect(document.querySelector('[data-slot="progress-marker"]')).toBeNull()
+    expect(screen.queryByLabelText("Plenty of room")).not.toBeInTheDocument()
+    const marker = document.querySelector<HTMLElement>('[data-slot="progress-marker"]')
+    expect(marker).toBeTruthy()
+    expect(marker?.style.left).toBe("3.125%")
+    expect(marker).toHaveClass("bg-primary")
     vi.useRealTimers()
   })
 
