@@ -114,70 +114,97 @@ pub fn position_panel_at_tray_icon(
 ) {
     let window = app_handle.get_webview_window("main").unwrap();
 
-    // Extract icon position (tray events emit physical coords)
+    // Tray icon events on macOS report coordinates labeled as Physical, but they
+    // live in a hybrid global space where each monitor region uses its own scale.
+    // When monitors have different DPIs, regions can overlap in this space.
+    //
+    // We disambiguate by checking the icon's physical size: on a Retina (2x)
+    // display the tray icon is reported as ~132x78 physical, while on a 1x display
+    // it is ~66x30. This tells us the scale of the monitor the icon is on.
+
     let (icon_phys_x, icon_phys_y) = match &icon_position {
-        Position::Physical(pos) => (pos.x, pos.y),
-        Position::Logical(pos) => (pos.x as i32, pos.y as i32),
+        Position::Physical(pos) => (pos.x as f64, pos.y as f64),
+        Position::Logical(pos) => (pos.x, pos.y),
+    };
+    let (icon_phys_w, icon_phys_h) = match &icon_size {
+        Size::Physical(s) => (s.width as f64, s.height as f64),
+        Size::Logical(s) => (s.width, s.height),
     };
 
-    // Find the monitor containing this physical position
-    // Note: monitor_from_point expects logical coords but tray events give physical,
-    // so we manually check using physical coordinates
+    // Determine the icon's scale from its physical size.
+    // A tray icon at 1x is ~66 wide; at 2x it's ~132. Use width > 100 as heuristic.
+    let icon_scale = if icon_phys_w > 100.0 { 2.0 } else { 1.0 };
+
+    log::error!(
+        "position_panel: icon_phys=({:.0}, {:.0}), icon_phys_size=({:.0}, {:.0}), icon_scale={}",
+        icon_phys_x, icon_phys_y, icon_phys_w, icon_phys_h, icon_scale
+    );
+
     let monitors = window.available_monitors().expect("failed to get monitors");
     let mut found_monitor = None;
 
-    for m in monitors {
-        let pos = m.position();
-        let size = m.size();
-        let x_in = icon_phys_x >= pos.x && icon_phys_x < pos.x + size.width as i32;
-        let y_in = icon_phys_y >= pos.y && icon_phys_y < pos.y + size.height as i32;
+    for m in &monitors {
+        let logical_pos = m.position();
+        let phys_size = m.size();
+        let scale = m.scale_factor();
+
+        // Each monitor's region in the tray coordinate space:
+        // origin = logical_pos * scale (its own scale), extent = physical size
+        let phys_origin_x = logical_pos.x as f64 * scale;
+        let phys_origin_y = logical_pos.y as f64 * scale;
+        let phys_w = phys_size.width as f64;
+        let phys_h = phys_size.height as f64;
+
+        log::error!(
+            "  monitor: {:?}, logical_pos=({}, {}), phys_origin=({:.0}, {:.0}), phys_size={:.0}x{:.0}, scale={}",
+            m.name(), logical_pos.x, logical_pos.y, phys_origin_x, phys_origin_y, phys_w, phys_h, scale
+        );
+
+        let x_in = icon_phys_x >= phys_origin_x && icon_phys_x < phys_origin_x + phys_w;
+        let y_in = icon_phys_y >= phys_origin_y && icon_phys_y < phys_origin_y + phys_h;
 
         if x_in && y_in {
-            found_monitor = Some(m);
-            break;
+            // When regions overlap, prefer the monitor whose scale matches the icon's
+            if found_monitor.is_none() || (scale - icon_scale).abs() < 0.1 {
+                found_monitor = Some((m.clone(), phys_origin_x, phys_origin_y));
+            }
         }
     }
 
-    let monitor = found_monitor.expect("no monitor found containing tray icon position");
-
-    let scale_factor = monitor.scale_factor();
-    // Window size in physical pixels (outer_size is physical on macOS)
-    let window_size = window.outer_size().unwrap();
-    let window_width_phys = window_size.width as i32;
-
-    // Convert icon position/size to physical coordinates
-    let (icon_phys_x, icon_phys_y, icon_width_phys, icon_height_phys) = match (icon_position, icon_size) {
-        (Position::Physical(pos), Size::Physical(size)) => (pos.x, pos.y, size.width as i32, size.height as i32),
-        (Position::Logical(pos), Size::Logical(size)) => (
-            (pos.x * scale_factor) as i32,
-            (pos.y * scale_factor) as i32,
-            (size.width * scale_factor) as i32,
-            (size.height * scale_factor) as i32,
-        ),
-        (Position::Physical(pos), Size::Logical(size)) => (
-            pos.x,
-            pos.y,
-            (size.width * scale_factor) as i32,
-            (size.height * scale_factor) as i32,
-        ),
-        (Position::Logical(pos), Size::Physical(size)) => (
-            (pos.x * scale_factor) as i32,
-            (pos.y * scale_factor) as i32,
-            size.width as i32,
-            size.height as i32,
-        ),
+    let (monitor, phys_origin_x, phys_origin_y) = match found_monitor {
+        Some(v) => v,
+        None => {
+            log::error!("No monitor found for icon at ({:.0}, {:.0}), using primary", icon_phys_x, icon_phys_y);
+            match window.primary_monitor() {
+                Ok(Some(m)) => (m, 0.0, 0.0),
+                _ => return,
+            }
+        }
     };
 
-    let icon_center_x_phys = icon_phys_x + (icon_width_phys / 2);
-    let panel_x_phys = icon_center_x_phys - (window_width_phys / 2);
-    let padding_phys = 0;
-    // Nudge the panel slightly upward so it visually aligns tighter to the tray.
-    // Use logical points (not physical px) so the offset looks consistent on Retina.
-    let nudge_up_points: f64 = 6.0;
-    let nudge_up_phys = (nudge_up_points * scale_factor).round() as i32;
-    let panel_y_phys = icon_phys_y + icon_height_phys + padding_phys - nudge_up_phys;
+    let target_scale = monitor.scale_factor();
+    let mon_logical_x = monitor.position().x as f64;
+    let mon_logical_y = monitor.position().y as f64;
 
-    let final_pos = tauri::PhysicalPosition::new(panel_x_phys, panel_y_phys);
+    // Convert icon physical coords to logical:
+    // offset within the monitor in physical pixels -> divide by target scale -> add logical origin
+    let icon_logical_x = mon_logical_x + (icon_phys_x - phys_origin_x) / target_scale;
+    let icon_logical_y = mon_logical_y + (icon_phys_y - phys_origin_y) / target_scale;
+    let icon_logical_w = icon_phys_w / target_scale;
+    let icon_logical_h = icon_phys_h / target_scale;
 
-    let _ = window.set_position(final_pos);
+    // Panel width in logical points (fixed at 400pt as configured in tauri.conf.json)
+    let panel_width = 400.0_f64;
+
+    let icon_center_x = icon_logical_x + (icon_logical_w / 2.0);
+    let panel_x = icon_center_x - (panel_width / 2.0);
+    let nudge_up: f64 = 6.0;
+    let panel_y = icon_logical_y + icon_logical_h - nudge_up;
+
+    log::error!(
+        "  target={:?}, scale={}, icon_logical=({:.1}, {:.1}), final=({:.1}, {:.1}), panel_w={:.0}",
+        monitor.name(), target_scale, icon_logical_x, icon_logical_y, panel_x, panel_y, panel_width
+    );
+
+    let _ = window.set_position(tauri::LogicalPosition::new(panel_x, panel_y));
 }
