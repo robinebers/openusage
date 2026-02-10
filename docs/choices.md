@@ -136,3 +136,9 @@ This document records opinionated defaults chosen during development.
 **Context:** Release workflow allowed unsigned Windows artifacts when signing secrets were absent.
 
 **Decision:** Fail the Windows publish job if `WINDOWS_CERTIFICATE` or `WINDOWS_CERTIFICATE_PASSWORD` is missing.
+
+### Improve Windows Tray Icon Contrast
+
+**Context:** Dynamic tray icons used black fills and became invisible on dark Windows taskbars.
+
+**Decision:** Render dynamic tray icons in light ink (`#f8f8f8`) on Windows.

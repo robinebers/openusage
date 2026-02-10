@@ -102,12 +102,14 @@ function App() {
   const displayModeRef = useRef(displayMode)
   const trayIconStyleRef = useRef(trayIconStyle)
   const trayShowPercentageRef = useRef(trayShowPercentage)
+  const isWindowsRef = useRef(isWindows)
   useEffect(() => { pluginsMetaRef.current = pluginsMeta }, [pluginsMeta])
   useEffect(() => { pluginSettingsRef.current = pluginSettings }, [pluginSettings])
   useEffect(() => { pluginStatesRef.current = pluginStates }, [pluginStates])
   useEffect(() => { displayModeRef.current = displayMode }, [displayMode])
   useEffect(() => { trayIconStyleRef.current = trayIconStyle }, [trayIconStyle])
   useEffect(() => { trayShowPercentageRef.current = trayShowPercentage }, [trayShowPercentage])
+  useEffect(() => { isWindowsRef.current = isWindows }, [isWindows])
 
   // Fetch app version and detect platform on mount
   useEffect(() => {
@@ -157,6 +159,7 @@ function App() {
           : undefined
       const dpr = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1
       const sizePx = getTrayIconSizePx(dpr)
+      const trayColor = isWindowsRef.current ? "#f8f8f8" : "#000000"
 
       try {
         const image = await renderTrayBarsIcon({
@@ -165,6 +168,7 @@ function App() {
           style,
           percentText,
           providerIconUrl,
+          color: trayColor,
         })
         let tray = trayRef.current
         if (!tray) {

@@ -22,3 +22,4 @@
 - Replaced Windows process discovery `wmic` with PowerShell CIM JSON parsing in `src-tauri/src/plugin_engine/host_api.rs`.
 - Added Windows DPAPI-backed `host.vault` and updated Copilot auth to use it.
 - Enforced Windows signing secrets in publish workflow to prevent unsigned releases.
+- Adjusted dynamic tray icon rendering to stay visible on dark Windows taskbars.
