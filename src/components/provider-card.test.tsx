@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react"
+import { fireEvent, render, screen, within } from "@testing-library/react"
 import type { ReactNode } from "react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -23,6 +23,24 @@ vi.mock("@/components/ui/tooltip", () => ({
   },
   TooltipContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }))
+
+function getEnglishOrdinalSuffix(day: number): string {
+  const mod100 = day % 100
+  if (mod100 >= 11 && mod100 <= 13) return "th"
+  const mod10 = day % 10
+  if (mod10 === 1) return "st"
+  if (mod10 === 2) return "nd"
+  if (mod10 === 3) return "rd"
+  return "th"
+}
+
+function formatOrdinalDate(date: Date): string {
+  const monthText = new Intl.DateTimeFormat(undefined, {
+    month: "short",
+  }).format(date)
+  const day = date.getDate()
+  return `${monthText} ${day}${getEnglishOrdinalSuffix(day)}`
+}
 
 describe("ProviderCard", () => {
   beforeEach(() => {
@@ -178,15 +196,10 @@ describe("ProviderCard", () => {
 
   it("toggles reset timer display mode from reset label", async () => {
     vi.useFakeTimers()
-    const now = new Date("2026-02-02T00:00:00.000Z")
+    const now = new Date(2026, 1, 2, 0, 0, 0)
     vi.setSystemTime(now)
     const onToggle = vi.fn()
-    const formatter = new Intl.DateTimeFormat("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    })
-    const expected = `Resets at ${formatter.format(new Date("2026-02-02T01:05:00.000Z"))}`
+    const resetsAt = new Date(2026, 1, 2, 1, 5, 0).toISOString()
     render(
       <ProviderCard
         name="Resets"
@@ -200,13 +213,99 @@ describe("ProviderCard", () => {
             used: 12.34,
             limit: 100,
             format: { kind: "dollars" },
-            resetsAt: "2026-02-02T01:05:00.000Z",
+            resetsAt,
           },
         ]}
       />
     )
-    await userEvent.click(screen.getByRole("button", { name: expected }))
+    const resetButton = screen.getByRole("button", { name: /^Resets today at / })
+    expect(resetButton).toBeInTheDocument()
+    fireEvent.click(resetButton)
     expect(onToggle).toHaveBeenCalledTimes(1)
+    vi.useRealTimers()
+  })
+
+  it("shows tomorrow context for absolute reset labels", () => {
+    vi.useFakeTimers()
+    const now = new Date(2026, 1, 2, 20, 0, 0)
+    const resetsAt = new Date(2026, 1, 3, 9, 30, 0)
+    vi.setSystemTime(now)
+    render(
+      <ProviderCard
+        name="Resets"
+        displayMode="used"
+        resetTimerDisplayMode="absolute"
+        lines={[
+          {
+            type: "progress",
+            label: "Daily",
+            used: 10,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: resetsAt.toISOString(),
+          },
+        ]}
+      />
+    )
+    expect(screen.getByText(/^Resets tomorrow at /)).toBeInTheDocument()
+    vi.useRealTimers()
+  })
+
+  it("shows short date context for absolute labels within a week", () => {
+    vi.useFakeTimers()
+    const now = new Date(2026, 1, 2, 10, 0, 0)
+    const resetsAt = new Date(2026, 1, 5, 16, 0, 0)
+    vi.setSystemTime(now)
+    const dateText = formatOrdinalDate(resetsAt)
+    render(
+      <ProviderCard
+        name="Resets"
+        displayMode="used"
+        resetTimerDisplayMode="absolute"
+        lines={[
+          {
+            type: "progress",
+            label: "Weekly",
+            used: 10,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: resetsAt.toISOString(),
+          },
+        ]}
+      />
+    )
+    expect(
+      screen.getByText((content) => content.startsWith(`Resets ${dateText} at `))
+    ).toBeInTheDocument()
+    vi.useRealTimers()
+  })
+
+  it("shows short date context for absolute labels beyond a week", () => {
+    vi.useFakeTimers()
+    const now = new Date(2026, 1, 2, 10, 0, 0)
+    const resetsAt = new Date(2026, 1, 20, 16, 0, 0)
+    vi.setSystemTime(now)
+    const dateText = formatOrdinalDate(resetsAt)
+    render(
+      <ProviderCard
+        name="Resets"
+        displayMode="used"
+        resetTimerDisplayMode="absolute"
+        lines={[
+          {
+            type: "progress",
+            label: "Monthly",
+            used: 10,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: resetsAt.toISOString(),
+          },
+        ]}
+      />
+    )
+    expect(
+      screen.getByText((content) => content.startsWith(`Resets ${dateText} at `))
+    ).toBeInTheDocument()
     vi.useRealTimers()
   })
 

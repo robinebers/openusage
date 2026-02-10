@@ -54,17 +54,47 @@ function formatResetIn(nowMs: number, resetsAtIso: string): string | null {
   return durationText ? `Resets in ${durationText}` : "Resets in <1m"
 }
 
-const RESET_TIME_FORMATTER = new Intl.DateTimeFormat("en-US", {
-  hour: "2-digit",
+const RESET_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  hour: "numeric",
   minute: "2-digit",
-  hour12: false,
 })
+
+const RESET_MONTH_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+})
+
+function getLocalDayIndex(timestampMs: number): number {
+  const date = new Date(timestampMs)
+  return Math.floor(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86_400_000)
+}
+
+function getEnglishOrdinalSuffix(day: number): string {
+  const mod100 = day % 100
+  if (mod100 >= 11 && mod100 <= 13) return "th"
+  const mod10 = day % 10
+  if (mod10 === 1) return "st"
+  if (mod10 === 2) return "nd"
+  if (mod10 === 3) return "rd"
+  return "th"
+}
+
+function formatMonthDayWithOrdinal(timestampMs: number): string {
+  const date = new Date(timestampMs)
+  const monthText = RESET_MONTH_FORMATTER.format(date)
+  const day = date.getDate()
+  return `${monthText} ${day}${getEnglishOrdinalSuffix(day)}`
+}
 
 function formatResetAt(nowMs: number, resetsAtIso: string): string | null {
   const resetsAtMs = Date.parse(resetsAtIso)
   if (!Number.isFinite(resetsAtMs)) return null
   if (resetsAtMs - nowMs <= 0) return "Resets now"
-  return `Resets at ${RESET_TIME_FORMATTER.format(resetsAtMs)}`
+  const dayDiff = getLocalDayIndex(resetsAtMs) - getLocalDayIndex(nowMs)
+  const timeText = RESET_TIME_FORMATTER.format(resetsAtMs)
+  if (dayDiff <= 0) return `Resets today at ${timeText}`
+  if (dayDiff === 1) return `Resets tomorrow at ${timeText}`
+  const dateText = formatMonthDayWithOrdinal(resetsAtMs)
+  return `Resets ${dateText} at ${timeText}`
 }
 
 /** Colored dot indicator showing pace status */

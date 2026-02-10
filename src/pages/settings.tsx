@@ -383,6 +383,11 @@ export function SettingsPage({
           <div className="flex gap-1" role="radiogroup" aria-label="Reset timer display mode">
             {RESET_TIMER_DISPLAY_OPTIONS.map((option) => {
               const isActive = option.value === resetTimerDisplayMode;
+              const absoluteTimeExample = new Intl.DateTimeFormat(undefined, {
+                hour: "numeric",
+                minute: "2-digit",
+              }).format(new Date(2026, 1, 2, 11, 4));
+              const example = option.value === "relative" ? "5h 12m" : `today at ${absoluteTimeExample}`;
               return (
                 <Button
                   key={option.value}
@@ -391,10 +396,18 @@ export function SettingsPage({
                   aria-checked={isActive}
                   variant={isActive ? "default" : "outline"}
                   size="sm"
-                  className="flex-1"
+                  className="flex-1 flex flex-col items-center gap-0 py-2 h-auto"
                   onClick={() => onResetTimerDisplayModeChange(option.value)}
                 >
-                  {option.label}
+                  <span>{option.label}</span>
+                  <span
+                    className={cn(
+                      "text-xs font-normal",
+                      isActive ? "text-primary-foreground/80" : "text-muted-foreground"
+                    )}
+                  >
+                    {example}
+                  </span>
                 </Button>
               );
             })}

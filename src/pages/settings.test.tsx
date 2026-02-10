@@ -174,7 +174,7 @@ describe("SettingsPage", () => {
         onResetTimerDisplayModeChange={onResetTimerDisplayModeChange}
       />
     )
-    await userEvent.click(screen.getByRole("radio", { name: "Absolute" }))
+    await userEvent.click(screen.getByRole("radio", { name: /Absolute/ }))
     expect(onResetTimerDisplayModeChange).toHaveBeenCalledWith("absolute")
   })
 

@@ -22,8 +22,16 @@
   }
 
   function probe() {
+    var _10m = 10 * 60 * 1000
+    var _6h = 6 * 60 * 60 * 1000
+    var _2d3h = (2 * 24 + 3) * 60 * 60 * 1000
+    var _8d = 8 * 24 * 60 * 60 * 1000
     var _15d = 15 * 24 * 60 * 60 * 1000
     var _30d = _15d * 2
+    var _soonReset = new Date(Date.now() + _10m).toISOString()
+    var _hourReset = new Date(Date.now() + _6h).toISOString()
+    var _multiDayReset = new Date(Date.now() + _2d3h).toISOString()
+    var _weekReset = new Date(Date.now() + _8d).toISOString()
     var _resets = new Date(Date.now() + _15d).toISOString()
     var _pastReset = new Date(Date.now() - 60000).toISOString()
 
@@ -41,6 +49,10 @@
         lineProgress({ label: "Huge numbers", used: 8429301, limit: 10000000, format: { kind: "count", suffix: "tokens" } }),
         lineProgress({ label: "Tiny sliver", used: 1, limit: 10000, format: { kind: "percent" } }),
         lineProgress({ label: "Almost full", used: 9999, limit: 10000, format: { kind: "percent" } }),
+        lineProgress({ label: "Reset in minutes", used: 12, limit: 100, format: { kind: "percent" }, resetsAt: _soonReset }),
+        lineProgress({ label: "Reset in hours", used: 28, limit: 100, format: { kind: "percent" }, resetsAt: _hourReset }),
+        lineProgress({ label: "Reset in days", used: 43, limit: 100, format: { kind: "percent" }, resetsAt: _multiDayReset }),
+        lineProgress({ label: "Reset in week+", used: 56, limit: 100, format: { kind: "percent" }, resetsAt: _weekReset }),
         lineProgress({ label: "Expired reset", used: 42, limit: 100, format: { kind: "percent" }, resetsAt: _pastReset, periodDurationMs: _30d }),
         // Text lines
         lineText({ label: "Status", value: "Active" }),
