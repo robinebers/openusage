@@ -30,6 +30,8 @@ const state = vi.hoisted(() => ({
   autostartEnableMock: vi.fn(),
   autostartDisableMock: vi.fn(),
   autostartIsEnabledMock: vi.fn(),
+  loadCliProxyAccountSelectionsMock: vi.fn(),
+  saveCliProxyAccountSelectionsMock: vi.fn(),
   renderTrayBarsIconMock: vi.fn(),
   probeHandlers: null as null | { onResult: (output: any) => void; onBatchComplete: () => void },
   trayGetByIdMock: vi.fn(),
@@ -178,6 +180,10 @@ vi.mock("@/lib/settings", async () => {
     saveGlobalShortcut: state.saveGlobalShortcutMock,
     loadStartOnLogin: state.loadStartOnLoginMock,
     saveStartOnLogin: state.saveStartOnLoginMock,
+    loadCliProxyAccountSelections: state.loadCliProxyAccountSelectionsMock,
+    saveCliProxyAccountSelections: state.saveCliProxyAccountSelectionsMock,
+    loadStartOnLogin: state.loadStartOnLoginMock,
+    saveStartOnLogin: state.saveStartOnLoginMock,
   }
 })
 
@@ -213,6 +219,8 @@ describe("App", () => {
     state.autostartEnableMock.mockReset()
     state.autostartDisableMock.mockReset()
     state.autostartIsEnabledMock.mockReset()
+    state.loadCliProxyAccountSelectionsMock.mockReset()
+    state.saveCliProxyAccountSelectionsMock.mockReset()
     state.renderTrayBarsIconMock.mockReset()
     state.trayGetByIdMock.mockReset()
     state.traySetIconMock.mockReset()
@@ -236,6 +244,8 @@ describe("App", () => {
     state.loadTrayShowPercentageMock.mockResolvedValue(false)
     state.saveTrayShowPercentageMock.mockResolvedValue(undefined)
     state.loadGlobalShortcutMock.mockResolvedValue(null)
+    state.loadCliProxyAccountSelectionsMock.mockResolvedValue({})
+    state.saveCliProxyAccountSelectionsMock.mockResolvedValue(undefined)
     state.saveGlobalShortcutMock.mockResolvedValue(undefined)
     state.loadStartOnLoginMock.mockResolvedValue(false)
     state.saveStartOnLoginMock.mockResolvedValue(undefined)
@@ -794,7 +804,10 @@ describe("App", () => {
     })
     const retry = await screen.findByRole("button", { name: "Retry" })
     await userEvent.click(retry)
-    expect(state.startBatchMock).toHaveBeenCalledWith(["a"])
+    expect(state.startBatchMock).toHaveBeenCalledWith(
+      ["a"],
+      expect.objectContaining({ accountSelections: expect.any(Object) })
+    )
   })
 
   it("shows empty state when all plugins disabled", async () => {
@@ -853,7 +866,12 @@ describe("App", () => {
     const checkboxes = await screen.findAllByRole("checkbox")
     const targetCheckbox = checkboxes[checkboxes.length - 1]
     await userEvent.click(targetCheckbox)
-    await waitFor(() => expect(state.startBatchMock).toHaveBeenCalledWith(["b"]))
+    await waitFor(() =>
+      expect(state.startBatchMock).toHaveBeenCalledWith(
+        ["b"],
+        expect.objectContaining({ accountSelections: expect.any(Object) })
+      )
+    )
   })
 
   it("uses fallback monitor sizing when monitor missing", async () => {
@@ -1268,7 +1286,10 @@ describe("App", () => {
 
     // The retry should still work (startBatch called) but resetAutoUpdateSchedule
     // should hit the enabledIds.length === 0 branch
-    expect(state.startBatchMock).toHaveBeenCalledWith(["a"])
+    expect(state.startBatchMock).toHaveBeenCalledWith(
+      ["a"],
+      expect.objectContaining({ accountSelections: expect.any(Object) })
+    )
   })
 
   it("clears global shortcut via clear button and invokes update_global_shortcut with null", async () => {
