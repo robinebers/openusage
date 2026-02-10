@@ -9,6 +9,7 @@ interface PanelFooterProps {
   autoUpdateNextAt: number | null;
   updateStatus: UpdateStatus;
   onUpdateInstall: () => void;
+  onUpdateCheck: () => void;
   showAbout: boolean;
   onShowAbout: () => void;
   onCloseAbout: () => void;
@@ -18,11 +19,13 @@ function VersionDisplay({
   version,
   updateStatus,
   onUpdateInstall,
+  onUpdateCheck,
   onVersionClick,
 }: {
   version: string;
   updateStatus: UpdateStatus;
   onUpdateInstall: () => void;
+  onUpdateCheck: () => void;
   onVersionClick: () => void;
 }) {
   switch (updateStatus.status) {
@@ -50,6 +53,18 @@ function VersionDisplay({
         <span className="text-xs text-muted-foreground">Installing...</span>
       );
     case "error":
+      if (updateStatus.message === "Update check failed") {
+        return (
+          <button
+            type="button"
+            onClick={onUpdateCheck}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            title={updateStatus.message}
+          >
+            Updates soon
+          </button>
+        );
+      }
       return (
         <span className="text-xs text-destructive" title={updateStatus.message}>
           Update failed
@@ -73,6 +88,7 @@ export function PanelFooter({
   autoUpdateNextAt,
   updateStatus,
   onUpdateInstall,
+  onUpdateCheck,
   showAbout,
   onShowAbout,
   onCloseAbout,
@@ -100,6 +116,7 @@ export function PanelFooter({
           version={version}
           updateStatus={updateStatus}
           onUpdateInstall={onUpdateInstall}
+          onUpdateCheck={onUpdateCheck}
           onVersionClick={onShowAbout}
         />
         <span className="text-xs text-muted-foreground tabular-nums">

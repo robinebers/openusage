@@ -9,11 +9,11 @@ Antigravity is essentially a Google-branded fork of [Windsurf](windsurf.md) — 
 - **Vendor:** Google (internal codename "Jetski")
 - **Protocol:** Connect RPC v1 (JSON over HTTP) on local language server
 - **Service:** `exa.language_server_pb.LanguageServerService`
-- **Auth:** CSRF token from process args (no API key needed)
+- **Auth:** CSRF token from process args, API key from SQLite (fallback)
 - **Quota:** fraction (0.0–1.0, where 1.0 = 100% remaining)
 - **Quota window:** 5 hours
 - **Timestamps:** ISO 8601
-- **Requires:** Antigravity IDE running (language server is a child process)
+- **Requires:** Antigravity IDE running (language server process), or signed-in credentials in SQLite (Cloud Code fallback)
 
 ## Discovery
 
@@ -66,7 +66,7 @@ POST http://127.0.0.1:{port}/exa.language_server_pb.LanguageServerService/GetUse
 }
 ```
 
-No API key needed — the CSRF token alone authenticates. (Windsurf requires `metadata.apiKey`.)
+The CSRF token alone authenticates. When an API key is available from the local SQLite database, it is included in the metadata.
 
 #### Response
 
@@ -156,10 +156,116 @@ Models are dynamic — the list changes as Google adds/removes them. The plugin 
 
 Interestingly, non-Google models (Claude, GPT-OSS) are proxied through Codeium/Windsurf infrastructure — Antigravity uses the same language server binary as Windsurf. The `GetUserStatus` response also includes `monthlyPromptCredits`, `monthlyFlowCredits`, and `monthlyFlexCreditPurchaseAmount` fields inherited from the Windsurf credit system, but these appear to be completely irrelevant to Antigravity's quota model which is purely fraction-based per model.
 
+## Local SQLite Database
+
+Antigravity stores auth credentials in a VS Code-compatible state database.
+
+- **Path:** `~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb`
+- **Table:** `ItemTable` (`key` TEXT, `value` TEXT)
+
+### antigravityAuthStatus
+
+```json
+{
+  "apiKey": "ya29.<token>",
+  "email": "user@example.com",
+  "name": "Test User"
+}
+```
+
+`apiKey` is a Google OAuth access token (`ya29...`). It's included in LS metadata and used as a last-resort Bearer token for Cloud Code when protobuf OAuth tokens are unavailable. It appears to be a separately-issued copy of the same kind of token stored in the protobuf data below.
+
+### jetskiStateSync.agentManagerInitState (protobuf)
+
+Google OAuth tokens are also stored as a base64-encoded protobuf blob, with the addition of a refresh token and expiry timestamp.
+
+```protobuf
+message AgentManagerInitState {
+  OAuthTokenInfo oauth_token = 6;       // field 6, wire type 2
+}
+message OAuthTokenInfo {
+  string access_token = 1;              // "ya29...." Google OAuth access token
+  string token_type = 2;               // ignored
+  string refresh_token = 3;            // "1//..." Google OAuth refresh token
+  Timestamp expiry = 4;                // field 4, wire type 2
+}
+message Timestamp {
+  int64 seconds = 1;                   // Unix epoch seconds
+}
+```
+
+The plugin decodes this using a minimal protobuf wire-format parser (varint + length-delimited only). The access token is short-lived; the refresh token is used to obtain new access tokens via Google OAuth.
+
+### Token Refresh
+
+```
+POST https://oauth2.googleapis.com/token
+Content-Type: application/x-www-form-urlencoded
+
+client_id=1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com
+&client_secret=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
+&refresh_token=<refresh_token>
+&grant_type=refresh_token
+```
+
+Response: `{ "access_token": "ya29...", "expires_in": 3599 }`
+
+Same client_id/secret is there in the Antigravity app bundle, used for the Google OAuth refresh token.
+
+## Cloud Code API (fallback)
+
+When the language server is not running, the plugin falls back to Google's Cloud Code API using a Google OAuth access token (from protobuf data, or apiKey as last resort).
+
+### fetchAvailableModels
+
+```
+POST https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels
+Authorization: Bearer <access_token>
+Content-Type: application/json
+User-Agent: antigravity
+```
+
+Base URLs tried in order:
+1. `https://daily-cloudcode-pa.googleapis.com`
+2. `https://cloudcode-pa.googleapis.com`
+
+#### Response
+
+```jsonc
+{
+  "models": {
+    "gemini-3-pro": {
+      "displayName": "Gemini 3 Pro",
+      "model": "gemini-3-pro",
+      "quotaInfo": {
+        "remainingFraction": 0.8,          // 0.0–1.0
+        "resetTime": "2026-02-08T10:00:00Z"
+      }
+    }
+    // ... more models
+  }
+}
+```
+
+Returns 401/403 if the token is invalid or expired — triggers reactive refresh.
+
+The response includes all models provisioned for the account. The plugin filters out non-user-facing models using three layers: (1) `isInternal: true` flag from the API, (2) empty `displayName` (catches internal autocomplete models like `chat_20706`, `tab_flash_lite_preview`), and (3) a model-ID blacklist (catches Gemini 2.5 variants and placeholders).
+
+The Cloud Code model set is a superset of the LS model set. The LS returns only cascade-configured chat models, Cloud Code includes all provisioned models. This difference is expected.
+
 ## Plugin Strategy
 
-1. Discover LS process via `ctx.host.ls.discover()` (ps + lsof)
-2. Probe ports with `GetUnleashData` to find the Connect-RPC endpoint
-3. Call `GetUserStatus` for plan name + per-model quota
-4. Fall back to `GetCommandModelConfigs` if `GetUserStatus` fails
-5. If LS not running: error "Start Antigravity and try again."
+1. Read `antigravityAuthStatus` from SQLite for API key (optional, may fail)
+2. Read `jetskiStateSync.agentManagerInitState` from SQLite, decode protobuf for OAuth tokens (optional, may fail)
+3. **Strategy 1 — LS probe (primary):**
+   a. Discover LS process via `ctx.host.ls.discover()` (ps + lsof)
+   b. Probe ports with `GetUnleashData` to find the Connect-RPC endpoint
+   c. Include `apiKey` in metadata if available
+   d. Call `GetUserStatus` for plan name + per-model quota
+   e. Fall back to `GetCommandModelConfigs` if `GetUserStatus` fails
+4. **Strategy 2 — Cloud Code API (fallback, only if LS fails):**
+   a. Build candidate token list: proto access_token, cached refreshed token (if fresh), apiKey (all deduplicated)
+   b. Try each token with `fetchAvailableModels`
+   c. If all fail with 401/403 and refresh token available: refresh via Google OAuth, cache result to pluginDataDir, retry once
+   d. Parse model quota: skip `isInternal` models, empty-displayName models, and blacklisted model IDs
+5. If both strategies fail: error "Start Antigravity and try again."
