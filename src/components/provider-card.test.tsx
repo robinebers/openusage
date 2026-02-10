@@ -197,6 +197,20 @@ describe("ProviderCard", () => {
     vi.useRealTimers()
   })
 
+  it("renders 'used' for count-based 'uses' metrics in displayMode=used", () => {
+    render(
+      <ProviderCard
+        name="Perplexity"
+        displayMode="used"
+        lines={[
+          { type: "progress", label: "Research", used: 3, limit: 20, format: { kind: "count", suffix: "uses" } },
+        ]}
+      />
+    )
+    expect(screen.getByText("3 used")).toBeInTheDocument()
+    expect(screen.getByText("20 uses")).toBeInTheDocument()
+  })
+
   it("shows resets secondary text when resetsAt is present", () => {
     vi.useFakeTimers()
     const now = new Date("2026-02-02T00:00:00.000Z")

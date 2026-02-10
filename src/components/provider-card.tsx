@@ -367,13 +367,19 @@ function MetricLineRenderer({
         : Math.max(0, line.limit - line.used)
     const percent = Math.round(clamp01(shownAmount / line.limit) * 10000) / 100
     const leftSuffix = displayMode === "left" ? " left" : ""
+    const countPrimarySuffix =
+      line.format.kind === "count" && displayMode === "used" && line.format.suffix === "uses"
+        ? "used"
+        : line.format.kind === "count"
+          ? line.format.suffix
+          : ""
 
     const primaryText =
       line.format.kind === "percent"
         ? `${Math.round(shownAmount)}%${leftSuffix}`
         : line.format.kind === "dollars"
           ? `$${formatNumber(shownAmount)}${leftSuffix}`
-          : `${formatCount(shownAmount)} ${line.format.suffix}${leftSuffix}`
+          : `${formatCount(shownAmount)} ${countPrimarySuffix}${leftSuffix}`
 
     const resetLabel = line.resetsAt
       ? resetTimerDisplayMode === "absolute"

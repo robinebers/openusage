@@ -23,6 +23,28 @@ function isProgressLine(line: PluginOutput["lines"][number]): line is ProgressLi
   return line.type === "progress"
 }
 
+function getShownAmount(line: ProgressLine, displayMode: DisplayMode): number {
+  return displayMode === "used" ? line.used : line.limit - line.used
+}
+
+function getPerplexityAggregateFraction(data: PluginOutput, displayMode: DisplayMode): number | undefined {
+  const perplexityBucketLabels = new Set(["Pro", "Research", "Labs"])
+  const bucketLines = data.lines.filter(
+    (line): line is ProgressLine =>
+      isProgressLine(line) &&
+      perplexityBucketLabels.has(line.label) &&
+      Number.isFinite(line.limit) &&
+      line.limit > 0
+  )
+  if (bucketLines.length === 0) return undefined
+
+  const totalLimit = bucketLines.reduce((sum, line) => sum + line.limit, 0)
+  if (totalLimit <= 0) return undefined
+
+  const totalShown = bucketLines.reduce((sum, line) => sum + getShownAmount(line, displayMode), 0)
+  return clamp01(totalShown / totalLimit)
+}
+
 export function getTrayPrimaryBars(args: {
   pluginsMeta: PluginMeta[]
   pluginSettings: PluginSettings | null
@@ -50,21 +72,23 @@ export function getTrayPrimaryBars(args: {
 
     let fraction: number | undefined
     if (data) {
+      if (id === "perplexity") {
+        fraction = getPerplexityAggregateFraction(data, displayMode)
+      }
+
       // Find first candidate that exists in runtime data
-      const primaryLabel = meta.primaryCandidates.find((label) =>
-        data.lines.some((line) => isProgressLine(line) && line.label === label)
-      )
-      if (primaryLabel) {
-        const primaryLine = data.lines.find(
-          (line): line is ProgressLine =>
-            isProgressLine(line) && line.label === primaryLabel
+      if (fraction === undefined) {
+        const primaryLabel = meta.primaryCandidates.find((label) =>
+          data.lines.some((line) => isProgressLine(line) && line.label === label)
         )
-        if (primaryLine && primaryLine.limit > 0) {
-          const shownAmount =
-            displayMode === "used"
-              ? primaryLine.used
-              : primaryLine.limit - primaryLine.used
-          fraction = clamp01(shownAmount / primaryLine.limit)
+        if (primaryLabel) {
+          const primaryLine = data.lines.find(
+            (line): line is ProgressLine =>
+              isProgressLine(line) && line.label === primaryLabel
+          )
+          if (primaryLine && primaryLine.limit > 0) {
+            fraction = clamp01(getShownAmount(primaryLine, displayMode) / primaryLine.limit)
+          }
         }
       }
     }
@@ -75,4 +99,3 @@ export function getTrayPrimaryBars(args: {
 
   return out
 }
-

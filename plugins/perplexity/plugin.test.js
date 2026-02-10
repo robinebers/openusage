@@ -1,461 +1,808 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import { makeCtx } from "../test-helpers.js"
 
-const PRIMARY_CACHE_DB_PATH =
-  "~/Library/Containers/ai.perplexity.mac/Data/Library/Caches/ai.perplexity.mac/Cache.db"
-const FALLBACK_CACHE_DB_PATH = "~/Library/Caches/ai.perplexity.mac/Cache.db"
-
-const GROUP_ID = "test-group-id"
+const PREFS_PATH = "~/Library/Containers/ai.perplexity.mac/Data/Library/Preferences/ai.perplexity.mac.plist"
+const BASELINE_STATE_PATH = "/tmp/openusage-test/plugin/usage-baseline.json"
 
 const loadPlugin = async () => {
-  await import("./plugin.js")
+  if (!globalThis.__openusage_plugin) {
+    await import("./plugin.js")
+  }
   return globalThis.__openusage_plugin
 }
 
-function makeJwtLikeToken() {
-  return "eyJ" + "a".repeat(80) + "." + "b".repeat(80) + "." + "c".repeat(80)
-}
-
-function makeRequestHexWithBearer(token, extraBytes) {
-  const base = Buffer.from("Bearer " + token, "utf8")
-  const out = extraBytes ? Buffer.concat([base, extraBytes]) : base
-  return out.toString("hex").toUpperCase()
-}
-
-function makeRequestHexWithSessionFields(token, userAgent, deviceId) {
-  const chunks = [Buffer.from("Bearer " + token + " ", "utf8")]
-  if (userAgent) {
-    chunks.push(Buffer.from(userAgent, "utf8"))
-    chunks.push(Buffer.from([0x00]))
+function makePrefsBlob(overrides = {}) {
+  const user = {
+    isOrganizationAdmin: false,
+    subscription: {
+      source: "none",
+      tier: "none",
+      paymentTier: "none",
+      status: "none",
+    },
+    remainingUsage: { remaining_pro: 2, remaining_research: 1, remaining_labs: 0 },
+    disabledBackendModels: [],
+    ...overrides,
   }
-  if (deviceId) {
-    chunks.push(Buffer.from(deviceId, "utf8"))
-    chunks.push(Buffer.from([0x00]))
+  const token =
+    overrides.authToken ||
+    "eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..abc.def.ghi.jkl"
+  return [
+    "authToken",
+    token,
+    JSON.stringify(user),
+  ].join("\n")
+}
+
+function makePrefsBlobWithBase64User(overrides = {}) {
+  const user = {
+    subscription: { tier: "none", status: "none", paymentTier: "none", source: "none" },
+    queryCount: 2,
+    remainingUsage: { remaining_pro: 1, remaining_research: 0, remaining_labs: 0 },
+    ...overrides,
   }
-  return Buffer.concat(chunks).toString("hex").toUpperCase()
+  const encoded = Buffer.from(JSON.stringify(user), "utf8").toString("base64")
+  return [
+    "authToken",
+    "eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..abc.def.ghi.jkl",
+    "current_user__data",
+    encoded,
+  ].join("\n")
 }
 
-function mockCacheSession(ctx, options = {}) {
-  const selectedDbPath = options.dbPath || PRIMARY_CACHE_DB_PATH
-  const requestHex = options.requestHex || null
-
-  const originalExists = ctx.host.fs.exists
-  ctx.host.fs.exists = (path) => path === selectedDbPath || originalExists(path)
-
-  ctx.host.sqlite.query.mockImplementation((dbPath, sql) => {
-    if (dbPath === selectedDbPath && String(sql).includes("https://www.perplexity.ai/api/user")) {
-      return JSON.stringify([{ requestHex }])
-    }
-    return "[]"
-  })
-}
-
-function mockRestApi(ctx, options = {}) {
-  const balance = options.balance ?? 4.99
-  const isPro = options.isPro ?? true
-  const usageAnalytics = options.usageAnalytics ?? [
-    { meter_event_summaries: [{ usage: 1, cost: 0.04 }] },
-  ]
-
-  ctx.host.http.request.mockImplementation((req) => {
-    if (req.url === "https://www.perplexity.ai/rest/pplx-api/v2/groups") {
-      return {
-        status: 200,
-        headers: {},
-        bodyText: JSON.stringify({ orgs: [{ api_org_id: GROUP_ID, is_default_org: true }] }),
-      }
-    }
-
-    if (req.url === `https://www.perplexity.ai/rest/pplx-api/v2/groups/${GROUP_ID}`) {
-      return {
-        status: 200,
-        headers: {},
-        bodyText: JSON.stringify({ customerInfo: { balance, is_pro: isPro } }),
-      }
-    }
-
-    if (req.url === `https://www.perplexity.ai/rest/pplx-api/v2/groups/${GROUP_ID}/usage-analytics`) {
-      return {
-        status: 200,
-        headers: {},
-        bodyText: JSON.stringify(usageAnalytics),
-      }
-    }
-
-    return { status: 404, headers: {}, bodyText: "{}" }
-  })
+function makeRequestHexWithBearer(token) {
+  return Buffer.from("Authorization: Bearer " + token + "\n", "utf8").toString("hex")
 }
 
 describe("perplexity plugin", () => {
   beforeEach(() => {
-    delete globalThis.__openusage_plugin
-    vi.resetModules()
+    if (vi.resetModules) vi.resetModules()
   })
 
-  afterEach(() => {
-    vi.restoreAllMocks()
-  })
-
-  it("throws when no local session is available", async () => {
+  it("throws when no credentials are available", async () => {
     const ctx = makeCtx()
+    ctx.host.fs.exists = () => false
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([]))
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Not logged in")
   })
 
-  it("returns only a Usage progress bar (primary cache path)", async () => {
+  it("throws when credentials are unreadable", async () => {
     const ctx = makeCtx()
-    const token = makeJwtLikeToken()
-    mockCacheSession(ctx, { dbPath: PRIMARY_CACHE_DB_PATH, requestHex: makeRequestHexWithBearer(token) })
-    mockRestApi(ctx, { balance: 4.99, usageAnalytics: [{ meter_event_summaries: [{ cost: 0.04 }] }] })
-
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () => "not-a-token"
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([]))
     const plugin = await loadPlugin()
-    const result = plugin.probe(ctx)
-
-    expect(result.plan).toBe("Pro")
-    expect(Array.isArray(result.lines)).toBe(true)
-    expect(result.lines.length).toBe(1)
-
-    const line = result.lines[0]
-    expect(line.type).toBe("progress")
-    expect(line.label).toBe("Usage")
-    expect(line.format.kind).toBe("dollars")
-    expect(line.used).toBe(0.04)
-    expect(line.limit).toBe(4.99) // limit = balance only
-    expect(line.resetsAt).toBeUndefined()
-    expect(line.periodDurationMs).toBeUndefined()
+    expect(() => plugin.probe(ctx)).toThrow("Not logged in")
   })
 
-  it("falls back to secondary cache path", async () => {
+  it("uses fallback auth token from cache request hex", async () => {
     const ctx = makeCtx()
-    const token = makeJwtLikeToken()
-    mockCacheSession(ctx, { dbPath: FALLBACK_CACHE_DB_PATH, requestHex: makeRequestHexWithBearer(token) })
-    mockRestApi(ctx, { balance: 10, isPro: false, usageAnalytics: [{ meter_event_summaries: [{ cost: 0 }] }] })
-
+    ctx.host.fs.exists = (path) => path.includes("Cache.db")
+    ctx.host.sqlite.query.mockImplementation((dbPath, sql) => {
+      if (String(sql).includes("hex(b.request_object)")) {
+        return JSON.stringify([
+          { requestHex: makeRequestHexWithBearer("eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..a.b.c.d") },
+        ])
+      }
+      if (String(sql).includes("CAST(r.receiver_data AS TEXT)")) {
+        return JSON.stringify([])
+      }
+      return JSON.stringify([])
+    })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        remaining_pro: 1,
+        pro_limit: 5,
+      }),
+    })
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-
-    expect(result.plan).toBeUndefined()
-    expect(result.lines.length).toBe(1)
-    expect(result.lines[0].label).toBe("Usage")
-    expect(result.lines[0].limit).toBe(10)
+    expect(result.lines.find((line) => line.label === "Pro")?.type).toBe("progress")
   })
 
-  it("does not read env", async () => {
+  it("does not treat cached snapshot as authenticated when token is unavailable", async () => {
     const ctx = makeCtx()
-    const token = makeJwtLikeToken()
-    mockCacheSession(ctx, { requestHex: makeRequestHexWithBearer(token) })
-    mockRestApi(ctx)
+    ctx.host.fs.exists = (path) =>
+      path.includes("Cache.db")
+    ctx.host.fs.readText = () => {
+      throw new Error("invalid utf-8")
+    }
+    ctx.host.sqlite.query.mockImplementation((dbPath, sql) => {
+      if (String(sql).includes("hex(b.request_object)")) return JSON.stringify([])
+      if (String(sql).includes("CAST(r.receiver_data AS TEXT)")) {
+        return JSON.stringify([
+          {
+            body: JSON.stringify({
+              subscription_tier: "pro",
+              remainingUsage: { remaining_pro: 2, pro_limit: 10 },
+            }),
+          },
+        ])
+      }
+      return JSON.stringify([])
+    })
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Not logged in")
+  })
 
+  it("uses v5.1 snapshot usage even when auth token cannot be parsed", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () => ""
+    const snapshot = {
+      id: "u_123",
+      subscription: { tier: "none", status: "none", paymentTier: "none", source: "none" },
+      queryCount: 4,
+      uploadLimit: 6,
+      remainingUsage: { remaining_pro: 2, remaining_research: 0, remaining_labs: 0 },
+    }
+    const encoded = Buffer.from(JSON.stringify(snapshot), "utf8").toString("base64")
+    ctx.host.plist.readRaw.mockImplementation((_path, key) => {
+      if (key === "authToken") return "token-not-jwt-format"
+      if (key === "current_user__data") return encoded
+      return ""
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const pro = result.lines.find((line) => line.label === "Pro")
+    expect(pro).toBeTruthy()
+    expect(pro.type).toBe("progress")
+    expect(pro.used).toBe(4)
+    expect(pro.limit).toBe(6)
+    expect(result.plan).toBe("Free")
+    expect(ctx.host.http.request).not.toHaveBeenCalled()
+  })
+
+  it("parses usage payload into progress lines", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () =>
+      makePrefsBlob({
+        remainingUsage: {},
+      })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        remainingUsage: {
+          remaining_pro: 2,
+          pro_limit: 10,
+          pro_resets_at: "2099-01-01T00:00:00Z",
+        },
+      }),
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const pro = result.lines.find((line) => line.label === "Pro")
+    expect(pro).toBeTruthy()
+    expect(pro.type).toBe("progress")
+    expect(pro.used).toBe(8)
+    expect(pro.limit).toBe(10)
+    expect(pro.resetsAt).toBe("2099-01-01T00:00:00.000Z")
+  })
+
+  it("uses local snapshot and skips remote request when available", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () => makePrefsBlob()
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const pro = result.lines.find((line) => line.label === "Pro")
+    expect(pro).toBeTruthy()
+    expect(ctx.host.http.request).not.toHaveBeenCalled()
+  })
+
+  it("throws token expired on auth errors when local snapshot is unavailable", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () => "authToken\neyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..abc.def.ghi.jkl\n"
+    ctx.host.http.request.mockReturnValue({ status: 401, bodyText: "" })
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Token expired")
+  })
+
+  it("does not show token expired when local session exists but usage is unavailable", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () => ""
+    const snapshot = {
+      id: "u_123",
+      subscription: { tier: "none", status: "none", paymentTier: "none", source: "none" },
+      remainingUsage: {},
+    }
+    const encoded = Buffer.from(JSON.stringify(snapshot), "utf8").toString("base64")
+    ctx.host.plist.readRaw.mockImplementation((_path, key) => {
+      if (key === "authToken") return "eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..abc.def.ghi.jkl"
+      if (key === "current_user__data") return encoded
+      return ""
+    })
+    ctx.host.http.request.mockReturnValue({ status: 401, bodyText: "" })
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Usage data unavailable")
+  })
+
+  it("shows usage unavailable when local signed-in snapshot exists but token is missing", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () => ""
+    const snapshot = {
+      id: "u_123",
+      email: "user@example.com",
+      subscription: { tier: "none", status: "none", paymentTier: "none", source: "none" },
+      remainingUsage: {},
+    }
+    const encoded = Buffer.from(JSON.stringify(snapshot), "utf8").toString("base64")
+    ctx.host.plist.readRaw.mockImplementation((_path, key) => {
+      if (key === "authToken") return ""
+      if (key === "current_user__data") return encoded
+      return ""
+    })
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Usage data unavailable")
+  })
+
+  it("throws token expired on 403 when local snapshot is unavailable", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () => "authToken\neyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..abc.def.ghi.jkl\n"
+    ctx.host.http.request.mockReturnValue({ status: 403, bodyText: "" })
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Token expired")
+  })
+
+  it("throws on network request errors when local usage is unavailable", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () => "authToken\neyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..abc.def.ghi.jkl\n"
+    ctx.host.http.request.mockImplementation(() => {
+      throw new Error("network down")
+    })
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Usage request failed. Check your connection.")
+  })
+
+  it("throws on non-auth http errors when local snapshot is unavailable", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () =>
+      makePrefsBlob({
+        remainingUsage: {},
+      })
+    ctx.host.http.request.mockReturnValue({ status: 500, bodyText: "" })
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("HTTP 500")
+  })
+
+  it("throws on invalid json responses when local snapshot is unavailable", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () =>
+      makePrefsBlob({
+        remainingUsage: {},
+      })
+    ctx.host.http.request.mockReturnValue({ status: 200, bodyText: "not-json" })
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Usage response invalid")
+  })
+
+  it("throws when quota fields are missing", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () =>
+      makePrefsBlob({
+        remainingUsage: {},
+      })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        subscription_tier: "pro",
+      }),
+    })
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Usage data unavailable")
+  })
+
+  it("does not use API key env fallback", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () => makePrefsBlob()
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        remainingUsage: { remaining_pro: 1, pro_limit: 2 },
+      }),
+    })
     const plugin = await loadPlugin()
     plugin.probe(ctx)
     expect(ctx.host.env.get).not.toHaveBeenCalled()
   })
 
-  it("treats cache row without bearer token as not logged in", async () => {
+  it("uses prefs snapshot usage when endpoint payload omits remaining fields", async () => {
     const ctx = makeCtx()
-    mockCacheSession(ctx, { requestHex: "00DEADBEEF00" })
-
-    const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Not logged in")
-  })
-
-  it("strips trailing bplist marker after bearer token", async () => {
-    const ctx = makeCtx()
-    const token = makeJwtLikeToken()
-    const markerBytes = Buffer.from([0x5f, 0x10, 0xb5]) // '_' then bplist int marker
-    mockCacheSession(ctx, { requestHex: makeRequestHexWithBearer(token, markerBytes) })
-    mockRestApi(ctx)
-
-    const plugin = await loadPlugin()
-    plugin.probe(ctx)
-
-    const call = ctx.host.http.request.mock.calls[0]?.[0]
-    expect(call.headers.Authorization).toBe("Bearer " + token)
-  })
-
-  it("throws when usage analytics is unavailable (avoid false $0 used)", async () => {
-    const ctx = makeCtx()
-    const token = makeJwtLikeToken()
-    mockCacheSession(ctx, { requestHex: makeRequestHexWithBearer(token) })
-
-    ctx.host.http.request.mockImplementation((req) => {
-      if (req.url === "https://www.perplexity.ai/rest/pplx-api/v2/groups") {
-        return {
-          status: 200,
-          headers: {},
-          bodyText: JSON.stringify({ orgs: [{ api_org_id: GROUP_ID, is_default_org: true }] }),
-        }
-      }
-      if (req.url === `https://www.perplexity.ai/rest/pplx-api/v2/groups/${GROUP_ID}`) {
-        return {
-          status: 200,
-          headers: {},
-          bodyText: JSON.stringify({ customerInfo: { balance: 4.99, is_pro: true } }),
-        }
-      }
-      if (req.url === `https://www.perplexity.ai/rest/pplx-api/v2/groups/${GROUP_ID}/usage-analytics`) {
-        return { status: 403, headers: {}, bodyText: "<html>Just a moment...</html>" }
-      }
-      return { status: 404, headers: {}, bodyText: "{}" }
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () =>
+      makePrefsBlob({
+        remainingUsage: { remaining_pro: 3, pro_limit: 10 },
+      })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({ subscription_tier: "pro" }),
     })
-
-    const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Usage unavailable")
-  })
-
-  it("supports trailing-slash REST fallbacks and nested money fields", async () => {
-    const ctx = makeCtx()
-    const token = makeJwtLikeToken()
-    mockCacheSession(ctx, { requestHex: makeRequestHexWithBearer(token) })
-
-    ctx.host.http.request.mockImplementation((req) => {
-      if (req.url === "https://www.perplexity.ai/rest/pplx-api/v2/groups") {
-        return { status: 404, headers: {}, bodyText: "{}" }
-      }
-      if (req.url === "https://www.perplexity.ai/rest/pplx-api/v2/groups/") {
-        return {
-          status: 200,
-          headers: {},
-          bodyText: JSON.stringify({ data: [{ id: 123, isDefaultOrg: true }] }),
-        }
-      }
-      if (req.url === "https://www.perplexity.ai/rest/pplx-api/v2/groups/123") {
-        return { status: 503, headers: {}, bodyText: "{}" }
-      }
-      if (req.url === "https://www.perplexity.ai/rest/pplx-api/v2/groups/123/") {
-        return {
-          status: 200,
-          headers: {},
-          bodyText: JSON.stringify({
-            customerInfo: { is_pro: false },
-            organization: { balance: { amount_cents: 250 } },
-          }),
-        }
-      }
-      if (req.url === "https://www.perplexity.ai/rest/pplx-api/v2/groups/123/usage-analytics") {
-        return { status: 502, headers: {}, bodyText: "{}" }
-      }
-      if (req.url === "https://www.perplexity.ai/rest/pplx-api/v2/groups/123/usage-analytics/") {
-        return {
-          status: 200,
-          headers: {},
-          bodyText: JSON.stringify([{ meterEventSummaries: [{ cost: 0.25 }] }]),
-        }
-      }
-      return { status: 404, headers: {}, bodyText: "{}" }
-    })
-
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-
-    expect(result.plan).toBeUndefined()
-    expect(result.lines[0].label).toBe("Usage")
-    expect(result.lines[0].used).toBe(0.25)
-    expect(result.lines[0].limit).toBe(2.5)
+    const pro = result.lines.find((line) => line.label === "Pro")
+    expect(pro).toBeTruthy()
+    expect(pro.used).toBe(7)
+    expect(pro.limit).toBe(10)
   })
 
-  it("extracts app version and device id from cached request and forwards as headers", async () => {
+  it("parses v5.1 base64 current_user snapshot from prefs", async () => {
     const ctx = makeCtx()
-    const token = makeJwtLikeToken()
-    mockCacheSession(ctx, {
-      requestHex: makeRequestHexWithSessionFields(token, "Ask/9.9.9", "macos:device-123"),
-    })
-    mockRestApi(ctx)
-
-    const plugin = await loadPlugin()
-    plugin.probe(ctx)
-
-    const firstRestCall = ctx.host.http.request.mock.calls.find((call) =>
-      String(call[0]?.url).includes("/rest/pplx-api/v2/groups")
-    )?.[0]
-
-    expect(firstRestCall).toBeTruthy()
-    expect(firstRestCall.headers["X-App-Version"]).toBe("9.9.9")
-    expect(firstRestCall.headers["X-Device-ID"]).toBe("macos:device-123")
-    expect(firstRestCall.headers["User-Agent"]).toBe("Ask/9.9.9")
-  })
-
-  it("throws balance unavailable when groups request is unauthorized", async () => {
-    const ctx = makeCtx()
-    const token = makeJwtLikeToken()
-    mockCacheSession(ctx, { requestHex: makeRequestHexWithBearer(token) })
-    ctx.host.http.request.mockReturnValue({ status: 401, headers: {}, bodyText: "" })
-
-    const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Balance unavailable")
-  })
-
-  it("throws usage unavailable when analytics payload has no numeric cost", async () => {
-    const ctx = makeCtx()
-    const token = makeJwtLikeToken()
-    mockCacheSession(ctx, { requestHex: makeRequestHexWithBearer(token) })
-
-    ctx.host.http.request.mockImplementation((req) => {
-      if (req.url === "https://www.perplexity.ai/rest/pplx-api/v2/groups") {
-        return {
-          status: 200,
-          headers: {},
-          bodyText: JSON.stringify({ orgs: [{ api_org_id: GROUP_ID, is_default_org: true }] }),
-        }
-      }
-      if (req.url === `https://www.perplexity.ai/rest/pplx-api/v2/groups/${GROUP_ID}`) {
-        return {
-          status: 200,
-          headers: {},
-          bodyText: JSON.stringify({ customerInfo: { balance: "$4.99", is_pro: true } }),
-        }
-      }
-      if (req.url === `https://www.perplexity.ai/rest/pplx-api/v2/groups/${GROUP_ID}/usage-analytics`) {
-        return {
-          status: 200,
-          headers: {},
-          bodyText: JSON.stringify([{ meter_event_summaries: [{ cost: "NaN" }] }]),
-        }
-      }
-      return { status: 404, headers: {}, bodyText: "{}" }
-    })
-
-    const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Usage unavailable")
-  })
-
-  it("recovers when primary cache sqlite read fails and fallback cache is valid", async () => {
-    const ctx = makeCtx()
-    const token = makeJwtLikeToken()
-    const requestHex = makeRequestHexWithBearer(token)
-    const originalExists = ctx.host.fs.exists
-
-    ctx.host.fs.exists = (path) =>
-      path === PRIMARY_CACHE_DB_PATH || path === FALLBACK_CACHE_DB_PATH || originalExists(path)
-
-    ctx.host.sqlite.query.mockImplementation((dbPath, sql) => {
-      if (!String(sql).includes("https://www.perplexity.ai/api/user")) return "[]"
-      if (dbPath === PRIMARY_CACHE_DB_PATH) throw new Error("primary db locked")
-      if (dbPath === FALLBACK_CACHE_DB_PATH) return JSON.stringify([{ requestHex }])
-      return "[]"
-    })
-    mockRestApi(ctx)
-
-    const plugin = await loadPlugin()
-    const result = plugin.probe(ctx)
-    expect(result.lines[0].label).toBe("Usage")
-  })
-
-  it("continues when primary cache exists-check throws and fallback has a session", async () => {
-    const ctx = makeCtx()
-    const token = makeJwtLikeToken()
-    const requestHex = makeRequestHexWithBearer(token)
-    const originalExists = ctx.host.fs.exists
-
-    ctx.host.fs.exists = (path) => {
-      if (path === PRIMARY_CACHE_DB_PATH) throw new Error("permission denied")
-      if (path === FALLBACK_CACHE_DB_PATH) return true
-      return originalExists(path)
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () => ""
+    const snapshot = {
+      subscription: { tier: "none", status: "none", paymentTier: "none", source: "none" },
+      queryCount: 2,
+      uploadLimit: 3,
+      remainingUsage: { remaining_pro: 1, remaining_research: 0, remaining_labs: 0 },
     }
-    ctx.host.sqlite.query.mockImplementation((dbPath, sql) => {
-      if (dbPath === FALLBACK_CACHE_DB_PATH && String(sql).includes("https://www.perplexity.ai/api/user")) {
-        return JSON.stringify([{ requestHex }])
-      }
-      return "[]"
+    const encoded = Buffer.from(JSON.stringify(snapshot), "utf8").toString("base64")
+    ctx.host.plist.readRaw.mockImplementation((_path, key) => {
+      if (key === "authToken") return "eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..abc.def.ghi.jkl"
+      if (key === "current_user__data") return encoded
+      return ""
     })
-    mockRestApi(ctx)
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({ subscription_tier: "none" }),
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const pro = result.lines.find((line) => line.label === "Pro")
+    expect(pro).toBeTruthy()
+    expect(pro.type).toBe("progress")
+    expect(pro.used).toBe(2)
+    expect(pro.limit).toBe(3)
+  })
+
+  it("does not use queryCount to compute limit when uploadLimit exists", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () => ""
+    const snapshot = {
+      subscription: { tier: "none", status: "none", paymentTier: "none", source: "none" },
+      queryCount: 99,
+      uploadLimit: 3,
+      remainingUsage: { remaining_pro: 1, remaining_research: 0, remaining_labs: 0 },
+    }
+    const encoded = Buffer.from(JSON.stringify(snapshot), "utf8").toString("base64")
+    ctx.host.plist.readRaw.mockImplementation((_path, key) => {
+      if (key === "authToken") return "eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..abc.def.ghi.jkl"
+      if (key === "current_user__data") return encoded
+      return ""
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const pro = result.lines.find((line) => line.label === "Pro")
+    expect(pro).toBeTruthy()
+    expect(pro.used).toBe(2)
+    expect(pro.limit).toBe(3)
+  })
+
+  it("shows zero-used progress bars when pro-tier remaining values exist without explicit limits", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () => ""
+    const snapshot = {
+      subscription: { tier: "pro", status: "active", paymentTier: "unknown", source: "stripe" },
+      uploadLimit: 50,
+      remainingUsage: { remaining_pro: 600, remaining_research: 20, remaining_labs: 25 },
+    }
+    const encoded = Buffer.from(JSON.stringify(snapshot), "utf8").toString("base64")
+    ctx.host.plist.readRaw.mockImplementation((_path, key) => {
+      if (key === "authToken") return "eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..abc.def.ghi.jkl"
+      if (key === "current_user__data") return encoded
+      return ""
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    const pro = result.lines.find((line) => line.label === "Pro")
+    const research = result.lines.find((line) => line.label === "Research")
+    const labs = result.lines.find((line) => line.label === "Labs")
+    expect(result.plan).toBe("Pro")
+    expect(pro).toBeTruthy()
+    expect(pro.type).toBe("progress")
+    expect(pro.used).toBe(0)
+    expect(pro.limit).toBe(600)
+    expect(research?.type).toBe("progress")
+    expect(research?.used).toBe(0)
+    expect(research?.limit).toBe(20)
+    expect(labs?.type).toBe("progress")
+    expect(labs?.used).toBe(0)
+    expect(labs?.limit).toBe(25)
+  })
+
+  it("infers used values from cached high-water remaining when explicit limits are missing", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = (path) =>
+      path.includes("Cache.db") || path.includes("ai.perplexity.mac.plist")
+    ctx.host.fs.readText = () => ""
+    const snapshot = {
+      subscription: { tier: "pro", status: "active", paymentTier: "unknown", source: "stripe" },
+      remainingUsage: { remaining_pro: 599, remaining_research: 17, remaining_labs: 25 },
+    }
+    const encoded = Buffer.from(JSON.stringify(snapshot), "utf8").toString("base64")
+    ctx.host.plist.readRaw.mockImplementation((_path, key) => {
+      if (key === "authToken") return "eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..abc.def.ghi.jkl"
+      if (key === "current_user__data") return encoded
+      return ""
+    })
+    ctx.host.sqlite.query.mockImplementation((_dbPath, sql) => {
+      if (String(sql).includes("CAST(r.receiver_data AS TEXT)")) {
+        return JSON.stringify([
+          {
+            body: JSON.stringify({
+              remainingUsage: {
+                remaining_pro: 600,
+                remaining_research: 20,
+                remaining_labs: 25,
+              },
+            }),
+          },
+        ])
+      }
+      return JSON.stringify([])
+    })
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    expect(result.lines[0].label).toBe("Usage")
+
+    const pro = result.lines.find((line) => line.label === "Pro")
+    const research = result.lines.find((line) => line.label === "Research")
+    const labs = result.lines.find((line) => line.label === "Labs")
+
+    expect(pro?.type).toBe("progress")
+    expect(pro?.used).toBe(1)
+    expect(pro?.limit).toBe(600)
+
+    expect(research?.type).toBe("progress")
+    expect(research?.used).toBe(3)
+    expect(research?.limit).toBe(20)
+
+    expect(labs?.type).toBe("progress")
+    expect(labs?.used).toBe(0)
+    expect(labs?.limit).toBe(25)
   })
 
-  it("parses balance from regex-matched credit key path", async () => {
+  it("tracks remaining-only usage across probes using persisted baseline state", async () => {
     const ctx = makeCtx()
-    const token = makeJwtLikeToken()
-    mockCacheSession(ctx, { requestHex: makeRequestHexWithBearer(token) })
+    ctx.host.fs.writeText(PREFS_PATH, "prefs")
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([]))
 
-    ctx.host.http.request.mockImplementation((req) => {
-      if (req.url === "https://www.perplexity.ai/rest/pplx-api/v2/groups") {
-        return {
-          status: 200,
-          headers: {},
-          bodyText: JSON.stringify({ orgs: [{ api_org_id: GROUP_ID, is_default_org: true }] }),
+    let remainingResearch = 20
+    const token = "eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..abc.def.ghi.jkl"
+    ctx.host.plist.readRaw.mockImplementation((_path, key) => {
+      if (key === "authToken") return token
+      if (key === "current_user__data") {
+        const snapshot = {
+          id: "u_123",
+          email: "user@example.com",
+          subscription: { tier: "pro", status: "active", paymentTier: "pro", source: "stripe" },
+          remainingUsage: { remaining_pro: 600, remaining_research: remainingResearch, remaining_labs: 25 },
         }
+        return Buffer.from(JSON.stringify(snapshot), "utf8").toString("base64")
       }
-      if (req.url === `https://www.perplexity.ai/rest/pplx-api/v2/groups/${GROUP_ID}`) {
-        return {
-          status: 200,
-          headers: {},
-          bodyText: JSON.stringify({
-            customerInfo: { is_pro: true },
-            available_credit: "$7.25",
-          }),
-        }
-      }
-      if (req.url === `https://www.perplexity.ai/rest/pplx-api/v2/groups/${GROUP_ID}/usage-analytics`) {
-        return {
-          status: 200,
-          headers: {},
-          bodyText: JSON.stringify([{ meter_event_summaries: [{ cost: 0.25 }] }]),
-        }
-      }
-      return { status: 404, headers: {}, bodyText: "{}" }
+      return ""
     })
 
+    const plugin = await loadPlugin()
+
+    const first = plugin.probe(ctx)
+    const firstResearch = first.lines.find((line) => line.label === "Research")
+    expect(firstResearch?.type).toBe("progress")
+    expect(firstResearch?.used).toBe(0)
+    expect(firstResearch?.limit).toBe(20)
+
+    remainingResearch = 17
+    const second = plugin.probe(ctx)
+    const secondResearch = second.lines.find((line) => line.label === "Research")
+    expect(secondResearch?.type).toBe("progress")
+    expect(secondResearch?.used).toBe(3)
+    expect(secondResearch?.limit).toBe(20)
+
+    const baselineText = ctx.host.fs.readText(BASELINE_STATE_PATH)
+    const baseline = JSON.parse(baselineText)
+    expect(baseline.metrics.research.baselineRemaining).toBe(20)
+    expect(baseline.metrics.research.lastRemaining).toBe(17)
+  })
+
+  it("raises persisted baseline when remaining increases", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText(PREFS_PATH, "prefs")
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([]))
+
+    let remainingPro = 599
+    const token = "eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..abc.def.ghi.jkl"
+    ctx.host.plist.readRaw.mockImplementation((_path, key) => {
+      if (key === "authToken") return token
+      if (key === "current_user__data") {
+        const snapshot = {
+          id: "u_123",
+          email: "user@example.com",
+          subscription: { tier: "pro", status: "active", paymentTier: "pro", source: "stripe" },
+          remainingUsage: { remaining_pro: remainingPro, remaining_research: 20, remaining_labs: 25 },
+        }
+        return Buffer.from(JSON.stringify(snapshot), "utf8").toString("base64")
+      }
+      return ""
+    })
+
+    const plugin = await loadPlugin()
+
+    const first = plugin.probe(ctx)
+    const firstPro = first.lines.find((line) => line.label === "Pro")
+    expect(firstPro?.type).toBe("progress")
+    expect(firstPro?.used).toBe(1)
+    expect(firstPro?.limit).toBe(600)
+
+    remainingPro = 600
+    const second = plugin.probe(ctx)
+    const secondPro = second.lines.find((line) => line.label === "Pro")
+    expect(secondPro?.type).toBe("progress")
+    expect(secondPro?.used).toBe(0)
+    expect(secondPro?.limit).toBe(600)
+
+    const baselineText = ctx.host.fs.readText(BASELINE_STATE_PATH)
+    const baseline = JSON.parse(baselineText)
+    expect(baseline.metrics.pro.baselineRemaining).toBe(600)
+    expect(baseline.metrics.pro.lastRemaining).toBe(600)
+  })
+
+  it("uses pro-tier default caps when persisted baseline is stale low", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText(PREFS_PATH, "prefs")
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([]))
+    ctx.host.fs.writeText(
+      BASELINE_STATE_PATH,
+      JSON.stringify({
+        version: 1,
+        accountKey: "u_123",
+        planTier: "pro",
+        metrics: {
+          pro: { baselineRemaining: 600, lastRemaining: 600, updatedAt: "2026-02-02T00:00:00.000Z" },
+          research: { baselineRemaining: 17, lastRemaining: 17, updatedAt: "2026-02-02T00:00:00.000Z" },
+          labs: { baselineRemaining: 25, lastRemaining: 25, updatedAt: "2026-02-02T00:00:00.000Z" },
+        },
+      })
+    )
+
+    const token = "eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..abc.def.ghi.jkl"
+    ctx.host.plist.readRaw.mockImplementation((_path, key) => {
+      if (key === "authToken") return token
+      if (key === "current_user__data") {
+        const snapshot = {
+          id: "u_123",
+          email: "user@example.com",
+          subscription: { tier: "pro", status: "active", paymentTier: "pro", source: "stripe" },
+          remainingUsage: { remaining_pro: 600, remaining_research: 17, remaining_labs: 25 },
+        }
+        return Buffer.from(JSON.stringify(snapshot), "utf8").toString("base64")
+      }
+      return ""
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const research = result.lines.find((line) => line.label === "Research")
+    expect(research?.type).toBe("progress")
+    expect(research?.used).toBe(3)
+    expect(research?.limit).toBe(20)
+  })
+
+  it("resets persisted baselines when account identity changes", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText(PREFS_PATH, "prefs")
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([]))
+
+    let accountId = "u_123"
+    let remainingResearch = 20
+    const token = "eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..abc.def.ghi.jkl"
+    ctx.host.plist.readRaw.mockImplementation((_path, key) => {
+      if (key === "authToken") return token
+      if (key === "current_user__data") {
+        const snapshot = {
+          id: accountId,
+          email: accountId + "@example.com",
+          subscription: { tier: "pro", status: "active", paymentTier: "pro", source: "stripe" },
+          remainingUsage: { remaining_pro: 600, remaining_research: remainingResearch, remaining_labs: 25 },
+        }
+        return Buffer.from(JSON.stringify(snapshot), "utf8").toString("base64")
+      }
+      return ""
+    })
+
+    const plugin = await loadPlugin()
+
+    plugin.probe(ctx)
+    remainingResearch = 17
+    const sameAccount = plugin.probe(ctx)
+    const sameAccountResearch = sameAccount.lines.find((line) => line.label === "Research")
+    expect(sameAccountResearch?.used).toBe(3)
+    expect(sameAccountResearch?.limit).toBe(20)
+
+    accountId = "u_999"
+    remainingResearch = 20
+    const switchedAccount = plugin.probe(ctx)
+    const switchedResearch = switchedAccount.lines.find((line) => line.label === "Research")
+    expect(switchedResearch?.used).toBe(0)
+    expect(switchedResearch?.limit).toBe(20)
+  })
+
+  it("resets persisted baselines when plan tier changes", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText(PREFS_PATH, "prefs")
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([]))
+
+    let tier = "pro"
+    let remainingResearch = 20
+    const token = "eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..abc.def.ghi.jkl"
+    ctx.host.plist.readRaw.mockImplementation((_path, key) => {
+      if (key === "authToken") return token
+      if (key === "current_user__data") {
+        const snapshot = {
+          id: "u_123",
+          email: "user@example.com",
+          subscription: { tier, status: "active", paymentTier: tier, source: "stripe" },
+          remainingUsage: { remaining_pro: 600, remaining_research: remainingResearch, remaining_labs: 25 },
+        }
+        return Buffer.from(JSON.stringify(snapshot), "utf8").toString("base64")
+      }
+      return ""
+    })
+
+    const plugin = await loadPlugin()
+
+    plugin.probe(ctx)
+    remainingResearch = 17
+    const proTier = plugin.probe(ctx)
+    const proTierResearch = proTier.lines.find((line) => line.label === "Research")
+    expect(proTierResearch?.used).toBe(3)
+    expect(proTierResearch?.limit).toBe(20)
+
+    tier = "none"
+    remainingResearch = 2
+    const freeTier = plugin.probe(ctx)
+    const freeTierResearch = freeTier.lines.find((line) => line.label === "Research")
+    expect(freeTierResearch?.used).toBe(0)
+    expect(freeTierResearch?.limit).toBe(2)
+  })
+
+  it("uses explicit pro limit over uploadLimit for pro-tier accounts", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () => ""
+    const snapshot = {
+      subscription: { tier: "pro", status: "active", paymentTier: "unknown", source: "stripe" },
+      uploadLimit: 50,
+      remainingUsage: { remaining_pro: 600, pro_limit: 1000 },
+    }
+    const encoded = Buffer.from(JSON.stringify(snapshot), "utf8").toString("base64")
+    ctx.host.plist.readRaw.mockImplementation((_path, key) => {
+      if (key === "authToken") return "eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..abc.def.ghi.jkl"
+      if (key === "current_user__data") return encoded
+      return ""
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const pro = result.lines.find((line) => line.label === "Pro")
+    expect(pro).toBeTruthy()
+    expect(pro.type).toBe("progress")
+    expect(pro.used).toBe(400)
+    expect(pro.limit).toBe(1000)
+  })
+
+  it("sets plan when subscription tier is available", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () =>
+      makePrefsBlob({
+        remainingUsage: {},
+      })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        subscription_tier: "pro",
+        remainingUsage: { remaining_pro: 0, pro_limit: 2 },
+      }),
+    })
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
     expect(result.plan).toBe("Pro")
-    expect(result.lines[0].limit).toBe(7.25)
   })
 
-  it("uses first group id when groups payload is an array without default flag", async () => {
+  it("parses premium-like snapshot tiers (Pro, Research, Labs) with reset timestamps", async () => {
     const ctx = makeCtx()
-    const token = makeJwtLikeToken()
-    mockCacheSession(ctx, { requestHex: makeRequestHexWithBearer(token) })
-
-    ctx.host.http.request.mockImplementation((req) => {
-      if (req.url === "https://www.perplexity.ai/rest/pplx-api/v2/groups") {
-        return {
-          status: 200,
-          headers: {},
-          bodyText: JSON.stringify([{ id: "grp-a" }, { id: "grp-b" }]),
-        }
-      }
-      if (req.url === "https://www.perplexity.ai/rest/pplx-api/v2/groups/grp-a") {
-        return {
-          status: 200,
-          headers: {},
-          bodyText: JSON.stringify([
-            { note: "first element has no balance" },
-            { balance_usd: 6.5, customerInfo: { is_pro: false } },
-          ]),
-        }
-      }
-      if (req.url === "https://www.perplexity.ai/rest/pplx-api/v2/groups/grp-a/usage-analytics") {
-        return {
-          status: 200,
-          headers: {},
-          bodyText: JSON.stringify([{ meter_event_summaries: [{ cost: 0.5 }] }]),
-        }
-      }
-      return { status: 404, headers: {}, bodyText: "{}" }
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () => ""
+    const snapshot = {
+      id: "u_123",
+      subscription: { tier: "pro", status: "active", paymentTier: "pro", source: "stripe" },
+      remainingUsage: {
+        remaining_pro: 3,
+        pro_limit: 10,
+        pro_resets_at: "2099-01-01T00:00:00Z",
+        remaining_research: 2,
+        research_limit: 5,
+        research_resets_at: "2099-02-01T00:00:00Z",
+        remaining_labs: 1,
+        labs_limit: 4,
+        labs_resets_at: "2099-03-01T00:00:00Z",
+      },
+    }
+    const encoded = Buffer.from(JSON.stringify(snapshot), "utf8").toString("base64")
+    ctx.host.plist.readRaw.mockImplementation((_path, key) => {
+      if (key === "authToken") return "eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..abc.def.ghi.jkl"
+      if (key === "current_user__data") return encoded
+      return ""
     })
-
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    expect(result.lines[0].limit).toBe(6.5)
-    expect(result.lines[0].used).toBe(0.5)
+    expect(result.plan).toBe("Pro")
+
+    const pro = result.lines.find((line) => line.label === "Pro")
+    const research = result.lines.find((line) => line.label === "Research")
+    const labs = result.lines.find((line) => line.label === "Labs")
+
+    expect(pro?.type).toBe("progress")
+    expect(research?.type).toBe("progress")
+    expect(labs?.type).toBe("progress")
+
+    expect(pro?.used).toBe(7)
+    expect(pro?.limit).toBe(10)
+    expect(pro?.resetsAt).toBe("2099-01-01T00:00:00.000Z")
+
+    expect(research?.used).toBe(3)
+    expect(research?.limit).toBe(5)
+    expect(research?.resetsAt).toBe("2099-02-01T00:00:00.000Z")
+
+    expect(labs?.used).toBe(3)
+    expect(labs?.limit).toBe(4)
+    expect(labs?.resetsAt).toBe("2099-03-01T00:00:00.000Z")
   })
 
-  it("throws balance unavailable when groups payload contains no readable ids", async () => {
+  it("uses cached premium-like user usage before remote request", async () => {
     const ctx = makeCtx()
-    const token = makeJwtLikeToken()
-    mockCacheSession(ctx, { requestHex: makeRequestHexWithBearer(token) })
-
-    ctx.host.http.request.mockImplementation((req) => {
-      if (req.url === "https://www.perplexity.ai/rest/pplx-api/v2/groups") {
-        return { status: 200, headers: {}, bodyText: JSON.stringify({ orgs: [{ name: "missing-id" }] }) }
-      }
-      return { status: 404, headers: {}, bodyText: "{}" }
+    ctx.host.fs.exists = (path) => path.includes("Cache.db") || path.includes("ai.perplexity.mac.plist")
+    ctx.host.fs.readText = () => ""
+    ctx.host.plist.readRaw.mockImplementation((_path, key) => {
+      if (key === "authToken") return "eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..abc.def.ghi.jkl"
+      return ""
     })
-
+    ctx.host.sqlite.query.mockImplementation((dbPath, sql) => {
+      if (String(sql).includes("CAST(r.receiver_data AS TEXT)")) {
+        return JSON.stringify([
+          {
+            body: JSON.stringify({
+              id: "u_123",
+              subscription_tier: "pro",
+              remainingUsage: {
+                remaining_pro: 2,
+                pro_limit: 5,
+              },
+            }),
+          },
+        ])
+      }
+      return JSON.stringify([])
+    })
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Balance unavailable")
+    const result = plugin.probe(ctx)
+    const pro = result.lines.find((line) => line.label === "Pro")
+    expect(result.plan).toBe("Pro")
+    expect(pro?.used).toBe(3)
+    expect(pro?.limit).toBe(5)
+    expect(ctx.host.http.request).not.toHaveBeenCalled()
   })
 })

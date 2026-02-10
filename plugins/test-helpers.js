@@ -20,6 +20,9 @@ export const makeCtx = () => {
       env: {
         get: vi.fn(() => null),
       },
+      plist: {
+        readRaw: vi.fn(() => ""),
+      },
       keychain: {
         readGenericPassword: vi.fn(),
         writeGenericPassword: vi.fn(),
