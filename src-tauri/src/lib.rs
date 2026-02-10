@@ -9,7 +9,7 @@ mod webkit_config;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use serde::Serialize;
 use tauri::Emitter;
@@ -21,6 +21,12 @@ use uuid::Uuid;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 const GLOBAL_SHORTCUT_STORE_KEY: &str = "globalShortcut";
+
+#[cfg(desktop)]
+fn managed_shortcut_slot() -> &'static Mutex<Option<String>> {
+    static SLOT: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+    SLOT.get_or_init(|| Mutex::new(None))
+}
 
 /// Shared shortcut handler that toggles the panel when the shortcut is pressed.
 #[cfg(desktop)]
@@ -229,29 +235,41 @@ fn get_log_path(app_handle: tauri::AppHandle) -> Result<String, String> {
 #[tauri::command]
 fn update_global_shortcut(app_handle: tauri::AppHandle, shortcut: Option<String>) -> Result<(), String> {
     let global_shortcut = app_handle.global_shortcut();
+    let normalized_shortcut = shortcut.and_then(|value| {
+        let trimmed = value.trim().to_string();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed)
+        }
+    });
+    let mut managed_shortcut = managed_shortcut_slot()
+        .lock()
+        .map_err(|e| format!("failed to lock managed shortcut state: {}", e))?;
 
-    // Unregister all existing shortcuts first
-    if let Err(e) = global_shortcut.unregister_all() {
-        log::warn!("Failed to unregister existing shortcuts: {}", e);
+    if *managed_shortcut == normalized_shortcut {
+        log::debug!("Global shortcut unchanged");
+        return Ok(());
     }
 
-    // If shortcut is None or empty, we're done (disabled state)
-    let shortcut = match shortcut {
-        Some(s) if !s.trim().is_empty() => s,
-        _ => {
-            log::info!("Global shortcut disabled");
-            return Ok(());
+    if let Some(existing) = managed_shortcut.as_ref() {
+        if let Err(e) = global_shortcut.unregister(existing.as_str()) {
+            log::warn!("Failed to unregister existing shortcut '{}': {}", existing, e);
         }
-    };
+    }
 
-    log::info!("Registering global shortcut: {}", shortcut);
-
-    // Register the new shortcut
-    global_shortcut
-        .on_shortcut(shortcut.as_str(), |app, _shortcut, event| {
-            handle_global_shortcut(app, event);
-        })
-        .map_err(|e| format!("Failed to register shortcut '{}': {}", shortcut, e))?;
+    if let Some(shortcut) = normalized_shortcut {
+        log::info!("Registering global shortcut: {}", shortcut);
+        global_shortcut
+            .on_shortcut(shortcut.as_str(), |app, _shortcut, event| {
+                handle_global_shortcut(app, event);
+            })
+            .map_err(|e| format!("Failed to register shortcut '{}': {}", shortcut, e))?;
+        *managed_shortcut = Some(shortcut);
+    } else {
+        log::info!("Global shortcut disabled");
+        *managed_shortcut = None;
+    }
 
     Ok(())
 }
@@ -373,6 +391,7 @@ pub fn run() {
                 if let Ok(store) = app.handle().store("settings.json") {
                     if let Some(shortcut_value) = store.get(GLOBAL_SHORTCUT_STORE_KEY) {
                         if let Some(shortcut) = shortcut_value.as_str() {
+                            let shortcut = shortcut.trim();
                             if !shortcut.is_empty() {
                                 let handle = app.handle().clone();
                                 log::info!("Registering initial global shortcut: {}", shortcut);
@@ -383,6 +402,11 @@ pub fn run() {
                                     },
                                 ) {
                                     log::warn!("Failed to register initial global shortcut: {}", e);
+                                } else if let Ok(mut managed_shortcut) = managed_shortcut_slot().lock()
+                                {
+                                    *managed_shortcut = Some(shortcut.to_string());
+                                } else {
+                                    log::warn!("Failed to store managed shortcut in memory");
                                 }
                             }
                         }
