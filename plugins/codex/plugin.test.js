@@ -18,6 +18,21 @@ describe("codex plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Not logged in")
   })
 
+  it("loads auth from keychain when auth file is missing", async () => {
+    const ctx = makeCtx()
+    ctx.host.keychain.readGenericPassword.mockReturnValue(JSON.stringify({
+      tokens: { access_token: "keychain-token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockImplementation((opts) => {
+      expect(opts.headers.Authorization).toBe("Bearer keychain-token")
+      return { status: 200, headers: {}, bodyText: JSON.stringify({}) }
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+  })
+
   it("uses CODEX_HOME auth path when env var is set", async () => {
     const ctx = makeCtx()
     ctx.host.env.get.mockImplementation((name) => (name === "CODEX_HOME" ? "/tmp/codex-home" : null))
@@ -79,6 +94,39 @@ describe("codex plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Not logged in")
   })
 
+  it("falls back to keychain when auth file is invalid", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", "{bad")
+    ctx.host.keychain.readGenericPassword.mockReturnValue(JSON.stringify({
+      tokens: { access_token: "keychain-token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockImplementation((opts) => {
+      expect(opts.headers.Authorization).toBe("Bearer keychain-token")
+      return { status: 200, headers: {}, bodyText: JSON.stringify({}) }
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+  })
+
+  it("supports hex-encoded keychain auth payload", async () => {
+    const ctx = makeCtx()
+    const raw = JSON.stringify({
+      tokens: { access_token: "hex-token" },
+      last_refresh: new Date().toISOString(),
+    })
+    const hex = Buffer.from(raw, "utf8").toString("hex")
+    ctx.host.keychain.readGenericPassword.mockReturnValue(hex)
+    ctx.host.http.request.mockImplementation((opts) => {
+      expect(opts.headers.Authorization).toBe("Bearer hex-token")
+      return { status: 200, headers: {}, bodyText: JSON.stringify({}) }
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+  })
+
   it("throws when auth lacks tokens and api key", async () => {
     const ctx = makeCtx()
     ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({ tokens: {} }))
@@ -122,6 +170,28 @@ describe("codex plugin", () => {
     const credits = result.lines.find((line) => line.label === "Credits")
     expect(credits).toBeTruthy()
     expect(credits.used).toBe(900)
+  })
+
+  it("refreshes keychain auth and writes back to keychain", async () => {
+    const ctx = makeCtx()
+    ctx.host.keychain.readGenericPassword.mockReturnValue(JSON.stringify({
+      tokens: { access_token: "old", refresh_token: "refresh", account_id: "acc" },
+      last_refresh: "2000-01-01T00:00:00.000Z",
+    }))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("oauth/token")) {
+        return { status: 200, bodyText: JSON.stringify({ access_token: "new" }) }
+      }
+      return { status: 200, headers: {}, bodyText: JSON.stringify({}) }
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    expect(ctx.host.keychain.writeGenericPassword).toHaveBeenCalled()
+    const [service, payload] = ctx.host.keychain.writeGenericPassword.mock.calls[0]
+    expect(service).toBe("Codex Auth")
+    expect(String(payload)).toContain("\"access_token\":\"new\"")
   })
 
   it("throws token expired when refresh fails", async () => {

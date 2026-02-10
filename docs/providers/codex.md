@@ -62,13 +62,31 @@ Both rate_limit windows are enforced simultaneously — hitting either limit thr
 
 ## Authentication
 
-### Token Location
+### Credential Storage Locations
 
-`~/.codex/auth.json`
+Codex CLI supports multiple credential storage modes:
+
+- **file** (default): `CODEX_HOME/auth.json` (or `~/.codex/auth.json` by default)
+- **keyring**: OS keychain/credential manager entry (service name `Codex Auth`)
+- **auto**: keyring first, fallback to file
+- **ephemeral**: memory-only (no persistence)
+
+For `keyring`/`auto`, Codex may not keep `auth.json` on disk. If keyring save succeeds, Codex removes the fallback `auth.json`.
+
+OpenUsage Codex plugin auth lookup order:
+
+1. `CODEX_HOME/auth.json` (when `CODEX_HOME` is set)
+2. `~/.config/codex/auth.json`
+3. `~/.codex/auth.json`
+4. macOS keychain service `Codex Auth` (fallback)
+
+Keychain fallback is available on macOS only.
+
+Expected auth payload shape (file or keychain JSON value):
 
 ```jsonc
 {
-  "OPENAI_API_KEY": null,                  // legacy API key field (unused for OAuth)
+  "OPENAI_API_KEY": null,                  // legacy API key field
   "tokens": {
     "access_token": "<jwt>",               // OAuth access token (Bearer)
     "refresh_token": "<token>",
@@ -78,6 +96,8 @@ Both rate_limit windows are enforced simultaneously — hitting either limit thr
   "last_refresh": "2026-01-28T08:05:37Z"  // ISO 8601
 }
 ```
+
+> Note: Codex also stores MCP OAuth tokens in `~/.codex/.credentials.json` (or keyring), but that is separate from ChatGPT CLI auth used by this plugin.
 
 ### Token Refresh
 
