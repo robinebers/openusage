@@ -303,6 +303,35 @@ describe("perplexity plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Usage data unavailable")
   })
 
+  it("renders zero-left metric lines when remaining values are zero and caps are not inferable", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () => ""
+    const snapshot = {
+      id: "u_123",
+      email: "user@example.com",
+      subscription: { tier: "none", status: "none", paymentTier: "none", source: "none" },
+      remainingUsage: { remaining_pro: 0, remaining_research: 0, remaining_labs: 0 },
+    }
+    const encoded = Buffer.from(JSON.stringify(snapshot), "utf8").toString("base64")
+    ctx.host.plist.readRaw.mockImplementation((_path, key) => {
+      if (key === "authToken") return ""
+      if (key === "current_user__data") return encoded
+      return ""
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines).toEqual(
+      expect.arrayContaining([
+        { type: "text", label: "Pro", value: "0 left" },
+        { type: "text", label: "Research", value: "0 left" },
+        { type: "text", label: "Labs", value: "0 left" },
+      ])
+    )
+  })
+
   it("does not use API key env fallback", async () => {
     const ctx = makeCtx()
     ctx.host.fs.exists = () => true

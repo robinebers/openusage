@@ -652,7 +652,6 @@
           })
         )
       } else {
-        if (remaining === 0) continue
         lines.push(
           ctx.line.text({
             label: metric.label,
