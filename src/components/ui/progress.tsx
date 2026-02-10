@@ -12,7 +12,10 @@ interface ProgressProps extends React.HTMLAttributes<HTMLDivElement> {
 const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
   ({ className, value = 0, indicatorColor, markerValue, markerColor, ...props }, ref) => {
     const clamped = Math.min(100, Math.max(0, value))
-    const clampedMarker = Number.isFinite(markerValue) ? Math.min(100, Math.max(0, markerValue)) : null
+    const clampedMarker =
+      typeof markerValue === "number" && Number.isFinite(markerValue)
+        ? Math.min(100, Math.max(0, markerValue))
+        : null
     const showMarker = clampedMarker !== null && clamped > 0 && clamped < 100
     const indicatorStyle = indicatorColor
       ? { backgroundColor: indicatorColor }
