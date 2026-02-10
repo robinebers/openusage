@@ -983,6 +983,22 @@ describe("App", () => {
     errorSpy.mockRestore()
   })
 
+  it("refreshes all enabled providers when clicking next update label", async () => {
+    state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a", "b"], disabled: [] })
+    render(<App />)
+    await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
+
+    const initialCalls = state.startBatchMock.mock.calls.length
+    const refreshButton = await screen.findByRole("button", { name: /Next update in/i })
+    await userEvent.click(refreshButton)
+
+    await waitFor(() =>
+      expect(state.startBatchMock.mock.calls.length).toBe(initialCalls + 1)
+    )
+    const lastCall = state.startBatchMock.mock.calls[state.startBatchMock.mock.calls.length - 1]
+    expect(lastCall[0]).toEqual(["a", "b"])
+  })
+
   it("tracks manual refresh and clears cooldown flag on result", async () => {
     render(<App />)
     await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())

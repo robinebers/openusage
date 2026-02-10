@@ -10,6 +10,7 @@ interface PanelFooterProps {
   updateStatus: UpdateStatus;
   onUpdateInstall: () => void;
   onUpdateCheck: () => void;
+  onRefreshAll?: () => void;
   showAbout: boolean;
   onShowAbout: () => void;
   onCloseAbout: () => void;
@@ -89,6 +90,7 @@ export function PanelFooter({
   updateStatus,
   onUpdateInstall,
   onUpdateCheck,
+  onRefreshAll,
   showAbout,
   onShowAbout,
   onCloseAbout,
@@ -119,9 +121,23 @@ export function PanelFooter({
           onUpdateCheck={onUpdateCheck}
           onVersionClick={onShowAbout}
         />
-        <span className="text-xs text-muted-foreground tabular-nums">
-          {countdownLabel}
-        </span>
+        {autoUpdateNextAt !== null && onRefreshAll ? (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.currentTarget.blur()
+              onRefreshAll()
+            }}
+            className="text-xs text-muted-foreground tabular-nums hover:text-foreground transition-colors cursor-pointer"
+            title="Refresh now"
+          >
+            {countdownLabel}
+          </button>
+        ) : (
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {countdownLabel}
+          </span>
+        )}
       </div>
       {showAbout && (
         <AboutDialog version={version} onClose={onCloseAbout} />

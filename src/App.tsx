@@ -23,6 +23,7 @@ import {
   DEFAULT_TRAY_ICON_STYLE,
   DEFAULT_TRAY_SHOW_PERCENTAGE,
   DEFAULT_THEME_MODE,
+  REFRESH_COOLDOWN_MS,
   getEnabledPluginIds,
   isTrayPercentageMandatory,
   loadAutoUpdateInterval,
@@ -657,6 +658,35 @@ function App() {
     [resetAutoUpdateSchedule, setLoadingForPlugins, setErrorForPlugins, startBatch]
   )
 
+  const handleRefreshAll = useCallback(() => {
+    if (!pluginSettings) return
+    const enabledIds = getEnabledPluginIds(pluginSettings)
+    if (enabledIds.length === 0) return
+    const now = Date.now()
+    const eligibleIds = enabledIds.filter((id) => {
+      const lastManualRefreshAt = pluginStatesRef.current[id]?.lastManualRefreshAt
+      if (!lastManualRefreshAt) return true
+      return now - lastManualRefreshAt >= REFRESH_COOLDOWN_MS
+    })
+    if (eligibleIds.length === 0) return
+
+    resetAutoUpdateSchedule()
+    for (const id of eligibleIds) {
+      manualRefreshIdsRef.current.add(id)
+    }
+    setLoadingForPlugins(eligibleIds)
+    startBatch(eligibleIds).catch((error) => {
+      console.error("Failed to start refresh batch:", error)
+      setErrorForPlugins(eligibleIds, "Failed to start probe")
+    })
+  }, [
+    pluginSettings,
+    resetAutoUpdateSchedule,
+    setLoadingForPlugins,
+    setErrorForPlugins,
+    startBatch,
+  ])
+
   const handleThemeModeChange = useCallback((mode: ThemeMode) => {
     track("setting_changed", { setting: "theme", value: mode })
     setThemeMode(mode)
@@ -880,6 +910,7 @@ function App() {
               updateStatus={updateStatus}
               onUpdateInstall={triggerInstall}
               onUpdateCheck={checkForUpdates}
+              onRefreshAll={handleRefreshAll}
               showAbout={showAbout}
               onShowAbout={() => setShowAbout(true)}
               onCloseAbout={() => setShowAbout(false)}
