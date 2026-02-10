@@ -643,19 +643,30 @@ function App() {
     setAutoUpdateResetToken((value) => value + 1)
   }, [autoUpdateInterval, pluginSettings])
 
+  const startManualRefresh = useCallback(
+    (ids: string[], errorMessage: string) => {
+      for (const id of ids) {
+        manualRefreshIdsRef.current.add(id)
+      }
+      setLoadingForPlugins(ids)
+      startBatch(ids).catch((error) => {
+        for (const id of ids) {
+          manualRefreshIdsRef.current.delete(id)
+        }
+        console.error(errorMessage, error)
+        setErrorForPlugins(ids, "Failed to start probe")
+      })
+    },
+    [setLoadingForPlugins, setErrorForPlugins, startBatch]
+  )
+
   const handleRetryPlugin = useCallback(
     (id: string) => {
       track("provider_refreshed", { provider_id: id })
       resetAutoUpdateSchedule()
-      // Mark as manual refresh
-      manualRefreshIdsRef.current.add(id)
-      setLoadingForPlugins([id])
-      startBatch([id]).catch((error) => {
-        console.error("Failed to retry plugin:", error)
-        setErrorForPlugins([id], "Failed to start probe")
-      })
+      startManualRefresh([id], "Failed to retry plugin:")
     },
-    [resetAutoUpdateSchedule, setLoadingForPlugins, setErrorForPlugins, startBatch]
+    [resetAutoUpdateSchedule, startManualRefresh]
   )
 
   const handleRefreshAll = useCallback(() => {
@@ -664,27 +675,21 @@ function App() {
     if (enabledIds.length === 0) return
     const now = Date.now()
     const eligibleIds = enabledIds.filter((id) => {
-      const lastManualRefreshAt = pluginStatesRef.current[id]?.lastManualRefreshAt
+      const currentState = pluginStatesRef.current[id]
+      if (currentState?.loading) return false
+      if (manualRefreshIdsRef.current.has(id)) return false
+      const lastManualRefreshAt = currentState?.lastManualRefreshAt
       if (!lastManualRefreshAt) return true
       return now - lastManualRefreshAt >= REFRESH_COOLDOWN_MS
     })
     if (eligibleIds.length === 0) return
 
     resetAutoUpdateSchedule()
-    for (const id of eligibleIds) {
-      manualRefreshIdsRef.current.add(id)
-    }
-    setLoadingForPlugins(eligibleIds)
-    startBatch(eligibleIds).catch((error) => {
-      console.error("Failed to start refresh batch:", error)
-      setErrorForPlugins(eligibleIds, "Failed to start probe")
-    })
+    startManualRefresh(eligibleIds, "Failed to start refresh batch:")
   }, [
     pluginSettings,
     resetAutoUpdateSchedule,
-    setLoadingForPlugins,
-    setErrorForPlugins,
-    startBatch,
+    startManualRefresh,
   ])
 
   const handleThemeModeChange = useCallback((mode: ThemeMode) => {
