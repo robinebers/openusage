@@ -354,7 +354,8 @@
     const balanceUsd = readBalanceUsd(restState.group)
     if (balanceUsd === null) throw "Balance unavailable. Try again later."
 
-    const usedUsd = sumUsageCostUsd(restState.usageAnalytics) || 0
+    const usedUsd = sumUsageCostUsd(restState.usageAnalytics)
+    if (usedUsd === null) throw "Usage unavailable. Try again later."
     const usedCents = Math.max(0, Math.round(usedUsd * 100))
     const limitCents = Math.max(0, Math.round(balanceUsd * 100))
     if (!Number.isFinite(limitCents) || limitCents <= 0) throw "Balance unavailable. Try again later."

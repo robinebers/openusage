@@ -159,4 +159,34 @@ describe("perplexity plugin", () => {
     const call = ctx.host.http.request.mock.calls[0]?.[0]
     expect(call.headers.Authorization).toBe("Bearer " + token)
   })
+
+  it("throws when usage analytics is unavailable (avoid false $0 used)", async () => {
+    const ctx = makeCtx()
+    const token = makeJwtLikeToken()
+    mockCacheSession(ctx, { requestHex: makeRequestHexWithBearer(token) })
+
+    ctx.host.http.request.mockImplementation((req) => {
+      if (req.url === "https://www.perplexity.ai/rest/pplx-api/v2/groups") {
+        return {
+          status: 200,
+          headers: {},
+          bodyText: JSON.stringify({ orgs: [{ api_org_id: GROUP_ID, is_default_org: true }] }),
+        }
+      }
+      if (req.url === `https://www.perplexity.ai/rest/pplx-api/v2/groups/${GROUP_ID}`) {
+        return {
+          status: 200,
+          headers: {},
+          bodyText: JSON.stringify({ customerInfo: { balance: 4.99, is_pro: true } }),
+        }
+      }
+      if (req.url === `https://www.perplexity.ai/rest/pplx-api/v2/groups/${GROUP_ID}/usage-analytics`) {
+        return { status: 403, headers: {}, bodyText: "<html>Just a moment...</html>" }
+      }
+      return { status: 404, headers: {}, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Usage unavailable")
+  })
 })
