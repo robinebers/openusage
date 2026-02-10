@@ -10,6 +10,14 @@ import {
 describe("cliproxy-ui", () => {
   it("normalizes config payload safely", () => {
     expect(toCliProxyConfigView(null)).toEqual({ configured: false, baseUrl: null })
+    expect(toCliProxyConfigView({ configured: true, baseUrl: 42 })).toEqual({
+      configured: true,
+      baseUrl: null,
+    })
+    expect(toCliProxyConfigView({ configured: false, baseUrl: "http://localhost:8317" })).toEqual({
+      configured: false,
+      baseUrl: "http://localhost:8317",
+    })
     expect(toCliProxyConfigView({ configured: true, baseUrl: "http://localhost:8317" })).toEqual({
       configured: true,
       baseUrl: "http://localhost:8317",
@@ -64,5 +72,53 @@ describe("cliproxy-ui", () => {
         kimi: "",
       })
     ).toEqual({ claude: "idx-c" })
+  })
+
+  it("skips duplicate and unsupported auth files", () => {
+    const options = buildAccountOptionsByPlugin([
+      {
+        id: "1",
+        name: "codex-main.json",
+        provider: "codex",
+        authIndex: "idx-1",
+        disabled: false,
+        unavailable: false,
+      },
+      {
+        id: "2",
+        name: "codex-main-copy.json",
+        provider: "codex",
+        authIndex: "idx-1",
+        disabled: false,
+        unavailable: false,
+      },
+      {
+        id: "3",
+        name: "cursor-main.json",
+        provider: "cursor",
+        authIndex: "idx-cursor",
+        disabled: false,
+        unavailable: false,
+      },
+      {
+        id: "4",
+        name: "antigravity-main.json",
+        provider: "antigravity",
+        authIndex: "",
+        disabled: false,
+        unavailable: false,
+      },
+      {
+        id: "5",
+        name: "antigravity-fallback.json",
+        provider: "antigravity",
+        disabled: false,
+        unavailable: false,
+      },
+    ])
+
+    expect(options.codex.filter((item) => item.value === "idx-1")).toHaveLength(1)
+    expect(options.antigravity.some((item) => item.value === "5")).toBe(true)
+    expect(options.kimi).toEqual([{ value: LOCAL_ACCOUNT_VALUE, label: "Local account" }])
   })
 })
