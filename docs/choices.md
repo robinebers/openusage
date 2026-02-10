@@ -130,3 +130,9 @@ This document records opinionated defaults chosen during development.
 **Technical details:**
 - Encrypted bytes are stored as base64 under `appDataDir/vault/<url-safe-key>`.
 - `host.vault` throws on non-Windows platforms.
+
+### Fail Release If Windows Signing Secrets Missing
+
+**Context:** Release workflow allowed unsigned Windows artifacts when signing secrets were absent.
+
+**Decision:** Fail the Windows publish job if `WINDOWS_CERTIFICATE` or `WINDOWS_CERTIFICATE_PASSWORD` is missing.
