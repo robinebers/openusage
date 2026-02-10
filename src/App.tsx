@@ -80,7 +80,7 @@ function App() {
   const maxPanelHeightPxRef = useRef<number | null>(null)
   const [appVersion, setAppVersion] = useState("...")
 
-  const { updateStatus, triggerInstall } = useAppUpdate()
+  const { updateStatus, triggerInstall, checkForUpdates } = useAppUpdate()
   const [showAbout, setShowAbout] = useState(false)
 
   const trayRef = useRef<TrayIcon | null>(null)
@@ -879,6 +879,7 @@ function App() {
               autoUpdateNextAt={autoUpdateNextAt}
               updateStatus={updateStatus}
               onUpdateInstall={triggerInstall}
+              onUpdateCheck={checkForUpdates}
               showAbout={showAbout}
               onShowAbout={() => setShowAbout(true)}
               onCloseAbout={() => setShowAbout(false)}
