@@ -135,11 +135,6 @@ pub fn position_panel_at_tray_icon(
     // A tray icon at 1x is ~66 wide; at 2x it's ~132. Use width > 100 as heuristic.
     let icon_scale = if icon_phys_w > 100.0 { 2.0 } else { 1.0 };
 
-    log::error!(
-        "position_panel: icon_phys=({:.0}, {:.0}), icon_phys_size=({:.0}, {:.0}), icon_scale={}",
-        icon_phys_x, icon_phys_y, icon_phys_w, icon_phys_h, icon_scale
-    );
-
     let monitors = window.available_monitors().expect("failed to get monitors");
     let mut found_monitor = None;
 
@@ -155,11 +150,6 @@ pub fn position_panel_at_tray_icon(
         let phys_w = phys_size.width as f64;
         let phys_h = phys_size.height as f64;
 
-        log::error!(
-            "  monitor: {:?}, logical_pos=({}, {}), phys_origin=({:.0}, {:.0}), phys_size={:.0}x{:.0}, scale={}",
-            m.name(), logical_pos.x, logical_pos.y, phys_origin_x, phys_origin_y, phys_w, phys_h, scale
-        );
-
         let x_in = icon_phys_x >= phys_origin_x && icon_phys_x < phys_origin_x + phys_w;
         let y_in = icon_phys_y >= phys_origin_y && icon_phys_y < phys_origin_y + phys_h;
 
@@ -174,7 +164,7 @@ pub fn position_panel_at_tray_icon(
     let (monitor, phys_origin_x, phys_origin_y) = match found_monitor {
         Some(v) => v,
         None => {
-            log::error!("No monitor found for icon at ({:.0}, {:.0}), using primary", icon_phys_x, icon_phys_y);
+            log::warn!("No monitor found for icon at ({:.0}, {:.0}), using primary", icon_phys_x, icon_phys_y);
             match window.primary_monitor() {
                 Ok(Some(m)) => (m, 0.0, 0.0),
                 _ => return,
@@ -200,11 +190,6 @@ pub fn position_panel_at_tray_icon(
     let panel_x = icon_center_x - (panel_width / 2.0);
     let nudge_up: f64 = 6.0;
     let panel_y = icon_logical_y + icon_logical_h - nudge_up;
-
-    log::error!(
-        "  target={:?}, scale={}, icon_logical=({:.1}, {:.1}), final=({:.1}, {:.1}), panel_w={:.0}",
-        monitor.name(), target_scale, icon_logical_x, icon_logical_y, panel_x, panel_y, panel_width
-    );
 
     let _ = window.set_position(tauri::LogicalPosition::new(panel_x, panel_y));
 }
