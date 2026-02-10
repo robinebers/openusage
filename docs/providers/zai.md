@@ -2,25 +2,26 @@
 
 Tracks [Z.ai](https://z.ai) (Zhipu AI) usage quotas for GLM coding plans.
 
-> These API endpoints are not documented in Z.ai's public API reference. They are used internally by the subscription management UI and work with both OAuth tokens and API keys.
+> These API endpoints are not documented in Z.ai's public API reference. They are used internally by the subscription
+> management UI and work with both OAuth tokens and API keys.
 
 ## Overview
 
 - **Protocol:** REST (plain JSON)
-- **Base URL:** `https://open.bigmodel.cn`
-- **Auth:** API key via macOS Keychain
-- **Keychain service:** `OpenUsage-zai`
+- **Base URL:** `https://api.z.ai/`
+- **Auth:** API key via environment variable (`ZAI_API_KEY`, fallback `GLM_API_KEY`)
 - **Session utilization:** percentage (0-100)
 - **Web searches:** count-based (used / limit)
 - **Reset periods:** 5 hours (session), monthly (web searches, from subscription renewal date)
 
 ## Setup
 
-1. [Subscribe to a GLM Coding plan](https://z.ai/subscribe) and get your API key from the [Z.ai console](https://z.ai/manage-apikey/apikey-list)
-2. Store it in the macOS Keychain:
+1. [Subscribe to a GLM Coding plan](https://z.ai/subscribe) and get your API key from
+   the [Z.ai console](https://z.ai/manage-apikey/apikey-list)
+2. Set the environment variable `ZAI_API_KEY`
 
 ```bash
-security add-generic-password -s OpenUsage-zai -a OpenUsage -w "YOUR_API_KEY" -U
+export ZAI_API_KEY="YOUR_API_KEY"
 ```
 
 3. Enable the Z.ai plugin in OpenUsage settings
@@ -29,14 +30,14 @@ security add-generic-password -s OpenUsage-zai -a OpenUsage -w "YOUR_API_KEY" -U
 
 ### GET /api/biz/subscription/list
 
-Returns the user's active subscription(s). Used to extract the plan name and monthly renewal date.
+Returns the user's active subscription(s). Used to extract the plan name.
 
 #### Headers
 
-| Header | Required | Value |
-|---|---|---|
-| Authorization | yes | `Bearer <api_key>` |
-| Accept | yes | `application/json` |
+| Header        | Required | Value              |
+|---------------|----------|--------------------|
+| Authorization | yes      | `Bearer <api_key>` |
+| Accept        | yes      | `application/json` |
 
 #### Response
 
@@ -68,6 +69,7 @@ Returns the user's active subscription(s). Used to extract the plan name and mon
 ```
 
 Used fields:
+
 - `productName` — plan display name (e.g. "GLM Coding Max")
 - `nextRenewTime` — monthly reset date for web search quota (ISO date, e.g. "2026-03-12")
 
@@ -77,10 +79,10 @@ Returns session token usage and web search quotas.
 
 #### Headers
 
-| Header | Required | Value |
-|---|---|---|
-| Authorization | yes | `Bearer <api_key>` |
-| Accept | yes | `application/json` |
+| Header        | Required | Value              |
+|---------------|----------|--------------------|
+| Authorization | yes      | `Bearer <api_key>` |
+| Accept        | yes      | `application/json` |
 
 #### Response
 
@@ -108,9 +110,18 @@ Returns session token usage and web search quotas.
         "remaining": 2172,
         "percentage": 45,
         "usageDetails": [
-          { "modelCode": "search-prime", "usage": 1433 },
-          { "modelCode": "web-reader", "usage": 462 },
-          { "modelCode": "zread", "usage": 0 }
+          {
+            "modelCode": "search-prime",
+            "usage": 1433
+          },
+          {
+            "modelCode": "web-reader",
+            "usage": 462
+          },
+          {
+            "modelCode": "zread",
+            "usage": 0
+          }
         ]
       }
     ]
@@ -120,6 +131,7 @@ Returns session token usage and web search quotas.
 ```
 
 **TOKENS_LIMIT:**
+
 - `usage` — total token limit (e.g. 800M)
 - `currentValue` — tokens consumed
 - `remaining` — tokens remaining
@@ -128,6 +140,7 @@ Returns session token usage and web search quotas.
 - `unit: 3, number: 5` — 5-hour rolling period
 
 **TIME_LIMIT:**
+
 - `usage` — total web search/reader call limit (e.g. 4000)
 - `currentValue` — calls consumed
 - `remaining` — calls remaining
@@ -137,17 +150,17 @@ Returns session token usage and web search quotas.
 
 ## Displayed Lines
 
-| Line | Description |
-|------|-------------|
-| Session | Token usage as percentage (0-100%) with 5h reset timer |
+| Line         | Description                                                                  |
+|--------------|------------------------------------------------------------------------------|
+| Session      | Token usage as percentage (0-100%) with 5h reset timer                       |
 | Web Searches | Web search/reader call count (used / limit), resets on the 1st of each month |
 
 ## Errors
 
-| Condition | Message |
-|-----------|---------|
-| No API key | "API key not configured. Store it with: `security add-generic-password -s OpenUsage-zai -a OpenUsage -w "YOUR_KEY" -U`" |
-| 401/403 | "API key invalid. Check your Z.ai API key." |
-| HTTP error | "Usage request failed (HTTP {status}). Try again later." |
-| Network error | "Usage request failed. Check your connection." |
-| Invalid JSON | "Usage response invalid. Try again later." |
+| Condition     | Message                                                    |
+|---------------|------------------------------------------------------------|
+| No API key    | "No ZAI_API_KEY found. Set up environment variable first." |
+| 401/403       | "API key invalid. Check your Z.ai API key."                |
+| HTTP error    | "Usage request failed (HTTP {status}). Try again later."   |
+| Network error | "Usage request failed. Check your connection."             |
+| Invalid JSON  | "Usage response invalid. Try again later."                 |

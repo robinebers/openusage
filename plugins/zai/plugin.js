@@ -1,18 +1,17 @@
 (function () {
-  const KEYCHAIN_SERVICE = "OpenUsage-zai"
-  const BASE_URL = "https://open.bigmodel.cn"
+  const BASE_URL = "https://api.z.ai"
   const SUBSCRIPTION_URL = BASE_URL + "/api/biz/subscription/list"
   const QUOTA_URL = BASE_URL + "/api/monitor/usage/quota/limit"
   const PERIOD_MS = 5 * 60 * 60 * 1000
   const MONTH_MS = 30 * 24 * 60 * 60 * 1000
 
   function loadApiKey(ctx) {
-    try {
-      const key = ctx.host.keychain.readGenericPassword(KEYCHAIN_SERVICE)
-      if (key && String(key).trim()) return String(key).trim()
-    } catch (e) {
-      ctx.host.log.warn("keychain read failed: " + String(e))
-    }
+    const zai = ctx.host.env.get("ZAI_API_KEY")
+    if (typeof zai === "string" && zai.trim()) return zai.trim()
+
+    const glm = ctx.host.env.get("GLM_API_KEY")
+    if (typeof glm === "string" && glm.trim()) return glm.trim()
+
     return null
   }
 
@@ -88,7 +87,7 @@
   function probe(ctx) {
     const apiKey = loadApiKey(ctx)
     if (!apiKey) {
-      throw 'API key not configured. Store it with: `security add-generic-password -s OpenUsage-zai -a OpenUsage -w "YOUR_KEY" -U`'
+      throw "No ZAI_API_KEY found. Set up environment variable first."
     }
 
     const sub = fetchSubscription(ctx, apiKey)

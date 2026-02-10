@@ -6,6 +6,10 @@ const loadPlugin = async () => {
   return globalThis.__openusage_plugin
 }
 
+const mockEnvWithKey = (ctx, key, varName = "ZAI_API_KEY") => {
+  ctx.host.env.get.mockImplementation((name) => (name === varName ? key : null))
+}
+
 const QUOTA_RESPONSE = {
   code: 200,
   data: {
@@ -58,27 +62,67 @@ const SUBSCRIPTION_RESPONSE = {
   data: [{ productName: "GLM Coding Max", nextRenewTime: "2026-03-12" }],
 }
 
+const mockHttp = (ctx) => {
+  ctx.host.http.request.mockImplementation((opts) => {
+    if (opts.url.includes("subscription")) {
+      return { status: 200, bodyText: JSON.stringify(SUBSCRIPTION_RESPONSE) }
+    }
+    return { status: 200, bodyText: JSON.stringify(QUOTA_RESPONSE) }
+  })
+}
+
 describe("zai plugin", () => {
   beforeEach(() => {
     delete globalThis.__openusage_plugin
     vi.resetModules()
   })
 
-  it("throws when no API key in keychain", async () => {
+  it("throws when no env vars set", async () => {
     const ctx = makeCtx()
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("API key not configured.")
+    expect(() => plugin.probe(ctx)).toThrow("No ZAI_API_KEY found. Set up environment variable first.")
+  })
+
+  it("uses ZAI_API_KEY when set", async () => {
+    const ctx = makeCtx()
+    mockEnvWithKey(ctx, "test-key")
+    mockHttp(ctx)
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((l) => l.label === "Session")).toBeTruthy()
+  })
+
+  it("falls back to GLM_API_KEY when ZAI_API_KEY is missing", async () => {
+    const ctx = makeCtx()
+    mockEnvWithKey(ctx, "glm-key", "GLM_API_KEY")
+    mockHttp(ctx)
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((l) => l.label === "Session")).toBeTruthy()
+  })
+
+  it("prefers ZAI_API_KEY over GLM_API_KEY", async () => {
+    const ctx = makeCtx()
+    ctx.host.env.get.mockImplementation((name) => {
+      if (name === "ZAI_API_KEY") return "zai-key"
+      if (name === "GLM_API_KEY") return "glm-key"
+      return null
+    })
+    mockHttp(ctx)
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((l) => l.label === "Session")).toBeTruthy()
+    const authHeader = ctx.host.http.request.mock.calls[0][0].headers.Authorization
+    expect(authHeader).toBe("Bearer zai-key")
   })
 
   it("renders session usage as percent from quota response", async () => {
     const ctx = makeCtx()
-    ctx.host.keychain.readGenericPassword.mockReturnValue("test-key")
-    ctx.host.http.request.mockImplementation((opts) => {
-      if (opts.url.includes("subscription")) {
-        return { status: 200, bodyText: JSON.stringify(SUBSCRIPTION_RESPONSE) }
-      }
-      return { status: 200, bodyText: JSON.stringify(QUOTA_RESPONSE) }
-    })
+    mockEnvWithKey(ctx, "test-key")
+    mockHttp(ctx)
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
@@ -93,13 +137,8 @@ describe("zai plugin", () => {
 
   it("extracts plan name from subscription response", async () => {
     const ctx = makeCtx()
-    ctx.host.keychain.readGenericPassword.mockReturnValue("test-key")
-    ctx.host.http.request.mockImplementation((opts) => {
-      if (opts.url.includes("subscription")) {
-        return { status: 200, bodyText: JSON.stringify(SUBSCRIPTION_RESPONSE) }
-      }
-      return { status: 200, bodyText: JSON.stringify(QUOTA_RESPONSE) }
-    })
+    mockEnvWithKey(ctx, "test-key")
+    mockHttp(ctx)
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
@@ -108,7 +147,7 @@ describe("zai plugin", () => {
 
   it("handles subscription fetch failure gracefully", async () => {
     const ctx = makeCtx()
-    ctx.host.keychain.readGenericPassword.mockReturnValue("test-key")
+    mockEnvWithKey(ctx, "test-key")
     ctx.host.http.request.mockImplementation((opts) => {
       if (opts.url.includes("subscription")) {
         return { status: 500, bodyText: "" }
@@ -124,7 +163,7 @@ describe("zai plugin", () => {
 
   it("throws on 401 from quota endpoint", async () => {
     const ctx = makeCtx()
-    ctx.host.keychain.readGenericPassword.mockReturnValue("test-key")
+    mockEnvWithKey(ctx, "test-key")
     ctx.host.http.request.mockImplementation((opts) => {
       if (opts.url.includes("subscription")) {
         return { status: 200, bodyText: JSON.stringify(SUBSCRIPTION_RESPONSE) }
@@ -138,7 +177,7 @@ describe("zai plugin", () => {
 
   it("throws on HTTP 500 from quota endpoint", async () => {
     const ctx = makeCtx()
-    ctx.host.keychain.readGenericPassword.mockReturnValue("test-key")
+    mockEnvWithKey(ctx, "test-key")
     ctx.host.http.request.mockImplementation((opts) => {
       if (opts.url.includes("subscription")) {
         return { status: 200, bodyText: JSON.stringify(SUBSCRIPTION_RESPONSE) }
@@ -152,7 +191,7 @@ describe("zai plugin", () => {
 
   it("throws on network exception", async () => {
     const ctx = makeCtx()
-    ctx.host.keychain.readGenericPassword.mockReturnValue("test-key")
+    mockEnvWithKey(ctx, "test-key")
     ctx.host.http.request.mockImplementation((opts) => {
       if (opts.url.includes("subscription")) {
         return { status: 200, bodyText: JSON.stringify(SUBSCRIPTION_RESPONSE) }
@@ -166,7 +205,7 @@ describe("zai plugin", () => {
 
   it("throws on invalid JSON from quota endpoint", async () => {
     const ctx = makeCtx()
-    ctx.host.keychain.readGenericPassword.mockReturnValue("test-key")
+    mockEnvWithKey(ctx, "test-key")
     ctx.host.http.request.mockImplementation((opts) => {
       if (opts.url.includes("subscription")) {
         return { status: 200, bodyText: JSON.stringify(SUBSCRIPTION_RESPONSE) }
@@ -180,7 +219,7 @@ describe("zai plugin", () => {
 
   it("shows badge when limits array is empty", async () => {
     const ctx = makeCtx()
-    ctx.host.keychain.readGenericPassword.mockReturnValue("test-key")
+    mockEnvWithKey(ctx, "test-key")
     ctx.host.http.request.mockImplementation((opts) => {
       if (opts.url.includes("subscription")) {
         return { status: 200, bodyText: JSON.stringify(SUBSCRIPTION_RESPONSE) }
@@ -195,13 +234,8 @@ describe("zai plugin", () => {
 
   it("passes resetsAt from nextResetTime (epoch ms to ISO)", async () => {
     const ctx = makeCtx()
-    ctx.host.keychain.readGenericPassword.mockReturnValue("test-key")
-    ctx.host.http.request.mockImplementation((opts) => {
-      if (opts.url.includes("subscription")) {
-        return { status: 200, bodyText: JSON.stringify(SUBSCRIPTION_RESPONSE) }
-      }
-      return { status: 200, bodyText: JSON.stringify(QUOTA_RESPONSE) }
-    })
+    mockEnvWithKey(ctx, "test-key")
+    mockHttp(ctx)
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
@@ -211,13 +245,8 @@ describe("zai plugin", () => {
 
   it("renders Web Searches line with count format and 1st-of-month reset", async () => {
     const ctx = makeCtx()
-    ctx.host.keychain.readGenericPassword.mockReturnValue("test-key")
-    ctx.host.http.request.mockImplementation((opts) => {
-      if (opts.url.includes("subscription")) {
-        return { status: 200, bodyText: JSON.stringify(SUBSCRIPTION_RESPONSE) }
-      }
-      return { status: 200, bodyText: JSON.stringify(QUOTA_RESPONSE) }
-    })
+    mockEnvWithKey(ctx, "test-key")
+    mockHttp(ctx)
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
@@ -235,7 +264,7 @@ describe("zai plugin", () => {
 
   it("skips Web Searches when TIME_LIMIT is absent", async () => {
     const ctx = makeCtx()
-    ctx.host.keychain.readGenericPassword.mockReturnValue("test-key")
+    mockEnvWithKey(ctx, "test-key")
     ctx.host.http.request.mockImplementation((opts) => {
       if (opts.url.includes("subscription")) {
         return { status: 200, bodyText: JSON.stringify(SUBSCRIPTION_RESPONSE) }
@@ -251,7 +280,7 @@ describe("zai plugin", () => {
 
   it("Web Searches still has resetsAt (1st of month) even when subscription fails", async () => {
     const ctx = makeCtx()
-    ctx.host.keychain.readGenericPassword.mockReturnValue("test-key")
+    mockEnvWithKey(ctx, "test-key")
     ctx.host.http.request.mockImplementation((opts) => {
       if (opts.url.includes("subscription")) {
         return { status: 500, bodyText: "" }
@@ -270,7 +299,7 @@ describe("zai plugin", () => {
 
   it("handles missing nextResetTime gracefully", async () => {
     const ctx = makeCtx()
-    ctx.host.keychain.readGenericPassword.mockReturnValue("test-key")
+    mockEnvWithKey(ctx, "test-key")
     const quotaNoReset = {
       data: {
         limits: [
