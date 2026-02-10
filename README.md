@@ -19,6 +19,7 @@ OpenUsage lives in your menu bar and shows you how much of your AI coding subscr
 - **Global shortcut.** Toggle the panel from anywhere with a customizable keyboard shortcut.
 - **Lightweight.** Opens instantly, stays out of your way.
 - **Plugin-based.** New providers get added without updating the whole app.
+- **Optional CLIProxyAPI bridge.** Use centralized account auth and switch per-provider accounts from the same provider cards.
 
 ## Supported Providers
 
@@ -31,6 +32,13 @@ OpenUsage lives in your menu bar and shows you how much of your AI coding subscr
 - [**Kimi Code**](docs/providers/kimi.md) / session, weekly
 - [**Windsurf**](docs/providers/windsurf.md) / prompt credits, flex credits
 - [**Z.ai**](docs/providers/zai.md) / session, web searches
+
+### CLIProxyAPI Account Switching
+
+OpenUsage can optionally integrate with [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) to fetch provider auth files at runtime (in-memory only) and let you switch accounts directly from provider cards.
+
+- Supported via CLIProxyAPI bridge today: **Codex**, **Claude**, **Kimi Code**, **Antigravity**
+- You can always select **Local account** per provider to use local credentials instead
 
 ### Maybe Soon
 
