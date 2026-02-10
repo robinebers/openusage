@@ -1,5 +1,6 @@
 #[cfg(target_os = "macos")]
 mod app_nap;
+mod cliproxyapi;
 mod panel;
 mod plugin_engine;
 mod tray;
@@ -12,6 +13,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use serde::Serialize;
+use serde_json::Value;
+use std::hash::{Hash, Hasher};
 use tauri::Emitter;
 use tauri_plugin_aptabase::EventTracker;
 use tauri_plugin_log::{Target, TargetKind};
@@ -89,7 +92,10 @@ fn managed_shortcut_slot() -> &'static Mutex<Option<String>> {
 
 /// Shared shortcut handler that toggles the panel when the shortcut is pressed.
 #[cfg(desktop)]
-fn handle_global_shortcut(app: &tauri::AppHandle, event: tauri_plugin_global_shortcut::ShortcutEvent) {
+fn handle_global_shortcut(
+    app: &tauri::AppHandle,
+    event: tauri_plugin_global_shortcut::ShortcutEvent,
+) {
     if event.state == ShortcutState::Pressed {
         log::debug!("Global shortcut triggered");
         panel::toggle_panel(app);
@@ -100,6 +106,7 @@ pub struct AppState {
     pub plugins: Vec<plugin_engine::manifest::LoadedPlugin>,
     pub app_data_dir: PathBuf,
     pub app_version: String,
+    pub cliproxy_credential_cache: Arc<Mutex<HashMap<String, String>>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -152,6 +159,433 @@ pub struct ProbeBatchComplete {
     pub batch_id: String,
 }
 
+#[derive(Clone)]
+struct PreparedCredentialOverlay {
+    overlay: plugin_engine::host_api::SharedCredentialOverlay,
+    cache_key: Option<String>,
+}
+
+fn expand_path(path: &str) -> String {
+    if path == "~" {
+        if let Some(home) = dirs::home_dir() {
+            return home.to_string_lossy().to_string();
+        }
+    }
+    if let Some(rest) = path.strip_prefix("~/") {
+        if let Some(home) = dirs::home_dir() {
+            return home.join(rest).to_string_lossy().to_string();
+        }
+    }
+    path.to_string()
+}
+
+fn normalize_provider_key(provider: &str) -> String {
+    let normalized = provider.trim().to_lowercase();
+    match normalized.as_str() {
+        "anthropic" => "claude".to_string(),
+        _ => normalized,
+    }
+}
+
+fn provider_matches_plugin(plugin_id: &str, provider: &str) -> bool {
+    let provider_key = normalize_provider_key(provider);
+    match plugin_id {
+        "codex" => provider_key == "codex",
+        "claude" => provider_key == "claude",
+        "kimi" => provider_key == "kimi",
+        "antigravity" => provider_key == "antigravity",
+        _ => false,
+    }
+}
+
+fn supports_credential_overlay(plugin_id: &str) -> bool {
+    matches!(plugin_id, "codex" | "claude" | "kimi" | "antigravity")
+}
+
+fn credential_target_paths(plugin_id: &str, app_data_dir: &PathBuf) -> Vec<String> {
+    match plugin_id {
+        "codex" => {
+            if let Ok(codex_home) = std::env::var("CODEX_HOME") {
+                let trimmed = codex_home.trim().trim_end_matches('/');
+                if !trimmed.is_empty() {
+                    return vec![format!("{}/auth.json", trimmed)];
+                }
+            }
+            vec![
+                "~/.config/codex/auth.json".to_string(),
+                "~/.codex/auth.json".to_string(),
+            ]
+        }
+        "claude" => vec!["~/.claude/.credentials.json".to_string()],
+        "kimi" => vec!["~/.kimi/credentials/kimi-code.json".to_string()],
+        "antigravity" => vec![
+            app_data_dir
+                .join("plugins_data")
+                .join("antigravity")
+                .join("auth.json")
+                .to_string_lossy()
+                .to_string(),
+        ],
+        _ => Vec::new(),
+    }
+}
+
+fn value_to_string(value: Option<&Value>) -> Option<String> {
+    match value {
+        Some(Value::String(s)) => {
+            let trimmed = s.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        }
+        Some(Value::Number(n)) => Some(n.to_string()),
+        Some(Value::Bool(b)) => Some(b.to_string()),
+        _ => None,
+    }
+}
+
+fn parse_expiry_ms(expired: &str) -> i64 {
+    let Ok(dt) =
+        time::OffsetDateTime::parse(expired, &time::format_description::well_known::Rfc3339)
+    else {
+        return 0;
+    };
+    let millis = dt.unix_timestamp_nanos() / 1_000_000;
+    i64::try_from(millis).unwrap_or(0)
+}
+
+fn parse_expiry_seconds(expired: &str) -> i64 {
+    let ms = parse_expiry_ms(expired);
+    if ms <= 0 {
+        return 0;
+    }
+    ms / 1000
+}
+
+fn read_string_field(object: &serde_json::Map<String, Value>, keys: &[&str]) -> Option<String> {
+    keys.iter()
+        .find_map(|key| value_to_string(object.get(*key)))
+}
+
+fn transform_auth_payload_for_plugin(plugin_id: &str, raw_payload: &str) -> Result<String, String> {
+    let parsed: Value =
+        serde_json::from_str(raw_payload).map_err(|e| format!("invalid auth file JSON: {}", e))?;
+    let object = parsed
+        .as_object()
+        .ok_or_else(|| "auth file JSON root must be an object".to_string())?;
+
+    match plugin_id {
+        "codex" => {
+            let access_token = read_string_field(object, &["access_token", "accessToken"])
+                .ok_or_else(|| "missing access_token".to_string())?;
+            let refresh_token = read_string_field(object, &["refresh_token", "refreshToken"])
+                .ok_or_else(|| "missing refresh_token".to_string())?;
+            let id_token = read_string_field(object, &["id_token", "idToken"]);
+            let account_id = read_string_field(object, &["account_id", "accountId"]);
+            let last_refresh = read_string_field(object, &["last_refresh", "lastRefresh"])
+                .unwrap_or_else(|| {
+                    time::OffsetDateTime::now_utc()
+                        .format(&time::format_description::well_known::Rfc3339)
+                        .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_string())
+                });
+
+            let mut tokens = serde_json::Map::new();
+            tokens.insert("access_token".to_string(), Value::String(access_token));
+            tokens.insert("refresh_token".to_string(), Value::String(refresh_token));
+            if let Some(id_token) = id_token {
+                tokens.insert("id_token".to_string(), Value::String(id_token));
+            }
+            if let Some(account_id) = account_id {
+                tokens.insert("account_id".to_string(), Value::String(account_id));
+            }
+
+            let mut out = serde_json::Map::new();
+            out.insert("tokens".to_string(), Value::Object(tokens));
+            out.insert("last_refresh".to_string(), Value::String(last_refresh));
+            serde_json::to_string(&Value::Object(out))
+                .map_err(|e| format!("failed to serialize transformed codex auth: {}", e))
+        }
+        "claude" => {
+            let access_token = read_string_field(object, &["access_token", "accessToken"])
+                .ok_or_else(|| "missing access_token".to_string())?;
+            let refresh_token = read_string_field(object, &["refresh_token", "refreshToken"])
+                .ok_or_else(|| "missing refresh_token".to_string())?;
+            let expires_at = read_string_field(object, &["expired", "expires_at", "expiresAt"])
+                .map(|raw| parse_expiry_ms(&raw))
+                .unwrap_or(0);
+
+            let mut oauth = serde_json::Map::new();
+            oauth.insert("accessToken".to_string(), Value::String(access_token));
+            oauth.insert("refreshToken".to_string(), Value::String(refresh_token));
+            oauth.insert(
+                "expiresAt".to_string(),
+                Value::Number(serde_json::Number::from(expires_at)),
+            );
+
+            let mut out = serde_json::Map::new();
+            out.insert("claudeAiOauth".to_string(), Value::Object(oauth));
+            serde_json::to_string(&Value::Object(out))
+                .map_err(|e| format!("failed to serialize transformed claude auth: {}", e))
+        }
+        "kimi" => {
+            let access_token = read_string_field(object, &["access_token", "accessToken"])
+                .ok_or_else(|| "missing access_token".to_string())?;
+            let refresh_token = read_string_field(object, &["refresh_token", "refreshToken"])
+                .ok_or_else(|| "missing refresh_token".to_string())?;
+            let token_type = read_string_field(object, &["token_type", "tokenType"])
+                .unwrap_or_else(|| "Bearer".to_string());
+            let scope = read_string_field(object, &["scope"]);
+            let device_id = read_string_field(object, &["device_id", "deviceId"]);
+            let expired = read_string_field(object, &["expired", "expires_at", "expiresAt"]);
+            let expires_at = read_string_field(object, &["expires_at", "expiresAt"])
+                .and_then(|raw| raw.parse::<i64>().ok())
+                .unwrap_or_else(|| expired.as_deref().map(parse_expiry_seconds).unwrap_or(0));
+
+            let mut out = serde_json::Map::new();
+            out.insert("access_token".to_string(), Value::String(access_token));
+            out.insert("refresh_token".to_string(), Value::String(refresh_token));
+            out.insert("token_type".to_string(), Value::String(token_type));
+            out.insert(
+                "expires_at".to_string(),
+                Value::Number(serde_json::Number::from(expires_at)),
+            );
+            if let Some(scope) = scope {
+                out.insert("scope".to_string(), Value::String(scope));
+            }
+            if let Some(device_id) = device_id {
+                out.insert("device_id".to_string(), Value::String(device_id));
+            }
+            if let Some(expired) = expired {
+                out.insert("expired".to_string(), Value::String(expired));
+            }
+            serde_json::to_string(&Value::Object(out))
+                .map_err(|e| format!("failed to serialize transformed kimi auth: {}", e))
+        }
+        "antigravity" => {
+            let access_token = read_string_field(object, &["access_token", "accessToken"])
+                .ok_or_else(|| "missing access_token".to_string())?;
+            let refresh_token = read_string_field(object, &["refresh_token", "refreshToken"]);
+            let expires_at_ms = if let Some(expired) =
+                read_string_field(object, &["expired", "expires_at", "expiresAt"])
+            {
+                let parsed = parse_expiry_ms(&expired);
+                if parsed > 0 {
+                    parsed
+                } else {
+                    let now_ms = time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000;
+                    let base_ms = i64::try_from(now_ms).unwrap_or(0);
+                    let ttl_sec = read_string_field(object, &["expires_in", "expiresIn"])
+                        .and_then(|raw| raw.parse::<i64>().ok())
+                        .unwrap_or(3600);
+                    base_ms + (ttl_sec * 1000)
+                }
+            } else {
+                let now_ms = time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000;
+                let base_ms = i64::try_from(now_ms).unwrap_or(0);
+                let ttl_sec = read_string_field(object, &["expires_in", "expiresIn"])
+                    .and_then(|raw| raw.parse::<i64>().ok())
+                    .unwrap_or(3600);
+                base_ms + (ttl_sec * 1000)
+            };
+
+            let mut out = serde_json::Map::new();
+            out.insert("accessToken".to_string(), Value::String(access_token));
+            out.insert(
+                "expiresAtMs".to_string(),
+                Value::Number(serde_json::Number::from(expires_at_ms)),
+            );
+            if let Some(refresh_token) = refresh_token {
+                out.insert("refreshToken".to_string(), Value::String(refresh_token));
+            }
+            if let Some(project_id) = read_string_field(object, &["project_id", "projectId"]) {
+                out.insert("projectId".to_string(), Value::String(project_id));
+            }
+            if let Some(email) = read_string_field(object, &["email"]) {
+                out.insert("email".to_string(), Value::String(email));
+            }
+
+            serde_json::to_string(&Value::Object(out))
+                .map_err(|e| format!("failed to serialize transformed antigravity auth: {}", e))
+        }
+        _ => Err("unsupported provider for credential overlay".to_string()),
+    }
+}
+
+fn prepare_credential_overlay(
+    plugin_id: &str,
+    selection: &str,
+    app_data_dir: &PathBuf,
+    config: &cliproxyapi::CliProxyConfig,
+    auth_files: &[cliproxyapi::CliProxyAuthFile],
+    cache: &Arc<Mutex<HashMap<String, String>>>,
+) -> Option<PreparedCredentialOverlay> {
+    if !supports_credential_overlay(plugin_id) {
+        return None;
+    }
+
+    let selected = selection.trim();
+    if selected.is_empty() {
+        return None;
+    }
+
+    let cache_key = format!(
+        "{}::{}::{}",
+        plugin_id,
+        selected,
+        config_cache_fingerprint(config)
+    );
+    let transformed = if let Ok(locked) = cache.lock() {
+        locked.get(&cache_key).cloned()
+    } else {
+        None
+    };
+
+    let transformed = match transformed {
+        Some(cached) => cached,
+        None => {
+            let auth_file = auth_files.iter().find(|entry| {
+                let auth_index = entry.auth_index.as_deref().unwrap_or("");
+                entry.id == selected || entry.name == selected || auth_index == selected
+            })?;
+
+            if auth_file.disabled || auth_file.unavailable {
+                log::warn!(
+                    "CLIProxyAPI auth file not usable for {}: {}",
+                    plugin_id,
+                    auth_file.name
+                );
+                return None;
+            }
+
+            if !provider_matches_plugin(plugin_id, &auth_file.provider) {
+                log::warn!(
+                    "CLIProxyAPI auth file provider mismatch for {}: {}",
+                    plugin_id,
+                    auth_file.provider
+                );
+                return None;
+            }
+
+            let raw = match cliproxyapi::download_auth_file_by_name(config, &auth_file.name) {
+                Ok(raw) => raw,
+                Err(err) => {
+                    log::warn!(
+                        "CLIProxyAPI download failed for {} ({}): {}",
+                        plugin_id,
+                        auth_file.name,
+                        err
+                    );
+                    return None;
+                }
+            };
+
+            let transformed = match transform_auth_payload_for_plugin(plugin_id, &raw) {
+                Ok(transformed) => transformed,
+                Err(err) => {
+                    log::warn!(
+                        "CLIProxyAPI transform failed for {} ({}): {}",
+                        plugin_id,
+                        auth_file.name,
+                        err
+                    );
+                    return None;
+                }
+            };
+
+            if let Ok(mut locked) = cache.lock() {
+                locked.insert(cache_key.clone(), transformed.clone());
+            }
+
+            transformed
+        }
+    };
+
+    let target_paths = credential_target_paths(plugin_id, app_data_dir);
+    if target_paths.is_empty() {
+        return None;
+    }
+
+    let mut overlay_map = HashMap::new();
+    for path in target_paths {
+        overlay_map.insert(path, transformed.clone());
+    }
+
+    Some(PreparedCredentialOverlay {
+        overlay: Arc::new(Mutex::new(overlay_map)),
+        cache_key: Some(cache_key),
+    })
+}
+
+fn config_cache_fingerprint(config: &cliproxyapi::CliProxyConfig) -> String {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    config.api_key.hash(&mut hasher);
+    let key_hash = hasher.finish();
+    format!("{}::{:016x}", config.base_url, key_hash)
+}
+
+fn plugin_error_output(
+    plugin: &plugin_engine::manifest::LoadedPlugin,
+    message: impl Into<String>,
+) -> plugin_engine::runtime::PluginOutput {
+    plugin_engine::runtime::PluginOutput {
+        provider_id: plugin.manifest.id.clone(),
+        display_name: plugin.manifest.name.clone(),
+        plan: None,
+        lines: vec![plugin_engine::runtime::MetricLine::Badge {
+            label: "Error".to_string(),
+            text: message.into(),
+            color: Some("#ef4444".to_string()),
+            subtitle: None,
+        }],
+        icon_url: plugin.icon_data_url.clone(),
+    }
+}
+
+fn persist_overlay_back_to_cache(
+    plugin_id: &str,
+    app_data_dir: &PathBuf,
+    prepared: &PreparedCredentialOverlay,
+    cache: &Arc<Mutex<HashMap<String, String>>>,
+) {
+    let Some(cache_key) = prepared.cache_key.as_ref() else {
+        return;
+    };
+
+    let target_paths = credential_target_paths(plugin_id, app_data_dir);
+    if target_paths.is_empty() {
+        return;
+    }
+
+    let latest = {
+        let Ok(overlay_locked) = prepared.overlay.lock() else {
+            return;
+        };
+
+        let mut found: Option<String> = None;
+        for path in &target_paths {
+            let expanded = expand_path(path);
+            if let Some(value) = overlay_locked
+                .get(&expanded)
+                .or_else(|| overlay_locked.get(path))
+            {
+                found = Some(value.clone());
+                break;
+            }
+        }
+        found
+    };
+
+    let Some(latest) = latest else {
+        return;
+    };
+
+    if let Ok(mut cache_locked) = cache.lock() {
+        cache_locked.insert(cache_key.clone(), latest);
+    }
+}
+
 #[tauri::command]
 fn init_panel(app_handle: tauri::AppHandle) {
     panel::init(&app_handle).expect("Failed to initialize panel");
@@ -171,6 +605,7 @@ async fn start_probe_batch(
     state: tauri::State<'_, Mutex<AppState>>,
     batch_id: Option<String>,
     plugin_ids: Option<Vec<String>>,
+    account_selections: Option<HashMap<String, String>>,
 ) -> Result<ProbeBatchStarted, String> {
     let batch_id = batch_id
         .and_then(|id| {
@@ -183,12 +618,13 @@ async fn start_probe_batch(
         })
         .unwrap_or_else(|| Uuid::new_v4().to_string());
 
-    let (plugins, app_data_dir, app_version) = {
+    let (plugins, app_data_dir, app_version, cliproxy_credential_cache) = {
         let locked = state.lock().map_err(|e| e.to_string())?;
         (
             locked.plugins.clone(),
             locked.app_data_dir.clone(),
             locked.app_version.clone(),
+            locked.cliproxy_credential_cache.clone(),
         )
     };
 
@@ -235,6 +671,80 @@ async fn start_probe_batch(
         });
     }
 
+    let mut prepared_overlays: HashMap<String, PreparedCredentialOverlay> = HashMap::new();
+    let mut overlay_errors: HashMap<String, String> = HashMap::new();
+    if let Some(selections) = account_selections.as_ref() {
+        if !selections.is_empty() {
+            match cliproxyapi::load_config() {
+                Ok(Some(config)) => match cliproxyapi::list_auth_files_with_config(&config) {
+                    Ok(auth_files) => {
+                        for plugin in &selected_plugins {
+                            let plugin_id = plugin.manifest.id.as_str();
+                            let Some(selection) = selections.get(plugin_id) else {
+                                continue;
+                            };
+
+                            if let Some(prepared) = prepare_credential_overlay(
+                                plugin_id,
+                                selection,
+                                &app_data_dir,
+                                &config,
+                                &auth_files,
+                                &cliproxy_credential_cache,
+                            ) {
+                                prepared_overlays.insert(plugin_id.to_string(), prepared);
+                            } else {
+                                overlay_errors.insert(
+                                    plugin_id.to_string(),
+                                    "Failed to load selected CLIProxy account. Verify selection and credentials."
+                                        .to_string(),
+                                );
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        log::warn!("CLIProxyAPI auth-files fetch failed: {}", err);
+                        for plugin in &selected_plugins {
+                            let plugin_id = plugin.manifest.id.as_str();
+                            if selections.contains_key(plugin_id) {
+                                overlay_errors.insert(
+                                    plugin_id.to_string(),
+                                    "Failed to load CLIProxy account list. Check CLIProxyAPI connection."
+                                        .to_string(),
+                                );
+                            }
+                        }
+                    }
+                },
+                Ok(None) => {
+                    for plugin in &selected_plugins {
+                        let plugin_id = plugin.manifest.id.as_str();
+                        if selections.contains_key(plugin_id) {
+                            overlay_errors.insert(
+                                plugin_id.to_string(),
+                                "CLIProxyAPI is not configured. Select Local account or configure CLIProxyAPI."
+                                    .to_string(),
+                            );
+                        }
+                    }
+                }
+                Err(err) => {
+                    log::warn!("CLIProxyAPI config read failed: {}", err);
+                    for plugin in &selected_plugins {
+                        let plugin_id = plugin.manifest.id.as_str();
+                        if selections.contains_key(plugin_id) {
+                            overlay_errors.insert(
+                                plugin_id.to_string(),
+                                "Failed to read CLIProxyAPI config. Select Local account or reconfigure CLIProxyAPI."
+                                    .to_string(),
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     let remaining = Arc::new(AtomicUsize::new(selected_plugins.len()));
     for plugin in selected_plugins {
         let handle = app_handle.clone();
@@ -244,12 +754,28 @@ async fn start_probe_batch(
         let data_dir = app_data_dir.clone();
         let version = app_version.clone();
         let counter = Arc::clone(&remaining);
+        let prepared_overlay = prepared_overlays.get(&plugin.manifest.id).cloned();
+        let overlay_error = overlay_errors.get(&plugin.manifest.id).cloned();
+        let overlay_cache = cliproxy_credential_cache.clone();
 
         tauri::async_runtime::spawn_blocking(move || {
             let plugin_id = plugin.manifest.id.clone();
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                plugin_engine::runtime::run_probe(&plugin, &data_dir, &version)
+                if let Some(message) = overlay_error.clone() {
+                    return plugin_error_output(&plugin, message);
+                }
+
+                let options = plugin_engine::runtime::RunProbeOptions {
+                    credential_overlay: prepared_overlay
+                        .as_ref()
+                        .map(|prepared| prepared.overlay.clone()),
+                };
+                plugin_engine::runtime::run_probe(&plugin, &data_dir, &version, options)
             }));
+
+            if let Some(prepared) = prepared_overlay.as_ref() {
+                persist_overlay_back_to_cache(&plugin_id, &data_dir, prepared, &overlay_cache);
+            }
 
             match result {
                 Ok(output) => {
@@ -259,9 +785,19 @@ async fn start_probe_batch(
                     if has_error {
                         log::warn!("probe {} completed with error", plugin_id);
                     } else {
-                        log::info!("probe {} completed ok ({} lines)", plugin_id, output.lines.len());
+                        log::info!(
+                            "probe {} completed ok ({} lines)",
+                            plugin_id,
+                            output.lines.len()
+                        );
                     }
-                    let _ = handle.emit("probe:result", ProbeResult { batch_id: bid, output });
+                    let _ = handle.emit(
+                        "probe:result",
+                        ProbeResult {
+                            batch_id: bid,
+                            output,
+                        },
+                    );
                 }
                 Err(_) => {
                     log::error!("probe {} panicked", plugin_id);
@@ -296,11 +832,39 @@ fn get_log_path(app_handle: tauri::AppHandle) -> Result<String, String> {
     Ok(log_file.to_string_lossy().to_string())
 }
 
+#[tauri::command]
+fn cliproxyapi_get_status() -> cliproxyapi::CliProxyConfigStatus {
+    cliproxyapi::get_status()
+}
+
+#[tauri::command]
+fn cliproxyapi_get_config() -> Result<cliproxyapi::CliProxyConfigView, String> {
+    cliproxyapi::get_config_view()
+}
+
+#[tauri::command]
+fn cliproxyapi_set_config(base_url: String, api_key: String) -> Result<(), String> {
+    cliproxyapi::set_config(base_url, api_key)
+}
+
+#[tauri::command]
+fn cliproxyapi_clear_config() -> Result<(), String> {
+    cliproxyapi::clear_config()
+}
+
+#[tauri::command]
+fn cliproxyapi_list_auth_files() -> Result<Vec<cliproxyapi::CliProxyAuthFile>, String> {
+    cliproxyapi::list_auth_files()
+}
+
 /// Update the global shortcut registration.
 /// Pass `null` to disable the shortcut, or a shortcut string like "CommandOrControl+Shift+U".
 #[cfg(desktop)]
 #[tauri::command]
-fn update_global_shortcut(app_handle: tauri::AppHandle, shortcut: Option<String>) -> Result<(), String> {
+fn update_global_shortcut(
+    app_handle: tauri::AppHandle,
+    shortcut: Option<String>,
+) -> Result<(), String> {
     let global_shortcut = app_handle.global_shortcut();
     let normalized_shortcut = shortcut.and_then(|value| {
         let trimmed = value.trim().to_string();
@@ -327,7 +891,11 @@ fn update_global_shortcut(app_handle: tauri::AppHandle, shortcut: Option<String>
                 *managed_shortcut = None;
             }
             Err(e) => {
-                log::warn!("Failed to unregister existing shortcut '{}': {}", existing, e);
+                log::warn!(
+                    "Failed to unregister existing shortcut '{}': {}",
+                    existing,
+                    e
+                );
             }
         }
     }
@@ -433,6 +1001,11 @@ pub fn run() {
             start_probe_batch,
             list_plugins,
             get_log_path,
+            cliproxyapi_get_status,
+            cliproxyapi_get_config,
+            cliproxyapi_set_config,
+            cliproxyapi_clear_config,
+            cliproxyapi_list_auth_files,
             update_global_shortcut
         ])
         .setup(|app| {
@@ -461,11 +1034,13 @@ pub fn run() {
                 plugins,
                 app_data_dir,
                 app_version: app.package_info().version.to_string(),
+                cliproxy_credential_cache: Arc::new(Mutex::new(HashMap::new())),
             }));
 
             tray::create(app.handle())?;
 
-            app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
+            app.handle()
+                .plugin(tauri_plugin_updater::Builder::new().build())?;
 
             // Register global shortcut from stored settings
             #[cfg(desktop)]
@@ -486,7 +1061,8 @@ pub fn run() {
                                     },
                                 ) {
                                     log::warn!("Failed to register initial global shortcut: {}", e);
-                                } else if let Ok(mut managed_shortcut) = managed_shortcut_slot().lock()
+                                } else if let Ok(mut managed_shortcut) =
+                                    managed_shortcut_slot().lock()
                                 {
                                     *managed_shortcut = Some(shortcut.to_string());
                                 } else {
