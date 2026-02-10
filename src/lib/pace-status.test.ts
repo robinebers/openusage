@@ -80,4 +80,16 @@ describe("pace-status", () => {
     const result = calculatePaceStatus(60, 100, resetsAtMs, ONE_DAY_MS, nowMs)
     expect(result).toEqual({ status: "behind", projectedUsage: 120 })
   })
+
+  it("keeps 80% projected usage in ahead status", () => {
+    const { resetsAtMs, nowMs } = midPeriodNowAndReset()
+    const result = calculatePaceStatus(40, 100, resetsAtMs, ONE_DAY_MS, nowMs)
+    expect(result).toEqual({ status: "ahead", projectedUsage: 80 })
+  })
+
+  it("keeps 100% projected usage in on-track status", () => {
+    const { resetsAtMs, nowMs } = midPeriodNowAndReset()
+    const result = calculatePaceStatus(50, 100, resetsAtMs, ONE_DAY_MS, nowMs)
+    expect(result).toEqual({ status: "on-track", projectedUsage: 100 })
+  })
 })

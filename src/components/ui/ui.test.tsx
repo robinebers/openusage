@@ -54,6 +54,50 @@ describe("ui components", () => {
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "0")
   })
 
+  it("renders and clamps pace marker on progress bars", () => {
+    const { container, rerender } = render(
+      <Progress value={25} markerValue={120} markerColor="#22c55e" />
+    )
+    let marker = container.querySelector<HTMLElement>('[data-slot="progress-marker"]')
+    expect(marker).toBeTruthy()
+    expect(marker?.style.left).toBe("100%")
+    expect(marker?.style.transform).toBe("translateX(-100%)")
+
+    rerender(<Progress value={25} markerValue={-10} markerColor="#ef4444" />)
+    marker = container.querySelector<HTMLElement>('[data-slot="progress-marker"]')
+    expect(marker).toBeTruthy()
+    expect(marker?.style.left).toBe("0%")
+    expect(marker?.style.transform).toBe("translateX(0)")
+
+    rerender(<Progress value={25} markerValue={50} markerColor="#ef4444" />)
+    marker = container.querySelector<HTMLElement>('[data-slot="progress-marker"]')
+    expect(marker).toBeTruthy()
+    expect(marker?.style.left).toBe("50%")
+    expect(marker?.style.transform).toBe("translateX(-50%)")
+
+    rerender(<Progress value={25} markerValue={1} markerColor="#ef4444" />)
+    marker = container.querySelector<HTMLElement>('[data-slot="progress-marker"]')
+    expect(marker).toBeTruthy()
+    expect(marker?.style.left).toBe("1%")
+
+    rerender(<Progress value={25} markerValue={99} markerColor="#ef4444" />)
+    marker = container.querySelector<HTMLElement>('[data-slot="progress-marker"]')
+    expect(marker).toBeTruthy()
+    expect(marker?.style.left).toBe("99%")
+
+    rerender(<Progress value={0} markerValue={50} markerColor="#ef4444" />)
+    marker = container.querySelector<HTMLElement>('[data-slot="progress-marker"]')
+    expect(marker).toBeNull()
+
+    rerender(<Progress value={100} markerValue={50} markerColor="#ef4444" />)
+    marker = container.querySelector<HTMLElement>('[data-slot="progress-marker"]')
+    expect(marker).toBeNull()
+
+    rerender(<Progress value={25} markerValue={Number.NaN} markerColor="#ef4444" />)
+    marker = container.querySelector<HTMLElement>('[data-slot="progress-marker"]')
+    expect(marker).toBeNull()
+  })
+
   it("renders separator orientations", () => {
     const { rerender } = render(<Separator />)
     expect(screen.getByRole("separator")).toBeInTheDocument()
