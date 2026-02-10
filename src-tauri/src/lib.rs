@@ -223,37 +223,6 @@ fn get_log_path(app_handle: tauri::AppHandle) -> Result<String, String> {
     Ok(log_file.to_string_lossy().to_string())
 }
 
-/// Check if the app has accessibility permission on macOS.
-/// Returns true if granted, false if not granted.
-#[cfg(target_os = "macos")]
-#[tauri::command]
-fn check_accessibility_permission() -> bool {
-    macos_accessibility_client::accessibility::application_is_trusted()
-}
-
-/// Request accessibility permission on macOS.
-/// This will show the system permission dialog if not already granted.
-/// Returns true if permission was granted (or already granted), false otherwise.
-#[cfg(target_os = "macos")]
-#[tauri::command]
-fn request_accessibility_permission() -> bool {
-    macos_accessibility_client::accessibility::application_is_trusted_with_prompt()
-}
-
-/// Open the macOS System Settings > Privacy & Security > Accessibility panel.
-#[cfg(target_os = "macos")]
-#[tauri::command]
-fn open_accessibility_settings() {
-    use objc2_foundation::NSURL;
-    use objc2_app_kit::NSWorkspace;
-
-    let url_string = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";
-    if let Some(url) = NSURL::URLWithString(&objc2_foundation::NSString::from_str(url_string)) {
-        let workspace = NSWorkspace::sharedWorkspace();
-        let _ = workspace.openURL(&url);
-    }
-}
-
 /// Update the global shortcut registration.
 /// Pass `null` to disable the shortcut, or a shortcut string like "CommandOrControl+Shift+U".
 #[cfg(desktop)]
@@ -362,13 +331,7 @@ pub fn run() {
             start_probe_batch,
             list_plugins,
             get_log_path,
-            update_global_shortcut,
-            #[cfg(target_os = "macos")]
-            check_accessibility_permission,
-            #[cfg(target_os = "macos")]
-            request_accessibility_permission,
-            #[cfg(target_os = "macos")]
-            open_accessibility_settings
+            update_global_shortcut
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]

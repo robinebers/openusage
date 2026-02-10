@@ -44,4 +44,3 @@ objc2 = "0.6"
 objc2-foundation = { version = "0.3", features = ["NSProcessInfo", "NSString", "NSURL", "NSFileManager"] }
 objc2-app-kit = { version = "0.3", features = ["NSWorkspace"] }
 objc2-web-kit = { version = "0.3", features = ["WKPreferences", "WKWebView", "WKWebViewConfiguration"] }
-macos-accessibility-client = "0.0.1"

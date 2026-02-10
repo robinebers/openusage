@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { invoke, isTauri } from "@tauri-apps/api/core"
-import { X, AlertTriangle } from "lucide-react"
+import { X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { GlobalShortcut } from "@/lib/settings"
 
@@ -143,33 +142,6 @@ function buildShortcutFromCodes(codes: Set<string>): { display: string; tauri: s
   return { display, tauri }
 }
 
-async function checkAccessibilityPermission(): Promise<boolean> {
-  if (!isTauri()) return true // Always granted in web context
-  try {
-    return await invoke<boolean>("check_accessibility_permission")
-  } catch {
-    return true // Assume granted if command fails (non-macOS)
-  }
-}
-
-async function requestAccessibilityPermission(): Promise<boolean> {
-  if (!isTauri()) return true
-  try {
-    return await invoke<boolean>("request_accessibility_permission")
-  } catch {
-    return true
-  }
-}
-
-async function openAccessibilitySettings(): Promise<void> {
-  if (!isTauri()) return
-  try {
-    await invoke("open_accessibility_settings")
-  } catch {
-    // Ignore errors on non-macOS platforms
-  }
-}
-
 interface GlobalShortcutSectionProps {
   globalShortcut: GlobalShortcut
   onGlobalShortcutChange: (value: GlobalShortcut) => void
@@ -180,22 +152,12 @@ export function GlobalShortcutSection({
   onGlobalShortcutChange,
 }: GlobalShortcutSectionProps) {
   const [isRecording, setIsRecording] = useState(false)
-  const [hasAccessibilityPermission, setHasAccessibilityPermission] = useState<boolean | null>(null)
   // Track pressed keys using event.code (physical key location)
   const pressedCodesRef = useRef<Set<string>>(new Set())
   const [pendingShortcut, setPendingShortcut] = useState<string | null>(null)
   const [pendingDisplay, setPendingDisplay] = useState<string>("")
   // Ref for the recording input to focus it properly
   const recordingRef = useRef<HTMLDivElement>(null)
-
-  // Check accessibility permission when shortcut is set
-  useEffect(() => {
-    if (globalShortcut) {
-      checkAccessibilityPermission().then(setHasAccessibilityPermission)
-    } else {
-      setHasAccessibilityPermission(null)
-    }
-  }, [globalShortcut])
 
   // Focus the recording element after it mounts
   useEffect(() => {
@@ -208,11 +170,7 @@ export function GlobalShortcutSection({
     }
   }, [isRecording])
 
-  const startRecording = async () => {
-    // Check and request accessibility permission before recording
-    const hasPermission = await requestAccessibilityPermission()
-    setHasAccessibilityPermission(hasPermission)
-
+  const startRecording = () => {
     setIsRecording(true)
     pressedCodesRef.current = new Set()
     setPendingShortcut(null)
@@ -272,11 +230,6 @@ export function GlobalShortcutSection({
     stopRecording()
   }
 
-  const handleOpenSettings = async (e: React.MouseEvent) => {
-    e.preventDefault()
-    await openAccessibilitySettings()
-  }
-
   // Display value logic
   const getDisplayValue = (): string => {
     if (isRecording) {
@@ -287,7 +240,6 @@ export function GlobalShortcutSection({
   }
 
   const hasShortcut = globalShortcut !== null
-  const showPermissionWarning = hasShortcut && hasAccessibilityPermission === false
 
   return (
     <section>
@@ -338,25 +290,6 @@ export function GlobalShortcutSection({
             ) : (
               <span className="ml-auto text-xs text-muted-foreground">Click to set</span>
             )}
-          </div>
-        )}
-
-        {showPermissionWarning && (
-          <div className="flex items-start gap-2 p-2 text-xs rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400">
-            <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
-            <div className="min-w-0">
-              <p className="font-medium">Accessibility permission required</p>
-              <p className="mt-1 text-amber-600 dark:text-amber-500">
-                <button
-                  type="button"
-                  onClick={handleOpenSettings}
-                  className="underline hover:no-underline cursor-pointer"
-                >
-                  Open System Settings
-                </button>
-                {" "}and enable OpenUsage.
-              </p>
-            </div>
           </div>
         )}
       </div>
