@@ -42,6 +42,24 @@ describe("PanelFooter", () => {
     expect(screen.getByText("Next update in 30s")).toBeTruthy()
   })
 
+  it("triggers refresh when clicking countdown label", async () => {
+    const futureTime = Date.now() + 5 * 60 * 1000 // 5 minutes from now
+    const onRefreshAll = vi.fn()
+    render(
+      <PanelFooter
+        version="0.0.0"
+        autoUpdateNextAt={futureTime}
+        updateStatus={idle}
+        onUpdateInstall={noop}
+        onRefreshAll={onRefreshAll}
+        {...footerProps}
+      />
+    )
+    const button = screen.getByRole("button", { name: /Next update in/i })
+    await userEvent.click(button)
+    expect(onRefreshAll).toHaveBeenCalledTimes(1)
+  })
+
   it("shows Paused when autoUpdateNextAt is null", () => {
     render(
       <PanelFooter
