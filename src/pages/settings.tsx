@@ -22,12 +22,14 @@ import { GlobalShortcutSection } from "@/components/global-shortcut-section";
 import {
   AUTO_UPDATE_OPTIONS,
   DISPLAY_MODE_OPTIONS,
+  RESET_TIMER_DISPLAY_OPTIONS,
   TRAY_ICON_STYLE_OPTIONS,
   THEME_OPTIONS,
   isTrayPercentageMandatory,
   type AutoUpdateIntervalMinutes,
   type DisplayMode,
   type GlobalShortcut,
+  type ResetTimerDisplayMode,
   type ThemeMode,
   type TrayIconStyle,
 } from "@/lib/settings";
@@ -267,6 +269,8 @@ interface SettingsPageProps {
   onThemeModeChange: (value: ThemeMode) => void;
   displayMode: DisplayMode;
   onDisplayModeChange: (value: DisplayMode) => void;
+  resetTimerDisplayMode: ResetTimerDisplayMode;
+  onResetTimerDisplayModeChange: (value: ResetTimerDisplayMode) => void;
   trayIconStyle: TrayIconStyle;
   onTrayIconStyleChange: (value: TrayIconStyle) => void;
   trayShowPercentage: boolean;
@@ -286,6 +290,8 @@ export function SettingsPage({
   onThemeModeChange,
   displayMode,
   onDisplayModeChange,
+  resetTimerDisplayMode,
+  onResetTimerDisplayModeChange,
   trayIconStyle,
   onTrayIconStyleChange,
   trayShowPercentage,
@@ -368,6 +374,46 @@ export function SettingsPage({
                   onClick={() => onDisplayModeChange(option.value)}
                 >
                   {option.label}
+                </Button>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+      <section>
+        <h3 className="text-lg font-semibold mb-0">Reset Timers</h3>
+        <p className="text-sm text-muted-foreground mb-2">
+          Countdown or clock time
+        </p>
+        <div className="bg-muted/50 rounded-lg p-1">
+          <div className="flex gap-1" role="radiogroup" aria-label="Reset timer display mode">
+            {RESET_TIMER_DISPLAY_OPTIONS.map((option) => {
+              const isActive = option.value === resetTimerDisplayMode;
+              const absoluteTimeExample = new Intl.DateTimeFormat(undefined, {
+                hour: "numeric",
+                minute: "2-digit",
+              }).format(new Date(2026, 1, 2, 11, 4));
+              const example = option.value === "relative" ? "5h 12m" : `today at ${absoluteTimeExample}`;
+              return (
+                <Button
+                  key={option.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={isActive}
+                  variant={isActive ? "default" : "outline"}
+                  size="sm"
+                  className="flex-1 flex flex-col items-center gap-0 py-2 h-auto"
+                  onClick={() => onResetTimerDisplayModeChange(option.value)}
+                >
+                  <span>{option.label}</span>
+                  <span
+                    className={cn(
+                      "text-xs font-normal",
+                      isActive ? "text-primary-foreground/80" : "text-muted-foreground"
+                    )}
+                  >
+                    {example}
+                  </span>
                 </Button>
               );
             })}

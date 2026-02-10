@@ -8,7 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { SkeletonLines } from "@/components/skeleton-lines"
 import { PluginError } from "@/components/plugin-error"
 import { useNowTicker } from "@/hooks/use-now-ticker"
-import { REFRESH_COOLDOWN_MS, type DisplayMode } from "@/lib/settings"
+import { REFRESH_COOLDOWN_MS, type DisplayMode, type ResetTimerDisplayMode } from "@/lib/settings"
 import type { ManifestLine, MetricLine } from "@/lib/plugin-types"
 import { clamp01 } from "@/lib/utils"
 import { calculatePaceStatus, type PaceStatus } from "@/lib/pace-status"
@@ -26,6 +26,8 @@ interface ProviderCardProps {
   onRetry?: () => void
   scopeFilter?: "overview" | "all"
   displayMode: DisplayMode
+  resetTimerDisplayMode?: ResetTimerDisplayMode
+  onResetTimerDisplayModeToggle?: () => void
 }
 
 export function formatNumber(value: number) {
@@ -37,19 +39,70 @@ export function formatNumber(value: number) {
   }).format(value)
 }
 
+const PACE_VISUALS: Record<PaceStatus, { dotClass: string; markerColor: string }> = {
+  ahead: { dotClass: "bg-green-500", markerColor: "#22c55e" },
+  "on-track": { dotClass: "bg-yellow-500", markerColor: "#eab308" },
+  behind: { dotClass: "bg-red-500", markerColor: "#ef4444" },
+}
+
 function formatCount(value: number) {
   if (!Number.isFinite(value)) return "0"
   const maximumFractionDigits = Number.isInteger(value) ? 0 : 2
   return new Intl.NumberFormat("en-US", { maximumFractionDigits }).format(value)
 }
 
+const RESET_SOON_THRESHOLD_MS = 5 * 60 * 1000
+
 function formatResetIn(nowMs: number, resetsAtIso: string): string | null {
   const resetsAtMs = Date.parse(resetsAtIso)
   if (!Number.isFinite(resetsAtMs)) return null
   const deltaMs = resetsAtMs - nowMs
-  if (deltaMs <= 0) return "Resets now"
+  if (deltaMs < RESET_SOON_THRESHOLD_MS) return "Resets soon"
   const durationText = formatCompactDuration(deltaMs)
   return durationText ? `Resets in ${durationText}` : "Resets in <1m"
+}
+
+const RESET_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  hour: "numeric",
+  minute: "2-digit",
+})
+
+const RESET_MONTH_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+})
+
+function getLocalDayIndex(timestampMs: number): number {
+  const date = new Date(timestampMs)
+  return Math.floor(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86_400_000)
+}
+
+function getEnglishOrdinalSuffix(day: number): string {
+  const mod100 = day % 100
+  if (mod100 >= 11 && mod100 <= 13) return "th"
+  const mod10 = day % 10
+  if (mod10 === 1) return "st"
+  if (mod10 === 2) return "nd"
+  if (mod10 === 3) return "rd"
+  return "th"
+}
+
+function formatMonthDayWithOrdinal(timestampMs: number): string {
+  const date = new Date(timestampMs)
+  const monthText = RESET_MONTH_FORMATTER.format(date)
+  const day = date.getDate()
+  return `${monthText} ${day}${getEnglishOrdinalSuffix(day)}`
+}
+
+function formatResetAt(nowMs: number, resetsAtIso: string): string | null {
+  const resetsAtMs = Date.parse(resetsAtIso)
+  if (!Number.isFinite(resetsAtMs)) return null
+  if (resetsAtMs - nowMs <= 0) return "Resets soon"
+  const dayDiff = getLocalDayIndex(resetsAtMs) - getLocalDayIndex(nowMs)
+  const timeText = RESET_TIME_FORMATTER.format(resetsAtMs)
+  if (dayDiff <= 0) return `Resets today at ${timeText}`
+  if (dayDiff === 1) return `Resets tomorrow at ${timeText}`
+  const dateText = formatMonthDayWithOrdinal(resetsAtMs)
+  return `Resets ${dateText} at ${timeText}`
 }
 
 /** Colored dot indicator showing pace status */
@@ -62,12 +115,7 @@ function PaceIndicator({
   detailText?: string | null
   isLimitReached?: boolean
 }) {
-  const colorClass =
-    status === "ahead"
-      ? "bg-green-500"
-      : status === "on-track"
-        ? "bg-yellow-500"
-        : "bg-red-500"
+  const colorClass = PACE_VISUALS[status].dotClass
 
   const statusText = getPaceStatusText(status)
 
@@ -108,6 +156,8 @@ export function ProviderCard({
   onRetry,
   scopeFilter = "all",
   displayMode,
+  resetTimerDisplayMode = "relative",
+  onResetTimerDisplayModeToggle,
 }: ProviderCardProps) {
   const cooldownRemainingMs = useMemo(() => {
     if (!lastManualRefreshAt) return 0
@@ -235,6 +285,8 @@ export function ProviderCard({
                 key={`${line.label}-${index}`}
                 line={line}
                 displayMode={displayMode}
+                resetTimerDisplayMode={resetTimerDisplayMode}
+                onResetTimerDisplayModeToggle={onResetTimerDisplayModeToggle}
                 now={now}
               />
             ))}
@@ -249,10 +301,14 @@ export function ProviderCard({
 function MetricLineRenderer({
   line,
   displayMode,
+  resetTimerDisplayMode,
+  onResetTimerDisplayModeToggle,
   now,
 }: {
   line: MetricLine
   displayMode: DisplayMode
+  resetTimerDisplayMode: ResetTimerDisplayMode
+  onResetTimerDisplayModeToggle?: () => void
   now: number
 }) {
   if (line.type === "text") {
@@ -317,20 +373,32 @@ function MetricLineRenderer({
           ? `$${formatNumber(shownAmount)}${leftSuffix}`
           : `${formatCount(shownAmount)} ${line.format.suffix}${leftSuffix}`
 
+    const resetLabel = line.resetsAt
+      ? resetTimerDisplayMode === "absolute"
+        ? formatResetAt(now, line.resetsAt)
+        : formatResetIn(now, line.resetsAt)
+      : null
+
     const secondaryText =
-      line.resetsAt
-        ? formatResetIn(now, line.resetsAt)
-        : line.format.kind === "percent"
-          ? `${line.limit}% cap`
-          : line.format.kind === "dollars"
-            ? `$${formatNumber(line.limit)} limit`
-            : `${formatCount(line.limit)} ${line.format.suffix}`
+      resetLabel ??
+      (line.format.kind === "percent"
+        ? `${line.limit}% cap`
+        : line.format.kind === "dollars"
+          ? `$${formatNumber(line.limit)} limit`
+          : `${formatCount(line.limit)} ${line.format.suffix}`)
 
     // Calculate pace status if we have reset time and period duration
     const paceResult = hasPaceContext
       ? calculatePaceStatus(line.used, line.limit, resetsAtMs, line.periodDurationMs!, now)
       : null
     const paceStatus = paceResult?.status ?? null
+    const paceMarkerValue = paceResult && paceStatus
+      ? (() => {
+          const projectedUsedPercent = Math.max(0, Math.min(100, (paceResult.projectedUsage / line.limit) * 100))
+          return displayMode === "used" ? projectedUsedPercent : 100 - projectedUsedPercent
+        })()
+      : undefined
+    const paceMarkerColor = paceStatus ? PACE_VISUALS[paceStatus].markerColor : undefined
     const isLimitReached = line.used >= line.limit
     const paceDetailText =
       hasPaceContext && !isLimitReached
@@ -356,15 +424,27 @@ function MetricLineRenderer({
         <Progress
           value={percent}
           indicatorColor={line.color}
+          markerValue={paceMarkerValue}
+          markerColor={paceMarkerColor}
         />
         <div className="flex justify-between items-center mt-1.5">
           <span className="text-xs text-muted-foreground tabular-nums">
             {primaryText}
           </span>
           {secondaryText && (
-            <span className="text-xs text-muted-foreground">
-              {secondaryText}
-            </span>
+            resetLabel && onResetTimerDisplayModeToggle ? (
+              <button
+                type="button"
+                onClick={onResetTimerDisplayModeToggle}
+                className="text-xs text-muted-foreground tabular-nums hover:text-foreground transition-colors"
+              >
+                {secondaryText}
+              </button>
+            ) : (
+              <span className="text-xs text-muted-foreground">
+                {secondaryText}
+              </span>
+            )
           )}
         </div>
       </div>

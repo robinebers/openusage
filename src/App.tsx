@@ -21,15 +21,18 @@ import {
   DEFAULT_AUTO_UPDATE_INTERVAL,
   DEFAULT_DISPLAY_MODE,
   DEFAULT_GLOBAL_SHORTCUT,
+  DEFAULT_RESET_TIMER_DISPLAY_MODE,
   DEFAULT_TRAY_ICON_STYLE,
   DEFAULT_TRAY_SHOW_PERCENTAGE,
   DEFAULT_THEME_MODE,
+  REFRESH_COOLDOWN_MS,
   getEnabledPluginIds,
   isTrayPercentageMandatory,
   loadAutoUpdateInterval,
   loadDisplayMode,
   loadGlobalShortcut,
   loadPluginSettings,
+  loadResetTimerDisplayMode,
   loadTrayShowPercentage,
   loadTrayIconStyle,
   loadThemeMode,
@@ -38,6 +41,7 @@ import {
   saveDisplayMode,
   saveGlobalShortcut,
   savePluginSettings,
+  saveResetTimerDisplayMode,
   saveTrayShowPercentage,
   saveTrayIconStyle,
   saveThemeMode,
@@ -45,6 +49,7 @@ import {
   type DisplayMode,
   type GlobalShortcut,
   type PluginSettings,
+  type ResetTimerDisplayMode,
   type TrayIconStyle,
   type ThemeMode,
 } from "@/lib/settings"
@@ -78,6 +83,9 @@ function App() {
   const [autoUpdateResetToken, setAutoUpdateResetToken] = useState(0)
   const [themeMode, setThemeMode] = useState<ThemeMode>(DEFAULT_THEME_MODE)
   const [displayMode, setDisplayMode] = useState<DisplayMode>(DEFAULT_DISPLAY_MODE)
+  const [resetTimerDisplayMode, setResetTimerDisplayMode] = useState<ResetTimerDisplayMode>(
+    DEFAULT_RESET_TIMER_DISPLAY_MODE
+  )
   const [trayIconStyle, setTrayIconStyle] = useState<TrayIconStyle>(DEFAULT_TRAY_ICON_STYLE)
   const [trayShowPercentage, setTrayShowPercentage] = useState(DEFAULT_TRAY_SHOW_PERCENTAGE)
   const [globalShortcut, setGlobalShortcut] = useState<GlobalShortcut>(DEFAULT_GLOBAL_SHORTCUT)
@@ -85,7 +93,7 @@ function App() {
   const maxPanelHeightPxRef = useRef<number | null>(null)
   const [appVersion, setAppVersion] = useState("...")
 
-  const { updateStatus, triggerInstall } = useAppUpdate()
+  const { updateStatus, triggerInstall, checkForUpdates } = useAppUpdate()
   const [showAbout, setShowAbout] = useState(false)
 
   const trayRef = useRef<TrayIcon | null>(null)
@@ -521,6 +529,13 @@ function App() {
           console.error("Failed to load display mode:", error)
         }
 
+        let storedResetTimerDisplayMode = DEFAULT_RESET_TIMER_DISPLAY_MODE
+        try {
+          storedResetTimerDisplayMode = await loadResetTimerDisplayMode()
+        } catch (error) {
+          console.error("Failed to load reset timer display mode:", error)
+        }
+
         let storedTrayIconStyle = DEFAULT_TRAY_ICON_STYLE
         try {
           storedTrayIconStyle = await loadTrayIconStyle()
@@ -551,6 +566,7 @@ function App() {
           setAutoUpdateInterval(storedInterval)
           setThemeMode(storedThemeMode)
           setDisplayMode(storedDisplayMode)
+          setResetTimerDisplayMode(storedResetTimerDisplayMode)
           setTrayIconStyle(storedTrayIconStyle)
           setTrayShowPercentage(normalizedTrayShowPercentage)
           setGlobalShortcut(storedGlobalShortcut)
@@ -655,20 +671,54 @@ function App() {
     setAutoUpdateResetToken((value) => value + 1)
   }, [autoUpdateInterval, pluginSettings])
 
+  const startManualRefresh = useCallback(
+    (ids: string[], errorMessage: string) => {
+      for (const id of ids) {
+        manualRefreshIdsRef.current.add(id)
+      }
+      setLoadingForPlugins(ids)
+      startBatch(ids).catch((error) => {
+        for (const id of ids) {
+          manualRefreshIdsRef.current.delete(id)
+        }
+        console.error(errorMessage, error)
+        setErrorForPlugins(ids, "Failed to start probe")
+      })
+    },
+    [setLoadingForPlugins, setErrorForPlugins, startBatch]
+  )
+
   const handleRetryPlugin = useCallback(
     (id: string) => {
       track("provider_refreshed", { provider_id: id })
       resetAutoUpdateSchedule()
-      // Mark as manual refresh
-      manualRefreshIdsRef.current.add(id)
-      setLoadingForPlugins([id])
-      startBatch([id]).catch((error) => {
-        console.error("Failed to retry plugin:", error)
-        setErrorForPlugins([id], "Failed to start probe")
-      })
+      startManualRefresh([id], "Failed to retry plugin:")
     },
-    [resetAutoUpdateSchedule, setLoadingForPlugins, setErrorForPlugins, startBatch]
+    [resetAutoUpdateSchedule, startManualRefresh]
   )
+
+  const handleRefreshAll = useCallback(() => {
+    if (!pluginSettings) return
+    const enabledIds = getEnabledPluginIds(pluginSettings)
+    if (enabledIds.length === 0) return
+    const now = Date.now()
+    const eligibleIds = enabledIds.filter((id) => {
+      const currentState = pluginStatesRef.current[id]
+      if (currentState?.loading) return false
+      if (manualRefreshIdsRef.current.has(id)) return false
+      const lastManualRefreshAt = currentState?.lastManualRefreshAt
+      if (!lastManualRefreshAt) return true
+      return now - lastManualRefreshAt >= REFRESH_COOLDOWN_MS
+    })
+    if (eligibleIds.length === 0) return
+
+    resetAutoUpdateSchedule()
+    startManualRefresh(eligibleIds, "Failed to start refresh batch:")
+  }, [
+    pluginSettings,
+    resetAutoUpdateSchedule,
+    startManualRefresh,
+  ])
 
   const handleThemeModeChange = useCallback((mode: ThemeMode) => {
     track("setting_changed", { setting: "theme", value: mode })
@@ -687,6 +737,19 @@ function App() {
       console.error("Failed to save display mode:", error)
     })
   }, [scheduleTrayIconUpdate])
+
+  const handleResetTimerDisplayModeChange = useCallback((mode: ResetTimerDisplayMode) => {
+    track("setting_changed", { setting: "reset_timer_display_mode", value: mode })
+    setResetTimerDisplayMode(mode)
+    void saveResetTimerDisplayMode(mode).catch((error) => {
+      console.error("Failed to save reset timer display mode:", error)
+    })
+  }, [])
+
+  const handleResetTimerDisplayModeToggle = useCallback(() => {
+    const next = resetTimerDisplayMode === "relative" ? "absolute" : "relative"
+    handleResetTimerDisplayModeChange(next)
+  }, [handleResetTimerDisplayModeChange, resetTimerDisplayMode])
 
   const handleTrayIconStyleChange = useCallback((style: TrayIconStyle) => {
     track("setting_changed", { setting: "tray_icon_style", value: style })
@@ -843,6 +906,8 @@ function App() {
           plugins={displayPlugins}
           onRetryPlugin={handleRetryPlugin}
           displayMode={displayMode}
+          resetTimerDisplayMode={resetTimerDisplayMode}
+          onResetTimerDisplayModeToggle={handleResetTimerDisplayModeToggle}
         />
       )
     }
@@ -858,6 +923,8 @@ function App() {
           onThemeModeChange={handleThemeModeChange}
           displayMode={displayMode}
           onDisplayModeChange={handleDisplayModeChange}
+          resetTimerDisplayMode={resetTimerDisplayMode}
+          onResetTimerDisplayModeChange={handleResetTimerDisplayModeChange}
           trayIconStyle={trayIconStyle}
           onTrayIconStyleChange={handleTrayIconStyleChange}
           trayShowPercentage={trayShowPercentage}
@@ -877,6 +944,8 @@ function App() {
         plugin={selectedPlugin}
         onRetry={handleRetry}
         displayMode={displayMode}
+        resetTimerDisplayMode={resetTimerDisplayMode}
+        onResetTimerDisplayModeToggle={handleResetTimerDisplayModeToggle}
       />
     )
   }
@@ -906,6 +975,8 @@ function App() {
               autoUpdateNextAt={autoUpdateNextAt}
               updateStatus={updateStatus}
               onUpdateInstall={triggerInstall}
+              onUpdateCheck={checkForUpdates}
+              onRefreshAll={handleRefreshAll}
               showAbout={showAbout}
               onShowAbout={() => setShowAbout(true)}
               onCloseAbout={() => setShowAbout(false)}

@@ -3,6 +3,7 @@ import {
   DEFAULT_AUTO_UPDATE_INTERVAL,
   DEFAULT_DISPLAY_MODE,
   DEFAULT_PLUGIN_SETTINGS,
+  DEFAULT_RESET_TIMER_DISPLAY_MODE,
   DEFAULT_TRAY_ICON_STYLE,
   DEFAULT_TRAY_SHOW_PERCENTAGE,
   DEFAULT_THEME_MODE,
@@ -11,6 +12,7 @@ import {
   loadAutoUpdateInterval,
   loadDisplayMode,
   loadPluginSettings,
+  loadResetTimerDisplayMode,
   loadTrayIconStyle,
   loadTrayShowPercentage,
   loadThemeMode,
@@ -18,6 +20,7 @@ import {
   saveAutoUpdateInterval,
   saveDisplayMode,
   savePluginSettings,
+  saveResetTimerDisplayMode,
   saveTrayIconStyle,
   saveTrayShowPercentage,
   saveThemeMode,
@@ -146,6 +149,25 @@ describe("settings", () => {
   it("falls back to default for invalid display mode", async () => {
     storeState.set("displayMode", "invalid")
     await expect(loadDisplayMode()).resolves.toBe(DEFAULT_DISPLAY_MODE)
+  })
+
+  it("loads default reset timer display mode when missing", async () => {
+    await expect(loadResetTimerDisplayMode()).resolves.toBe(DEFAULT_RESET_TIMER_DISPLAY_MODE)
+  })
+
+  it("loads stored reset timer display mode", async () => {
+    storeState.set("resetTimerDisplayMode", "absolute")
+    await expect(loadResetTimerDisplayMode()).resolves.toBe("absolute")
+  })
+
+  it("saves reset timer display mode", async () => {
+    await saveResetTimerDisplayMode("relative")
+    await expect(loadResetTimerDisplayMode()).resolves.toBe("relative")
+  })
+
+  it("falls back to default for invalid reset timer display mode", async () => {
+    storeState.set("resetTimerDisplayMode", "invalid")
+    await expect(loadResetTimerDisplayMode()).resolves.toBe(DEFAULT_RESET_TIMER_DISPLAY_MODE)
   })
 
   it("loads default tray icon style when missing", async () => {

@@ -1,5 +1,3 @@
-# OpenUsage
-
 **Track all your AI coding subscriptions in one place.**
 
 Amp, Cursor, Claude, Codex, and more coming. See your usage at a glance from your menu bar. No digging through dashboards.
@@ -88,28 +86,8 @@ Inspired by [CodexBar](https://github.com/steipete/CodexBar) by [@steipete](http
 <details>
 <summary><strong>Build from source</strong></summary>
 
+> **Warning**: The `main` branch may not be stable. It is merged directly without staging, so users are advised to use tagged versions for stable builds. Tagged versions are fully tested while `main` may contain unreleased features.
+
 ### Stack
 
-- Tauri 2 + Rust
-- React 19, Tailwind 4, Base UI
-- Vite 7, bun
-
-### Build
-
-```bash
-git clone https://github.com/robinebers/openusage
-cd openusage
-bun install
-bun tauri build
-```
-
-Built app lands in `src-tauri/target/release/bundle/`.
-
-### Development
-
-```bash
-bun install
-bun tauri dev
-```
-
-</details>
+...

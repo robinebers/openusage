@@ -9,6 +9,8 @@ interface PanelFooterProps {
   autoUpdateNextAt: number | null;
   updateStatus: UpdateStatus;
   onUpdateInstall: () => void;
+  onUpdateCheck: () => void;
+  onRefreshAll?: () => void;
   showAbout: boolean;
   onShowAbout: () => void;
   onCloseAbout: () => void;
@@ -18,11 +20,13 @@ function VersionDisplay({
   version,
   updateStatus,
   onUpdateInstall,
+  onUpdateCheck,
   onVersionClick,
 }: {
   version: string;
   updateStatus: UpdateStatus;
   onUpdateInstall: () => void;
+  onUpdateCheck: () => void;
   onVersionClick: () => void;
 }) {
   switch (updateStatus.status) {
@@ -50,6 +54,18 @@ function VersionDisplay({
         <span className="text-xs text-muted-foreground">Installing...</span>
       );
     case "error":
+      if (updateStatus.message === "Update check failed") {
+        return (
+          <button
+            type="button"
+            onClick={onUpdateCheck}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            title={updateStatus.message}
+          >
+            Updates soon
+          </button>
+        );
+      }
       return (
         <span className="text-xs text-destructive" title={updateStatus.message}>
           Update failed
@@ -73,6 +89,8 @@ export function PanelFooter({
   autoUpdateNextAt,
   updateStatus,
   onUpdateInstall,
+  onUpdateCheck,
+  onRefreshAll,
   showAbout,
   onShowAbout,
   onCloseAbout,
@@ -100,11 +118,26 @@ export function PanelFooter({
           version={version}
           updateStatus={updateStatus}
           onUpdateInstall={onUpdateInstall}
+          onUpdateCheck={onUpdateCheck}
           onVersionClick={onShowAbout}
         />
-        <span className="text-xs text-muted-foreground tabular-nums">
-          {countdownLabel}
-        </span>
+        {autoUpdateNextAt !== null && onRefreshAll ? (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.currentTarget.blur()
+              onRefreshAll()
+            }}
+            className="text-xs text-muted-foreground tabular-nums hover:text-foreground transition-colors cursor-pointer"
+            title="Refresh now"
+          >
+            {countdownLabel}
+          </button>
+        ) : (
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {countdownLabel}
+          </span>
+        )}
       </div>
       {showAbout && (
         <AboutDialog version={version} onClose={onCloseAbout} />

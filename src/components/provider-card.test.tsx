@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react"
+import { fireEvent, render, screen, within } from "@testing-library/react"
 import type { ReactNode } from "react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -23,6 +23,24 @@ vi.mock("@/components/ui/tooltip", () => ({
   },
   TooltipContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }))
+
+function getEnglishOrdinalSuffix(day: number): string {
+  const mod100 = day % 100
+  if (mod100 >= 11 && mod100 <= 13) return "th"
+  const mod10 = day % 10
+  if (mod10 === 1) return "st"
+  if (mod10 === 2) return "nd"
+  if (mod10 === 3) return "rd"
+  return "th"
+}
+
+function formatOrdinalDate(date: Date): string {
+  const monthText = new Intl.DateTimeFormat(undefined, {
+    month: "short",
+  }).format(date)
+  const day = date.getDate()
+  return `${monthText} ${day}${getEnglishOrdinalSuffix(day)}`
+}
 
 describe("ProviderCard", () => {
   beforeEach(() => {
@@ -152,6 +170,33 @@ describe("ProviderCard", () => {
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "58")
   })
 
+  it("uses projected left-at-reset for pace marker in displayMode=left", () => {
+    vi.useFakeTimers()
+    const now = new Date("2026-02-02T18:00:00.000Z")
+    vi.setSystemTime(now)
+    render(
+      <ProviderCard
+        name="Left Pace"
+        displayMode="left"
+        lines={[
+          {
+            type: "progress",
+            label: "Weekly",
+            used: 30,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: "2026-02-03T00:00:00.000Z",
+            periodDurationMs: 24 * 60 * 60 * 1000,
+          },
+        ]}
+      />
+    )
+    const marker = document.querySelector<HTMLElement>('[data-slot="progress-marker"]')
+    expect(marker).toBeTruthy()
+    expect(marker?.style.left).toBe("60%")
+    vi.useRealTimers()
+  })
+
   it("shows resets secondary text when resetsAt is present", () => {
     vi.useFakeTimers()
     const now = new Date("2026-02-02T00:00:00.000Z")
@@ -173,6 +218,218 @@ describe("ProviderCard", () => {
       />
     )
     expect(screen.getByText("Resets in 1h 5m")).toBeInTheDocument()
+    vi.useRealTimers()
+  })
+
+  it("shows 'Resets soon' when reset is under 5 minutes away", () => {
+    vi.useFakeTimers()
+    const now = new Date("2026-02-02T00:00:00.000Z")
+    vi.setSystemTime(now)
+    render(
+      <ProviderCard
+        name="Resets"
+        displayMode="used"
+        lines={[
+          {
+            type: "progress",
+            label: "Short",
+            used: 10,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: "2026-02-02T00:04:59.000Z",
+          },
+        ]}
+      />
+    )
+    expect(screen.getByText("Resets soon")).toBeInTheDocument()
+    vi.useRealTimers()
+  })
+
+  it("keeps standard reset text at exactly 5 minutes", () => {
+    vi.useFakeTimers()
+    const now = new Date("2026-02-02T00:00:00.000Z")
+    vi.setSystemTime(now)
+    render(
+      <ProviderCard
+        name="Resets"
+        displayMode="used"
+        lines={[
+          {
+            type: "progress",
+            label: "Boundary",
+            used: 10,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: "2026-02-02T00:05:00.000Z",
+          },
+        ]}
+      />
+    )
+    expect(screen.getByText("Resets in 5m")).toBeInTheDocument()
+    vi.useRealTimers()
+  })
+
+  it("shows 'Resets soon' for stale reset timestamps in relative mode", () => {
+    vi.useFakeTimers()
+    const now = new Date("2026-02-02T00:06:00.000Z")
+    vi.setSystemTime(now)
+    render(
+      <ProviderCard
+        name="Resets"
+        displayMode="used"
+        lines={[
+          {
+            type: "progress",
+            label: "Stale Relative",
+            used: 10,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: "2026-02-02T00:05:00.000Z",
+          },
+        ]}
+      />
+    )
+    expect(screen.getByText("Resets soon")).toBeInTheDocument()
+    vi.useRealTimers()
+  })
+
+  it("shows 'Resets soon' for stale reset timestamps in absolute mode", () => {
+    vi.useFakeTimers()
+    const now = new Date("2026-02-02T00:06:00.000Z")
+    vi.setSystemTime(now)
+    render(
+      <ProviderCard
+        name="Resets"
+        displayMode="used"
+        resetTimerDisplayMode="absolute"
+        lines={[
+          {
+            type: "progress",
+            label: "Stale Absolute",
+            used: 10,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: "2026-02-02T00:05:00.000Z",
+          },
+        ]}
+      />
+    )
+    expect(screen.getByText("Resets soon")).toBeInTheDocument()
+    vi.useRealTimers()
+  })
+
+  it("toggles reset timer display mode from reset label", async () => {
+    vi.useFakeTimers()
+    const now = new Date(2026, 1, 2, 0, 0, 0)
+    vi.setSystemTime(now)
+    const onToggle = vi.fn()
+    const resetsAt = new Date(2026, 1, 2, 1, 5, 0).toISOString()
+    render(
+      <ProviderCard
+        name="Resets"
+        displayMode="used"
+        resetTimerDisplayMode="absolute"
+        onResetTimerDisplayModeToggle={onToggle}
+        lines={[
+          {
+            type: "progress",
+            label: "Monthly",
+            used: 12.34,
+            limit: 100,
+            format: { kind: "dollars" },
+            resetsAt,
+          },
+        ]}
+      />
+    )
+    const resetButton = screen.getByRole("button", { name: /^Resets today at / })
+    expect(resetButton).toBeInTheDocument()
+    fireEvent.click(resetButton)
+    expect(onToggle).toHaveBeenCalledTimes(1)
+    vi.useRealTimers()
+  })
+
+  it("shows tomorrow context for absolute reset labels", () => {
+    vi.useFakeTimers()
+    const now = new Date(2026, 1, 2, 20, 0, 0)
+    const resetsAt = new Date(2026, 1, 3, 9, 30, 0)
+    vi.setSystemTime(now)
+    render(
+      <ProviderCard
+        name="Resets"
+        displayMode="used"
+        resetTimerDisplayMode="absolute"
+        lines={[
+          {
+            type: "progress",
+            label: "Daily",
+            used: 10,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: resetsAt.toISOString(),
+          },
+        ]}
+      />
+    )
+    expect(screen.getByText(/^Resets tomorrow at /)).toBeInTheDocument()
+    vi.useRealTimers()
+  })
+
+  it("shows short date context for absolute labels within a week", () => {
+    vi.useFakeTimers()
+    const now = new Date(2026, 1, 2, 10, 0, 0)
+    const resetsAt = new Date(2026, 1, 5, 16, 0, 0)
+    vi.setSystemTime(now)
+    const dateText = formatOrdinalDate(resetsAt)
+    render(
+      <ProviderCard
+        name="Resets"
+        displayMode="used"
+        resetTimerDisplayMode="absolute"
+        lines={[
+          {
+            type: "progress",
+            label: "Weekly",
+            used: 10,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: resetsAt.toISOString(),
+          },
+        ]}
+      />
+    )
+    expect(
+      screen.getByText((content) => content.startsWith(`Resets ${dateText} at `))
+    ).toBeInTheDocument()
+    vi.useRealTimers()
+  })
+
+  it("shows short date context for absolute labels beyond a week", () => {
+    vi.useFakeTimers()
+    const now = new Date(2026, 1, 2, 10, 0, 0)
+    const resetsAt = new Date(2026, 1, 20, 16, 0, 0)
+    vi.setSystemTime(now)
+    const dateText = formatOrdinalDate(resetsAt)
+    render(
+      <ProviderCard
+        name="Resets"
+        displayMode="used"
+        resetTimerDisplayMode="absolute"
+        lines={[
+          {
+            type: "progress",
+            label: "Monthly",
+            used: 10,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: resetsAt.toISOString(),
+          },
+        ]}
+      />
+    )
+    expect(
+      screen.getByText((content) => content.startsWith(`Resets ${dateText} at `))
+    ).toBeInTheDocument()
     vi.useRealTimers()
   })
 
@@ -221,6 +478,15 @@ describe("ProviderCard", () => {
     expect(screen.getByText("60% used at reset")).toBeInTheDocument()
     expect(screen.getByText("90% used at reset")).toBeInTheDocument()
     expect(screen.getByText("Limit in 8h 0m")).toBeInTheDocument()
+
+    const markers = document.querySelectorAll<HTMLElement>('[data-slot="progress-marker"]')
+    expect(markers).toHaveLength(3)
+    expect(markers[0]?.style.left).toBe("60%")
+    expect(markers[1]?.style.left).toBe("90%")
+    expect(markers[2]?.style.left).toBe("100%")
+    expect(markers[0]?.style.backgroundColor).toBe("rgb(34, 197, 94)")
+    expect(markers[1]?.style.backgroundColor).toBe("rgb(234, 179, 8)")
+    expect(markers[2]?.style.backgroundColor).toBe("rgb(239, 68, 68)")
     vi.useRealTimers()
   })
 
@@ -273,6 +539,32 @@ describe("ProviderCard", () => {
     )
     expect(screen.getByText("You're good")).toBeInTheDocument()
     expect(screen.queryByText(/at reset/)).not.toBeInTheDocument()
+    vi.useRealTimers()
+  })
+
+  it("hides pace marker when pace is unavailable early in period", () => {
+    vi.useFakeTimers()
+    const now = new Date("2026-02-02T00:45:00.000Z")
+    vi.setSystemTime(now)
+    render(
+      <ProviderCard
+        name="Pace"
+        displayMode="used"
+        lines={[
+          {
+            type: "progress",
+            label: "Early",
+            used: 10,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: "2026-02-03T00:00:00.000Z",
+            periodDurationMs: 24 * 60 * 60 * 1000,
+          },
+        ]}
+      />
+    )
+    expect(screen.queryByLabelText("You're good")).not.toBeInTheDocument()
+    expect(document.querySelector('[data-slot="progress-marker"]')).toBeNull()
     vi.useRealTimers()
   })
 

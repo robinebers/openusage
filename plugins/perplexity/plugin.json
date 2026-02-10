@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "perplexity",
+  "name": "Perplexity",
+  "version": "0.0.1",
+  "entry": "plugin.js",
+  "icon": "icon.svg",
+  "brandColor": "#20808D",
+  "lines": [
+    { "type": "progress", "label": "Usage", "scope": "overview", "primaryOrder": 1 }
+  ]
+}

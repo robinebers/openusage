@@ -75,7 +75,9 @@ After acting, `git checkout main` to return to the main branch.
 Here's the tone and format to aim for when posting feedback:
 
 ```
-Thanks for the contribution! Clean plugin overall. Auth flow, tests, and docs all look solid. Three things to fix before merge:
+Hey! 👋 This is Rob's AI reviewer. Thanks for the contribution!
+
+Clean plugin overall. Auth flow, tests, and docs all look solid. Three things to fix before merge:
 
 1. **`toIso` conversion is non-standard** — `ctx.util.toIso(Math.floor(endDate / 1000))` manually converts ms→seconds, then `toIso` converts it back. Every other plugin passes values directly (e.g. `ctx.util.toIso(endDate)`). Since `endDate` is already unix ms, just pass it through.
 
