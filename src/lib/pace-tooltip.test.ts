@@ -11,15 +11,6 @@ const ONE_DAY_MS = 24 * 60 * 60 * 1000
 const resetsAtMs = Date.parse("2026-02-03T00:00:00.000Z")
 const nowMs = Date.parse("2026-02-02T12:00:00.000Z")
 
-function makePaceResult(status: PaceResult["status"], projectedUsage: number): PaceResult {
-  return {
-    status,
-    projectedUsage,
-    expectedUsageNow: 50,
-    expectedPercentNow: 50,
-  }
-}
-
 describe("pace-tooltip", () => {
   it("maps pace status labels", () => {
     expect(getPaceStatusText("ahead")).toBe("You're good")
@@ -41,7 +32,7 @@ describe("pace-tooltip", () => {
 
   it("shows 'Limit in' ETA for behind pace", () => {
     // projectedUsage=120, rate=120/ONE_DAY_MS, ETA=(100-60)/rate = 8h
-    const paceResult = makePaceResult("behind", 120)
+    const paceResult: PaceResult = { status: "behind", projectedUsage: 120 }
     const detail = buildPaceDetailText({
       paceResult,
       used: 60,
@@ -55,7 +46,7 @@ describe("pace-tooltip", () => {
   })
 
   it("shows projected % used at reset for on-track (displayMode=used)", () => {
-    const paceResult = makePaceResult("on-track", 90)
+    const paceResult: PaceResult = { status: "on-track", projectedUsage: 90 }
     const detail = buildPaceDetailText({
       paceResult,
       used: 45,
@@ -69,7 +60,7 @@ describe("pace-tooltip", () => {
   })
 
   it("shows projected % left at reset for on-track (displayMode=left)", () => {
-    const paceResult = makePaceResult("on-track", 90)
+    const paceResult: PaceResult = { status: "on-track", projectedUsage: 90 }
     const detail = buildPaceDetailText({
       paceResult,
       used: 45,
@@ -83,7 +74,7 @@ describe("pace-tooltip", () => {
   })
 
   it("shows projected % for ahead (displayMode=used)", () => {
-    const paceResult = makePaceResult("ahead", 60)
+    const paceResult: PaceResult = { status: "ahead", projectedUsage: 60 }
     const detail = buildPaceDetailText({
       paceResult,
       used: 30,
@@ -97,7 +88,7 @@ describe("pace-tooltip", () => {
   })
 
   it("shows projected % for ahead (displayMode=left)", () => {
-    const paceResult = makePaceResult("ahead", 60)
+    const paceResult: PaceResult = { status: "ahead", projectedUsage: 60 }
     const detail = buildPaceDetailText({
       paceResult,
       used: 30,
@@ -112,7 +103,7 @@ describe("pace-tooltip", () => {
 
   it("clamps projected percent to 100% when behind without ETA", () => {
     // projectedUsage=120 > limit, but used=0 so rate=0 → no ETA → falls through to clamped %
-    const paceResult = makePaceResult("behind", 120)
+    const paceResult: PaceResult = { status: "behind", projectedUsage: 120 }
     const detail = buildPaceDetailText({
       paceResult,
       used: 0,
@@ -126,7 +117,7 @@ describe("pace-tooltip", () => {
   })
 
   it("clamps projected percent in left mode when behind without ETA", () => {
-    const paceResult = makePaceResult("behind", 120)
+    const paceResult: PaceResult = { status: "behind", projectedUsage: 120 }
     const detail = buildPaceDetailText({
       paceResult,
       used: 0,
@@ -155,7 +146,7 @@ describe("pace-tooltip", () => {
   it("falls through to projected % when ETA exceeds remaining time", () => {
     // 90% used at 23:59, only 1 min left — ETA would be ~1.1min but limit won't be hit before reset
     const lateNowMs = Date.parse("2026-02-02T23:59:00.000Z")
-    const paceResult = makePaceResult("behind", 110)
+    const paceResult: PaceResult = { status: "behind", projectedUsage: 110 }
     const detail = buildPaceDetailText({
       paceResult,
       used: 90,

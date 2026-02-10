@@ -4,10 +4,6 @@ export type PaceResult = {
   status: PaceStatus
   /** Projected usage at end of period (same unit as used/limit) */
   projectedUsage: number
-  /** Ideal linear usage amount at the current point in time */
-  expectedUsageNow: number
-  /** Ideal linear used percent (0-100) at the current point in time */
-  expectedPercentNow: number
 }
 
 /**
@@ -42,34 +38,18 @@ export function calculatePaceStatus(
   const periodStartMs = resetsAtMs - periodDurationMs
   const elapsedMs = nowMs - periodStartMs
   if (elapsedMs <= 0 || nowMs >= resetsAtMs) return null
-  const elapsedFraction = elapsedMs / periodDurationMs
-  const expectedUsageNow = limit * elapsedFraction
-  const expectedPercentNow = elapsedFraction * 100
 
   // No usage = definitionally ahead of pace (skip 5% threshold)
-  if (used === 0) {
-    return {
-      status: "ahead",
-      projectedUsage: 0,
-      expectedUsageNow,
-      expectedPercentNow,
-    }
-  }
+  if (used === 0) return { status: "ahead", projectedUsage: 0 }
 
   const usageRate = used / elapsedMs
   const projectedUsage = usageRate * periodDurationMs
 
   // Already at/over limit = definitionally behind (skip 5% threshold)
-  if (used >= limit) {
-    return {
-      status: "behind",
-      projectedUsage,
-      expectedUsageNow,
-      expectedPercentNow,
-    }
-  }
+  if (used >= limit) return { status: "behind", projectedUsage }
 
   // Too early to predict accurately (< 5% of period elapsed)
+  const elapsedFraction = elapsedMs / periodDurationMs
   if (elapsedFraction < 0.05) return null
 
   // Normal classification
@@ -82,10 +62,5 @@ export function calculatePaceStatus(
     status = "behind"
   }
 
-  return {
-    status,
-    projectedUsage,
-    expectedUsageNow,
-    expectedPercentNow,
-  }
+  return { status, projectedUsage }
 }
