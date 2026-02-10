@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "factory",
+  "name": "Factory",
+  "version": "0.0.1",
+  "entry": "plugin.js",
+  "icon": "icon.svg",
+  "brandColor": "#020202",
+  "lines": [
+    { "type": "progress", "label": "Standard", "scope": "overview", "primaryOrder": 1 },
+    { "type": "progress", "label": "Premium", "scope": "detail" }
+  ]
+}
