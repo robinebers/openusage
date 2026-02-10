@@ -37,6 +37,12 @@ export function formatNumber(value: number) {
   }).format(value)
 }
 
+const PACE_VISUALS: Record<PaceStatus, { dotClass: string; markerColor: string }> = {
+  ahead: { dotClass: "bg-green-500", markerColor: "#22c55e" },
+  "on-track": { dotClass: "bg-yellow-500", markerColor: "#eab308" },
+  behind: { dotClass: "bg-red-500", markerColor: "#ef4444" },
+}
+
 function formatCount(value: number) {
   if (!Number.isFinite(value)) return "0"
   const maximumFractionDigits = Number.isInteger(value) ? 0 : 2
@@ -62,12 +68,7 @@ function PaceIndicator({
   detailText?: string | null
   isLimitReached?: boolean
 }) {
-  const colorClass =
-    status === "ahead"
-      ? "bg-green-500"
-      : status === "on-track"
-        ? "bg-yellow-500"
-        : "bg-red-500"
+  const colorClass = PACE_VISUALS[status].dotClass
 
   const statusText = getPaceStatusText(status)
 
@@ -331,6 +332,13 @@ function MetricLineRenderer({
       ? calculatePaceStatus(line.used, line.limit, resetsAtMs, line.periodDurationMs!, now)
       : null
     const paceStatus = paceResult?.status ?? null
+    const paceMarkerValue = paceResult && paceStatus
+      ? (() => {
+          const projectedUsedPercent = Math.max(0, Math.min(100, (paceResult.projectedUsage / line.limit) * 100))
+          return displayMode === "used" ? projectedUsedPercent : 100 - projectedUsedPercent
+        })()
+      : undefined
+    const paceMarkerColor = paceStatus ? PACE_VISUALS[paceStatus].markerColor : undefined
     const isLimitReached = line.used >= line.limit
     const paceDetailText =
       hasPaceContext && !isLimitReached
@@ -356,6 +364,8 @@ function MetricLineRenderer({
         <Progress
           value={percent}
           indicatorColor={line.color}
+          markerValue={paceMarkerValue}
+          markerColor={paceMarkerColor}
         />
         <div className="flex justify-between items-center mt-1.5">
           <span className="text-xs text-muted-foreground tabular-nums">

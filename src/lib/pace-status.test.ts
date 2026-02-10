@@ -54,30 +54,74 @@ describe("pace-status", () => {
     expect(calculatePaceStatus(0, 100, resetsAtMs, periodDurationMs, earlyNowMs)).toEqual({
       status: "ahead",
       projectedUsage: 0,
+      expectedUsageNow: 3.125,
+      expectedPercentNow: 3.125,
     })
   })
 
   it("returns behind for over-limit usage (skips 5% threshold)", () => {
     const { resetsAtMs, nowMs } = midPeriodNowAndReset()
     const result = calculatePaceStatus(120, 100, resetsAtMs, ONE_DAY_MS, nowMs)
-    expect(result).toEqual({ status: "behind", projectedUsage: 240 })
+    expect(result).toEqual({
+      status: "behind",
+      projectedUsage: 240,
+      expectedUsageNow: 50,
+      expectedPercentNow: 50,
+    })
   })
 
   it("classifies ahead of pace", () => {
     const { resetsAtMs, nowMs } = midPeriodNowAndReset()
     const result = calculatePaceStatus(30, 100, resetsAtMs, ONE_DAY_MS, nowMs)
-    expect(result).toEqual({ status: "ahead", projectedUsage: 60 })
+    expect(result).toEqual({
+      status: "ahead",
+      projectedUsage: 60,
+      expectedUsageNow: 50,
+      expectedPercentNow: 50,
+    })
   })
 
   it("classifies on-track", () => {
     const { resetsAtMs, nowMs } = midPeriodNowAndReset()
     const result = calculatePaceStatus(45, 100, resetsAtMs, ONE_DAY_MS, nowMs)
-    expect(result).toEqual({ status: "on-track", projectedUsage: 90 })
+    expect(result).toEqual({
+      status: "on-track",
+      projectedUsage: 90,
+      expectedUsageNow: 50,
+      expectedPercentNow: 50,
+    })
   })
 
   it("classifies behind", () => {
     const { resetsAtMs, nowMs } = midPeriodNowAndReset()
     const result = calculatePaceStatus(60, 100, resetsAtMs, ONE_DAY_MS, nowMs)
-    expect(result).toEqual({ status: "behind", projectedUsage: 120 })
+    expect(result).toEqual({
+      status: "behind",
+      projectedUsage: 120,
+      expectedUsageNow: 50,
+      expectedPercentNow: 50,
+    })
+  })
+
+  it("keeps 80% projected usage in ahead status", () => {
+    const { resetsAtMs, nowMs } = midPeriodNowAndReset()
+    const result = calculatePaceStatus(40, 100, resetsAtMs, ONE_DAY_MS, nowMs)
+    expect(result).toEqual({
+      status: "ahead",
+      projectedUsage: 80,
+      expectedUsageNow: 50,
+      expectedPercentNow: 50,
+    })
+  })
+
+  it("keeps 100% projected usage in on-track status", () => {
+    const { resetsAtMs, nowMs } = midPeriodNowAndReset()
+    const result = calculatePaceStatus(50, 100, resetsAtMs, ONE_DAY_MS, nowMs)
+    expect(result).toEqual({
+      status: "on-track",
+      projectedUsage: 100,
+      expectedUsageNow: 50,
+      expectedPercentNow: 50,
+    })
   })
 })

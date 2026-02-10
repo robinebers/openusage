@@ -152,6 +152,33 @@ describe("ProviderCard", () => {
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "58")
   })
 
+  it("uses projected left-at-reset for pace marker in displayMode=left", () => {
+    vi.useFakeTimers()
+    const now = new Date("2026-02-02T18:00:00.000Z")
+    vi.setSystemTime(now)
+    render(
+      <ProviderCard
+        name="Left Pace"
+        displayMode="left"
+        lines={[
+          {
+            type: "progress",
+            label: "Weekly",
+            used: 30,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: "2026-02-03T00:00:00.000Z",
+            periodDurationMs: 24 * 60 * 60 * 1000,
+          },
+        ]}
+      />
+    )
+    const marker = document.querySelector<HTMLElement>('[data-slot="progress-marker"]')
+    expect(marker).toBeTruthy()
+    expect(marker?.style.left).toBe("60%")
+    vi.useRealTimers()
+  })
+
   it("shows resets secondary text when resetsAt is present", () => {
     vi.useFakeTimers()
     const now = new Date("2026-02-02T00:00:00.000Z")
@@ -221,6 +248,15 @@ describe("ProviderCard", () => {
     expect(screen.getByText("60% used at reset")).toBeInTheDocument()
     expect(screen.getByText("90% used at reset")).toBeInTheDocument()
     expect(screen.getByText("Limit in 8h 0m")).toBeInTheDocument()
+
+    const markers = document.querySelectorAll<HTMLElement>('[data-slot="progress-marker"]')
+    expect(markers).toHaveLength(3)
+    expect(markers[0]?.style.left).toBe("60%")
+    expect(markers[1]?.style.left).toBe("90%")
+    expect(markers[2]?.style.left).toBe("100%")
+    expect(markers[0]?.style.backgroundColor).toBe("rgb(34, 197, 94)")
+    expect(markers[1]?.style.backgroundColor).toBe("rgb(234, 179, 8)")
+    expect(markers[2]?.style.backgroundColor).toBe("rgb(239, 68, 68)")
     vi.useRealTimers()
   })
 
@@ -273,6 +309,32 @@ describe("ProviderCard", () => {
     )
     expect(screen.getByText("You're good")).toBeInTheDocument()
     expect(screen.queryByText(/at reset/)).not.toBeInTheDocument()
+    vi.useRealTimers()
+  })
+
+  it("hides pace marker when pace is unavailable early in period", () => {
+    vi.useFakeTimers()
+    const now = new Date("2026-02-02T00:45:00.000Z")
+    vi.setSystemTime(now)
+    render(
+      <ProviderCard
+        name="Pace"
+        displayMode="used"
+        lines={[
+          {
+            type: "progress",
+            label: "Early",
+            used: 10,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: "2026-02-03T00:00:00.000Z",
+            periodDurationMs: 24 * 60 * 60 * 1000,
+          },
+        ]}
+      />
+    )
+    expect(screen.queryByLabelText("You're good")).not.toBeInTheDocument()
+    expect(document.querySelector('[data-slot="progress-marker"]')).toBeNull()
     vi.useRealTimers()
   })
 
