@@ -6,7 +6,7 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#4285F4",
-  "os": ["macos", "windows"],
+  "os": ["macos", "windows", "linux"],
   "lines": [
     { "type": "progress", "label": "Gemini 3 Pro", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Gemini 3 Flash", "scope": "overview" },

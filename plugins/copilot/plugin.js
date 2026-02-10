@@ -19,6 +19,11 @@
     return ctx.app.platform === "windows";
   }
 
+  function isLinux(ctx) {
+    if (!ctx.app) return false;
+    return ctx.app.platform === "linux";
+  }
+
   function saveToken(ctx, token) {
     if (isVaultAvailable(ctx)) {
       try {
@@ -115,7 +120,7 @@
       return null;
     }
 
-    if (isWindows(ctx)) {
+    if (isWindows(ctx) || isLinux(ctx)) {
       const token = loadTokenFromGhCliFile(ctx);
       if (token) {
         ctx.host.log.info("token loaded from gh CLI config file");

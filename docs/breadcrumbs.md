@@ -23,3 +23,4 @@
 - Added Windows DPAPI-backed `host.vault` and updated Copilot auth to use it.
 - Enforced Windows signing secrets in publish workflow to prevent unsigned releases.
 - Adjusted dynamic tray icon rendering to stay visible on dark Windows taskbars.
+- Restored Linux placeholders for tray positioning and plugin availability.

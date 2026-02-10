@@ -328,3 +328,17 @@ fn calculate_window_position(
 pub fn position_window_at_tray(app_handle: &AppHandle, icon_position: Position, icon_size: Size) {
     crate::panel::position_panel_at_tray_icon(app_handle, icon_position, icon_size);
 }
+
+/// Linux version positions the window near the tray icon
+#[cfg(target_os = "linux")]
+pub fn position_window_at_tray(
+    app_handle: &AppHandle,
+    icon_position: PhysicalPosition<i32>,
+    _icon_size: tauri::PhysicalSize<u32>,
+) -> tauri::Result<()> {
+    let window = app_handle
+        .get_webview_window("main")
+        .ok_or(tauri::Error::WindowNotFound)?;
+    window.set_position(tauri::Position::Physical(icon_position))?;
+    Ok(())
+}

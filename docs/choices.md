@@ -137,6 +137,15 @@ This document records opinionated defaults chosen during development.
 
 **Decision:** Fail the Windows publish job if `WINDOWS_CERTIFICATE` or `WINDOWS_CERTIFICATE_PASSWORD` is missing.
 
+### Enable Linux Plugin Placeholders
+
+**Context:** OS gating disabled plugins on Linux and tray positioning lacked a Linux implementation.
+
+**Decision:** Re-enable Linux in plugin manifests and add a basic Linux tray positioning implementation.
+
+**Technical details:**
+- LS discovery on Linux assumes `language_server_linux_x64` as the process name.
+
 ### Improve Windows Tray Icon Contrast
 
 **Context:** Dynamic tray icons used black fills and became invisible on dark Windows taskbars.
