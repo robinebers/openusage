@@ -1,4 +1,8 @@
+use base64::Engine;
 use rquickjs::{Ctx, Exception, Function, Object};
+use rusqlite::types::ValueRef;
+use rusqlite::{Connection, OpenFlags, Row};
+use serde_json::{Number, Value};
 use std::path::PathBuf;
 
 const WHITELISTED_ENV_VARS: [&str; 1] = ["CODEX_HOME"];
@@ -1251,22 +1255,33 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                     .replace('#', "%23")
                     .replace('?', "%3F");
                 let uri_path = format!("file:{}?immutable=1", encoded);
-                let output = std::process::Command::new("sqlite3")
-                    .args(["-readonly", "-json", &uri_path, &sql])
-                    .output()
-                    .map_err(|e| {
-                        Exception::throw_message(&ctx_inner, &format!("sqlite3 exec failed: {}", e))
-                    })?;
+                let conn = Connection::open_with_flags(
+                    &uri_path,
+                    OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_URI,
+                )
+                .map_err(|e| {
+                    Exception::throw_message(&ctx_inner, &format!("sqlite open failed: {}", e))
+                })?;
 
-                if !output.status.success() {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    return Err(Exception::throw_message(
-                        &ctx_inner,
-                        &format!("sqlite3 error: {}", stderr.trim()),
-                    ));
+                let mut stmt = conn.prepare(&sql).map_err(|e| {
+                    Exception::throw_message(&ctx_inner, &format!("sqlite prepare failed: {}", e))
+                })?;
+
+                let rows = stmt.query_map([], sqlite_row_to_json).map_err(|e| {
+                    Exception::throw_message(&ctx_inner, &format!("sqlite query failed: {}", e))
+                })?;
+
+                let mut result: Vec<Value> = Vec::new();
+                for row in rows {
+                    let value = row.map_err(|e| {
+                        Exception::throw_message(&ctx_inner, &format!("sqlite row failed: {}", e))
+                    })?;
+                    result.push(value);
                 }
 
-                Ok(String::from_utf8_lossy(&output.stdout).to_string())
+                serde_json::to_string(&result).map_err(|e| {
+                    Exception::throw_message(&ctx_inner, &format!("sqlite json failed: {}", e))
+                })
             },
         )?,
     )?;
@@ -1283,28 +1298,51 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                     ));
                 }
                 let expanded = expand_path(&db_path);
-                let output = std::process::Command::new("sqlite3")
-                    .args([&expanded, &sql])
-                    .output()
-                    .map_err(|e| {
-                        Exception::throw_message(&ctx_inner, &format!("sqlite3 exec failed: {}", e))
-                    })?;
+                let conn = Connection::open_with_flags(
+                    &expanded,
+                    OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE,
+                )
+                .map_err(|e| {
+                    Exception::throw_message(&ctx_inner, &format!("sqlite open failed: {}", e))
+                })?;
 
-                if !output.status.success() {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    return Err(Exception::throw_message(
-                        &ctx_inner,
-                        &format!("sqlite3 error: {}", stderr.trim()),
-                    ));
-                }
-
-                Ok(())
+                conn.execute_batch(&sql).map_err(|e| {
+                    Exception::throw_message(&ctx_inner, &format!("sqlite exec failed: {}", e))
+                })
             },
         )?,
     )?;
 
     host.set("sqlite", sqlite_obj)?;
     Ok(())
+}
+
+fn sqlite_row_to_json(row: &Row<'_>) -> rusqlite::Result<Value> {
+    let mut obj = serde_json::Map::new();
+    let col_count = row.column_count();
+    for i in 0..col_count {
+        let name = match row.column_name(i) {
+            Ok(n) => n.to_string(),
+            Err(_) => format!("col{}", i),
+        };
+        let value = sqlite_value_to_json(row.get_ref(i)?);
+        obj.insert(name, value);
+    }
+    Ok(Value::Object(obj))
+}
+
+fn sqlite_value_to_json(value: ValueRef<'_>) -> Value {
+    match value {
+        ValueRef::Null => Value::Null,
+        ValueRef::Integer(v) => Value::Number(Number::from(v)),
+        ValueRef::Real(v) => Number::from_f64(v)
+            .map(Value::Number)
+            .unwrap_or(Value::Null),
+        ValueRef::Text(bytes) => Value::String(String::from_utf8_lossy(bytes).to_string()),
+        ValueRef::Blob(bytes) => {
+            Value::String(base64::engine::general_purpose::STANDARD.encode(bytes))
+        }
+    }
 }
 
 fn iso_now() -> String {

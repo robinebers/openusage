@@ -14,3 +14,8 @@
 - Windows signing: added conditional PFX import step and owner follow-up checklist.
 - Cleanup: removed unused `src/contexts/taskbar-context.tsx`.
 - PR 77 fixes: re-enabled tray icon updates, restored Linux tray click handling, guarded window clamp, and replaced env-based Windows probes with `~`-based paths under a CODEX_HOME-only allowlist.
+
+## 2026-02-10
+
+- Verified sqlite access uses external `sqlite3` CLI in `src-tauri/src/plugin_engine/host_api.rs` and no bundled sqlite binary/resources in `src-tauri/tauri.conf.json`.
+- Switched plugin host sqlite to embedded `rusqlite` with bundled SQLite for cross-platform availability.

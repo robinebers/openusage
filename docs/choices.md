@@ -97,3 +97,16 @@ This document records opinionated defaults chosen during development.
 **Context:** Frontend settings/probe flows still call tray update hooks, but the update path was disabled, leaving the icon stale.
 
 **Decision:** Restore frontend tray icon rendering and updates on init/settings/probe to keep the tray icon consistent with state.
+
+## 2026-02-10
+
+### Embed SQLite Instead Of External CLI
+
+**Context:** Plugin host `sqlite` API used `sqlite3` CLI, which is missing on clean Windows machines.
+
+**Decision:** Use `rusqlite` with the `bundled` feature so SQLite is embedded in the app; remove `sqlite3` process calls.
+
+**Technical details:**
+- Read-only queries open `file:...?...immutable=1` with `SQLITE_OPEN_URI`.
+- Writes use `SQLITE_OPEN_READ_WRITE | SQLITE_OPEN_CREATE` and `execute_batch`.
+- Blob columns serialize to base64 strings to keep JSON output stable.
