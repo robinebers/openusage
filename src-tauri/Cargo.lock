@@ -2976,6 +2976,7 @@ dependencies = [
  "time",
  "tokio",
  "uuid",
+ "windows-dpapi",
 ]
 
 [[package]]
@@ -5983,6 +5984,17 @@ dependencies = [
  "windows-link 0.2.1",
  "windows-result 0.4.1",
  "windows-strings 0.5.1",
+]
+
+[[package]]
+name = "windows-dpapi"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "162a325089267c13a318d5b0356c785e0f548ca5a5584e1b6b7b49ecd163121a"
+dependencies = [
+ "anyhow",
+ "log",
+ "winapi",
 ]
 
 [[package]]

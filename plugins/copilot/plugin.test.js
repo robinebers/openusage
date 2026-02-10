@@ -42,9 +42,9 @@ function setGhCliKeychain(ctx, value) {
   });
 }
 
-function setStateFileToken(ctx, token) {
-  ctx.host.fs.writeText(
-    ctx.app.pluginDataDir + "/auth.json",
+function setVaultToken(ctx, token) {
+  ctx.host.vault.write(
+    "copilot:token",
     JSON.stringify({ token }),
   );
 }
@@ -102,9 +102,10 @@ describe("copilot plugin", () => {
     expect(call.headers.Authorization).toBe("token gho_encoded_token");
   });
 
-  it("loads token from state file", async () => {
+  it("loads token from vault on Windows", async () => {
     const ctx = makePluginTestContext();
-    setStateFileToken(ctx, "ghu_state");
+    ctx.app.platform = "windows";
+    setVaultToken(ctx, "ghu_state");
     mockUsageOk(ctx);
     const plugin = await loadPlugin();
     const result = plugin.probe(ctx);
@@ -128,18 +129,19 @@ describe("copilot plugin", () => {
     expect(call.headers.Authorization).toBe("token ghu_keychain");
   });
 
-  it("prefers keychain over state file", async () => {
+  it("prefers vault on Windows", async () => {
     const ctx = makePluginTestContext();
+    ctx.app.platform = "windows";
     setKeychainToken(ctx, "ghu_keychain");
-    setStateFileToken(ctx, "ghu_state");
+    setVaultToken(ctx, "ghu_state");
     mockUsageOk(ctx);
     const plugin = await loadPlugin();
     plugin.probe(ctx);
     const call = ctx.host.http.request.mock.calls[0][0];
-    expect(call.headers.Authorization).toBe("token ghu_keychain");
+    expect(call.headers.Authorization).toBe("token ghu_state");
   });
 
-  it("persists token from gh-cli to keychain and state file", async () => {
+  it("persists token from gh-cli to keychain", async () => {
     const ctx = makePluginTestContext();
     setGhCliKeychain(ctx, "gho_persist");
     mockUsageOk(ctx);
@@ -149,10 +151,7 @@ describe("copilot plugin", () => {
       "OpenUsage-copilot",
       JSON.stringify({ token: "gho_persist" }),
     );
-    const stateFile = ctx.host.fs.readText(
-      ctx.app.pluginDataDir + "/auth.json",
-    );
-    expect(JSON.parse(stateFile).token).toBe("gho_persist");
+    expect(ctx.host.vault.write).not.toHaveBeenCalled();
   });
 
   it("does not persist token loaded from OpenUsage keychain", async () => {

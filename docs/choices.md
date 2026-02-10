@@ -120,3 +120,13 @@ This document records opinionated defaults chosen during development.
 **Technical details:**
 - Force UTF-8 output via `[Console]::OutputEncoding`.
 - Parse JSON into `{ ProcessId, CommandLine }` entries; skip null command lines.
+
+### Add Windows Vault (DPAPI)
+
+**Context:** Windows token storage relied on plaintext files when keychain was unavailable.
+
+**Decision:** Add `host.vault` backed by DPAPI user-scope encryption and use it for Copilot token caching on Windows.
+
+**Technical details:**
+- Encrypted bytes are stored as base64 under `appDataDir/vault/<url-safe-key>`.
+- `host.vault` throws on non-Windows platforms.

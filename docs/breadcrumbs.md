@@ -20,3 +20,4 @@
 - Verified sqlite access uses external `sqlite3` CLI in `src-tauri/src/plugin_engine/host_api.rs` and no bundled sqlite binary/resources in `src-tauri/tauri.conf.json`.
 - Switched plugin host sqlite to embedded `rusqlite` with bundled SQLite for cross-platform availability.
 - Replaced Windows process discovery `wmic` with PowerShell CIM JSON parsing in `src-tauri/src/plugin_engine/host_api.rs`.
+- Added Windows DPAPI-backed `host.vault` and updated Copilot auth to use it.

@@ -5,6 +5,9 @@ use rusqlite::{Connection, OpenFlags, Row};
 use serde_json::{Number, Value};
 use std::path::PathBuf;
 
+#[cfg(target_os = "windows")]
+use windows_dpapi::{decrypt_data, encrypt_data, Scope};
+
 const WHITELISTED_ENV_VARS: [&str; 1] = ["CODEX_HOME"];
 
 /// Redact sensitive value to first4...last4 format (UTF-8 safe)
@@ -187,6 +190,7 @@ pub fn inject_host_api<'js>(
     inject_env(ctx, &host)?;
     inject_http(ctx, &host, plugin_id)?;
     inject_keychain(ctx, &host)?;
+    inject_vault(ctx, &host, app_data_dir)?;
     inject_sqlite(ctx, &host)?;
     inject_ls(ctx, &host, plugin_id)?;
 
@@ -1250,6 +1254,49 @@ fn inject_keychain<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<
     Ok(())
 }
 
+fn inject_vault<'js>(
+    ctx: &Ctx<'js>,
+    host: &Object<'js>,
+    app_data_dir: &PathBuf,
+) -> rquickjs::Result<()> {
+    let vault_obj = Object::new(ctx.clone())?;
+    let base_dir = app_data_dir.clone();
+    vault_obj.set(
+        "read",
+        Function::new(
+            ctx.clone(),
+            move |ctx_inner: Ctx<'_>, name: String| -> rquickjs::Result<Option<String>> {
+                vault_read(&ctx_inner, &base_dir, &name)
+            },
+        )?,
+    )?;
+
+    let base_dir = app_data_dir.clone();
+    vault_obj.set(
+        "write",
+        Function::new(
+            ctx.clone(),
+            move |ctx_inner: Ctx<'_>, name: String, value: String| -> rquickjs::Result<()> {
+                vault_write(&ctx_inner, &base_dir, &name, &value)
+            },
+        )?,
+    )?;
+
+    let base_dir = app_data_dir.clone();
+    vault_obj.set(
+        "delete",
+        Function::new(
+            ctx.clone(),
+            move |ctx_inner: Ctx<'_>, name: String| -> rquickjs::Result<()> {
+                vault_delete(&ctx_inner, &base_dir, &name)
+            },
+        )?,
+    )?;
+
+    host.set("vault", vault_obj)?;
+    Ok(())
+}
+
 fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
     let sqlite_obj = Object::new(ctx.clone())?;
 
@@ -1334,6 +1381,94 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
 
     host.set("sqlite", sqlite_obj)?;
     Ok(())
+}
+
+fn vault_read(
+    ctx_inner: &Ctx<'_>,
+    app_data_dir: &PathBuf,
+    name: &str,
+) -> rquickjs::Result<Option<String>> {
+    let path = vault_entry_path(ctx_inner, app_data_dir, name)?;
+    if !path.exists() {
+        return Ok(None);
+    }
+    let raw = std::fs::read_to_string(&path)
+        .map_err(|e| Exception::throw_message(ctx_inner, &format!("vault read failed: {}", e)))?;
+    let encrypted = base64::engine::general_purpose::STANDARD
+        .decode(raw.trim().as_bytes())
+        .map_err(|e| Exception::throw_message(ctx_inner, &format!("vault decode failed: {}", e)))?;
+    let decrypted = vault_decrypt(&encrypted).map_err(|e| {
+        Exception::throw_message(ctx_inner, &format!("vault decrypt failed: {}", e))
+    })?;
+    let value = String::from_utf8(decrypted)
+        .map_err(|e| Exception::throw_message(ctx_inner, &format!("vault utf8 failed: {}", e)))?;
+    Ok(Some(value))
+}
+
+fn vault_write(
+    ctx_inner: &Ctx<'_>,
+    app_data_dir: &PathBuf,
+    name: &str,
+    value: &str,
+) -> rquickjs::Result<()> {
+    let path = vault_entry_path(ctx_inner, app_data_dir, name)?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            Exception::throw_message(ctx_inner, &format!("vault dir failed: {}", e))
+        })?;
+    }
+    let encrypted = vault_encrypt(value.as_bytes()).map_err(|e| {
+        Exception::throw_message(ctx_inner, &format!("vault encrypt failed: {}", e))
+    })?;
+    let encoded = base64::engine::general_purpose::STANDARD.encode(encrypted);
+    std::fs::write(&path, encoded)
+        .map_err(|e| Exception::throw_message(ctx_inner, &format!("vault write failed: {}", e)))?;
+    Ok(())
+}
+
+fn vault_delete(ctx_inner: &Ctx<'_>, app_data_dir: &PathBuf, name: &str) -> rquickjs::Result<()> {
+    let path = vault_entry_path(ctx_inner, app_data_dir, name)?;
+    if !path.exists() {
+        return Ok(());
+    }
+    std::fs::remove_file(&path)
+        .map_err(|e| Exception::throw_message(ctx_inner, &format!("vault delete failed: {}", e)))?;
+    Ok(())
+}
+
+fn vault_entry_path(
+    ctx_inner: &Ctx<'_>,
+    app_data_dir: &PathBuf,
+    name: &str,
+) -> rquickjs::Result<PathBuf> {
+    if name.trim().is_empty() {
+        return Err(Exception::throw_message(
+            ctx_inner,
+            "vault name cannot be empty",
+        ));
+    }
+    let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(name.as_bytes());
+    Ok(app_data_dir.join("vault").join(encoded))
+}
+
+#[cfg(target_os = "windows")]
+fn vault_encrypt(data: &[u8]) -> Result<Vec<u8>, String> {
+    encrypt_data(data, Scope::User).map_err(|e| e.to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn vault_decrypt(data: &[u8]) -> Result<Vec<u8>, String> {
+    decrypt_data(data, Scope::User).map_err(|e| e.to_string())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn vault_encrypt(_data: &[u8]) -> Result<Vec<u8>, String> {
+    Err("vault API is only supported on Windows".to_string())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn vault_decrypt(_data: &[u8]) -> Result<Vec<u8>, String> {
+    Err("vault API is only supported on Windows".to_string())
 }
 
 fn sqlite_row_to_json(row: &Row<'_>) -> rusqlite::Result<Value> {

@@ -215,6 +215,33 @@ if (ctx.host.fs.exists("~/.myapp/credentials.json")) {
 }
 ```
 
+## Vault (Windows only)
+
+```typescript
+host.vault.read(name: string): string | null
+host.vault.write(name: string, value: string): void
+host.vault.delete(name: string): void
+```
+
+DPAPI-backed storage for sensitive values on Windows.
+
+### Behavior
+
+- **Windows only**: Throws on other platforms
+- **User scope**: Encrypted data is tied to the current Windows user
+- **Returns null if missing**: `read` returns `null` when no value is stored
+
+### Example
+
+```javascript
+const key = "my-plugin:token"
+const raw = ctx.host.vault.read(key)
+if (!raw) throw "Login required."
+
+const parsed = JSON.parse(raw)
+ctx.host.vault.write(key, JSON.stringify({ token: parsed.token }))
+```
+
 ## SQLite
 
 ### Query (Read-Only)
