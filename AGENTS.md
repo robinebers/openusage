@@ -23,6 +23,7 @@ Work style: Be radically precise. No fluff. Pure information only (drop grammar;
 - New functionality: small OR absolutely necessary.
 - NEVER delete files, folders or other data unless explicilty approved or part of a plan.
 - Before writing code, stricly follow the blow research rules
+- Always start with "Executive Summary" and summarize the plan for a non-technical reader in a few short bullets (what will change, behavior outcomes, intent, etc), avoiding jargon and implementation details. After that, show the full technical plan with details needed to implement.
 
 ## Research
 - Always create a spec in-memory (no files), even if minimal

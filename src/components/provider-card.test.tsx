@@ -221,6 +221,103 @@ describe("ProviderCard", () => {
     vi.useRealTimers()
   })
 
+  it("shows 'Resets soon' when reset is under 5 minutes away", () => {
+    vi.useFakeTimers()
+    const now = new Date("2026-02-02T00:00:00.000Z")
+    vi.setSystemTime(now)
+    render(
+      <ProviderCard
+        name="Resets"
+        displayMode="used"
+        lines={[
+          {
+            type: "progress",
+            label: "Short",
+            used: 10,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: "2026-02-02T00:04:59.000Z",
+          },
+        ]}
+      />
+    )
+    expect(screen.getByText("Resets soon")).toBeInTheDocument()
+    vi.useRealTimers()
+  })
+
+  it("keeps standard reset text at exactly 5 minutes", () => {
+    vi.useFakeTimers()
+    const now = new Date("2026-02-02T00:00:00.000Z")
+    vi.setSystemTime(now)
+    render(
+      <ProviderCard
+        name="Resets"
+        displayMode="used"
+        lines={[
+          {
+            type: "progress",
+            label: "Boundary",
+            used: 10,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: "2026-02-02T00:05:00.000Z",
+          },
+        ]}
+      />
+    )
+    expect(screen.getByText("Resets in 5m")).toBeInTheDocument()
+    vi.useRealTimers()
+  })
+
+  it("shows 'Resets soon' for stale reset timestamps in relative mode", () => {
+    vi.useFakeTimers()
+    const now = new Date("2026-02-02T00:06:00.000Z")
+    vi.setSystemTime(now)
+    render(
+      <ProviderCard
+        name="Resets"
+        displayMode="used"
+        lines={[
+          {
+            type: "progress",
+            label: "Stale Relative",
+            used: 10,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: "2026-02-02T00:05:00.000Z",
+          },
+        ]}
+      />
+    )
+    expect(screen.getByText("Resets soon")).toBeInTheDocument()
+    vi.useRealTimers()
+  })
+
+  it("shows 'Resets soon' for stale reset timestamps in absolute mode", () => {
+    vi.useFakeTimers()
+    const now = new Date("2026-02-02T00:06:00.000Z")
+    vi.setSystemTime(now)
+    render(
+      <ProviderCard
+        name="Resets"
+        displayMode="used"
+        resetTimerDisplayMode="absolute"
+        lines={[
+          {
+            type: "progress",
+            label: "Stale Absolute",
+            used: 10,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: "2026-02-02T00:05:00.000Z",
+          },
+        ]}
+      />
+    )
+    expect(screen.getByText("Resets soon")).toBeInTheDocument()
+    vi.useRealTimers()
+  })
+
   it("toggles reset timer display mode from reset label", async () => {
     vi.useFakeTimers()
     const now = new Date(2026, 1, 2, 0, 0, 0)

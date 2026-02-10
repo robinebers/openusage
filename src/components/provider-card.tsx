@@ -51,11 +51,13 @@ function formatCount(value: number) {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits }).format(value)
 }
 
+const RESET_SOON_THRESHOLD_MS = 5 * 60 * 1000
+
 function formatResetIn(nowMs: number, resetsAtIso: string): string | null {
   const resetsAtMs = Date.parse(resetsAtIso)
   if (!Number.isFinite(resetsAtMs)) return null
   const deltaMs = resetsAtMs - nowMs
-  if (deltaMs <= 0) return "Resets now"
+  if (deltaMs < RESET_SOON_THRESHOLD_MS) return "Resets soon"
   const durationText = formatCompactDuration(deltaMs)
   return durationText ? `Resets in ${durationText}` : "Resets in <1m"
 }
@@ -94,7 +96,7 @@ function formatMonthDayWithOrdinal(timestampMs: number): string {
 function formatResetAt(nowMs: number, resetsAtIso: string): string | null {
   const resetsAtMs = Date.parse(resetsAtIso)
   if (!Number.isFinite(resetsAtMs)) return null
-  if (resetsAtMs - nowMs <= 0) return "Resets now"
+  if (resetsAtMs - nowMs <= 0) return "Resets soon"
   const dayDiff = getLocalDayIndex(resetsAtMs) - getLocalDayIndex(nowMs)
   const timeText = RESET_TIME_FORMATTER.format(resetsAtMs)
   if (dayDiff <= 0) return `Resets today at ${timeText}`
