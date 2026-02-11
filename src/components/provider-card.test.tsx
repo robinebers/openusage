@@ -2,8 +2,13 @@ import { fireEvent, render, screen, within } from "@testing-library/react"
 import type { ReactNode } from "react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import { openUrl } from "@tauri-apps/plugin-opener"
 import { ProviderCard, formatNumber } from "@/components/provider-card"
 import { REFRESH_COOLDOWN_MS } from "@/lib/settings"
+
+vi.mock("@tauri-apps/plugin-opener", () => ({
+  openUrl: vi.fn(() => Promise.resolve()),
+}))
 
 vi.mock("@/components/ui/tooltip", () => ({
   Tooltip: ({ children }: { children: ReactNode }) => <div>{children}</div>,
@@ -45,6 +50,7 @@ function formatOrdinalDate(date: Date): string {
 describe("ProviderCard", () => {
   beforeEach(() => {
     vi.useRealTimers()
+    vi.mocked(openUrl).mockClear()
   })
 
   it("renders error state with retry", async () => {
@@ -110,6 +116,40 @@ describe("ProviderCard", () => {
     expect(screen.getByText("32%")).toBeInTheDocument()
     expect(screen.getByText("$12.34")).toBeInTheDocument()
     expect(screen.getByText("342 credits")).toBeInTheDocument()
+  })
+
+  it("renders quick links and opens URL", async () => {
+    render(
+      <ProviderCard
+        name="Links"
+        displayMode="used"
+        links={[
+          { label: "Status", url: "https://status.example.com" },
+          { label: "Billing", url: "https://example.com/billing" },
+        ]}
+      />
+    )
+
+    await userEvent.click(screen.getByRole("button", { name: /status/i }))
+    expect(openUrl).toHaveBeenCalledWith("https://status.example.com")
+    expect(screen.getByRole("button", { name: /billing/i })).toBeInTheDocument()
+  })
+
+  it("hides invalid links", () => {
+    render(
+      <ProviderCard
+        name="Links"
+        displayMode="used"
+        links={[
+          { label: " ", url: "https://status.example.com" },
+          { label: "Dashboard", url: "ftp://example.com" },
+          { label: "Status", url: "https://status.example.com" },
+        ]}
+      />
+    )
+
+    expect(screen.getByRole("button", { name: /status/i })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /dashboard/i })).toBeNull()
   })
 
   it("shows cooldown hint", () => {

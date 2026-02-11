@@ -51,6 +51,7 @@ pub struct PluginMeta {
     pub icon_url: String,
     pub brand_color: Option<String>,
     pub lines: Vec<ManifestLineDto>,
+    pub links: Vec<PluginLinkDto>,
     /// Ordered list of primary metric candidates (sorted by primaryOrder).
     /// Frontend picks the first one that exists in runtime data.
     pub primary_candidates: Vec<String>,
@@ -63,6 +64,13 @@ pub struct ManifestLineDto {
     pub line_type: String,
     pub label: String,
     pub scope: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginLinkDto {
+    pub label: String,
+    pub url: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -316,6 +324,15 @@ fn list_plugins(state: tauri::State<'_, Mutex<AppState>>) -> Vec<PluginMeta> {
                         line_type: line.line_type.clone(),
                         label: line.label.clone(),
                         scope: line.scope.clone(),
+                    })
+                    .collect(),
+                links: plugin
+                    .manifest
+                    .links
+                    .iter()
+                    .map(|link| PluginLinkDto {
+                        label: link.label.clone(),
+                        url: link.url.clone(),
                     })
                     .collect(),
                 primary_candidates,

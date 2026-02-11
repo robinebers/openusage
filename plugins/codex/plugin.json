@@ -6,6 +6,10 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#74AA9C",
+  "links": [
+    { "label": "Status", "url": "https://status.openai.com/" },
+    { "label": "Usage dashboard", "url": "https://platform.openai.com/usage" }
+  ],
   "lines": [
     { "type": "progress", "label": "Session", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Weekly", "scope": "overview" },

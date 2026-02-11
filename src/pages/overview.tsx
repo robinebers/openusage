@@ -32,6 +32,7 @@ export function OverviewPage({
           key={plugin.meta.id}
           name={plugin.meta.name}
           plan={plugin.data?.plan}
+          links={plugin.meta.links}
           showSeparator={index < plugins.length - 1}
           loading={plugin.loading}
           error={plugin.error}
