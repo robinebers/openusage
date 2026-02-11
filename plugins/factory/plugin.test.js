@@ -40,6 +40,172 @@ describe("factory plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Invalid auth file")
   })
 
+  it("loads auth from auth.encrypted when auth.json is missing", async () => {
+    const ctx = makeCtx()
+    const futureExp = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
+    ctx.host.fs.writeText("~/.factory/auth.encrypted", JSON.stringify({
+      access_token: makeJwt(futureExp),
+      refresh_token: "refresh",
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        usage: {
+          startDate: 1770623326000,
+          endDate: 1772956800000,
+          standard: { orgTotalTokensUsed: 123, totalAllowance: 20000000 },
+          premium: { orgTotalTokensUsed: 0, totalAllowance: 0 },
+        },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Standard")).toBeTruthy()
+  })
+
+  it("loads auth from keychain when auth files are missing", async () => {
+    const ctx = makeCtx()
+    const futureExp = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
+    ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
+      if (service === "Factory Token") {
+        return JSON.stringify({
+          access_token: makeJwt(futureExp),
+          refresh_token: "refresh",
+        })
+      }
+      return null
+    })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        usage: {
+          startDate: 1770623326000,
+          endDate: 1772956800000,
+          standard: { orgTotalTokensUsed: 1, totalAllowance: 20000000 },
+          premium: { orgTotalTokensUsed: 0, totalAllowance: 0 },
+        },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Standard")).toBeTruthy()
+    expect(ctx.host.keychain.readGenericPassword).toHaveBeenCalledWith("Factory Token")
+  })
+
+  it("loads auth from keychain when payload is hex-encoded JSON", async () => {
+    const ctx = makeCtx()
+    const futureExp = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
+    const payload = JSON.stringify({
+      access_token: makeJwt(futureExp),
+      refresh_token: "refresh",
+    })
+    const hexPayload = Buffer.from(payload, "utf8").toString("hex")
+    ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
+      if (service === "Factory Token") return hexPayload
+      return null
+    })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        usage: {
+          startDate: 1770623326000,
+          endDate: 1772956800000,
+          standard: { orgTotalTokensUsed: 9, totalAllowance: 20000000 },
+          premium: { orgTotalTokensUsed: 0, totalAllowance: 0 },
+        },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Standard")).toBeTruthy()
+  })
+
+  it("skips invalid keychain payload and tries next service", async () => {
+    const ctx = makeCtx()
+    const futureExp = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
+    ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
+      if (service === "Factory Token") return "not-json"
+      if (service === "Factory token") {
+        return JSON.stringify({
+          access_token: makeJwt(futureExp),
+          refresh_token: "refresh",
+        })
+      }
+      return null
+    })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        usage: {
+          startDate: 1770623326000,
+          endDate: 1772956800000,
+          standard: { orgTotalTokensUsed: 2, totalAllowance: 20000000 },
+          premium: { orgTotalTokensUsed: 0, totalAllowance: 0 },
+        },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Standard")).toBeTruthy()
+    expect(ctx.host.keychain.readGenericPassword).toHaveBeenCalledWith("Factory Token")
+    expect(ctx.host.keychain.readGenericPassword).toHaveBeenCalledWith("Factory token")
+  })
+
+  it("refreshes keychain auth and writes back to keychain", async () => {
+    const ctx = makeCtx()
+    const nearExp = Math.floor(Date.now() / 1000) + 12 * 60 * 60 // force proactive refresh
+    const futureExp = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
+    ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
+      if (service === "Factory Token") {
+        return JSON.stringify({
+          access_token: makeJwt(nearExp),
+          refresh_token: "refresh",
+        })
+      }
+      return null
+    })
+
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("workos.com")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            access_token: makeJwt(futureExp),
+            refresh_token: "new-refresh",
+          }),
+        }
+      }
+      return {
+        status: 200,
+        headers: {},
+        bodyText: JSON.stringify({
+          usage: {
+            startDate: 1770623326000,
+            endDate: 1772956800000,
+            standard: { orgTotalTokensUsed: 0, totalAllowance: 20000000 },
+            premium: { orgTotalTokensUsed: 0, totalAllowance: 0 },
+          },
+        }),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+    expect(ctx.host.keychain.writeGenericPassword).toHaveBeenCalledTimes(1)
+    const [service, writtenPayload] = ctx.host.keychain.writeGenericPassword.mock.calls[0]
+    expect(service).toBe("Factory Token")
+    const parsed = JSON.parse(writtenPayload)
+    expect(parsed.refresh_token).toBe("new-refresh")
+  })
+
   it("fetches usage and formats standard tokens", async () => {
     const ctx = makeCtx()
     // Token expires in 7 days (no refresh needed)
@@ -192,6 +358,37 @@ describe("factory plugin", () => {
     expect(ctx.host.fs.writeText).toHaveBeenCalled()
   })
 
+  it("falls back to existing token when proactive refresh throws", async () => {
+    const ctx = makeCtx()
+    const nearExp = Math.floor(Date.now() / 1000) + 12 * 60 * 60
+    ctx.host.fs.writeText("~/.factory/auth.json", JSON.stringify({
+      access_token: makeJwt(nearExp),
+      refresh_token: "refresh",
+    }))
+
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("workos.com")) {
+        throw new Error("refresh transport error")
+      }
+      return {
+        status: 200,
+        headers: {},
+        bodyText: JSON.stringify({
+          usage: {
+            startDate: 1770623326000,
+            endDate: 1772956800000,
+            standard: { orgTotalTokensUsed: 0, totalAllowance: 20000000 },
+            premium: { orgTotalTokensUsed: 0, totalAllowance: 0 },
+          },
+        }),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Standard")).toBeTruthy()
+  })
+
   it("throws session expired when refresh fails with 401", async () => {
     const ctx = makeCtx()
     // Token expired
@@ -283,6 +480,49 @@ describe("factory plugin", () => {
 
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Usage request failed")
+  })
+
+  it("throws specific error when post-refresh usage request fails", async () => {
+    const ctx = makeCtx()
+    const futureExp = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
+    ctx.host.fs.writeText("~/.factory/auth.json", JSON.stringify({
+      access_token: makeJwt(futureExp),
+      refresh_token: "refresh",
+    }))
+
+    let usageCalls = 0
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("workos.com")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            access_token: makeJwt(futureExp),
+            refresh_token: "new-refresh",
+          }),
+        }
+      }
+      usageCalls++
+      if (usageCalls === 1) return { status: 401, headers: {}, bodyText: "" }
+      throw new Error("network after refresh")
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Usage request failed after refresh")
+  })
+
+  it("throws generic usage request failure when retry helper throws", async () => {
+    const ctx = makeCtx()
+    const futureExp = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
+    ctx.host.fs.writeText("~/.factory/auth.json", JSON.stringify({
+      access_token: makeJwt(futureExp),
+      refresh_token: "refresh",
+    }))
+    ctx.util.retryOnceOnAuth = () => {
+      throw new Error("unexpected retry helper error")
+    }
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Usage request failed. Check your connection.")
   })
 
   it("retries on 401 and succeeds after refresh", async () => {

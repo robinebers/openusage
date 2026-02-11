@@ -1,36 +1,183 @@
 (function () {
-  const AUTH_PATH = "~/.factory/auth.json"
+  const AUTH_PATHS = ["~/.factory/auth.json", "~/.factory/auth.encrypted"]
+  const KEYCHAIN_SERVICES = ["Factory Token", "Factory token", "Factory Auth", "Droid Auth"]
   const WORKOS_CLIENT_ID = "client_01HNM792M5G5G1A2THWPXKFMXB"
   const WORKOS_AUTH_URL = "https://api.workos.com/user_management/authenticate"
   const USAGE_URL = "https://api.factory.ai/api/organization/subscription/usage"
   const TOKEN_REFRESH_THRESHOLD_MS = 24 * 60 * 60 * 1000 // 24 hours before expiry
 
-  function loadAuth(ctx) {
-    if (!ctx.host.fs.exists(AUTH_PATH)) {
-      ctx.host.log.warn("auth file not found: " + AUTH_PATH)
-      return null
-    }
-
+  function decodeHexUtf8(hex) {
     try {
-      const text = ctx.host.fs.readText(AUTH_PATH)
-      const auth = ctx.util.tryParseJson(text)
-      if (auth) {
-        ctx.host.log.info("auth loaded from file: " + AUTH_PATH)
-      } else {
-        ctx.host.log.warn("auth file exists but not valid JSON")
+      const bytes = []
+      for (let i = 0; i < hex.length; i += 2) {
+        bytes.push(parseInt(hex.slice(i, i + 2), 16))
       }
-      return auth
-    } catch (e) {
-      ctx.host.log.warn("auth file read failed: " + String(e))
+
+      if (typeof TextDecoder !== "undefined") {
+        try {
+          return new TextDecoder("utf-8", { fatal: false }).decode(new Uint8Array(bytes))
+        } catch {}
+      }
+
+      let escaped = ""
+      for (const b of bytes) {
+        const h = b.toString(16)
+        escaped += "%" + (h.length === 1 ? "0" + h : h)
+      }
+      return decodeURIComponent(escaped)
+    } catch {
       return null
     }
   }
 
-  function saveAuth(ctx, auth) {
+  function tryParseAuthJson(ctx, text) {
+    if (!text) return null
+    const parsed = ctx.util.tryParseJson(text)
+    if (parsed !== null) return parsed
+
+    // Some keychain payloads can be returned as hex-encoded UTF-8 bytes.
+    let hex = String(text).trim()
+    if (hex.startsWith("0x") || hex.startsWith("0X")) hex = hex.slice(2)
+    if (!hex || hex.length % 2 !== 0) return null
+    if (!/^[0-9a-fA-F]+$/.test(hex)) return null
+
+    const decoded = decodeHexUtf8(hex)
+    if (!decoded) return null
+    return ctx.util.tryParseJson(decoded)
+  }
+
+  function looksLikeJwt(value) {
+    return /^[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+$/.test(value)
+  }
+
+  function normalizeAuthPayload(raw, opts) {
+    const allowPartial = Boolean(opts && opts.allowPartial)
+    if (!raw || typeof raw !== "object") return null
+
+    const accessToken =
+      raw.access_token ||
+      raw.accessToken ||
+      (raw.tokens && (raw.tokens.access_token || raw.tokens.accessToken))
+
+    const refreshToken =
+      raw.refresh_token ||
+      raw.refreshToken ||
+      (raw.tokens && (raw.tokens.refresh_token || raw.tokens.refreshToken))
+
+    const hasAccess = typeof accessToken === "string" && accessToken
+    const hasRefresh = typeof refreshToken === "string" && refreshToken
+    if (!hasAccess && !(allowPartial && hasRefresh)) return null
+
+    return {
+      access_token: hasAccess ? accessToken : null,
+      refresh_token: hasRefresh ? refreshToken : null,
+    }
+  }
+
+  function parseAuthPayload(ctx, rawText, opts) {
+    const parsed = tryParseAuthJson(ctx, rawText)
+    const normalized = normalizeAuthPayload(parsed, opts)
+    if (normalized) return normalized
+
+    if (typeof parsed === "string" && looksLikeJwt(parsed)) {
+      return { access_token: parsed, refresh_token: null }
+    }
+
+    const direct = String(rawText || "").trim()
+    if (looksLikeJwt(direct)) {
+      return { access_token: direct, refresh_token: null }
+    }
+
+    return null
+  }
+
+  function loadAuthFromFiles(ctx) {
+    for (const authPath of AUTH_PATHS) {
+      if (!ctx.host.fs.exists(authPath)) continue
+
+      try {
+        const text = ctx.host.fs.readText(authPath)
+        const auth = parseAuthPayload(ctx, text, { allowPartial: true })
+        if (!auth) {
+          ctx.host.log.warn("auth file exists but has no valid auth payload: " + authPath)
+          continue
+        }
+        ctx.host.log.info("auth loaded from file: " + authPath)
+        return { auth, source: "file", authPath, keychainService: null }
+      } catch (e) {
+        ctx.host.log.warn("auth file read failed: " + String(e))
+      }
+    }
+
+    return null
+  }
+
+  function loadAuthFromKeychain(ctx) {
+    if (!ctx.host.keychain || typeof ctx.host.keychain.readGenericPassword !== "function") {
+      return null
+    }
+
+    for (const service of KEYCHAIN_SERVICES) {
+      try {
+        const value = ctx.host.keychain.readGenericPassword(service)
+        if (!value) continue
+
+        const auth = parseAuthPayload(ctx, value)
+        if (!auth) {
+          ctx.host.log.warn("keychain has data but no valid auth payload: " + service)
+          continue
+        }
+
+        ctx.host.log.info("auth loaded from keychain: " + service)
+        return { auth, source: "keychain", authPath: null, keychainService: service }
+      } catch (e) {
+        ctx.host.log.info("keychain read failed (may not exist): " + String(e))
+      }
+    }
+
+    return null
+  }
+
+  function loadAuth(ctx) {
+    const fileAuth = loadAuthFromFiles(ctx)
+    if (fileAuth) return fileAuth
+
+    const keychainAuth = loadAuthFromKeychain(ctx)
+    if (keychainAuth) return keychainAuth
+
+    for (const authPath of AUTH_PATHS) {
+      if (!ctx.host.fs.exists(authPath)) {
+        ctx.host.log.warn("auth file not found: " + authPath)
+      }
+    }
+
+    return null
+  }
+
+  function saveAuth(ctx, authState) {
+    const auth = authState && authState.auth ? authState.auth : null
+    if (!auth) return false
+
     try {
-      ctx.host.fs.writeText(AUTH_PATH, JSON.stringify(auth, null, 2))
-      ctx.host.log.info("auth file updated")
-      return true
+      if (authState.source === "file" && authState.authPath) {
+        ctx.host.fs.writeText(authState.authPath, JSON.stringify(auth, null, 2))
+        ctx.host.log.info("auth file updated: " + authState.authPath)
+        return true
+      }
+
+      if (
+        authState.source === "keychain" &&
+        authState.keychainService &&
+        ctx.host.keychain &&
+        typeof ctx.host.keychain.writeGenericPassword === "function"
+      ) {
+        ctx.host.keychain.writeGenericPassword(authState.keychainService, JSON.stringify(auth))
+        ctx.host.log.info("auth keychain item updated: " + authState.keychainService)
+        return true
+      }
+
+      ctx.host.log.warn("auth persistence skipped: unsupported source")
+      return false
     } catch (e) {
       ctx.host.log.warn("failed to save auth: " + String(e))
       return false
@@ -47,7 +194,8 @@
     })
   }
 
-  function refreshToken(ctx, auth) {
+  function refreshToken(ctx, authState) {
+    const auth = authState.auth
     if (!auth.refresh_token) {
       ctx.host.log.warn("refresh skipped: no refresh token")
       return null
@@ -93,7 +241,7 @@
       }
 
       // Save updated auth
-      saveAuth(ctx, auth)
+      saveAuth(ctx, authState)
       ctx.host.log.info("refresh succeeded")
 
       return newAccessToken
@@ -120,14 +268,15 @@
   }
 
   function probe(ctx) {
-    const auth = loadAuth(ctx)
-    if (!auth) {
+    const authState = loadAuth(ctx)
+    if (!authState) {
       ctx.host.log.error("probe failed: not logged in")
       throw "Not logged in. Run `droid` to authenticate."
     }
 
+    const auth = authState.auth
     if (!auth.access_token) {
-      ctx.host.log.error("probe failed: no access_token in auth file")
+      ctx.host.log.error("probe failed: no access_token in auth data")
       throw "Invalid auth file. Run `droid` to authenticate."
     }
 
@@ -137,7 +286,7 @@
     const nowMs = Date.now()
     if (needsRefresh(ctx, accessToken, nowMs)) {
       ctx.host.log.info("token near expiry, refreshing")
-      const refreshed = refreshToken(ctx, auth)
+      const refreshed = refreshToken(ctx, authState)
       if (refreshed) {
         accessToken = refreshed
       } else {
@@ -163,7 +312,7 @@
         refresh: () => {
           ctx.host.log.info("usage returned 401, attempting refresh")
           didRefresh = true
-          return refreshToken(ctx, auth)
+          return refreshToken(ctx, authState)
         },
       })
     } catch (e) {
