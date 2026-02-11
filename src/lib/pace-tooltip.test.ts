@@ -13,9 +13,9 @@ const nowMs = Date.parse("2026-02-02T12:00:00.000Z")
 
 describe("pace-tooltip", () => {
   it("maps pace status labels", () => {
-    expect(getPaceStatusText("ahead")).toBe("You're good")
-    expect(getPaceStatusText("on-track")).toBe("On track")
-    expect(getPaceStatusText("behind")).toBe("Using fast")
+    expect(getPaceStatusText("ahead")).toBe("Plenty of room")
+    expect(getPaceStatusText("on-track")).toBe("Right on target")
+    expect(getPaceStatusText("behind")).toBe("Will run out")
   })
 
   it("formats compact durations", () => {

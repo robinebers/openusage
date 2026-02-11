@@ -2,7 +2,7 @@ import type { PaceResult, PaceStatus } from "@/lib/pace-status"
 import type { DisplayMode } from "@/lib/settings"
 
 export function getPaceStatusText(status: PaceStatus): string {
-  return status === "ahead" ? "You're good" : status === "on-track" ? "On track" : "Using fast"
+  return status === "ahead" ? "Plenty of room" : status === "on-track" ? "Right on target" : "Will run out"
 }
 
 export function formatCompactDuration(deltaMs: number): string | null {

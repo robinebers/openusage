@@ -7,6 +7,7 @@
   const PLAN_URL = BASE_URL + "/aiserver.v1.DashboardService/GetPlanInfo"
   const REFRESH_URL = BASE_URL + "/oauth/token"
   const CREDITS_URL = BASE_URL + "/aiserver.v1.DashboardService/GetCreditGrantsBalance"
+  const REST_USAGE_URL = "https://cursor.com/api/usage"
   const CLIENT_ID = "KbZUR41cY7W6zRSdpSUJ7I7mLYBKOCmB"
   const REFRESH_BUFFER_MS = 5 * 60 * 1000 // refresh 5 minutes before expiration
 
@@ -184,6 +185,82 @@
     })
   }
 
+  function buildSessionToken(ctx, accessToken) {
+    var payload = ctx.jwt.decodePayload(accessToken)
+    if (!payload || !payload.sub) return null
+    var parts = String(payload.sub).split("|")
+    var userId = parts.length > 1 ? parts[1] : parts[0]
+    if (!userId) return null
+    return { userId: userId, sessionToken: userId + "%3A%3A" + accessToken }
+  }
+
+  function fetchEnterpriseUsage(ctx, accessToken) {
+    var session = buildSessionToken(ctx, accessToken)
+    if (!session) {
+      ctx.host.log.warn("enterprise: cannot build session token")
+      return null
+    }
+    try {
+      var resp = ctx.util.request({
+        method: "GET",
+        url: REST_USAGE_URL + "?user=" + encodeURIComponent(session.userId),
+        headers: {
+          Cookie: "WorkosCursorSessionToken=" + session.sessionToken,
+        },
+        timeoutMs: 10000,
+      })
+      if (resp.status < 200 || resp.status >= 300) {
+        ctx.host.log.warn("enterprise usage returned status=" + resp.status)
+        return null
+      }
+      return ctx.util.tryParseJson(resp.bodyText)
+    } catch (e) {
+      ctx.host.log.warn("enterprise usage fetch failed: " + String(e))
+      return null
+    }
+  }
+
+  function buildEnterpriseResult(ctx, accessToken, planName, usage) {
+    var requestUsage = fetchEnterpriseUsage(ctx, accessToken)
+    var lines = []
+
+    if (requestUsage) {
+      var gpt4 = requestUsage["gpt-4"]
+      if (gpt4 && typeof gpt4.maxRequestUsage === "number" && gpt4.maxRequestUsage > 0) {
+        var used = gpt4.numRequests || 0
+        var limit = gpt4.maxRequestUsage
+
+        var billingPeriodMs = 30 * 24 * 60 * 60 * 1000
+        var cycleStart = requestUsage.startOfMonth
+          ? ctx.util.parseDateMs(requestUsage.startOfMonth)
+          : null
+        var cycleEndMs = cycleStart ? cycleStart + billingPeriodMs : null
+
+        lines.push(ctx.line.progress({
+          label: "Included requests",
+          used: used,
+          limit: limit,
+          format: { kind: "count", suffix: "requests" },
+          resetsAt: ctx.util.toIso(cycleEndMs),
+          periodDurationMs: billingPeriodMs,
+        }))
+      }
+    }
+
+    if (lines.length === 0) {
+      ctx.host.log.warn("enterprise: no usage data available")
+      throw "Enterprise usage data unavailable. Try again later."
+    }
+
+    var plan = null
+    if (planName) {
+      var planLabel = ctx.fmt.planLabel(planName)
+      if (planLabel) plan = planLabel
+    }
+
+    return { plan: plan, lines: lines }
+  }
+
   function probe(ctx) {
     const stateDb = getStateDbPath(ctx)
     if (ctx.app.platform === "windows") {
@@ -269,10 +346,7 @@
       throw "Usage response invalid. Try again later."
     }
 
-    if (!usage.enabled || !usage.planUsage) {
-      throw "No active Cursor subscription."
-    }
-
+    // Fetch plan info early (needed for Enterprise detection)
     let planName = ""
     try {
       const planResp = connectPost(ctx, PLAN_URL, accessToken)
@@ -284,6 +358,18 @@
       }
     } catch (e) {
       ctx.host.log.warn("plan info fetch failed: " + String(e))
+    }
+
+    // Enterprise accounts return no planUsage from the Connect API.
+    // Detect Enterprise and use the REST usage API instead.
+    const isEnterprise = !usage.planUsage && planName.toLowerCase() === "enterprise"
+    if (isEnterprise) {
+      ctx.host.log.info("detected enterprise account, using REST usage API")
+      return buildEnterpriseResult(ctx, accessToken, planName, usage)
+    }
+
+    if (!usage.enabled || !usage.planUsage) {
+      throw "No active Cursor subscription."
     }
 
     let creditGrants = null

@@ -1,5 +1,55 @@
-use tauri::{Manager, Position, Size};
+use tauri::{AppHandle, Manager, Position, Size};
 use tauri_nspanel::{tauri_panel, CollectionBehavior, ManagerExt, PanelLevel, StyleMask, WebviewWindowExt};
+
+/// Macro to get existing panel or initialize it if needed.
+/// Returns Option<Panel> - Some if panel is available, None on error.
+macro_rules! get_or_init_panel {
+    ($app_handle:expr) => {
+        match $app_handle.get_webview_panel("main") {
+            Ok(panel) => Some(panel),
+            Err(_) => {
+                if let Err(err) = crate::panel::init($app_handle) {
+                    log::error!("Failed to init panel: {}", err);
+                    None
+                } else {
+                    match $app_handle.get_webview_panel("main") {
+                        Ok(panel) => Some(panel),
+                        Err(err) => {
+                            log::error!("Panel missing after init: {:?}", err);
+                            None
+                        }
+                    }
+                }
+            }
+        }
+    };
+}
+
+// Export macro for use in other modules
+pub(crate) use get_or_init_panel;
+
+/// Show the panel (initializing if needed).
+pub fn show_panel(app_handle: &AppHandle) {
+    if let Some(panel) = get_or_init_panel!(app_handle) {
+        panel.show_and_make_key();
+    }
+}
+
+/// Toggle panel visibility. If visible, hide it. If hidden, show it.
+/// Used by global shortcut handler.
+pub fn toggle_panel(app_handle: &AppHandle) {
+    let Some(panel) = get_or_init_panel!(app_handle) else {
+        return;
+    };
+
+    if panel.is_visible() {
+        log::debug!("toggle_panel: hiding panel");
+        panel.hide();
+    } else {
+        log::debug!("toggle_panel: showing panel");
+        panel.show_and_make_key();
+    }
+}
 
 // Define our panel class and event handler together
 tauri_panel! {

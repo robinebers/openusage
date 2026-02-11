@@ -12,6 +12,7 @@ import { OverviewPage } from "@/pages/overview"
 import { ProviderDetailPage } from "@/pages/provider-detail"
 import { SettingsPage } from "@/pages/settings"
 import type { PluginMeta, PluginOutput } from "@/lib/plugin-types"
+import { track } from "@/lib/analytics"
 import { getTrayIconSizePx, renderTrayBarsIcon } from "@/lib/tray-bars-icon"
 import { getTrayPrimaryBars } from "@/lib/tray-primary-progress"
 import { useProbeEvents } from "@/hooks/use-probe-events"
@@ -20,27 +21,36 @@ import {
   arePluginSettingsEqual,
   DEFAULT_AUTO_UPDATE_INTERVAL,
   DEFAULT_DISPLAY_MODE,
+  DEFAULT_GLOBAL_SHORTCUT,
+  DEFAULT_RESET_TIMER_DISPLAY_MODE,
   DEFAULT_TRAY_ICON_STYLE,
   DEFAULT_TRAY_SHOW_PERCENTAGE,
   DEFAULT_THEME_MODE,
+  REFRESH_COOLDOWN_MS,
   getEnabledPluginIds,
   isTrayPercentageMandatory,
   loadAutoUpdateInterval,
   loadDisplayMode,
+  loadGlobalShortcut,
   loadPluginSettings,
+  loadResetTimerDisplayMode,
   loadTrayShowPercentage,
   loadTrayIconStyle,
   loadThemeMode,
   normalizePluginSettings,
   saveAutoUpdateInterval,
   saveDisplayMode,
+  saveGlobalShortcut,
   savePluginSettings,
+  saveResetTimerDisplayMode,
   saveTrayShowPercentage,
   saveTrayIconStyle,
   saveThemeMode,
   type AutoUpdateIntervalMinutes,
   type DisplayMode,
+  type GlobalShortcut,
   type PluginSettings,
+  type ResetTimerDisplayMode,
   type TrayIconStyle,
   type ThemeMode,
 } from "@/lib/settings"
@@ -74,9 +84,13 @@ function App() {
   const [autoUpdateResetToken, setAutoUpdateResetToken] = useState(0)
   const [themeMode, setThemeMode] = useState<ThemeMode>(DEFAULT_THEME_MODE)
   const [displayMode, setDisplayMode] = useState<DisplayMode>(DEFAULT_DISPLAY_MODE)
+  const [resetTimerDisplayMode, setResetTimerDisplayMode] = useState<ResetTimerDisplayMode>(
+    DEFAULT_RESET_TIMER_DISPLAY_MODE
+  )
   const [trayIconStyle, setTrayIconStyle] = useState<TrayIconStyle>(DEFAULT_TRAY_ICON_STYLE)
   const [isWindows, setIsWindows] = useState(false)
   const [trayShowPercentage, setTrayShowPercentage] = useState(DEFAULT_TRAY_SHOW_PERCENTAGE)
+  const [globalShortcut, setGlobalShortcut] = useState<GlobalShortcut>(DEFAULT_GLOBAL_SHORTCUT)
   const [maxPanelHeightPx, setMaxPanelHeightPx] = useState<number | null>(null)
   const maxPanelHeightPxRef = useRef<number | null>(null)
   const [appVersion, setAppVersion] = useState("...")
@@ -88,7 +102,7 @@ function App() {
   // Arrow offset from left edge (in logical px) - where tray icon center is relative to window
   const [arrowOffset, setArrowOffset] = useState<number | null>(null)
 
-  const { updateStatus, triggerInstall } = useAppUpdate()
+  const { updateStatus, triggerInstall, checkForUpdates } = useAppUpdate()
   const [showAbout, setShowAbout] = useState(false)
 
   // Tray icon handle for frontend updates
@@ -257,6 +271,19 @@ function App() {
       .filter((p): p is PluginMeta => Boolean(p))
       .map((p) => ({ id: p.id, name: p.name, iconUrl: p.iconUrl, brandColor: p.brandColor }))
   }, [pluginSettings, pluginsMeta])
+
+  // Track page views
+  useEffect(() => {
+    const page =
+      activeView === "home" ? "overview"
+        : activeView === "settings" ? "settings"
+          : "provider_detail"
+    const props: Record<string, string> =
+      activeView !== "home" && activeView !== "settings"
+        ? { page, provider_id: activeView }
+        : { page }
+    track("page_viewed", props)
+  }, [activeView])
 
   // If active view is a plugin that got disabled, switch to home
   useEffect(() => {
@@ -503,6 +530,12 @@ function App() {
   const handleProbeResult = useCallback(
     (output: PluginOutput) => {
       const errorMessage = getErrorMessage(output)
+      if (errorMessage) {
+        track("provider_fetch_error", {
+          provider_id: output.providerId,
+          error: errorMessage.slice(0, 200),
+        })
+      }
       const isManual = manualRefreshIdsRef.current.has(output.providerId)
       if (isManual) {
         manualRefreshIdsRef.current.delete(output.providerId)
@@ -577,6 +610,13 @@ function App() {
           console.error("Failed to load display mode:", error)
         }
 
+        let storedResetTimerDisplayMode = DEFAULT_RESET_TIMER_DISPLAY_MODE
+        try {
+          storedResetTimerDisplayMode = await loadResetTimerDisplayMode()
+        } catch (error) {
+          console.error("Failed to load reset timer display mode:", error)
+        }
+
         let storedTrayIconStyle = DEFAULT_TRAY_ICON_STYLE
         try {
           storedTrayIconStyle = await loadTrayIconStyle()
@@ -591,6 +631,13 @@ function App() {
           console.error("Failed to load tray show percentage:", error)
         }
 
+        let storedGlobalShortcut = DEFAULT_GLOBAL_SHORTCUT
+        try {
+          storedGlobalShortcut = await loadGlobalShortcut()
+        } catch (error) {
+          console.error("Failed to load global shortcut:", error)
+        }
+
         const normalizedTrayShowPercentage = isTrayPercentageMandatory(storedTrayIconStyle)
           ? true
           : storedTrayShowPercentage
@@ -601,11 +648,18 @@ function App() {
           setAutoUpdateInterval(storedInterval)
           setThemeMode(storedThemeMode)
           setDisplayMode(storedDisplayMode)
+          setPluginSettings(normalized)
+          pluginSettingsRef.current = normalized
+          setAutoUpdateInterval(storedInterval)
+          setThemeMode(storedThemeMode)
+          setDisplayMode(storedDisplayMode)
           displayModeRef.current = storedDisplayMode
+          setResetTimerDisplayMode(storedResetTimerDisplayMode)
           setTrayIconStyle(storedTrayIconStyle)
           trayIconStyleRef.current = storedTrayIconStyle
           setTrayShowPercentage(normalizedTrayShowPercentage)
           trayShowPercentageRef.current = normalizedTrayShowPercentage
+          setGlobalShortcut(storedGlobalShortcut)
           const enabledIds = getEnabledPluginIds(normalized)
           setLoadingForPlugins(enabledIds)
           try {
@@ -707,21 +761,57 @@ function App() {
     setAutoUpdateResetToken((value) => value + 1)
   }, [autoUpdateInterval, pluginSettings])
 
-  const handleRetryPlugin = useCallback(
-    (id: string) => {
-      resetAutoUpdateSchedule()
-      // Mark as manual refresh
-      manualRefreshIdsRef.current.add(id)
-      setLoadingForPlugins([id])
-      startBatch([id]).catch((error) => {
-        console.error("Failed to retry plugin:", error)
-        setErrorForPlugins([id], "Failed to start probe")
+  const startManualRefresh = useCallback(
+    (ids: string[], errorMessage: string) => {
+      for (const id of ids) {
+        manualRefreshIdsRef.current.add(id)
+      }
+      setLoadingForPlugins(ids)
+      startBatch(ids).catch((error) => {
+        for (const id of ids) {
+          manualRefreshIdsRef.current.delete(id)
+        }
+        console.error(errorMessage, error)
+        setErrorForPlugins(ids, "Failed to start probe")
       })
     },
-    [resetAutoUpdateSchedule, setLoadingForPlugins, setErrorForPlugins, startBatch]
+    [setLoadingForPlugins, setErrorForPlugins, startBatch]
   )
 
+  const handleRetryPlugin = useCallback(
+    (id: string) => {
+      track("provider_refreshed", { provider_id: id })
+      resetAutoUpdateSchedule()
+      startManualRefresh([id], "Failed to retry plugin:")
+    },
+    [resetAutoUpdateSchedule, startManualRefresh]
+  )
+
+  const handleRefreshAll = useCallback(() => {
+    if (!pluginSettings) return
+    const enabledIds = getEnabledPluginIds(pluginSettings)
+    if (enabledIds.length === 0) return
+    const now = Date.now()
+    const eligibleIds = enabledIds.filter((id) => {
+      const currentState = pluginStatesRef.current[id]
+      if (currentState?.loading) return false
+      if (manualRefreshIdsRef.current.has(id)) return false
+      const lastManualRefreshAt = currentState?.lastManualRefreshAt
+      if (!lastManualRefreshAt) return true
+      return now - lastManualRefreshAt >= REFRESH_COOLDOWN_MS
+    })
+    if (eligibleIds.length === 0) return
+
+    resetAutoUpdateSchedule()
+    startManualRefresh(eligibleIds, "Failed to start refresh batch:")
+  }, [
+    pluginSettings,
+    resetAutoUpdateSchedule,
+    startManualRefresh,
+  ])
+
   const handleThemeModeChange = useCallback((mode: ThemeMode) => {
+    track("setting_changed", { setting: "theme", value: mode })
     setThemeMode(mode)
     void saveThemeMode(mode).catch((error) => {
       console.error("Failed to save theme mode:", error)
@@ -729,6 +819,7 @@ function App() {
   }, [])
 
   const handleDisplayModeChange = useCallback((mode: DisplayMode) => {
+    track("setting_changed", { setting: "display_mode", value: mode })
     setDisplayMode(mode)
     // Display mode is a direct user-facing toggle; update tray immediately.
     scheduleTrayIconUpdate("settings", 0)
@@ -737,7 +828,21 @@ function App() {
     })
   }, [scheduleTrayIconUpdate])
 
+  const handleResetTimerDisplayModeChange = useCallback((mode: ResetTimerDisplayMode) => {
+    track("setting_changed", { setting: "reset_timer_display_mode", value: mode })
+    setResetTimerDisplayMode(mode)
+    void saveResetTimerDisplayMode(mode).catch((error) => {
+      console.error("Failed to save reset timer display mode:", error)
+    })
+  }, [])
+
+  const handleResetTimerDisplayModeToggle = useCallback(() => {
+    const next = resetTimerDisplayMode === "relative" ? "absolute" : "relative"
+    handleResetTimerDisplayModeChange(next)
+  }, [handleResetTimerDisplayModeChange, resetTimerDisplayMode])
+
   const handleTrayIconStyleChange = useCallback((style: TrayIconStyle) => {
+    track("setting_changed", { setting: "tray_icon_style", value: style })
     const mandatory = isTrayPercentageMandatory(style)
     if (mandatory && trayShowPercentageRef.current !== true) {
       trayShowPercentageRef.current = true
@@ -757,6 +862,7 @@ function App() {
   }, [scheduleTrayIconUpdate])
 
   const handleTrayShowPercentageChange = useCallback((value: boolean) => {
+    track("setting_changed", { setting: "tray_show_percentage", value: value ? "true" : "false" })
     trayShowPercentageRef.current = value
     setTrayShowPercentage(value)
     // Tray icon text visibility is a direct user-facing toggle; update tray immediately.
@@ -767,6 +873,7 @@ function App() {
   }, [scheduleTrayIconUpdate])
 
   const handleAutoUpdateIntervalChange = useCallback((value: AutoUpdateIntervalMinutes) => {
+    track("setting_changed", { setting: "auto_refresh", value: String(value) })
     setAutoUpdateInterval(value)
     if (pluginSettings) {
       const enabledIds = getEnabledPluginIds(pluginSettings)
@@ -780,6 +887,18 @@ function App() {
       console.error("Failed to save auto-update interval:", error)
     })
   }, [pluginSettings])
+
+  const handleGlobalShortcutChange = useCallback((value: GlobalShortcut) => {
+    track("setting_changed", { setting: "global_shortcut", value: value ?? "disabled" })
+    setGlobalShortcut(value)
+    void saveGlobalShortcut(value).catch((error) => {
+      console.error("Failed to save global shortcut:", error)
+    })
+    // Update the shortcut registration in the backend
+    invoke("update_global_shortcut", { shortcut: value }).catch((error) => {
+      console.error("Failed to update global shortcut:", error)
+    })
+  }, [])
 
   const settingsPlugins = useMemo(() => {
     if (!pluginSettings) return []
@@ -802,6 +921,7 @@ function App() {
   const handleReorder = useCallback(
     (orderedIds: string[]) => {
       if (!pluginSettings) return
+      track("providers_reordered", { count: orderedIds.length })
       const nextSettings: PluginSettings = {
         ...pluginSettings,
         order: orderedIds,
@@ -819,6 +939,7 @@ function App() {
     (id: string) => {
       if (!pluginSettings) return
       const wasDisabled = pluginSettings.disabled.includes(id)
+      track("provider_toggled", { provider_id: id, enabled: wasDisabled ? "true" : "false" })
       const disabled = new Set(pluginSettings.disabled)
 
       if (wasDisabled) {
@@ -875,6 +996,8 @@ function App() {
           plugins={displayPlugins}
           onRetryPlugin={handleRetryPlugin}
           displayMode={displayMode}
+          resetTimerDisplayMode={resetTimerDisplayMode}
+          onResetTimerDisplayModeToggle={handleResetTimerDisplayModeToggle}
         />
       )
     }
@@ -890,10 +1013,14 @@ function App() {
           onThemeModeChange={handleThemeModeChange}
           displayMode={displayMode}
           onDisplayModeChange={handleDisplayModeChange}
+          resetTimerDisplayMode={resetTimerDisplayMode}
+          onResetTimerDisplayModeChange={handleResetTimerDisplayModeChange}
           trayIconStyle={trayIconStyle}
           onTrayIconStyleChange={handleTrayIconStyleChange}
           trayShowPercentage={trayShowPercentage}
           onTrayShowPercentageChange={handleTrayShowPercentageChange}
+          globalShortcut={globalShortcut}
+          onGlobalShortcutChange={handleGlobalShortcutChange}
           providerIconUrl={navPlugins[0]?.iconUrl}
         />
       )
@@ -907,6 +1034,8 @@ function App() {
         plugin={selectedPlugin}
         onRetry={handleRetry}
         displayMode={displayMode}
+        resetTimerDisplayMode={resetTimerDisplayMode}
+        onResetTimerDisplayModeToggle={handleResetTimerDisplayModeToggle}
       />
     )
   }
@@ -973,6 +1102,8 @@ function App() {
               autoUpdateNextAt={autoUpdateNextAt}
               updateStatus={updateStatus}
               onUpdateInstall={triggerInstall}
+              onUpdateCheck={checkForUpdates}
+              onRefreshAll={handleRefreshAll}
               showAbout={showAbout}
               onShowAbout={() => setShowAbout(true)}
               onCloseAbout={() => setShowAbout(false)}

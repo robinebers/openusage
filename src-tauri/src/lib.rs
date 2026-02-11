@@ -9,9 +9,9 @@ mod window_manager;
 mod webkit_config;
 
 use std::collections::{HashMap, HashSet};
-use tauri_plugin_aptabase::EventTracker;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use serde::Serialize;
 use tauri::{Emitter, Manager, State};
@@ -21,6 +21,25 @@ use uuid::Uuid;
 use crate::plugin_engine::manifest::LoadedPlugin;
 use crate::plugin_engine::runtime::PluginOutput;
 use crate::window_manager::TaskbarPosition;
+
+#[cfg(desktop)]
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+
+const GLOBAL_SHORTCUT_STORE_KEY: &str = "globalShortcut";
+
+#[cfg(desktop)]
+fn managed_shortcut_slot() -> &'static Mutex<Option<String>> {
+    static SLOT: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+    SLOT.get_or_init(|| Mutex::new(None))
+}
+
+#[cfg(desktop)]
+fn handle_global_shortcut(app: &tauri::AppHandle, event: tauri_plugin_global_shortcut::ShortcutEvent) {
+    if event.state == ShortcutState::Pressed {
+        log::debug!("Global shortcut triggered");
+        panel::toggle_panel(app);
+    }
+}
 
 pub struct AppState {
     pub plugins: Vec<LoadedPlugin>,
@@ -243,6 +262,58 @@ fn get_log_path(app_handle: tauri::AppHandle) -> Result<String, String> {
     Ok(log_file.to_string_lossy().to_string())
 }
 
+/// Update the global shortcut registration.
+/// Pass `null` to disable the shortcut, or a shortcut string like "CommandOrControl+Shift+U".
+#[cfg(desktop)]
+#[tauri::command]
+fn update_global_shortcut(app_handle: tauri::AppHandle, shortcut: Option<String>) -> Result<(), String> {
+    let global_shortcut = app_handle.global_shortcut();
+    let normalized_shortcut = shortcut.and_then(|value| {
+        let trimmed = value.trim().to_string();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed)
+        }
+    });
+    let mut managed_shortcut = managed_shortcut_slot()
+        .lock()
+        .map_err(|e| format!("failed to lock managed shortcut state: {}", e))?;
+
+    if *managed_shortcut == normalized_shortcut {
+        log::debug!("Global shortcut unchanged");
+        return Ok(());
+    }
+
+    let previous_shortcut = managed_shortcut.clone();
+    if let Some(existing) = previous_shortcut.as_deref() {
+        match global_shortcut.unregister(existing) {
+            Ok(()) => {
+                // Keep in-memory state aligned with actual registration state.
+                *managed_shortcut = None;
+            }
+            Err(e) => {
+                log::warn!("Failed to unregister existing shortcut '{}': {}", existing, e);
+            }
+        }
+    }
+
+    if let Some(shortcut) = normalized_shortcut {
+        log::info!("Registering global shortcut: {}", shortcut);
+        global_shortcut
+            .on_shortcut(shortcut.as_str(), |app, _shortcut, event| {
+                handle_global_shortcut(app, event);
+            })
+            .map_err(|e| format!("Failed to register shortcut '{}': {}", shortcut, e))?;
+        *managed_shortcut = Some(shortcut);
+    } else {
+        log::info!("Global shortcut disabled");
+        *managed_shortcut = None;
+    }
+
+    Ok(())
+}
+
 #[tauri::command]
 fn list_plugins(state: tauri::State<'_, Mutex<AppState>>) -> Vec<PluginMeta> {
     let plugins = {
@@ -312,6 +383,7 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             init_panel,
             hide_panel,
@@ -320,7 +392,8 @@ pub fn run() {
             start_probe_batch,
             list_plugins,
             get_log_path,
-            tray::refresh_tray_menu
+            tray::refresh_tray_menu,
+            update_global_shortcut
         ]);
 
     #[cfg(target_os = "macos")]
@@ -364,6 +437,37 @@ pub fn run() {
             tray::create(app.handle())?;
 
             app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
+
+            // Register global shortcut from stored settings
+            #[cfg(desktop)]
+            {
+                use tauri_plugin_store::StoreExt;
+
+                if let Ok(store) = app.handle().store("settings.json") {
+                    if let Some(shortcut_value) = store.get(GLOBAL_SHORTCUT_STORE_KEY) {
+                        if let Some(shortcut) = shortcut_value.as_str() {
+                            let shortcut = shortcut.trim();
+                            if !shortcut.is_empty() {
+                                let handle = app.handle().clone();
+                                log::info!("Registering initial global shortcut: {}", shortcut);
+                                if let Err(e) = handle.global_shortcut().on_shortcut(
+                                    shortcut,
+                                    |app, _shortcut, event| {
+                                        handle_global_shortcut(app, event);
+                                    },
+                                ) {
+                                    log::warn!("Failed to register initial global shortcut: {}", e);
+                                } else if let Ok(mut managed_shortcut) = managed_shortcut_slot().lock()
+                                {
+                                    *managed_shortcut = Some(shortcut.to_string());
+                                } else {
+                                    log::warn!("Failed to store managed shortcut in memory");
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             Ok(())
         })

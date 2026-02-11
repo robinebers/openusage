@@ -8,6 +8,7 @@ use tauri::tray::{MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_store::StoreExt;
 
+use crate::panel::{get_or_init_panel, position_panel_at_tray_icon, show_panel};
 use crate::plugin_engine::runtime::{MetricLine, PluginOutput};
 use crate::window_manager::{position_window_at_tray, WindowManager};
 use crate::AppState;
@@ -48,6 +49,7 @@ fn set_stored_log_level(app_handle: &AppHandle, level: log::LevelFilter) {
     log::set_max_level(level);
 }
 
+
 /// Build a dynamic tray menu with plugin data
 fn build_tray_menu(
     app_handle: &AppHandle,
@@ -65,6 +67,10 @@ fn build_tray_menu(
     let go_to_settings = MenuItem::with_id(
         app_handle,
         "go_to_settings",
+        "Go to Settings",
+        true,
+        None::<&str>,
+    )?;
         "Go to Settings",
         true,
         None::<&str>,

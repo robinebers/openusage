@@ -32,17 +32,10 @@ fn redact_value(value: &str) -> String {
 /// Redact sensitive query parameters in URL
 fn redact_url(url: &str) -> String {
     let sensitive_params = [
-        "key",
-        "api_key",
-        "apikey",
-        "token",
-        "access_token",
-        "secret",
-        "password",
-        "auth",
-        "authorization",
-        "bearer",
-        "credential",
+    let sensitive_params = [
+        "key", "api_key", "apikey", "token", "access_token", "secret",
+        "password", "auth", "authorization", "bearer", "credential",
+        "user", "user_id", "userid", "account_id", "accountid", "email", "login",
     ];
 
     if let Some(query_start) = url.find('?') {
@@ -112,8 +105,14 @@ fn redact_body(body: &str) -> String {
         "sessionToken",
         "auth_token",
         "authToken",
+        "id_token",
+        "idToken",
+        "accessToken",
+        "refreshToken",
         "user_id",
+        "userId",
         "account_id",
+        "accountId",
         "email",
         "login",
         "analytics_tracking_id",
@@ -820,9 +819,11 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
                 let markers_lower: Vec<String> =
                     opts.markers.iter().map(|m| m.to_lowercase()).collect();
 
-                // Find the target process. Marker patterns are Codeium-derived
-                // (--app_data_dir <name> and /<name>/ path match). If a future
-                // non-Codeium provider needs LS discovery, extend patterns here.
+                // Find the target process. Marker patterns are Codeium-derived.
+                // Matching priority:
+                //   1. Exact --ide_name / --app_data_dir flag value (prevents
+                //      "windsurf" matching "windsurf-next")
+                //   2. Path substring (/<marker>/) as fallback when no flags found
                 let mut found: Option<(i32, String)> = None;
 
                 if cfg!(target_os = "windows") {
@@ -873,8 +874,20 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
                         }
 
                         let has_marker = markers_lower.iter().any(|m| {
-                            command_lower.contains(&format!("--app_data_dir {}", m))
-                                || command_lower.contains(&format!("/{}/", m))
+                            // Prefer exact flag match; skip path fallback when
+                            // a distinguishing flag exists.
+                            let ide_name = ls_extract_flag(command, "--ide_name")
+                                .map(|v| v.to_lowercase());
+                            let app_data = ls_extract_flag(command, "--app_data_dir")
+                                .map(|v| v.to_lowercase());
+                            if let Some(ref name) = ide_name {
+                                return *name == *m;
+                            }
+                            if let Some(ref dir) = app_data {
+                                return *dir == *m;
+                            }
+                            // Fallback: path substring
+                            command_lower.contains(&format!("/{}/", m))
                         });
                         if !has_marker {
                             continue;
@@ -1312,8 +1325,23 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                     ));
                 }
                 let expanded = expand_path(&db_path);
-                // Use immutable=1 to bypass WAL/SHM file access issues
-                // (WAL databases can fail with -readonly when shm is locked after macOS sleep)
+
+                // Prefer a normal read-only open so WAL contents are visible (common for app state DBs).
+                // Fall back to immutable=1 to bypass WAL/SHM lock issues after macOS sleep.
+                let primary = std::process::Command::new("sqlite3")
+                    .args(["-readonly", "-json", &expanded, &sql])
+                    .output()
+                    .map_err(|e| {
+                        Exception::throw_message(
+                            &ctx_inner,
+                            &format!("sqlite3 exec failed: {}", e),
+                        )
+                    })?;
+
+                if primary.status.success() {
+                    return Ok(String::from_utf8_lossy(&primary.stdout).to_string());
+                }
+
                 // Percent-encode special chars for valid URI (% must be first!)
                 let encoded = expanded
                     .replace('%', "%25")
@@ -1614,6 +1642,14 @@ mod tests {
     }
 
     #[test]
+    fn redact_url_redacts_user_query_param() {
+        let url = "https://cursor.com/api/usage?user=user_abcdefghijklmnopqrstuvwxyz&limit=10";
+        let redacted = redact_url(url);
+        assert!(redacted.contains("user=user...wxyz"), "user query param should be redacted, got: {}", redacted);
+        assert!(redacted.contains("limit=10"), "non-sensitive params should be preserved, got: {}", redacted);
+    }
+
+    #[test]
     fn redact_url_preserves_non_sensitive_params() {
         let url = "https://api.example.com/v1?limit=10&offset=20";
         assert_eq!(redact_url(url), url);
@@ -1674,6 +1710,16 @@ mod tests {
             "email should show first4...last4, got: {}",
             redacted
         );
+    }
+
+    #[test]
+    fn redact_body_redacts_camel_case_user_and_account_ids() {
+        let body = r#"{"userId": "user_abcdefghijklmnopqrstuvwxyz", "accountId": "acct_1234567890abcdef"}"#;
+        let redacted = redact_body(body);
+        assert!(!redacted.contains("user_abcdefghijklmnopqrstuvwxyz"), "userId should be redacted, got: {}", redacted);
+        assert!(!redacted.contains("acct_1234567890abcdef"), "accountId should be redacted, got: {}", redacted);
+        assert!(redacted.contains("user...wxyz"), "userId should show first4...last4, got: {}", redacted);
+        assert!(redacted.contains("acct...cdef"), "accountId should show first4...last4, got: {}", redacted);
     }
 
     #[test]
