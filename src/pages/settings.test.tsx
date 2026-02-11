@@ -59,6 +59,10 @@ const defaultProps = {
   onTrayIconStyleChange: vi.fn(),
   trayShowPercentage: false,
   onTrayShowPercentageChange: vi.fn(),
+  globalShortcut: null,
+  onGlobalShortcutChange: vi.fn(),
+  startOnLogin: false,
+  onStartOnLoginChange: vi.fn(),
 }
 
 afterEach(() => {
@@ -283,5 +287,17 @@ describe("SettingsPage", () => {
     await userEvent.click(screen.getByText("Show percentage"))
     expect(onTrayShowPercentageChange).toHaveBeenCalled()
     expect(onTrayShowPercentageChange.mock.calls[0]?.[0]).toBe(false)
+  })
+
+  it("toggles start on login checkbox", async () => {
+    const onStartOnLoginChange = vi.fn()
+    render(
+      <SettingsPage
+        {...defaultProps}
+        onStartOnLoginChange={onStartOnLoginChange}
+      />
+    )
+    await userEvent.click(screen.getByText("Start on login"))
+    expect(onStartOnLoginChange).toHaveBeenCalledWith(true)
   })
 })
