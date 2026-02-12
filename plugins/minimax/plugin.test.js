@@ -105,7 +105,7 @@ describe("minimax plugin", () => {
     const line = result.lines[0]
     expect(line.label).toBe("Session")
     expect(line.type).toBe("progress")
-    expect(line.used).toBe(120) // total - remaining
+    expect(line.used).toBe(180) // current_interval_usage_count
     expect(line.limit).toBe(300)
     expect(line.format.kind).toBe("count")
     expect(line.format.suffix).toBe("prompts")
@@ -141,9 +141,37 @@ describe("minimax plugin", () => {
     const expectedReset = new Date(1700000000000 + 7200 * 1000).toISOString()
 
     expect(result.plan).toBe("Max")
-    expect(line.used).toBe(60)
+    expect(line.used).toBe(40)
     expect(line.limit).toBe(100)
     expect(line.resetsAt).toBe(expectedReset)
+  })
+
+  it("supports remaining-count payload variants", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        base_resp: { status_code: 0 },
+        plan_name: "MiniMax Coding Plan Pro",
+        model_remains: [
+          {
+            current_interval_total_count: 300,
+            current_interval_remaining_count: 120,
+            end_time: 1700018000000,
+          },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const line = result.lines[0]
+
+    expect(result.plan).toBe("Pro")
+    expect(line.used).toBe(180)
+    expect(line.limit).toBe(300)
   })
 
   it("throws on HTTP auth status", async () => {
@@ -172,7 +200,7 @@ describe("minimax plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    expect(result.lines[0].used).toBe(120)
+    expect(result.lines[0].used).toBe(180)
     expect(ctx.host.http.request.mock.calls.length).toBe(2)
   })
 
@@ -218,7 +246,7 @@ describe("minimax plugin", () => {
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    expect(result.lines[0].used).toBe(120)
+    expect(result.lines[0].used).toBe(180)
   })
 
   it("supports camelCase modelRemains and explicit used count fields", async () => {

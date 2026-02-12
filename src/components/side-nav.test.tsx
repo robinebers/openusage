@@ -70,5 +70,23 @@ describe("SideNav", () => {
     const p2Style = screen.getByRole("img", { name: "P2" }).getAttribute("style") ?? ""
     expect(p2Style).toContain("rgb(255, 255, 255)")
   })
-})
 
+  it("renders full-color SVG icons as image instead of mask", () => {
+    const onViewChange = vi.fn()
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><defs><linearGradient id="g"><stop offset="0%" stop-color="#E2167E"/><stop offset="100%" stop-color="#FE603C"/></linearGradient></defs><path fill="url(#g)" d="M2 2h20v20H2z"/></svg>'
+    const iconUrl = `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`
+
+    render(
+      <SideNav
+        activeView="home"
+        onViewChange={onViewChange}
+        plugins={[
+          { id: "minimax", name: "MiniMax", iconUrl, brandColor: "#181E25" },
+        ]}
+      />
+    )
+
+    const icon = screen.getByRole("img", { name: "MiniMax" })
+    expect(icon.tagName).toBe("IMG")
+  })
+})
