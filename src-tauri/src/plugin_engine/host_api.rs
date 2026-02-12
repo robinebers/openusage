@@ -4,7 +4,13 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 
-const WHITELISTED_ENV_VARS: [&str; 3] = ["CODEX_HOME", "ZAI_API_KEY", "GLM_API_KEY"];
+const WHITELISTED_ENV_VARS: [&str; 5] = [
+    "CODEX_HOME",
+    "ZAI_API_KEY",
+    "GLM_API_KEY",
+    "MINIMAX_API_KEY",
+    "MINIMAX_API_TOKEN",
+];
 
 fn last_non_empty_trimmed_line(text: &str) -> Option<String> {
     text.lines()
