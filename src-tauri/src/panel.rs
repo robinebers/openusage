@@ -114,13 +114,16 @@ pub fn position_panel_at_tray_icon(
 ) {
     let window = app_handle.get_webview_window("main").unwrap();
 
-    // Tray icon events on macOS report coordinates labeled as Physical, but they
-    // live in a hybrid global space where each monitor region uses its own scale.
-    // When monitors have different DPIs, regions can overlap in this space.
+    // Tray icon events on macOS report coordinates in a hybrid physical space where
+    // each monitor region uses its own scale (logical_pos × scale = physical origin).
+    // On mixed-DPI setups this creates overlapping regions, making it impossible to
+    // reliably determine the correct monitor from tray coordinates alone.
     //
-    // We disambiguate by checking the icon's physical size: on a Retina (2x)
-    // display the tray icon is reported as ~132x78 physical, while on a 1x display
-    // it is ~66x30. This tells us the scale of the monitor the icon is on.
+    // Instead, we use NSEvent::mouseLocation() which returns the cursor position in
+    // macOS's unified logical (point) coordinate space — always unambiguous regardless
+    // of how many monitors or scale factors are involved. We find which monitor
+    // contains the cursor, then convert the tray icon's physical coordinates to
+    // logical coordinates within that monitor.
 
     let (icon_phys_x, icon_phys_y) = match &icon_position {
         Position::Physical(pos) => (pos.x as f64, pos.y as f64),
@@ -131,42 +134,49 @@ pub fn position_panel_at_tray_icon(
         Size::Logical(s) => (s.width, s.height),
     };
 
-    // Determine the icon's scale from its physical size.
-    // A tray icon at 1x is ~66 wide; at 2x it's ~132. Use width > 100 as heuristic.
-    let icon_scale = if icon_phys_w > 100.0 { 2.0 } else { 1.0 };
+    // Get the cursor's logical position via NSEvent — this is in macOS's flipped
+    // coordinate system (origin at bottom-left of primary screen).
+    let mouse_logical = objc2_app_kit::NSEvent::mouseLocation();
 
+    // Convert from macOS bottom-left origin to top-left origin used by Tauri.
+    // Primary screen height (in points) defines the flip axis.
     let monitors = window.available_monitors().expect("failed to get monitors");
+    let primary_logical_h = window
+        .primary_monitor()
+        .ok()
+        .flatten()
+        .map(|m| m.size().height as f64 / m.scale_factor())
+        .unwrap_or(0.0);
+
+    let mouse_x = mouse_logical.x;
+    let mouse_y = primary_logical_h - mouse_logical.y;
+
+    // Find the monitor containing the cursor in logical space (no ambiguity).
     let mut found_monitor = None;
-
     for m in &monitors {
-        let logical_pos = m.position();
-        let phys_size = m.size();
+        let pos = m.position();
         let scale = m.scale_factor();
+        let logical_w = m.size().width as f64 / scale;
+        let logical_h = m.size().height as f64 / scale;
 
-        // Each monitor's region in the tray coordinate space:
-        // origin = logical_pos * scale (its own scale), extent = physical size
-        let phys_origin_x = logical_pos.x as f64 * scale;
-        let phys_origin_y = logical_pos.y as f64 * scale;
-        let phys_w = phys_size.width as f64;
-        let phys_h = phys_size.height as f64;
-
-        let x_in = icon_phys_x >= phys_origin_x && icon_phys_x < phys_origin_x + phys_w;
-        let y_in = icon_phys_y >= phys_origin_y && icon_phys_y < phys_origin_y + phys_h;
+        let x_in = mouse_x >= pos.x as f64 && mouse_x < pos.x as f64 + logical_w;
+        let y_in = mouse_y >= pos.y as f64 && mouse_y < pos.y as f64 + logical_h;
 
         if x_in && y_in {
-            // When regions overlap, prefer the monitor whose scale matches the icon's
-            if found_monitor.is_none() || (scale - icon_scale).abs() < 0.1 {
-                found_monitor = Some((m.clone(), phys_origin_x, phys_origin_y));
-            }
+            found_monitor = Some(m.clone());
+            break;
         }
     }
 
-    let (monitor, phys_origin_x, phys_origin_y) = match found_monitor {
-        Some(v) => v,
+    let monitor = match found_monitor {
+        Some(m) => m,
         None => {
-            log::warn!("No monitor found for icon at ({:.0}, {:.0}), using primary", icon_phys_x, icon_phys_y);
+            log::warn!(
+                "No monitor found for cursor at ({:.0}, {:.0}), using primary",
+                mouse_x, mouse_y
+            );
             match window.primary_monitor() {
-                Ok(Some(m)) => (m, 0.0, 0.0),
+                Ok(Some(m)) => m,
                 _ => return,
             }
         }
@@ -176,15 +186,31 @@ pub fn position_panel_at_tray_icon(
     let mon_logical_x = monitor.position().x as f64;
     let mon_logical_y = monitor.position().y as f64;
 
-    // Convert icon physical coords to logical:
-    // offset within the monitor in physical pixels -> divide by target scale -> add logical origin
+    // Convert tray icon physical coords to logical within the identified monitor.
+    // Physical origin of this monitor in the hybrid tray coordinate space:
+    let phys_origin_x = mon_logical_x * target_scale;
+    let phys_origin_y = mon_logical_y * target_scale;
+
     let icon_logical_x = mon_logical_x + (icon_phys_x - phys_origin_x) / target_scale;
     let icon_logical_y = mon_logical_y + (icon_phys_y - phys_origin_y) / target_scale;
     let icon_logical_w = icon_phys_w / target_scale;
     let icon_logical_h = icon_phys_h / target_scale;
 
-    // Panel width in logical points (fixed at 400pt as configured in tauri.conf.json)
-    let panel_width = 400.0_f64;
+    // Read panel width from the window, converted to logical points.
+    // outer_size() returns physical pixels at the window's current scale factor.
+    // If the window isn't available yet, parse the configured width from tauri.conf.json
+    // (embedded at compile time) so it stays in sync automatically.
+    let panel_width = match (window.outer_size(), window.scale_factor()) {
+        (Ok(s), Ok(win_scale)) => s.width as f64 / win_scale,
+        _ => {
+            let conf: serde_json::Value =
+                serde_json::from_str(include_str!("../tauri.conf.json"))
+                    .expect("tauri.conf.json must be valid JSON");
+            conf["app"]["windows"][0]["width"]
+                .as_f64()
+                .expect("width must be set in tauri.conf.json")
+        }
+    };
 
     let icon_center_x = icon_logical_x + (icon_logical_w / 2.0);
     let panel_x = icon_center_x - (panel_width / 2.0);
