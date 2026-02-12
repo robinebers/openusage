@@ -62,6 +62,27 @@ function getIconColor(brandColor: string | undefined, isDark: boolean): string {
   return brandColor
 }
 
+function decodeSvgDataUrl(iconUrl: string): string | null {
+  if (!iconUrl.startsWith("data:image/svg+xml")) return null
+  const sepIndex = iconUrl.indexOf(",")
+  if (sepIndex < 0) return null
+  const header = iconUrl.slice(0, sepIndex).toLowerCase()
+  const payload = iconUrl.slice(sepIndex + 1)
+
+  try {
+    if (header.includes(";base64")) return atob(payload)
+    return decodeURIComponent(payload)
+  } catch {
+    return null
+  }
+}
+
+function shouldRenderMaskedIcon(iconUrl: string): boolean {
+  const svgText = decodeSvgDataUrl(iconUrl)
+  if (!svgText) return true
+  return /currentColor/i.test(svgText)
+}
+
 export function SideNav({ activeView, onViewChange, plugins }: SideNavProps) {
   const isDark = useDarkMode()
 
@@ -84,22 +105,26 @@ export function SideNav({ activeView, onViewChange, plugins }: SideNavProps) {
           onClick={() => onViewChange(plugin.id)}
           aria-label={plugin.name}
         >
-          <span
-            role="img"
-            aria-label={plugin.name}
-            className="size-6 inline-block"
-            style={{
-              backgroundColor: getIconColor(plugin.brandColor, isDark),
-              WebkitMaskImage: `url(${plugin.iconUrl})`,
-              WebkitMaskSize: "contain",
-              WebkitMaskRepeat: "no-repeat",
-              WebkitMaskPosition: "center",
-              maskImage: `url(${plugin.iconUrl})`,
-              maskSize: "contain",
-              maskRepeat: "no-repeat",
-              maskPosition: "center",
-            }}
-          />
+          {shouldRenderMaskedIcon(plugin.iconUrl) ? (
+            <span
+              role="img"
+              aria-label={plugin.name}
+              className="size-6 inline-block"
+              style={{
+                backgroundColor: getIconColor(plugin.brandColor, isDark),
+                WebkitMaskImage: `url(${plugin.iconUrl})`,
+                WebkitMaskSize: "contain",
+                WebkitMaskRepeat: "no-repeat",
+                WebkitMaskPosition: "center",
+                maskImage: `url(${plugin.iconUrl})`,
+                maskSize: "contain",
+                maskRepeat: "no-repeat",
+                maskPosition: "center",
+              }}
+            />
+          ) : (
+            <img src={plugin.iconUrl} alt={plugin.name} className="size-6 inline-block object-contain" />
+          )}
         </NavButton>
       ))}
 

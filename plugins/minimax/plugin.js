@@ -29,6 +29,16 @@
     return null
   }
 
+  function normalizePlanName(value) {
+    const raw = readString(value)
+    if (!raw) return null
+    const compact = raw.replace(/\s+/g, " ").trim()
+    const withoutPrefix = compact.replace(/^minimax\s+coding\s+plan\b[:\-]?\s*/i, "").trim()
+    if (withoutPrefix) return withoutPrefix
+    if (/coding\s+plan/i.test(compact)) return "Coding Plan"
+    return compact
+  }
+
   function epochToMs(epoch) {
     const n = readNumber(epoch)
     if (n === null) return null
@@ -101,7 +111,21 @@
     const total = readNumber(chosen.current_interval_total_count ?? chosen.currentIntervalTotalCount)
     if (total === null || total <= 0) return null
 
-    const usageOrRemaining = readNumber(chosen.current_interval_usage_count ?? chosen.currentIntervalUsageCount)
+    const usageCount = readNumber(chosen.current_interval_usage_count ?? chosen.currentIntervalUsageCount)
+    const remainingCount = readNumber(
+      chosen.current_interval_remaining_count ??
+        chosen.currentIntervalRemainingCount ??
+        chosen.current_interval_remains_count ??
+        chosen.currentIntervalRemainsCount ??
+        chosen.remaining_count ??
+        chosen.remainingCount ??
+        chosen.remains_count ??
+        chosen.remainsCount ??
+        chosen.remaining ??
+        chosen.remains ??
+        chosen.left_count ??
+        chosen.leftCount
+    )
     const explicitUsed = readNumber(
       chosen.current_interval_used_count ??
         chosen.currentIntervalUsedCount ??
@@ -110,11 +134,11 @@
     )
     let used = explicitUsed
 
-    if (used === null && usageOrRemaining !== null) {
-      used = usageOrRemaining <= total ? total - usageOrRemaining : Math.min(usageOrRemaining, total)
-    }
+    if (used === null && usageCount !== null) used = usageCount
+    if (used === null && remainingCount !== null) used = total - remainingCount
     if (used === null) return null
     if (used < 0) used = 0
+    if (used > total) used = total
 
     const startMs = epochToMs(chosen.start_time ?? chosen.startTime)
     const endMs = epochToMs(chosen.end_time ?? chosen.endTime)
@@ -131,7 +155,7 @@
       periodDurationMs = endMs - startMs
     }
 
-    const planName = pickFirstString([
+    const planName = normalizePlanName(pickFirstString([
       data.current_subscribe_title,
       data.plan_name,
       data.plan,
@@ -141,7 +165,7 @@
       payload.plan_name,
       payload.plan,
       chosen.model_name,
-    ])
+    ]))
 
     return {
       planName,

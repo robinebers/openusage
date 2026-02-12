@@ -43,6 +43,7 @@ Expected payload fields:
 - `model_remains[]`
 - `model_remains[].current_interval_total_count`
 - `model_remains[].current_interval_usage_count`
+- optional remaining aliases (`current_interval_remaining_count`, `current_interval_remains_count`)
 - `model_remains[].start_time`
 - `model_remains[].end_time`
 - `model_remains[].remains_time`
@@ -50,15 +51,15 @@ Expected payload fields:
 
 ## Usage Mapping
 
-- Treat `current_interval_usage_count` as remaining prompts.
-- Compute `used = total - remaining`.
+- Treat `current_interval_usage_count` as used prompts.
+- If only remaining aliases are provided, compute `used = total - remaining`.
 - Use `end_time` for reset timestamp when present.
 - Fallback to `remains_time` when `end_time` is absent.
 - Use `start_time` + `end_time` as `periodDurationMs` when both are valid.
 
 ## Output
 
-- **Plan**: best-effort from API payload (if present)
+- **Plan**: best-effort from API payload (normalized to concise label)
 - **Session** (overview progress line):
   - `label`: `Session`
   - `format`: count (`prompts`)
