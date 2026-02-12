@@ -6,17 +6,21 @@ use std::sync::{Mutex, OnceLock};
 
 const WHITELISTED_ENV_VARS: [&str; 3] = ["CODEX_HOME", "ZAI_API_KEY", "GLM_API_KEY"];
 
+fn last_non_empty_trimmed_line(text: &str) -> Option<String> {
+    text.lines()
+        .map(|line| line.trim())
+        .rev()
+        .find(|line| !line.is_empty())
+        .map(|line| line.to_string())
+}
+
 fn read_env_value_via_command(program: &str, args: &[&str]) -> Option<String> {
     let output = Command::new(program).args(args).output().ok()?;
     if !output.status.success() {
         return None;
     }
-    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if value.is_empty() {
-        None
-    } else {
-        Some(value)
-    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    last_non_empty_trimmed_line(&stdout)
 }
 
 fn terminal_zsh_env_cache() -> &'static Mutex<HashMap<String, Option<String>>> {
@@ -1290,6 +1294,20 @@ fn expand_path(path: &str) -> String {
 mod tests {
     use super::*;
     use rquickjs::{Context, Function, Object, Runtime};
+
+    #[test]
+    fn last_non_empty_trimmed_line_uses_final_value_when_stdout_is_noisy() {
+        let stdout = "banner line\nanother message\n  sk-test-key-12345  \n";
+        let value = last_non_empty_trimmed_line(stdout);
+        assert_eq!(value.as_deref(), Some("sk-test-key-12345"));
+    }
+
+    #[test]
+    fn last_non_empty_trimmed_line_returns_none_for_empty_stdout() {
+        let stdout = "  \n\n\t\n";
+        let value = last_non_empty_trimmed_line(stdout);
+        assert!(value.is_none());
+    }
 
     #[test]
     fn keychain_api_exposes_write() {
