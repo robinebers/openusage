@@ -55,7 +55,7 @@ describe("OverviewPage", () => {
     expect(screen.queryByText("Hidden")).not.toBeInTheDocument()
   })
 
-  it("shows provider quick links in combined view", () => {
+  it("does not show provider quick links in combined view", () => {
     const plugins = [
       {
         meta: {
@@ -73,6 +73,6 @@ describe("OverviewPage", () => {
     ]
 
     render(<OverviewPage plugins={plugins} displayMode="used" resetTimerDisplayMode="relative" />)
-    expect(screen.getByRole("button", { name: /status/i })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /status/i })).toBeNull()
   })
 })
