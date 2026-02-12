@@ -257,5 +257,72 @@ describe("getTrayPrimaryBars", () => {
     })
     expect(bars).toEqual([])
   })
-})
 
+  it("aggregates Perplexity fraction across Pro, Research, and Labs in used mode", () => {
+    const bars = getTrayPrimaryBars({
+      displayMode: "used",
+      pluginsMeta: [
+        {
+          id: "perplexity",
+          name: "Perplexity",
+          iconUrl: "",
+          primaryCandidates: ["Pro"],
+          lines: [],
+        },
+      ],
+      pluginSettings: { order: ["perplexity"], disabled: [] },
+      pluginStates: {
+        perplexity: {
+          data: {
+            providerId: "perplexity",
+            displayName: "Perplexity",
+            iconUrl: "",
+            lines: [
+              { type: "progress", label: "Pro", used: 1, limit: 600, format: { kind: "count", suffix: "uses" } },
+              { type: "progress", label: "Research", used: 3, limit: 20, format: { kind: "count", suffix: "uses" } },
+              { type: "progress", label: "Labs", used: 0, limit: 25, format: { kind: "count", suffix: "uses" } },
+            ],
+          },
+          loading: false,
+          error: null,
+        },
+      },
+    })
+    // (1 + 3 + 0) / (600 + 20 + 25) = 4 / 645
+    expect(bars).toEqual([{ id: "perplexity", fraction: 4 / 645 }])
+  })
+
+  it("aggregates Perplexity fraction across Pro, Research, and Labs in left mode", () => {
+    const bars = getTrayPrimaryBars({
+      displayMode: "left",
+      pluginsMeta: [
+        {
+          id: "perplexity",
+          name: "Perplexity",
+          iconUrl: "",
+          primaryCandidates: ["Pro"],
+          lines: [],
+        },
+      ],
+      pluginSettings: { order: ["perplexity"], disabled: [] },
+      pluginStates: {
+        perplexity: {
+          data: {
+            providerId: "perplexity",
+            displayName: "Perplexity",
+            iconUrl: "",
+            lines: [
+              { type: "progress", label: "Pro", used: 1, limit: 600, format: { kind: "count", suffix: "uses" } },
+              { type: "progress", label: "Research", used: 3, limit: 20, format: { kind: "count", suffix: "uses" } },
+              { type: "progress", label: "Labs", used: 0, limit: 25, format: { kind: "count", suffix: "uses" } },
+            ],
+          },
+          loading: false,
+          error: null,
+        },
+      },
+    })
+    // Left fraction = (599 + 17 + 25) / 645 = 641 / 645
+    expect(bars).toEqual([{ id: "perplexity", fraction: 641 / 645 }])
+  })
+})

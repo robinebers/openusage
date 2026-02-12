@@ -1,53 +1,108 @@
 # Perplexity
 
-> Uses Perplexity macOS app session data from local cache (no manual configuration).
+> Reverse-engineered, undocumented API and local storage shape. May change without notice.
 
 ## Overview
 
-- **Protocol:** HTTPS (JSON)
-- **Auth:** Bearer token extracted from local Perplexity app cache request object
-- **Data sources:**
-  - `Cache.db` (local CFNetwork cache) for token + app headers
-  - REST API for balance + usage analytics
+- **Protocol:** local snapshot first, REST fallback
+- **Primary local data source (v5.1):** `~/Library/Containers/ai.perplexity.mac/Data/Library/Preferences/ai.perplexity.mac.plist`
+- **Fallback local data source:** `~/Library/Containers/ai.perplexity.mac/Data/Library/Caches/ai.perplexity.mac/Cache.db`
+- **Fallback endpoint:** `GET https://www.perplexity.ai/api/user`
 
-## Local Session (Required)
+## Endpoint
 
-1. Install the Perplexity macOS app.
-2. Open the app and sign in once.
+### GET /api/user
 
-The plugin checks for the Perplexity cache DB at:
+Returns account profile + subscription metadata. Some accounts may also include usage/quota fields.
 
-- `~/Library/Containers/ai.perplexity.mac/Data/Library/Caches/ai.perplexity.mac/Cache.db`
-- fallback: `~/Library/Caches/ai.perplexity.mac/Cache.db`
+#### Request headers
 
-It reads the cached request object for:
+| Header | Required | Value |
+| --- | --- | --- |
+| Authorization | yes | `Bearer <authToken>` |
+| Accept | yes | `application/json` |
+| X-Client-Name | recommended | `Perplexity-Mac` |
+| X-App-ApiVersion | recommended | `2.17` |
+| X-App-ApiClient | recommended | `macos` |
+| X-Client-Env | recommended | `production` |
 
-- `https://www.perplexity.ai/api/user`
+#### Sample response (sanitized)
 
-Then extracts the cached request's `Authorization: Bearer ...` token (and app-like headers).
+```json
+{
+  "id": "user-id",
+  "username": "example_user",
+  "email": "user@example.com",
+  "subscription_status": "none",
+  "subscription_source": "none",
+  "payment_tier": "none",
+  "subscription_tier": "none",
+  "is_in_organization": false
+}
+```
 
-If no local session is found, the plugin throws:
+## Local app usage snapshot
 
-- `Not logged in. Sign in via Perplexity app.`
+Perplexity macOS v5.1 stores an app snapshot blob (`current_user__data`) in the same preferences plist.  
+OpenUsage reads this first and only falls back to network when local usage fields are unavailable.
 
-## Balance + Usage (No Env Vars)
+#### Example snapshot payload (sanitized)
 
-When a bearer token is present in the cache DB, the plugin calls:
+```json
+{
+  "id": "user-id",
+  "subscription": {
+    "source": "none",
+    "tier": "none",
+    "paymentTier": "none",
+    "status": "none"
+  },
+  "queryCount": 2,
+  "uploadLimit": 3,
+  "remainingUsage": {
+    "remaining_pro": 1,
+    "remaining_research": 0,
+    "remaining_labs": 0
+  }
+}
+```
 
-- `GET https://www.perplexity.ai/rest/pplx-api/v2/groups` (resolve `<api_org_id>`)
-- `GET https://www.perplexity.ai/rest/pplx-api/v2/groups/<api_org_id>` (read `customerInfo.balance`)
-- `GET https://www.perplexity.ai/rest/pplx-api/v2/groups/<api_org_id>/usage-analytics` (sum `cost`)
+## Authentication
 
-## Output
+### Token source priority
 
-- **Plan**: `Pro` when `customerInfo.is_pro === true`
-- **Usage** (single progress bar line):
-  - `limit = customerInfo.balance`
-  - `used = sum(usage-analytics[].meter_event_summaries[].cost)`
-  - `resetsAt` not set (UI shows `$<limit> limit`, no reset countdown)
+1. Extract usage snapshot from `current_user__data` in `ai.perplexity.mac.plist`.
+2. Extract bearer token from `authToken` in `ai.perplexity.mac.plist`.
+3. Fallback: extract bearer token from latest cached `/api/user` request object in `Cache.db`.
 
-## Limitations
+No API-key mode or env-var fallback is used in v1.
 
-- Cache format is app-version dependent and may change.
-- The REST endpoints used are not a public usage API (may change or break without notice).
-- Some REST endpoints may be protected by Cloudflare; the plugin sends app-like headers from the cached request object, but may still be blocked (usage will be unavailable).
+## OpenUsage mapping
+
+- **Plan:** from `subscription_tier` / `payment_tier` (or snapshot `subscription.tier`/`paymentTier`).
+  - If tier is `none`, OpenUsage shows `Free`.
+- **Usage lines:**
+  - `Pro` from `remaining_pro` with limit from explicit pro limit fields; for free-tier accounts only, `uploadLimit` is used as fallback.
+    - `queryCount` is not used to infer `Pro` limit.
+  - `Research` from `remaining_research` (+ optional limit fields if present)
+  - `Labs` from `remaining_labs` (+ optional limit fields if present)
+- If limits are present, render `progress` (`count` format).
+- If only remaining values are present, OpenUsage persists per-metric baseline state and still renders `progress`:
+  - state file: `app.pluginDataDir/usage-baseline.json`
+  - cap priority: explicit limit -> pro-tier defaults (`Pro=600`, `Research=20`, `Labs=25`) -> persisted baseline -> cache high-water -> current remaining
+  - used value: `max(0, cap - remaining)`
+- If remaining increases (for example, after a reset/reclassification), baseline is raised and used decreases naturally.
+- `Pro` / `Research` / `Labs` are quota bucket labels from backend fields and are not guaranteed 1:1 mappings to composer icon modes in the Perplexity UI.
+- If logged in but no usable usage fields are found, show:
+  - `Usage data unavailable. Open Perplexity app and run a search, then try again.`
+
+## Error mapping
+
+| Condition | Message |
+| --- | --- |
+| Missing token | `Not logged in. Sign in via Perplexity app.` |
+| 401 / 403 (no local session snapshot) | `Token expired. Sign in via Perplexity app.` |
+| 401 / 403 (local session snapshot exists) | `Usage data unavailable. Open Perplexity app and run a search, then try again.` |
+| Network/transport failure | `Usage request failed. Check your connection.` |
+| Non-2xx HTTP | `Usage request failed (HTTP {status}). Try again later.` |
+| Invalid JSON | `Usage response invalid. Try again later.` |

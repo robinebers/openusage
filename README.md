@@ -27,6 +27,7 @@ OpenUsage lives in your menu bar and shows you how much of your AI coding subscr
 - [**Claude**](docs/providers/claude.md) / session, weekly, extra usage
 - [**Codex**](docs/providers/codex.md) / session, weekly, reviews, credits
 - [**Copilot**](docs/providers/copilot.md) / premium, chat, completions
+- [**Perplexity**](docs/providers/perplexity.md) / pro, research, labs
 - [**Cursor**](docs/providers/cursor.md) / credits, plan usage, on-demand
 - [**Kimi Code**](docs/providers/kimi.md) / session, weekly
 - [**Windsurf**](docs/providers/windsurf.md) / prompt credits, flex credits

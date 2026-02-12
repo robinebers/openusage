@@ -132,6 +132,7 @@ pub fn inject_host_api<'js>(
     inject_log(ctx, &host, plugin_id)?;
     inject_fs(ctx, &host)?;
     inject_env(ctx, &host)?;
+    inject_plist(ctx, &host)?;
     inject_http(ctx, &host, plugin_id)?;
     inject_keychain(ctx, &host)?;
     inject_sqlite(ctx, &host)?;
@@ -232,6 +233,46 @@ fn inject_env<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
         })?,
     )?;
     host.set("env", env_obj)?;
+    Ok(())
+}
+
+fn inject_plist<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
+    let plist_obj = Object::new(ctx.clone())?;
+    plist_obj.set(
+        "readRaw",
+        Function::new(
+            ctx.clone(),
+            move |ctx_inner: Ctx<'_>, path: String, key: String| -> rquickjs::Result<String> {
+                let expanded = expand_path(&path);
+                let output = std::process::Command::new("/usr/bin/plutil")
+                    .args(["-extract", &key, "raw", "-o", "-", &expanded])
+                    .output()
+                    .or_else(|_| {
+                        // Fallback for environments where absolute path resolution differs.
+                        std::process::Command::new("plutil")
+                            .args(["-extract", &key, "raw", "-o", "-", &expanded])
+                            .output()
+                    })
+                    .map_err(|e| {
+                        Exception::throw_message(
+                            &ctx_inner,
+                            &format!("plutil exec failed: {}", e),
+                        )
+                    })?;
+
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    return Err(Exception::throw_message(
+                        &ctx_inner,
+                        &format!("plutil error: {}", stderr.trim()),
+                    ));
+                }
+
+                Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+            },
+        )?,
+    )?;
+    host.set("plist", plist_obj)?;
     Ok(())
 }
 
@@ -1269,6 +1310,41 @@ mod tests {
                 .get("writeGenericPassword")
                 .expect("writeGenericPassword");
         });
+    }
+
+    #[test]
+    fn plist_api_reads_raw_key() {
+        let rt = Runtime::new().expect("runtime");
+        let ctx = Context::full(&rt).expect("context");
+        let tmp_path = std::env::temp_dir().join(format!(
+            "openusage-host-api-plist-{}.plist",
+            std::process::id()
+        ));
+        let plist = r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>authToken</key>
+  <string>token-123</string>
+</dict>
+</plist>"#;
+        std::fs::write(&tmp_path, plist).expect("write plist file");
+
+        ctx.with(|ctx| {
+            let app_data = std::env::temp_dir();
+            inject_host_api(&ctx, "test", &app_data, "0.0.0").expect("inject host api");
+            let globals = ctx.globals();
+            let probe_ctx: Object = globals.get("__openusage_ctx").expect("probe ctx");
+            let host: Object = probe_ctx.get("host").expect("host");
+            let plist: Object = host.get("plist").expect("plist");
+            let read_raw: Function = plist.get("readRaw").expect("readRaw");
+            let value: String = read_raw
+                .call((tmp_path.to_string_lossy().to_string(), "authToken".to_string()))
+                .expect("read plist raw");
+            assert_eq!(value, "token-123");
+        });
+
+        let _ = std::fs::remove_file(tmp_path);
     }
 
     #[test]
