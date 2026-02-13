@@ -13,6 +13,8 @@
   "lines": [
     { "type": "progress", "label": "Session", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Weekly", "scope": "overview" },
+    { "type": "progress", "label": "Spark", "scope": "detail" },
+    { "type": "progress", "label": "Spark Weekly", "scope": "detail" },
     { "type": "progress", "label": "Reviews", "scope": "detail" },
     { "type": "progress", "label": "Credits", "scope": "detail" }
   ]
