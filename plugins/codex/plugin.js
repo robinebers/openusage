@@ -414,7 +414,7 @@
       if (Array.isArray(data.additional_rate_limits)) {
         for (const entry of data.additional_rate_limits) {
           if (!entry || !entry.rate_limit) continue
-          var name = entry.limit_name || ""
+          var name = typeof entry.limit_name === "string" ? entry.limit_name : ""
           var shortName = name.replace(/^GPT-[\d.]+-Codex-/, "")
           if (!shortName) shortName = name || "Model"
           var rl = entry.rate_limit
