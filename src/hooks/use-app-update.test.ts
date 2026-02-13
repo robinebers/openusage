@@ -5,6 +5,9 @@ const { checkMock, relaunchMock } = vi.hoisted(() => ({
   checkMock: vi.fn(),
   relaunchMock: vi.fn(),
 }))
+const { trackMock } = vi.hoisted(() => ({
+  trackMock: vi.fn(),
+}))
 
 vi.mock("@tauri-apps/plugin-updater", () => ({
   check: checkMock,
@@ -12,6 +15,10 @@ vi.mock("@tauri-apps/plugin-updater", () => ({
 
 vi.mock("@tauri-apps/plugin-process", () => ({
   relaunch: relaunchMock,
+}))
+
+vi.mock("@/lib/analytics", () => ({
+  track: trackMock,
 }))
 
 import { useAppUpdate } from "@/hooks/use-app-update"
@@ -27,6 +34,7 @@ describe("useAppUpdate", () => {
   beforeEach(() => {
     checkMock.mockReset()
     relaunchMock.mockReset()
+    trackMock.mockReset()
     // `@tauri-apps/api/core` considers `globalThis.isTauri` the runtime flag.
     globalThis.isTauri = true
   })

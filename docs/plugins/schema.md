@@ -48,6 +48,7 @@ Bundled plugins live under `src-tauri/resources/bundled_plugins/<id>/`.
   "version": "0.0.1",
   "entry": "plugin.js",
   "icon": "icon.svg",
+  "links": [{ "label": "Status", "url": "https://status.example.com" }],
   "lines": [
     { "type": "badge", "label": "Plan", "scope": "overview" },
     { "type": "progress", "label": "Usage", "scope": "overview", "primary": true },
@@ -64,6 +65,7 @@ Bundled plugins live under `src-tauri/resources/bundled_plugins/<id>/`.
 | `version`       | string | Yes      | Semver version                             |
 | `entry`         | string | Yes      | Relative path to JS entry file             |
 | `icon`          | string | Yes      | Relative path to SVG icon file             |
+| `links`         | array  | No       | Optional quick links shown on detail page  |
 | `lines`         | array  | Yes      | Output shape used for loading skeletons    |
 
 Validation rules:
@@ -72,6 +74,14 @@ Validation rules:
 - `entry` must exist within the plugin directory
 - `id` must match `globalThis.__openusage_plugin.id`
 - `icon` must be relative and point to an SVG file (use `fill="currentColor"` for theme compatibility)
+- `links[].url` (if provided) must be an `http://` or `https://` URL
+
+### Links Array (Optional)
+
+| Field   | Type   | Required | Description |
+|---------|--------|----------|-------------|
+| `label` | string | Yes      | Link text shown in the provider detail quick-actions row |
+| `url`   | string | Yes      | External destination opened in the browser (`http/https` only) |
 
 ## Output Shape Declaration
 

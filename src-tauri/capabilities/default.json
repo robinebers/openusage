@@ -19,6 +19,7 @@
     "aptabase:allow-track-event",
     "updater:default",
     "process:allow-restart",
-    "global-shortcut:default"
+    "global-shortcut:default",
+    "autostart:default"
   ]
 }

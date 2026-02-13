@@ -7,6 +7,10 @@
   "icon": "icon.svg",
   "brandColor": "#000000",
   "os": ["macos", "windows", "linux"],
+  "links": [
+    { "label": "Status", "url": "https://status.cursor.com/" },
+    { "label": "Dashboard", "url": "https://www.cursor.com/dashboard" }
+  ],
   "lines": [
     { "type": "progress", "label": "Credits", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Plan usage", "scope": "overview", "primaryOrder": 2 },

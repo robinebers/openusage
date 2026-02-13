@@ -25,6 +25,13 @@ pub enum SupportedOs {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct PluginLink {
+    pub label: String,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PluginManifest {
     pub schema_version: u32,
     pub id: String,
@@ -36,6 +43,8 @@ pub struct PluginManifest {
     pub lines: Vec<ManifestLine>,
     /// List of supported operating systems. If not specified, all platforms are supported.
     pub os: Option<Vec<SupportedOs>>,
+    #[serde(default)]
+    pub links: Vec<PluginLink>,
 }
 
 #[derive(Debug, Clone)]
@@ -76,7 +85,8 @@ fn load_single_plugin(
 ) -> Result<LoadedPlugin, Box<dyn std::error::Error>> {
     let manifest_path = plugin_dir.join("plugin.json");
     let manifest_text = std::fs::read_to_string(&manifest_path)?;
-    let manifest: PluginManifest = serde_json::from_str(&manifest_text)?;
+    let mut manifest: PluginManifest = serde_json::from_str(&manifest_text)?;
+    manifest.links = sanitize_plugin_links(&manifest.id, std::mem::take(&mut manifest.links));
 
     // Validate primary_order: only progress lines can have it
     for line in manifest.lines.iter() {
@@ -121,6 +131,35 @@ fn load_single_plugin(
     })
 }
 
+fn sanitize_plugin_links(plugin_id: &str, links: Vec<PluginLink>) -> Vec<PluginLink> {
+    links
+        .into_iter()
+        .filter_map(|link| {
+            let label = link.label.trim().to_string();
+            let url = link.url.trim().to_string();
+
+            if label.is_empty() || url.is_empty() {
+                log::warn!(
+                    "plugin {} has link with empty label/url; skipping",
+                    plugin_id
+                );
+                return None;
+            }
+            if !(url.starts_with("https://") || url.starts_with("http://")) {
+                log::warn!(
+                    "plugin {} link '{}' has non-http(s) url '{}'; skipping",
+                    plugin_id,
+                    label,
+                    url
+                );
+                return None;
+            }
+
+            Some(PluginLink { label, url })
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -149,6 +188,7 @@ mod tests {
         );
         assert_eq!(manifest.lines.len(), 1);
         assert!(manifest.lines[0].primary_order.is_none());
+        assert!(manifest.links.is_empty());
     }
 
     #[test]
@@ -209,5 +249,56 @@ mod tests {
         let labels: Vec<_> = candidates.iter().map(|l| l.label.as_str()).collect();
 
         assert_eq!(labels, vec!["First", "Second", "Third"]);
+    }
+
+    #[test]
+    fn links_are_parsed_when_present() {
+        let manifest = parse_manifest(
+            r#"
+            {
+              "schemaVersion": 1,
+              "id": "x",
+              "name": "X",
+              "version": "0.0.1",
+              "entry": "plugin.js",
+              "icon": "icon.svg",
+              "brandColor": null,
+              "links": [
+                { "label": "Status", "url": "https://status.example.com" },
+                { "label": "Billing", "url": "https://example.com/billing" }
+              ],
+              "lines": [
+                { "type": "progress", "label": "A", "scope": "overview", "primaryOrder": 1 }
+              ]
+            }
+            "#,
+        );
+
+        assert_eq!(manifest.links.len(), 2);
+        assert_eq!(manifest.links[0].label, "Status");
+        assert_eq!(manifest.links[1].url, "https://example.com/billing");
+    }
+
+    #[test]
+    fn sanitize_plugin_links_filters_invalid_entries() {
+        let links = vec![
+            PluginLink {
+                label: " Status ".to_string(),
+                url: " https://status.example.com ".to_string(),
+            },
+            PluginLink {
+                label: " ".to_string(),
+                url: "https://example.com".to_string(),
+            },
+            PluginLink {
+                label: "Docs".to_string(),
+                url: "ftp://example.com".to_string(),
+            },
+        ];
+
+        let sanitized = sanitize_plugin_links("x", links);
+        assert_eq!(sanitized.len(), 1);
+        assert_eq!(sanitized[0].label, "Status");
+        assert_eq!(sanitized[0].url, "https://status.example.com");
     }
 }

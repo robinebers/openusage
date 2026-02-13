@@ -6,6 +6,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest"
 const state = vi.hoisted(() => ({
   invokeMock: vi.fn(),
   isTauriMock: vi.fn(() => false),
+  trackMock: vi.fn(),
   setSizeMock: vi.fn(),
   setPositionMock: vi.fn(),
   currentMonitorMock: vi.fn(),
@@ -29,6 +30,11 @@ const state = vi.hoisted(() => ({
   saveTrayShowPercentageMock: vi.fn(),
   loadGlobalShortcutMock: vi.fn(),
   saveGlobalShortcutMock: vi.fn(),
+  loadStartOnLoginMock: vi.fn(),
+  saveStartOnLoginMock: vi.fn(),
+  autostartEnableMock: vi.fn(),
+  autostartDisableMock: vi.fn(),
+  autostartIsEnabledMock: vi.fn(),
   renderTrayBarsIconMock: vi.fn(),
   probeHandlers: null as null | { onResult: (output: any) => void; onBatchComplete: () => void },
   trayGetByIdMock: vi.fn(),
@@ -98,6 +104,10 @@ vi.mock("@tauri-apps/api/core", () => ({
   isTauri: state.isTauriMock,
 }))
 
+vi.mock("@/lib/analytics", () => ({
+  track: state.trackMock,
+}))
+
 vi.mock("@tauri-apps/api/event", () => ({
   listen: eventState.listenMock,
 }))
@@ -141,6 +151,12 @@ vi.mock("@tauri-apps/plugin-updater", () => ({
 
 vi.mock("@tauri-apps/plugin-process", () => ({
   relaunch: updaterState.relaunchMock,
+}))
+
+vi.mock("@tauri-apps/plugin-autostart", () => ({
+  enable: state.autostartEnableMock,
+  disable: state.autostartDisableMock,
+  isEnabled: state.autostartIsEnabledMock,
 }))
 
 vi.mock("@/lib/tray-bars-icon", () => ({
@@ -270,6 +286,8 @@ vi.mock("@/lib/settings", () => {
     saveTrayShowPercentage: state.saveTrayShowPercentageMock,
     loadGlobalShortcut: state.loadGlobalShortcutMock,
     saveGlobalShortcut: state.saveGlobalShortcutMock,
+    loadStartOnLogin: state.loadStartOnLoginMock,
+    saveStartOnLogin: state.saveStartOnLoginMock,
   }
 })
 
@@ -284,6 +302,7 @@ describe("App", () => {
     state.invokeMock.mockReset()
     state.isTauriMock.mockReset()
     state.isTauriMock.mockReturnValue(false)
+    state.trackMock.mockReset()
     state.setSizeMock.mockReset()
     state.setPositionMock.mockReset()
     state.currentMonitorMock.mockReset()
@@ -307,6 +326,11 @@ describe("App", () => {
     state.saveTrayShowPercentageMock.mockReset()
     state.loadGlobalShortcutMock.mockReset()
     state.saveGlobalShortcutMock.mockReset()
+    state.loadStartOnLoginMock.mockReset()
+    state.saveStartOnLoginMock.mockReset()
+    state.autostartEnableMock.mockReset()
+    state.autostartDisableMock.mockReset()
+    state.autostartIsEnabledMock.mockReset()
     state.renderTrayBarsIconMock.mockReset()
     state.trayGetByIdMock.mockReset()
     state.traySetIconMock.mockReset()
@@ -331,6 +355,11 @@ describe("App", () => {
     state.saveTrayShowPercentageMock.mockResolvedValue(undefined)
     state.loadGlobalShortcutMock.mockResolvedValue(null)
     state.saveGlobalShortcutMock.mockResolvedValue(undefined)
+    state.loadStartOnLoginMock.mockResolvedValue(false)
+    state.saveStartOnLoginMock.mockResolvedValue(undefined)
+    state.autostartEnableMock.mockResolvedValue(undefined)
+    state.autostartDisableMock.mockResolvedValue(undefined)
+    state.autostartIsEnabledMock.mockResolvedValue(false)
     state.renderTrayBarsIconMock.mockResolvedValue({})
     Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
       configurable: true,
@@ -391,6 +420,17 @@ describe("App", () => {
     await waitFor(() => expect(state.savePluginSettingsMock).toHaveBeenCalled())
     expect(screen.getByText("Alpha")).toBeInTheDocument()
     expect(state.setSizeMock).toHaveBeenCalled()
+  })
+
+  it("does not track page_viewed on startup or navigation", async () => {
+    render(<App />)
+    await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
+
+    const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
+    await userEvent.click(settingsButtons[0])
+
+    expect(state.trackMock).not.toHaveBeenCalledWith("page_viewed", expect.anything())
+    expect(state.trackMock).not.toHaveBeenCalledWith("page_viewed", undefined)
   })
 
   it("skips saving settings when already normalized", async () => {
@@ -771,6 +811,74 @@ describe("App", () => {
     errorSpy.mockRestore()
   })
 
+  it("updates start on login in settings", async () => {
+    render(<App />)
+    const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
+    await userEvent.click(settingsButtons[0])
+    await userEvent.click(await screen.findByText("Start on login"))
+    expect(state.saveStartOnLoginMock).toHaveBeenCalledWith(true)
+  })
+
+  it("applies start on login state on startup in tauri", async () => {
+    state.isTauriMock.mockReturnValue(true)
+    state.loadStartOnLoginMock.mockResolvedValueOnce(true)
+    state.autostartIsEnabledMock.mockResolvedValueOnce(false)
+
+    render(<App />)
+
+    await waitFor(() => expect(state.autostartIsEnabledMock).toHaveBeenCalled())
+    await waitFor(() => expect(state.autostartEnableMock).toHaveBeenCalled())
+    expect(state.autostartDisableMock).not.toHaveBeenCalled()
+  })
+
+  it("logs when saving start on login fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    state.saveStartOnLoginMock.mockRejectedValueOnce(new Error("save start on login failed"))
+
+    render(<App />)
+    const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
+    await userEvent.click(settingsButtons[0])
+    await userEvent.click(await screen.findByText("Start on login"))
+
+    await waitFor(() =>
+      expect(errorSpy).toHaveBeenCalledWith("Failed to save start on login:", expect.any(Error))
+    )
+    errorSpy.mockRestore()
+  })
+
+  it("logs when applying start on login setting fails on startup", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    state.isTauriMock.mockReturnValue(true)
+    state.loadStartOnLoginMock.mockResolvedValueOnce(true)
+    state.autostartIsEnabledMock.mockRejectedValueOnce(new Error("autostart status failed"))
+
+    render(<App />)
+
+    await waitFor(() =>
+      expect(errorSpy).toHaveBeenCalledWith("Failed to apply start on login setting:", expect.any(Error))
+    )
+    errorSpy.mockRestore()
+  })
+
+  it("logs when updating start on login fails from settings", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    state.isTauriMock.mockReturnValue(true)
+    state.loadStartOnLoginMock.mockResolvedValueOnce(false)
+    state.autostartIsEnabledMock
+      .mockResolvedValueOnce(false)
+      .mockRejectedValueOnce(new Error("toggle failed"))
+
+    render(<App />)
+    const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
+    await userEvent.click(settingsButtons[0])
+    await userEvent.click(await screen.findByText("Start on login"))
+
+    await waitFor(() =>
+      expect(errorSpy).toHaveBeenCalledWith("Failed to update start on login:", expect.any(Error))
+    )
+    errorSpy.mockRestore()
+  })
+
   it("logs when loading display mode fails", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
     state.loadDisplayModeMock.mockRejectedValueOnce(new Error("load display mode"))
@@ -1107,6 +1215,16 @@ describe("App", () => {
     render(<App />)
     await waitFor(() =>
       expect(errorSpy).toHaveBeenCalledWith("Failed to load theme mode:", expect.any(Error))
+    )
+    errorSpy.mockRestore()
+  })
+
+  it("logs error when loading start on login fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    state.loadStartOnLoginMock.mockRejectedValueOnce(new Error("load start on login failed"))
+    render(<App />)
+    await waitFor(() =>
+      expect(errorSpy).toHaveBeenCalledWith("Failed to load start on login:", expect.any(Error))
     )
     errorSpy.mockRestore()
   })

@@ -23,6 +23,11 @@ export type ManifestLine = {
   scope: "overview" | "detail"
 }
 
+export type PluginLink = {
+  label: string
+  url: string
+}
+
 export type PluginOutput = {
   providerId: string
   displayName: string
@@ -37,6 +42,7 @@ export type PluginMeta = {
   iconUrl: string
   brandColor?: string
   lines: ManifestLine[]
+  links?: PluginLink[]
   /** Ordered list of primary metric candidates. Frontend picks first available. */
   primaryCandidates: string[]
 }

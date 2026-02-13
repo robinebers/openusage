@@ -485,6 +485,7 @@ mod tests {
                 brand_color: None,
                 lines: vec![],
                 os: None,
+                links: vec![],
             },
             plugin_dir: PathBuf::from("."),
             entry_script: entry_script.to_string(),
