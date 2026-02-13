@@ -159,8 +159,8 @@ pub fn position_panel_at_tray_icon(
         let logical_w = m.size().width as f64 / scale;
         let logical_h = m.size().height as f64 / scale;
 
-        let x_in = mouse_x >= pos.x as f64 && mouse_x < pos.x as f64 + logical_w;
-        let y_in = mouse_y >= pos.y as f64 && mouse_y < pos.y as f64 + logical_h;
+        let x_in = mouse_x >= pos.x as f64 && mouse_x <= pos.x as f64 + logical_w;
+        let y_in = mouse_y >= pos.y as f64 && mouse_y <= pos.y as f64 + logical_h;
 
         if x_in && y_in {
             found_monitor = Some(m.clone());
