@@ -1,5 +1,6 @@
 #[cfg(target_os = "macos")]
 mod app_nap;
+#[cfg(target_os = "macos")]
 mod panel;
 mod plugin_engine;
 mod tray;
@@ -92,7 +93,20 @@ fn managed_shortcut_slot() -> &'static Mutex<Option<String>> {
 fn handle_global_shortcut(app: &tauri::AppHandle, event: tauri_plugin_global_shortcut::ShortcutEvent) {
     if event.state == ShortcutState::Pressed {
         log::debug!("Global shortcut triggered");
+        #[cfg(target_os = "macos")]
         panel::toggle_panel(app);
+        #[cfg(not(target_os = "macos"))]
+        {
+            use tauri::Manager;
+            if let Some(window) = app.get_webview_window("main") {
+                if window.is_visible().unwrap_or(false) {
+                    let _ = window.hide();
+                } else {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+        }
     }
 }
 
@@ -154,14 +168,32 @@ pub struct ProbeBatchComplete {
 
 #[tauri::command]
 fn init_panel(app_handle: tauri::AppHandle) {
-    panel::init(&app_handle).expect("Failed to initialize panel");
+    #[cfg(target_os = "macos")]
+    {
+        panel::init(&app_handle).expect("Failed to initialize panel");
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        // On non-macOS, the main window is a regular WebviewWindow – no panel init needed.
+        let _ = &app_handle;
+    }
 }
 
 #[tauri::command]
 fn hide_panel(app_handle: tauri::AppHandle) {
-    use tauri_nspanel::ManagerExt;
-    if let Ok(panel) = app_handle.get_webview_panel("main") {
-        panel.hide();
+    #[cfg(target_os = "macos")]
+    {
+        use tauri_nspanel::ManagerExt;
+        if let Ok(panel) = app_handle.get_webview_panel("main") {
+            panel.hide();
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        use tauri::Manager;
+        if let Some(window) = app_handle.get_webview_window("main") {
+            let _ = window.hide();
+        }
     }
 }
 
@@ -288,10 +320,11 @@ async fn start_probe_batch(
 
 #[tauri::command]
 fn get_log_path(app_handle: tauri::AppHandle) -> Result<String, String> {
-    // macOS log directory: ~/Library/Logs/{bundleIdentifier}
-    let home = dirs::home_dir().ok_or("no home dir")?;
-    let bundle_id = app_handle.config().identifier.clone();
-    let log_dir = home.join("Library").join("Logs").join(&bundle_id);
+    use tauri::Manager;
+    let log_dir = app_handle
+        .path()
+        .app_log_dir()
+        .map_err(|e: tauri::Error| e.to_string())?;
     let log_file = log_dir.join(format!("{}.log", app_handle.package_info().name));
     Ok(log_file.to_string_lossy().to_string())
 }
@@ -409,7 +442,17 @@ pub fn run() {
         .plugin(tauri_plugin_aptabase::Builder::new("A-US-6435241436").build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())
-        .plugin(tauri_nspanel::init())
+        .plugin({
+            #[cfg(target_os = "macos")]
+            {
+                tauri_nspanel::init()
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                // No-op plugin: tauri-nspanel is macOS-only.
+                tauri::plugin::Builder::<tauri::Wry, ()>::new("nspanel-stub").build()
+            }
+        })
         .plugin(
             tauri_plugin_log::Builder::new()
                 .targets([

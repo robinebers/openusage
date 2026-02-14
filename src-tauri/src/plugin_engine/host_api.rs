@@ -4,7 +4,14 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 
-const WHITELISTED_ENV_VARS: [&str; 3] = ["CODEX_HOME", "ZAI_API_KEY", "GLM_API_KEY"];
+const WHITELISTED_ENV_VARS: [&str; 6] = [
+    "CODEX_HOME",
+    "ZAI_API_KEY",
+    "GLM_API_KEY",
+    "HOME",
+    "XDG_CONFIG_HOME",
+    "GH_CONFIG_DIR",
+];
 
 fn last_non_empty_trimmed_line(text: &str) -> Option<String> {
     text.lines()
@@ -1155,6 +1162,40 @@ fn inject_keychain<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<
                 Ok(())
             },
         )?,
+    )?;
+
+    keychain_obj.set(
+        "readGhCliToken",
+        Function::new(ctx.clone(), move |ctx_inner: Ctx<'_>| -> rquickjs::Result<String> {
+            let output = std::process::Command::new("gh")
+                .args(["auth", "token", "-h", "github.com"])
+                .output()
+                .map_err(|e| {
+                    Exception::throw_message(
+                        &ctx_inner,
+                        &format!("failed to run `gh auth token`: {}", e),
+                    )
+                })?;
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                let first_line = stderr.lines().next().unwrap_or("").trim();
+                return Err(Exception::throw_message(
+                    &ctx_inner,
+                    &format!("`gh auth token` failed: {}", first_line),
+                ));
+            }
+
+            let token = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if token.is_empty() {
+                return Err(Exception::throw_message(
+                    &ctx_inner,
+                    "`gh auth token` returned an empty token",
+                ));
+            }
+
+            Ok(token)
+        })?,
     )?;
 
     host.set("keychain", keychain_obj)?;

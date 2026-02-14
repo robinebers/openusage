@@ -22,6 +22,72 @@
     }
   }
 
+  function readEnv(ctx, key) {
+    try {
+      if (!ctx.host.env || typeof ctx.host.env.get !== "function") return null;
+      const value = ctx.host.env.get(key);
+      if (value === null || value === undefined) return null;
+      const text = String(value).trim();
+      return text || null;
+    } catch (e) {
+      ctx.host.log.info("env read failed for " + key + ": " + String(e));
+      return null;
+    }
+  }
+
+  function unquoteYamlScalar(value) {
+    if (typeof value !== "string") return null;
+    let text = value.trim();
+    if (!text) return null;
+    const commentStart = text.indexOf(" #");
+    if (commentStart >= 0) text = text.slice(0, commentStart).trim();
+    if (
+      (text.startsWith('"') && text.endsWith('"')) ||
+      (text.startsWith("'") && text.endsWith("'"))
+    ) {
+      text = text.slice(1, -1);
+    }
+    return text || null;
+  }
+
+  function parseGhHostsToken(text) {
+    if (typeof text !== "string" || !text) return null;
+    const lines = text.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      const hostMatch = lines[i].match(/^([^\s#][^:]*)\s*:\s*(?:#.*)?$/);
+      if (!hostMatch) continue;
+      const host = unquoteYamlScalar(hostMatch[1]);
+      if (host !== "github.com") continue;
+
+      for (let j = i + 1; j < lines.length; j++) {
+        const line = lines[j];
+        if (/^[^\s#][^:]*\s*:/.test(line)) break;
+        const tokenMatch = line.match(/^\s+oauth_token\s*:\s*(.+)\s*$/);
+        if (!tokenMatch) continue;
+        const token = unquoteYamlScalar(tokenMatch[1]);
+        if (token) return token;
+      }
+    }
+    return null;
+  }
+
+  function buildGhHostsPaths(ctx) {
+    const paths = [];
+    const ghConfigDir = readEnv(ctx, "GH_CONFIG_DIR");
+    const xdgConfigHome = readEnv(ctx, "XDG_CONFIG_HOME");
+    const home = readEnv(ctx, "HOME");
+
+    if (ghConfigDir) paths.push(ghConfigDir + "/hosts.yml");
+    if (xdgConfigHome) paths.push(xdgConfigHome + "/gh/hosts.yml");
+    if (home) paths.push(home + "/.config/gh/hosts.yml");
+
+    const unique = [];
+    for (const path of paths) {
+      if (unique.indexOf(path) === -1) unique.push(path);
+    }
+    return unique;
+  }
+
   function saveToken(ctx, token) {
     try {
       ctx.host.keychain.writeGenericPassword(
@@ -81,6 +147,54 @@
     return null;
   }
 
+  function loadTokenFromGhHostsFile(ctx) {
+    const paths = buildGhHostsPaths(ctx);
+    for (const path of paths) {
+      try {
+        if (!ctx.host.fs.exists(path)) continue;
+        const text = ctx.host.fs.readText(path);
+        const token = parseGhHostsToken(text);
+        if (token) {
+          ctx.host.log.info("token loaded from gh hosts file: " + path);
+          return { token: token, source: "gh-hosts-file" };
+        }
+        ctx.host.log.info(
+          "gh hosts file has no oauth_token for github.com: " + path,
+        );
+      } catch (e) {
+        ctx.host.log.info("gh hosts file read failed for " + path + ": " + String(e));
+      }
+    }
+    return null;
+  }
+
+  function loadTokenFromGhCliCommand(ctx) {
+    try {
+      if (
+        !ctx.host.keychain ||
+        typeof ctx.host.keychain.readGhCliToken !== "function"
+      ) {
+        return null;
+      }
+      const token = ctx.host.keychain.readGhCliToken();
+      if (token) {
+        ctx.host.log.info("token loaded from gh CLI command");
+        return { token: token, source: "gh-cli-command" };
+      }
+    } catch (e) {
+      ctx.host.log.info("gh CLI command read failed: " + String(e));
+    }
+    return null;
+  }
+
+  function loadTokenFromGhSources(ctx) {
+    return (
+      loadTokenFromGhCli(ctx) ||
+      loadTokenFromGhHostsFile(ctx) ||
+      loadTokenFromGhCliCommand(ctx)
+    );
+  }
+
   function loadTokenFromStateFile(ctx) {
     const data = readJson(ctx, ctx.app.pluginDataDir + "/auth.json");
     if (data && data.token) {
@@ -93,7 +207,7 @@
   function loadToken(ctx) {
     return (
       loadTokenFromKeychain(ctx) ||
-      loadTokenFromGhCli(ctx) ||
+      loadTokenFromGhSources(ctx) ||
       loadTokenFromStateFile(ctx)
     );
   }
@@ -165,7 +279,7 @@
       if (source === "keychain") {
         ctx.host.log.info("cached token invalid, trying fallback sources");
         clearCachedToken(ctx);
-        const fallback = loadTokenFromGhCli(ctx);
+        const fallback = loadTokenFromGhSources(ctx);
         if (fallback) {
           try {
             resp = fetchUsage(ctx, fallback.token);
@@ -196,8 +310,12 @@
       );
     }
 
-    // Persist gh-cli token to OpenUsage keychain for future use
-    if (source === "gh-cli") {
+    // Persist gh-provided token to OpenUsage keychain for future use
+    if (
+      source === "gh-cli" ||
+      source === "gh-hosts-file" ||
+      source === "gh-cli-command"
+    ) {
       saveToken(ctx, token);
     }
 

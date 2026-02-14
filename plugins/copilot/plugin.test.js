@@ -42,6 +42,38 @@ function setGhCliKeychain(ctx, value) {
   });
 }
 
+function setGhHostsFileToken(ctx, token, envOverrides = {}) {
+  const env = {
+    GH_CONFIG_DIR: envOverrides.GH_CONFIG_DIR || null,
+    XDG_CONFIG_HOME: envOverrides.XDG_CONFIG_HOME || null,
+    HOME: envOverrides.HOME || "/home/test-user",
+  };
+  ctx.host.env.get.mockImplementation((name) => {
+    if (Object.prototype.hasOwnProperty.call(env, name)) return env[name];
+    return null;
+  });
+
+  let hostsPath;
+  if (env.GH_CONFIG_DIR) {
+    hostsPath = env.GH_CONFIG_DIR + "/hosts.yml";
+  } else if (env.XDG_CONFIG_HOME) {
+    hostsPath = env.XDG_CONFIG_HOME + "/gh/hosts.yml";
+  } else {
+    hostsPath = env.HOME + "/.config/gh/hosts.yml";
+  }
+
+  ctx.host.fs.writeText(
+    hostsPath,
+    [
+      "github.com:",
+      "  user: test-user",
+      "  oauth_token: " + token,
+      "  git_protocol: https",
+    ].join("\n"),
+  );
+  return hostsPath;
+}
+
 function setStateFileToken(ctx, token) {
   ctx.host.fs.writeText(
     ctx.app.pluginDataDir + "/auth.json",
@@ -100,6 +132,51 @@ describe("copilot plugin", () => {
     expect(result.lines.find((l) => l.label === "Premium")).toBeTruthy();
     const call = ctx.host.http.request.mock.calls[0][0];
     expect(call.headers.Authorization).toBe("token gho_encoded_token");
+  });
+
+  it("loads token from gh hosts file (HOME path)", async () => {
+    const ctx = makePluginTestContext();
+    setGhHostsFileToken(ctx, "gho_hosts_home");
+    mockUsageOk(ctx);
+    const plugin = await loadPlugin();
+    const result = plugin.probe(ctx);
+    expect(result.lines.find((l) => l.label === "Premium")).toBeTruthy();
+    const call = ctx.host.http.request.mock.calls[0][0];
+    expect(call.headers.Authorization).toBe("token gho_hosts_home");
+  });
+
+  it("loads token from gh hosts file via GH_CONFIG_DIR", async () => {
+    const ctx = makePluginTestContext();
+    const hostsPath = setGhHostsFileToken(ctx, "gho_hosts_dir", {
+      GH_CONFIG_DIR: "/tmp/gh-config",
+      HOME: "/home/ignored",
+    });
+    ctx.host.fs.writeText(
+      hostsPath,
+      [
+        "github.com:",
+        "  user: test-user",
+        '  oauth_token: "gho_hosts_dir" # inline comment',
+        "  git_protocol: https",
+      ].join("\n"),
+    );
+    mockUsageOk(ctx);
+    const plugin = await loadPlugin();
+    plugin.probe(ctx);
+    const call = ctx.host.http.request.mock.calls[0][0];
+    expect(call.headers.Authorization).toBe("token gho_hosts_dir");
+  });
+
+  it("loads token from gh CLI command fallback", async () => {
+    const ctx = makePluginTestContext();
+    ctx.host.keychain.readGhCliToken = vi.fn(() => "gho_from_command");
+    mockUsageOk(ctx);
+    const plugin = await loadPlugin();
+    const result = plugin.probe(ctx);
+    expect(result.lines.find((l) => l.label === "Premium")).toBeTruthy();
+    const call = ctx.host.http.request.mock.calls[0][0];
+    expect(call.headers.Authorization).toBe("token gho_from_command");
+    expect(ctx.host.keychain.readGhCliToken).toHaveBeenCalledTimes(1);
   });
 
   it("loads token from state file", async () => {
@@ -479,6 +556,63 @@ describe("copilot plugin", () => {
     expect(ctx.host.keychain.deleteGenericPassword).toHaveBeenCalledWith("OpenUsage-copilot");
     // Should have saved the fresh token
     expect(ctx.host.keychain.writeGenericPassword).toHaveBeenCalled();
+  });
+
+  it("retries with gh hosts token when cached keychain token is stale", async () => {
+    const ctx = makePluginTestContext();
+    setGhHostsFileToken(ctx, "fresh_hosts_token");
+    let callCount = 0;
+    ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
+      if (service === "OpenUsage-copilot") {
+        return JSON.stringify({ token: "stale_token" });
+      }
+      return null;
+    });
+    ctx.host.http.request.mockImplementation((opts) => {
+      callCount++;
+      if (opts.headers.Authorization === "token stale_token") {
+        return { status: 401, bodyText: "" };
+      }
+      return { status: 200, bodyText: JSON.stringify(makeUsageResponse()) };
+    });
+    const plugin = await loadPlugin();
+    const result = plugin.probe(ctx);
+    expect(result.lines.find((l) => l.label === "Premium")).toBeTruthy();
+    expect(callCount).toBe(2);
+    expect(ctx.host.keychain.deleteGenericPassword).toHaveBeenCalledWith("OpenUsage-copilot");
+    expect(ctx.host.keychain.writeGenericPassword).toHaveBeenCalledWith(
+      "OpenUsage-copilot",
+      JSON.stringify({ token: "fresh_hosts_token" }),
+    );
+  });
+
+  it("retries with gh CLI command token when cached keychain token is stale", async () => {
+    const ctx = makePluginTestContext();
+    ctx.host.keychain.readGhCliToken = vi.fn(() => "fresh_cmd_token");
+    let callCount = 0;
+    ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
+      if (service === "OpenUsage-copilot") {
+        return JSON.stringify({ token: "stale_token" });
+      }
+      return null;
+    });
+    ctx.host.http.request.mockImplementation((opts) => {
+      callCount++;
+      if (opts.headers.Authorization === "token stale_token") {
+        return { status: 401, bodyText: "" };
+      }
+      return { status: 200, bodyText: JSON.stringify(makeUsageResponse()) };
+    });
+    const plugin = await loadPlugin();
+    const result = plugin.probe(ctx);
+    expect(result.lines.find((l) => l.label === "Premium")).toBeTruthy();
+    expect(callCount).toBe(2);
+    expect(ctx.host.keychain.deleteGenericPassword).toHaveBeenCalledWith("OpenUsage-copilot");
+    expect(ctx.host.keychain.writeGenericPassword).toHaveBeenCalledWith(
+      "OpenUsage-copilot",
+      JSON.stringify({ token: "fresh_cmd_token" }),
+    );
+    expect(ctx.host.keychain.readGhCliToken).toHaveBeenCalledTimes(1);
   });
 
   it("throws when stale keychain token and no fallback available", async () => {
