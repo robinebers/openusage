@@ -8,6 +8,9 @@ interface ProviderDetailPageProps {
   displayMode: DisplayMode
   resetTimerDisplayMode: ResetTimerDisplayMode
   onResetTimerDisplayModeToggle?: () => void
+  accountOptions?: Array<{ value: string; label: string }>
+  selectedAccount?: string
+  onAccountChange?: (account: string) => void
 }
 
 export function ProviderDetailPage({
@@ -16,6 +19,9 @@ export function ProviderDetailPage({
   displayMode,
   resetTimerDisplayMode,
   onResetTimerDisplayModeToggle,
+  accountOptions,
+  selectedAccount,
+  onAccountChange,
 }: ProviderDetailPageProps) {
   if (!plugin) {
     return (
@@ -41,6 +47,9 @@ export function ProviderDetailPage({
       displayMode={displayMode}
       resetTimerDisplayMode={resetTimerDisplayMode}
       onResetTimerDisplayModeToggle={onResetTimerDisplayModeToggle}
+      accountOptions={accountOptions}
+      selectedAccount={selectedAccount}
+      onAccountChange={onAccountChange}
     />
   )
 }

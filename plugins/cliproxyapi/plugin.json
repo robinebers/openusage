@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "cliproxyapi",
+  "name": "CLIProxyAPI",
+  "version": "0.0.1",
+  "entry": "plugin.js",
+  "icon": "icon.svg",
+  "brandColor": "#2563EB",
+  "lines": [
+    { "type": "text", "label": "Status", "scope": "overview" },
+    { "type": "text", "label": "Accounts", "scope": "overview" },
+    { "type": "text", "label": "Providers", "scope": "detail" }
+  ]
+}

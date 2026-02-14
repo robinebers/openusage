@@ -8,6 +8,9 @@ interface OverviewPageProps {
   displayMode: DisplayMode
   resetTimerDisplayMode: ResetTimerDisplayMode
   onResetTimerDisplayModeToggle?: () => void
+  accountOptionsByPlugin?: Record<string, Array<{ value: string; label: string }>>
+  selectedAccountByPlugin?: Record<string, string>
+  onAccountChange?: (pluginId: string, account: string) => void
 }
 
 export function OverviewPage({
@@ -16,6 +19,9 @@ export function OverviewPage({
   displayMode,
   resetTimerDisplayMode,
   onResetTimerDisplayModeToggle,
+  accountOptionsByPlugin,
+  selectedAccountByPlugin,
+  onAccountChange,
 }: OverviewPageProps) {
   if (plugins.length === 0) {
     return (
@@ -43,6 +49,9 @@ export function OverviewPage({
           displayMode={displayMode}
           resetTimerDisplayMode={resetTimerDisplayMode}
           onResetTimerDisplayModeToggle={onResetTimerDisplayModeToggle}
+          accountOptions={accountOptionsByPlugin?.[plugin.meta.id]}
+          selectedAccount={selectedAccountByPlugin?.[plugin.meta.id]}
+          onAccountChange={onAccountChange ? (account) => onAccountChange(plugin.meta.id, account) : undefined}
         />
       ))}
     </div>

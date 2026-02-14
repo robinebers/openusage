@@ -1,5 +1,7 @@
 use tauri::{AppHandle, Manager, Position, Size};
-use tauri_nspanel::{tauri_panel, CollectionBehavior, ManagerExt, PanelLevel, StyleMask, WebviewWindowExt};
+use tauri_nspanel::{
+    CollectionBehavior, ManagerExt, PanelLevel, StyleMask, WebviewWindowExt, tauri_panel,
+};
 
 /// Macro to get existing panel or initialize it if needed.
 /// Returns Option<Panel> - Some if panel is available, None on error.
@@ -146,27 +148,30 @@ pub fn position_panel_at_tray_icon(
     let window_width_phys = window_size.width as i32;
 
     // Convert icon position/size to physical coordinates
-    let (icon_phys_x, icon_phys_y, icon_width_phys, icon_height_phys) = match (icon_position, icon_size) {
-        (Position::Physical(pos), Size::Physical(size)) => (pos.x, pos.y, size.width as i32, size.height as i32),
-        (Position::Logical(pos), Size::Logical(size)) => (
-            (pos.x * scale_factor) as i32,
-            (pos.y * scale_factor) as i32,
-            (size.width * scale_factor) as i32,
-            (size.height * scale_factor) as i32,
-        ),
-        (Position::Physical(pos), Size::Logical(size)) => (
-            pos.x,
-            pos.y,
-            (size.width * scale_factor) as i32,
-            (size.height * scale_factor) as i32,
-        ),
-        (Position::Logical(pos), Size::Physical(size)) => (
-            (pos.x * scale_factor) as i32,
-            (pos.y * scale_factor) as i32,
-            size.width as i32,
-            size.height as i32,
-        ),
-    };
+    let (icon_phys_x, icon_phys_y, icon_width_phys, icon_height_phys) =
+        match (icon_position, icon_size) {
+            (Position::Physical(pos), Size::Physical(size)) => {
+                (pos.x, pos.y, size.width as i32, size.height as i32)
+            }
+            (Position::Logical(pos), Size::Logical(size)) => (
+                (pos.x * scale_factor) as i32,
+                (pos.y * scale_factor) as i32,
+                (size.width * scale_factor) as i32,
+                (size.height * scale_factor) as i32,
+            ),
+            (Position::Physical(pos), Size::Logical(size)) => (
+                pos.x,
+                pos.y,
+                (size.width * scale_factor) as i32,
+                (size.height * scale_factor) as i32,
+            ),
+            (Position::Logical(pos), Size::Physical(size)) => (
+                (pos.x * scale_factor) as i32,
+                (pos.y * scale_factor) as i32,
+                size.width as i32,
+                size.height as i32,
+            ),
+        };
 
     let icon_center_x_phys = icon_phys_x + (icon_width_phys / 2);
     let panel_x_phys = icon_center_x_phys - (window_width_phys / 2);

@@ -17,6 +17,10 @@ type ProbeBatchStarted = {
   pluginIds: string[]
 }
 
+type StartBatchOptions = {
+  accountSelections?: Record<string, string>
+}
+
 type UseProbeEventsOptions = {
   onResult: (output: PluginOutput) => void
   onBatchComplete: () => void
@@ -31,7 +35,6 @@ export function useProbeEvents({ onResult, onBatchComplete }: UseProbeEventsOpti
   useEffect(() => {
     let cancelled = false
 
-    // Create the promise that will resolve when listeners are ready
     listenersReadyRef.current = new Promise<void>((resolve) => {
       listenersReadyResolveRef.current = resolve
     })
@@ -65,7 +68,6 @@ export function useProbeEvents({ onResult, onBatchComplete }: UseProbeEventsOpti
 
       unlisteners.current.push(resultUnlisten, completeUnlisten)
 
-      // Signal that listeners are ready
       listenersReadyResolveRef.current?.()
     }
 
@@ -80,8 +82,7 @@ export function useProbeEvents({ onResult, onBatchComplete }: UseProbeEventsOpti
     }
   }, [onBatchComplete, onResult])
 
-  const startBatch = useCallback(async (pluginIds?: string[]) => {
-    // Wait for listeners to be ready before starting the batch
+  const startBatch = useCallback(async (pluginIds?: string[], options?: StartBatchOptions) => {
     if (listenersReadyRef.current) {
       await listenersReadyRef.current
     }
@@ -92,9 +93,11 @@ export function useProbeEvents({ onResult, onBatchComplete }: UseProbeEventsOpti
         : `batch-${Date.now()}-${Math.random().toString(16).slice(2)}`
 
     activeBatchIds.current.add(batchId)
-    const args = pluginIds
-      ? { batchId, pluginIds }
-      : { batchId }
+    const args = {
+      ...(pluginIds ? { pluginIds } : {}),
+      ...(options?.accountSelections ? { accountSelections: options.accountSelections } : {}),
+      batchId,
+    }
     try {
       const result = await invoke<ProbeBatchStarted>("start_probe_batch", args)
       return result.pluginIds

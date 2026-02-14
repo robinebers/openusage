@@ -18,7 +18,11 @@ pub fn initialize_plugins(
 
     let install_dir = app_data_dir.join("plugins");
     if let Err(err) = std::fs::create_dir_all(&install_dir) {
-        log::warn!("failed to create install dir {}: {}", install_dir.display(), err);
+        log::warn!(
+            "failed to create install dir {}: {}",
+            install_dir.display(),
+            err
+        );
     }
 
     let bundled_dir = resolve_bundled_dir(resource_dir);
@@ -78,7 +82,11 @@ fn copy_dir_recursive(src: &Path, dst: &Path) {
                 let file_type = match entry.file_type() {
                     Ok(file_type) => file_type,
                     Err(err) => {
-                        log::warn!("failed to read file type for {}: {}", src_path.display(), err);
+                        log::warn!(
+                            "failed to read file type for {}: {}",
+                            src_path.display(),
+                            err
+                        );
                         continue;
                     }
                 };
@@ -87,11 +95,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) {
                 }
                 if file_type.is_dir() {
                     if let Err(err) = std::fs::create_dir_all(&dst_path) {
-                        log::warn!(
-                            "failed to create dir {}: {}",
-                            dst_path.display(),
-                            err
-                        );
+                        log::warn!("failed to create dir {}: {}", dst_path.display(), err);
                         continue;
                     }
                     copy_dir_recursive(&src_path, &dst_path);

@@ -30,6 +30,9 @@ interface ProviderCardProps {
   displayMode: DisplayMode
   resetTimerDisplayMode?: ResetTimerDisplayMode
   onResetTimerDisplayModeToggle?: () => void
+  accountOptions?: Array<{ value: string; label: string }>
+  selectedAccount?: string
+  onAccountChange?: (value: string) => void
 }
 
 export function formatNumber(value: number) {
@@ -161,6 +164,9 @@ export function ProviderCard({
   displayMode,
   resetTimerDisplayMode = "relative",
   onResetTimerDisplayModeToggle,
+  accountOptions = [],
+  selectedAccount = "",
+  onAccountChange,
 }: ProviderCardProps) {
   const cooldownRemainingMs = useMemo(() => {
     if (!lastManualRefreshAt) return 0
@@ -228,9 +234,9 @@ export function ProviderCard({
   return (
     <div>
       <div className="py-3">
-        <div className="flex items-center justify-between mb-2">
-          <div className="relative flex items-center">
-            <h2 className="text-lg font-semibold" style={{ transform: "translateZ(0)" }}>{name}</h2>
+        <div className="flex items-center justify-between gap-2 mb-2 min-w-0">
+          <div className="relative flex items-center min-w-0 flex-1">
+            <h2 className="text-lg font-semibold truncate" style={{ transform: "translateZ(0)" }}>{name}</h2>
             {onRetry && (
               loading ? (
                 <Button
@@ -281,15 +287,31 @@ export function ProviderCard({
               )
             )}
           </div>
-          {plan && (
-            <Badge
-              variant="outline"
-              className="truncate min-w-0 max-w-[40%]"
-              title={plan}
-            >
-              {plan}
-            </Badge>
-          )}
+          <div className="flex items-center gap-2 min-w-0 max-w-[58%]">
+            {onAccountChange && accountOptions.length > 1 && (
+              <select
+                value={selectedAccount}
+                onChange={(event) => onAccountChange(event.target.value)}
+                className="h-7 w-[144px] min-w-0 rounded-md border bg-background px-2 text-xs text-foreground"
+                aria-label={`${name} account`}
+              >
+                {accountOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            )}
+            {plan && (
+              <Badge
+                variant="outline"
+                className="truncate min-w-0 max-w-[40%]"
+                title={plan}
+              >
+                {plan}
+              </Badge>
+            )}
+          </div>
         </div>
         {visibleLinks.length > 0 && (
           <div className="mb-2 -mt-0.5 flex flex-wrap gap-1.5">

@@ -136,7 +136,7 @@
         return null
       }
       var expiresIn = (typeof body.expires_in === "number") ? body.expires_in : 3600
-      cacheToken(ctx, body.access_token, expiresIn)
+      cacheToken(ctx, body.access_token, expiresIn, refreshTokenValue)
       return body.access_token
     } catch (e) {
       ctx.host.log.warn("Google OAuth refresh failed: " + String(e))
@@ -146,25 +146,30 @@
 
   // --- Token cache ---
 
-  function loadCachedToken(ctx) {
+  function loadCachedAuth(ctx) {
     var path = ctx.app.pluginDataDir + "/auth.json"
     try {
       if (!ctx.host.fs.exists(path)) return null
       var data = ctx.util.tryParseJson(ctx.host.fs.readText(path))
-      if (!data || !data.accessToken || !data.expiresAtMs) return null
-      if (data.expiresAtMs <= Date.now()) return null
-      return data.accessToken
+      if (!data || !data.accessToken) return null
+      return {
+        accessToken: data.accessToken,
+        refreshToken: data.refreshToken || null,
+        expiresAtMs: typeof data.expiresAtMs === "number" ? data.expiresAtMs : 0,
+      }
     } catch (e) {
       ctx.host.log.warn("failed to read cached token: " + String(e))
       return null
     }
   }
 
-  function cacheToken(ctx, accessToken, expiresInSeconds) {
+  function cacheToken(ctx, accessToken, expiresInSeconds, refreshTokenValue) {
     var path = ctx.app.pluginDataDir + "/auth.json"
     try {
+      var existing = loadCachedAuth(ctx)
       ctx.host.fs.writeText(path, JSON.stringify({
         accessToken: accessToken,
+        refreshToken: refreshTokenValue || (existing && existing.refreshToken) || null,
         expiresAtMs: Date.now() + (expiresInSeconds || 3600) * 1000,
       }))
     } catch (e) {
@@ -432,10 +437,12 @@
       }
     }
 
-    var cached = loadCachedToken(ctx)
-    if (cached && cached !== (proto && proto.accessToken)) tokens.push(cached)
+    var cached = loadCachedAuth(ctx)
+    if (cached && cached.accessToken && cached.expiresAtMs > Date.now() && cached.accessToken !== (proto && proto.accessToken)) {
+      tokens.push(cached.accessToken)
+    }
 
-    if (apiKey && apiKey !== (proto && proto.accessToken) && apiKey !== cached) tokens.push(apiKey)
+    if (apiKey && apiKey !== (proto && proto.accessToken) && apiKey !== (cached && cached.accessToken)) tokens.push(apiKey)
 
     if (tokens.length === 0) throw "Start Antigravity and try again."
 
@@ -446,8 +453,9 @@
       ccData = null
     }
 
-    if (!ccData && proto && proto.refreshToken) {
-      var refreshed = refreshAccessToken(ctx, proto.refreshToken)
+    if (!ccData) {
+      var refreshToken = (proto && proto.refreshToken) || (cached && cached.refreshToken)
+      var refreshed = refreshToken ? refreshAccessToken(ctx, refreshToken) : null
       if (refreshed) ccData = probeCloudCode(ctx, refreshed)
     }
 
