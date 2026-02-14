@@ -502,12 +502,6 @@ function App() {
   const handleProbeResult = useCallback(
     (output: PluginOutput) => {
       const errorMessage = getErrorMessage(output)
-      if (errorMessage) {
-        track("provider_fetch_error", {
-          provider_id: output.providerId,
-          error: errorMessage.slice(0, 200),
-        })
-      }
       const isManual = manualRefreshIdsRef.current.has(output.providerId)
       if (isManual) {
         manualRefreshIdsRef.current.delete(output.providerId)
