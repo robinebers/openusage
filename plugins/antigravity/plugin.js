@@ -175,8 +175,12 @@
   // --- LS discovery ---
 
   function discoverLs(ctx) {
+    var processName = ctx.app.platform === "windows"
+      ? "language_server_windows_x64.exe"
+      : (ctx.app.platform === "linux" ? "language_server_linux_x64" : "language_server_macos")
+    
     return ctx.host.ls.discover({
-      processName: "language_server_macos",
+      processName: processName,
       markers: ["antigravity"],
       csrfFlag: "--csrf_token",
       portFlag: "--extension_server_port",
@@ -199,7 +203,7 @@
             extensionVersion: "unknown",
             ide: "antigravity",
             ideVersion: "unknown",
-            os: "macos",
+            os: ctx.app.platform === "windows" ? "windows" : (ctx.app.platform === "linux" ? "linux" : "macos"),
           },
         },
       }),

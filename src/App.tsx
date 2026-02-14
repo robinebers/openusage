@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { invoke, isTauri } from "@tauri-apps/api/core"
 import { listen } from "@tauri-apps/api/event"
-import { getCurrentWindow, PhysicalSize, currentMonitor } from "@tauri-apps/api/window"
+import { getCurrentWindow, PhysicalSize, PhysicalPosition, currentMonitor } from "@tauri-apps/api/window"
 import { getVersion } from "@tauri-apps/api/app"
-import { resolveResource } from "@tauri-apps/api/path"
 import { TrayIcon } from "@tauri-apps/api/tray"
+import { resolveResource } from "@tauri-apps/api/path"
+import { platform } from "@tauri-apps/plugin-os"
 import {
   disable as disableAutostart,
   enable as enableAutostart,
@@ -65,7 +66,7 @@ import {
 const PANEL_WIDTH = 400;
 const MAX_HEIGHT_FALLBACK_PX = 600;
 const MAX_HEIGHT_FRACTION_OF_MONITOR = 0.8;
-const ARROW_OVERHEAD_PX = 37; // .tray-arrow (7px) + wrapper pt-1.5 (6px) + bottom p-6 (24px)
+const ARROW_OVERHEAD_PX = 32; // Arrow (~16px) + container padding (16px)
 const TRAY_SETTINGS_DEBOUNCE_MS = 2000;
 const TRAY_PROBE_DEBOUNCE_MS = 500;
 
@@ -95,21 +96,27 @@ function App() {
     DEFAULT_RESET_TIMER_DISPLAY_MODE
   )
   const [trayIconStyle, setTrayIconStyle] = useState<TrayIconStyle>(DEFAULT_TRAY_ICON_STYLE)
+  const [isWindows, setIsWindows] = useState(false)
   const [trayShowPercentage, setTrayShowPercentage] = useState(DEFAULT_TRAY_SHOW_PERCENTAGE)
   const [globalShortcut, setGlobalShortcut] = useState<GlobalShortcut>(DEFAULT_GLOBAL_SHORTCUT)
   const [startOnLogin, setStartOnLogin] = useState(DEFAULT_START_ON_LOGIN)
   const [maxPanelHeightPx, setMaxPanelHeightPx] = useState<number | null>(null)
   const maxPanelHeightPxRef = useRef<number | null>(null)
   const [appVersion, setAppVersion] = useState("...")
+  // Track taskbar position for anchor-aware resizing (Windows)
+  type TaskbarPosition = "top" | "bottom" | "left" | "right" | null
+  const [taskbarPosition, setTaskbarPosition] = useState<TaskbarPosition>(null)
+  // Track last window height to calculate delta for repositioning
+  const lastWindowHeightRef = useRef<number | null>(null)
+  // Arrow offset from left edge (in logical px) - where tray icon center is relative to window
+  const [arrowOffset, setArrowOffset] = useState<number | null>(null)
 
   const { updateStatus, triggerInstall, checkForUpdates } = useAppUpdate()
   const [showAbout, setShowAbout] = useState(false)
 
+  // Tray icon handle for frontend updates
   const trayRef = useRef<TrayIcon | null>(null)
-  const trayGaugeIconPathRef = useRef<string | null>(null)
-  const trayUpdateTimerRef = useRef<number | null>(null)
-  const trayUpdatePendingRef = useRef(false)
-  const [trayReady, setTrayReady] = useState(false)
+  const trayUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Store state in refs so scheduleTrayIconUpdate can read current values without recreating the callback
   const pluginsMetaRef = useRef(pluginsMeta)
@@ -118,119 +125,114 @@ function App() {
   const displayModeRef = useRef(displayMode)
   const trayIconStyleRef = useRef(trayIconStyle)
   const trayShowPercentageRef = useRef(trayShowPercentage)
+  const isWindowsRef = useRef(isWindows)
   useEffect(() => { pluginsMetaRef.current = pluginsMeta }, [pluginsMeta])
   useEffect(() => { pluginSettingsRef.current = pluginSettings }, [pluginSettings])
   useEffect(() => { pluginStatesRef.current = pluginStates }, [pluginStates])
   useEffect(() => { displayModeRef.current = displayMode }, [displayMode])
   useEffect(() => { trayIconStyleRef.current = trayIconStyle }, [trayIconStyle])
   useEffect(() => { trayShowPercentageRef.current = trayShowPercentage }, [trayShowPercentage])
+  useEffect(() => { isWindowsRef.current = isWindows }, [isWindows])
 
-  // Fetch app version on mount
+  // Fetch app version and detect platform on mount
   useEffect(() => {
     getVersion().then(setAppVersion)
+    // Detect if Windows for arrow positioning
+    try {
+      const p = platform()
+      setIsWindows(p === 'windows')
+    } catch {
+      setIsWindows(false)
+    }
   }, [])
 
-  // Stable callback that reads from refs - never recreated, so debounce works correctly
-  const scheduleTrayIconUpdate = useCallback((_reason: "probe" | "settings" | "init", delayMs = 0) => {
-    if (trayUpdateTimerRef.current !== null) {
-      window.clearTimeout(trayUpdateTimerRef.current)
-      trayUpdateTimerRef.current = null
+  const [isTrayReady, setIsTrayReady] = useState(false)
+  const scheduleTrayIconUpdate = useCallback((reason: "probe" | "settings" | "init", delayMs = 0) => {
+    if (trayUpdateTimeoutRef.current !== null) {
+      clearTimeout(trayUpdateTimeoutRef.current)
     }
 
-    trayUpdateTimerRef.current = window.setTimeout(() => {
-      trayUpdateTimerRef.current = null
-      if (trayUpdatePendingRef.current) return
-      trayUpdatePendingRef.current = true
-
-      const tray = trayRef.current
-      if (!tray) {
-        trayUpdatePendingRef.current = false
-        return
-      }
+    trayUpdateTimeoutRef.current = setTimeout(async () => {
+      trayUpdateTimeoutRef.current = null
+      const currentSettings = pluginSettingsRef.current
+      const currentMeta = pluginsMetaRef.current
+      if (!currentSettings || currentMeta.length === 0) return
 
       const style = trayIconStyleRef.current
       const maxBars = style === "bars" ? 4 : 1
       const bars = getTrayPrimaryBars({
-        pluginsMeta: pluginsMetaRef.current,
-        pluginSettings: pluginSettingsRef.current,
+        pluginsMeta: currentMeta,
+        pluginSettings: currentSettings,
         pluginStates: pluginStatesRef.current,
-        maxBars,
         displayMode: displayModeRef.current,
+        maxBars,
       })
-
-      // 0 bars: revert to the packaged gauge tray icon.
-      if (bars.length === 0) {
-        const gaugePath = trayGaugeIconPathRef.current
-        if (gaugePath) {
-          Promise.all([
-            tray.setIcon(gaugePath),
-            tray.setIconAsTemplate(true),
-          ])
-            .catch((e) => {
-              console.error("Failed to restore tray gauge icon:", e)
-            })
-            .finally(() => {
-              trayUpdatePendingRef.current = false
-            })
-        } else {
-          trayUpdatePendingRef.current = false
-        }
-        return
-      }
-
-      const percentageMandatory = isTrayPercentageMandatory(style)
-
-      let percentText: string | undefined
-      if (percentageMandatory || trayShowPercentageRef.current) {
-        const firstFraction = bars[0]?.fraction
-        if (typeof firstFraction === "number" && Number.isFinite(firstFraction)) {
-          const clamped = Math.max(0, Math.min(1, firstFraction))
-          const rounded = Math.round(clamped * 100)
-          percentText = `${rounded}%`
-        }
-      }
-
-      if (style === "textOnly" && !percentText) {
-        const gaugePath = trayGaugeIconPathRef.current
-        if (gaugePath) {
-          Promise.all([
-            tray.setIcon(gaugePath),
-            tray.setIconAsTemplate(true),
-          ])
-            .catch((e) => {
-              console.error("Failed to restore tray gauge icon:", e)
-            })
-            .finally(() => {
-              trayUpdatePendingRef.current = false
-            })
-        } else {
-          trayUpdatePendingRef.current = false
-        }
-        return
-      }
-
-      const sizePx = getTrayIconSizePx(window.devicePixelRatio)
-      const firstProviderId = bars[0]?.id
+      if (bars.length === 0) return
+      const shouldShowPercentage = isTrayPercentageMandatory(style)
+        ? true
+        : trayShowPercentageRef.current
+      const primaryFraction = bars[0]?.fraction
+      const percentText =
+        shouldShowPercentage && typeof primaryFraction === "number"
+          ? `${Math.round(primaryFraction * 100)}%`
+          : undefined
       const providerIconUrl =
         style === "provider"
-          ? pluginsMetaRef.current.find((plugin) => plugin.id === firstProviderId)?.iconUrl
+          ? currentMeta.find((plugin) => plugin.id === bars[0]?.id)?.iconUrl
           : undefined
+      const dpr = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1
+      const sizePx = getTrayIconSizePx(dpr)
+      const trayColor = isWindowsRef.current ? "#f8f8f8" : "#000000"
 
-      renderTrayBarsIcon({ bars, sizePx, style, percentText, providerIconUrl })
-        .then(async (img) => {
-          await tray.setIcon(img)
-          await tray.setIconAsTemplate(true)
+      try {
+        const image = await renderTrayBarsIcon({
+          bars,
+          sizePx,
+          style,
+          percentText,
+          providerIconUrl,
+          color: trayColor,
         })
-        .catch((e) => {
-          console.error("Failed to update tray icon:", e)
-        })
-        .finally(() => {
-          trayUpdatePendingRef.current = false
-        })
+        let tray = trayRef.current
+        if (!tray) {
+          tray = await TrayIcon.getById("tray").catch(() => null)
+          if (tray) trayRef.current = tray
+        }
+        if (tray) {
+          await tray.setIcon(image)
+        }
+      } catch (error) {
+        console.error(`Failed to update tray icon (${reason}):`, error)
+      }
     }, delayMs)
   }, [])
 
-  // Initialize tray handle once (separate from tray updates)
+  useEffect(() => {
+    if (!isTrayReady) return
+    if (!pluginSettings || pluginsMeta.length === 0) return
+    scheduleTrayIconUpdate("init", 0)
+  }, [isTrayReady, pluginSettings, pluginsMeta, scheduleTrayIconUpdate])
+
+  useEffect(() => {
+    let cancelled = false
+    resolveResource("icons/tray-icon.png").catch((error) => {
+      if (cancelled) return
+      console.error("Failed to resolve tray icon resource:", error)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (trayUpdateTimeoutRef.current !== null) {
+        clearTimeout(trayUpdateTimeoutRef.current)
+      }
+    }
+  }, [])
+
+  // Initialize tray handle once
   const trayInitializedRef = useRef(false)
   useEffect(() => {
     if (trayInitializedRef.current) return
@@ -241,12 +243,7 @@ function App() {
         if (cancelled) return
         trayRef.current = tray
         trayInitializedRef.current = true
-        setTrayReady(true)
-        try {
-          trayGaugeIconPathRef.current = await resolveResource("icons/tray-icon.png")
-        } catch (e) {
-          console.error("Failed to resolve tray gauge icon resource:", e)
-        }
+        setIsTrayReady(true)
       } catch (e) {
         console.error("Failed to load tray icon handle:", e)
       }
@@ -255,15 +252,6 @@ function App() {
       cancelled = true
     }
   }, [])
-
-  // Trigger tray update once tray + plugin metadata/settings are available.
-  // This prevents missing the first paint if probe results arrive before the tray handle resolves.
-  useEffect(() => {
-    if (!trayReady) return
-    if (!pluginSettings) return
-    if (pluginsMeta.length === 0) return
-    scheduleTrayIconUpdate("init", 0)
-  }, [pluginsMeta.length, pluginSettings, scheduleTrayIconUpdate, trayReady])
 
 
   const displayPlugins = useMemo(() => {
@@ -335,7 +323,16 @@ function App() {
     const unlisteners: (() => void)[] = []
 
     async function setup() {
-      const u1 = await listen<string>("tray:navigate", (event) => {
+      const currentWindow = getCurrentWindow()
+      
+      const u1 = await listen<string>("tray:navigate", async (event) => {
+        // Capture current height before navigation so we can calculate delta
+        try {
+          const size = await currentWindow.outerSize()
+          lastWindowHeightRef.current = size.height
+        } catch {
+          lastWindowHeightRef.current = null
+        }
         setActiveView(event.payload as ActiveView)
       })
       if (cancelled) { u1(); return }
@@ -346,6 +343,41 @@ function App() {
       })
       if (cancelled) { u2(); return }
       unlisteners.push(u2)
+
+      // Listen for window focus events to capture current height as baseline
+      // This ensures we can calculate proper deltas for anchor-aware resizing
+      const u3 = await currentWindow.onFocusChanged(async ({ payload: focused }) => {
+        if (focused) {
+          // Window just gained focus - capture current height as baseline for delta calculation
+          try {
+            const size = await currentWindow.outerSize()
+            lastWindowHeightRef.current = size.height
+            console.log('[FOCUS] Window focused, captured baseline height:', size.height)
+
+            // Fetch latest positioning info (in case event was missed)
+            const pos = await invoke<string | null>('get_taskbar_position');
+            if (pos) setTaskbarPosition(pos as TaskbarPosition);
+            
+            const offset = await invoke<number | null>('get_arrow_offset');
+            if (offset !== null) setArrowOffset(offset);
+          } catch {
+            // Fallback: null will cause first resize to just set size without repositioning
+            lastWindowHeightRef.current = null
+            console.log('[FOCUS] Window focused, failed to capture height')
+          }
+        }
+      })
+      if (cancelled) { u3(); return }
+      unlisteners.push(u3)
+
+      // Listen for window positioning events to align arrow with tray icon
+      const u4 = await listen<{ arrowOffset: number; taskbarPosition: string }>("window:positioned", (event) => {
+        setArrowOffset(event.payload.arrowOffset)
+        setTaskbarPosition(event.payload.taskbarPosition as TaskbarPosition)
+        console.log('[POSITIONED] Arrow offset:', event.payload.arrowOffset, 'Taskbar:', event.payload.taskbarPosition)
+      })
+      if (cancelled) { u4(); return }
+      unlisteners.push(u4)
     }
     void setup()
 
@@ -356,60 +388,105 @@ function App() {
   }, [])
 
   // Auto-resize window to fit content using ResizeObserver
+  // CRITICAL: Anchor-aware resizing - keep the edge closest to taskbar fixed
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    let isResizing = false;
+
     const resizeWindow = async () => {
-      const factor = window.devicePixelRatio;
+      // Prevent concurrent resize operations
+      if (isResizing) return;
+      isResizing = true;
 
-      const width = Math.ceil(PANEL_WIDTH * factor);
-      const desiredHeightLogical = Math.max(1, container.scrollHeight);
-
-      let maxHeightPhysical: number | null = null;
-      let maxHeightLogical: number | null = null;
       try {
-        const monitor = await currentMonitor();
-        if (monitor) {
-          maxHeightPhysical = Math.floor(monitor.size.height * MAX_HEIGHT_FRACTION_OF_MONITOR);
-          maxHeightLogical = Math.floor(maxHeightPhysical / factor);
+        const factor = window.devicePixelRatio;
+        const width = Math.ceil(PANEL_WIDTH * factor);
+        const desiredHeightLogical = Math.max(1, container.scrollHeight);
+
+        let maxHeightPhysical: number | null = null;
+        let maxHeightLogical: number | null = null;
+        try {
+          const monitor = await currentMonitor();
+          if (monitor) {
+            maxHeightPhysical = Math.floor(monitor.size.height * MAX_HEIGHT_FRACTION_OF_MONITOR);
+            maxHeightLogical = Math.floor(maxHeightPhysical / factor);
+          }
+        } catch {
+          // fall through to fallback
         }
-      } catch {
-        // fall through to fallback
-      }
 
-      if (maxHeightLogical === null) {
-        const screenAvailHeight = Number(window.screen?.availHeight) || MAX_HEIGHT_FALLBACK_PX;
-        maxHeightLogical = Math.floor(screenAvailHeight * MAX_HEIGHT_FRACTION_OF_MONITOR);
-        maxHeightPhysical = Math.floor(maxHeightLogical * factor);
-      }
+        if (maxHeightLogical === null) {
+          const screenAvailHeight = Number(window.screen?.availHeight) || MAX_HEIGHT_FALLBACK_PX;
+          maxHeightLogical = Math.floor(screenAvailHeight * MAX_HEIGHT_FRACTION_OF_MONITOR);
+          maxHeightPhysical = Math.floor(maxHeightLogical * factor);
+        }
 
-      if (maxPanelHeightPxRef.current !== maxHeightLogical) {
-        maxPanelHeightPxRef.current = maxHeightLogical;
-        setMaxPanelHeightPx(maxHeightLogical);
-      }
+        if (maxPanelHeightPxRef.current !== maxHeightLogical) {
+          maxPanelHeightPxRef.current = maxHeightLogical;
+          setMaxPanelHeightPx(maxHeightLogical);
+        }
 
-      const desiredHeightPhysical = Math.ceil(desiredHeightLogical * factor);
-      const height = Math.ceil(Math.min(desiredHeightPhysical, maxHeightPhysical!));
+        const desiredHeightPhysical = Math.ceil(desiredHeightLogical * factor);
+        const newHeight = Math.ceil(Math.min(desiredHeightPhysical, maxHeightPhysical!));
+        const previousHeight = lastWindowHeightRef.current;
 
-      try {
         const currentWindow = getCurrentWindow();
-        await currentWindow.setSize(new PhysicalSize(width, height));
+
+        // Fetch current taskbar position from backend (Windows stores this on tray click)
+        let currentTaskbarPos: TaskbarPosition = null;
+        try {
+          currentTaskbarPos = await invoke<TaskbarPosition>("get_taskbar_position");
+          setTaskbarPosition(currentTaskbarPos);
+        } catch {
+          // Fallback: not available or macOS
+        }
+
+        // On Windows with bottom/right taskbar, we need to reposition when height changes
+        // to keep the bottom/right edge anchored
+        if (previousHeight !== null && previousHeight !== newHeight && currentTaskbarPos) {
+          const heightDelta = newHeight - previousHeight;
+
+          // Get current window position
+          const pos = await currentWindow.outerPosition();
+
+          if (currentTaskbarPos === "bottom") {
+            // Bottom taskbar: keep bottom edge fixed → move window UP when growing
+            const newY = pos.y - heightDelta;
+            await currentWindow.setPosition(new PhysicalPosition(pos.x, newY));
+          }
+          // Top/Left taskbar: default behavior (top-left anchored)
+          // Right taskbar: no vertical adjustment needed for height changes
+        }
+
+        await currentWindow.setSize(new PhysicalSize(width, newHeight));
+        lastWindowHeightRef.current = newHeight;
       } catch (e) {
         console.error("Failed to resize window:", e);
+      } finally {
+        isResizing = false;
       }
     };
 
-    // Initial resize
+    // Debounced resize to prevent rapid consecutive calls
+    const debouncedResize = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(resizeWindow, 16); // ~1 frame at 60fps
+    };
+
+    // Initial resize (no debounce)
     resizeWindow();
 
-    // Observe size changes
-    const observer = new ResizeObserver(() => {
-      resizeWindow();
-    });
+    // Observe size changes with debouncing
+    const observer = new ResizeObserver(debouncedResize);
     observer.observe(container);
 
-    return () => observer.disconnect();
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      observer.disconnect();
+    };
   }, [activeView, displayPlugins]);
 
   const getErrorMessage = useCallback((output: PluginOutput) => {
@@ -422,25 +499,25 @@ function App() {
   }, [])
 
   const setLoadingForPlugins = useCallback((ids: string[]) => {
-    setPluginStates((prev) => {
-      const next = { ...prev }
-      for (const id of ids) {
-        const existing = prev[id]
-        next[id] = { data: null, loading: true, error: null, lastManualRefreshAt: existing?.lastManualRefreshAt ?? null }
-      }
-      return next
-    })
+    const prev = pluginStatesRef.current
+    const next = { ...prev }
+    for (const id of ids) {
+      const existing = prev[id]
+      next[id] = { data: null, loading: true, error: null, lastManualRefreshAt: existing?.lastManualRefreshAt ?? null }
+    }
+    pluginStatesRef.current = next
+    setPluginStates(next)
   }, [])
 
   const setErrorForPlugins = useCallback((ids: string[], error: string) => {
-    setPluginStates((prev) => {
-      const next = { ...prev }
-      for (const id of ids) {
-        const existing = prev[id]
-        next[id] = { data: null, loading: false, error, lastManualRefreshAt: existing?.lastManualRefreshAt ?? null }
-      }
-      return next
-    })
+    const prev = pluginStatesRef.current
+    const next = { ...prev }
+    for (const id of ids) {
+      const existing = prev[id]
+      next[id] = { data: null, loading: false, error, lastManualRefreshAt: existing?.lastManualRefreshAt ?? null }
+    }
+    pluginStatesRef.current = next
+    setPluginStates(next)
   }, [])
 
   // Track which plugin IDs are being manually refreshed (vs initial load / enable toggle)
@@ -453,7 +530,8 @@ function App() {
       if (isManual) {
         manualRefreshIdsRef.current.delete(output.providerId)
       }
-      setPluginStates((prev) => ({
+      const prev = pluginStatesRef.current
+      const next = {
         ...prev,
         [output.providerId]: {
           data: errorMessage ? null : output,
@@ -464,7 +542,9 @@ function App() {
             ? Date.now()
             : (prev[output.providerId]?.lastManualRefreshAt ?? null),
         },
-      }))
+      }
+      pluginStatesRef.current = next
+      setPluginStates(next)
 
       // Regenerate tray icon on every probe result (debounced to avoid churn).
       scheduleTrayIconUpdate("probe", TRAY_PROBE_DEBOUNCE_MS)
@@ -499,6 +579,7 @@ function App() {
         const availablePlugins = await invoke<PluginMeta[]>("list_plugins")
         if (!isMounted) return
         setPluginsMeta(availablePlugins)
+        pluginsMetaRef.current = availablePlugins
 
         const storedSettings = await loadPluginSettings()
         const normalized = normalizePluginSettings(
@@ -578,12 +659,21 @@ function App() {
 
         if (isMounted) {
           setPluginSettings(normalized)
+          pluginSettingsRef.current = normalized
           setAutoUpdateInterval(storedInterval)
           setThemeMode(storedThemeMode)
           setDisplayMode(storedDisplayMode)
+          setPluginSettings(normalized)
+          pluginSettingsRef.current = normalized
+          setAutoUpdateInterval(storedInterval)
+          setThemeMode(storedThemeMode)
+          setDisplayMode(storedDisplayMode)
+          displayModeRef.current = storedDisplayMode
           setResetTimerDisplayMode(storedResetTimerDisplayMode)
           setTrayIconStyle(storedTrayIconStyle)
+          trayIconStyleRef.current = storedTrayIconStyle
           setTrayShowPercentage(normalizedTrayShowPercentage)
+          trayShowPercentageRef.current = normalizedTrayShowPercentage
           setGlobalShortcut(storedGlobalShortcut)
           setStartOnLogin(storedStartOnLogin)
           const enabledIds = getEnabledPluginIds(normalized)
@@ -979,12 +1069,49 @@ function App() {
     )
   }
 
+  const isSideTaskbar = taskbarPosition === "left" || taskbarPosition === "right"
+  const isTopTaskbar = taskbarPosition === "top"
+  const isLeftTaskbar = taskbarPosition === "left"
+  const isRightTaskbar = taskbarPosition === "right"
+
+  // Padding for shadow: needs ~16px to not clip the box-shadow
+  // Arrow side gets 8px (arrow is 16px), opposite side gets 16px for shadow
+  const containerClasses = isWindows
+    ? isSideTaskbar
+      ? "flex flex-row items-center w-full py-4 px-2 bg-transparent"
+      : isTopTaskbar
+        ? "flex flex-col items-center justify-start w-full px-4 pt-2 pb-4 bg-transparent"
+        : "flex flex-col items-center justify-end w-full px-4 pt-4 pb-2 bg-transparent"
+    : "flex flex-col items-center justify-start w-full px-4 pt-2 pb-4 bg-transparent";
+  
+  // Dynamic arrow positioning to align with tray icon
+  const ARROW_HALF_SIZE_PX = 7;
+  const PANEL_HORIZONTAL_PADDING_PX = 16; // px-4
+  const PANEL_VERTICAL_PADDING_PX = 16; // py-4
+  const arrowStyle = arrowOffset !== null
+    ? isSideTaskbar
+      ? ({
+          alignSelf: "flex-start",
+          marginTop: `${arrowOffset - ARROW_HALF_SIZE_PX - PANEL_VERTICAL_PADDING_PX}px`,
+        } as const)
+      : ({
+          alignSelf: "flex-start",
+          marginLeft: `${arrowOffset - ARROW_HALF_SIZE_PX - PANEL_HORIZONTAL_PADDING_PX}px`,
+        } as const)
+    : undefined;
+
   return (
-    <div ref={containerRef} className="flex flex-col items-center p-6 pt-1.5 bg-transparent">
-      <div className="tray-arrow" />
+    <div ref={containerRef} className={containerClasses}>
+      {/* macOS: top arrow; Windows: top/bottom/side based on taskbar */}
+      {(!isWindows || isTopTaskbar) && <div className="tray-arrow" style={arrowStyle} />}
+      {isWindows && isLeftTaskbar && <div className="tray-arrow-left" style={arrowStyle} />}
       <div
-        className="relative bg-card rounded-xl overflow-hidden select-none w-full border shadow-lg flex flex-col"
-        style={maxPanelHeightPx ? { maxHeight: `${maxPanelHeightPx - ARROW_OVERHEAD_PX}px` } : undefined}
+        className="relative bg-card rounded-xl overflow-hidden select-none w-full flex flex-col"
+        style={{ 
+          maxHeight: maxPanelHeightPx ? `${maxPanelHeightPx - ARROW_OVERHEAD_PX}px` : undefined,
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+          border: '1px solid rgba(0,0,0,0.08)'
+        }}
       >
         <div className="flex flex-1 min-h-0 flex-row">
           <SideNav
@@ -1013,6 +1140,9 @@ function App() {
           </div>
         </div>
       </div>
+      {isWindows && isRightTaskbar && <div className="tray-arrow-right" style={arrowStyle} />}
+      {/* Windows: Arrow at bottom pointing down toward taskbar */}
+      {isWindows && !isSideTaskbar && !isTopTaskbar && <div className="tray-arrow-down" style={arrowStyle} />}
     </div>
   );
 }

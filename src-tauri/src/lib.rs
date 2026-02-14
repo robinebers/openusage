@@ -1,8 +1,10 @@
 #[cfg(target_os = "macos")]
 mod app_nap;
+#[cfg(target_os = "macos")]
 mod panel;
 mod plugin_engine;
 mod tray;
+mod window_manager;
 #[cfg(target_os = "macos")]
 mod webkit_config;
 
@@ -12,10 +14,13 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use serde::Serialize;
-use tauri::Emitter;
-use tauri_plugin_aptabase::EventTracker;
+use tauri::{Emitter, Manager, State};
 use tauri_plugin_log::{Target, TargetKind};
 use uuid::Uuid;
+
+use crate::plugin_engine::manifest::LoadedPlugin;
+use crate::plugin_engine::runtime::PluginOutput;
+use crate::window_manager::TaskbarPosition;
 
 #[cfg(desktop)]
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
@@ -87,7 +92,6 @@ fn managed_shortcut_slot() -> &'static Mutex<Option<String>> {
     SLOT.get_or_init(|| Mutex::new(None))
 }
 
-/// Shared shortcut handler that toggles the panel when the shortcut is pressed.
 #[cfg(desktop)]
 fn handle_global_shortcut(app: &tauri::AppHandle, event: tauri_plugin_global_shortcut::ShortcutEvent) {
     if event.state == ShortcutState::Pressed {
@@ -97,10 +101,29 @@ fn handle_global_shortcut(app: &tauri::AppHandle, event: tauri_plugin_global_sho
 }
 
 pub struct AppState {
-    pub plugins: Vec<plugin_engine::manifest::LoadedPlugin>,
-    pub app_data_dir: PathBuf,
+    pub plugins: Vec<LoadedPlugin>,
+    pub app_data_dir: std::path::PathBuf,
     pub app_version: String,
+    pub latest_probe_results: std::collections::HashMap<String, PluginOutput>,
+    pub last_taskbar_position: Option<TaskbarPosition>,
+    pub last_arrow_offset: Option<i32>,
 }
+
+#[tauri::command]
+fn get_taskbar_position(state: State<'_, Mutex<AppState>>) -> Option<String> {
+    state.lock().unwrap().last_taskbar_position.as_ref().map(|p| match p {
+        TaskbarPosition::Top => "top",
+        TaskbarPosition::Bottom => "bottom", 
+        TaskbarPosition::Left => "left",
+        TaskbarPosition::Right => "right",
+    }.to_string())
+}
+
+#[tauri::command]
+fn get_arrow_offset(state: State<'_, Mutex<AppState>>) -> Option<i32> {
+    state.lock().unwrap().last_arrow_offset
+}
+
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -154,16 +177,15 @@ pub struct ProbeBatchComplete {
 
 #[tauri::command]
 fn init_panel(app_handle: tauri::AppHandle) {
-    panel::init(&app_handle).expect("Failed to initialize panel");
+    window_manager::WindowManager::init(&app_handle).expect("Failed to initialize window");
 }
 
 #[tauri::command]
 fn hide_panel(app_handle: tauri::AppHandle) {
-    use tauri_nspanel::ManagerExt;
-    if let Ok(panel) = app_handle.get_webview_panel("main") {
-        panel.hide();
-    }
+    window_manager::WindowManager::hide(&app_handle).expect("Failed to hide window");
 }
+
+
 
 #[tauri::command]
 async fn start_probe_batch(
@@ -194,7 +216,7 @@ async fn start_probe_batch(
 
     let selected_plugins = match plugin_ids {
         Some(ids) => {
-            let mut by_id: HashMap<String, plugin_engine::manifest::LoadedPlugin> = plugins
+            let mut by_id: HashMap<String, LoadedPlugin> = plugins
                 .into_iter()
                 .map(|plugin| (plugin.manifest.id.clone(), plugin))
                 .collect();
@@ -261,6 +283,15 @@ async fn start_probe_batch(
                     } else {
                         log::info!("probe {} completed ok ({} lines)", plugin_id, output.lines.len());
                     }
+                    
+                    // Store result in AppState for tray menu access
+                    {
+                        let state = handle.state::<Mutex<AppState>>();
+                        if let Ok(mut app_state) = state.lock() {
+                            app_state.latest_probe_results.insert(plugin_id.clone(), output.clone());
+                        }
+                    }
+                    
                     let _ = handle.emit("probe:result", ProbeResult { batch_id: bid, output });
                 }
                 Err(_) => {
@@ -276,6 +307,8 @@ async fn start_probe_batch(
                         batch_id: completion_bid,
                     },
                 );
+                // Refresh tray menu with new data
+                let _ = tray::update_tray_menu(&completion_handle);
             }
         });
     }
@@ -405,11 +438,12 @@ pub fn run() {
     let runtime = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
     let _guard = runtime.enter();
 
-    tauri::Builder::default()
+    #[cfg_attr(not(target_os = "macos"), allow(unused_mut))]
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_aptabase::Builder::new("A-US-6435241436").build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())
-        .plugin(tauri_nspanel::init())
+        .plugin(tauri_plugin_os::init())
         .plugin(
             tauri_plugin_log::Builder::new()
                 .targets([
@@ -430,11 +464,21 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             init_panel,
             hide_panel,
+            get_taskbar_position,
+            get_arrow_offset,
             start_probe_batch,
             list_plugins,
             get_log_path,
+            tray::refresh_tray_menu,
             update_global_shortcut
-        ])
+        ]);
+
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.plugin(tauri_nspanel::init());
+    }
+
+    builder
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
@@ -461,7 +505,11 @@ pub fn run() {
                 plugins,
                 app_data_dir,
                 app_version: app.package_info().version.to_string(),
+                latest_probe_results: std::collections::HashMap::new(),
+                last_taskbar_position: None,
+                last_arrow_offset: None,
             }));
+
 
             tray::create(app.handle())?;
 

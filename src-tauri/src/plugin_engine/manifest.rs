@@ -14,6 +14,15 @@ pub struct ManifestLine {
     pub primary_order: Option<u32>,
 }
 
+/// Supported operating systems for a plugin
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum SupportedOs {
+    Macos,
+    Windows,
+    Linux,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginLink {
@@ -32,6 +41,8 @@ pub struct PluginManifest {
     pub icon: String,
     pub brand_color: Option<String>,
     pub lines: Vec<ManifestLine>,
+    /// List of supported operating systems. If not specified, all platforms are supported.
+    pub os: Option<Vec<SupportedOs>>,
     #[serde(default)]
     pub links: Vec<PluginLink>,
 }
@@ -128,7 +139,10 @@ fn sanitize_plugin_links(plugin_id: &str, links: Vec<PluginLink>) -> Vec<PluginL
             let url = link.url.trim().to_string();
 
             if label.is_empty() || url.is_empty() {
-                log::warn!("plugin {} has link with empty label/url; skipping", plugin_id);
+                log::warn!(
+                    "plugin {} has link with empty label/url; skipping",
+                    plugin_id
+                );
                 return None;
             }
             if !(url.starts_with("https://") || url.starts_with("http://")) {

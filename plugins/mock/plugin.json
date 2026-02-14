@@ -6,6 +6,7 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#EF4444",
+  "os": ["macos", "windows", "linux"],
   "lines": [
     { "type": "progress", "label": "Ahead pace", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "On Track pace", "scope": "overview", "primaryOrder": 2 },

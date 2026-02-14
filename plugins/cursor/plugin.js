@@ -1,6 +1,7 @@
 (function () {
-  const STATE_DB =
+  const MAC_STATE_DB =
     "~/Library/Application Support/Cursor/User/globalStorage/state.vscdb"
+  const LINUX_STATE_DB = "~/.config/Cursor/User/globalStorage/state.vscdb"
   const BASE_URL = "https://api2.cursor.sh"
   const USAGE_URL = BASE_URL + "/aiserver.v1.DashboardService/GetCurrentPeriodUsage"
   const PLAN_URL = BASE_URL + "/aiserver.v1.DashboardService/GetPlanInfo"
@@ -10,11 +11,41 @@
   const CLIENT_ID = "KbZUR41cY7W6zRSdpSUJ7I7mLYBKOCmB"
   const REFRESH_BUFFER_MS = 5 * 60 * 1000 // refresh 5 minutes before expiration
 
-  function readStateValue(ctx, key) {
+  function joinPath(base, leaf, separator) {
+    if (!base) return leaf
+    if (base.endsWith("/") || base.endsWith("\\")) return base + leaf
+    return base + separator + leaf
+  }
+
+  function getStateDbPath(ctx) {
+    if (ctx.app.platform === "windows") {
+      const candidates = [
+        "~/AppData/Roaming/Cursor/User",
+        "~/AppData/Local/Cursor/User",
+      ]
+      for (const base of candidates) {
+        const dbPath = joinPath(base, "globalStorage/state.vscdb", "/")
+        if (ctx.host.fs.exists(dbPath)) return dbPath
+      }
+      if (candidates.length > 0) {
+        return joinPath(candidates[0], "globalStorage/state.vscdb", "/")
+      }
+      return null
+    }
+
+    if (ctx.app.platform === "linux") return LINUX_STATE_DB
+    return MAC_STATE_DB
+  }
+
+  function readStateValueFromDb(ctx, stateDb, key) {
     try {
+      if (!stateDb) {
+        ctx.host.log.warn("state db path not found for Cursor")
+        return null
+      }
       const sql =
         "SELECT value FROM ItemTable WHERE key = '" + key + "' LIMIT 1;"
-      const json = ctx.host.sqlite.query(STATE_DB, sql)
+      const json = ctx.host.sqlite.query(stateDb, sql)
       const rows = ctx.util.tryParseJson(json)
       if (!Array.isArray(rows)) {
         throw new Error("sqlite returned invalid json")
@@ -28,8 +59,18 @@
     return null
   }
 
+  function readStateValue(ctx, key) {
+    const stateDb = getStateDbPath(ctx)
+    return readStateValueFromDb(ctx, stateDb, key)
+  }
+
   function writeStateValue(ctx, key, value) {
     try {
+      const stateDb = getStateDbPath(ctx)
+      if (!stateDb) {
+        ctx.host.log.warn("state db path not found for Cursor")
+        return false
+      }
       // Escape single quotes in value for SQL
       const escaped = String(value).replace(/'/g, "''")
       const sql =
@@ -38,7 +79,7 @@
         "', '" +
         escaped +
         "');"
-      ctx.host.sqlite.exec(STATE_DB, sql)
+      ctx.host.sqlite.exec(stateDb, sql)
       return true
     } catch (e) {
       ctx.host.log.warn("sqlite write failed for " + key + ": " + String(e))
@@ -221,8 +262,15 @@
   }
 
   function probe(ctx) {
-    let accessToken = readStateValue(ctx, "cursorAuth/accessToken")
-    const refreshTokenValue = readStateValue(ctx, "cursorAuth/refreshToken")
+    const stateDb = getStateDbPath(ctx)
+    if (ctx.app.platform === "windows") {
+      if (!stateDb || !ctx.host.fs.exists(stateDb)) {
+        throw "Cursor data store not found on Windows. Expected %APPDATA%\\Cursor\\User\\globalStorage\\state.vscdb (or Local). Please report the actual path."
+      }
+    }
+
+    let accessToken = readStateValueFromDb(ctx, stateDb, "cursorAuth/accessToken")
+    const refreshTokenValue = readStateValueFromDb(ctx, stateDb, "cursorAuth/refreshToken")
 
     if (!accessToken && !refreshTokenValue) {
       ctx.host.log.error("probe failed: no access or refresh token in sqlite")

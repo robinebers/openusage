@@ -2,6 +2,7 @@ import { vi } from "vitest"
 
 export const makeCtx = () => {
   const files = new Map()
+  const vaultStore = new Map()
 
   const ctx = {
     nowIso: "2026-02-02T00:00:00.000Z",
@@ -24,6 +25,11 @@ export const makeCtx = () => {
         readGenericPassword: vi.fn(),
         writeGenericPassword: vi.fn(),
         deleteGenericPassword: vi.fn(),
+      },
+      vault: {
+        read: vi.fn((name) => (vaultStore.has(name) ? vaultStore.get(name) : null)),
+        write: vi.fn((name, value) => vaultStore.set(name, value)),
+        delete: vi.fn((name) => vaultStore.delete(name)),
       },
       sqlite: {
         query: vi.fn(() => "[]"),

@@ -7,16 +7,24 @@
   const USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
   const REFRESH_AGE_MS = 8 * 24 * 60 * 60 * 1000
 
-  function joinPath(base, leaf) {
-    return base.replace(/[\\/]+$/, "") + "/" + leaf
+  function joinPath(base, leaf, separator) {
+    const sep = separator || "/"
+    return base.replace(/[\\/]+$/, "") + sep + leaf
+  }
+
+  function getWindowsAuthPaths() {
+    const basePaths = [
+      "~/AppData/Roaming/codex",
+      "~/AppData/Local/codex",
+      "~/.codex",
+      "~/.config/codex",
+    ]
+    return basePaths.map((base) => joinPath(base, AUTH_FILE))
   }
 
   function readCodexHome(ctx) {
-    if (!ctx.host.env || typeof ctx.host.env.get !== "function") {
-      return null
-    }
-
     try {
+      if (!ctx.host.env || typeof ctx.host.env.get !== "function") return null
       const value = ctx.host.env.get("CODEX_HOME")
       if (typeof value !== "string") return null
       const trimmed = value.trim()
@@ -73,6 +81,14 @@
     // If CODEX_HOME is set, use it
     if (codexHome) {
       return [joinPath(codexHome, AUTH_FILE)]
+    }
+
+    if (ctx.app && ctx.app.platform === "windows") {
+      const windowsPaths = getWindowsAuthPaths()
+      for (const authPath of windowsPaths) {
+        if (ctx.host.fs.exists(authPath)) return [authPath]
+      }
+      return windowsPaths
     }
 
     return CONFIG_AUTH_PATHS.map((basePath) => joinPath(basePath, AUTH_FILE))
@@ -291,6 +307,13 @@
     const authState = loadAuth(ctx)
     if (!authState || !authState.auth) {
       ctx.host.log.error("probe failed: not logged in")
+      if (ctx.app && ctx.app.platform === "windows") {
+        const candidates = getWindowsAuthPaths(ctx)
+        const preview = candidates.length > 0
+          ? candidates.slice(0, 3).join(", ")
+          : "%USERPROFILE%\\.codex\\auth.json"
+        throw "Codex auth file not found on Windows. Expected one of: " + preview + ". Run `codex` to authenticate or report the actual path."
+      }
       throw "Not logged in. Run `codex` to authenticate."
     }
     const auth = authState.auth

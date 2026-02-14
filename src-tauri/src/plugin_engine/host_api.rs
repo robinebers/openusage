@@ -1,8 +1,15 @@
+use base64::Engine;
 use rquickjs::{Ctx, Exception, Function, Object};
+use rusqlite::types::ValueRef;
+use rusqlite::{Connection, OpenFlags, Row};
+use serde_json::{Number, Value};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
+
+#[cfg(target_os = "windows")]
+use windows_dpapi::{decrypt_data, encrypt_data, Scope};
 
 const WHITELISTED_ENV_VARS: [&str; 3] = ["CODEX_HOME", "ZAI_API_KEY", "GLM_API_KEY"];
 
@@ -54,7 +61,14 @@ fn redact_value(value: &str) -> String {
         "[REDACTED]".to_string()
     } else {
         let first4: String = chars.iter().take(4).collect();
-        let last4: String = chars.iter().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect();
+        let last4: String = chars
+            .iter()
+            .rev()
+            .take(4)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
         format!("{}...{}", first4, last4)
     }
 }
@@ -62,11 +76,12 @@ fn redact_value(value: &str) -> String {
 /// Redact sensitive query parameters in URL
 fn redact_url(url: &str) -> String {
     let sensitive_params = [
+    let sensitive_params = [
         "key", "api_key", "apikey", "token", "access_token", "secret",
         "password", "auth", "authorization", "bearer", "credential",
         "user", "user_id", "userid", "account_id", "accountid", "email", "login",
     ];
-    
+
     if let Some(query_start) = url.find('?') {
         let (base, query) = url.split_at(query_start + 1);
         let redacted_params: Vec<String> = query
@@ -76,7 +91,8 @@ fn redact_url(url: &str) -> String {
                     let (name, value) = param.split_at(eq_pos);
                     let value = &value[1..]; // skip '='
                     let name_lower = name.to_lowercase();
-                    if sensitive_params.iter().any(|s| name_lower.contains(s)) && !value.is_empty() {
+                    if sensitive_params.iter().any(|s| name_lower.contains(s)) && !value.is_empty()
+                    {
                         format!("{}={}", name, redact_value(value))
                     } else {
                         param.to_string()
@@ -95,50 +111,89 @@ fn redact_url(url: &str) -> String {
 /// Redact sensitive patterns in response body for logging
 fn redact_body(body: &str) -> String {
     let mut result = body.to_string();
-    
+
     // Redact JWTs (eyJ... pattern with dots)
-    let jwt_pattern = regex_lite::Regex::new(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+").unwrap();
-    result = jwt_pattern.replace_all(&result, |caps: &regex_lite::Captures| {
-        redact_value(&caps[0])
-    }).to_string();
-    
+    let jwt_pattern =
+        regex_lite::Regex::new(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+").unwrap();
+    result = jwt_pattern
+        .replace_all(&result, |caps: &regex_lite::Captures| {
+            redact_value(&caps[0])
+        })
+        .to_string();
+
     // Redact common API key patterns (sk-xxx, pk-xxx, api_xxx, etc.)
-    let api_key_pattern = regex_lite::Regex::new(r#"["']?(sk-|pk-|api_|key_|secret_)[A-Za-z0-9_-]{12,}["']?"#).unwrap();
-    result = api_key_pattern.replace_all(&result, |caps: &regex_lite::Captures| {
-        let key = caps[0].trim_matches(|c| c == '"' || c == '\'');
-        redact_value(key)
-    }).to_string();
-    
+    let api_key_pattern =
+        regex_lite::Regex::new(r#"["']?(sk-|pk-|api_|key_|secret_)[A-Za-z0-9_-]{12,}["']?"#)
+            .unwrap();
+    result = api_key_pattern
+        .replace_all(&result, |caps: &regex_lite::Captures| {
+            let key = caps[0].trim_matches(|c| c == '"' || c == '\'');
+            redact_value(key)
+        })
+        .to_string();
+
     // Redact JSON values for sensitive keys
     let sensitive_keys = [
-        "name", "password", "token", "access_token", "refresh_token", "secret",
-        "api_key", "apiKey", "authorization", "bearer", "credential",
-        "session_token", "sessionToken", "auth_token", "authToken",
-        "id_token", "idToken", "accessToken", "refreshToken",
-        "user_id", "userId", "account_id", "accountId", "email", "login", "analytics_tracking_id",
+        "name",
+        "password",
+        "token",
+        "access_token",
+        "refresh_token",
+        "secret",
+        "api_key",
+        "apiKey",
+        "authorization",
+        "bearer",
+        "credential",
+        "session_token",
+        "sessionToken",
+        "auth_token",
+        "authToken",
+        "id_token",
+        "idToken",
+        "accessToken",
+        "refreshToken",
+        "user_id",
+        "userId",
+        "account_id",
+        "accountId",
+        "email",
+        "login",
+        "analytics_tracking_id",
     ];
     for key in sensitive_keys {
         // Match "key": "value" or "key":"value"
         let pattern = format!(r#""{}":\s*"([^"]+)""#, key);
         if let Ok(re) = regex_lite::Regex::new(&pattern) {
-            result = re.replace_all(&result, |caps: &regex_lite::Captures| {
-                let value = &caps[1];
-                format!("\"{}\": \"{}\"", key, redact_value(value))
-            }).to_string();
+            result = re
+                .replace_all(&result, |caps: &regex_lite::Captures| {
+                    let value = &caps[1];
+                    format!("\"{}\": \"{}\"", key, redact_value(value))
+                })
+                .to_string();
         }
     }
-    
+
     result
 }
 
 /// Lightweight redaction for plugin log messages (JWT + API key patterns only).
 fn redact_log_message(msg: &str) -> String {
     let mut result = msg.to_string();
-    if let Ok(jwt_re) = regex_lite::Regex::new(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+") {
-        result = jwt_re.replace_all(&result, |caps: &regex_lite::Captures| redact_value(&caps[0])).to_string();
+    if let Ok(jwt_re) = regex_lite::Regex::new(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+")
+    {
+        result = jwt_re
+            .replace_all(&result, |caps: &regex_lite::Captures| {
+                redact_value(&caps[0])
+            })
+            .to_string();
     }
     if let Ok(api_re) = regex_lite::Regex::new(r#"(sk-|pk-|api_|key_|secret_)[A-Za-z0-9_-]{12,}"#) {
-        result = api_re.replace_all(&result, |caps: &regex_lite::Captures| redact_value(&caps[0])).to_string();
+        result = api_re
+            .replace_all(&result, |caps: &regex_lite::Captures| {
+                redact_value(&caps[0])
+            })
+            .to_string();
     }
     result
 }
@@ -178,6 +233,7 @@ pub fn inject_host_api<'js>(
     inject_env(ctx, &host, plugin_id)?;
     inject_http(ctx, &host, plugin_id)?;
     inject_keychain(ctx, &host)?;
+    inject_vault(ctx, &host, app_data_dir)?;
     inject_sqlite(ctx, &host)?;
     inject_ls(ctx, &host, plugin_id)?;
 
@@ -187,11 +243,7 @@ pub fn inject_host_api<'js>(
     Ok(())
 }
 
-fn inject_log<'js>(
-    ctx: &Ctx<'js>,
-    host: &Object<'js>,
-    plugin_id: &str,
-) -> rquickjs::Result<()> {
+fn inject_log<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquickjs::Result<()> {
     let log_obj = Object::new(ctx.clone())?;
 
     let pid = plugin_id.to_string();
@@ -239,9 +291,8 @@ fn inject_fs<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
             ctx.clone(),
             move |ctx_inner: Ctx<'_>, path: String| -> rquickjs::Result<String> {
                 let expanded = expand_path(&path);
-                std::fs::read_to_string(&expanded).map_err(|e| {
-                    Exception::throw_message(&ctx_inner, &e.to_string())
-                })
+                std::fs::read_to_string(&expanded)
+                    .map_err(|e| Exception::throw_message(&ctx_inner, &e.to_string()))
             },
         )?,
     )?;
@@ -252,9 +303,8 @@ fn inject_fs<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
             ctx.clone(),
             move |ctx_inner: Ctx<'_>, path: String, content: String| -> rquickjs::Result<()> {
                 let expanded = expand_path(&path);
-                std::fs::write(&expanded, &content).map_err(|e| {
-                    Exception::throw_message(&ctx_inner, &e.to_string())
-                })
+                std::fs::write(&expanded, &content)
+                    .map_err(|e| Exception::throw_message(&ctx_inner, &e.to_string()))
             },
         )?,
     )?;
@@ -363,7 +413,8 @@ fn inject_http<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rqui
                 let redacted_body = redact_body(&body);
                 let body_preview = if redacted_body.len() > 500 {
                     // UTF-8 safe truncation: find valid char boundary at or before 500
-                    let truncated: String = redacted_body.char_indices()
+                    let truncated: String = redacted_body
+                        .char_indices()
                         .take_while(|(i, _)| *i < 500)
                         .map(|(_, c)| c)
                         .collect();
@@ -756,11 +807,7 @@ struct LsDiscoverResult {
     extension_port: Option<i32>,
 }
 
-fn inject_ls<'js>(
-    ctx: &Ctx<'js>,
-    host: &Object<'js>,
-    plugin_id: &str,
-) -> rquickjs::Result<()> {
+fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquickjs::Result<()> {
     let ls_obj = Object::new(ctx.clone())?;
     let pid = plugin_id.to_string();
 
@@ -770,10 +817,7 @@ fn inject_ls<'js>(
             ctx.clone(),
             move |ctx_inner: Ctx<'_>, opts_json: String| -> rquickjs::Result<String> {
                 let opts: LsDiscoverOpts = serde_json::from_str(&opts_json).map_err(|e| {
-                    Exception::throw_message(
-                        &ctx_inner,
-                        &format!("invalid discover opts: {}", e),
-                    )
+                    Exception::throw_message(&ctx_inner, &format!("invalid discover opts: {}", e))
                 })?;
 
                 log::info!(
@@ -783,19 +827,34 @@ fn inject_ls<'js>(
                     opts.markers
                 );
 
-                let ps_output = match std::process::Command::new("/bin/ps")
-                    .args(["-ax", "-o", "pid=,command="])
-                    .output()
-                {
-                    Ok(o) => o,
-                    Err(e) => {
-                        log::warn!("[plugin:{}] ps failed: {}", pid, e);
-                        return Ok("null".to_string());
+                // Platform-specific process listing
+                let ps_output = if cfg!(target_os = "windows") {
+                    const WINDOWS_PS_CMD: &str = "[Console]::OutputEncoding=[System.Text.UTF8Encoding]::UTF8; Get-CimInstance Win32_Process | Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress";
+                    match std::process::Command::new("powershell")
+                        .args(["-NoProfile", "-Command", WINDOWS_PS_CMD])
+                        .output()
+                    {
+                        Ok(o) => o,
+                        Err(e) => {
+                            log::warn!("[plugin:{}] powershell process listing failed: {}", pid, e);
+                            return Ok("null".to_string());
+                        }
+                    }
+                } else {
+                    match std::process::Command::new("/bin/ps")
+                        .args(["-ax", "-o", "pid=,command="])
+                        .output()
+                    {
+                        Ok(o) => o,
+                        Err(e) => {
+                            log::warn!("[plugin:{}] ps failed: {}", pid, e);
+                            return Ok("null".to_string());
+                        }
                     }
                 };
 
                 if !ps_output.status.success() {
-                    log::warn!("[plugin:{}] ps returned non-zero", pid);
+                    log::warn!("[plugin:{}] process listing returned non-zero", pid);
                     return Ok("null".to_string());
                 }
 
@@ -811,52 +870,77 @@ fn inject_ls<'js>(
                 //   2. Path substring (/<marker>/) as fallback when no flags found
                 let mut found: Option<(i32, String)> = None;
 
-                for line in ps_stdout.lines() {
-                    let trimmed = line.trim();
-                    if trimmed.is_empty() {
-                        continue;
-                    }
-
-                    let mut parts = trimmed.splitn(2, char::is_whitespace);
-                    let pid_str = match parts.next() {
-                        Some(s) => s.trim(),
-                        None => continue,
-                    };
-                    let command = match parts.next() {
-                        Some(s) => s.trim(),
-                        None => continue,
+                if cfg!(target_os = "windows") {
+                    let entries = match ls_windows_process_list(&ps_output.stdout) {
+                        Ok(list) => list,
+                        Err(err) => {
+                            log::warn!("[plugin:{}] powershell parse failed: {}", pid, err);
+                            return Ok("null".to_string());
+                        }
                     };
 
-                    let command_lower = command.to_lowercase();
-
-                    if !command_lower.contains(&process_name_lower) {
-                        continue;
-                    }
-
-                    let ide_name = ls_extract_flag(command, "--ide_name")
-                        .map(|v| v.to_lowercase());
-                    let app_data = ls_extract_flag(command, "--app_data_dir")
-                        .map(|v| v.to_lowercase());
-
-                    let has_marker = markers_lower.iter().any(|m| {
-                        // Prefer exact flag match; skip path fallback when
-                        // a distinguishing flag exists.
-                        if let Some(ref name) = ide_name {
-                            return *name == *m;
+                    for (pid, command) in entries {
+                        let cmd_lower = command.to_lowercase();
+                        if !cmd_lower.contains(&process_name_lower) {
+                            continue;
                         }
-                        if let Some(ref dir) = app_data {
-                            return *dir == *m;
+                        let has_marker = markers_lower.iter().any(|m| {
+                            cmd_lower.contains(&format!("--app_data_dir {}", m))
+                                || cmd_lower.contains(&format!("\\{}\\", m))
+                        });
+                        if has_marker {
+                            found = Some((pid, command));
+                            break;
                         }
-                        // Fallback: path substring
-                        command_lower.contains(&format!("/{}/", m))
-                    });
-                    if !has_marker {
-                        continue;
                     }
+                } else {
+                    // Unix: parse ps output (space-separated pid + command)
+                    for line in ps_stdout.lines() {
+                        let trimmed = line.trim();
+                        if trimmed.is_empty() {
+                            continue;
+                        }
 
-                    if let Ok(p) = pid_str.parse::<i32>() {
-                        found = Some((p, command.to_string()));
-                        break;
+                        let mut parts = trimmed.splitn(2, char::is_whitespace);
+                        let pid_str = match parts.next() {
+                            Some(s) => s.trim(),
+                            None => continue,
+                        };
+                        let command = match parts.next() {
+                            Some(s) => s.trim(),
+                            None => continue,
+                        };
+
+                        let command_lower = command.to_lowercase();
+
+                        if !command_lower.contains(&process_name_lower) {
+                            continue;
+                        }
+
+                        let has_marker = markers_lower.iter().any(|m| {
+                            // Prefer exact flag match; skip path fallback when
+                            // a distinguishing flag exists.
+                            let ide_name = ls_extract_flag(command, "--ide_name")
+                                .map(|v| v.to_lowercase());
+                            let app_data = ls_extract_flag(command, "--app_data_dir")
+                                .map(|v| v.to_lowercase());
+                            if let Some(ref name) = ide_name {
+                                return *name == *m;
+                            }
+                            if let Some(ref dir) = app_data {
+                                return *dir == *m;
+                            }
+                            // Fallback: path substring
+                            command_lower.contains(&format!("/{}/", m))
+                        });
+                        if !has_marker {
+                            continue;
+                        }
+
+                        if let Ok(p) = pid_str.parse::<i32>() {
+                            found = Some((p, command.to_string()));
+                            break;
+                        }
                     }
                 }
 
@@ -872,22 +956,15 @@ fn inject_ls<'js>(
                 let csrf = match ls_extract_flag(&command, &opts.csrf_flag) {
                     Some(c) => c,
                     None => {
-                        log::warn!(
-                            "[plugin:{}] CSRF token not found in process args",
-                            pid
-                        );
+                        log::warn!("[plugin:{}] CSRF token not found in process args", pid);
                         return Ok("null".to_string());
                     }
                 };
 
                 // Extract extension port (optional)
-                let extension_port = opts
-                    .port_flag
-                    .as_ref()
-                    .and_then(|flag| {
-                        ls_extract_flag(&command, flag)
-                            .and_then(|v| v.parse::<i32>().ok())
-                    });
+                let extension_port = opts.port_flag.as_ref().and_then(|flag| {
+                    ls_extract_flag(&command, flag).and_then(|v| v.parse::<i32>().ok())
+                });
 
                 // Extract extra flags (optional)
                 let mut extra = std::collections::HashMap::new();
@@ -901,44 +978,60 @@ fn inject_ls<'js>(
                     }
                 }
 
-                // Find lsof binary
-                let lsof_path = ["/usr/sbin/lsof", "/usr/bin/lsof"]
-                    .iter()
-                    .find(|p| std::path::Path::new(p).exists())
-                    .copied();
-
-                let ports = if let Some(lsof) = lsof_path {
-                    match std::process::Command::new(lsof)
-                        .args([
-                            "-nP",
-                            "-iTCP",
-                            "-sTCP:LISTEN",
-                            "-a",
-                            "-p",
-                            &process_pid.to_string(),
-                        ])
+                // Find listening ports
+                let ports = if cfg!(target_os = "windows") {
+                    // Use netstat on Windows
+                    match std::process::Command::new("netstat")
+                        .args(["-ano", "-p", "TCP"])
                         .output()
                     {
                         Ok(o) if o.status.success() => {
-                            ls_parse_listening_ports(
-                                &String::from_utf8_lossy(&o.stdout),
-                            )
+                            ls_parse_netstat_ports(&String::from_utf8_lossy(&o.stdout), process_pid)
                         }
                         Ok(_) => {
-                            log::warn!(
-                                "[plugin:{}] lsof returned non-zero",
-                                pid
-                            );
+                            log::warn!("[plugin:{}] netstat returned non-zero", pid);
                             Vec::new()
                         }
                         Err(e) => {
-                            log::warn!("[plugin:{}] lsof failed: {}", pid, e);
+                            log::warn!("[plugin:{}] netstat failed: {}", pid, e);
                             Vec::new()
                         }
                     }
                 } else {
-                    log::warn!("[plugin:{}] lsof not found", pid);
-                    Vec::new()
+                    // Find lsof binary on Unix
+                    let lsof_path = ["/usr/sbin/lsof", "/usr/bin/lsof"]
+                        .iter()
+                        .find(|p| std::path::Path::new(p).exists())
+                        .copied();
+
+                    if let Some(lsof) = lsof_path {
+                        match std::process::Command::new(lsof)
+                            .args([
+                                "-nP",
+                                "-iTCP",
+                                "-sTCP:LISTEN",
+                                "-a",
+                                "-p",
+                                &process_pid.to_string(),
+                            ])
+                            .output()
+                        {
+                            Ok(o) if o.status.success() => {
+                                ls_parse_listening_ports(&String::from_utf8_lossy(&o.stdout))
+                            }
+                            Ok(_) => {
+                                log::warn!("[plugin:{}] lsof returned non-zero", pid);
+                                Vec::new()
+                            }
+                            Err(e) => {
+                                log::warn!("[plugin:{}] lsof failed: {}", pid, e);
+                                Vec::new()
+                            }
+                        }
+                    } else {
+                        log::warn!("[plugin:{}] lsof not found", pid);
+                        Vec::new()
+                    }
                 };
 
                 if ports.is_empty() && extension_port.is_none() {
@@ -966,10 +1059,7 @@ fn inject_ls<'js>(
                 };
 
                 serde_json::to_string(&result).map_err(|e| {
-                    Exception::throw_message(
-                        &ctx_inner,
-                        &format!("serialize failed: {}", e),
-                    )
+                    Exception::throw_message(&ctx_inner, &format!("serialize failed: {}", e))
                 })
             },
         )?,
@@ -1014,6 +1104,39 @@ fn ls_extract_flag(command: &str, flag: &str) -> Option<String> {
     None
 }
 
+#[derive(serde::Deserialize)]
+struct WindowsProcessEntry {
+    #[serde(rename = "ProcessId")]
+    process_id: i32,
+    #[serde(rename = "CommandLine")]
+    command_line: Option<String>,
+}
+
+fn ls_windows_process_list(output: &[u8]) -> Result<Vec<(i32, String)>, String> {
+    if output.iter().all(|b| b.is_ascii_whitespace()) {
+        return Ok(Vec::new());
+    }
+
+    let value: serde_json::Value =
+        serde_json::from_slice(output).map_err(|e| format!("invalid JSON: {}", e))?;
+
+    let entries: Vec<WindowsProcessEntry> = match value {
+        serde_json::Value::Array(items) => items
+            .into_iter()
+            .map(|item| serde_json::from_value(item).map_err(|e| format!("invalid entry: {}", e)))
+            .collect::<Result<Vec<_>, _>>()?,
+        serde_json::Value::Object(_) => {
+            vec![serde_json::from_value(value).map_err(|e| format!("invalid entry: {}", e))?]
+        }
+        _ => return Err("unexpected JSON shape".to_string()),
+    };
+
+    Ok(entries
+        .into_iter()
+        .filter_map(|entry| entry.command_line.map(|cmd| (entry.process_id, cmd)))
+        .collect())
+}
+
 /// Parse listening port numbers from `lsof -nP -iTCP -sTCP:LISTEN` output.
 fn ls_parse_listening_ports(output: &str) -> Vec<i32> {
     let mut ports = std::collections::BTreeSet::new();
@@ -1030,6 +1153,43 @@ fn ls_parse_listening_ports(output: &str) -> Vec<i32> {
                     if port > 0 && port < 65536 {
                         ports.insert(port);
                         break;
+                    }
+                }
+            }
+        }
+    }
+    ports.into_iter().collect()
+}
+
+/// Parse listening port numbers from Windows `netstat -ano` output.
+fn ls_parse_netstat_ports(output: &str, target_pid: i32) -> Vec<i32> {
+    let mut ports = std::collections::BTreeSet::new();
+    for line in output.lines() {
+        if !line.contains("LISTENING") {
+            continue;
+        }
+        // netstat output: TCP  127.0.0.1:PORT  0.0.0.0:0  LISTENING  PID
+        let tokens: Vec<&str> = line.split_whitespace().collect();
+        if tokens.len() < 5 {
+            continue;
+        }
+
+        // Last token is the PID
+        if let Ok(pid) = tokens[tokens.len() - 1].parse::<i32>() {
+            if pid != target_pid {
+                continue;
+            }
+        } else {
+            continue;
+        }
+
+        // Second token should be the local address (127.0.0.1:PORT or 0.0.0.0:PORT)
+        if let Some(addr_port) = tokens.get(1) {
+            if let Some(colon_pos) = addr_port.rfind(':') {
+                let port_str = &addr_port[colon_pos + 1..];
+                if let Ok(port) = port_str.parse::<i32>() {
+                    if port > 0 && port < 65536 {
+                        ports.insert(port);
                     }
                 }
             }
@@ -1126,21 +1286,11 @@ fn inject_keychain<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<
                         .output()
                 } else {
                     std::process::Command::new("security")
-                        .args([
-                            "add-generic-password",
-                            "-s",
-                            &service,
-                            "-w",
-                            &value,
-                            "-U",
-                        ])
+                        .args(["add-generic-password", "-s", &service, "-w", &value, "-U"])
                         .output()
                 }
                 .map_err(|e| {
-                    Exception::throw_message(
-                        &ctx_inner,
-                        &format!("keychain write failed: {}", e),
-                    )
+                    Exception::throw_message(&ctx_inner, &format!("keychain write failed: {}", e))
                 })?;
 
                 if !output.status.success() {
@@ -1158,6 +1308,49 @@ fn inject_keychain<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<
     )?;
 
     host.set("keychain", keychain_obj)?;
+    Ok(())
+}
+
+fn inject_vault<'js>(
+    ctx: &Ctx<'js>,
+    host: &Object<'js>,
+    app_data_dir: &PathBuf,
+) -> rquickjs::Result<()> {
+    let vault_obj = Object::new(ctx.clone())?;
+    let base_dir = app_data_dir.clone();
+    vault_obj.set(
+        "read",
+        Function::new(
+            ctx.clone(),
+            move |ctx_inner: Ctx<'_>, name: String| -> rquickjs::Result<Option<String>> {
+                vault_read(&ctx_inner, &base_dir, &name)
+            },
+        )?,
+    )?;
+
+    let base_dir = app_data_dir.clone();
+    vault_obj.set(
+        "write",
+        Function::new(
+            ctx.clone(),
+            move |ctx_inner: Ctx<'_>, name: String, value: String| -> rquickjs::Result<()> {
+                vault_write(&ctx_inner, &base_dir, &name, &value)
+            },
+        )?,
+    )?;
+
+    let base_dir = app_data_dir.clone();
+    vault_obj.set(
+        "delete",
+        Function::new(
+            ctx.clone(),
+            move |ctx_inner: Ctx<'_>, name: String| -> rquickjs::Result<()> {
+                vault_delete(&ctx_inner, &base_dir, &name)
+            },
+        )?,
+    )?;
+
+    host.set("vault", vault_obj)?;
     Ok(())
 }
 
@@ -1200,30 +1393,33 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                     .replace('#', "%23")
                     .replace('?', "%3F");
                 let uri_path = format!("file:{}?immutable=1", encoded);
-                let fallback = std::process::Command::new("sqlite3")
-                    .args(["-readonly", "-json", &uri_path, &sql])
-                    .output()
-                    .map_err(|e| {
-                        Exception::throw_message(
-                            &ctx_inner,
-                            &format!("sqlite3 exec failed: {}", e),
-                        )
-                    })?;
+                let conn = Connection::open_with_flags(
+                    &uri_path,
+                    OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_URI,
+                )
+                .map_err(|e| {
+                    Exception::throw_message(&ctx_inner, &format!("sqlite open failed: {}", e))
+                })?;
 
-                if !fallback.status.success() {
-                    let stderr_primary = String::from_utf8_lossy(&primary.stderr);
-                    let stderr_fallback = String::from_utf8_lossy(&fallback.stderr);
-                    return Err(Exception::throw_message(
-                        &ctx_inner,
-                        &format!(
-                            "sqlite3 error: {} (fallback: {})",
-                            stderr_primary.trim(),
-                            stderr_fallback.trim()
-                        ),
-                    ));
+                let mut stmt = conn.prepare(&sql).map_err(|e| {
+                    Exception::throw_message(&ctx_inner, &format!("sqlite prepare failed: {}", e))
+                })?;
+
+                let rows = stmt.query_map([], sqlite_row_to_json).map_err(|e| {
+                    Exception::throw_message(&ctx_inner, &format!("sqlite query failed: {}", e))
+                })?;
+
+                let mut result: Vec<Value> = Vec::new();
+                for row in rows {
+                    let value = row.map_err(|e| {
+                        Exception::throw_message(&ctx_inner, &format!("sqlite row failed: {}", e))
+                    })?;
+                    result.push(value);
                 }
 
-                Ok(String::from_utf8_lossy(&fallback.stdout).to_string())
+                serde_json::to_string(&result).map_err(|e| {
+                    Exception::throw_message(&ctx_inner, &format!("sqlite json failed: {}", e))
+                })
             },
         )?,
     )?;
@@ -1240,31 +1436,142 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                     ));
                 }
                 let expanded = expand_path(&db_path);
-                let output = std::process::Command::new("sqlite3")
-                    .args([&expanded, &sql])
-                    .output()
-                    .map_err(|e| {
-                        Exception::throw_message(
-                            &ctx_inner,
-                            &format!("sqlite3 exec failed: {}", e),
-                        )
-                    })?;
+                let conn = Connection::open_with_flags(
+                    &expanded,
+                    OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE,
+                )
+                .map_err(|e| {
+                    Exception::throw_message(&ctx_inner, &format!("sqlite open failed: {}", e))
+                })?;
 
-                if !output.status.success() {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    return Err(Exception::throw_message(
-                        &ctx_inner,
-                        &format!("sqlite3 error: {}", stderr.trim()),
-                    ));
-                }
-
-                Ok(())
+                conn.execute_batch(&sql).map_err(|e| {
+                    Exception::throw_message(&ctx_inner, &format!("sqlite exec failed: {}", e))
+                })
             },
         )?,
     )?;
 
     host.set("sqlite", sqlite_obj)?;
     Ok(())
+}
+
+fn vault_read(
+    ctx_inner: &Ctx<'_>,
+    app_data_dir: &PathBuf,
+    name: &str,
+) -> rquickjs::Result<Option<String>> {
+    let path = vault_entry_path(ctx_inner, app_data_dir, name)?;
+    if !path.exists() {
+        return Ok(None);
+    }
+    let raw = std::fs::read_to_string(&path)
+        .map_err(|e| Exception::throw_message(ctx_inner, &format!("vault read failed: {}", e)))?;
+    let encrypted = base64::engine::general_purpose::STANDARD
+        .decode(raw.trim().as_bytes())
+        .map_err(|e| Exception::throw_message(ctx_inner, &format!("vault decode failed: {}", e)))?;
+    let decrypted = vault_decrypt(&encrypted).map_err(|e| {
+        Exception::throw_message(ctx_inner, &format!("vault decrypt failed: {}", e))
+    })?;
+    let value = String::from_utf8(decrypted)
+        .map_err(|e| Exception::throw_message(ctx_inner, &format!("vault utf8 failed: {}", e)))?;
+    Ok(Some(value))
+}
+
+fn vault_write(
+    ctx_inner: &Ctx<'_>,
+    app_data_dir: &PathBuf,
+    name: &str,
+    value: &str,
+) -> rquickjs::Result<()> {
+    let path = vault_entry_path(ctx_inner, app_data_dir, name)?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            Exception::throw_message(ctx_inner, &format!("vault dir failed: {}", e))
+        })?;
+    }
+    let encrypted = vault_encrypt(value.as_bytes()).map_err(|e| {
+        Exception::throw_message(ctx_inner, &format!("vault encrypt failed: {}", e))
+    })?;
+    let encoded = base64::engine::general_purpose::STANDARD.encode(encrypted);
+    std::fs::write(&path, encoded)
+        .map_err(|e| Exception::throw_message(ctx_inner, &format!("vault write failed: {}", e)))?;
+    Ok(())
+}
+
+fn vault_delete(ctx_inner: &Ctx<'_>, app_data_dir: &PathBuf, name: &str) -> rquickjs::Result<()> {
+    let path = vault_entry_path(ctx_inner, app_data_dir, name)?;
+    if !path.exists() {
+        return Ok(());
+    }
+    std::fs::remove_file(&path)
+        .map_err(|e| Exception::throw_message(ctx_inner, &format!("vault delete failed: {}", e)))?;
+    Ok(())
+}
+
+fn vault_entry_path(
+    ctx_inner: &Ctx<'_>,
+    app_data_dir: &PathBuf,
+    name: &str,
+) -> rquickjs::Result<PathBuf> {
+    if name.trim().is_empty() {
+        return Err(Exception::throw_message(
+            ctx_inner,
+            "vault name cannot be empty",
+        ));
+    }
+    let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(name.as_bytes());
+    Ok(app_data_dir.join("vault").join(encoded))
+}
+
+#[cfg(target_os = "windows")]
+fn vault_encrypt(data: &[u8]) -> Result<Vec<u8>, String> {
+    encrypt_data(data, Scope::User).map_err(|e| e.to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn vault_decrypt(data: &[u8]) -> Result<Vec<u8>, String> {
+    decrypt_data(data, Scope::User).map_err(|e| e.to_string())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn vault_encrypt(_data: &[u8]) -> Result<Vec<u8>, String> {
+    Err("vault API is only supported on Windows".to_string())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn vault_decrypt(_data: &[u8]) -> Result<Vec<u8>, String> {
+    Err("vault API is only supported on Windows".to_string())
+}
+
+fn sqlite_row_to_json(row: &Row<'_>) -> rusqlite::Result<Value> {
+    let mut obj = serde_json::Map::new();
+    let stmt = row.as_ref();
+    let col_count = stmt.column_count();
+    for i in 0..col_count {
+        let name = stmt.column_name(i).unwrap_or("");
+        let name = if name.is_empty() {
+            format!("col{}", i)
+        } else {
+            name.to_string()
+        };
+        let value = sqlite_value_to_json(row.get_ref(i)?);
+        obj.insert(name, value);
+    }
+    Ok(Value::Object(obj))
+}
+
+fn sqlite_value_to_json(value: ValueRef<'_>) -> Value {
+    match value {
+        ValueRef::Null => Value::Null,
+        ValueRef::Integer(v) => Value::Number(Number::from(v)),
+        ValueRef::Real(v) => Number::from_f64(v)
+            .map(Value::Number)
+            .unwrap_or(Value::Null),
+        ValueRef::Text(bytes) => Value::String(String::from_utf8_lossy(bytes).to_string()),
+        ValueRef::Blob(bytes) => {
+            Value::String(base64::engine::general_purpose::STANDARD.encode(bytes))
+        }
+    }
 }
 
 fn iso_now() -> String {
@@ -1343,28 +1650,49 @@ mod tests {
             let get: Function = env.get("get").expect("get");
 
             for name in WHITELISTED_ENV_VARS {
+<<<<<<< HEAD
+                let value: Option<String> =
+                    get.call((name.to_string(),)).expect("get whitelisted var");
+                assert_eq!(
+                    value,
+                    std::env::var(name).ok(),
+                    "{name} should match process env"
+                );
+=======
                 let expected = read_env_from_interactive_zsh(name);
                 let value: Option<String> = get.call((name.to_string(),)).expect("get whitelisted var");
                 assert_eq!(value, expected, "{name} should match interactive zsh env");
+>>>>>>> upstream/main
 
                 let js_expr = format!(r#"__openusage_ctx.host.env.get("{}")"#, name);
                 let js_value: Option<String> = ctx.eval(js_expr).expect("js get whitelisted var");
                 assert_eq!(
                     js_value,
+<<<<<<< HEAD
+                    std::env::var(name).ok(),
+                    "{name} should match process env from JS"
+=======
                     expected,
                     "{name} should match interactive zsh env from JS"
+>>>>>>> upstream/main
                 );
             }
 
             let blocked: Option<String> = get
                 .call(("__OPENUSAGE_TEST_NOT_WHITELISTED__".to_string(),))
                 .expect("get blocked var");
-            assert!(blocked.is_none(), "non-whitelisted vars must not be exposed");
+            assert!(
+                blocked.is_none(),
+                "non-whitelisted vars must not be exposed"
+            );
 
             let js_blocked: Option<String> = ctx
                 .eval(r#"__openusage_ctx.host.env.get("__OPENUSAGE_TEST_NOT_WHITELISTED__")"#)
                 .expect("js get blocked var");
-            assert!(js_blocked.is_none(), "non-whitelisted vars must not be exposed from JS");
+            assert!(
+                js_blocked.is_none(),
+                "non-whitelisted vars must not be exposed from JS"
+            );
         });
     }
 
@@ -1401,7 +1729,11 @@ mod tests {
         let body = r#"{"token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"}"#;
         let redacted = redact_body(body);
         // JWT gets redacted to first4...last4 format
-        assert!(!redacted.contains("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"), "full JWT should be redacted, got: {}", redacted);
+        assert!(
+            !redacted.contains("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
+            "full JWT should be redacted, got: {}",
+            redacted
+        );
     }
 
     #[test]
@@ -1415,18 +1747,38 @@ mod tests {
     fn redact_body_redacts_json_password_field() {
         let body = r#"{"password": "supersecretpassword123"}"#;
         let redacted = redact_body(body);
-        assert!(!redacted.contains("supersecretpassword123"), "password should be redacted, got: {}", redacted);
+        assert!(
+            !redacted.contains("supersecretpassword123"),
+            "password should be redacted, got: {}",
+            redacted
+        );
     }
 
     #[test]
     fn redact_body_redacts_user_id_and_email() {
         let body = r#"{"user_id": "user-iupzZ7KFykMLrnzpkHSq7wjo", "email": "rob@sunstory.com"}"#;
         let redacted = redact_body(body);
-        assert!(!redacted.contains("user-iupzZ7KFykMLrnzpkHSq7wjo"), "user_id should be redacted, got: {}", redacted);
-        assert!(!redacted.contains("rob@sunstory.com"), "email should be redacted, got: {}", redacted);
+        assert!(
+            !redacted.contains("user-iupzZ7KFykMLrnzpkHSq7wjo"),
+            "user_id should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            !redacted.contains("rob@sunstory.com"),
+            "email should be redacted, got: {}",
+            redacted
+        );
         // Should show first4...last4
-        assert!(redacted.contains("user...7wjo"), "user_id should show first4...last4, got: {}", redacted);
-        assert!(redacted.contains("rob@....com"), "email should show first4...last4, got: {}", redacted);
+        assert!(
+            redacted.contains("user...7wjo"),
+            "user_id should show first4...last4, got: {}",
+            redacted
+        );
+        assert!(
+            redacted.contains("rob@....com"),
+            "email should show first4...last4, got: {}",
+            redacted
+        );
     }
 
     #[test]
@@ -1443,28 +1795,64 @@ mod tests {
     fn redact_log_message_redacts_jwt_and_api_key() {
         let msg = "token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U key=sk-1234567890abcdef";
         let redacted = redact_log_message(msg);
-        assert!(!redacted.contains("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"), "JWT should be redacted");
-        assert!(!redacted.contains("sk-1234567890abcdef"), "API key should be redacted");
+        assert!(
+            !redacted.contains("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
+            "JWT should be redacted"
+        );
+        assert!(
+            !redacted.contains("sk-1234567890abcdef"),
+            "API key should be redacted"
+        );
     }
 
     #[test]
     fn redact_body_redacts_login_and_analytics_tracking_id() {
-        let body = r#"{"login":"robinebers","analytics_tracking_id":"c9df3f012bb8c2eb7aae6868ee8da6cf"}"#;
+        let body =
+            r#"{"login":"robinebers","analytics_tracking_id":"c9df3f012bb8c2eb7aae6868ee8da6cf"}"#;
         let redacted = redact_body(body);
-        assert!(!redacted.contains("robinebers"), "login should be redacted, got: {}", redacted);
-        assert!(!redacted.contains("c9df3f012bb8c2eb7aae6868ee8da6cf"), "analytics_tracking_id should be redacted, got: {}", redacted);
+        assert!(
+            !redacted.contains("robinebers"),
+            "login should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            !redacted.contains("c9df3f012bb8c2eb7aae6868ee8da6cf"),
+            "analytics_tracking_id should be redacted, got: {}",
+            redacted
+        );
         // login is short (<=12 chars) so becomes [REDACTED]; analytics_tracking_id is long so first4...last4
-        assert!(redacted.contains("[REDACTED]"), "login should be redacted, got: {}", redacted);
-        assert!(redacted.contains("c9df...a6cf"), "analytics_tracking_id should show first4...last4, got: {}", redacted);
+        assert!(
+            redacted.contains("[REDACTED]"),
+            "login should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            redacted.contains("c9df...a6cf"),
+            "analytics_tracking_id should show first4...last4, got: {}",
+            redacted
+        );
     }
 
     #[test]
     fn redact_body_redacts_name_field() {
-        let body = r#"{"userStatus":{"name":"Robin Ebers","email":"rob@sunstory.com","planStatus":{}}}"#;
+        let body =
+            r#"{"userStatus":{"name":"Robin Ebers","email":"rob@sunstory.com","planStatus":{}}}"#;
         let redacted = redact_body(body);
-        assert!(!redacted.contains("Robin Ebers"), "name should be redacted, got: {}", redacted);
-        assert!(!redacted.contains("rob@sunstory.com"), "email should be redacted, got: {}", redacted);
+        assert!(
+            !redacted.contains("Robin Ebers"),
+            "name should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            !redacted.contains("rob@sunstory.com"),
+            "email should be redacted, got: {}",
+            redacted
+        );
         // "Robin Ebers" is 11 chars (<=12) so becomes [REDACTED]
-        assert!(redacted.contains("\"name\": \"[REDACTED]\""), "name should show [REDACTED], got: {}", redacted);
+        assert!(
+            redacted.contains("\"name\": \"[REDACTED]\""),
+            "name should show [REDACTED], got: {}",
+            redacted
+        );
     }
 }

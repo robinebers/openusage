@@ -21,13 +21,20 @@ The language server listens on a random localhost port. Three values must be dis
 
 ```bash
 # 1. Find process and extract CSRF token
+# macOS/Linux:
 ps -ax -o pid=,command= | grep 'language_server_macos.*antigravity'
+# Windows:
+wmic process where "name='language_server_windows_x64.exe'" get ProcessId,CommandLine
+
 # Match: --app_data_dir antigravity  OR  path contains /antigravity/
 # Extract: --csrf_token <token>
 # Extract: --extension_server_port <port>  (HTTP fallback)
 
 # 2. Find listening ports
+# macOS/Linux:
 lsof -nP -iTCP -sTCP:LISTEN -a -p <pid>
+# Windows:
+netstat -ano | findstr <pid>
 
 # 3. Probe each port to find the Connect-RPC endpoint
 POST https://127.0.0.1:<port>/.../GetUnleashData  → first 200 OK wins
@@ -269,3 +276,5 @@ The Cloud Code model set is a superset of the LS model set. The LS returns only 
    c. If all fail with 401/403 and refresh token available: refresh via Google OAuth, cache result to pluginDataDir, retry once
    d. Parse model quota: skip `isInternal` models, empty-displayName models, and blacklisted model IDs
 5. If both strategies fail: error "Start Antigravity and try again."
+
+**Platform support:** macOS, Linux, Windows

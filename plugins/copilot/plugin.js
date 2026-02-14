@@ -1,49 +1,70 @@
 (function () {
   const KEYCHAIN_SERVICE = "OpenUsage-copilot";
   const GH_KEYCHAIN_SERVICE = "gh:github.com";
+  const VAULT_KEY = "copilot:token";
   const USAGE_URL = "https://api.github.com/copilot_internal/user";
 
-  function readJson(ctx, path) {
-    try {
-      if (!ctx.host.fs.exists(path)) return null;
-      const text = ctx.host.fs.readText(path);
-      return ctx.util.tryParseJson(text);
-    } catch (e) {
-      ctx.host.log.warn("readJson failed for " + path + ": " + String(e));
-      return null;
-    }
+  function isKeychainAvailable(ctx) {
+    if (!ctx.app) return false;
+    return ctx.app.platform === "macos" || ctx.app.platform === "darwin";
   }
 
-  function writeJson(ctx, path, value) {
-    try {
-      ctx.host.fs.writeText(path, JSON.stringify(value));
-    } catch (e) {
-      ctx.host.log.warn("writeJson failed for " + path + ": " + String(e));
-    }
+  function isVaultAvailable(ctx) {
+    if (!ctx.app) return false;
+    return ctx.app.platform === "windows";
+  }
+
+  function isWindows(ctx) {
+    if (!ctx.app) return false;
+    return ctx.app.platform === "windows";
+  }
+
+  function isLinux(ctx) {
+    if (!ctx.app) return false;
+    return ctx.app.platform === "linux";
   }
 
   function saveToken(ctx, token) {
-    try {
-      ctx.host.keychain.writeGenericPassword(
-        KEYCHAIN_SERVICE,
-        JSON.stringify({ token: token }),
-      );
-    } catch (e) {
-      ctx.host.log.warn("keychain write failed: " + String(e));
+    if (isVaultAvailable(ctx)) {
+      try {
+        ctx.host.vault.write(VAULT_KEY, JSON.stringify({ token: token }));
+      } catch (e) {
+        ctx.host.log.warn("vault write failed: " + String(e));
+      }
+      return;
     }
-    writeJson(ctx, ctx.app.pluginDataDir + "/auth.json", { token: token });
+    if (isKeychainAvailable(ctx)) {
+      try {
+        ctx.host.keychain.writeGenericPassword(
+          KEYCHAIN_SERVICE,
+          JSON.stringify({ token: token }),
+        );
+      } catch (e) {
+        ctx.host.log.warn("keychain write failed: " + String(e));
+      }
+    }
   }
 
   function clearCachedToken(ctx) {
-    try {
-      ctx.host.keychain.deleteGenericPassword(KEYCHAIN_SERVICE);
-    } catch (e) {
-      ctx.host.log.info("keychain delete failed: " + String(e));
+    if (isVaultAvailable(ctx)) {
+      try {
+        ctx.host.vault.delete(VAULT_KEY);
+      } catch (e) {
+        ctx.host.log.info("vault delete failed: " + String(e));
+      }
+      return;
     }
-    writeJson(ctx, ctx.app.pluginDataDir + "/auth.json", null);
+    if (isKeychainAvailable(ctx)) {
+      try {
+        ctx.host.keychain.deleteGenericPassword(KEYCHAIN_SERVICE);
+      } catch (e) {
+        ctx.host.log.info("keychain delete failed: " + String(e));
+      }
+    }
   }
 
   function loadTokenFromKeychain(ctx) {
+    if (!isKeychainAvailable(ctx)) return null;
     try {
       const raw = ctx.host.keychain.readGenericPassword(KEYCHAIN_SERVICE);
       if (raw) {
@@ -59,42 +80,111 @@
     return null;
   }
 
-  function loadTokenFromGhCli(ctx) {
+  function loadTokenFromVault(ctx) {
+    if (!isVaultAvailable(ctx)) return null;
     try {
-      const raw = ctx.host.keychain.readGenericPassword(GH_KEYCHAIN_SERVICE);
+      const raw = ctx.host.vault.read(VAULT_KEY);
       if (raw) {
-        let token = raw;
-        if (
-          typeof token === "string" &&
-          token.indexOf("go-keyring-base64:") === 0
-        ) {
-          token = ctx.base64.decode(token.slice("go-keyring-base64:".length));
-        }
-        if (token) {
-          ctx.host.log.info("token loaded from gh CLI keychain");
-          return { token: token, source: "gh-cli" };
+        const parsed = ctx.util.tryParseJson(raw);
+        if (parsed && parsed.token) {
+          ctx.host.log.info("token loaded from OpenUsage vault");
+          return { token: parsed.token, source: "vault" };
         }
       }
     } catch (e) {
-      ctx.host.log.info("gh CLI keychain read failed: " + String(e));
+      ctx.host.log.info("OpenUsage vault read failed: " + String(e));
     }
     return null;
   }
 
-  function loadTokenFromStateFile(ctx) {
-    const data = readJson(ctx, ctx.app.pluginDataDir + "/auth.json");
-    if (data && data.token) {
-      ctx.host.log.info("token loaded from state file");
-      return { token: data.token, source: "state" };
+  function loadTokenFromGhCli(ctx) {
+    if (isKeychainAvailable(ctx)) {
+      try {
+        const raw = ctx.host.keychain.readGenericPassword(GH_KEYCHAIN_SERVICE);
+        if (raw) {
+          let token = raw;
+          if (
+            typeof token === "string" &&
+            token.indexOf("go-keyring-base64:") === 0
+          ) {
+            token = ctx.base64.decode(token.slice("go-keyring-base64:".length));
+          }
+          if (token) {
+            ctx.host.log.info("token loaded from gh CLI keychain");
+            return { token: token, source: "gh-cli" };
+          }
+        }
+      } catch (e) {
+        ctx.host.log.info("gh CLI keychain read failed: " + String(e));
+      }
+      return null;
+    }
+
+    if (isWindows(ctx) || isLinux(ctx)) {
+      const token = loadTokenFromGhCliFile(ctx);
+      if (token) {
+        ctx.host.log.info("token loaded from gh CLI config file");
+        return { token: token, source: "gh-cli" };
+      }
+    }
+
+    return null;
+  }
+
+  function loadTokenFromGhCliFile(ctx) {
+    const paths = [
+      "~/.config/gh/hosts.yml",
+      "~/AppData/Roaming/GitHub CLI/hosts.yml",
+      "~/AppData/Roaming/gh/hosts.yml",
+    ];
+    for (const path of paths) {
+      try {
+        if (!ctx.host.fs.exists(path)) continue;
+        const text = ctx.host.fs.readText(path);
+        const token = parseGhHostsToken(text, "github.com");
+        if (token) return token;
+      } catch (e) {
+        ctx.host.log.warn("gh hosts file read failed: " + String(e));
+      }
+    }
+    return null;
+  }
+
+  function parseGhHostsToken(text, host) {
+    const lines = String(text || "").split(/\r?\n/);
+    let currentHost = null;
+    for (const line of lines) {
+      const raw = String(line || "");
+      const trimmed = raw.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+
+      const isTopLevel = raw.length > 0 && raw[0] !== " " && raw[0] !== "\t";
+      if (isTopLevel && trimmed.endsWith(":")) {
+        let key = trimmed.slice(0, -1).trim();
+        if ((key.startsWith("\"") && key.endsWith("\"")) || (key.startsWith("'") && key.endsWith("'"))) {
+          key = key.slice(1, -1);
+        }
+        currentHost = key || null;
+        continue;
+      }
+
+      if (currentHost === host && trimmed.startsWith("oauth_token:")) {
+        let value = trimmed.slice("oauth_token:".length).trim();
+        if (!value) return null;
+        if ((value.startsWith("\"") && value.endsWith("\"")) || (value.startsWith("'") && value.endsWith("'"))) {
+          value = value.slice(1, -1);
+        }
+        return value || null;
+      }
     }
     return null;
   }
 
   function loadToken(ctx) {
     return (
+      loadTokenFromVault(ctx) ||
       loadTokenFromKeychain(ctx) ||
-      loadTokenFromGhCli(ctx) ||
-      loadTokenFromStateFile(ctx)
+      loadTokenFromGhCli(ctx)
     );
   }
 

@@ -1,5 +1,7 @@
 (function () {
   var LS_SERVICE = "exa.language_server_pb.LanguageServerService"
+  var MAC_STATE_DB = "~/Library/Application Support/Windsurf/User/globalStorage/state.vscdb"
+  var LINUX_STATE_DB = "~/.config/Windsurf/User/globalStorage/state.vscdb"
 
   // Windsurf variants — tried in order (Windsurf first, then Windsurf Next).
   // Markers use --ide_name exact matching in the Rust discover code.
@@ -16,11 +18,41 @@
     },
   ]
 
+  function joinPath(base, leaf, separator) {
+    if (!base) return leaf
+    if (base.endsWith("/") || base.endsWith("\\")) return base + leaf
+    return base + separator + leaf
+  }
+
+  function getStateDbPath(ctx) {
+    if (ctx.app.platform === "windows") {
+      var candidates = [
+        "~/AppData/Roaming/Windsurf/User",
+        "~/AppData/Local/Windsurf/User",
+      ]
+      for (var i = 0; i < candidates.length; i++) {
+        var dbPath = joinPath(candidates[i], "globalStorage/state.vscdb", "/")
+        if (ctx.host.fs.exists(dbPath)) return dbPath
+      }
+      if (candidates.length > 0) {
+        return joinPath(candidates[0], "globalStorage/state.vscdb", "/")
+      }
+      return null
+    }
+
+    if (ctx.app.platform === "linux") return LINUX_STATE_DB
+    return MAC_STATE_DB
+  }
+
   // --- LS discovery ---
 
   function discoverLs(ctx, variant) {
+    var processName = ctx.app.platform === "windows"
+      ? "language_server_windows_x64.exe"
+      : (ctx.app.platform === "linux" ? "language_server_linux_x64" : "language_server_macos")
+    
     return ctx.host.ls.discover({
-      processName: "language_server_macos",
+      processName: processName,
       markers: [variant.marker],
       csrfFlag: "--csrf_token",
       portFlag: "--extension_server_port",
@@ -30,8 +62,13 @@
 
   function loadApiKey(ctx, variant) {
     try {
+      var stateDb = ctx.app.platform === "windows" ? getStateDbPath(ctx) : variant.stateDb
+      if (!stateDb) {
+        ctx.host.log.warn("state db path not found for Windsurf")
+        return null
+      }
       var rows = ctx.host.sqlite.query(
-        variant.stateDb,
+        stateDb,
         "SELECT value FROM ItemTable WHERE key = 'windsurfAuthStatus' LIMIT 1"
       )
       var parsed = ctx.util.tryParseJson(rows)
@@ -61,7 +98,7 @@
             extensionVersion: "unknown",
             ide: ideName,
             ideVersion: "unknown",
-            os: "macos",
+            os: ctx.app.platform === "windows" ? "windows" : (ctx.app.platform === "linux" ? "linux" : "macos"),
           },
         },
       }),
@@ -205,6 +242,12 @@
   // --- Probe ---
 
   function probe(ctx) {
+    if (ctx.app.platform === "windows") {
+      var stateDb = getStateDbPath(ctx)
+      if (!stateDb || !ctx.host.fs.exists(stateDb)) {
+        throw "Windsurf data store not found on Windows. Expected %APPDATA%\\Windsurf\\User\\globalStorage\\state.vscdb (or Local). Please report the actual path."
+      }
+    }
     // Try each variant in order: Windsurf → Windsurf Next
     for (var i = 0; i < VARIANTS.length; i++) {
       var result = probeVariant(ctx, VARIANTS[i])
