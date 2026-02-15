@@ -18,10 +18,21 @@ Tracks [Z.ai](https://z.ai) (Zhipu AI) usage quotas for GLM coding plans.
 
 1. [Subscribe to a GLM Coding plan](https://z.ai/subscribe) and get your API key from
    the [Z.ai console](https://z.ai/manage-apikey/apikey-list)
-2. Set the environment variable `ZAI_API_KEY`
+2. Set `ZAI_API_KEY` (fallback: `GLM_API_KEY`)
+
+OpenUsage is a GUI app. A one-off `export ...` in a terminal session will not be visible when you launch OpenUsage from
+Spotlight/Launchpad. Persist it, then restart OpenUsage.
+
+zsh (`~/.zshrc`):
 
 ```bash
 export ZAI_API_KEY="YOUR_API_KEY"
+```
+
+fish (universal var):
+
+```fish
+set -Ux ZAI_API_KEY "YOUR_API_KEY"
 ```
 
 3. Enable the Z.ai plugin in OpenUsage settings
