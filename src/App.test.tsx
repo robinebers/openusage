@@ -6,6 +6,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest"
 const state = vi.hoisted(() => ({
   invokeMock: vi.fn(),
   isTauriMock: vi.fn(() => false),
+  trackMock: vi.fn(),
   setSizeMock: vi.fn(),
   currentMonitorMock: vi.fn(),
   startBatchMock: vi.fn(),
@@ -99,6 +100,10 @@ vi.mock("@tauri-apps/api/core", () => ({
   isTauri: state.isTauriMock,
 }))
 
+vi.mock("@/lib/analytics", () => ({
+  track: state.trackMock,
+}))
+
 vi.mock("@tauri-apps/api/event", () => ({
   listen: eventState.listenMock,
 }))
@@ -189,6 +194,7 @@ describe("App", () => {
     state.invokeMock.mockReset()
     state.isTauriMock.mockReset()
     state.isTauriMock.mockReturnValue(false)
+    state.trackMock.mockReset()
     state.setSizeMock.mockReset()
     state.currentMonitorMock.mockReset()
     state.startBatchMock.mockReset()
@@ -302,6 +308,17 @@ describe("App", () => {
     await waitFor(() => expect(state.savePluginSettingsMock).toHaveBeenCalled())
     expect(screen.getByText("Alpha")).toBeInTheDocument()
     expect(state.setSizeMock).toHaveBeenCalled()
+  })
+
+  it("does not track page_viewed on startup or navigation", async () => {
+    render(<App />)
+    await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
+
+    const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
+    await userEvent.click(settingsButtons[0])
+
+    expect(state.trackMock).not.toHaveBeenCalledWith("page_viewed", expect.anything())
+    expect(state.trackMock).not.toHaveBeenCalledWith("page_viewed", undefined)
   })
 
   it("skips saving settings when already normalized", async () => {

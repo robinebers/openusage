@@ -374,6 +374,141 @@ describe("codex plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Usage request failed after refresh")
   })
 
+  it("surfaces additional_rate_limits as Spark lines", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    const now = 1_700_000_000_000
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(now)
+    const nowSec = Math.floor(now / 1000)
+
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        rate_limit: {
+          primary_window: { used_percent: 5, reset_after_seconds: 60 },
+          secondary_window: { used_percent: 10, reset_after_seconds: 120 },
+        },
+        additional_rate_limits: [
+          {
+            limit_name: "GPT-5.3-Codex-Spark",
+            metered_feature: "codex_bengalfox",
+            rate_limit: {
+              primary_window: {
+                used_percent: 25,
+                limit_window_seconds: 18000,
+                reset_after_seconds: 3600,
+                reset_at: nowSec + 3600,
+              },
+              secondary_window: {
+                used_percent: 40,
+                limit_window_seconds: 604800,
+                reset_after_seconds: 86400,
+                reset_at: nowSec + 86400,
+              },
+            },
+          },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    const spark = result.lines.find((l) => l.label === "Spark")
+    expect(spark).toBeTruthy()
+    expect(spark.used).toBe(25)
+    expect(spark.limit).toBe(100)
+    expect(spark.periodDurationMs).toBe(18000000)
+    expect(spark.resetsAt).toBe(new Date((nowSec + 3600) * 1000).toISOString())
+
+    const sparkWeekly = result.lines.find((l) => l.label === "Spark Weekly")
+    expect(sparkWeekly).toBeTruthy()
+    expect(sparkWeekly.used).toBe(40)
+    expect(sparkWeekly.limit).toBe(100)
+    expect(sparkWeekly.periodDurationMs).toBe(604800000)
+    expect(sparkWeekly.resetsAt).toBe(new Date((nowSec + 86400) * 1000).toISOString())
+
+    nowSpy.mockRestore()
+  })
+
+  it("handles additional_rate_limits with missing fields and fallback labels", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        additional_rate_limits: [
+          // Entry with no limit_name, no limit_window_seconds, no secondary
+          {
+            limit_name: "",
+            rate_limit: {
+              primary_window: { used_percent: 10, reset_after_seconds: 60 },
+              secondary_window: null,
+            },
+          },
+          // Malformed entry (no rate_limit)
+          { limit_name: "Bad" },
+          // Null entry
+          null,
+        ],
+      }),
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const modelLine = result.lines.find((l) => l.label === "Model")
+    expect(modelLine).toBeTruthy()
+    expect(modelLine.used).toBe(10)
+    expect(modelLine.periodDurationMs).toBe(5 * 60 * 60 * 1000) // fallback PERIOD_SESSION_MS
+    // No weekly line for this entry since secondary_window is null
+    expect(result.lines.find((l) => l.label === "Model Weekly")).toBeUndefined()
+    // Malformed and null entries should be skipped
+    expect(result.lines.find((l) => l.label === "Bad")).toBeUndefined()
+  })
+
+  it("handles missing or empty additional_rate_limits gracefully", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+
+    // Missing field
+    ctx.host.http.request.mockReturnValueOnce({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        rate_limit: {
+          primary_window: { used_percent: 5, reset_after_seconds: 60 },
+        },
+      }),
+    })
+    const plugin = await loadPlugin()
+    const result1 = plugin.probe(ctx)
+    expect(result1.lines.find((l) => l.label === "Spark")).toBeUndefined()
+
+    // Empty array
+    ctx.host.http.request.mockReturnValueOnce({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        rate_limit: {
+          primary_window: { used_percent: 5, reset_after_seconds: 60 },
+        },
+        additional_rate_limits: [],
+      }),
+    })
+    const result2 = plugin.probe(ctx)
+    expect(result2.lines.find((l) => l.label === "Spark")).toBeUndefined()
+  })
+
   it("throws token expired when refresh retry is unauthorized", async () => {
     const ctx = makeCtx()
     ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({

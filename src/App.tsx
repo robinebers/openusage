@@ -293,19 +293,6 @@ function App() {
       .map((p) => ({ id: p.id, name: p.name, iconUrl: p.iconUrl, brandColor: p.brandColor }))
   }, [pluginSettings, pluginsMeta])
 
-  // Track page views
-  useEffect(() => {
-    const page =
-      activeView === "home" ? "overview"
-        : activeView === "settings" ? "settings"
-          : "provider_detail"
-    const props: Record<string, string> =
-      activeView !== "home" && activeView !== "settings"
-        ? { page, provider_id: activeView }
-        : { page }
-    track("page_viewed", props)
-  }, [activeView])
-
   // If active view is a plugin that got disabled, switch to home
   useEffect(() => {
     if (activeView === "home" || activeView === "settings") return
@@ -462,12 +449,6 @@ function App() {
   const handleProbeResult = useCallback(
     (output: PluginOutput) => {
       const errorMessage = getErrorMessage(output)
-      if (errorMessage) {
-        track("provider_fetch_error", {
-          provider_id: output.providerId,
-          error: errorMessage.slice(0, 200),
-        })
-      }
       const isManual = manualRefreshIdsRef.current.has(output.providerId)
       if (isManual) {
         manualRefreshIdsRef.current.delete(output.providerId)

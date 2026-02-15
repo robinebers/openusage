@@ -21,6 +21,65 @@ use uuid::Uuid;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 const GLOBAL_SHORTCUT_STORE_KEY: &str = "globalShortcut";
+const APP_STARTED_TRACKED_DAY_KEY_PREFIX: &str = "analytics.app_started_day.";
+
+fn app_started_day_key(version: &str) -> String {
+    format!("{}{}", APP_STARTED_TRACKED_DAY_KEY_PREFIX, version)
+}
+
+fn today_utc_ymd() -> String {
+    let date = time::OffsetDateTime::now_utc().date();
+    format!(
+        "{:04}-{:02}-{:02}",
+        date.year(),
+        date.month() as u8,
+        date.day()
+    )
+}
+
+fn should_track_app_started(last_tracked_day: Option<&str>, today: &str) -> bool {
+    match last_tracked_day {
+        Some(day) => day != today,
+        None => true,
+    }
+}
+
+#[cfg(desktop)]
+fn track_app_started_once_per_day_per_version(app: &tauri::App) {
+    use tauri_plugin_store::StoreExt;
+
+    let version = app.package_info().version.to_string();
+    let key = app_started_day_key(&version);
+    let today = today_utc_ymd();
+
+    let store = match app.handle().store("settings.json") {
+        Ok(store) => store,
+        Err(error) => {
+            log::warn!("Failed to access settings store for app_started gate: {}", error);
+            return;
+        }
+    };
+
+    let last_tracked_day = store
+        .get(&key)
+        .and_then(|value| value.as_str().map(|value| value.to_string()));
+
+    if !should_track_app_started(last_tracked_day.as_deref(), &today) {
+        return;
+    }
+
+    let _ = app.track_event("app_started", None);
+
+    store.set(&key, serde_json::Value::String(today));
+    if let Err(error) = store.save() {
+        log::warn!("Failed to save app_started tracked day: {}", error);
+    }
+}
+
+#[cfg(not(desktop))]
+fn track_app_started_once_per_day_per_version(app: &tauri::App) {
+    let _ = app.track_event("app_started", None);
+}
 
 #[cfg(desktop)]
 fn managed_shortcut_slot() -> &'static Mutex<Option<String>> {
@@ -391,7 +450,7 @@ pub fn run() {
             let version = app.package_info().version.to_string();
             log::info!("OpenUsage v{} starting", version);
 
-            let _ = app.track_event("app_started", None);
+            track_app_started_once_per_day_per_version(app);
 
             let app_data_dir = app.path().app_data_dir().expect("no app data dir");
             let resource_dir = app.path().resource_dir().expect("no resource dir");
@@ -444,4 +503,33 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|_, _| {});
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{app_started_day_key, should_track_app_started};
+
+    #[test]
+    fn should_track_when_no_previous_day() {
+        assert!(should_track_app_started(None, "2026-02-12"));
+    }
+
+    #[test]
+    fn should_not_track_when_same_day() {
+        assert!(!should_track_app_started(Some("2026-02-12"), "2026-02-12"));
+    }
+
+    #[test]
+    fn should_track_when_day_changes() {
+        assert!(should_track_app_started(Some("2026-02-11"), "2026-02-12"));
+    }
+
+    #[test]
+    fn key_is_version_scoped() {
+        let v1_key = app_started_day_key("0.6.2");
+        let v2_key = app_started_day_key("0.6.3");
+        assert_ne!(v1_key, v2_key);
+        assert!(v1_key.ends_with("0.6.2"));
+        assert!(v2_key.ends_with("0.6.3"));
+    }
 }
