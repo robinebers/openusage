@@ -14,6 +14,16 @@ fn last_non_empty_trimmed_line(text: &str) -> Option<String> {
         .map(|line| line.to_string())
 }
 
+fn read_env_from_process(name: &str) -> Option<String> {
+    let value = std::env::var(name).ok()?;
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
 fn read_env_value_via_command(program: &str, args: &[&str]) -> Option<String> {
     let output = Command::new(program).args(args).output().ok()?;
     if !output.status.success() {
@@ -23,25 +33,73 @@ fn read_env_value_via_command(program: &str, args: &[&str]) -> Option<String> {
     last_non_empty_trimmed_line(&stdout)
 }
 
-fn terminal_zsh_env_cache() -> &'static Mutex<HashMap<String, Option<String>>> {
+fn terminal_env_cache() -> &'static Mutex<HashMap<String, Option<String>>> {
     static CACHE: OnceLock<Mutex<HashMap<String, Option<String>>>> = OnceLock::new();
     CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn read_env_from_interactive_zsh(name: &str) -> Option<String> {
-    let script = format!("printenv {}", name);
-    read_env_value_via_command("/bin/zsh", &["-ilc", script.as_str()])
+fn shell_from_env() -> Option<String> {
+    let shell = std::env::var("SHELL").ok()?;
+    let trimmed = shell.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let file = std::path::Path::new(trimmed).file_name()?.to_string_lossy();
+    let allowed = file == "zsh" || file == "bash" || file == "fish";
+    if allowed {
+        Some(trimmed.to_string())
+    } else {
+        None
+    }
 }
 
-fn resolve_env_from_terminal_zsh_cache(name: &str) -> Option<String> {
-    if let Ok(cache) = terminal_zsh_env_cache().lock() {
+fn read_env_from_interactive_shell(program: &str, name: &str) -> Option<String> {
+    let script = format!("printenv {}", name);
+    read_env_value_via_command(program, &["-ilc", script.as_str()])
+}
+
+fn read_env_from_interactive_shells(name: &str) -> Option<String> {
+    let mut programs: Vec<String> = Vec::new();
+
+    if let Some(shell) = shell_from_env() {
+        programs.push(shell);
+    }
+
+    for program in [
+        "/bin/zsh",
+        "/bin/bash",
+        "/opt/homebrew/bin/fish",
+        "/usr/local/bin/fish",
+        "/opt/local/bin/fish",
+    ] {
+        if !programs.iter().any(|p| p == program) {
+            programs.push(program.to_string());
+        }
+    }
+
+    for program in programs {
+        if let Some(value) = read_env_from_interactive_shell(program.as_str(), name) {
+            return Some(value);
+        }
+    }
+
+    None
+}
+
+fn resolve_env_value(name: &str) -> Option<String> {
+    // Prefer the current process env (fast + supports launchctl/terminal-launch).
+    if let Some(value) = read_env_from_process(name) {
+        return Some(value);
+    }
+
+    if let Ok(cache) = terminal_env_cache().lock() {
         if let Some(cached) = cache.get(name) {
             return cached.clone();
         }
     }
 
-    let resolved = read_env_from_interactive_zsh(name);
-    if let Ok(mut cache) = terminal_zsh_env_cache().lock() {
+    let resolved = read_env_from_interactive_shells(name);
+    if let Ok(mut cache) = terminal_env_cache().lock() {
         cache.insert(name.to_string(), resolved.clone());
     }
     resolved
@@ -272,7 +330,7 @@ fn inject_env<'js>(ctx: &Ctx<'js>, host: &Object<'js>, _plugin_id: &str) -> rqui
                 return None;
             }
 
-            resolve_env_from_terminal_zsh_cache(&name)
+            resolve_env_value(&name)
         })?,
     )?;
     host.set("env", env_obj)?;
@@ -1343,16 +1401,18 @@ mod tests {
             let get: Function = env.get("get").expect("get");
 
             for name in WHITELISTED_ENV_VARS {
-                let expected = read_env_from_interactive_zsh(name);
-                let value: Option<String> = get.call((name.to_string(),)).expect("get whitelisted var");
-                assert_eq!(value, expected, "{name} should match interactive zsh env");
+                let expected = resolve_env_value(name);
+                let value: Option<String> = get
+                    .call((name.to_string(),))
+                    .expect("get whitelisted var");
+                assert_eq!(value, expected, "{name} should match host env resolver");
 
                 let js_expr = format!(r#"__openusage_ctx.host.env.get("{}")"#, name);
                 let js_value: Option<String> = ctx.eval(js_expr).expect("js get whitelisted var");
                 assert_eq!(
                     js_value,
                     expected,
-                    "{name} should match interactive zsh env from JS"
+                    "{name} should match host env resolver from JS"
                 );
             }
 
@@ -1365,6 +1425,60 @@ mod tests {
                 .eval(r#"__openusage_ctx.host.env.get("__OPENUSAGE_TEST_NOT_WHITELISTED__")"#)
                 .expect("js get blocked var");
             assert!(js_blocked.is_none(), "non-whitelisted vars must not be exposed from JS");
+        });
+    }
+
+    #[test]
+    fn env_api_prefers_process_env() {
+        struct RestoreEnvVar {
+            name: &'static str,
+            old: Option<String>,
+        }
+
+        impl Drop for RestoreEnvVar {
+            fn drop(&mut self) {
+                if let Some(value) = self.old.take() {
+                    // SAFETY: tests serialize env changes via this guard; value is restored on drop.
+                    unsafe { std::env::set_var(self.name, value) };
+                } else {
+                    // SAFETY: tests serialize env changes via this guard; var is restored/removed on drop.
+                    unsafe { std::env::remove_var(self.name) };
+                }
+            }
+        }
+
+        let name = "ZAI_API_KEY";
+        let old = std::env::var(name).ok();
+        let _restore = RestoreEnvVar { name, old };
+        // SAFETY: this test restores the previous value in `Drop`.
+        unsafe { std::env::set_var(name, "sk-process-env-test-1234567890") };
+
+        let rt = Runtime::new().expect("runtime");
+        let ctx = Context::full(&rt).expect("context");
+        ctx.with(|ctx| {
+            let app_data = std::env::temp_dir();
+            inject_host_api(&ctx, "test", &app_data, "0.0.0").expect("inject host api");
+            let globals = ctx.globals();
+            let probe_ctx: Object = globals.get("__openusage_ctx").expect("probe ctx");
+            let host: Object = probe_ctx.get("host").expect("host");
+            let env: Object = host.get("env").expect("env");
+            let get: Function = env.get("get").expect("get");
+
+            let value: Option<String> = get.call((name.to_string(),)).expect("get");
+            assert_eq!(
+                value.as_deref(),
+                Some("sk-process-env-test-1234567890"),
+                "process env should be preferred over shell lookup"
+            );
+
+            let js_value: Option<String> = ctx
+                .eval(r#"__openusage_ctx.host.env.get("ZAI_API_KEY")"#)
+                .expect("js get");
+            assert_eq!(
+                js_value.as_deref(),
+                Some("sk-process-env-test-1234567890"),
+                "process env should be preferred from JS"
+            );
         });
     }
 
