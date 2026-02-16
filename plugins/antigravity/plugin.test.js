@@ -33,32 +33,32 @@ function makeUserStatusResponse(overrides) {
         clientModelConfigs: [
           {
             label: "Gemini 3 Pro (High)",
-            modelOrAlias: { model: "MODEL_PLACEHOLDER_M7" },
+            modelOrAlias: { model: "MODEL_PLACEHOLDER_M8" },
             quotaInfo: { remainingFraction: 0.75, resetTime: "2026-02-08T09:10:56Z" },
           },
           {
             label: "Gemini 3 Pro (Low)",
-            modelOrAlias: { model: "MODEL_PLACEHOLDER_M6" },
+            modelOrAlias: { model: "MODEL_PLACEHOLDER_M7" },
             quotaInfo: { remainingFraction: 0.9, resetTime: "2026-02-08T09:10:56Z" },
           },
           {
             label: "Gemini 3 Flash",
-            modelOrAlias: { model: "MODEL_PLACEHOLDER_M8" },
+            modelOrAlias: { model: "MODEL_PLACEHOLDER_M18" },
             quotaInfo: { remainingFraction: 1.0, resetTime: "2026-02-08T09:10:56Z" },
           },
           {
             label: "Claude Sonnet 4.5",
-            modelOrAlias: { model: "MODEL_333" },
+            modelOrAlias: { model: "MODEL_CLAUDE_4_5_SONNET" },
             quotaInfo: { remainingFraction: 0.5, resetTime: "2026-02-08T09:10:56Z" },
           },
           {
-            label: "Claude Opus 4.5 (Thinking)",
-            modelOrAlias: { model: "MODEL_1012" },
+            label: "Claude Opus 4.6 (Thinking)",
+            modelOrAlias: { model: "MODEL_PLACEHOLDER_M26" },
             quotaInfo: { remainingFraction: 0.8, resetTime: "2026-02-08T09:10:56Z" },
           },
           {
             label: "GPT-OSS 120B (Medium)",
-            modelOrAlias: { model: "MODEL_342" },
+            modelOrAlias: { model: "MODEL_OPENAI_GPT_OSS_120B_MEDIUM" },
             quotaInfo: { remainingFraction: 1.0, resetTime: "2026-02-08T09:10:56Z" },
           },
         ],
@@ -202,7 +202,7 @@ describe("antigravity plugin", () => {
     expect(labels).toContain("Gemini 3 Pro")
     expect(labels).toContain("Gemini 3 Flash")
     expect(labels).toContain("Claude Sonnet 4.5")
-    expect(labels).toContain("Claude Opus 4.5")
+    expect(labels).toContain("Claude Opus 4.6")
     expect(labels).toContain("GPT-OSS 120B")
   })
 
@@ -236,7 +236,7 @@ describe("antigravity plugin", () => {
     expect(labels).toEqual([
       "Gemini 3 Pro",
       "Gemini 3 Flash",
-      "Claude Opus 4.5",
+      "Claude Opus 4.6",
       "Claude Sonnet 4.5",
       "GPT-OSS 120B",
     ])
@@ -1165,9 +1165,9 @@ describe("antigravity plugin", () => {
                 model: "MODEL_PLACEHOLDER_M8",
                 quotaInfo: { remainingFraction: 0.7, resetTime: "2026-02-08T10:00:00Z" },
               },
-              "claude-opus-4-5-thinking": {
-                displayName: "Claude Opus 4.5 (Thinking)",
-                model: "MODEL_PLACEHOLDER_M12",
+              "claude-opus-4-6-thinking": {
+                displayName: "Claude Opus 4.6 (Thinking)",
+                model: "MODEL_PLACEHOLDER_M26",
                 quotaInfo: { remainingFraction: 1, resetTime: "2026-02-08T10:00:00Z" },
               },
               "gpt-oss-120b": {
@@ -1187,9 +1187,42 @@ describe("antigravity plugin", () => {
 
     const labels = result.lines.map((l) => l.label)
     expect(labels).toContain("Gemini 3 Pro")
-    expect(labels).toContain("Claude Opus 4.5")
+    expect(labels).toContain("Claude Opus 4.6")
     expect(labels).toContain("GPT-OSS 120B")
     expect(labels.length).toBe(3)
+  })
+
+  it("LS filters out blacklisted model IDs (Claude Opus 4.5)", async () => {
+    const ctx = makeCtx()
+    const discovery = makeDiscovery()
+    const response = makeUserStatusResponse({
+      configs: [
+        {
+          label: "Gemini 3 Pro (High)",
+          modelOrAlias: { model: "MODEL_PLACEHOLDER_M8" },
+          quotaInfo: { remainingFraction: 0.75, resetTime: "2026-02-08T09:10:56Z" },
+        },
+        {
+          label: "Claude Opus 4.5 (Thinking)",
+          modelOrAlias: { model: "MODEL_PLACEHOLDER_M12" },
+          quotaInfo: { remainingFraction: 0.8, resetTime: "2026-02-08T09:10:56Z" },
+        },
+        {
+          label: "Claude Opus 4.6 (Thinking)",
+          modelOrAlias: { model: "MODEL_PLACEHOLDER_M26" },
+          quotaInfo: { remainingFraction: 0.6, resetTime: "2026-02-08T09:10:56Z" },
+        },
+      ],
+    })
+    setupLsMock(ctx, discovery, response)
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    const labels = result.lines.map((l) => l.label)
+    expect(labels).toContain("Gemini 3 Pro")
+    expect(labels).toContain("Claude Opus 4.6")
+    expect(labels).not.toContain("Claude Opus 4.5")
   })
 
   it("LS still takes priority over Cloud Code with proto tokens (no regression)", async () => {
