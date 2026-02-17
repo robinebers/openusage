@@ -51,6 +51,38 @@ describe("cursor plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("No active Cursor subscription.")
   })
 
+  it("accepts team usage when enabled flag is missing", async () => {
+    const ctx = makeCtx()
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: "token" }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            billingCycleStart: "1770064133000",
+            billingCycleEnd: "1772483333000",
+            planUsage: { totalSpend: 8474, limit: 2000, bonusSpend: 6474 },
+            spendLimitUsage: {
+              pooledLimit: 60000,
+              pooledRemaining: 19216,
+            },
+          }),
+        }
+      }
+      if (String(opts.url).includes("GetPlanInfo")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({ planInfo: { planName: "Team" } }),
+        }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.plan).toBe("Team")
+    expect(result.lines.find((line) => line.label === "Plan usage")).toBeTruthy()
+  })
+
   it("throws on missing plan usage limit", async () => {
     const ctx = makeCtx()
     ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: "token" }]))
