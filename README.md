@@ -28,6 +28,7 @@ OpenUsage lives in your menu bar and shows you how much of your AI coding subscr
 - [**Codex**](docs/providers/codex.md) / session, weekly, reviews, credits
 - [**Copilot**](docs/providers/copilot.md) / premium, chat, completions
 - [**Cursor**](docs/providers/cursor.md) / credits, plan usage, on-demand
+- [**Gemini**](docs/providers/gemini.md) / pro, flash, workspace/free/paid tier
 - [**Kimi Code**](docs/providers/kimi.md) / session, weekly
 - [**Windsurf**](docs/providers/windsurf.md) / prompt credits, flex credits
 - [**Z.ai**](docs/providers/zai.md) / session, web searches
@@ -35,7 +36,6 @@ OpenUsage lives in your menu bar and shows you how much of your AI coding subscr
 ### Maybe Soon
 
 - [Factory / Droid](https://github.com/robinebers/openusage/issues/16)
-- [Gemini](https://github.com/robinebers/openusage/issues/13)
 - [Vercel AI Gateway](https://github.com/robinebers/openusage/issues/18)
 
 Community contributions welcome.
