@@ -84,6 +84,7 @@ Don't open a PR for large features without discussing first. [Open an issue](htt
 - [@davidarny](https://github.com/davidarny)
 
 All PRs require approval from at least 2 maintainers before merging.
+Release tags (`v*`) are owner-managed and can only be created by [@robinebers](https://github.com/robinebers).
 
 ## Questions?
 
