@@ -19,7 +19,7 @@ export type AccountOption = {
   label: string
 }
 
-export const OVERLAY_ENABLED_PLUGIN_IDS = new Set(["codex", "claude", "kimi", "antigravity"])
+export const OVERLAY_ENABLED_PLUGIN_IDS = new Set(["codex", "claude", "kimi", "antigravity", "gemini"])
 export const HIDDEN_PLUGIN_IDS = new Set(["cliproxyapi"])
 export const LOCAL_ACCOUNT_VALUE = "__local__"
 export const LOCAL_ACCOUNT_LABEL = "Local account"
@@ -38,6 +38,9 @@ export function toCliProxyConfigView(value: unknown): CliProxyConfigView {
 export function mapAuthProviderToPluginId(provider: string) {
   const normalized = provider.trim().toLowerCase()
   if (normalized === "anthropic") return "claude"
+  if (normalized === "google" || normalized === "google-ai" || normalized === "gemini-cli") {
+    return "gemini"
+  }
   return normalized
 }
 

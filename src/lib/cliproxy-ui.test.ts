@@ -26,6 +26,8 @@ describe("cliproxy-ui", () => {
 
   it("maps provider aliases", () => {
     expect(mapAuthProviderToPluginId("anthropic")).toBe("claude")
+    expect(mapAuthProviderToPluginId("google")).toBe("gemini")
+    expect(mapAuthProviderToPluginId("gemini-cli")).toBe("gemini")
     expect(mapAuthProviderToPluginId(" codex ")).toBe("codex")
   })
 
@@ -56,11 +58,20 @@ describe("cliproxy-ui", () => {
         disabled: false,
         unavailable: false,
       },
+      {
+        id: "4",
+        name: "gemini-main.json",
+        provider: "google",
+        authIndex: "idx-g",
+        disabled: false,
+        unavailable: false,
+      },
     ])
 
     expect(options.codex[0]).toEqual({ value: LOCAL_ACCOUNT_VALUE, label: "Local account" })
     expect(options.codex.some((item) => item.value === "idx-1")).toBe(true)
     expect(options.claude.some((item) => item.value === "idx-2")).toBe(true)
+    expect(options.gemini.some((item) => item.value === "idx-g")).toBe(true)
   })
 
   it("filters selections passed to backend probe", () => {
@@ -68,10 +79,11 @@ describe("cliproxy-ui", () => {
       filterCliProxySelectionsForProbe({
         codex: LOCAL_ACCOUNT_VALUE,
         claude: "idx-c",
+        gemini: "idx-g",
         cursor: "idx-x",
         kimi: "",
       })
-    ).toEqual({ claude: "idx-c" })
+    ).toEqual({ claude: "idx-c", gemini: "idx-g" })
   })
 
   it("skips duplicate and unsupported auth files", () => {

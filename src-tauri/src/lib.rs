@@ -58,7 +58,10 @@ fn track_app_started_once_per_day_per_version(app: &tauri::App) {
     let store = match app.handle().store("settings.json") {
         Ok(store) => store,
         Err(error) => {
-            log::warn!("Failed to access settings store for app_started gate: {}", error);
+            log::warn!(
+                "Failed to access settings store for app_started gate: {}",
+                error
+            );
             return;
         }
     };
@@ -183,6 +186,7 @@ fn normalize_provider_key(provider: &str) -> String {
     let normalized = provider.trim().to_lowercase();
     match normalized.as_str() {
         "anthropic" => "claude".to_string(),
+        "google" | "google-ai" | "gemini-cli" => "gemini".to_string(),
         _ => normalized,
     }
 }
@@ -194,12 +198,16 @@ fn provider_matches_plugin(plugin_id: &str, provider: &str) -> bool {
         "claude" => provider_key == "claude",
         "kimi" => provider_key == "kimi",
         "antigravity" => provider_key == "antigravity",
+        "gemini" => provider_key == "gemini",
         _ => false,
     }
 }
 
 fn supports_credential_overlay(plugin_id: &str) -> bool {
-    matches!(plugin_id, "codex" | "claude" | "kimi" | "antigravity")
+    matches!(
+        plugin_id,
+        "codex" | "claude" | "kimi" | "antigravity" | "gemini"
+    )
 }
 
 fn credential_target_paths(plugin_id: &str, app_data_dir: &PathBuf) -> Vec<String> {
@@ -226,6 +234,7 @@ fn credential_target_paths(plugin_id: &str, app_data_dir: &PathBuf) -> Vec<Strin
                 .to_string_lossy()
                 .to_string(),
         ],
+        "gemini" => vec!["~/.gemini/oauth_creds.json".to_string()],
         _ => Vec::new(),
     }
 }
@@ -262,6 +271,17 @@ fn parse_expiry_seconds(expired: &str) -> i64 {
         return 0;
     }
     ms / 1000
+}
+
+fn parse_epoch_to_ms(value: &str) -> Option<i64> {
+    let parsed = value.trim().parse::<i64>().ok()?;
+    if parsed > 10_000_000_000 {
+        Some(parsed)
+    } else if parsed > 0 {
+        Some(parsed * 1000)
+    } else {
+        None
+    }
 }
 
 fn read_string_field(object: &serde_json::Map<String, Value>, keys: &[&str]) -> Option<String> {
@@ -409,12 +429,72 @@ fn transform_auth_payload_for_plugin(plugin_id: &str, raw_payload: &str) -> Resu
             serde_json::to_string(&Value::Object(out))
                 .map_err(|e| format!("failed to serialize transformed antigravity auth: {}", e))
         }
+        "gemini" => {
+            let access_token = read_string_field(object, &["access_token", "accessToken"]);
+            let refresh_token = read_string_field(object, &["refresh_token", "refreshToken"]);
+            if access_token.is_none() && refresh_token.is_none() {
+                return Err("missing access_token and refresh_token".to_string());
+            }
+
+            let expiry_date_ms = read_string_field(object, &["expiry_date", "expiryDate"])
+                .as_deref()
+                .and_then(parse_epoch_to_ms)
+                .or_else(|| {
+                    read_string_field(object, &["expired", "expires_at", "expiresAt"])
+                        .as_deref()
+                        .map(parse_expiry_ms)
+                        .filter(|value| *value > 0)
+                })
+                .unwrap_or_else(|| {
+                    let now_ms = time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000;
+                    let base_ms = i64::try_from(now_ms).unwrap_or(0);
+                    let ttl_sec = read_string_field(object, &["expires_in", "expiresIn"])
+                        .and_then(|raw| raw.parse::<i64>().ok())
+                        .unwrap_or(3600);
+                    base_ms + (ttl_sec * 1000)
+                });
+
+            let mut out = serde_json::Map::new();
+            if let Some(access_token) = access_token {
+                out.insert("access_token".to_string(), Value::String(access_token));
+            }
+            if let Some(refresh_token) = refresh_token {
+                out.insert("refresh_token".to_string(), Value::String(refresh_token));
+            }
+            out.insert(
+                "expiry_date".to_string(),
+                Value::Number(serde_json::Number::from(expiry_date_ms)),
+            );
+            if let Some(id_token) = read_string_field(object, &["id_token", "idToken"]) {
+                out.insert("id_token".to_string(), Value::String(id_token));
+            }
+            if let Some(client_id) = read_string_field(
+                object,
+                &["client_id", "clientId", "oauth_client_id", "oauthClientId"],
+            ) {
+                out.insert("client_id".to_string(), Value::String(client_id));
+            }
+            if let Some(client_secret) = read_string_field(
+                object,
+                &[
+                    "client_secret",
+                    "clientSecret",
+                    "oauth_client_secret",
+                    "oauthClientSecret",
+                ],
+            ) {
+                out.insert("client_secret".to_string(), Value::String(client_secret));
+            }
+
+            serde_json::to_string(&Value::Object(out))
+                .map_err(|e| format!("failed to serialize transformed gemini auth: {}", e))
+        }
         _ => Err("unsupported provider for credential overlay".to_string()),
     }
 }
 
 fn should_use_cached_overlay(plugin_id: &str, transformed: &str) -> bool {
-    if plugin_id != "antigravity" {
+    if plugin_id != "antigravity" && plugin_id != "gemini" {
         return true;
     }
 
@@ -425,11 +505,33 @@ fn should_use_cached_overlay(plugin_id: &str, transformed: &str) -> bool {
         return false;
     };
 
-    let expires_at_ms = match object.get("expiresAtMs") {
-        Some(Value::Number(n)) => n
-            .as_i64()
-            .or_else(|| n.as_u64().and_then(|u| i64::try_from(u).ok())),
-        Some(Value::String(s)) => s.trim().parse::<i64>().ok(),
+    let expires_at_ms = match plugin_id {
+        "antigravity" => match object.get("expiresAtMs") {
+            Some(Value::Number(n)) => n
+                .as_i64()
+                .or_else(|| n.as_u64().and_then(|u| i64::try_from(u).ok())),
+            Some(Value::String(s)) => s.trim().parse::<i64>().ok(),
+            _ => None,
+        },
+        "gemini" => object
+            .get("expiry_date")
+            .or_else(|| object.get("expiryDate"))
+            .and_then(|value| match value {
+                Value::Number(n) => n
+                    .as_i64()
+                    .or_else(|| n.as_u64().and_then(|u| i64::try_from(u).ok()))
+                    .and_then(|raw| {
+                        if raw > 10_000_000_000 {
+                            Some(raw)
+                        } else if raw > 0 {
+                            Some(raw * 1000)
+                        } else {
+                            None
+                        }
+                    }),
+                Value::String(s) => parse_epoch_to_ms(s),
+                _ => None,
+            }),
         _ => None,
     };
     let Some(expires_at_ms) = expires_at_ms else {
@@ -1166,8 +1268,31 @@ mod tests {
     fn antigravity_cached_overlay_used_when_fresh() {
         let now_raw = time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000;
         let now_ms = i64::try_from(now_raw).unwrap_or(0);
-        let payload = format!(r#"{{"accessToken":"x","expiresAtMs":{}}}"#, now_ms + 5 * 60_000);
+        let payload = format!(
+            r#"{{"accessToken":"x","expiresAtMs":{}}}"#,
+            now_ms + 5 * 60_000
+        );
         assert!(should_use_cached_overlay("antigravity", &payload));
+    }
+
+    #[test]
+    fn gemini_cached_overlay_rejected_when_expired() {
+        let payload = r#"{"access_token":"x","expiry_date":1}"#;
+        assert!(!should_use_cached_overlay("gemini", payload));
+    }
+
+    #[test]
+    fn gemini_cached_overlay_used_when_future_seconds_epoch() {
+        let now_raw = time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000;
+        let now_ms = i64::try_from(now_raw).unwrap_or(0);
+        let future_seconds = (now_ms / 1000) + 600;
+        let payload = format!(r#"{{"access_token":"x","expiry_date":{}}}"#, future_seconds);
+        assert!(should_use_cached_overlay("gemini", &payload));
+    }
+
+    #[test]
+    fn gemini_cached_overlay_rejected_when_invalid() {
+        assert!(!should_use_cached_overlay("gemini", "{bad json"));
     }
 
     #[test]
