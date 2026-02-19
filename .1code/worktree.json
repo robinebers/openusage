@@ -1,0 +1,9 @@
+{
+  "setup-worktree": [
+    "bun install",
+    "cp $ROOT_WORKTREE_PATH/.env .env",
+    "[ -d $ROOT_WORKTREE_PATH/.claude ] && cp -r $ROOT_WORKTREE_PATH/.claude .claude",
+    "[ -d $ROOT_WORKTREE_PATH/.cursor ] && cp -r $ROOT_WORKTREE_PATH/.cursor .cursor",
+    "[ -d $ROOT_WORKTREE_PATH/.codex ] && cp -r $ROOT_WORKTREE_PATH/.codex .codex"
+  ]
+}
