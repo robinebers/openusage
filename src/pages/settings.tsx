@@ -32,6 +32,7 @@ import {
   type ResetTimerDisplayMode,
   type ThemeMode,
   type TrayIconStyle,
+  type TrayMetricPreference,
 } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
@@ -275,6 +276,8 @@ interface SettingsPageProps {
   onTrayIconStyleChange: (value: TrayIconStyle) => void;
   trayShowPercentage: boolean;
   onTrayShowPercentageChange: (value: boolean) => void;
+  trayMetricPreference: TrayMetricPreference;
+  onTrayMetricPreferenceChange: (value: TrayMetricPreference) => void;
   globalShortcut: GlobalShortcut;
   onGlobalShortcutChange: (value: GlobalShortcut) => void;
   startOnLogin: boolean;
@@ -298,6 +301,8 @@ export function SettingsPage({
   onTrayIconStyleChange,
   trayShowPercentage,
   onTrayShowPercentageChange,
+  trayMetricPreference,
+  onTrayMetricPreferenceChange,
   globalShortcut,
   onGlobalShortcutChange,
   startOnLogin,
@@ -474,6 +479,37 @@ export function SettingsPage({
           />
           Show percentage
         </label>
+        <div className="mt-3">
+          <label className="text-sm font-medium mb-1.5 block">Menubar Metric</label>
+          <div className="bg-muted/50 rounded-lg p-1">
+            <div className="flex gap-1" role="radiogroup" aria-label="Menubar metric preference">
+              <Button
+                type="button"
+                role="radio"
+                aria-label="Session Usage"
+                aria-checked={trayMetricPreference === "session"}
+                variant={trayMetricPreference === "session" ? "default" : "outline"}
+                size="sm"
+                className="flex-1"
+                onClick={() => onTrayMetricPreferenceChange("session")}
+              >
+                Session
+              </Button>
+              <Button
+                type="button"
+                role="radio"
+                aria-label="Weekly Usage"
+                aria-checked={trayMetricPreference === "weekly"}
+                variant={trayMetricPreference === "weekly" ? "default" : "outline"}
+                size="sm"
+                className="flex-1"
+                onClick={() => onTrayMetricPreferenceChange("weekly")}
+              >
+                Weekly
+              </Button>
+            </div>
+          </div>
+        </div>
       </section>
       <section>
         <h3 className="text-lg font-semibold mb-0">App Theme</h3>

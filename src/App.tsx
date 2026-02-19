@@ -30,6 +30,7 @@ import {
   DEFAULT_START_ON_LOGIN,
   DEFAULT_TRAY_ICON_STYLE,
   DEFAULT_TRAY_SHOW_PERCENTAGE,
+  DEFAULT_TRAY_METRIC_PREFERENCE,
   DEFAULT_THEME_MODE,
   REFRESH_COOLDOWN_MS,
   getEnabledPluginIds,
@@ -42,6 +43,7 @@ import {
   loadStartOnLogin,
   loadTrayShowPercentage,
   loadTrayIconStyle,
+  loadTrayMetricPreference,
   loadThemeMode,
   normalizePluginSettings,
   saveAutoUpdateInterval,
@@ -52,6 +54,7 @@ import {
   saveStartOnLogin,
   saveTrayShowPercentage,
   saveTrayIconStyle,
+  saveTrayMetricPreference,
   saveThemeMode,
   type AutoUpdateIntervalMinutes,
   type DisplayMode,
@@ -59,6 +62,7 @@ import {
   type PluginSettings,
   type ResetTimerDisplayMode,
   type TrayIconStyle,
+  type TrayMetricPreference,
   type ThemeMode,
 } from "@/lib/settings"
 
@@ -96,6 +100,9 @@ function App() {
   )
   const [trayIconStyle, setTrayIconStyle] = useState<TrayIconStyle>(DEFAULT_TRAY_ICON_STYLE)
   const [trayShowPercentage, setTrayShowPercentage] = useState(DEFAULT_TRAY_SHOW_PERCENTAGE)
+  const [trayMetricPreference, setTrayMetricPreference] = useState<TrayMetricPreference>(
+    DEFAULT_TRAY_METRIC_PREFERENCE
+  )
   const [globalShortcut, setGlobalShortcut] = useState<GlobalShortcut>(DEFAULT_GLOBAL_SHORTCUT)
   const [startOnLogin, setStartOnLogin] = useState(DEFAULT_START_ON_LOGIN)
   const [maxPanelHeightPx, setMaxPanelHeightPx] = useState<number | null>(null)
@@ -118,12 +125,14 @@ function App() {
   const displayModeRef = useRef(displayMode)
   const trayIconStyleRef = useRef(trayIconStyle)
   const trayShowPercentageRef = useRef(trayShowPercentage)
+  const trayMetricPreferenceRef = useRef(trayMetricPreference)
   useEffect(() => { pluginsMetaRef.current = pluginsMeta }, [pluginsMeta])
   useEffect(() => { pluginSettingsRef.current = pluginSettings }, [pluginSettings])
   useEffect(() => { pluginStatesRef.current = pluginStates }, [pluginStates])
   useEffect(() => { displayModeRef.current = displayMode }, [displayMode])
   useEffect(() => { trayIconStyleRef.current = trayIconStyle }, [trayIconStyle])
   useEffect(() => { trayShowPercentageRef.current = trayShowPercentage }, [trayShowPercentage])
+  useEffect(() => { trayMetricPreferenceRef.current = trayMetricPreference }, [trayMetricPreference])
 
   // Fetch app version on mount
   useEffect(() => {
@@ -156,6 +165,7 @@ function App() {
         pluginStates: pluginStatesRef.current,
         maxBars,
         displayMode: displayModeRef.current,
+        metricPreference: trayMetricPreferenceRef.current,
       })
 
       // 0 bars: revert to the packaged gauge tray icon.
@@ -552,6 +562,13 @@ function App() {
           console.error("Failed to load tray show percentage:", error)
         }
 
+        let storedTrayMetricPreference = DEFAULT_TRAY_METRIC_PREFERENCE
+        try {
+          storedTrayMetricPreference = await loadTrayMetricPreference()
+        } catch (error) {
+          console.error("Failed to load tray metric preference:", error)
+        }
+
         let storedGlobalShortcut = DEFAULT_GLOBAL_SHORTCUT
         try {
           storedGlobalShortcut = await loadGlobalShortcut()
@@ -584,6 +601,7 @@ function App() {
           setResetTimerDisplayMode(storedResetTimerDisplayMode)
           setTrayIconStyle(storedTrayIconStyle)
           setTrayShowPercentage(normalizedTrayShowPercentage)
+          setTrayMetricPreference(storedTrayMetricPreference)
           setGlobalShortcut(storedGlobalShortcut)
           setStartOnLogin(storedStartOnLogin)
           const enabledIds = getEnabledPluginIds(normalized)
@@ -798,6 +816,17 @@ function App() {
     })
   }, [scheduleTrayIconUpdate])
 
+  const handleTrayMetricPreferenceChange = useCallback((preference: TrayMetricPreference) => {
+    track("setting_changed", { setting: "tray_metric_preference", value: preference })
+    trayMetricPreferenceRef.current = preference
+    setTrayMetricPreference(preference)
+    // Update tray immediately to show the new metric
+    scheduleTrayIconUpdate("settings", 0)
+    void saveTrayMetricPreference(preference).catch((error) => {
+      console.error("Failed to save tray metric preference:", error)
+    })
+  }, [scheduleTrayIconUpdate])
+
   const handleAutoUpdateIntervalChange = useCallback((value: AutoUpdateIntervalMinutes) => {
     track("setting_changed", { setting: "auto_refresh", value: String(value) })
     setAutoUpdateInterval(value)
@@ -956,6 +985,8 @@ function App() {
           onTrayIconStyleChange={handleTrayIconStyleChange}
           trayShowPercentage={trayShowPercentage}
           onTrayShowPercentageChange={handleTrayShowPercentageChange}
+          trayMetricPreference={trayMetricPreference}
+          onTrayMetricPreferenceChange={handleTrayMetricPreferenceChange}
           globalShortcut={globalShortcut}
           onGlobalShortcutChange={handleGlobalShortcutChange}
           startOnLogin={startOnLogin}

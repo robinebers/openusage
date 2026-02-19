@@ -1,6 +1,11 @@
 import type { PluginMeta, PluginOutput } from "@/lib/plugin-types"
 import type { PluginSettings } from "@/lib/settings"
-import { DEFAULT_DISPLAY_MODE, type DisplayMode } from "@/lib/settings"
+import {
+  DEFAULT_DISPLAY_MODE,
+  DEFAULT_TRAY_METRIC_PREFERENCE,
+  type DisplayMode,
+  type TrayMetricPreference,
+} from "@/lib/settings"
 import { clamp01 } from "@/lib/utils"
 
 type PluginState = {
@@ -23,14 +28,40 @@ function isProgressLine(line: PluginOutput["lines"][number]): line is ProgressLi
   return line.type === "progress"
 }
 
+/**
+ * Reorder candidates based on user preference.
+ * If preference is "weekly", move weekly-related candidates to the front.
+ */
+function reorderCandidatesByPreference(
+  candidates: string[],
+  preference?: TrayMetricPreference
+): string[] {
+  if (!preference || preference === "session") {
+    return candidates // Keep original order
+  }
+
+  // Move "weekly" to front, keep other candidates in order
+  const weekly = candidates.filter((c) => c.toLowerCase().includes("weekly"))
+  const others = candidates.filter((c) => !c.toLowerCase().includes("weekly"))
+  return [...weekly, ...others]
+}
+
 export function getTrayPrimaryBars(args: {
   pluginsMeta: PluginMeta[]
   pluginSettings: PluginSettings | null
   pluginStates: Record<string, PluginState | undefined>
   maxBars?: number
   displayMode?: DisplayMode
+  metricPreference?: TrayMetricPreference
 }): TrayPrimaryBar[] {
-  const { pluginsMeta, pluginSettings, pluginStates, maxBars = 4, displayMode = DEFAULT_DISPLAY_MODE } = args
+  const {
+    pluginsMeta,
+    pluginSettings,
+    pluginStates,
+    maxBars = 4,
+    displayMode = DEFAULT_DISPLAY_MODE,
+    metricPreference = DEFAULT_TRAY_METRIC_PREFERENCE,
+  } = args
   if (!pluginSettings) return []
 
   const metaById = new Map(pluginsMeta.map((p) => [p.id, p]))
@@ -50,8 +81,11 @@ export function getTrayPrimaryBars(args: {
 
     let fraction: number | undefined
     if (data) {
+      // Reorder candidates based on user preference
+      const orderedCandidates = reorderCandidatesByPreference(meta.primaryCandidates, metricPreference)
+
       // Find first candidate that exists in runtime data
-      const primaryLabel = meta.primaryCandidates.find((label) =>
+      const primaryLabel = orderedCandidates.find((label) =>
         data.lines.some((line) => isProgressLine(line) && line.label === label)
       )
       if (primaryLabel) {

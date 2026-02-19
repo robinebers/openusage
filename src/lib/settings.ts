@@ -20,6 +20,8 @@ export type ResetTimerDisplayMode = "relative" | "absolute";
 
 export type TrayIconStyle = "bars" | "circle" | "provider" | "textOnly";
 
+export type TrayMetricPreference = "session" | "weekly";
+
 export type GlobalShortcut = string | null;
 
 const SETTINGS_STORE_PATH = "settings.json";
@@ -30,6 +32,7 @@ const DISPLAY_MODE_KEY = "displayMode";
 const RESET_TIMER_DISPLAY_MODE_KEY = "resetTimerDisplayMode";
 const TRAY_ICON_STYLE_KEY = "trayIconStyle";
 const TRAY_SHOW_PERCENTAGE_KEY = "trayShowPercentage";
+const TRAY_METRIC_PREFERENCE_KEY = "trayMetricPreference";
 const GLOBAL_SHORTCUT_KEY = "globalShortcut";
 const START_ON_LOGIN_KEY = "startOnLogin";
 
@@ -39,6 +42,7 @@ export const DEFAULT_DISPLAY_MODE: DisplayMode = "left";
 export const DEFAULT_RESET_TIMER_DISPLAY_MODE: ResetTimerDisplayMode = "relative";
 export const DEFAULT_TRAY_ICON_STYLE: TrayIconStyle = "bars";
 export const DEFAULT_TRAY_SHOW_PERCENTAGE = false;
+export const DEFAULT_TRAY_METRIC_PREFERENCE: TrayMetricPreference = "session";
 export const DEFAULT_GLOBAL_SHORTCUT: GlobalShortcut = null;
 export const DEFAULT_START_ON_LOGIN = false;
 
@@ -47,6 +51,7 @@ const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
 const DISPLAY_MODES: DisplayMode[] = ["used", "left"];
 const RESET_TIMER_DISPLAY_MODES: ResetTimerDisplayMode[] = ["relative", "absolute"];
 const TRAY_ICON_STYLES: TrayIconStyle[] = ["bars", "circle", "provider", "textOnly"];
+const TRAY_METRIC_PREFERENCES: TrayMetricPreference[] = ["session", "weekly"];
 
 export const AUTO_UPDATE_OPTIONS: { value: AutoUpdateIntervalMinutes; label: string }[] =
   AUTO_UPDATE_INTERVALS.map((value) => ({
@@ -245,6 +250,24 @@ export async function loadTrayShowPercentage(): Promise<boolean> {
 
 export async function saveTrayShowPercentage(value: boolean): Promise<void> {
   await store.set(TRAY_SHOW_PERCENTAGE_KEY, value);
+  await store.save();
+}
+
+function isTrayMetricPreference(value: unknown): value is TrayMetricPreference {
+  return (
+    typeof value === "string" &&
+    TRAY_METRIC_PREFERENCES.includes(value as TrayMetricPreference)
+  );
+}
+
+export async function loadTrayMetricPreference(): Promise<TrayMetricPreference> {
+  const stored = await store.get<unknown>(TRAY_METRIC_PREFERENCE_KEY);
+  if (isTrayMetricPreference(stored)) return stored;
+  return DEFAULT_TRAY_METRIC_PREFERENCE;
+}
+
+export async function saveTrayMetricPreference(preference: TrayMetricPreference): Promise<void> {
+  await store.set(TRAY_METRIC_PREFERENCE_KEY, preference);
   await store.save();
 }
 
