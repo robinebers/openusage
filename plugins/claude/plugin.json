@@ -12,7 +12,7 @@
   ],
   "lines": [
     { "type": "progress", "label": "Session", "scope": "overview", "primaryOrder": 1 },
-    { "type": "progress", "label": "Weekly", "scope": "overview" },
+    { "type": "progress", "label": "Weekly", "scope": "overview", "primaryOrder": 2 },
     { "type": "progress", "label": "Sonnet", "scope": "detail" },
     { "type": "progress", "label": "Extra usage", "scope": "detail" }
   ]
