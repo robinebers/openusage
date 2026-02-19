@@ -1,5 +1,7 @@
 #[cfg(target_os = "macos")]
 mod app_nap;
+mod cli;
+mod cli_command;
 mod panel;
 mod plugin_engine;
 mod tray;
@@ -349,6 +351,21 @@ fn update_global_shortcut(app_handle: tauri::AppHandle, shortcut: Option<String>
 }
 
 #[tauri::command]
+fn cli_command_status() -> Result<cli_command::CliCommandStatus, String> {
+    cli_command::status()
+}
+
+#[tauri::command]
+fn install_cli_command() -> Result<cli_command::CliCommandStatus, String> {
+    cli_command::install()
+}
+
+#[tauri::command]
+fn uninstall_cli_command() -> Result<cli_command::CliCommandStatus, String> {
+    cli_command::uninstall()
+}
+
+#[tauri::command]
 fn list_plugins(state: tauri::State<'_, Mutex<AppState>>) -> Vec<PluginMeta> {
     let plugins = {
         let locked = state.lock().expect("plugin state poisoned");
@@ -402,6 +419,10 @@ fn list_plugins(state: tauri::State<'_, Mutex<AppState>>) -> Vec<PluginMeta> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    if cli::run_from_env() {
+        return;
+    }
+
     let runtime = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
     let _guard = runtime.enter();
 
@@ -433,7 +454,10 @@ pub fn run() {
             start_probe_batch,
             list_plugins,
             get_log_path,
-            update_global_shortcut
+            update_global_shortcut,
+            cli_command_status,
+            install_cli_command,
+            uninstall_cli_command
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]

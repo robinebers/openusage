@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import {
   DEFAULT_AUTO_UPDATE_INTERVAL,
+  DEFAULT_CLI_PROMPT_DECISION,
   DEFAULT_DISPLAY_MODE,
   DEFAULT_PLUGIN_SETTINGS,
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
@@ -11,6 +12,7 @@ import {
   arePluginSettingsEqual,
   getEnabledPluginIds,
   loadAutoUpdateInterval,
+  loadCliPromptDecision,
   loadDisplayMode,
   loadPluginSettings,
   loadResetTimerDisplayMode,
@@ -20,6 +22,7 @@ import {
   loadThemeMode,
   normalizePluginSettings,
   saveAutoUpdateInterval,
+  saveCliPromptDecision,
   saveDisplayMode,
   savePluginSettings,
   saveResetTimerDisplayMode,
@@ -238,5 +241,19 @@ describe("settings", () => {
   it("falls back to default for invalid start on login value", async () => {
     storeState.set("startOnLogin", "invalid")
     await expect(loadStartOnLogin()).resolves.toBe(DEFAULT_START_ON_LOGIN)
+  })
+
+  it("loads default CLI prompt decision when missing", async () => {
+    await expect(loadCliPromptDecision()).resolves.toBe(DEFAULT_CLI_PROMPT_DECISION)
+  })
+
+  it("loads stored CLI prompt decision", async () => {
+    storeState.set("cliPromptDecision", "dismissed")
+    await expect(loadCliPromptDecision()).resolves.toBe("dismissed")
+  })
+
+  it("saves CLI prompt decision", async () => {
+    await saveCliPromptDecision("installed")
+    await expect(loadCliPromptDecision()).resolves.toBe("installed")
   })
 })

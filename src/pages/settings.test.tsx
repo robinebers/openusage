@@ -63,6 +63,12 @@ const defaultProps = {
   onGlobalShortcutChange: vi.fn(),
   startOnLogin: false,
   onStartOnLoginChange: vi.fn(),
+  cliStatus: null,
+  cliBusy: false,
+  showCliPrompt: false,
+  onCliInstall: vi.fn(),
+  onCliUninstall: vi.fn(),
+  onCliDismissPrompt: vi.fn(),
 }
 
 afterEach(() => {
@@ -200,6 +206,56 @@ describe("SettingsPage", () => {
   it("renders reset timers section heading", () => {
     render(<SettingsPage {...defaultProps} />)
     expect(screen.getByText("Reset Timers")).toBeInTheDocument()
+  })
+
+  it("shows cli first-launch prompt and handles actions", async () => {
+    const onCliInstall = vi.fn()
+    const onCliDismissPrompt = vi.fn()
+    render(
+      <SettingsPage
+        {...defaultProps}
+        showCliPrompt
+        onCliInstall={onCliInstall}
+        onCliDismissPrompt={onCliDismissPrompt}
+      />
+    )
+
+    expect(screen.getByText("Use OpenUsage in Terminal")).toBeInTheDocument()
+    await userEvent.click(screen.getAllByRole("button", { name: "Install CLI" })[0])
+    expect(onCliInstall).toHaveBeenCalledTimes(1)
+    await userEvent.click(screen.getByRole("button", { name: "Not now" }))
+    expect(onCliDismissPrompt).toHaveBeenCalledTimes(1)
+  })
+
+  it("renders cli section status and action buttons", async () => {
+    const onCliInstall = vi.fn()
+    const onCliUninstall = vi.fn()
+    render(
+      <SettingsPage
+        {...defaultProps}
+        cliStatus={{
+          installed: true,
+          installPath: "/Users/test/.local/bin/openusage-cli",
+          pluginsDir: "/Users/test/Library/Application Support/com.sunstory.openusage/plugins",
+          pathExport: "export PATH=\"$HOME/.local/bin:$PATH\"",
+          pluginsExport:
+            "export OPENUSAGE_PLUGINS_DIR=\"/Users/test/Library/Application Support/com.sunstory.openusage/plugins\"",
+        }}
+        onCliInstall={onCliInstall}
+        onCliUninstall={onCliUninstall}
+      />
+    )
+
+    expect(screen.getByText("CLI")).toBeInTheDocument()
+    expect(screen.getByText("Installed")).toBeInTheDocument()
+    expect(screen.getByText(/Command path:/)).not.toBeVisible()
+    await userEvent.click(screen.getByText("Paths"))
+    expect(screen.getByText(/Command path:/)).toBeVisible()
+    expect(screen.getByText(/Plugins path:/)).toBeVisible()
+    await userEvent.click(screen.getByRole("button", { name: "Reinstall CLI" }))
+    expect(onCliInstall).toHaveBeenCalledTimes(1)
+    await userEvent.click(screen.getByRole("button", { name: "Uninstall CLI" }))
+    expect(onCliUninstall).toHaveBeenCalledTimes(1)
   })
 
   it("updates tray icon style", async () => {
