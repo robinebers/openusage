@@ -1,6 +1,6 @@
-**Track all your AI coding subscriptions in one place.**
+# Track all your AI coding subscriptions in one place
 
-Amp, Cursor, Claude, Codex, and more coming. See your usage at a glance from your menu bar. No digging through dashboards.
+See your usage at a glance from your menu bar. No digging through dashboards.
 
 ![OpenUsage Screenshot](screenshot.png)
 
