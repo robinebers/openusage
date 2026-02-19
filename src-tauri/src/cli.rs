@@ -95,6 +95,10 @@ where
         if arg == "--provider" {
             cli_mode = true;
             let value = iter.next().unwrap_or_default();
+            // Prevent consuming flags like --help as provider IDs
+            if value.starts_with("--") {
+                return ParseResult::Error(format!("--provider requires a value, got '{}'", value));
+            }
             provider = Some(value.trim().to_string());
             continue;
         }
@@ -154,7 +158,9 @@ fn resolve_plugins_dir() -> Option<PathBuf> {
 
 fn resolve_app_data_dir() -> Result<PathBuf, String> {
     let mut dir = dirs::data_local_dir().unwrap_or_else(std::env::temp_dir);
-    dir.push("openusage");
+    // Use the same bundle identifier as the Tauri GUI app (from tauri.conf.json)
+    // so CLI and GUI share the same plugins_data, credentials, and state.
+    dir.push("com.sunstory.openusage");
     std::fs::create_dir_all(&dir)
         .map_err(|error| format!("failed to create app data dir {}: {}", dir.display(), error))?;
     Ok(dir)
@@ -274,6 +280,15 @@ mod tests {
         assert_eq!(
             parse_args(vec!["--provider=".to_string()]),
             ParseResult::Error("provider cannot be empty".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_args_rejects_flag_as_provider_value() {
+        // Prevent --help being consumed as provider ID
+        assert_eq!(
+            parse_args(vec!["--provider".to_string(), "--help".to_string()]),
+            ParseResult::Error("--provider requires a value, got '--help'".to_string())
         );
     }
 
