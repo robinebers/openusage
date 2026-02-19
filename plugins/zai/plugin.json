@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "zai",
+  "name": "Z.ai",
+  "version": "0.0.1",
+  "entry": "plugin.js",
+  "icon": "icon.svg",
+  "brandColor": "#2D2D2D",
+  "lines": [
+    { "type": "progress", "label": "Session", "scope": "overview", "primaryOrder": 1 },
+    { "type": "progress", "label": "Web Searches", "scope": "overview" }
+  ]
+}

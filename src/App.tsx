@@ -5,6 +5,11 @@ import { getCurrentWindow, PhysicalSize, currentMonitor } from "@tauri-apps/api/
 import { getVersion } from "@tauri-apps/api/app"
 import { resolveResource } from "@tauri-apps/api/path"
 import { TrayIcon } from "@tauri-apps/api/tray"
+import {
+  disable as disableAutostart,
+  enable as enableAutostart,
+  isEnabled as isAutostartEnabled,
+} from "@tauri-apps/plugin-autostart"
 import { SideNav, type ActiveView } from "@/components/side-nav"
 import { PanelFooter } from "@/components/panel-footer"
 import { OverviewPage } from "@/pages/overview"
@@ -22,6 +27,7 @@ import {
   DEFAULT_DISPLAY_MODE,
   DEFAULT_GLOBAL_SHORTCUT,
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
+  DEFAULT_START_ON_LOGIN,
   DEFAULT_TRAY_ICON_STYLE,
   DEFAULT_TRAY_SHOW_PERCENTAGE,
   DEFAULT_THEME_MODE,
@@ -33,6 +39,7 @@ import {
   loadGlobalShortcut,
   loadPluginSettings,
   loadResetTimerDisplayMode,
+  loadStartOnLogin,
   loadTrayShowPercentage,
   loadTrayIconStyle,
   loadThemeMode,
@@ -42,6 +49,7 @@ import {
   saveGlobalShortcut,
   savePluginSettings,
   saveResetTimerDisplayMode,
+  saveStartOnLogin,
   saveTrayShowPercentage,
   saveTrayIconStyle,
   saveThemeMode,
@@ -89,6 +97,7 @@ function App() {
   const [trayIconStyle, setTrayIconStyle] = useState<TrayIconStyle>(DEFAULT_TRAY_ICON_STYLE)
   const [trayShowPercentage, setTrayShowPercentage] = useState(DEFAULT_TRAY_SHOW_PERCENTAGE)
   const [globalShortcut, setGlobalShortcut] = useState<GlobalShortcut>(DEFAULT_GLOBAL_SHORTCUT)
+  const [startOnLogin, setStartOnLogin] = useState(DEFAULT_START_ON_LOGIN)
   const [maxPanelHeightPx, setMaxPanelHeightPx] = useState<number | null>(null)
   const maxPanelHeightPxRef = useRef<number | null>(null)
   const [appVersion, setAppVersion] = useState("...")
@@ -284,19 +293,6 @@ function App() {
       .map((p) => ({ id: p.id, name: p.name, iconUrl: p.iconUrl, brandColor: p.brandColor }))
   }, [pluginSettings, pluginsMeta])
 
-  // Track page views
-  useEffect(() => {
-    const page =
-      activeView === "home" ? "overview"
-        : activeView === "settings" ? "settings"
-          : "provider_detail"
-    const props: Record<string, string> =
-      activeView !== "home" && activeView !== "settings"
-        ? { page, provider_id: activeView }
-        : { page }
-    track("page_viewed", props)
-  }, [activeView])
-
   // If active view is a plugin that got disabled, switch to home
   useEffect(() => {
     if (activeView === "home" || activeView === "settings") return
@@ -453,12 +449,6 @@ function App() {
   const handleProbeResult = useCallback(
     (output: PluginOutput) => {
       const errorMessage = getErrorMessage(output)
-      if (errorMessage) {
-        track("provider_fetch_error", {
-          provider_id: output.providerId,
-          error: errorMessage.slice(0, 200),
-        })
-      }
       const isManual = manualRefreshIdsRef.current.has(output.providerId)
       if (isManual) {
         manualRefreshIdsRef.current.delete(output.providerId)
@@ -488,6 +478,18 @@ function App() {
     onResult: handleProbeResult,
     onBatchComplete: handleBatchComplete,
   })
+
+  const applyStartOnLogin = useCallback(async (value: boolean) => {
+    if (!isTauri()) return
+    const currentlyEnabled = await isAutostartEnabled()
+    if (currentlyEnabled === value) return
+
+    if (value) {
+      await enableAutostart()
+      return
+    }
+    await disableAutostart()
+  }, [])
 
   useEffect(() => {
     let isMounted = true
@@ -557,6 +559,19 @@ function App() {
           console.error("Failed to load global shortcut:", error)
         }
 
+        let storedStartOnLogin = DEFAULT_START_ON_LOGIN
+        try {
+          storedStartOnLogin = await loadStartOnLogin()
+        } catch (error) {
+          console.error("Failed to load start on login:", error)
+        }
+
+        try {
+          await applyStartOnLogin(storedStartOnLogin)
+        } catch (error) {
+          console.error("Failed to apply start on login setting:", error)
+        }
+
         const normalizedTrayShowPercentage = isTrayPercentageMandatory(storedTrayIconStyle)
           ? true
           : storedTrayShowPercentage
@@ -570,6 +585,7 @@ function App() {
           setTrayIconStyle(storedTrayIconStyle)
           setTrayShowPercentage(normalizedTrayShowPercentage)
           setGlobalShortcut(storedGlobalShortcut)
+          setStartOnLogin(storedStartOnLogin)
           const enabledIds = getEnabledPluginIds(normalized)
           setLoadingForPlugins(enabledIds)
           try {
@@ -600,7 +616,7 @@ function App() {
     return () => {
       isMounted = false
     }
-  }, [setLoadingForPlugins, setErrorForPlugins, startBatch])
+  }, [setLoadingForPlugins, setErrorForPlugins, startBatch, applyStartOnLogin])
 
   useEffect(() => {
     if (!pluginSettings) {
@@ -810,6 +826,17 @@ function App() {
     })
   }, [])
 
+  const handleStartOnLoginChange = useCallback((value: boolean) => {
+    track("setting_changed", { setting: "start_on_login", value: value ? "true" : "false" })
+    setStartOnLogin(value)
+    void saveStartOnLogin(value).catch((error) => {
+      console.error("Failed to save start on login:", error)
+    })
+    void applyStartOnLogin(value).catch((error) => {
+      console.error("Failed to update start on login:", error)
+    })
+  }, [applyStartOnLogin])
+
   const settingsPlugins = useMemo(() => {
     if (!pluginSettings) return []
     const pluginMap = new Map(pluginsMeta.map((plugin) => [plugin.id, plugin]))
@@ -931,6 +958,8 @@ function App() {
           onTrayShowPercentageChange={handleTrayShowPercentageChange}
           globalShortcut={globalShortcut}
           onGlobalShortcutChange={handleGlobalShortcutChange}
+          startOnLogin={startOnLogin}
+          onStartOnLoginChange={handleStartOnLoginChange}
           providerIconUrl={navPlugins[0]?.iconUrl}
         />
       )

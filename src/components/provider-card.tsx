@@ -1,5 +1,6 @@
 import { useMemo } from "react"
-import { Hourglass, RefreshCw } from "lucide-react"
+import { ExternalLink, Hourglass, RefreshCw } from "lucide-react"
+import { openUrl } from "@tauri-apps/plugin-opener"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
@@ -9,7 +10,7 @@ import { SkeletonLines } from "@/components/skeleton-lines"
 import { PluginError } from "@/components/plugin-error"
 import { useNowTicker } from "@/hooks/use-now-ticker"
 import { REFRESH_COOLDOWN_MS, type DisplayMode, type ResetTimerDisplayMode } from "@/lib/settings"
-import type { ManifestLine, MetricLine } from "@/lib/plugin-types"
+import type { ManifestLine, MetricLine, PluginLink } from "@/lib/plugin-types"
 import { clamp01 } from "@/lib/utils"
 import { calculatePaceStatus, type PaceStatus } from "@/lib/pace-status"
 import { buildPaceDetailText, formatCompactDuration, getPaceStatusText } from "@/lib/pace-tooltip"
@@ -17,6 +18,7 @@ import { buildPaceDetailText, formatCompactDuration, getPaceStatusText } from "@
 interface ProviderCardProps {
   name: string
   plan?: string
+  links?: PluginLink[]
   showSeparator?: boolean
   loading?: boolean
   error?: string | null
@@ -147,6 +149,7 @@ function PaceIndicator({
 export function ProviderCard({
   name,
   plan,
+  links = [],
   showSeparator = true,
   loading = false,
   error = null,
@@ -191,6 +194,22 @@ export function ProviderCard({
   const inCooldown = lastManualRefreshAt
     ? now - lastManualRefreshAt < REFRESH_COOLDOWN_MS
     : false
+
+  const visibleLinks = useMemo(
+    () =>
+      links
+        .map((link) => ({
+          label: link.label.trim(),
+          url: link.url.trim(),
+        }))
+        .filter(
+          (link) =>
+            link.label.length > 0 &&
+            link.url.length > 0 &&
+            (link.url.startsWith("https://") || link.url.startsWith("http://"))
+        ),
+    [links]
+  )
 
   // Format remaining cooldown time as "Xm Ys"
   const formatRemainingTime = () => {
@@ -272,6 +291,24 @@ export function ProviderCard({
             </Badge>
           )}
         </div>
+        {visibleLinks.length > 0 && (
+          <div className="mb-2 -mt-0.5 flex flex-wrap gap-1.5">
+            {visibleLinks.map((link) => (
+              <Button
+                key={`${link.label}-${link.url}`}
+                variant="outline"
+                size="xs"
+                className="h-6 max-w-full text-[11px]"
+                onClick={() => {
+                  openUrl(link.url).catch(console.error)
+                }}
+              >
+                <span className="truncate">{link.label}</span>
+                <ExternalLink className="size-3 opacity-70" />
+              </Button>
+            ))}
+          </div>
+        )}
         {error && <PluginError message={error} />}
 
         {loading && !error && (

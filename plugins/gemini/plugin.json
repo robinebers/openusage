@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "gemini",
+  "name": "Gemini",
+  "version": "0.0.1",
+  "entry": "plugin.js",
+  "icon": "icon.svg",
+  "brandColor": "#4285F4",
+  "lines": [
+    { "type": "progress", "label": "Pro", "scope": "overview", "primaryOrder": 1 },
+    { "type": "progress", "label": "Flash", "scope": "overview", "primaryOrder": 2 },
+    { "type": "text", "label": "Account", "scope": "detail" }
+  ]
+}

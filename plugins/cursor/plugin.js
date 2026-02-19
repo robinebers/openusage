@@ -320,7 +320,8 @@
       return buildEnterpriseResult(ctx, accessToken, planName, usage)
     }
 
-    if (!usage.enabled || !usage.planUsage) {
+    // Team plans may omit `enabled` even with valid plan usage data.
+    if (usage.enabled === false || !usage.planUsage) {
       throw "No active Cursor subscription."
     }
 

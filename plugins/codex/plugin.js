@@ -411,6 +411,40 @@
         }
       }
 
+      if (Array.isArray(data.additional_rate_limits)) {
+        for (const entry of data.additional_rate_limits) {
+          if (!entry || !entry.rate_limit) continue
+          const name = typeof entry.limit_name === "string" ? entry.limit_name : ""
+          let shortName = name.replace(/^GPT-[\d.]+-Codex-/, "")
+          if (!shortName) shortName = name || "Model"
+          const rl = entry.rate_limit
+          if (rl.primary_window && typeof rl.primary_window.used_percent === "number") {
+            lines.push(ctx.line.progress({
+              label: shortName,
+              used: rl.primary_window.used_percent,
+              limit: 100,
+              format: { kind: "percent" },
+              resetsAt: getResetsAtIso(ctx, nowSec, rl.primary_window),
+              periodDurationMs: typeof rl.primary_window.limit_window_seconds === "number"
+                ? rl.primary_window.limit_window_seconds * 1000
+                : PERIOD_SESSION_MS
+            }))
+          }
+          if (rl.secondary_window && typeof rl.secondary_window.used_percent === "number") {
+            lines.push(ctx.line.progress({
+              label: shortName + " Weekly",
+              used: rl.secondary_window.used_percent,
+              limit: 100,
+              format: { kind: "percent" },
+              resetsAt: getResetsAtIso(ctx, nowSec, rl.secondary_window),
+              periodDurationMs: typeof rl.secondary_window.limit_window_seconds === "number"
+                ? rl.secondary_window.limit_window_seconds * 1000
+                : PERIOD_WEEKLY_MS
+            }))
+          }
+        }
+      }
+
       if (reviewWindow) {
         const used = reviewWindow.used_percent
         if (typeof used === "number") {

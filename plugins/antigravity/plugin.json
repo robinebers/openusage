@@ -9,6 +9,6 @@
   "lines": [
     { "type": "progress", "label": "Gemini 3 Pro", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Gemini 3 Flash", "scope": "overview" },
-    { "type": "progress", "label": "Claude Opus 4.5", "scope": "overview" }
+    { "type": "progress", "label": "Claude Opus 4.6", "scope": "overview" }
   ]
 }

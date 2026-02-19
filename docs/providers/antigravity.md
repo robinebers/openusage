@@ -149,7 +149,7 @@ POST http://127.0.0.1:{port}/exa.language_server_pb.LanguageServerService/GetCom
 | Gemini 3 Pro (Low) | 1007 | Google |
 | Claude Sonnet 4.5 | 333 | Anthropic (proxied) |
 | Claude Sonnet 4.5 (Thinking) | 334 | Anthropic (proxied) |
-| Claude Opus 4.5 (Thinking) | 1012 | Anthropic (proxied) |
+| Claude Opus 4.6 (Thinking) | MODEL_PLACEHOLDER_M26 | Anthropic (proxied) |
 | GPT-OSS 120B (Medium) | 342 | OpenAI (proxied) |
 
 Models are dynamic — the list changes as Google adds/removes them. The plugin reads labels from the response, not a hardcoded list.

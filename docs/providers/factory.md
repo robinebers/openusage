@@ -81,7 +81,9 @@ Premium tokens (`premium.totalAllowance > 0`) are only available on Max/Enterpri
 
 ### Token Location
 
-`~/.factory/auth.json` (droid CLI auth file)
+- `~/.factory/auth.json` (legacy droid auth file)
+- `~/.factory/auth.encrypted` (current droid auth file)
+- macOS keychain entry (when droid uses keyring-backed storage)
 
 ```jsonc
 {
@@ -138,4 +140,4 @@ droid
 # Follow OAuth flow in browser
 ```
 
-This creates `~/.factory/auth.json` with the tokens needed by this plugin.
+This creates auth data in the droid auth store (file and/or keychain, depending on droid version/configuration).

@@ -77,6 +77,15 @@ Don't open a PR for large features without discussing first. [Open an issue](htt
 - Follow existing patterns in the codebase
 - No new dependencies without justification
 
+## Maintainers
+
+- [@robinebers](https://github.com/robinebers) (lead)
+- [@validatedev](https://github.com/validatedev)
+- [@davidarny](https://github.com/davidarny)
+
+All PRs require approval from at least 2 maintainers before merging.
+Release tags (`v*`) are owner-managed and can only be created by [@robinebers](https://github.com/robinebers).
+
 ## Questions?
 
 Open a [bug report](https://github.com/robinebers/openusage/issues/new?template=bug_report.yml) or [feature request](https://github.com/robinebers/openusage/issues/new?template=feature_request.yml) using the issue templates.

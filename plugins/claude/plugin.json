@@ -6,6 +6,10 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#DE7356",
+  "links": [
+    { "label": "Status", "url": "https://status.anthropic.com/" },
+    { "label": "Console", "url": "https://console.anthropic.com/" }
+  ],
   "lines": [
     { "type": "progress", "label": "Session", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Weekly", "scope": "overview" },

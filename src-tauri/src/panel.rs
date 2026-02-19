@@ -84,8 +84,7 @@ pub fn init(app_handle: &tauri::AppHandle) -> tauri::Result<()> {
 
     panel.set_collection_behavior(
         CollectionBehavior::new()
-            .can_join_all_spaces()
-            .stationary()
+            .move_to_active_space()
             .full_screen_auxiliary()
             .value(),
     );

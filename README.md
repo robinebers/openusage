@@ -1,6 +1,6 @@
-**Track all your AI coding subscriptions in one place.**
+# Track all your AI coding subscriptions in one place
 
-Amp, Cursor, Claude, Codex, and more coming. See your usage at a glance from your menu bar. No digging through dashboards.
+See your usage at a glance from your menu bar. No digging through dashboards.
 
 ![OpenUsage Screenshot](screenshot.png)
 
@@ -28,13 +28,14 @@ OpenUsage lives in your menu bar and shows you how much of your AI coding subscr
 - [**Codex**](docs/providers/codex.md) / session, weekly, reviews, credits
 - [**Copilot**](docs/providers/copilot.md) / premium, chat, completions
 - [**Cursor**](docs/providers/cursor.md) / credits, plan usage, on-demand
+- [**Gemini**](docs/providers/gemini.md) / pro, flash, workspace/free/paid tier
 - [**Kimi Code**](docs/providers/kimi.md) / session, weekly
 - [**Windsurf**](docs/providers/windsurf.md) / prompt credits, flex credits
+- [**Z.ai**](docs/providers/zai.md) / session, web searches
 
 ### Maybe Soon
 
 - [Factory / Droid](https://github.com/robinebers/openusage/issues/16)
-- [Gemini](https://github.com/robinebers/openusage/issues/13)
 - [Vercel AI Gateway](https://github.com/robinebers/openusage/issues/18)
 
 Community contributions welcome.

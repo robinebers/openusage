@@ -277,6 +277,8 @@ interface SettingsPageProps {
   onTrayShowPercentageChange: (value: boolean) => void;
   globalShortcut: GlobalShortcut;
   onGlobalShortcutChange: (value: GlobalShortcut) => void;
+  startOnLogin: boolean;
+  onStartOnLoginChange: (value: boolean) => void;
   providerIconUrl?: string;
 }
 
@@ -298,6 +300,8 @@ export function SettingsPage({
   onTrayShowPercentageChange,
   globalShortcut,
   onGlobalShortcutChange,
+  startOnLogin,
+  onStartOnLoginChange,
   providerIconUrl,
 }: SettingsPageProps) {
   const percentageMandatory = isTrayPercentageMandatory(trayIconStyle);
@@ -502,6 +506,20 @@ export function SettingsPage({
         globalShortcut={globalShortcut}
         onGlobalShortcutChange={onGlobalShortcutChange}
       />
+      <section>
+        <h3 className="text-lg font-semibold mb-0">Start on Login</h3>
+        <p className="text-sm text-muted-foreground mb-2">
+          OpenUsage starts when you sign in
+        </p>
+        <label className="flex items-center gap-2 text-sm select-none text-foreground">
+          <Checkbox
+            key={`start-on-login-${startOnLogin}`}
+            checked={startOnLogin}
+            onCheckedChange={(checked) => onStartOnLoginChange(checked === true)}
+          />
+          Start on login
+        </label>
+      </section>
       <section>
         <h3 className="text-lg font-semibold mb-0">Plugins</h3>
         <p className="text-sm text-muted-foreground mb-2">

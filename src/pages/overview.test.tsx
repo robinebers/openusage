@@ -54,4 +54,25 @@ describe("OverviewPage", () => {
     expect(screen.queryByText("Secondary")).not.toBeInTheDocument()
     expect(screen.queryByText("Hidden")).not.toBeInTheDocument()
   })
+
+  it("does not show provider quick links in combined view", () => {
+    const plugins = [
+      {
+        meta: {
+          id: "alpha",
+          name: "Alpha",
+          iconUrl: "icon",
+          lines: [],
+          links: [{ label: "Status", url: "https://status.example.com" }],
+        },
+        data: { providerId: "alpha", displayName: "Alpha", lines: [], iconUrl: "icon" },
+        loading: false,
+        error: null,
+        lastManualRefreshAt: null,
+      },
+    ]
+
+    render(<OverviewPage plugins={plugins} displayMode="used" resetTimerDisplayMode="relative" />)
+    expect(screen.queryByRole("button", { name: /status/i })).toBeNull()
+  })
 })

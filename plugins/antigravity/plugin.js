@@ -18,6 +18,7 @@
     "MODEL_GOOGLE_GEMINI_2_5_PRO": true,
     "MODEL_PLACEHOLDER_M19": true,
     "MODEL_PLACEHOLDER_M9": true,
+    "MODEL_PLACEHOLDER_M12": true,
   }
   // --- Protobuf wire-format decoder ---
 
@@ -403,7 +404,14 @@
       return null
     }
 
-    var lines = buildModelLines(ctx, configs)
+    var filtered = []
+    for (var j = 0; j < configs.length; j++) {
+      var mid = configs[j].modelOrAlias && configs[j].modelOrAlias.model
+      if (mid && CC_MODEL_BLACKLIST[mid]) continue
+      filtered.push(configs[j])
+    }
+
+    var lines = buildModelLines(ctx, filtered)
     if (lines.length === 0) return null
 
     var plan = null
