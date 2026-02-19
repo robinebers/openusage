@@ -29,23 +29,32 @@ pub fn run_from_env() -> bool {
                 return true;
             }
 
-            let provider = match args.provider {
-                Some(provider) => provider,
+            match args.provider {
+                Some(provider) => {
+                    // Single provider mode
+                    match run_provider(&provider) {
+                        Ok(text) => {
+                            println!("{}", text);
+                            std::process::exit(0);
+                        }
+                        Err(error) => {
+                            eprintln!("Error: {}", error);
+                            std::process::exit(1);
+                        }
+                    }
+                }
                 None => {
-                    eprintln!("Error: missing --provider");
-                    eprintln!("Usage: openusage --provider=<id>");
-                    std::process::exit(2);
-                }
-            };
-
-            match run_provider(&provider) {
-                Ok(text) => {
-                    println!("{}", text);
-                    std::process::exit(0);
-                }
-                Err(error) => {
-                    eprintln!("Error: {}", error);
-                    std::process::exit(1);
+                    // All providers mode
+                    match run_all_providers() {
+                        Ok(text) => {
+                            println!("{}", text);
+                            std::process::exit(0);
+                        }
+                        Err(error) => {
+                            eprintln!("Error: {}", error);
+                            std::process::exit(2);
+                        }
+                    }
                 }
             }
         }
@@ -68,6 +77,28 @@ fn run_provider(provider_id: &str) -> Result<String, String> {
     let app_data_dir = resolve_app_data_dir()?;
     let output = run_probe(plugin, &app_data_dir, env!("CARGO_PKG_VERSION"));
     format_output(output)
+}
+
+fn run_all_providers() -> Result<String, String> {
+    let plugin_dir = resolve_plugins_dir().ok_or_else(|| {
+        "could not locate plugins directory. Run from repo root or set OPENUSAGE_PLUGINS_DIR."
+            .to_string()
+    })?;
+    let plugins = load_plugins_from_dir(&plugin_dir);
+    if plugins.is_empty() {
+        return Err(format!("no plugins found in {}", plugin_dir.display()));
+    }
+
+    let app_data_dir = resolve_app_data_dir()?;
+
+    // Probe all plugins and collect results
+    let mut outputs = Vec::new();
+    for plugin in &plugins {
+        let output = run_probe(plugin, &app_data_dir, env!("CARGO_PKG_VERSION"));
+        outputs.push(output);
+    }
+
+    format_table_output(outputs)
 }
 
 fn parse_args<I>(args: I) -> ParseResult
@@ -125,9 +156,11 @@ fn print_help() {
     println!("OpenUsage CLI");
     println!();
     println!("Usage:");
-    println!("  openusage --provider=<id>");
+    println!("  openusage                    # Show all providers");
+    println!("  openusage --provider=<id>    # Show specific provider");
     println!();
     println!("Example:");
+    println!("  openusage");
     println!("  openusage --provider=claude");
 }
 
@@ -164,6 +197,76 @@ fn resolve_app_data_dir() -> Result<PathBuf, String> {
     std::fs::create_dir_all(&dir)
         .map_err(|error| format!("failed to create app data dir {}: {}", dir.display(), error))?;
     Ok(dir)
+}
+
+fn format_table_output(outputs: Vec<PluginOutput>) -> Result<String, String> {
+    let mut table = String::new();
+
+    // Header row
+    table.push_str("Provider    Plan      Session      Weekly\n");
+    table.push_str("----------------------------------------\n");
+
+    for output in outputs {
+        // Extract data (with error handling for N/A)
+        let plan = extract_plan(&output);
+        let session = extract_session(&output);
+        let weekly = extract_weekly(&output);
+
+        // Format row with padding
+        table.push_str(&format!(
+            "{:<12}{:<10}{:<13}{}\n",
+            truncate(&output.display_name, 11),
+            truncate(&plan, 9),
+            truncate(&session, 12),
+            weekly
+        ));
+    }
+
+    Ok(table)
+}
+
+fn extract_plan(output: &PluginOutput) -> String {
+    if has_error(&output.lines) {
+        return "N/A".to_string();
+    }
+    output
+        .plan
+        .as_ref()
+        .filter(|p| !p.trim().is_empty())
+        .map(|p| p.trim().to_string())
+        .unwrap_or_else(|| "N/A".to_string())
+}
+
+fn extract_session(output: &PluginOutput) -> String {
+    if has_error(&output.lines) {
+        return "N/A".to_string();
+    }
+    let line = find_progress_line(&output.lines, "session");
+    format_progress(line)
+}
+
+fn extract_weekly(output: &PluginOutput) -> String {
+    if has_error(&output.lines) {
+        return "N/A".to_string();
+    }
+    let line = find_progress_line(&output.lines, "weekly");
+    format_progress(line)
+}
+
+fn has_error(lines: &[MetricLine]) -> bool {
+    lines.iter().any(|line| {
+        matches!(line,
+            MetricLine::Badge { label, .. } if label.eq_ignore_ascii_case("error")
+        )
+    })
+}
+
+fn truncate(s: &str, max_len: usize) -> String {
+    if s.len() <= max_len {
+        s.to_string()
+    } else {
+        format!("{}…", &s[..max_len - 1])
+    }
 }
 
 fn format_output(output: PluginOutput) -> Result<String, String> {
@@ -364,5 +467,133 @@ mod tests {
         let text = format_output(output).expect("format should succeed");
         assert!(text.contains("Session: n/a"));
         assert!(text.contains("Weekly: n/a"));
+    }
+
+    #[test]
+    fn parse_args_allows_no_provider_with_help() {
+        // Help flag should work without provider
+        assert_eq!(
+            parse_args(vec!["--help".to_string()]),
+            ParseResult::Args(CliArgs {
+                provider: None,
+                help: true,
+            })
+        );
+    }
+
+    #[test]
+    fn format_table_output_handles_mixed_results() {
+        let outputs = vec![
+            PluginOutput {
+                provider_id: "claude".to_string(),
+                display_name: "Claude".to_string(),
+                plan: Some("Pro".to_string()),
+                lines: vec![
+                    MetricLine::Progress {
+                        label: "Session".to_string(),
+                        used: 45.2,
+                        limit: 100.0,
+                        format: ProgressFormat::Percent,
+                        resets_at: Some("2026-02-20T12:00:00Z".to_string()),
+                        period_duration_ms: Some(5 * 60 * 60 * 1000),
+                        color: None,
+                    },
+                    MetricLine::Progress {
+                        label: "Weekly".to_string(),
+                        used: 62.0,
+                        limit: 100.0,
+                        format: ProgressFormat::Percent,
+                        resets_at: Some("2026-02-23T00:00:00Z".to_string()),
+                        period_duration_ms: Some(7 * 24 * 60 * 60 * 1000),
+                        color: None,
+                    },
+                ],
+                icon_url: String::new(),
+            },
+            PluginOutput {
+                provider_id: "codex".to_string(),
+                display_name: "Codex".to_string(),
+                plan: None,
+                lines: vec![MetricLine::Badge {
+                    label: "Error".to_string(),
+                    text: "Not logged in".to_string(),
+                    color: Some("#ef4444".to_string()),
+                    subtitle: None,
+                }],
+                icon_url: String::new(),
+            },
+        ];
+
+        let text = format_table_output(outputs).expect("format should succeed");
+        assert!(text.contains("Provider"));
+        assert!(text.contains("Claude"));
+        assert!(text.contains("Pro"));
+        assert!(text.contains("45.2%"));
+        assert!(text.contains("62%"));
+        assert!(text.contains("Codex"));
+        assert!(text.contains("N/A"));
+    }
+
+    #[test]
+    fn truncate_long_names() {
+        assert_eq!(truncate("VeryLongProviderName", 11), "VeryLongPr…");
+        assert_eq!(truncate("Short", 11), "Short");
+        assert_eq!(truncate("ExactlyElev", 11), "ExactlyElev");
+    }
+
+    #[test]
+    fn has_error_detects_error_badges() {
+        let lines_with_error = vec![MetricLine::Badge {
+            label: "Error".to_string(),
+            text: "Not logged in".to_string(),
+            color: Some("#ef4444".to_string()),
+            subtitle: None,
+        }];
+        assert!(has_error(&lines_with_error));
+
+        let lines_without_error = vec![MetricLine::Progress {
+            label: "Session".to_string(),
+            used: 45.2,
+            limit: 100.0,
+            format: ProgressFormat::Percent,
+            resets_at: Some("2026-02-20T12:00:00Z".to_string()),
+            period_duration_ms: Some(5 * 60 * 60 * 1000),
+            color: None,
+        }];
+        assert!(!has_error(&lines_without_error));
+    }
+
+    #[test]
+    fn extract_plan_returns_na_on_error() {
+        let output = PluginOutput {
+            provider_id: "test".to_string(),
+            display_name: "Test".to_string(),
+            plan: Some("Pro".to_string()),
+            lines: vec![MetricLine::Badge {
+                label: "Error".to_string(),
+                text: "Failed".to_string(),
+                color: Some("#ef4444".to_string()),
+                subtitle: None,
+            }],
+            icon_url: String::new(),
+        };
+        assert_eq!(extract_plan(&output), "N/A");
+    }
+
+    #[test]
+    fn extract_session_returns_na_on_error() {
+        let output = PluginOutput {
+            provider_id: "test".to_string(),
+            display_name: "Test".to_string(),
+            plan: None,
+            lines: vec![MetricLine::Badge {
+                label: "Error".to_string(),
+                text: "Failed".to_string(),
+                color: Some("#ef4444".to_string()),
+                subtitle: None,
+            }],
+            icon_url: String::new(),
+        };
+        assert_eq!(extract_session(&output), "N/A");
     }
 }
