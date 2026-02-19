@@ -108,9 +108,12 @@ where
     let mut provider: Option<String> = None;
     let mut help = false;
     let mut cli_mode = false;
+    let mut has_args = false;
 
     let mut iter = args.into_iter();
     while let Some(arg) = iter.next() {
+        has_args = true;
+
         if arg == "--help" || arg == "-h" {
             help = true;
             cli_mode = true;
@@ -137,6 +140,14 @@ where
         if arg.starts_with("--provider") {
             return ParseResult::Error(format!("invalid --provider argument '{}'", arg));
         }
+
+        // Unknown argument - not CLI mode
+        return ParseResult::NotCli;
+    }
+
+    // If no arguments at all, treat as CLI mode (show all providers)
+    if !has_args {
+        cli_mode = true;
     }
 
     if !cli_mode {
@@ -352,8 +363,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_args_returns_not_cli_when_no_flags() {
-        assert_eq!(parse_args(vec![]), ParseResult::NotCli);
+    fn parse_args_treats_no_args_as_cli_mode() {
+        // No arguments should trigger CLI mode (show all providers)
+        assert_eq!(
+            parse_args(vec![]),
+            ParseResult::Args(CliArgs {
+                provider: None,
+                help: false,
+            })
+        );
     }
 
     #[test]
