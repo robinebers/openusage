@@ -10,7 +10,7 @@ import {
   enable as enableAutostart,
   isEnabled as isAutostartEnabled,
 } from "@tauri-apps/plugin-autostart"
-import { SideNav, type ActiveView } from "@/components/side-nav"
+import { SideNav, type ActiveView, type PluginContextAction } from "@/components/side-nav"
 import { PanelFooter } from "@/components/panel-footer"
 import { OverviewPage } from "@/pages/overview"
 import { ProviderDetailPage } from "@/pages/provider-detail"
@@ -904,6 +904,36 @@ function App() {
     [pluginSettings, setLoadingForPlugins, setErrorForPlugins, startBatch, scheduleTrayIconUpdate]
   )
 
+  const handlePluginContextAction = useCallback(
+    (pluginId: string, action: PluginContextAction) => {
+      if (action === "reload") {
+        handleRetryPlugin(pluginId)
+      } else if (action === "remove") {
+        // Disable the plugin (same as unchecking in settings)
+        if (!pluginSettings) return
+        const alreadyDisabled = pluginSettings.disabled.includes(pluginId)
+        if (alreadyDisabled) return
+
+        track("provider_toggled", { provider_id: pluginId, enabled: "false" })
+        const nextSettings: PluginSettings = {
+          ...pluginSettings,
+          disabled: [...pluginSettings.disabled, pluginId],
+        }
+        setPluginSettings(nextSettings)
+        scheduleTrayIconUpdate("settings", TRAY_SETTINGS_DEBOUNCE_MS)
+        void savePluginSettings(nextSettings).catch((error) => {
+          console.error("Failed to save plugin toggle:", error)
+        })
+
+        // If we were viewing this plugin, switch to home
+        if (activeView === pluginId) {
+          setActiveView("home")
+        }
+      }
+    },
+    [handleRetryPlugin, pluginSettings, scheduleTrayIconUpdate, activeView]
+  )
+
   // Detect whether the scroll area has overflow below
   useEffect(() => {
     const el = scrollRef.current
@@ -991,6 +1021,7 @@ function App() {
             activeView={activeView}
             onViewChange={setActiveView}
             plugins={navPlugins}
+            onPluginContextAction={handlePluginContextAction}
           />
           <div className="flex-1 flex flex-col px-3 pt-2 pb-1.5 min-w-0 bg-card dark:bg-muted/50">
             <div className="relative flex-1 min-h-0">
