@@ -1,5 +1,6 @@
 #[cfg(target_os = "macos")]
 mod app_nap;
+mod cli;
 mod panel;
 mod plugin_engine;
 mod tray;
@@ -55,7 +56,10 @@ fn track_app_started_once_per_day_per_version(app: &tauri::App) {
     let store = match app.handle().store("settings.json") {
         Ok(store) => store,
         Err(error) => {
-            log::warn!("Failed to access settings store for app_started gate: {}", error);
+            log::warn!(
+                "Failed to access settings store for app_started gate: {}",
+                error
+            );
             return;
         }
     };
@@ -89,7 +93,10 @@ fn managed_shortcut_slot() -> &'static Mutex<Option<String>> {
 
 /// Shared shortcut handler that toggles the panel when the shortcut is pressed.
 #[cfg(desktop)]
-fn handle_global_shortcut(app: &tauri::AppHandle, event: tauri_plugin_global_shortcut::ShortcutEvent) {
+fn handle_global_shortcut(
+    app: &tauri::AppHandle,
+    event: tauri_plugin_global_shortcut::ShortcutEvent,
+) {
     if event.state == ShortcutState::Pressed {
         log::debug!("Global shortcut triggered");
         panel::toggle_panel(app);
@@ -259,9 +266,19 @@ async fn start_probe_batch(
                     if has_error {
                         log::warn!("probe {} completed with error", plugin_id);
                     } else {
-                        log::info!("probe {} completed ok ({} lines)", plugin_id, output.lines.len());
+                        log::info!(
+                            "probe {} completed ok ({} lines)",
+                            plugin_id,
+                            output.lines.len()
+                        );
                     }
-                    let _ = handle.emit("probe:result", ProbeResult { batch_id: bid, output });
+                    let _ = handle.emit(
+                        "probe:result",
+                        ProbeResult {
+                            batch_id: bid,
+                            output,
+                        },
+                    );
                 }
                 Err(_) => {
                     log::error!("probe {} panicked", plugin_id);
@@ -300,7 +317,10 @@ fn get_log_path(app_handle: tauri::AppHandle) -> Result<String, String> {
 /// Pass `null` to disable the shortcut, or a shortcut string like "CommandOrControl+Shift+U".
 #[cfg(desktop)]
 #[tauri::command]
-fn update_global_shortcut(app_handle: tauri::AppHandle, shortcut: Option<String>) -> Result<(), String> {
+fn update_global_shortcut(
+    app_handle: tauri::AppHandle,
+    shortcut: Option<String>,
+) -> Result<(), String> {
     let global_shortcut = app_handle.global_shortcut();
     let normalized_shortcut = shortcut.and_then(|value| {
         let trimmed = value.trim().to_string();
@@ -327,7 +347,11 @@ fn update_global_shortcut(app_handle: tauri::AppHandle, shortcut: Option<String>
                 *managed_shortcut = None;
             }
             Err(e) => {
-                log::warn!("Failed to unregister existing shortcut '{}': {}", existing, e);
+                log::warn!(
+                    "Failed to unregister existing shortcut '{}': {}",
+                    existing,
+                    e
+                );
             }
         }
     }
@@ -402,6 +426,10 @@ fn list_plugins(state: tauri::State<'_, Mutex<AppState>>) -> Vec<PluginMeta> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    if cli::run_from_env() {
+        return;
+    }
+
     let runtime = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
     let _guard = runtime.enter();
 
@@ -465,7 +493,8 @@ pub fn run() {
 
             tray::create(app.handle())?;
 
-            app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
+            app.handle()
+                .plugin(tauri_plugin_updater::Builder::new().build())?;
 
             // Register global shortcut from stored settings
             #[cfg(desktop)]
@@ -486,7 +515,8 @@ pub fn run() {
                                     },
                                 ) {
                                     log::warn!("Failed to register initial global shortcut: {}", e);
-                                } else if let Ok(mut managed_shortcut) = managed_shortcut_slot().lock()
+                                } else if let Ok(mut managed_shortcut) =
+                                    managed_shortcut_slot().lock()
                                 {
                                     *managed_shortcut = Some(shortcut.to_string());
                                 } else {

@@ -20,6 +20,16 @@ OpenUsage lives in your menu bar and shows you how much of your AI coding subscr
 - **Lightweight.** Opens instantly, stays out of your way.
 - **Plugin-based.** New providers get added without updating the whole app.
 
+## CLI (Experimental)
+
+You can query a provider directly from the terminal using the same local credentials as the app plugins:
+
+```bash
+openusage --provider=claude
+```
+
+Output is plain text and includes session usage, weekly usage, and reset timestamps when available.
+
 ## Supported Providers
 
 - [**Amp**](docs/providers/amp.md) / free tier, bonus, credits
