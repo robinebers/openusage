@@ -34,6 +34,7 @@ import {
   type TrayIconStyle,
 } from "@/lib/settings";
 import { cn } from "@/lib/utils";
+import type { CliCommandStatus } from "@/lib/cli-command";
 
 interface PluginConfig {
   id: string;
@@ -280,6 +281,12 @@ interface SettingsPageProps {
   startOnLogin: boolean;
   onStartOnLoginChange: (value: boolean) => void;
   providerIconUrl?: string;
+  cliStatus: CliCommandStatus | null;
+  cliBusy: boolean;
+  showCliPrompt: boolean;
+  onCliInstall: () => void;
+  onCliUninstall: () => void;
+  onCliDismissPrompt: () => void;
 }
 
 export function SettingsPage({
@@ -303,6 +310,12 @@ export function SettingsPage({
   startOnLogin,
   onStartOnLoginChange,
   providerIconUrl,
+  cliStatus,
+  cliBusy,
+  showCliPrompt,
+  onCliInstall,
+  onCliUninstall,
+  onCliDismissPrompt,
 }: SettingsPageProps) {
   const percentageMandatory = isTrayPercentageMandatory(trayIconStyle);
   const trayShowPercentageChecked = percentageMandatory
@@ -330,6 +343,35 @@ export function SettingsPage({
 
   return (
     <div className="py-3 space-y-4">
+      {showCliPrompt && (
+        <section className="rounded-lg border p-3 bg-muted/40">
+          <h3 className="text-lg font-semibold mb-0">Use OpenUsage in Terminal</h3>
+          <p className="text-sm text-muted-foreground mb-3">
+            Install the <code>openusage-cli</code> command so you can query providers from any terminal.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Button
+              type="button"
+              size="sm"
+              className="w-full sm:flex-1 min-w-0"
+              onClick={onCliInstall}
+              disabled={cliBusy}
+            >
+              {cliBusy ? "Installing..." : "Install CLI"}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="w-full sm:flex-1 min-w-0"
+              onClick={onCliDismissPrompt}
+              disabled={cliBusy}
+            >
+              Not now
+            </Button>
+          </div>
+        </section>
+      )}
       <section>
         <h3 className="text-lg font-semibold mb-0">Auto Refresh</h3>
         <p className="text-sm text-muted-foreground mb-2">
@@ -519,6 +561,54 @@ export function SettingsPage({
           />
           Start on login
         </label>
+      </section>
+      <section>
+        <h3 className="text-lg font-semibold mb-0">CLI</h3>
+        <p className="text-sm text-muted-foreground mb-2">
+          Install <code>openusage-cli</code> and point it to desktop app plugins
+        </p>
+        <div className="rounded-lg border p-3 bg-muted/40 space-y-2">
+          <p className="text-sm">
+            Status:{" "}
+            <span className={cn(cliStatus?.installed ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground")}>
+              {cliStatus?.installed ? "Installed" : "Not installed"}
+            </span>
+          </p>
+          {cliStatus && (
+            <details className="text-xs text-muted-foreground">
+              <summary className="cursor-pointer select-none">Paths</summary>
+              <div className="mt-2 space-y-1">
+                <p className="break-all">
+                  Command path: <code>{cliStatus.installPath}</code>
+                </p>
+                <p className="break-all">
+                  Plugins path: <code>{cliStatus.pluginsDir}</code>
+                </p>
+              </div>
+            </details>
+          )}
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Button
+              type="button"
+              size="sm"
+              className="w-full sm:flex-1 min-w-0"
+              onClick={onCliInstall}
+              disabled={cliBusy}
+            >
+              {cliBusy ? "Working..." : (cliStatus?.installed ? "Reinstall CLI" : "Install CLI")}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="w-full sm:flex-1 min-w-0"
+              onClick={onCliUninstall}
+              disabled={cliBusy || !cliStatus?.installed}
+            >
+              Uninstall CLI
+            </Button>
+          </div>
+        </div>
       </section>
       <section>
         <h3 className="text-lg font-semibold mb-0">Plugins</h3>

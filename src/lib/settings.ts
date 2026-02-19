@@ -21,6 +21,7 @@ export type ResetTimerDisplayMode = "relative" | "absolute";
 export type TrayIconStyle = "bars" | "circle" | "provider" | "textOnly";
 
 export type GlobalShortcut = string | null;
+export type CliPromptDecision = "ask" | "dismissed" | "installed";
 
 const SETTINGS_STORE_PATH = "settings.json";
 const PLUGIN_SETTINGS_KEY = "plugins";
@@ -32,6 +33,7 @@ const TRAY_ICON_STYLE_KEY = "trayIconStyle";
 const TRAY_SHOW_PERCENTAGE_KEY = "trayShowPercentage";
 const GLOBAL_SHORTCUT_KEY = "globalShortcut";
 const START_ON_LOGIN_KEY = "startOnLogin";
+const CLI_PROMPT_DECISION_KEY = "cliPromptDecision";
 
 export const DEFAULT_AUTO_UPDATE_INTERVAL: AutoUpdateIntervalMinutes = 15;
 export const DEFAULT_THEME_MODE: ThemeMode = "system";
@@ -41,12 +43,14 @@ export const DEFAULT_TRAY_ICON_STYLE: TrayIconStyle = "bars";
 export const DEFAULT_TRAY_SHOW_PERCENTAGE = false;
 export const DEFAULT_GLOBAL_SHORTCUT: GlobalShortcut = null;
 export const DEFAULT_START_ON_LOGIN = false;
+export const DEFAULT_CLI_PROMPT_DECISION: CliPromptDecision = "ask";
 
 const AUTO_UPDATE_INTERVALS: AutoUpdateIntervalMinutes[] = [5, 15, 30, 60];
 const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
 const DISPLAY_MODES: DisplayMode[] = ["used", "left"];
 const RESET_TIMER_DISPLAY_MODES: ResetTimerDisplayMode[] = ["relative", "absolute"];
 const TRAY_ICON_STYLES: TrayIconStyle[] = ["bars", "circle", "provider", "textOnly"];
+const CLI_PROMPT_DECISIONS: CliPromptDecision[] = ["ask", "dismissed", "installed"];
 
 export const AUTO_UPDATE_OPTIONS: { value: AutoUpdateIntervalMinutes; label: string }[] =
   AUTO_UPDATE_INTERVALS.map((value) => ({
@@ -277,5 +281,23 @@ export async function loadStartOnLogin(): Promise<boolean> {
 
 export async function saveStartOnLogin(value: boolean): Promise<void> {
   await store.set(START_ON_LOGIN_KEY, value);
+  await store.save();
+}
+
+function isCliPromptDecision(value: unknown): value is CliPromptDecision {
+  return (
+    typeof value === "string" &&
+    CLI_PROMPT_DECISIONS.includes(value as CliPromptDecision)
+  );
+}
+
+export async function loadCliPromptDecision(): Promise<CliPromptDecision> {
+  const stored = await store.get<unknown>(CLI_PROMPT_DECISION_KEY);
+  if (isCliPromptDecision(stored)) return stored;
+  return DEFAULT_CLI_PROMPT_DECISION;
+}
+
+export async function saveCliPromptDecision(value: CliPromptDecision): Promise<void> {
+  await store.set(CLI_PROMPT_DECISION_KEY, value);
   await store.save();
 }

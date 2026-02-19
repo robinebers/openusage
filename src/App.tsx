@@ -35,6 +35,7 @@ import {
   getEnabledPluginIds,
   isTrayPercentageMandatory,
   loadAutoUpdateInterval,
+  loadCliPromptDecision,
   loadDisplayMode,
   loadGlobalShortcut,
   loadPluginSettings,
@@ -45,6 +46,7 @@ import {
   loadThemeMode,
   normalizePluginSettings,
   saveAutoUpdateInterval,
+  saveCliPromptDecision,
   saveDisplayMode,
   saveGlobalShortcut,
   savePluginSettings,
@@ -61,6 +63,12 @@ import {
   type TrayIconStyle,
   type ThemeMode,
 } from "@/lib/settings"
+import {
+  getCliCommandStatus,
+  installCliCommand,
+  uninstallCliCommand,
+  type CliCommandStatus,
+} from "@/lib/cli-command"
 
 const PANEL_WIDTH = 400;
 const MAX_HEIGHT_FALLBACK_PX = 600;
@@ -101,6 +109,9 @@ function App() {
   const [maxPanelHeightPx, setMaxPanelHeightPx] = useState<number | null>(null)
   const maxPanelHeightPxRef = useRef<number | null>(null)
   const [appVersion, setAppVersion] = useState("...")
+  const [cliStatus, setCliStatus] = useState<CliCommandStatus | null>(null)
+  const [cliBusy, setCliBusy] = useState(false)
+  const [showCliPrompt, setShowCliPrompt] = useState(false)
 
   const { updateStatus, triggerInstall, checkForUpdates } = useAppUpdate()
   const [showAbout, setShowAbout] = useState(false)
@@ -491,6 +502,18 @@ function App() {
     await disableAutostart()
   }, [])
 
+  const refreshCliStatus = useCallback(async (): Promise<CliCommandStatus | null> => {
+    if (!isTauri()) return null
+    try {
+      const status = await getCliCommandStatus()
+      setCliStatus(status)
+      return status
+    } catch (error) {
+      console.error("Failed to load CLI command status:", error)
+      return null
+    }
+  }, [])
+
   useEffect(() => {
     let isMounted = true
 
@@ -572,6 +595,14 @@ function App() {
           console.error("Failed to apply start on login setting:", error)
         }
 
+        let storedCliPromptDecision = "ask"
+        try {
+          storedCliPromptDecision = await loadCliPromptDecision()
+        } catch (error) {
+          console.error("Failed to load CLI prompt decision:", error)
+        }
+        const currentCliStatus = await refreshCliStatus()
+
         const normalizedTrayShowPercentage = isTrayPercentageMandatory(storedTrayIconStyle)
           ? true
           : storedTrayShowPercentage
@@ -586,6 +617,7 @@ function App() {
           setTrayShowPercentage(normalizedTrayShowPercentage)
           setGlobalShortcut(storedGlobalShortcut)
           setStartOnLogin(storedStartOnLogin)
+          setShowCliPrompt(storedCliPromptDecision === "ask" && currentCliStatus?.installed !== true)
           const enabledIds = getEnabledPluginIds(normalized)
           setLoadingForPlugins(enabledIds)
           try {
@@ -616,7 +648,7 @@ function App() {
     return () => {
       isMounted = false
     }
-  }, [setLoadingForPlugins, setErrorForPlugins, startBatch, applyStartOnLogin])
+  }, [setLoadingForPlugins, setErrorForPlugins, startBatch, applyStartOnLogin, refreshCliStatus])
 
   useEffect(() => {
     if (!pluginSettings) {
@@ -837,6 +869,47 @@ function App() {
     })
   }, [applyStartOnLogin])
 
+  const handleCliInstall = useCallback(() => {
+    if (!isTauri()) return
+    setCliBusy(true)
+    void installCliCommand()
+      .then((status) => {
+        setCliStatus(status)
+        setShowCliPrompt(false)
+        return saveCliPromptDecision("installed")
+      })
+      .catch((error) => {
+        console.error("Failed to install CLI command:", error)
+      })
+      .finally(() => {
+        setCliBusy(false)
+      })
+  }, [])
+
+  const handleCliUninstall = useCallback(() => {
+    if (!isTauri()) return
+    setCliBusy(true)
+    void uninstallCliCommand()
+      .then((status) => {
+        setCliStatus(status)
+        setShowCliPrompt(false)
+        return saveCliPromptDecision("dismissed")
+      })
+      .catch((error) => {
+        console.error("Failed to uninstall CLI command:", error)
+      })
+      .finally(() => {
+        setCliBusy(false)
+      })
+  }, [])
+
+  const handleCliDismissPrompt = useCallback(() => {
+    setShowCliPrompt(false)
+    void saveCliPromptDecision("dismissed").catch((error) => {
+      console.error("Failed to save CLI prompt decision:", error)
+    })
+  }, [])
+
   const settingsPlugins = useMemo(() => {
     if (!pluginSettings) return []
     const pluginMap = new Map(pluginsMeta.map((plugin) => [plugin.id, plugin]))
@@ -961,6 +1034,12 @@ function App() {
           startOnLogin={startOnLogin}
           onStartOnLoginChange={handleStartOnLoginChange}
           providerIconUrl={navPlugins[0]?.iconUrl}
+          cliStatus={cliStatus}
+          cliBusy={cliBusy}
+          showCliPrompt={showCliPrompt}
+          onCliInstall={handleCliInstall}
+          onCliUninstall={handleCliUninstall}
+          onCliDismissPrompt={handleCliDismissPrompt}
         />
       )
     }

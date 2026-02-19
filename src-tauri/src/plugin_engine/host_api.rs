@@ -105,6 +105,16 @@ fn resolve_env_value(name: &str) -> Option<String> {
     resolved
 }
 
+fn disable_system_proxy() -> bool {
+    std::env::var("OPENUSAGE_DISABLE_SYSTEM_PROXY")
+        .ok()
+        .map(|value| {
+            let normalized = value.trim().to_ascii_lowercase();
+            matches!(normalized.as_str(), "1" | "true" | "yes" | "on")
+        })
+        .unwrap_or(false)
+}
+
 /// Redact sensitive value to first4...last4 format (UTF-8 safe)
 fn redact_value(value: &str) -> String {
     let chars: Vec<char> = value.chars().collect();
@@ -378,6 +388,9 @@ fn inject_http<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rqui
                 let mut builder = reqwest::blocking::Client::builder()
                     .timeout(std::time::Duration::from_millis(timeout_ms))
                     .redirect(reqwest::redirect::Policy::none());
+                if disable_system_proxy() {
+                    builder = builder.no_proxy();
+                }
                 if req.dangerously_ignore_tls.unwrap_or(false) {
                     builder = builder.danger_accept_invalid_certs(true);
                 }
