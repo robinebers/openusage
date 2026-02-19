@@ -5,6 +5,8 @@
     "https://api.minimax.io/v1/coding_plan/remains",
   ]
   const API_KEY_ENV_VARS = ["MINIMAX_API_KEY", "MINIMAX_API_TOKEN"]
+  const CODING_PLAN_WINDOW_MS = 5 * 60 * 60 * 1000
+  const CODING_PLAN_WINDOW_TOLERANCE_MS = 10 * 60 * 1000
 
   function readString(value) {
     if (typeof value !== "string") return null
@@ -43,6 +45,36 @@
     const n = readNumber(epoch)
     if (n === null) return null
     return Math.abs(n) < 1e10 ? n * 1000 : n
+  }
+
+  function inferRemainsMs(remainsRaw, endMs, nowMs) {
+    if (remainsRaw === null || remainsRaw <= 0) return null
+
+    const asSecondsMs = remainsRaw * 1000
+    const asMillisecondsMs = remainsRaw
+
+    // If end_time exists, infer remains_time unit by whichever aligns best.
+    if (endMs !== null) {
+      const toEndMs = endMs - nowMs
+      if (toEndMs > 0) {
+        const secDelta = Math.abs(asSecondsMs - toEndMs)
+        const msDelta = Math.abs(asMillisecondsMs - toEndMs)
+        return secDelta <= msDelta ? asSecondsMs : asMillisecondsMs
+      }
+    }
+
+    // Coding Plan resets every 5h. Use that constraint before defaulting.
+    const maxExpectedMs = CODING_PLAN_WINDOW_MS + CODING_PLAN_WINDOW_TOLERANCE_MS
+    const secondsLooksValid = asSecondsMs <= maxExpectedMs
+    const millisecondsLooksValid = asMillisecondsMs <= maxExpectedMs
+
+    if (secondsLooksValid && !millisecondsLooksValid) return asSecondsMs
+    if (millisecondsLooksValid && !secondsLooksValid) return asMillisecondsMs
+    if (secondsLooksValid && millisecondsLooksValid) return asSecondsMs
+
+    const secOverflow = Math.abs(asSecondsMs - maxExpectedMs)
+    const msOverflow = Math.abs(asMillisecondsMs - maxExpectedMs)
+    return secOverflow <= msOverflow ? asSecondsMs : asMillisecondsMs
   }
 
   function loadApiKey(ctx) {
@@ -143,11 +175,12 @@
     const startMs = epochToMs(chosen.start_time ?? chosen.startTime)
     const endMs = epochToMs(chosen.end_time ?? chosen.endTime)
     const remainsRaw = readNumber(chosen.remains_time ?? chosen.remainsTime)
+    const nowMs = Date.now()
+    const remainsMs = inferRemainsMs(remainsRaw, endMs, nowMs)
 
     let resetsAt = endMs !== null ? ctx.util.toIso(endMs) : null
-    if (!resetsAt && remainsRaw !== null && remainsRaw > 0) {
-      const remainsMs = remainsRaw > 1_000_000 ? remainsRaw : remainsRaw * 1000
-      resetsAt = ctx.util.toIso(Date.now() + remainsMs)
+    if (!resetsAt && remainsMs !== null) {
+      resetsAt = ctx.util.toIso(nowMs + remainsMs)
     }
 
     let periodDurationMs = null

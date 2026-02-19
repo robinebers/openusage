@@ -146,6 +146,36 @@ describe("minimax plugin", () => {
     expect(line.resetsAt).toBe(expectedReset)
   })
 
+  it("treats small remains_time values as milliseconds when seconds exceed window", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
+    vi.spyOn(Date, "now").mockReturnValue(1700000000000)
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        data: {
+          base_resp: { status_code: 0 },
+          model_remains: [
+            {
+              current_interval_total_count: 100,
+              current_interval_usage_count: 55,
+              remains_time: 300000,
+            },
+          ],
+        },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const line = result.lines[0]
+
+    expect(line.used).toBe(55)
+    expect(line.limit).toBe(100)
+    expect(line.resetsAt).toBe(new Date(1700000000000 + 300000).toISOString())
+  })
+
   it("supports remaining-count payload variants", async () => {
     const ctx = makeCtx()
     setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
