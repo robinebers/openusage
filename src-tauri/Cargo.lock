@@ -2991,7 +2991,7 @@ dependencies = [
 
 [[package]]
 name = "openusage"
-version = "0.6.4"
+version = "0.6.5"
 dependencies = [
  "base64 0.22.1",
  "dirs 6.0.0",
