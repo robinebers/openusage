@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 
-const WHITELISTED_ENV_VARS: [&str; 4] = ["CODEX_HOME", "ZAI_API_KEY", "GLM_API_KEY", "CLAUDE_CONFIG_DIR"];
+const WHITELISTED_ENV_VARS: [&str; 3] = ["CODEX_HOME", "ZAI_API_KEY", "GLM_API_KEY"];
 
 fn last_non_empty_trimmed_line(text: &str) -> Option<String> {
     text.lines()
@@ -238,6 +238,7 @@ pub fn inject_host_api<'js>(
     inject_keychain(ctx, &host)?;
     inject_sqlite(ctx, &host)?;
     inject_ls(ctx, &host, plugin_id)?;
+    inject_ccusage(ctx, &host, plugin_id)?;
 
     probe_ctx.set("host", host)?;
     globals.set("__openusage_ctx", probe_ctx)?;
@@ -313,58 +314,6 @@ fn inject_fs<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
                 std::fs::write(&expanded, &content).map_err(|e| {
                     Exception::throw_message(&ctx_inner, &e.to_string())
                 })
-            },
-        )?,
-    )?;
-
-    fs_obj.set(
-        "_globRaw",
-        Function::new(
-            ctx.clone(),
-            move |ctx_inner: Ctx<'_>, base_dir: String, pattern: String| -> rquickjs::Result<String> {
-                let expanded_base = expand_path(&base_dir);
-                let base = std::path::Path::new(&expanded_base);
-                if !base.is_dir() {
-                    return Ok("[]".to_string());
-                }
-                let full_pattern = format!("{}/{}", expanded_base, pattern);
-                let mut entries: Vec<serde_json::Value> = Vec::new();
-                match glob::glob(&full_pattern) {
-                    Ok(paths) => {
-                        for entry in paths.flatten() {
-                            if !entry.is_file() {
-                                continue;
-                            }
-                            let meta = match std::fs::metadata(&entry) {
-                                Ok(m) => m,
-                                Err(_) => continue,
-                            };
-                            let mtime_ms = meta
-                                .modified()
-                                .ok()
-                                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                                .map(|d| d.as_millis() as i64)
-                                .unwrap_or(0);
-                            let canonical = entry.canonicalize().unwrap_or_else(|e| {
-                                log::debug!("canonicalize failed for {}: {}", entry.display(), e);
-                                entry.clone()
-                            });
-                            entries.push(serde_json::json!({
-                                "path": canonical.to_string_lossy(),
-                                "size": meta.len() as i64,
-                                "mtimeMs": mtime_ms
-                            }));
-                        }
-                    }
-                    Err(e) => {
-                        return Err(Exception::throw_message(
-                            &ctx_inner,
-                            &format!("glob pattern error: {}", e),
-                        ));
-                    }
-                }
-                serde_json::to_string(&entries)
-                    .map_err(|e| Exception::throw_message(&ctx_inner, &e.to_string()))
             },
         )?,
     )?;
@@ -1107,21 +1056,6 @@ pub fn patch_ls_wrapper(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
     )
 }
 
-pub fn patch_fs_glob_wrapper(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
-    ctx.eval::<(), _>(
-        r#"
-        (function() {
-            var rawFn = __openusage_ctx.host.fs._globRaw;
-            __openusage_ctx.host.fs.glob = function(baseDir, pattern) {
-                var json = rawFn(baseDir, pattern);
-                return JSON.parse(json);
-            };
-        })();
-        "#
-        .as_bytes(),
-    )
-}
-
 /// Extract value of a CLI flag from a command string.
 /// Handles both `--flag value` and `--flag=value` forms.
 fn ls_extract_flag(command: &str, flag: &str) -> Option<String> {
@@ -1161,6 +1095,191 @@ fn ls_parse_listening_ports(output: &str) -> Vec<i32> {
         }
     }
     ports.into_iter().collect()
+}
+
+fn resolve_ccusage_bridge_path() -> Option<String> {
+    let exe = std::env::current_exe().ok()?;
+    let exe_dir = exe.parent()?;
+
+    // Dev: Tauri copies resources to target/debug/resources/
+    let dev_path = exe_dir.join("resources").join("ccusage-bridge.mjs");
+    if dev_path.exists() {
+        return Some(dev_path.to_string_lossy().to_string());
+    }
+
+    // macOS production: binary is at .app/Contents/MacOS/openusage,
+    // resources at .app/Contents/Resources/ccusage-bridge.mjs
+    let macos_path = exe_dir
+        .parent()? // Contents/
+        .join("Resources")
+        .join("ccusage-bridge.mjs");
+    if macos_path.exists() {
+        return Some(macos_path.to_string_lossy().to_string());
+    }
+
+    None
+}
+
+fn inject_ccusage<'js>(
+    ctx: &Ctx<'js>,
+    host: &Object<'js>,
+    plugin_id: &str,
+) -> rquickjs::Result<()> {
+    let ccusage_obj = Object::new(ctx.clone())?;
+    let pid = plugin_id.to_string();
+
+    let bridge_path = match resolve_ccusage_bridge_path() {
+        Some(p) => {
+            log::info!("[plugin:{}] ccusage bridge found at: {}", pid, p);
+            p
+        }
+        None => {
+            log::warn!("[plugin:{}] ccusage bridge script not found", pid);
+            String::new()
+        }
+    };
+
+    ccusage_obj.set(
+        "_queryRaw",
+        Function::new(
+            ctx.clone(),
+            move |_ctx_inner: Ctx<'_>, opts_json: String| -> rquickjs::Result<String> {
+                if bridge_path.is_empty() {
+                    log::warn!("[plugin:{}] ccusage bridge not available", pid);
+                    return Ok("null".to_string());
+                }
+
+                let bun_path = match find_bun_binary() {
+                    Some(p) => p,
+                    None => {
+                        log::warn!("[plugin:{}] bun not found, ccusage unavailable", pid);
+                        return Ok("null".to_string());
+                    }
+                };
+
+                log::info!("[plugin:{}] ccusage query via bun", pid);
+
+                // Inject _provider so the bridge can dispatch per-plugin
+                let enriched_json = match serde_json::from_str::<serde_json::Value>(&opts_json) {
+                    Ok(mut v) => {
+                        if let Some(obj) = v.as_object_mut() {
+                            obj.insert("_provider".to_string(), serde_json::json!(pid));
+                        }
+                        serde_json::to_string(&v).unwrap_or_else(|_| opts_json.clone())
+                    }
+                    Err(_) => opts_json.clone(),
+                };
+
+                let mut child = match std::process::Command::new(&bun_path)
+                    .args(["run", &bridge_path, &enriched_json])
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped())
+                    .spawn()
+                {
+                    Ok(c) => c,
+                    Err(e) => {
+                        log::warn!("[plugin:{}] ccusage spawn failed: {}", pid, e);
+                        return Ok("null".to_string());
+                    }
+                };
+
+                let timeout = std::time::Duration::from_secs(15);
+                let start = std::time::Instant::now();
+                loop {
+                    match child.try_wait() {
+                        Ok(Some(status)) => {
+                            let stdout = child.stdout.take()
+                                .map(|mut s| {
+                                    let mut v = Vec::new();
+                                    std::io::Read::read_to_end(&mut s, &mut v).ok();
+                                    v
+                                })
+                                .unwrap_or_default();
+                            let stderr = child.stderr.take()
+                                .map(|mut s| {
+                                    let mut v = Vec::new();
+                                    std::io::Read::read_to_end(&mut s, &mut v).ok();
+                                    v
+                                })
+                                .unwrap_or_default();
+
+                            if status.success() {
+                                // ccusage logs info messages to stdout;
+                                // extract only the JSON line (starts with '{')
+                                let out = String::from_utf8_lossy(&stdout);
+                                let json_line = out.lines()
+                                    .rev()
+                                    .find(|l| l.trim_start().starts_with('{'))
+                                    .unwrap_or("null");
+                                return Ok(json_line.trim().to_string());
+                            } else {
+                                let err = String::from_utf8_lossy(&stderr);
+                                log::warn!("[plugin:{}] ccusage failed: {}", pid, err.trim());
+                                return Ok("null".to_string());
+                            }
+                        }
+                        Ok(None) => {
+                            if start.elapsed() > timeout {
+                                let _ = child.kill();
+                                log::warn!("[plugin:{}] ccusage timed out after 15s", pid);
+                                return Ok("null".to_string());
+                            }
+                            std::thread::sleep(std::time::Duration::from_millis(100));
+                        }
+                        Err(e) => {
+                            log::warn!("[plugin:{}] ccusage wait failed: {}", pid, e);
+                            return Ok("null".to_string());
+                        }
+                    }
+                }
+            },
+        )?,
+    )?;
+
+    host.set("ccusage", ccusage_obj)?;
+    Ok(())
+}
+
+fn find_bun_binary() -> Option<String> {
+    let candidates = vec![
+        dirs::home_dir()
+            .map(|h| h.join(".bun/bin/bun").to_string_lossy().to_string())
+            .unwrap_or_default(),
+        "/usr/local/bin/bun".into(),
+        "/opt/homebrew/bin/bun".into(),
+    ];
+    for candidate in &candidates {
+        if candidate.is_empty() {
+            continue;
+        }
+        if std::process::Command::new(candidate)
+            .arg("--version")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+        {
+            return Some(candidate.clone());
+        }
+    }
+    None
+}
+
+pub fn patch_ccusage_wrapper(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
+    ctx.eval::<(), _>(
+        r#"
+        (function() {
+            var rawFn = __openusage_ctx.host.ccusage._queryRaw;
+            __openusage_ctx.host.ccusage.query = function(opts) {
+                var result = rawFn(JSON.stringify(opts || {}));
+                if (result === "null") return null;
+                try { return JSON.parse(result); } catch (e) { return null; }
+            };
+        })();
+        "#
+        .as_bytes(),
+    )
 }
 
 fn inject_keychain<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {

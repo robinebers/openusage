@@ -629,333 +629,143 @@ describe("claude plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Token expired")
   })
 
-  describe("token usage: JSONL scanning integration", () => {
+  describe("token usage: ccusage integration", () => {
     const CRED_JSON = JSON.stringify({ claudeAiOauth: { accessToken: "tok", subscriptionType: "pro" } })
     const USAGE_RESPONSE = JSON.stringify({
       five_hour: { utilization: 30, resets_at: "2099-01-01T00:00:00.000Z" },
       seven_day: { utilization: 50, resets_at: "2099-01-01T00:00:00.000Z" },
     })
 
-    function makeProbeCtx({ globFiles = [], jsonlContents = {} } = {}) {
+    function makeProbeCtx({ ccusageResult = null } = {}) {
       const ctx = makeCtx()
-      const fileStore = new Map()
-      fileStore.set("~/.claude/.credentials.json", CRED_JSON)
-      for (const [path, content] of Object.entries(jsonlContents)) {
-        fileStore.set(path, content)
-      }
-      ctx.host.fs.exists = (path) => fileStore.has(path)
-      ctx.host.fs.readText = (path) => {
-        if (fileStore.has(path)) return fileStore.get(path)
-        throw new Error("ENOENT: " + path)
-      }
-      ctx.host.fs.writeText = vi.fn((path, text) => fileStore.set(path, text))
-      ctx.host.fs.glob = vi.fn(() => globFiles)
+      ctx.host.fs.exists = () => true
+      ctx.host.fs.readText = () => CRED_JSON
       ctx.host.http.request.mockReturnValue({ status: 200, bodyText: USAGE_RESPONSE })
+      ctx.host.ccusage.query = vi.fn(() => ccusageResult)
       return ctx
     }
 
-    it("adds no token lines when glob returns no files", async () => {
-      const ctx = makeProbeCtx({ globFiles: [] })
+    it("adds no token lines when ccusage returns null", async () => {
+      const ctx = makeProbeCtx({ ccusageResult: null })
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)
       expect(result.lines.find((l) => l.label === "Today")).toBeUndefined()
       expect(result.lines.find((l) => l.label === "Last 30 days")).toBeUndefined()
     })
 
-    it("rate-limit lines still appear when glob returns no files", async () => {
-      const ctx = makeProbeCtx({ globFiles: [] })
+    it("rate-limit lines still appear when ccusage returns null", async () => {
+      const ctx = makeProbeCtx({ ccusageResult: null })
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)
       expect(result.lines.find((l) => l.label === "Session")).toBeTruthy()
     })
 
-    it("adds Today line from a JSONL file with today's usage", async () => {
-      const today = new Date().toISOString()
-      const jsonlLine = JSON.stringify({
-        type: "assistant",
-        requestId: "req_001",
-        timestamp: today,
-        message: {
-          id: "msg_001",
-          model: "claude-opus-4-5",
-          usage: {
-            input_tokens: 100,
-            output_tokens: 50,
-            cache_read_input_tokens: 0,
-            cache_creation_input_tokens: 0,
-          },
-        },
-      })
-      const filePath = "/Users/x/.claude/projects/proj/session.jsonl"
+    it("adds Today line when ccusage returns today's data", async () => {
+      const todayKey = new Date().toISOString().slice(0, 10)
       const ctx = makeProbeCtx({
-        globFiles: [{ path: filePath, size: jsonlLine.length, mtimeMs: Date.now() }],
-        jsonlContents: { [filePath]: jsonlLine + "\n" },
+        ccusageResult: {
+          daily: [
+            { date: todayKey, inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 150, totalCost: 0.75 },
+          ],
+        },
       })
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)
       const todayLine = result.lines.find((l) => l.label === "Today")
       expect(todayLine).toBeTruthy()
       expect(todayLine.type).toBe("text")
-      expect(todayLine.value).toContain("tokens")
+      expect(todayLine.value).toContain("150 tokens")
+      expect(todayLine.value).toContain("$0.75")
     })
 
-    it("deduplicates streaming chunks by request", async () => {
-      const today = new Date().toISOString()
-      const makeEntry = (outputTokens) => JSON.stringify({
-        type: "assistant",
-        requestId: "req_stream",
-        timestamp: today,
-        message: {
-          id: "msg_stream",
-          model: "claude-opus-4-5",
-          usage: { input_tokens: 100, output_tokens: outputTokens, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
-        },
-      })
-      const jsonlContent = [makeEntry(1), makeEntry(1), makeEntry(200)].join("\n") + "\n"
-      const filePath = "/Users/x/.claude/projects/proj/session.jsonl"
+    it("adds Last 30 days line summing all daily entries", async () => {
+      const todayKey = new Date().toISOString().slice(0, 10)
       const ctx = makeProbeCtx({
-        globFiles: [{ path: filePath, size: jsonlContent.length, mtimeMs: Date.now() }],
-        jsonlContents: { [filePath]: jsonlContent },
+        ccusageResult: {
+          daily: [
+            { date: todayKey, inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 150, totalCost: 0.5 },
+            { date: "2026-02-01", inputTokens: 200, outputTokens: 100, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 300, totalCost: 1.0 },
+          ],
+        },
       })
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)
-      const todayLine = result.lines.find((l) => l.label === "Today")
-      expect(todayLine).toBeTruthy()
-      expect(todayLine.value).toContain("300 tokens")
+      const last30 = result.lines.find((l) => l.label === "Last 30 days")
+      expect(last30).toBeTruthy()
+      expect(last30.value).toContain("450 tokens")
+      expect(last30.value).toContain("$1.50")
     })
 
-    it("skips unchanged files on rescan (cache hit)", async () => {
-      const today = new Date().toISOString()
-      const jsonlLine = JSON.stringify({
-        type: "assistant",
-        requestId: "req_001",
-        timestamp: today,
-        message: { id: "msg_001", model: "claude-opus-4-5", usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } },
-      })
-      const filePath = "/Users/x/.claude/projects/proj/session.jsonl"
-      const globFile = { path: filePath, size: jsonlLine.length, mtimeMs: 1000 }
+    it("shows only Last 30 days when today has no entry", async () => {
       const ctx = makeProbeCtx({
-        globFiles: [globFile],
-        jsonlContents: { [filePath]: jsonlLine + "\n" },
-      })
-      const plugin = await loadPlugin()
-      plugin.probe(ctx)
-
-      const globSpy = ctx.host.fs.glob
-      const callsAfterFirst = globSpy.mock.calls.length
-      expect(callsAfterFirst).toBeGreaterThan(0)
-
-      plugin.probe(ctx)
-
-      expect(globSpy).toHaveBeenCalledTimes(callsAfterFirst)
-    })
-
-    it("includes cost in Today line when model pricing is known", async () => {
-      const today = new Date().toISOString()
-      const jsonlLine = JSON.stringify({
-        type: "assistant",
-        requestId: "req_cost",
-        timestamp: today,
-        message: {
-          id: "msg_cost",
-          model: "claude-opus-4-5",
-          usage: { input_tokens: 1000000, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+        ccusageResult: {
+          daily: [
+            { date: "2026-02-01", inputTokens: 500, outputTokens: 100, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 600, totalCost: 2.0 },
+          ],
         },
-      })
-      const filePath = "/Users/x/.claude/projects/proj/session.jsonl"
-      const ctx = makeProbeCtx({
-        globFiles: [{ path: filePath, size: jsonlLine.length, mtimeMs: Date.now() }],
-        jsonlContents: { [filePath]: jsonlLine + "\n" },
       })
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)
-      const todayLine = result.lines.find((l) => l.label === "Today")
-      expect(todayLine).toBeTruthy()
-      expect(todayLine.value).toContain("$5.00")
-      expect(todayLine.value).toContain("1M tokens")
+      expect(result.lines.find((l) => l.label === "Today")).toBeUndefined()
+      const last30 = result.lines.find((l) => l.label === "Last 30 days")
+      expect(last30).toBeTruthy()
+      expect(last30.value).toContain("600 tokens")
     })
 
-    it("omits cost but shows tokens when model is unknown", async () => {
-      const today = new Date().toISOString()
-      const jsonlLine = JSON.stringify({
-        type: "assistant",
-        requestId: "req_unk",
-        timestamp: today,
-        message: {
-          id: "msg_unk",
-          model: "claude-future-model-9000",
-          usage: { input_tokens: 500, output_tokens: 100, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
-        },
-      })
-      const filePath = "/Users/x/.claude/projects/proj/session.jsonl"
+    it("adds no token lines when ccusage returns empty daily array", async () => {
+      const ctx = makeProbeCtx({ ccusageResult: { daily: [] } })
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      expect(result.lines.find((l) => l.label === "Today")).toBeUndefined()
+      expect(result.lines.find((l) => l.label === "Last 30 days")).toBeUndefined()
+    })
+
+    it("omits cost when totalCost is null", async () => {
+      const todayKey = new Date().toISOString().slice(0, 10)
       const ctx = makeProbeCtx({
-        globFiles: [{ path: filePath, size: jsonlLine.length, mtimeMs: Date.now() }],
-        jsonlContents: { [filePath]: jsonlLine + "\n" },
+        ccusageResult: {
+          daily: [
+            { date: todayKey, inputTokens: 500, outputTokens: 100, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 600, totalCost: null },
+          ],
+        },
       })
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)
       const todayLine = result.lines.find((l) => l.label === "Today")
       expect(todayLine).toBeTruthy()
       expect(todayLine.value).not.toContain("$")
-      expect(todayLine.value).toContain("tokens")
+      expect(todayLine.value).toContain("600 tokens")
     })
 
-    it("gracefully handles glob failure", async () => {
-      const ctx = makeCtx()
-      ctx.host.fs.exists = (path) => path === "~/.claude/.credentials.json"
-      ctx.host.fs.readText = () => CRED_JSON
-      ctx.host.fs.writeText = vi.fn()
-      ctx.host.fs.glob = vi.fn(() => { throw new Error("permission denied") })
-      ctx.host.http.request.mockReturnValue({ status: 200, bodyText: USAGE_RESPONSE })
-      const plugin = await loadPlugin()
-      const result = plugin.probe(ctx)
-      expect(result.lines.find((l) => l.label === "Session")).toBeTruthy()
-      expect(result.lines.find((l) => l.label === "Today")).toBeUndefined()
-    })
-
-    it("gracefully handles JSONL read failure", async () => {
-      const today = new Date().toISOString()
-      const goodJsonl = JSON.stringify({
-        type: "assistant",
-        requestId: "req_good",
-        timestamp: today,
-        message: { id: "msg_good", model: "claude-opus-4-5", usage: { input_tokens: 100, output_tokens: 50, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } },
-      }) + "\n"
-      const badPath = "/Users/x/.claude/projects/bad/session.jsonl"
-      const goodPath = "/Users/x/.claude/projects/good/session.jsonl"
-      const ctx = makeProbeCtx({
-        globFiles: [
-          { path: badPath, size: 10, mtimeMs: Date.now() },
-          { path: goodPath, size: goodJsonl.length, mtimeMs: Date.now() },
-        ],
-        jsonlContents: { [goodPath]: goodJsonl },
-      })
-      const plugin = await loadPlugin()
-      const result = plugin.probe(ctx)
-      const todayLine = result.lines.find((l) => l.label === "Today")
-      expect(todayLine).toBeTruthy()
-      expect(todayLine.value).toContain("tokens")
-    })
-
-    it("normalizes anthropic. prefixed model names", async () => {
-      const today = new Date().toISOString()
-      const jsonlLine = JSON.stringify({
-        type: "assistant",
-        requestId: "req_norm",
-        timestamp: today,
-        message: {
-          id: "msg_norm",
-          model: "anthropic.claude-opus-4-5",
-          usage: { input_tokens: 1000000, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
-        },
-      })
-      const filePath = "/Users/x/.claude/projects/proj/session.jsonl"
-      const ctx = makeProbeCtx({
-        globFiles: [{ path: filePath, size: jsonlLine.length, mtimeMs: Date.now() }],
-        jsonlContents: { [filePath]: jsonlLine + "\n" },
-      })
-      const plugin = await loadPlugin()
-      const result = plugin.probe(ctx)
-      const todayLine = result.lines.find((l) => l.label === "Today")
-      expect(todayLine).toBeTruthy()
-      expect(todayLine.value).toContain("$5.00")
-    })
-
-    it("normalizes dated model names (claude-sonnet-4-5-20250929 → claude-sonnet-4-5)", async () => {
-      const today = new Date().toISOString()
-      const jsonlLine = JSON.stringify({
-        type: "assistant",
-        requestId: "req_dated",
-        timestamp: today,
-        message: {
-          id: "msg_dated",
-          model: "claude-sonnet-4-5-20250929",
-          usage: { input_tokens: 1000000, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
-        },
-      })
-      const filePath = "/Users/x/.claude/projects/proj/session.jsonl"
-      const ctx = makeProbeCtx({
-        globFiles: [{ path: filePath, size: jsonlLine.length, mtimeMs: Date.now() }],
-        jsonlContents: { [filePath]: jsonlLine + "\n" },
-      })
-      const plugin = await loadPlugin()
-      const result = plugin.probe(ctx)
-      const todayLine = result.lines.find((l) => l.label === "Today")
-      expect(todayLine).toBeTruthy()
-      expect(todayLine.value).toContain("$5.40")
-    })
-
-    it("oversized file clears stale cache entry", async () => {
-      const filePath = "/Users/x/.claude/projects/proj/big.jsonl"
+    it("caches ccusage result for 60 seconds", async () => {
       const todayKey = new Date().toISOString().slice(0, 10)
-      const cachePath = "/tmp/openusage-test/plugin/token-cache.json"
-      const preCache = {
-        version: 1,
-        lastScanMs: 0,
-        files: {
-          [filePath]: { size: 100, mtimeMs: 1000, days: { [todayKey]: { "claude-opus-4-5": [100, 0, 0, 50, 0] } } },
-        },
-        days: { [todayKey]: { "claude-opus-4-5": [100, 0, 0, 50, 0] } },
-      }
       const ctx = makeProbeCtx({
-        globFiles: [{ path: filePath, size: 110 * 1024 * 1024, mtimeMs: 1000 }],
-        jsonlContents: { [cachePath]: JSON.stringify(preCache) },
+        ccusageResult: {
+          daily: [
+            { date: todayKey, inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 150, totalCost: 0.5 },
+          ],
+        },
       })
       const plugin = await loadPlugin()
-      const result = plugin.probe(ctx)
-      expect(result.lines.find((l) => l.label === "Today")).toBeUndefined()
+      plugin.probe(ctx)
+      plugin.probe(ctx)
+      expect(ctx.host.ccusage.query).toHaveBeenCalledTimes(1)
     })
 
-    it("scan failure preserves old cached data", async () => {
-      const filePath = "/Users/x/.claude/projects/proj/stale.jsonl"
+    it("includes cache tokens in total", async () => {
       const todayKey = new Date().toISOString().slice(0, 10)
-      const cachePath = "/tmp/openusage-test/plugin/token-cache.json"
-      const preCache = {
-        version: 1,
-        lastScanMs: 0,
-        files: {
-          [filePath]: { size: 100, mtimeMs: 1000, days: { [todayKey]: { "claude-opus-4-5": [200, 0, 0, 100, 0] } } },
-        },
-        days: { [todayKey]: { "claude-opus-4-5": [200, 0, 0, 100, 0] } },
-      }
       const ctx = makeProbeCtx({
-        globFiles: [{ path: filePath, size: 100, mtimeMs: 2000 }],
-        jsonlContents: { [cachePath]: JSON.stringify(preCache) },
-      })
-      const plugin = await loadPlugin()
-      const result = plugin.probe(ctx)
-      expect(result.lines.find((l) => l.label === "Today")).toBeTruthy()
-    })
-
-    it("reads CLAUDE_CONFIG_DIR and scans its projects subdir", async () => {
-      const today = new Date().toISOString()
-      const jsonlLine = JSON.stringify({
-        type: "assistant",
-        requestId: "req_custom",
-        timestamp: today,
-        message: {
-          id: "msg_custom",
-          model: "claude-opus-4-5",
-          usage: { input_tokens: 100, output_tokens: 50, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+        ccusageResult: {
+          daily: [
+            { date: todayKey, inputTokens: 100, outputTokens: 50, cacheCreationTokens: 200, cacheReadTokens: 300, totalTokens: 650, totalCost: 1.0 },
+          ],
         },
-      })
-      const customFilePath = "/custom/config/projects/proj/session.jsonl"
-      const ctx = makeProbeCtx({
-        globFiles: [],
-        jsonlContents: { [customFilePath]: jsonlLine + "\n" },
-      })
-      ctx.host.env.get = vi.fn((name) => name === "CLAUDE_CONFIG_DIR" ? "/custom/config" : null)
-      ctx.host.fs.glob = vi.fn((root, pattern) => {
-        if (root === "/custom/config/projects") {
-          return [{ path: customFilePath, size: jsonlLine.length, mtimeMs: Date.now() }]
-        }
-        return []
       })
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)
       const todayLine = result.lines.find((l) => l.label === "Today")
       expect(todayLine).toBeTruthy()
-      expect(todayLine.value).toContain("tokens")
+      expect(todayLine.value).toContain("650 tokens")
     })
   })
 })

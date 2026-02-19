@@ -272,73 +272,29 @@
     })
   }
 
-  const TOKEN_SCAN_MAX_FILE_BYTES = 100 * 1024 * 1024
-  const TOKEN_CACHE_VERSION = 1
-  const TOKEN_SCAN_MIN_INTERVAL_MS = 60 * 1000
+  let ccusageCache = null
+  let ccusageCacheMs = 0
+  const CCUSAGE_CACHE_MS = 60 * 1000
 
-  const CLAUDE_PRICING = {
-    "claude-haiku-4-5-20251001": { input: 1e-6, output: 5e-6, cacheRead: 1e-7, cacheCreate: 1.25e-6 },
-    "claude-haiku-4-5": { input: 1e-6, output: 5e-6, cacheRead: 1e-7, cacheCreate: 1.25e-6 },
-    "claude-opus-4-5-20251101": { input: 5e-6, output: 2.5e-5, cacheRead: 5e-7, cacheCreate: 6.25e-6 },
-    "claude-opus-4-5": { input: 5e-6, output: 2.5e-5, cacheRead: 5e-7, cacheCreate: 6.25e-6 },
-    "claude-opus-4-6-20260205": { input: 5e-6, output: 2.5e-5, cacheRead: 5e-7, cacheCreate: 6.25e-6 },
-    "claude-opus-4-6": { input: 5e-6, output: 2.5e-5, cacheRead: 5e-7, cacheCreate: 6.25e-6 },
-    "claude-sonnet-4-6": {
-      input: 3e-6, output: 1.5e-5, cacheRead: 3e-7, cacheCreate: 3.75e-6,
-      threshold: 200000, inputAbove: 6e-6, outputAbove: 2.25e-5, cacheReadAbove: 6e-7, cacheCreateAbove: 7.5e-6,
-    },
-    "claude-sonnet-4-5-20250929": {
-      input: 3e-6, output: 1.5e-5, cacheRead: 3e-7, cacheCreate: 3.75e-6,
-      threshold: 200000, inputAbove: 6e-6, outputAbove: 2.25e-5, cacheReadAbove: 6e-7, cacheCreateAbove: 7.5e-6,
-    },
-    "claude-sonnet-4-5": {
-      input: 3e-6, output: 1.5e-5, cacheRead: 3e-7, cacheCreate: 3.75e-6,
-      threshold: 200000, inputAbove: 6e-6, outputAbove: 2.25e-5, cacheReadAbove: 6e-7, cacheCreateAbove: 7.5e-6,
-    },
-    "claude-opus-4-20250514": { input: 1.5e-5, output: 7.5e-5, cacheRead: 1.5e-6, cacheCreate: 1.875e-5 },
-    "claude-opus-4-1": { input: 1.5e-5, output: 7.5e-5, cacheRead: 1.5e-6, cacheCreate: 1.875e-5 },
-    "claude-sonnet-4-20250514": {
-      input: 3e-6, output: 1.5e-5, cacheRead: 3e-7, cacheCreate: 3.75e-6,
-      threshold: 200000, inputAbove: 6e-6, outputAbove: 2.25e-5, cacheReadAbove: 6e-7, cacheCreateAbove: 7.5e-6,
-    },
-  }
-
-  function normalizeClaudeModel(raw) {
-    if (!raw) return raw
-    let model = String(raw).trim()
-    if (model.indexOf("anthropic.") === 0) model = model.slice("anthropic.".length)
-
-    const lastDot = model.lastIndexOf(".")
-    if (lastDot >= 0 && model.slice(lastDot + 1).indexOf("claude-") === 0) {
-      model = model.slice(lastDot + 1)
+  function queryTokenUsage(ctx) {
+    const now = Date.now()
+    if (ccusageCache && now - ccusageCacheMs < CCUSAGE_CACHE_MS) {
+      return ccusageCache
     }
 
-    model = model.replace(/-v\d+:\d+$/, "")
-    const atIdx = model.indexOf("@")
-    if (atIdx >= 0) model = model.slice(0, atIdx)
+    const since = new Date()
+    since.setDate(since.getDate() - 31)
+    const y = since.getFullYear()
+    const m = since.getMonth() + 1
+    const d = since.getDate()
+    const sinceStr = "" + y + (m < 10 ? "0" : "") + m + (d < 10 ? "0" : "") + d
 
-    const dateMatch = model.match(/^(.+)-(\d{8})$/)
-    if (dateMatch && CLAUDE_PRICING[dateMatch[1]]) return dateMatch[1]
-    return model
-  }
+    const result = ctx.host.ccusage.query({ since: sinceStr })
+    if (!result) return null
 
-  function claudeCostUSD(model, inputTokens, cacheRead, cacheCreate, outputTokens) {
-    const pricing = CLAUDE_PRICING[model]
-    if (!pricing) return null
-
-    function tiered(tokens, base, above, threshold) {
-      if (!threshold || !above) return tokens * base
-      const below = Math.min(tokens, threshold)
-      const over = Math.max(tokens - threshold, 0)
-      return below * base + over * above
-    }
-
-    return (
-      tiered(inputTokens, pricing.input, pricing.inputAbove, pricing.threshold) +
-      tiered(cacheRead, pricing.cacheRead, pricing.cacheReadAbove, pricing.threshold) +
-      tiered(cacheCreate, pricing.cacheCreate, pricing.cacheCreateAbove, pricing.threshold) +
-      tiered(outputTokens, pricing.output, pricing.outputAbove, pricing.threshold)
-    )
+    ccusageCache = result
+    ccusageCacheMs = now
+    return result
   }
 
   function fmtTokens(n) {
@@ -362,287 +318,16 @@
     return sign + Math.round(abs).toString()
   }
 
-  function dayKeyFromTimestamp(ts) {
-    const date = new Date(ts)
-    if (isNaN(date.getTime())) return null
+  function dayKeyFromDate(date) {
     const year = date.getFullYear()
     const month = date.getMonth() + 1
     const day = date.getDate()
     return year + "-" + (month < 10 ? "0" : "") + month + "-" + (day < 10 ? "0" : "") + day
   }
 
-  function dayKeyOffset(daysAgo) {
-    const date = new Date()
-    date.setDate(date.getDate() - daysAgo)
-    return dayKeyFromTimestamp(date.toISOString())
-  }
-
-  function applyFileDays(cacheDays, fileDays, sign) {
-    const dayKeys = Object.keys(fileDays)
-    for (let i = 0; i < dayKeys.length; i++) {
-      const day = dayKeys[i]
-      const fileModels = fileDays[day]
-      if (!fileModels) continue
-      const cacheDay = cacheDays[day] || {}
-
-      const modelKeys = Object.keys(fileModels)
-      for (let j = 0; j < modelKeys.length; j++) {
-        const model = modelKeys[j]
-        const incoming = fileModels[model]
-        const current = cacheDay[model] || [0, 0, 0, 0, 0]
-        const len = Math.max(current.length, incoming.length)
-        const merged = []
-        let hasValue = false
-        for (let k = 0; k < len; k++) {
-          const value = Math.max(0, (current[k] || 0) + sign * (incoming[k] || 0))
-          merged.push(value)
-          if (value !== 0) hasValue = true
-        }
-        if (hasValue) {
-          cacheDay[model] = merged
-        } else {
-          delete cacheDay[model]
-        }
-      }
-
-      if (Object.keys(cacheDay).length === 0) {
-        delete cacheDays[day]
-      } else {
-        cacheDays[day] = cacheDay
-      }
-    }
-  }
-
-  function scanJsonlFile(ctx, filePath) {
-    const lines = ctx.host.fs.readText(filePath).split("\n")
-    const byRequestId = {}
-    const entries = []
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i]
-      if (!line) continue
-      if (line.indexOf('"type":"assistant"') === -1) continue
-      if (line.indexOf('"usage"') === -1) continue
-
-      const obj = ctx.util.tryParseJson(line)
-      if (!obj || obj.type !== "assistant") continue
-      const msg = obj.message
-      if (!msg || !msg.usage || !obj.timestamp) continue
-
-      const dayKey = dayKeyFromTimestamp(obj.timestamp)
-      if (!dayKey) continue
-
-      const usage = msg.usage
-      const inputTokens = Math.max(0, usage.input_tokens || 0)
-      const cacheRead = Math.max(0, usage.cache_read_input_tokens || 0)
-      const cacheCreate = Math.max(0, usage.cache_creation_input_tokens || 0)
-      const outputTokens = Math.max(0, usage.output_tokens || 0)
-      if (inputTokens === 0 && cacheRead === 0 && cacheCreate === 0 && outputTokens === 0) continue
-
-      const entry = {
-        dayKey,
-        model: msg.model || "unknown",
-        inputTokens,
-        cacheRead,
-        cacheCreate,
-        outputTokens,
-      }
-
-      if (obj.requestId && msg.id) {
-        const dedupKey = msg.id + ":" + obj.requestId
-        const existing = byRequestId[dedupKey]
-        if (!existing || outputTokens > existing.outputTokens) {
-          byRequestId[dedupKey] = entry
-        }
-      } else {
-        entries.push(entry)
-      }
-    }
-
-    const dayData = {}
-    function accumulateEntry(entry) {
-      const normalizedModel = normalizeClaudeModel(entry.model)
-      const cost = claudeCostUSD(
-        normalizedModel,
-        entry.inputTokens,
-        entry.cacheRead,
-        entry.cacheCreate,
-        entry.outputTokens
-      )
-      const costNanos = cost === null ? 0 : Math.round(cost * 1e9)
-      const dayModels = dayData[entry.dayKey] || {}
-      const packed = dayModels[normalizedModel] || [0, 0, 0, 0, 0]
-      packed[0] += entry.inputTokens
-      packed[1] += entry.cacheRead
-      packed[2] += entry.cacheCreate
-      packed[3] += entry.outputTokens
-      packed[4] += costNanos
-      dayModels[normalizedModel] = packed
-      dayData[entry.dayKey] = dayModels
-    }
-
-    const requestIds = Object.keys(byRequestId)
-    for (let i = 0; i < requestIds.length; i++) {
-      accumulateEntry(byRequestId[requestIds[i]])
-    }
-    for (let i = 0; i < entries.length; i++) {
-      accumulateEntry(entries[i])
-    }
-
-    return dayData
-  }
-
-  function loadTokenCache(ctx) {
-    const cachePath = ctx.app.pluginDataDir + "/token-cache.json"
-    try {
-      if (ctx.host.fs.exists(cachePath)) {
-        const parsed = ctx.util.tryParseJson(ctx.host.fs.readText(cachePath))
-        if (parsed && parsed.version === TOKEN_CACHE_VERSION) {
-          return { cache: parsed, path: cachePath }
-        }
-      }
-    } catch (e) {
-      ctx.host.log.warn("token cache load failed: " + String(e))
-    }
-    return { cache: { version: TOKEN_CACHE_VERSION, lastScanMs: 0, files: {}, days: {} }, path: cachePath }
-  }
-
-  function saveTokenCache(ctx, cachePath, cache) {
-    try {
-      ctx.host.fs.writeText(cachePath, JSON.stringify(cache))
-    } catch (e) {
-      ctx.host.log.warn("token cache save failed: " + String(e))
-    }
-  }
-
-  function pruneOldDays(days, keepDays) {
-    const cutoffKey = dayKeyOffset(keepDays)
-    if (!cutoffKey) return
-    const keys = Object.keys(days)
-    for (let i = 0; i < keys.length; i++) {
-      if (keys[i] < cutoffKey) delete days[keys[i]]
-    }
-  }
-
-  function scanTokenUsage(ctx) {
-    const loaded = loadTokenCache(ctx)
-    const cache = loaded.cache
-    const cachePath = loaded.path
-
-    if (cache.lastScanMs && Date.now() - cache.lastScanMs < TOKEN_SCAN_MIN_INTERVAL_MS) {
-      return cache.days
-    }
-
-    const roots = ["~/.claude/projects", "~/.config/claude/projects"]
-    const configDir = ctx.host.env.get("CLAUDE_CONFIG_DIR")
-    if (configDir) {
-      let projectsDir = String(configDir).trim()
-      if (projectsDir) {
-        if (!/\/projects\/?$/.test(projectsDir)) {
-          projectsDir = projectsDir.replace(/\/$/, "") + "/projects"
-        }
-        roots.unshift(projectsDir)
-      }
-    }
-
-    const allFiles = []
-    for (let i = 0; i < roots.length; i++) {
-      try {
-        const found = ctx.host.fs.glob(roots[i], "**/*.jsonl")
-        for (let j = 0; j < found.length; j++) allFiles.push(found[j])
-      } catch (e) {
-        ctx.host.log.warn("glob failed for " + roots[i] + ": " + String(e))
-      }
-    }
-
-    const touchedPaths = {}
-    for (let i = 0; i < allFiles.length; i++) {
-      const file = allFiles[i]
-      const filePath = file.path
-      if (touchedPaths[filePath]) continue
-      touchedPaths[filePath] = true
-
-      const cached = cache.files[filePath]
-      if (file.size > TOKEN_SCAN_MAX_FILE_BYTES) {
-        if (cached && cached.days) applyFileDays(cache.days, cached.days, -1)
-        delete cache.files[filePath]
-        continue
-      }
-      if (cached && cached.size === file.size && cached.mtimeMs === file.mtimeMs) continue
-
-      if (cached && cached.days) {
-        applyFileDays(cache.days, cached.days, -1)
-      }
-
-      try {
-        const fileDays = scanJsonlFile(ctx, filePath)
-        cache.files[filePath] = { size: file.size, mtimeMs: file.mtimeMs, days: fileDays }
-        applyFileDays(cache.days, fileDays, +1)
-      } catch (e) {
-        ctx.host.log.warn("scan failed for " + filePath + ": " + String(e))
-        if (cached && cached.days) {
-          applyFileDays(cache.days, cached.days, +1)
-          cache.files[filePath] = cached
-        }
-      }
-    }
-
-    const cachedPaths = Object.keys(cache.files)
-    for (let i = 0; i < cachedPaths.length; i++) {
-      const path = cachedPaths[i]
-      if (!touchedPaths[path]) {
-        if (cache.files[path] && cache.files[path].days) {
-          applyFileDays(cache.days, cache.files[path].days, -1)
-        }
-        delete cache.files[path]
-      }
-    }
-
-    pruneOldDays(cache.days, 31)
-    cache.lastScanMs = Date.now()
-    saveTokenCache(ctx, cachePath, cache)
-
-    return cache.days
-  }
-
-  function aggregateDay(days, dayKey) {
-    const models = days[dayKey]
-    if (!models) return { tokens: 0, costUSD: null }
-    let tokens = 0
-    let costNanos = 0
-    let hasCost = false
-    const modelKeys = Object.keys(models)
-    for (let i = 0; i < modelKeys.length; i++) {
-      const packed = models[modelKeys[i]]
-      tokens += (packed[0] || 0) + (packed[1] || 0) + (packed[2] || 0) + (packed[3] || 0)
-      if (packed[4]) {
-        costNanos += packed[4]
-        hasCost = true
-      }
-    }
-    return { tokens, costUSD: hasCost ? costNanos / 1e9 : null }
-  }
-
-  function aggregateDays(days, count) {
-    let tokens = 0
-    let costNanos = 0
-    let hasCost = false
-    for (let i = 0; i < count; i++) {
-      const dayKey = dayKeyOffset(i)
-      if (!dayKey) continue
-      const dayData = aggregateDay(days, dayKey)
-      tokens += dayData.tokens
-      if (dayData.costUSD !== null) {
-        costNanos += dayData.costUSD * 1e9
-        hasCost = true
-      }
-    }
-    return { tokens, costUSD: hasCost ? costNanos / 1e9 : null }
-  }
-
   function costAndTokensLabel(data) {
     const parts = []
-    if (data.costUSD !== null) parts.push("$" + data.costUSD.toFixed(2))
+    if (data.costUSD != null) parts.push("$" + data.costUSD.toFixed(2))
     if (data.tokens > 0) parts.push(fmtTokens(data.tokens) + " tokens")
     return parts.join(" \u00b7 ")
   }
@@ -772,19 +457,42 @@
       lines.push(ctx.line.badge({ label: "Status", text: "No usage data", color: "#a3a3a3" }))
     }
 
-    try {
-      const tokenDays = scanTokenUsage(ctx)
-      const todayKey = dayKeyFromTimestamp(new Date().toISOString())
-      const todayData = aggregateDay(tokenDays, todayKey)
-      const last30Data = aggregateDays(tokenDays, 30)
-      if (todayData.tokens > 0) {
-        lines.push(ctx.line.text({ label: "Today", value: costAndTokensLabel(todayData) }))
+    const usage = queryTokenUsage(ctx)
+    if (usage && usage.daily) {
+      const todayKey = dayKeyFromDate(new Date())
+
+      let todayEntry = null
+      for (let i = 0; i < usage.daily.length; i++) {
+        if (usage.daily[i].date === todayKey) { todayEntry = usage.daily[i]; break }
       }
-      if (last30Data.tokens > 0) {
-        lines.push(ctx.line.text({ label: "Last 30 days", value: costAndTokensLabel(last30Data) }))
+
+      if (todayEntry) {
+        const todayTokens = todayEntry.totalTokens || 0
+        if (todayTokens > 0) {
+          lines.push(ctx.line.text({
+            label: "Today",
+            value: costAndTokensLabel({ tokens: todayTokens, costUSD: todayEntry.totalCost != null ? todayEntry.totalCost : null })
+          }))
+        }
       }
-    } catch (e) {
-      ctx.host.log.warn("token scan failed: " + String(e))
+
+      let totalTokens = 0
+      let totalCostNanos = 0
+      let hasCost = false
+      for (let i = 0; i < usage.daily.length; i++) {
+        const day = usage.daily[i]
+        totalTokens += day.totalTokens || 0
+        if (day.totalCost != null) {
+          totalCostNanos += Math.round((day.totalCost || 0) * 1e9)
+          hasCost = true
+        }
+      }
+      if (totalTokens > 0) {
+        lines.push(ctx.line.text({
+          label: "Last 30 days",
+          value: costAndTokensLabel({ tokens: totalTokens, costUSD: hasCost ? totalCostNanos / 1e9 : null })
+        }))
+      }
     }
 
     return { plan: plan, lines: lines }

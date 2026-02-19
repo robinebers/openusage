@@ -4,9 +4,9 @@
   "version": "0.6.5",
   "identifier": "com.sunstory.openusage",
   "build": {
-    "beforeDevCommand": "bun run bundle:plugins && bun run dev",
+    "beforeDevCommand": "bun run bundle:plugins && bun build scripts/ccusage-bridge.mjs --outfile src-tauri/resources/ccusage-bridge.mjs --bundle --target=bun --minify && bun run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "bun run bundle:plugins && bun run build",
+    "beforeBuildCommand": "bun run bundle:plugins && bun build scripts/ccusage-bridge.mjs --outfile src-tauri/resources/ccusage-bridge.mjs --bundle --target=bun --minify && bun run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -55,6 +55,7 @@
     ],
     "resources": [
       "resources/bundled_plugins/**/*",
+      "resources/ccusage-bridge.mjs",
       "icons/tray-icon.png"
     ],
     "createUpdaterArtifacts": true

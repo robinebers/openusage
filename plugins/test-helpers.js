@@ -16,7 +16,6 @@ export const makeCtx = () => {
         exists: (path) => files.has(path),
         readText: (path) => files.get(path),
         writeText: vi.fn((path, text) => files.set(path, text)),
-        glob: vi.fn(() => []),
       },
       env: {
         get: vi.fn(() => null),
@@ -35,6 +34,9 @@ export const makeCtx = () => {
       },
       ls: {
         discover: vi.fn(() => null),
+      },
+      ccusage: {
+        query: vi.fn(() => null),
       },
       log: {
         trace: vi.fn(),

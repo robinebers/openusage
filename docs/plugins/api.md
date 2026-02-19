@@ -58,26 +58,7 @@ ctx.host.log.error("API request failed: " + error.message)
 host.fs.exists(path: string): boolean
 host.fs.readText(path: string): string   // Throws on error
 host.fs.writeText(path: string, content: string): void  // Throws on error
-host.fs.glob(baseDir: string, pattern: string): Array<{ path: string, size: number, mtimeMs: number }>
 ```
-
-### `host.fs.glob`
-
-Recursively finds files matching a glob pattern under `baseDir`. Returns an array of file entries with their absolute path, size in bytes, and last modification time in Unix milliseconds (useful for cache invalidation).
-
-Returns an empty array if the base directory does not exist. Throws if the pattern is invalid.
-
-```javascript
-// Find all JSONL log files
-const files = ctx.host.fs.glob("~/.myapp/logs", "**/*.jsonl")
-// Returns: [{ path: "/Users/x/.myapp/logs/2026/session.jsonl", size: 12345, mtimeMs: 1700000000000 }, ...]
-
-for (const file of files) {
-  ctx.host.log.info(file.path + " (" + file.size + " bytes)")
-}
-```
-
-Tilde expansion (`~`) is supported for `baseDir`. Supports `**` for recursive matching.
 
 ### Path Expansion
 
@@ -465,6 +446,50 @@ ctx.line.progress({
   format: { kind: "percent" },
   resetsAt: ctx.util.toIso(data.resets_at),
 })
+```
+
+## ccusage (Token Usage)
+
+```typescript
+host.ccusage.query(opts: {
+  since?: string,       // Start date (YYYYMMDD format)
+  until?: string,       // End date (YYYYMMDD format)
+  claudePath?: string,  // Custom Claude data path
+}): { daily: DailyUsage[] } | null
+```
+
+Queries local Claude Code token usage via the [ccusage](https://github.com/ryoppippi/ccusage) library. Returns daily usage data with token counts and costs, or `null` if Bun is not available.
+
+### Behavior
+
+- **Requires Bun**: Spawns a Bun subprocess to run the bundled ccusage bridge script
+- **Offline only**: Reads local JSONL session files, no network requests
+- **Graceful degradation**: Returns `null` if Bun is not found on the system
+- **Pricing**: Uses ccusage's built-in LiteLLM pricing data
+
+### DailyUsage
+
+Each entry in the `daily` array contains:
+
+| Property             | Type          | Description                      |
+| -------------------- | ------------- | -------------------------------- |
+| `date`               | `string`      | Date in YYYY-MM-DD format        |
+| `inputTokens`        | `number`      | Input tokens used                |
+| `outputTokens`       | `number`      | Output tokens used               |
+| `cacheCreationTokens`| `number`      | Cache creation tokens            |
+| `cacheReadTokens`    | `number`      | Cache read tokens                |
+| `totalCost`          | `number|null` | Total cost in USD, null if unknown |
+
+### Example
+
+```javascript
+var result = ctx.host.ccusage.query({ since: "20260101" })
+if (result && result.daily) {
+  for (var i = 0; i < result.daily.length; i++) {
+    var day = result.daily[i]
+    ctx.host.log.info(day.date + ": " + day.inputTokens + " input tokens, $" + day.totalCost)
+  }
+}
 ```
 
 ## See Also
