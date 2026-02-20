@@ -62,7 +62,7 @@ Show the user a clear summary table of findings by severity, then offer exactly 
 
 **Option 1 — Close PR**: Only if there are Blocker-level security issues that aren't normal for our codebase, or the PR is intentionally harmful/spam. Explain why.
 
-**Option 2 — Comment with feedback**: Post a concise review comment on the PR using `gh pr review {{pr}} --comment`. Write in simple, friendly language (like explaining to a 5th grader). Lead with what's good, then list what needs fixing before merge. No jargon. Keep it short — one short paragraph of praise, then a numbered list of fixes.
+**Option 2 — Comment with feedback**: Post a concise review comment on the PR using `gh pr review {{pr}} --comment`. Write in simple, friendly language (like explaining to a 5th grader). Lead with what's good, then list what needs fixing before merge. No jargon. Keep it short — one short paragraph of praise, then a numbered list of fixes. When this option is used, you must submit it AFTER draft and approval with "request changes".
 
 **Option 3 — Safe to merge**: If no Blocker/High issues exist, tell the user it's clean and ready.
 
