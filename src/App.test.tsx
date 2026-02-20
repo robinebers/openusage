@@ -502,6 +502,57 @@ describe("App", () => {
     })
   })
 
+  it("requeues selected provider tray update while a tray render is in flight", async () => {
+    state.loadTrayIconStyleMock.mockResolvedValueOnce("provider")
+    state.invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_plugins") {
+        return [
+          {
+            id: "a",
+            name: "Alpha",
+            iconUrl: "icon-a",
+            primaryCandidates: ["Session"],
+            lines: [{ type: "progress", label: "Session", scope: "overview" }],
+          },
+          {
+            id: "b",
+            name: "Beta",
+            iconUrl: "icon-b",
+            primaryCandidates: ["Session"],
+            lines: [{ type: "progress", label: "Session", scope: "overview" }],
+          },
+        ]
+      }
+      return null
+    })
+    state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a", "b"], disabled: [] })
+
+    let resolveFirstRender: ((img: unknown) => void) | null = null
+    state.renderTrayBarsIconMock
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFirstRender = resolve
+          })
+      )
+      .mockResolvedValue({})
+
+    render(<App />)
+    await waitFor(() => expect(state.renderTrayBarsIconMock).toHaveBeenCalledTimes(1))
+
+    await userEvent.click(await screen.findByRole("button", { name: "Beta" }))
+    expect(state.renderTrayBarsIconMock).toHaveBeenCalledTimes(1)
+
+    resolveFirstRender?.({})
+
+    await waitFor(() => {
+      expect(state.renderTrayBarsIconMock.mock.calls.length).toBeGreaterThan(1)
+      const latestCall = state.renderTrayBarsIconMock.mock.calls.at(-1)?.[0]
+      expect(latestCall.bars[0]?.id).toBe("b")
+      expect(latestCall.providerIconUrl).toBe("icon-b")
+    })
+  })
+
   it("uses text-only tray style", async () => {
     state.loadTrayIconStyleMock.mockResolvedValueOnce("textOnly")
     state.invokeMock.mockImplementation(async (cmd: string) => {

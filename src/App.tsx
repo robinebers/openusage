@@ -109,6 +109,7 @@ function App() {
   const trayGaugeIconPathRef = useRef<string | null>(null)
   const trayUpdateTimerRef = useRef<number | null>(null)
   const trayUpdatePendingRef = useRef(false)
+  const trayUpdateQueuedRef = useRef(false)
   const [trayReady, setTrayReady] = useState(false)
 
   // Store state in refs so scheduleTrayIconUpdate can read current values without recreating the callback
@@ -140,12 +141,22 @@ function App() {
 
     trayUpdateTimerRef.current = window.setTimeout(() => {
       trayUpdateTimerRef.current = null
-      if (trayUpdatePendingRef.current) return
+      if (trayUpdatePendingRef.current) {
+        trayUpdateQueuedRef.current = true
+        return
+      }
       trayUpdatePendingRef.current = true
+      const finishTrayUpdate = () => {
+        trayUpdatePendingRef.current = false
+        if (trayUpdateQueuedRef.current) {
+          trayUpdateQueuedRef.current = false
+          scheduleTrayIconUpdate("settings", 0)
+        }
+      }
 
       const tray = trayRef.current
       if (!tray) {
-        trayUpdatePendingRef.current = false
+        finishTrayUpdate()
         return
       }
 
@@ -172,10 +183,10 @@ function App() {
               console.error("Failed to restore tray gauge icon:", e)
             })
             .finally(() => {
-              trayUpdatePendingRef.current = false
+              finishTrayUpdate()
             })
         } else {
-          trayUpdatePendingRef.current = false
+          finishTrayUpdate()
         }
         return
       }
@@ -203,10 +214,10 @@ function App() {
               console.error("Failed to restore tray gauge icon:", e)
             })
             .finally(() => {
-              trayUpdatePendingRef.current = false
+              finishTrayUpdate()
             })
         } else {
-          trayUpdatePendingRef.current = false
+          finishTrayUpdate()
         }
         return
       }
@@ -227,7 +238,7 @@ function App() {
           console.error("Failed to update tray icon:", e)
         })
         .finally(() => {
-          trayUpdatePendingRef.current = false
+          finishTrayUpdate()
         })
     }, delayMs)
   }, [])
