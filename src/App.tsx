@@ -118,6 +118,7 @@ function App() {
   const displayModeRef = useRef(displayMode)
   const trayIconStyleRef = useRef(trayIconStyle)
   const trayShowPercentageRef = useRef(trayShowPercentage)
+  const selectedTrayProviderIdRef = useRef<string | null>(null)
   useEffect(() => { pluginsMetaRef.current = pluginsMeta }, [pluginsMeta])
   useEffect(() => { pluginSettingsRef.current = pluginSettings }, [pluginSettings])
   useEffect(() => { pluginStatesRef.current = pluginStates }, [pluginStates])
@@ -156,6 +157,7 @@ function App() {
         pluginStates: pluginStatesRef.current,
         maxBars,
         displayMode: displayModeRef.current,
+        preferredPluginId: selectedTrayProviderIdRef.current,
       })
 
       // 0 bars: revert to the packaged gauge tray icon.
@@ -292,6 +294,35 @@ function App() {
       .filter((p): p is PluginMeta => Boolean(p))
       .map((p) => ({ id: p.id, name: p.name, iconUrl: p.iconUrl, brandColor: p.brandColor }))
   }, [pluginSettings, pluginsMeta])
+
+  const selectedTrayProviderId = useMemo(() => {
+    if (!pluginSettings) return null
+    if (activeView === "home" || activeView === "settings") return null
+    const isEnabled =
+      pluginSettings.order.includes(activeView) &&
+      !pluginSettings.disabled.includes(activeView)
+    return isEnabled ? activeView : null
+  }, [activeView, pluginSettings])
+
+  useEffect(() => {
+    selectedTrayProviderIdRef.current = selectedTrayProviderId
+  }, [selectedTrayProviderId])
+
+  const lastTraySelectionRef = useRef<string | null>(selectedTrayProviderId)
+  useEffect(() => {
+    if (!trayReady) return
+    if (!pluginSettings) return
+    if (pluginsMeta.length === 0) return
+    if (lastTraySelectionRef.current === selectedTrayProviderId) return
+    lastTraySelectionRef.current = selectedTrayProviderId
+    scheduleTrayIconUpdate("settings", 0)
+  }, [
+    selectedTrayProviderId,
+    trayReady,
+    pluginSettings,
+    pluginsMeta.length,
+    scheduleTrayIconUpdate,
+  ])
 
   // If active view is a plugin that got disabled, switch to home
   useEffect(() => {

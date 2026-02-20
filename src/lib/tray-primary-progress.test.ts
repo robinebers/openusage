@@ -30,6 +30,51 @@ describe("getTrayPrimaryBars", () => {
     expect(bars.map((b) => b.id)).toEqual(["a", "b", "d", "e"])
   })
 
+  it("prioritizes preferred plugin when selected and enabled", () => {
+    const pluginsMeta = ["a", "b", "c"].map((id) => ({
+      id,
+      name: id.toUpperCase(),
+      iconUrl: "",
+      primaryCandidates: ["Usage"],
+      lines: [],
+    }))
+
+    const bars = getTrayPrimaryBars({
+      pluginsMeta,
+      pluginSettings: { order: ["a", "b", "c"], disabled: [] },
+      pluginStates: {},
+      preferredPluginId: "c",
+    })
+
+    expect(bars.map((b) => b.id)).toEqual(["c", "a", "b"])
+  })
+
+  it("ignores preferred plugin when it is unknown or disabled", () => {
+    const pluginsMeta = ["a", "b", "c"].map((id) => ({
+      id,
+      name: id.toUpperCase(),
+      iconUrl: "",
+      primaryCandidates: ["Usage"],
+      lines: [],
+    }))
+
+    const unknownPreferred = getTrayPrimaryBars({
+      pluginsMeta,
+      pluginSettings: { order: ["a", "b", "c"], disabled: [] },
+      pluginStates: {},
+      preferredPluginId: "z",
+    })
+    expect(unknownPreferred.map((b) => b.id)).toEqual(["a", "b", "c"])
+
+    const disabledPreferred = getTrayPrimaryBars({
+      pluginsMeta,
+      pluginSettings: { order: ["a", "b", "c"], disabled: ["b"] },
+      pluginStates: {},
+      preferredPluginId: "b",
+    })
+    expect(disabledPreferred.map((b) => b.id)).toEqual(["a", "c"])
+  })
+
   it("includes plugins with primary candidates even when no data (fraction undefined)", () => {
     const bars = getTrayPrimaryBars({
       pluginsMeta: [
@@ -258,4 +303,3 @@ describe("getTrayPrimaryBars", () => {
     expect(bars).toEqual([])
   })
 })
-

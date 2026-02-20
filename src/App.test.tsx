@@ -459,6 +459,49 @@ describe("App", () => {
     expect(latestCall.percentText).toBe("50%")
   })
 
+  it("uses selected provider for provider tray style when selecting from sidebar", async () => {
+    state.loadTrayIconStyleMock.mockResolvedValueOnce("provider")
+    state.invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_plugins") {
+        return [
+          {
+            id: "a",
+            name: "Alpha",
+            iconUrl: "icon-a",
+            primaryCandidates: ["Session"],
+            lines: [{ type: "progress", label: "Session", scope: "overview" }],
+          },
+          {
+            id: "b",
+            name: "Beta",
+            iconUrl: "icon-b",
+            primaryCandidates: ["Session"],
+            lines: [{ type: "progress", label: "Session", scope: "overview" }],
+          },
+        ]
+      }
+      return null
+    })
+    state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a", "b"], disabled: [] })
+
+    render(<App />)
+    await waitFor(() => expect(state.renderTrayBarsIconMock).toHaveBeenCalled())
+
+    const initialCall = state.renderTrayBarsIconMock.mock.calls.at(-1)?.[0]
+    expect(initialCall.style).toBe("provider")
+    expect(initialCall.providerIconUrl).toBe("icon-a")
+    expect(initialCall.bars[0]?.id).toBe("a")
+
+    await userEvent.click(await screen.findByRole("button", { name: "Beta" }))
+
+    await waitFor(() => {
+      const latestCall = state.renderTrayBarsIconMock.mock.calls.at(-1)?.[0]
+      expect(latestCall.style).toBe("provider")
+      expect(latestCall.providerIconUrl).toBe("icon-b")
+      expect(latestCall.bars[0]?.id).toBe("b")
+    })
+  })
+
   it("uses text-only tray style", async () => {
     state.loadTrayIconStyleMock.mockResolvedValueOnce("textOnly")
     state.invokeMock.mockImplementation(async (cmd: string) => {
