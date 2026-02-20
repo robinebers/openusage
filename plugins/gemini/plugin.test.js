@@ -109,6 +109,54 @@ describe("gemini plugin", () => {
     expect(persisted.access_token).toBe("new-token")
   })
 
+  it("refreshes using client creds from oauth_creds.json when oauth2.js is unavailable", async () => {
+    const ctx = makeCtx()
+    const nowMs = 1_700_000_000_000
+    vi.spyOn(Date, "now").mockReturnValue(nowMs)
+
+    ctx.host.fs.writeText(
+      CREDS_PATH,
+      JSON.stringify({
+        access_token: "old-token",
+        refresh_token: "refresh-token",
+        client_id: "embedded-client-id",
+        client_secret: "embedded-client-secret",
+        expiry_date: nowMs - 1000,
+      })
+    )
+
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url === TOKEN_URL) {
+        expect(opts.bodyText).toContain("client_id=embedded-client-id")
+        expect(opts.bodyText).toContain("client_secret=embedded-client-secret")
+        return { status: 200, bodyText: JSON.stringify({ access_token: "new-token", expires_in: 3600 }) }
+      }
+      if (url === LOAD_CODE_ASSIST_URL) {
+        return { status: 200, bodyText: JSON.stringify({ tier: "standard-tier" }) }
+      }
+      if (url === QUOTA_URL) {
+        expect(opts.headers.Authorization).toBe("Bearer new-token")
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            quotaBuckets: [{ modelId: "gemini-2.5-pro", remainingFraction: 0.2, resetTime: "2099-01-01T00:00:00Z" }],
+          }),
+        }
+      }
+      throw new Error("unexpected url: " + url)
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((line) => line.label === "Pro")).toBeTruthy()
+    const persisted = JSON.parse(ctx.host.fs.readText(CREDS_PATH))
+    expect(persisted.access_token).toBe("new-token")
+    expect(persisted.client_id).toBe("embedded-client-id")
+    expect(persisted.client_secret).toBe("embedded-client-secret")
+  })
+
   it("uses project fallback and maps workspace tier", async () => {
     const ctx = makeCtx()
     const nowMs = 1_700_000_000_000

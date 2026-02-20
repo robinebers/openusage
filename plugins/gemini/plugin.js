@@ -90,6 +90,22 @@
     return null
   }
 
+  function readOauthClientCredsFromCreds(creds) {
+    if (!creds || typeof creds !== "object") return null
+    const clientId = typeof creds.client_id === "string" && creds.client_id
+      ? creds.client_id
+      : typeof creds.clientId === "string" && creds.clientId
+        ? creds.clientId
+        : null
+    const clientSecret = typeof creds.client_secret === "string" && creds.client_secret
+      ? creds.client_secret
+      : typeof creds.clientSecret === "string" && creds.clientSecret
+        ? creds.clientSecret
+        : null
+    if (!clientId || !clientSecret) return null
+    return { clientId, clientSecret }
+  }
+
   function readNumber(value) {
     const n = Number(value)
     return Number.isFinite(n) ? n : null
@@ -115,7 +131,7 @@
 
   function refreshToken(ctx, creds) {
     if (!creds.refresh_token) return null
-    const clientCreds = loadOauthClientCreds(ctx)
+    const clientCreds = readOauthClientCredsFromCreds(creds) || loadOauthClientCreds(ctx)
     if (!clientCreds) return null
 
     let resp

@@ -43,6 +43,25 @@ describe("useProbeEvents", () => {
     expect(ids).toEqual(["a", "b"])
   })
 
+  it("passes account selections when provided", async () => {
+    invokeMock.mockImplementation(async (_cmd: string, args: any) => ({
+      batchId: args.batchId,
+      pluginIds: args.pluginIds ?? [],
+    }))
+
+    const { result } = renderHook(() =>
+      useProbeEvents({ onResult: vi.fn(), onBatchComplete: vi.fn() })
+    )
+
+    const accountSelections = { codex: "abc123", claude: "def456" }
+    await act(() => result.current.startBatch(["codex", "claude"], { accountSelections }))
+
+    expect(invokeMock).toHaveBeenCalledWith(
+      "start_probe_batch",
+      expect.objectContaining({ pluginIds: ["codex", "claude"], accountSelections })
+    )
+  })
+
   it("starts batch without plugin ids and uses fallback id", async () => {
     const originalCrypto = globalThis.crypto
     // @ts-expect-error test fallback path

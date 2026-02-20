@@ -21,6 +21,7 @@ export type ResetTimerDisplayMode = "relative" | "absolute";
 export type TrayIconStyle = "bars" | "circle" | "provider" | "textOnly";
 
 export type GlobalShortcut = string | null;
+export type CliProxyAccountSelections = Record<string, string>;
 
 const SETTINGS_STORE_PATH = "settings.json";
 const PLUGIN_SETTINGS_KEY = "plugins";
@@ -32,6 +33,7 @@ const TRAY_ICON_STYLE_KEY = "trayIconStyle";
 const TRAY_SHOW_PERCENTAGE_KEY = "trayShowPercentage";
 const GLOBAL_SHORTCUT_KEY = "globalShortcut";
 const START_ON_LOGIN_KEY = "startOnLogin";
+const CLIPROXY_ACCOUNT_SELECTIONS_KEY = "cliProxyAccountSelections";
 
 export const DEFAULT_AUTO_UPDATE_INTERVAL: AutoUpdateIntervalMinutes = 15;
 export const DEFAULT_THEME_MODE: ThemeMode = "system";
@@ -47,6 +49,7 @@ const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
 const DISPLAY_MODES: DisplayMode[] = ["used", "left"];
 const RESET_TIMER_DISPLAY_MODES: ResetTimerDisplayMode[] = ["relative", "absolute"];
 const TRAY_ICON_STYLES: TrayIconStyle[] = ["bars", "circle", "provider", "textOnly"];
+const HIDDEN_PLUGIN_IDS = new Set(["cliproxyapi"]);
 
 export const AUTO_UPDATE_OPTIONS: { value: AutoUpdateIntervalMinutes; label: string }[] =
   AUTO_UPDATE_INTERVALS.map((value) => ({
@@ -250,7 +253,7 @@ export async function saveTrayShowPercentage(value: boolean): Promise<void> {
 
 export function getEnabledPluginIds(settings: PluginSettings): string[] {
   const disabledSet = new Set(settings.disabled);
-  return settings.order.filter((id) => !disabledSet.has(id));
+  return settings.order.filter((id) => !disabledSet.has(id) && !HIDDEN_PLUGIN_IDS.has(id));
 }
 
 function isGlobalShortcut(value: unknown): value is GlobalShortcut {
@@ -277,5 +280,27 @@ export async function loadStartOnLogin(): Promise<boolean> {
 
 export async function saveStartOnLogin(value: boolean): Promise<void> {
   await store.set(START_ON_LOGIN_KEY, value);
+  await store.save();
+}
+
+export async function loadCliProxyAccountSelections(): Promise<CliProxyAccountSelections> {
+  const stored = await store.get<unknown>(CLIPROXY_ACCOUNT_SELECTIONS_KEY);
+  if (!stored || typeof stored !== "object" || Array.isArray(stored)) return {};
+
+  const next: CliProxyAccountSelections = {};
+  for (const [pluginId, value] of Object.entries(stored as Record<string, unknown>)) {
+    if (typeof value !== "string") continue;
+    const key = pluginId.trim();
+    const selection = value.trim();
+    if (!key || !selection) continue;
+    next[key] = selection;
+  }
+  return next;
+}
+
+export async function saveCliProxyAccountSelections(
+  selections: CliProxyAccountSelections
+): Promise<void> {
+  await store.set(CLIPROXY_ACCOUNT_SELECTIONS_KEY, selections);
   await store.save();
 }

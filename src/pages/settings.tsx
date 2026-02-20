@@ -280,6 +280,17 @@ interface SettingsPageProps {
   startOnLogin: boolean;
   onStartOnLoginChange: (value: boolean) => void;
   providerIconUrl?: string;
+  cliProxyConfigured: boolean;
+  cliProxyBaseUrl: string;
+  cliProxyApiKey: string;
+  cliProxyAuthFileCount: number;
+  cliProxyBusy: boolean;
+  cliProxyError: string | null;
+  onCliProxyBaseUrlChange: (value: string) => void;
+  onCliProxyApiKeyChange: (value: string) => void;
+  onCliProxySave: () => void;
+  onCliProxyRefresh: () => void;
+  onCliProxyClear: () => void;
 }
 
 export function SettingsPage({
@@ -303,6 +314,17 @@ export function SettingsPage({
   startOnLogin,
   onStartOnLoginChange,
   providerIconUrl,
+  cliProxyConfigured,
+  cliProxyBaseUrl,
+  cliProxyApiKey,
+  cliProxyAuthFileCount,
+  cliProxyBusy,
+  cliProxyError,
+  onCliProxyBaseUrlChange,
+  onCliProxyApiKeyChange,
+  onCliProxySave,
+  onCliProxyRefresh,
+  onCliProxyClear,
 }: SettingsPageProps) {
   const percentageMandatory = isTrayPercentageMandatory(trayIconStyle);
   const trayShowPercentageChecked = percentageMandatory
@@ -519,6 +541,63 @@ export function SettingsPage({
           />
           Start on login
         </label>
+      </section>
+      <section>
+        <h3 className="text-lg font-semibold mb-0">CLIProxyAPI</h3>
+        <p className="text-sm text-muted-foreground mb-2">
+          Management endpoint and account bridge
+        </p>
+        <div className="space-y-2">
+          <input
+            type="text"
+            value={cliProxyBaseUrl}
+            onChange={(event) => onCliProxyBaseUrlChange(event.target.value)}
+            placeholder="http://localhost:8317"
+            className="w-full h-8 px-3 text-sm rounded-md border bg-muted/50"
+          />
+          <input
+            type="password"
+            value={cliProxyApiKey}
+            onChange={(event) => onCliProxyApiKeyChange(event.target.value)}
+            placeholder="Management key"
+            className="w-full h-8 px-3 text-sm rounded-md border bg-muted/50"
+          />
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              size="sm"
+              variant="default"
+              disabled={cliProxyBusy}
+              onClick={onCliProxySave}
+            >
+              Save
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={cliProxyBusy || !cliProxyConfigured}
+              onClick={onCliProxyRefresh}
+            >
+              Refresh
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={cliProxyBusy || !cliProxyConfigured}
+              onClick={onCliProxyClear}
+            >
+              Clear
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {cliProxyConfigured ? `Connected (${cliProxyAuthFileCount} auth files)` : "Not configured"}
+          </p>
+          {cliProxyError && (
+            <p className="text-xs text-red-500">{cliProxyError}</p>
+          )}
+        </div>
       </section>
       <section>
         <h3 className="text-lg font-semibold mb-0">Plugins</h3>

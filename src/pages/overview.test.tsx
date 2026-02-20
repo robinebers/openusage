@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react"
-import { describe, expect, it } from "vitest"
+import userEvent from "@testing-library/user-event"
+import { describe, expect, it, vi } from "vitest"
 import { OverviewPage } from "@/pages/overview"
 
 describe("OverviewPage", () => {
@@ -74,5 +75,37 @@ describe("OverviewPage", () => {
 
     render(<OverviewPage plugins={plugins} displayMode="used" resetTimerDisplayMode="relative" />)
     expect(screen.queryByRole("button", { name: /status/i })).toBeNull()
+  })
+
+  it("propagates account selection changes", async () => {
+    const onAccountChange = vi.fn()
+    const plugins = [
+      {
+        meta: { id: "codex", name: "Codex", iconUrl: "icon", lines: [] },
+        data: { providerId: "codex", displayName: "Codex", lines: [], iconUrl: "icon" },
+        loading: false,
+        error: null,
+        lastManualRefreshAt: null,
+      },
+    ]
+
+    render(
+      <OverviewPage
+        plugins={plugins}
+        displayMode="used"
+        resetTimerDisplayMode="relative"
+        accountOptionsByPlugin={{
+          codex: [
+            { value: "__local__", label: "Local account" },
+            { value: "idx-1", label: "main@example.com" },
+          ],
+        }}
+        selectedAccountByPlugin={{ codex: "__local__" }}
+        onAccountChange={onAccountChange}
+      />
+    )
+
+    await userEvent.selectOptions(screen.getByLabelText("Codex account"), "idx-1")
+    expect(onAccountChange).toHaveBeenCalledWith("codex", "idx-1")
   })
 })

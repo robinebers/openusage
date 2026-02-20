@@ -4,6 +4,9 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 
+pub type CredentialOverlay = std::collections::HashMap<String, String>;
+pub type SharedCredentialOverlay = std::sync::Arc<std::sync::Mutex<CredentialOverlay>>;
+
 const WHITELISTED_ENV_VARS: [&str; 3] = ["CODEX_HOME", "ZAI_API_KEY", "GLM_API_KEY"];
 
 fn last_non_empty_trimmed_line(text: &str) -> Option<String> {
@@ -112,7 +115,14 @@ fn redact_value(value: &str) -> String {
         "[REDACTED]".to_string()
     } else {
         let first4: String = chars.iter().take(4).collect();
-        let last4: String = chars.iter().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect();
+        let last4: String = chars
+            .iter()
+            .rev()
+            .take(4)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
         format!("{}...{}", first4, last4)
     }
 }
@@ -120,11 +130,26 @@ fn redact_value(value: &str) -> String {
 /// Redact sensitive query parameters in URL
 fn redact_url(url: &str) -> String {
     let sensitive_params = [
-        "key", "api_key", "apikey", "token", "access_token", "secret",
-        "password", "auth", "authorization", "bearer", "credential",
-        "user", "user_id", "userid", "account_id", "accountid", "email", "login",
+        "key",
+        "api_key",
+        "apikey",
+        "token",
+        "access_token",
+        "secret",
+        "password",
+        "auth",
+        "authorization",
+        "bearer",
+        "credential",
+        "user",
+        "user_id",
+        "userid",
+        "account_id",
+        "accountid",
+        "email",
+        "login",
     ];
-    
+
     if let Some(query_start) = url.find('?') {
         let (base, query) = url.split_at(query_start + 1);
         let redacted_params: Vec<String> = query
@@ -134,7 +159,8 @@ fn redact_url(url: &str) -> String {
                     let (name, value) = param.split_at(eq_pos);
                     let value = &value[1..]; // skip '='
                     let name_lower = name.to_lowercase();
-                    if sensitive_params.iter().any(|s| name_lower.contains(s)) && !value.is_empty() {
+                    if sensitive_params.iter().any(|s| name_lower.contains(s)) && !value.is_empty()
+                    {
                         format!("{}={}", name, redact_value(value))
                     } else {
                         param.to_string()
@@ -153,50 +179,91 @@ fn redact_url(url: &str) -> String {
 /// Redact sensitive patterns in response body for logging
 fn redact_body(body: &str) -> String {
     let mut result = body.to_string();
-    
+
     // Redact JWTs (eyJ... pattern with dots)
-    let jwt_pattern = regex_lite::Regex::new(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+").unwrap();
-    result = jwt_pattern.replace_all(&result, |caps: &regex_lite::Captures| {
-        redact_value(&caps[0])
-    }).to_string();
-    
+    let jwt_pattern =
+        regex_lite::Regex::new(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+").unwrap();
+    result = jwt_pattern
+        .replace_all(&result, |caps: &regex_lite::Captures| {
+            redact_value(&caps[0])
+        })
+        .to_string();
+
     // Redact common API key patterns (sk-xxx, pk-xxx, api_xxx, etc.)
-    let api_key_pattern = regex_lite::Regex::new(r#"["']?(sk-|pk-|api_|key_|secret_)[A-Za-z0-9_-]{12,}["']?"#).unwrap();
-    result = api_key_pattern.replace_all(&result, |caps: &regex_lite::Captures| {
-        let key = caps[0].trim_matches(|c| c == '"' || c == '\'');
-        redact_value(key)
-    }).to_string();
-    
+    let api_key_pattern =
+        regex_lite::Regex::new(r#"["']?(sk-|pk-|api_|key_|secret_)[A-Za-z0-9_-]{12,}["']?"#)
+            .unwrap();
+    result = api_key_pattern
+        .replace_all(&result, |caps: &regex_lite::Captures| {
+            let key = caps[0].trim_matches(|c| c == '"' || c == '\'');
+            redact_value(key)
+        })
+        .to_string();
+
     // Redact JSON values for sensitive keys
     let sensitive_keys = [
-        "name", "password", "token", "access_token", "refresh_token", "secret",
-        "api_key", "apiKey", "authorization", "bearer", "credential",
-        "session_token", "sessionToken", "auth_token", "authToken",
-        "id_token", "idToken", "accessToken", "refreshToken",
-        "user_id", "userId", "account_id", "accountId", "email", "login", "analytics_tracking_id",
+        "name",
+        "password",
+        "token",
+        "access_token",
+        "refresh_token",
+        "secret",
+        "api_key",
+        "apiKey",
+        "authorization",
+        "bearer",
+        "credential",
+        "session_token",
+        "sessionToken",
+        "auth_token",
+        "authToken",
+        "OPENAI_API_KEY",
+        "openai_api_key",
+        "id_token",
+        "idToken",
+        "accessToken",
+        "refreshToken",
+        "user_id",
+        "userId",
+        "account_id",
+        "accountId",
+        "email",
+        "login",
+        "analytics_tracking_id",
     ];
     for key in sensitive_keys {
         // Match "key": "value" or "key":"value"
         let pattern = format!(r#""{}":\s*"([^"]+)""#, key);
         if let Ok(re) = regex_lite::Regex::new(&pattern) {
-            result = re.replace_all(&result, |caps: &regex_lite::Captures| {
-                let value = &caps[1];
-                format!("\"{}\": \"{}\"", key, redact_value(value))
-            }).to_string();
+            result = re
+                .replace_all(&result, |caps: &regex_lite::Captures| {
+                    let value = &caps[1];
+                    format!("\"{}\": \"{}\"", key, redact_value(value))
+                })
+                .to_string();
         }
     }
-    
+
     result
 }
 
 /// Lightweight redaction for plugin log messages (JWT + API key patterns only).
 fn redact_log_message(msg: &str) -> String {
     let mut result = msg.to_string();
-    if let Ok(jwt_re) = regex_lite::Regex::new(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+") {
-        result = jwt_re.replace_all(&result, |caps: &regex_lite::Captures| redact_value(&caps[0])).to_string();
+    if let Ok(jwt_re) = regex_lite::Regex::new(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+")
+    {
+        result = jwt_re
+            .replace_all(&result, |caps: &regex_lite::Captures| {
+                redact_value(&caps[0])
+            })
+            .to_string();
     }
     if let Ok(api_re) = regex_lite::Regex::new(r#"(sk-|pk-|api_|key_|secret_)[A-Za-z0-9_-]{12,}"#) {
-        result = api_re.replace_all(&result, |caps: &regex_lite::Captures| redact_value(&caps[0])).to_string();
+        result = api_re
+            .replace_all(&result, |caps: &regex_lite::Captures| {
+                redact_value(&caps[0])
+            })
+            .to_string();
     }
     result
 }
@@ -206,6 +273,7 @@ pub fn inject_host_api<'js>(
     plugin_id: &str,
     app_data_dir: &PathBuf,
     app_version: &str,
+    credential_overlay: Option<SharedCredentialOverlay>,
 ) -> rquickjs::Result<()> {
     let globals = ctx.globals();
     let probe_ctx = Object::new(ctx.clone())?;
@@ -232,7 +300,7 @@ pub fn inject_host_api<'js>(
 
     let host = Object::new(ctx.clone())?;
     inject_log(ctx, &host, plugin_id)?;
-    inject_fs(ctx, &host)?;
+    inject_fs(ctx, &host, credential_overlay)?;
     inject_env(ctx, &host, plugin_id)?;
     inject_http(ctx, &host, plugin_id)?;
     inject_keychain(ctx, &host)?;
@@ -245,11 +313,7 @@ pub fn inject_host_api<'js>(
     Ok(())
 }
 
-fn inject_log<'js>(
-    ctx: &Ctx<'js>,
-    host: &Object<'js>,
-    plugin_id: &str,
-) -> rquickjs::Result<()> {
+fn inject_log<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquickjs::Result<()> {
     let log_obj = Object::new(ctx.clone())?;
 
     let pid = plugin_id.to_string();
@@ -280,16 +344,30 @@ fn inject_log<'js>(
     Ok(())
 }
 
-fn inject_fs<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
+fn inject_fs<'js>(
+    ctx: &Ctx<'js>,
+    host: &Object<'js>,
+    credential_overlay: Option<SharedCredentialOverlay>,
+) -> rquickjs::Result<()> {
     let fs_obj = Object::new(ctx.clone())?;
+    let overlay_for_exists = credential_overlay.clone();
 
     fs_obj.set(
         "exists",
         Function::new(ctx.clone(), move |path: String| -> bool {
             let expanded = expand_path(&path);
+            if let Some(overlay) = overlay_for_exists.as_ref() {
+                if let Ok(locked) = overlay.lock() {
+                    if locked.contains_key(&expanded) || locked.contains_key(&path) {
+                        return true;
+                    }
+                }
+            }
             std::path::Path::new(&expanded).exists()
         })?,
     )?;
+
+    let overlay_for_read = credential_overlay.clone();
 
     fs_obj.set(
         "readText",
@@ -297,12 +375,20 @@ fn inject_fs<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
             ctx.clone(),
             move |ctx_inner: Ctx<'_>, path: String| -> rquickjs::Result<String> {
                 let expanded = expand_path(&path);
-                std::fs::read_to_string(&expanded).map_err(|e| {
-                    Exception::throw_message(&ctx_inner, &e.to_string())
-                })
+                if let Some(overlay) = overlay_for_read.as_ref() {
+                    if let Ok(locked) = overlay.lock() {
+                        if let Some(value) = locked.get(&expanded).or_else(|| locked.get(&path)) {
+                            return Ok(value.clone());
+                        }
+                    }
+                }
+                std::fs::read_to_string(&expanded)
+                    .map_err(|e| Exception::throw_message(&ctx_inner, &e.to_string()))
             },
         )?,
     )?;
+
+    let overlay_for_write = credential_overlay.clone();
 
     fs_obj.set(
         "writeText",
@@ -310,9 +396,17 @@ fn inject_fs<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
             ctx.clone(),
             move |ctx_inner: Ctx<'_>, path: String, content: String| -> rquickjs::Result<()> {
                 let expanded = expand_path(&path);
-                std::fs::write(&expanded, &content).map_err(|e| {
-                    Exception::throw_message(&ctx_inner, &e.to_string())
-                })
+                if let Some(overlay) = overlay_for_write.as_ref() {
+                    let mut locked = overlay
+                        .lock()
+                        .map_err(|e| Exception::throw_message(&ctx_inner, &e.to_string()))?;
+                    if locked.contains_key(&expanded) || locked.contains_key(&path) {
+                        locked.insert(expanded, content);
+                        return Ok(());
+                    }
+                }
+                std::fs::write(&expanded, &content)
+                    .map_err(|e| Exception::throw_message(&ctx_inner, &e.to_string()))
             },
         )?,
     )?;
@@ -421,7 +515,8 @@ fn inject_http<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rqui
                 let redacted_body = redact_body(&body);
                 let body_preview = if redacted_body.len() > 500 {
                     // UTF-8 safe truncation: find valid char boundary at or before 500
-                    let truncated: String = redacted_body.char_indices()
+                    let truncated: String = redacted_body
+                        .char_indices()
                         .take_while(|(i, _)| *i < 500)
                         .map(|(_, c)| c)
                         .collect();
@@ -814,11 +909,7 @@ struct LsDiscoverResult {
     extension_port: Option<i32>,
 }
 
-fn inject_ls<'js>(
-    ctx: &Ctx<'js>,
-    host: &Object<'js>,
-    plugin_id: &str,
-) -> rquickjs::Result<()> {
+fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquickjs::Result<()> {
     let ls_obj = Object::new(ctx.clone())?;
     let pid = plugin_id.to_string();
 
@@ -828,10 +919,7 @@ fn inject_ls<'js>(
             ctx.clone(),
             move |ctx_inner: Ctx<'_>, opts_json: String| -> rquickjs::Result<String> {
                 let opts: LsDiscoverOpts = serde_json::from_str(&opts_json).map_err(|e| {
-                    Exception::throw_message(
-                        &ctx_inner,
-                        &format!("invalid discover opts: {}", e),
-                    )
+                    Exception::throw_message(&ctx_inner, &format!("invalid discover opts: {}", e))
                 })?;
 
                 log::info!(
@@ -891,10 +979,9 @@ fn inject_ls<'js>(
                         continue;
                     }
 
-                    let ide_name = ls_extract_flag(command, "--ide_name")
-                        .map(|v| v.to_lowercase());
-                    let app_data = ls_extract_flag(command, "--app_data_dir")
-                        .map(|v| v.to_lowercase());
+                    let ide_name = ls_extract_flag(command, "--ide_name").map(|v| v.to_lowercase());
+                    let app_data =
+                        ls_extract_flag(command, "--app_data_dir").map(|v| v.to_lowercase());
 
                     let has_marker = markers_lower.iter().any(|m| {
                         // Prefer exact flag match; skip path fallback when
@@ -930,22 +1017,15 @@ fn inject_ls<'js>(
                 let csrf = match ls_extract_flag(&command, &opts.csrf_flag) {
                     Some(c) => c,
                     None => {
-                        log::warn!(
-                            "[plugin:{}] CSRF token not found in process args",
-                            pid
-                        );
+                        log::warn!("[plugin:{}] CSRF token not found in process args", pid);
                         return Ok("null".to_string());
                     }
                 };
 
                 // Extract extension port (optional)
-                let extension_port = opts
-                    .port_flag
-                    .as_ref()
-                    .and_then(|flag| {
-                        ls_extract_flag(&command, flag)
-                            .and_then(|v| v.parse::<i32>().ok())
-                    });
+                let extension_port = opts.port_flag.as_ref().and_then(|flag| {
+                    ls_extract_flag(&command, flag).and_then(|v| v.parse::<i32>().ok())
+                });
 
                 // Extract extra flags (optional)
                 let mut extra = std::collections::HashMap::new();
@@ -978,15 +1058,10 @@ fn inject_ls<'js>(
                         .output()
                     {
                         Ok(o) if o.status.success() => {
-                            ls_parse_listening_ports(
-                                &String::from_utf8_lossy(&o.stdout),
-                            )
+                            ls_parse_listening_ports(&String::from_utf8_lossy(&o.stdout))
                         }
                         Ok(_) => {
-                            log::warn!(
-                                "[plugin:{}] lsof returned non-zero",
-                                pid
-                            );
+                            log::warn!("[plugin:{}] lsof returned non-zero", pid);
                             Vec::new()
                         }
                         Err(e) => {
@@ -1024,10 +1099,7 @@ fn inject_ls<'js>(
                 };
 
                 serde_json::to_string(&result).map_err(|e| {
-                    Exception::throw_message(
-                        &ctx_inner,
-                        &format!("serialize failed: {}", e),
-                    )
+                    Exception::throw_message(&ctx_inner, &format!("serialize failed: {}", e))
                 })
             },
         )?,
@@ -1184,21 +1256,11 @@ fn inject_keychain<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<
                         .output()
                 } else {
                     std::process::Command::new("security")
-                        .args([
-                            "add-generic-password",
-                            "-s",
-                            &service,
-                            "-w",
-                            &value,
-                            "-U",
-                        ])
+                        .args(["add-generic-password", "-s", &service, "-w", &value, "-U"])
                         .output()
                 }
                 .map_err(|e| {
-                    Exception::throw_message(
-                        &ctx_inner,
-                        &format!("keychain write failed: {}", e),
-                    )
+                    Exception::throw_message(&ctx_inner, &format!("keychain write failed: {}", e))
                 })?;
 
                 if !output.status.success() {
@@ -1241,10 +1303,7 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                     .args(["-readonly", "-json", &expanded, &sql])
                     .output()
                     .map_err(|e| {
-                        Exception::throw_message(
-                            &ctx_inner,
-                            &format!("sqlite3 exec failed: {}", e),
-                        )
+                        Exception::throw_message(&ctx_inner, &format!("sqlite3 exec failed: {}", e))
                     })?;
 
                 if primary.status.success() {
@@ -1262,10 +1321,7 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                     .args(["-readonly", "-json", &uri_path, &sql])
                     .output()
                     .map_err(|e| {
-                        Exception::throw_message(
-                            &ctx_inner,
-                            &format!("sqlite3 exec failed: {}", e),
-                        )
+                        Exception::throw_message(&ctx_inner, &format!("sqlite3 exec failed: {}", e))
                     })?;
 
                 if !fallback.status.success() {
@@ -1302,10 +1358,7 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                     .args([&expanded, &sql])
                     .output()
                     .map_err(|e| {
-                        Exception::throw_message(
-                            &ctx_inner,
-                            &format!("sqlite3 exec failed: {}", e),
-                        )
+                        Exception::throw_message(&ctx_inner, &format!("sqlite3 exec failed: {}", e))
                     })?;
 
                 if !output.status.success() {
@@ -1373,7 +1426,7 @@ mod tests {
         let ctx = Context::full(&rt).expect("context");
         ctx.with(|ctx| {
             let app_data = std::env::temp_dir();
-            inject_host_api(&ctx, "test", &app_data, "0.0.0").expect("inject host api");
+            inject_host_api(&ctx, "test", &app_data, "0.0.0", None).expect("inject host api");
             let globals = ctx.globals();
             let probe_ctx: Object = globals.get("__openusage_ctx").expect("probe ctx");
             let host: Object = probe_ctx.get("host").expect("host");
@@ -1393,7 +1446,7 @@ mod tests {
         let ctx = Context::full(&rt).expect("context");
         ctx.with(|ctx| {
             let app_data = std::env::temp_dir();
-            inject_host_api(&ctx, "test", &app_data, "0.0.0").expect("inject host api");
+            inject_host_api(&ctx, "test", &app_data, "0.0.0", None).expect("inject host api");
             let globals = ctx.globals();
             let probe_ctx: Object = globals.get("__openusage_ctx").expect("probe ctx");
             let host: Object = probe_ctx.get("host").expect("host");
@@ -1402,16 +1455,14 @@ mod tests {
 
             for name in WHITELISTED_ENV_VARS {
                 let expected = resolve_env_value(name);
-                let value: Option<String> = get
-                    .call((name.to_string(),))
-                    .expect("get whitelisted var");
+                let value: Option<String> =
+                    get.call((name.to_string(),)).expect("get whitelisted var");
                 assert_eq!(value, expected, "{name} should match host env resolver");
 
                 let js_expr = format!(r#"__openusage_ctx.host.env.get("{}")"#, name);
                 let js_value: Option<String> = ctx.eval(js_expr).expect("js get whitelisted var");
                 assert_eq!(
-                    js_value,
-                    expected,
+                    js_value, expected,
                     "{name} should match host env resolver from JS"
                 );
             }
@@ -1419,12 +1470,18 @@ mod tests {
             let blocked: Option<String> = get
                 .call(("__OPENUSAGE_TEST_NOT_WHITELISTED__".to_string(),))
                 .expect("get blocked var");
-            assert!(blocked.is_none(), "non-whitelisted vars must not be exposed");
+            assert!(
+                blocked.is_none(),
+                "non-whitelisted vars must not be exposed"
+            );
 
             let js_blocked: Option<String> = ctx
                 .eval(r#"__openusage_ctx.host.env.get("__OPENUSAGE_TEST_NOT_WHITELISTED__")"#)
                 .expect("js get blocked var");
-            assert!(js_blocked.is_none(), "non-whitelisted vars must not be exposed from JS");
+            assert!(
+                js_blocked.is_none(),
+                "non-whitelisted vars must not be exposed from JS"
+            );
         });
     }
 
@@ -1457,7 +1514,7 @@ mod tests {
         let ctx = Context::full(&rt).expect("context");
         ctx.with(|ctx| {
             let app_data = std::env::temp_dir();
-            inject_host_api(&ctx, "test", &app_data, "0.0.0").expect("inject host api");
+            inject_host_api(&ctx, "test", &app_data, "0.0.0", None).expect("inject host api");
             let globals = ctx.globals();
             let probe_ctx: Object = globals.get("__openusage_ctx").expect("probe ctx");
             let host: Object = probe_ctx.get("host").expect("host");
@@ -1500,8 +1557,16 @@ mod tests {
     fn redact_url_redacts_user_query_param() {
         let url = "https://cursor.com/api/usage?user=user_abcdefghijklmnopqrstuvwxyz&limit=10";
         let redacted = redact_url(url);
-        assert!(redacted.contains("user=user...wxyz"), "user query param should be redacted, got: {}", redacted);
-        assert!(redacted.contains("limit=10"), "non-sensitive params should be preserved, got: {}", redacted);
+        assert!(
+            redacted.contains("user=user...wxyz"),
+            "user query param should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            redacted.contains("limit=10"),
+            "non-sensitive params should be preserved, got: {}",
+            redacted
+        );
     }
 
     #[test]
@@ -1515,7 +1580,11 @@ mod tests {
         let body = r#"{"token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"}"#;
         let redacted = redact_body(body);
         // JWT gets redacted to first4...last4 format
-        assert!(!redacted.contains("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"), "full JWT should be redacted, got: {}", redacted);
+        assert!(
+            !redacted.contains("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
+            "full JWT should be redacted, got: {}",
+            redacted
+        );
     }
 
     #[test]
@@ -1526,59 +1595,142 @@ mod tests {
     }
 
     #[test]
+    fn redact_body_redacts_openai_api_key_field() {
+        let body = r#"{"OPENAI_API_KEY":"sk-proj-abcdefghijklmnopqrstuvwxyz123456"}"#;
+        let redacted = redact_body(body);
+        assert!(
+            !redacted.contains("sk-proj-abcdefghijklmnopqrstuvwxyz123456"),
+            "OPENAI_API_KEY should be redacted, got: {}",
+            redacted
+        );
+    }
+
+    #[test]
     fn redact_body_redacts_json_password_field() {
         let body = r#"{"password": "supersecretpassword123"}"#;
         let redacted = redact_body(body);
-        assert!(!redacted.contains("supersecretpassword123"), "password should be redacted, got: {}", redacted);
+        assert!(
+            !redacted.contains("supersecretpassword123"),
+            "password should be redacted, got: {}",
+            redacted
+        );
     }
 
     #[test]
     fn redact_body_redacts_user_id_and_email() {
         let body = r#"{"user_id": "user-iupzZ7KFykMLrnzpkHSq7wjo", "email": "rob@sunstory.com"}"#;
         let redacted = redact_body(body);
-        assert!(!redacted.contains("user-iupzZ7KFykMLrnzpkHSq7wjo"), "user_id should be redacted, got: {}", redacted);
-        assert!(!redacted.contains("rob@sunstory.com"), "email should be redacted, got: {}", redacted);
+        assert!(
+            !redacted.contains("user-iupzZ7KFykMLrnzpkHSq7wjo"),
+            "user_id should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            !redacted.contains("rob@sunstory.com"),
+            "email should be redacted, got: {}",
+            redacted
+        );
         // Should show first4...last4
-        assert!(redacted.contains("user...7wjo"), "user_id should show first4...last4, got: {}", redacted);
-        assert!(redacted.contains("rob@....com"), "email should show first4...last4, got: {}", redacted);
+        assert!(
+            redacted.contains("user...7wjo"),
+            "user_id should show first4...last4, got: {}",
+            redacted
+        );
+        assert!(
+            redacted.contains("rob@....com"),
+            "email should show first4...last4, got: {}",
+            redacted
+        );
     }
 
     #[test]
     fn redact_body_redacts_camel_case_user_and_account_ids() {
         let body = r#"{"userId": "user_abcdefghijklmnopqrstuvwxyz", "accountId": "acct_1234567890abcdef"}"#;
         let redacted = redact_body(body);
-        assert!(!redacted.contains("user_abcdefghijklmnopqrstuvwxyz"), "userId should be redacted, got: {}", redacted);
-        assert!(!redacted.contains("acct_1234567890abcdef"), "accountId should be redacted, got: {}", redacted);
-        assert!(redacted.contains("user...wxyz"), "userId should show first4...last4, got: {}", redacted);
-        assert!(redacted.contains("acct...cdef"), "accountId should show first4...last4, got: {}", redacted);
+        assert!(
+            !redacted.contains("user_abcdefghijklmnopqrstuvwxyz"),
+            "userId should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            !redacted.contains("acct_1234567890abcdef"),
+            "accountId should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            redacted.contains("user...wxyz"),
+            "userId should show first4...last4, got: {}",
+            redacted
+        );
+        assert!(
+            redacted.contains("acct...cdef"),
+            "accountId should show first4...last4, got: {}",
+            redacted
+        );
     }
 
     #[test]
     fn redact_log_message_redacts_jwt_and_api_key() {
         let msg = "token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U key=sk-1234567890abcdef";
         let redacted = redact_log_message(msg);
-        assert!(!redacted.contains("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"), "JWT should be redacted");
-        assert!(!redacted.contains("sk-1234567890abcdef"), "API key should be redacted");
+        assert!(
+            !redacted.contains("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
+            "JWT should be redacted"
+        );
+        assert!(
+            !redacted.contains("sk-1234567890abcdef"),
+            "API key should be redacted"
+        );
     }
 
     #[test]
     fn redact_body_redacts_login_and_analytics_tracking_id() {
-        let body = r#"{"login":"robinebers","analytics_tracking_id":"c9df3f012bb8c2eb7aae6868ee8da6cf"}"#;
+        let body =
+            r#"{"login":"robinebers","analytics_tracking_id":"c9df3f012bb8c2eb7aae6868ee8da6cf"}"#;
         let redacted = redact_body(body);
-        assert!(!redacted.contains("robinebers"), "login should be redacted, got: {}", redacted);
-        assert!(!redacted.contains("c9df3f012bb8c2eb7aae6868ee8da6cf"), "analytics_tracking_id should be redacted, got: {}", redacted);
+        assert!(
+            !redacted.contains("robinebers"),
+            "login should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            !redacted.contains("c9df3f012bb8c2eb7aae6868ee8da6cf"),
+            "analytics_tracking_id should be redacted, got: {}",
+            redacted
+        );
         // login is short (<=12 chars) so becomes [REDACTED]; analytics_tracking_id is long so first4...last4
-        assert!(redacted.contains("[REDACTED]"), "login should be redacted, got: {}", redacted);
-        assert!(redacted.contains("c9df...a6cf"), "analytics_tracking_id should show first4...last4, got: {}", redacted);
+        assert!(
+            redacted.contains("[REDACTED]"),
+            "login should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            redacted.contains("c9df...a6cf"),
+            "analytics_tracking_id should show first4...last4, got: {}",
+            redacted
+        );
     }
 
     #[test]
     fn redact_body_redacts_name_field() {
-        let body = r#"{"userStatus":{"name":"Robin Ebers","email":"rob@sunstory.com","planStatus":{}}}"#;
+        let body =
+            r#"{"userStatus":{"name":"Robin Ebers","email":"rob@sunstory.com","planStatus":{}}}"#;
         let redacted = redact_body(body);
-        assert!(!redacted.contains("Robin Ebers"), "name should be redacted, got: {}", redacted);
-        assert!(!redacted.contains("rob@sunstory.com"), "email should be redacted, got: {}", redacted);
+        assert!(
+            !redacted.contains("Robin Ebers"),
+            "name should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            !redacted.contains("rob@sunstory.com"),
+            "email should be redacted, got: {}",
+            redacted
+        );
         // "Robin Ebers" is 11 chars (<=12) so becomes [REDACTED]
-        assert!(redacted.contains("\"name\": \"[REDACTED]\""), "name should show [REDACTED], got: {}", redacted);
+        assert!(
+            redacted.contains("\"name\": \"[REDACTED]\""),
+            "name should show [REDACTED], got: {}",
+            redacted
+        );
     }
 }

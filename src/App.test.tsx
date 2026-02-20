@@ -31,6 +31,8 @@ const state = vi.hoisted(() => ({
   autostartEnableMock: vi.fn(),
   autostartDisableMock: vi.fn(),
   autostartIsEnabledMock: vi.fn(),
+  loadCliProxyAccountSelectionsMock: vi.fn(),
+  saveCliProxyAccountSelectionsMock: vi.fn(),
   renderTrayBarsIconMock: vi.fn(),
   probeHandlers: null as null | { onResult: (output: any) => void; onBatchComplete: () => void },
   trayGetByIdMock: vi.fn(),
@@ -183,6 +185,10 @@ vi.mock("@/lib/settings", async () => {
     saveGlobalShortcut: state.saveGlobalShortcutMock,
     loadStartOnLogin: state.loadStartOnLoginMock,
     saveStartOnLogin: state.saveStartOnLoginMock,
+    loadCliProxyAccountSelections: state.loadCliProxyAccountSelectionsMock,
+    saveCliProxyAccountSelections: state.saveCliProxyAccountSelectionsMock,
+    loadStartOnLogin: state.loadStartOnLoginMock,
+    saveStartOnLogin: state.saveStartOnLoginMock,
   }
 })
 
@@ -219,6 +225,8 @@ describe("App", () => {
     state.autostartEnableMock.mockReset()
     state.autostartDisableMock.mockReset()
     state.autostartIsEnabledMock.mockReset()
+    state.loadCliProxyAccountSelectionsMock.mockReset()
+    state.saveCliProxyAccountSelectionsMock.mockReset()
     state.renderTrayBarsIconMock.mockReset()
     state.trayGetByIdMock.mockReset()
     state.traySetIconMock.mockReset()
@@ -242,6 +250,8 @@ describe("App", () => {
     state.loadTrayShowPercentageMock.mockResolvedValue(false)
     state.saveTrayShowPercentageMock.mockResolvedValue(undefined)
     state.loadGlobalShortcutMock.mockResolvedValue(null)
+    state.loadCliProxyAccountSelectionsMock.mockResolvedValue({})
+    state.saveCliProxyAccountSelectionsMock.mockResolvedValue(undefined)
     state.saveGlobalShortcutMock.mockResolvedValue(undefined)
     state.loadStartOnLoginMock.mockResolvedValue(false)
     state.saveStartOnLoginMock.mockResolvedValue(undefined)
@@ -811,7 +821,10 @@ describe("App", () => {
     })
     const retry = await screen.findByRole("button", { name: "Retry" })
     await userEvent.click(retry)
-    expect(state.startBatchMock).toHaveBeenCalledWith(["a"])
+    expect(state.startBatchMock).toHaveBeenCalledWith(
+      ["a"],
+      expect.objectContaining({ accountSelections: expect.any(Object) })
+    )
   })
 
   it("shows empty state when all plugins disabled", async () => {
@@ -870,7 +883,12 @@ describe("App", () => {
     const checkboxes = await screen.findAllByRole("checkbox")
     const targetCheckbox = checkboxes[checkboxes.length - 1]
     await userEvent.click(targetCheckbox)
-    await waitFor(() => expect(state.startBatchMock).toHaveBeenCalledWith(["b"]))
+    await waitFor(() =>
+      expect(state.startBatchMock).toHaveBeenCalledWith(
+        ["b"],
+        expect.objectContaining({ accountSelections: expect.any(Object) })
+      )
+    )
   })
 
   it("uses fallback monitor sizing when monitor missing", async () => {
@@ -1285,7 +1303,10 @@ describe("App", () => {
 
     // The retry should still work (startBatch called) but resetAutoUpdateSchedule
     // should hit the enabledIds.length === 0 branch
-    expect(state.startBatchMock).toHaveBeenCalledWith(["a"])
+    expect(state.startBatchMock).toHaveBeenCalledWith(
+      ["a"],
+      expect.objectContaining({ accountSelections: expect.any(Object) })
+    )
   })
 
   it("clears global shortcut via clear button and invokes update_global_shortcut with null", async () => {
@@ -1450,5 +1471,229 @@ describe("App", () => {
 
     window.requestAnimationFrame = originalRaf
     vi.useRealTimers()
+  })
+
+  it("applies CLIProxy account selection from provider card", async () => {
+    state.invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_plugins") {
+        return [
+          { id: "codex", name: "Codex", iconUrl: "icon-codex", primaryProgressLabel: null, lines: [] },
+        ]
+      }
+      if (cmd === "cliproxyapi_get_config") {
+        return { configured: true, baseUrl: "http://localhost:8317" }
+      }
+      if (cmd === "cliproxyapi_list_auth_files") {
+        return [
+          {
+            id: "1",
+            name: "codex-main.json",
+            provider: "codex",
+            authIndex: "idx-1",
+            email: "main@example.com",
+            disabled: false,
+            unavailable: false,
+          },
+        ]
+      }
+      return null
+    })
+    state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["codex"], disabled: [] })
+    state.loadCliProxyAccountSelectionsMock.mockResolvedValueOnce({ codex: "__local__" })
+
+    render(<App />)
+    await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
+
+    const accountSelect = await screen.findByLabelText("Codex account")
+    await userEvent.selectOptions(accountSelect, "idx-1")
+
+    await waitFor(() =>
+      expect(state.saveCliProxyAccountSelectionsMock).toHaveBeenCalledWith(
+        expect.objectContaining({ codex: "idx-1" })
+      )
+    )
+    let lastCall = state.startBatchMock.mock.calls.at(-1)
+    expect(lastCall?.[0]).toEqual(["codex"])
+    expect(lastCall?.[1]).toEqual({ accountSelections: { codex: "idx-1" } })
+
+    await userEvent.selectOptions(accountSelect, "__local__")
+    await waitFor(() =>
+      expect(state.saveCliProxyAccountSelectionsMock).toHaveBeenCalledWith(
+        expect.objectContaining({ codex: "__local__" })
+      )
+    )
+    lastCall = state.startBatchMock.mock.calls.at(-1)
+    expect(lastCall?.[0]).toEqual(["codex"])
+    expect(lastCall?.[1]).toEqual({ accountSelections: {} })
+  })
+
+  it("saves CLIProxy settings and refreshes enabled providers", async () => {
+    let getConfigCalls = 0
+    state.invokeMock.mockImplementation(async (cmd: string, payload?: any) => {
+      if (cmd === "list_plugins") {
+        return [
+          { id: "codex", name: "Codex", iconUrl: "icon-codex", primaryProgressLabel: null, lines: [] },
+        ]
+      }
+      if (cmd === "cliproxyapi_get_config") {
+        getConfigCalls += 1
+        if (getConfigCalls === 1) return { configured: false, baseUrl: null }
+        return { configured: true, baseUrl: "http://localhost:8317" }
+      }
+      if (cmd === "cliproxyapi_set_config") {
+        expect(payload).toEqual({ baseUrl: "localhost:8317", apiKey: "secret-key" })
+        return null
+      }
+      if (cmd === "cliproxyapi_list_auth_files") {
+        return [
+          {
+            id: "1",
+            name: "codex-main.json",
+            provider: "codex",
+            authIndex: "idx-1",
+            disabled: false,
+            unavailable: false,
+          },
+        ]
+      }
+      return null
+    })
+    state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["codex"], disabled: [] })
+
+    render(<App />)
+    const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
+    await userEvent.click(settingsButtons[0])
+
+    await userEvent.type(await screen.findByPlaceholderText("http://localhost:8317"), "localhost:8317")
+    await userEvent.type(await screen.findByPlaceholderText("Management key"), "secret-key")
+    await userEvent.click(await screen.findByRole("button", { name: "Save" }))
+
+    await screen.findByText("Connected (1 auth files)")
+    await waitFor(() =>
+      expect(state.invokeMock).toHaveBeenCalledWith("cliproxyapi_set_config", {
+        baseUrl: "localhost:8317",
+        apiKey: "secret-key",
+      })
+    )
+    const lastCall = state.startBatchMock.mock.calls.at(-1)
+    expect(lastCall?.[0]).toEqual(["codex"])
+    expect(lastCall?.[1]).toEqual({ accountSelections: {} })
+  })
+
+  it("shows CLIProxy errors for save, refresh, and clear failures", async () => {
+    let authListCalls = 0
+    state.invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_plugins") {
+        return [
+          { id: "codex", name: "Codex", iconUrl: "icon-codex", primaryProgressLabel: null, lines: [] },
+        ]
+      }
+      if (cmd === "cliproxyapi_get_config") {
+        return { configured: true, baseUrl: "http://localhost:8317" }
+      }
+      if (cmd === "cliproxyapi_set_config") {
+        throw new Error("save failed")
+      }
+      if (cmd === "cliproxyapi_list_auth_files") {
+        authListCalls += 1
+        if (authListCalls === 1) {
+          return [
+            {
+              id: "1",
+              name: "codex-main.json",
+              provider: "codex",
+              authIndex: "idx-1",
+              disabled: false,
+              unavailable: false,
+            },
+          ]
+        }
+        throw new Error("refresh failed")
+      }
+      if (cmd === "cliproxyapi_clear_config") {
+        throw new Error("clear failed")
+      }
+      return null
+    })
+    state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["codex"], disabled: [] })
+
+    render(<App />)
+    const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
+    await userEvent.click(settingsButtons[0])
+
+    await userEvent.click(await screen.findByRole("button", { name: "Save" }))
+    await screen.findByText("save failed")
+
+    await userEvent.click(await screen.findByRole("button", { name: "Refresh" }))
+    await screen.findByText("refresh failed")
+
+    await userEvent.click(await screen.findByRole("button", { name: "Clear" }))
+    await screen.findByText("clear failed")
+  })
+
+  it("refreshes and clears CLIProxy config", async () => {
+    let authListCalls = 0
+    state.invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_plugins") {
+        return [
+          { id: "codex", name: "Codex", iconUrl: "icon-codex", primaryProgressLabel: null, lines: [] },
+        ]
+      }
+      if (cmd === "cliproxyapi_get_config") {
+        return { configured: true, baseUrl: "http://localhost:8317" }
+      }
+      if (cmd === "cliproxyapi_list_auth_files") {
+        authListCalls += 1
+        if (authListCalls === 1) {
+          return [
+            {
+              id: "1",
+              name: "codex-main.json",
+              provider: "codex",
+              authIndex: "idx-1",
+              disabled: false,
+              unavailable: false,
+            },
+          ]
+        }
+        return [
+          {
+            id: "1",
+            name: "codex-main.json",
+            provider: "codex",
+            authIndex: "idx-1",
+            disabled: false,
+            unavailable: false,
+          },
+          {
+            id: "2",
+            name: "codex-alt.json",
+            provider: "codex",
+            authIndex: "idx-2",
+            disabled: false,
+            unavailable: false,
+          },
+        ]
+      }
+      if (cmd === "cliproxyapi_clear_config") {
+        return null
+      }
+      return null
+    })
+    state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["codex"], disabled: [] })
+    state.loadCliProxyAccountSelectionsMock.mockResolvedValueOnce({ codex: "idx-1" })
+
+    render(<App />)
+    const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
+    await userEvent.click(settingsButtons[0])
+
+    await screen.findByText("Connected (1 auth files)")
+
+    await userEvent.click(await screen.findByRole("button", { name: "Refresh" }))
+    await screen.findByText("Connected (2 auth files)")
+
+    await userEvent.click(await screen.findByRole("button", { name: "Clear" }))
+    await screen.findByText("Not configured")
+    await waitFor(() => expect(state.saveCliProxyAccountSelectionsMock).toHaveBeenCalledWith({}))
   })
 })
