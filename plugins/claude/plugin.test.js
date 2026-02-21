@@ -645,6 +645,13 @@ describe("claude plugin", () => {
       return ctx
     }
 
+    function localDayKey(date) {
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, "0")
+      const day = String(date.getDate()).padStart(2, "0")
+      return year + "-" + month + "-" + day
+    }
+
     it("shows empty Today state when ccusage returns null", async () => {
       const ctx = makeProbeCtx({ ccusageResult: null })
       const plugin = await loadPlugin()
@@ -668,7 +675,7 @@ describe("claude plugin", () => {
     })
 
     it("adds Today line when ccusage returns today's data", async () => {
-      const todayKey = new Date().toISOString().slice(0, 10)
+      const todayKey = localDayKey(new Date())
       const ctx = makeProbeCtx({
         ccusageResult: {
           daily: [
@@ -688,7 +695,7 @@ describe("claude plugin", () => {
     it("adds Yesterday line when ccusage returns yesterday's data", async () => {
       const yesterday = new Date()
       yesterday.setDate(yesterday.getDate() - 1)
-      const yesterdayKey = yesterday.toISOString().slice(0, 10)
+      const yesterdayKey = localDayKey(yesterday)
       const ctx = makeProbeCtx({
         ccusageResult: {
           daily: [
@@ -705,7 +712,7 @@ describe("claude plugin", () => {
     })
 
     it("adds Last 30 Days line summing all daily entries", async () => {
-      const todayKey = new Date().toISOString().slice(0, 10)
+      const todayKey = localDayKey(new Date())
       const ctx = makeProbeCtx({
         ccusageResult: {
           daily: [
@@ -761,7 +768,7 @@ describe("claude plugin", () => {
     })
 
     it("omits cost when totalCost is null", async () => {
-      const todayKey = new Date().toISOString().slice(0, 10)
+      const todayKey = localDayKey(new Date())
       const ctx = makeProbeCtx({
         ccusageResult: {
           daily: [
@@ -778,7 +785,7 @@ describe("claude plugin", () => {
     })
 
     it("shows empty Today state when today's totals are zero (regression)", async () => {
-      const todayKey = new Date().toISOString().slice(0, 10)
+      const todayKey = localDayKey(new Date())
       const ctx = makeProbeCtx({
         ccusageResult: {
           daily: [
@@ -795,7 +802,7 @@ describe("claude plugin", () => {
     })
 
     it("queries ccusage on each probe", async () => {
-      const todayKey = new Date().toISOString().slice(0, 10)
+      const todayKey = localDayKey(new Date())
       const ctx = makeProbeCtx({
         ccusageResult: {
           daily: [
@@ -810,7 +817,7 @@ describe("claude plugin", () => {
     })
 
     it("includes cache tokens in total", async () => {
-      const todayKey = new Date().toISOString().slice(0, 10)
+      const todayKey = localDayKey(new Date())
       const ctx = makeProbeCtx({
         ccusageResult: {
           daily: [
