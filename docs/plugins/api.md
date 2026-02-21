@@ -458,13 +458,13 @@ host.ccusage.query(opts: {
 }): { daily: DailyUsage[] } | null
 ```
 
-Queries local Claude Code token usage via the [ccusage](https://github.com/ryoppippi/ccusage) library. Returns daily usage data with token counts and costs, or `null` if Bun is not available.
+Queries local Claude Code token usage via [ccusage](https://github.com/ryoppippi/ccusage) CLI execution. Returns daily usage data with token counts and costs, or `null` if no supported package runner is available.
 
 ### Behavior
 
-- **Requires Bun**: Spawns a Bun subprocess to run the bundled ccusage bridge script
+- **Runtime runners**: Executes pinned `ccusage@18.0.5` via fallback chain `bunx -> pnpm dlx -> yarn dlx -> npm exec -> npx`
 - **Offline only**: Reads local JSONL session files, no network requests
-- **Graceful degradation**: Returns `null` if Bun is not found on the system
+- **Graceful degradation**: Returns `null` if no runner can execute `ccusage` successfully
 - **Pricing**: Uses ccusage's built-in LiteLLM pricing data
 
 ### DailyUsage
