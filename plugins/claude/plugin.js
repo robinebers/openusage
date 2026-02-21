@@ -313,6 +313,26 @@
     return year + "-" + (month < 10 ? "0" : "") + month + "-" + (day < 10 ? "0" : "") + day
   }
 
+  function dayKeyFromUsageDate(rawDate) {
+    if (typeof rawDate !== "string") return null
+    const value = rawDate.trim()
+    if (!value) return null
+
+    const isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+    if (isoMatch) {
+      return isoMatch[1] + "-" + isoMatch[2] + "-" + isoMatch[3]
+    }
+
+    const compactMatch = value.match(/^(\d{4})(\d{2})(\d{2})$/)
+    if (compactMatch) {
+      return compactMatch[1] + "-" + compactMatch[2] + "-" + compactMatch[3]
+    }
+
+    const ms = Date.parse(value)
+    if (!Number.isFinite(ms)) return null
+    return dayKeyFromDate(new Date(ms))
+  }
+
   function usageCostUsd(day) {
     if (!day || typeof day !== "object") return null
 
@@ -460,10 +480,6 @@
       }
     }
 
-    if (lines.length === 0) {
-      lines.push(ctx.line.badge({ label: "Status", text: "No usage data", color: "#a3a3a3" }))
-    }
-
     const usage = queryTokenUsage(ctx)
     if (usage && usage.daily) {
       const now = new Date()
@@ -475,11 +491,12 @@
       let todayEntry = null
       let yesterdayEntry = null
       for (let i = 0; i < usage.daily.length; i++) {
-        if (usage.daily[i].date === todayKey) {
+        const usageDayKey = dayKeyFromUsageDate(usage.daily[i].date)
+        if (usageDayKey === todayKey) {
           todayEntry = usage.daily[i]
           continue
         }
-        if (usage.daily[i].date === yesterdayKey) {
+        if (usageDayKey === yesterdayKey) {
           yesterdayEntry = usage.daily[i]
         }
       }
@@ -542,6 +559,10 @@
         label: "Yesterday",
         value: costAndTokensLabel({ tokens: 0, costUSD: 0 }, { includeZeroTokens: true })
       }))
+    }
+
+    if (lines.length === 0) {
+      lines.push(ctx.line.badge({ label: "Status", text: "No usage data", color: "#a3a3a3" }))
     }
 
     return { plan: plan, lines: lines }

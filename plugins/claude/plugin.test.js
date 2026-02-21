@@ -258,7 +258,7 @@ describe("claude plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Usage request failed")
   })
 
-  it("returns status when no usage data", async () => {
+  it("shows empty Today/Yesterday when no usage data and ccusage unavailable", async () => {
     const ctx = makeCtx()
     ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
     ctx.host.fs.exists = () => true
@@ -268,7 +268,15 @@ describe("claude plugin", () => {
     })
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    expect(result.lines[0].text).toBe("No usage data")
+    const todayLine = result.lines.find((l) => l.label === "Today")
+    expect(todayLine).toBeTruthy()
+    expect(todayLine.value).toContain("$0.00")
+    expect(todayLine.value).toContain("0 tokens")
+    const yesterdayLine = result.lines.find((l) => l.label === "Yesterday")
+    expect(yesterdayLine).toBeTruthy()
+    expect(yesterdayLine.value).toContain("$0.00")
+    expect(yesterdayLine.value).toContain("0 tokens")
+    expect(result.lines.find((l) => l.label === "No usage data")).toBeUndefined()
   })
 
   it("passes resetsAt through as ISO when present", async () => {
@@ -705,6 +713,43 @@ describe("claude plugin", () => {
       })
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)
+      const yesterdayLine = result.lines.find((l) => l.label === "Yesterday")
+      expect(yesterdayLine).toBeTruthy()
+      expect(yesterdayLine.value).toContain("120 tokens")
+      expect(yesterdayLine.value).toContain("$0.60")
+    })
+
+    it("matches locale-formatted dates for today and yesterday (regression)", async () => {
+      const now = new Date()
+      const monthToday = now.toLocaleString("en-US", { month: "short" })
+      const dayToday = String(now.getDate()).padStart(2, "0")
+      const yearToday = now.getFullYear()
+      const todayLabel = monthToday + " " + dayToday + ", " + yearToday
+
+      const yesterday = new Date(now.getTime())
+      yesterday.setDate(yesterday.getDate() - 1)
+      const monthYesterday = yesterday.toLocaleString("en-US", { month: "short" })
+      const dayYesterday = String(yesterday.getDate()).padStart(2, "0")
+      const yearYesterday = yesterday.getFullYear()
+      const yesterdayLabel = monthYesterday + " " + dayYesterday + ", " + yearYesterday
+
+      const ctx = makeProbeCtx({
+        ccusageResult: {
+          daily: [
+            { date: todayLabel, inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 150, totalCost: 0.75 },
+            { date: yesterdayLabel, inputTokens: 80, outputTokens: 40, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 120, totalCost: 0.6 },
+          ],
+        },
+      })
+
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+
+      const todayLine = result.lines.find((l) => l.label === "Today")
+      expect(todayLine).toBeTruthy()
+      expect(todayLine.value).toContain("150 tokens")
+      expect(todayLine.value).toContain("$0.75")
+
       const yesterdayLine = result.lines.find((l) => l.label === "Yesterday")
       expect(yesterdayLine).toBeTruthy()
       expect(yesterdayLine.value).toContain("120 tokens")
