@@ -391,6 +391,23 @@
     return parts.join(" · ")
   }
 
+  function pushDayUsageLine(lines, ctx, label, dayEntry) {
+    const tokens = Number(dayEntry && dayEntry.totalTokens) || 0
+    const cost = usageCostUsd(dayEntry)
+    if (tokens > 0) {
+      lines.push(ctx.line.text({
+        label: label,
+        value: costAndTokensLabel({ tokens: tokens, costUSD: cost })
+      }))
+      return
+    }
+
+    lines.push(ctx.line.text({
+      label: label,
+      value: costAndTokensLabel({ tokens: 0, costUSD: 0 }, { includeZeroTokens: true })
+    }))
+  }
+
   function probe(ctx) {
     const authState = loadAuth(ctx)
     if (!authState || !authState.auth) {
@@ -609,33 +626,8 @@
           }
         }
 
-        const todayTokens = Number(todayEntry && todayEntry.totalTokens) || 0
-        const todayCost = usageCostUsd(todayEntry)
-        if (todayTokens > 0) {
-          lines.push(ctx.line.text({
-            label: "Today",
-            value: costAndTokensLabel({ tokens: todayTokens, costUSD: todayCost })
-          }))
-        } else {
-          lines.push(ctx.line.text({
-            label: "Today",
-            value: costAndTokensLabel({ tokens: 0, costUSD: 0 }, { includeZeroTokens: true })
-          }))
-        }
-
-        const yesterdayTokens = Number(yesterdayEntry && yesterdayEntry.totalTokens) || 0
-        const yesterdayCost = usageCostUsd(yesterdayEntry)
-        if (yesterdayTokens > 0) {
-          lines.push(ctx.line.text({
-            label: "Yesterday",
-            value: costAndTokensLabel({ tokens: yesterdayTokens, costUSD: yesterdayCost })
-          }))
-        } else {
-          lines.push(ctx.line.text({
-            label: "Yesterday",
-            value: costAndTokensLabel({ tokens: 0, costUSD: 0 }, { includeZeroTokens: true })
-          }))
-        }
+        pushDayUsageLine(lines, ctx, "Today", todayEntry)
+        pushDayUsageLine(lines, ctx, "Yesterday", yesterdayEntry)
 
         let totalTokens = 0
         let totalCostNanos = 0

@@ -338,6 +338,40 @@ describe("codex plugin", () => {
     expect(result.lines.find((l) => l.label === "Last 30 Days")).toBeUndefined()
   })
 
+  it("shows empty Yesterday state when yesterday's totals are zero (regression)", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: { "x-codex-primary-used-percent": "10" },
+      bodyText: JSON.stringify({}),
+    })
+    const yesterday = new Date()
+    yesterday.setDate(yesterday.getDate() - 1)
+    const month = yesterday.toLocaleString("en-US", { month: "short" })
+    const day = String(yesterday.getDate()).padStart(2, "0")
+    const year = yesterday.getFullYear()
+    const yesterdayKey = month + " " + day + ", " + year
+    ctx.host.ccusage.query.mockReturnValue({
+      status: "ok",
+      data: {
+        daily: [
+        { date: yesterdayKey, totalTokens: 0, costUSD: 0 },
+        ],
+      },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const yesterdayLine = result.lines.find((l) => l.label === "Yesterday")
+    expect(yesterdayLine).toBeTruthy()
+    expect(yesterdayLine.value).toContain("$0.00")
+    expect(yesterdayLine.value).toContain("0 tokens")
+  })
+
   it("shows empty Today when history exists but today is missing (regression)", async () => {
     const ctx = makeCtx()
     ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({

@@ -829,6 +829,23 @@ describe("claude plugin", () => {
       expect(todayLine.value).toContain("0 tokens")
     })
 
+    it("shows empty Yesterday state when yesterday's totals are zero (regression)", async () => {
+      const yesterday = new Date()
+      yesterday.setDate(yesterday.getDate() - 1)
+      const yesterdayKey = localDayKey(yesterday)
+      const ctx = makeProbeCtx({
+        ccusageResult: okUsage([
+            { date: yesterdayKey, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0, totalCost: 0 },
+          ]),
+      })
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      const yesterdayLine = result.lines.find((l) => l.label === "Yesterday")
+      expect(yesterdayLine).toBeTruthy()
+      expect(yesterdayLine.value).toContain("$0.00")
+      expect(yesterdayLine.value).toContain("0 tokens")
+    })
+
     it("queries ccusage on each probe", async () => {
       const todayKey = localDayKey(new Date())
       const ctx = makeProbeCtx({
