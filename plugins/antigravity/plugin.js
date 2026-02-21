@@ -255,7 +255,7 @@
     var lower = normalizedLabel.toLowerCase()
     if (lower.indexOf("gemini") !== -1 && lower.indexOf("pro") !== -1) return "Gemini Pro"
     if (lower.indexOf("gemini") !== -1 && lower.indexOf("flash") !== -1) return "Gemini Flash"
-    // Claude, GPT-OSS, and any other non-Gemini models share the "Claude" pool
+    // All non-Gemini models (Claude, GPT-OSS, etc.) share a single quota pool
     return "Claude"
   }
 
