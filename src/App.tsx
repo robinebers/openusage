@@ -910,14 +910,15 @@ function App() {
         handleRetryPlugin(pluginId)
       } else if (action === "remove") {
         // Disable the plugin (same as unchecking in settings)
-        if (!pluginSettings) return
-        const alreadyDisabled = pluginSettings.disabled.includes(pluginId)
+        const currentSettings = pluginSettingsRef.current
+        if (!currentSettings) return
+        const alreadyDisabled = currentSettings.disabled.includes(pluginId)
         if (alreadyDisabled) return
 
         track("provider_toggled", { provider_id: pluginId, enabled: "false" })
         const nextSettings: PluginSettings = {
-          ...pluginSettings,
-          disabled: [...pluginSettings.disabled, pluginId],
+          ...currentSettings,
+          disabled: [...currentSettings.disabled, pluginId],
         }
         setPluginSettings(nextSettings)
         scheduleTrayIconUpdate("settings", TRAY_SETTINGS_DEBOUNCE_MS)
@@ -931,7 +932,7 @@ function App() {
         }
       }
     },
-    [handleRetryPlugin, pluginSettings, scheduleTrayIconUpdate, activeView]
+    [handleRetryPlugin, scheduleTrayIconUpdate, activeView]
   )
 
   // Detect whether the scroll area has overflow below
