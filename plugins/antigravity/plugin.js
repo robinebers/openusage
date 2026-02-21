@@ -280,14 +280,17 @@
     var deduped = {}
     for (var i = 0; i < configs.length; i++) {
       var c = configs[i]
+      var label = (typeof c.label === "string") ? c.label.trim() : ""
+      if (!label) continue
       var qi = c.quotaInfo
-      if (!qi || typeof qi.remainingFraction !== "number") continue
-      var label = normalizeLabel(c.label)
-      if (!deduped[label] || qi.remainingFraction < deduped[label].remainingFraction) {
-        deduped[label] = {
-          label: label,
-          remainingFraction: qi.remainingFraction,
-          resetTime: qi.resetTime,
+      var frac = (qi && typeof qi.remainingFraction === "number") ? qi.remainingFraction : 0
+      var rtime = (qi && qi.resetTime) ? qi.resetTime : undefined
+      var norm = normalizeLabel(label)
+      if (!deduped[norm] || frac < deduped[norm].remainingFraction) {
+        deduped[norm] = {
+          label: norm,
+          remainingFraction: frac,
+          resetTime: rtime,
         }
       }
     }
@@ -352,10 +355,11 @@
       var displayName = (typeof m.displayName === "string") ? m.displayName.trim() : ""
       if (!displayName) continue
       var qi = m.quotaInfo
-      if (!qi || typeof qi.remainingFraction !== "number") continue
+      var frac = (qi && typeof qi.remainingFraction === "number") ? qi.remainingFraction : 0
+      var rtime = (qi && qi.resetTime) ? qi.resetTime : undefined
       configs.push({
         label: displayName,
-        quotaInfo: { remainingFraction: qi.remainingFraction, resetTime: qi.resetTime },
+        quotaInfo: { remainingFraction: frac, resetTime: rtime },
       })
     }
     return configs

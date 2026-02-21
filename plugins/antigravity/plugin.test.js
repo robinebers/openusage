@@ -306,7 +306,7 @@ describe("antigravity plugin", () => {
     expect(result.lines.length).toBeGreaterThan(0)
   })
 
-  it("skips models with no quotaInfo", async () => {
+  it("treats models with no quotaInfo as depleted (100% used)", async () => {
     const ctx = makeCtx()
     const discovery = makeDiscovery()
     const response = makeUserStatusResponse({
@@ -319,8 +319,67 @@ describe("antigravity plugin", () => {
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    expect(result.lines.find((l) => l.label === "No Quota Model")).toBeFalsy()
+    const noQuota = result.lines.find((l) => l.label === "No Quota Model")
+    expect(noQuota).toBeTruthy()
+    expect(noQuota.used).toBe(100)
+    expect(noQuota.limit).toBe(100)
+    expect(noQuota.resetsAt).toBeUndefined()
     expect(result.lines.find((l) => l.label === "Gemini 3 Pro")).toBeTruthy()
+  })
+
+  it("dedup picks depleted variant (no quotaInfo) over non-depleted sibling", async () => {
+    const ctx = makeCtx()
+    const discovery = makeDiscovery()
+    const response = makeUserStatusResponse({
+      configs: [
+        { label: "Gemini 3 Pro (High)", modelOrAlias: { model: "M7" }, quotaInfo: { remainingFraction: 0.75, resetTime: "2026-02-08T09:10:56Z" } },
+        { label: "Gemini 3 Pro (Low)", modelOrAlias: { model: "M8" } },
+      ],
+    })
+    setupLsMock(ctx, discovery, response)
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const pro = result.lines.find((l) => l.label === "Gemini 3 Pro")
+    expect(pro).toBeTruthy()
+    expect(pro.used).toBe(100)
+    expect(pro.resetsAt).toBeUndefined()
+  })
+
+  it("returns lines when all models are depleted (no quotaInfo)", async () => {
+    const ctx = makeCtx()
+    const discovery = makeDiscovery()
+    const response = makeUserStatusResponse({
+      configs: [
+        { label: "Gemini 3 Pro (High)", modelOrAlias: { model: "M7" } },
+        { label: "Claude Opus 4.6 (Thinking)", modelOrAlias: { model: "M26" } },
+      ],
+    })
+    setupLsMock(ctx, discovery, response)
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result).toBeTruthy()
+    expect(result.lines.length).toBe(2)
+    expect(result.lines.every((l) => l.used === 100)).toBe(true)
+  })
+
+  it("skips configs with missing or empty labels", async () => {
+    const ctx = makeCtx()
+    const discovery = makeDiscovery()
+    const response = makeUserStatusResponse({
+      configs: [
+        { label: "Gemini 3 Pro (High)", modelOrAlias: { model: "M7" }, quotaInfo: { remainingFraction: 0.5, resetTime: "2026-02-08T09:10:56Z" } },
+        { label: "", modelOrAlias: { model: "M99" }, quotaInfo: { remainingFraction: 0.8, resetTime: "2026-02-08T09:10:56Z" } },
+        { modelOrAlias: { model: "M100" }, quotaInfo: { remainingFraction: 0.9, resetTime: "2026-02-08T09:10:56Z" } },
+      ],
+    })
+    setupLsMock(ctx, discovery, response)
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.length).toBe(1)
+    expect(result.lines[0].label).toBe("Gemini 3 Pro")
   })
 
   it("includes resetsAt on model lines", async () => {
@@ -611,7 +670,7 @@ describe("antigravity plugin", () => {
     expect(ccCalls.length).toBe(0)
   })
 
-  it("Cloud Code skips models without quotaInfo", async () => {
+  it("Cloud Code treats models without quotaInfo as depleted (100% used)", async () => {
     const ctx = makeCtx()
     const futureExpiry = Math.floor(Date.now() / 1000) + 3600
     setupSqliteMock(ctx, makeAuthStatusJson(), makeProtobufBase64(ctx, "ya29.test-token", "1//refresh", futureExpiry))
@@ -640,7 +699,11 @@ describe("antigravity plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    expect(result.lines.find((l) => l.label === "No Quota Model")).toBeFalsy()
+    const noQuota = result.lines.find((l) => l.label === "No Quota Model")
+    expect(noQuota).toBeTruthy()
+    expect(noQuota.used).toBe(100)
+    expect(noQuota.limit).toBe(100)
+    expect(noQuota.resetsAt).toBeUndefined()
     expect(result.lines.find((l) => l.label === "Gemini 3 Pro")).toBeTruthy()
   })
 
