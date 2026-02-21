@@ -194,6 +194,209 @@ describe("codex plugin", () => {
     expect(String(payload)).toContain("\"access_token\":\"new\"")
   })
 
+  it("shows empty Today state when ccusage returns null", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: { "x-codex-primary-used-percent": "10" },
+      bodyText: JSON.stringify({}),
+    })
+    ctx.host.ccusage.query.mockReturnValue(null)
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const todayLine = result.lines.find((l) => l.label === "Today")
+    expect(todayLine).toBeTruthy()
+    expect(todayLine.value).toContain("$0.00")
+    expect(todayLine.value).toContain("0 tokens")
+    const yesterdayLine = result.lines.find((l) => l.label === "Yesterday")
+    expect(yesterdayLine).toBeTruthy()
+    expect(yesterdayLine.value).toContain("$0.00")
+    expect(yesterdayLine.value).toContain("0 tokens")
+    expect(result.lines.find((l) => l.label === "Last 30 Days")).toBeUndefined()
+    expect(result.lines.find((l) => l.label === "Session")).toBeTruthy()
+  })
+
+  it("adds token lines from codex ccusage format and passes codex provider", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: { "x-codex-primary-used-percent": "10" },
+      bodyText: JSON.stringify({}),
+    })
+    const now = new Date()
+    const month = now.toLocaleString("en-US", { month: "short" })
+    const day = String(now.getDate()).padStart(2, "0")
+    const year = now.getFullYear()
+    const todayKey = month + " " + day + ", " + year
+    ctx.host.ccusage.query.mockReturnValue({
+      daily: [
+        { date: todayKey, totalTokens: 150, costUSD: 0.75 },
+        { date: "Feb 01, 2026", totalTokens: 300, costUSD: 1.0 },
+      ],
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    const today = result.lines.find((l) => l.label === "Today")
+    expect(today).toBeTruthy()
+    expect(today.value).toContain("150 tokens")
+    expect(today.value).toContain("$0.75")
+
+    const last30 = result.lines.find((l) => l.label === "Last 30 Days")
+    expect(last30).toBeTruthy()
+    expect(last30.value).toContain("450 tokens")
+    expect(last30.value).toContain("$1.75")
+
+    expect(ctx.host.ccusage.query).toHaveBeenCalled()
+    const firstCall = ctx.host.ccusage.query.mock.calls[0][0]
+    expect(firstCall.provider).toBe("codex")
+  })
+
+  it("passes CODEX_HOME to ccusage via homePath", async () => {
+    const ctx = makeCtx()
+    ctx.host.env.get.mockImplementation((name) => (name === "CODEX_HOME" ? "/tmp/codex-home" : null))
+    ctx.host.fs.writeText("/tmp/codex-home/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: { "x-codex-primary-used-percent": "10" },
+      bodyText: JSON.stringify({}),
+    })
+    ctx.host.ccusage.query.mockReturnValue({ daily: [] })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    expect(ctx.host.ccusage.query).toHaveBeenCalled()
+    const firstCall = ctx.host.ccusage.query.mock.calls[0][0]
+    expect(firstCall.homePath).toBe("/tmp/codex-home")
+  })
+
+  it("queries ccusage on each probe", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: { "x-codex-primary-used-percent": "10" },
+      bodyText: JSON.stringify({}),
+    })
+    ctx.host.ccusage.query.mockReturnValue({ daily: [{ date: "2026-02-01", totalTokens: 100, totalCost: 0.5 }] })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+    plugin.probe(ctx)
+
+    expect(ctx.host.ccusage.query).toHaveBeenCalledTimes(2)
+  })
+
+  it("shows empty Today state when ccusage daily is empty", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: { "x-codex-primary-used-percent": "10" },
+      bodyText: JSON.stringify({}),
+    })
+    ctx.host.ccusage.query.mockReturnValue({ daily: [] })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    const todayLine = result.lines.find((l) => l.label === "Today")
+    expect(todayLine).toBeTruthy()
+    expect(todayLine.value).toContain("$0.00")
+    expect(todayLine.value).toContain("0 tokens")
+    const yesterdayLine = result.lines.find((l) => l.label === "Yesterday")
+    expect(yesterdayLine).toBeTruthy()
+    expect(yesterdayLine.value).toContain("$0.00")
+    expect(yesterdayLine.value).toContain("0 tokens")
+    expect(result.lines.find((l) => l.label === "Last 30 Days")).toBeUndefined()
+  })
+
+  it("shows empty Today when history exists but today is missing (regression)", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: { "x-codex-primary-used-percent": "10" },
+      bodyText: JSON.stringify({}),
+    })
+    ctx.host.ccusage.query.mockReturnValue({
+      daily: [
+        { date: "Feb 01, 2026", totalTokens: 300, costUSD: 1.0 },
+      ],
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    const todayLine = result.lines.find((l) => l.label === "Today")
+    expect(todayLine).toBeTruthy()
+    expect(todayLine.value).toContain("$0.00")
+    expect(todayLine.value).toContain("0 tokens")
+    const yesterdayLine = result.lines.find((l) => l.label === "Yesterday")
+    expect(yesterdayLine).toBeTruthy()
+    expect(yesterdayLine.value).toContain("$0.00")
+    expect(yesterdayLine.value).toContain("0 tokens")
+
+    const last30 = result.lines.find((l) => l.label === "Last 30 Days")
+    expect(last30).toBeTruthy()
+    expect(last30.value).toContain("300 tokens")
+    expect(last30.value).toContain("$1.00")
+  })
+
+  it("adds Yesterday line from codex ccusage format", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: { "x-codex-primary-used-percent": "10" },
+      bodyText: JSON.stringify({}),
+    })
+    const yesterday = new Date()
+    yesterday.setDate(yesterday.getDate() - 1)
+    const month = yesterday.toLocaleString("en-US", { month: "short" })
+    const day = String(yesterday.getDate()).padStart(2, "0")
+    const year = yesterday.getFullYear()
+    const yesterdayKey = month + " " + day + ", " + year
+    ctx.host.ccusage.query.mockReturnValue({
+      daily: [
+        { date: yesterdayKey, totalTokens: 220, costUSD: 1.1 },
+      ],
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const yesterdayLine = result.lines.find((l) => l.label === "Yesterday")
+    expect(yesterdayLine).toBeTruthy()
+    expect(yesterdayLine.value).toContain("220 tokens")
+    expect(yesterdayLine.value).toContain("$1.10")
+  })
+
   it("throws token expired when refresh fails", async () => {
     const ctx = makeCtx()
     ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
@@ -323,7 +526,7 @@ describe("codex plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Usage response invalid")
   })
 
-  it("returns status when no usage data", async () => {
+  it("shows empty Today state when no usage data", async () => {
     const ctx = makeCtx()
     ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
       tokens: { access_token: "token" },
@@ -336,8 +539,10 @@ describe("codex plugin", () => {
     })
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    expect(result.lines[0].label).toBe("Status")
-    expect(result.lines[0].text).toBe("No usage data")
+    const todayLine = result.lines.find((l) => l.label === "Today")
+    expect(todayLine).toBeTruthy()
+    expect(todayLine.value).toContain("$0.00")
+    expect(todayLine.value).toContain("0 tokens")
   })
 
   it("throws on usage request failures", async () => {

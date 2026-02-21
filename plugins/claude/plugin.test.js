@@ -645,12 +645,19 @@ describe("claude plugin", () => {
       return ctx
     }
 
-    it("adds no token lines when ccusage returns null", async () => {
+    it("shows empty Today state when ccusage returns null", async () => {
       const ctx = makeProbeCtx({ ccusageResult: null })
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)
-      expect(result.lines.find((l) => l.label === "Today")).toBeUndefined()
-      expect(result.lines.find((l) => l.label === "Last 30 days")).toBeUndefined()
+      const todayLine = result.lines.find((l) => l.label === "Today")
+      expect(todayLine).toBeTruthy()
+      expect(todayLine.value).toContain("$0.00")
+      expect(todayLine.value).toContain("0 tokens")
+      const yesterdayLine = result.lines.find((l) => l.label === "Yesterday")
+      expect(yesterdayLine).toBeTruthy()
+      expect(yesterdayLine.value).toContain("$0.00")
+      expect(yesterdayLine.value).toContain("0 tokens")
+      expect(result.lines.find((l) => l.label === "Last 30 Days")).toBeUndefined()
     })
 
     it("rate-limit lines still appear when ccusage returns null", async () => {
@@ -678,7 +685,26 @@ describe("claude plugin", () => {
       expect(todayLine.value).toContain("$0.75")
     })
 
-    it("adds Last 30 days line summing all daily entries", async () => {
+    it("adds Yesterday line when ccusage returns yesterday's data", async () => {
+      const yesterday = new Date()
+      yesterday.setDate(yesterday.getDate() - 1)
+      const yesterdayKey = yesterday.toISOString().slice(0, 10)
+      const ctx = makeProbeCtx({
+        ccusageResult: {
+          daily: [
+            { date: yesterdayKey, inputTokens: 80, outputTokens: 40, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 120, totalCost: 0.6 },
+          ],
+        },
+      })
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      const yesterdayLine = result.lines.find((l) => l.label === "Yesterday")
+      expect(yesterdayLine).toBeTruthy()
+      expect(yesterdayLine.value).toContain("120 tokens")
+      expect(yesterdayLine.value).toContain("$0.60")
+    })
+
+    it("adds Last 30 Days line summing all daily entries", async () => {
       const todayKey = new Date().toISOString().slice(0, 10)
       const ctx = makeProbeCtx({
         ccusageResult: {
@@ -690,13 +716,13 @@ describe("claude plugin", () => {
       })
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)
-      const last30 = result.lines.find((l) => l.label === "Last 30 days")
+      const last30 = result.lines.find((l) => l.label === "Last 30 Days")
       expect(last30).toBeTruthy()
       expect(last30.value).toContain("450 tokens")
       expect(last30.value).toContain("$1.50")
     })
 
-    it("shows only Last 30 days when today has no entry", async () => {
+    it("shows empty Today/Yesterday and Last 30 Days when today has no entry", async () => {
       const ctx = makeProbeCtx({
         ccusageResult: {
           daily: [
@@ -706,18 +732,32 @@ describe("claude plugin", () => {
       })
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)
-      expect(result.lines.find((l) => l.label === "Today")).toBeUndefined()
-      const last30 = result.lines.find((l) => l.label === "Last 30 days")
+      const todayLine = result.lines.find((l) => l.label === "Today")
+      expect(todayLine).toBeTruthy()
+      expect(todayLine.value).toContain("$0.00")
+      expect(todayLine.value).toContain("0 tokens")
+      const yesterdayLine = result.lines.find((l) => l.label === "Yesterday")
+      expect(yesterdayLine).toBeTruthy()
+      expect(yesterdayLine.value).toContain("$0.00")
+      expect(yesterdayLine.value).toContain("0 tokens")
+      const last30 = result.lines.find((l) => l.label === "Last 30 Days")
       expect(last30).toBeTruthy()
       expect(last30.value).toContain("600 tokens")
     })
 
-    it("adds no token lines when ccusage returns empty daily array", async () => {
+    it("shows empty Today state when ccusage returns empty daily array", async () => {
       const ctx = makeProbeCtx({ ccusageResult: { daily: [] } })
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)
-      expect(result.lines.find((l) => l.label === "Today")).toBeUndefined()
-      expect(result.lines.find((l) => l.label === "Last 30 days")).toBeUndefined()
+      const todayLine = result.lines.find((l) => l.label === "Today")
+      expect(todayLine).toBeTruthy()
+      expect(todayLine.value).toContain("$0.00")
+      expect(todayLine.value).toContain("0 tokens")
+      const yesterdayLine = result.lines.find((l) => l.label === "Yesterday")
+      expect(yesterdayLine).toBeTruthy()
+      expect(yesterdayLine.value).toContain("$0.00")
+      expect(yesterdayLine.value).toContain("0 tokens")
+      expect(result.lines.find((l) => l.label === "Last 30 Days")).toBeUndefined()
     })
 
     it("omits cost when totalCost is null", async () => {
@@ -737,7 +777,24 @@ describe("claude plugin", () => {
       expect(todayLine.value).toContain("600 tokens")
     })
 
-    it("caches ccusage result for 60 seconds", async () => {
+    it("shows empty Today state when today's totals are zero (regression)", async () => {
+      const todayKey = new Date().toISOString().slice(0, 10)
+      const ctx = makeProbeCtx({
+        ccusageResult: {
+          daily: [
+            { date: todayKey, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0, totalCost: 0 },
+          ],
+        },
+      })
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      const todayLine = result.lines.find((l) => l.label === "Today")
+      expect(todayLine).toBeTruthy()
+      expect(todayLine.value).toContain("$0.00")
+      expect(todayLine.value).toContain("0 tokens")
+    })
+
+    it("queries ccusage on each probe", async () => {
       const todayKey = new Date().toISOString().slice(0, 10)
       const ctx = makeProbeCtx({
         ccusageResult: {
@@ -749,7 +806,7 @@ describe("claude plugin", () => {
       const plugin = await loadPlugin()
       plugin.probe(ctx)
       plugin.probe(ctx)
-      expect(ctx.host.ccusage.query).toHaveBeenCalledTimes(1)
+      expect(ctx.host.ccusage.query).toHaveBeenCalledTimes(2)
     })
 
     it("includes cache tokens in total", async () => {

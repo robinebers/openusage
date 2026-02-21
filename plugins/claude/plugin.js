@@ -272,16 +272,7 @@
     })
   }
 
-  let ccusageCache = null
-  let ccusageCacheMs = 0
-  const CCUSAGE_CACHE_MS = 60 * 1000
-
   function queryTokenUsage(ctx) {
-    const now = Date.now()
-    if (ccusageCache && now - ccusageCacheMs < CCUSAGE_CACHE_MS) {
-      return ccusageCache
-    }
-
     const since = new Date()
     since.setDate(since.getDate() - 31)
     const y = since.getFullYear()
@@ -291,9 +282,6 @@
 
     const result = ctx.host.ccusage.query({ since: sinceStr })
     if (!result) return null
-
-    ccusageCache = result
-    ccusageCacheMs = now
     return result
   }
 
@@ -325,10 +313,29 @@
     return year + "-" + (month < 10 ? "0" : "") + month + "-" + (day < 10 ? "0" : "") + day
   }
 
-  function costAndTokensLabel(data) {
+  function usageCostUsd(day) {
+    if (!day || typeof day !== "object") return null
+
+    if (day.totalCost != null) {
+      const totalCost = Number(day.totalCost)
+      if (Number.isFinite(totalCost)) return totalCost
+    }
+
+    if (day.costUSD != null) {
+      const costUSD = Number(day.costUSD)
+      if (Number.isFinite(costUSD)) return costUSD
+    }
+
+    return null
+  }
+
+  function costAndTokensLabel(data, opts) {
+    const includeZeroTokens = !!(opts && opts.includeZeroTokens)
     const parts = []
     if (data.costUSD != null) parts.push("$" + data.costUSD.toFixed(2))
-    if (data.tokens > 0) parts.push(fmtTokens(data.tokens) + " tokens")
+    if (data.tokens > 0 || (includeZeroTokens && data.tokens === 0)) {
+      parts.push(fmtTokens(data.tokens) + " tokens")
+    }
     return parts.join(" \u00b7 ")
   }
 
@@ -459,21 +466,50 @@
 
     const usage = queryTokenUsage(ctx)
     if (usage && usage.daily) {
-      const todayKey = dayKeyFromDate(new Date())
+      const now = new Date()
+      const todayKey = dayKeyFromDate(now)
+      const yesterday = new Date(now.getTime())
+      yesterday.setDate(yesterday.getDate() - 1)
+      const yesterdayKey = dayKeyFromDate(yesterday)
 
       let todayEntry = null
+      let yesterdayEntry = null
       for (let i = 0; i < usage.daily.length; i++) {
-        if (usage.daily[i].date === todayKey) { todayEntry = usage.daily[i]; break }
+        if (usage.daily[i].date === todayKey) {
+          todayEntry = usage.daily[i]
+          continue
+        }
+        if (usage.daily[i].date === yesterdayKey) {
+          yesterdayEntry = usage.daily[i]
+        }
       }
 
-      if (todayEntry) {
-        const todayTokens = todayEntry.totalTokens || 0
-        if (todayTokens > 0) {
-          lines.push(ctx.line.text({
-            label: "Today",
-            value: costAndTokensLabel({ tokens: todayTokens, costUSD: todayEntry.totalCost != null ? todayEntry.totalCost : null })
-          }))
-        }
+      const todayTokens = Number(todayEntry && todayEntry.totalTokens) || 0
+      const todayCost = usageCostUsd(todayEntry)
+      if (todayTokens > 0) {
+        lines.push(ctx.line.text({
+          label: "Today",
+          value: costAndTokensLabel({ tokens: todayTokens, costUSD: todayCost })
+        }))
+      } else {
+        lines.push(ctx.line.text({
+          label: "Today",
+          value: costAndTokensLabel({ tokens: 0, costUSD: 0 }, { includeZeroTokens: true })
+        }))
+      }
+
+      const yesterdayTokens = Number(yesterdayEntry && yesterdayEntry.totalTokens) || 0
+      const yesterdayCost = usageCostUsd(yesterdayEntry)
+      if (yesterdayTokens > 0) {
+        lines.push(ctx.line.text({
+          label: "Yesterday",
+          value: costAndTokensLabel({ tokens: yesterdayTokens, costUSD: yesterdayCost })
+        }))
+      } else {
+        lines.push(ctx.line.text({
+          label: "Yesterday",
+          value: costAndTokensLabel({ tokens: 0, costUSD: 0 }, { includeZeroTokens: true })
+        }))
       }
 
       let totalTokens = 0
@@ -481,18 +517,31 @@
       let hasCost = false
       for (let i = 0; i < usage.daily.length; i++) {
         const day = usage.daily[i]
-        totalTokens += day.totalTokens || 0
-        if (day.totalCost != null) {
-          totalCostNanos += Math.round((day.totalCost || 0) * 1e9)
+        const dayTokens = Number(day.totalTokens)
+        if (Number.isFinite(dayTokens)) {
+          totalTokens += dayTokens
+        }
+        const dayCost = usageCostUsd(day)
+        if (dayCost != null) {
+          totalCostNanos += Math.round(dayCost * 1e9)
           hasCost = true
         }
       }
       if (totalTokens > 0) {
         lines.push(ctx.line.text({
-          label: "Last 30 days",
+          label: "Last 30 Days",
           value: costAndTokensLabel({ tokens: totalTokens, costUSD: hasCost ? totalCostNanos / 1e9 : null })
         }))
       }
+    } else {
+      lines.push(ctx.line.text({
+        label: "Today",
+        value: costAndTokensLabel({ tokens: 0, costUSD: 0 }, { includeZeroTokens: true })
+      }))
+      lines.push(ctx.line.text({
+        label: "Yesterday",
+        value: costAndTokensLabel({ tokens: 0, costUSD: 0 }, { includeZeroTokens: true })
+      }))
     }
 
     return { plan: plan, lines: lines }

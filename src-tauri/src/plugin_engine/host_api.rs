@@ -1137,16 +1137,25 @@ fn ls_parse_listening_ports(output: &str) -> Vec<i32> {
     ports.into_iter().collect()
 }
 
-const CCUSAGE_VERSION: &str = "18.0.5";
+const CCUSAGE_CLAUDE_PACKAGE: &str = "ccusage@18.0.5";
+const CCUSAGE_CODEX_PACKAGE: &str = "@ccusage/codex@18.0.5";
 const CCUSAGE_TIMEOUT_SECS: u64 = 15;
 const CCUSAGE_POLL_INTERVAL_MS: u64 = 100;
 
 #[derive(Default, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CcusageQueryOpts {
+    provider: Option<String>,
     since: Option<String>,
     until: Option<String>,
+    home_path: Option<String>,
     claude_path: Option<String>,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+enum CcusageProvider {
+    Claude,
+    Codex,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -1175,6 +1184,68 @@ fn ccusage_runner_label(kind: CcusageRunnerKind) -> &'static str {
         CcusageRunnerKind::YarnDlx => "yarn dlx",
         CcusageRunnerKind::NpmExec => "npm exec",
         CcusageRunnerKind::Npx => "npx",
+    }
+}
+
+#[derive(Copy, Clone)]
+struct CcusageProviderConfig {
+    package_spec: &'static str,
+    npm_exec_bin: &'static str,
+    home_env_var: &'static str,
+}
+
+fn parse_ccusage_provider(value: &str) -> Option<CcusageProvider> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "claude" => Some(CcusageProvider::Claude),
+        "codex" => Some(CcusageProvider::Codex),
+        _ => None,
+    }
+}
+
+fn infer_ccusage_provider(plugin_id: &str) -> Option<CcusageProvider> {
+    parse_ccusage_provider(plugin_id)
+}
+
+fn resolve_ccusage_provider(opts: &CcusageQueryOpts, plugin_id: &str) -> CcusageProvider {
+    opts.provider
+        .as_deref()
+        .and_then(parse_ccusage_provider)
+        .or_else(|| infer_ccusage_provider(plugin_id))
+        .unwrap_or(CcusageProvider::Claude)
+}
+
+fn ccusage_provider_config(provider: CcusageProvider) -> CcusageProviderConfig {
+    match provider {
+        CcusageProvider::Claude => CcusageProviderConfig {
+            package_spec: CCUSAGE_CLAUDE_PACKAGE,
+            npm_exec_bin: "ccusage",
+            home_env_var: "CLAUDE_CONFIG_DIR",
+        },
+        CcusageProvider::Codex => CcusageProviderConfig {
+            package_spec: CCUSAGE_CODEX_PACKAGE,
+            npm_exec_bin: "ccusage-codex",
+            home_env_var: "CODEX_HOME",
+        },
+    }
+}
+
+fn ccusage_home_override<'a>(opts: &'a CcusageQueryOpts, provider: CcusageProvider) -> Option<&'a str> {
+    if let Some(home_path) = opts
+        .home_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        return Some(home_path);
+    }
+
+    match provider {
+        CcusageProvider::Claude => opts
+            .claude_path
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty()),
+        CcusageProvider::Codex => None,
     }
 }
 
@@ -1293,23 +1364,34 @@ fn append_ccusage_common_args(args: &mut Vec<String>, opts: &CcusageQueryOpts) {
     }
 }
 
-fn ccusage_runner_args(kind: CcusageRunnerKind, opts: &CcusageQueryOpts) -> Vec<String> {
-    let package_spec = format!("ccusage@{}", CCUSAGE_VERSION);
+fn ccusage_runner_args(
+    kind: CcusageRunnerKind,
+    opts: &CcusageQueryOpts,
+    provider: CcusageProvider,
+) -> Vec<String> {
+    let config = ccusage_provider_config(provider);
     let mut args: Vec<String> = match kind {
-        CcusageRunnerKind::Bunx => vec!["--silent".to_string(), package_spec],
-        CcusageRunnerKind::PnpmDlx => vec!["-s".to_string(), "dlx".to_string(), package_spec],
-        CcusageRunnerKind::YarnDlx => vec!["dlx".to_string(), "-q".to_string(), package_spec],
+        CcusageRunnerKind::Bunx => vec!["--silent".to_string(), config.package_spec.to_string()],
+        CcusageRunnerKind::PnpmDlx => vec![
+            "-s".to_string(),
+            "dlx".to_string(),
+            config.package_spec.to_string(),
+        ],
+        CcusageRunnerKind::YarnDlx => vec![
+            "dlx".to_string(),
+            "-q".to_string(),
+            config.package_spec.to_string(),
+        ],
         CcusageRunnerKind::NpmExec => vec![
             "exec".to_string(),
             "--yes".to_string(),
-            format!("--package={}", package_spec),
+            format!("--package={}", config.package_spec),
             "--".to_string(),
-            "ccusage".to_string(),
+            config.npm_exec_bin.to_string(),
         ],
         CcusageRunnerKind::Npx => vec![
             "--yes".to_string(),
-            format!("--package={}", package_spec),
-            "ccusage".to_string(),
+            config.package_spec.to_string(),
         ],
     };
 
@@ -1367,22 +1449,19 @@ fn run_ccusage_with_runner(
     kind: CcusageRunnerKind,
     program: &str,
     opts: &CcusageQueryOpts,
+    provider: CcusageProvider,
     plugin_id: &str,
 ) -> Option<String> {
-    let args = ccusage_runner_args(kind, opts);
+    let args = ccusage_runner_args(kind, opts, provider);
     let mut command = std::process::Command::new(program);
     command
         .args(&args)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
 
-    if let Some(claude_path) = opts
-        .claude_path
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
-        command.env("CLAUDE_CONFIG_DIR", claude_path);
+    if let Some(home_path) = ccusage_home_override(opts, provider) {
+        let config = ccusage_provider_config(provider);
+        command.env(config.home_env_var, home_path);
     }
 
     log::info!(
@@ -1498,9 +1577,12 @@ fn inject_ccusage<'js>(
                         CcusageQueryOpts::default()
                     }
                 };
+                let provider = resolve_ccusage_provider(&opts, &pid);
 
                 for (kind, program) in collect_ccusage_runners() {
-                    if let Some(result) = run_ccusage_with_runner(kind, &program, &opts, &pid) {
+                    if let Some(result) =
+                        run_ccusage_with_runner(kind, &program, &opts, provider, &pid)
+                    {
                         return Ok(result);
                     }
                 }
@@ -2106,12 +2188,14 @@ mod tests {
     #[test]
     fn ccusage_runner_args_include_expected_non_interactive_flags() {
         let opts = CcusageQueryOpts {
+            provider: None,
             since: Some("20260101".to_string()),
             until: Some("20260131".to_string()),
+            home_path: None,
             claude_path: None,
         };
 
-        let bunx = ccusage_runner_args(CcusageRunnerKind::Bunx, &opts);
+        let bunx = ccusage_runner_args(CcusageRunnerKind::Bunx, &opts, CcusageProvider::Claude);
         assert_eq!(
             bunx,
             vec![
@@ -2128,7 +2212,7 @@ mod tests {
             ]
         );
 
-        let pnpm = ccusage_runner_args(CcusageRunnerKind::PnpmDlx, &opts);
+        let pnpm = ccusage_runner_args(CcusageRunnerKind::PnpmDlx, &opts, CcusageProvider::Claude);
         assert_eq!(
             pnpm,
             vec![
@@ -2146,7 +2230,7 @@ mod tests {
             ]
         );
 
-        let yarn = ccusage_runner_args(CcusageRunnerKind::YarnDlx, &opts);
+        let yarn = ccusage_runner_args(CcusageRunnerKind::YarnDlx, &opts, CcusageProvider::Claude);
         assert_eq!(
             yarn,
             vec![
@@ -2164,7 +2248,8 @@ mod tests {
             ]
         );
 
-        let npm_exec = ccusage_runner_args(CcusageRunnerKind::NpmExec, &opts);
+        let npm_exec =
+            ccusage_runner_args(CcusageRunnerKind::NpmExec, &opts, CcusageProvider::Claude);
         assert_eq!(
             npm_exec,
             vec![
@@ -2184,13 +2269,12 @@ mod tests {
             ]
         );
 
-        let npx = ccusage_runner_args(CcusageRunnerKind::Npx, &opts);
+        let npx = ccusage_runner_args(CcusageRunnerKind::Npx, &opts, CcusageProvider::Claude);
         assert_eq!(
             npx,
             vec![
                 "--yes",
-                "--package=ccusage@18.0.5",
-                "ccusage",
+                "ccusage@18.0.5",
                 "daily",
                 "--json",
                 "--order",
@@ -2200,6 +2284,118 @@ mod tests {
                 "--until",
                 "20260131"
             ]
+        );
+    }
+
+    #[test]
+    fn ccusage_runner_args_codex_use_scoped_package_and_bin() {
+        let opts = CcusageQueryOpts {
+            provider: Some("codex".to_string()),
+            since: Some("20260101".to_string()),
+            until: Some("20260131".to_string()),
+            home_path: None,
+            claude_path: None,
+        };
+
+        let npm_exec = ccusage_runner_args(CcusageRunnerKind::NpmExec, &opts, CcusageProvider::Codex);
+        assert_eq!(
+            npm_exec,
+            vec![
+                "exec",
+                "--yes",
+                "--package=@ccusage/codex@18.0.5",
+                "--",
+                "ccusage-codex",
+                "daily",
+                "--json",
+                "--order",
+                "desc",
+                "--since",
+                "20260101",
+                "--until",
+                "20260131"
+            ]
+        );
+
+        let npx = ccusage_runner_args(CcusageRunnerKind::Npx, &opts, CcusageProvider::Codex);
+        assert_eq!(
+            npx,
+            vec![
+                "--yes",
+                "@ccusage/codex@18.0.5",
+                "daily",
+                "--json",
+                "--order",
+                "desc",
+                "--since",
+                "20260101",
+                "--until",
+                "20260131"
+            ]
+        );
+    }
+
+    #[test]
+    fn resolve_ccusage_provider_prefers_explicit_opt_then_plugin_id() {
+        let opts_explicit = CcusageQueryOpts {
+            provider: Some("codex".to_string()),
+            since: None,
+            until: None,
+            home_path: None,
+            claude_path: None,
+        };
+        assert_eq!(
+            resolve_ccusage_provider(&opts_explicit, "claude"),
+            CcusageProvider::Codex
+        );
+
+        let opts_empty = CcusageQueryOpts::default();
+        assert_eq!(
+            resolve_ccusage_provider(&opts_empty, "codex"),
+            CcusageProvider::Codex
+        );
+        assert_eq!(
+            resolve_ccusage_provider(&opts_empty, "claude"),
+            CcusageProvider::Claude
+        );
+        assert_eq!(
+            resolve_ccusage_provider(&opts_empty, "unknown-provider"),
+            CcusageProvider::Claude
+        );
+    }
+
+    #[test]
+    fn ccusage_home_override_supports_home_path_and_claude_compat() {
+        let with_home = CcusageQueryOpts {
+            provider: None,
+            since: None,
+            until: None,
+            home_path: Some("/tmp/shared-home".to_string()),
+            claude_path: Some("/tmp/claude-home".to_string()),
+        };
+        assert_eq!(
+            ccusage_home_override(&with_home, CcusageProvider::Claude),
+            Some("/tmp/shared-home")
+        );
+        assert_eq!(
+            ccusage_home_override(&with_home, CcusageProvider::Codex),
+            Some("/tmp/shared-home")
+        );
+
+        let claude_compat = CcusageQueryOpts {
+            provider: None,
+            since: None,
+            until: None,
+            home_path: None,
+            claude_path: Some("/tmp/legacy-claude-path".to_string()),
+        };
+        assert_eq!(
+            ccusage_home_override(&claude_compat, CcusageProvider::Claude),
+            Some("/tmp/legacy-claude-path")
+        );
+        assert_eq!(
+            ccusage_home_override(&claude_compat, CcusageProvider::Codex),
+            None
         );
     }
 
