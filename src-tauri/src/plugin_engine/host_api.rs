@@ -1484,28 +1484,35 @@ fn run_ccusage_with_runner(
         }
     };
 
+    // Drain pipes concurrently while the process is running so the child cannot block on full
+    // stdout/stderr buffers before exit.
+    let mut stdout_reader = child.stdout.take().map(|mut stdout| {
+        std::thread::spawn(move || {
+            let mut v = Vec::new();
+            let _ = std::io::Read::read_to_end(&mut stdout, &mut v);
+            v
+        })
+    });
+    let mut stderr_reader = child.stderr.take().map(|mut stderr| {
+        std::thread::spawn(move || {
+            let mut v = Vec::new();
+            let _ = std::io::Read::read_to_end(&mut stderr, &mut v);
+            v
+        })
+    });
+
     let timeout = std::time::Duration::from_secs(CCUSAGE_TIMEOUT_SECS);
     let start = std::time::Instant::now();
     loop {
         match child.try_wait() {
             Ok(Some(status)) => {
-                let stdout = child
-                    .stdout
+                let stdout = stdout_reader
                     .take()
-                    .map(|mut s| {
-                        let mut v = Vec::new();
-                        std::io::Read::read_to_end(&mut s, &mut v).ok();
-                        v
-                    })
+                    .and_then(|reader| reader.join().ok())
                     .unwrap_or_default();
-                let stderr = child
-                    .stderr
+                let stderr = stderr_reader
                     .take()
-                    .map(|mut s| {
-                        let mut v = Vec::new();
-                        std::io::Read::read_to_end(&mut s, &mut v).ok();
-                        v
-                    })
+                    .and_then(|reader| reader.join().ok())
                     .unwrap_or_default();
 
                 if status.success() {
@@ -1534,6 +1541,8 @@ fn run_ccusage_with_runner(
                 if start.elapsed() > timeout {
                     let _ = child.kill();
                     let _ = child.wait();
+                    let _ = stdout_reader.take().and_then(|reader| reader.join().ok());
+                    let _ = stderr_reader.take().and_then(|reader| reader.join().ok());
                     log::warn!(
                         "[plugin:{}] ccusage timed out after {}s for {}",
                         plugin_id,

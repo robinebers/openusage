@@ -222,6 +222,9 @@ describe("codex plugin", () => {
   })
 
   it("adds token lines from codex ccusage format and passes codex provider", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-02-20T16:00:00.000Z"))
+
     const ctx = makeCtx()
     ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
       tokens: { access_token: "token" },
@@ -244,22 +247,26 @@ describe("codex plugin", () => {
       ],
     })
 
-    const plugin = await loadPlugin()
-    const result = plugin.probe(ctx)
+    try {
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
 
-    const today = result.lines.find((l) => l.label === "Today")
-    expect(today).toBeTruthy()
-    expect(today.value).toContain("150 tokens")
-    expect(today.value).toContain("$0.75")
+      const today = result.lines.find((l) => l.label === "Today")
+      expect(today).toBeTruthy()
+      expect(today.value).toContain("150 tokens")
+      expect(today.value).toContain("$0.75")
 
-    const last30 = result.lines.find((l) => l.label === "Last 30 Days")
-    expect(last30).toBeTruthy()
-    expect(last30.value).toContain("450 tokens")
-    expect(last30.value).toContain("$1.75")
+      const last30 = result.lines.find((l) => l.label === "Last 30 Days")
+      expect(last30).toBeTruthy()
+      expect(last30.value).toContain("450 tokens")
+      expect(last30.value).toContain("$1.75")
 
-    expect(ctx.host.ccusage.query).toHaveBeenCalled()
-    const firstCall = ctx.host.ccusage.query.mock.calls[0][0]
-    expect(firstCall.provider).toBe("codex")
+      expect(ctx.host.ccusage.query).toHaveBeenCalled()
+      const firstCall = ctx.host.ccusage.query.mock.calls[0][0]
+      expect(firstCall.provider).toBe("codex")
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("passes CODEX_HOME to ccusage via homePath", async () => {
