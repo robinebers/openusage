@@ -251,6 +251,14 @@
     return label.replace(/\s*\([^)]*\)\s*$/, "").trim()
   }
 
+  function poolLabel(normalizedLabel) {
+    var lower = normalizedLabel.toLowerCase()
+    if (lower.indexOf("gemini") !== -1 && lower.indexOf("pro") !== -1) return "Gemini Pro"
+    if (lower.indexOf("gemini") !== -1 && lower.indexOf("flash") !== -1) return "Gemini Flash"
+    // Claude, GPT-OSS, and any other non-Gemini models share the "Claude" pool
+    return "Claude"
+  }
+
   function modelSortKey(label) {
     var lower = label.toLowerCase()
     // Gemini Pro variants first, then other Gemini, then Claude Opus, then other Claude, then rest
@@ -284,11 +292,11 @@
       if (!label) continue
       var qi = c.quotaInfo
       var frac = (qi && typeof qi.remainingFraction === "number") ? qi.remainingFraction : 0
-      var rtime = (qi && qi.resetTime) ? qi.resetTime : undefined
-      var norm = normalizeLabel(label)
-      if (!deduped[norm] || frac < deduped[norm].remainingFraction) {
-        deduped[norm] = {
-          label: norm,
+      var rtime = (qi && qi.resetTime) || undefined
+      var pool = poolLabel(normalizeLabel(label))
+      if (!deduped[pool] || frac < deduped[pool].remainingFraction) {
+        deduped[pool] = {
+          label: pool,
           remainingFraction: frac,
           resetTime: rtime,
         }
@@ -356,7 +364,7 @@
       if (!displayName) continue
       var qi = m.quotaInfo
       var frac = (qi && typeof qi.remainingFraction === "number") ? qi.remainingFraction : 0
-      var rtime = (qi && qi.resetTime) ? qi.resetTime : undefined
+      var rtime = (qi && qi.resetTime) || undefined
       configs.push({
         label: displayName,
         quotaInfo: { remainingFraction: frac, resetTime: rtime },
