@@ -258,7 +258,7 @@ describe("claude plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Usage request failed")
   })
 
-  it("shows empty Today/Yesterday when no usage data and ccusage unavailable", async () => {
+  it("shows status badge when no usage data and ccusage is unavailable", async () => {
     const ctx = makeCtx()
     ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
     ctx.host.fs.exists = () => true
@@ -268,15 +268,12 @@ describe("claude plugin", () => {
     })
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    const todayLine = result.lines.find((l) => l.label === "Today")
-    expect(todayLine).toBeTruthy()
-    expect(todayLine.value).toContain("$0.00")
-    expect(todayLine.value).toContain("0 tokens")
-    const yesterdayLine = result.lines.find((l) => l.label === "Yesterday")
-    expect(yesterdayLine).toBeTruthy()
-    expect(yesterdayLine.value).toContain("$0.00")
-    expect(yesterdayLine.value).toContain("0 tokens")
-    expect(result.lines.find((l) => l.label === "No usage data")).toBeUndefined()
+    expect(result.lines.find((l) => l.label === "Today")).toBeUndefined()
+    expect(result.lines.find((l) => l.label === "Yesterday")).toBeUndefined()
+    expect(result.lines.find((l) => l.label === "Last 30 Days")).toBeUndefined()
+    const statusLine = result.lines.find((l) => l.label === "Status")
+    expect(statusLine).toBeTruthy()
+    expect(statusLine.text).toBe("No usage data")
   })
 
   it("passes resetsAt through as ISO when present", async () => {
@@ -644,13 +641,17 @@ describe("claude plugin", () => {
       seven_day: { utilization: 50, resets_at: "2099-01-01T00:00:00.000Z" },
     })
 
-    function makeProbeCtx({ ccusageResult = null } = {}) {
+    function makeProbeCtx({ ccusageResult = { status: "runner_failed" } } = {}) {
       const ctx = makeCtx()
       ctx.host.fs.exists = () => true
       ctx.host.fs.readText = () => CRED_JSON
       ctx.host.http.request.mockReturnValue({ status: 200, bodyText: USAGE_RESPONSE })
       ctx.host.ccusage.query = vi.fn(() => ccusageResult)
       return ctx
+    }
+
+    function okUsage(daily) {
+      return { status: "ok", data: { daily: daily } }
     }
 
     function localDayKey(date) {
@@ -660,36 +661,30 @@ describe("claude plugin", () => {
       return year + "-" + month + "-" + day
     }
 
-    it("shows empty Today state when ccusage returns null", async () => {
-      const ctx = makeProbeCtx({ ccusageResult: null })
+    it("omits token lines when ccusage reports no_runner", async () => {
+      const ctx = makeProbeCtx({ ccusageResult: { status: "no_runner" } })
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)
-      const todayLine = result.lines.find((l) => l.label === "Today")
-      expect(todayLine).toBeTruthy()
-      expect(todayLine.value).toContain("$0.00")
-      expect(todayLine.value).toContain("0 tokens")
-      const yesterdayLine = result.lines.find((l) => l.label === "Yesterday")
-      expect(yesterdayLine).toBeTruthy()
-      expect(yesterdayLine.value).toContain("$0.00")
-      expect(yesterdayLine.value).toContain("0 tokens")
+      expect(result.lines.find((l) => l.label === "Today")).toBeUndefined()
+      expect(result.lines.find((l) => l.label === "Yesterday")).toBeUndefined()
       expect(result.lines.find((l) => l.label === "Last 30 Days")).toBeUndefined()
     })
 
-    it("rate-limit lines still appear when ccusage returns null", async () => {
-      const ctx = makeProbeCtx({ ccusageResult: null })
+    it("rate-limit lines still appear when ccusage reports runner_failed", async () => {
+      const ctx = makeProbeCtx({ ccusageResult: { status: "runner_failed" } })
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)
       expect(result.lines.find((l) => l.label === "Session")).toBeTruthy()
+      expect(result.lines.find((l) => l.label === "Today")).toBeUndefined()
+      expect(result.lines.find((l) => l.label === "Yesterday")).toBeUndefined()
     })
 
     it("adds Today line when ccusage returns today's data", async () => {
       const todayKey = localDayKey(new Date())
       const ctx = makeProbeCtx({
-        ccusageResult: {
-          daily: [
+        ccusageResult: okUsage([
             { date: todayKey, inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 150, totalCost: 0.75 },
-          ],
-        },
+          ]),
       })
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)
@@ -705,11 +700,9 @@ describe("claude plugin", () => {
       yesterday.setDate(yesterday.getDate() - 1)
       const yesterdayKey = localDayKey(yesterday)
       const ctx = makeProbeCtx({
-        ccusageResult: {
-          daily: [
+        ccusageResult: okUsage([
             { date: yesterdayKey, inputTokens: 80, outputTokens: 40, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 120, totalCost: 0.6 },
-          ],
-        },
+          ]),
       })
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)
@@ -734,12 +727,10 @@ describe("claude plugin", () => {
       const yesterdayLabel = monthYesterday + " " + dayYesterday + ", " + yearYesterday
 
       const ctx = makeProbeCtx({
-        ccusageResult: {
-          daily: [
+        ccusageResult: okUsage([
             { date: todayLabel, inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 150, totalCost: 0.75 },
             { date: yesterdayLabel, inputTokens: 80, outputTokens: 40, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 120, totalCost: 0.6 },
-          ],
-        },
+          ]),
       })
 
       const plugin = await loadPlugin()
@@ -759,12 +750,10 @@ describe("claude plugin", () => {
     it("adds Last 30 Days line summing all daily entries", async () => {
       const todayKey = localDayKey(new Date())
       const ctx = makeProbeCtx({
-        ccusageResult: {
-          daily: [
+        ccusageResult: okUsage([
             { date: todayKey, inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 150, totalCost: 0.5 },
             { date: "2026-02-01", inputTokens: 200, outputTokens: 100, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 300, totalCost: 1.0 },
-          ],
-        },
+          ]),
       })
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)
@@ -776,11 +765,9 @@ describe("claude plugin", () => {
 
     it("shows empty Today/Yesterday and Last 30 Days when today has no entry", async () => {
       const ctx = makeProbeCtx({
-        ccusageResult: {
-          daily: [
+        ccusageResult: okUsage([
             { date: "2026-02-01", inputTokens: 500, outputTokens: 100, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 600, totalCost: 2.0 },
-          ],
-        },
+          ]),
       })
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)
@@ -797,8 +784,8 @@ describe("claude plugin", () => {
       expect(last30.value).toContain("600 tokens")
     })
 
-    it("shows empty Today state when ccusage returns empty daily array", async () => {
-      const ctx = makeProbeCtx({ ccusageResult: { daily: [] } })
+    it("shows empty Today state when ccusage returns ok with empty daily array", async () => {
+      const ctx = makeProbeCtx({ ccusageResult: okUsage([]) })
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)
       const todayLine = result.lines.find((l) => l.label === "Today")
@@ -815,11 +802,9 @@ describe("claude plugin", () => {
     it("omits cost when totalCost is null", async () => {
       const todayKey = localDayKey(new Date())
       const ctx = makeProbeCtx({
-        ccusageResult: {
-          daily: [
+        ccusageResult: okUsage([
             { date: todayKey, inputTokens: 500, outputTokens: 100, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 600, totalCost: null },
-          ],
-        },
+          ]),
       })
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)
@@ -832,11 +817,9 @@ describe("claude plugin", () => {
     it("shows empty Today state when today's totals are zero (regression)", async () => {
       const todayKey = localDayKey(new Date())
       const ctx = makeProbeCtx({
-        ccusageResult: {
-          daily: [
+        ccusageResult: okUsage([
             { date: todayKey, inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 0, totalCost: 0 },
-          ],
-        },
+          ]),
       })
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)
@@ -849,11 +832,9 @@ describe("claude plugin", () => {
     it("queries ccusage on each probe", async () => {
       const todayKey = localDayKey(new Date())
       const ctx = makeProbeCtx({
-        ccusageResult: {
-          daily: [
+        ccusageResult: okUsage([
             { date: todayKey, inputTokens: 100, outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 150, totalCost: 0.5 },
-          ],
-        },
+          ]),
       })
       const plugin = await loadPlugin()
       plugin.probe(ctx)
@@ -864,11 +845,9 @@ describe("claude plugin", () => {
     it("includes cache tokens in total", async () => {
       const todayKey = localDayKey(new Date())
       const ctx = makeProbeCtx({
-        ccusageResult: {
-          daily: [
+        ccusageResult: okUsage([
             { date: todayKey, inputTokens: 100, outputTokens: 50, cacheCreationTokens: 200, cacheReadTokens: 300, totalTokens: 650, totalCost: 1.0 },
-          ],
-        },
+          ]),
       })
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)

@@ -457,7 +457,10 @@ host.ccusage.query(opts: {
   until?: string,                // End date (YYYYMMDD or YYYY-MM-DD)
   homePath?: string,             // Provider home override (CLAUDE_CONFIG_DIR or CODEX_HOME)
   claudePath?: string,           // Legacy Claude-only override (deprecated; use homePath)
-}): { daily: DailyUsage[] } | null
+}):
+  | { status: "ok", data: { daily: DailyUsage[] } }
+  | { status: "no_runner" }
+  | { status: "runner_failed" }
 ```
 
 Queries local token usage via provider-specific ccusage CLIs:
@@ -465,14 +468,18 @@ Queries local token usage via provider-specific ccusage CLIs:
 - Claude: [`ccusage`](https://github.com/ryoppippi/ccusage)
 - Codex: [`@ccusage/codex`](https://www.npmjs.com/package/@ccusage/codex)
 
-Returns daily usage data (provider-dependent fields) or `null` if no supported package runner is available.
+Returns a status envelope:
+
+- `ok`: query succeeded, usage data is in `data.daily`
+- `no_runner`: no package runner (`bunx/pnpm/yarn/npm/npx`) was found
+- `runner_failed`: at least one runner was available but all attempts failed
 
 ### Behavior
 
 - **Runtime runners**: Executes pinned `ccusage@18.0.5` (Claude) or `@ccusage/codex@18.0.5` (Codex) via fallback chain `bunx -> pnpm dlx -> yarn dlx -> npm exec -> npx`
 - **Provider-aware**: Resolves provider from `opts.provider` or plugin id (`claude`/`codex`)
 - **Offline only**: Reads local JSONL session files, no network requests
-- **Graceful degradation**: Returns `null` if no runner can execute `ccusage` successfully
+- **Graceful degradation**: returns `no_runner` when no runner exists, `runner_failed` when execution fails
 - **Pricing**: Uses ccusage's built-in LiteLLM pricing data
 
 ### DailyUsage
@@ -497,12 +504,14 @@ Commonly observed fields include:
 
 ```javascript
 var result = ctx.host.ccusage.query({ provider: "codex", since: "20260101" })
-if (result && result.daily) {
-  for (var i = 0; i < result.daily.length; i++) {
-    var day = result.daily[i]
+if (result.status === "ok") {
+  for (var i = 0; i < result.data.daily.length; i++) {
+    var day = result.data.daily[i]
     var cost = day.totalCost != null ? day.totalCost : day.costUSD
     ctx.host.log.info(day.date + ": " + (day.totalTokens || 0) + " tokens, $" + (cost != null ? cost : "n/a"))
   }
+} else if (result.status === "no_runner") {
+  ctx.host.log.warn("ccusage unavailable: no package runner found")
 }
 ```
 

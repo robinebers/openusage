@@ -289,7 +289,7 @@
 
   function queryTokenUsage(ctx) {
     if (!ctx.host.ccusage || typeof ctx.host.ccusage.query !== "function") {
-      return null
+      return { status: "no_runner", data: null }
     }
 
     const since = new Date()
@@ -305,8 +305,16 @@
     }
 
     const result = ctx.host.ccusage.query(queryOpts)
-    if (!result || !Array.isArray(result.daily)) return null
-    return result
+    if (!result || typeof result !== "object" || typeof result.status !== "string") {
+      return { status: "runner_failed", data: null }
+    }
+    if (result.status !== "ok") {
+      return { status: result.status, data: null }
+    }
+    if (!result.data || !Array.isArray(result.data.daily)) {
+      return { status: "runner_failed", data: null }
+    }
+    return { status: "ok", data: result.data }
   }
 
   function fmtTokens(n) {
@@ -579,8 +587,9 @@
         }
       }
 
-      const tokenUsage = queryTokenUsage(ctx)
-      if (tokenUsage && tokenUsage.daily) {
+      const tokenUsageResult = queryTokenUsage(ctx)
+      if (tokenUsageResult.status === "ok") {
+        const tokenUsage = tokenUsageResult.data
         const now = new Date()
         const todayKey = dayKeyFromDate(now)
         const yesterday = new Date(now.getTime())
@@ -651,15 +660,6 @@
             value: costAndTokensLabel({ tokens: totalTokens, costUSD: hasCost ? totalCostNanos / 1e9 : null })
           }))
         }
-      } else {
-        lines.push(ctx.line.text({
-          label: "Today",
-          value: costAndTokensLabel({ tokens: 0, costUSD: 0 }, { includeZeroTokens: true })
-        }))
-        lines.push(ctx.line.text({
-          label: "Yesterday",
-          value: costAndTokensLabel({ tokens: 0, costUSD: 0 }, { includeZeroTokens: true })
-        }))
       }
 
       if (lines.length === 0) {

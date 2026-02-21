@@ -1587,20 +1587,39 @@ fn inject_ccusage<'js>(
                     }
                 };
                 let provider = resolve_ccusage_provider(&opts, &pid);
+                let runners = collect_ccusage_runners();
+                if runners.is_empty() {
+                    log::warn!(
+                        "[plugin:{}] no package runner found for ccusage query",
+                        pid
+                    );
+                    return Ok(serde_json::json!({ "status": "no_runner" }).to_string());
+                }
 
-                for (kind, program) in collect_ccusage_runners() {
+                for (kind, program) in runners {
                     if let Some(result) =
                         run_ccusage_with_runner(kind, &program, &opts, provider, &pid)
                     {
-                        return Ok(result);
+                        let data: serde_json::Value = match serde_json::from_str(&result) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                log::warn!(
+                                    "[plugin:{}] ccusage normalized payload parse failed: {}",
+                                    pid,
+                                    e
+                                );
+                                continue;
+                            }
+                        };
+                        return Ok(serde_json::json!({ "status": "ok", "data": data }).to_string());
                     }
                 }
 
                 log::warn!(
-                    "[plugin:{}] no usable package runner found for ccusage query",
+                    "[plugin:{}] ccusage query failed with all available runners",
                     pid
                 );
-                Ok("null".to_string())
+                Ok(serde_json::json!({ "status": "runner_failed" }).to_string())
             },
         )?,
     )?;
@@ -1616,8 +1635,13 @@ pub fn patch_ccusage_wrapper(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
             var rawFn = __openusage_ctx.host.ccusage._queryRaw;
             __openusage_ctx.host.ccusage.query = function(opts) {
                 var result = rawFn(JSON.stringify(opts || {}));
-                if (result === "null") return null;
-                try { return JSON.parse(result); } catch (e) { return null; }
+                try {
+                    var parsed = JSON.parse(result);
+                    if (parsed && typeof parsed === "object" && typeof parsed.status === "string") {
+                        return parsed;
+                    }
+                } catch (e) {}
+                return { status: "runner_failed" };
             };
         })();
         "#
