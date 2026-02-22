@@ -320,4 +320,77 @@ describe("zai plugin", () => {
     expect(line).toBeTruthy()
     expect(line.resetsAt).toBeUndefined()
   })
+
+  it("handles invalid subscription JSON without failing quota rendering", async () => {
+    const ctx = makeCtx()
+    mockEnvWithKey(ctx, "test-key")
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (opts.url.includes("subscription")) {
+        return { status: 200, bodyText: "not-json" }
+      }
+      return { status: 200, bodyText: JSON.stringify(QUOTA_RESPONSE) }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.plan).toBeNull()
+    expect(result.lines.find((l) => l.label === "Session")).toBeTruthy()
+  })
+
+  it("handles subscription payload with empty list", async () => {
+    const ctx = makeCtx()
+    mockEnvWithKey(ctx, "test-key")
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (opts.url.includes("subscription")) {
+        return { status: 200, bodyText: JSON.stringify({ data: [] }) }
+      }
+      return { status: 200, bodyText: JSON.stringify(QUOTA_RESPONSE) }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.plan).toBeNull()
+    expect(result.lines.find((l) => l.label === "Session")).toBeTruthy()
+  })
+
+  it("supports quota payloads where limits are top-level and optional fields are non-numeric", async () => {
+    const ctx = makeCtx()
+    mockEnvWithKey(ctx, "test-key")
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (opts.url.includes("subscription")) {
+        return { status: 200, bodyText: JSON.stringify(SUBSCRIPTION_RESPONSE) }
+      }
+      return {
+        status: 200,
+        bodyText: JSON.stringify([
+          { type: "TOKENS_LIMIT", percentage: "10", nextResetTime: 1738368000000 },
+          { type: "TIME_LIMIT", currentValue: "1095", usage: "4000" },
+        ]),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const session = result.lines.find((l) => l.label === "Session")
+    const web = result.lines.find((l) => l.label === "Web Searches")
+    expect(session.used).toBe(0)
+    expect(web.used).toBe(0)
+    expect(web.limit).toBe(0)
+  })
+
+  it("shows no-usage badge when token limit entry is missing", async () => {
+    const ctx = makeCtx()
+    mockEnvWithKey(ctx, "test-key")
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (opts.url.includes("subscription")) {
+        return { status: 200, bodyText: JSON.stringify(SUBSCRIPTION_RESPONSE) }
+      }
+      return { status: 200, bodyText: JSON.stringify({ data: { limits: [{ type: "TIME_LIMIT", usage: 10 }] } }) }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines).toHaveLength(1)
+    expect(result.lines[0].text).toBe("No usage data")
+  })
 })

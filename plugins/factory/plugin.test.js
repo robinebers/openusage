@@ -663,4 +663,171 @@ describe("factory plugin", () => {
     expect(standardLine.resetsAt).toBeTruthy()
     expect(standardLine.periodDurationMs).toBe(endDate - startDate)
   })
+
+  it("loads direct JWT auth payloads from plain text and quoted JSON strings", async () => {
+    const jwt = "header.payload.signature"
+
+    const runCase = async (rawAuth) => {
+      const ctx = makeCtx()
+      ctx.host.fs.writeText("~/.factory/auth.json", rawAuth)
+      ctx.host.http.request.mockReturnValue({
+        status: 200,
+        headers: {},
+        bodyText: JSON.stringify({
+          usage: {
+            startDate: 1770623326000,
+            endDate: 1772956800000,
+            standard: { orgTotalTokensUsed: 0, totalAllowance: 20000000 },
+            premium: { orgTotalTokensUsed: 0, totalAllowance: 0 },
+          },
+        }),
+      })
+
+      delete globalThis.__openusage_plugin
+      vi.resetModules()
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      expect(result.lines.find((line) => line.label === "Standard")).toBeTruthy()
+    }
+
+    await runCase(jwt)
+    await runCase(JSON.stringify(jwt))
+  })
+
+  it("supports uppercase 0X-prefixed hex payload without TextDecoder", async () => {
+    const ctx = makeCtx()
+    const futureExp = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
+    const payload = JSON.stringify({ access_token: makeJwt(futureExp), refresh_token: "refresh" })
+    const hexPayload = "0X" + Buffer.from(payload, "utf8").toString("hex").toUpperCase()
+    ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
+      if (service === "Factory Token") return hexPayload
+      return null
+    })
+    const originalTextDecoder = globalThis.TextDecoder
+    globalThis.TextDecoder = undefined
+    try {
+      ctx.host.http.request.mockReturnValue({
+        status: 200,
+        headers: {},
+        bodyText: JSON.stringify({
+          usage: {
+            startDate: 1770623326000,
+            endDate: 1772956800000,
+            standard: { orgTotalTokensUsed: 0, totalAllowance: 20000000 },
+            premium: { orgTotalTokensUsed: 0, totalAllowance: 0 },
+          },
+        }),
+      })
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      expect(result.lines.find((line) => line.label === "Standard")).toBeTruthy()
+    } finally {
+      globalThis.TextDecoder = originalTextDecoder
+    }
+  })
+
+  it("throws when keychain API is unavailable and files are missing", async () => {
+    const ctx = makeCtx()
+    ctx.host.keychain = null
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Not logged in")
+  })
+
+  it("continues with existing token when refresh cannot produce a new token", async () => {
+    const nearExp = Math.floor(Date.now() / 1000) + 12 * 60 * 60
+    const baseAuth = JSON.stringify({
+      access_token: makeJwt(nearExp),
+      refresh_token: "refresh",
+    })
+
+    const runCase = async (refreshResp) => {
+      const ctx = makeCtx()
+      ctx.host.fs.writeText("~/.factory/auth.json", baseAuth)
+      ctx.host.http.request.mockImplementation((opts) => {
+        if (String(opts.url).includes("workos.com")) return refreshResp
+        return {
+          status: 200,
+          headers: {},
+          bodyText: JSON.stringify({
+            usage: {
+              startDate: 1770623326000,
+              endDate: 1772956800000,
+              standard: { orgTotalTokensUsed: 0, totalAllowance: 20000000 },
+              premium: { orgTotalTokensUsed: 0, totalAllowance: 0 },
+            },
+          }),
+        }
+      })
+
+      delete globalThis.__openusage_plugin
+      vi.resetModules()
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      expect(result.lines.find((line) => line.label === "Standard")).toBeTruthy()
+    }
+
+    await runCase({ status: 500, headers: {}, bodyText: "" })
+    await runCase({ status: 200, headers: {}, bodyText: "not-json" })
+    await runCase({ status: 200, headers: {}, bodyText: JSON.stringify({}) })
+  })
+
+  it("skips refresh when refresh token is missing and uses existing access token", async () => {
+    const ctx = makeCtx()
+    const nearExp = Math.floor(Date.now() / 1000) + 12 * 60 * 60
+    ctx.host.fs.writeText("~/.factory/auth.json", JSON.stringify({
+      access_token: makeJwt(nearExp),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        usage: {
+          startDate: 1770623326000,
+          endDate: 1772956800000,
+          standard: { orgTotalTokensUsed: 1, totalAllowance: 20000000 },
+          premium: { orgTotalTokensUsed: 0, totalAllowance: 0 },
+        },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Standard")).toBeTruthy()
+  })
+
+  it("handles usage dates and counters when optional values are missing", async () => {
+    const ctx = makeCtx()
+    const futureExp = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
+    ctx.host.fs.writeText("~/.factory/auth.json", JSON.stringify({
+      access_token: makeJwt(futureExp),
+      refresh_token: "refresh",
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        usage: {
+          startDate: "n/a",
+          endDate: "n/a",
+          standard: {
+            // Missing orgTotalTokensUsed should fall back to 0
+            totalAllowance: 0,
+          },
+          premium: {
+            orgTotalTokensUsed: 0,
+            totalAllowance: 0,
+          },
+        },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const standardLine = result.lines.find((line) => line.label === "Standard")
+    expect(standardLine).toBeTruthy()
+    expect(standardLine.used).toBe(0)
+    expect(standardLine.resetsAt).toBeUndefined()
+    expect(standardLine.periodDurationMs).toBeUndefined()
+    expect(result.plan).toBeNull()
+  })
 })

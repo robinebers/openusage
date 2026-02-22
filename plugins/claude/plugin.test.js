@@ -585,6 +585,117 @@ describe("claude plugin", () => {
     expect(() => plugin.probe(ctx)).not.toThrow()
   })
 
+  it("falls back to keychain when file oauth exists but has no access token", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { refreshToken: "only-refresh" } })
+    ctx.host.keychain.readGenericPassword.mockReturnValue(
+      JSON.stringify({ claudeAiOauth: { accessToken: "keychain-token", subscriptionType: "pro" } })
+    )
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+  })
+
+  it("treats keychain oauth without access token as not logged in", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => false
+    ctx.host.keychain.readGenericPassword.mockReturnValue(
+      JSON.stringify({ claudeAiOauth: { refreshToken: "only-refresh" } })
+    )
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Not logged in")
+  })
+
+  it("continues with existing token when refresh cannot return a usable token", async () => {
+    const baseCreds = JSON.stringify({
+      claudeAiOauth: {
+        accessToken: "token",
+        refreshToken: "refresh",
+        expiresAt: Date.now() - 1,
+      },
+    })
+
+    const runCase = async (refreshResp) => {
+      const ctx = makeCtx()
+      ctx.host.fs.exists = () => true
+      ctx.host.fs.readText = () => baseCreds
+      ctx.host.http.request.mockImplementation((opts) => {
+        if (String(opts.url).includes("/v1/oauth/token")) return refreshResp
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+          }),
+        }
+      })
+
+      delete globalThis.__openusage_plugin
+      vi.resetModules()
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+    }
+
+    await runCase({ status: 500, bodyText: "" })
+    await runCase({ status: 200, bodyText: "not-json" })
+    await runCase({ status: 200, bodyText: JSON.stringify({}) })
+  })
+
+  it("skips proactive refresh when token is not near expiry", async () => {
+    const ctx = makeCtx()
+    const now = 1_700_000_000_000
+    vi.spyOn(Date, "now").mockReturnValue(now)
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () =>
+      JSON.stringify({
+        claudeAiOauth: {
+          accessToken: "token",
+          refreshToken: "refresh",
+          expiresAt: now + 24 * 60 * 60 * 1000,
+          subscriptionType: "pro",
+        },
+      })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+    expect(
+      ctx.host.http.request.mock.calls.some((call) => String(call[0]?.url).includes("/v1/oauth/token"))
+    ).toBe(false)
+  })
+
+  it("handles malformed ccusage payload shape as runner_failed", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "   " } })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+      }),
+    })
+    ctx.host.ccusage.query = vi.fn(() => ({ status: "ok", data: {} }))
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.plan).toBeNull()
+    expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+    expect(result.lines.find((line) => line.label === "Today")).toBeUndefined()
+  })
+
   it("throws usage request failed after refresh when retry errors", async () => {
     const ctx = makeCtx()
     ctx.host.fs.exists = () => true

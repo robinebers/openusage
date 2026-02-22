@@ -188,6 +188,14 @@ describe("kimi plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Not logged in")
   })
 
+  it("treats credentials without access and refresh tokens as not logged in", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText(CRED_PATH, JSON.stringify({ access_token: "", refresh_token: "" }))
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Not logged in")
+  })
+
   it("keeps existing access token when refresh returns non-2xx", async () => {
     const ctx = makeCtx()
     ctx.host.fs.writeText(
@@ -502,5 +510,110 @@ describe("kimi plugin", () => {
     const result = plugin.probe(ctx)
 
     expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+  })
+
+  it("refreshes with minimal token payload and keeps existing optional fields", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText(
+      CRED_PATH,
+      JSON.stringify({
+        access_token: "old-token",
+        refresh_token: "refresh-token",
+        expires_at: 1,
+        scope: "existing-scope",
+        token_type: "Bearer",
+      })
+    )
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("/api/oauth/token")) {
+        return { status: 200, bodyText: JSON.stringify({ access_token: "new-token" }) }
+      }
+      return {
+        status: 200,
+        bodyText: JSON.stringify({
+          limits: [
+            {
+              window: { duration: 300, timeUnit: "TIME_UNIT_MINUTE" },
+              detail: { limit: "100", used: "20", reset_time: "2099-02-07T00:00:00Z" },
+            },
+          ],
+        }),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+    const persisted = JSON.parse(ctx.host.fs.readText(CRED_PATH))
+    expect(persisted.access_token).toBe("new-token")
+    expect(persisted.scope).toBe("existing-scope")
+    expect(persisted.token_type).toBe("Bearer")
+  })
+
+  it("supports root-level limits with snake_case window keys and remaining-based usage", async () => {
+    const ctx = makeCtx()
+    const nowSec = Math.floor(Date.now() / 1000)
+    ctx.host.fs.writeText(
+      CRED_PATH,
+      JSON.stringify({
+        access_token: "token",
+        expires_at: nowSec + 3600,
+      })
+    )
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        limits: [
+          {
+            window: { duration: 1, time_unit: "TIME_UNIT_DAY" },
+            limit: "200",
+            remaining: "150",
+            reset_at: "2099-02-08T00:00:00Z",
+          },
+          {
+            // Invalid limit should be skipped.
+            window: { duration: 0, time_unit: "TIME_UNIT_DAY" },
+            limit: "0",
+            remaining: "0",
+          },
+        ],
+        user: { membership: { level: "LEVEL_" } },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const session = result.lines.find((line) => line.label === "Session")
+    expect(session).toBeTruthy()
+    expect(session.used).toBe(25) // (200-150)/200
+    expect(session.periodDurationMs).toBe(24 * 60 * 60 * 1000)
+    expect(result.plan).toBeNull()
+  })
+
+  it("adds weekly line from usage block when session candidate is unavailable", async () => {
+    const ctx = makeCtx()
+    const nowSec = Math.floor(Date.now() / 1000)
+    ctx.host.fs.writeText(
+      CRED_PATH,
+      JSON.stringify({
+        access_token: "token",
+        expires_at: nowSec + 3600,
+      })
+    )
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        usage: { limit: "500", used: "125", resetAt: "2099-02-11T00:00:00Z" },
+        limits: [],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Session")).toBeUndefined()
+    const weekly = result.lines.find((line) => line.label === "Weekly")
+    expect(weekly).toBeTruthy()
+    expect(weekly.used).toBe(25)
   })
 })
