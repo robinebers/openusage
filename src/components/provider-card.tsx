@@ -1,4 +1,4 @@
-import { useMemo } from "react"
+import { Fragment, useMemo } from "react"
 import { ExternalLink, Hourglass, RefreshCw } from "lucide-react"
 import { openUrl } from "@tauri-apps/plugin-opener"
 import { Badge } from "@/components/ui/badge"
@@ -45,6 +45,22 @@ const PACE_VISUALS: Record<PaceStatus, { dotClass: string }> = {
   ahead: { dotClass: "bg-green-500" },
   "on-track": { dotClass: "bg-yellow-500" },
   behind: { dotClass: "bg-red-500" },
+}
+
+type LineGroup = { kind: "text"; lines: MetricLine[] } | { kind: "other"; lines: MetricLine[] }
+
+export function groupLinesByType(lines: MetricLine[]): LineGroup[] {
+  const groups: LineGroup[] = []
+  for (const line of lines) {
+    const kind = line.type === "text" ? "text" : "other"
+    const last = groups[groups.length - 1]
+    if (last && last.kind === kind) {
+      last.lines.push(line)
+    } else {
+      groups.push({ kind, lines: [line] })
+    }
+  }
+  return groups
 }
 
 function formatCount(value: number) {
@@ -317,16 +333,35 @@ export function ProviderCard({
 
         {!loading && !error && (
           <div className="space-y-4">
-            {filteredLines.map((line, index) => (
-              <MetricLineRenderer
-                key={`${line.label}-${index}`}
-                line={line}
-                displayMode={displayMode}
-                resetTimerDisplayMode={resetTimerDisplayMode}
-                onResetTimerDisplayModeToggle={onResetTimerDisplayModeToggle}
-                now={now}
-              />
-            ))}
+            {groupLinesByType(filteredLines).map((group, gi) =>
+              group.kind === "text" ? (
+                <div key={gi} className="space-y-1">
+                  {group.lines.map((line, li) => (
+                    <MetricLineRenderer
+                      key={`${line.label}-${gi}-${li}`}
+                      line={line}
+                      displayMode={displayMode}
+                      resetTimerDisplayMode={resetTimerDisplayMode}
+                      onResetTimerDisplayModeToggle={onResetTimerDisplayModeToggle}
+                      now={now}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <Fragment key={gi}>
+                  {group.lines.map((line, li) => (
+                    <MetricLineRenderer
+                      key={`${line.label}-${gi}-${li}`}
+                      line={line}
+                      displayMode={displayMode}
+                      resetTimerDisplayMode={resetTimerDisplayMode}
+                      onResetTimerDisplayModeToggle={onResetTimerDisplayModeToggle}
+                      now={now}
+                    />
+                  ))}
+                </Fragment>
+              )
+            )}
           </div>
         )}
       </div>
@@ -351,10 +386,10 @@ function MetricLineRenderer({
   if (line.type === "text") {
     return (
       <div>
-        <div className="flex justify-between items-center h-[22px]">
-          <span className="text-sm text-muted-foreground flex-shrink-0">{line.label}</span>
+        <div className="flex justify-between items-center h-[18px]">
+          <span className="text-xs text-muted-foreground flex-shrink-0">{line.label}</span>
           <span
-            className="text-sm text-muted-foreground truncate min-w-0 max-w-[60%] text-right"
+            className="text-xs text-muted-foreground truncate min-w-0 max-w-[60%] text-right"
             style={line.color ? { color: line.color } : undefined}
             title={line.value}
           >
@@ -362,7 +397,7 @@ function MetricLineRenderer({
           </span>
         </div>
         {line.subtitle && (
-          <div className="text-xs text-muted-foreground text-right -mt-0.5">{line.subtitle}</div>
+          <div className="text-[10px] text-muted-foreground text-right -mt-0.5">{line.subtitle}</div>
         )}
       </div>
     )
