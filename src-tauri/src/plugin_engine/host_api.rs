@@ -118,7 +118,14 @@ fn redact_value(value: &str) -> String {
         "[REDACTED]".to_string()
     } else {
         let first4: String = chars.iter().take(4).collect();
-        let last4: String = chars.iter().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect();
+        let last4: String = chars
+            .iter()
+            .rev()
+            .take(4)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
         format!("{}...{}", first4, last4)
     }
 }
@@ -126,11 +133,26 @@ fn redact_value(value: &str) -> String {
 /// Redact sensitive query parameters in URL
 fn redact_url(url: &str) -> String {
     let sensitive_params = [
-        "key", "api_key", "apikey", "token", "access_token", "secret",
-        "password", "auth", "authorization", "bearer", "credential",
-        "user", "user_id", "userid", "account_id", "accountid", "email", "login",
+        "key",
+        "api_key",
+        "apikey",
+        "token",
+        "access_token",
+        "secret",
+        "password",
+        "auth",
+        "authorization",
+        "bearer",
+        "credential",
+        "user",
+        "user_id",
+        "userid",
+        "account_id",
+        "accountid",
+        "email",
+        "login",
     ];
-    
+
     if let Some(query_start) = url.find('?') {
         let (base, query) = url.split_at(query_start + 1);
         let redacted_params: Vec<String> = query
@@ -140,7 +162,8 @@ fn redact_url(url: &str) -> String {
                     let (name, value) = param.split_at(eq_pos);
                     let value = &value[1..]; // skip '='
                     let name_lower = name.to_lowercase();
-                    if sensitive_params.iter().any(|s| name_lower.contains(s)) && !value.is_empty() {
+                    if sensitive_params.iter().any(|s| name_lower.contains(s)) && !value.is_empty()
+                    {
                         format!("{}={}", name, redact_value(value))
                     } else {
                         param.to_string()
@@ -159,50 +182,89 @@ fn redact_url(url: &str) -> String {
 /// Redact sensitive patterns in response body for logging
 fn redact_body(body: &str) -> String {
     let mut result = body.to_string();
-    
+
     // Redact JWTs (eyJ... pattern with dots)
-    let jwt_pattern = regex_lite::Regex::new(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+").unwrap();
-    result = jwt_pattern.replace_all(&result, |caps: &regex_lite::Captures| {
-        redact_value(&caps[0])
-    }).to_string();
-    
+    let jwt_pattern =
+        regex_lite::Regex::new(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+").unwrap();
+    result = jwt_pattern
+        .replace_all(&result, |caps: &regex_lite::Captures| {
+            redact_value(&caps[0])
+        })
+        .to_string();
+
     // Redact common API key patterns (sk-xxx, pk-xxx, api_xxx, etc.)
-    let api_key_pattern = regex_lite::Regex::new(r#"["']?(sk-|pk-|api_|key_|secret_)[A-Za-z0-9_-]{12,}["']?"#).unwrap();
-    result = api_key_pattern.replace_all(&result, |caps: &regex_lite::Captures| {
-        let key = caps[0].trim_matches(|c| c == '"' || c == '\'');
-        redact_value(key)
-    }).to_string();
-    
+    let api_key_pattern =
+        regex_lite::Regex::new(r#"["']?(sk-|pk-|api_|key_|secret_)[A-Za-z0-9_-]{12,}["']?"#)
+            .unwrap();
+    result = api_key_pattern
+        .replace_all(&result, |caps: &regex_lite::Captures| {
+            let key = caps[0].trim_matches(|c| c == '"' || c == '\'');
+            redact_value(key)
+        })
+        .to_string();
+
     // Redact JSON values for sensitive keys
     let sensitive_keys = [
-        "name", "password", "token", "access_token", "refresh_token", "secret",
-        "api_key", "apiKey", "authorization", "bearer", "credential",
-        "session_token", "sessionToken", "auth_token", "authToken",
-        "id_token", "idToken", "accessToken", "refreshToken",
-        "user_id", "userId", "account_id", "accountId", "email", "login", "analytics_tracking_id",
+        "name",
+        "password",
+        "token",
+        "access_token",
+        "refresh_token",
+        "secret",
+        "api_key",
+        "apiKey",
+        "authorization",
+        "bearer",
+        "credential",
+        "session_token",
+        "sessionToken",
+        "auth_token",
+        "authToken",
+        "id_token",
+        "idToken",
+        "accessToken",
+        "refreshToken",
+        "user_id",
+        "userId",
+        "account_id",
+        "accountId",
+        "email",
+        "login",
+        "analytics_tracking_id",
     ];
     for key in sensitive_keys {
         // Match "key": "value" or "key":"value"
         let pattern = format!(r#""{}":\s*"([^"]+)""#, key);
         if let Ok(re) = regex_lite::Regex::new(&pattern) {
-            result = re.replace_all(&result, |caps: &regex_lite::Captures| {
-                let value = &caps[1];
-                format!("\"{}\": \"{}\"", key, redact_value(value))
-            }).to_string();
+            result = re
+                .replace_all(&result, |caps: &regex_lite::Captures| {
+                    let value = &caps[1];
+                    format!("\"{}\": \"{}\"", key, redact_value(value))
+                })
+                .to_string();
         }
     }
-    
+
     result
 }
 
 /// Lightweight redaction for plugin log messages (JWT + API key patterns only).
 fn redact_log_message(msg: &str) -> String {
     let mut result = msg.to_string();
-    if let Ok(jwt_re) = regex_lite::Regex::new(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+") {
-        result = jwt_re.replace_all(&result, |caps: &regex_lite::Captures| redact_value(&caps[0])).to_string();
+    if let Ok(jwt_re) = regex_lite::Regex::new(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+")
+    {
+        result = jwt_re
+            .replace_all(&result, |caps: &regex_lite::Captures| {
+                redact_value(&caps[0])
+            })
+            .to_string();
     }
     if let Ok(api_re) = regex_lite::Regex::new(r#"(sk-|pk-|api_|key_|secret_)[A-Za-z0-9_-]{12,}"#) {
-        result = api_re.replace_all(&result, |caps: &regex_lite::Captures| redact_value(&caps[0])).to_string();
+        result = api_re
+            .replace_all(&result, |caps: &regex_lite::Captures| {
+                redact_value(&caps[0])
+            })
+            .to_string();
     }
     result
 }
@@ -244,6 +306,7 @@ pub fn inject_host_api<'js>(
     inject_keychain(ctx, &host)?;
     inject_sqlite(ctx, &host)?;
     inject_ls(ctx, &host, plugin_id)?;
+    inject_ccusage(ctx, &host, plugin_id)?;
 
     probe_ctx.set("host", host)?;
     globals.set("__openusage_ctx", probe_ctx)?;
@@ -251,11 +314,7 @@ pub fn inject_host_api<'js>(
     Ok(())
 }
 
-fn inject_log<'js>(
-    ctx: &Ctx<'js>,
-    host: &Object<'js>,
-    plugin_id: &str,
-) -> rquickjs::Result<()> {
+fn inject_log<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquickjs::Result<()> {
     let log_obj = Object::new(ctx.clone())?;
 
     let pid = plugin_id.to_string();
@@ -303,9 +362,8 @@ fn inject_fs<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
             ctx.clone(),
             move |ctx_inner: Ctx<'_>, path: String| -> rquickjs::Result<String> {
                 let expanded = expand_path(&path);
-                std::fs::read_to_string(&expanded).map_err(|e| {
-                    Exception::throw_message(&ctx_inner, &e.to_string())
-                })
+                std::fs::read_to_string(&expanded)
+                    .map_err(|e| Exception::throw_message(&ctx_inner, &e.to_string()))
             },
         )?,
     )?;
@@ -316,9 +374,8 @@ fn inject_fs<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
             ctx.clone(),
             move |ctx_inner: Ctx<'_>, path: String, content: String| -> rquickjs::Result<()> {
                 let expanded = expand_path(&path);
-                std::fs::write(&expanded, &content).map_err(|e| {
-                    Exception::throw_message(&ctx_inner, &e.to_string())
-                })
+                std::fs::write(&expanded, &content)
+                    .map_err(|e| Exception::throw_message(&ctx_inner, &e.to_string()))
             },
         )?,
     )?;
@@ -427,7 +484,8 @@ fn inject_http<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rqui
                 let redacted_body = redact_body(&body);
                 let body_preview = if redacted_body.len() > 500 {
                     // UTF-8 safe truncation: find valid char boundary at or before 500
-                    let truncated: String = redacted_body.char_indices()
+                    let truncated: String = redacted_body
+                        .char_indices()
                         .take_while(|(i, _)| *i < 500)
                         .map(|(_, c)| c)
                         .collect();
@@ -820,11 +878,7 @@ struct LsDiscoverResult {
     extension_port: Option<i32>,
 }
 
-fn inject_ls<'js>(
-    ctx: &Ctx<'js>,
-    host: &Object<'js>,
-    plugin_id: &str,
-) -> rquickjs::Result<()> {
+fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquickjs::Result<()> {
     let ls_obj = Object::new(ctx.clone())?;
     let pid = plugin_id.to_string();
 
@@ -834,10 +888,7 @@ fn inject_ls<'js>(
             ctx.clone(),
             move |ctx_inner: Ctx<'_>, opts_json: String| -> rquickjs::Result<String> {
                 let opts: LsDiscoverOpts = serde_json::from_str(&opts_json).map_err(|e| {
-                    Exception::throw_message(
-                        &ctx_inner,
-                        &format!("invalid discover opts: {}", e),
-                    )
+                    Exception::throw_message(&ctx_inner, &format!("invalid discover opts: {}", e))
                 })?;
 
                 log::info!(
@@ -897,10 +948,9 @@ fn inject_ls<'js>(
                         continue;
                     }
 
-                    let ide_name = ls_extract_flag(command, "--ide_name")
-                        .map(|v| v.to_lowercase());
-                    let app_data = ls_extract_flag(command, "--app_data_dir")
-                        .map(|v| v.to_lowercase());
+                    let ide_name = ls_extract_flag(command, "--ide_name").map(|v| v.to_lowercase());
+                    let app_data =
+                        ls_extract_flag(command, "--app_data_dir").map(|v| v.to_lowercase());
 
                     let has_marker = markers_lower.iter().any(|m| {
                         // Prefer exact flag match; skip path fallback when
@@ -936,22 +986,15 @@ fn inject_ls<'js>(
                 let csrf = match ls_extract_flag(&command, &opts.csrf_flag) {
                     Some(c) => c,
                     None => {
-                        log::warn!(
-                            "[plugin:{}] CSRF token not found in process args",
-                            pid
-                        );
+                        log::warn!("[plugin:{}] CSRF token not found in process args", pid);
                         return Ok("null".to_string());
                     }
                 };
 
                 // Extract extension port (optional)
-                let extension_port = opts
-                    .port_flag
-                    .as_ref()
-                    .and_then(|flag| {
-                        ls_extract_flag(&command, flag)
-                            .and_then(|v| v.parse::<i32>().ok())
-                    });
+                let extension_port = opts.port_flag.as_ref().and_then(|flag| {
+                    ls_extract_flag(&command, flag).and_then(|v| v.parse::<i32>().ok())
+                });
 
                 // Extract extra flags (optional)
                 let mut extra = std::collections::HashMap::new();
@@ -984,15 +1027,10 @@ fn inject_ls<'js>(
                         .output()
                     {
                         Ok(o) if o.status.success() => {
-                            ls_parse_listening_ports(
-                                &String::from_utf8_lossy(&o.stdout),
-                            )
+                            ls_parse_listening_ports(&String::from_utf8_lossy(&o.stdout))
                         }
                         Ok(_) => {
-                            log::warn!(
-                                "[plugin:{}] lsof returned non-zero",
-                                pid
-                            );
+                            log::warn!("[plugin:{}] lsof returned non-zero", pid);
                             Vec::new()
                         }
                         Err(e) => {
@@ -1030,10 +1068,7 @@ fn inject_ls<'js>(
                 };
 
                 serde_json::to_string(&result).map_err(|e| {
-                    Exception::throw_message(
-                        &ctx_inner,
-                        &format!("serialize failed: {}", e),
-                    )
+                    Exception::throw_message(&ctx_inner, &format!("serialize failed: {}", e))
                 })
             },
         )?,
@@ -1100,6 +1135,518 @@ fn ls_parse_listening_ports(output: &str) -> Vec<i32> {
         }
     }
     ports.into_iter().collect()
+}
+
+const CCUSAGE_CLAUDE_PACKAGE: &str = "ccusage@18.0.5";
+const CCUSAGE_CODEX_PACKAGE: &str = "@ccusage/codex@18.0.5";
+const CCUSAGE_TIMEOUT_SECS: u64 = 15;
+const CCUSAGE_POLL_INTERVAL_MS: u64 = 100;
+
+#[derive(Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CcusageQueryOpts {
+    provider: Option<String>,
+    since: Option<String>,
+    until: Option<String>,
+    home_path: Option<String>,
+    claude_path: Option<String>,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+enum CcusageProvider {
+    Claude,
+    Codex,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+enum CcusageRunnerKind {
+    Bunx,
+    PnpmDlx,
+    YarnDlx,
+    NpmExec,
+    Npx,
+}
+
+fn ccusage_runner_order() -> [CcusageRunnerKind; 5] {
+    [
+        CcusageRunnerKind::Bunx,
+        CcusageRunnerKind::PnpmDlx,
+        CcusageRunnerKind::YarnDlx,
+        CcusageRunnerKind::NpmExec,
+        CcusageRunnerKind::Npx,
+    ]
+}
+
+fn ccusage_runner_label(kind: CcusageRunnerKind) -> &'static str {
+    match kind {
+        CcusageRunnerKind::Bunx => "bunx",
+        CcusageRunnerKind::PnpmDlx => "pnpm dlx",
+        CcusageRunnerKind::YarnDlx => "yarn dlx",
+        CcusageRunnerKind::NpmExec => "npm exec",
+        CcusageRunnerKind::Npx => "npx",
+    }
+}
+
+#[derive(Copy, Clone)]
+struct CcusageProviderConfig {
+    package_spec: &'static str,
+    npm_exec_bin: &'static str,
+    home_env_var: &'static str,
+}
+
+fn parse_ccusage_provider(value: &str) -> Option<CcusageProvider> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "claude" => Some(CcusageProvider::Claude),
+        "codex" => Some(CcusageProvider::Codex),
+        _ => None,
+    }
+}
+
+fn infer_ccusage_provider(plugin_id: &str) -> Option<CcusageProvider> {
+    parse_ccusage_provider(plugin_id)
+}
+
+fn resolve_ccusage_provider(opts: &CcusageQueryOpts, plugin_id: &str) -> CcusageProvider {
+    opts.provider
+        .as_deref()
+        .and_then(parse_ccusage_provider)
+        .or_else(|| infer_ccusage_provider(plugin_id))
+        .unwrap_or(CcusageProvider::Claude)
+}
+
+fn ccusage_provider_config(provider: CcusageProvider) -> CcusageProviderConfig {
+    match provider {
+        CcusageProvider::Claude => CcusageProviderConfig {
+            package_spec: CCUSAGE_CLAUDE_PACKAGE,
+            npm_exec_bin: "ccusage",
+            home_env_var: "CLAUDE_CONFIG_DIR",
+        },
+        CcusageProvider::Codex => CcusageProviderConfig {
+            package_spec: CCUSAGE_CODEX_PACKAGE,
+            npm_exec_bin: "ccusage-codex",
+            home_env_var: "CODEX_HOME",
+        },
+    }
+}
+
+fn ccusage_home_override<'a>(opts: &'a CcusageQueryOpts, provider: CcusageProvider) -> Option<&'a str> {
+    if let Some(home_path) = opts
+        .home_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        return Some(home_path);
+    }
+
+    match provider {
+        CcusageProvider::Claude => opts
+            .claude_path
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty()),
+        CcusageProvider::Codex => None,
+    }
+}
+
+fn ccusage_runner_candidates(kind: CcusageRunnerKind) -> Vec<String> {
+    let mut candidates: Vec<String> = Vec::new();
+    match kind {
+        CcusageRunnerKind::Bunx => {
+            if let Some(home) = dirs::home_dir() {
+                candidates.push(home.join(".bun/bin/bunx").to_string_lossy().to_string());
+            }
+            candidates.extend(
+                ["/opt/homebrew/bin/bunx", "/usr/local/bin/bunx", "bunx"]
+                    .into_iter()
+                    .map(str::to_string),
+            );
+        }
+        CcusageRunnerKind::PnpmDlx => {
+            candidates.extend(
+                ["/opt/homebrew/bin/pnpm", "/usr/local/bin/pnpm", "pnpm"]
+                    .into_iter()
+                    .map(str::to_string),
+            );
+        }
+        CcusageRunnerKind::YarnDlx => {
+            candidates.extend(
+                ["/opt/homebrew/bin/yarn", "/usr/local/bin/yarn", "yarn"]
+                    .into_iter()
+                    .map(str::to_string),
+            );
+        }
+        CcusageRunnerKind::NpmExec => {
+            candidates.extend(
+                ["/opt/homebrew/bin/npm", "/usr/local/bin/npm", "npm"]
+                    .into_iter()
+                    .map(str::to_string),
+            );
+        }
+        CcusageRunnerKind::Npx => {
+            candidates.extend(
+                ["/opt/homebrew/bin/npx", "/usr/local/bin/npx", "npx"]
+                    .into_iter()
+                    .map(str::to_string),
+            );
+        }
+    }
+
+    let mut unique = Vec::new();
+    for candidate in candidates {
+        if candidate.is_empty() || unique.iter().any(|c| c == &candidate) {
+            continue;
+        }
+        unique.push(candidate);
+    }
+    unique
+}
+
+fn resolve_ccusage_runner_binary(kind: CcusageRunnerKind) -> Option<String> {
+    for candidate in ccusage_runner_candidates(kind) {
+        if std::process::Command::new(&candidate)
+            .arg("--version")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+        {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+fn collect_ccusage_runners_with<F>(mut resolver: F) -> Vec<(CcusageRunnerKind, String)>
+where
+    F: FnMut(CcusageRunnerKind) -> Option<String>,
+{
+    let mut runners = Vec::new();
+    for kind in ccusage_runner_order() {
+        if let Some(program) = resolver(kind) {
+            runners.push((kind, program));
+        }
+    }
+    runners
+}
+
+fn collect_ccusage_runners() -> Vec<(CcusageRunnerKind, String)> {
+    collect_ccusage_runners_with(resolve_ccusage_runner_binary)
+}
+
+fn append_ccusage_common_args(args: &mut Vec<String>, opts: &CcusageQueryOpts) {
+    args.extend([
+        "daily".to_string(),
+        "--json".to_string(),
+        "--order".to_string(),
+        "desc".to_string(),
+    ]);
+
+    if let Some(since) = opts
+        .since
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        args.push("--since".to_string());
+        args.push(since.to_string());
+    }
+
+    if let Some(until) = opts
+        .until
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        args.push("--until".to_string());
+        args.push(until.to_string());
+    }
+}
+
+fn ccusage_runner_args(
+    kind: CcusageRunnerKind,
+    opts: &CcusageQueryOpts,
+    provider: CcusageProvider,
+) -> Vec<String> {
+    let config = ccusage_provider_config(provider);
+    let mut args: Vec<String> = match kind {
+        CcusageRunnerKind::Bunx => vec!["--silent".to_string(), config.package_spec.to_string()],
+        CcusageRunnerKind::PnpmDlx => vec![
+            "-s".to_string(),
+            "dlx".to_string(),
+            config.package_spec.to_string(),
+        ],
+        CcusageRunnerKind::YarnDlx => vec![
+            "dlx".to_string(),
+            "-q".to_string(),
+            config.package_spec.to_string(),
+        ],
+        CcusageRunnerKind::NpmExec => vec![
+            "exec".to_string(),
+            "--yes".to_string(),
+            format!("--package={}", config.package_spec),
+            "--".to_string(),
+            config.npm_exec_bin.to_string(),
+        ],
+        CcusageRunnerKind::Npx => vec![
+            "--yes".to_string(),
+            config.package_spec.to_string(),
+        ],
+    };
+
+    append_ccusage_common_args(&mut args, opts);
+    args
+}
+
+fn extract_last_json_value(stdout: &str) -> Option<String> {
+    let trimmed = stdout.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    if serde_json::from_str::<serde_json::Value>(trimmed).is_ok() {
+        return Some(trimmed.to_string());
+    }
+
+    let mut starts: Vec<usize> = trimmed
+        .char_indices()
+        .filter(|(_, c)| *c == '{' || *c == '[')
+        .map(|(idx, _)| idx)
+        .collect();
+    starts.reverse();
+
+    for start in starts {
+        let candidate = trimmed[start..].trim();
+        if serde_json::from_str::<serde_json::Value>(candidate).is_ok() {
+            return Some(candidate.to_string());
+        }
+    }
+
+    None
+}
+
+fn normalize_ccusage_output(stdout: &str) -> Option<String> {
+    let json_value = extract_last_json_value(stdout)?;
+    let parsed: serde_json::Value = serde_json::from_str(&json_value).ok()?;
+
+    let normalized = match parsed {
+        serde_json::Value::Array(daily) => serde_json::json!({ "daily": daily }),
+        serde_json::Value::Object(map) => {
+            let daily = map.get("daily")?;
+            if !daily.is_array() {
+                return None;
+            }
+            serde_json::Value::Object(map)
+        }
+        _ => return None,
+    };
+
+    serde_json::to_string(&normalized).ok()
+}
+
+fn run_ccusage_with_runner(
+    kind: CcusageRunnerKind,
+    program: &str,
+    opts: &CcusageQueryOpts,
+    provider: CcusageProvider,
+    plugin_id: &str,
+) -> Option<String> {
+    let args = ccusage_runner_args(kind, opts, provider);
+    let mut command = std::process::Command::new(program);
+    command
+        .args(&args)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+
+    if let Some(home_path) = ccusage_home_override(opts, provider) {
+        let config = ccusage_provider_config(provider);
+        command.env(config.home_env_var, home_path);
+    }
+
+    log::info!(
+        "[plugin:{}] ccusage query via {} ({})",
+        plugin_id,
+        ccusage_runner_label(kind),
+        program
+    );
+
+    let mut child = match command.spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            log::warn!(
+                "[plugin:{}] ccusage spawn failed for {}: {}",
+                plugin_id,
+                ccusage_runner_label(kind),
+                e
+            );
+            return None;
+        }
+    };
+
+    // Drain pipes concurrently while the process is running so the child cannot block on full
+    // stdout/stderr buffers before exit.
+    let mut stdout_reader = child.stdout.take().map(|mut stdout| {
+        std::thread::spawn(move || {
+            let mut v = Vec::new();
+            let _ = std::io::Read::read_to_end(&mut stdout, &mut v);
+            v
+        })
+    });
+    let mut stderr_reader = child.stderr.take().map(|mut stderr| {
+        std::thread::spawn(move || {
+            let mut v = Vec::new();
+            let _ = std::io::Read::read_to_end(&mut stderr, &mut v);
+            v
+        })
+    });
+
+    let timeout = std::time::Duration::from_secs(CCUSAGE_TIMEOUT_SECS);
+    let start = std::time::Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let stdout = stdout_reader
+                    .take()
+                    .and_then(|reader| reader.join().ok())
+                    .unwrap_or_default();
+                let stderr = stderr_reader
+                    .take()
+                    .and_then(|reader| reader.join().ok())
+                    .unwrap_or_default();
+
+                if status.success() {
+                    let out = String::from_utf8_lossy(&stdout);
+                    if let Some(normalized_json) = normalize_ccusage_output(&out) {
+                        return Some(normalized_json);
+                    }
+                    log::warn!(
+                        "[plugin:{}] ccusage output parse failed for {}",
+                        plugin_id,
+                        ccusage_runner_label(kind)
+                    );
+                    return None;
+                }
+
+                let err = String::from_utf8_lossy(&stderr);
+                log::warn!(
+                    "[plugin:{}] ccusage failed for {}: {}",
+                    plugin_id,
+                    ccusage_runner_label(kind),
+                    err.trim()
+                );
+                return None;
+            }
+            Ok(None) => {
+                if start.elapsed() > timeout {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    let _ = stdout_reader.take().and_then(|reader| reader.join().ok());
+                    let _ = stderr_reader.take().and_then(|reader| reader.join().ok());
+                    log::warn!(
+                        "[plugin:{}] ccusage timed out after {}s for {}",
+                        plugin_id,
+                        CCUSAGE_TIMEOUT_SECS,
+                        ccusage_runner_label(kind)
+                    );
+                    return None;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(CCUSAGE_POLL_INTERVAL_MS));
+            }
+            Err(e) => {
+                log::warn!(
+                    "[plugin:{}] ccusage wait failed for {}: {}",
+                    plugin_id,
+                    ccusage_runner_label(kind),
+                    e
+                );
+                return None;
+            }
+        }
+    }
+}
+
+fn inject_ccusage<'js>(
+    ctx: &Ctx<'js>,
+    host: &Object<'js>,
+    plugin_id: &str,
+) -> rquickjs::Result<()> {
+    let ccusage_obj = Object::new(ctx.clone())?;
+    let pid = plugin_id.to_string();
+
+    ccusage_obj.set(
+        "_queryRaw",
+        Function::new(
+            ctx.clone(),
+            move |_ctx_inner: Ctx<'_>, opts_json: String| -> rquickjs::Result<String> {
+                let opts: CcusageQueryOpts = match serde_json::from_str(&opts_json) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        log::warn!("[plugin:{}] invalid ccusage opts JSON: {}", pid, e);
+                        CcusageQueryOpts::default()
+                    }
+                };
+                let provider = resolve_ccusage_provider(&opts, &pid);
+                let runners = collect_ccusage_runners();
+                if runners.is_empty() {
+                    log::warn!(
+                        "[plugin:{}] no package runner found for ccusage query",
+                        pid
+                    );
+                    return Ok(serde_json::json!({ "status": "no_runner" }).to_string());
+                }
+
+                for (kind, program) in runners {
+                    if let Some(result) =
+                        run_ccusage_with_runner(kind, &program, &opts, provider, &pid)
+                    {
+                        let data: serde_json::Value = match serde_json::from_str(&result) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                log::warn!(
+                                    "[plugin:{}] ccusage normalized payload parse failed: {}",
+                                    pid,
+                                    e
+                                );
+                                continue;
+                            }
+                        };
+                        return Ok(serde_json::json!({ "status": "ok", "data": data }).to_string());
+                    }
+                }
+
+                log::warn!(
+                    "[plugin:{}] ccusage query failed with all available runners",
+                    pid
+                );
+                Ok(serde_json::json!({ "status": "runner_failed" }).to_string())
+            },
+        )?,
+    )?;
+
+    host.set("ccusage", ccusage_obj)?;
+    Ok(())
+}
+
+pub fn patch_ccusage_wrapper(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
+    ctx.eval::<(), _>(
+        r#"
+        (function() {
+            var rawFn = __openusage_ctx.host.ccusage._queryRaw;
+            __openusage_ctx.host.ccusage.query = function(opts) {
+                var result = rawFn(JSON.stringify(opts || {}));
+                try {
+                    var parsed = JSON.parse(result);
+                    if (parsed && typeof parsed === "object" && typeof parsed.status === "string") {
+                        return parsed;
+                    }
+                } catch (e) {}
+                return { status: "runner_failed" };
+            };
+        })();
+        "#
+        .as_bytes(),
+    )
 }
 
 fn inject_keychain<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
@@ -1190,21 +1737,11 @@ fn inject_keychain<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<
                         .output()
                 } else {
                     std::process::Command::new("security")
-                        .args([
-                            "add-generic-password",
-                            "-s",
-                            &service,
-                            "-w",
-                            &value,
-                            "-U",
-                        ])
+                        .args(["add-generic-password", "-s", &service, "-w", &value, "-U"])
                         .output()
                 }
                 .map_err(|e| {
-                    Exception::throw_message(
-                        &ctx_inner,
-                        &format!("keychain write failed: {}", e),
-                    )
+                    Exception::throw_message(&ctx_inner, &format!("keychain write failed: {}", e))
                 })?;
 
                 if !output.status.success() {
@@ -1247,10 +1784,7 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                     .args(["-readonly", "-json", &expanded, &sql])
                     .output()
                     .map_err(|e| {
-                        Exception::throw_message(
-                            &ctx_inner,
-                            &format!("sqlite3 exec failed: {}", e),
-                        )
+                        Exception::throw_message(&ctx_inner, &format!("sqlite3 exec failed: {}", e))
                     })?;
 
                 if primary.status.success() {
@@ -1268,10 +1802,7 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                     .args(["-readonly", "-json", &uri_path, &sql])
                     .output()
                     .map_err(|e| {
-                        Exception::throw_message(
-                            &ctx_inner,
-                            &format!("sqlite3 exec failed: {}", e),
-                        )
+                        Exception::throw_message(&ctx_inner, &format!("sqlite3 exec failed: {}", e))
                     })?;
 
                 if !fallback.status.success() {
@@ -1308,10 +1839,7 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                     .args([&expanded, &sql])
                     .output()
                     .map_err(|e| {
-                        Exception::throw_message(
-                            &ctx_inner,
-                            &format!("sqlite3 exec failed: {}", e),
-                        )
+                        Exception::throw_message(&ctx_inner, &format!("sqlite3 exec failed: {}", e))
                     })?;
 
                 if !output.status.success() {
@@ -1408,16 +1936,14 @@ mod tests {
 
             for name in WHITELISTED_ENV_VARS {
                 let expected = resolve_env_value(name);
-                let value: Option<String> = get
-                    .call((name.to_string(),))
-                    .expect("get whitelisted var");
+                let value: Option<String> =
+                    get.call((name.to_string(),)).expect("get whitelisted var");
                 assert_eq!(value, expected, "{name} should match host env resolver");
 
                 let js_expr = format!(r#"__openusage_ctx.host.env.get("{}")"#, name);
                 let js_value: Option<String> = ctx.eval(js_expr).expect("js get whitelisted var");
                 assert_eq!(
-                    js_value,
-                    expected,
+                    js_value, expected,
                     "{name} should match host env resolver from JS"
                 );
             }
@@ -1425,12 +1951,18 @@ mod tests {
             let blocked: Option<String> = get
                 .call(("__OPENUSAGE_TEST_NOT_WHITELISTED__".to_string(),))
                 .expect("get blocked var");
-            assert!(blocked.is_none(), "non-whitelisted vars must not be exposed");
+            assert!(
+                blocked.is_none(),
+                "non-whitelisted vars must not be exposed"
+            );
 
             let js_blocked: Option<String> = ctx
                 .eval(r#"__openusage_ctx.host.env.get("__OPENUSAGE_TEST_NOT_WHITELISTED__")"#)
                 .expect("js get blocked var");
-            assert!(js_blocked.is_none(), "non-whitelisted vars must not be exposed from JS");
+            assert!(
+                js_blocked.is_none(),
+                "non-whitelisted vars must not be exposed from JS"
+            );
         });
     }
 
@@ -1506,8 +2038,16 @@ mod tests {
     fn redact_url_redacts_user_query_param() {
         let url = "https://cursor.com/api/usage?user=user_abcdefghijklmnopqrstuvwxyz&limit=10";
         let redacted = redact_url(url);
-        assert!(redacted.contains("user=user...wxyz"), "user query param should be redacted, got: {}", redacted);
-        assert!(redacted.contains("limit=10"), "non-sensitive params should be preserved, got: {}", redacted);
+        assert!(
+            redacted.contains("user=user...wxyz"),
+            "user query param should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            redacted.contains("limit=10"),
+            "non-sensitive params should be preserved, got: {}",
+            redacted
+        );
     }
 
     #[test]
@@ -1521,7 +2061,11 @@ mod tests {
         let body = r#"{"token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"}"#;
         let redacted = redact_body(body);
         // JWT gets redacted to first4...last4 format
-        assert!(!redacted.contains("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"), "full JWT should be redacted, got: {}", redacted);
+        assert!(
+            !redacted.contains("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
+            "full JWT should be redacted, got: {}",
+            redacted
+        );
     }
 
     #[test]
@@ -1535,56 +2079,412 @@ mod tests {
     fn redact_body_redacts_json_password_field() {
         let body = r#"{"password": "supersecretpassword123"}"#;
         let redacted = redact_body(body);
-        assert!(!redacted.contains("supersecretpassword123"), "password should be redacted, got: {}", redacted);
+        assert!(
+            !redacted.contains("supersecretpassword123"),
+            "password should be redacted, got: {}",
+            redacted
+        );
     }
 
     #[test]
     fn redact_body_redacts_user_id_and_email() {
         let body = r#"{"user_id": "user-iupzZ7KFykMLrnzpkHSq7wjo", "email": "rob@sunstory.com"}"#;
         let redacted = redact_body(body);
-        assert!(!redacted.contains("user-iupzZ7KFykMLrnzpkHSq7wjo"), "user_id should be redacted, got: {}", redacted);
-        assert!(!redacted.contains("rob@sunstory.com"), "email should be redacted, got: {}", redacted);
+        assert!(
+            !redacted.contains("user-iupzZ7KFykMLrnzpkHSq7wjo"),
+            "user_id should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            !redacted.contains("rob@sunstory.com"),
+            "email should be redacted, got: {}",
+            redacted
+        );
         // Should show first4...last4
-        assert!(redacted.contains("user...7wjo"), "user_id should show first4...last4, got: {}", redacted);
-        assert!(redacted.contains("rob@....com"), "email should show first4...last4, got: {}", redacted);
+        assert!(
+            redacted.contains("user...7wjo"),
+            "user_id should show first4...last4, got: {}",
+            redacted
+        );
+        assert!(
+            redacted.contains("rob@....com"),
+            "email should show first4...last4, got: {}",
+            redacted
+        );
     }
 
     #[test]
     fn redact_body_redacts_camel_case_user_and_account_ids() {
         let body = r#"{"userId": "user_abcdefghijklmnopqrstuvwxyz", "accountId": "acct_1234567890abcdef"}"#;
         let redacted = redact_body(body);
-        assert!(!redacted.contains("user_abcdefghijklmnopqrstuvwxyz"), "userId should be redacted, got: {}", redacted);
-        assert!(!redacted.contains("acct_1234567890abcdef"), "accountId should be redacted, got: {}", redacted);
-        assert!(redacted.contains("user...wxyz"), "userId should show first4...last4, got: {}", redacted);
-        assert!(redacted.contains("acct...cdef"), "accountId should show first4...last4, got: {}", redacted);
+        assert!(
+            !redacted.contains("user_abcdefghijklmnopqrstuvwxyz"),
+            "userId should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            !redacted.contains("acct_1234567890abcdef"),
+            "accountId should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            redacted.contains("user...wxyz"),
+            "userId should show first4...last4, got: {}",
+            redacted
+        );
+        assert!(
+            redacted.contains("acct...cdef"),
+            "accountId should show first4...last4, got: {}",
+            redacted
+        );
     }
 
     #[test]
     fn redact_log_message_redacts_jwt_and_api_key() {
         let msg = "token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U key=sk-1234567890abcdef";
         let redacted = redact_log_message(msg);
-        assert!(!redacted.contains("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"), "JWT should be redacted");
-        assert!(!redacted.contains("sk-1234567890abcdef"), "API key should be redacted");
+        assert!(
+            !redacted.contains("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"),
+            "JWT should be redacted"
+        );
+        assert!(
+            !redacted.contains("sk-1234567890abcdef"),
+            "API key should be redacted"
+        );
     }
 
     #[test]
     fn redact_body_redacts_login_and_analytics_tracking_id() {
-        let body = r#"{"login":"robinebers","analytics_tracking_id":"c9df3f012bb8c2eb7aae6868ee8da6cf"}"#;
+        let body =
+            r#"{"login":"robinebers","analytics_tracking_id":"c9df3f012bb8c2eb7aae6868ee8da6cf"}"#;
         let redacted = redact_body(body);
-        assert!(!redacted.contains("robinebers"), "login should be redacted, got: {}", redacted);
-        assert!(!redacted.contains("c9df3f012bb8c2eb7aae6868ee8da6cf"), "analytics_tracking_id should be redacted, got: {}", redacted);
+        assert!(
+            !redacted.contains("robinebers"),
+            "login should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            !redacted.contains("c9df3f012bb8c2eb7aae6868ee8da6cf"),
+            "analytics_tracking_id should be redacted, got: {}",
+            redacted
+        );
         // login is short (<=12 chars) so becomes [REDACTED]; analytics_tracking_id is long so first4...last4
-        assert!(redacted.contains("[REDACTED]"), "login should be redacted, got: {}", redacted);
-        assert!(redacted.contains("c9df...a6cf"), "analytics_tracking_id should show first4...last4, got: {}", redacted);
+        assert!(
+            redacted.contains("[REDACTED]"),
+            "login should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            redacted.contains("c9df...a6cf"),
+            "analytics_tracking_id should show first4...last4, got: {}",
+            redacted
+        );
     }
 
     #[test]
     fn redact_body_redacts_name_field() {
-        let body = r#"{"userStatus":{"name":"Robin Ebers","email":"rob@sunstory.com","planStatus":{}}}"#;
+        let body =
+            r#"{"userStatus":{"name":"Robin Ebers","email":"rob@sunstory.com","planStatus":{}}}"#;
         let redacted = redact_body(body);
-        assert!(!redacted.contains("Robin Ebers"), "name should be redacted, got: {}", redacted);
-        assert!(!redacted.contains("rob@sunstory.com"), "email should be redacted, got: {}", redacted);
+        assert!(
+            !redacted.contains("Robin Ebers"),
+            "name should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            !redacted.contains("rob@sunstory.com"),
+            "email should be redacted, got: {}",
+            redacted
+        );
         // "Robin Ebers" is 11 chars (<=12) so becomes [REDACTED]
-        assert!(redacted.contains("\"name\": \"[REDACTED]\""), "name should show [REDACTED], got: {}", redacted);
+        assert!(
+            redacted.contains("\"name\": \"[REDACTED]\""),
+            "name should show [REDACTED], got: {}",
+            redacted
+        );
+    }
+
+    #[test]
+    fn ccusage_runner_order_matches_expected_priority() {
+        assert_eq!(
+            ccusage_runner_order(),
+            [
+                CcusageRunnerKind::Bunx,
+                CcusageRunnerKind::PnpmDlx,
+                CcusageRunnerKind::YarnDlx,
+                CcusageRunnerKind::NpmExec,
+                CcusageRunnerKind::Npx
+            ]
+        );
+    }
+
+    #[test]
+    fn ccusage_runner_args_include_expected_non_interactive_flags() {
+        let opts = CcusageQueryOpts {
+            provider: None,
+            since: Some("20260101".to_string()),
+            until: Some("20260131".to_string()),
+            home_path: None,
+            claude_path: None,
+        };
+
+        let bunx = ccusage_runner_args(CcusageRunnerKind::Bunx, &opts, CcusageProvider::Claude);
+        assert_eq!(
+            bunx,
+            vec![
+                "--silent",
+                "ccusage@18.0.5",
+                "daily",
+                "--json",
+                "--order",
+                "desc",
+                "--since",
+                "20260101",
+                "--until",
+                "20260131"
+            ]
+        );
+
+        let pnpm = ccusage_runner_args(CcusageRunnerKind::PnpmDlx, &opts, CcusageProvider::Claude);
+        assert_eq!(
+            pnpm,
+            vec![
+                "-s",
+                "dlx",
+                "ccusage@18.0.5",
+                "daily",
+                "--json",
+                "--order",
+                "desc",
+                "--since",
+                "20260101",
+                "--until",
+                "20260131"
+            ]
+        );
+
+        let yarn = ccusage_runner_args(CcusageRunnerKind::YarnDlx, &opts, CcusageProvider::Claude);
+        assert_eq!(
+            yarn,
+            vec![
+                "dlx",
+                "-q",
+                "ccusage@18.0.5",
+                "daily",
+                "--json",
+                "--order",
+                "desc",
+                "--since",
+                "20260101",
+                "--until",
+                "20260131"
+            ]
+        );
+
+        let npm_exec =
+            ccusage_runner_args(CcusageRunnerKind::NpmExec, &opts, CcusageProvider::Claude);
+        assert_eq!(
+            npm_exec,
+            vec![
+                "exec",
+                "--yes",
+                "--package=ccusage@18.0.5",
+                "--",
+                "ccusage",
+                "daily",
+                "--json",
+                "--order",
+                "desc",
+                "--since",
+                "20260101",
+                "--until",
+                "20260131"
+            ]
+        );
+
+        let npx = ccusage_runner_args(CcusageRunnerKind::Npx, &opts, CcusageProvider::Claude);
+        assert_eq!(
+            npx,
+            vec![
+                "--yes",
+                "ccusage@18.0.5",
+                "daily",
+                "--json",
+                "--order",
+                "desc",
+                "--since",
+                "20260101",
+                "--until",
+                "20260131"
+            ]
+        );
+    }
+
+    #[test]
+    fn ccusage_runner_args_codex_use_scoped_package_and_bin() {
+        let opts = CcusageQueryOpts {
+            provider: Some("codex".to_string()),
+            since: Some("20260101".to_string()),
+            until: Some("20260131".to_string()),
+            home_path: None,
+            claude_path: None,
+        };
+
+        let npm_exec = ccusage_runner_args(CcusageRunnerKind::NpmExec, &opts, CcusageProvider::Codex);
+        assert_eq!(
+            npm_exec,
+            vec![
+                "exec",
+                "--yes",
+                "--package=@ccusage/codex@18.0.5",
+                "--",
+                "ccusage-codex",
+                "daily",
+                "--json",
+                "--order",
+                "desc",
+                "--since",
+                "20260101",
+                "--until",
+                "20260131"
+            ]
+        );
+
+        let npx = ccusage_runner_args(CcusageRunnerKind::Npx, &opts, CcusageProvider::Codex);
+        assert_eq!(
+            npx,
+            vec![
+                "--yes",
+                "@ccusage/codex@18.0.5",
+                "daily",
+                "--json",
+                "--order",
+                "desc",
+                "--since",
+                "20260101",
+                "--until",
+                "20260131"
+            ]
+        );
+    }
+
+    #[test]
+    fn resolve_ccusage_provider_prefers_explicit_opt_then_plugin_id() {
+        let opts_explicit = CcusageQueryOpts {
+            provider: Some("codex".to_string()),
+            since: None,
+            until: None,
+            home_path: None,
+            claude_path: None,
+        };
+        assert_eq!(
+            resolve_ccusage_provider(&opts_explicit, "claude"),
+            CcusageProvider::Codex
+        );
+
+        let opts_empty = CcusageQueryOpts::default();
+        assert_eq!(
+            resolve_ccusage_provider(&opts_empty, "codex"),
+            CcusageProvider::Codex
+        );
+        assert_eq!(
+            resolve_ccusage_provider(&opts_empty, "claude"),
+            CcusageProvider::Claude
+        );
+        assert_eq!(
+            resolve_ccusage_provider(&opts_empty, "unknown-provider"),
+            CcusageProvider::Claude
+        );
+    }
+
+    #[test]
+    fn ccusage_home_override_supports_home_path_and_claude_compat() {
+        let with_home = CcusageQueryOpts {
+            provider: None,
+            since: None,
+            until: None,
+            home_path: Some("/tmp/shared-home".to_string()),
+            claude_path: Some("/tmp/claude-home".to_string()),
+        };
+        assert_eq!(
+            ccusage_home_override(&with_home, CcusageProvider::Claude),
+            Some("/tmp/shared-home")
+        );
+        assert_eq!(
+            ccusage_home_override(&with_home, CcusageProvider::Codex),
+            Some("/tmp/shared-home")
+        );
+
+        let claude_compat = CcusageQueryOpts {
+            provider: None,
+            since: None,
+            until: None,
+            home_path: None,
+            claude_path: Some("/tmp/legacy-claude-path".to_string()),
+        };
+        assert_eq!(
+            ccusage_home_override(&claude_compat, CcusageProvider::Claude),
+            Some("/tmp/legacy-claude-path")
+        );
+        assert_eq!(
+            ccusage_home_override(&claude_compat, CcusageProvider::Codex),
+            None
+        );
+    }
+
+    #[test]
+    fn normalize_ccusage_output_converts_empty_array_to_daily_object() {
+        let normalized = normalize_ccusage_output("noise\n[]\n").expect("normalized output");
+        let value: serde_json::Value = serde_json::from_str(&normalized).expect("valid json");
+        assert_eq!(value, serde_json::json!({ "daily": [] }));
+    }
+
+    #[test]
+    fn normalize_ccusage_output_keeps_daily_object_shape() {
+        let output = r#"
+Saved lockfile
+{
+  "daily": [
+    { "date": "2026-02-21", "totalTokens": 123, "totalCost": 0.5 }
+  ],
+  "totals": { "totalTokens": 123 }
+}
+"#;
+        let normalized = normalize_ccusage_output(output).expect("normalized output");
+        let value: serde_json::Value = serde_json::from_str(&normalized).expect("valid json");
+        assert!(value.get("daily").and_then(|v| v.as_array()).is_some());
+        assert!(value.get("totals").is_some());
+    }
+
+    #[test]
+    fn normalize_ccusage_output_rejects_invalid_payloads() {
+        assert!(normalize_ccusage_output("not-json").is_none());
+        assert!(normalize_ccusage_output(r#"{"totals":{"totalTokens":1}}"#).is_none());
+    }
+
+    #[test]
+    fn collect_ccusage_runners_uses_fallback_order() {
+        let runners = collect_ccusage_runners_with(|kind| match kind {
+            CcusageRunnerKind::Bunx => None,
+            CcusageRunnerKind::PnpmDlx => Some("pnpm".to_string()),
+            CcusageRunnerKind::YarnDlx => Some("yarn".to_string()),
+            CcusageRunnerKind::NpmExec => Some("npm".to_string()),
+            CcusageRunnerKind::Npx => Some("npx".to_string()),
+        });
+        assert_eq!(
+            runners,
+            vec![
+                (CcusageRunnerKind::PnpmDlx, "pnpm".to_string()),
+                (CcusageRunnerKind::YarnDlx, "yarn".to_string()),
+                (CcusageRunnerKind::NpmExec, "npm".to_string()),
+                (CcusageRunnerKind::Npx, "npx".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn collect_ccusage_runners_returns_empty_when_none_available() {
+        let runners = collect_ccusage_runners_with(|_| None);
+        assert!(runners.is_empty());
     }
 }
