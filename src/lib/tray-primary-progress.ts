@@ -29,15 +29,31 @@ export function getTrayPrimaryBars(args: {
   pluginStates: Record<string, PluginState | undefined>
   maxBars?: number
   displayMode?: DisplayMode
+  preferredPluginId?: string | null
 }): TrayPrimaryBar[] {
-  const { pluginsMeta, pluginSettings, pluginStates, maxBars = 4, displayMode = DEFAULT_DISPLAY_MODE } = args
+  const {
+    pluginsMeta,
+    pluginSettings,
+    pluginStates,
+    maxBars = 4,
+    displayMode = DEFAULT_DISPLAY_MODE,
+    preferredPluginId,
+  } = args
   if (!pluginSettings) return []
 
   const metaById = new Map(pluginsMeta.map((p) => [p.id, p]))
   const disabled = new Set(pluginSettings.disabled)
+  const shouldPrioritizePreferred =
+    typeof preferredPluginId === "string" &&
+    preferredPluginId.length > 0 &&
+    pluginSettings.order.includes(preferredPluginId) &&
+    !disabled.has(preferredPluginId)
+  const orderedIds = shouldPrioritizePreferred
+    ? [preferredPluginId, ...pluginSettings.order.filter((id) => id !== preferredPluginId)]
+    : pluginSettings.order
 
   const out: TrayPrimaryBar[] = []
-  for (const id of pluginSettings.order) {
+  for (const id of orderedIds) {
     if (disabled.has(id)) continue
     const meta = metaById.get(id)
     if (!meta) continue
@@ -75,4 +91,3 @@ export function getTrayPrimaryBars(args: {
 
   return out
 }
-
