@@ -207,6 +207,17 @@ export function useTrayIcon({
     scheduleTrayIconUpdate("init", 0)
   }, [pluginsMeta.length, pluginSettings, scheduleTrayIconUpdate, trayReady])
 
+  useEffect(() => {
+    return () => {
+      if (trayUpdateTimerRef.current !== null) {
+        window.clearTimeout(trayUpdateTimerRef.current)
+        trayUpdateTimerRef.current = null
+      }
+      trayUpdatePendingRef.current = false
+      trayUpdateQueuedRef.current = false
+    }
+  }, [])
+
   return {
     scheduleTrayIconUpdate,
   }

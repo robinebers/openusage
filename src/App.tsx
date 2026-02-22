@@ -22,12 +22,10 @@ function App() {
   const {
     activeView,
     setActiveView,
-    resetState: resetUiState,
   } = useAppUiStore(
     useShallow((state) => ({
       activeView: state.activeView,
       setActiveView: state.setActiveView,
-      resetState: state.resetState,
     }))
   )
 
@@ -36,14 +34,12 @@ function App() {
     setPluginsMeta,
     pluginSettings,
     setPluginSettings,
-    resetState: resetPluginState,
   } = useAppPluginStore(
     useShallow((state) => ({
       pluginsMeta: state.pluginsMeta,
       setPluginsMeta: state.setPluginsMeta,
       pluginSettings: state.pluginSettings,
       setPluginSettings: state.setPluginSettings,
-      resetState: state.resetState,
     }))
   )
 
@@ -62,7 +58,6 @@ function App() {
     setTrayShowPercentage,
     setGlobalShortcut,
     setStartOnLogin,
-    resetState: resetPreferencesState,
   } = useAppPreferencesStore(
     useShallow((state) => ({
       autoUpdateInterval: state.autoUpdateInterval,
@@ -79,7 +74,6 @@ function App() {
       setTrayShowPercentage: state.setTrayShowPercentage,
       setGlobalShortcut: state.setGlobalShortcut,
       setStartOnLogin: state.setStartOnLogin,
-      resetState: state.resetState,
     }))
   )
 
@@ -87,24 +81,13 @@ function App() {
     setPluginViews,
     setSettingsPlugins,
     setAutoUpdateNextAt: setStoreAutoUpdateNextAt,
-    resetState: resetDerivedState,
   } = useAppDerivedStore(
     useShallow((state) => ({
       setPluginViews: state.setPluginViews,
       setSettingsPlugins: state.setSettingsPlugins,
       setAutoUpdateNextAt: state.setAutoUpdateNextAt,
-      resetState: state.resetState,
     }))
   )
-
-  useEffect(() => {
-    return () => {
-      resetUiState()
-      resetPluginState()
-      resetPreferencesState()
-      resetDerivedState()
-    }
-  }, [resetDerivedState, resetPluginState, resetPreferencesState, resetUiState])
 
   const scheduleProbeTrayUpdateRef = useRef<() => void>(() => {})
   const handleProbeResult = useCallback(() => {

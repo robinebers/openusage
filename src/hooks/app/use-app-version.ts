@@ -5,7 +5,11 @@ export function useAppVersion() {
   const [appVersion, setAppVersion] = useState("...")
 
   useEffect(() => {
-    getVersion().then(setAppVersion)
+    getVersion()
+      .then(setAppVersion)
+      .catch((error) => {
+        console.error("Failed to get app version:", error)
+      })
   }, [])
 
   return appVersion

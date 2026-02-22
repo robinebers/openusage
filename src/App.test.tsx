@@ -187,9 +187,18 @@ vi.mock("@/lib/settings", async () => {
 })
 
 import { App } from "@/App"
+import { useAppDerivedStore } from "@/stores/app-derived-store"
+import { useAppPluginStore } from "@/stores/app-plugin-store"
+import { useAppPreferencesStore } from "@/stores/app-preferences-store"
+import { useAppUiStore } from "@/stores/app-ui-store"
 
 describe("App", () => {
   beforeEach(() => {
+    useAppUiStore.getState().resetState()
+    useAppPluginStore.getState().resetState()
+    useAppPreferencesStore.getState().resetState()
+    useAppDerivedStore.getState().resetState()
+
     state.probeHandlers = null
     state.invokeMock.mockReset()
     state.isTauriMock.mockReset()
@@ -1468,6 +1477,46 @@ describe("App", () => {
 
     await waitFor(() => expect(state.traySetIconMock).toHaveBeenCalledWith("/resource/icons/tray-icon.png"))
     expect(state.traySetIconAsTemplateMock).toHaveBeenCalledWith(true)
+  })
+
+  it("clears pending tray timer on unmount", async () => {
+    vi.useFakeTimers()
+
+    try {
+      state.invokeMock.mockImplementationOnce(async (cmd: string) => {
+        if (cmd === "list_plugins") {
+          return [
+            {
+              id: "a",
+              name: "Alpha",
+              iconUrl: "icon-a",
+              primaryCandidates: ["Session"],
+              lines: [{ type: "progress", label: "Session", scope: "overview" }],
+            },
+          ]
+        }
+        return null
+      })
+      state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a"], disabled: [] })
+
+      const { unmount } = render(<App />)
+      await vi.waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
+
+      state.renderTrayBarsIconMock.mockClear()
+      state.probeHandlers?.onResult({
+        providerId: "a",
+        displayName: "Alpha",
+        iconUrl: "icon-a",
+        lines: [{ type: "progress", label: "Session", used: 30, limit: 100, format: { kind: "percent" } }],
+      })
+
+      unmount()
+      await vi.advanceTimersByTimeAsync(600)
+
+      expect(state.renderTrayBarsIconMock).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("updates tray icon without requestAnimationFrame (regression test for hidden panel)", async () => {
