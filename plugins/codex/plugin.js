@@ -287,6 +287,128 @@
   var PERIOD_SESSION_MS = 5 * 60 * 60 * 1000    // 5 hours
   var PERIOD_WEEKLY_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
+  function queryTokenUsage(ctx) {
+    if (!ctx.host.ccusage || typeof ctx.host.ccusage.query !== "function") {
+      return { status: "no_runner", data: null }
+    }
+
+    const since = new Date()
+    // Inclusive range: today + previous 30 days = 31 calendar days.
+    since.setDate(since.getDate() - 30)
+    const y = since.getFullYear()
+    const m = since.getMonth() + 1
+    const d = since.getDate()
+    const sinceStr = "" + y + (m < 10 ? "0" : "") + m + (d < 10 ? "0" : "") + d
+    const queryOpts = { provider: "codex", since: sinceStr }
+    const codexHome = readCodexHome(ctx)
+    if (codexHome) {
+      queryOpts.homePath = codexHome
+    }
+
+    const result = ctx.host.ccusage.query(queryOpts)
+    if (!result || typeof result !== "object" || typeof result.status !== "string") {
+      return { status: "runner_failed", data: null }
+    }
+    if (result.status !== "ok") {
+      return { status: result.status, data: null }
+    }
+    if (!result.data || !Array.isArray(result.data.daily)) {
+      return { status: "runner_failed", data: null }
+    }
+    return { status: "ok", data: result.data }
+  }
+
+  function fmtTokens(n) {
+    const abs = Math.abs(n)
+    const sign = n < 0 ? "-" : ""
+    const units = [
+      { threshold: 1e9, divisor: 1e9, suffix: "B" },
+      { threshold: 1e6, divisor: 1e6, suffix: "M" },
+      { threshold: 1e3, divisor: 1e3, suffix: "K" },
+    ]
+    for (let i = 0; i < units.length; i++) {
+      const unit = units[i]
+      if (abs >= unit.threshold) {
+        const scaled = abs / unit.divisor
+        const formatted = scaled >= 10
+          ? Math.round(scaled).toString()
+          : scaled.toFixed(1).replace(/\.0$/, "")
+        return sign + formatted + unit.suffix
+      }
+    }
+    return sign + Math.round(abs).toString()
+  }
+
+  function dayKeyFromDate(date) {
+    const year = date.getFullYear()
+    const month = date.getMonth() + 1
+    const day = date.getDate()
+    return year + "-" + (month < 10 ? "0" : "") + month + "-" + (day < 10 ? "0" : "") + day
+  }
+
+  function dayKeyFromUsageDate(rawDate) {
+    if (typeof rawDate !== "string") return null
+    const value = rawDate.trim()
+    if (!value) return null
+
+    const isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+    if (isoMatch) {
+      return isoMatch[1] + "-" + isoMatch[2] + "-" + isoMatch[3]
+    }
+
+    const compactMatch = value.match(/^(\d{4})(\d{2})(\d{2})$/)
+    if (compactMatch) {
+      return compactMatch[1] + "-" + compactMatch[2] + "-" + compactMatch[3]
+    }
+
+    const ms = Date.parse(value)
+    if (!Number.isFinite(ms)) return null
+    return dayKeyFromDate(new Date(ms))
+  }
+
+  function usageCostUsd(day) {
+    if (!day || typeof day !== "object") return null
+
+    if (day.totalCost != null) {
+      const totalCost = Number(day.totalCost)
+      if (Number.isFinite(totalCost)) return totalCost
+    }
+
+    if (day.costUSD != null) {
+      const costUSD = Number(day.costUSD)
+      if (Number.isFinite(costUSD)) return costUSD
+    }
+
+    return null
+  }
+
+  function costAndTokensLabel(data, opts) {
+    const includeZeroTokens = !!(opts && opts.includeZeroTokens)
+    const parts = []
+    if (data.costUSD != null) parts.push("$" + data.costUSD.toFixed(2))
+    if (data.tokens > 0 || (includeZeroTokens && data.tokens === 0)) {
+      parts.push(fmtTokens(data.tokens) + " tokens")
+    }
+    return parts.join(" · ")
+  }
+
+  function pushDayUsageLine(lines, ctx, label, dayEntry) {
+    const tokens = Number(dayEntry && dayEntry.totalTokens) || 0
+    const cost = usageCostUsd(dayEntry)
+    if (tokens > 0) {
+      lines.push(ctx.line.text({
+        label: label,
+        value: costAndTokensLabel({ tokens: tokens, costUSD: cost })
+      }))
+      return
+    }
+
+    lines.push(ctx.line.text({
+      label: label,
+      value: costAndTokensLabel({ tokens: 0, costUSD: 0 }, { includeZeroTokens: true })
+    }))
+  }
+
   function probe(ctx) {
     const authState = loadAuth(ctx)
     if (!authState || !authState.auth) {
@@ -480,6 +602,56 @@
         const planLabel = ctx.fmt.planLabel(data.plan_type)
         if (planLabel) {
           plan = planLabel
+        }
+      }
+
+      const tokenUsageResult = queryTokenUsage(ctx)
+      if (tokenUsageResult.status === "ok") {
+        const tokenUsage = tokenUsageResult.data
+        const now = new Date()
+        const todayKey = dayKeyFromDate(now)
+        const yesterday = new Date(now.getTime())
+        yesterday.setDate(yesterday.getDate() - 1)
+        const yesterdayKey = dayKeyFromDate(yesterday)
+
+        let todayEntry = null
+        let yesterdayEntry = null
+        for (let i = 0; i < tokenUsage.daily.length; i++) {
+          const usageDayKey = dayKeyFromUsageDate(tokenUsage.daily[i].date)
+          if (usageDayKey === todayKey) {
+            todayEntry = tokenUsage.daily[i]
+            continue
+          }
+          if (usageDayKey === yesterdayKey) {
+            yesterdayEntry = tokenUsage.daily[i]
+          }
+        }
+
+        pushDayUsageLine(lines, ctx, "Today", todayEntry)
+        pushDayUsageLine(lines, ctx, "Yesterday", yesterdayEntry)
+
+        let totalTokens = 0
+        let totalCostNanos = 0
+        let hasCost = false
+        for (let i = 0; i < tokenUsage.daily.length; i++) {
+          const day = tokenUsage.daily[i]
+          const dayTokens = Number(day.totalTokens)
+          if (Number.isFinite(dayTokens)) {
+            totalTokens += dayTokens
+          }
+
+          const dayCost = usageCostUsd(day)
+          if (dayCost != null) {
+            totalCostNanos += Math.round(dayCost * 1e9)
+            hasCost = true
+          }
+        }
+
+        if (totalTokens > 0) {
+          lines.push(ctx.line.text({
+            label: "Last 30 Days",
+            value: costAndTokensLabel({ tokens: totalTokens, costUSD: hasCost ? totalCostNanos / 1e9 : null })
+          }))
         }
       }
 
