@@ -1243,4 +1243,66 @@ describe("antigravity plugin", () => {
     expect(calls.filter((u) => u.includes("fetchAvailableModels")).length).toBe(0)
     expect(calls.filter((u) => u.includes("oauth2.googleapis.com")).length).toBe(0)
   })
+
+  it("throws when Cloud Code returns no models", async () => {
+    const ctx = makeCtx()
+    const futureExpiry = Math.floor(Date.now() / 1000) + 3600
+    setupSqliteMock(ctx, makeAuthStatusJson(), makeProtobufBase64(ctx, "ya29.test-token", "1//refresh", futureExpiry))
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("fetchAvailableModels")) {
+        return { status: 200, bodyText: JSON.stringify({}) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Start Antigravity and try again.")
+  })
+
+  it("handles refresh response missing access_token", async () => {
+    const ctx = makeCtx()
+    const futureExpiry = Math.floor(Date.now() / 1000) + 3600
+    setupSqliteMock(ctx, makeAuthStatusJson(), makeProtobufBase64(ctx, "ya29.will-fail", "1//refresh", futureExpiry))
+    ctx.host.ls.discover.mockReturnValue(null)
+
+    let oauthCalls = 0
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("oauth2.googleapis.com")) {
+        oauthCalls += 1
+        return { status: 200, bodyText: JSON.stringify({ expires_in: 3600 }) }
+      }
+      if (url.includes("fetchAvailableModels")) {
+        return { status: 401, bodyText: '{"error":"unauthorized"}' }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Start Antigravity and try again.")
+    expect(oauthCalls).toBe(1)
+  })
+
+  it("continues to next Cloud Code base URL after non-2xx response", async () => {
+    const ctx = makeCtx()
+    const futureExpiry = Math.floor(Date.now() / 1000) + 3600
+    setupSqliteMock(ctx, makeAuthStatusJson(), makeProtobufBase64(ctx, "ya29.test-token", "1//refresh", futureExpiry))
+    ctx.host.ls.discover.mockReturnValue(null)
+
+    let ccCalls = 0
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("fetchAvailableModels")) {
+        ccCalls += 1
+        if (ccCalls === 1) return { status: 500, bodyText: "{}" }
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.length).toBeGreaterThan(0)
+    expect(ccCalls).toBe(2)
+  })
 })
