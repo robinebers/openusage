@@ -31,6 +31,7 @@ export function useTrayIcon({
   const trayGaugeIconPathRef = useRef<string | null>(null)
   const trayUpdateTimerRef = useRef<number | null>(null)
   const trayUpdatePendingRef = useRef(false)
+  const trayUpdateQueuedRef = useRef(false)
   const [trayReady, setTrayReady] = useState(false)
 
   const pluginsMetaRef = useRef(pluginsMeta)
@@ -75,12 +76,22 @@ export function useTrayIcon({
 
     trayUpdateTimerRef.current = window.setTimeout(() => {
       trayUpdateTimerRef.current = null
-      if (trayUpdatePendingRef.current) return
+      if (trayUpdatePendingRef.current) {
+        trayUpdateQueuedRef.current = true
+        return
+      }
       trayUpdatePendingRef.current = true
+
+      const finalizeUpdate = () => {
+        trayUpdatePendingRef.current = false
+        if (!trayUpdateQueuedRef.current) return
+        trayUpdateQueuedRef.current = false
+        scheduleTrayIconUpdate("probe", 0)
+      }
 
       const tray = trayRef.current
       if (!tray) {
-        trayUpdatePendingRef.current = false
+        finalizeUpdate()
         return
       }
 
@@ -102,10 +113,10 @@ export function useTrayIcon({
               console.error("Failed to restore tray gauge icon:", e)
             })
             .finally(() => {
-              trayUpdatePendingRef.current = false
+              finalizeUpdate()
             })
         } else {
-          trayUpdatePendingRef.current = false
+          finalizeUpdate()
         }
         return
       }
@@ -130,10 +141,10 @@ export function useTrayIcon({
               console.error("Failed to restore tray gauge icon:", e)
             })
             .finally(() => {
-              trayUpdatePendingRef.current = false
+              finalizeUpdate()
             })
         } else {
-          trayUpdatePendingRef.current = false
+          finalizeUpdate()
         }
         return
       }
@@ -154,7 +165,7 @@ export function useTrayIcon({
           console.error("Failed to update tray icon:", e)
         })
         .finally(() => {
-          trayUpdatePendingRef.current = false
+          finalizeUpdate()
         })
     }, delayMs)
   }, [])
@@ -170,13 +181,15 @@ export function useTrayIcon({
         if (cancelled) return
         trayRef.current = tray
         trayInitializedRef.current = true
-        setTrayReady(true)
 
         try {
           trayGaugeIconPathRef.current = await resolveResource("icons/tray-icon.png")
         } catch (e) {
           console.error("Failed to resolve tray gauge icon resource:", e)
         }
+
+        if (cancelled) return
+        setTrayReady(true)
       } catch (e) {
         console.error("Failed to load tray icon handle:", e)
       }

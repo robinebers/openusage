@@ -30,6 +30,7 @@ export function usePanel({
   const maxPanelHeightPxRef = useRef<number | null>(null)
 
   useEffect(() => {
+    if (!isTauri()) return
     invoke("init_panel").catch(console.error)
   }, [])
 
@@ -81,6 +82,7 @@ export function usePanel({
   }, [setActiveView, setShowAbout])
 
   useEffect(() => {
+    if (!isTauri()) return
     const container = containerRef.current
     if (!container) return
 
