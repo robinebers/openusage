@@ -325,7 +325,7 @@ describe("App", () => {
     state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a", "b"], disabled: [] })
     render(<App />)
     await waitFor(() => expect(state.invokeMock).toHaveBeenCalledWith("list_plugins"))
-    expect(screen.getAllByText("Alpha").length).toBeGreaterThan(0)
+    expect((await screen.findAllByText("Alpha")).length).toBeGreaterThan(0)
     expect(state.savePluginSettingsMock).not.toHaveBeenCalled()
   })
 
