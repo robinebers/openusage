@@ -32,14 +32,14 @@ function makeUserStatusResponse(overrides) {
       cascadeModelConfigData: {
         clientModelConfigs: [
           {
-            label: "Gemini 3 Pro (High)",
-            modelOrAlias: { model: "MODEL_PLACEHOLDER_M8" },
-            quotaInfo: { remainingFraction: 0.75, resetTime: "2026-02-08T09:10:56Z" },
+            label: "Gemini 3.1 Pro (High)",
+            modelOrAlias: { model: "MODEL_PLACEHOLDER_M37" },
+            quotaInfo: { remainingFraction: 0.8, resetTime: "2026-02-08T09:10:56Z" },
           },
           {
-            label: "Gemini 3 Pro (Low)",
-            modelOrAlias: { model: "MODEL_PLACEHOLDER_M7" },
-            quotaInfo: { remainingFraction: 0.9, resetTime: "2026-02-08T09:10:56Z" },
+            label: "Gemini 3.1 Pro (Low)",
+            modelOrAlias: { model: "MODEL_PLACEHOLDER_M36" },
+            quotaInfo: { remainingFraction: 0.8, resetTime: "2026-02-08T09:10:56Z" },
           },
           {
             label: "Gemini 3 Flash",
@@ -47,19 +47,19 @@ function makeUserStatusResponse(overrides) {
             quotaInfo: { remainingFraction: 1.0, resetTime: "2026-02-08T09:10:56Z" },
           },
           {
-            label: "Claude Sonnet 4.5",
-            modelOrAlias: { model: "MODEL_CLAUDE_4_5_SONNET" },
-            quotaInfo: { remainingFraction: 0.5, resetTime: "2026-02-08T09:10:56Z" },
+            label: "Claude Sonnet 4.6 (Thinking)",
+            modelOrAlias: { model: "MODEL_PLACEHOLDER_M35" },
+            quotaInfo: { resetTime: "2026-02-26T15:23:41Z" },
           },
           {
             label: "Claude Opus 4.6 (Thinking)",
             modelOrAlias: { model: "MODEL_PLACEHOLDER_M26" },
-            quotaInfo: { remainingFraction: 0.8, resetTime: "2026-02-08T09:10:56Z" },
+            quotaInfo: { resetTime: "2026-02-26T15:23:41Z" },
           },
           {
             label: "GPT-OSS 120B (Medium)",
             modelOrAlias: { model: "MODEL_OPENAI_GPT_OSS_120B_MEDIUM" },
-            quotaInfo: { remainingFraction: 1.0, resetTime: "2026-02-08T09:10:56Z" },
+            quotaInfo: { resetTime: "2026-02-26T15:23:41Z" },
           },
         ],
       },
@@ -197,13 +197,9 @@ describe("antigravity plugin", () => {
 
     expect(result.plan).toBe("Pro")
 
-    // Model lines exist
+    // Model lines exist — 3 pool lines
     const labels = result.lines.map((l) => l.label)
-    expect(labels).toContain("Gemini 3 Pro")
-    expect(labels).toContain("Gemini 3 Flash")
-    expect(labels).toContain("Claude Sonnet 4.5")
-    expect(labels).toContain("Claude Opus 4.6")
-    expect(labels).toContain("GPT-OSS 120B")
+    expect(labels).toEqual(["Gemini Pro", "Gemini Flash", "Claude"])
   })
 
   it("deduplicates models by normalized label (keeps worst-case fraction)", async () => {
@@ -215,11 +211,10 @@ describe("antigravity plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    // "Gemini 3 Pro (High)" has 0.75 remaining, "(Low)" has 0.9.
-    // Deduplicated to "Gemini 3 Pro" with worst-case 0.75 → used = 25%
-    const pro = result.lines.find((l) => l.label === "Gemini 3 Pro")
+    // Both Gemini 3.1 Pro variants have frac=0.8 → used = 20%
+    const pro = result.lines.find((l) => l.label === "Gemini Pro")
     expect(pro).toBeTruthy()
-    expect(pro.used).toBe(25) // (1 - 0.75) * 100
+    expect(pro.used).toBe(20) // (1 - 0.8) * 100
   })
 
   it("orders: Gemini (Pro, Flash), Claude (Opus, Sonnet), then others", async () => {
@@ -233,13 +228,7 @@ describe("antigravity plugin", () => {
 
     const labels = result.lines.map((l) => l.label)
 
-    expect(labels).toEqual([
-      "Gemini 3 Pro",
-      "Gemini 3 Flash",
-      "Claude Opus 4.6",
-      "Claude Sonnet 4.5",
-      "GPT-OSS 120B",
-    ])
+    expect(labels).toEqual(["Gemini Pro", "Gemini Flash", "Claude"])
   })
 
   it("falls back to GetCommandModelConfigs when GetUserStatus fails", async () => {
@@ -275,7 +264,7 @@ describe("antigravity plugin", () => {
     expect(result.plan).toBeNull()
 
     // Model lines present
-    const pro = result.lines.find((l) => l.label === "Gemini 3 Pro")
+    const pro = result.lines.find((l) => l.label === "Gemini Pro")
     expect(pro).toBeTruthy()
     expect(pro.used).toBe(40) // (1 - 0.6) * 100
   })
@@ -306,21 +295,81 @@ describe("antigravity plugin", () => {
     expect(result.lines.length).toBeGreaterThan(0)
   })
 
-  it("skips models with no quotaInfo", async () => {
+  it("treats models with no quotaInfo as depleted (100% used)", async () => {
     const ctx = makeCtx()
     const discovery = makeDiscovery()
     const response = makeUserStatusResponse({
       configs: [
         { label: "Gemini 3 Pro (High)", modelOrAlias: { model: "M7" }, quotaInfo: { remainingFraction: 0.5, resetTime: "2026-02-08T09:10:56Z" } },
-        { label: "No Quota Model", modelOrAlias: { model: "M99" } },
+        { label: "Claude Opus 4.6 (Thinking)", modelOrAlias: { model: "M26" } },
       ],
     })
     setupLsMock(ctx, discovery, response)
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    expect(result.lines.find((l) => l.label === "No Quota Model")).toBeFalsy()
-    expect(result.lines.find((l) => l.label === "Gemini 3 Pro")).toBeTruthy()
+    const claude = result.lines.find((l) => l.label === "Claude")
+    expect(claude).toBeTruthy()
+    expect(claude.used).toBe(100)
+    expect(claude.limit).toBe(100)
+    expect(claude.resetsAt).toBeUndefined()
+    expect(result.lines.find((l) => l.label === "Gemini Pro")).toBeTruthy()
+  })
+
+  it("dedup picks depleted variant (no quotaInfo) over non-depleted sibling", async () => {
+    const ctx = makeCtx()
+    const discovery = makeDiscovery()
+    const response = makeUserStatusResponse({
+      configs: [
+        { label: "Gemini 3 Pro (High)", modelOrAlias: { model: "M7" }, quotaInfo: { remainingFraction: 0.75, resetTime: "2026-02-08T09:10:56Z" } },
+        { label: "Gemini 3 Pro (Low)", modelOrAlias: { model: "M8" } },
+      ],
+    })
+    setupLsMock(ctx, discovery, response)
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const pro = result.lines.find((l) => l.label === "Gemini Pro")
+    expect(pro).toBeTruthy()
+    expect(pro.used).toBe(100)
+    expect(pro.resetsAt).toBeUndefined()
+  })
+
+  it("returns lines when all models are depleted (no quotaInfo)", async () => {
+    const ctx = makeCtx()
+    const discovery = makeDiscovery()
+    const response = makeUserStatusResponse({
+      configs: [
+        { label: "Gemini 3 Pro (High)", modelOrAlias: { model: "M7" } },
+        { label: "Claude Opus 4.6 (Thinking)", modelOrAlias: { model: "M26" } },
+      ],
+    })
+    setupLsMock(ctx, discovery, response)
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result).toBeTruthy()
+    const labels = result.lines.map((l) => l.label)
+    expect(labels).toEqual(["Gemini Pro", "Claude"])
+    expect(result.lines.every((l) => l.used === 100)).toBe(true)
+  })
+
+  it("skips configs with missing or empty labels", async () => {
+    const ctx = makeCtx()
+    const discovery = makeDiscovery()
+    const response = makeUserStatusResponse({
+      configs: [
+        { label: "Gemini 3 Pro (High)", modelOrAlias: { model: "M7" }, quotaInfo: { remainingFraction: 0.5, resetTime: "2026-02-08T09:10:56Z" } },
+        { label: "", modelOrAlias: { model: "M99" }, quotaInfo: { remainingFraction: 0.8, resetTime: "2026-02-08T09:10:56Z" } },
+        { modelOrAlias: { model: "M100" }, quotaInfo: { remainingFraction: 0.9, resetTime: "2026-02-08T09:10:56Z" } },
+      ],
+    })
+    setupLsMock(ctx, discovery, response)
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.length).toBe(1)
+    expect(result.lines[0].label).toBe("Gemini Pro")
   })
 
   it("includes resetsAt on model lines", async () => {
@@ -331,7 +380,7 @@ describe("antigravity plugin", () => {
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    const pro = result.lines.find((l) => l.label === "Gemini 3 Pro")
+    const pro = result.lines.find((l) => l.label === "Gemini Pro")
     expect(pro.resetsAt).toBe("2026-02-08T09:10:56Z")
   })
 
@@ -340,16 +389,16 @@ describe("antigravity plugin", () => {
     const discovery = makeDiscovery()
     const response = makeUserStatusResponse({
       configs: [
-        { label: "Over Model", modelOrAlias: { model: "M1" }, quotaInfo: { remainingFraction: 1.5, resetTime: "2026-02-08T09:10:56Z" } },
-        { label: "Negative Model", modelOrAlias: { model: "M2" }, quotaInfo: { remainingFraction: -0.3, resetTime: "2026-02-08T09:10:56Z" } },
+        { label: "Gemini Pro (Over)", modelOrAlias: { model: "M1" }, quotaInfo: { remainingFraction: 1.5, resetTime: "2026-02-08T09:10:56Z" } },
+        { label: "Gemini Flash (Neg)", modelOrAlias: { model: "M2" }, quotaInfo: { remainingFraction: -0.3, resetTime: "2026-02-08T09:10:56Z" } },
       ],
     })
     setupLsMock(ctx, discovery, response)
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    const over = result.lines.find((l) => l.label === "Over Model")
-    const neg = result.lines.find((l) => l.label === "Negative Model")
+    const over = result.lines.find((l) => l.label === "Gemini Pro")
+    const neg = result.lines.find((l) => l.label === "Gemini Flash")
     expect(over.used).toBe(0) // clamped to 1.0 → 0% used
     expect(neg.used).toBe(100) // clamped to 0.0 → 100% used
   })
@@ -359,14 +408,14 @@ describe("antigravity plugin", () => {
     const discovery = makeDiscovery()
     const response = makeUserStatusResponse({
       configs: [
-        { label: "No Reset", modelOrAlias: { model: "M1" }, quotaInfo: { remainingFraction: 0.5 } },
+        { label: "Gemini Pro (No Reset)", modelOrAlias: { model: "M1" }, quotaInfo: { remainingFraction: 0.5 } },
       ],
     })
     setupLsMock(ctx, discovery, response)
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    const line = result.lines.find((l) => l.label === "No Reset")
+    const line = result.lines.find((l) => l.label === "Gemini Pro")
     expect(line).toBeTruthy()
     expect(line.used).toBe(50)
     expect(line.resetsAt).toBeUndefined()
@@ -475,8 +524,8 @@ describe("antigravity plugin", () => {
 
     expect(result.plan).toBeNull()
     const labels = result.lines.map((l) => l.label)
-    expect(labels).toContain("Gemini 3 Pro")
-    expect(labels).toContain("Claude Sonnet 4.5")
+    expect(labels).toContain("Gemini Pro")
+    expect(labels).toContain("Claude")
   })
 
   it("Cloud Code sends correct Authorization header with proto token", async () => {
@@ -579,7 +628,7 @@ describe("antigravity plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    const pro = result.lines.find((l) => l.label === "Gemini 3 Pro")
+    const pro = result.lines.find((l) => l.label === "Gemini Pro")
     expect(pro).toBeTruthy()
     expect(pro.used).toBe(30)
   })
@@ -611,7 +660,7 @@ describe("antigravity plugin", () => {
     expect(ccCalls.length).toBe(0)
   })
 
-  it("Cloud Code skips models without quotaInfo", async () => {
+  it("Cloud Code treats models without quotaInfo as depleted (100% used)", async () => {
     const ctx = makeCtx()
     const futureExpiry = Math.floor(Date.now() / 1000) + 3600
     setupSqliteMock(ctx, makeAuthStatusJson(), makeProtobufBase64(ctx, "ya29.test-token", "1//refresh", futureExpiry))
@@ -628,7 +677,7 @@ describe("antigravity plugin", () => {
                 quotaInfo: { remainingFraction: 0.5, resetTime: "2026-02-08T12:00:00Z" },
               },
               "no-quota": {
-                displayName: "No Quota Model",
+                displayName: "Gemini Flash (No Quota)",
               },
             },
           }),
@@ -640,8 +689,12 @@ describe("antigravity plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    expect(result.lines.find((l) => l.label === "No Quota Model")).toBeFalsy()
-    expect(result.lines.find((l) => l.label === "Gemini 3 Pro")).toBeTruthy()
+    const noQuota = result.lines.find((l) => l.label === "Gemini Flash")
+    expect(noQuota).toBeTruthy()
+    expect(noQuota.used).toBe(100)
+    expect(noQuota.limit).toBe(100)
+    expect(noQuota.resetsAt).toBeUndefined()
+    expect(result.lines.find((l) => l.label === "Gemini Pro")).toBeTruthy()
   })
 
   it("decodes protobuf tokens from SQLite", async () => {
@@ -1062,7 +1115,7 @@ describe("antigravity plugin", () => {
     const result = plugin.probe(ctx)
 
     const labels = result.lines.map((l) => l.label)
-    expect(labels).toContain("Gemini 3 Flash")
+    expect(labels).toContain("Gemini Flash")
     expect(labels).not.toContain("chat_20706")
     expect(labels).not.toContain("MODEL_CHAT_20706")
   })
@@ -1104,7 +1157,7 @@ describe("antigravity plugin", () => {
     const result = plugin.probe(ctx)
 
     const labels = result.lines.map((l) => l.label)
-    expect(labels).toEqual(["Gemini 3 Pro"])
+    expect(labels).toEqual(["Gemini Pro"])
   })
 
   it("Cloud Code skips blacklisted model IDs", async () => {
@@ -1145,7 +1198,7 @@ describe("antigravity plugin", () => {
     const result = plugin.probe(ctx)
 
     const labels = result.lines.map((l) => l.label)
-    expect(labels).toEqual(["Claude Sonnet 4.5"])
+    expect(labels).toEqual(["Claude"])
   })
 
   it("Cloud Code keeps non-blacklisted models with valid displayName", async () => {
@@ -1186,10 +1239,7 @@ describe("antigravity plugin", () => {
     const result = plugin.probe(ctx)
 
     const labels = result.lines.map((l) => l.label)
-    expect(labels).toContain("Gemini 3 Pro")
-    expect(labels).toContain("Claude Opus 4.6")
-    expect(labels).toContain("GPT-OSS 120B")
-    expect(labels.length).toBe(3)
+    expect(labels).toEqual(["Gemini Pro", "Claude"])
   })
 
   it("LS filters out blacklisted model IDs (Claude Opus 4.5)", async () => {
@@ -1220,9 +1270,7 @@ describe("antigravity plugin", () => {
     const result = plugin.probe(ctx)
 
     const labels = result.lines.map((l) => l.label)
-    expect(labels).toContain("Gemini 3 Pro")
-    expect(labels).toContain("Claude Opus 4.6")
-    expect(labels).not.toContain("Claude Opus 4.5")
+    expect(labels).toEqual(["Gemini Pro", "Claude"])
   })
 
   it("LS still takes priority over Cloud Code with proto tokens (no regression)", async () => {
