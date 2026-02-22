@@ -26,7 +26,7 @@ const initialState = {
 
 export const useAppDerivedStore = create<AppDerivedStore>((set) => ({
   ...initialState,
-  setPluginViews: (value) => set(value),
+  setPluginViews: ({ displayPlugins, navPlugins }) => set({ displayPlugins, navPlugins }),
   setSettingsPlugins: (value) => set({ settingsPlugins: value }),
   setAutoUpdateNextAt: (value) => set({ autoUpdateNextAt: value }),
   resetState: () => set(initialState),
