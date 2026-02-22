@@ -478,7 +478,7 @@ Returns a status envelope:
 
 - **Runtime runners**: Executes pinned `ccusage@18.0.5` (Claude) or `@ccusage/codex@18.0.5` (Codex) via fallback chain `bunx -> pnpm dlx -> yarn dlx -> npm exec -> npx`
 - **Provider-aware**: Resolves provider from `opts.provider` or plugin id (`claude`/`codex`)
-- **Offline only**: Reads local JSONL session files, no network requests
+- **No provider API calls**: Usage is computed from local JSONL session files; the host does not call Claude/Codex (or other provider) APIs, but package runners may contact a package registry to download the `ccusage` CLI if it is not already available locally
 - **Graceful degradation**: returns `no_runner` when no runner exists, `runner_failed` when execution fails
 - **Pricing**: Uses ccusage's built-in LiteLLM pricing data
 

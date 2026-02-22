@@ -293,7 +293,8 @@
     }
 
     const since = new Date()
-    since.setDate(since.getDate() - 31)
+    // Inclusive range: today + previous 30 days = 31 calendar days.
+    since.setDate(since.getDate() - 30)
     const y = since.getFullYear()
     const m = since.getMonth() + 1
     const d = since.getDate()

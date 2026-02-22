@@ -661,6 +661,13 @@ describe("claude plugin", () => {
       return year + "-" + month + "-" + day
     }
 
+    function localCompactDayKey(date) {
+      const year = String(date.getFullYear())
+      const month = String(date.getMonth() + 1).padStart(2, "0")
+      const day = String(date.getDate()).padStart(2, "0")
+      return year + month + day
+    }
+
     it("omits token lines when ccusage reports no_runner", async () => {
       const ctx = makeProbeCtx({ ccusageResult: { status: "no_runner" } })
       const plugin = await loadPlugin()
@@ -857,6 +864,24 @@ describe("claude plugin", () => {
       plugin.probe(ctx)
       plugin.probe(ctx)
       expect(ctx.host.ccusage.query).toHaveBeenCalledTimes(2)
+    })
+
+    it("queries ccusage with a 31-day inclusive since window", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date("2026-02-20T16:00:00.000Z"))
+      try {
+        const ctx = makeProbeCtx({ ccusageResult: okUsage([]) })
+        const plugin = await loadPlugin()
+        plugin.probe(ctx)
+        expect(ctx.host.ccusage.query).toHaveBeenCalled()
+
+        const firstCall = ctx.host.ccusage.query.mock.calls[0][0]
+        const since = new Date()
+        since.setDate(since.getDate() - 30)
+        expect(firstCall.since).toBe(localCompactDayKey(since))
+      } finally {
+        vi.useRealTimers()
+      }
     })
 
     it("includes cache tokens in total", async () => {

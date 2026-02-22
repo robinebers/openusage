@@ -261,6 +261,12 @@ describe("codex plugin", () => {
       expect(ctx.host.ccusage.query).toHaveBeenCalled()
       const firstCall = ctx.host.ccusage.query.mock.calls[0][0]
       expect(firstCall.provider).toBe("codex")
+      const since = new Date()
+      since.setDate(since.getDate() - 30)
+      const sinceYear = String(since.getFullYear())
+      const sinceMonth = String(since.getMonth() + 1).padStart(2, "0")
+      const sinceDay = String(since.getDate()).padStart(2, "0")
+      expect(firstCall.since).toBe(sinceYear + sinceMonth + sinceDay)
     } finally {
       vi.useRealTimers()
     }
