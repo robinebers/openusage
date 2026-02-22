@@ -1,6 +1,8 @@
 (function () {
   const STATE_DB =
     "~/Library/Application Support/Cursor/User/globalStorage/state.vscdb"
+  const KEYCHAIN_ACCESS_TOKEN_SERVICE = "cursor-access-token"
+  const KEYCHAIN_REFRESH_TOKEN_SERVICE = "cursor-refresh-token"
   const BASE_URL = "https://api2.cursor.sh"
   const USAGE_URL = BASE_URL + "/aiserver.v1.DashboardService/GetCurrentPeriodUsage"
   const PLAN_URL = BASE_URL + "/aiserver.v1.DashboardService/GetPlanInfo"
@@ -9,6 +11,7 @@
   const REST_USAGE_URL = "https://cursor.com/api/usage"
   const CLIENT_ID = "KbZUR41cY7W6zRSdpSUJ7I7mLYBKOCmB"
   const REFRESH_BUFFER_MS = 5 * 60 * 1000 // refresh 5 minutes before expiration
+  const LOGIN_HINT = "Sign in via Cursor app or run `agent login`."
 
   function readStateValue(ctx, key) {
     try {
@@ -46,6 +49,70 @@
     }
   }
 
+  function readKeychainValue(ctx, service) {
+    if (!ctx.host.keychain || typeof ctx.host.keychain.readGenericPassword !== "function") {
+      return null
+    }
+    try {
+      const value = ctx.host.keychain.readGenericPassword(service)
+      if (typeof value !== "string") return null
+      const trimmed = value.trim()
+      return trimmed || null
+    } catch (e) {
+      ctx.host.log.info("keychain read failed for " + service + ": " + String(e))
+      return null
+    }
+  }
+
+  function writeKeychainValue(ctx, service, value) {
+    if (!ctx.host.keychain || typeof ctx.host.keychain.writeGenericPassword !== "function") {
+      ctx.host.log.warn("keychain write unsupported")
+      return false
+    }
+    try {
+      ctx.host.keychain.writeGenericPassword(service, String(value))
+      return true
+    } catch (e) {
+      ctx.host.log.warn("keychain write failed for " + service + ": " + String(e))
+      return false
+    }
+  }
+
+  function loadAuthState(ctx) {
+    const sqliteAccessToken = readStateValue(ctx, "cursorAuth/accessToken")
+    const sqliteRefreshToken = readStateValue(ctx, "cursorAuth/refreshToken")
+    if (sqliteAccessToken || sqliteRefreshToken) {
+      return {
+        accessToken: sqliteAccessToken,
+        refreshToken: sqliteRefreshToken,
+        source: "sqlite",
+      }
+    }
+
+    const keychainAccessToken = readKeychainValue(ctx, KEYCHAIN_ACCESS_TOKEN_SERVICE)
+    const keychainRefreshToken = readKeychainValue(ctx, KEYCHAIN_REFRESH_TOKEN_SERVICE)
+    if (keychainAccessToken || keychainRefreshToken) {
+      return {
+        accessToken: keychainAccessToken,
+        refreshToken: keychainRefreshToken,
+        source: "keychain",
+      }
+    }
+
+    return {
+      accessToken: null,
+      refreshToken: null,
+      source: null,
+    }
+  }
+
+  function persistAccessToken(ctx, source, accessToken) {
+    if (source === "keychain") {
+      return writeKeychainValue(ctx, KEYCHAIN_ACCESS_TOKEN_SERVICE, accessToken)
+    }
+    return writeStateValue(ctx, "cursorAuth/accessToken", accessToken)
+  }
+
   function getTokenExpiration(ctx, token) {
     const payload = ctx.jwt.decodePayload(token)
     if (!payload || typeof payload.exp !== "number") return null
@@ -62,7 +129,7 @@
     })
   }
 
-  function refreshToken(ctx, refreshTokenValue) {
+  function refreshToken(ctx, refreshTokenValue, source) {
     if (!refreshTokenValue) {
       ctx.host.log.warn("refresh skipped: no refresh token")
       return null
@@ -88,9 +155,9 @@
         const shouldLogout = errorInfo && errorInfo.shouldLogout === true
         ctx.host.log.error("refresh failed: status=" + resp.status + " shouldLogout=" + shouldLogout)
         if (shouldLogout) {
-          throw "Session expired. Sign in via Cursor app."
+          throw "Session expired. " + LOGIN_HINT
         }
-        throw "Token expired. Sign in via Cursor app."
+        throw "Token expired. " + LOGIN_HINT
       }
 
       if (resp.status < 200 || resp.status >= 300) {
@@ -107,7 +174,7 @@
       // Check if server wants us to logout
       if (body.shouldLogout === true) {
         ctx.host.log.error("refresh response indicates shouldLogout=true")
-        throw "Session expired. Sign in via Cursor app."
+        throw "Session expired. " + LOGIN_HINT
       }
 
       const newAccessToken = body.access_token
@@ -116,8 +183,8 @@
         return null
       }
 
-      // Persist updated access token to SQLite
-      writeStateValue(ctx, "cursorAuth/accessToken", newAccessToken)
+      // Persist updated access token to source where auth was loaded from.
+      persistAccessToken(ctx, source, newAccessToken)
       ctx.host.log.info("refresh succeeded, token persisted")
 
       // Note: Cursor refresh returns access_token which is used as both
@@ -221,15 +288,17 @@
   }
 
   function probe(ctx) {
-    let accessToken = readStateValue(ctx, "cursorAuth/accessToken")
-    const refreshTokenValue = readStateValue(ctx, "cursorAuth/refreshToken")
+    const authState = loadAuthState(ctx)
+    let accessToken = authState.accessToken
+    const refreshTokenValue = authState.refreshToken
+    const authSource = authState.source
 
     if (!accessToken && !refreshTokenValue) {
-      ctx.host.log.error("probe failed: no access or refresh token in sqlite")
-      throw "Not logged in. Sign in via Cursor app."
+      ctx.host.log.error("probe failed: no access or refresh token in sqlite/keychain")
+      throw "Not logged in. " + LOGIN_HINT
     }
-    
-    ctx.host.log.info("tokens loaded: accessToken=" + (accessToken ? "yes" : "no") + " refreshToken=" + (refreshTokenValue ? "yes" : "no"))
+
+    ctx.host.log.info("tokens loaded from " + authSource + ": accessToken=" + (accessToken ? "yes" : "no") + " refreshToken=" + (refreshTokenValue ? "yes" : "no"))
 
     const nowMs = Date.now()
 
@@ -238,7 +307,7 @@
       ctx.host.log.info("token needs refresh (expired or expiring soon)")
       let refreshed = null
       try {
-        refreshed = refreshToken(ctx, refreshTokenValue)
+        refreshed = refreshToken(ctx, refreshTokenValue, authSource)
       } catch (e) {
         // If refresh fails but we have an access token, try it anyway
         ctx.host.log.warn("refresh failed but have access token, will try: " + String(e))
@@ -248,7 +317,7 @@
         accessToken = refreshed
       } else if (!accessToken) {
         ctx.host.log.error("refresh failed and no access token available")
-        throw "Not logged in. Sign in via Cursor app."
+        throw "Not logged in. " + LOGIN_HINT
       }
     }
 
@@ -270,7 +339,7 @@
         refresh: () => {
           ctx.host.log.info("usage returned 401, attempting refresh")
           didRefresh = true
-          const refreshed = refreshToken(ctx, refreshTokenValue)
+          const refreshed = refreshToken(ctx, refreshTokenValue, authSource)
           if (refreshed) accessToken = refreshed
           return refreshed
         },
@@ -283,14 +352,14 @@
 
     if (ctx.util.isAuthStatus(usageResp.status)) {
       ctx.host.log.error("usage returned auth error after all retries: status=" + usageResp.status)
-      throw "Token expired. Sign in via Cursor app."
+      throw "Token expired. " + LOGIN_HINT
     }
 
     if (usageResp.status < 200 || usageResp.status >= 300) {
       ctx.host.log.error("usage returned error: status=" + usageResp.status)
       throw "Usage request failed (HTTP " + String(usageResp.status) + "). Try again later."
     }
-    
+
     ctx.host.log.info("usage fetch succeeded")
 
     const usage = ctx.util.tryParseJson(usageResp.bodyText)
