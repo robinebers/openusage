@@ -187,9 +187,18 @@ vi.mock("@/lib/settings", async () => {
 })
 
 import { App } from "@/App"
+import { useAppDerivedStore } from "@/stores/app-derived-store"
+import { useAppPluginStore } from "@/stores/app-plugin-store"
+import { useAppPreferencesStore } from "@/stores/app-preferences-store"
+import { useAppUiStore } from "@/stores/app-ui-store"
 
 describe("App", () => {
   beforeEach(() => {
+    useAppUiStore.getState().resetState()
+    useAppPluginStore.getState().resetState()
+    useAppPreferencesStore.getState().resetState()
+    useAppDerivedStore.getState().resetState()
+
     state.probeHandlers = null
     state.invokeMock.mockReset()
     state.isTauriMock.mockReset()
@@ -303,6 +312,7 @@ describe("App", () => {
   })
 
   it("loads plugins, normalizes settings, and renders overview", async () => {
+    state.isTauriMock.mockReturnValue(true)
     render(<App />)
     await waitFor(() => expect(state.invokeMock).toHaveBeenCalledWith("list_plugins"))
     await waitFor(() => expect(state.savePluginSettingsMock).toHaveBeenCalled())
@@ -874,12 +884,14 @@ describe("App", () => {
   })
 
   it("uses fallback monitor sizing when monitor missing", async () => {
+    state.isTauriMock.mockReturnValue(true)
     state.currentMonitorMock.mockResolvedValueOnce(null)
     render(<App />)
     await waitFor(() => expect(state.setSizeMock).toHaveBeenCalled())
   })
 
   it("resizes again via ResizeObserver callback", async () => {
+    state.isTauriMock.mockReturnValue(true)
     const OriginalResizeObserver = globalThis.ResizeObserver
     const observeSpy = vi.fn()
     globalThis.ResizeObserver = class ResizeObserverImmediate {
@@ -903,6 +915,7 @@ describe("App", () => {
   })
 
   it("logs resize failures", async () => {
+    state.isTauriMock.mockReturnValue(true)
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
     state.setSizeMock.mockRejectedValueOnce(new Error("size fail"))
     render(<App />)
@@ -1397,6 +1410,113 @@ describe("App", () => {
     )
 
     errorSpy.mockRestore()
+  })
+
+  it("queues a follow-up tray update when render is in-flight", async () => {
+    vi.useFakeTimers()
+
+    try {
+      let resolveFirstRender: ((value: unknown) => void) | null = null
+      const firstRender = new Promise<unknown>((resolve) => {
+        resolveFirstRender = resolve
+      })
+
+      state.invokeMock.mockImplementationOnce(async (cmd: string) => {
+        if (cmd === "list_plugins") {
+          return [
+            {
+              id: "a",
+              name: "Alpha",
+              iconUrl: "icon-a",
+              primaryCandidates: ["Session"],
+              lines: [{ type: "progress", label: "Session", scope: "overview" }],
+            },
+          ]
+        }
+        return null
+      })
+      state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a"], disabled: [] })
+      state.renderTrayBarsIconMock
+        .mockReturnValueOnce(firstRender)
+        .mockResolvedValueOnce({})
+
+      render(<App />)
+      await vi.waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
+      await vi.waitFor(() => expect(state.trayGetByIdMock).toHaveBeenCalled())
+      await vi.waitFor(() => expect(state.renderTrayBarsIconMock).toHaveBeenCalledTimes(1))
+
+      state.probeHandlers?.onResult({
+        providerId: "a",
+        displayName: "Alpha",
+        iconUrl: "icon-a",
+        lines: [{ type: "progress", label: "Session", used: 20, limit: 100, format: { kind: "percent" } }],
+      })
+      await vi.advanceTimersByTimeAsync(600)
+      expect(state.renderTrayBarsIconMock).toHaveBeenCalledTimes(1)
+
+      resolveFirstRender?.({})
+      await Promise.resolve()
+      await vi.advanceTimersByTimeAsync(1)
+      await vi.waitFor(() => expect(state.renderTrayBarsIconMock).toHaveBeenCalledTimes(2))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("waits for tray gauge resource before initial gauge fallback update", async () => {
+    let resolveResourcePath: ((value: string) => void) | null = null
+    state.resolveResourceMock.mockReturnValueOnce(new Promise<string>((resolve) => {
+      resolveResourcePath = resolve
+    }))
+
+    render(<App />)
+    await waitFor(() => expect(state.trayGetByIdMock).toHaveBeenCalled())
+    expect(state.traySetIconMock).not.toHaveBeenCalled()
+
+    resolveResourcePath?.("/resource/icons/tray-icon.png")
+
+    await waitFor(() => expect(state.traySetIconMock).toHaveBeenCalledWith("/resource/icons/tray-icon.png"))
+    expect(state.traySetIconAsTemplateMock).toHaveBeenCalledWith(true)
+  })
+
+  it("clears pending tray timer on unmount", async () => {
+    vi.useFakeTimers()
+
+    try {
+      state.invokeMock.mockImplementationOnce(async (cmd: string) => {
+        if (cmd === "list_plugins") {
+          return [
+            {
+              id: "a",
+              name: "Alpha",
+              iconUrl: "icon-a",
+              primaryCandidates: ["Session"],
+              lines: [{ type: "progress", label: "Session", scope: "overview" }],
+            },
+          ]
+        }
+        return null
+      })
+      state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a"], disabled: [] })
+
+      const { unmount } = render(<App />)
+      await vi.waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
+
+      state.renderTrayBarsIconMock.mockClear()
+      state.probeHandlers?.onResult({
+        providerId: "a",
+        displayName: "Alpha",
+        iconUrl: "icon-a",
+        lines: [{ type: "progress", label: "Session", used: 30, limit: 100, format: { kind: "percent" } }],
+      })
+
+      unmount()
+      await vi.advanceTimersByTimeAsync(600)
+
+      expect(state.renderTrayBarsIconMock).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("updates tray icon without requestAnimationFrame (regression test for hidden panel)", async () => {
