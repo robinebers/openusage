@@ -79,6 +79,35 @@ describe("useAppPluginViews", () => {
     })
   })
 
+  it("does not fall back while plugin settings are still loading", async () => {
+    const setActiveView = vi.fn()
+    const pluginsMeta = [createPluginMeta("codex", "Codex")]
+    const { rerender } = renderHook(
+      ({ pluginSettings }: { pluginSettings: PluginSettings | null }) =>
+        useAppPluginViews({
+          activeView: "codex",
+          setActiveView,
+          pluginSettings,
+          pluginsMeta,
+          pluginStates: {},
+        }),
+      { initialProps: { pluginSettings: null } }
+    )
+
+    expect(setActiveView).not.toHaveBeenCalled()
+
+    rerender({
+      pluginSettings: {
+        order: ["codex"],
+        disabled: ["codex"],
+      },
+    })
+
+    await waitFor(() => {
+      expect(setActiveView).toHaveBeenCalledWith("home")
+    })
+  })
+
   it("returns selected plugin for active provider view", () => {
     const pluginSettings: PluginSettings = {
       order: ["codex"],

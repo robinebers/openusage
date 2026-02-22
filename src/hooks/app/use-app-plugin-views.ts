@@ -57,13 +57,14 @@ export function useAppPluginViews({
 
   useEffect(() => {
     if (activeView === "home" || activeView === "settings") return
+    if (!pluginSettings) return
     const isKnownPlugin = pluginsMeta.some((plugin) => plugin.id === activeView)
     if (!isKnownPlugin) return
     const isStillEnabled = navPlugins.some((plugin) => plugin.id === activeView)
     if (!isStillEnabled) {
       setActiveView("home")
     }
-  }, [activeView, navPlugins, pluginsMeta, setActiveView])
+  }, [activeView, navPlugins, pluginSettings, pluginsMeta, setActiveView])
 
   const selectedPlugin = useMemo(() => {
     if (activeView === "home" || activeView === "settings") return null

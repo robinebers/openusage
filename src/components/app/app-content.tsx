@@ -2,7 +2,9 @@ import { useShallow } from "zustand/react/shallow"
 import { OverviewPage } from "@/pages/overview"
 import { ProviderDetailPage } from "@/pages/provider-detail"
 import { SettingsPage } from "@/pages/settings"
-import { useAppDerivedStore } from "@/stores/app-derived-store"
+import type { NavPlugin } from "@/components/side-nav"
+import type { DisplayPluginState } from "@/hooks/app/use-app-plugin-views"
+import type { SettingsPluginState } from "@/hooks/app/use-settings-plugin-list"
 import { useAppPreferencesStore } from "@/stores/app-preferences-store"
 import { useAppUiStore } from "@/stores/app-ui-store"
 import type {
@@ -14,7 +16,14 @@ import type {
   TrayIconStyle,
 } from "@/lib/settings"
 
-export type AppContentProps = {
+type AppContentDerivedProps = {
+  navPlugins: NavPlugin[]
+  displayPlugins: DisplayPluginState[]
+  settingsPlugins: SettingsPluginState[]
+  selectedPlugin: DisplayPluginState | null
+}
+
+export type AppContentActionProps = {
   onRetryPlugin: (id: string) => void
   onReorder: (orderedIds: string[]) => void
   onToggle: (id: string) => void
@@ -29,7 +38,13 @@ export type AppContentProps = {
   onStartOnLoginChange: (value: boolean) => void
 }
 
+export type AppContentProps = AppContentDerivedProps & AppContentActionProps
+
 export function AppContent({
+  navPlugins,
+  displayPlugins,
+  settingsPlugins,
+  selectedPlugin,
   onRetryPlugin,
   onReorder,
   onToggle,
@@ -46,18 +61,6 @@ export function AppContent({
   const { activeView } = useAppUiStore(
     useShallow((state) => ({
       activeView: state.activeView,
-    }))
-  )
-
-  const {
-    displayPlugins,
-    settingsPlugins,
-    navPlugins,
-  } = useAppDerivedStore(
-    useShallow((state) => ({
-      displayPlugins: state.displayPlugins,
-      settingsPlugins: state.settingsPlugins,
-      navPlugins: state.navPlugins,
     }))
   )
 
@@ -82,11 +85,6 @@ export function AppContent({
       startOnLogin: state.startOnLogin,
     }))
   )
-
-  const selectedPlugin =
-    activeView === "home" || activeView === "settings"
-      ? null
-      : displayPlugins.find((plugin) => plugin.meta.id === activeView) ?? null
 
   if (activeView === "home") {
     return (

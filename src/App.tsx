@@ -11,7 +11,6 @@ import { useSettingsSystemActions } from "@/hooks/app/use-settings-system-action
 import { useSettingsTheme } from "@/hooks/app/use-settings-theme"
 import { useSettingsTrayActions } from "@/hooks/app/use-settings-tray-actions"
 import { useTrayIcon } from "@/hooks/app/use-tray-icon"
-import { useAppDerivedStore } from "@/stores/app-derived-store"
 import { useAppPluginStore } from "@/stores/app-plugin-store"
 import { useAppPreferencesStore } from "@/stores/app-preferences-store"
 import { useAppUiStore } from "@/stores/app-ui-store"
@@ -74,18 +73,6 @@ function App() {
       setTrayShowPercentage: state.setTrayShowPercentage,
       setGlobalShortcut: state.setGlobalShortcut,
       setStartOnLogin: state.setStartOnLogin,
-    }))
-  )
-
-  const {
-    setPluginViews,
-    setSettingsPlugins,
-    setAutoUpdateNextAt: setStoreAutoUpdateNextAt,
-  } = useAppDerivedStore(
-    useShallow((state) => ({
-      setPluginViews: state.setPluginViews,
-      setSettingsPlugins: state.setSettingsPlugins,
-      setAutoUpdateNextAt: state.setAutoUpdateNextAt,
     }))
   )
 
@@ -195,7 +182,7 @@ function App() {
     pluginsMeta,
   })
 
-  const { displayPlugins, navPlugins } = useAppPluginViews({
+  const { displayPlugins, navPlugins, selectedPlugin } = useAppPluginViews({
     activeView,
     setActiveView,
     pluginSettings,
@@ -203,21 +190,14 @@ function App() {
     pluginStates,
   })
 
-  useEffect(() => {
-    setPluginViews({ displayPlugins, navPlugins })
-  }, [displayPlugins, navPlugins, setPluginViews])
-
-  useEffect(() => {
-    setSettingsPlugins(settingsPlugins)
-  }, [settingsPlugins, setSettingsPlugins])
-
-  useEffect(() => {
-    setStoreAutoUpdateNextAt(autoUpdateNextAt)
-  }, [autoUpdateNextAt, setStoreAutoUpdateNextAt])
-
   return (
     <AppShell
       onRefreshAll={handleRefreshAll}
+      navPlugins={navPlugins}
+      displayPlugins={displayPlugins}
+      settingsPlugins={settingsPlugins}
+      autoUpdateNextAt={autoUpdateNextAt}
+      selectedPlugin={selectedPlugin}
       appContentProps={{
         onRetryPlugin: handleRetryPlugin,
         onReorder: handleReorder,
