@@ -12,8 +12,8 @@ import { useNowTicker } from "@/hooks/use-now-ticker"
 import { REFRESH_COOLDOWN_MS, type DisplayMode, type ResetTimerDisplayMode } from "@/lib/settings"
 import type { ManifestLine, MetricLine, PluginLink } from "@/lib/plugin-types"
 import { clamp01 } from "@/lib/utils"
-import { calculatePaceStatus, type PaceStatus } from "@/lib/pace-status"
-import { buildPaceDetailText, formatCompactDuration, getPaceStatusText } from "@/lib/pace-tooltip"
+import { calculateDeficit, calculatePaceStatus, type PaceStatus } from "@/lib/pace-status"
+import { buildPaceDetailText, formatCompactDuration, formatDeficitText, formatRunsOutText, getPaceStatusText } from "@/lib/pace-tooltip"
 
 interface ProviderCardProps {
   name: string
@@ -453,6 +453,23 @@ function MetricLineRenderer({
           })
         : null
 
+    const deficit = hasPaceContext
+      ? calculateDeficit(line.used, line.limit, resetsAtMs, periodDurationMs!, now)
+      : null
+    const deficitText = deficit !== null
+      ? formatDeficitText(deficit, line.format, displayMode)
+      : null
+    const runsOutText = hasPaceContext && !isLimitReached
+      ? formatRunsOutText({
+          paceResult,
+          used: line.used,
+          limit: line.limit,
+          periodDurationMs: periodDurationMs!,
+          resetsAtMs,
+          nowMs: now,
+        })
+      : null
+
     return (
       <div>
         <div className="text-sm font-medium mb-1.5 flex items-center gap-1.5">
@@ -486,6 +503,20 @@ function MetricLineRenderer({
             )
           )}
         </div>
+        {(deficitText || runsOutText) && (
+          <div className="flex justify-between items-center mt-0.5">
+            {deficitText && (
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {deficitText}
+              </span>
+            )}
+            {runsOutText && (
+              <span className="text-xs text-muted-foreground tabular-nums ml-auto">
+                {runsOutText}
+              </span>
+            )}
+          </div>
+        )}
       </div>
     )
   }

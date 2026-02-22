@@ -4,6 +4,8 @@ import { type PaceResult } from "@/lib/pace-status"
 import {
   buildPaceDetailText,
   formatCompactDuration,
+  formatDeficitText,
+  formatRunsOutText,
   getPaceStatusText,
 } from "@/lib/pace-tooltip"
 
@@ -157,5 +159,90 @@ describe("pace-tooltip", () => {
       displayMode: "used",
     })
     expect(detail).toBe("100% used at reset")
+  })
+})
+
+describe("formatRunsOutText", () => {
+  it("returns ETA text when behind pace", () => {
+    const paceResult: PaceResult = { status: "behind", projectedUsage: 120 }
+    const result = formatRunsOutText({
+      paceResult,
+      used: 60,
+      limit: 100,
+      periodDurationMs: ONE_DAY_MS,
+      resetsAtMs,
+      nowMs,
+    })
+    expect(result).toBe("Runs out in 8h 0m")
+  })
+
+  it("returns null when ahead of pace", () => {
+    const paceResult: PaceResult = { status: "ahead", projectedUsage: 60 }
+    expect(formatRunsOutText({
+      paceResult,
+      used: 30,
+      limit: 100,
+      periodDurationMs: ONE_DAY_MS,
+      resetsAtMs,
+      nowMs,
+    })).toBeNull()
+  })
+
+  it("returns null when on-track", () => {
+    const paceResult: PaceResult = { status: "on-track", projectedUsage: 90 }
+    expect(formatRunsOutText({
+      paceResult,
+      used: 45,
+      limit: 100,
+      periodDurationMs: ONE_DAY_MS,
+      resetsAtMs,
+      nowMs,
+    })).toBeNull()
+  })
+
+  it("returns null when ETA exceeds remaining time", () => {
+    const lateNowMs = Date.parse("2026-02-02T23:59:00.000Z")
+    const paceResult: PaceResult = { status: "behind", projectedUsage: 110 }
+    expect(formatRunsOutText({
+      paceResult,
+      used: 90,
+      limit: 100,
+      periodDurationMs: ONE_DAY_MS,
+      resetsAtMs,
+      nowMs: lateNowMs,
+    })).toBeNull()
+  })
+
+  it("returns null when pace result is null", () => {
+    expect(formatRunsOutText({
+      paceResult: null,
+      used: 60,
+      limit: 100,
+      periodDurationMs: ONE_DAY_MS,
+      resetsAtMs,
+      nowMs,
+    })).toBeNull()
+  })
+})
+
+describe("formatDeficitText", () => {
+  it("formats percent deficit in used mode", () => {
+    expect(formatDeficitText(4, { kind: "percent" }, "used")).toBe("4% in deficit")
+  })
+
+  it("formats percent deficit in left mode", () => {
+    expect(formatDeficitText(4, { kind: "percent" }, "left")).toBe("4% short")
+  })
+
+  it("formats dollar deficit", () => {
+    expect(formatDeficitText(12.5, { kind: "dollars" }, "used")).toBe("$12.50 in deficit")
+  })
+
+  it("formats count deficit", () => {
+    expect(formatDeficitText(15, { kind: "count", suffix: "requests" }, "used")).toBe("15 requests in deficit")
+  })
+
+  it("rounds percent deficit", () => {
+    expect(formatDeficitText(4.7, { kind: "percent" }, "used")).toBe("5% in deficit")
   })
 })
