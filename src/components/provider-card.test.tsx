@@ -558,6 +558,35 @@ describe("ProviderCard", () => {
     vi.useRealTimers()
   })
 
+  it("hides tiny positive deficit text that would round to zero", () => {
+    vi.useFakeTimers()
+    const now = new Date("2026-02-02T12:00:00.000Z")
+    vi.setSystemTime(now)
+    render(
+      <ProviderCard
+        name="Pace"
+        displayMode="used"
+        lines={[
+          {
+            type: "progress",
+            label: "Behind",
+            used: 50.3,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: "2026-02-03T00:00:00.000Z",
+            periodDurationMs: 24 * 60 * 60 * 1000,
+          },
+        ]}
+      />
+    )
+    expect(screen.getByLabelText("Will run out")).toBeInTheDocument()
+    expect(screen.getByText(/^Runs out in /)).toBeInTheDocument()
+    expect(screen.queryByText("0% in deficit")).not.toBeInTheDocument()
+    expect(screen.queryByText("0% short")).not.toBeInTheDocument()
+    expect(screen.queryByText(/in deficit/i)).not.toBeInTheDocument()
+    vi.useRealTimers()
+  })
+
   it("keeps status-only tooltip when pace projection is not yet available", () => {
     vi.useFakeTimers()
     const now = new Date("2026-02-02T00:45:00.000Z")
