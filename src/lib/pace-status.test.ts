@@ -122,6 +122,14 @@ describe("calculateDeficit", () => {
     expect(calculateDeficit(60, 100, resetsAtMs, ONE_DAY_MS, earlyMs)).toBeNull()
   })
 
+  it("returns deficit for over-limit usage even before 5% elapsed", () => {
+    const resetsAtMs = Date.parse("2026-02-03T00:00:00.000Z")
+    const periodStartMs = resetsAtMs - ONE_DAY_MS
+    const earlyMs = periodStartMs + Math.floor(ONE_DAY_MS * 0.04)
+    const deficit = calculateDeficit(120, 100, resetsAtMs, ONE_DAY_MS, earlyMs)
+    expect(deficit).toBeCloseTo(116, 6)
+  })
+
   it("returns deficit when usage exceeds expected pace", () => {
     const { resetsAtMs, nowMs } = midPeriodNowAndReset()
     // 50% elapsed, 60% used → deficit = 60 - 50 = 10

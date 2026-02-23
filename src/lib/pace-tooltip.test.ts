@@ -176,6 +176,29 @@ describe("formatRunsOutText", () => {
     expect(result).toBe("Runs out in 8h 0m")
   })
 
+  it("keeps runs-out and limit-in duration text aligned", () => {
+    const paceResult: PaceResult = { status: "behind", projectedUsage: 120 }
+    const runsOut = formatRunsOutText({
+      paceResult,
+      used: 60,
+      limit: 100,
+      periodDurationMs: ONE_DAY_MS,
+      resetsAtMs,
+      nowMs,
+    })
+    const detail = buildPaceDetailText({
+      paceResult,
+      used: 60,
+      limit: 100,
+      periodDurationMs: ONE_DAY_MS,
+      resetsAtMs,
+      nowMs,
+      displayMode: "used",
+    })
+    expect(runsOut).toBe("Runs out in 8h 0m")
+    expect(detail).toBe("Limit in 8h 0m")
+  })
+
   it("returns null when ahead of pace", () => {
     const paceResult: PaceResult = { status: "ahead", projectedUsage: 60 }
     expect(formatRunsOutText({

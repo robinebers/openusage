@@ -11,7 +11,7 @@ import { PluginError } from "@/components/plugin-error"
 import { useNowTicker } from "@/hooks/use-now-ticker"
 import { REFRESH_COOLDOWN_MS, type DisplayMode, type ResetTimerDisplayMode } from "@/lib/settings"
 import type { ManifestLine, MetricLine, PluginLink } from "@/lib/plugin-types"
-import { clamp01 } from "@/lib/utils"
+import { clamp01, formatFixedPrecisionNumber } from "@/lib/utils"
 import { calculateDeficit, calculatePaceStatus, type PaceStatus } from "@/lib/pace-status"
 import { buildPaceDetailText, formatCompactDuration, formatDeficitText, formatRunsOutText, getPaceStatusText } from "@/lib/pace-tooltip"
 
@@ -30,15 +30,6 @@ interface ProviderCardProps {
   displayMode: DisplayMode
   resetTimerDisplayMode?: ResetTimerDisplayMode
   onResetTimerDisplayModeToggle?: () => void
-}
-
-export function formatNumber(value: number) {
-  if (Number.isNaN(value)) return "0"
-  const fractionDigits = Number.isInteger(value) ? 0 : 2
-  return new Intl.NumberFormat("en-US", {
-    minimumFractionDigits: fractionDigits,
-    maximumFractionDigits: fractionDigits,
-  }).format(value)
 }
 
 const PACE_VISUALS: Record<PaceStatus, { dotClass: string }> = {
@@ -409,7 +400,7 @@ function MetricLineRenderer({
       line.format.kind === "percent"
         ? `${Math.round(shownAmount)}%${leftSuffix}`
         : line.format.kind === "dollars"
-          ? `$${formatNumber(shownAmount)}${leftSuffix}`
+          ? `$${formatFixedPrecisionNumber(shownAmount)}${leftSuffix}`
           : `${formatCount(shownAmount)} ${line.format.suffix}${leftSuffix}`
 
     const resetLabel = line.resetsAt
@@ -423,7 +414,7 @@ function MetricLineRenderer({
       (line.format.kind === "percent"
         ? `${line.limit}% cap`
         : line.format.kind === "dollars"
-          ? `$${formatNumber(line.limit)} limit`
+          ? `$${formatFixedPrecisionNumber(line.limit)} limit`
           : `${formatCount(line.limit)} ${line.format.suffix}`)
 
     // Calculate pace status if we have reset time and period duration
@@ -453,7 +444,7 @@ function MetricLineRenderer({
           })
         : null
 
-    const deficit = hasPaceContext
+    const deficit = hasPaceContext && !isLimitReached
       ? calculateDeficit(line.used, line.limit, resetsAtMs, periodDurationMs!, now)
       : null
     const deficitText = deficit !== null

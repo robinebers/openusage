@@ -92,7 +92,7 @@ export function calculateDeficit(
   if (elapsedMs <= 0 || nowMs >= resetsAtMs) return null
 
   const elapsedFraction = elapsedMs / periodDurationMs
-  if (elapsedFraction < 0.05) return null
+  if (elapsedFraction < 0.05 && used < limit) return null
 
   const expectedUsage = elapsedFraction * limit
   const deficit = used - expectedUsage

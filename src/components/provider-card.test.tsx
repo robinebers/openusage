@@ -3,8 +3,9 @@ import type { ReactNode } from "react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { openUrl } from "@tauri-apps/plugin-opener"
-import { ProviderCard, formatNumber } from "@/components/provider-card"
+import { ProviderCard } from "@/components/provider-card"
 import { REFRESH_COOLDOWN_MS } from "@/lib/settings"
+import { formatFixedPrecisionNumber } from "@/lib/utils"
 
 vi.mock("@tauri-apps/plugin-opener", () => ({
   openUrl: vi.fn(() => Promise.resolve()),
@@ -185,15 +186,15 @@ describe("ProviderCard", () => {
     vi.useRealTimers()
   })
 
-  it("formats numbers with thousand separators and preserves trailing zeros", () => {
-    expect(formatNumber(Number.NaN)).toBe("0")
-    expect(formatNumber(5)).toBe("5")
-    expect(formatNumber(5.129)).toBe("5.13")
-    expect(formatNumber(5.1)).toBe("5.10")
-    expect(formatNumber(5.5)).toBe("5.50")
-    expect(formatNumber(1000)).toBe("1,000")
-    expect(formatNumber(10000)).toBe("10,000")
-    expect(formatNumber(1234567.89)).toBe("1,234,567.89")
+  it("formats fixed-precision numbers with trailing zeros", () => {
+    expect(formatFixedPrecisionNumber(Number.NaN)).toBe("0")
+    expect(formatFixedPrecisionNumber(5)).toBe("5")
+    expect(formatFixedPrecisionNumber(5.129)).toBe("5.13")
+    expect(formatFixedPrecisionNumber(5.1)).toBe("5.10")
+    expect(formatFixedPrecisionNumber(5.5)).toBe("5.50")
+    expect(formatFixedPrecisionNumber(1000)).toBe("1,000")
+    expect(formatFixedPrecisionNumber(10000)).toBe("10,000")
+    expect(formatFixedPrecisionNumber(1234567.89)).toBe("1,234,567.89")
   })
 
   it("supports displayMode=left for percent (number + bar fill)", () => {
@@ -552,6 +553,8 @@ describe("ProviderCard", () => {
     )
     expect(screen.getByLabelText("Limit reached")).toBeInTheDocument()
     expect(screen.getByText("Limit reached")).toBeInTheDocument()
+    expect(screen.queryByText(/in deficit/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/runs out in/i)).not.toBeInTheDocument()
     vi.useRealTimers()
   })
 
