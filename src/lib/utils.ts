@@ -11,3 +11,18 @@ export function clamp01(value: number): number {
   if (value > 1) return 1
   return value
 }
+
+export function formatFixedPrecisionNumber(value: number): string {
+  if (!Number.isFinite(value)) return "0"
+  const fractionDigits = Number.isInteger(value) ? 0 : 2
+  return new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
+  }).format(value)
+}
+
+export function formatCountNumber(value: number): string {
+  if (!Number.isFinite(value)) return "0"
+  const maximumFractionDigits = Number.isInteger(value) ? 0 : 2
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits }).format(value)
+}

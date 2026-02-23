@@ -11,9 +11,9 @@ import { PluginError } from "@/components/plugin-error"
 import { useNowTicker } from "@/hooks/use-now-ticker"
 import { REFRESH_COOLDOWN_MS, type DisplayMode, type ResetTimerDisplayMode } from "@/lib/settings"
 import type { ManifestLine, MetricLine, PluginLink } from "@/lib/plugin-types"
-import { clamp01 } from "@/lib/utils"
-import { calculatePaceStatus, type PaceStatus } from "@/lib/pace-status"
-import { buildPaceDetailText, formatCompactDuration, getPaceStatusText } from "@/lib/pace-tooltip"
+import { clamp01, formatCountNumber, formatFixedPrecisionNumber } from "@/lib/utils"
+import { calculateDeficit, calculatePaceStatus, type PaceStatus } from "@/lib/pace-status"
+import { buildPaceDetailText, formatCompactDuration, formatDeficitText, formatRunsOutText, getPaceStatusText } from "@/lib/pace-tooltip"
 
 interface ProviderCardProps {
   name: string
@@ -30,15 +30,6 @@ interface ProviderCardProps {
   displayMode: DisplayMode
   resetTimerDisplayMode?: ResetTimerDisplayMode
   onResetTimerDisplayModeToggle?: () => void
-}
-
-export function formatNumber(value: number) {
-  if (Number.isNaN(value)) return "0"
-  const fractionDigits = Number.isInteger(value) ? 0 : 2
-  return new Intl.NumberFormat("en-US", {
-    minimumFractionDigits: fractionDigits,
-    maximumFractionDigits: fractionDigits,
-  }).format(value)
 }
 
 const PACE_VISUALS: Record<PaceStatus, { dotClass: string }> = {
@@ -63,11 +54,6 @@ export function groupLinesByType(lines: MetricLine[]): LineGroup[] {
   return groups
 }
 
-function formatCount(value: number) {
-  if (!Number.isFinite(value)) return "0"
-  const maximumFractionDigits = Number.isInteger(value) ? 0 : 2
-  return new Intl.NumberFormat("en-US", { maximumFractionDigits }).format(value)
-}
 
 const RESET_SOON_THRESHOLD_MS = 5 * 60 * 1000
 
@@ -444,8 +430,8 @@ function MetricLineRenderer({
       line.format.kind === "percent"
         ? `${Math.round(shownAmount)}%${leftSuffix}`
         : line.format.kind === "dollars"
-          ? `$${formatNumber(shownAmount)}${leftSuffix}`
-          : `${formatCount(shownAmount)} ${line.format.suffix}${leftSuffix}`
+          ? `$${formatFixedPrecisionNumber(shownAmount)}${leftSuffix}`
+          : `${formatCountNumber(shownAmount)} ${line.format.suffix}${leftSuffix}`
 
     const resetLabel = line.resetsAt
       ? resetTimerDisplayMode === "absolute"
@@ -458,8 +444,8 @@ function MetricLineRenderer({
       (line.format.kind === "percent"
         ? `${line.limit}% cap`
         : line.format.kind === "dollars"
-          ? `$${formatNumber(line.limit)} limit`
-          : `${formatCount(line.limit)} ${line.format.suffix}`)
+          ? `$${formatFixedPrecisionNumber(line.limit)} limit`
+          : `${formatCountNumber(line.limit)} ${line.format.suffix}`)
 
     // Calculate pace status if we have reset time and period duration
     const paceResult = hasPaceContext
@@ -487,6 +473,23 @@ function MetricLineRenderer({
             displayMode,
           })
         : null
+
+    const deficit = hasPaceContext && !isLimitReached
+      ? calculateDeficit(line.used, line.limit, resetsAtMs, periodDurationMs!, now)
+      : null
+    const deficitText = deficit !== null
+      ? formatDeficitText(deficit, line.format, displayMode)
+      : null
+    const runsOutText = hasPaceContext && !isLimitReached
+      ? formatRunsOutText({
+          paceResult,
+          used: line.used,
+          limit: line.limit,
+          periodDurationMs: periodDurationMs!,
+          resetsAtMs,
+          nowMs: now,
+        })
+      : null
 
     return (
       <div>
@@ -521,6 +524,20 @@ function MetricLineRenderer({
             )
           )}
         </div>
+        {(deficitText || runsOutText) && (
+          <div className="flex justify-between items-center mt-0.5">
+            {deficitText && (
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {deficitText}
+              </span>
+            )}
+            {runsOutText && (
+              <span className="text-xs text-muted-foreground tabular-nums ml-auto">
+                {runsOutText}
+              </span>
+            )}
+          </div>
+        )}
       </div>
     )
   }

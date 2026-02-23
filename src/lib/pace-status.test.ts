@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { calculatePaceStatus } from "@/lib/pace-status"
+import { calculateDeficit, calculatePaceStatus } from "@/lib/pace-status"
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
 
@@ -91,5 +91,62 @@ describe("pace-status", () => {
     const { resetsAtMs, nowMs } = midPeriodNowAndReset()
     const result = calculatePaceStatus(50, 100, resetsAtMs, ONE_DAY_MS, nowMs)
     expect(result).toEqual({ status: "on-track", projectedUsage: 100 })
+  })
+})
+
+describe("calculateDeficit", () => {
+  it("returns null for non-finite inputs", () => {
+    const { resetsAtMs, nowMs } = midPeriodNowAndReset()
+    expect(calculateDeficit(Number.NaN, 100, resetsAtMs, ONE_DAY_MS, nowMs)).toBeNull()
+    expect(calculateDeficit(10, Number.POSITIVE_INFINITY, resetsAtMs, ONE_DAY_MS, nowMs)).toBeNull()
+    expect(calculateDeficit(10, 100, Number.NaN, ONE_DAY_MS, nowMs)).toBeNull()
+  })
+
+  it("returns null for invalid limits or period duration", () => {
+    const { resetsAtMs, nowMs } = midPeriodNowAndReset()
+    expect(calculateDeficit(10, 0, resetsAtMs, ONE_DAY_MS, nowMs)).toBeNull()
+    expect(calculateDeficit(10, 100, resetsAtMs, 0, nowMs)).toBeNull()
+  })
+
+  it("returns null when period has not started or is already reset", () => {
+    const resetsAtMs = Date.parse("2026-02-03T00:00:00.000Z")
+    const periodStartMs = resetsAtMs - ONE_DAY_MS
+    expect(calculateDeficit(60, 100, resetsAtMs, ONE_DAY_MS, periodStartMs)).toBeNull()
+    expect(calculateDeficit(60, 100, resetsAtMs, ONE_DAY_MS, resetsAtMs)).toBeNull()
+  })
+
+  it("returns null when less than 5% of the period has elapsed", () => {
+    const resetsAtMs = Date.parse("2026-02-03T00:00:00.000Z")
+    const periodStartMs = resetsAtMs - ONE_DAY_MS
+    const earlyMs = periodStartMs + Math.floor(ONE_DAY_MS * 0.04)
+    expect(calculateDeficit(60, 100, resetsAtMs, ONE_DAY_MS, earlyMs)).toBeNull()
+  })
+
+  it("returns deficit for over-limit usage even before 5% elapsed", () => {
+    const resetsAtMs = Date.parse("2026-02-03T00:00:00.000Z")
+    const periodStartMs = resetsAtMs - ONE_DAY_MS
+    const earlyMs = periodStartMs + Math.floor(ONE_DAY_MS * 0.04)
+    const deficit = calculateDeficit(120, 100, resetsAtMs, ONE_DAY_MS, earlyMs)
+    expect(deficit).toBeCloseTo(116, 6)
+  })
+
+  it("returns deficit when usage exceeds expected pace", () => {
+    const { resetsAtMs, nowMs } = midPeriodNowAndReset()
+    // 50% elapsed, 60% used → deficit = 60 - 50 = 10
+    expect(calculateDeficit(60, 100, resetsAtMs, ONE_DAY_MS, nowMs)).toBe(10)
+  })
+
+  it("returns null when usage is at or below expected pace", () => {
+    const { resetsAtMs, nowMs } = midPeriodNowAndReset()
+    // 50% elapsed, 50% used → no deficit
+    expect(calculateDeficit(50, 100, resetsAtMs, ONE_DAY_MS, nowMs)).toBeNull()
+    // 50% elapsed, 30% used → ahead
+    expect(calculateDeficit(30, 100, resetsAtMs, ONE_DAY_MS, nowMs)).toBeNull()
+  })
+
+  it("returns deficit when over limit", () => {
+    const { resetsAtMs, nowMs } = midPeriodNowAndReset()
+    // 50% elapsed, 120% used → deficit = 120 - 50 = 70
+    expect(calculateDeficit(120, 100, resetsAtMs, ONE_DAY_MS, nowMs)).toBe(70)
   })
 })
