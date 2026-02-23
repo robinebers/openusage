@@ -105,9 +105,16 @@ Returns limit policy status plus any active credit grants. Response undocumented
 
 ## Authentication
 
-### Token Location
+### Token Sources
 
-SQLite database at `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb`
+OpenUsage reads Cursor auth in this order:
+
+1. **Cursor Desktop SQLite** (preferred)
+2. **Cursor CLI keychain** (fallback)
+
+#### 1) Cursor Desktop SQLite (preferred)
+
+Path: `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb`
 
 ```bash
 sqlite3 ~/Library/Application\ Support/Cursor/User/globalStorage/state.vscdb \
@@ -122,9 +129,22 @@ sqlite3 ~/Library/Application\ Support/Cursor/User/globalStorage/state.vscdb \
 | `cursorAuth/stripeMembershipType` | Plan tier (e.g. `pro`, `ultra`) |
 | `cursorAuth/stripeSubscriptionStatus` | Subscription status |
 
+#### 2) Cursor CLI keychain (fallback)
+
+OpenUsage reads Cursor CLI tokens from keychain:
+
+- `cursor-access-token`
+- `cursor-refresh-token`
+
+To initialize CLI auth:
+
+```bash
+agent login
+```
+
 ### Token Refresh
 
-Access tokens are short-lived JWTs. The app refreshes before each request if expired.
+Access tokens are short-lived JWTs. The app refreshes before each request if expired, then persists the new access token back to the same source it was loaded from (SQLite or keychain).
 
 ```
 POST https://api2.cursor.sh/oauth/token
