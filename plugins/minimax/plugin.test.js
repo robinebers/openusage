@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { makeCtx } from "../test-helpers.js"
 
-const PRIMARY_USAGE_URL = "https://www.minimax.io/v1/api/openplatform/coding_plan/remains"
-const FALLBACK_USAGE_URL = "https://api.minimax.io/v1/api/openplatform/coding_plan/remains"
+const PRIMARY_USAGE_URL = "https://api.minimax.io/v1/api/openplatform/coding_plan/remains"
+const FALLBACK_USAGE_URL = "https://api.minimax.io/v1/coding_plan/remains"
+const LEGACY_WWW_USAGE_URL = "https://www.minimax.io/v1/api/openplatform/coding_plan/remains"
 
 const loadPlugin = async () => {
   await import("./plugin.js")
@@ -105,12 +106,88 @@ describe("minimax plugin", () => {
     const line = result.lines[0]
     expect(line.label).toBe("Session")
     expect(line.type).toBe("progress")
-    expect(line.used).toBe(180) // current_interval_usage_count
+    expect(line.used).toBe(120) // current_interval_usage_count is remaining
     expect(line.limit).toBe(300)
     expect(line.format.kind).toBe("count")
     expect(line.format.suffix).toBe("prompts")
     expect(line.resetsAt).toBe("2023-11-15T03:13:20.000Z")
     expect(line.periodDurationMs).toBe(18000000)
+  })
+
+  it("treats current_interval_usage_count as remaining prompts", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        base_resp: { status_code: 0 },
+        model_remains: [
+          {
+            current_interval_total_count: 1500,
+            current_interval_usage_count: 1500,
+            remains_time: 3600000,
+          },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines[0].used).toBe(0)
+    expect(result.lines[0].limit).toBe(1500)
+  })
+
+  it("infers Starter plan from 1500 model-call limit", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        base_resp: { status_code: 0 },
+        model_remains: [
+          {
+            current_interval_total_count: 1500,
+            current_interval_usage_count: 1200,
+            model_name: "MiniMax-M2",
+          },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Starter")
+    expect(result.lines[0].used).toBe(300)
+    expect(result.lines[0].limit).toBe(1500)
+  })
+
+  it("does not fallback to model name when plan cannot be inferred", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        base_resp: { status_code: 0 },
+        model_remains: [
+          {
+            current_interval_total_count: 1337,
+            current_interval_usage_count: 1000,
+            model_name: "MiniMax-M2.5",
+          },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBeUndefined()
+    expect(result.lines[0].used).toBe(337)
   })
 
   it("supports nested payload and remains_time reset fallback", async () => {
@@ -141,7 +218,7 @@ describe("minimax plugin", () => {
     const expectedReset = new Date(1700000000000 + 7200 * 1000).toISOString()
 
     expect(result.plan).toBe("Max")
-    expect(line.used).toBe(40)
+    expect(line.used).toBe(60)
     expect(line.limit).toBe(100)
     expect(line.resetsAt).toBe(expectedReset)
   })
@@ -171,7 +248,7 @@ describe("minimax plugin", () => {
     const result = plugin.probe(ctx)
     const line = result.lines[0]
 
-    expect(line.used).toBe(55)
+    expect(line.used).toBe(45)
     expect(line.limit).toBe(100)
     expect(line.resetsAt).toBe(new Date(1700000000000 + 300000).toISOString())
   })
@@ -210,6 +287,7 @@ describe("minimax plugin", () => {
     ctx.host.http.request.mockReturnValue({ status: 401, headers: {}, bodyText: "" })
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Session expired")
+    expect(ctx.host.http.request.mock.calls.length).toBe(3)
   })
 
   it("falls back to secondary endpoint when primary fails", async () => {
@@ -230,7 +308,30 @@ describe("minimax plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    expect(result.lines[0].used).toBe(180)
+    expect(result.lines[0].used).toBe(120)
+    expect(ctx.host.http.request.mock.calls.length).toBe(2)
+  })
+
+  it("falls back when primary returns auth-like status", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
+    ctx.host.http.request.mockImplementation((req) => {
+      if (req.url === PRIMARY_USAGE_URL) return { status: 403, headers: {}, bodyText: "<html>cf</html>" }
+      if (req.url === FALLBACK_USAGE_URL) {
+        return {
+          status: 200,
+          headers: {},
+          bodyText: JSON.stringify(successPayload()),
+        }
+      }
+      if (req.url === LEGACY_WWW_USAGE_URL) return { status: 403, headers: {}, bodyText: "<html>cf</html>" }
+      return { status: 404, headers: {}, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines[0].used).toBe(120)
     expect(ctx.host.http.request.mock.calls.length).toBe(2)
   })
 
@@ -276,7 +377,7 @@ describe("minimax plugin", () => {
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    expect(result.lines[0].used).toBe(180)
+    expect(result.lines[0].used).toBe(120)
   })
 
   it("supports camelCase modelRemains and explicit used count fields", async () => {

@@ -5,7 +5,7 @@
 ## Overview
 
 - **Protocol:** HTTPS (JSON)
-- **Endpoint:** `GET https://www.minimax.io/v1/api/openplatform/coding_plan/remains`
+- **Endpoint:** `GET https://api.minimax.io/v1/api/openplatform/coding_plan/remains`
 - **Auth:** `Authorization: Bearer <api_key>`
 - **Window model:** dynamic rolling 5-hour limit (per MiniMax Coding Plan docs)
 
@@ -26,7 +26,7 @@ Request:
 
 ```http
 GET /v1/api/openplatform/coding_plan/remains HTTP/1.1
-Host: www.minimax.io
+Host: api.minimax.io
 Authorization: Bearer <api_key>
 Content-Type: application/json
 Accept: application/json
@@ -34,8 +34,8 @@ Accept: application/json
 
 Fallbacks:
 
-- `https://api.minimax.io/v1/api/openplatform/coding_plan/remains`
 - `https://api.minimax.io/v1/coding_plan/remains`
+- `https://www.minimax.io/v1/api/openplatform/coding_plan/remains` (legacy fallback; can return Cloudflare HTML)
 
 Expected payload fields:
 
@@ -51,8 +51,11 @@ Expected payload fields:
 
 ## Usage Mapping
 
-- Treat `current_interval_usage_count` as used prompts.
+- Treat `current_interval_usage_count` as remaining prompts (MiniMax remains API behavior).
 - If only remaining aliases are provided, compute `used = total - remaining`.
+- If explicit used-count fields are provided, prefer them.
+- Plan name is taken from explicit plan/title fields when available.
+- If plan fields are missing, infer plan tier from known limits (`100/300/1000/2000` prompts or `1500/4500/15000/30000` model-call equivalents).
 - Use `end_time` for reset timestamp when present.
 - Fallback to `remains_time` when `end_time` is absent.
 - Use `start_time` + `end_time` as `periodDurationMs` when both are valid.
