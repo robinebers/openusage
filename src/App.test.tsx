@@ -187,7 +187,6 @@ vi.mock("@/lib/settings", async () => {
 })
 
 import { App } from "@/App"
-import { useAppDerivedStore } from "@/stores/app-derived-store"
 import { useAppPluginStore } from "@/stores/app-plugin-store"
 import { useAppPreferencesStore } from "@/stores/app-preferences-store"
 import { useAppUiStore } from "@/stores/app-ui-store"
@@ -197,7 +196,6 @@ describe("App", () => {
     useAppUiStore.getState().resetState()
     useAppPluginStore.getState().resetState()
     useAppPreferencesStore.getState().resetState()
-    useAppDerivedStore.getState().resetState()
 
     state.probeHandlers = null
     state.invokeMock.mockReset()
