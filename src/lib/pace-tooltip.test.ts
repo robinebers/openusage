@@ -272,4 +272,29 @@ describe("formatDeficitText", () => {
   it("rounds percent deficit", () => {
     expect(formatDeficitText(4.7, { kind: "percent" }, "used")).toBe("5% in deficit")
   })
+
+  it("returns null for tiny percent deficits that round to zero", () => {
+    expect(formatDeficitText(0.3, { kind: "percent" }, "used")).toBeNull()
+    expect(formatDeficitText(0.3, { kind: "percent" }, "left")).toBeNull()
+  })
+
+  it("returns null for tiny dollar deficits that round to zero", () => {
+    expect(formatDeficitText(0.004, { kind: "dollars" }, "used")).toBeNull()
+  })
+
+  it("returns null for tiny count deficits that round to zero", () => {
+    expect(formatDeficitText(0.004, { kind: "count", suffix: "requests" }, "used")).toBeNull()
+  })
+
+  it("shows the first displayable percent deficit", () => {
+    expect(formatDeficitText(0.5, { kind: "percent" }, "used")).toBe("1% in deficit")
+  })
+
+  it("shows the first displayable dollar deficit", () => {
+    expect(formatDeficitText(0.005, { kind: "dollars" }, "used")).toBe("$0.01 in deficit")
+  })
+
+  it("shows the first displayable count deficit", () => {
+    expect(formatDeficitText(0.005, { kind: "count", suffix: "requests" }, "used")).toBe("0.01 requests in deficit")
+  })
 })

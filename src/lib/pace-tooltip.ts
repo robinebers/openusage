@@ -104,9 +104,18 @@ export function formatDeficitText(
   deficit: number,
   format: ProgressFormat,
   displayMode: DisplayMode
-): string {
+): string | null {
+  if (!Number.isFinite(deficit) || deficit <= 0) return null
+
   const suffix = displayMode === "left" ? "short" : "in deficit"
-  if (format.kind === "percent") return `${Math.round(deficit)}% ${suffix}`
-  if (format.kind === "dollars") return `$${formatFixedPrecisionNumber(deficit)} ${suffix}`
-  return `${formatCountNumber(deficit)} ${format.suffix} ${suffix}`
+  if (format.kind === "percent") {
+    const roundedPercent = Math.round(deficit)
+    return roundedPercent > 0 ? `${roundedPercent}% ${suffix}` : null
+  }
+
+  const roundedToCents = Math.round(deficit * 100) / 100
+  if (roundedToCents <= 0) return null
+
+  if (format.kind === "dollars") return `$${formatFixedPrecisionNumber(roundedToCents)} ${suffix}`
+  return `${formatCountNumber(roundedToCents)} ${format.suffix} ${suffix}`
 }
