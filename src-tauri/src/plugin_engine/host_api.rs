@@ -1137,8 +1137,8 @@ fn ls_parse_listening_ports(output: &str) -> Vec<i32> {
     ports.into_iter().collect()
 }
 
-const CCUSAGE_CLAUDE_PACKAGE: &str = "ccusage@18.0.5";
-const CCUSAGE_CODEX_PACKAGE: &str = "@ccusage/codex@18.0.5";
+const CCUSAGE_CLAUDE_PACKAGE: &str = "ccusage@18.0.6";
+const CCUSAGE_CODEX_PACKAGE: &str = "@ccusage/codex@18.0.6";
 const CCUSAGE_TIMEOUT_SECS: u64 = 15;
 const CCUSAGE_POLL_INTERVAL_MS: u64 = 100;
 
@@ -2233,7 +2233,7 @@ mod tests {
             bunx,
             vec![
                 "--silent",
-                "ccusage@18.0.5",
+                "ccusage@18.0.6",
                 "daily",
                 "--json",
                 "--order",
@@ -2251,7 +2251,7 @@ mod tests {
             vec![
                 "-s",
                 "dlx",
-                "ccusage@18.0.5",
+                "ccusage@18.0.6",
                 "daily",
                 "--json",
                 "--order",
@@ -2269,7 +2269,7 @@ mod tests {
             vec![
                 "dlx",
                 "-q",
-                "ccusage@18.0.5",
+                "ccusage@18.0.6",
                 "daily",
                 "--json",
                 "--order",
@@ -2288,7 +2288,7 @@ mod tests {
             vec![
                 "exec",
                 "--yes",
-                "--package=ccusage@18.0.5",
+                "--package=ccusage@18.0.6",
                 "--",
                 "ccusage",
                 "daily",
@@ -2307,7 +2307,7 @@ mod tests {
             npx,
             vec![
                 "--yes",
-                "ccusage@18.0.5",
+                "ccusage@18.0.6",
                 "daily",
                 "--json",
                 "--order",
@@ -2336,7 +2336,7 @@ mod tests {
             vec![
                 "exec",
                 "--yes",
-                "--package=@ccusage/codex@18.0.5",
+                "--package=@ccusage/codex@18.0.6",
                 "--",
                 "ccusage-codex",
                 "daily",
@@ -2355,7 +2355,7 @@ mod tests {
             npx,
             vec![
                 "--yes",
-                "@ccusage/codex@18.0.5",
+                "@ccusage/codex@18.0.6",
                 "daily",
                 "--json",
                 "--order",
