@@ -26,6 +26,119 @@ describe("cursor plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Not logged in")
   })
 
+  it("loads tokens from keychain when sqlite has none", async () => {
+    const ctx = makeCtx()
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([]))
+    ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
+      if (service === "cursor-access-token") return "keychain-access-token"
+      if (service === "cursor-refresh-token") return "keychain-refresh-token"
+      return null
+    })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        enabled: true,
+        planUsage: { totalSpend: 1200, limit: 2400 },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((line) => line.label === "Plan usage")).toBeTruthy()
+    expect(ctx.host.keychain.readGenericPassword).toHaveBeenCalledWith("cursor-access-token")
+    expect(ctx.host.keychain.readGenericPassword).toHaveBeenCalledWith("cursor-refresh-token")
+  })
+
+  it("refreshes keychain access token and persists to keychain source", async () => {
+    const ctx = makeCtx()
+    const expiredPayload = Buffer.from(JSON.stringify({ exp: 1 }), "utf8")
+      .toString("base64")
+      .replace(/=+$/g, "")
+    const expiredAccessToken = `a.${expiredPayload}.c`
+    const freshPayload = Buffer.from(JSON.stringify({ exp: 9999999999 }), "utf8")
+      .toString("base64")
+      .replace(/=+$/g, "")
+    const refreshedAccessToken = `a.${freshPayload}.c`
+
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([]))
+    ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
+      if (service === "cursor-access-token") return expiredAccessToken
+      if (service === "cursor-refresh-token") return "keychain-refresh-token"
+      return null
+    })
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("/oauth/token")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({ access_token: refreshedAccessToken }),
+        }
+      }
+      return {
+        status: 200,
+        bodyText: JSON.stringify({
+          enabled: true,
+          planUsage: { totalSpend: 1200, limit: 2400 },
+        }),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((line) => line.label === "Plan usage")).toBeTruthy()
+    expect(ctx.host.keychain.writeGenericPassword).toHaveBeenCalledWith(
+      "cursor-access-token",
+      refreshedAccessToken
+    )
+    expect(ctx.host.sqlite.exec).not.toHaveBeenCalled()
+  })
+
+  it("prefers sqlite tokens when sqlite and keychain both have tokens", async () => {
+    const ctx = makeCtx()
+    const sqlitePayload = Buffer.from(JSON.stringify({ exp: 9999999999 }), "utf8")
+      .toString("base64")
+      .replace(/=+$/g, "")
+    const sqliteToken = `a.${sqlitePayload}.c`
+    const keychainPayload = Buffer.from(JSON.stringify({ exp: 9999999999, sub: "keychain" }), "utf8")
+      .toString("base64")
+      .replace(/=+$/g, "")
+    const keychainToken = `a.${keychainPayload}.c`
+
+    ctx.host.sqlite.query.mockImplementation((db, sql) => {
+      if (String(sql).includes("cursorAuth/accessToken")) {
+        return JSON.stringify([{ value: sqliteToken }])
+      }
+      if (String(sql).includes("cursorAuth/refreshToken")) {
+        return JSON.stringify([{ value: "sqlite-refresh-token" }])
+      }
+      return JSON.stringify([])
+    })
+    ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
+      if (service === "cursor-access-token") return keychainToken
+      if (service === "cursor-refresh-token") return "keychain-refresh-token"
+      return null
+    })
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("GetCurrentPeriodUsage")) {
+        expect(opts.headers.Authorization).toBe("Bearer " + sqliteToken)
+      }
+      return {
+        status: 200,
+        bodyText: JSON.stringify({
+          enabled: true,
+          planUsage: { totalSpend: 1200, limit: 2400 },
+        }),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((line) => line.label === "Plan usage")).toBeTruthy()
+    expect(ctx.host.keychain.readGenericPassword).not.toHaveBeenCalled()
+  })
+
   it("throws on sqlite errors when reading token", async () => {
     const ctx = makeCtx()
     ctx.host.sqlite.query.mockImplementation(() => {
