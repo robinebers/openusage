@@ -1,7 +1,7 @@
 import type { PaceResult, PaceStatus } from "@/lib/pace-status"
 import type { ProgressFormat } from "@/lib/plugin-types"
 import type { DisplayMode } from "@/lib/settings"
-import { formatFixedPrecisionNumber } from "@/lib/utils"
+import { formatCountNumber, formatFixedPrecisionNumber } from "@/lib/utils"
 
 export function getPaceStatusText(status: PaceStatus): string {
   return status === "ahead" ? "Plenty of room" : status === "on-track" ? "Right on target" : "Will run out"
@@ -108,5 +108,5 @@ export function formatDeficitText(
   const suffix = displayMode === "left" ? "short" : "in deficit"
   if (format.kind === "percent") return `${Math.round(deficit)}% ${suffix}`
   if (format.kind === "dollars") return `$${formatFixedPrecisionNumber(deficit)} ${suffix}`
-  return `${formatFixedPrecisionNumber(deficit)} ${format.suffix} ${suffix}`
+  return `${formatCountNumber(deficit)} ${format.suffix} ${suffix}`
 }

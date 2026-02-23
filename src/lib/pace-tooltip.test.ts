@@ -265,6 +265,10 @@ describe("formatDeficitText", () => {
     expect(formatDeficitText(15, { kind: "count", suffix: "requests" }, "used")).toBe("15 requests in deficit")
   })
 
+  it("formats decimal count deficit without forced trailing zeros", () => {
+    expect(formatDeficitText(4.5, { kind: "count", suffix: "requests" }, "used")).toBe("4.5 requests in deficit")
+  })
+
   it("rounds percent deficit", () => {
     expect(formatDeficitText(4.7, { kind: "percent" }, "used")).toBe("5% in deficit")
   })

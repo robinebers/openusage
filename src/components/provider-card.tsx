@@ -11,7 +11,7 @@ import { PluginError } from "@/components/plugin-error"
 import { useNowTicker } from "@/hooks/use-now-ticker"
 import { REFRESH_COOLDOWN_MS, type DisplayMode, type ResetTimerDisplayMode } from "@/lib/settings"
 import type { ManifestLine, MetricLine, PluginLink } from "@/lib/plugin-types"
-import { clamp01, formatFixedPrecisionNumber } from "@/lib/utils"
+import { clamp01, formatCountNumber, formatFixedPrecisionNumber } from "@/lib/utils"
 import { calculateDeficit, calculatePaceStatus, type PaceStatus } from "@/lib/pace-status"
 import { buildPaceDetailText, formatCompactDuration, formatDeficitText, formatRunsOutText, getPaceStatusText } from "@/lib/pace-tooltip"
 
@@ -36,12 +36,6 @@ const PACE_VISUALS: Record<PaceStatus, { dotClass: string }> = {
   ahead: { dotClass: "bg-green-500" },
   "on-track": { dotClass: "bg-yellow-500" },
   behind: { dotClass: "bg-red-500" },
-}
-
-function formatCount(value: number) {
-  if (!Number.isFinite(value)) return "0"
-  const maximumFractionDigits = Number.isInteger(value) ? 0 : 2
-  return new Intl.NumberFormat("en-US", { maximumFractionDigits }).format(value)
 }
 
 const RESET_SOON_THRESHOLD_MS = 5 * 60 * 1000
@@ -401,7 +395,7 @@ function MetricLineRenderer({
         ? `${Math.round(shownAmount)}%${leftSuffix}`
         : line.format.kind === "dollars"
           ? `$${formatFixedPrecisionNumber(shownAmount)}${leftSuffix}`
-          : `${formatCount(shownAmount)} ${line.format.suffix}${leftSuffix}`
+          : `${formatCountNumber(shownAmount)} ${line.format.suffix}${leftSuffix}`
 
     const resetLabel = line.resetsAt
       ? resetTimerDisplayMode === "absolute"
@@ -415,7 +409,7 @@ function MetricLineRenderer({
         ? `${line.limit}% cap`
         : line.format.kind === "dollars"
           ? `$${formatFixedPrecisionNumber(line.limit)} limit`
-          : `${formatCount(line.limit)} ${line.format.suffix}`)
+          : `${formatCountNumber(line.limit)} ${line.format.suffix}`)
 
     // Calculate pace status if we have reset time and period duration
     const paceResult = hasPaceContext

@@ -20,3 +20,9 @@ export function formatFixedPrecisionNumber(value: number): string {
     maximumFractionDigits: fractionDigits,
   }).format(value)
 }
+
+export function formatCountNumber(value: number): string {
+  if (!Number.isFinite(value)) return "0"
+  const maximumFractionDigits = Number.isInteger(value) ? 0 : 2
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits }).format(value)
+}
