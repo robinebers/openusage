@@ -14,86 +14,34 @@ function escapeXmlText(text: string): string {
     .replace(/'/g, "&apos;")
 }
 
-function normalizePercentText(percentText: string | undefined): string | undefined {
-  if (typeof percentText !== "string") return undefined
-  const trimmed = percentText.trim()
-  return trimmed.length > 0 ? trimmed : undefined
-}
-
-function estimateTextWidthPx(text: string, fontSize: number): number {
-  // Empirical estimate for SF Pro bold numeric glyphs in tray-sized icons.
-  return Math.ceil(text.length * fontSize * 0.62 + fontSize * 0.2)
-}
-
 function getSvgLayout(args: {
   sizePx: number
-  percentText?: string
 }): {
   width: number
   height: number
   pad: number
-  gap: number
   barsX: number
-  barsWidth: number
-  textX: number
-  textY: number
-  fontSize: number
 } {
-  const { sizePx, percentText } = args
-  const hasPercentText = typeof percentText === "string" && percentText.length > 0
-  const verticalNudgePx = 1
+  const { sizePx } = args
   const pad = Math.max(1, Math.round(sizePx * 0.08)) // ~2px at 24–36px
-  const gap = Math.max(1, Math.round(sizePx * 0.03)) // ~1px at 36px
 
   const height = sizePx
   const barsX = pad
-  const barsWidth = sizePx - 2 * pad
-  const fontSize = Math.max(9, Math.round(sizePx * 0.72))
-  const textWidth = hasPercentText ? estimateTextWidthPx(percentText, fontSize) : 0
-  // Optical correction + global nudge down to align with the tray slot center.
-  const textY = Math.round(sizePx / 2) + 1 + verticalNudgePx
-
-  if (!hasPercentText) {
-    return {
-      width: sizePx,
-      height,
-      pad,
-      gap,
-      barsX,
-      barsWidth,
-      textX: 0,
-      textY,
-      fontSize,
-    }
-  }
-
-  const textGap = Math.max(2, Math.round(sizePx * 0.08))
-  const textAreaWidth = Math.max(20, Math.round(sizePx * 1.5), textWidth + pad)
-  const rightPad = pad
-
   return {
-    width: sizePx + textGap + textAreaWidth + rightPad,
+    width: sizePx,
     height,
     pad,
-    gap,
     barsX,
-    barsWidth,
-    textX: sizePx + textGap,
-    textY,
-    fontSize,
   }
 }
 
 export function makeTrayBarsSvg(args: {
   sizePx: number
-  percentText?: string
   providerIconUrl?: string
 }): string {
-  const { sizePx, percentText, providerIconUrl } = args
-  const text = normalizePercentText(percentText)
+  const { sizePx, providerIconUrl } = args
   const layout = getSvgLayout({
     sizePx,
-    percentText: text,
   })
 
   const width = layout.width
@@ -120,11 +68,6 @@ export function makeTrayBarsSvg(args: {
     const strokeW = Math.max(1.5, Math.round(iconSize * 0.14))
     parts.push(
       `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="black" stroke-width="${strokeW}" opacity="1" shape-rendering="geometricPrecision" />`
-    )
-  }
-  if (text) {
-    parts.push(
-      `<text x="${layout.textX}" y="${layout.textY}" fill="black" font-family="-apple-system,BlinkMacSystemFont,'SF Pro Text',sans-serif" font-size="${layout.fontSize}" font-weight="700" dominant-baseline="middle">${escapeXmlText(text)}</text>`
     )
   }
 
@@ -167,19 +110,15 @@ async function rasterizeSvgToRgba(svg: string, widthPx: number, heightPx: number
 
 export async function renderTrayBarsIcon(args: {
   sizePx: number
-  percentText?: string
   providerIconUrl?: string
 }): Promise<Image> {
-  const { sizePx, percentText, providerIconUrl } = args
-  const text = normalizePercentText(percentText)
+  const { sizePx, providerIconUrl } = args
   const svg = makeTrayBarsSvg({
     sizePx,
-    percentText: text,
     providerIconUrl,
   })
   const layout = getSvgLayout({
     sizePx,
-    percentText: text,
   })
   const rgba = await rasterizeSvgToRgba(svg, layout.width, layout.height)
   return await Image.new(rgba, layout.width, layout.height)

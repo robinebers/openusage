@@ -14,22 +14,20 @@ describe("tray-bars-icon", () => {
     expect(getTrayIconSizePx(2)).toBe(36)
   })
 
-  it("renders provider icon and percentage text", () => {
+  it("renders provider icon", () => {
     const svg = makeTrayBarsSvg({
       sizePx: 36,
-      percentText: "83%",
       providerIconUrl: "data:image/svg+xml;base64,ABC",
     })
 
     expect(svg).toContain("<image ")
     expect(svg).toContain('href="data:image/svg+xml;base64,ABC"')
-    expect(svg).toContain(">83%</text>")
     const viewBox = svg.match(/viewBox="0 0 (\d+) (\d+)"/)
     expect(viewBox).toBeTruthy()
     if (viewBox) {
       const width = Number(viewBox[1])
       const height = Number(viewBox[2])
-      expect(width).toBeGreaterThan(height)
+      expect(width).toBe(height)
     }
   })
 
@@ -41,7 +39,7 @@ describe("tray-bars-icon", () => {
     expect(svg).toContain("<circle ")
   })
 
-  it("omits percentage text when missing", () => {
+  it("never renders svg text", () => {
     const svg = makeTrayBarsSvg({
       sizePx: 18,
     })
