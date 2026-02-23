@@ -1,7 +1,5 @@
 import { Image } from "@tauri-apps/api/image"
 
-import type { TrayPrimaryBar } from "@/lib/tray-primary-progress"
-
 function rgbaToImageDataBytes(rgba: Uint8ClampedArray): Uint8Array {
   // Image.new expects Uint8Array. Uint8ClampedArray shares the same buffer layout.
   return new Uint8Array(rgba.buffer)
@@ -87,12 +85,11 @@ function getSvgLayout(args: {
 }
 
 export function makeTrayBarsSvg(args: {
-  bars: TrayPrimaryBar[]
   sizePx: number
   percentText?: string
   providerIconUrl?: string
 }): string {
-  const { bars, sizePx, percentText, providerIconUrl } = args
+  const { sizePx, percentText, providerIconUrl } = args
   const text = normalizePercentText(percentText)
   const layout = getSvgLayout({
     sizePx,
@@ -125,8 +122,6 @@ export function makeTrayBarsSvg(args: {
       `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="black" stroke-width="${strokeW}" opacity="1" shape-rendering="geometricPrecision" />`
     )
   }
-  void bars
-
   if (text) {
     parts.push(
       `<text x="${layout.textX}" y="${layout.textY}" fill="black" font-family="-apple-system,BlinkMacSystemFont,'SF Pro Text',sans-serif" font-size="${layout.fontSize}" font-weight="700" dominant-baseline="middle">${escapeXmlText(text)}</text>`
@@ -171,15 +166,13 @@ async function rasterizeSvgToRgba(svg: string, widthPx: number, heightPx: number
 }
 
 export async function renderTrayBarsIcon(args: {
-  bars: TrayPrimaryBar[]
   sizePx: number
   percentText?: string
   providerIconUrl?: string
 }): Promise<Image> {
-  const { bars, sizePx, percentText, providerIconUrl } = args
+  const { sizePx, percentText, providerIconUrl } = args
   const text = normalizePercentText(percentText)
   const svg = makeTrayBarsSvg({
-    bars,
     sizePx,
     percentText: text,
     providerIconUrl,

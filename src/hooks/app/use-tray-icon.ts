@@ -170,7 +170,6 @@ export function useTrayIcon({
         pluginsMetaRef.current.find((plugin) => plugin.id === trayProviderId)?.iconUrl
 
       renderTrayBarsIcon({
-        bars: [{ id: trayProviderId, fraction: clampedFraction }],
         sizePx,
         providerIconUrl,
       })

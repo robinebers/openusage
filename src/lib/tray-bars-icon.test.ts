@@ -17,7 +17,6 @@ describe("tray-bars-icon", () => {
   it("renders provider icon and percentage text", () => {
     const svg = makeTrayBarsSvg({
       sizePx: 36,
-      bars: [{ id: "a", fraction: 0.83 }],
       percentText: "83%",
       providerIconUrl: "data:image/svg+xml;base64,ABC",
     })
@@ -37,7 +36,6 @@ describe("tray-bars-icon", () => {
   it("falls back to circle glyph when provider icon is missing", () => {
     const svg = makeTrayBarsSvg({
       sizePx: 36,
-      bars: [{ id: "a", fraction: 0.4 }],
     })
     expect(svg).not.toContain("<image ")
     expect(svg).toContain("<circle ")
@@ -46,7 +44,6 @@ describe("tray-bars-icon", () => {
   it("omits percentage text when missing", () => {
     const svg = makeTrayBarsSvg({
       sizePx: 18,
-      bars: [{ id: "a", fraction: 0.5 }],
     })
     expect(svg).not.toContain("<text ")
   })
@@ -89,7 +86,6 @@ describe("tray-bars-icon", () => {
     try {
       const img = await renderTrayBarsIcon({
         sizePx: 18,
-        bars: [{ id: "a", fraction: 0.5 }],
       })
       expect(img).toBeTruthy()
     } finally {
