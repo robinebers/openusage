@@ -348,4 +348,179 @@ describe("minimax plugin", () => {
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Could not parse usage data.")
   })
+
+  it("normalizes bare 'MiniMax Coding Plan' to 'Coding Plan'", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        base_resp: { status_code: 0 },
+        plan_name: "MiniMax Coding Plan",
+        model_remains: [
+          {
+            current_interval_total_count: 100,
+            current_interval_usage_count: 20,
+          },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.plan).toBe("Coding Plan")
+  })
+
+  it("supports payload.modelRemains and remains-count aliases", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        base_resp: { status_code: 0 },
+        plan: "MiniMax Coding Plan: Team",
+        modelRemains: [
+          {
+            currentIntervalTotalCount: "300",
+            remainsCount: "120",
+            endTime: 1700018000000,
+          },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.plan).toBe("Team")
+    expect(result.lines[0].used).toBe(180)
+    expect(result.lines[0].limit).toBe(300)
+  })
+
+  it("clamps negative used counts to zero", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        base_resp: { status_code: 0 },
+        model_remains: [
+          {
+            current_interval_total_count: 100,
+            current_interval_used_count: -5,
+          },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines[0].used).toBe(0)
+  })
+
+  it("clamps used counts above total", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        base_resp: { status_code: 0 },
+        model_remains: [
+          {
+            current_interval_total_count: 100,
+            current_interval_used_count: 500,
+          },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines[0].used).toBe(100)
+  })
+
+  it("supports epoch seconds for start/end timestamps", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        base_resp: { status_code: 0 },
+        model_remains: [
+          {
+            current_interval_total_count: 100,
+            current_interval_usage_count: 25,
+            start_time: 1700000000,
+            end_time: 1700018000,
+          },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const line = result.lines[0]
+    expect(line.periodDurationMs).toBe(18000000)
+    expect(line.resetsAt).toBe(new Date(1700018000 * 1000).toISOString())
+  })
+
+  it("infers remains_time as milliseconds when value is plausible", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
+    vi.spyOn(Date, "now").mockReturnValue(1700000000000)
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        base_resp: { status_code: 0 },
+        model_remains: [
+          {
+            current_interval_total_count: 100,
+            current_interval_usage_count: 40,
+            remains_time: 300000,
+          },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines[0].resetsAt).toBe(new Date(1700000000000 + 300000).toISOString())
+  })
+
+  it("throws parse error when model_remains entries are unusable", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        base_resp: { status_code: 0 },
+        model_remains: [null, { current_interval_total_count: 0, current_interval_usage_count: 1 }],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Could not parse usage data")
+  })
+
+  it("throws parse error when both used and remaining counts are missing", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        base_resp: { status_code: 0 },
+        model_remains: [{ current_interval_total_count: 100 }],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Could not parse usage data")
+  })
 })

@@ -493,4 +493,37 @@ describe("copilot plugin", () => {
     const plugin = await loadPlugin();
     expect(() => plugin.probe(ctx)).toThrow("Token invalid");
   });
+
+  it("falls back when OpenUsage keychain payload lacks token field", async () => {
+    const ctx = makePluginTestContext();
+    ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
+      if (service === "OpenUsage-copilot") return JSON.stringify({ notToken: "x" });
+      if (service === "gh:github.com") return "gho_fallback";
+      return null;
+    });
+    mockUsageOk(ctx, makeUsageResponse({ copilot_plan: null }));
+
+    const plugin = await loadPlugin();
+    const result = plugin.probe(ctx);
+    expect(result.plan).toBeNull();
+    expect(result.lines.find((l) => l.label === "Premium")).toBeTruthy();
+  });
+
+  it("shows status badge when free-tier quotas are present but invalid", async () => {
+    const ctx = makePluginTestContext();
+    setKeychainToken(ctx, "tok");
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        limited_user_quotas: { chat: 10, completions: "x" },
+        monthly_quotas: { chat: 0, completions: 0 },
+        limited_user_reset_date: "2026-02-11",
+      }),
+    });
+
+    const plugin = await loadPlugin();
+    const result = plugin.probe(ctx);
+    expect(result.lines).toHaveLength(1);
+    expect(result.lines[0].text).toBe("No usage data");
+  });
 });

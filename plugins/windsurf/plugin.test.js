@@ -392,4 +392,64 @@ describe("windsurf plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Start Windsurf and try again.")
   })
 
+  it("treats missing apiKey in SQLite auth payload as unavailable", async () => {
+    const ctx = makeCtx()
+    ctx.host.ls.discover.mockReturnValue(makeDiscovery())
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: JSON.stringify({}) }]))
+    ctx.host.http.request.mockImplementation((reqOpts) => {
+      if (String(reqOpts.url).includes("GetUnleashData")) {
+        return { status: 200, bodyText: "{}" }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Start Windsurf and try again.")
+  })
+
+  it("uses extensionPort when ports list is missing", async () => {
+    const ctx = makeCtx()
+    const discovery = makeDiscovery({ ports: undefined, extensionPort: 42002 })
+    setupLsMock(ctx, discovery, "sk-ws-01-test", makeLsResponse())
+    ctx.host.http.request.mockImplementation((reqOpts) => {
+      const url = String(reqOpts.url)
+      if (url.includes(":42002/") && url.includes("GetUserStatus")) {
+        return { status: 200, bodyText: JSON.stringify(makeLsResponse()) }
+      }
+      if (url.includes("GetUnleashData")) {
+        return { status: 500, bodyText: "{}" }
+      }
+      return { status: 500, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.plan).toBe("Teams")
+  })
+
+  it("fails when all probes fail and extensionPort is absent", async () => {
+    const ctx = makeCtx()
+    const discovery = makeDiscovery({ ports: [42001], extensionPort: null })
+    setupLsMock(ctx, discovery, "sk-ws-01-test", makeLsResponse())
+    ctx.host.http.request.mockImplementation((reqOpts) => {
+      if (String(reqOpts.url).includes("GetUnleashData")) {
+        throw new Error("probe failed")
+      }
+      return { status: 500, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Start Windsurf and try again.")
+  })
+
+  it("handles sparse userStatus payload and returns unlimited badge", async () => {
+    const ctx = makeCtx()
+    setupLsMock(ctx, makeDiscovery({ extra: null }), "sk-ws-01-test", { userStatus: {} })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.plan).toBeNull()
+    expect(result.lines).toEqual([{ type: "badge", label: "Credits", text: "Unlimited" }])
+  })
+
 })
