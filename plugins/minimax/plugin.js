@@ -190,7 +190,6 @@
     let used = explicitUsed
 
     if (used === null && inferredRemainingCount !== null) used = total - inferredRemainingCount
-    if (used === null && usageFieldCount !== null) used = usageFieldCount
     if (used === null) return null
     if (used < 0) used = 0
     if (used > total) used = total
@@ -284,7 +283,6 @@
     }
     if (lastStatus !== null) throw "Request failed (HTTP " + lastStatus + "). Try again later."
     if (hadNetworkError) throw "Request failed. Check your connection."
-    if (authStatusCount > 0) throw "Session expired. Check your MiniMax API key."
     throw "Could not parse usage data."
   }
 
