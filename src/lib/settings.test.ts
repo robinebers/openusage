@@ -26,25 +26,33 @@ import {
 import type { PluginMeta } from "@/lib/plugin-types"
 
 const storeState = new Map<string, unknown>()
+const storeDeleteMock = vi.fn()
+const storeSaveMock = vi.fn()
 
 vi.mock("@tauri-apps/plugin-store", () => ({
   LazyStore: class {
     async get<T>(key: string): Promise<T | null> {
-      return (storeState.get(key) as T | undefined) ?? null
+      if (!storeState.has(key)) return undefined as T | null
+      return storeState.get(key) as T | null
     }
     async set<T>(key: string, value: T): Promise<void> {
       storeState.set(key, value)
     }
     async delete(key: string): Promise<void> {
+      storeDeleteMock(key)
       storeState.delete(key)
     }
-    async save(): Promise<void> {}
+    async save(): Promise<void> {
+      storeSaveMock()
+    }
   },
 }))
 
 describe("settings", () => {
   beforeEach(() => {
     storeState.clear()
+    storeDeleteMock.mockReset()
+    storeSaveMock.mockReset()
   })
 
   it("loads defaults when no settings stored", async () => {
@@ -185,6 +193,8 @@ describe("settings", () => {
     await expect(migrateLegacyTraySettings()).resolves.toBeUndefined()
     expect(storeState.has("trayIconStyle")).toBe(false)
     expect(storeState.has("trayShowPercentage")).toBe(false)
+    expect(storeDeleteMock).not.toHaveBeenCalled()
+    expect(storeSaveMock).not.toHaveBeenCalled()
   })
 
   it("loads default start on login when missing", async () => {

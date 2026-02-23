@@ -89,10 +89,13 @@ export function useTrayIcon({
         return
       }
 
+      const maybeSetTitle = (tray as TrayIcon & { setTitle?: (value: string) => Promise<void> }).setTitle
+      const setTitleFn =
+        typeof maybeSetTitle === "function" ? (value: string) => maybeSetTitle.call(tray, value) : null
+      const supportsNativeTrayTitle = setTitleFn !== null
       const setTrayTitle = (title: string) => {
-        const maybeSetTitle = (tray as TrayIcon & { setTitle?: (value: string) => Promise<void> }).setTitle
-        if (typeof maybeSetTitle === "function") {
-          return maybeSetTitle.call(tray, title)
+        if (setTitleFn) {
+          return setTitleFn(title)
         }
         return Promise.resolve()
       }
@@ -171,6 +174,7 @@ export function useTrayIcon({
 
       renderTrayBarsIcon({
         sizePx,
+        percentText: supportsNativeTrayTitle ? undefined : percentText,
         providerIconUrl,
       })
         .then(async (img) => {

@@ -46,6 +46,14 @@ describe("tray-bars-icon", () => {
     expect(svg).not.toContain("<text ")
   })
 
+  it("renders svg text when percentage is provided", () => {
+    const svg = makeTrayBarsSvg({
+      sizePx: 18,
+      percentText: "70%",
+    })
+    expect(svg).toContain(">70%</text>")
+  })
+
   it("renderTrayBarsIcon rasterizes SVG to an Image using canvas", async () => {
     const originalImage = window.Image
     const originalCreateElement = document.createElement.bind(document)

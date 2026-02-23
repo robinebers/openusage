@@ -407,6 +407,21 @@ describe("App", () => {
     await waitFor(() => expect(state.traySetTitleMock).toHaveBeenCalledWith("--%"))
   })
 
+  it("renders percent text in tray icon when native title is unavailable", async () => {
+    state.trayGetByIdMock.mockResolvedValueOnce({
+      setIcon: state.traySetIconMock.mockResolvedValue(undefined),
+      setIconAsTemplate: state.traySetIconAsTemplateMock.mockResolvedValue(undefined),
+    })
+
+    render(<App />)
+    await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
+    await waitFor(() => expect(state.renderTrayBarsIconMock).toHaveBeenCalled())
+
+    const firstCall = state.renderTrayBarsIconMock.mock.calls[0]?.[0]
+    expect(firstCall.percentText).toBe("--%")
+    expect(state.traySetTitleMock).not.toHaveBeenCalled()
+  })
+
   it("uses selected provider on detail view and keeps it on home/settings", async () => {
     state.invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === "list_plugins") {

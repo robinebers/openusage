@@ -223,12 +223,14 @@ export async function migrateLegacyTraySettings(): Promise<void> {
     store.get<unknown>(LEGACY_TRAY_SHOW_PERCENTAGE_KEY),
   ]);
 
-  if (legacyTrayStyle === null && legacyShowPercentage === null) return;
+  const hasLegacyTrayStyle = legacyTrayStyle != null;
+  const hasLegacyShowPercentage = legacyShowPercentage != null;
+  if (!hasLegacyTrayStyle && !hasLegacyShowPercentage) return;
 
-  await Promise.all([
-    deleteStoreKey(LEGACY_TRAY_ICON_STYLE_KEY),
-    deleteStoreKey(LEGACY_TRAY_SHOW_PERCENTAGE_KEY),
-  ]);
+  const removals: Promise<void>[] = [];
+  if (hasLegacyTrayStyle) removals.push(deleteStoreKey(LEGACY_TRAY_ICON_STYLE_KEY));
+  if (hasLegacyShowPercentage) removals.push(deleteStoreKey(LEGACY_TRAY_SHOW_PERCENTAGE_KEY));
+  await Promise.all(removals);
   await store.save();
 }
 
