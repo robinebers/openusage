@@ -62,9 +62,12 @@ const eventState = vi.hoisted(() => {
 const menuState = vi.hoisted(() => ({
   iconMenuItemConfigs: [] as Array<{ id: string; action?: () => void }>,
   iconMenuItemNewMock: vi.fn(),
+  iconMenuItemCloseMock: vi.fn(async () => undefined),
   predefinedMenuItemNewMock: vi.fn(),
+  predefinedMenuItemCloseMock: vi.fn(async () => undefined),
   menuNewMock: vi.fn(),
   menuPopupMock: vi.fn(async () => undefined),
+  menuCloseMock: vi.fn(async () => undefined),
 }))
 
 vi.mock("@dnd-kit/core", () => ({
@@ -125,13 +128,19 @@ vi.mock("@tauri-apps/api/menu", () => ({
     new: async (config: { id: string; action?: () => void }) => {
       menuState.iconMenuItemConfigs.push(config)
       menuState.iconMenuItemNewMock(config)
-      return config
+      return {
+        ...config,
+        close: menuState.iconMenuItemCloseMock,
+      }
     },
   },
   PredefinedMenuItem: {
     new: async (config: unknown) => {
       menuState.predefinedMenuItemNewMock(config)
-      return config
+      return {
+        ...((typeof config === "object" && config !== null ? config : {}) as Record<string, unknown>),
+        close: menuState.predefinedMenuItemCloseMock,
+      }
     },
   },
   Menu: {
@@ -139,6 +148,7 @@ vi.mock("@tauri-apps/api/menu", () => ({
       menuState.menuNewMock(config)
       return {
         popup: menuState.menuPopupMock,
+        close: menuState.menuCloseMock,
       }
     },
   },
@@ -262,9 +272,12 @@ describe("App", () => {
     state.resolveResourceMock.mockReset()
     menuState.iconMenuItemConfigs.length = 0
     menuState.iconMenuItemNewMock.mockReset()
+    menuState.iconMenuItemCloseMock.mockReset()
     menuState.predefinedMenuItemNewMock.mockReset()
+    menuState.predefinedMenuItemCloseMock.mockReset()
     menuState.menuNewMock.mockReset()
     menuState.menuPopupMock.mockReset()
+    menuState.menuCloseMock.mockReset()
     eventState.handlers.clear()
     eventState.listenMock.mockReset()
     updaterState.checkMock.mockReset()
@@ -884,6 +897,18 @@ describe("App", () => {
 
     await waitFor(() => expect(state.startBatchMock).toHaveBeenCalledWith(["b"]))
     expect(state.trackMock).toHaveBeenCalledWith("provider_refreshed", { provider_id: "b" })
+  })
+
+  it("closes sidebar context menu resources after popup", async () => {
+    render(<App />)
+
+    const pluginButton = await screen.findByRole("button", { name: "Alpha" })
+    fireEvent.contextMenu(pluginButton)
+    await waitFor(() => expect(menuState.menuPopupMock).toHaveBeenCalled())
+
+    await waitFor(() => expect(menuState.menuCloseMock).toHaveBeenCalledTimes(1))
+    expect(menuState.iconMenuItemCloseMock).toHaveBeenCalledTimes(2)
+    expect(menuState.predefinedMenuItemCloseMock).toHaveBeenCalledTimes(1)
   })
 
   it("removes plugin from sidebar context menu", async () => {

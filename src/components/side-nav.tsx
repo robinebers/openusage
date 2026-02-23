@@ -94,7 +94,16 @@ export function SideNav({ activeView, onViewChange, plugins, onPluginContextActi
         const menu = await Menu.new({
           items: [reloadItem, separator, removeItem],
         })
-        await menu.popup()
+        try {
+          await menu.popup()
+        } finally {
+          await Promise.allSettled([
+            menu.close(),
+            reloadItem.close(),
+            separator.close(),
+            removeItem.close(),
+          ])
+        }
       })().catch(console.error)
     },
     [onPluginContextAction]
