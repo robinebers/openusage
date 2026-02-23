@@ -2,7 +2,6 @@ import { useShallow } from "zustand/react/shallow"
 import { OverviewPage } from "@/pages/overview"
 import { ProviderDetailPage } from "@/pages/provider-detail"
 import { SettingsPage } from "@/pages/settings"
-import type { NavPlugin } from "@/components/side-nav"
 import type { DisplayPluginState } from "@/hooks/app/use-app-plugin-views"
 import type { SettingsPluginState } from "@/hooks/app/use-settings-plugin-list"
 import { useAppPreferencesStore } from "@/stores/app-preferences-store"
@@ -13,11 +12,9 @@ import type {
   GlobalShortcut,
   ResetTimerDisplayMode,
   ThemeMode,
-  TrayIconStyle,
 } from "@/lib/settings"
 
 type AppContentDerivedProps = {
-  navPlugins: NavPlugin[]
   displayPlugins: DisplayPluginState[]
   settingsPlugins: SettingsPluginState[]
   selectedPlugin: DisplayPluginState | null
@@ -32,8 +29,6 @@ export type AppContentActionProps = {
   onDisplayModeChange: (mode: DisplayMode) => void
   onResetTimerDisplayModeChange: (mode: ResetTimerDisplayMode) => void
   onResetTimerDisplayModeToggle: () => void
-  onTrayIconStyleChange: (style: TrayIconStyle) => void
-  onTrayShowPercentageChange: (value: boolean) => void
   onGlobalShortcutChange: (value: GlobalShortcut) => void
   onStartOnLoginChange: (value: boolean) => void
 }
@@ -41,7 +36,6 @@ export type AppContentActionProps = {
 export type AppContentProps = AppContentDerivedProps & AppContentActionProps
 
 export function AppContent({
-  navPlugins,
   displayPlugins,
   settingsPlugins,
   selectedPlugin,
@@ -53,8 +47,6 @@ export function AppContent({
   onDisplayModeChange,
   onResetTimerDisplayModeChange,
   onResetTimerDisplayModeToggle,
-  onTrayIconStyleChange,
-  onTrayShowPercentageChange,
   onGlobalShortcutChange,
   onStartOnLoginChange,
 }: AppContentProps) {
@@ -68,8 +60,6 @@ export function AppContent({
     displayMode,
     resetTimerDisplayMode,
     autoUpdateInterval,
-    trayIconStyle,
-    trayShowPercentage,
     globalShortcut,
     themeMode,
     startOnLogin,
@@ -78,8 +68,6 @@ export function AppContent({
       displayMode: state.displayMode,
       resetTimerDisplayMode: state.resetTimerDisplayMode,
       autoUpdateInterval: state.autoUpdateInterval,
-      trayIconStyle: state.trayIconStyle,
-      trayShowPercentage: state.trayShowPercentage,
       globalShortcut: state.globalShortcut,
       themeMode: state.themeMode,
       startOnLogin: state.startOnLogin,
@@ -112,15 +100,10 @@ export function AppContent({
         onDisplayModeChange={onDisplayModeChange}
         resetTimerDisplayMode={resetTimerDisplayMode}
         onResetTimerDisplayModeChange={onResetTimerDisplayModeChange}
-        trayIconStyle={trayIconStyle}
-        onTrayIconStyleChange={onTrayIconStyleChange}
-        trayShowPercentage={trayShowPercentage}
-        onTrayShowPercentageChange={onTrayShowPercentageChange}
         globalShortcut={globalShortcut}
         onGlobalShortcutChange={onGlobalShortcutChange}
         startOnLogin={startOnLogin}
         onStartOnLoginChange={onStartOnLoginChange}
-        providerIconUrl={navPlugins[0]?.iconUrl}
       />
     )
   }

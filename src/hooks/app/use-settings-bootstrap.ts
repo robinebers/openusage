@@ -14,29 +14,23 @@ import {
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
   DEFAULT_START_ON_LOGIN,
   DEFAULT_THEME_MODE,
-  DEFAULT_TRAY_ICON_STYLE,
-  DEFAULT_TRAY_SHOW_PERCENTAGE,
   getEnabledPluginIds,
-  isTrayPercentageMandatory,
   loadAutoUpdateInterval,
   loadDisplayMode,
   loadGlobalShortcut,
+  migrateLegacyTraySettings,
   loadPluginSettings,
   loadResetTimerDisplayMode,
   loadStartOnLogin,
-  loadTrayIconStyle,
-  loadTrayShowPercentage,
   loadThemeMode,
   normalizePluginSettings,
   savePluginSettings,
-  saveTrayShowPercentage,
   type AutoUpdateIntervalMinutes,
   type DisplayMode,
   type GlobalShortcut,
   type PluginSettings,
   type ResetTimerDisplayMode,
   type ThemeMode,
-  type TrayIconStyle,
 } from "@/lib/settings"
 
 type UseSettingsBootstrapArgs = {
@@ -46,8 +40,6 @@ type UseSettingsBootstrapArgs = {
   setThemeMode: (value: ThemeMode) => void
   setDisplayMode: (value: DisplayMode) => void
   setResetTimerDisplayMode: (value: ResetTimerDisplayMode) => void
-  setTrayIconStyle: (value: TrayIconStyle) => void
-  setTrayShowPercentage: (value: boolean) => void
   setGlobalShortcut: (value: GlobalShortcut) => void
   setStartOnLogin: (value: boolean) => void
   setLoadingForPlugins: (ids: string[]) => void
@@ -62,8 +54,6 @@ export function useSettingsBootstrap({
   setThemeMode,
   setDisplayMode,
   setResetTimerDisplayMode,
-  setTrayIconStyle,
-  setTrayShowPercentage,
   setGlobalShortcut,
   setStartOnLogin,
   setLoadingForPlugins,
@@ -126,20 +116,6 @@ export function useSettingsBootstrap({
           console.error("Failed to load reset timer display mode:", error)
         }
 
-        let storedTrayIconStyle = DEFAULT_TRAY_ICON_STYLE
-        try {
-          storedTrayIconStyle = await loadTrayIconStyle()
-        } catch (error) {
-          console.error("Failed to load tray icon style:", error)
-        }
-
-        let storedTrayShowPercentage = DEFAULT_TRAY_SHOW_PERCENTAGE
-        try {
-          storedTrayShowPercentage = await loadTrayShowPercentage()
-        } catch (error) {
-          console.error("Failed to load tray show percentage:", error)
-        }
-
         let storedGlobalShortcut = DEFAULT_GLOBAL_SHORTCUT
         try {
           storedGlobalShortcut = await loadGlobalShortcut()
@@ -159,10 +135,11 @@ export function useSettingsBootstrap({
         } catch (error) {
           console.error("Failed to apply start on login setting:", error)
         }
-
-        const normalizedTrayShowPercentage = isTrayPercentageMandatory(storedTrayIconStyle)
-          ? true
-          : storedTrayShowPercentage
+        try {
+          await migrateLegacyTraySettings()
+        } catch (error) {
+          console.error("Failed to migrate legacy tray settings:", error)
+        }
 
         if (isMounted) {
           setPluginSettings(normalized)
@@ -170,8 +147,6 @@ export function useSettingsBootstrap({
           setThemeMode(storedThemeMode)
           setDisplayMode(storedDisplayMode)
           setResetTimerDisplayMode(storedResetTimerDisplayMode)
-          setTrayIconStyle(storedTrayIconStyle)
-          setTrayShowPercentage(normalizedTrayShowPercentage)
           setGlobalShortcut(storedGlobalShortcut)
           setStartOnLogin(storedStartOnLogin)
 
@@ -185,12 +160,6 @@ export function useSettingsBootstrap({
               setErrorForPlugins(enabledIds, "Failed to start probe")
             }
           }
-        }
-
-        if (isTrayPercentageMandatory(storedTrayIconStyle) && storedTrayShowPercentage !== true) {
-          void saveTrayShowPercentage(true).catch((error) => {
-            console.error("Failed to save tray show percentage:", error)
-          })
         }
       } catch (e) {
         console.error("Failed to load plugin settings:", e)
@@ -209,13 +178,12 @@ export function useSettingsBootstrap({
     setErrorForPlugins,
     setGlobalShortcut,
     setLoadingForPlugins,
+    migrateLegacyTraySettings,
     setPluginSettings,
     setPluginsMeta,
     setResetTimerDisplayMode,
     setStartOnLogin,
     setThemeMode,
-    setTrayIconStyle,
-    setTrayShowPercentage,
     startBatch,
   ])
 

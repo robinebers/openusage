@@ -2,10 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { resolveResource } from "@tauri-apps/api/path"
 import { TrayIcon } from "@tauri-apps/api/tray"
 import type { PluginMeta } from "@/lib/plugin-types"
-import type { DisplayMode, PluginSettings, TrayIconStyle } from "@/lib/settings"
+import type { DisplayMode, PluginSettings } from "@/lib/settings"
+import { getEnabledPluginIds } from "@/lib/settings"
 import { getTrayIconSizePx, renderTrayBarsIcon } from "@/lib/tray-bars-icon"
 import { getTrayPrimaryBars } from "@/lib/tray-primary-progress"
-import { isTrayPercentageMandatory } from "@/lib/settings"
 import type { PluginState } from "@/hooks/app/types"
 
 type TrayUpdateReason = "probe" | "settings" | "init"
@@ -15,8 +15,7 @@ type UseTrayIconArgs = {
   pluginSettings: PluginSettings | null
   pluginStates: Record<string, PluginState>
   displayMode: DisplayMode
-  trayIconStyle: TrayIconStyle
-  trayShowPercentage: boolean
+  activeView: string
 }
 
 export function useTrayIcon({
@@ -24,8 +23,7 @@ export function useTrayIcon({
   pluginSettings,
   pluginStates,
   displayMode,
-  trayIconStyle,
-  trayShowPercentage,
+  activeView,
 }: UseTrayIconArgs) {
   const trayRef = useRef<TrayIcon | null>(null)
   const trayGaugeIconPathRef = useRef<string | null>(null)
@@ -38,8 +36,8 @@ export function useTrayIcon({
   const pluginSettingsRef = useRef(pluginSettings)
   const pluginStatesRef = useRef(pluginStates)
   const displayModeRef = useRef(displayMode)
-  const trayIconStyleRef = useRef(trayIconStyle)
-  const trayShowPercentageRef = useRef(trayShowPercentage)
+  const activeViewRef = useRef(activeView)
+  const lastTrayProviderIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     pluginsMetaRef.current = pluginsMeta
@@ -58,12 +56,8 @@ export function useTrayIcon({
   }, [displayMode])
 
   useEffect(() => {
-    trayIconStyleRef.current = trayIconStyle
-  }, [trayIconStyle])
-
-  useEffect(() => {
-    trayShowPercentageRef.current = trayShowPercentage
-  }, [trayShowPercentage])
+    activeViewRef.current = activeView
+  }, [activeView])
 
   const scheduleTrayIconUpdate = useCallback((
     _reason: TrayUpdateReason,
@@ -95,71 +89,95 @@ export function useTrayIcon({
         return
       }
 
-      const style = trayIconStyleRef.current
-      const maxBars = style === "bars" ? 4 : 1
+      const setTrayTitle = (title: string) => {
+        const maybeSetTitle = (tray as TrayIcon & { setTitle?: (value: string) => Promise<void> }).setTitle
+        if (typeof maybeSetTitle === "function") {
+          return maybeSetTitle.call(tray, title)
+        }
+        return Promise.resolve()
+      }
+
+      const restoreGaugeIcon = () => {
+        const gaugePath = trayGaugeIconPathRef.current
+        if (gaugePath) {
+          Promise.all([
+            tray.setIcon(gaugePath),
+            tray.setIconAsTemplate(true),
+            setTrayTitle(""),
+          ])
+            .catch((e) => {
+              console.error("Failed to restore tray gauge icon:", e)
+            })
+            .finally(() => {
+              finalizeUpdate()
+            })
+        } else {
+          finalizeUpdate()
+        }
+      }
+
+      const currentSettings = pluginSettingsRef.current
+      if (!currentSettings) {
+        restoreGaugeIcon()
+        return
+      }
+
+      const enabledPluginIds = getEnabledPluginIds(currentSettings)
+      if (enabledPluginIds.length === 0) {
+        restoreGaugeIcon()
+        return
+      }
+
+      const nextActiveView = activeViewRef.current
+      const activeProviderId =
+        nextActiveView !== "home" && nextActiveView !== "settings" ? nextActiveView : null
+
+      let trayProviderId: string | null = null
+      if (activeProviderId && enabledPluginIds.includes(activeProviderId)) {
+        trayProviderId = activeProviderId
+      } else if (
+        lastTrayProviderIdRef.current &&
+        enabledPluginIds.includes(lastTrayProviderIdRef.current)
+      ) {
+        trayProviderId = lastTrayProviderIdRef.current
+      } else {
+        trayProviderId = enabledPluginIds[0] ?? null
+      }
+
+      if (!trayProviderId) {
+        restoreGaugeIcon()
+        return
+      }
+      lastTrayProviderIdRef.current = trayProviderId
+
       const bars = getTrayPrimaryBars({
         pluginsMeta: pluginsMetaRef.current,
-        pluginSettings: pluginSettingsRef.current,
+        pluginSettings: currentSettings,
         pluginStates: pluginStatesRef.current,
-        maxBars,
+        maxBars: 1,
         displayMode: displayModeRef.current,
+        pluginId: trayProviderId,
       })
 
-      if (bars.length === 0) {
-        const gaugePath = trayGaugeIconPathRef.current
-        if (gaugePath) {
-          Promise.all([tray.setIcon(gaugePath), tray.setIconAsTemplate(true)])
-            .catch((e) => {
-              console.error("Failed to restore tray gauge icon:", e)
-            })
-            .finally(() => {
-              finalizeUpdate()
-            })
-        } else {
-          finalizeUpdate()
-        }
-        return
-      }
-
-      const percentageMandatory = isTrayPercentageMandatory(style)
-
-      let percentText: string | undefined
-      if (percentageMandatory || trayShowPercentageRef.current) {
-        const firstFraction = bars[0]?.fraction
-        if (typeof firstFraction === "number" && Number.isFinite(firstFraction)) {
-          const clamped = Math.max(0, Math.min(1, firstFraction))
-          const rounded = Math.round(clamped * 100)
-          percentText = `${rounded}%`
-        }
-      }
-
-      if (style === "textOnly" && !percentText) {
-        const gaugePath = trayGaugeIconPathRef.current
-        if (gaugePath) {
-          Promise.all([tray.setIcon(gaugePath), tray.setIconAsTemplate(true)])
-            .catch((e) => {
-              console.error("Failed to restore tray gauge icon:", e)
-            })
-            .finally(() => {
-              finalizeUpdate()
-            })
-        } else {
-          finalizeUpdate()
-        }
-        return
-      }
+      const fraction = bars[0]?.fraction
+      const hasFraction = typeof fraction === "number" && Number.isFinite(fraction)
+      const clampedFraction = hasFraction ? Math.max(0, Math.min(1, fraction)) : undefined
+      const percentText =
+        typeof clampedFraction === "number" ? `${Math.round(clampedFraction * 100)}%` : "--%"
 
       const sizePx = getTrayIconSizePx(window.devicePixelRatio)
-      const firstProviderId = bars[0]?.id
       const providerIconUrl =
-        style === "provider"
-          ? pluginsMetaRef.current.find((plugin) => plugin.id === firstProviderId)?.iconUrl
-          : undefined
+        pluginsMetaRef.current.find((plugin) => plugin.id === trayProviderId)?.iconUrl
 
-      renderTrayBarsIcon({ bars, sizePx, style, percentText, providerIconUrl })
+      renderTrayBarsIcon({
+        bars: [{ id: trayProviderId, fraction: clampedFraction }],
+        sizePx,
+        providerIconUrl,
+      })
         .then(async (img) => {
           await tray.setIcon(img)
           await tray.setIconAsTemplate(true)
+          await setTrayTitle(percentText)
         })
         .catch((e) => {
           console.error("Failed to update tray icon:", e)
@@ -206,6 +224,11 @@ export function useTrayIcon({
     if (pluginsMeta.length === 0) return
     scheduleTrayIconUpdate("init", 0)
   }, [pluginsMeta.length, pluginSettings, scheduleTrayIconUpdate, trayReady])
+
+  useEffect(() => {
+    if (!trayReady) return
+    scheduleTrayIconUpdate("settings", 0)
+  }, [activeView, scheduleTrayIconUpdate, trayReady])
 
   useEffect(() => {
     return () => {

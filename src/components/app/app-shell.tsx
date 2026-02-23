@@ -78,7 +78,6 @@ export function AppShell({
               <div ref={scrollRef} className="h-full overflow-y-auto scrollbar-none">
                 <AppContent
                   {...appContentProps}
-                  navPlugins={navPlugins}
                   displayPlugins={displayPlugins}
                   settingsPlugins={settingsPlugins}
                   selectedPlugin={selectedPlugin}

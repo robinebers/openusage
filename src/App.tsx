@@ -9,7 +9,6 @@ import { useSettingsPluginActions } from "@/hooks/app/use-settings-plugin-action
 import { useSettingsPluginList } from "@/hooks/app/use-settings-plugin-list"
 import { useSettingsSystemActions } from "@/hooks/app/use-settings-system-actions"
 import { useSettingsTheme } from "@/hooks/app/use-settings-theme"
-import { useSettingsTrayActions } from "@/hooks/app/use-settings-tray-actions"
 import { useTrayIcon } from "@/hooks/app/use-tray-icon"
 import { useAppPluginStore } from "@/stores/app-plugin-store"
 import { useAppPreferencesStore } from "@/stores/app-preferences-store"
@@ -51,10 +50,6 @@ function App() {
     setDisplayMode,
     resetTimerDisplayMode,
     setResetTimerDisplayMode,
-    trayIconStyle,
-    setTrayIconStyle,
-    trayShowPercentage,
-    setTrayShowPercentage,
     setGlobalShortcut,
     setStartOnLogin,
   } = useAppPreferencesStore(
@@ -67,10 +62,6 @@ function App() {
       setDisplayMode: state.setDisplayMode,
       resetTimerDisplayMode: state.resetTimerDisplayMode,
       setResetTimerDisplayMode: state.setResetTimerDisplayMode,
-      trayIconStyle: state.trayIconStyle,
-      setTrayIconStyle: state.setTrayIconStyle,
-      trayShowPercentage: state.trayShowPercentage,
-      setTrayShowPercentage: state.setTrayShowPercentage,
       setGlobalShortcut: state.setGlobalShortcut,
       setStartOnLogin: state.setStartOnLogin,
     }))
@@ -101,8 +92,7 @@ function App() {
     pluginSettings,
     pluginStates,
     displayMode,
-    trayIconStyle,
-    trayShowPercentage,
+    activeView,
   })
 
   useEffect(() => {
@@ -118,8 +108,6 @@ function App() {
     setThemeMode,
     setDisplayMode,
     setResetTimerDisplayMode,
-    setTrayIconStyle,
-    setTrayShowPercentage,
     setGlobalShortcut,
     setStartOnLogin,
     setLoadingForPlugins,
@@ -139,16 +127,6 @@ function App() {
     setDisplayMode,
     resetTimerDisplayMode,
     setResetTimerDisplayMode,
-    scheduleTrayIconUpdate,
-  })
-
-  const {
-    handleTrayIconStyleChange,
-    handleTrayShowPercentageChange,
-  } = useSettingsTrayActions({
-    setTrayIconStyle,
-    trayShowPercentage,
-    setTrayShowPercentage,
     scheduleTrayIconUpdate,
   })
 
@@ -207,8 +185,6 @@ function App() {
         onDisplayModeChange: handleDisplayModeChange,
         onResetTimerDisplayModeChange: handleResetTimerDisplayModeChange,
         onResetTimerDisplayModeToggle: handleResetTimerDisplayModeToggle,
-        onTrayIconStyleChange: handleTrayIconStyleChange,
-        onTrayShowPercentageChange: handleTrayShowPercentageChange,
         onGlobalShortcutChange: handleGlobalShortcutChange,
         onStartOnLoginChange: handleStartOnLoginChange,
       }}
