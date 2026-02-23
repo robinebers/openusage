@@ -16,6 +16,9 @@
     { "type": "progress", "label": "Spark", "scope": "detail" },
     { "type": "progress", "label": "Spark Weekly", "scope": "detail" },
     { "type": "progress", "label": "Reviews", "scope": "detail" },
-    { "type": "progress", "label": "Credits", "scope": "detail" }
+    { "type": "progress", "label": "Credits", "scope": "detail" },
+    { "type": "text", "label": "Today", "scope": "detail" },
+    { "type": "text", "label": "Yesterday", "scope": "detail" },
+    { "type": "text", "label": "Last 30 Days", "scope": "detail" }
   ]
 }

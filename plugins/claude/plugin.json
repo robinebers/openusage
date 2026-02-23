@@ -14,6 +14,9 @@
     { "type": "progress", "label": "Session", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Weekly", "scope": "overview" },
     { "type": "progress", "label": "Sonnet", "scope": "detail" },
-    { "type": "progress", "label": "Extra usage", "scope": "detail" }
+    { "type": "progress", "label": "Extra usage", "scope": "detail" },
+    { "type": "text", "label": "Today", "scope": "detail" },
+    { "type": "text", "label": "Yesterday", "scope": "detail" },
+    { "type": "text", "label": "Last 30 Days", "scope": "detail" }
   ]
 }

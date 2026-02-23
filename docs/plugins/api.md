@@ -448,6 +448,73 @@ ctx.line.progress({
 })
 ```
 
+## ccusage (Token Usage)
+
+```typescript
+host.ccusage.query(opts: {
+  provider?: "claude" | "codex", // Optional; defaults to plugin id, then "claude"
+  since?: string,                // Start date (YYYYMMDD or YYYY-MM-DD)
+  until?: string,                // End date (YYYYMMDD or YYYY-MM-DD)
+  homePath?: string,             // Provider home override (CLAUDE_CONFIG_DIR or CODEX_HOME)
+  claudePath?: string,           // Legacy Claude-only override (deprecated; use homePath)
+}):
+  | { status: "ok", data: { daily: DailyUsage[] } }
+  | { status: "no_runner" }
+  | { status: "runner_failed" }
+```
+
+Queries local token usage via provider-specific ccusage CLIs:
+
+- Claude: [`ccusage`](https://github.com/ryoppippi/ccusage)
+- Codex: [`@ccusage/codex`](https://www.npmjs.com/package/@ccusage/codex)
+
+Returns a status envelope:
+
+- `ok`: query succeeded, usage data is in `data.daily`
+- `no_runner`: no package runner (`bunx/pnpm/yarn/npm/npx`) was found
+- `runner_failed`: at least one runner was available but all attempts failed
+
+### Behavior
+
+- **Runtime runners**: Executes pinned `ccusage@18.0.5` (Claude) or `@ccusage/codex@18.0.5` (Codex) via fallback chain `bunx -> pnpm dlx -> yarn dlx -> npm exec -> npx`
+- **Provider-aware**: Resolves provider from `opts.provider` or plugin id (`claude`/`codex`)
+- **No provider API calls**: Usage is computed from local JSONL session files; the host does not call Claude/Codex (or other provider) APIs, but package runners may contact a package registry to download the `ccusage` CLI if it is not already available locally
+- **Graceful degradation**: returns `no_runner` when no runner exists, `runner_failed` when execution fails
+- **Pricing**: Uses ccusage's built-in LiteLLM pricing data
+
+### DailyUsage
+
+The host normalizes only the top-level shape to `{ daily: [...] }`. Inner day fields come from the selected CLI and may differ by provider/version.
+
+Commonly observed fields include:
+
+| Property             | Type            | Notes |
+| -------------------- | --------------- | ----- |
+| `date`               | `string`        | Date label from CLI output (provider/locale-dependent) |
+| `inputTokens`        | `number`        | Present in Claude and Codex |
+| `outputTokens`       | `number`        | Present in Claude and Codex |
+| `cacheCreationTokens`| `number`        | Claude field |
+| `cacheReadTokens`    | `number`        | Claude field |
+| `cachedInputTokens`  | `number`        | Codex field |
+| `totalTokens`        | `number`        | Present in current Claude/Codex outputs |
+| `totalCost`          | `number \| null`| Claude cost field |
+| `costUSD`            | `number`        | Codex cost field |
+
+### Example
+
+```javascript
+var result = ctx.host.ccusage.query({ provider: "codex", since: "20260101" })
+if (result.status === "ok") {
+  for (var i = 0; i < result.data.daily.length; i++) {
+    var day = result.data.daily[i]
+    var cost = day.totalCost != null ? day.totalCost : day.costUSD
+    ctx.host.log.info(day.date + ": " + (day.totalTokens || 0) + " tokens, $" + (cost != null ? cost : "n/a"))
+  }
+} else if (result.status === "no_runner") {
+  ctx.host.log.warn("ccusage unavailable: no package runner found")
+}
+```
+
 ## See Also
 
 - [Plugin Schema](./schema.md) - Plugin structure, manifest format, and output schema

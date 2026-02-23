@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "minimax",
+  "name": "MiniMax",
+  "version": "0.0.1",
+  "entry": "plugin.js",
+  "icon": "icon.svg",
+  "brandColor": "#F5433C",
+  "lines": [
+    { "type": "progress", "label": "Session", "scope": "overview", "primaryOrder": 1 }
+  ]
+}
