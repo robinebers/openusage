@@ -360,10 +360,15 @@
       throw "MiniMax API key missing. Set MINIMAX_API_KEY."
     }
 
+    // CN API returns model call counts (needs division by 15 for prompts)
+    // GLOBAL API returns prompt counts directly
+    const isCnEndpoint = successfulEndpoint === "CN"
+    const displayMultiplier = isCnEndpoint ? 1 / MODEL_CALLS_PER_PROMPT : 1
+
     const line = {
       label: "Session",
-      used: parsed.used,
-      limit: parsed.total,
+      used: Math.round(parsed.used * displayMultiplier),
+      limit: Math.round(parsed.total * displayMultiplier),
       format: { kind: "count", suffix: "prompts" },
     }
     if (parsed.resetsAt) line.resetsAt = parsed.resetsAt

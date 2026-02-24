@@ -176,7 +176,17 @@ describe("minimax plugin", () => {
         return {
           status: 200,
           headers: {},
-          bodyText: JSON.stringify(successPayload()),
+          bodyText: JSON.stringify(successPayload({
+            model_remains: [
+              {
+                model_name: "MiniMax-M2",
+                current_interval_total_count: 1500, // CN Plus: 100 prompts × 15
+                current_interval_usage_count: 1200, // Remaining
+                start_time: 1700000000000,
+                end_time: 1700018000000,
+              },
+            ],
+          })),
         }
       }
       return { status: 404, headers: {}, bodyText: "{}" }
@@ -185,7 +195,7 @@ describe("minimax plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    expect(result.lines[0].used).toBe(120)
+    expect(result.lines[0].used).toBe(20) // (1500-1200) / 15 = 20
     expect(result.plan).toBe("Plus (CN)")
     const first = ctx.host.http.request.mock.calls[0][0].url
     const last = ctx.host.http.request.mock.calls[ctx.host.http.request.mock.calls.length - 1][0].url
@@ -463,7 +473,17 @@ describe("minimax plugin", () => {
         return {
           status: 200,
           headers: {},
-          bodyText: JSON.stringify(successPayload()),
+          bodyText: JSON.stringify(successPayload({
+            model_remains: [
+              {
+                model_name: "MiniMax-M2",
+                current_interval_total_count: 1500, // CN Plus: 100 prompts × 15
+                current_interval_usage_count: 1200, // Remaining
+                start_time: 1700000000000,
+                end_time: 1700018000000,
+              },
+            ],
+          })),
         }
       }
       return { status: 404, headers: {}, bodyText: "{}" }
@@ -472,7 +492,7 @@ describe("minimax plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    expect(result.lines[0].used).toBe(120)
+    expect(result.lines[0].used).toBe(20) // (1500-1200) / 15 = 20
     expect(ctx.host.http.request.mock.calls.length).toBe(2)
     expect(ctx.host.http.request.mock.calls[0][0].url).toBe(CN_PRIMARY_USAGE_URL)
     expect(ctx.host.http.request.mock.calls[1][0].url).toBe(CN_FALLBACK_USAGE_URL)
@@ -491,7 +511,7 @@ describe("minimax plugin", () => {
             {
               model_name: "MiniMax-M2",
               current_interval_total_count: 600, // 40 prompts × 15
-              current_interval_usage_count: 400,
+              current_interval_usage_count: 500, // Remaining (not used!)
               start_time: 1700000000000,
               end_time: 1700018000000,
             },
@@ -504,7 +524,8 @@ describe("minimax plugin", () => {
     const result = plugin.probe(ctx)
 
     expect(result.plan).toBe("Starter (CN)")
-    expect(result.lines[0].limit).toBe(600)
+    expect(result.lines[0].limit).toBe(40) // 600 / 15 = 40 prompts
+    expect(result.lines[0].used).toBe(7) // (600-500) / 15 = 6.67 ≈ 7
   })
 
   it("infers CN Plus plan from 1500 model-call limit", async () => {
@@ -520,7 +541,7 @@ describe("minimax plugin", () => {
             {
               model_name: "MiniMax-M2",
               current_interval_total_count: 1500, // 100 prompts × 15
-              current_interval_usage_count: 900,
+              current_interval_usage_count: 1200, // Remaining
               start_time: 1700000000000,
               end_time: 1700018000000,
             },
@@ -533,7 +554,8 @@ describe("minimax plugin", () => {
     const result = plugin.probe(ctx)
 
     expect(result.plan).toBe("Plus (CN)")
-    expect(result.lines[0].limit).toBe(1500)
+    expect(result.lines[0].limit).toBe(100) // 1500 / 15 = 100 prompts
+    expect(result.lines[0].used).toBe(20) // (1500-1200) / 15 = 20
   })
 
   it("infers CN Max plan from 4500 model-call limit", async () => {
@@ -549,7 +571,7 @@ describe("minimax plugin", () => {
             {
               model_name: "MiniMax-M2",
               current_interval_total_count: 4500, // 300 prompts × 15
-              current_interval_usage_count: 2700,
+              current_interval_usage_count: 2700, // Remaining
               start_time: 1700000000000,
               end_time: 1700018000000,
             },
@@ -562,7 +584,8 @@ describe("minimax plugin", () => {
     const result = plugin.probe(ctx)
 
     expect(result.plan).toBe("Max (CN)")
-    expect(result.lines[0].limit).toBe(4500)
+    expect(result.lines[0].limit).toBe(300) // 4500 / 15 = 300 prompts
+    expect(result.lines[0].used).toBe(120) // (4500-2700) / 15 = 120
   })
 
   it("falls back when primary returns auth-like status", async () => {
