@@ -4,6 +4,8 @@ import { makeCtx } from "../test-helpers.js"
 const PRIMARY_USAGE_URL = "https://api.minimax.io/v1/api/openplatform/coding_plan/remains"
 const FALLBACK_USAGE_URL = "https://api.minimax.io/v1/coding_plan/remains"
 const LEGACY_WWW_USAGE_URL = "https://www.minimax.io/v1/api/openplatform/coding_plan/remains"
+const CN_PRIMARY_USAGE_URL = "https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains"
+const CN_FALLBACK_USAGE_URL = "https://api.minimaxi.com/v1/coding_plan/remains"
 
 const loadPlugin = async () => {
   await import("./plugin.js")
@@ -87,6 +89,70 @@ describe("minimax plugin", () => {
 
     const call = ctx.host.http.request.mock.calls[0][0]
     expect(call.headers.Authorization).toBe("Bearer token-fallback")
+  })
+
+  it("uses CN endpoint when MINIMAX_ENDPOINT is CN", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key", MINIMAX_ENDPOINT: "CN" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify(successPayload()),
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    const call = ctx.host.http.request.mock.calls[0][0]
+    expect(call.url).toBe(CN_PRIMARY_USAGE_URL)
+  })
+
+  it("supports 'endpoint CN' value shape for endpoint selector", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key", MINIMAX_ENDPOINT: "endpoint CN" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify(successPayload()),
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    const call = ctx.host.http.request.mock.calls[0][0]
+    expect(call.url).toBe(CN_PRIMARY_USAGE_URL)
+  })
+
+  it("supports Chinese global selector with ENDPOINT=全球", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key", ENDPOINT: "全球" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify(successPayload()),
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    const call = ctx.host.http.request.mock.calls[0][0]
+    expect(call.url).toBe(PRIMARY_USAGE_URL)
+  })
+
+  it("falls back to global endpoint when selector is unrecognized", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key", MINIMAX_ENDPOINT: "mars" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify(successPayload()),
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    const call = ctx.host.http.request.mock.calls[0][0]
+    expect(call.url).toBe(PRIMARY_USAGE_URL)
   })
 
   it("parses usage, plan, reset timestamp, and period duration", async () => {
@@ -310,6 +376,30 @@ describe("minimax plugin", () => {
 
     expect(result.lines[0].used).toBe(120)
     expect(ctx.host.http.request.mock.calls.length).toBe(2)
+  })
+
+  it("uses CN fallback endpoint when CN primary fails", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key", MINIMAX_ENDPOINT: "CN" })
+    ctx.host.http.request.mockImplementation((req) => {
+      if (req.url === CN_PRIMARY_USAGE_URL) return { status: 503, headers: {}, bodyText: "{}" }
+      if (req.url === CN_FALLBACK_USAGE_URL) {
+        return {
+          status: 200,
+          headers: {},
+          bodyText: JSON.stringify(successPayload()),
+        }
+      }
+      return { status: 404, headers: {}, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines[0].used).toBe(120)
+    expect(ctx.host.http.request.mock.calls.length).toBe(2)
+    expect(ctx.host.http.request.mock.calls[0][0].url).toBe(CN_PRIMARY_USAGE_URL)
+    expect(ctx.host.http.request.mock.calls[1][0].url).toBe(CN_FALLBACK_USAGE_URL)
   })
 
   it("falls back when primary returns auth-like status", async () => {

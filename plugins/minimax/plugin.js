@@ -1,10 +1,13 @@
 (function () {
-  const PRIMARY_USAGE_URL = "https://api.minimax.io/v1/api/openplatform/coding_plan/remains"
-  const FALLBACK_USAGE_URLS = [
+  const GLOBAL_PRIMARY_USAGE_URL = "https://api.minimax.io/v1/api/openplatform/coding_plan/remains"
+  const GLOBAL_FALLBACK_USAGE_URLS = [
     "https://api.minimax.io/v1/coding_plan/remains",
     "https://www.minimax.io/v1/api/openplatform/coding_plan/remains",
   ]
+  const CN_PRIMARY_USAGE_URL = "https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains"
+  const CN_FALLBACK_USAGE_URLS = ["https://api.minimaxi.com/v1/coding_plan/remains"]
   const API_KEY_ENV_VARS = ["MINIMAX_API_KEY", "MINIMAX_API_TOKEN"]
+  const ENDPOINT_ENV_VARS = ["MINIMAX_ENDPOINT", "ENDPOINT"]
   const CODING_PLAN_WINDOW_MS = 5 * 60 * 60 * 1000
   const CODING_PLAN_WINDOW_TOLERANCE_MS = 10 * 60 * 1000
   const PROMPT_LIMIT_TO_PLAN = {
@@ -112,6 +115,60 @@
       }
     }
     return null
+  }
+
+  function normalizeEndpointSelection(value) {
+    const raw = readString(value)
+    if (!raw) return null
+
+    const compact = raw.toLowerCase().replace(/\s+/g, " ").trim()
+    const withoutPrefix = compact.replace(/^endpoint\s*[:=]?\s*/i, "").trim()
+
+    if (
+      withoutPrefix === "cn" ||
+      withoutPrefix === "china" ||
+      withoutPrefix === "国内" ||
+      withoutPrefix.includes("minimaxi.com")
+    ) {
+      return "CN"
+    }
+
+    if (
+      withoutPrefix === "global" ||
+      withoutPrefix === "全球" ||
+      withoutPrefix === "intl" ||
+      withoutPrefix === "international" ||
+      withoutPrefix.includes("minimax.io")
+    ) {
+      return "GLOBAL"
+    }
+
+    return null
+  }
+
+  function loadEndpointSelection(ctx) {
+    for (let i = 0; i < ENDPOINT_ENV_VARS.length; i += 1) {
+      const name = ENDPOINT_ENV_VARS[i]
+      let value = null
+      try {
+        value = ctx.host.env.get(name)
+      } catch (e) {
+        ctx.host.log.warn("env read failed for " + name + ": " + String(e))
+      }
+      const selection = normalizeEndpointSelection(value)
+      if (selection) {
+        ctx.host.log.info("endpoint selected from " + name + ": " + selection)
+        return selection
+      }
+    }
+    return "GLOBAL"
+  }
+
+  function getUsageUrls(endpointSelection) {
+    if (endpointSelection === "CN") {
+      return [CN_PRIMARY_USAGE_URL].concat(CN_FALLBACK_USAGE_URLS)
+    }
+    return [GLOBAL_PRIMARY_USAGE_URL].concat(GLOBAL_FALLBACK_USAGE_URLS)
   }
 
   function parsePayloadShape(ctx, payload) {
@@ -232,8 +289,8 @@
     }
   }
 
-  function fetchUsagePayload(ctx, apiKey) {
-    const urls = [PRIMARY_USAGE_URL].concat(FALLBACK_USAGE_URLS)
+  function fetchUsagePayload(ctx, apiKey, endpointSelection) {
+    const urls = getUsageUrls(endpointSelection)
     let lastStatus = null
     let hadNetworkError = false
     let authStatusCount = 0
@@ -290,7 +347,8 @@
     const apiKey = loadApiKey(ctx)
     if (!apiKey) throw "MiniMax API key missing. Set MINIMAX_API_KEY."
 
-    const payload = fetchUsagePayload(ctx, apiKey)
+    const endpointSelection = loadEndpointSelection(ctx)
+    const payload = fetchUsagePayload(ctx, apiKey, endpointSelection)
     const parsed = parsePayloadShape(ctx, payload)
     if (!parsed) throw "Could not parse usage data."
 
