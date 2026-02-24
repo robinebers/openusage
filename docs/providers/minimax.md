@@ -79,7 +79,7 @@ Expected payload fields:
 
 - **Plan**: best-effort from API payload (normalized to concise label)
 - **Session** (overview progress line):
-  - `label`: `Session (CN)` or `Session (GLOBAL)` based on selected endpoint
+  - `label`: `Session`
   - `format`: count (`prompts`)
   - `used`: computed used prompts
   - `limit`: total prompt limit for current window

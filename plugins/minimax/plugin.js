@@ -326,7 +326,6 @@
     const attempts = endpointAttempts(ctx, endpointSelection)
     let lastError = null
     let parsed = null
-    let resolvedEndpoint = null
 
     for (let i = 0; i < attempts.length; i += 1) {
       const endpoint = attempts[i]
@@ -335,13 +334,10 @@
       try {
         const payload = fetchUsagePayload(ctx, apiKeyInfo.value, endpoint, apiKeyInfo.source)
         parsed = parsePayloadShape(ctx, payload, endpoint, apiKeyInfo.source)
-        if (parsed) {
-          resolvedEndpoint = endpoint
-          break
-        }
-        lastError = "Could not parse usage data."
+        if (parsed) break
+        if (!lastError) lastError = "Could not parse usage data."
       } catch (e) {
-        lastError = String(e)
+        if (!lastError) lastError = String(e)
       }
     }
 
@@ -351,7 +347,7 @@
     }
 
     const line = {
-      label: resolvedEndpoint ? "Session (" + resolvedEndpoint + ")" : "Session",
+      label: "Session",
       used: parsed.used,
       limit: parsed.total,
       format: { kind: "count", suffix: "prompts" },

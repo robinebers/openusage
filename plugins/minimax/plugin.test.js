@@ -190,6 +190,38 @@ describe("minimax plugin", () => {
     expect(last).toBe(CN_PRIMARY_USAGE_URL)
   })
 
+  it("preserves first non-auth error in AUTO mode when later CN retry is auth", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "global-key" })
+    ctx.host.http.request.mockImplementation((req) => {
+      if (req.url === PRIMARY_USAGE_URL) return { status: 500, headers: {}, bodyText: "{}" }
+      if (req.url === FALLBACK_USAGE_URL) return { status: 500, headers: {}, bodyText: "{}" }
+      if (req.url === LEGACY_WWW_USAGE_URL) return { status: 500, headers: {}, bodyText: "{}" }
+      if (req.url === CN_PRIMARY_USAGE_URL) return { status: 401, headers: {}, bodyText: "" }
+      if (req.url === CN_FALLBACK_USAGE_URL) return { status: 401, headers: {}, bodyText: "" }
+      return { status: 404, headers: {}, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Request failed (HTTP 500)")
+  })
+
+  it("preserves first auth error in AUTO mode when later CN retry is non-auth", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "global-key" })
+    ctx.host.http.request.mockImplementation((req) => {
+      if (req.url === PRIMARY_USAGE_URL) return { status: 401, headers: {}, bodyText: "" }
+      if (req.url === FALLBACK_USAGE_URL) return { status: 401, headers: {}, bodyText: "" }
+      if (req.url === LEGACY_WWW_USAGE_URL) return { status: 401, headers: {}, bodyText: "" }
+      if (req.url === CN_PRIMARY_USAGE_URL) return { status: 500, headers: {}, bodyText: "{}" }
+      if (req.url === CN_FALLBACK_USAGE_URL) return { status: 500, headers: {}, bodyText: "{}" }
+      return { status: 404, headers: {}, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Session expired. Check your MiniMax API key.")
+  })
+
   it("parses usage, plan, reset timestamp, and period duration", async () => {
     const ctx = makeCtx()
     setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
@@ -205,7 +237,7 @@ describe("minimax plugin", () => {
     expect(result.plan).toBe("Plus")
     expect(result.lines.length).toBe(1)
     const line = result.lines[0]
-    expect(line.label).toBe("Session (GLOBAL)")
+    expect(line.label).toBe("Session")
     expect(line.type).toBe("progress")
     expect(line.used).toBe(120) // current_interval_usage_count is remaining
     expect(line.limit).toBe(300)
