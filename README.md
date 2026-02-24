@@ -27,7 +27,8 @@ OpenUsage lives in your menu bar and shows you how much of your AI coding subscr
 - [**Claude**](docs/providers/claude.md) / session, weekly, extra usage, local token usage (ccusage)
 - [**Codex**](docs/providers/codex.md) / session, weekly, reviews, credits
 - [**Copilot**](docs/providers/copilot.md) / premium, chat, completions
-- [**Cursor**](docs/providers/cursor.md) / credits, plan usage, on-demand
+- [**Cursor**](docs/providers/cursor.md) / credits, plan usage, on-demand, CLI auth
+- [**Factory / Droid**](docs/providers/factory.md) / standard, premium tokens
 - [**Gemini**](docs/providers/gemini.md) / pro, flash, workspace/free/paid tier
 - [**Kimi Code**](docs/providers/kimi.md) / session, weekly
 - [**MiniMax**](docs/providers/minimax.md) / coding plan session
@@ -36,7 +37,6 @@ OpenUsage lives in your menu bar and shows you how much of your AI coding subscr
 
 ### Maybe Soon
 
-- [Factory / Droid](https://github.com/robinebers/openusage/issues/16)
 - [Vercel AI Gateway](https://github.com/robinebers/openusage/issues/18)
 
 Community contributions welcome.

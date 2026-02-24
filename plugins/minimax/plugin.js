@@ -1,12 +1,19 @@
 (function () {
-  const PRIMARY_USAGE_URL = "https://www.minimax.io/v1/api/openplatform/coding_plan/remains"
+  const PRIMARY_USAGE_URL = "https://api.minimax.io/v1/api/openplatform/coding_plan/remains"
   const FALLBACK_USAGE_URLS = [
-    "https://api.minimax.io/v1/api/openplatform/coding_plan/remains",
     "https://api.minimax.io/v1/coding_plan/remains",
+    "https://www.minimax.io/v1/api/openplatform/coding_plan/remains",
   ]
   const API_KEY_ENV_VARS = ["MINIMAX_API_KEY", "MINIMAX_API_TOKEN"]
   const CODING_PLAN_WINDOW_MS = 5 * 60 * 60 * 1000
   const CODING_PLAN_WINDOW_TOLERANCE_MS = 10 * 60 * 1000
+  const PROMPT_LIMIT_TO_PLAN = {
+    100: "Starter",
+    300: "Plus",
+    1000: "Max",
+    2000: "Ultra",
+  }
+  const MODEL_CALLS_PER_PROMPT = 15
 
   function readString(value) {
     if (typeof value !== "string") return null
@@ -39,6 +46,18 @@
     if (withoutPrefix) return withoutPrefix
     if (/coding\s+plan/i.test(compact)) return "Coding Plan"
     return compact
+  }
+
+  function inferPlanNameFromLimit(totalCount) {
+    const n = readNumber(totalCount)
+    if (n === null || n <= 0) return null
+
+    const normalized = Math.round(n)
+    if (PROMPT_LIMIT_TO_PLAN[normalized]) return PROMPT_LIMIT_TO_PLAN[normalized]
+
+    if (normalized % MODEL_CALLS_PER_PROMPT !== 0) return null
+    const inferredPromptLimit = normalized / MODEL_CALLS_PER_PROMPT
+    return PROMPT_LIMIT_TO_PLAN[inferredPromptLimit] || null
   }
 
   function epochToMs(epoch) {
@@ -143,12 +162,14 @@
     const total = readNumber(chosen.current_interval_total_count ?? chosen.currentIntervalTotalCount)
     if (total === null || total <= 0) return null
 
-    const usageCount = readNumber(chosen.current_interval_usage_count ?? chosen.currentIntervalUsageCount)
+    const usageFieldCount = readNumber(chosen.current_interval_usage_count ?? chosen.currentIntervalUsageCount)
     const remainingCount = readNumber(
       chosen.current_interval_remaining_count ??
         chosen.currentIntervalRemainingCount ??
         chosen.current_interval_remains_count ??
         chosen.currentIntervalRemainsCount ??
+        chosen.current_interval_remain_count ??
+        chosen.currentIntervalRemainCount ??
         chosen.remaining_count ??
         chosen.remainingCount ??
         chosen.remains_count ??
@@ -158,6 +179,8 @@
         chosen.left_count ??
         chosen.leftCount
     )
+    // MiniMax "coding_plan/remains" commonly returns remaining prompts in current_interval_usage_count.
+    const inferredRemainingCount = remainingCount !== null ? remainingCount : usageFieldCount
     const explicitUsed = readNumber(
       chosen.current_interval_used_count ??
         chosen.currentIntervalUsedCount ??
@@ -166,8 +189,7 @@
     )
     let used = explicitUsed
 
-    if (used === null && usageCount !== null) used = usageCount
-    if (used === null && remainingCount !== null) used = total - remainingCount
+    if (used === null && inferredRemainingCount !== null) used = total - inferredRemainingCount
     if (used === null) return null
     if (used < 0) used = 0
     if (used > total) used = total
@@ -188,7 +210,7 @@
       periodDurationMs = endMs - startMs
     }
 
-    const planName = normalizePlanName(pickFirstString([
+    const explicitPlanName = normalizePlanName(pickFirstString([
       data.current_subscribe_title,
       data.plan_name,
       data.plan,
@@ -197,8 +219,9 @@
       payload.current_subscribe_title,
       payload.plan_name,
       payload.plan,
-      chosen.model_name,
     ]))
+    const inferredPlanName = inferPlanNameFromLimit(total)
+    const planName = explicitPlanName || inferredPlanName
 
     return {
       planName,
@@ -213,6 +236,7 @@
     const urls = [PRIMARY_USAGE_URL].concat(FALLBACK_USAGE_URLS)
     let lastStatus = null
     let hadNetworkError = false
+    let authStatusCount = 0
 
     for (let i = 0; i < urls.length; i += 1) {
       const url = urls[i]
@@ -235,7 +259,9 @@
       }
 
       if (ctx.util.isAuthStatus(resp.status)) {
-        throw "Session expired. Check your MiniMax API key."
+        authStatusCount += 1
+        ctx.host.log.warn("request returned auth status " + resp.status + " (" + url + ")")
+        continue
       }
       if (resp.status < 200 || resp.status >= 300) {
         lastStatus = resp.status
@@ -252,6 +278,9 @@
       return parsed
     }
 
+    if (authStatusCount > 0 && lastStatus === null && !hadNetworkError) {
+      throw "Session expired. Check your MiniMax API key."
+    }
     if (lastStatus !== null) throw "Request failed (HTTP " + lastStatus + "). Try again later."
     if (hadNetworkError) throw "Request failed. Check your connection."
     throw "Could not parse usage data."

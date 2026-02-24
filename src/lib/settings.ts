@@ -18,8 +18,6 @@ export type DisplayMode = "used" | "left";
 
 export type ResetTimerDisplayMode = "relative" | "absolute";
 
-export type TrayIconStyle = "bars" | "circle" | "provider" | "textOnly";
-
 export type GlobalShortcut = string | null;
 
 const SETTINGS_STORE_PATH = "settings.json";
@@ -28,8 +26,8 @@ const AUTO_UPDATE_SETTINGS_KEY = "autoUpdateInterval";
 const THEME_MODE_KEY = "themeMode";
 const DISPLAY_MODE_KEY = "displayMode";
 const RESET_TIMER_DISPLAY_MODE_KEY = "resetTimerDisplayMode";
-const TRAY_ICON_STYLE_KEY = "trayIconStyle";
-const TRAY_SHOW_PERCENTAGE_KEY = "trayShowPercentage";
+const LEGACY_TRAY_ICON_STYLE_KEY = "trayIconStyle";
+const LEGACY_TRAY_SHOW_PERCENTAGE_KEY = "trayShowPercentage";
 const GLOBAL_SHORTCUT_KEY = "globalShortcut";
 const START_ON_LOGIN_KEY = "startOnLogin";
 
@@ -37,8 +35,6 @@ export const DEFAULT_AUTO_UPDATE_INTERVAL: AutoUpdateIntervalMinutes = 15;
 export const DEFAULT_THEME_MODE: ThemeMode = "system";
 export const DEFAULT_DISPLAY_MODE: DisplayMode = "left";
 export const DEFAULT_RESET_TIMER_DISPLAY_MODE: ResetTimerDisplayMode = "relative";
-export const DEFAULT_TRAY_ICON_STYLE: TrayIconStyle = "bars";
-export const DEFAULT_TRAY_SHOW_PERCENTAGE = false;
 export const DEFAULT_GLOBAL_SHORTCUT: GlobalShortcut = null;
 export const DEFAULT_START_ON_LOGIN = false;
 
@@ -46,7 +42,6 @@ const AUTO_UPDATE_INTERVALS: AutoUpdateIntervalMinutes[] = [5, 15, 30, 60];
 const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
 const DISPLAY_MODES: DisplayMode[] = ["used", "left"];
 const RESET_TIMER_DISPLAY_MODES: ResetTimerDisplayMode[] = ["relative", "absolute"];
-const TRAY_ICON_STYLES: TrayIconStyle[] = ["bars", "circle", "provider", "textOnly"];
 
 export const AUTO_UPDATE_OPTIONS: { value: AutoUpdateIntervalMinutes; label: string }[] =
   AUTO_UPDATE_INTERVALS.map((value) => ({
@@ -69,17 +64,6 @@ export const RESET_TIMER_DISPLAY_OPTIONS: { value: ResetTimerDisplayMode; label:
   { value: "relative", label: "Relative" },
   { value: "absolute", label: "Absolute" },
 ];
-
-export const TRAY_ICON_STYLE_OPTIONS: { value: TrayIconStyle; label: string }[] = [
-  { value: "bars", label: "Bars" },
-  { value: "circle", label: "Circle" },
-  { value: "provider", label: "Provider" },
-  { value: "textOnly", label: "%" },
-];
-
-export function isTrayPercentageMandatory(style: TrayIconStyle): boolean {
-  return style === "provider" || style === "textOnly";
-}
 
 const store = new LazyStore(SETTINGS_STORE_PATH);
 
@@ -219,32 +203,34 @@ export async function saveResetTimerDisplayMode(mode: ResetTimerDisplayMode): Pr
   await store.save();
 }
 
-export function isTrayIconStyle(value: unknown): value is TrayIconStyle {
-  return typeof value === "string" && TRAY_ICON_STYLES.includes(value as TrayIconStyle);
+type LegacyStoreWithDelete = {
+  delete?: (key: string) => Promise<void>;
+};
+
+async function deleteStoreKey(key: string): Promise<void> {
+  const maybeDelete = (store as unknown as LegacyStoreWithDelete).delete;
+  if (typeof maybeDelete === "function") {
+    await maybeDelete.call(store, key);
+    return;
+  }
+  // Fallback for store implementations without delete support.
+  await store.set(key, null);
 }
 
-export async function loadTrayIconStyle(): Promise<TrayIconStyle> {
-  const stored = await store.get<unknown>(TRAY_ICON_STYLE_KEY);
-  // Backward compatibility with older tray style values.
-  if (stored === "barsWithPercentText" || stored === "barWithPercentText") return "bars";
-  if (stored === "circularWithPercentText") return "circle";
-  if (isTrayIconStyle(stored)) return stored;
-  return DEFAULT_TRAY_ICON_STYLE;
-}
+export async function migrateLegacyTraySettings(): Promise<void> {
+  const [legacyTrayStyle, legacyShowPercentage] = await Promise.all([
+    store.get<unknown>(LEGACY_TRAY_ICON_STYLE_KEY),
+    store.get<unknown>(LEGACY_TRAY_SHOW_PERCENTAGE_KEY),
+  ]);
 
-export async function saveTrayIconStyle(style: TrayIconStyle): Promise<void> {
-  await store.set(TRAY_ICON_STYLE_KEY, style);
-  await store.save();
-}
+  const hasLegacyTrayStyle = legacyTrayStyle != null;
+  const hasLegacyShowPercentage = legacyShowPercentage != null;
+  if (!hasLegacyTrayStyle && !hasLegacyShowPercentage) return;
 
-export async function loadTrayShowPercentage(): Promise<boolean> {
-  const stored = await store.get<unknown>(TRAY_SHOW_PERCENTAGE_KEY);
-  if (typeof stored === "boolean") return stored;
-  return DEFAULT_TRAY_SHOW_PERCENTAGE;
-}
-
-export async function saveTrayShowPercentage(value: boolean): Promise<void> {
-  await store.set(TRAY_SHOW_PERCENTAGE_KEY, value);
+  const removals: Promise<void>[] = [];
+  if (hasLegacyTrayStyle) removals.push(deleteStoreKey(LEGACY_TRAY_ICON_STYLE_KEY));
+  if (hasLegacyShowPercentage) removals.push(deleteStoreKey(LEGACY_TRAY_SHOW_PERCENTAGE_KEY));
+  await Promise.all(removals);
   await store.save();
 }
 

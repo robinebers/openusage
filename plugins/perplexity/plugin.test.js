@@ -458,4 +458,145 @@ describe("perplexity plugin", () => {
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Balance unavailable")
   })
+
+  it("treats empty cache query rows as not logged in", async () => {
+    const ctx = makeCtx()
+    const originalExists = ctx.host.fs.exists
+    ctx.host.fs.exists = (path) => path === PRIMARY_CACHE_DB_PATH || originalExists(path)
+    ctx.host.sqlite.query.mockImplementation((dbPath, sql) => {
+      if (dbPath === PRIMARY_CACHE_DB_PATH && String(sql).includes("https://www.perplexity.ai/api/user")) {
+        return JSON.stringify([])
+      }
+      return "[]"
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Not logged in")
+  })
+
+  it("treats cache rows without requestHex as not logged in", async () => {
+    const ctx = makeCtx()
+    const originalExists = ctx.host.fs.exists
+    ctx.host.fs.exists = (path) => path === PRIMARY_CACHE_DB_PATH || originalExists(path)
+    ctx.host.sqlite.query.mockImplementation((dbPath, sql) => {
+      if (dbPath === PRIMARY_CACHE_DB_PATH && String(sql).includes("https://www.perplexity.ai/api/user")) {
+        return JSON.stringify([{}])
+      }
+      return "[]"
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Not logged in")
+  })
+
+  it("treats non-string requestHex as not logged in", async () => {
+    const ctx = makeCtx()
+    const originalExists = ctx.host.fs.exists
+    ctx.host.fs.exists = (path) => path === PRIMARY_CACHE_DB_PATH || originalExists(path)
+    ctx.host.sqlite.query.mockImplementation((dbPath, sql) => {
+      if (dbPath === PRIMARY_CACHE_DB_PATH && String(sql).includes("https://www.perplexity.ai/api/user")) {
+        return JSON.stringify([{ requestHex: 12345 }])
+      }
+      return "[]"
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Not logged in")
+  })
+
+  it("rejects malformed bearer token payloads from cache rows", async () => {
+    const ctx = makeCtx()
+    // Contains "Bearer " prefix but token has no JWT dots and invalid hex bytes later.
+    const malformed = "426561726572204142435A5A"
+    mockCacheSession(ctx, { requestHex: malformed })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Not logged in")
+  })
+
+  it("throws balance unavailable when groups endpoint returns invalid JSON", async () => {
+    const ctx = makeCtx()
+    const token = makeJwtLikeToken()
+    mockCacheSession(ctx, { requestHex: makeRequestHexWithBearer(token) })
+    ctx.host.http.request.mockImplementation((req) => {
+      if (req.url === "https://www.perplexity.ai/rest/pplx-api/v2/groups") {
+        return { status: 200, headers: {}, bodyText: "not-json" }
+      }
+      return { status: 404, headers: {}, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Balance unavailable")
+  })
+
+  it("throws balance unavailable when balance object only contains non-finite cents", async () => {
+    const ctx = makeCtx()
+    const token = makeJwtLikeToken()
+    mockCacheSession(ctx, { requestHex: makeRequestHexWithBearer(token) })
+
+    ctx.host.http.request.mockImplementation((req) => {
+      if (req.url === "https://www.perplexity.ai/rest/pplx-api/v2/groups") {
+        return {
+          status: 200,
+          headers: {},
+          bodyText: JSON.stringify({ orgs: [{ api_org_id: GROUP_ID, is_default_org: true }] }),
+        }
+      }
+      if (req.url === `https://www.perplexity.ai/rest/pplx-api/v2/groups/${GROUP_ID}`) {
+        return {
+          status: 200,
+          headers: {},
+          bodyText: JSON.stringify({
+            customerInfo: { is_pro: false },
+            wallet: { amount_cents: "1e309" },
+          }),
+        }
+      }
+      if (req.url === `https://www.perplexity.ai/rest/pplx-api/v2/groups/${GROUP_ID}/usage-analytics`) {
+        return {
+          status: 200,
+          headers: {},
+          bodyText: JSON.stringify([{ meter_event_summaries: [{ cost: 1.0 }] }]),
+        }
+      }
+      return { status: 404, headers: {}, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Balance unavailable")
+  })
+
+  it("throws balance unavailable when computed limit is zero", async () => {
+    const ctx = makeCtx()
+    const token = makeJwtLikeToken()
+    mockCacheSession(ctx, { requestHex: makeRequestHexWithBearer(token) })
+
+    ctx.host.http.request.mockImplementation((req) => {
+      if (req.url === "https://www.perplexity.ai/rest/pplx-api/v2/groups") {
+        return {
+          status: 200,
+          headers: {},
+          bodyText: JSON.stringify({ orgs: [{ api_org_id: GROUP_ID, is_default_org: true }] }),
+        }
+      }
+      if (req.url === `https://www.perplexity.ai/rest/pplx-api/v2/groups/${GROUP_ID}`) {
+        return {
+          status: 200,
+          headers: {},
+          bodyText: JSON.stringify({ customerInfo: { is_pro: true, balance: 0 } }),
+        }
+      }
+      if (req.url === `https://www.perplexity.ai/rest/pplx-api/v2/groups/${GROUP_ID}/usage-analytics`) {
+        return {
+          status: 200,
+          headers: {},
+          bodyText: JSON.stringify([{ meter_event_summaries: [{ cost: 0.1 }] }]),
+        }
+      }
+      return { status: 404, headers: {}, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Balance unavailable")
+  })
 })

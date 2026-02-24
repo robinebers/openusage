@@ -64,3 +64,37 @@ export function calculatePaceStatus(
 
   return { status, projectedUsage }
 }
+
+/**
+ * How much usage exceeds the ideal linear pace (same unit as used/limit).
+ * Returns positive deficit or null when ahead/on-pace/incalculable.
+ */
+export function calculateDeficit(
+  used: number,
+  limit: number,
+  resetsAtMs: number,
+  periodDurationMs: number,
+  nowMs: number
+): number | null {
+  if (
+    !Number.isFinite(used) ||
+    !Number.isFinite(limit) ||
+    !Number.isFinite(resetsAtMs) ||
+    !Number.isFinite(periodDurationMs) ||
+    !Number.isFinite(nowMs)
+  ) {
+    return null
+  }
+  if (limit <= 0 || periodDurationMs <= 0) return null
+
+  const periodStartMs = resetsAtMs - periodDurationMs
+  const elapsedMs = nowMs - periodStartMs
+  if (elapsedMs <= 0 || nowMs >= resetsAtMs) return null
+
+  const elapsedFraction = elapsedMs / periodDurationMs
+  if (elapsedFraction < 0.05 && used < limit) return null
+
+  const expectedUsage = elapsedFraction * limit
+  const deficit = used - expectedUsage
+  return deficit > 0 ? deficit : null
+}

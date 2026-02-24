@@ -3,8 +3,9 @@ import type { ReactNode } from "react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { openUrl } from "@tauri-apps/plugin-opener"
-import { ProviderCard, formatNumber } from "@/components/provider-card"
+import { ProviderCard, groupLinesByType } from "@/components/provider-card"
 import { REFRESH_COOLDOWN_MS } from "@/lib/settings"
+import { formatFixedPrecisionNumber } from "@/lib/utils"
 
 vi.mock("@tauri-apps/plugin-opener", () => ({
   openUrl: vi.fn(() => Promise.resolve()),
@@ -185,15 +186,15 @@ describe("ProviderCard", () => {
     vi.useRealTimers()
   })
 
-  it("formats numbers with thousand separators and preserves trailing zeros", () => {
-    expect(formatNumber(Number.NaN)).toBe("0")
-    expect(formatNumber(5)).toBe("5")
-    expect(formatNumber(5.129)).toBe("5.13")
-    expect(formatNumber(5.1)).toBe("5.10")
-    expect(formatNumber(5.5)).toBe("5.50")
-    expect(formatNumber(1000)).toBe("1,000")
-    expect(formatNumber(10000)).toBe("10,000")
-    expect(formatNumber(1234567.89)).toBe("1,234,567.89")
+  it("formats fixed-precision numbers with trailing zeros", () => {
+    expect(formatFixedPrecisionNumber(Number.NaN)).toBe("0")
+    expect(formatFixedPrecisionNumber(5)).toBe("5")
+    expect(formatFixedPrecisionNumber(5.129)).toBe("5.13")
+    expect(formatFixedPrecisionNumber(5.1)).toBe("5.10")
+    expect(formatFixedPrecisionNumber(5.5)).toBe("5.50")
+    expect(formatFixedPrecisionNumber(1000)).toBe("1,000")
+    expect(formatFixedPrecisionNumber(10000)).toBe("10,000")
+    expect(formatFixedPrecisionNumber(1234567.89)).toBe("1,234,567.89")
   })
 
   it("supports displayMode=left for percent (number + bar fill)", () => {
@@ -552,6 +553,37 @@ describe("ProviderCard", () => {
     )
     expect(screen.getByLabelText("Limit reached")).toBeInTheDocument()
     expect(screen.getByText("Limit reached")).toBeInTheDocument()
+    expect(screen.queryByText(/in deficit/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/runs out in/i)).not.toBeInTheDocument()
+    vi.useRealTimers()
+  })
+
+  it("hides tiny positive deficit text that would round to zero", () => {
+    vi.useFakeTimers()
+    const now = new Date("2026-02-02T12:00:00.000Z")
+    vi.setSystemTime(now)
+    render(
+      <ProviderCard
+        name="Pace"
+        displayMode="used"
+        lines={[
+          {
+            type: "progress",
+            label: "Behind",
+            used: 50.3,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: "2026-02-03T00:00:00.000Z",
+            periodDurationMs: 24 * 60 * 60 * 1000,
+          },
+        ]}
+      />
+    )
+    expect(screen.getByLabelText("Will run out")).toBeInTheDocument()
+    expect(screen.getByText(/^Runs out in /)).toBeInTheDocument()
+    expect(screen.queryByText("0% in deficit")).not.toBeInTheDocument()
+    expect(screen.queryByText("0% short")).not.toBeInTheDocument()
+    expect(screen.queryByText(/in deficit/i)).not.toBeInTheDocument()
     vi.useRealTimers()
   })
 
@@ -744,5 +776,51 @@ describe("ProviderCard", () => {
     )
     expect(screen.getByText("Session")).toBeInTheDocument()
     expect(screen.queryByText("Extra")).not.toBeInTheDocument()
+  })
+})
+
+describe("groupLinesByType", () => {
+  it("returns empty array for empty input", () => {
+    expect(groupLinesByType([])).toEqual([])
+  })
+
+  it("groups consecutive text lines together", () => {
+    const lines = [
+      { type: "text" as const, label: "Today", value: "$0.00" },
+      { type: "text" as const, label: "Yesterday", value: "$1.00" },
+      { type: "text" as const, label: "Last 30 Days", value: "$5.00" },
+    ]
+    const groups = groupLinesByType(lines)
+    expect(groups).toHaveLength(1)
+    expect(groups[0].kind).toBe("text")
+    expect(groups[0].lines).toHaveLength(3)
+  })
+
+  it("keeps non-text lines as separate 'other' entries", () => {
+    const lines = [
+      { type: "progress" as const, label: "Session", used: 50, limit: 100, format: { kind: "percent" as const } },
+      { type: "progress" as const, label: "Weekly", used: 30, limit: 100, format: { kind: "percent" as const } },
+    ]
+    const groups = groupLinesByType(lines)
+    expect(groups).toHaveLength(1)
+    expect(groups[0].kind).toBe("other")
+    expect(groups[0].lines).toHaveLength(2)
+  })
+
+  it("creates separate groups for alternating text and non-text lines", () => {
+    const lines = [
+      { type: "progress" as const, label: "Session", used: 50, limit: 100, format: { kind: "percent" as const } },
+      { type: "text" as const, label: "Today", value: "$0.00" },
+      { type: "text" as const, label: "Yesterday", value: "$1.00" },
+      { type: "badge" as const, label: "Status", text: "OK" },
+    ]
+    const groups = groupLinesByType(lines)
+    expect(groups).toHaveLength(3)
+    expect(groups[0].kind).toBe("other")
+    expect(groups[0].lines).toHaveLength(1)
+    expect(groups[1].kind).toBe("text")
+    expect(groups[1].lines).toHaveLength(2)
+    expect(groups[2].kind).toBe("other")
+    expect(groups[2].lines).toHaveLength(1)
   })
 })

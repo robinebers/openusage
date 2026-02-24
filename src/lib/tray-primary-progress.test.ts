@@ -30,6 +30,51 @@ describe("getTrayPrimaryBars", () => {
     expect(bars.map((b) => b.id)).toEqual(["a", "b", "d", "e"])
   })
 
+  it("can target a specific plugin id for tray rendering", () => {
+    const bars = getTrayPrimaryBars({
+      pluginsMeta: [
+        {
+          id: "a",
+          name: "A",
+          iconUrl: "",
+          primaryCandidates: ["Session"],
+          lines: [],
+        },
+        {
+          id: "b",
+          name: "B",
+          iconUrl: "",
+          primaryCandidates: ["Session"],
+          lines: [],
+        },
+      ],
+      pluginSettings: { order: ["a", "b"], disabled: [] },
+      pluginStates: {
+        b: {
+          data: {
+            providerId: "b",
+            displayName: "B",
+            iconUrl: "",
+            lines: [
+              {
+                type: "progress",
+                label: "Session",
+                used: 25,
+                limit: 100,
+                format: { kind: "percent" },
+              },
+            ],
+          },
+          loading: false,
+          error: null,
+        },
+      },
+      pluginId: "b",
+    })
+
+    expect(bars).toEqual([{ id: "b", fraction: 0.75 }])
+  })
+
   it("includes plugins with primary candidates even when no data (fraction undefined)", () => {
     const bars = getTrayPrimaryBars({
       pluginsMeta: [

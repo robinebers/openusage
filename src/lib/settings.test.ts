@@ -5,8 +5,6 @@ import {
   DEFAULT_PLUGIN_SETTINGS,
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
   DEFAULT_START_ON_LOGIN,
-  DEFAULT_TRAY_ICON_STYLE,
-  DEFAULT_TRAY_SHOW_PERCENTAGE,
   DEFAULT_THEME_MODE,
   arePluginSettingsEqual,
   getEnabledPluginIds,
@@ -15,8 +13,7 @@ import {
   loadPluginSettings,
   loadResetTimerDisplayMode,
   loadStartOnLogin,
-  loadTrayIconStyle,
-  loadTrayShowPercentage,
+  migrateLegacyTraySettings,
   loadThemeMode,
   normalizePluginSettings,
   saveAutoUpdateInterval,
@@ -24,29 +21,38 @@ import {
   savePluginSettings,
   saveResetTimerDisplayMode,
   saveStartOnLogin,
-  saveTrayIconStyle,
-  saveTrayShowPercentage,
   saveThemeMode,
 } from "@/lib/settings"
 import type { PluginMeta } from "@/lib/plugin-types"
 
 const storeState = new Map<string, unknown>()
+const storeDeleteMock = vi.fn()
+const storeSaveMock = vi.fn()
 
 vi.mock("@tauri-apps/plugin-store", () => ({
   LazyStore: class {
     async get<T>(key: string): Promise<T | null> {
-      return (storeState.get(key) as T | undefined) ?? null
+      if (!storeState.has(key)) return undefined as T | null
+      return storeState.get(key) as T | null
     }
     async set<T>(key: string, value: T): Promise<void> {
       storeState.set(key, value)
     }
-    async save(): Promise<void> {}
+    async delete(key: string): Promise<void> {
+      storeDeleteMock(key)
+      storeState.delete(key)
+    }
+    async save(): Promise<void> {
+      storeSaveMock()
+    }
   },
 }))
 
 describe("settings", () => {
   beforeEach(() => {
     storeState.clear()
+    storeDeleteMock.mockReset()
+    storeSaveMock.mockReset()
   })
 
   it("loads defaults when no settings stored", async () => {
@@ -173,52 +179,22 @@ describe("settings", () => {
     await expect(loadResetTimerDisplayMode()).resolves.toBe(DEFAULT_RESET_TIMER_DISPLAY_MODE)
   })
 
-  it("loads default tray icon style when missing", async () => {
-    await expect(loadTrayIconStyle()).resolves.toBe(DEFAULT_TRAY_ICON_STYLE)
-  })
-
-  it("loads stored tray icon style", async () => {
-    storeState.set("trayIconStyle", "circle")
-    await expect(loadTrayIconStyle()).resolves.toBe("circle")
-  })
-
-  it("loads stored provider tray icon style", async () => {
+  it("migrates and removes legacy tray settings keys", async () => {
     storeState.set("trayIconStyle", "provider")
-    await expect(loadTrayIconStyle()).resolves.toBe("provider")
+    storeState.set("trayShowPercentage", false)
+
+    await migrateLegacyTraySettings()
+
+    expect(storeState.has("trayIconStyle")).toBe(false)
+    expect(storeState.has("trayShowPercentage")).toBe(false)
   })
 
-  it("saves tray icon style", async () => {
-    await saveTrayIconStyle("textOnly")
-    await expect(loadTrayIconStyle()).resolves.toBe("textOnly")
-  })
-
-  it("saves provider tray icon style", async () => {
-    await saveTrayIconStyle("provider")
-    await expect(loadTrayIconStyle()).resolves.toBe("provider")
-  })
-
-  it("falls back to default for invalid tray icon style", async () => {
-    storeState.set("trayIconStyle", "invalid")
-    await expect(loadTrayIconStyle()).resolves.toBe(DEFAULT_TRAY_ICON_STYLE)
-  })
-
-  it("loads default tray show percentage when missing", async () => {
-    await expect(loadTrayShowPercentage()).resolves.toBe(DEFAULT_TRAY_SHOW_PERCENTAGE)
-  })
-
-  it("loads stored tray show percentage", async () => {
-    storeState.set("trayShowPercentage", true)
-    await expect(loadTrayShowPercentage()).resolves.toBe(true)
-  })
-
-  it("saves tray show percentage", async () => {
-    await saveTrayShowPercentage(true)
-    await expect(loadTrayShowPercentage()).resolves.toBe(true)
-  })
-
-  it("falls back to default for invalid tray show percentage", async () => {
-    storeState.set("trayShowPercentage", "invalid")
-    await expect(loadTrayShowPercentage()).resolves.toBe(DEFAULT_TRAY_SHOW_PERCENTAGE)
+  it("skips legacy tray migration when keys are absent", async () => {
+    await expect(migrateLegacyTraySettings()).resolves.toBeUndefined()
+    expect(storeState.has("trayIconStyle")).toBe(false)
+    expect(storeState.has("trayShowPercentage")).toBe(false)
+    expect(storeDeleteMock).not.toHaveBeenCalled()
+    expect(storeSaveMock).not.toHaveBeenCalled()
   })
 
   it("loads default start on login when missing", async () => {

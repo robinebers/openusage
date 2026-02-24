@@ -251,6 +251,14 @@
     return label.replace(/\s*\([^)]*\)\s*$/, "").trim()
   }
 
+  function poolLabel(normalizedLabel) {
+    var lower = normalizedLabel.toLowerCase()
+    if (lower.indexOf("gemini") !== -1 && lower.indexOf("pro") !== -1) return "Gemini Pro"
+    if (lower.indexOf("gemini") !== -1 && lower.indexOf("flash") !== -1) return "Gemini Flash"
+    // All non-Gemini models (Claude, GPT-OSS, etc.) share a single quota pool
+    return "Claude"
+  }
+
   function modelSortKey(label) {
     var lower = label.toLowerCase()
     // Gemini Pro variants first, then other Gemini, then Claude Opus, then other Claude, then rest
@@ -280,14 +288,17 @@
     var deduped = {}
     for (var i = 0; i < configs.length; i++) {
       var c = configs[i]
+      var label = (typeof c.label === "string") ? c.label.trim() : ""
+      if (!label) continue
       var qi = c.quotaInfo
-      if (!qi || typeof qi.remainingFraction !== "number") continue
-      var label = normalizeLabel(c.label)
-      if (!deduped[label] || qi.remainingFraction < deduped[label].remainingFraction) {
-        deduped[label] = {
-          label: label,
-          remainingFraction: qi.remainingFraction,
-          resetTime: qi.resetTime,
+      var frac = (qi && typeof qi.remainingFraction === "number") ? qi.remainingFraction : 0
+      var rtime = (qi && qi.resetTime) || undefined
+      var pool = poolLabel(normalizeLabel(label))
+      if (!deduped[pool] || frac < deduped[pool].remainingFraction) {
+        deduped[pool] = {
+          label: pool,
+          remainingFraction: frac,
+          resetTime: rtime,
         }
       }
     }
@@ -352,10 +363,11 @@
       var displayName = (typeof m.displayName === "string") ? m.displayName.trim() : ""
       if (!displayName) continue
       var qi = m.quotaInfo
-      if (!qi || typeof qi.remainingFraction !== "number") continue
+      var frac = (qi && typeof qi.remainingFraction === "number") ? qi.remainingFraction : 0
+      var rtime = (qi && qi.resetTime) || undefined
       configs.push({
         label: displayName,
-        quotaInfo: { remainingFraction: qi.remainingFraction, resetTime: qi.resetTime },
+        quotaInfo: { remainingFraction: frac, resetTime: rtime },
       })
     }
     return configs

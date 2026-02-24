@@ -1,4 +1,4 @@
-import { useMemo } from "react"
+import { Fragment, useMemo } from "react"
 import { ExternalLink, Hourglass, RefreshCw } from "lucide-react"
 import { openUrl } from "@tauri-apps/plugin-opener"
 import { Badge } from "@/components/ui/badge"
@@ -11,9 +11,9 @@ import { PluginError } from "@/components/plugin-error"
 import { useNowTicker } from "@/hooks/use-now-ticker"
 import { REFRESH_COOLDOWN_MS, type DisplayMode, type ResetTimerDisplayMode } from "@/lib/settings"
 import type { ManifestLine, MetricLine, PluginLink } from "@/lib/plugin-types"
-import { clamp01 } from "@/lib/utils"
-import { calculatePaceStatus, type PaceStatus } from "@/lib/pace-status"
-import { buildPaceDetailText, formatCompactDuration, getPaceStatusText } from "@/lib/pace-tooltip"
+import { clamp01, formatCountNumber, formatFixedPrecisionNumber } from "@/lib/utils"
+import { calculateDeficit, calculatePaceStatus, type PaceStatus } from "@/lib/pace-status"
+import { buildPaceDetailText, formatCompactDuration, formatDeficitText, formatRunsOutText, getPaceStatusText } from "@/lib/pace-tooltip"
 
 interface ProviderCardProps {
   name: string
@@ -32,26 +32,28 @@ interface ProviderCardProps {
   onResetTimerDisplayModeToggle?: () => void
 }
 
-export function formatNumber(value: number) {
-  if (Number.isNaN(value)) return "0"
-  const fractionDigits = Number.isInteger(value) ? 0 : 2
-  return new Intl.NumberFormat("en-US", {
-    minimumFractionDigits: fractionDigits,
-    maximumFractionDigits: fractionDigits,
-  }).format(value)
-}
-
 const PACE_VISUALS: Record<PaceStatus, { dotClass: string }> = {
   ahead: { dotClass: "bg-green-500" },
   "on-track": { dotClass: "bg-yellow-500" },
   behind: { dotClass: "bg-red-500" },
 }
 
-function formatCount(value: number) {
-  if (!Number.isFinite(value)) return "0"
-  const maximumFractionDigits = Number.isInteger(value) ? 0 : 2
-  return new Intl.NumberFormat("en-US", { maximumFractionDigits }).format(value)
+type LineGroup = { kind: "text"; lines: MetricLine[] } | { kind: "other"; lines: MetricLine[] }
+
+export function groupLinesByType(lines: MetricLine[]): LineGroup[] {
+  const groups: LineGroup[] = []
+  for (const line of lines) {
+    const kind = line.type === "text" ? "text" : "other"
+    const last = groups[groups.length - 1]
+    if (last && last.kind === kind) {
+      last.lines.push(line)
+    } else {
+      groups.push({ kind, lines: [line] })
+    }
+  }
+  return groups
 }
+
 
 const RESET_SOON_THRESHOLD_MS = 5 * 60 * 1000
 
@@ -317,16 +319,35 @@ export function ProviderCard({
 
         {!loading && !error && (
           <div className="space-y-4">
-            {filteredLines.map((line, index) => (
-              <MetricLineRenderer
-                key={`${line.label}-${index}`}
-                line={line}
-                displayMode={displayMode}
-                resetTimerDisplayMode={resetTimerDisplayMode}
-                onResetTimerDisplayModeToggle={onResetTimerDisplayModeToggle}
-                now={now}
-              />
-            ))}
+            {groupLinesByType(filteredLines).map((group, gi) =>
+              group.kind === "text" ? (
+                <div key={gi} className="space-y-1">
+                  {group.lines.map((line, li) => (
+                    <MetricLineRenderer
+                      key={`${line.label}-${gi}-${li}`}
+                      line={line}
+                      displayMode={displayMode}
+                      resetTimerDisplayMode={resetTimerDisplayMode}
+                      onResetTimerDisplayModeToggle={onResetTimerDisplayModeToggle}
+                      now={now}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <Fragment key={gi}>
+                  {group.lines.map((line, li) => (
+                    <MetricLineRenderer
+                      key={`${line.label}-${gi}-${li}`}
+                      line={line}
+                      displayMode={displayMode}
+                      resetTimerDisplayMode={resetTimerDisplayMode}
+                      onResetTimerDisplayModeToggle={onResetTimerDisplayModeToggle}
+                      now={now}
+                    />
+                  ))}
+                </Fragment>
+              )
+            )}
           </div>
         )}
       </div>
@@ -351,10 +372,10 @@ function MetricLineRenderer({
   if (line.type === "text") {
     return (
       <div>
-        <div className="flex justify-between items-center h-[22px]">
-          <span className="text-sm text-muted-foreground flex-shrink-0">{line.label}</span>
+        <div className="flex justify-between items-center h-[18px]">
+          <span className="text-xs text-muted-foreground flex-shrink-0">{line.label}</span>
           <span
-            className="text-sm text-muted-foreground truncate min-w-0 max-w-[60%] text-right"
+            className="text-xs text-muted-foreground truncate min-w-0 max-w-[60%] text-right"
             style={line.color ? { color: line.color } : undefined}
             title={line.value}
           >
@@ -362,7 +383,7 @@ function MetricLineRenderer({
           </span>
         </div>
         {line.subtitle && (
-          <div className="text-xs text-muted-foreground text-right -mt-0.5">{line.subtitle}</div>
+          <div className="text-[10px] text-muted-foreground text-right -mt-0.5">{line.subtitle}</div>
         )}
       </div>
     )
@@ -409,8 +430,8 @@ function MetricLineRenderer({
       line.format.kind === "percent"
         ? `${Math.round(shownAmount)}%${leftSuffix}`
         : line.format.kind === "dollars"
-          ? `$${formatNumber(shownAmount)}${leftSuffix}`
-          : `${formatCount(shownAmount)} ${line.format.suffix}${leftSuffix}`
+          ? `$${formatFixedPrecisionNumber(shownAmount)}${leftSuffix}`
+          : `${formatCountNumber(shownAmount)} ${line.format.suffix}${leftSuffix}`
 
     const resetLabel = line.resetsAt
       ? resetTimerDisplayMode === "absolute"
@@ -423,8 +444,8 @@ function MetricLineRenderer({
       (line.format.kind === "percent"
         ? `${line.limit}% cap`
         : line.format.kind === "dollars"
-          ? `$${formatNumber(line.limit)} limit`
-          : `${formatCount(line.limit)} ${line.format.suffix}`)
+          ? `$${formatFixedPrecisionNumber(line.limit)} limit`
+          : `${formatCountNumber(line.limit)} ${line.format.suffix}`)
 
     // Calculate pace status if we have reset time and period duration
     const paceResult = hasPaceContext
@@ -452,6 +473,23 @@ function MetricLineRenderer({
             displayMode,
           })
         : null
+
+    const deficit = hasPaceContext && !isLimitReached
+      ? calculateDeficit(line.used, line.limit, resetsAtMs, periodDurationMs!, now)
+      : null
+    const deficitText = deficit !== null
+      ? formatDeficitText(deficit, line.format, displayMode)
+      : null
+    const runsOutText = hasPaceContext && !isLimitReached
+      ? formatRunsOutText({
+          paceResult,
+          used: line.used,
+          limit: line.limit,
+          periodDurationMs: periodDurationMs!,
+          resetsAtMs,
+          nowMs: now,
+        })
+      : null
 
     return (
       <div>
@@ -486,6 +524,20 @@ function MetricLineRenderer({
             )
           )}
         </div>
+        {(deficitText || runsOutText) && (
+          <div className="flex justify-between items-center mt-0.5">
+            {deficitText && (
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {deficitText}
+              </span>
+            )}
+            {runsOutText && (
+              <span className="text-xs text-muted-foreground tabular-nums ml-auto">
+                {runsOutText}
+              </span>
+            )}
+          </div>
+        )}
       </div>
     )
   }
