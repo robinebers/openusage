@@ -118,11 +118,6 @@
     return null
   }
 
-  function loadEndpointSelection(ctx) {
-    // Always auto-detect region from available keys and probe result.
-    return "AUTO"
-  }
-
   function getUsageUrls(endpointSelection) {
     if (endpointSelection === "CN") {
       return [CN_PRIMARY_USAGE_URL].concat(CN_FALLBACK_USAGE_URLS)
@@ -130,10 +125,7 @@
     return [GLOBAL_PRIMARY_USAGE_URL].concat(GLOBAL_FALLBACK_USAGE_URLS)
   }
 
-  function endpointAttempts(ctx, selection) {
-    if (selection === "CN") return ["CN"]
-    if (selection === "GLOBAL") return ["GLOBAL"]
-
+  function endpointAttempts(ctx) {
     // AUTO: if CN key exists, try CN first; otherwise try GLOBAL first.
     let cnApiKeyValue = null
     try {
@@ -149,7 +141,7 @@
     return "Session expired. Check your MiniMax API key."
   }
 
-  function parsePayloadShape(ctx, payload, endpointSelection, keySource) {
+  function parsePayloadShape(ctx, payload) {
     if (!payload || typeof payload !== "object") return null
 
     const data = payload.data && typeof payload.data === "object" ? payload.data : payload
@@ -165,7 +157,7 @@
         normalized.includes("log in") ||
         normalized.includes("login")
       ) {
-        throw formatAuthError(endpointSelection, keySource)
+        throw formatAuthError()
       }
       throw statusMessage
         ? "MiniMax API error: " + statusMessage
@@ -267,7 +259,7 @@
     }
   }
 
-  function fetchUsagePayload(ctx, apiKey, endpointSelection, keySource) {
+  function fetchUsagePayload(ctx, apiKey, endpointSelection) {
     const urls = getUsageUrls(endpointSelection)
     let lastStatus = null
     let hadNetworkError = false
@@ -314,7 +306,7 @@
     }
 
     if (authStatusCount > 0 && lastStatus === null && !hadNetworkError) {
-      throw formatAuthError(endpointSelection, keySource)
+      throw formatAuthError()
     }
     if (lastStatus !== null) throw "Request failed (HTTP " + lastStatus + "). Try again later."
     if (hadNetworkError) throw "Request failed. Check your connection."
@@ -322,8 +314,7 @@
   }
 
   function probe(ctx) {
-    const endpointSelection = loadEndpointSelection(ctx)
-    const attempts = endpointAttempts(ctx, endpointSelection)
+    const attempts = endpointAttempts(ctx)
     let lastError = null
     let parsed = null
 
@@ -332,8 +323,8 @@
       const apiKeyInfo = loadApiKey(ctx, endpoint)
       if (!apiKeyInfo) continue
       try {
-        const payload = fetchUsagePayload(ctx, apiKeyInfo.value, endpoint, apiKeyInfo.source)
-        parsed = parsePayloadShape(ctx, payload, endpoint, apiKeyInfo.source)
+        const payload = fetchUsagePayload(ctx, apiKeyInfo.value, endpoint)
+        parsed = parsePayloadShape(ctx, payload)
         if (parsed) break
         if (!lastError) lastError = "Could not parse usage data."
       } catch (e) {
