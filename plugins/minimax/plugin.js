@@ -10,11 +10,19 @@
   const CN_API_KEY_ENV_VARS = ["MINIMAX_CN_API_KEY", "MINIMAX_API_KEY", "MINIMAX_API_TOKEN"]
   const CODING_PLAN_WINDOW_MS = 5 * 60 * 60 * 1000
   const CODING_PLAN_WINDOW_TOLERANCE_MS = 10 * 60 * 1000
-  const PROMPT_LIMIT_TO_PLAN = {
+  // GLOBAL plan tiers (based on model call counts)
+  const GLOBAL_PROMPT_LIMIT_TO_PLAN = {
     100: "Starter",
     300: "Plus",
     1000: "Max",
     2000: "Ultra",
+  }
+  // CN plan tiers (based on model call counts = prompts × 15)
+  // Starter: 40 prompts = 600, Plus: 100 prompts = 1500, Max: 300 prompts = 4500
+  const CN_PROMPT_LIMIT_TO_PLAN = {
+    600: "Starter",
+    1500: "Plus",
+    4500: "Max",
   }
   const MODEL_CALLS_PER_PROMPT = 15
 
@@ -51,16 +59,19 @@
     return compact
   }
 
-  function inferPlanNameFromLimit(totalCount) {
+  function inferPlanNameFromLimit(totalCount, endpointSelection) {
     const n = readNumber(totalCount)
     if (n === null || n <= 0) return null
 
+    const promptLimitToPlan =
+      endpointSelection === "CN" ? CN_PROMPT_LIMIT_TO_PLAN : GLOBAL_PROMPT_LIMIT_TO_PLAN
+
     const normalized = Math.round(n)
-    if (PROMPT_LIMIT_TO_PLAN[normalized]) return PROMPT_LIMIT_TO_PLAN[normalized]
+    if (promptLimitToPlan[normalized]) return promptLimitToPlan[normalized]
 
     if (normalized % MODEL_CALLS_PER_PROMPT !== 0) return null
     const inferredPromptLimit = normalized / MODEL_CALLS_PER_PROMPT
-    return PROMPT_LIMIT_TO_PLAN[inferredPromptLimit] || null
+    return promptLimitToPlan[inferredPromptLimit] || null
   }
 
   function epochToMs(epoch) {
@@ -199,7 +210,7 @@
     throw "Could not parse usage data."
   }
 
-  function parsePayloadShape(ctx, payload) {
+  function parsePayloadShape(ctx, payload, endpointSelection) {
     if (!payload || typeof payload !== "object") return null
 
     const data = payload.data && typeof payload.data === "object" ? payload.data : payload
@@ -305,7 +316,7 @@
       payload.plan_name,
       payload.plan,
     ]))
-    const inferredPlanName = inferPlanNameFromLimit(total)
+    const inferredPlanName = inferPlanNameFromLimit(total, endpointSelection)
     const planName = explicitPlanName || inferredPlanName
 
     return {
@@ -333,7 +344,7 @@
       if (!apiKeyInfo) continue
       try {
         const payload = fetchUsagePayload(ctx, apiKeyInfo.value, endpoint)
-        parsed = parsePayloadShape(ctx, payload)
+        parsed = parsePayloadShape(ctx, payload, endpoint)
         if (parsed) {
           successfulEndpoint = endpoint
           break

@@ -478,6 +478,93 @@ describe("minimax plugin", () => {
     expect(ctx.host.http.request.mock.calls[1][0].url).toBe(CN_FALLBACK_USAGE_URL)
   })
 
+  it("infers CN Starter plan from 600 model-call limit", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_CN_API_KEY: "cn-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify(
+        successPayload({
+          plan_name: undefined, // Force inference
+          model_remains: [
+            {
+              model_name: "MiniMax-M2",
+              current_interval_total_count: 600, // 40 prompts × 15
+              current_interval_usage_count: 400,
+              start_time: 1700000000000,
+              end_time: 1700018000000,
+            },
+          ],
+        })
+      ),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Starter (CN)")
+    expect(result.lines[0].limit).toBe(600)
+  })
+
+  it("infers CN Plus plan from 1500 model-call limit", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_CN_API_KEY: "cn-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify(
+        successPayload({
+          plan_name: undefined, // Force inference
+          model_remains: [
+            {
+              model_name: "MiniMax-M2",
+              current_interval_total_count: 1500, // 100 prompts × 15
+              current_interval_usage_count: 900,
+              start_time: 1700000000000,
+              end_time: 1700018000000,
+            },
+          ],
+        })
+      ),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Plus (CN)")
+    expect(result.lines[0].limit).toBe(1500)
+  })
+
+  it("infers CN Max plan from 4500 model-call limit", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_CN_API_KEY: "cn-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify(
+        successPayload({
+          plan_name: undefined, // Force inference
+          model_remains: [
+            {
+              model_name: "MiniMax-M2",
+              current_interval_total_count: 4500, // 300 prompts × 15
+              current_interval_usage_count: 2700,
+              start_time: 1700000000000,
+              end_time: 1700018000000,
+            },
+          ],
+        })
+      ),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Max (CN)")
+    expect(result.lines[0].limit).toBe(4500)
+  })
+
   it("falls back when primary returns auth-like status", async () => {
     const ctx = makeCtx()
     setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
