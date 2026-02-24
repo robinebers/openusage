@@ -20,7 +20,7 @@
 | Total usage | `planUsage.totalPercentUsed` | overview | percent (individual) / dollars (team) | Falls back to computed `(limit - remaining) / limit * 100` when `totalPercentUsed` is not finite. Team accounts use dollars format. |
 | Auto usage | `planUsage.autoPercentUsed` | detail | percent | Omitted when field is missing or non-finite |
 | API usage | `planUsage.apiPercentUsed` | detail | percent | Omitted when field is missing or non-finite |
-| Included requests | `/api/usage` (enterprise) | overview | count | Enterprise accounts only; unchanged from previous behavior |
+| Requests | `/api/usage` (enterprise) | overview | count | Enterprise accounts only; unchanged from previous behavior |
 | On-demand | `spendLimitUsage` | detail | dollars | Only when individual or pooled limit > 0 |
 
 **Enterprise flow** remains request-based via the REST `/api/usage` endpoint -- unchanged.

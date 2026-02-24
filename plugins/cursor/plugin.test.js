@@ -406,7 +406,7 @@ describe("cursor plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
     expect(result.plan).toBe("Enterprise")
-    const reqLine = result.lines.find((l) => l.label === "Included requests")
+    const reqLine = result.lines.find((l) => l.label === "Requests")
     expect(reqLine).toBeTruthy()
     expect(reqLine.used).toBe(422)
     expect(reqLine.limit).toBe(500)
@@ -910,7 +910,7 @@ describe("cursor plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
     expect(result.plan).toBe("Enterprise")
-    const reqLine = result.lines.find((l) => l.label === "Included requests")
+    const reqLine = result.lines.find((l) => l.label === "Requests")
     expect(reqLine).toBeTruthy()
     expect(reqLine.used).toBe(3)
     expect(reqLine.limit).toBe(10)
@@ -1066,7 +1066,7 @@ describe("cursor plugin", () => {
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    const reqLine = result.lines.find((line) => line.label === "Included requests")
+    const reqLine = result.lines.find((line) => line.label === "Requests")
     expect(reqLine).toBeTruthy()
     expect(reqLine.used).toBe(0)
     expect(reqLine.limit).toBe(10)
@@ -1152,7 +1152,7 @@ describe("cursor plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
     expect(result.plan).toBeNull()
-    expect(result.lines.find((line) => line.label === "Included requests")).toBeTruthy()
+    expect(result.lines.find((line) => line.label === "Requests")).toBeTruthy()
   })
 
   it("wraps non-string retry wrapper errors as usage request failure", async () => {

@@ -263,7 +263,7 @@
         var cycleEndMs = cycleStart ? cycleStart + billingPeriodMs : null
 
         lines.push(ctx.line.progress({
-          label: "Included requests",
+          label: "Requests",
           used: used,
           limit: limit,
           format: { kind: "count", suffix: "requests" },
