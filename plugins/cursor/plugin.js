@@ -220,10 +220,10 @@
     return { userId: userId, sessionToken: userId + "%3A%3A" + accessToken }
   }
 
-  function fetchEnterpriseUsage(ctx, accessToken) {
+  function fetchRequestUsage(ctx, accessToken, logPrefix) {
     var session = buildSessionToken(ctx, accessToken)
     if (!session) {
-      ctx.host.log.warn("enterprise: cannot build session token")
+      ctx.host.log.warn(logPrefix + ": cannot build session token")
       return null
     }
     try {
@@ -236,41 +236,76 @@
         timeoutMs: 10000,
       })
       if (resp.status < 200 || resp.status >= 300) {
-        ctx.host.log.warn("enterprise usage returned status=" + resp.status)
+        ctx.host.log.warn(logPrefix + " request usage returned status=" + resp.status)
         return null
       }
       return ctx.util.tryParseJson(resp.bodyText)
     } catch (e) {
-      ctx.host.log.warn("enterprise usage fetch failed: " + String(e))
+      ctx.host.log.warn(logPrefix + " request usage fetch failed: " + String(e))
       return null
     }
   }
 
+  function summarizeRequestUsage(ctx, requestUsage) {
+    if (!requestUsage || typeof requestUsage !== "object") return null
+    var used = 0
+    var limit = 0
+    var hasUsage = false
+    var hasLimit = false
+
+    for (var key in requestUsage) {
+      if (!Object.prototype.hasOwnProperty.call(requestUsage, key)) continue
+      if (key === "startOfMonth") continue
+      var model = requestUsage[key]
+      if (!model || typeof model !== "object") continue
+
+      var modelUsed = null
+      if (typeof model.numRequestsTotal === "number" && Number.isFinite(model.numRequestsTotal)) {
+        modelUsed = model.numRequestsTotal
+      } else if (typeof model.numRequests === "number" && Number.isFinite(model.numRequests)) {
+        modelUsed = model.numRequests
+      }
+      if (typeof modelUsed === "number" && modelUsed >= 0) {
+        used += modelUsed
+        hasUsage = true
+      }
+
+      if (typeof model.maxRequestUsage === "number" && Number.isFinite(model.maxRequestUsage) && model.maxRequestUsage > 0) {
+        limit += model.maxRequestUsage
+        hasLimit = true
+      }
+    }
+
+    if (!hasUsage && !hasLimit) return null
+
+    var billingPeriodMs = 30 * 24 * 60 * 60 * 1000
+    var cycleStart = requestUsage.startOfMonth
+      ? ctx.util.parseDateMs(requestUsage.startOfMonth)
+      : null
+    var cycleEndMs = cycleStart ? cycleStart + billingPeriodMs : null
+
+    return {
+      used: used,
+      limit: hasLimit ? limit : null,
+      billingPeriodMs: billingPeriodMs,
+      cycleEndMs: cycleEndMs,
+    }
+  }
+
   function buildEnterpriseResult(ctx, accessToken, planName, usage) {
-    var requestUsage = fetchEnterpriseUsage(ctx, accessToken)
+    var requestUsage = fetchRequestUsage(ctx, accessToken, "enterprise")
+    var requestTotals = summarizeRequestUsage(ctx, requestUsage)
     var lines = []
 
-    if (requestUsage) {
-      var gpt4 = requestUsage["gpt-4"]
-      if (gpt4 && typeof gpt4.maxRequestUsage === "number" && gpt4.maxRequestUsage > 0) {
-        var used = gpt4.numRequests || 0
-        var limit = gpt4.maxRequestUsage
-
-        var billingPeriodMs = 30 * 24 * 60 * 60 * 1000
-        var cycleStart = requestUsage.startOfMonth
-          ? ctx.util.parseDateMs(requestUsage.startOfMonth)
-          : null
-        var cycleEndMs = cycleStart ? cycleStart + billingPeriodMs : null
-
-        lines.push(ctx.line.progress({
-          label: "Included requests",
-          used: used,
-          limit: limit,
-          format: { kind: "count", suffix: "requests" },
-          resetsAt: ctx.util.toIso(cycleEndMs),
-          periodDurationMs: billingPeriodMs,
-        }))
-      }
+    if (requestTotals && typeof requestTotals.limit === "number" && requestTotals.limit > 0) {
+      lines.push(ctx.line.progress({
+        label: "Requests",
+        used: requestTotals.used,
+        limit: requestTotals.limit,
+        format: { kind: "count", suffix: "requests" },
+        resetsAt: ctx.util.toIso(requestTotals.cycleEndMs),
+        periodDurationMs: requestTotals.billingPeriodMs,
+      }))
     }
 
     if (lines.length === 0) {
@@ -429,14 +464,19 @@
       }
     }
 
-    // Plan usage (always present) - fallback primary metric
-    // API may return totalSpend directly, or we calculate from limit - remaining
+    // Total usage (always present) - fallback primary metric
     if (typeof pu.limit !== "number") {
-      throw "Plan usage limit missing from API response."
+      throw "Total usage limit missing from API response."
     }
     const planUsed = typeof pu.totalSpend === "number"
       ? pu.totalSpend
       : pu.limit - (pu.remaining ?? 0)
+    const computedPercentUsed = pu.limit > 0
+      ? (planUsed / pu.limit) * 100
+      : 0
+    const totalUsagePercent = typeof pu.totalPercentUsed === "number"
+      ? pu.totalPercentUsed
+      : computedPercentUsed
 
     // Calculate billing cycle period duration
     // API returns timestamps as strings in milliseconds
@@ -448,16 +488,56 @@
     }
 
     lines.push(ctx.line.progress({
-      label: "Plan usage",
-      used: ctx.fmt.dollars(planUsed),
-      limit: ctx.fmt.dollars(pu.limit),
-      format: { kind: "dollars" },
+      label: "Total usage",
+      used: totalUsagePercent,
+      limit: 100,
+      format: { kind: "percent" },
       resetsAt: ctx.util.toIso(usage.billingCycleEnd),
       periodDurationMs: billingPeriodMs
     }))
 
-    if (typeof pu.bonusSpend === "number" && pu.bonusSpend > 0) {
-      lines.push(ctx.line.text({ label: "Bonus spend", value: "$" + String(ctx.fmt.dollars(pu.bonusSpend)) }))
+    // Requests (overview) - cap-aware progress when available, otherwise a text fallback.
+    var requestUsage = fetchRequestUsage(ctx, accessToken, "individual")
+    var requestTotals = summarizeRequestUsage(ctx, requestUsage)
+    if (requestTotals) {
+      if (typeof requestTotals.limit === "number" && requestTotals.limit > 0) {
+        lines.push(ctx.line.progress({
+          label: "Requests",
+          used: requestTotals.used,
+          limit: requestTotals.limit,
+          format: { kind: "count", suffix: "requests" },
+          resetsAt: ctx.util.toIso(requestTotals.cycleEndMs),
+          periodDurationMs: requestTotals.billingPeriodMs,
+        }))
+      } else {
+        lines.push(ctx.line.text({
+          label: "Requests",
+          value: String(Math.round(requestTotals.used)) + " requests"
+        }))
+      }
+    }
+
+    // Detail breakdown percentages
+    if (typeof pu.autoPercentUsed === "number" && Number.isFinite(pu.autoPercentUsed)) {
+      lines.push(ctx.line.progress({
+        label: "Auto + Composer",
+        used: pu.autoPercentUsed,
+        limit: 100,
+        format: { kind: "percent" },
+        resetsAt: ctx.util.toIso(usage.billingCycleEnd),
+        periodDurationMs: billingPeriodMs
+      }))
+    }
+
+    if (typeof pu.apiPercentUsed === "number" && Number.isFinite(pu.apiPercentUsed)) {
+      lines.push(ctx.line.progress({
+        label: "API",
+        used: pu.apiPercentUsed,
+        limit: 100,
+        format: { kind: "percent" },
+        resetsAt: ctx.util.toIso(usage.billingCycleEnd),
+        periodDurationMs: billingPeriodMs
+      }))
     }
 
     // On-demand (if available) - not a primary candidate

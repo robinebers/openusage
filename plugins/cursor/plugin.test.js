@@ -45,7 +45,7 @@ describe("cursor plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    expect(result.lines.find((line) => line.label === "Plan usage")).toBeTruthy()
+    expect(result.lines.find((line) => line.label === "Total usage")).toBeTruthy()
     expect(ctx.host.keychain.readGenericPassword).toHaveBeenCalledWith("cursor-access-token")
     expect(ctx.host.keychain.readGenericPassword).toHaveBeenCalledWith("cursor-refresh-token")
   })
@@ -86,7 +86,7 @@ describe("cursor plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    expect(result.lines.find((line) => line.label === "Plan usage")).toBeTruthy()
+    expect(result.lines.find((line) => line.label === "Total usage")).toBeTruthy()
     expect(ctx.host.keychain.writeGenericPassword).toHaveBeenCalledWith(
       "cursor-access-token",
       refreshedAccessToken
@@ -135,7 +135,7 @@ describe("cursor plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    expect(result.lines.find((line) => line.label === "Plan usage")).toBeTruthy()
+    expect(result.lines.find((line) => line.label === "Total usage")).toBeTruthy()
     expect(ctx.host.keychain.readGenericPassword).not.toHaveBeenCalled()
   })
 
@@ -200,7 +200,7 @@ describe("cursor plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
     expect(result.plan).toBe("Team")
-    expect(result.lines.find((line) => line.label === "Plan usage")).toBeTruthy()
+    expect(result.lines.find((line) => line.label === "Total usage")).toBeTruthy()
   })
 
   it("throws on missing plan usage limit", async () => {
@@ -214,10 +214,10 @@ describe("cursor plugin", () => {
       }),
     })
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Plan usage limit missing")
+    expect(() => plugin.probe(ctx)).toThrow("Total usage limit missing")
   })
 
-  it("calculates planUsed from limit - remaining when totalSpend missing", async () => {
+  it("falls back to calculated total usage percent when totalPercentUsed missing", async () => {
     const ctx = makeCtx()
     ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: "token" }]))
     ctx.host.http.request.mockReturnValue({
@@ -229,10 +229,10 @@ describe("cursor plugin", () => {
     })
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    const planLine = result.lines.find((l) => l.label === "Plan usage")
+    const planLine = result.lines.find((l) => l.label === "Total usage")
     expect(planLine).toBeTruthy()
-    // used = limit - remaining = 2400 - 1200 = 1200
-    expect(planLine.used).toBe(12) // ctx.fmt.dollars divides by 100
+    // used percent = (2400 - 1200) / 2400 * 100 = 50
+    expect(planLine.used).toBe(50)
   })
 
   it("renders usage + plan info", async () => {
@@ -258,7 +258,7 @@ describe("cursor plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
     expect(result.plan).toBeTruthy()
-    expect(result.lines.find((line) => line.label === "Plan usage")).toBeTruthy()
+    expect(result.lines.find((line) => line.label === "Total usage")).toBeTruthy()
   })
 
   it("omits plan badge for blank plan names", async () => {
@@ -400,7 +400,7 @@ describe("cursor plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
     expect(result.plan).toBe("Enterprise")
-    const reqLine = result.lines.find((l) => l.label === "Included requests")
+    const reqLine = result.lines.find((l) => l.label === "Requests")
     expect(reqLine).toBeTruthy()
     expect(reqLine.used).toBe(422)
     expect(reqLine.limit).toBe(500)
@@ -488,7 +488,7 @@ describe("cursor plugin", () => {
     })
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    expect(result.lines.find((line) => line.label === "Plan usage")).toBeTruthy()
+    expect(result.lines.find((line) => line.label === "Total usage")).toBeTruthy()
   })
 
   it("outputs Credits first when available", async () => {
@@ -522,13 +522,13 @@ describe("cursor plugin", () => {
     
     // Credits should be first in the lines array
     expect(result.lines[0].label).toBe("Credits")
-    expect(result.lines[1].label).toBe("Plan usage")
+    expect(result.lines[1].label).toBe("Total usage")
     // On-demand should come after
     const onDemandIndex = result.lines.findIndex((l) => l.label === "On-demand")
     expect(onDemandIndex).toBeGreaterThan(1)
   })
 
-  it("outputs Plan usage first when Credits not available", async () => {
+  it("outputs Total usage first when Credits not available", async () => {
     const ctx = makeCtx()
     ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: "token" }]))
     ctx.host.http.request.mockImplementation((opts) => {
@@ -552,8 +552,83 @@ describe("cursor plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
     
-    // Plan usage should be first when Credits not available
-    expect(result.lines[0].label).toBe("Plan usage")
+    // Total usage should be first when Credits not available
+    expect(result.lines[0].label).toBe("Total usage")
+  })
+
+  it("emits Auto + Composer and API percent lines when available", async () => {
+    const ctx = makeCtx()
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: "token" }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            enabled: true,
+            billingCycleEnd: Date.now(),
+            planUsage: {
+              limit: 40000,
+              remaining: 32000,
+              totalPercentUsed: 20,
+              autoPercentUsed: 12.5,
+              apiPercentUsed: 7.5,
+            },
+          }),
+        }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const totalLine = result.lines.find((line) => line.label === "Total usage")
+    const autoLine = result.lines.find((line) => line.label === "Auto + Composer")
+    const apiLine = result.lines.find((line) => line.label === "API")
+
+    expect(totalLine).toBeTruthy()
+    expect(totalLine.used).toBe(20)
+    expect(autoLine).toBeTruthy()
+    expect(autoLine.used).toBe(12.5)
+    expect(apiLine).toBeTruthy()
+    expect(apiLine.used).toBe(7.5)
+  })
+
+  it("falls back to text Requests line when request cap is unavailable", async () => {
+    const ctx = makeCtx()
+    const accessToken = makeJwt({ sub: "google-oauth2|user_abc123", exp: 9999999999 })
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: accessToken }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            enabled: true,
+            billingCycleEnd: Date.now(),
+            planUsage: { limit: 40000, remaining: 36000, totalPercentUsed: 10 },
+          }),
+        }
+      }
+      if (String(opts.url).includes("cursor.com/api/usage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            "gpt-4": {
+              numRequestsTotal: 7,
+              maxRequestUsage: null,
+            },
+            startOfMonth: "2026-02-01T00:00:00.000Z",
+          }),
+        }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const requestsLine = result.lines.find((line) => line.label === "Requests")
+    expect(requestsLine).toBeTruthy()
+    expect(requestsLine.type).toBe("text")
+    expect(requestsLine.value).toBe("7 requests")
   })
 
   it("refreshes token when expired and persists new access token", async () => {
@@ -591,7 +666,7 @@ describe("cursor plugin", () => {
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    expect(result.lines.find((line) => line.label === "Plan usage")).toBeTruthy()
+    expect(result.lines.find((line) => line.label === "Total usage")).toBeTruthy()
     expect(ctx.host.sqlite.exec).toHaveBeenCalled()
   })
 
@@ -671,7 +746,7 @@ describe("cursor plugin", () => {
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    expect(result.lines.find((line) => line.label === "Plan usage")).toBeTruthy()
+    expect(result.lines.find((line) => line.label === "Total usage")).toBeTruthy()
   })
 
   it("throws not logged in when only refresh token exists but refresh returns no access token", async () => {
@@ -803,7 +878,7 @@ describe("cursor plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
     expect(result.plan).toBe("Enterprise")
-    const reqLine = result.lines.find((l) => l.label === "Included requests")
+    const reqLine = result.lines.find((l) => l.label === "Requests")
     expect(reqLine).toBeTruthy()
     expect(reqLine.used).toBe(3)
     expect(reqLine.limit).toBe(10)
@@ -828,9 +903,9 @@ describe("cursor plugin", () => {
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    const planLine = result.lines.find((line) => line.label === "Plan usage")
+    const planLine = result.lines.find((line) => line.label === "Total usage")
     expect(planLine).toBeTruthy()
-    expect(planLine.used).toBe(24)
+    expect(planLine.used).toBe(100)
     expect(result.lines.find((line) => line.label === "On-demand")).toBeUndefined()
   })
 
@@ -845,7 +920,7 @@ describe("cursor plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("retry failed")
   })
 
-  it("skips malformed credit grants payload and still returns plan usage", async () => {
+  it("skips malformed credit grants payload and still returns total usage", async () => {
     const ctx = makeCtx()
     ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: "token" }]))
     ctx.host.http.request.mockImplementation((opts) => {
@@ -874,7 +949,7 @@ describe("cursor plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
     expect(result.lines.find((line) => line.label === "Credits")).toBeUndefined()
-    expect(result.lines.find((line) => line.label === "Plan usage")).toBeTruthy()
+    expect(result.lines.find((line) => line.label === "Total usage")).toBeTruthy()
   })
 
   it("uses expired access token when refresh token is missing", async () => {
@@ -959,7 +1034,7 @@ describe("cursor plugin", () => {
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    const reqLine = result.lines.find((line) => line.label === "Included requests")
+    const reqLine = result.lines.find((line) => line.label === "Requests")
     expect(reqLine).toBeTruthy()
     expect(reqLine.used).toBe(0)
     expect(reqLine.limit).toBe(10)
@@ -1045,7 +1120,7 @@ describe("cursor plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
     expect(result.plan).toBeNull()
-    expect(result.lines.find((line) => line.label === "Included requests")).toBeTruthy()
+    expect(result.lines.find((line) => line.label === "Requests")).toBeTruthy()
   })
 
   it("wraps non-string retry wrapper errors as usage request failure", async () => {

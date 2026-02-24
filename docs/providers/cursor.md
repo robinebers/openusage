@@ -103,6 +103,47 @@ Returns whether user is in slow pool, feature gates, and allowed models. Respons
 
 Returns limit policy status plus any active credit grants. Response undocumented.
 
+### GET /api/usage?user=<id>
+
+Returns per-model request/token counters. OpenUsage currently uses this endpoint for the `Requests` metric only.
+
+Auth:
+- Requires `WorkosCursorSessionToken` cookie (derived from `user_id::access_token`).
+
+### GET /api/usage-summary
+
+Returns a higher-level usage summary for dashboard pages. Endpoint is cookie-authenticated and currently optional in OpenUsage for Cursor.
+
+### GET/POST /api/dashboard/get-current-period-usage
+
+Not used by OpenUsage. In local probing this endpoint is not reliably compatible with plugin auth flow (`500`/`403`).
+
+## Rendered Metrics (Individual Accounts)
+
+OpenUsage intentionally renders the following Cursor lines:
+
+- **Overview tab:** `Credits`, `Total usage`, `Requests`
+- **Detail tab adds:** `Auto + Composer`, `API`, `On-demand`
+
+### Endpoint-to-Metric Mapping
+
+| Metric label | Source endpoint | Source fields | Output format |
+|---|---|---|---|
+| `Credits` | `GetCreditGrantsBalance` | `usedCents`, `totalCents` | dollars progress |
+| `Total usage` | `GetCurrentPeriodUsage` | `planUsage.totalPercentUsed` (fallback: derived from `limit`/`remaining`) | percent progress |
+| `Requests` | `/api/usage?user=<id>` | aggregated `numRequestsTotal`/`numRequests` + `maxRequestUsage` | count progress (or text fallback if cap missing) |
+| `Auto + Composer` | `GetCurrentPeriodUsage` | `planUsage.autoPercentUsed` | percent progress |
+| `API` | `GetCurrentPeriodUsage` | `planUsage.apiPercentUsed` | percent progress |
+| `On-demand` | `GetCurrentPeriodUsage` | `spendLimitUsage.individualLimit`/`individualRemaining` (fallback pooled) | dollars progress |
+
+### Intentionally Excluded From UI
+
+The Cursor plugin currently does **not** render UI lines for:
+
+- `limitType`
+- `autoBucketModels`
+- per-model usage breakdown text (token/request model detail lines)
+
 ## Authentication
 
 ### Token Sources
