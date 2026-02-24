@@ -7,18 +7,63 @@
   "icon": "icon.svg",
   "brandColor": "#74AA9C",
   "links": [
-    { "label": "Status", "url": "https://status.openai.com/" },
-    { "label": "Usage dashboard", "url": "https://platform.openai.com/usage" }
+    {
+      "label": "Status",
+      "url": "https://status.openai.com/"
+    },
+    {
+      "label": "Usage dashboard",
+      "url": "https://platform.openai.com/usage"
+    }
   ],
   "lines": [
-    { "type": "progress", "label": "Session", "scope": "overview", "primaryOrder": 1 },
-    { "type": "progress", "label": "Weekly", "scope": "overview" },
-    { "type": "progress", "label": "Spark", "scope": "detail" },
-    { "type": "progress", "label": "Spark Weekly", "scope": "detail" },
-    { "type": "progress", "label": "Reviews", "scope": "detail" },
-    { "type": "progress", "label": "Credits", "scope": "detail" },
-    { "type": "text", "label": "Today", "scope": "detail" },
-    { "type": "text", "label": "Yesterday", "scope": "detail" },
-    { "type": "text", "label": "Last 30 Days", "scope": "detail" }
+    {
+      "type": "progress",
+      "label": "Session",
+      "scope": "overview",
+      "primaryOrder": 1
+    },
+    {
+      "type": "progress",
+      "label": "Weekly",
+      "scope": "overview",
+      "primaryOrder": 2
+    },
+    {
+      "type": "progress",
+      "label": "Spark",
+      "scope": "detail"
+    },
+    {
+      "type": "progress",
+      "label": "Spark Weekly",
+      "scope": "detail"
+    },
+    {
+      "type": "progress",
+      "label": "Reviews",
+      "scope": "detail",
+      "primaryOrder": 3
+    },
+    {
+      "type": "progress",
+      "label": "Credits",
+      "scope": "detail"
+    },
+    {
+      "type": "text",
+      "label": "Today",
+      "scope": "detail"
+    },
+    {
+      "type": "text",
+      "label": "Yesterday",
+      "scope": "detail"
+    },
+    {
+      "type": "text",
+      "label": "Last 30 Days",
+      "scope": "detail"
+    }
   ]
 }

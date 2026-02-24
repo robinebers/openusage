@@ -46,12 +46,42 @@ describe("tray-bars-icon", () => {
     expect(svg).not.toContain("<text ")
   })
 
+  it("keeps non-zero size when icon is hidden and no text is rendered", () => {
+    const svg = makeTrayBarsSvg({
+      sizePx: 18,
+      hideIcon: true,
+      gridCells: [],
+    })
+    const viewBox = svg.match(/viewBox="0 0 (\d+) (\d+)"/)
+    expect(viewBox).toBeTruthy()
+    if (viewBox) {
+      expect(Number(viewBox[1])).toBe(18)
+      expect(Number(viewBox[2])).toBe(18)
+    }
+  })
+
   it("renders svg text when percentage is provided", () => {
     const svg = makeTrayBarsSvg({
       sizePx: 18,
-      percentText: "70%",
+      gridCells: [{ text: "70%" }],
     })
     expect(svg).toContain(">70%</text>")
+  })
+
+  it("renders at most four grid cells", () => {
+    const svg = makeTrayBarsSvg({
+      sizePx: 18,
+      gridCells: [
+        { text: "A" },
+        { text: "B" },
+        { text: "C" },
+        { text: "D" },
+        { text: "E" },
+      ],
+    })
+    expect(svg).toContain(">A</text>")
+    expect(svg).toContain(">D</text>")
+    expect(svg).not.toContain(">E</text>")
   })
 
   it("renderTrayBarsIcon rasterizes SVG to an Image using canvas", async () => {

@@ -36,6 +36,8 @@ interface PluginConfig {
   id: string;
   name: string;
   enabled: boolean;
+  primaryCandidates: string[];
+  trayLines: string[];
 }
 
 function SortablePluginItem({
@@ -100,6 +102,7 @@ interface SettingsPageProps {
   plugins: PluginConfig[];
   onReorder: (orderedIds: string[]) => void;
   onToggle: (id: string) => void;
+  onTrayLineToggle: (id: string, lineLabel: string, checked: boolean, fallback?: string) => void;
   autoUpdateInterval: AutoUpdateIntervalMinutes;
   onAutoUpdateIntervalChange: (value: AutoUpdateIntervalMinutes) => void;
   themeMode: ThemeMode;
@@ -112,12 +115,15 @@ interface SettingsPageProps {
   onGlobalShortcutChange: (value: GlobalShortcut) => void;
   startOnLogin: boolean;
   onStartOnLoginChange: (value: boolean) => void;
+  showTrayIcon: boolean;
+  onShowTrayIconChange: (value: boolean) => void;
 }
 
 export function SettingsPage({
   plugins,
   onReorder,
   onToggle,
+  onTrayLineToggle,
   autoUpdateInterval,
   onAutoUpdateIntervalChange,
   themeMode,
@@ -130,6 +136,8 @@ export function SettingsPage({
   onGlobalShortcutChange,
   startOnLogin,
   onStartOnLoginChange,
+  showTrayIcon,
+  onShowTrayIconChange,
 }: SettingsPageProps) {
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -278,6 +286,20 @@ export function SettingsPage({
         onGlobalShortcutChange={onGlobalShortcutChange}
       />
       <section>
+        <h3 className="text-lg font-semibold mb-0">System Tray</h3>
+        <p className="text-sm text-muted-foreground mb-2">
+          Visibility of the menu bar provider icon
+        </p>
+        <label className="flex items-center gap-2 text-sm select-none text-foreground">
+          <Checkbox
+            key={`show-tray-icon-${showTrayIcon}`}
+            checked={showTrayIcon}
+            onCheckedChange={(checked) => onShowTrayIconChange(checked === true)}
+          />
+          Show tray icon
+        </label>
+      </section>
+      <section>
         <h3 className="text-lg font-semibold mb-0">Start on Login</h3>
         <p className="text-sm text-muted-foreground mb-2">
           OpenUsage starts when you sign in
@@ -307,11 +329,31 @@ export function SettingsPage({
               strategy={verticalListSortingStrategy}
             >
               {plugins.map((plugin) => (
-                <SortablePluginItem
-                  key={plugin.id}
-                  plugin={plugin}
-                  onToggle={onToggle}
-                />
+                <div key={plugin.id} className="flex flex-col gap-1">
+                  <SortablePluginItem
+                    plugin={plugin}
+                    onToggle={onToggle}
+                  />
+                  {plugin.enabled && plugin.primaryCandidates.length > 0 && (
+                    <div className="grid grid-cols-2 gap-y-2 gap-x-4 px-3 py-2 bg-card/50 rounded-b-md border-t border-transparent text-sm">
+                      {plugin.primaryCandidates.map((candidateLabel, i) => {
+                        const isSelected = plugin.trayLines.length === 0
+                          ? i === 0
+                          : plugin.trayLines.includes(candidateLabel);
+                        return (
+                          <label key={candidateLabel} className="flex items-center gap-1.5 cursor-pointer select-none truncate">
+                            <Checkbox
+                              className="h-3.5 w-3.5 shrink-0"
+                              checked={isSelected}
+                              onCheckedChange={(checked) => onTrayLineToggle(plugin.id, candidateLabel, checked === true, plugin.primaryCandidates[0])}
+                            />
+                            <span className="truncate">{candidateLabel}</span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
               ))}
             </SortableContext>
           </DndContext>

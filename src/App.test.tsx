@@ -74,8 +74,8 @@ vi.mock("@dnd-kit/core", () => ({
     return <div>{children}</div>
   },
   closestCenter: vi.fn(),
-  PointerSensor: class {},
-  KeyboardSensor: class {},
+  PointerSensor: class { },
+  KeyboardSensor: class { },
   useSensor: vi.fn((_sensor: any, options?: any) => ({ sensor: _sensor, options })),
   useSensors: vi.fn((...sensors: any[]) => sensors),
 }))
@@ -481,7 +481,7 @@ describe("App", () => {
     await waitFor(() => expect(state.renderTrayBarsIconMock).toHaveBeenCalled())
     const firstCall = state.renderTrayBarsIconMock.mock.calls[0]?.[0]
     expect(firstCall.providerIconUrl).toBe("icon-a")
-    await waitFor(() => expect(state.traySetTitleMock).toHaveBeenCalledWith("--%"))
+    await waitFor(() => expect(state.traySetTitleMock).toHaveBeenCalledWith(null))
   })
 
   it("renders percent text in tray icon when native title is unavailable", async () => {
@@ -495,7 +495,7 @@ describe("App", () => {
     await waitFor(() => expect(state.renderTrayBarsIconMock).toHaveBeenCalled())
 
     const firstCall = state.renderTrayBarsIconMock.mock.calls[0]?.[0]
-    expect(firstCall.percentText).toBe("--%")
+    expect(firstCall.gridCells).toEqual([])
     expect(state.traySetTitleMock).not.toHaveBeenCalled()
   })
 
@@ -546,14 +546,14 @@ describe("App", () => {
       const latestCall = state.renderTrayBarsIconMock.mock.calls.at(-1)?.[0]
       expect(latestCall.providerIconUrl).toBe("icon-b")
     })
-    await waitFor(() => expect(state.traySetTitleMock).toHaveBeenCalledWith("70%"))
+    await waitFor(() => expect(state.traySetTitleMock).toHaveBeenCalledWith(null))
 
     await userEvent.click(screen.getByRole("button", { name: "Home" }))
     await waitFor(() => {
       const latestCall = state.renderTrayBarsIconMock.mock.calls.at(-1)?.[0]
       expect(latestCall.providerIconUrl).toBe("icon-b")
     })
-    await waitFor(() => expect(state.traySetTitleMock).toHaveBeenCalledWith("70%"))
+    await waitFor(() => expect(state.traySetTitleMock).toHaveBeenCalledWith(null))
 
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
@@ -561,7 +561,7 @@ describe("App", () => {
       const latestCall = state.renderTrayBarsIconMock.mock.calls.at(-1)?.[0]
       expect(latestCall.providerIconUrl).toBe("icon-b")
     })
-    await waitFor(() => expect(state.traySetTitleMock).toHaveBeenCalledWith("70%"))
+    await waitFor(() => expect(state.traySetTitleMock).toHaveBeenCalledWith(null))
   })
 
   it("covers about open/close callbacks", async () => {
@@ -588,7 +588,7 @@ describe("App", () => {
   })
 
   it("logs when saving display mode fails", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { })
     state.saveDisplayModeMock.mockRejectedValueOnce(new Error("save display mode"))
 
     render(<App />)
@@ -653,7 +653,7 @@ describe("App", () => {
   })
 
   it("logs when saving auto-update interval fails", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { })
     state.saveAutoUpdateIntervalMock.mockRejectedValueOnce(new Error("save interval"))
     render(<App />)
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
@@ -684,7 +684,7 @@ describe("App", () => {
   })
 
   it("logs when saving start on login fails", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { })
     state.saveStartOnLoginMock.mockRejectedValueOnce(new Error("save start on login failed"))
 
     render(<App />)
@@ -699,7 +699,7 @@ describe("App", () => {
   })
 
   it("logs when applying start on login setting fails on startup", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { })
     state.isTauriMock.mockReturnValue(true)
     state.loadStartOnLoginMock.mockResolvedValueOnce(true)
     state.autostartIsEnabledMock.mockRejectedValueOnce(new Error("autostart status failed"))
@@ -713,7 +713,7 @@ describe("App", () => {
   })
 
   it("logs when updating start on login fails from settings", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { })
     state.isTauriMock.mockReturnValue(true)
     state.loadStartOnLoginMock.mockResolvedValueOnce(false)
     state.autostartIsEnabledMock
@@ -732,7 +732,7 @@ describe("App", () => {
   })
 
   it("logs when loading display mode fails", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { })
     state.loadDisplayModeMock.mockRejectedValueOnce(new Error("load display mode"))
 
     render(<App />)
@@ -743,7 +743,7 @@ describe("App", () => {
   })
 
   it("logs when migrating legacy tray settings fails", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { })
     state.migrateLegacyTraySettingsMock.mockRejectedValueOnce(new Error("migrate legacy tray"))
 
     render(<App />)
@@ -754,7 +754,7 @@ describe("App", () => {
   })
 
   it("logs when saving theme mode fails", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { })
     state.saveThemeModeMock.mockRejectedValueOnce(new Error("save theme"))
     render(<App />)
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
@@ -885,7 +885,7 @@ describe("App", () => {
     removeAction()
 
     await waitFor(() =>
-      expect(state.savePluginSettingsMock).toHaveBeenCalledWith({ order: ["a", "b"], disabled: ["b"] })
+      expect(state.savePluginSettingsMock).toHaveBeenCalledWith({ order: ["a", "b"], disabled: ["b"], trayLines: {} })
     )
     expect(state.trackMock).toHaveBeenCalledWith("provider_toggled", { provider_id: "b", enabled: "false" })
     expect(state.startBatchMock).not.toHaveBeenCalled()
@@ -901,7 +901,7 @@ describe("App", () => {
     const removeAction = await triggerPluginContextAction("Beta", "b", "remove")
     removeAction()
     await waitFor(() =>
-      expect(state.savePluginSettingsMock).toHaveBeenCalledWith({ order: ["a", "b"], disabled: ["b"] })
+      expect(state.savePluginSettingsMock).toHaveBeenCalledWith({ order: ["a", "b"], disabled: ["b"], trayLines: {} })
     )
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: "Beta" })).not.toBeInTheDocument()
@@ -941,7 +941,7 @@ describe("App", () => {
   })
 
   it("handles plugin list load failure", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { })
     state.invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === "list_plugins") {
         throw new Error("boom")
@@ -954,7 +954,7 @@ describe("App", () => {
   })
 
   it("handles initial batch failure", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { })
     state.startBatchMock.mockRejectedValueOnce(new Error("fail"))
     render(<App />)
     const errors = await screen.findAllByText("Failed to start probe")
@@ -964,7 +964,7 @@ describe("App", () => {
 
 
   it("handles enable toggle failures", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { })
     state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a", "b"], disabled: ["b"] })
     state.startBatchMock
       .mockResolvedValueOnce(["a"])
@@ -1012,8 +1012,8 @@ describe("App", () => {
         observeSpy()
         this.cb([], this as unknown as ResizeObserver)
       }
-      unobserve() {}
-      disconnect() {}
+      unobserve() { }
+      disconnect() { }
     } as unknown as typeof ResizeObserver
 
     render(<App />)
@@ -1025,7 +1025,7 @@ describe("App", () => {
 
   it("logs resize failures", async () => {
     state.isTauriMock.mockReturnValue(true)
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { })
     state.setSizeMock.mockRejectedValueOnce(new Error("size fail"))
     render(<App />)
     await waitFor(() => expect(errorSpy).toHaveBeenCalled())
@@ -1035,7 +1035,7 @@ describe("App", () => {
   it("logs when saving plugin order fails", async () => {
     state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a", "b"], disabled: [] })
     state.savePluginSettingsMock.mockRejectedValueOnce(new Error("save order"))
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { })
     render(<App />)
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
@@ -1087,7 +1087,7 @@ describe("App", () => {
   })
 
   it("logs when tray handle cannot be loaded", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { })
     state.trayGetByIdMock.mockRejectedValueOnce(new Error("no tray"))
     render(<App />)
     await waitFor(() => expect(errorSpy).toHaveBeenCalled())
@@ -1095,7 +1095,7 @@ describe("App", () => {
   })
 
   it("logs when tray gauge resource cannot be resolved", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { })
     state.resolveResourceMock.mockRejectedValueOnce(new Error("no resource"))
     render(<App />)
     await waitFor(() => expect(errorSpy).toHaveBeenCalled())
@@ -1103,7 +1103,7 @@ describe("App", () => {
   })
 
   it("logs error when retry plugin batch fails", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { })
     render(<App />)
     await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
 
@@ -1184,7 +1184,7 @@ describe("App", () => {
 
   it("logs error when auto-update batch fails", async () => {
     vi.useFakeTimers()
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { })
 
     state.loadAutoUpdateIntervalMock.mockResolvedValueOnce(5)
     state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a"], disabled: [] })
@@ -1210,7 +1210,7 @@ describe("App", () => {
   })
 
   it("logs error when loading auto-update interval fails", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { })
     state.loadAutoUpdateIntervalMock.mockRejectedValueOnce(new Error("load interval failed"))
     render(<App />)
     await waitFor(() =>
@@ -1220,7 +1220,7 @@ describe("App", () => {
   })
 
   it("logs error when loading theme mode fails", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { })
     state.loadThemeModeMock.mockRejectedValueOnce(new Error("load theme failed"))
     render(<App />)
     await waitFor(() =>
@@ -1230,7 +1230,7 @@ describe("App", () => {
   })
 
   it("logs error when loading start on login fails", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { })
     state.loadStartOnLoginMock.mockRejectedValueOnce(new Error("load start on login failed"))
     render(<App />)
     await waitFor(() =>
@@ -1287,7 +1287,7 @@ describe("App", () => {
     await waitFor(() => expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(2))
 
     const initialCalls = state.startBatchMock.mock.calls.length
-    state.startBatchMock.mockImplementation(() => new Promise(() => {}))
+    state.startBatchMock.mockImplementation(() => new Promise(() => { }))
 
     const refreshButton = await screen.findByRole("button", { name: /Next update in/i })
     await userEvent.click(refreshButton)
@@ -1302,7 +1302,7 @@ describe("App", () => {
   })
 
   it("does not leak manual refresh cooldown state when refresh-all start fails", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { })
     try {
       state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a"], disabled: [] })
       render(<App />)
@@ -1458,7 +1458,7 @@ describe("App", () => {
   })
 
   it("logs error when loading global shortcut fails", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { })
     state.loadGlobalShortcutMock.mockRejectedValueOnce(new Error("load shortcut failed"))
 
     render(<App />)
@@ -1470,7 +1470,7 @@ describe("App", () => {
   })
 
   it("logs error when saving global shortcut fails", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { })
     // Start with a shortcut so we can clear it
     state.loadGlobalShortcutMock.mockResolvedValueOnce("CommandOrControl+Shift+U")
     state.saveGlobalShortcutMock.mockRejectedValueOnce(new Error("save shortcut failed"))
@@ -1491,7 +1491,7 @@ describe("App", () => {
   })
 
   it("logs error when update_global_shortcut invoke fails", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => { })
     // Start with a shortcut so we can clear it
     state.loadGlobalShortcutMock.mockResolvedValueOnce("CommandOrControl+Shift+U")
     state.invokeMock.mockImplementation(async (cmd: string) => {
@@ -1552,7 +1552,14 @@ describe("App", () => {
       render(<App />)
       await vi.waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
       await vi.waitFor(() => expect(state.trayGetByIdMock).toHaveBeenCalled())
-      await vi.waitFor(() => expect(state.renderTrayBarsIconMock).toHaveBeenCalledTimes(1))
+      await vi.waitFor(() =>
+        expect(state.renderTrayBarsIconMock).toHaveBeenCalledWith({
+          sizePx: expect.any(Number),
+          gridCells: [],
+          providerIconUrl: "icon-a",
+          hideIcon: false,
+        })
+      )
 
       state.probeHandlers?.onResult({
         providerId: "a",
@@ -1586,7 +1593,7 @@ describe("App", () => {
 
     await waitFor(() => expect(state.traySetIconMock).toHaveBeenCalledWith({}))
     expect(state.traySetIconAsTemplateMock).toHaveBeenCalledWith(true)
-    expect(state.traySetTitleMock).toHaveBeenCalledWith("--%")
+    expect(state.traySetTitleMock).toHaveBeenCalledWith(null)
   })
 
   it("clears pending tray timer on unmount", async () => {

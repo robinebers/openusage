@@ -4,6 +4,7 @@ import {
   DEFAULT_DISPLAY_MODE,
   DEFAULT_GLOBAL_SHORTCUT,
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
+  DEFAULT_SHOW_TRAY_ICON,
   DEFAULT_START_ON_LOGIN,
   DEFAULT_THEME_MODE,
   type AutoUpdateIntervalMinutes,
@@ -20,12 +21,14 @@ type AppPreferencesStore = {
   resetTimerDisplayMode: ResetTimerDisplayMode
   globalShortcut: GlobalShortcut
   startOnLogin: boolean
+  showTrayIcon: boolean
   setAutoUpdateInterval: (value: AutoUpdateIntervalMinutes) => void
   setThemeMode: (value: ThemeMode) => void
   setDisplayMode: (value: DisplayMode) => void
   setResetTimerDisplayMode: (value: ResetTimerDisplayMode) => void
   setGlobalShortcut: (value: GlobalShortcut) => void
   setStartOnLogin: (value: boolean) => void
+  setShowTrayIcon: (value: boolean) => void
   resetState: () => void
 }
 
@@ -36,6 +39,7 @@ const initialState = {
   resetTimerDisplayMode: DEFAULT_RESET_TIMER_DISPLAY_MODE,
   globalShortcut: DEFAULT_GLOBAL_SHORTCUT,
   startOnLogin: DEFAULT_START_ON_LOGIN,
+  showTrayIcon: DEFAULT_SHOW_TRAY_ICON,
 }
 
 export const useAppPreferencesStore = create<AppPreferencesStore>((set) => ({
@@ -46,5 +50,6 @@ export const useAppPreferencesStore = create<AppPreferencesStore>((set) => ({
   setResetTimerDisplayMode: (value) => set({ resetTimerDisplayMode: value }),
   setGlobalShortcut: (value) => set({ globalShortcut: value }),
   setStartOnLogin: (value) => set({ startOnLogin: value }),
+  setShowTrayIcon: (value) => set({ showTrayIcon: value }),
   resetState: () => set(initialState),
 }))

@@ -6,6 +6,7 @@ import {
   saveAutoUpdateInterval,
   saveGlobalShortcut,
   saveStartOnLogin,
+  saveShowTrayIcon,
   type AutoUpdateIntervalMinutes,
   type GlobalShortcut,
   type PluginSettings,
@@ -17,7 +18,9 @@ type UseSettingsSystemActionsArgs = {
   setAutoUpdateNextAt: (value: number | null) => void
   setGlobalShortcut: (value: GlobalShortcut) => void
   setStartOnLogin: (value: boolean) => void
+  setShowTrayIcon: (value: boolean) => void
   applyStartOnLogin: (value: boolean) => Promise<void>
+  scheduleTrayIconUpdate: (source: "settings", delay: number) => void
 }
 
 export function useSettingsSystemActions({
@@ -26,7 +29,9 @@ export function useSettingsSystemActions({
   setAutoUpdateNextAt,
   setGlobalShortcut,
   setStartOnLogin,
+  setShowTrayIcon,
   applyStartOnLogin,
+  scheduleTrayIconUpdate,
 }: UseSettingsSystemActionsArgs) {
   const handleAutoUpdateIntervalChange = useCallback((value: AutoUpdateIntervalMinutes) => {
     track("setting_changed", { setting: "auto_refresh", value: String(value) })
@@ -68,9 +73,19 @@ export function useSettingsSystemActions({
     })
   }, [applyStartOnLogin, setStartOnLogin])
 
+  const handleShowTrayIconChange = useCallback((value: boolean) => {
+    track("setting_changed", { setting: "show_tray_icon", value: value ? "true" : "false" })
+    setShowTrayIcon(value)
+    void saveShowTrayIcon(value).catch((error) => {
+      console.error("Failed to save show tray icon:", error)
+    })
+    scheduleTrayIconUpdate("settings", 200)
+  }, [setShowTrayIcon, scheduleTrayIconUpdate])
+
   return {
     handleAutoUpdateIntervalChange,
     handleGlobalShortcutChange,
     handleStartOnLoginChange,
+    handleShowTrayIconChange,
   }
 }

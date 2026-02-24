@@ -21,6 +21,7 @@ import {
   migrateLegacyTraySettings,
   loadPluginSettings,
   loadResetTimerDisplayMode,
+  loadShowTrayIcon,
   loadStartOnLogin,
   loadThemeMode,
   normalizePluginSettings,
@@ -42,6 +43,7 @@ type UseSettingsBootstrapArgs = {
   setResetTimerDisplayMode: (value: ResetTimerDisplayMode) => void
   setGlobalShortcut: (value: GlobalShortcut) => void
   setStartOnLogin: (value: boolean) => void
+  setShowTrayIcon: (value: boolean) => void
   setLoadingForPlugins: (ids: string[]) => void
   setErrorForPlugins: (ids: string[], error: string) => void
   startBatch: (pluginIds?: string[]) => Promise<string[] | undefined>
@@ -56,6 +58,7 @@ export function useSettingsBootstrap({
   setResetTimerDisplayMode,
   setGlobalShortcut,
   setStartOnLogin,
+  setShowTrayIcon,
   setLoadingForPlugins,
   setErrorForPlugins,
   startBatch,
@@ -130,6 +133,13 @@ export function useSettingsBootstrap({
           console.error("Failed to load start on login:", error)
         }
 
+        let storedShowTrayIcon = true
+        try {
+          storedShowTrayIcon = await loadShowTrayIcon()
+        } catch (error) {
+          console.error("Failed to load show tray icon:", error)
+        }
+
         try {
           await applyStartOnLogin(storedStartOnLogin)
         } catch (error) {
@@ -149,6 +159,7 @@ export function useSettingsBootstrap({
           setResetTimerDisplayMode(storedResetTimerDisplayMode)
           setGlobalShortcut(storedGlobalShortcut)
           setStartOnLogin(storedStartOnLogin)
+          setShowTrayIcon(storedShowTrayIcon)
 
           const enabledIds = getEnabledPluginIds(normalized)
           setLoadingForPlugins(enabledIds)
@@ -182,6 +193,7 @@ export function useSettingsBootstrap({
     setPluginSettings,
     setPluginsMeta,
     setResetTimerDisplayMode,
+    setShowTrayIcon,
     setStartOnLogin,
     setThemeMode,
     startBatch,

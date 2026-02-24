@@ -11,8 +11,8 @@ vi.mock("@dnd-kit/core", () => ({
     return <div data-testid="dnd-context">{children}</div>
   },
   closestCenter: vi.fn(),
-  PointerSensor: class {},
-  KeyboardSensor: class {},
+  PointerSensor: class { },
+  KeyboardSensor: class { },
   useSensor: vi.fn((_sensor: any, options?: any) => ({ sensor: _sensor, options })),
   useSensors: vi.fn((...sensors: any[]) => sensors),
 }))
@@ -44,9 +44,10 @@ vi.mock("@dnd-kit/utilities", () => ({
 import { SettingsPage } from "@/pages/settings"
 
 const defaultProps = {
-  plugins: [{ id: "a", name: "Alpha", enabled: true }],
+  plugins: [{ id: "a", name: "Alpha", enabled: true, primaryCandidates: [], trayLines: [] }],
   onReorder: vi.fn(),
   onToggle: vi.fn(),
+  onTrayLineToggle: vi.fn(),
   autoUpdateInterval: 15 as const,
   onAutoUpdateIntervalChange: vi.fn(),
   themeMode: "system" as const,
@@ -72,7 +73,7 @@ describe("SettingsPage", () => {
       <SettingsPage
         {...defaultProps}
         plugins={[
-          { id: "b", name: "Beta", enabled: false },
+          { id: "b", name: "Beta", enabled: false, primaryCandidates: [], trayLines: [] },
         ]}
         onToggle={onToggle}
       />
@@ -88,8 +89,8 @@ describe("SettingsPage", () => {
       <SettingsPage
         {...defaultProps}
         plugins={[
-          { id: "a", name: "Alpha", enabled: true },
-          { id: "b", name: "Beta", enabled: true },
+          { id: "a", name: "Alpha", enabled: true, primaryCandidates: [], trayLines: [] },
+          { id: "b", name: "Beta", enabled: true, primaryCandidates: [], trayLines: [] },
         ]}
         onReorder={onReorder}
       />

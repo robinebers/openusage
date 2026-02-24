@@ -14,78 +14,143 @@ function escapeXmlText(text: string): string {
     .replace(/'/g, "&apos;")
 }
 
-function normalizePercentText(percentText: string | undefined): string | undefined {
-  if (typeof percentText !== "string") return undefined
-  const trimmed = percentText.trim()
-  return trimmed.length > 0 ? trimmed : undefined
+export type TrayGridCell = {
+  text: string
 }
 
 function estimateTextWidthPx(text: string, fontSize: number): number {
-  // Empirical estimate for SF Pro bold numeric glyphs in tray-sized icons.
-  return Math.ceil(text.length * fontSize * 0.62 + fontSize * 0.2)
+  return Math.ceil(text.length * fontSize * 0.60 + fontSize * 0.2)
 }
 
 function getSvgLayout(args: {
   sizePx: number
-  percentText?: string
+  gridCells: TrayGridCell[]
+  hideIcon?: boolean
 }): {
   width: number
   height: number
   pad: number
   barsX: number
-  textX: number
-  textY: number
-  fontSize: number
+  iconSize: number
+  texts: { x: number; y: number; text: string; fontSize: number }[]
 } {
-  const { sizePx, percentText } = args
-  const hasPercentText = typeof percentText === "string" && percentText.length > 0
-  const verticalNudgePx = 1
+  const { sizePx, gridCells, hideIcon = false } = args
   const pad = Math.max(1, Math.round(sizePx * 0.08)) // ~2px at 24–36px
 
   const height = sizePx
   const barsX = pad
-  const fontSize = Math.max(9, Math.round(sizePx * 0.72))
-  const textWidth = hasPercentText ? estimateTextWidthPx(percentText, fontSize) : 0
-  // Optical correction + global nudge down to align with the tray slot center.
-  const textY = Math.round(sizePx / 2) + 1 + verticalNudgePx
+  const iconSize = Math.max(6, Math.round(sizePx - 2 * pad * 0.5))
 
-  if (!hasPercentText) {
+  if (gridCells.length === 0) {
     return {
+      // Keep a non-zero canvas to avoid invalid raster/image dimensions.
       width: sizePx,
       height,
       pad,
       barsX,
-      textX: 0,
-      textY,
-      fontSize,
+      iconSize,
+      texts: [],
     }
   }
 
+  const visibleCells = gridCells.slice(0, 4)
+
+  // Define layout configuration
+  // 1 item -> 1 col, 1 row (center)
+  // 2 items -> 1 col, 2 rows (stack)
+  // 3 items -> 2 cols, (col 1: 2 rows, col 2: top row)
+  // 4 items -> 2 cols, 2 rows per col
+  const numItems = visibleCells.length
+  const useTwoCols = numItems > 2
+  const numRows = numItems > 1 ? 2 : 1
+
+  // Compute base fonts based on row count
+  const fontSize = numRows === 1 ? Math.max(9, Math.round(sizePx * 0.68)) : Math.max(8, Math.round(sizePx * 0.55))
   const textGap = Math.max(2, Math.round(sizePx * 0.08))
-  const textAreaWidth = Math.max(20, Math.round(sizePx * 1.5), textWidth + pad)
-  const rightPad = pad
+  const startX = hideIcon ? pad : sizePx + textGap
+
+  // Measure columns and place texts
+  const texts: { x: number; y: number; text: string; fontSize: number }[] = []
+
+  let col1Width = 0
+  let col2Width = 0
+
+  // Pass 1: measure max widths
+  for (let i = 0; i < visibleCells.length; i++) {
+    const w = estimateTextWidthPx(visibleCells[i].text, fontSize)
+    if (useTwoCols && i >= 2) {
+      col2Width = Math.max(col2Width, w)
+    } else {
+      col1Width = Math.max(col1Width, w)
+    }
+  }
+
+  // Pass 2: Layout
+  // Column Gap, visual separator |
+  const colGapPx = useTwoCols ? Math.max(6, Math.round(sizePx * 0.3)) : 0
+
+  for (let i = 0; i < visibleCells.length; i++) {
+    const isCol2 = useTwoCols && i >= 2
+    const isRow2 = i % 2 === 1
+
+    // X position
+    let textX = startX
+    if (isCol2) {
+      textX = startX + col1Width + colGapPx
+    }
+
+    // Y position
+    let textY = Math.round(sizePx / 2) + 1
+    if (numRows === 2) {
+      if (!isRow2) {
+        textY = Math.round(sizePx * 0.26) + 1
+      } else {
+        textY = Math.round(sizePx * 0.78) + 1
+      }
+    }
+
+    texts.push({
+      x: textX,
+      y: textY,
+      text: visibleCells[i].text,
+      fontSize
+    })
+  }
+
+  // Include separator line text logic if using two cols
+  if (useTwoCols) {
+    texts.push({
+      x: startX + col1Width + Math.floor(colGapPx / 2),
+      y: Math.round(sizePx / 2) + 1,
+      text: "|",
+      fontSize: Math.max(10, Math.round(sizePx * 0.7))
+    })
+  }
+
+  const totalTextWidth = col1Width + (useTwoCols ? colGapPx + col2Width : 0)
 
   return {
-    width: sizePx + textGap + textAreaWidth + rightPad,
+    width: Math.round(startX + totalTextWidth + pad),
     height,
     pad,
     barsX,
-    textX: sizePx + textGap,
-    textY,
-    fontSize,
+    iconSize,
+    texts,
   }
 }
 
 export function makeTrayBarsSvg(args: {
   sizePx: number
-  percentText?: string
+  gridCells?: TrayGridCell[]
   providerIconUrl?: string
+  hideIcon?: boolean
 }): string {
-  const { sizePx, percentText, providerIconUrl } = args
-  const text = normalizePercentText(percentText)
+  const { sizePx, providerIconUrl, gridCells = [], hideIcon = false } = args
+
   const layout = getSvgLayout({
     sizePx,
-    percentText: text,
+    gridCells,
+    hideIcon,
   })
 
   const width = layout.width
@@ -96,28 +161,32 @@ export function makeTrayBarsSvg(args: {
     `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">`
   )
 
-  const iconSize = Math.max(6, Math.round(sizePx - 2 * layout.pad * 0.5))
   const x = layout.barsX
-  const y = Math.round((height - iconSize) / 2) + 1
+  const y = Math.round((height - layout.iconSize) / 2) + 1
   const href = typeof providerIconUrl === "string" ? providerIconUrl.trim() : ""
 
-  if (href.length > 0) {
-    parts.push(
-      `<image x="${x}" y="${y}" width="${iconSize}" height="${iconSize}" href="${escapeXmlText(href)}" preserveAspectRatio="xMidYMid meet" />`
-    )
-  } else {
-    const cx = x + iconSize / 2
-    const cy = y + iconSize / 2
-    const radius = Math.max(2, iconSize / 2 - 1.5)
-    const strokeW = Math.max(1.5, Math.round(iconSize * 0.14))
-    parts.push(
-      `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="black" stroke-width="${strokeW}" opacity="1" shape-rendering="geometricPrecision" />`
-    )
+  if (!hideIcon) {
+    if (href.length > 0) {
+      parts.push(
+        `<image x="${x}" y="${y}" width="${layout.iconSize}" height="${layout.iconSize}" href="${escapeXmlText(href)}" preserveAspectRatio="xMidYMid meet" />`
+      )
+    } else {
+      const cx = x + layout.iconSize / 2
+      const cy = y + layout.iconSize / 2
+      const radius = Math.max(2, layout.iconSize / 2 - 1.5)
+      const strokeW = Math.max(1.5, Math.round(layout.iconSize * 0.14))
+      parts.push(
+        `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="black" stroke-width="${strokeW}" opacity="1" shape-rendering="geometricPrecision" />`
+      )
+    }
   }
 
-  if (text) {
+  // Align horizontal centers, baseline middle
+  for (const { x: tX, y: tY, text, fontSize } of layout.texts) {
+    const anchor = text === "|" ? "middle" : "start"
+    const opacity = text === "|" ? "0.3" : "1"
     parts.push(
-      `<text x="${layout.textX}" y="${layout.textY}" fill="black" font-family="-apple-system,BlinkMacSystemFont,'SF Pro Text',sans-serif" font-size="${layout.fontSize}" font-weight="700" dominant-baseline="middle">${escapeXmlText(text)}</text>`
+      `<text x="${tX}" y="${tY}" fill="black" opacity="${opacity}" font-family="-apple-system,BlinkMacSystemFont,'SF Pro Text',sans-serif" font-size="${fontSize}" font-weight="700" text-anchor="${anchor}" dominant-baseline="middle">${escapeXmlText(text)}</text>`
     )
   }
 
@@ -160,19 +229,21 @@ async function rasterizeSvgToRgba(svg: string, widthPx: number, heightPx: number
 
 export async function renderTrayBarsIcon(args: {
   sizePx: number
-  percentText?: string
+  gridCells?: TrayGridCell[]
   providerIconUrl?: string
+  hideIcon?: boolean
 }): Promise<Image> {
-  const { sizePx, percentText, providerIconUrl } = args
-  const text = normalizePercentText(percentText)
+  const { sizePx, gridCells, providerIconUrl, hideIcon = false } = args
   const svg = makeTrayBarsSvg({
     sizePx,
-    percentText: text,
+    gridCells,
     providerIconUrl,
+    hideIcon,
   })
   const layout = getSvgLayout({
     sizePx,
-    percentText: text,
+    gridCells: gridCells || [],
+    hideIcon,
   })
   const rgba = await rasterizeSvgToRgba(svg, layout.width, layout.height)
   return await Image.new(rgba, layout.width, layout.height)
