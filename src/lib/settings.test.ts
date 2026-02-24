@@ -102,9 +102,12 @@ describe("settings", () => {
     const b = { order: ["a"], disabled: [], trayLines: {} }
     const c = { order: ["b"], disabled: [], trayLines: {} }
     const d = { order: ["a"], disabled: [], trayLines: { "a": ["x"] } }
+    const e = { order: ["a"], disabled: [], trayLines: { "a": [] } }
+    const f = { order: ["a"], disabled: [], trayLines: { "b": [] } }
     expect(arePluginSettingsEqual(a, b)).toBe(true)
     expect(arePluginSettingsEqual(a, c)).toBe(false)
     expect(arePluginSettingsEqual(a, d)).toBe(false)
+    expect(arePluginSettingsEqual(e, f)).toBe(false)
   })
 
   it("returns enabled plugin ids", () => {

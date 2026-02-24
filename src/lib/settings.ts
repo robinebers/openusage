@@ -142,7 +142,7 @@ export function normalizePluginSettings(
       disabled.push(id);
     }
   }
-  const trayLines = { ...settings.trayLines };
+  const trayLines = { ...(settings.trayLines ?? {}) };
   for (const key in trayLines) {
     if (!knownSet.has(key)) {
       delete trayLines[key];
@@ -172,6 +172,7 @@ export function arePluginSettingsEqual(
   if (aKeys.length !== bKeys.length) return false;
 
   for (const key of aKeys) {
+    if (!Object.prototype.hasOwnProperty.call(bLines, key)) return false;
     const aArr = aLines[key] || [];
     const bArr = bLines[key] || [];
     if (aArr.length !== bArr.length) return false;
