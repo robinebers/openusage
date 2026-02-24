@@ -1,11 +1,13 @@
+import { Fragment } from "react"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { ManifestLine } from "@/lib/plugin-types"
+import { groupLinesByType } from "@/lib/group-lines-by-type"
 
 function SkeletonText({ label }: { label: string }) {
   return (
-    <div className="flex justify-between items-center h-[22px]">
-      <span className="text-sm text-muted-foreground">{label}</span>
-      <Skeleton className="h-5 w-16" />
+    <div className="flex justify-between items-center h-[18px]">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <Skeleton className="h-3 w-16" />
     </div>
   )
 }
@@ -48,8 +50,20 @@ export function SkeletonLine({ line }: { line: ManifestLine }) {
 export function SkeletonLines({ lines }: { lines: ManifestLine[] }) {
   return (
     <div className="space-y-4">
-      {lines.map((line, index) => (
-        <SkeletonLine key={`${line.label}-${index}`} line={line} />
+      {groupLinesByType(lines).map((group, groupIndex) => (
+        group.kind === "text" ? (
+          <div key={groupIndex} className="space-y-1">
+            {group.lines.map((line, lineIndex) => (
+              <SkeletonLine key={`${line.label}-${groupIndex}-${lineIndex}`} line={line} />
+            ))}
+          </div>
+        ) : (
+          <Fragment key={groupIndex}>
+            {group.lines.map((line, lineIndex) => (
+              <SkeletonLine key={`${line.label}-${groupIndex}-${lineIndex}`} line={line} />
+            ))}
+          </Fragment>
+        )
       ))}
     </div>
   )
