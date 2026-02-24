@@ -43,11 +43,17 @@ export function useProbeRefreshActions({
 
   const handleRetryPlugin = useCallback(
     (id: string) => {
+      const currentState = pluginStatesRef.current[id]
+      if (currentState?.loading) return
+      if (manualRefreshIdsRef.current.has(id)) return
+      const lastManualRefreshAt = currentState?.lastManualRefreshAt
+      if (lastManualRefreshAt && Date.now() - lastManualRefreshAt < REFRESH_COOLDOWN_MS) return
+
       track("provider_refreshed", { provider_id: id })
       resetAutoUpdateSchedule()
       startManualRefresh([id], "Failed to retry plugin:")
     },
-    [resetAutoUpdateSchedule, startManualRefresh]
+    [manualRefreshIdsRef, pluginStatesRef, resetAutoUpdateSchedule, startManualRefresh]
   )
 
   const handleRefreshAll = useCallback(() => {

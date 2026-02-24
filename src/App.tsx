@@ -11,7 +11,7 @@ import { useSettingsSystemActions } from "@/hooks/app/use-settings-system-action
 import { useSettingsTheme } from "@/hooks/app/use-settings-theme"
 import { useTrayIcon } from "@/hooks/app/use-tray-icon"
 import { track } from "@/lib/analytics"
-import { savePluginSettings } from "@/lib/settings"
+import { REFRESH_COOLDOWN_MS, savePluginSettings } from "@/lib/settings"
 import { type PluginContextAction } from "@/components/side-nav"
 import { useAppPluginStore } from "@/stores/app-plugin-store"
 import { useAppPreferencesStore } from "@/stores/app-preferences-store"
@@ -207,6 +207,17 @@ function App() {
     [activeView, handleRetryPlugin, scheduleTrayIconUpdate, setActiveView, setPluginSettings]
   )
 
+  const isPluginRefreshAvailable = useCallback(
+    (pluginId: string) => {
+      const pluginState = pluginStates[pluginId]
+      if (!pluginState) return true
+      if (pluginState.loading) return false
+      if (!pluginState.lastManualRefreshAt) return true
+      return Date.now() - pluginState.lastManualRefreshAt >= REFRESH_COOLDOWN_MS
+    },
+    [pluginStates]
+  )
+
   return (
     <AppShell
       onRefreshAll={handleRefreshAll}
@@ -216,6 +227,7 @@ function App() {
       autoUpdateNextAt={autoUpdateNextAt}
       selectedPlugin={selectedPlugin}
       onPluginContextAction={handlePluginContextAction}
+      isPluginRefreshAvailable={isPluginRefreshAvailable}
       appContentProps={{
         onRetryPlugin: handleRetryPlugin,
         onReorder: handleReorder,
