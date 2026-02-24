@@ -166,10 +166,13 @@ fn hide_panel(app_handle: tauri::AppHandle) {
 }
 
 #[tauri::command]
-fn open_devtools(app_handle: tauri::AppHandle) {
-    use tauri::Manager;
-    if let Some(window) = app_handle.get_webview_window("main") {
-        window.open_devtools();
+fn open_devtools(#[allow(unused)] app_handle: tauri::AppHandle) {
+    #[cfg(debug_assertions)]
+    {
+        use tauri::Manager;
+        if let Some(window) = app_handle.get_webview_window("main") {
+            window.open_devtools();
+        }
     }
 }
 
