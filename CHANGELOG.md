@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.6.7
+
+### New Features
+- Add right-click context menu to sidebar plugin icons to remove a provider without going to settings ([#197](https://github.com/robinebers/openusage/pull/197)) by @MariosPapadakis
+- Simplify menubar icon to provider + percentage ([#215](https://github.com/robinebers/openusage/pull/215)) by @robinebers
+- Show deficit percentage and runs-out ETA below progress bars ([#212](https://github.com/robinebers/openusage/pull/212)) by @robinebers
+- Add sqlite-first auth with keychain fallback for Cursor ([#210](https://github.com/robinebers/openusage/pull/210)) by @robinebers
+
+### Bug Fixes
+- Bump ccusage to v18.0.6 for GPT 5.3 Codex pricing fix ([#218](https://github.com/robinebers/openusage/pull/218)) by @robinebers
+- Correct MiniMax API endpoint and treat usage_count as remaining prompts ([#217](https://github.com/robinebers/openusage/pull/217)) by @davidarny
+
+### Refactor
+- Split monolithic App into focused hooks and atomic stores ([#209](https://github.com/robinebers/openusage/pull/209)) by @davidarny
+
+### Chores
+- Add test cases for handling tiny deficits in formatting and display ([#216](https://github.com/robinebers/openusage/pull/216)) by @validatedev
+- Compact token usage text lines (Today/Yesterday/Last 30 Days) ([#211](https://github.com/robinebers/openusage/pull/211)) by @davidarny
+- Increase test coverage back to over 90% ([#207](https://github.com/robinebers/openusage/pull/207)) by @robinebers
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.6.6...v0.6.7](https://github.com/robinebers/openusage/compare/v0.6.6...v0.6.7)
+
+- [3032c24](https://github.com/robinebers/openusage/commit/3032c24) feat: add right-click context menu to sidebar plugin icons order to be able to remove a provider without going to the settings. (#197) by @MariosPapadakis
+- [a10ed10](https://github.com/robinebers/openusage/commit/a10ed10) fix: bump ccusage to v18.0.6 for GPT 5.3 Codex pricing fix (#218) by @robinebers
+- [9cc62e6](https://github.com/robinebers/openusage/commit/9cc62e6) feat(tray): simplify menubar icon to provider + percentage (#215) by @robinebers
+- [51dd686](https://github.com/robinebers/openusage/commit/51dd686) fix(minimax): correct API endpoint and treat usage_count as remaining prompts (#217) by @davidarny
+- [b6754d3](https://github.com/robinebers/openusage/commit/b6754d3) test: add cases for handling tiny deficits in formatting and display (#216) by @validatedev
+- [e28f85c](https://github.com/robinebers/openusage/commit/e28f85c) feat: show deficit percentage and runs-out ETA below progress bars (#212) by @robinebers
+- [9bca9f4](https://github.com/robinebers/openusage/commit/9bca9f4) refactor(app): split monolithic App into focused hooks and atomic stores (#209) by @davidarny
+- [deba467](https://github.com/robinebers/openusage/commit/deba467) feat(cursor): add sqlite-first auth with keychain fallback (#210) by @robinebers
+- [0b63ade](https://github.com/robinebers/openusage/commit/0b63ade) style: compact token usage text lines (Today/Yesterday/Last 30 Days) (#211) by @davidarny
+- [63c4128](https://github.com/robinebers/openusage/commit/63c4128) Increasing test coverage back to over 90% (#207) by @robinebers
+
 ## 0.6.6
 
 ### New Features

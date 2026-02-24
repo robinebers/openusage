@@ -1,6 +1,6 @@
 [package]
 name = "openusage"
-version = "0.6.6"
+version = "0.6.7"
 description = "OpenUsage is an open source AI subscription limit tracker"
 authors = ["Robin Ebers"]
 edition = "2024"
