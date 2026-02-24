@@ -1,6 +1,7 @@
 use rquickjs::{Ctx, Exception, Function, Object};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::ffi::{OsStr, OsString};
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 
@@ -1229,7 +1230,10 @@ fn ccusage_provider_config(provider: CcusageProvider) -> CcusageProviderConfig {
     }
 }
 
-fn ccusage_home_override<'a>(opts: &'a CcusageQueryOpts, provider: CcusageProvider) -> Option<&'a str> {
+fn ccusage_home_override<'a>(
+    opts: &'a CcusageQueryOpts,
+    provider: CcusageProvider,
+) -> Option<&'a str> {
     if let Some(home_path) = opts
         .home_path
         .as_deref()
@@ -1302,16 +1306,85 @@ fn ccusage_runner_candidates(kind: CcusageRunnerKind) -> Vec<String> {
     unique
 }
 
+fn ccusage_path_entries_with(home: Option<&Path>, existing_path: Option<&OsStr>) -> Vec<PathBuf> {
+    let mut entries: Vec<PathBuf> = Vec::new();
+
+    if let Some(home) = home {
+        entries.push(home.join(".bun/bin"));
+        entries.push(home.join(".nvm/current/bin"));
+        entries.push(home.join(".local/bin"));
+    }
+
+    entries.extend(
+        ["/opt/homebrew/bin", "/usr/local/bin"]
+            .into_iter()
+            .map(PathBuf::from),
+    );
+
+    if let Some(existing_path) = existing_path {
+        for path in std::env::split_paths(existing_path) {
+            entries.push(path);
+        }
+    }
+
+    let mut unique_entries = Vec::new();
+    for entry in entries {
+        if entry.as_os_str().is_empty() || unique_entries.iter().any(|path| path == &entry) {
+            continue;
+        }
+        unique_entries.push(entry);
+    }
+    unique_entries
+}
+
+fn ccusage_enriched_path_with(
+    home: Option<&Path>,
+    existing_path: Option<&OsStr>,
+) -> Option<OsString> {
+    let entries = ccusage_path_entries_with(home, existing_path);
+    if entries.is_empty() {
+        return None;
+    }
+    std::env::join_paths(entries).ok()
+}
+
+fn ccusage_enriched_path() -> Option<OsString> {
+    let home = dirs::home_dir();
+    let existing_path = std::env::var_os("PATH");
+    ccusage_enriched_path_with(home.as_deref(), existing_path.as_deref())
+}
+
+fn ccusage_runner_available(candidate: &str, enriched_path: Option<&OsStr>) -> bool {
+    let mut command = std::process::Command::new(candidate);
+    command.arg("--version");
+    if let Some(path) = enriched_path {
+        command.env("PATH", path);
+    }
+    command
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+
+    command.status().map(|s| s.success()).unwrap_or(false)
+}
+
+fn configure_ccusage_command(
+    command: &mut std::process::Command,
+    args: &[String],
+    enriched_path: Option<&OsStr>,
+) {
+    command.args(args);
+    if let Some(path) = enriched_path {
+        command.env("PATH", path);
+    }
+    command
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+}
+
 fn resolve_ccusage_runner_binary(kind: CcusageRunnerKind) -> Option<String> {
+    let path = ccusage_enriched_path();
     for candidate in ccusage_runner_candidates(kind) {
-        if std::process::Command::new(&candidate)
-            .arg("--version")
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false)
-        {
+        if ccusage_runner_available(&candidate, path.as_deref()) {
             return Some(candidate);
         }
     }
@@ -1389,10 +1462,7 @@ fn ccusage_runner_args(
             "--".to_string(),
             config.npm_exec_bin.to_string(),
         ],
-        CcusageRunnerKind::Npx => vec![
-            "--yes".to_string(),
-            config.package_spec.to_string(),
-        ],
+        CcusageRunnerKind::Npx => vec!["--yes".to_string(), config.package_spec.to_string()],
     };
 
     append_ccusage_common_args(&mut args, opts);
@@ -1453,11 +1523,9 @@ fn run_ccusage_with_runner(
     plugin_id: &str,
 ) -> Option<String> {
     let args = ccusage_runner_args(kind, opts, provider);
+    let enriched_path = ccusage_enriched_path();
     let mut command = std::process::Command::new(program);
-    command
-        .args(&args)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
+    configure_ccusage_command(&mut command, &args, enriched_path.as_deref());
 
     if let Some(home_path) = ccusage_home_override(opts, provider) {
         let config = ccusage_provider_config(provider);
@@ -1589,10 +1657,7 @@ fn inject_ccusage<'js>(
                 let provider = resolve_ccusage_provider(&opts, &pid);
                 let runners = collect_ccusage_runners();
                 if runners.is_empty() {
-                    log::warn!(
-                        "[plugin:{}] no package runner found for ccusage query",
-                        pid
-                    );
+                    log::warn!("[plugin:{}] no package runner found for ccusage query", pid);
                     return Ok(serde_json::json!({ "status": "no_runner" }).to_string());
                 }
 
@@ -2330,7 +2395,8 @@ mod tests {
             claude_path: None,
         };
 
-        let npm_exec = ccusage_runner_args(CcusageRunnerKind::NpmExec, &opts, CcusageProvider::Codex);
+        let npm_exec =
+            ccusage_runner_args(CcusageRunnerKind::NpmExec, &opts, CcusageProvider::Codex);
         assert_eq!(
             npm_exec,
             vec![
@@ -2365,6 +2431,134 @@ mod tests {
                 "--until",
                 "20260131"
             ]
+        );
+    }
+
+    #[test]
+    fn ccusage_path_entries_with_home_and_existing_path_preserves_order() {
+        let home = std::path::PathBuf::from("/tmp/openusage-home");
+        let existing = std::env::join_paths([
+            std::path::PathBuf::from("/usr/bin"),
+            std::path::PathBuf::from("/bin"),
+        ])
+        .expect("join existing path");
+
+        let entries = ccusage_path_entries_with(Some(home.as_path()), Some(existing.as_os_str()));
+        assert_eq!(
+            entries,
+            vec![
+                home.join(".bun/bin"),
+                home.join(".nvm/current/bin"),
+                home.join(".local/bin"),
+                std::path::PathBuf::from("/opt/homebrew/bin"),
+                std::path::PathBuf::from("/usr/local/bin"),
+                std::path::PathBuf::from("/usr/bin"),
+                std::path::PathBuf::from("/bin"),
+            ]
+        );
+    }
+
+    #[test]
+    fn ccusage_path_entries_with_deduplicates_prefix_and_existing_entries() {
+        let existing = std::env::join_paths([
+            std::path::PathBuf::from("/usr/local/bin"),
+            std::path::PathBuf::from("/custom/bin"),
+            std::path::PathBuf::from("/custom/bin"),
+            std::path::PathBuf::from("/opt/homebrew/bin"),
+        ])
+        .expect("join existing path");
+
+        let entries = ccusage_path_entries_with(None, Some(existing.as_os_str()));
+        assert_eq!(
+            entries,
+            vec![
+                std::path::PathBuf::from("/opt/homebrew/bin"),
+                std::path::PathBuf::from("/usr/local/bin"),
+                std::path::PathBuf::from("/custom/bin"),
+            ]
+        );
+    }
+
+    #[test]
+    fn ccusage_enriched_path_with_uses_defaults_without_home_or_existing_path() {
+        let enriched = ccusage_enriched_path_with(None, None).expect("enriched path");
+        let entries: Vec<std::path::PathBuf> =
+            std::env::split_paths(enriched.as_os_str()).collect();
+        assert_eq!(
+            entries,
+            vec![
+                std::path::PathBuf::from("/opt/homebrew/bin"),
+                std::path::PathBuf::from("/usr/local/bin"),
+            ]
+        );
+    }
+
+    #[test]
+    fn ccusage_enriched_path_with_preserves_entries_after_join_and_split() {
+        let home = std::path::PathBuf::from("/tmp/openusage-home");
+        let existing = std::env::join_paths([
+            std::path::PathBuf::from("/usr/bin"),
+            std::path::PathBuf::from("/bin"),
+        ])
+        .expect("join existing path");
+
+        let enriched = ccusage_enriched_path_with(Some(home.as_path()), Some(existing.as_os_str()))
+            .expect("path");
+        let entries: Vec<std::path::PathBuf> =
+            std::env::split_paths(enriched.as_os_str()).collect();
+
+        assert_eq!(
+            entries,
+            vec![
+                home.join(".bun/bin"),
+                home.join(".nvm/current/bin"),
+                home.join(".local/bin"),
+                std::path::PathBuf::from("/opt/homebrew/bin"),
+                std::path::PathBuf::from("/usr/local/bin"),
+                std::path::PathBuf::from("/usr/bin"),
+                std::path::PathBuf::from("/bin"),
+            ]
+        );
+    }
+
+    #[test]
+    fn configure_ccusage_command_sets_path_override() {
+        let mut command = std::process::Command::new("echo");
+        let args = vec!["daily".to_string(), "--json".to_string()];
+        let path = std::env::join_paths([
+            std::path::PathBuf::from("/tmp/bin"),
+            std::path::PathBuf::from("/usr/bin"),
+        ])
+        .expect("join path override");
+
+        configure_ccusage_command(&mut command, &args, Some(path.as_os_str()));
+
+        let configured_args: Vec<String> = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect();
+        assert_eq!(configured_args, args);
+
+        let configured_path = command
+            .get_envs()
+            .find(|(key, _)| *key == std::ffi::OsStr::new("PATH"))
+            .and_then(|(_, value)| value.map(std::borrow::ToOwned::to_owned));
+        assert_eq!(configured_path.as_deref(), Some(path.as_os_str()));
+    }
+
+    #[test]
+    fn configure_ccusage_command_skips_path_override_when_absent() {
+        let mut command = std::process::Command::new("echo");
+        let args = vec!["daily".to_string()];
+
+        configure_ccusage_command(&mut command, &args, None);
+
+        let has_path_override = command
+            .get_envs()
+            .any(|(key, _)| key == std::ffi::OsStr::new("PATH"));
+        assert!(
+            !has_path_override,
+            "PATH should only be set when an override exists"
         );
     }
 
