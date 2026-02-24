@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import type { ReactNode } from "react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi, beforeEach } from "vitest"
@@ -57,6 +57,17 @@ const eventState = vi.hoisted(() => {
   }
 })
 
+const menuState = vi.hoisted(() => ({
+  iconMenuItemConfigs: [] as Array<{ id: string; action?: () => void; enabled?: boolean; icon?: unknown }>,
+  iconMenuItemNewMock: vi.fn(),
+  iconMenuItemCloseMock: vi.fn(async () => undefined),
+  predefinedMenuItemNewMock: vi.fn(),
+  predefinedMenuItemCloseMock: vi.fn(async () => undefined),
+  menuNewMock: vi.fn(),
+  menuPopupMock: vi.fn(async () => undefined),
+  menuCloseMock: vi.fn(async () => undefined),
+}))
+
 vi.mock("@dnd-kit/core", () => ({
   DndContext: ({ children, onDragEnd }: { children: ReactNode; onDragEnd?: (event: any) => void }) => {
     dndState.latestOnDragEnd = onDragEnd ?? null
@@ -104,6 +115,47 @@ vi.mock("@/lib/analytics", () => ({
 
 vi.mock("@tauri-apps/api/event", () => ({
   listen: eventState.listenMock,
+}))
+
+vi.mock("@tauri-apps/api/menu", () => ({
+  IconMenuItem: {
+    new: async (config: { id: string; action?: () => void }) => {
+      menuState.iconMenuItemConfigs.push(config)
+      menuState.iconMenuItemNewMock(config)
+      return {
+        ...config,
+        close: menuState.iconMenuItemCloseMock,
+      }
+    },
+  },
+  MenuItem: {
+    new: async (config: { id: string; action?: () => void }) => {
+      menuState.iconMenuItemConfigs.push(config)
+      menuState.iconMenuItemNewMock(config)
+      return {
+        ...config,
+        close: menuState.iconMenuItemCloseMock,
+      }
+    },
+  },
+  PredefinedMenuItem: {
+    new: async (config: unknown) => {
+      menuState.predefinedMenuItemNewMock(config)
+      return {
+        ...((typeof config === "object" && config !== null ? config : {}) as Record<string, unknown>),
+        close: menuState.predefinedMenuItemCloseMock,
+      }
+    },
+  },
+  Menu: {
+    new: async (config: unknown) => {
+      menuState.menuNewMock(config)
+      return {
+        popup: menuState.menuPopupMock,
+        close: menuState.menuCloseMock,
+      }
+    },
+  },
 }))
 
 vi.mock("@tauri-apps/api/tray", () => ({
@@ -224,6 +276,14 @@ describe("App", () => {
     state.traySetIconAsTemplateMock.mockReset()
     state.traySetTitleMock.mockReset()
     state.resolveResourceMock.mockReset()
+    menuState.iconMenuItemConfigs.length = 0
+    menuState.iconMenuItemNewMock.mockReset()
+    menuState.iconMenuItemCloseMock.mockReset()
+    menuState.predefinedMenuItemNewMock.mockReset()
+    menuState.predefinedMenuItemCloseMock.mockReset()
+    menuState.menuNewMock.mockReset()
+    menuState.menuPopupMock.mockReset()
+    menuState.menuCloseMock.mockReset()
     eventState.handlers.clear()
     eventState.listenMock.mockReset()
     updaterState.checkMock.mockReset()
@@ -272,6 +332,23 @@ describe("App", () => {
     state.loadPluginSettingsMock.mockResolvedValue({ order: ["a"], disabled: [] })
     state.loadAutoUpdateIntervalMock.mockResolvedValue(15)
   })
+
+  const triggerPluginContextAction = async (
+    pluginName: string,
+    pluginId: string,
+    action: "reload" | "remove" | "inspect"
+  ) => {
+    menuState.iconMenuItemConfigs.length = 0
+    menuState.menuPopupMock.mockClear()
+
+    const pluginButton = await screen.findByRole("button", { name: pluginName })
+    fireEvent.contextMenu(pluginButton)
+    await waitFor(() => expect(menuState.menuPopupMock).toHaveBeenCalled())
+
+    const contextAction = menuState.iconMenuItemConfigs.find((item) => item.id === `ctx-${action}-${pluginId}`)?.action
+    expect(contextAction).toBeDefined()
+    return contextAction as () => void
+  }
 
   it("applies theme mode changes to document", async () => {
     const mq = {
@@ -699,6 +776,161 @@ describe("App", () => {
     const retry = await screen.findByRole("button", { name: "Retry" })
     await userEvent.click(retry)
     expect(state.startBatchMock).toHaveBeenCalledWith(["a"])
+  })
+
+  it("reloads plugin from sidebar context menu", async () => {
+    state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a", "b"], disabled: [] })
+    render(<App />)
+    await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
+    state.probeHandlers?.onResult({
+      providerId: "b",
+      displayName: "Beta",
+      iconUrl: "icon-b",
+      lines: [{ type: "text", label: "Now", value: "OK" }],
+    })
+    state.startBatchMock.mockClear()
+    state.trackMock.mockClear()
+
+    const reloadAction = await triggerPluginContextAction("Beta", "b", "reload")
+    const reloadConfig = menuState.iconMenuItemConfigs.find((item) => item.id === "ctx-reload-b")
+    expect(reloadConfig?.enabled).toBe(true)
+    reloadAction()
+
+    await waitFor(() => expect(state.startBatchMock).toHaveBeenCalledWith(["b"]))
+    expect(state.trackMock).toHaveBeenCalledWith("provider_refreshed", { provider_id: "b" })
+  })
+
+  it("respects manual refresh cooldown for sidebar context menu reload", async () => {
+    state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a", "b"], disabled: [] })
+    render(<App />)
+    await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
+    state.probeHandlers?.onResult({
+      providerId: "a",
+      displayName: "Alpha",
+      iconUrl: "icon-a",
+      lines: [{ type: "text", label: "Now", value: "OK" }],
+    })
+    state.probeHandlers?.onResult({
+      providerId: "b",
+      displayName: "Beta",
+      iconUrl: "icon-b",
+      lines: [{ type: "text", label: "Now", value: "OK" }],
+    })
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(2))
+    state.startBatchMock.mockClear()
+    state.trackMock.mockClear()
+
+    const reloadAction = await triggerPluginContextAction("Beta", "b", "reload")
+    const firstReloadConfig = menuState.iconMenuItemConfigs.find((item) => item.id === "ctx-reload-b")
+    expect(firstReloadConfig?.enabled).toBe(true)
+    reloadAction()
+    await waitFor(() => expect(state.startBatchMock).toHaveBeenCalledWith(["b"]))
+
+    state.probeHandlers?.onResult({
+      providerId: "b",
+      displayName: "Beta",
+      iconUrl: "icon-b",
+      lines: [{ type: "text", label: "Now", value: "OK" }],
+    })
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(1))
+
+    state.startBatchMock.mockClear()
+    state.trackMock.mockClear()
+    const cooldownReloadAction = await triggerPluginContextAction("Beta", "b", "reload")
+    const cooldownReloadConfig = menuState.iconMenuItemConfigs.find((item) => item.id === "ctx-reload-b")
+    expect(cooldownReloadConfig?.enabled).toBe(false)
+    cooldownReloadAction()
+
+    expect(state.startBatchMock).not.toHaveBeenCalled()
+    expect(state.trackMock).not.toHaveBeenCalled()
+  })
+
+  it("closes sidebar context menu resources after popup", async () => {
+    render(<App />)
+
+    const pluginButton = await screen.findByRole("button", { name: "Alpha" })
+    fireEvent.contextMenu(pluginButton)
+    await waitFor(() => expect(menuState.menuPopupMock).toHaveBeenCalled())
+
+    expect(menuState.iconMenuItemConfigs).toHaveLength(3)
+    for (const config of menuState.iconMenuItemConfigs) {
+      expect(config.icon).toBeUndefined()
+    }
+
+    await waitFor(() => expect(menuState.menuCloseMock).toHaveBeenCalledTimes(1))
+    expect(menuState.iconMenuItemCloseMock).toHaveBeenCalledTimes(3)
+    expect(menuState.predefinedMenuItemCloseMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("opens devtools from sidebar context menu inspect action", async () => {
+    render(<App />)
+    await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
+    state.invokeMock.mockClear()
+
+    const inspectAction = await triggerPluginContextAction("Alpha", "a", "inspect")
+    inspectAction()
+
+    await waitFor(() => expect(state.invokeMock).toHaveBeenCalledWith("open_devtools"))
+  })
+
+  it("removes plugin from sidebar context menu", async () => {
+    state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a", "b"], disabled: [] })
+    render(<App />)
+    await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
+    state.startBatchMock.mockClear()
+    state.trackMock.mockClear()
+    state.savePluginSettingsMock.mockClear()
+
+    const removeAction = await triggerPluginContextAction("Beta", "b", "remove")
+    removeAction()
+
+    await waitFor(() =>
+      expect(state.savePluginSettingsMock).toHaveBeenCalledWith({ order: ["a", "b"], disabled: ["b"] })
+    )
+    expect(state.trackMock).toHaveBeenCalledWith("provider_toggled", { provider_id: "b", enabled: "false" })
+    expect(state.startBatchMock).not.toHaveBeenCalled()
+  })
+
+  it("ignores removing an already disabled plugin from context menu", async () => {
+    state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a", "b"], disabled: [] })
+    render(<App />)
+    await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
+    state.trackMock.mockClear()
+    state.savePluginSettingsMock.mockClear()
+
+    const removeAction = await triggerPluginContextAction("Beta", "b", "remove")
+    removeAction()
+    await waitFor(() =>
+      expect(state.savePluginSettingsMock).toHaveBeenCalledWith({ order: ["a", "b"], disabled: ["b"] })
+    )
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Beta" })).not.toBeInTheDocument()
+    )
+    state.trackMock.mockClear()
+    state.savePluginSettingsMock.mockClear()
+
+    removeAction()
+    expect(state.savePluginSettingsMock).not.toHaveBeenCalled()
+    expect(state.trackMock).not.toHaveBeenCalled()
+  })
+
+  it("returns to home when removing the active plugin from context menu", async () => {
+    state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a"], disabled: [] })
+    render(<App />)
+    await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
+    state.savePluginSettingsMock.mockClear()
+
+    await userEvent.click(await screen.findByRole("button", { name: "Alpha" }))
+    const removeAction = await triggerPluginContextAction("Alpha", "a", "remove")
+    removeAction()
+
+    await waitFor(() =>
+      expect(state.savePluginSettingsMock).toHaveBeenCalledWith(
+        expect.objectContaining({ disabled: expect.arrayContaining(["a"]) })
+      )
+    )
+    await screen.findByText("No providers enabled")
+    expect(screen.queryByText("Provider not found")).not.toBeInTheDocument()
   })
 
   it("shows empty state when all plugins disabled", async () => {

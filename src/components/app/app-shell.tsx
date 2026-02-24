@@ -1,7 +1,7 @@
 import { useShallow } from "zustand/react/shallow"
 import { AppContent, type AppContentActionProps } from "@/components/app/app-content"
 import { PanelFooter } from "@/components/panel-footer"
-import { SideNav, type NavPlugin } from "@/components/side-nav"
+import { SideNav, type NavPlugin, type PluginContextAction } from "@/components/side-nav"
 import type { DisplayPluginState } from "@/hooks/app/use-app-plugin-views"
 import type { SettingsPluginState } from "@/hooks/app/use-settings-plugin-list"
 import { useAppVersion } from "@/hooks/app/use-app-version"
@@ -18,6 +18,8 @@ type AppShellProps = {
   settingsPlugins: SettingsPluginState[]
   autoUpdateNextAt: number | null
   selectedPlugin: DisplayPluginState | null
+  onPluginContextAction: (pluginId: string, action: PluginContextAction) => void
+  isPluginRefreshAvailable: (pluginId: string) => boolean
   appContentProps: AppContentActionProps
 }
 
@@ -28,6 +30,8 @@ export function AppShell({
   settingsPlugins,
   autoUpdateNextAt,
   selectedPlugin,
+  onPluginContextAction,
+  isPluginRefreshAvailable,
   appContentProps,
 }: AppShellProps) {
   const {
@@ -72,6 +76,8 @@ export function AppShell({
             activeView={activeView}
             onViewChange={setActiveView}
             plugins={navPlugins}
+            onPluginContextAction={onPluginContextAction}
+            isPluginRefreshAvailable={isPluginRefreshAvailable}
           />
           <div className="flex-1 flex flex-col px-3 pt-2 pb-1.5 min-w-0 bg-card dark:bg-muted/50">
             <div className="relative flex-1 min-h-0">

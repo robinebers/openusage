@@ -10,11 +10,15 @@ import { useSettingsPluginList } from "@/hooks/app/use-settings-plugin-list"
 import { useSettingsSystemActions } from "@/hooks/app/use-settings-system-actions"
 import { useSettingsTheme } from "@/hooks/app/use-settings-theme"
 import { useTrayIcon } from "@/hooks/app/use-tray-icon"
+import { track } from "@/lib/analytics"
+import { REFRESH_COOLDOWN_MS, savePluginSettings } from "@/lib/settings"
+import { type PluginContextAction } from "@/components/side-nav"
 import { useAppPluginStore } from "@/stores/app-plugin-store"
 import { useAppPreferencesStore } from "@/stores/app-preferences-store"
 import { useAppUiStore } from "@/stores/app-ui-store"
 
 const TRAY_PROBE_DEBOUNCE_MS = 500
+const TRAY_SETTINGS_DEBOUNCE_MS = 2000
 
 function App() {
   const {
@@ -168,6 +172,52 @@ function App() {
     pluginStates,
   })
 
+  const pluginSettingsRef = useRef(pluginSettings)
+  useEffect(() => {
+    pluginSettingsRef.current = pluginSettings
+  }, [pluginSettings])
+
+  const handlePluginContextAction = useCallback(
+    (pluginId: string, action: PluginContextAction) => {
+      if (action === "reload") {
+        handleRetryPlugin(pluginId)
+        return
+      }
+
+      const currentSettings = pluginSettingsRef.current
+      if (!currentSettings) return
+      const alreadyDisabled = currentSettings.disabled.includes(pluginId)
+      if (alreadyDisabled) return
+
+      track("provider_toggled", { provider_id: pluginId, enabled: "false" })
+      const nextSettings = {
+        ...currentSettings,
+        disabled: [...currentSettings.disabled, pluginId],
+      }
+      setPluginSettings(nextSettings)
+      scheduleTrayIconUpdate("settings", TRAY_SETTINGS_DEBOUNCE_MS)
+      void savePluginSettings(nextSettings).catch((error) => {
+        console.error("Failed to save plugin toggle:", error)
+      })
+
+      if (activeView === pluginId) {
+        setActiveView("home")
+      }
+    },
+    [activeView, handleRetryPlugin, scheduleTrayIconUpdate, setActiveView, setPluginSettings]
+  )
+
+  const isPluginRefreshAvailable = useCallback(
+    (pluginId: string) => {
+      const pluginState = pluginStates[pluginId]
+      if (!pluginState) return true
+      if (pluginState.loading) return false
+      if (!pluginState.lastManualRefreshAt) return true
+      return Date.now() - pluginState.lastManualRefreshAt >= REFRESH_COOLDOWN_MS
+    },
+    [pluginStates]
+  )
+
   return (
     <AppShell
       onRefreshAll={handleRefreshAll}
@@ -176,6 +226,8 @@ function App() {
       settingsPlugins={settingsPlugins}
       autoUpdateNextAt={autoUpdateNextAt}
       selectedPlugin={selectedPlugin}
+      onPluginContextAction={handlePluginContextAction}
+      isPluginRefreshAvailable={isPluginRefreshAvailable}
       appContentProps={{
         onRetryPlugin: handleRetryPlugin,
         onReorder: handleReorder,

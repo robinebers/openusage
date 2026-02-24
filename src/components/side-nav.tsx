@@ -1,6 +1,8 @@
+import { useCallback } from "react"
 import { CircleHelp, Settings } from "lucide-react"
 import { openUrl } from "@tauri-apps/plugin-opener"
 import { invoke } from "@tauri-apps/api/core"
+import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu"
 
 function GaugeIcon({ className }: { className?: string }) {
   return (
@@ -15,6 +17,8 @@ import { useDarkMode } from "@/hooks/use-dark-mode"
 
 type ActiveView = "home" | "settings" | string
 
+type PluginContextAction = "reload" | "remove"
+
 interface NavPlugin {
   id: string
   name: string
@@ -26,20 +30,24 @@ interface SideNavProps {
   activeView: ActiveView
   onViewChange: (view: ActiveView) => void
   plugins: NavPlugin[]
+  onPluginContextAction?: (pluginId: string, action: PluginContextAction) => void
+  isPluginRefreshAvailable?: (pluginId: string) => boolean
 }
 
 interface NavButtonProps {
   isActive: boolean
   onClick: () => void
+  onContextMenu?: (e: React.MouseEvent) => void
   children: React.ReactNode
   "aria-label"?: string
 }
 
-function NavButton({ isActive, onClick, children, "aria-label": ariaLabel }: NavButtonProps) {
+function NavButton({ isActive, onClick, onContextMenu, children, "aria-label": ariaLabel }: NavButtonProps) {
   return (
     <button
       type="button"
       onClick={onClick}
+      onContextMenu={onContextMenu}
       aria-label={ariaLabel}
       className={cn(
         "relative flex items-center justify-center w-full p-2.5 transition-colors",
@@ -62,8 +70,58 @@ function getIconColor(brandColor: string | undefined, isDark: boolean): string {
   return brandColor
 }
 
-export function SideNav({ activeView, onViewChange, plugins }: SideNavProps) {
+export function SideNav({
+  activeView,
+  onViewChange,
+  plugins,
+  onPluginContextAction,
+  isPluginRefreshAvailable,
+}: SideNavProps) {
   const isDark = useDarkMode()
+
+  const handlePluginContextMenu = useCallback(
+    (e: React.MouseEvent, pluginId: string) => {
+      e.preventDefault()
+      if (!onPluginContextAction) return
+
+      ;(async () => {
+        const reloadItem = await MenuItem.new({
+          id: `ctx-reload-${pluginId}`,
+          text: "Refresh usage",
+          enabled: isPluginRefreshAvailable ? isPluginRefreshAvailable(pluginId) : true,
+          action: () => onPluginContextAction(pluginId, "reload"),
+        })
+        const removeItem = await MenuItem.new({
+          id: `ctx-remove-${pluginId}`,
+          text: "Disable plugin",
+          action: () => onPluginContextAction(pluginId, "remove"),
+        })
+        const bottomSeparator = await PredefinedMenuItem.new({ item: "Separator" })
+        const inspectItem = await MenuItem.new({
+          id: `ctx-inspect-${pluginId}`,
+          text: "Inspect Element",
+          action: () => {
+            invoke("open_devtools").catch(console.error)
+          },
+        })
+        const menu = await Menu.new({
+          items: [reloadItem, removeItem, bottomSeparator, inspectItem],
+        })
+        try {
+          await menu.popup()
+        } finally {
+          await Promise.allSettled([
+            menu.close(),
+            reloadItem.close(),
+            removeItem.close(),
+            bottomSeparator.close(),
+            inspectItem.close(),
+          ])
+        }
+      })().catch(console.error)
+    },
+    [isPluginRefreshAvailable, onPluginContextAction]
+  )
 
   return (
     <nav className="flex flex-col w-12 border-r bg-muted/50 dark:bg-card py-3">
@@ -82,6 +140,7 @@ export function SideNav({ activeView, onViewChange, plugins }: SideNavProps) {
           key={plugin.id}
           isActive={activeView === plugin.id}
           onClick={() => onViewChange(plugin.id)}
+          onContextMenu={(e) => handlePluginContextMenu(e, plugin.id)}
           aria-label={plugin.name}
         >
           <span
@@ -130,4 +189,4 @@ export function SideNav({ activeView, onViewChange, plugins }: SideNavProps) {
   )
 }
 
-export type { ActiveView, NavPlugin }
+export type { ActiveView, NavPlugin, PluginContextAction }
