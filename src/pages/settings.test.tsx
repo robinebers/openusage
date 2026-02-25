@@ -55,6 +55,14 @@ const defaultProps = {
   onDisplayModeChange: vi.fn(),
   resetTimerDisplayMode: "relative" as const,
   onResetTimerDisplayModeChange: vi.fn(),
+  menubarIconStyle: "provider" as const,
+  onMenubarIconStyleChange: vi.fn(),
+  traySettingsPreview: {
+    bars: [{ id: "a", fraction: 0.7 }],
+    providerBars: [{ id: "a", fraction: 0.7 }],
+    providerIconUrl: "icon-a",
+    providerPercentText: "70%",
+  },
   globalShortcut: null,
   onGlobalShortcutChange: vi.fn(),
   startOnLogin: false,
@@ -181,6 +189,36 @@ describe("SettingsPage", () => {
   it("renders reset timers section heading", () => {
     render(<SettingsPage {...defaultProps} />)
     expect(screen.getByText("Reset Timers")).toBeInTheDocument()
+  })
+
+  it("renders menubar icon section", () => {
+    render(<SettingsPage {...defaultProps} />)
+    expect(screen.getByText("Menubar Icon")).toBeInTheDocument()
+    expect(screen.getByText("What shows in the menu bar")).toBeInTheDocument()
+  })
+
+  it("clicking Bars triggers onMenubarIconStyleChange(\"bars\")", async () => {
+    const onMenubarIconStyleChange = vi.fn()
+    render(
+      <SettingsPage
+        {...defaultProps}
+        onMenubarIconStyleChange={onMenubarIconStyleChange}
+      />
+    )
+    await userEvent.click(screen.getByRole("radio", { name: "Bars" }))
+    expect(onMenubarIconStyleChange).toHaveBeenCalledWith("bars")
+  })
+
+  it("clicking Donut triggers onMenubarIconStyleChange(\"donut\")", async () => {
+    const onMenubarIconStyleChange = vi.fn()
+    render(
+      <SettingsPage
+        {...defaultProps}
+        onMenubarIconStyleChange={onMenubarIconStyleChange}
+      />
+    )
+    await userEvent.click(screen.getByRole("radio", { name: "Donut" }))
+    expect(onMenubarIconStyleChange).toHaveBeenCalledWith("donut")
   })
 
   it("does not render removed bar icon controls", () => {

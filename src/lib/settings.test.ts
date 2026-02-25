@@ -3,6 +3,7 @@ import {
   DEFAULT_AUTO_UPDATE_INTERVAL,
   DEFAULT_DISPLAY_MODE,
   DEFAULT_GLOBAL_SHORTCUT,
+  DEFAULT_MENUBAR_ICON_STYLE,
   DEFAULT_PLUGIN_SETTINGS,
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
   DEFAULT_START_ON_LOGIN,
@@ -12,6 +13,7 @@ import {
   loadAutoUpdateInterval,
   loadDisplayMode,
   loadGlobalShortcut,
+  loadMenubarIconStyle,
   loadPluginSettings,
   loadResetTimerDisplayMode,
   loadStartOnLogin,
@@ -21,6 +23,7 @@ import {
   saveAutoUpdateInterval,
   saveDisplayMode,
   saveGlobalShortcut,
+  saveMenubarIconStyle,
   savePluginSettings,
   saveResetTimerDisplayMode,
   saveStartOnLogin,
@@ -190,6 +193,72 @@ describe("settings", () => {
 
     expect(storeState.has("trayIconStyle")).toBe(false)
     expect(storeState.has("trayShowPercentage")).toBe(false)
+  })
+
+  it("migrates legacy trayIconStyle=bars to menubarIconStyle=bars when new key not set", async () => {
+    storeState.set("trayIconStyle", "bars")
+
+    await migrateLegacyTraySettings()
+
+    expect(storeState.get("menubarIconStyle")).toBe("bars")
+    expect(storeState.has("trayIconStyle")).toBe(false)
+  })
+
+  it("does not overwrite menubarIconStyle when already set during legacy migration", async () => {
+    storeState.set("trayIconStyle", "bars")
+    storeState.set("menubarIconStyle", "provider")
+
+    await migrateLegacyTraySettings()
+
+    expect(storeState.get("menubarIconStyle")).toBe("provider")
+    expect(storeState.has("trayIconStyle")).toBe(false)
+  })
+
+  it("migrates legacy trayIconStyle=circle to menubarIconStyle=donut when new key not set", async () => {
+    storeState.set("trayIconStyle", "circle")
+
+    await migrateLegacyTraySettings()
+
+    expect(storeState.get("menubarIconStyle")).toBe("donut")
+    expect(storeState.has("trayIconStyle")).toBe(false)
+  })
+
+  it("does not set menubarIconStyle when legacy trayIconStyle is non-bars", async () => {
+    storeState.set("trayIconStyle", "provider")
+
+    await migrateLegacyTraySettings()
+
+    expect(storeState.has("menubarIconStyle")).toBe(false)
+    expect(storeState.has("trayIconStyle")).toBe(false)
+  })
+
+  it("loads default menubar icon style when missing", async () => {
+    await expect(loadMenubarIconStyle()).resolves.toBe(DEFAULT_MENUBAR_ICON_STYLE)
+  })
+
+  it("loads stored menubar icon style", async () => {
+    storeState.set("menubarIconStyle", "bars")
+    await expect(loadMenubarIconStyle()).resolves.toBe("bars")
+  })
+
+  it("saves menubar icon style", async () => {
+    await saveMenubarIconStyle("bars")
+    await expect(loadMenubarIconStyle()).resolves.toBe("bars")
+  })
+
+  it("loads stored menubar donut icon style", async () => {
+    storeState.set("menubarIconStyle", "donut")
+    await expect(loadMenubarIconStyle()).resolves.toBe("donut")
+  })
+
+  it("saves menubar donut icon style", async () => {
+    await saveMenubarIconStyle("donut")
+    await expect(loadMenubarIconStyle()).resolves.toBe("donut")
+  })
+
+  it("falls back to default for invalid menubar icon style", async () => {
+    storeState.set("menubarIconStyle", "invalid")
+    await expect(loadMenubarIconStyle()).resolves.toBe(DEFAULT_MENUBAR_ICON_STYLE)
   })
 
   it("skips legacy tray migration when keys are absent", async () => {
