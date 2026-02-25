@@ -19,7 +19,7 @@ import { GripVertical } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { GlobalShortcutSection } from "@/components/global-shortcut-section";
-import { getTrayIconSizePx, makeTrayBarsSvg } from "@/lib/tray-bars-icon";
+import { getTrayIconSizePx } from "@/lib/tray-bars-icon";
 import {
   AUTO_UPDATE_OPTIONS,
   DISPLAY_MODE_OPTIONS,
@@ -140,7 +140,7 @@ function MenubarIconStylePreview({
     const remainderClass = isActive ? "bg-primary-foreground/25" : "bg-foreground/25";
     const fillClass = isActive ? "bg-primary-foreground" : "bg-foreground";
     const fractions = traySettingsPreview.bars.length > 0
-      ? traySettingsPreview.bars.map((b) => b.fraction)
+      ? traySettingsPreview.bars.map((b) => b.fraction ?? 0)
       : [0.83, 0.7, 0.56];
 
     return (
