@@ -19,7 +19,7 @@ import { GripVertical } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { GlobalShortcutSection } from "@/components/global-shortcut-section";
-import { getTrayIconSizePx } from "@/lib/tray-bars-icon";
+import { getBarFillLayout, getTrayIconSizePx } from "@/lib/tray-bars-icon";
 import {
   AUTO_UPDATE_OPTIONS,
   DISPLAY_MODE_OPTIONS,
@@ -46,28 +46,11 @@ const TRAY_PREVIEW_SIZE_PX = getTrayIconSizePx(1);
 
 const PREVIEW_BAR_TRACK_PX = 20;
 
-function getPreviewVisualBarFraction(fraction: number): number {
-  const clamped = Math.max(0, Math.min(1, fraction));
-  if (clamped > 0.7 && clamped < 1) {
-    const remainder = 1 - clamped;
-    const quantizedRemainder = Math.min(1, Math.ceil(remainder / 0.15) * 0.15);
-    return Math.max(0, 1 - quantizedRemainder);
-  }
-  return clamped;
-}
-
 function getPreviewBarLayout(fraction: number): { fillPercent: number; remainderPercent: number } {
-  if (!Number.isFinite(fraction) || fraction <= 0) return { fillPercent: 0, remainderPercent: 0 };
-  const visual = getPreviewVisualBarFraction(fraction);
-  if (visual >= 1) return { fillPercent: 100, remainderPercent: 0 };
-  const minRemPx = Math.max(4, Math.round(PREVIEW_BAR_TRACK_PX * 0.2));
-  const maxFillW = Math.max(1, PREVIEW_BAR_TRACK_PX - minRemPx);
-  const fillW = Math.max(1, Math.min(maxFillW, Math.round(PREVIEW_BAR_TRACK_PX * visual)));
-  const trueRemW = PREVIEW_BAR_TRACK_PX - fillW;
-  const remDrawW = Math.min(PREVIEW_BAR_TRACK_PX - 1, Math.max(trueRemW, minRemPx));
+  const { fillW, remainderDrawW } = getBarFillLayout(PREVIEW_BAR_TRACK_PX, fraction);
   return {
     fillPercent: (fillW / PREVIEW_BAR_TRACK_PX) * 100,
-    remainderPercent: (remDrawW / PREVIEW_BAR_TRACK_PX) * 100,
+    remainderPercent: (remainderDrawW / PREVIEW_BAR_TRACK_PX) * 100,
   };
 }
 

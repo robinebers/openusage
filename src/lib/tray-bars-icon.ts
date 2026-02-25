@@ -54,7 +54,7 @@ function getMinVisibleRemainderPx(trackW: number): number {
   return Math.max(4, Math.round(trackW * 0.2))
 }
 
-function getVisualBarFraction(fraction: number): number {
+export function getVisualBarFraction(fraction: number): number {
   if (!Number.isFinite(fraction)) return 0
   const clamped = Math.max(0, Math.min(1, fraction))
   if (clamped > 0.7 && clamped < 1) {
@@ -67,7 +67,7 @@ function getVisualBarFraction(fraction: number): number {
   return clamped
 }
 
-function getBarFillLayout(trackW: number, fraction: number): {
+export function getBarFillLayout(trackW: number, fraction: number): {
   fillW: number
   remainderDrawW: number
   dividerX: number | null
