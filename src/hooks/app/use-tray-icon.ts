@@ -21,12 +21,14 @@ type UseTrayIconArgs = {
 
 export type TraySettingsPreview = {
   bars: TrayPrimaryBar[]
+  providerBars: TrayPrimaryBar[]
   providerIconUrl?: string
   providerPercentText: string
 }
 
 const EMPTY_TRAY_SETTINGS_PREVIEW: TraySettingsPreview = {
   bars: [],
+  providerBars: [],
   providerPercentText: "--%",
 }
 
@@ -40,9 +42,14 @@ function isSameTraySettingsPreview(a: TraySettingsPreview, b: TraySettingsPrevie
   if (a.providerIconUrl !== b.providerIconUrl) return false
   if (a.providerPercentText !== b.providerPercentText) return false
   if (a.bars.length !== b.bars.length) return false
+  if (a.providerBars.length !== b.providerBars.length) return false
   for (let i = 0; i < a.bars.length; i += 1) {
     if (a.bars[i]?.id !== b.bars[i]?.id) return false
     if (a.bars[i]?.fraction !== b.bars[i]?.fraction) return false
+  }
+  for (let i = 0; i < a.providerBars.length; i += 1) {
+    if (a.providerBars[i]?.id !== b.providerBars[i]?.id) return false
+    if (a.providerBars[i]?.fraction !== b.providerBars[i]?.fraction) return false
   }
   return true
 }
@@ -215,6 +222,7 @@ export function useTrayIcon({
 
       const nextPreview: TraySettingsPreview = {
         bars: barsForPreview,
+        providerBars,
         providerIconUrl,
         providerPercentText,
       }
@@ -247,6 +255,27 @@ export function useTrayIcon({
         return
       }
       lastTrayProviderIdRef.current = trayProviderId
+
+      if (style === "donut") {
+        renderTrayBarsIcon({
+          bars: providerBars,
+          sizePx,
+          style: "donut",
+          providerIconUrl,
+        })
+          .then(async (img) => {
+            await tray.setIcon(img)
+            await tray.setIconAsTemplate(true)
+            await setTrayTitle("")
+          })
+          .catch((e) => {
+            console.error("Failed to update tray icon:", e)
+          })
+          .finally(() => {
+            finalizeUpdate()
+          })
+        return
+      }
 
       renderTrayBarsIcon({
         bars: providerBars,

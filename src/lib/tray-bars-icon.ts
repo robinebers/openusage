@@ -130,6 +130,21 @@ function getSvgLayout(args: {
   // Optical correction + global nudge down to align with the tray slot center.
   const textY = Math.round(sizePx / 2) + 1 + verticalNudgePx
 
+  if (style === "donut") {
+    const donutGap = Math.max(1, Math.round(sizePx * 0.06))
+    return {
+      width: sizePx + donutGap + sizePx,
+      height,
+      pad,
+      gap,
+      barsX,
+      barsWidth,
+      textX: 0,
+      textY,
+      fontSize,
+    }
+  }
+
   if (!hasPercentText) {
     return {
       width: sizePx,
@@ -188,10 +203,10 @@ export function makeTrayBarsSvg(args: {
   )
 
   if (style === "provider") {
-    const iconSize = Math.max(6, Math.round(sizePx - 2 * layout.pad * 0.5) - PROVIDER_ICON_SHRINK_PX)
+    const hasText = typeof text === "string" && text.length > 0
+    const iconSize = Math.max(6, Math.round(sizePx - 2 * layout.pad * 0.5) - (hasText ? PROVIDER_ICON_SHRINK_PX : 0))
     const x = layout.barsX
-    // Native tray title text tends to sit visually high; keep icon slightly smaller and nudged up.
-    const y = Math.round((height - iconSize) / 2) + PROVIDER_ICON_VERTICAL_NUDGE_PX
+    const y = Math.round((height - iconSize) / 2) + (hasText ? PROVIDER_ICON_VERTICAL_NUDGE_PX : 0)
     const href = typeof providerIconUrl === "string" ? providerIconUrl.trim() : ""
 
     if (href.length > 0) {
@@ -206,6 +221,49 @@ export function makeTrayBarsSvg(args: {
       parts.push(
         `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="black" stroke-width="${strokeW}" opacity="1" shape-rendering="geometricPrecision" />`
       )
+    }
+  } else if (style === "donut") {
+    const iconSize = Math.max(6, Math.round(sizePx - 2 * layout.pad * 0.5))
+    const iconX = layout.barsX
+    const iconY = Math.round((height - iconSize) / 2)
+    const href = typeof providerIconUrl === "string" ? providerIconUrl.trim() : ""
+
+    if (href.length > 0) {
+      parts.push(
+        `<image x="${iconX}" y="${iconY}" width="${iconSize}" height="${iconSize}" href="${escapeXmlText(href)}" preserveAspectRatio="xMidYMid meet" />`
+      )
+    } else {
+      const fcx = iconX + iconSize / 2
+      const fcy = iconY + iconSize / 2
+      const fallbackR = Math.max(2, iconSize / 2 - 1.5)
+      const fallbackSW = Math.max(1.5, Math.round(iconSize * 0.14))
+      parts.push(
+        `<circle cx="${fcx}" cy="${fcy}" r="${fallbackR}" fill="none" stroke="black" stroke-width="${fallbackSW}" opacity="1" shape-rendering="geometricPrecision" />`
+      )
+    }
+
+    const donutGap = Math.max(1, Math.round(sizePx * 0.06))
+    const donutAreaX = sizePx + donutGap
+    const chartSize = Math.max(6, sizePx - 2 * layout.pad)
+    const cx = donutAreaX + layout.pad + chartSize / 2
+    const cy = height / 2 + 1
+    const strokeW = Math.max(2, Math.round(chartSize * 0.16))
+    const radius = Math.max(1, Math.floor(chartSize / 2 - strokeW / 2) + 0.5)
+
+    parts.push(
+      `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="black" stroke-width="${strokeW}" opacity="${BARS_TRACK_OPACITY}" shape-rendering="geometricPrecision" />`
+    )
+
+    const fraction = barsForStyle[0]?.fraction
+    if (typeof fraction === "number" && Number.isFinite(fraction) && fraction >= 0) {
+      const clamped = Math.max(0, Math.min(1, fraction))
+      if (clamped > 0) {
+        const circumference = 2 * Math.PI * radius
+        const dash = circumference * clamped
+        parts.push(
+          `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="black" stroke-width="${strokeW}" stroke-linecap="butt" stroke-dasharray="${dash} ${circumference}" transform="rotate(-90 ${cx} ${cy})" opacity="${BARS_FILL_OPACITY}" shape-rendering="geometricPrecision" />`
+        )
+      }
     }
   } else {
     // style === "bars"

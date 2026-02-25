@@ -57,6 +57,29 @@ describe("tray-bars-icon", () => {
     expect(svg).not.toContain("<image ")
   })
 
+  it("style=donut renders ring arc and centered provider icon", () => {
+    const svg = makeTrayBarsSvg({
+      bars: [{ id: "a", fraction: 0.42 }],
+      sizePx: 36,
+      style: "donut",
+      providerIconUrl: "data:image/svg+xml;base64,ABC",
+    })
+    expect(svg).toContain('stroke-dasharray="')
+    expect(svg).toContain("<image ")
+    expect(svg).not.toContain("<rect ")
+  })
+
+  it("style=donut falls back to center glyph when provider icon is missing", () => {
+    const svg = makeTrayBarsSvg({
+      bars: [{ id: "a", fraction: 0.42 }],
+      sizePx: 36,
+      style: "donut",
+    })
+    expect(svg).toContain("<circle ")
+    expect(svg).not.toContain("<image ")
+    expect(svg).not.toContain("<rect ")
+  })
+
   it("renders provider icon", () => {
     const svg = makeTrayBarsSvg({
       bars: [],

@@ -214,6 +214,15 @@ describe("settings", () => {
     expect(storeState.has("trayIconStyle")).toBe(false)
   })
 
+  it("migrates legacy trayIconStyle=circle to menubarIconStyle=donut when new key not set", async () => {
+    storeState.set("trayIconStyle", "circle")
+
+    await migrateLegacyTraySettings()
+
+    expect(storeState.get("menubarIconStyle")).toBe("donut")
+    expect(storeState.has("trayIconStyle")).toBe(false)
+  })
+
   it("does not set menubarIconStyle when legacy trayIconStyle is non-bars", async () => {
     storeState.set("trayIconStyle", "provider")
 
@@ -235,6 +244,16 @@ describe("settings", () => {
   it("saves menubar icon style", async () => {
     await saveMenubarIconStyle("bars")
     await expect(loadMenubarIconStyle()).resolves.toBe("bars")
+  })
+
+  it("loads stored menubar donut icon style", async () => {
+    storeState.set("menubarIconStyle", "donut")
+    await expect(loadMenubarIconStyle()).resolves.toBe("donut")
+  })
+
+  it("saves menubar donut icon style", async () => {
+    await saveMenubarIconStyle("donut")
+    await expect(loadMenubarIconStyle()).resolves.toBe("donut")
   })
 
   it("falls back to default for invalid menubar icon style", async () => {

@@ -547,6 +547,46 @@ describe("App", () => {
     expect(firstCall.bars.length).toBeGreaterThanOrEqual(2)
   })
 
+  it("donut style path passed to renderTrayBarsIcon and clears tray title", async () => {
+    state.loadMenubarIconStyleMock.mockResolvedValue("donut")
+    state.invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_plugins") {
+        return [
+          {
+            id: "a",
+            name: "Alpha",
+            iconUrl: "icon-a",
+            primaryCandidates: ["Session"],
+            lines: [{ type: "progress", label: "Session", scope: "overview" }],
+          },
+          {
+            id: "b",
+            name: "Beta",
+            iconUrl: "icon-b",
+            primaryCandidates: ["Session"],
+            lines: [{ type: "progress", label: "Session", scope: "overview" }],
+          },
+        ]
+      }
+      return null
+    })
+    state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a", "b"], disabled: [] })
+
+    render(<App />)
+    await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
+    await waitFor(() => expect(state.renderTrayBarsIconMock).toHaveBeenCalled())
+
+    const firstCallArgs = state.renderTrayBarsIconMock.mock.calls[0]
+    expect(firstCallArgs).toBeDefined()
+    const firstCall = firstCallArgs![0]
+    expect(firstCall.style).toBe("donut")
+    expect(firstCall.providerIconUrl).toBe("icon-a")
+    expect(firstCall.percentText).toBeUndefined()
+
+    await waitFor(() => expect(state.traySetTitleMock).toHaveBeenCalledWith(""))
+    expect(state.traySetTitleMock).not.toHaveBeenCalledWith("--%")
+  })
+
   it("renders percent text in tray icon when native title is unavailable", async () => {
     state.trayGetByIdMock.mockResolvedValueOnce({
       setIcon: state.traySetIconMock.mockResolvedValue(undefined),
@@ -664,6 +704,23 @@ describe("App", () => {
       const latestCall = state.renderTrayBarsIconMock.mock.calls.at(-1)?.[0]
       expect(latestCall).toBeDefined()
       expect(latestCall!.style).toBe("bars")
+    })
+  })
+
+  it("settings UI persists donut menubar icon style change", async () => {
+    render(<App />)
+    const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
+    await userEvent.click(settingsButtons[0])
+
+    expect(screen.getByText("Menubar Icon")).toBeVisible()
+    const donutRadio = await screen.findByRole("radio", { name: "Donut" })
+    await userEvent.click(donutRadio)
+    expect(state.saveMenubarIconStyleMock).toHaveBeenCalledWith("donut")
+
+    await waitFor(() => {
+      const latestCall = state.renderTrayBarsIconMock.mock.calls.at(-1)?.[0]
+      expect(latestCall).toBeDefined()
+      expect(latestCall!.style).toBe("donut")
     })
   })
 
