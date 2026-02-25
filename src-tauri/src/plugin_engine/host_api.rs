@@ -1138,8 +1138,9 @@ fn ls_parse_listening_ports(output: &str) -> Vec<i32> {
     ports.into_iter().collect()
 }
 
-const CCUSAGE_CLAUDE_PACKAGE: &str = "ccusage@18.0.6";
-const CCUSAGE_CODEX_PACKAGE: &str = "@ccusage/codex@18.0.6";
+const CCUSAGE_VERSION: &str = "18.0.8";
+const CCUSAGE_CLAUDE_PACKAGE_NAME: &str = "ccusage";
+const CCUSAGE_CODEX_PACKAGE_NAME: &str = "@ccusage/codex";
 const CCUSAGE_TIMEOUT_SECS: u64 = 15;
 const CCUSAGE_POLL_INTERVAL_MS: u64 = 100;
 
@@ -1190,7 +1191,7 @@ fn ccusage_runner_label(kind: CcusageRunnerKind) -> &'static str {
 
 #[derive(Copy, Clone)]
 struct CcusageProviderConfig {
-    package_spec: &'static str,
+    package_name: &'static str,
     npm_exec_bin: &'static str,
     home_env_var: &'static str,
 }
@@ -1218,16 +1219,21 @@ fn resolve_ccusage_provider(opts: &CcusageQueryOpts, plugin_id: &str) -> Ccusage
 fn ccusage_provider_config(provider: CcusageProvider) -> CcusageProviderConfig {
     match provider {
         CcusageProvider::Claude => CcusageProviderConfig {
-            package_spec: CCUSAGE_CLAUDE_PACKAGE,
+            package_name: CCUSAGE_CLAUDE_PACKAGE_NAME,
             npm_exec_bin: "ccusage",
             home_env_var: "CLAUDE_CONFIG_DIR",
         },
         CcusageProvider::Codex => CcusageProviderConfig {
-            package_spec: CCUSAGE_CODEX_PACKAGE,
+            package_name: CCUSAGE_CODEX_PACKAGE_NAME,
             npm_exec_bin: "ccusage-codex",
             home_env_var: "CODEX_HOME",
         },
     }
+}
+
+fn ccusage_package_spec(provider: CcusageProvider) -> String {
+    let config = ccusage_provider_config(provider);
+    format!("{}@{}", config.package_name, CCUSAGE_VERSION)
 }
 
 fn ccusage_home_override<'a>(
@@ -1443,26 +1449,27 @@ fn ccusage_runner_args(
     provider: CcusageProvider,
 ) -> Vec<String> {
     let config = ccusage_provider_config(provider);
+    let package_spec = ccusage_package_spec(provider);
     let mut args: Vec<String> = match kind {
-        CcusageRunnerKind::Bunx => vec!["--silent".to_string(), config.package_spec.to_string()],
+        CcusageRunnerKind::Bunx => vec!["--silent".to_string(), package_spec.clone()],
         CcusageRunnerKind::PnpmDlx => vec![
             "-s".to_string(),
             "dlx".to_string(),
-            config.package_spec.to_string(),
+            package_spec.clone(),
         ],
         CcusageRunnerKind::YarnDlx => vec![
             "dlx".to_string(),
             "-q".to_string(),
-            config.package_spec.to_string(),
+            package_spec.clone(),
         ],
         CcusageRunnerKind::NpmExec => vec![
             "exec".to_string(),
             "--yes".to_string(),
-            format!("--package={}", config.package_spec),
+            format!("--package={package_spec}"),
             "--".to_string(),
             config.npm_exec_bin.to_string(),
         ],
-        CcusageRunnerKind::Npx => vec!["--yes".to_string(), config.package_spec.to_string()],
+        CcusageRunnerKind::Npx => vec!["--yes".to_string(), package_spec],
     };
 
     append_ccusage_common_args(&mut args, opts);
@@ -2292,13 +2299,15 @@ mod tests {
             home_path: None,
             claude_path: None,
         };
+        let expected_claude_package = ccusage_package_spec(CcusageProvider::Claude);
+        let expected_npm_exec_package = format!("--package={expected_claude_package}");
 
         let bunx = ccusage_runner_args(CcusageRunnerKind::Bunx, &opts, CcusageProvider::Claude);
         assert_eq!(
             bunx,
             vec![
                 "--silent",
-                "ccusage@18.0.6",
+                expected_claude_package.as_str(),
                 "daily",
                 "--json",
                 "--order",
@@ -2316,7 +2325,7 @@ mod tests {
             vec![
                 "-s",
                 "dlx",
-                "ccusage@18.0.6",
+                expected_claude_package.as_str(),
                 "daily",
                 "--json",
                 "--order",
@@ -2334,7 +2343,7 @@ mod tests {
             vec![
                 "dlx",
                 "-q",
-                "ccusage@18.0.6",
+                expected_claude_package.as_str(),
                 "daily",
                 "--json",
                 "--order",
@@ -2353,7 +2362,7 @@ mod tests {
             vec![
                 "exec",
                 "--yes",
-                "--package=ccusage@18.0.6",
+                expected_npm_exec_package.as_str(),
                 "--",
                 "ccusage",
                 "daily",
@@ -2372,7 +2381,7 @@ mod tests {
             npx,
             vec![
                 "--yes",
-                "ccusage@18.0.6",
+                expected_claude_package.as_str(),
                 "daily",
                 "--json",
                 "--order",
@@ -2394,6 +2403,8 @@ mod tests {
             home_path: None,
             claude_path: None,
         };
+        let expected_codex_package = ccusage_package_spec(CcusageProvider::Codex);
+        let expected_npm_exec_package = format!("--package={expected_codex_package}");
 
         let npm_exec =
             ccusage_runner_args(CcusageRunnerKind::NpmExec, &opts, CcusageProvider::Codex);
@@ -2402,7 +2413,7 @@ mod tests {
             vec![
                 "exec",
                 "--yes",
-                "--package=@ccusage/codex@18.0.6",
+                expected_npm_exec_package.as_str(),
                 "--",
                 "ccusage-codex",
                 "daily",
@@ -2421,7 +2432,7 @@ mod tests {
             npx,
             vec![
                 "--yes",
-                "@ccusage/codex@18.0.6",
+                expected_codex_package.as_str(),
                 "daily",
                 "--json",
                 "--order",
