@@ -25,7 +25,7 @@
   ]
 
   function platformBaseDirs(platform) {
-    if (platform === "darwin") {
+    if (platform === "macos") {
       return ["~/Library/Application Support/JetBrains"]
     }
     if (platform === "linux") {
@@ -77,7 +77,7 @@
   function buildQuotaPaths(ctx) {
     var bases = platformBaseDirs(ctx.app.platform)
     var paths = []
-    var seen = {}
+    var seen = Object.create(null)
     for (var b = 0; b < bases.length; b += 1) {
       var base = bases[b]
       var entries = safeListDir(ctx, base)

@@ -92,7 +92,7 @@ describe("jetbrains-ai-assistant plugin", () => {
 
   it("prefers the quota state with the latest until window", async () => {
     const ctx = makeCtx()
-    ctx.app.platform = "darwin"
+    ctx.app.platform = "macos"
 
     ctx.host.fs.writeText(
       DARWIN_PATH,
