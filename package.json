@@ -1,12 +1,13 @@
 {
   "name": "openusage",
   "private": true,
-  "version": "0.6.7",
+  "version": "0.6.8",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "build:release": "./scripts/build-release.sh",
+    "ccusage:bump": "node ./scripts/bump-ccusage-version.mjs",
     "bundle:plugins": "bun copy-bundled.cjs",
     "preview": "vite preview",
     "test": "vitest",

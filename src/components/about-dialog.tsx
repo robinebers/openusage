@@ -88,7 +88,16 @@ export function AboutDialog({ version, onClose }: AboutDialogProps) {
               GitHub
             </ExternalLink>
           </p>
-          <p className="text-xs pt-1">Contributions welcome</p>
+          <p className="text-xs pt-1">
+            Maintainers:{" "}
+            <ExternalLink href="https://github.com/validatedev">
+              validatedev
+            </ExternalLink>
+            ,{" "}
+            <ExternalLink href="https://github.com/davidarny">
+              davidarny
+            </ExternalLink>
+          </p>
         </div>
       </div>
     </div>

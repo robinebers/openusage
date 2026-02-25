@@ -110,7 +110,7 @@ describe("claude plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
     expect(result.lines.find((line) => line.label === "Sonnet")).toBeTruthy()
-    expect(result.lines.find((line) => line.label === "Extra usage")).toBeTruthy()
+    expect(result.lines.find((line) => line.label === "Extra usage spent")).toBeTruthy()
   })
 
   it("uses keychain credentials when value is hex-encoded JSON", async () => {

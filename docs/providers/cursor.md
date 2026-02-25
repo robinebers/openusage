@@ -12,6 +12,21 @@
 - **Amounts:** cents (divide by 100 for dollars)
 - **Timestamps:** unix milliseconds (as strings)
 
+## Plugin metrics
+
+| Metric | Source field | Scope | Format | Notes |
+|---|---|---|---|---|
+| Credits | `GetCreditGrantsBalance` | overview | dollars | Only when `hasCreditGrants` is true |
+| Total usage | `planUsage.totalPercentUsed` | overview | percent (individual) / dollars (team) | Falls back to computed `(limit - remaining) / limit * 100` when `totalPercentUsed` is not finite. Team accounts use dollars format. |
+| Auto usage | `planUsage.autoPercentUsed` | detail | percent | Omitted when field is missing or non-finite |
+| API usage | `planUsage.apiPercentUsed` | detail | percent | Omitted when field is missing or non-finite |
+| Requests | `/api/usage` (enterprise) | overview | count | Enterprise accounts only; unchanged from previous behavior |
+| On-demand | `spendLimitUsage` | detail | dollars | Only when individual or pooled limit > 0 |
+
+**Enterprise flow** remains request-based via the REST `/api/usage` endpoint -- unchanged.
+
+**Team detection**: an account is treated as "team" when `planName` is `"Team"`, or `spendLimitUsage.limitType` is `"team"`, or `spendLimitUsage.pooledLimit` is present. Team accounts display Total usage in dollars; individual accounts display it as a percentage.
+
 ## Endpoints
 
 ### POST /aiserver.v1.DashboardService/GetCurrentPeriodUsage

@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.6.8
+
+### New Features
+- Auto-detect MiniMax CN/global endpoint and show region label ([#230](https://github.com/robinebers/openusage/pull/230)) by @FrankieeW
+- Add Total usage, Auto usage, API usage metrics for Cursor ([#226](https://github.com/robinebers/openusage/pull/226)) by @robinebers
+- Restore bars mode and simplify menubar options ([#234](https://github.com/robinebers/openusage/pull/234)) by @robinebers
+
+### Bug Fixes
+- Update About dialog with contributor credits and green icon ([#240](https://github.com/robinebers/openusage/pull/240)) by @robinebers
+- Clarify Claude extra usage metric by renaming label to "Extra usage spent" ([#239](https://github.com/robinebers/openusage/pull/239)) by @app/copilot-swe-agent
+- Centralize ccusage version pinning and add bump command ([#238](https://github.com/robinebers/openusage/pull/238)) by @robinebers
+- Compact loading skeleton and dedupe line grouping ([#228](https://github.com/robinebers/openusage/pull/228)) by @davidarny
+- Harden PATH enrichment and add regression tests ([#220](https://github.com/robinebers/openusage/pull/220)) by @robinebers
+
+### Chores
+- Remove outdated note about Windows/Linux testing from README by @robinebers
+- Update .gitignore to include .vscode and .conductor directories by @robinebers
+- Remove deprecated VSCode extensions configuration file by @robinebers
+
+### Changelog
+
+**Full Changelog**: [v0.6.7...v0.6.8](https://github.com/robinebers/openusage/compare/v0.6.7...v0.6.8)
+
+- [10635c6](https://github.com/robinebers/openusage/commit/10635c6) chore: bump version to 0.6.8 by @robinebers
+- [9aa5371](https://github.com/robinebers/openusage/commit/9aa5371) fix(ui): update About dialog with contributor credits and green icon (#240) by @robinebers
+- [903e6b2](https://github.com/robinebers/openusage/commit/903e6b2) feat(minimax): auto-detect CN/global endpoint and region label (#230) by @FrankieeW
+- [7bd1383](https://github.com/robinebers/openusage/commit/7bd1383) Clarify Claude extra usage metric by renaming label to "Extra usage spent" (#239) by @app/copilot-swe-agent
+- [208eb2d](https://github.com/robinebers/openusage/commit/208eb2d) fix(ccusage): centralize version pinning and add bump command (#238) by @robinebers
+- [49b0b59](https://github.com/robinebers/openusage/commit/49b0b59) feat(cursor): add Total usage, Auto usage, API usage metrics (#226) by @robinebers
+- [c768281](https://github.com/robinebers/openusage/commit/c768281) feat(tray): restore bars mode and simplify menubar options (#234) by @robinebers
+- [e58837b](https://github.com/robinebers/openusage/commit/e58837b) test: raise coverage and enforce global 90% thresholds (#219) by @robinebers
+- [28d9014](https://github.com/robinebers/openusage/commit/28d9014) fix(ui): compact loading skeleton and dedupe line grouping (#228) by @davidarny
+- [240df4e](https://github.com/robinebers/openusage/commit/240df4e) chore: remove outdated note about Windows/Linux testing from README by @robinebers
+- [1755ed3](https://github.com/robinebers/openusage/commit/1755ed3) chore: update .gitignore to include .vscode and .conductor directories by @robinebers
+- [d06cdf3](https://github.com/robinebers/openusage/commit/d06cdf3) chore: remove deprecated VSCode extensions configuration file by @robinebers
+- [35a921f](https://github.com/robinebers/openusage/commit/35a921f) fix(ccusage): harden PATH enrichment and add regression tests (#220) by @robinebers
+
 ## 0.6.7
 
 ### New Features

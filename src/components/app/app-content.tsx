@@ -4,12 +4,14 @@ import { ProviderDetailPage } from "@/pages/provider-detail"
 import { SettingsPage } from "@/pages/settings"
 import type { DisplayPluginState } from "@/hooks/app/use-app-plugin-views"
 import type { SettingsPluginState } from "@/hooks/app/use-settings-plugin-list"
+import type { TraySettingsPreview } from "@/hooks/app/use-tray-icon"
 import { useAppPreferencesStore } from "@/stores/app-preferences-store"
 import { useAppUiStore } from "@/stores/app-ui-store"
 import type {
   AutoUpdateIntervalMinutes,
   DisplayMode,
   GlobalShortcut,
+  MenubarIconStyle,
   ResetTimerDisplayMode,
   ThemeMode,
 } from "@/lib/settings"
@@ -29,6 +31,8 @@ export type AppContentActionProps = {
   onDisplayModeChange: (mode: DisplayMode) => void
   onResetTimerDisplayModeChange: (mode: ResetTimerDisplayMode) => void
   onResetTimerDisplayModeToggle: () => void
+  onMenubarIconStyleChange: (value: MenubarIconStyle) => void
+  traySettingsPreview: TraySettingsPreview
   onGlobalShortcutChange: (value: GlobalShortcut) => void
   onStartOnLoginChange: (value: boolean) => void
 }
@@ -47,6 +51,8 @@ export function AppContent({
   onDisplayModeChange,
   onResetTimerDisplayModeChange,
   onResetTimerDisplayModeToggle,
+  onMenubarIconStyleChange,
+  traySettingsPreview,
   onGlobalShortcutChange,
   onStartOnLoginChange,
 }: AppContentProps) {
@@ -59,6 +65,7 @@ export function AppContent({
   const {
     displayMode,
     resetTimerDisplayMode,
+    menubarIconStyle,
     autoUpdateInterval,
     globalShortcut,
     themeMode,
@@ -67,6 +74,7 @@ export function AppContent({
     useShallow((state) => ({
       displayMode: state.displayMode,
       resetTimerDisplayMode: state.resetTimerDisplayMode,
+      menubarIconStyle: state.menubarIconStyle,
       autoUpdateInterval: state.autoUpdateInterval,
       globalShortcut: state.globalShortcut,
       themeMode: state.themeMode,
@@ -100,6 +108,9 @@ export function AppContent({
         onDisplayModeChange={onDisplayModeChange}
         resetTimerDisplayMode={resetTimerDisplayMode}
         onResetTimerDisplayModeChange={onResetTimerDisplayModeChange}
+        menubarIconStyle={menubarIconStyle}
+        onMenubarIconStyleChange={onMenubarIconStyleChange}
+        traySettingsPreview={traySettingsPreview}
         globalShortcut={globalShortcut}
         onGlobalShortcutChange={onGlobalShortcutChange}
         startOnLogin={startOnLogin}

@@ -263,7 +263,7 @@
         var cycleEndMs = cycleStart ? cycleStart + billingPeriodMs : null
 
         lines.push(ctx.line.progress({
-          label: "Included requests",
+          label: "Requests",
           used: used,
           limit: limit,
           format: { kind: "count", suffix: "requests" },
@@ -429,17 +429,21 @@
       }
     }
 
-    // Plan usage (always present) - fallback primary metric
-    // API may return totalSpend directly, or we calculate from limit - remaining
+    // Total usage (always present) - fallback primary metric
     if (typeof pu.limit !== "number") {
-      throw "Plan usage limit missing from API response."
+      throw "Total usage limit missing from API response."
     }
     const planUsed = typeof pu.totalSpend === "number"
       ? pu.totalSpend
       : pu.limit - (pu.remaining ?? 0)
+    const computedPercentUsed = pu.limit > 0
+      ? (planUsed / pu.limit) * 100
+      : 0
+    const totalUsagePercent = Number.isFinite(pu.totalPercentUsed)
+      ? pu.totalPercentUsed
+      : computedPercentUsed
 
     // Calculate billing cycle period duration
-    // API returns timestamps as strings in milliseconds
     var billingPeriodMs = 30 * 24 * 60 * 60 * 1000 // 30 days default
     var cycleStart = Number(usage.billingCycleStart)
     var cycleEnd = Number(usage.billingCycleEnd)
@@ -447,21 +451,60 @@
       billingPeriodMs = cycleEnd - cycleStart // already in ms
     }
 
-    lines.push(ctx.line.progress({
-      label: "Plan usage",
-      used: ctx.fmt.dollars(planUsed),
-      limit: ctx.fmt.dollars(pu.limit),
-      format: { kind: "dollars" },
-      resetsAt: ctx.util.toIso(usage.billingCycleEnd),
-      periodDurationMs: billingPeriodMs
-    }))
+    const su = usage.spendLimitUsage
+    const isTeamAccount = (
+      (typeof planName === "string" && planName.toLowerCase() === "team") ||
+      (su && su.limitType === "team") ||
+      (su && typeof su.pooledLimit === "number")
+    )
 
-    if (typeof pu.bonusSpend === "number" && pu.bonusSpend > 0) {
-      lines.push(ctx.line.text({ label: "Bonus spend", value: "$" + String(ctx.fmt.dollars(pu.bonusSpend)) }))
+    if (isTeamAccount) {
+      lines.push(ctx.line.progress({
+        label: "Total usage",
+        used: ctx.fmt.dollars(planUsed),
+        limit: ctx.fmt.dollars(pu.limit),
+        format: { kind: "dollars" },
+        resetsAt: ctx.util.toIso(usage.billingCycleEnd),
+        periodDurationMs: billingPeriodMs
+      }))
+
+      if (typeof pu.bonusSpend === "number" && pu.bonusSpend > 0) {
+        lines.push(ctx.line.text({ label: "Bonus spend", value: "$" + String(ctx.fmt.dollars(pu.bonusSpend)) }))
+      }
+    } else {
+      lines.push(ctx.line.progress({
+        label: "Total usage",
+        used: totalUsagePercent,
+        limit: 100,
+        format: { kind: "percent" },
+        resetsAt: ctx.util.toIso(usage.billingCycleEnd),
+        periodDurationMs: billingPeriodMs
+      }))
+    }
+
+    if (typeof pu.autoPercentUsed === "number" && Number.isFinite(pu.autoPercentUsed)) {
+      lines.push(ctx.line.progress({
+        label: "Auto usage",
+        used: pu.autoPercentUsed,
+        limit: 100,
+        format: { kind: "percent" },
+        resetsAt: ctx.util.toIso(usage.billingCycleEnd),
+        periodDurationMs: billingPeriodMs
+      }))
+    }
+
+    if (typeof pu.apiPercentUsed === "number" && Number.isFinite(pu.apiPercentUsed)) {
+      lines.push(ctx.line.progress({
+        label: "API usage",
+        used: pu.apiPercentUsed,
+        limit: 100,
+        format: { kind: "percent" },
+        resetsAt: ctx.util.toIso(usage.billingCycleEnd),
+        periodDurationMs: billingPeriodMs
+      }))
     }
 
     // On-demand (if available) - not a primary candidate
-    const su = usage.spendLimitUsage
     if (su) {
       const limit = su.individualLimit ?? su.pooledLimit ?? 0
       const remaining = su.individualRemaining ?? su.pooledRemaining ?? 0
