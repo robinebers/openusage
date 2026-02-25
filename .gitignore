@@ -15,8 +15,8 @@ coverage
 tmpcov-gem
 
 # Editor directories and files
-.vscode/*
-!.vscode/extensions.json
+.vscode/
+.conductor/
 .idea
 .DS_Store
 *.suo
