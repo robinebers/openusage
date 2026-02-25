@@ -120,7 +120,7 @@ function MenubarIconStylePreview({
 
   if (style === "bars") {
     const trackClass = isActive ? "bg-primary-foreground/15" : "bg-foreground/15";
-    const remainderClass = isActive ? "bg-primary-foreground/25" : "bg-foreground/25";
+    const remainderClass = isActive ? "bg-primary-foreground/20" : "bg-foreground/15";
     const fillClass = isActive ? "bg-primary-foreground" : "bg-foreground";
     const fractions = traySettingsPreview.bars.length > 0
       ? traySettingsPreview.bars.map((b) => b.fraction ?? 0)
