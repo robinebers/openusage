@@ -58,6 +58,7 @@ ctx.host.log.error("API request failed: " + error.message)
 host.fs.exists(path: string): boolean
 host.fs.readText(path: string): string   // Throws on error
 host.fs.writeText(path: string, content: string): void  // Throws on error
+host.fs.listDir(path: string): string[]  // Throws on error
 ```
 
 ### Path Expansion
@@ -76,6 +77,19 @@ try {
 } catch (e) {
   ctx.host.log.error("Failed to read settings: " + String(e))
   throw "Failed to read settings. Check your config."
+}
+```
+
+### Directory Listing
+
+Use `listDir` to inspect immediate child names under a directory:
+
+```javascript
+let entries = []
+try {
+  entries = ctx.host.fs.listDir("~/Library/Application Support/JetBrains")
+} catch {
+  entries = []
 }
 ```
 

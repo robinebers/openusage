@@ -13,9 +13,29 @@ export const makeCtx = () => {
     },
     host: {
       fs: {
-        exists: (path) => files.has(path),
+        exists: (path) => {
+          if (files.has(path)) return true
+          const base = String(path).replace(/\/+$/, "")
+          for (const filePath of files.keys()) {
+            if (String(filePath).startsWith(base + "/")) return true
+          }
+          return false
+        },
         readText: (path) => files.get(path),
         writeText: vi.fn((path, text) => files.set(path, text)),
+        listDir: (path) => {
+          const base = String(path).replace(/\/+$/, "")
+          const out = new Set()
+          for (const filePath of files.keys()) {
+            const full = String(filePath)
+            if (!full.startsWith(base + "/")) continue
+            const rest = full.slice(base.length + 1)
+            if (!rest) continue
+            const child = rest.split("/")[0]
+            if (child) out.add(child)
+          }
+          return Array.from(out).sort()
+        },
       },
       env: {
         get: vi.fn(() => null),
