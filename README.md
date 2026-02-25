@@ -50,8 +50,6 @@ I maintain the project as a guide and quality gatekeeper, but this is your app a
 
 Plugins are currently bundled as we build our the API, but soon will be made flexible so you can build and load their own.
 
-**Windows/Linux:** high-priority and on the todo, but I need testers with some time, willing to help out.
-
 ### How to Contribute
 
 - **Add a provider.** Each one is just a plugin. See the [Plugin API](docs/plugins/api.md).
