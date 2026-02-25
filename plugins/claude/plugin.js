@@ -496,13 +496,13 @@
       const limit = data.extra_usage.monthly_limit
       if (typeof used === "number" && typeof limit === "number" && limit > 0) {
         lines.push(ctx.line.progress({
-          label: "Extra usage",
+          label: "Extra usage spent",
           used: ctx.fmt.dollars(used),
           limit: ctx.fmt.dollars(limit),
           format: { kind: "dollars" }
         }))
       } else if (typeof used === "number" && used > 0) {
-        lines.push(ctx.line.text({ label: "Extra usage", value: "$" + String(ctx.fmt.dollars(used)) }))
+        lines.push(ctx.line.text({ label: "Extra usage spent", value: "$" + String(ctx.fmt.dollars(used)) }))
       }
     }
 
