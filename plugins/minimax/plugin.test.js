@@ -4,6 +4,8 @@ import { makeCtx } from "../test-helpers.js"
 const PRIMARY_USAGE_URL = "https://api.minimax.io/v1/api/openplatform/coding_plan/remains"
 const FALLBACK_USAGE_URL = "https://api.minimax.io/v1/coding_plan/remains"
 const LEGACY_WWW_USAGE_URL = "https://www.minimax.io/v1/api/openplatform/coding_plan/remains"
+const CN_PRIMARY_USAGE_URL = "https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains"
+const CN_FALLBACK_USAGE_URL = "https://api.minimaxi.com/v1/coding_plan/remains"
 
 const loadPlugin = async () => {
   await import("./plugin.js")
@@ -48,7 +50,9 @@ describe("minimax plugin", () => {
     const ctx = makeCtx()
     setEnv(ctx, {})
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("MiniMax API key missing")
+    expect(() => plugin.probe(ctx)).toThrow(
+      "MiniMax API key missing. Set MINIMAX_API_KEY or MINIMAX_CN_API_KEY."
+    )
   })
 
   it("uses MINIMAX_API_KEY for auth header", async () => {
@@ -89,6 +93,150 @@ describe("minimax plugin", () => {
     expect(call.headers.Authorization).toBe("Bearer token-fallback")
   })
 
+  it("auto-selects CN endpoint when MINIMAX_CN_API_KEY exists", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_CN_API_KEY: "cn-key", MINIMAX_API_KEY: "global-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify(successPayload()),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    const call = ctx.host.http.request.mock.calls[0][0]
+    expect(call.url).toBe(CN_PRIMARY_USAGE_URL)
+    expect(call.headers.Authorization).toBe("Bearer cn-key")
+    expect(result.plan).toBe("Plus (CN)")
+  })
+
+  it("prefers MINIMAX_CN_API_KEY in AUTO mode when both keys exist", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, {
+      MINIMAX_CN_API_KEY: "cn-key",
+      MINIMAX_API_KEY: "global-key",
+    })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify(successPayload()),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    const call = ctx.host.http.request.mock.calls[0][0]
+    expect(call.url).toBe(CN_PRIMARY_USAGE_URL)
+    expect(call.headers.Authorization).toBe("Bearer cn-key")
+    expect(result.plan).toBe("Plus (CN)")
+  })
+
+  it("uses MINIMAX_API_KEY when CN key is missing", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, {
+      MINIMAX_API_KEY: "global-key",
+    })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify(successPayload()),
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    const call = ctx.host.http.request.mock.calls[0][0]
+    expect(call.url).toBe(PRIMARY_USAGE_URL)
+    expect(call.headers.Authorization).toBe("Bearer global-key")
+  })
+
+  it("uses GLOBAL first in AUTO mode when CN key is missing", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "global-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify(successPayload()),
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    const call = ctx.host.http.request.mock.calls[0][0]
+    expect(call.url).toBe(PRIMARY_USAGE_URL)
+  })
+
+  it("falls back to CN in AUTO mode when GLOBAL auth fails", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "global-key" })
+    ctx.host.http.request.mockImplementation((req) => {
+      if (req.url === PRIMARY_USAGE_URL) return { status: 401, headers: {}, bodyText: "" }
+      if (req.url === FALLBACK_USAGE_URL) return { status: 401, headers: {}, bodyText: "" }
+      if (req.url === LEGACY_WWW_USAGE_URL) return { status: 401, headers: {}, bodyText: "" }
+      if (req.url === CN_PRIMARY_USAGE_URL) {
+        return {
+          status: 200,
+          headers: {},
+          bodyText: JSON.stringify(successPayload({
+            model_remains: [
+              {
+                model_name: "MiniMax-M2",
+                current_interval_total_count: 1500, // CN Plus: 100 prompts × 15
+                current_interval_usage_count: 1200, // Remaining
+                start_time: 1700000000000,
+                end_time: 1700018000000,
+              },
+            ],
+          })),
+        }
+      }
+      return { status: 404, headers: {}, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines[0].used).toBe(20) // (1500-1200) / 15 = 20
+    expect(result.plan).toBe("Plus (CN)")
+    const first = ctx.host.http.request.mock.calls[0][0].url
+    const last = ctx.host.http.request.mock.calls[ctx.host.http.request.mock.calls.length - 1][0].url
+    expect(first).toBe(PRIMARY_USAGE_URL)
+    expect(last).toBe(CN_PRIMARY_USAGE_URL)
+  })
+
+  it("preserves first non-auth error in AUTO mode when later CN retry is auth", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "global-key" })
+    ctx.host.http.request.mockImplementation((req) => {
+      if (req.url === PRIMARY_USAGE_URL) return { status: 500, headers: {}, bodyText: "{}" }
+      if (req.url === FALLBACK_USAGE_URL) return { status: 500, headers: {}, bodyText: "{}" }
+      if (req.url === LEGACY_WWW_USAGE_URL) return { status: 500, headers: {}, bodyText: "{}" }
+      if (req.url === CN_PRIMARY_USAGE_URL) return { status: 401, headers: {}, bodyText: "" }
+      if (req.url === CN_FALLBACK_USAGE_URL) return { status: 401, headers: {}, bodyText: "" }
+      return { status: 404, headers: {}, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Request failed (HTTP 500)")
+  })
+
+  it("preserves first auth error in AUTO mode when later CN retry is non-auth", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "global-key" })
+    ctx.host.http.request.mockImplementation((req) => {
+      if (req.url === PRIMARY_USAGE_URL) return { status: 401, headers: {}, bodyText: "" }
+      if (req.url === FALLBACK_USAGE_URL) return { status: 401, headers: {}, bodyText: "" }
+      if (req.url === LEGACY_WWW_USAGE_URL) return { status: 401, headers: {}, bodyText: "" }
+      if (req.url === CN_PRIMARY_USAGE_URL) return { status: 500, headers: {}, bodyText: "{}" }
+      if (req.url === CN_FALLBACK_USAGE_URL) return { status: 500, headers: {}, bodyText: "{}" }
+      return { status: 404, headers: {}, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Session expired. Check your MiniMax API key.")
+  })
+
   it("parses usage, plan, reset timestamp, and period duration", async () => {
     const ctx = makeCtx()
     setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
@@ -101,7 +249,7 @@ describe("minimax plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    expect(result.plan).toBe("Plus")
+    expect(result.plan).toBe("Plus (GLOBAL)")
     expect(result.lines.length).toBe(1)
     const line = result.lines[0]
     expect(line.label).toBe("Session")
@@ -160,7 +308,7 @@ describe("minimax plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    expect(result.plan).toBe("Starter")
+    expect(result.plan).toBe("Starter (GLOBAL)")
     expect(result.lines[0].used).toBe(300)
     expect(result.lines[0].limit).toBe(1500)
   })
@@ -217,7 +365,7 @@ describe("minimax plugin", () => {
     const line = result.lines[0]
     const expectedReset = new Date(1700000000000 + 7200 * 1000).toISOString()
 
-    expect(result.plan).toBe("Max")
+    expect(result.plan).toBe("Max (GLOBAL)")
     expect(line.used).toBe(60)
     expect(line.limit).toBe(100)
     expect(line.resetsAt).toBe(expectedReset)
@@ -276,7 +424,7 @@ describe("minimax plugin", () => {
     const result = plugin.probe(ctx)
     const line = result.lines[0]
 
-    expect(result.plan).toBe("Pro")
+    expect(result.plan).toBe("Pro (GLOBAL)")
     expect(line.used).toBe(180)
     expect(line.limit).toBe(300)
   })
@@ -286,8 +434,14 @@ describe("minimax plugin", () => {
     setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
     ctx.host.http.request.mockReturnValue({ status: 401, headers: {}, bodyText: "" })
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Session expired")
-    expect(ctx.host.http.request.mock.calls.length).toBe(3)
+    let message = ""
+    try {
+      plugin.probe(ctx)
+    } catch (e) {
+      message = String(e)
+    }
+    expect(message).toContain("Session expired")
+    expect(ctx.host.http.request.mock.calls.length).toBe(5)
   })
 
   it("falls back to secondary endpoint when primary fails", async () => {
@@ -310,6 +464,160 @@ describe("minimax plugin", () => {
 
     expect(result.lines[0].used).toBe(120)
     expect(ctx.host.http.request.mock.calls.length).toBe(2)
+  })
+
+  it("uses CN fallback endpoint when CN primary fails", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_CN_API_KEY: "cn-key" })
+    ctx.host.http.request.mockImplementation((req) => {
+      if (req.url === CN_PRIMARY_USAGE_URL) return { status: 503, headers: {}, bodyText: "{}" }
+      if (req.url === CN_FALLBACK_USAGE_URL) {
+        return {
+          status: 200,
+          headers: {},
+          bodyText: JSON.stringify(successPayload({
+            model_remains: [
+              {
+                model_name: "MiniMax-M2",
+                current_interval_total_count: 1500, // CN Plus: 100 prompts × 15
+                current_interval_usage_count: 1200, // Remaining
+                start_time: 1700000000000,
+                end_time: 1700018000000,
+              },
+            ],
+          })),
+        }
+      }
+      return { status: 404, headers: {}, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines[0].used).toBe(20) // (1500-1200) / 15 = 20
+    expect(ctx.host.http.request.mock.calls.length).toBe(2)
+    expect(ctx.host.http.request.mock.calls[0][0].url).toBe(CN_PRIMARY_USAGE_URL)
+    expect(ctx.host.http.request.mock.calls[1][0].url).toBe(CN_FALLBACK_USAGE_URL)
+  })
+
+  it("infers CN Starter plan from 600 model-call limit", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_CN_API_KEY: "cn-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify(
+        successPayload({
+          plan_name: undefined, // Force inference
+          model_remains: [
+            {
+              model_name: "MiniMax-M2",
+              current_interval_total_count: 600, // 40 prompts × 15
+              current_interval_usage_count: 500, // Remaining (not used!)
+              start_time: 1700000000000,
+              end_time: 1700018000000,
+            },
+          ],
+        })
+      ),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Starter (CN)")
+    expect(result.lines[0].limit).toBe(40) // 600 / 15 = 40 prompts
+    expect(result.lines[0].used).toBe(7) // (600-500) / 15 = 6.67 ≈ 7
+  })
+
+  it("infers CN Plus plan from 1500 model-call limit", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_CN_API_KEY: "cn-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify(
+        successPayload({
+          plan_name: undefined, // Force inference
+          model_remains: [
+            {
+              model_name: "MiniMax-M2",
+              current_interval_total_count: 1500, // 100 prompts × 15
+              current_interval_usage_count: 1200, // Remaining
+              start_time: 1700000000000,
+              end_time: 1700018000000,
+            },
+          ],
+        })
+      ),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Plus (CN)")
+    expect(result.lines[0].limit).toBe(100) // 1500 / 15 = 100 prompts
+    expect(result.lines[0].used).toBe(20) // (1500-1200) / 15 = 20
+  })
+
+  it("infers CN Max plan from 4500 model-call limit", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_CN_API_KEY: "cn-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify(
+        successPayload({
+          plan_name: undefined, // Force inference
+          model_remains: [
+            {
+              model_name: "MiniMax-M2",
+              current_interval_total_count: 4500, // 300 prompts × 15
+              current_interval_usage_count: 2700, // Remaining
+              start_time: 1700000000000,
+              end_time: 1700018000000,
+            },
+          ],
+        })
+      ),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Max (CN)")
+    expect(result.lines[0].limit).toBe(300) // 4500 / 15 = 300 prompts
+    expect(result.lines[0].used).toBe(120) // (4500-2700) / 15 = 120
+  })
+
+  it("does not infer CN plan for unknown CN model-call limits", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_CN_API_KEY: "cn-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify(
+        successPayload({
+          plan_name: undefined, // Force inference
+          model_remains: [
+            {
+              model_name: "MiniMax-M2",
+              current_interval_total_count: 9000, // Unknown CN tier
+              current_interval_usage_count: 6000, // Remaining
+              start_time: 1700000000000,
+              end_time: 1700018000000,
+            },
+          ],
+        })
+      ),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBeUndefined()
+    expect(result.lines[0].limit).toBe(600) // 9000 / 15 = 600 prompts
+    expect(result.lines[0].used).toBe(200) // (9000-6000) / 15 = 200 prompts
   })
 
   it("falls back when primary returns auth-like status", async () => {
@@ -348,6 +656,14 @@ describe("minimax plugin", () => {
     })
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Session expired")
+  })
+
+  it("uses same generic auth error text for CN path", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_CN_API_KEY: "cn-key" })
+    ctx.host.http.request.mockReturnValue({ status: 401, headers: {}, bodyText: "" })
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Session expired. Check your MiniMax API key.")
   })
 
   it("throws when payload has no usable usage data", async () => {
@@ -470,7 +786,7 @@ describe("minimax plugin", () => {
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    expect(result.plan).toBe("Coding Plan")
+    expect(result.plan).toBe("Coding Plan (GLOBAL)")
   })
 
   it("supports payload.modelRemains and remains-count aliases", async () => {
@@ -494,7 +810,7 @@ describe("minimax plugin", () => {
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    expect(result.plan).toBe("Team")
+    expect(result.plan).toBe("Team (GLOBAL)")
     expect(result.lines[0].used).toBe(180)
     expect(result.lines[0].limit).toBe(300)
   })
