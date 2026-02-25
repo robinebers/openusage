@@ -46,6 +46,17 @@ describe("tray-bars-icon", () => {
     expect(svg).not.toContain("<image ")
   })
 
+  it("style=bars with empty bars renders a single empty track", () => {
+    const svg = makeTrayBarsSvg({
+      bars: [],
+      sizePx: 36,
+      style: "bars",
+    })
+    expect(svg).toContain("<rect ")
+    expect(svg).not.toContain("<path ")
+    expect(svg).not.toContain("<image ")
+  })
+
   it("style=bars with high-end quantized fraction (0.95) renders bars (rect and path)", () => {
     const svg = makeTrayBarsSvg({
       bars: [{ id: "a", fraction: 0.95 }],
