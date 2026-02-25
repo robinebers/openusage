@@ -52,6 +52,8 @@ function App() {
     setThemeMode,
     displayMode,
     setDisplayMode,
+    menubarIconStyle,
+    setMenubarIconStyle,
     resetTimerDisplayMode,
     setResetTimerDisplayMode,
     setGlobalShortcut,
@@ -64,6 +66,8 @@ function App() {
       setThemeMode: state.setThemeMode,
       displayMode: state.displayMode,
       setDisplayMode: state.setDisplayMode,
+      menubarIconStyle: state.menubarIconStyle,
+      setMenubarIconStyle: state.setMenubarIconStyle,
       resetTimerDisplayMode: state.resetTimerDisplayMode,
       setResetTimerDisplayMode: state.setResetTimerDisplayMode,
       setGlobalShortcut: state.setGlobalShortcut,
@@ -91,11 +95,12 @@ function App() {
     onProbeResult: handleProbeResult,
   })
 
-  const { scheduleTrayIconUpdate } = useTrayIcon({
+  const { scheduleTrayIconUpdate, traySettingsPreview } = useTrayIcon({
     pluginsMeta,
     pluginSettings,
     pluginStates,
     displayMode,
+    menubarIconStyle,
     activeView,
   })
 
@@ -111,6 +116,7 @@ function App() {
     setAutoUpdateInterval,
     setThemeMode,
     setDisplayMode,
+    setMenubarIconStyle,
     setResetTimerDisplayMode,
     setGlobalShortcut,
     setStartOnLogin,
@@ -126,11 +132,13 @@ function App() {
     handleDisplayModeChange,
     handleResetTimerDisplayModeChange,
     handleResetTimerDisplayModeToggle,
+    handleMenubarIconStyleChange,
   } = useSettingsDisplayActions({
     setThemeMode,
     setDisplayMode,
     resetTimerDisplayMode,
     setResetTimerDisplayMode,
+    setMenubarIconStyle,
     scheduleTrayIconUpdate,
   })
 
@@ -237,6 +245,8 @@ function App() {
         onDisplayModeChange: handleDisplayModeChange,
         onResetTimerDisplayModeChange: handleResetTimerDisplayModeChange,
         onResetTimerDisplayModeToggle: handleResetTimerDisplayModeToggle,
+        onMenubarIconStyleChange: handleMenubarIconStyleChange,
+        traySettingsPreview,
         onGlobalShortcutChange: handleGlobalShortcutChange,
         onStartOnLoginChange: handleStartOnLoginChange,
       }}

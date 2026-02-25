@@ -14,8 +14,52 @@ describe("tray-bars-icon", () => {
     expect(getTrayIconSizePx(2)).toBe(36)
   })
 
+  it("default style is provider", () => {
+    const svg = makeTrayBarsSvg({
+      bars: [],
+      sizePx: 36,
+    })
+    expect(svg).toContain("<circle ")
+    expect(svg).not.toContain("<rect ")
+  })
+
+  it("style=provider renders image and no bars", () => {
+    const svg = makeTrayBarsSvg({
+      bars: [],
+      sizePx: 36,
+      style: "provider",
+      providerIconUrl: "data:image/svg+xml;base64,ABC",
+    })
+    expect(svg).toContain("<image ")
+    expect(svg).not.toContain("<rect ")
+    expect(svg).not.toContain("<path ")
+  })
+
+  it("style=bars renders bar SVG elements and no image", () => {
+    const svg = makeTrayBarsSvg({
+      bars: [{ id: "a", fraction: 0.5 }],
+      sizePx: 36,
+      style: "bars",
+    })
+    expect(svg).toContain("<rect ")
+    expect(svg).toContain("<path ")
+    expect(svg).not.toContain("<image ")
+  })
+
+  it("style=bars with high-end quantized fraction (0.95) renders bars (rect and path)", () => {
+    const svg = makeTrayBarsSvg({
+      bars: [{ id: "a", fraction: 0.95 }],
+      sizePx: 36,
+      style: "bars",
+    })
+    expect(svg).toContain("<rect ")
+    expect(svg).toContain("<path ")
+    expect(svg).not.toContain("<image ")
+  })
+
   it("renders provider icon", () => {
     const svg = makeTrayBarsSvg({
+      bars: [],
       sizePx: 36,
       providerIconUrl: "data:image/svg+xml;base64,ABC",
     })
@@ -33,6 +77,7 @@ describe("tray-bars-icon", () => {
 
   it("falls back to circle glyph when provider icon is missing", () => {
     const svg = makeTrayBarsSvg({
+      bars: [],
       sizePx: 36,
     })
     expect(svg).not.toContain("<image ")
@@ -41,6 +86,7 @@ describe("tray-bars-icon", () => {
 
   it("never renders svg text", () => {
     const svg = makeTrayBarsSvg({
+      bars: [],
       sizePx: 18,
     })
     expect(svg).not.toContain("<text ")
@@ -48,6 +94,7 @@ describe("tray-bars-icon", () => {
 
   it("renders svg text when percentage is provided", () => {
     const svg = makeTrayBarsSvg({
+      bars: [],
       sizePx: 18,
       percentText: "70%",
     })
@@ -91,6 +138,7 @@ describe("tray-bars-icon", () => {
 
     try {
       const img = await renderTrayBarsIcon({
+        bars: [],
         sizePx: 18,
       })
       expect(img).toBeTruthy()

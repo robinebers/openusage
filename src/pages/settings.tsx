@@ -19,23 +19,79 @@ import { GripVertical } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { GlobalShortcutSection } from "@/components/global-shortcut-section";
+import { getTrayIconSizePx, makeTrayBarsSvg } from "@/lib/tray-bars-icon";
 import {
   AUTO_UPDATE_OPTIONS,
   DISPLAY_MODE_OPTIONS,
+  MENUBAR_ICON_STYLE_OPTIONS,
   RESET_TIMER_DISPLAY_OPTIONS,
   THEME_OPTIONS,
   type AutoUpdateIntervalMinutes,
   type DisplayMode,
   type GlobalShortcut,
+  type MenubarIconStyle,
   type ResetTimerDisplayMode,
   type ThemeMode,
 } from "@/lib/settings";
+import type { TraySettingsPreview } from "@/hooks/app/use-tray-icon";
 import { cn } from "@/lib/utils";
 
 interface PluginConfig {
   id: string;
   name: string;
   enabled: boolean;
+}
+
+const TRAY_PREVIEW_SIZE_PX = getTrayIconSizePx(1);
+
+function svgToDataUrl(svg: string): string {
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
+function MenubarIconStylePreview({
+  style,
+  isActive,
+  traySettingsPreview,
+}: {
+  style: MenubarIconStyle;
+  isActive: boolean;
+  traySettingsPreview: TraySettingsPreview;
+}) {
+  const svg = makeTrayBarsSvg({
+    bars: style === "bars" ? traySettingsPreview.bars : [],
+    sizePx: TRAY_PREVIEW_SIZE_PX,
+    style,
+    providerIconUrl: style === "provider" ? traySettingsPreview.providerIconUrl : undefined,
+  });
+  const svgDataUrl = svgToDataUrl(svg);
+  const iconClass = isActive ? "bg-primary-foreground" : "bg-foreground";
+  const textClass = isActive ? "text-primary-foreground" : "text-foreground";
+
+  return (
+    <div className="inline-flex items-center gap-0.5">
+      <span
+        aria-hidden
+        className={cn("shrink-0 translate-y-[0.5px]", iconClass)}
+        style={{
+          width: `${TRAY_PREVIEW_SIZE_PX}px`,
+          height: `${TRAY_PREVIEW_SIZE_PX}px`,
+          WebkitMaskImage: `url(${svgDataUrl})`,
+          WebkitMaskSize: "contain",
+          WebkitMaskRepeat: "no-repeat",
+          WebkitMaskPosition: "center",
+          maskImage: `url(${svgDataUrl})`,
+          maskSize: "contain",
+          maskRepeat: "no-repeat",
+          maskPosition: "center",
+        }}
+      />
+      {style === "provider" ? (
+        <span className={cn("text-[12px] font-semibold tabular-nums leading-none", textClass)}>
+          {traySettingsPreview.providerPercentText}
+        </span>
+      ) : null}
+    </div>
+  );
 }
 
 function SortablePluginItem({
@@ -108,6 +164,9 @@ interface SettingsPageProps {
   onDisplayModeChange: (value: DisplayMode) => void;
   resetTimerDisplayMode: ResetTimerDisplayMode;
   onResetTimerDisplayModeChange: (value: ResetTimerDisplayMode) => void;
+  menubarIconStyle: MenubarIconStyle;
+  onMenubarIconStyleChange: (value: MenubarIconStyle) => void;
+  traySettingsPreview: TraySettingsPreview;
   globalShortcut: GlobalShortcut;
   onGlobalShortcutChange: (value: GlobalShortcut) => void;
   startOnLogin: boolean;
@@ -126,6 +185,9 @@ export function SettingsPage({
   onDisplayModeChange,
   resetTimerDisplayMode,
   onResetTimerDisplayModeChange,
+  menubarIconStyle,
+  onMenubarIconStyleChange,
+  traySettingsPreview,
   globalShortcut,
   onGlobalShortcutChange,
   startOnLogin,
@@ -240,6 +302,38 @@ export function SettingsPage({
                   >
                     {example}
                   </span>
+                </Button>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+      <section>
+        <h3 className="text-lg font-semibold mb-0">Menubar Icon</h3>
+        <p className="text-sm text-muted-foreground mb-2">
+          What shows in the menu bar
+        </p>
+        <div className="bg-muted/50 rounded-lg p-1">
+          <div className="flex gap-1" role="radiogroup" aria-label="Menubar icon style">
+            {MENUBAR_ICON_STYLE_OPTIONS.map((option) => {
+              const isActive = option.value === menubarIconStyle;
+              return (
+                <Button
+                  key={option.value}
+                  type="button"
+                  role="radio"
+                  aria-label={option.label}
+                  aria-checked={isActive}
+                  variant={isActive ? "default" : "outline"}
+                  size="sm"
+                  className="flex-1 h-9 flex items-center justify-center"
+                  onClick={() => onMenubarIconStyleChange(option.value)}
+                >
+                  <MenubarIconStylePreview
+                    style={option.value}
+                    isActive={isActive}
+                    traySettingsPreview={traySettingsPreview}
+                  />
                 </Button>
               );
             })}

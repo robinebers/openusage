@@ -11,6 +11,7 @@ import {
   DEFAULT_AUTO_UPDATE_INTERVAL,
   DEFAULT_DISPLAY_MODE,
   DEFAULT_GLOBAL_SHORTCUT,
+  DEFAULT_MENUBAR_ICON_STYLE,
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
   DEFAULT_START_ON_LOGIN,
   DEFAULT_THEME_MODE,
@@ -18,6 +19,7 @@ import {
   loadAutoUpdateInterval,
   loadDisplayMode,
   loadGlobalShortcut,
+  loadMenubarIconStyle,
   migrateLegacyTraySettings,
   loadPluginSettings,
   loadResetTimerDisplayMode,
@@ -28,6 +30,7 @@ import {
   type AutoUpdateIntervalMinutes,
   type DisplayMode,
   type GlobalShortcut,
+  type MenubarIconStyle,
   type PluginSettings,
   type ResetTimerDisplayMode,
   type ThemeMode,
@@ -42,6 +45,7 @@ type UseSettingsBootstrapArgs = {
   setResetTimerDisplayMode: (value: ResetTimerDisplayMode) => void
   setGlobalShortcut: (value: GlobalShortcut) => void
   setStartOnLogin: (value: boolean) => void
+  setMenubarIconStyle: (value: MenubarIconStyle) => void
   setLoadingForPlugins: (ids: string[]) => void
   setErrorForPlugins: (ids: string[], error: string) => void
   startBatch: (pluginIds?: string[]) => Promise<string[] | undefined>
@@ -56,6 +60,7 @@ export function useSettingsBootstrap({
   setResetTimerDisplayMode,
   setGlobalShortcut,
   setStartOnLogin,
+  setMenubarIconStyle,
   setLoadingForPlugins,
   setErrorForPlugins,
   startBatch,
@@ -141,6 +146,13 @@ export function useSettingsBootstrap({
           console.error("Failed to migrate legacy tray settings:", error)
         }
 
+        let storedMenubarIconStyle = DEFAULT_MENUBAR_ICON_STYLE
+        try {
+          storedMenubarIconStyle = await loadMenubarIconStyle()
+        } catch (error) {
+          console.error("Failed to load menubar icon style:", error)
+        }
+
         if (isMounted) {
           setPluginSettings(normalized)
           setAutoUpdateInterval(storedInterval)
@@ -149,6 +161,7 @@ export function useSettingsBootstrap({
           setResetTimerDisplayMode(storedResetTimerDisplayMode)
           setGlobalShortcut(storedGlobalShortcut)
           setStartOnLogin(storedStartOnLogin)
+          setMenubarIconStyle(storedMenubarIconStyle)
 
           const enabledIds = getEnabledPluginIds(normalized)
           setLoadingForPlugins(enabledIds)
@@ -178,6 +191,7 @@ export function useSettingsBootstrap({
     setErrorForPlugins,
     setGlobalShortcut,
     setLoadingForPlugins,
+    setMenubarIconStyle,
     migrateLegacyTraySettings,
     setPluginSettings,
     setPluginsMeta,
