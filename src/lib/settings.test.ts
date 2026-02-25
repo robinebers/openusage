@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import {
   DEFAULT_AUTO_UPDATE_INTERVAL,
   DEFAULT_DISPLAY_MODE,
+  DEFAULT_GLOBAL_SHORTCUT,
   DEFAULT_PLUGIN_SETTINGS,
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
   DEFAULT_START_ON_LOGIN,
@@ -10,6 +11,7 @@ import {
   getEnabledPluginIds,
   loadAutoUpdateInterval,
   loadDisplayMode,
+  loadGlobalShortcut,
   loadPluginSettings,
   loadResetTimerDisplayMode,
   loadStartOnLogin,
@@ -18,6 +20,7 @@ import {
   normalizePluginSettings,
   saveAutoUpdateInterval,
   saveDisplayMode,
+  saveGlobalShortcut,
   savePluginSettings,
   saveResetTimerDisplayMode,
   saveStartOnLogin,
@@ -195,6 +198,58 @@ describe("settings", () => {
     expect(storeState.has("trayShowPercentage")).toBe(false)
     expect(storeDeleteMock).not.toHaveBeenCalled()
     expect(storeSaveMock).not.toHaveBeenCalled()
+  })
+
+  it("migrates when only one legacy tray key is present", async () => {
+    storeState.set("trayShowPercentage", true)
+
+    await migrateLegacyTraySettings()
+
+    expect(storeState.has("trayShowPercentage")).toBe(false)
+    expect(storeDeleteMock).toHaveBeenCalledWith("trayShowPercentage")
+    expect(storeSaveMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("falls back to nulling legacy keys if delete is unavailable", async () => {
+    const { LazyStore } = await import("@tauri-apps/plugin-store")
+    const prototype = LazyStore.prototype as { delete?: (key: string) => Promise<void> }
+    const originalDelete = prototype.delete
+
+    // Simulate older store implementation with no delete() method.
+    prototype.delete = undefined
+    storeState.set("trayIconStyle", "provider")
+
+    try {
+      await migrateLegacyTraySettings()
+    } finally {
+      prototype.delete = originalDelete
+    }
+
+    expect(storeDeleteMock).not.toHaveBeenCalled()
+    expect(storeState.get("trayIconStyle")).toBeNull()
+    expect(storeSaveMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("loads default global shortcut when missing", async () => {
+    await expect(loadGlobalShortcut()).resolves.toBe(DEFAULT_GLOBAL_SHORTCUT)
+  })
+
+  it("loads stored global shortcut values", async () => {
+    storeState.set("globalShortcut", "CommandOrControl+Shift+O")
+    await expect(loadGlobalShortcut()).resolves.toBe("CommandOrControl+Shift+O")
+
+    storeState.set("globalShortcut", null)
+    await expect(loadGlobalShortcut()).resolves.toBe(null)
+  })
+
+  it("falls back to default for invalid global shortcut values", async () => {
+    storeState.set("globalShortcut", 1234)
+    await expect(loadGlobalShortcut()).resolves.toBe(DEFAULT_GLOBAL_SHORTCUT)
+  })
+
+  it("saves global shortcut values", async () => {
+    await saveGlobalShortcut("CommandOrControl+Shift+O")
+    await expect(loadGlobalShortcut()).resolves.toBe("CommandOrControl+Shift+O")
   })
 
   it("loads default start on login when missing", async () => {
