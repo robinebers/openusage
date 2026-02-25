@@ -10,7 +10,7 @@
   const CN_API_KEY_ENV_VARS = ["MINIMAX_CN_API_KEY", "MINIMAX_API_KEY", "MINIMAX_API_TOKEN"]
   const CODING_PLAN_WINDOW_MS = 5 * 60 * 60 * 1000
   const CODING_PLAN_WINDOW_TOLERANCE_MS = 10 * 60 * 1000
-  // GLOBAL plan tiers (based on model call counts)
+  // GLOBAL plan tiers (based on prompt limits)
   const GLOBAL_PROMPT_LIMIT_TO_PLAN = {
     100: "Starter",
     300: "Plus",
@@ -63,15 +63,17 @@
     const n = readNumber(totalCount)
     if (n === null || n <= 0) return null
 
-    const promptLimitToPlan =
-      endpointSelection === "CN" ? CN_PROMPT_LIMIT_TO_PLAN : GLOBAL_PROMPT_LIMIT_TO_PLAN
-
     const normalized = Math.round(n)
-    if (promptLimitToPlan[normalized]) return promptLimitToPlan[normalized]
+    if (endpointSelection === "CN") {
+      // CN totals are model-call counts; only exact known CN tiers should infer.
+      return CN_PROMPT_LIMIT_TO_PLAN[normalized] || null
+    }
+
+    if (GLOBAL_PROMPT_LIMIT_TO_PLAN[normalized]) return GLOBAL_PROMPT_LIMIT_TO_PLAN[normalized]
 
     if (normalized % MODEL_CALLS_PER_PROMPT !== 0) return null
     const inferredPromptLimit = normalized / MODEL_CALLS_PER_PROMPT
-    return promptLimitToPlan[inferredPromptLimit] || null
+    return GLOBAL_PROMPT_LIMIT_TO_PLAN[inferredPromptLimit] || null
   }
 
   function epochToMs(epoch) {
@@ -357,7 +359,7 @@
 
     if (!parsed) {
       if (lastError) throw lastError
-      throw "MiniMax API key missing. Set MINIMAX_API_KEY."
+      throw "MiniMax API key missing. Set MINIMAX_API_KEY or MINIMAX_CN_API_KEY."
     }
 
     // CN API returns model call counts (needs division by 15 for prompts)

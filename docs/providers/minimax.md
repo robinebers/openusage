@@ -23,7 +23,7 @@ The plugin supports automatic region detection and reads API keys based on the s
 
 If no key is found after attempting both regions, it throws:
 
-- `MiniMax API key missing. Set MINIMAX_API_KEY.`
+- `MiniMax API key missing. Set MINIMAX_API_KEY or MINIMAX_CN_API_KEY.`
 
 ## Data Source
 
@@ -65,14 +65,15 @@ Expected payload fields:
 - If only remaining aliases are provided, compute `used = total - remaining`.
 - If explicit used-count fields are provided, prefer them.
 - Plan name is taken from explicit plan/title fields when available.
-- If plan fields are missing, infer plan tier from known limits (`100/300/1000/2000` prompts or `1500/4500/15000/30000` model-call equivalents).
+- If plan fields are missing in GLOBAL mode, infer plan tier from known limits (`100/300/1000/2000` prompts or `1500/4500/15000/30000` model-call equivalents).
+- If plan fields are missing in CN mode, infer only exact known CN limits (`600/1500/4500` model-call counts).
 - Use `end_time` for reset timestamp when present.
 - Fallback to `remains_time` when `end_time` is absent.
 - Use `start_time` + `end_time` as `periodDurationMs` when both are valid.
 
 ## Output
 
-- **Plan**: best-effort from API payload (normalized to concise label)
+- **Plan**: best-effort from API payload (normalized to concise label, with ` (CN)` or ` (GLOBAL)` suffix)
 - **Session** (overview progress line):
   - `label`: `Session`
   - `format`: count (`prompts`)
@@ -84,7 +85,7 @@ Expected payload fields:
 
 | Condition | Message |
 |---|---|
-| Missing API key | `MiniMax API key missing. Set MINIMAX_API_KEY.` |
+| Missing API key | `MiniMax API key missing. Set MINIMAX_API_KEY or MINIMAX_CN_API_KEY.` |
 | HTTP 401/403 | `Session expired. Check your MiniMax API key.` |
 | API status `base_resp.status_code != 0` | `MiniMax API error: ...` (or session-expired for auth-like errors) |
 | Non-2xx | `Request failed (HTTP {status}). Try again later.` |

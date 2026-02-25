@@ -50,7 +50,9 @@ describe("minimax plugin", () => {
     const ctx = makeCtx()
     setEnv(ctx, {})
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("MiniMax API key missing")
+    expect(() => plugin.probe(ctx)).toThrow(
+      "MiniMax API key missing. Set MINIMAX_API_KEY or MINIMAX_CN_API_KEY."
+    )
   })
 
   it("uses MINIMAX_API_KEY for auth header", async () => {
@@ -586,6 +588,36 @@ describe("minimax plugin", () => {
     expect(result.plan).toBe("Max (CN)")
     expect(result.lines[0].limit).toBe(300) // 4500 / 15 = 300 prompts
     expect(result.lines[0].used).toBe(120) // (4500-2700) / 15 = 120
+  })
+
+  it("does not infer CN plan for unknown CN model-call limits", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_CN_API_KEY: "cn-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify(
+        successPayload({
+          plan_name: undefined, // Force inference
+          model_remains: [
+            {
+              model_name: "MiniMax-M2",
+              current_interval_total_count: 9000, // Unknown CN tier
+              current_interval_usage_count: 6000, // Remaining
+              start_time: 1700000000000,
+              end_time: 1700018000000,
+            },
+          ],
+        })
+      ),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBeUndefined()
+    expect(result.lines[0].limit).toBe(600) // 9000 / 15 = 600 prompts
+    expect(result.lines[0].used).toBe(200) // (9000-6000) / 15 = 200 prompts
   })
 
   it("falls back when primary returns auth-like status", async () => {
