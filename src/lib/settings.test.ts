@@ -67,25 +67,26 @@ describe("settings", () => {
     await expect(loadPluginSettings()).resolves.toEqual({
       order: ["a"],
       disabled: [],
+      trayLines: {},
     })
   })
 
   it("saves settings", async () => {
-    const settings = { order: ["a"], disabled: ["b"] }
+    const settings = { order: ["a"], disabled: ["b"], trayLines: { a: ["Session"] } }
     await savePluginSettings(settings)
     await expect(loadPluginSettings()).resolves.toEqual(settings)
   })
 
   it("normalizes order + disabled against known plugins", () => {
     const plugins: PluginMeta[] = [
-      { id: "a", name: "A", iconUrl: "", lines: [] },
-      { id: "b", name: "B", iconUrl: "", lines: [] },
+      { id: "a", name: "A", iconUrl: "", lines: [], primaryCandidates: [] },
+      { id: "b", name: "B", iconUrl: "", lines: [], primaryCandidates: [] },
     ]
     const normalized = normalizePluginSettings(
-      { order: ["b", "b", "c"], disabled: ["c", "a"] },
+      { order: ["b", "b", "c"], disabled: ["c", "a"], trayLines: { "a": ["x"], "c": ["y"] } },
       plugins
     )
-    expect(normalized).toEqual({ order: ["b", "a"], disabled: ["a"] })
+    expect(normalized).toEqual({ order: ["b", "a"], disabled: ["a"], trayLines: { "a": ["x"] } })
   })
 
   it("auto-disables new non-default plugins", () => {
@@ -100,11 +101,16 @@ describe("settings", () => {
   })
 
   it("compares settings equality", () => {
-    const a = { order: ["a"], disabled: [] }
-    const b = { order: ["a"], disabled: [] }
-    const c = { order: ["b"], disabled: [] }
+    const a = { order: ["a"], disabled: [], trayLines: {} }
+    const b = { order: ["a"], disabled: [], trayLines: {} }
+    const c = { order: ["b"], disabled: [], trayLines: {} }
+    const d = { order: ["a"], disabled: [], trayLines: { "a": ["x"] } }
+    const e = { order: ["a"], disabled: [], trayLines: { "a": [] } }
+    const f = { order: ["a"], disabled: [], trayLines: { "b": [] } }
     expect(arePluginSettingsEqual(a, b)).toBe(true)
     expect(arePluginSettingsEqual(a, c)).toBe(false)
+    expect(arePluginSettingsEqual(a, d)).toBe(false)
+    expect(arePluginSettingsEqual(e, f)).toBe(false)
   })
 
   it("returns enabled plugin ids", () => {

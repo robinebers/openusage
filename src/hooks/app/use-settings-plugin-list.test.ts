@@ -33,8 +33,8 @@ describe("useSettingsPluginList", () => {
     )
 
     expect(result.current).toEqual([
-      { id: "codex", name: "Codex", enabled: true },
-      { id: "cursor", name: "Cursor", enabled: false },
+      { id: "codex", name: "Codex", enabled: true, primaryCandidates: [], trayLines: [] },
+      { id: "cursor", name: "Cursor", enabled: false, primaryCandidates: [], trayLines: [] },
     ])
   })
 

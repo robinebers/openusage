@@ -6,6 +6,8 @@ export type SettingsPluginState = {
   id: string
   name: string
   enabled: boolean
+  primaryCandidates: string[]
+  trayLines: string[]
 }
 
 type UseSettingsPluginListArgs = {
@@ -26,6 +28,8 @@ export function useSettingsPluginList({ pluginSettings, pluginsMeta }: UseSettin
           id,
           name: meta.name,
           enabled: !pluginSettings.disabled.includes(id),
+          primaryCandidates: meta.primaryCandidates || [],
+          trayLines: pluginSettings.trayLines?.[id] || [],
         }
       })
       .filter((plugin): plugin is SettingsPluginState => Boolean(plugin))

@@ -16,6 +16,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical } from "lucide-react";
+import type { ReactNode } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { GlobalShortcutSection } from "@/components/global-shortcut-section";
@@ -36,14 +37,18 @@ interface PluginConfig {
   id: string;
   name: string;
   enabled: boolean;
+  primaryCandidates: string[];
+  trayLines: string[];
 }
 
 function SortablePluginItem({
   plugin,
   onToggle,
+  trayLinesContent,
 }: {
   plugin: PluginConfig;
   onToggle: (id: string) => void;
+  trayLinesContent?: ReactNode;
 }) {
   const {
     attributes,
@@ -64,34 +69,36 @@ function SortablePluginItem({
       ref={setNodeRef}
       style={style}
       className={cn(
-        "flex items-center gap-3 px-3 py-2 rounded-md bg-card",
-        "border border-transparent",
-        isDragging && "opacity-50 border-border"
+        "flex flex-col gap-1",
+        isDragging && "opacity-50"
       )}
     >
-      <button
-        type="button"
-        className="touch-none cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground transition-colors"
-        {...attributes}
-        {...listeners}
-      >
-        <GripVertical className="h-4 w-4" />
-      </button>
+      <div className={cn("flex items-center gap-3 px-3 py-2 rounded-md bg-card border border-transparent", isDragging && "border-border")}>
+        <button
+          type="button"
+          className="touch-none cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground transition-colors"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
 
-      <span
-        className={cn(
-          "flex-1 text-sm",
-          !plugin.enabled && "text-muted-foreground"
-        )}
-      >
-        {plugin.name}
-      </span>
+        <span
+          className={cn(
+            "flex-1 text-sm",
+            !plugin.enabled && "text-muted-foreground"
+          )}
+        >
+          {plugin.name}
+        </span>
 
-      <Checkbox
-        key={`${plugin.id}-${plugin.enabled}`}
-        checked={plugin.enabled}
-        onCheckedChange={() => onToggle(plugin.id)}
-      />
+        <Checkbox
+          key={`${plugin.id}-${plugin.enabled}`}
+          checked={plugin.enabled}
+          onCheckedChange={() => onToggle(plugin.id)}
+        />
+      </div>
+      {trayLinesContent}
     </div>
   );
 }
@@ -100,6 +107,7 @@ interface SettingsPageProps {
   plugins: PluginConfig[];
   onReorder: (orderedIds: string[]) => void;
   onToggle: (id: string) => void;
+  onTrayLineToggle: (id: string, lineLabel: string, checked: boolean, fallback?: string) => void;
   autoUpdateInterval: AutoUpdateIntervalMinutes;
   onAutoUpdateIntervalChange: (value: AutoUpdateIntervalMinutes) => void;
   themeMode: ThemeMode;
@@ -112,12 +120,15 @@ interface SettingsPageProps {
   onGlobalShortcutChange: (value: GlobalShortcut) => void;
   startOnLogin: boolean;
   onStartOnLoginChange: (value: boolean) => void;
+  showTrayIcon: boolean;
+  onShowTrayIconChange: (value: boolean) => void;
 }
 
 export function SettingsPage({
   plugins,
   onReorder,
   onToggle,
+  onTrayLineToggle,
   autoUpdateInterval,
   onAutoUpdateIntervalChange,
   themeMode,
@@ -130,6 +141,8 @@ export function SettingsPage({
   onGlobalShortcutChange,
   startOnLogin,
   onStartOnLoginChange,
+  showTrayIcon,
+  onShowTrayIconChange,
 }: SettingsPageProps) {
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -278,6 +291,20 @@ export function SettingsPage({
         onGlobalShortcutChange={onGlobalShortcutChange}
       />
       <section>
+        <h3 className="text-lg font-semibold mb-0">System Tray</h3>
+        <p className="text-sm text-muted-foreground mb-2">
+          Visibility of the menu bar provider icon
+        </p>
+        <label className="flex items-center gap-2 text-sm select-none text-foreground">
+          <Checkbox
+            key={`show-tray-icon-${showTrayIcon}`}
+            checked={showTrayIcon}
+            onCheckedChange={(checked) => onShowTrayIconChange(checked === true)}
+          />
+          Show tray icon
+        </label>
+      </section>
+      <section>
         <h3 className="text-lg font-semibold mb-0">Start on Login</h3>
         <p className="text-sm text-muted-foreground mb-2">
           OpenUsage starts when you sign in
@@ -311,6 +338,27 @@ export function SettingsPage({
                   key={plugin.id}
                   plugin={plugin}
                   onToggle={onToggle}
+                  trayLinesContent={
+                    plugin.enabled && plugin.primaryCandidates.length > 0 ? (
+                      <div className="grid grid-cols-2 gap-y-2 gap-x-4 px-3 py-2 bg-card/50 rounded-b-md border-t border-transparent text-sm">
+                        {plugin.primaryCandidates.map((candidateLabel, i) => {
+                          const isSelected = plugin.trayLines.length === 0
+                            ? i === 0
+                            : plugin.trayLines.includes(candidateLabel);
+                          return (
+                            <label key={candidateLabel} className="flex items-center gap-1.5 cursor-pointer select-none truncate">
+                              <Checkbox
+                                className="h-3.5 w-3.5 shrink-0"
+                                checked={isSelected}
+                                onCheckedChange={(checked) => onTrayLineToggle(plugin.id, candidateLabel, checked === true, plugin.primaryCandidates[0])}
+                              />
+                              <span className="truncate">{candidateLabel}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    ) : undefined
+                  }
                 />
               ))}
             </SortableContext>

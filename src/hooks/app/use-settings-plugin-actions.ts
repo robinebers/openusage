@@ -72,8 +72,54 @@ export function useSettingsPluginActions({
     startBatch,
   ])
 
+  const handleTrayLineToggle = useCallback((id: string, lineLabel: string, checked: boolean, fallback?: string) => {
+    if (!pluginSettings) return
+    const prevTrayLines = pluginSettings.trayLines || {}
+    let currentLinesForPlugin = prevTrayLines[id] || []
+
+    if (currentLinesForPlugin.length === 0 && fallback) {
+      currentLinesForPlugin = [fallback]
+    }
+
+    let nextLinesForPlugin: string[]
+    if (checked) {
+      if (!currentLinesForPlugin.includes(lineLabel)) {
+        nextLinesForPlugin = [...currentLinesForPlugin, lineLabel]
+      } else {
+        nextLinesForPlugin = currentLinesForPlugin
+      }
+    } else {
+      nextLinesForPlugin = currentLinesForPlugin.filter(l => l !== lineLabel)
+    }
+
+    const nextTrayLines = {
+      ...prevTrayLines,
+      [id]: nextLinesForPlugin,
+    }
+
+    // Clean up empty arrays to keep state minimal
+    if (nextLinesForPlugin.length === 0) {
+      delete nextTrayLines[id]
+    }
+
+    const nextSettings: PluginSettings = {
+      ...pluginSettings,
+      trayLines: nextTrayLines,
+    }
+    setPluginSettings(nextSettings)
+    scheduleTrayIconUpdate("settings", TRAY_SETTINGS_DEBOUNCE_MS)
+    void savePluginSettings(nextSettings).catch((error) => {
+      console.error("Failed to save tray line toggle:", error)
+    })
+  }, [
+    pluginSettings,
+    scheduleTrayIconUpdate,
+    setPluginSettings,
+  ])
+
   return {
     handleReorder,
     handleToggle,
+    handleTrayLineToggle,
   }
 }
