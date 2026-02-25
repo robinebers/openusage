@@ -13,7 +13,7 @@ vi.mock("@tauri-apps/plugin-opener", () => ({
 }))
 
 describe("AboutDialog", () => {
-  it("renders version, links, and contributors", () => {
+  it("renders version, links, and maintainers", () => {
     render(<AboutDialog version="1.2.3" onClose={() => {}} />)
     expect(screen.getByText("OpenUsage")).toBeInTheDocument()
     expect(screen.getByText("v1.2.3")).toBeInTheDocument()
@@ -22,7 +22,7 @@ describe("AboutDialog", () => {
     expect(screen.getByRole("button", { name: "davidarny" })).toBeInTheDocument()
   })
 
-  it("opens contributor GitHub profiles on click", async () => {
+  it("opens maintainer GitHub profiles on click", async () => {
     render(<AboutDialog version="1.2.3" onClose={() => {}} />)
 
     await userEvent.click(screen.getByRole("button", { name: "validatedev" }))

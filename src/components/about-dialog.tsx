@@ -89,7 +89,7 @@ export function AboutDialog({ version, onClose }: AboutDialogProps) {
             </ExternalLink>
           </p>
           <p className="text-xs pt-1">
-            Contributors:{" "}
+            Maintainers:{" "}
             <ExternalLink href="https://github.com/validatedev">
               validatedev
             </ExternalLink>
