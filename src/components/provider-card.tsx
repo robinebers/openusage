@@ -11,6 +11,7 @@ import { PluginError } from "@/components/plugin-error"
 import { useNowTicker } from "@/hooks/use-now-ticker"
 import { REFRESH_COOLDOWN_MS, type DisplayMode, type ResetTimerDisplayMode } from "@/lib/settings"
 import type { ManifestLine, MetricLine, PluginLink } from "@/lib/plugin-types"
+import { groupLinesByType } from "@/lib/group-lines-by-type"
 import { clamp01, formatCountNumber, formatFixedPrecisionNumber } from "@/lib/utils"
 import { calculateDeficit, calculatePaceStatus, type PaceStatus } from "@/lib/pace-status"
 import { buildPaceDetailText, formatCompactDuration, formatDeficitText, formatRunsOutText, getPaceStatusText } from "@/lib/pace-tooltip"
@@ -36,22 +37,6 @@ const PACE_VISUALS: Record<PaceStatus, { dotClass: string }> = {
   ahead: { dotClass: "bg-green-500" },
   "on-track": { dotClass: "bg-yellow-500" },
   behind: { dotClass: "bg-red-500" },
-}
-
-type LineGroup = { kind: "text"; lines: MetricLine[] } | { kind: "other"; lines: MetricLine[] }
-
-export function groupLinesByType(lines: MetricLine[]): LineGroup[] {
-  const groups: LineGroup[] = []
-  for (const line of lines) {
-    const kind = line.type === "text" ? "text" : "other"
-    const last = groups[groups.length - 1]
-    if (last && last.kind === kind) {
-      last.lines.push(line)
-    } else {
-      groups.push({ kind, lines: [line] })
-    }
-  }
-  return groups
 }
 
 
