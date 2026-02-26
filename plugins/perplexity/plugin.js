@@ -272,7 +272,7 @@
     if (!Array.isArray(usageAnalytics)) return null
     let costSum = 0
     let hasCost = false
-    let hasValidMeter = false
+    let hasValidMeter = usageAnalytics.length === 0
     for (let i = 0; i < usageAnalytics.length; i += 1) {
       const meter = usageAnalytics[i]
       if (!meter || typeof meter !== "object") continue

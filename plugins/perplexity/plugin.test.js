@@ -233,6 +233,24 @@ describe("perplexity plugin", () => {
     expect(result.lines[0].limit).toBe(5.0)
   })
 
+  it("returns $0 used when usage analytics is an empty array", async () => {
+    const ctx = makeCtx()
+    const token = makeJwtLikeToken()
+    mockCacheSession(ctx, { requestHex: makeRequestHexWithBearer(token) })
+    mockRestApi(ctx, {
+      balance: 5.0,
+      usageAnalytics: [],
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.length).toBe(1)
+    expect(result.lines[0].label).toBe("API credits")
+    expect(result.lines[0].used).toBe(0)
+    expect(result.lines[0].limit).toBe(5.0)
+  })
+
   it("supports trailing-slash REST fallbacks and nested money fields", async () => {
     const ctx = makeCtx()
     const token = makeJwtLikeToken()
