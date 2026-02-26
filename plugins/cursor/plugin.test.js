@@ -581,6 +581,76 @@ describe("cursor plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Team request-based usage data unavailable")
   })
 
+  it("falls back to REST request usage when plan info is unavailable", async () => {
+    const ctx = makeCtx()
+    const accessToken = makeJwt({ sub: "google-oauth2|user_abc123", exp: 9999999999 })
+
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: accessToken }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            billingCycleStart: "1772124774973",
+            billingCycleEnd: "1772124774973",
+          }),
+        }
+      }
+      if (String(opts.url).includes("GetPlanInfo")) {
+        return { status: 503, bodyText: "" }
+      }
+      if (String(opts.url).includes("cursor.com/api/usage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            "gpt-4": {
+              numRequests: 31,
+              maxRequestUsage: 500,
+            },
+            startOfMonth: "2026-02-09T17:36:37.000Z",
+          }),
+        }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.plan).toBeNull()
+    const reqLine = result.lines.find((l) => l.label === "Requests")
+    expect(reqLine).toBeTruthy()
+    expect(reqLine.used).toBe(31)
+    expect(reqLine.limit).toBe(500)
+  })
+
+  it("surfaces request-based unavailable when plan info is unavailable and REST fallback fails", async () => {
+    const ctx = makeCtx()
+    const accessToken = makeJwt({ sub: "google-oauth2|user_abc123", exp: 9999999999 })
+
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: accessToken }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            billingCycleStart: "1772124774973",
+            billingCycleEnd: "1772124774973",
+          }),
+        }
+      }
+      if (String(opts.url).includes("GetPlanInfo")) {
+        throw new Error("plan info timeout")
+      }
+      if (String(opts.url).includes("cursor.com/api/usage")) {
+        return { status: 500, bodyText: "" }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Cursor request-based usage data unavailable")
+  })
+
   it("does not use request-based fallback for disabled team accounts", async () => {
     const ctx = makeCtx()
     const accessToken = makeJwt({ sub: "google-oauth2|user_abc123", exp: 9999999999 })

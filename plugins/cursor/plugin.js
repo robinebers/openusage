@@ -305,6 +305,15 @@
     )
   }
 
+  function buildUnknownRequestBasedResult(ctx, accessToken, planName) {
+    return buildRequestBasedResult(
+      ctx,
+      accessToken,
+      planName,
+      "Cursor request-based usage data unavailable. Try again later."
+    )
+  }
+
   function probe(ctx) {
     const authState = loadAuthState(ctx)
     let accessToken = authState.accessToken
@@ -387,6 +396,7 @@
 
     // Fetch plan info early (needed for request-based fallback detection)
     let planName = ""
+    let planInfoUnavailable = false
     try {
       const planResp = connectPost(ctx, PLAN_URL, accessToken)
       if (planResp.status >= 200 && planResp.status < 300) {
@@ -394,8 +404,12 @@
         if (plan && plan.planInfo && plan.planInfo.planName) {
           planName = plan.planInfo.planName
         }
+      } else {
+        planInfoUnavailable = true
+        ctx.host.log.warn("plan info returned error: status=" + planResp.status)
       }
     } catch (e) {
+      planInfoUnavailable = true
       ctx.host.log.warn("plan info fetch failed: " + String(e))
     }
 
@@ -416,6 +430,15 @@
       }
       ctx.host.log.info("detected team request-based account, using REST usage API")
       return buildTeamRequestBasedResult(ctx, accessToken, planName)
+    }
+
+    const needsFallbackWithoutPlanInfo = usage.enabled !== false &&
+      !usage.planUsage &&
+      !normalizedPlanName &&
+      planInfoUnavailable
+    if (needsFallbackWithoutPlanInfo) {
+      ctx.host.log.info("plan info unavailable with missing planUsage, attempting REST usage API fallback")
+      return buildUnknownRequestBasedResult(ctx, accessToken, planName)
     }
 
     // Team plans may omit `enabled` even with valid plan usage data.
