@@ -581,6 +581,46 @@ describe("cursor plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Team request-based usage data unavailable")
   })
 
+  it("does not use request-based fallback for disabled team accounts", async () => {
+    const ctx = makeCtx()
+    const accessToken = makeJwt({ sub: "google-oauth2|user_abc123", exp: 9999999999 })
+    let restUsageCalled = false
+
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: accessToken }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            enabled: false,
+            billingCycleStart: "1772124774973",
+            billingCycleEnd: "1772124774973",
+          }),
+        }
+      }
+      if (String(opts.url).includes("GetPlanInfo")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({ planInfo: { planName: "Team" } }),
+        }
+      }
+      if (String(opts.url).includes("cursor.com/api/usage")) {
+        restUsageCalled = true
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            "gpt-4": { numRequests: 1, maxRequestUsage: 500 },
+          }),
+        }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("No active Cursor subscription.")
+    expect(restUsageCalled).toBe(false)
+  })
+
   it("still throws no subscription for non-enterprise accounts without planUsage", async () => {
     const ctx = makeCtx()
     ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: "token" }]))

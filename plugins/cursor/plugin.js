@@ -405,7 +405,7 @@
 
     // Enterprise and some Team request-based accounts return no planUsage from
     // the Connect API. Detect them and use the REST usage API instead.
-    const needsRequestBasedFallback = !usage.planUsage && (
+    const needsRequestBasedFallback = usage.enabled !== false && !usage.planUsage && (
       normalizedPlanName === "enterprise" ||
       normalizedPlanName === "team"
     )
