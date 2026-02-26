@@ -183,7 +183,7 @@ describe("perplexity plugin", () => {
     expect(call.headers.Authorization).toBe("Bearer " + token)
   })
 
-  it("throws balance unavailable when usage analytics is unavailable and no rate limits exist", async () => {
+  it("throws usage data unavailable when balance exists but usage analytics fails", async () => {
     const ctx = makeCtx()
     const token = makeJwtLikeToken()
     mockCacheSession(ctx, { requestHex: makeRequestHexWithBearer(token) })
@@ -210,7 +210,7 @@ describe("perplexity plugin", () => {
     })
 
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Balance unavailable")
+    expect(() => plugin.probe(ctx)).toThrow("Usage data unavailable")
   })
 
   it("returns $0 used when usage analytics has empty meter_event_summaries", async () => {
@@ -333,7 +333,7 @@ describe("perplexity plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Unable to connect")
   })
 
-  it("throws when analytics payload has no numeric cost and no rate limits", async () => {
+  it("throws usage data unavailable when analytics payload has no numeric cost", async () => {
     const ctx = makeCtx()
     const token = makeJwtLikeToken()
     mockCacheSession(ctx, { requestHex: makeRequestHexWithBearer(token) })
@@ -364,7 +364,7 @@ describe("perplexity plugin", () => {
     })
 
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Balance unavailable")
+    expect(() => plugin.probe(ctx)).toThrow("Usage data unavailable")
   })
 
   it("recovers when primary cache sqlite read fails and fallback cache is valid", async () => {
