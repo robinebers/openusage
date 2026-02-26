@@ -42,12 +42,12 @@ function makeLsResponse(overrides) {
 }
 
 function setupLsMock(ctx, discovery, apiKey, responseBody, opts) {
-  var stateDb = (opts && opts.stateDb) || "Windsurf"
+  var stateDb = (opts && opts.stateDb) || "Windsurf/"
   ctx.host.ls.discover.mockImplementation((discoverOpts) => {
     // Match the right variant by marker
     var marker = discoverOpts.markers[0]
-    if (marker === "windsurf" && stateDb === "Windsurf") return discovery
-    if (marker === "windsurf-next" && stateDb === "Windsurf - Next") return discovery
+    if (marker === "windsurf" && stateDb === "Windsurf/") return discovery
+    if (marker === "windsurf-next" && stateDb === "Windsurf - Next/") return discovery
     return null
   })
   ctx.host.sqlite.query.mockImplementation((db, sql) => {
@@ -196,7 +196,7 @@ describe("windsurf plugin", () => {
     const ctx = makeCtx()
     setupLsMock(ctx, makeDiscovery(), "sk-ws-01-next", makeLsResponse({
       planInfo: { planName: "Pro" },
-    }), { stateDb: "Windsurf - Next" })
+    }), { stateDb: "Windsurf - Next/" })
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
@@ -206,7 +206,7 @@ describe("windsurf plugin", () => {
 
   it("sends windsurf-next as ideName for Windsurf Next variant", async () => {
     const ctx = makeCtx()
-    setupLsMock(ctx, makeDiscovery(), "sk-ws-01-next", makeLsResponse(), { stateDb: "Windsurf - Next" })
+    setupLsMock(ctx, makeDiscovery(), "sk-ws-01-next", makeLsResponse(), { stateDb: "Windsurf - Next/" })
 
     let sentBody = null
     const origHttp = ctx.host.http.request
@@ -231,7 +231,7 @@ describe("windsurf plugin", () => {
 
   it("reads API key from Windsurf Next SQLite path", async () => {
     const ctx = makeCtx()
-    setupLsMock(ctx, makeDiscovery(), "sk-ws-01-next", makeLsResponse(), { stateDb: "Windsurf - Next" })
+    setupLsMock(ctx, makeDiscovery(), "sk-ws-01-next", makeLsResponse(), { stateDb: "Windsurf - Next/" })
 
     let queriedDb = null
     ctx.host.sqlite.query.mockImplementation((db, sql) => {
@@ -452,7 +452,7 @@ describe("windsurf plugin", () => {
   })
 
   function setupCloudMock(ctx, apiKey, cloudResponse, opts) {
-    var stateDb = (opts && opts.stateDb) || "Windsurf"
+    var stateDb = (opts && opts.stateDb) || "Windsurf/"
     ctx.host.ls.discover.mockReturnValue(null)
     ctx.host.sqlite.query.mockImplementation((db, sql) => {
       if (String(sql).includes("windsurfAuthStatus") && String(db).includes(stateDb)) {
@@ -552,7 +552,7 @@ describe("windsurf plugin", () => {
     setupCloudMock(ctx, "sk-ws-01-next", {
       status: 200,
       bodyText: JSON.stringify(makeLsResponse({ planInfo: { planName: "Pro" } })),
-    }, { stateDb: "Windsurf - Next" })
+    }, { stateDb: "Windsurf - Next/" })
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
@@ -565,7 +565,7 @@ describe("windsurf plugin", () => {
     setupCloudMock(ctx, "sk-ws-01-next", {
       status: 200,
       bodyText: JSON.stringify(makeLsResponse()),
-    }, { stateDb: "Windsurf - Next" })
+    }, { stateDb: "Windsurf - Next/" })
 
     let capturedReq = null
     ctx.host.http.request.mockImplementation((reqOpts) => {
