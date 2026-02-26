@@ -410,6 +410,7 @@
 
     const lines = dollarLines.concat(rateLines)
     if (lines.length === 0) {
+      if (balanceUsd !== null && balanceUsd > 0) throw "Usage data unavailable. Try again later."
       if (plan) throw "Rate limits unavailable. Try again later."
       throw "Balance unavailable. Try again later."
     }
