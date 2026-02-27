@@ -495,7 +495,10 @@
 
         const raw = ctx.host.sqlite.query(dbPath, sql)
         const rows = ctx.util.tryParseJson(raw)
-        if (!Array.isArray(rows)) return []
+        if (!Array.isArray(rows)) {
+          ctx.host.log.warn("opencode usage query returned non-array rows for db: " + dbPath)
+          continue
+        }
 
         const byDay = new Map()
         for (let j = 0; j < rows.length; j++) {

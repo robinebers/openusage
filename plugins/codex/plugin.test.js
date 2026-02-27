@@ -295,6 +295,58 @@ describe("codex plugin", () => {
     expect(result.lines.find((l) => l.label === "Today")).toBeUndefined()
   })
 
+  it("falls back to next OpenCode DB when first returns non-array rows", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-02-20T16:00:00.000Z"))
+
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.fs.writeText("~/.local/share/opencode/opencode.db", "sqlite-placeholder")
+    ctx.host.fs.writeText("~/Library/Application Support/opencode/opencode.db", "sqlite-placeholder")
+    ctx.host.sqlite.query.mockImplementation((dbPath) => {
+      if (dbPath === "~/.local/share/opencode/opencode.db") return "{}"
+      if (dbPath === "~/Library/Application Support/opencode/opencode.db") {
+        return JSON.stringify([
+          {
+            date: "2026-02-20",
+            modelID: "gpt-5.3-codex",
+            inputTokens: 1000000,
+            outputTokens: 0,
+            reasoningTokens: 0,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+          },
+        ])
+      }
+      return "[]"
+    })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: { "x-codex-primary-used-percent": "10" },
+      bodyText: JSON.stringify({}),
+    })
+    ctx.host.ccusage.query.mockReturnValue({ status: "no_runner" })
+
+    try {
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      const today = result.lines.find((l) => l.label === "Today")
+      expect(today).toBeTruthy()
+      expect(today.value).toContain("1M tokens")
+      expect(today.value).toContain("$1.75")
+      expect(
+        ctx.host.log.warn.mock.calls.some((call) =>
+          String(call[0]).includes("opencode usage query returned non-array rows")
+        )
+      ).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("adds token lines from codex ccusage format and passes codex provider", async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date("2026-02-20T16:00:00.000Z"))
