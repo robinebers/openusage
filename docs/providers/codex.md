@@ -12,6 +12,15 @@
 - **Timestamps:** unix seconds
 - **Window durations:** seconds (18000 = 5h, 604800 = 7d)
 
+## Local Token Sources
+
+OpenUsage combines Codex token usage from two local sources:
+
+1. Codex CLI logs via `@ccusage/codex` (`CODEX_HOME`, default `~/.codex`)
+2. OpenCode SQLite history (`~/.local/share/opencode/opencode.db`, with platform-specific fallbacks)
+
+Pricing for OpenCode rows is estimated only for known Codex models. Unknown model variants (for example `gpt-5.3-codex-spark`) still contribute tokens but may not include cost.
+
 ## Endpoints
 
 ### GET /backend-api/wham/usage

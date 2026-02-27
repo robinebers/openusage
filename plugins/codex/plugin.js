@@ -6,6 +6,20 @@
   const REFRESH_URL = "https://auth.openai.com/oauth/token"
   const USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
   const REFRESH_AGE_MS = 8 * 24 * 60 * 60 * 1000
+  const OPENCODE_DB_PATHS = [
+    "~/.local/share/opencode/opencode.db",
+    "~/Library/Application Support/opencode/opencode.db",
+    "~/AppData/Roaming/opencode/opencode.db",
+  ]
+  const CODEX_MODEL_PRICING_USD_PER_1M = {
+    "codex-mini-latest": { input: 1.5, cacheRead: 0.375, output: 6 },
+    "gpt-5-codex": { input: 1.25, cacheRead: 0.125, output: 10 },
+    "gpt-5.1-codex": { input: 1.25, cacheRead: 0.125, output: 10 },
+    "gpt-5.1-codex-max": { input: 1.25, cacheRead: 0.125, output: 10 },
+    "gpt-5.1-codex-mini": { input: 0.25, cacheRead: 0.025, output: 2 },
+    "gpt-5.2-codex": { input: 1.75, cacheRead: 0.175, output: 14 },
+    "gpt-5.3-codex": { input: 1.75, cacheRead: 0.175, output: 14 },
+  }
 
   function joinPath(base, leaf) {
     return base.replace(/[\\/]+$/, "") + "/" + leaf
@@ -287,19 +301,22 @@
   var PERIOD_SESSION_MS = 5 * 60 * 60 * 1000    // 5 hours
   var PERIOD_WEEKLY_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
-  function queryTokenUsage(ctx) {
-    if (!ctx.host.ccusage || typeof ctx.host.ccusage.query !== "function") {
-      return { status: "no_runner", data: null }
-    }
-
+  function tokenUsageSinceYmd() {
     const since = new Date()
     // Inclusive range: today + previous 30 days = 31 calendar days.
     since.setDate(since.getDate() - 30)
     const y = since.getFullYear()
     const m = since.getMonth() + 1
     const d = since.getDate()
-    const sinceStr = "" + y + (m < 10 ? "0" : "") + m + (d < 10 ? "0" : "") + d
-    const queryOpts = { provider: "codex", since: sinceStr }
+    return "" + y + (m < 10 ? "0" : "") + m + (d < 10 ? "0" : "") + d
+  }
+
+  function queryTokenUsage(ctx, sinceStr) {
+    if (!ctx.host.ccusage || typeof ctx.host.ccusage.query !== "function") {
+      return { status: "no_runner", data: null }
+    }
+
+    const queryOpts = { provider: "codex", since: sinceStr || tokenUsageSinceYmd() }
     const codexHome = readCodexHome(ctx)
     if (codexHome) {
       queryOpts.homePath = codexHome
@@ -380,6 +397,187 @@
     }
 
     return null
+  }
+
+  function parseYmdToLocalStartMs(ymd) {
+    if (typeof ymd !== "string") return null
+    const value = ymd.trim()
+    if (!value) return null
+
+    let m = value.match(/^(\d{4})(\d{2})(\d{2})$/)
+    if (!m) {
+      m = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+    }
+    if (!m) return null
+
+    const year = Number(m[1])
+    const month = Number(m[2])
+    const day = Number(m[3])
+    if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+      return null
+    }
+
+    const date = new Date(year, month - 1, day, 0, 0, 0, 0)
+    const ms = date.getTime()
+    return Number.isFinite(ms) ? ms : null
+  }
+
+  function estimateCodexCostUsd(modelID, tokens) {
+    if (typeof modelID !== "string") return null
+    const normalizedModel = modelID.trim().toLowerCase()
+    if (!normalizedModel) return null
+
+    const pricing = CODEX_MODEL_PRICING_USD_PER_1M[normalizedModel]
+    if (!pricing) return null
+
+    const input = readNumber(tokens && tokens.input)
+    const output = readNumber(tokens && tokens.output)
+    const reasoning = readNumber(tokens && tokens.reasoning)
+    const cacheRead = readNumber(tokens && tokens.cacheRead)
+    const cacheWrite = readNumber(tokens && tokens.cacheWrite)
+
+    const inputTokens = input !== null ? input : 0
+    const outputTokens = output !== null ? output : 0
+    const reasoningTokens = reasoning !== null ? reasoning : 0
+    const cacheReadTokens = cacheRead !== null ? cacheRead : 0
+    const cacheWriteTokens = cacheWrite !== null ? cacheWrite : 0
+
+    const inputRate = pricing.input / 1_000_000
+    const outputRate = pricing.output / 1_000_000
+    const reasoningRate = (pricing.reasoning != null ? pricing.reasoning : pricing.output) / 1_000_000
+    const cacheReadRate = (pricing.cacheRead != null ? pricing.cacheRead : pricing.input) / 1_000_000
+    const cacheWriteRate = (pricing.cacheWrite != null ? pricing.cacheWrite : pricing.input) / 1_000_000
+
+    const cost =
+      inputTokens * inputRate +
+      outputTokens * outputRate +
+      reasoningTokens * reasoningRate +
+      cacheReadTokens * cacheReadRate +
+      cacheWriteTokens * cacheWriteRate
+
+    return Number.isFinite(cost) ? cost : null
+  }
+
+  function queryOpenCodeTokenUsage(ctx, sinceStr) {
+    if (!ctx.host.sqlite || typeof ctx.host.sqlite.query !== "function") {
+      return []
+    }
+
+    const sinceMs = parseYmdToLocalStartMs(sinceStr)
+    const lowerBoundMs = sinceMs !== null ? sinceMs : 0
+
+    for (let i = 0; i < OPENCODE_DB_PATHS.length; i++) {
+      const dbPath = OPENCODE_DB_PATHS[i]
+      try {
+        if (!ctx.host.fs.exists(dbPath)) continue
+      } catch (e) {
+        ctx.host.log.warn("opencode db exists check failed: " + String(e))
+        continue
+      }
+
+      try {
+        const sql =
+          "SELECT " +
+          "strftime('%Y-%m-%d', time_created / 1000, 'unixepoch', 'localtime') AS date, " +
+          "lower(COALESCE(json_extract(data, '$.modelID'), '')) AS modelID, " +
+          "SUM(COALESCE(CAST(json_extract(data, '$.tokens.input') AS REAL), 0)) AS inputTokens, " +
+          "SUM(COALESCE(CAST(json_extract(data, '$.tokens.output') AS REAL), 0)) AS outputTokens, " +
+          "SUM(COALESCE(CAST(json_extract(data, '$.tokens.reasoning') AS REAL), 0)) AS reasoningTokens, " +
+          "SUM(COALESCE(CAST(json_extract(data, '$.tokens.cache.read') AS REAL), 0)) AS cacheReadTokens, " +
+          "SUM(COALESCE(CAST(json_extract(data, '$.tokens.cache.write') AS REAL), 0)) AS cacheWriteTokens " +
+          "FROM message " +
+          "WHERE json_extract(data, '$.role') = 'assistant' " +
+          "AND lower(COALESCE(json_extract(data, '$.providerID'), '')) = 'openai' " +
+          "AND lower(COALESCE(json_extract(data, '$.modelID'), '')) LIKE '%codex%' " +
+          "AND time_created >= " + String(lowerBoundMs) + " " +
+          "GROUP BY date, modelID " +
+          "ORDER BY date DESC"
+
+        const raw = ctx.host.sqlite.query(dbPath, sql)
+        const rows = ctx.util.tryParseJson(raw)
+        if (!Array.isArray(rows)) return []
+
+        const byDay = new Map()
+        for (let j = 0; j < rows.length; j++) {
+          const row = rows[j]
+          const date = typeof row.date === "string" ? row.date.trim() : ""
+          if (!date) continue
+
+          const tokens = {
+            input: readNumber(row.inputTokens) || 0,
+            output: readNumber(row.outputTokens) || 0,
+            reasoning: readNumber(row.reasoningTokens) || 0,
+            cacheRead: readNumber(row.cacheReadTokens) || 0,
+            cacheWrite: readNumber(row.cacheWriteTokens) || 0,
+          }
+          const totalTokens =
+            tokens.input + tokens.output + tokens.reasoning + tokens.cacheRead + tokens.cacheWrite
+          if (totalTokens <= 0) continue
+
+          let day = byDay.get(date)
+          if (!day) {
+            day = { date: date, totalTokens: 0, costUSD: null }
+            byDay.set(date, day)
+          }
+          day.totalTokens += totalTokens
+
+          const modelID = typeof row.modelID === "string" ? row.modelID : ""
+          const costUSD = estimateCodexCostUsd(modelID, tokens)
+          if (costUSD !== null) {
+            day.costUSD = (day.costUSD === null ? 0 : day.costUSD) + costUSD
+          }
+        }
+
+        const daily = Array.from(byDay.values())
+        daily.sort((a, b) => b.date.localeCompare(a.date))
+        return daily
+      } catch (e) {
+        ctx.host.log.warn("opencode usage query failed: " + String(e))
+      }
+    }
+
+    return []
+  }
+
+  function mergeTokenUsageDaily(primaryDaily, secondaryDaily) {
+    const byDay = new Map()
+
+    function pushUsage(rawDate, totalTokens, costUSD) {
+      const date = dayKeyFromUsageDate(rawDate)
+      if (!date) return
+
+      const tokens = Number(totalTokens)
+      if (!Number.isFinite(tokens) || tokens <= 0) return
+
+      let day = byDay.get(date)
+      if (!day) {
+        day = { date: date, totalTokens: 0, costUSD: null }
+        byDay.set(date, day)
+      }
+
+      day.totalTokens += tokens
+
+      const cost = costUSD === null || costUSD === undefined ? null : Number(costUSD)
+      if (cost !== null && Number.isFinite(cost)) {
+        day.costUSD = (day.costUSD === null ? 0 : day.costUSD) + cost
+      }
+    }
+
+    const first = Array.isArray(primaryDaily) ? primaryDaily : []
+    for (let i = 0; i < first.length; i++) {
+      const day = first[i]
+      pushUsage(day && day.date, day && day.totalTokens, usageCostUsd(day))
+    }
+
+    const second = Array.isArray(secondaryDaily) ? secondaryDaily : []
+    for (let i = 0; i < second.length; i++) {
+      const day = second[i]
+      pushUsage(day && day.date, day && day.totalTokens, usageCostUsd(day))
+    }
+
+    const merged = Array.from(byDay.values())
+    merged.sort((a, b) => b.date.localeCompare(a.date))
+    return merged
   }
 
   function costAndTokensLabel(data, opts) {
@@ -605,9 +803,14 @@
         }
       }
 
-      const tokenUsageResult = queryTokenUsage(ctx)
-      if (tokenUsageResult.status === "ok") {
-        const tokenUsage = tokenUsageResult.data
+      const usageSince = tokenUsageSinceYmd()
+      const tokenUsageResult = queryTokenUsage(ctx, usageSince)
+      const openCodeUsageDaily = queryOpenCodeTokenUsage(ctx, usageSince)
+      const mergedTokenUsageDaily = mergeTokenUsageDaily(
+        tokenUsageResult.status === "ok" ? tokenUsageResult.data.daily : [],
+        openCodeUsageDaily
+      )
+      if (tokenUsageResult.status === "ok" || openCodeUsageDaily.length > 0) {
         const now = new Date()
         const todayKey = dayKeyFromDate(now)
         const yesterday = new Date(now.getTime())
@@ -616,14 +819,15 @@
 
         let todayEntry = null
         let yesterdayEntry = null
-        for (let i = 0; i < tokenUsage.daily.length; i++) {
-          const usageDayKey = dayKeyFromUsageDate(tokenUsage.daily[i].date)
+        for (let i = 0; i < mergedTokenUsageDaily.length; i++) {
+          const usageDay = mergedTokenUsageDaily[i]
+          const usageDayKey = dayKeyFromUsageDate(usageDay.date)
           if (usageDayKey === todayKey) {
-            todayEntry = tokenUsage.daily[i]
+            todayEntry = usageDay
             continue
           }
           if (usageDayKey === yesterdayKey) {
-            yesterdayEntry = tokenUsage.daily[i]
+            yesterdayEntry = usageDay
           }
         }
 
@@ -633,8 +837,8 @@
         let totalTokens = 0
         let totalCostNanos = 0
         let hasCost = false
-        for (let i = 0; i < tokenUsage.daily.length; i++) {
-          const day = tokenUsage.daily[i]
+        for (let i = 0; i < mergedTokenUsageDaily.length; i++) {
+          const day = mergedTokenUsageDaily[i]
           const dayTokens = Number(day.totalTokens)
           if (Number.isFinite(dayTokens)) {
             totalTokens += dayTokens
