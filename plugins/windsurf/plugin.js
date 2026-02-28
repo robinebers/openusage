@@ -1,5 +1,7 @@
 (function () {
   var LS_SERVICE = "exa.language_server_pb.LanguageServerService"
+  var CLOUD_SERVICE = "exa.seat_management_pb.SeatManagementService"
+  var CLOUD_URL = "https://server.codeium.com"
 
   // Windsurf variants — tried in order (Windsurf first, then Windsurf Next).
   // Markers use --ide_name exact matching in the Rust discover code.
@@ -120,6 +122,44 @@
     return ctx.line.progress(line)
   }
 
+  function billingPeriodMs(planStart, planEnd) {
+    if (!planStart || !planEnd) return null
+    var startMs = Date.parse(planStart)
+    var endMs = Date.parse(planEnd)
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return null
+    return endMs - startMs
+  }
+
+  function buildPlanLines(ctx, userStatus) {
+    var ps = (userStatus && userStatus.planStatus) || {}
+    var pi = ps.planInfo || {}
+    var plan = pi.planName || null
+    var planEnd = ps.planEnd || null
+    var periodMs = billingPeriodMs(ps.planStart || null, planEnd)
+
+    var lines = []
+
+    var promptTotal = ps.availablePromptCredits
+    var promptUsed = ps.usedPromptCredits || 0
+    if (typeof promptTotal === "number" && promptTotal > 0) {
+      var pl = creditLine(ctx, "Prompt credits", promptUsed / 100, promptTotal / 100, planEnd, periodMs)
+      if (pl) lines.push(pl)
+    }
+
+    var flexTotal = ps.availableFlexCredits
+    var flexUsed = ps.usedFlexCredits || 0
+    if (typeof flexTotal === "number" && flexTotal > 0) {
+      var xl = creditLine(ctx, "Flex credits", flexUsed / 100, flexTotal / 100, null, null)
+      if (xl) lines.push(xl)
+    }
+
+    if (lines.length === 0) {
+      lines.push(ctx.line.badge({ label: "Credits", text: "Unlimited" }))
+    }
+
+    return { plan: plan, lines: lines }
+  }
+
   // --- LS probe for a specific variant ---
 
   function probeVariant(ctx, variant) {
@@ -155,63 +195,65 @@
 
     if (!data || !data.userStatus) return null
 
-    var us = data.userStatus
-    var ps = us.planStatus || {}
-    var pi = ps.planInfo || {}
+    return buildPlanLines(ctx, data.userStatus)
+  }
 
-    var plan = pi.planName || null
+  // --- Cloud fallback ---
 
-    // Billing cycle for pacing
-    var planEnd = ps.planEnd || null
-    var planStart = ps.planStart || null
-    var periodMs = null
-    if (planStart && planEnd) {
-      var startMs = Date.parse(planStart)
-      var endMs = Date.parse(planEnd)
-      if (Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs) {
-        periodMs = endMs - startMs
+  function callCloud(ctx, apiKey, variant) {
+    try {
+      var resp = ctx.host.http.request({
+        method: "POST",
+        url: CLOUD_URL + "/" + CLOUD_SERVICE + "/GetUserStatus",
+        headers: {
+          "Content-Type": "application/json",
+          "Connect-Protocol-Version": "1",
+        },
+        bodyText: JSON.stringify({
+          metadata: {
+            apiKey: apiKey,
+            ideName: variant.ideName,
+            ideVersion: "0.0.0",
+            extensionName: variant.ideName,
+            extensionVersion: "0.0.0",
+            locale: "en",
+          },
+        }),
+        timeoutMs: 15000,
+      })
+      if (resp.status >= 200 && resp.status < 300) {
+        return ctx.util.tryParseJson(resp.bodyText)
       }
+    } catch (e) {
+      ctx.host.log.warn("cloud request failed: " + String(e))
     }
+    return null
+  }
 
-    var lines = []
+  function probeCloudVariant(ctx, variant) {
+    var apiKey = loadApiKey(ctx, variant)
+    if (!apiKey) return null
 
-    // API returns credits in hundredths (like cents) — divide by 100 for display
-    // Windsurf UI: "0/500 prompt credits" = API availablePromptCredits: 50000
+    var data = callCloud(ctx, apiKey, variant)
+    if (!data || !data.userStatus) return null
 
-    // Prompt credits
-    var promptTotal = ps.availablePromptCredits
-    var promptUsed = ps.usedPromptCredits || 0
-    if (typeof promptTotal === "number" && promptTotal > 0) {
-      var pl = creditLine(ctx, "Prompt credits", promptUsed / 100, promptTotal / 100, planEnd, periodMs)
-      if (pl) lines.push(pl)
-    }
-
-    // Flex credits
-    var flexTotal = ps.availableFlexCredits
-    var flexUsed = ps.usedFlexCredits || 0
-    if (typeof flexTotal === "number" && flexTotal > 0) {
-      var xl = creditLine(ctx, "Flex credits", flexUsed / 100, flexTotal / 100, null, null)
-      if (xl) lines.push(xl)
-    }
-
-    if (lines.length === 0) {
-      // All credits unlimited (negative available) — still return plan, show badge
-      lines.push(ctx.line.badge({ label: "Credits", text: "Unlimited" }))
-    }
-
-    return { plan: plan, lines: lines }
+    return buildPlanLines(ctx, data.userStatus)
   }
 
   // --- Probe ---
 
   function probe(ctx) {
-    // Try each variant in order: Windsurf → Windsurf Next
     for (var i = 0; i < VARIANTS.length; i++) {
       var result = probeVariant(ctx, VARIANTS[i])
       if (result) return result
     }
 
-    throw "Start Windsurf and try again."
+    for (var i = 0; i < VARIANTS.length; i++) {
+      var result = probeCloudVariant(ctx, VARIANTS[i])
+      if (result) return result
+    }
+
+    throw "Start Windsurf or sign in and try again."
   }
 
   globalThis.__openusage_plugin = { id: "windsurf", probe: probe }

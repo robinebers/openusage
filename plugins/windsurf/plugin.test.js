@@ -42,12 +42,12 @@ function makeLsResponse(overrides) {
 }
 
 function setupLsMock(ctx, discovery, apiKey, responseBody, opts) {
-  var stateDb = (opts && opts.stateDb) || "Windsurf"
+  var stateDb = (opts && opts.stateDb) || "Windsurf/"
   ctx.host.ls.discover.mockImplementation((discoverOpts) => {
     // Match the right variant by marker
     var marker = discoverOpts.markers[0]
-    if (marker === "windsurf" && stateDb === "Windsurf") return discovery
-    if (marker === "windsurf-next" && stateDb === "Windsurf - Next") return discovery
+    if (marker === "windsurf" && stateDb === "Windsurf/") return discovery
+    if (marker === "windsurf-next" && stateDb === "Windsurf - Next/") return discovery
     return null
   })
   ctx.host.sqlite.query.mockImplementation((db, sql) => {
@@ -72,12 +72,12 @@ describe("windsurf plugin", () => {
     vi.resetModules()
   })
 
-  it("throws when LS not found and no cache", async () => {
+  it("throws when LS not found and no API key", async () => {
     const ctx = makeCtx()
     ctx.host.ls.discover.mockReturnValue(null)
     ctx.host.sqlite.query.mockReturnValue("[]")
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Start Windsurf and try again.")
+    expect(() => plugin.probe(ctx)).toThrow("Start Windsurf or sign in and try again.")
   })
 
   it("returns credits from LS with billing pacing", async () => {
@@ -174,8 +174,7 @@ describe("windsurf plugin", () => {
     })
 
     const plugin = await loadPlugin()
-    // No API key → LS probe returns null → falls back to cache → no cache → throws
-    expect(() => plugin.probe(ctx)).toThrow("Start Windsurf and try again.")
+    expect(() => plugin.probe(ctx)).toThrow("Start Windsurf or sign in and try again.")
   })
 
   it("calculates billing period duration from planStart/planEnd", async () => {
@@ -197,7 +196,7 @@ describe("windsurf plugin", () => {
     const ctx = makeCtx()
     setupLsMock(ctx, makeDiscovery(), "sk-ws-01-next", makeLsResponse({
       planInfo: { planName: "Pro" },
-    }), { stateDb: "Windsurf - Next" })
+    }), { stateDb: "Windsurf - Next/" })
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
@@ -207,7 +206,7 @@ describe("windsurf plugin", () => {
 
   it("sends windsurf-next as ideName for Windsurf Next variant", async () => {
     const ctx = makeCtx()
-    setupLsMock(ctx, makeDiscovery(), "sk-ws-01-next", makeLsResponse(), { stateDb: "Windsurf - Next" })
+    setupLsMock(ctx, makeDiscovery(), "sk-ws-01-next", makeLsResponse(), { stateDb: "Windsurf - Next/" })
 
     let sentBody = null
     const origHttp = ctx.host.http.request
@@ -232,7 +231,7 @@ describe("windsurf plugin", () => {
 
   it("reads API key from Windsurf Next SQLite path", async () => {
     const ctx = makeCtx()
-    setupLsMock(ctx, makeDiscovery(), "sk-ws-01-next", makeLsResponse(), { stateDb: "Windsurf - Next" })
+    setupLsMock(ctx, makeDiscovery(), "sk-ws-01-next", makeLsResponse(), { stateDb: "Windsurf - Next/" })
 
     let queriedDb = null
     ctx.host.sqlite.query.mockImplementation((db, sql) => {
@@ -389,7 +388,7 @@ describe("windsurf plugin", () => {
     })
 
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Start Windsurf and try again.")
+    expect(() => plugin.probe(ctx)).toThrow("Start Windsurf or sign in and try again.")
   })
 
   it("treats missing apiKey in SQLite auth payload as unavailable", async () => {
@@ -404,7 +403,7 @@ describe("windsurf plugin", () => {
     })
 
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Start Windsurf and try again.")
+    expect(() => plugin.probe(ctx)).toThrow("Start Windsurf or sign in and try again.")
   })
 
   it("uses extensionPort when ports list is missing", async () => {
@@ -439,7 +438,7 @@ describe("windsurf plugin", () => {
     })
 
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Start Windsurf and try again.")
+    expect(() => plugin.probe(ctx)).toThrow("Start Windsurf or sign in and try again.")
   })
 
   it("handles sparse userStatus payload and returns unlimited badge", async () => {
@@ -450,6 +449,157 @@ describe("windsurf plugin", () => {
     const result = plugin.probe(ctx)
     expect(result.plan).toBeNull()
     expect(result.lines).toEqual([{ type: "badge", label: "Credits", text: "Unlimited" }])
+  })
+
+  function setupCloudMock(ctx, apiKey, cloudResponse, opts) {
+    var stateDb = (opts && opts.stateDb) || "Windsurf/"
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.sqlite.query.mockImplementation((db, sql) => {
+      if (String(sql).includes("windsurfAuthStatus") && String(db).includes(stateDb)) {
+        return makeAuthStatus(apiKey)
+      }
+      return "[]"
+    })
+    ctx.host.http.request.mockImplementation((reqOpts) => {
+      var url = String(reqOpts.url)
+      if (url.includes("server.codeium.com") && url.includes("GetUserStatus")) {
+        if (cloudResponse === null) throw new Error("network error")
+        return cloudResponse
+      }
+      return { status: 500, bodyText: "{}" }
+    })
+  }
+
+  it("falls back to cloud when LS not found", async () => {
+    const ctx = makeCtx()
+    setupCloudMock(ctx, "sk-ws-01-test", {
+      status: 200,
+      bodyText: JSON.stringify(makeLsResponse()),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Teams")
+    const prompt = result.lines.find((l) => l.label === "Prompt credits")
+    expect(prompt).toBeTruthy()
+    expect(prompt.used).toBe(47)
+    expect(prompt.limit).toBe(500)
+  })
+
+  it("cloud sends metadata with apiKey and correct URL", async () => {
+    const ctx = makeCtx()
+    setupCloudMock(ctx, "sk-ws-01-cloud", {
+      status: 200,
+      bodyText: JSON.stringify(makeLsResponse()),
+    })
+
+    let capturedReq = null
+    ctx.host.http.request.mockImplementation((reqOpts) => {
+      var url = String(reqOpts.url)
+      if (url.includes("server.codeium.com")) {
+        capturedReq = reqOpts
+        return { status: 200, bodyText: JSON.stringify(makeLsResponse()) }
+      }
+      return { status: 500, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    expect(capturedReq).toBeTruthy()
+    expect(capturedReq.url).toContain("exa.seat_management_pb.SeatManagementService/GetUserStatus")
+    expect(capturedReq.headers["Connect-Protocol-Version"]).toBe("1")
+    const body = JSON.parse(capturedReq.bodyText)
+    expect(body.metadata.apiKey).toBe("sk-ws-01-cloud")
+    expect(body.metadata.ideName).toBe("windsurf")
+    expect(body.metadata.extensionName).toBe("windsurf")
+    expect(body.metadata.ideVersion).toBe("0.0.0")
+    expect(body.metadata.locale).toBe("en")
+  })
+
+  it("cloud auth failure (401) falls through to error", async () => {
+    const ctx = makeCtx()
+    setupCloudMock(ctx, "sk-ws-01-test", { status: 401, bodyText: "{}" })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Start Windsurf or sign in and try again.")
+  })
+
+  it("LS takes priority over cloud", async () => {
+    const ctx = makeCtx()
+    setupLsMock(ctx, makeDiscovery(), "sk-ws-01-test", makeLsResponse())
+
+    let cloudCalled = false
+    ctx.host.http.request.mockImplementation((reqOpts) => {
+      var url = String(reqOpts.url)
+      if (url.includes("server.codeium.com")) {
+        cloudCalled = true
+      }
+      if (url.includes("GetUnleashData")) {
+        return { status: 200, bodyText: "{}" }
+      }
+      return { status: 200, bodyText: JSON.stringify(makeLsResponse()) }
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+    expect(cloudCalled).toBe(false)
+  })
+
+  it("cloud fallback with Windsurf Next variant", async () => {
+    const ctx = makeCtx()
+    setupCloudMock(ctx, "sk-ws-01-next", {
+      status: 200,
+      bodyText: JSON.stringify(makeLsResponse({ planInfo: { planName: "Pro" } })),
+    }, { stateDb: "Windsurf - Next/" })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Pro")
+  })
+
+  it("cloud fallback sends variant-specific ideName", async () => {
+    const ctx = makeCtx()
+    setupCloudMock(ctx, "sk-ws-01-next", {
+      status: 200,
+      bodyText: JSON.stringify(makeLsResponse()),
+    }, { stateDb: "Windsurf - Next/" })
+
+    let capturedReq = null
+    ctx.host.http.request.mockImplementation((reqOpts) => {
+      var url = String(reqOpts.url)
+      if (url.includes("server.codeium.com")) {
+        capturedReq = reqOpts
+        return { status: 200, bodyText: JSON.stringify(makeLsResponse()) }
+      }
+      return { status: 500, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    const body = JSON.parse(capturedReq.bodyText)
+    expect(body.metadata.ideName).toBe("windsurf-next")
+    expect(body.metadata.extensionName).toBe("windsurf-next")
+  })
+
+  it("cloud fallback fails when no API key in SQLite", async () => {
+    const ctx = makeCtx()
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.sqlite.query.mockReturnValue("[]")
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Start Windsurf or sign in and try again.")
+  })
+
+  it("cloud network error falls through to error", async () => {
+    const ctx = makeCtx()
+    setupCloudMock(ctx, "sk-ws-01-test", null)
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Start Windsurf or sign in and try again.")
   })
 
 })
