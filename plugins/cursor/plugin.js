@@ -267,9 +267,11 @@
         return null
       }
       var stripe = ctx.util.tryParseJson(resp.bodyText)
-      if (!stripe || !Number.isFinite(stripe.customerBalance)) return null
+      if (!stripe) return null
+      var customerBalanceCents = Number(stripe.customerBalance)
+      if (!Number.isFinite(customerBalanceCents)) return null
       // Stripe stores customer credits as a negative balance.
-      return stripe.customerBalance < 0 ? Math.abs(stripe.customerBalance) : 0
+      return customerBalanceCents < 0 ? Math.abs(customerBalanceCents) : 0
     } catch (e) {
       ctx.host.log.warn("stripe balance fetch failed: " + String(e))
       return null
