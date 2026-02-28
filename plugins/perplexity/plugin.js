@@ -2,6 +2,7 @@
   const LOCAL_USER_ENDPOINT = "https://www.perplexity.ai/api/user"
   const REST_API_BASE = "https://www.perplexity.ai/rest/pplx-api/v2"
   const REST_GROUPS_ENDPOINT = REST_API_BASE + "/groups"
+  const RATE_LIMIT_ENDPOINT = "https://www.perplexity.ai/rest/rate-limit/all"
 
   const LOCAL_CACHE_DB_PATHS = [
     "~/Library/Containers/ai.perplexity.mac/Data/Library/Caches/ai.perplexity.mac/Cache.db",
@@ -20,6 +21,12 @@
   const ASK_UA_HEX_PREFIX = "41736B2F" // Ask/
   const MACOS_DEVICE_ID_HEX_PREFIX = "6D61636F733A" // macos:
   const MAX_REQUEST_FIELD_LENGTH = 220
+  const RATE_LIMIT_CATEGORIES = [
+    { key: "remaining_pro", label: "Queries" },
+    { key: "remaining_research", label: "Deep Research" },
+    { key: "remaining_labs", label: "Labs" },
+    { key: "remaining_agentic_research", label: "Agentic Research" },
+  ]
 
   function readNumberField(obj, keys) {
     if (!obj || typeof obj !== "object") return null
@@ -265,11 +272,13 @@
     if (!Array.isArray(usageAnalytics)) return null
     let costSum = 0
     let hasCost = false
+    let hasValidMeter = usageAnalytics.length === 0
     for (let i = 0; i < usageAnalytics.length; i += 1) {
       const meter = usageAnalytics[i]
       if (!meter || typeof meter !== "object") continue
       const summaries = meter.meter_event_summaries || meter.meterEventSummaries
       if (!Array.isArray(summaries)) continue
+      if (summaries.length === 0) hasValidMeter = true
       for (let j = 0; j < summaries.length; j += 1) {
         const s = summaries[j]
         if (!s || typeof s !== "object") continue
@@ -280,7 +289,31 @@
         }
       }
     }
-    return hasCost ? costSum : null
+    return (hasCost || hasValidMeter) ? costSum : null
+  }
+
+  function detectPlanLabel(customerInfo) {
+    if (!customerInfo || typeof customerInfo !== "object") return null
+    if (customerInfo.is_max === true || customerInfo.subscription_tier === "max") return "Max"
+    if (customerInfo.is_pro === true) return "Pro"
+    return null
+  }
+
+  function buildRateLimitLines(ctx, rateLimits) {
+    if (!rateLimits || typeof rateLimits !== "object") return []
+    const lines = []
+    for (let i = 0; i < RATE_LIMIT_CATEGORIES.length; i += 1) {
+      const category = RATE_LIMIT_CATEGORIES[i]
+      const val = rateLimits[category.key]
+      if (val === undefined || val === null) continue
+      const n = Number(val)
+      if (!Number.isFinite(n)) continue
+      lines.push(ctx.line.text({
+        label: category.label,
+        value: String(Math.max(0, Math.floor(n))) + " remaining",
+      }))
+    }
+    return lines
   }
 
   function queryLocalSessionFromCache(ctx, dbPath) {
@@ -340,7 +373,8 @@
     const usageAnalytics =
       fetchJsonOptional(ctx, usageUrl, authToken, restHeaders) ||
       fetchJsonOptional(ctx, usageUrl + "/", authToken, restHeaders)
-    return { groupId: groupId, group: group, usageAnalytics: usageAnalytics }
+    const rateLimits = fetchJsonOptional(ctx, RATE_LIMIT_ENDPOINT, authToken, restHeaders)
+    return { groupId: groupId, group: group, usageAnalytics: usageAnalytics, rateLimits: rateLimits }
   }
 
   function probe(ctx) {
@@ -349,29 +383,39 @@
     if (session.sourcePath) ctx.host.log.info("using cache db: " + session.sourcePath)
 
     const restState = fetchRestState(ctx, session)
-    if (!restState || !restState.group) throw "Balance unavailable. Try again later."
+    if (!restState || !restState.group) throw "Unable to connect. Try again later."
 
+    const customerInfo = restState.group && restState.group.customerInfo
+    const plan = detectPlanLabel(customerInfo)
+
+    const dollarLines = []
     const balanceUsd = readBalanceUsd(restState.group)
-    if (balanceUsd === null) throw "Balance unavailable. Try again later."
+    if (balanceUsd !== null && balanceUsd > 0) {
+      const usedUsd = sumUsageCostUsd(restState.usageAnalytics)
+      if (usedUsd !== null) {
+        const usedCents = Math.max(0, Math.round(usedUsd * 100))
+        const limitCents = Math.max(0, Math.round(balanceUsd * 100))
+        if (Number.isFinite(limitCents) && limitCents > 0) {
+          dollarLines.push(ctx.line.progress({
+            label: "API credits",
+            used: usedCents / 100,
+            limit: limitCents / 100,
+            format: { kind: "dollars" },
+          }))
+        }
+      }
+    }
 
-    const usedUsd = sumUsageCostUsd(restState.usageAnalytics)
-    if (usedUsd === null) throw "Usage unavailable. Try again later."
-    const usedCents = Math.max(0, Math.round(usedUsd * 100))
-    const limitCents = Math.max(0, Math.round(balanceUsd * 100))
-    if (!Number.isFinite(limitCents) || limitCents <= 0) throw "Balance unavailable. Try again later."
+    const rateLines = buildRateLimitLines(ctx, restState.rateLimits)
 
-    const line = ctx.line.progress({
-      label: "Usage",
-      used: usedCents / 100,
-      limit: limitCents / 100,
-      format: { kind: "dollars" },
-    })
+    const lines = dollarLines.concat(rateLines)
+    if (lines.length === 0) {
+      if (balanceUsd !== null && balanceUsd > 0) throw "Usage data unavailable. Try again later."
+      if (plan) throw "Rate limits unavailable. Try again later."
+      throw "Balance unavailable. Try again later."
+    }
 
-    let plan = null
-    const isPro = restState.group && restState.group.customerInfo && restState.group.customerInfo.is_pro
-    if (isPro === true) plan = "Pro"
-
-    return plan ? { plan: plan, lines: [line] } : { lines: [line] }
+    return plan ? { plan: plan, lines: lines } : { lines: lines }
   }
 
   globalThis.__openusage_plugin = { id: "perplexity", probe: probe }

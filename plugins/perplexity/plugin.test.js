@@ -53,9 +53,11 @@ function mockCacheSession(ctx, options = {}) {
 function mockRestApi(ctx, options = {}) {
   const balance = options.balance ?? 4.99
   const isPro = options.isPro ?? true
+  const customerInfo = options.customerInfo ?? { balance, is_pro: isPro }
   const usageAnalytics = options.usageAnalytics ?? [
     { meter_event_summaries: [{ usage: 1, cost: 0.04 }] },
   ]
+  const rateLimits = options.rateLimits ?? null
 
   ctx.host.http.request.mockImplementation((req) => {
     if (req.url === "https://www.perplexity.ai/rest/pplx-api/v2/groups") {
@@ -70,7 +72,7 @@ function mockRestApi(ctx, options = {}) {
       return {
         status: 200,
         headers: {},
-        bodyText: JSON.stringify({ customerInfo: { balance, is_pro: isPro } }),
+        bodyText: JSON.stringify({ customerInfo }),
       }
     }
 
@@ -79,6 +81,14 @@ function mockRestApi(ctx, options = {}) {
         status: 200,
         headers: {},
         bodyText: JSON.stringify(usageAnalytics),
+      }
+    }
+
+    if (req.url === "https://www.perplexity.ai/rest/rate-limit/all" && rateLimits) {
+      return {
+        status: 200,
+        headers: {},
+        bodyText: JSON.stringify(rateLimits),
       }
     }
 
@@ -102,7 +112,7 @@ describe("perplexity plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Not logged in")
   })
 
-  it("returns only a Usage progress bar (primary cache path)", async () => {
+  it("returns only an API credits progress bar (primary cache path)", async () => {
     const ctx = makeCtx()
     const token = makeJwtLikeToken()
     mockCacheSession(ctx, { dbPath: PRIMARY_CACHE_DB_PATH, requestHex: makeRequestHexWithBearer(token) })
@@ -117,7 +127,7 @@ describe("perplexity plugin", () => {
 
     const line = result.lines[0]
     expect(line.type).toBe("progress")
-    expect(line.label).toBe("Usage")
+    expect(line.label).toBe("API credits")
     expect(line.format.kind).toBe("dollars")
     expect(line.used).toBe(0.04)
     expect(line.limit).toBe(4.99) // limit = balance only
@@ -136,7 +146,7 @@ describe("perplexity plugin", () => {
 
     expect(result.plan).toBeUndefined()
     expect(result.lines.length).toBe(1)
-    expect(result.lines[0].label).toBe("Usage")
+    expect(result.lines[0].label).toBe("API credits")
     expect(result.lines[0].limit).toBe(10)
   })
 
@@ -173,7 +183,7 @@ describe("perplexity plugin", () => {
     expect(call.headers.Authorization).toBe("Bearer " + token)
   })
 
-  it("throws when usage analytics is unavailable (avoid false $0 used)", async () => {
+  it("throws usage data unavailable when balance exists but usage analytics fails", async () => {
     const ctx = makeCtx()
     const token = makeJwtLikeToken()
     mockCacheSession(ctx, { requestHex: makeRequestHexWithBearer(token) })
@@ -190,7 +200,7 @@ describe("perplexity plugin", () => {
         return {
           status: 200,
           headers: {},
-          bodyText: JSON.stringify({ customerInfo: { balance: 4.99, is_pro: true } }),
+          bodyText: JSON.stringify({ customerInfo: { balance: 4.99, is_pro: false } }),
         }
       }
       if (req.url === `https://www.perplexity.ai/rest/pplx-api/v2/groups/${GROUP_ID}/usage-analytics`) {
@@ -200,7 +210,45 @@ describe("perplexity plugin", () => {
     })
 
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Usage unavailable")
+    expect(() => plugin.probe(ctx)).toThrow("Usage data unavailable")
+  })
+
+  it("returns $0 used when usage analytics has empty meter_event_summaries", async () => {
+    const ctx = makeCtx()
+    const token = makeJwtLikeToken()
+    mockCacheSession(ctx, { requestHex: makeRequestHexWithBearer(token) })
+    mockRestApi(ctx, {
+      balance: 5.0,
+      usageAnalytics: [
+        { id: "mtr_1", meter_event_summaries: [] },
+        { id: "mtr_2", meter_event_summaries: [] },
+      ],
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.length).toBe(1)
+    expect(result.lines[0].used).toBe(0)
+    expect(result.lines[0].limit).toBe(5.0)
+  })
+
+  it("returns $0 used when usage analytics is an empty array", async () => {
+    const ctx = makeCtx()
+    const token = makeJwtLikeToken()
+    mockCacheSession(ctx, { requestHex: makeRequestHexWithBearer(token) })
+    mockRestApi(ctx, {
+      balance: 5.0,
+      usageAnalytics: [],
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.length).toBe(1)
+    expect(result.lines[0].label).toBe("API credits")
+    expect(result.lines[0].used).toBe(0)
+    expect(result.lines[0].limit).toBe(5.0)
   })
 
   it("supports trailing-slash REST fallbacks and nested money fields", async () => {
@@ -249,7 +297,7 @@ describe("perplexity plugin", () => {
     const result = plugin.probe(ctx)
 
     expect(result.plan).toBeUndefined()
-    expect(result.lines[0].label).toBe("Usage")
+    expect(result.lines[0].label).toBe("API credits")
     expect(result.lines[0].used).toBe(0.25)
     expect(result.lines[0].limit).toBe(2.5)
   })
@@ -275,17 +323,17 @@ describe("perplexity plugin", () => {
     expect(firstRestCall.headers["User-Agent"]).toBe("Ask/9.9.9")
   })
 
-  it("throws balance unavailable when groups request is unauthorized", async () => {
+  it("throws when groups request is unauthorized", async () => {
     const ctx = makeCtx()
     const token = makeJwtLikeToken()
     mockCacheSession(ctx, { requestHex: makeRequestHexWithBearer(token) })
     ctx.host.http.request.mockReturnValue({ status: 401, headers: {}, bodyText: "" })
 
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Balance unavailable")
+    expect(() => plugin.probe(ctx)).toThrow("Unable to connect")
   })
 
-  it("throws usage unavailable when analytics payload has no numeric cost", async () => {
+  it("throws usage data unavailable when analytics payload has no numeric cost", async () => {
     const ctx = makeCtx()
     const token = makeJwtLikeToken()
     mockCacheSession(ctx, { requestHex: makeRequestHexWithBearer(token) })
@@ -302,7 +350,7 @@ describe("perplexity plugin", () => {
         return {
           status: 200,
           headers: {},
-          bodyText: JSON.stringify({ customerInfo: { balance: "$4.99", is_pro: true } }),
+          bodyText: JSON.stringify({ customerInfo: { balance: "$4.99", is_pro: false } }),
         }
       }
       if (req.url === `https://www.perplexity.ai/rest/pplx-api/v2/groups/${GROUP_ID}/usage-analytics`) {
@@ -316,7 +364,7 @@ describe("perplexity plugin", () => {
     })
 
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Usage unavailable")
+    expect(() => plugin.probe(ctx)).toThrow("Usage data unavailable")
   })
 
   it("recovers when primary cache sqlite read fails and fallback cache is valid", async () => {
@@ -338,7 +386,7 @@ describe("perplexity plugin", () => {
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    expect(result.lines[0].label).toBe("Usage")
+    expect(result.lines[0].label).toBe("API credits")
   })
 
   it("continues when primary cache exists-check throws and fallback has a session", async () => {
@@ -362,7 +410,7 @@ describe("perplexity plugin", () => {
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    expect(result.lines[0].label).toBe("Usage")
+    expect(result.lines[0].label).toBe("API credits")
   })
 
   it("parses balance from regex-matched credit key path", async () => {
@@ -443,7 +491,7 @@ describe("perplexity plugin", () => {
     expect(result.lines[0].used).toBe(0.5)
   })
 
-  it("throws balance unavailable when groups payload contains no readable ids", async () => {
+  it("throws when groups payload contains no readable ids", async () => {
     const ctx = makeCtx()
     const token = makeJwtLikeToken()
     mockCacheSession(ctx, { requestHex: makeRequestHexWithBearer(token) })
@@ -456,7 +504,7 @@ describe("perplexity plugin", () => {
     })
 
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Balance unavailable")
+    expect(() => plugin.probe(ctx)).toThrow("Unable to connect")
   })
 
   it("treats empty cache query rows as not logged in", async () => {
@@ -514,7 +562,7 @@ describe("perplexity plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Not logged in")
   })
 
-  it("throws balance unavailable when groups endpoint returns invalid JSON", async () => {
+  it("throws when groups endpoint returns invalid JSON", async () => {
     const ctx = makeCtx()
     const token = makeJwtLikeToken()
     mockCacheSession(ctx, { requestHex: makeRequestHexWithBearer(token) })
@@ -526,7 +574,7 @@ describe("perplexity plugin", () => {
     })
 
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Balance unavailable")
+    expect(() => plugin.probe(ctx)).toThrow("Unable to connect")
   })
 
   it("throws balance unavailable when balance object only contains non-finite cents", async () => {
@@ -566,7 +614,7 @@ describe("perplexity plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Balance unavailable")
   })
 
-  it("throws balance unavailable when computed limit is zero", async () => {
+  it("throws rate limits unavailable when Pro subscriber has zero balance and no rate limits", async () => {
     const ctx = makeCtx()
     const token = makeJwtLikeToken()
     mockCacheSession(ctx, { requestHex: makeRequestHexWithBearer(token) })
@@ -597,6 +645,144 @@ describe("perplexity plugin", () => {
     })
 
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Balance unavailable")
+    expect(() => plugin.probe(ctx)).toThrow("Rate limits unavailable")
+  })
+
+  it("shows rate-limit text lines for Pro subscriber with zero balance", async () => {
+    const ctx = makeCtx()
+    const token = makeJwtLikeToken()
+    mockCacheSession(ctx, { requestHex: makeRequestHexWithBearer(token) })
+    mockRestApi(ctx, {
+      customerInfo: { is_pro: true, balance: 0 },
+      usageAnalytics: [{ meter_event_summaries: [] }],
+      rateLimits: { remaining_pro: 198, remaining_research: 20, remaining_labs: 25 },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Pro")
+    expect(result.lines.length).toBe(3)
+    expect(result.lines[0].type).toBe("text")
+    expect(result.lines[0].label).toBe("Queries")
+    expect(result.lines[0].value).toBe("198 remaining")
+    expect(result.lines[1].label).toBe("Deep Research")
+    expect(result.lines[1].value).toBe("20 remaining")
+    expect(result.lines[2].label).toBe("Labs")
+    expect(result.lines[2].value).toBe("25 remaining")
+  })
+
+  it("detects Max plan from is_max field", async () => {
+    const ctx = makeCtx()
+    const token = makeJwtLikeToken()
+    mockCacheSession(ctx, { requestHex: makeRequestHexWithBearer(token) })
+    mockRestApi(ctx, {
+      customerInfo: { is_pro: true, is_max: true, balance: 0 },
+      usageAnalytics: [{ meter_event_summaries: [] }],
+      rateLimits: { remaining_pro: 500 },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Max")
+    expect(result.lines[0].label).toBe("Queries")
+    expect(result.lines[0].value).toBe("500 remaining")
+  })
+
+  it("detects Max plan from subscription_tier field", async () => {
+    const ctx = makeCtx()
+    const token = makeJwtLikeToken()
+    mockCacheSession(ctx, { requestHex: makeRequestHexWithBearer(token) })
+    mockRestApi(ctx, {
+      customerInfo: { is_pro: true, subscription_tier: "max", balance: 0 },
+      usageAnalytics: [{ meter_event_summaries: [] }],
+      rateLimits: { remaining_pro: 500 },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Max")
+  })
+
+  it("shows both API credits and rate-limit lines for hybrid user", async () => {
+    const ctx = makeCtx()
+    const token = makeJwtLikeToken()
+    mockCacheSession(ctx, { requestHex: makeRequestHexWithBearer(token) })
+    mockRestApi(ctx, {
+      customerInfo: { is_pro: true, balance: 10.0 },
+      usageAnalytics: [{ meter_event_summaries: [{ cost: 2.5 }] }],
+      rateLimits: { remaining_pro: 150, remaining_research: 15 },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Pro")
+    expect(result.lines.length).toBe(3)
+    expect(result.lines[0].type).toBe("progress")
+    expect(result.lines[0].label).toBe("API credits")
+    expect(result.lines[0].used).toBe(2.5)
+    expect(result.lines[0].limit).toBe(10.0)
+    expect(result.lines[1].type).toBe("text")
+    expect(result.lines[1].label).toBe("Queries")
+    expect(result.lines[2].label).toBe("Deep Research")
+  })
+
+  it("shows exhausted rate limits (remaining 0)", async () => {
+    const ctx = makeCtx()
+    const token = makeJwtLikeToken()
+    mockCacheSession(ctx, { requestHex: makeRequestHexWithBearer(token) })
+    mockRestApi(ctx, {
+      customerInfo: { is_pro: true, balance: 0 },
+      usageAnalytics: [{ meter_event_summaries: [] }],
+      rateLimits: { remaining_pro: 0, remaining_research: 0 },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.length).toBe(2)
+    expect(result.lines[0].value).toBe("0 remaining")
+    expect(result.lines[1].value).toBe("0 remaining")
+  })
+
+  it("omits rate-limit categories with undefined values", async () => {
+    const ctx = makeCtx()
+    const token = makeJwtLikeToken()
+    mockCacheSession(ctx, { requestHex: makeRequestHexWithBearer(token) })
+    mockRestApi(ctx, {
+      customerInfo: { is_pro: true, balance: 0 },
+      usageAnalytics: [{ meter_event_summaries: [] }],
+      rateLimits: { remaining_pro: 100 },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.length).toBe(1)
+    expect(result.lines[0].label).toBe("Queries")
+  })
+
+  it("fetches rate-limit endpoint with auth headers", async () => {
+    const ctx = makeCtx()
+    const token = makeJwtLikeToken()
+    mockCacheSession(ctx, { requestHex: makeRequestHexWithBearer(token) })
+    mockRestApi(ctx, {
+      customerInfo: { is_pro: true, balance: 0 },
+      usageAnalytics: [{ meter_event_summaries: [] }],
+      rateLimits: { remaining_pro: 100 },
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    const rateLimitCall = ctx.host.http.request.mock.calls.find((call) =>
+      String(call[0]?.url).includes("/rest/rate-limit/all")
+    )?.[0]
+
+    expect(rateLimitCall).toBeTruthy()
+    expect(rateLimitCall.headers.Authorization).toBe("Bearer " + token)
   })
 })
