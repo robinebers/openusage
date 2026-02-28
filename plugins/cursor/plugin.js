@@ -9,6 +9,7 @@
   const REFRESH_URL = BASE_URL + "/oauth/token"
   const CREDITS_URL = BASE_URL + "/aiserver.v1.DashboardService/GetCreditGrantsBalance"
   const REST_USAGE_URL = "https://cursor.com/api/usage"
+  const STRIPE_URL = "https://cursor.com/api/auth/stripe"
   const CLIENT_ID = "KbZUR41cY7W6zRSdpSUJ7I7mLYBKOCmB"
   const REFRESH_BUFFER_MS = 5 * 60 * 1000 // refresh 5 minutes before expiration
   const LOGIN_HINT = "Sign in via Cursor app or run `agent login`."
@@ -246,6 +247,35 @@
     }
   }
 
+  function fetchStripeBalance(ctx, accessToken) {
+    var session = buildSessionToken(ctx, accessToken)
+    if (!session) {
+      ctx.host.log.warn("stripe: cannot build session token")
+      return null
+    }
+    try {
+      var resp = ctx.util.request({
+        method: "GET",
+        url: STRIPE_URL,
+        headers: {
+          Cookie: "WorkosCursorSessionToken=" + session.sessionToken,
+        },
+        timeoutMs: 10000,
+      })
+      if (resp.status < 200 || resp.status >= 300) {
+        ctx.host.log.warn("stripe balance returned status=" + resp.status)
+        return null
+      }
+      var stripe = ctx.util.tryParseJson(resp.bodyText)
+      if (!stripe || !Number.isFinite(stripe.customerBalance)) return null
+      // Stripe stores customer credits as a negative balance.
+      return stripe.customerBalance < 0 ? Math.abs(stripe.customerBalance) : 0
+    } catch (e) {
+      ctx.host.log.warn("stripe balance fetch failed: " + String(e))
+      return null
+    }
+  }
+
   function buildEnterpriseResult(ctx, accessToken, planName, usage) {
     var requestUsage = fetchEnterpriseUsage(ctx, accessToken)
     var lines = []
@@ -404,6 +434,8 @@
       ctx.host.log.warn("credit grants fetch failed: " + String(e))
     }
 
+    const stripeBalanceCents = fetchStripeBalance(ctx, accessToken) || 0
+
     let plan = null
     if (planName) {
       const planLabel = ctx.fmt.planLabel(planName)
@@ -416,17 +448,22 @@
     const pu = usage.planUsage
 
     // Credits first (if available) - highest priority primary metric
-    if (creditGrants && creditGrants.hasCreditGrants === true) {
-      const total = parseInt(creditGrants.totalCents, 10)
-      const used = parseInt(creditGrants.usedCents, 10)
-      if (total > 0 && !isNaN(total) && !isNaN(used)) {
-        lines.push(ctx.line.progress({
-          label: "Credits",
-          used: ctx.fmt.dollars(used),
-          limit: ctx.fmt.dollars(total),
-          format: { kind: "dollars" },
-        }))
-      }
+    const hasCreditGrants = creditGrants && creditGrants.hasCreditGrants === true
+    const grantTotalCents = hasCreditGrants ? parseInt(creditGrants.totalCents, 10) : 0
+    const grantUsedCents = hasCreditGrants ? parseInt(creditGrants.usedCents, 10) : 0
+    const hasValidGrantData = hasCreditGrants &&
+      grantTotalCents > 0 &&
+      !isNaN(grantTotalCents) &&
+      !isNaN(grantUsedCents)
+    const combinedTotalCents = (hasValidGrantData ? grantTotalCents : 0) + stripeBalanceCents
+
+    if (combinedTotalCents > 0) {
+      lines.push(ctx.line.progress({
+        label: "Credits",
+        used: ctx.fmt.dollars(hasValidGrantData ? grantUsedCents : 0),
+        limit: ctx.fmt.dollars(combinedTotalCents),
+        format: { kind: "dollars" },
+      }))
     }
 
     // Total usage (always present) - fallback primary metric
