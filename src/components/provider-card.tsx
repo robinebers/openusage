@@ -15,6 +15,7 @@ import { groupLinesByType } from "@/lib/group-lines-by-type"
 import { clamp01, formatCountNumber, formatFixedPrecisionNumber } from "@/lib/utils"
 import { calculateDeficit, calculatePaceStatus, type PaceStatus } from "@/lib/pace-status"
 import { buildPaceDetailText, formatCompactDuration, formatDeficitText, formatRunsOutText, getPaceStatusText } from "@/lib/pace-tooltip"
+import { formatResetTooltipText } from "@/lib/reset-tooltip"
 
 interface ProviderCardProps {
   name: string
@@ -423,6 +424,7 @@ function MetricLineRenderer({
         ? formatResetAt(now, line.resetsAt)
         : formatResetIn(now, line.resetsAt)
       : null
+    const resetTooltipText = line.resetsAt ? formatResetTooltipText(line.resetsAt) : null
 
     const secondaryText =
       resetLabel ??
@@ -494,7 +496,29 @@ function MetricLineRenderer({
             {primaryText}
           </span>
           {secondaryText && (
-            resetLabel && onResetTimerDisplayModeToggle ? (
+            resetTooltipText ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={(props) =>
+                    resetLabel && onResetTimerDisplayModeToggle ? (
+                      <button
+                        {...props}
+                        type="button"
+                        onClick={onResetTimerDisplayModeToggle}
+                        className="text-xs text-muted-foreground tabular-nums hover:text-foreground transition-colors"
+                      >
+                        {secondaryText}
+                      </button>
+                    ) : (
+                      <span {...props} className="text-xs text-muted-foreground tabular-nums">
+                        {secondaryText}
+                      </span>
+                    )
+                  }
+                />
+                <TooltipContent side="top">{resetTooltipText}</TooltipContent>
+              </Tooltip>
+            ) : resetLabel && onResetTimerDisplayModeToggle ? (
               <button
                 type="button"
                 onClick={onResetTimerDisplayModeToggle}
