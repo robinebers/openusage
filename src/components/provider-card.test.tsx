@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { openUrl } from "@tauri-apps/plugin-opener"
 import { ProviderCard } from "@/components/provider-card"
 import { groupLinesByType } from "@/lib/group-lines-by-type"
+import { formatResetTooltipText } from "@/lib/reset-tooltip"
 import { REFRESH_COOLDOWN_MS } from "@/lib/settings"
 import { formatFixedPrecisionNumber } from "@/lib/utils"
 
@@ -260,7 +261,30 @@ describe("ProviderCard", () => {
       />
     )
     expect(screen.getByText("Resets in 1h 5m")).toBeInTheDocument()
+    expect(screen.getByText(formatResetTooltipText("2026-02-02T01:05:00.000Z")!)).toBeInTheDocument()
     vi.useRealTimers()
+  })
+
+  it("does not render reset tooltip for invalid reset timestamps", () => {
+    render(
+      <ProviderCard
+        name="Resets"
+        displayMode="used"
+        lines={[
+          {
+            type: "progress",
+            label: "Invalid",
+            used: 10,
+            limit: 100,
+            format: { kind: "percent" },
+            resetsAt: "not-a-date",
+          },
+        ]}
+      />
+    )
+
+    expect(screen.getByText("100% cap")).toBeInTheDocument()
+    expect(screen.queryByText(/^Next reset:/)).not.toBeInTheDocument()
   })
 
   it("shows 'Resets soon' when reset is under 5 minutes away", () => {
@@ -386,6 +410,7 @@ describe("ProviderCard", () => {
     )
     const resetButton = screen.getByRole("button", { name: /^Resets today at / })
     expect(resetButton).toBeInTheDocument()
+    expect(screen.getByText(formatResetTooltipText(resetsAt)!)).toBeInTheDocument()
     fireEvent.click(resetButton)
     expect(onToggle).toHaveBeenCalledTimes(1)
     vi.useRealTimers()
