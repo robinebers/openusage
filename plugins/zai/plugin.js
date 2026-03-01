@@ -3,6 +3,7 @@
   const SUBSCRIPTION_URL = BASE_URL + "/api/biz/subscription/list"
   const QUOTA_URL = BASE_URL + "/api/monitor/usage/quota/limit"
   const PERIOD_MS = 5 * 60 * 60 * 1000
+  const WEEK_MS = 7 * 24 * 60 * 60 * 1000
   const MONTH_MS = 30 * 24 * 60 * 60 * 1000
 
   function loadApiKey(ctx) {
@@ -77,9 +78,14 @@
     return data
   }
 
-  function findLimit(limits, type) {
+  function findLimit(limits, type, unit) {
     for (let i = 0; i < limits.length; i++) {
-      if (limits[i].type === type || limits[i].name === type) return limits[i]
+      const item = limits[i]
+      if (item.type === type || item.name === type) {
+        if (unit === undefined || item.unit === unit) {
+          return item
+        }
+      }
     }
     return null
   }
@@ -124,6 +130,24 @@
       progressOpts.resetsAt = resetsAt
     }
     lines.push(ctx.line.progress(progressOpts))
+
+    const weeklyTokenLimit = findLimit(limits, "TOKENS_LIMIT", 6)
+    if (weeklyTokenLimit) {
+      const weeklyUsed = typeof weeklyTokenLimit.percentage === "number" ? weeklyTokenLimit.percentage : 0
+      const weeklyResetsAt = weeklyTokenLimit.nextResetTime ? ctx.util.toIso(weeklyTokenLimit.nextResetTime) : undefined
+
+      const weeklyOpts = {
+        label: "Weekly",
+        used: weeklyUsed,
+        limit: 100,
+        format: { kind: "percent" },
+        periodDurationMs: WEEK_MS,
+      }
+      if (weeklyResetsAt) {
+        weeklyOpts.resetsAt = weeklyResetsAt
+      }
+      lines.push(ctx.line.progress(weeklyOpts))
+    }
 
     const timeLimit = findLimit(limits, "TIME_LIMIT")
 

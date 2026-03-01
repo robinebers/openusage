@@ -41,6 +41,46 @@ const QUOTA_RESPONSE = {
   },
 }
 
+const QUOTA_RESPONSE_WITH_WEEKLY = {
+  code: 200,
+  data: {
+    limits: [
+      {
+        type: "TOKENS_LIMIT",
+        usage: 800000000,
+        currentValue: 1900000,
+        percentage: 10,
+        nextResetTime: 1738368000000,
+        unit: 3,
+        number: 5,
+      },
+      {
+        type: "TOKENS_LIMIT",
+        usage: 1600000000,
+        currentValue: 4800000,
+        percentage: 10,
+        nextResetTime: 1738972800000,
+        unit: 6,
+        number: 7,
+      },
+      {
+        type: "TIME_LIMIT",
+        usage: 4000,
+        currentValue: 1095,
+        percentage: 27,
+        remaining: 2905,
+        usageDetails: [
+          { modelCode: "search-prime", usage: 951 },
+          { modelCode: "web-reader", usage: 211 },
+          { modelCode: "zread", usage: 0 },
+        ],
+        unit: 5,
+        number: 1,
+      },
+    ],
+  },
+}
+
 const QUOTA_RESPONSE_NO_TIME_LIMIT = {
   code: 200,
   data: {
@@ -392,5 +432,44 @@ describe("zai plugin", () => {
     const result = plugin.probe(ctx)
     expect(result.lines).toHaveLength(1)
     expect(result.lines[0].text).toBe("No usage data")
+  })
+
+  it("renders Weekly line with percent format and 7-day reset", async () => {
+    const ctx = makeCtx()
+    mockEnvWithKey(ctx, "test-key")
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (opts.url.includes("subscription")) {
+        return { status: 200, bodyText: JSON.stringify(SUBSCRIPTION_RESPONSE) }
+      }
+      return { status: 200, bodyText: JSON.stringify(QUOTA_RESPONSE_WITH_WEEKLY) }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const line = result.lines.find((l) => l.label === "Weekly")
+    expect(line).toBeTruthy()
+    expect(line.type).toBe("progress")
+    expect(line.used).toBe(10)
+    expect(line.limit).toBe(100)
+    expect(line.format).toEqual({ kind: "percent" })
+    expect(line.periodDurationMs).toBe(7 * 24 * 60 * 60 * 1000)
+  })
+
+  it("Weekly line has correct percentage, resetsAt, and periodDurationMs values", async () => {
+    const ctx = makeCtx()
+    mockEnvWithKey(ctx, "test-key")
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (opts.url.includes("subscription")) {
+        return { status: 200, bodyText: JSON.stringify(SUBSCRIPTION_RESPONSE) }
+      }
+      return { status: 200, bodyText: JSON.stringify(QUOTA_RESPONSE_WITH_WEEKLY) }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const line = result.lines.find((l) => l.label === "Weekly")
+    expect(line).toBeTruthy()
+    expect(line.resetsAt).toBe(new Date(1738972800000).toISOString())
+    expect(line.periodDurationMs).toBe(7 * 24 * 60 * 60 * 1000)
   })
 })
