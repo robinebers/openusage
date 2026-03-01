@@ -261,10 +261,7 @@ describe("ProviderCard", () => {
       />
     )
     expect(screen.getByText("Resets in 1h 5m")).toBeInTheDocument()
-    expect(screen.getByText(`Next reset: ${new Intl.DateTimeFormat(undefined, {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(Date.parse("2026-02-02T01:05:00.000Z"))}`)).toBeInTheDocument()
+    expect(screen.getByText(formatResetTooltipText("2026-02-02T01:05:00.000Z")!)).toBeInTheDocument()
     vi.useRealTimers()
   })
 
