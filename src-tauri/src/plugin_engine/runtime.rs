@@ -3,6 +3,7 @@ use crate::plugin_engine::manifest::LoadedPlugin;
 use rquickjs::{Array, Context, Ctx, Error, Object, Promise, Runtime, Value};
 use serde::Serialize;
 use std::path::PathBuf;
+use std::sync::{Arc, RwLock};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -54,6 +55,7 @@ pub fn run_probe(
     plugin: &LoadedPlugin,
     app_data_dir: &PathBuf,
     app_version: &str,
+    ccusage_cache_state: Option<Arc<RwLock<host_api::CcusageCacheState>>>,
 ) -> PluginOutput {
     let fallback = error_output(plugin, "runtime error".to_string());
 
@@ -74,7 +76,15 @@ pub fn run_probe(
     let app_data = app_data_dir.clone();
 
     ctx.with(|ctx| {
-        if host_api::inject_host_api(&ctx, &plugin_id, &app_data, app_version).is_err() {
+        if host_api::inject_host_api(
+            &ctx,
+            &plugin_id,
+            &app_data,
+            app_version,
+            ccusage_cache_state.clone(),
+        )
+        .is_err()
+        {
             return error_output(plugin, "host api injection failed".to_string());
         }
         if host_api::patch_http_wrapper(&ctx).is_err() {
@@ -501,7 +511,7 @@ mod tests {
             };
             "#,
         );
-        let output = run_probe(&plugin, &temp_app_dir("sync"), "0.0.0");
+        let output = run_probe(&plugin, &temp_app_dir("sync"), "0.0.0", None);
         assert_eq!(error_text(output), "boom");
     }
 
@@ -516,7 +526,7 @@ mod tests {
             };
             "#,
         );
-        let output = run_probe(&plugin, &temp_app_dir("async"), "0.0.0");
+        let output = run_probe(&plugin, &temp_app_dir("async"), "0.0.0", None);
         assert_eq!(error_text(output), "boom");
     }
 

@@ -1,13 +1,18 @@
 import { act, renderHook, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-const { getEnabledPluginIdsMock, trackMock } = vi.hoisted(() => ({
+const { getEnabledPluginIdsMock, invokeMock, trackMock } = vi.hoisted(() => ({
   trackMock: vi.fn(),
   getEnabledPluginIdsMock: vi.fn(),
+  invokeMock: vi.fn(),
 }))
 
 vi.mock("@/lib/analytics", () => ({
   track: trackMock,
+}))
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: invokeMock,
 }))
 
 vi.mock("@/lib/settings", () => ({
@@ -21,12 +26,14 @@ describe("useProbeRefreshActions", () => {
   beforeEach(() => {
     trackMock.mockReset()
     getEnabledPluginIdsMock.mockReset()
+    invokeMock.mockReset()
+    invokeMock.mockResolvedValue(undefined)
     getEnabledPluginIdsMock.mockImplementation((settings: { order: string[]; disabled: string[] }) =>
       settings.order.filter((id) => !settings.disabled.includes(id))
     )
   })
 
-  it("retries one plugin and tracks manual refresh", () => {
+  it("retries one plugin and tracks manual refresh", async () => {
     const manualRefreshIdsRef = { current: new Set<string>() }
     const startBatch = vi.fn().mockResolvedValue(undefined)
     const setLoadingForPlugins = vi.fn()
@@ -49,11 +56,14 @@ describe("useProbeRefreshActions", () => {
 
     expect(trackMock).toHaveBeenCalledWith("provider_refreshed", { provider_id: "codex" })
     expect(setLoadingForPlugins).toHaveBeenCalledWith(["codex"])
-    expect(startBatch).toHaveBeenCalledWith(["codex"])
-    expect(manualRefreshIdsRef.current.has("codex")).toBe(true)
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("invalidate_ccusage_cache")
+      expect(startBatch).toHaveBeenCalledWith(["codex"])
+      expect(manualRefreshIdsRef.current.has("codex")).toBe(true)
+    })
   })
 
-  it("filters out ineligible plugins for refresh-all", () => {
+  it("filters out ineligible plugins for refresh-all", async () => {
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_000_000)
     const startBatch = vi.fn().mockResolvedValue(undefined)
     const setLoadingForPlugins = vi.fn()
@@ -81,8 +91,38 @@ describe("useProbeRefreshActions", () => {
     })
 
     expect(setLoadingForPlugins).toHaveBeenCalledWith(["c"])
-    expect(startBatch).toHaveBeenCalledWith(["c"])
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("invalidate_ccusage_cache")
+      expect(startBatch).toHaveBeenCalledWith(["c"])
+    })
     nowSpy.mockRestore()
+  })
+
+  it("invalidates cache before starting a manual batch", async () => {
+    const startBatch = vi.fn().mockResolvedValue(undefined)
+    const { result } = renderHook(() =>
+      useProbeRefreshActions({
+        pluginSettings: { order: ["codex"], disabled: [] },
+        pluginStatesRef: { current: {} },
+        manualRefreshIdsRef: { current: new Set<string>() },
+        resetAutoUpdateSchedule: vi.fn(),
+        setLoadingForPlugins: vi.fn(),
+        setErrorForPlugins: vi.fn(),
+        startBatch,
+      })
+    )
+
+    act(() => {
+      result.current.handleRetryPlugin("codex")
+    })
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("invalidate_ccusage_cache")
+      expect(startBatch).toHaveBeenCalledWith(["codex"])
+    })
+    const invalidateOrder = invokeMock.mock.invocationCallOrder[0]
+    const batchStartOrder = startBatch.mock.invocationCallOrder[0]
+    expect(invalidateOrder).toBeLessThan(batchStartOrder)
   })
 
   it("returns early when settings are unavailable or no plugins are eligible", () => {

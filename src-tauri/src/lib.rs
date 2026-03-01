@@ -9,10 +9,10 @@ mod webkit_config;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 use serde::Serialize;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 use tauri_plugin_aptabase::EventTracker;
 use tauri_plugin_log::{Target, TargetKind};
 use uuid::Uuid;
@@ -101,6 +101,8 @@ pub struct AppState {
     pub app_data_dir: PathBuf,
     pub app_version: String,
 }
+
+type SharedCcusageCacheState = Arc<RwLock<plugin_engine::host_api::CcusageCacheState>>;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -202,6 +204,9 @@ async fn start_probe_batch(
             locked.app_version.clone(),
         )
     };
+    let ccusage_cache_state = app_handle
+        .try_state::<SharedCcusageCacheState>()
+        .map(|state| state.inner().clone());
 
     let selected_plugins = match plugin_ids {
         Some(ids) => {
@@ -255,11 +260,12 @@ async fn start_probe_batch(
         let data_dir = app_data_dir.clone();
         let version = app_version.clone();
         let counter = Arc::clone(&remaining);
+        let cache_state = ccusage_cache_state.clone();
 
         tauri::async_runtime::spawn_blocking(move || {
             let plugin_id = plugin.manifest.id.clone();
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                plugin_engine::runtime::run_probe(&plugin, &data_dir, &version)
+                plugin_engine::runtime::run_probe(&plugin, &data_dir, &version, cache_state)
             }));
 
             match result {
@@ -305,6 +311,16 @@ fn get_log_path(app_handle: tauri::AppHandle) -> Result<String, String> {
     let log_dir = home.join("Library").join("Logs").join(&bundle_id);
     let log_file = log_dir.join(format!("{}.log", app_handle.package_info().name));
     Ok(log_file.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn invalidate_ccusage_cache(state: tauri::State<'_, SharedCcusageCacheState>) -> Result<(), String> {
+    let mut cache = state
+        .write()
+        .map_err(|e| format!("failed to lock ccusage cache for invalidation: {}", e))?;
+    cache
+        .invalidate_all()
+        .map_err(|e| format!("failed to invalidate ccusage cache: {}", e))
 }
 
 /// Update the global shortcut registration.
@@ -445,6 +461,7 @@ pub fn run() {
             start_probe_batch,
             list_plugins,
             get_log_path,
+            invalidate_ccusage_cache,
             update_global_shortcut
         ])
         .setup(|app| {
@@ -457,18 +474,26 @@ pub fn run() {
                 webkit_config::disable_webview_suspension(app.handle());
             }
 
-            use tauri::Manager;
-
             let version = app.package_info().version.to_string();
             log::info!("OpenUsage v{} starting", version);
 
             track_app_started_once_per_day_per_version(app);
 
             let app_data_dir = app.path().app_data_dir().expect("no app data dir");
+            let app_cache_dir = app.path().app_cache_dir().expect("no app cache dir");
             let resource_dir = app.path().resource_dir().expect("no resource dir");
             log::debug!("app_data_dir: {:?}", app_data_dir);
+            log::debug!("app_cache_dir: {:?}", app_cache_dir);
+            if let Err(error) = std::fs::create_dir_all(&app_cache_dir) {
+                log::warn!("failed to create app_cache_dir {}: {}", app_cache_dir.display(), error);
+            }
 
             let (_, plugins) = plugin_engine::initialize_plugins(&app_data_dir, &resource_dir);
+            app.manage(Arc::new(RwLock::new(
+                plugin_engine::host_api::CcusageCacheState::new(
+                    app_cache_dir.join("ccusage-cache-v1.json"),
+                ),
+            )));
             app.manage(Mutex::new(AppState {
                 plugins,
                 app_data_dir,

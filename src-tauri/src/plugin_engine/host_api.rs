@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const WHITELISTED_ENV_VARS: [&str; 6] = [
     "CODEX_HOME",
@@ -276,6 +277,7 @@ pub fn inject_host_api<'js>(
     plugin_id: &str,
     app_data_dir: &PathBuf,
     app_version: &str,
+    ccusage_cache_state: Option<Arc<RwLock<CcusageCacheState>>>,
 ) -> rquickjs::Result<()> {
     let globals = ctx.globals();
     let probe_ctx = Object::new(ctx.clone())?;
@@ -308,7 +310,7 @@ pub fn inject_host_api<'js>(
     inject_keychain(ctx, &host)?;
     inject_sqlite(ctx, &host)?;
     inject_ls(ctx, &host, plugin_id)?;
-    inject_ccusage(ctx, &host, plugin_id)?;
+    inject_ccusage(ctx, &host, plugin_id, ccusage_cache_state)?;
 
     probe_ctx.set("host", host)?;
     globals.set("__openusage_ctx", probe_ctx)?;
@@ -1171,6 +1173,11 @@ const CCUSAGE_CLAUDE_PACKAGE_NAME: &str = "ccusage";
 const CCUSAGE_CODEX_PACKAGE_NAME: &str = "@ccusage/codex";
 const CCUSAGE_TIMEOUT_SECS: u64 = 15;
 const CCUSAGE_POLL_INTERVAL_MS: u64 = 100;
+const CCUSAGE_CACHE_SUCCESS_TTL_SECS: u64 = 600;
+const CCUSAGE_CACHE_FAILURE_TTL_SECS: u64 = 120;
+const CCUSAGE_RUNNER_CACHE_TTL_SECS: u64 = 300;
+const CCUSAGE_CACHE_MAX_ENTRIES: usize = 128;
+const CCUSAGE_CACHE_VERSION: u8 = 1;
 
 #[derive(Default, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1182,7 +1189,7 @@ struct CcusageQueryOpts {
     claude_path: Option<String>,
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 enum CcusageProvider {
     Claude,
     Codex,
@@ -1195,6 +1202,65 @@ enum CcusageRunnerKind {
     YarnDlx,
     NpmExec,
     Npx,
+}
+
+#[derive(Clone)]
+struct CcusageCacheEntry {
+    payload: String,
+    cached_at_ms: i64,
+    is_success: bool,
+}
+
+#[derive(Clone)]
+struct CcusageRunnerCacheEntry {
+    runners: Vec<(CcusageRunnerKind, String)>,
+    cached_at_ms: i64,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct PersistedCcusageCache {
+    version: u8,
+    entries: Vec<PersistedCcusageCacheEntry>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct PersistedCcusageCacheEntry {
+    key: String,
+    payload: String,
+    cached_at_ms: i64,
+    is_success: bool,
+}
+
+pub struct CcusageCacheState {
+    cache_file_path: PathBuf,
+    result_cache: HashMap<String, CcusageCacheEntry>,
+    runner_cache: Option<CcusageRunnerCacheEntry>,
+    loaded_from_disk: bool,
+    generation: u64,
+}
+
+impl CcusageCacheState {
+    pub fn new(cache_file_path: PathBuf) -> Self {
+        Self {
+            cache_file_path,
+            result_cache: HashMap::new(),
+            runner_cache: None,
+            loaded_from_disk: false,
+            generation: 0,
+        }
+    }
+
+    pub fn invalidate_all(&mut self) -> std::io::Result<()> {
+        self.result_cache.clear();
+        self.runner_cache = None;
+        self.loaded_from_disk = true;
+        self.generation = self.generation.saturating_add(1);
+        match std::fs::remove_file(&self.cache_file_path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error),
+        }
+    }
 }
 
 fn ccusage_runner_order() -> [CcusageRunnerKind; 5] {
@@ -1285,6 +1351,343 @@ fn ccusage_home_override<'a>(
             .filter(|s| !s.is_empty()),
         CcusageProvider::Codex => None,
     }
+}
+
+fn ccusage_provider_key(provider: CcusageProvider) -> &'static str {
+    match provider {
+        CcusageProvider::Claude => "claude",
+        CcusageProvider::Codex => "codex",
+    }
+}
+
+#[derive(serde::Serialize)]
+struct CcusageCacheKey<'a> {
+    provider: &'a str,
+    since: &'a str,
+    until: &'a str,
+    home: &'a str,
+}
+
+fn now_epoch_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
+}
+
+fn ccusage_cache_key(opts: &CcusageQueryOpts, provider: CcusageProvider) -> String {
+    let since = opts
+        .since
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("");
+    let until = opts
+        .until
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("");
+    // Explicitly model the "ambient env" assumption when no home override is passed.
+    let home_component = ccusage_home_override(opts, provider)
+        .map(|value| format!("explicit:{value}"))
+        .unwrap_or_else(|| "ambient".to_string());
+    let key = CcusageCacheKey {
+        provider: ccusage_provider_key(provider),
+        since,
+        until,
+        home: home_component.as_str(),
+    };
+    serde_json::to_string(&key).expect("serializing ccusage cache key should not fail")
+}
+
+fn ccusage_entry_ttl_ms(is_success: bool) -> i64 {
+    let ttl_secs = if is_success {
+        CCUSAGE_CACHE_SUCCESS_TTL_SECS
+    } else {
+        CCUSAGE_CACHE_FAILURE_TTL_SECS
+    };
+    Duration::from_secs(ttl_secs).as_millis() as i64
+}
+
+fn ccusage_runner_cache_ttl_ms() -> i64 {
+    Duration::from_secs(CCUSAGE_RUNNER_CACHE_TTL_SECS).as_millis() as i64
+}
+
+fn ccusage_prune_expired_result_cache(state: &mut CcusageCacheState, now_ms: i64) {
+    state.result_cache.retain(|_, entry| {
+        let ttl_ms = ccusage_entry_ttl_ms(entry.is_success);
+        now_ms.saturating_sub(entry.cached_at_ms) <= ttl_ms
+    });
+}
+
+fn ccusage_trim_result_cache_to_limit(state: &mut CcusageCacheState) {
+    if state.result_cache.len() <= CCUSAGE_CACHE_MAX_ENTRIES {
+        return;
+    }
+    let mut entries: Vec<(&str, i64)> = state
+        .result_cache
+        .iter()
+        .map(|(key, entry)| (key.as_str(), entry.cached_at_ms))
+        .collect();
+    entries.sort_by_key(|(_, cached_at_ms)| *cached_at_ms);
+    let remove_count = state
+        .result_cache
+        .len()
+        .saturating_sub(CCUSAGE_CACHE_MAX_ENTRIES);
+    let keys_to_remove: Vec<String> = entries
+        .into_iter()
+        .take(remove_count)
+        .map(|(key, _)| key.to_string())
+        .collect();
+    for key in keys_to_remove {
+        state.result_cache.remove(key.as_str());
+    }
+}
+
+fn ccusage_persist_result_cache(
+    cache_file_path: &Path,
+    result_cache: &HashMap<String, CcusageCacheEntry>,
+) -> std::io::Result<()> {
+    if let Some(parent) = cache_file_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let persisted = PersistedCcusageCache {
+        version: CCUSAGE_CACHE_VERSION,
+        entries: result_cache
+            .iter()
+            .map(|(key, entry)| PersistedCcusageCacheEntry {
+                key: key.clone(),
+                payload: entry.payload.clone(),
+                cached_at_ms: entry.cached_at_ms,
+                is_success: entry.is_success,
+            })
+            .collect(),
+    };
+    let encoded = serde_json::to_vec(&persisted)
+        .map_err(|error| std::io::Error::other(format!("cache serialization failed: {}", error)))?;
+
+    let mut tmp = cache_file_path.as_os_str().to_os_string();
+    tmp.push(".tmp");
+    let tmp_path = PathBuf::from(tmp);
+    std::fs::write(&tmp_path, &encoded)?;
+    ccusage_replace_persisted_file(tmp_path.as_path(), cache_file_path)
+}
+
+fn ccusage_replace_persisted_file(tmp_path: &Path, cache_file_path: &Path) -> std::io::Result<()> {
+    match std::fs::rename(tmp_path, cache_file_path) {
+        Ok(()) => Ok(()),
+        Err(first_error) => {
+            if cache_file_path.exists() {
+                if let Err(remove_error) = std::fs::remove_file(cache_file_path) {
+                    if remove_error.kind() != std::io::ErrorKind::NotFound {
+                        let _ = std::fs::remove_file(tmp_path);
+                        return Err(remove_error);
+                    }
+                }
+                match std::fs::rename(tmp_path, cache_file_path) {
+                    Ok(()) => Ok(()),
+                    Err(second_error) => {
+                        let _ = std::fs::remove_file(tmp_path);
+                        Err(second_error)
+                    }
+                }
+            } else {
+                let _ = std::fs::remove_file(tmp_path);
+                Err(first_error)
+            }
+        }
+    }
+}
+
+fn ccusage_load_result_cache_if_needed(state: &mut CcusageCacheState) {
+    if state.loaded_from_disk {
+        return;
+    }
+
+    let payload = match std::fs::read_to_string(&state.cache_file_path) {
+        Ok(payload) => payload,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            state.loaded_from_disk = true;
+            return;
+        }
+        Err(error) => {
+            log::warn!("ccusage cache read failed: {}", error);
+            state.loaded_from_disk = true;
+            return;
+        }
+    };
+
+    let persisted: PersistedCcusageCache = match serde_json::from_str(&payload) {
+        Ok(value) => value,
+        Err(error) => {
+            log::warn!("ccusage cache parse failed: {}", error);
+            state.loaded_from_disk = true;
+            return;
+        }
+    };
+    if persisted.version != CCUSAGE_CACHE_VERSION {
+        log::warn!(
+            "ccusage cache version mismatch: expected {}, got {}",
+            CCUSAGE_CACHE_VERSION,
+            persisted.version
+        );
+        state.loaded_from_disk = true;
+        return;
+    }
+
+    let now_ms = now_epoch_ms();
+    for entry in persisted.entries {
+        let ttl_ms = ccusage_entry_ttl_ms(entry.is_success);
+        if now_ms.saturating_sub(entry.cached_at_ms) > ttl_ms {
+            continue;
+        }
+        state.result_cache.insert(
+            entry.key,
+            CcusageCacheEntry {
+                payload: entry.payload,
+                cached_at_ms: entry.cached_at_ms,
+                is_success: entry.is_success,
+            },
+        );
+    }
+    ccusage_trim_result_cache_to_limit(state);
+    state.loaded_from_disk = true;
+}
+
+fn ccusage_get_cached_result_read_only(
+    state: &CcusageCacheState,
+    key: &str,
+    now_ms: i64,
+) -> Option<String> {
+    state.result_cache.get(key).and_then(|entry| {
+        let ttl_ms = ccusage_entry_ttl_ms(entry.is_success);
+        if now_ms.saturating_sub(entry.cached_at_ms) > ttl_ms {
+            None
+        } else {
+            Some(entry.payload.clone())
+        }
+    })
+}
+
+fn ccusage_get_cached_result(state: &mut CcusageCacheState, key: &str) -> Option<String> {
+    ccusage_load_result_cache_if_needed(state);
+    let now_ms = now_epoch_ms();
+    let result = ccusage_get_cached_result_read_only(state, key, now_ms);
+    // We only prune on the mutable path to keep the hot read-only path lock-free from mutation.
+    ccusage_prune_expired_result_cache(state, now_ms);
+    result
+}
+
+fn ccusage_set_cached_result(
+    state: &mut CcusageCacheState,
+    key: String,
+    payload: String,
+    is_success: bool,
+) {
+    ccusage_load_result_cache_if_needed(state);
+    let now_ms = now_epoch_ms();
+    ccusage_prune_expired_result_cache(state, now_ms);
+    state.result_cache.insert(
+        key,
+        CcusageCacheEntry {
+            payload,
+            cached_at_ms: now_ms,
+            is_success,
+        },
+    );
+    ccusage_trim_result_cache_to_limit(state);
+}
+
+fn ccusage_get_cached_runners_read_only(
+    state: &CcusageCacheState,
+    now_ms: i64,
+) -> Option<Vec<(CcusageRunnerKind, String)>> {
+    let entry = state.runner_cache.as_ref()?;
+    if now_ms.saturating_sub(entry.cached_at_ms) > ccusage_runner_cache_ttl_ms() {
+        return None;
+    }
+    Some(entry.runners.clone())
+}
+
+fn ccusage_get_cached_runners(
+    state: &mut CcusageCacheState,
+    now_ms: i64,
+) -> Option<Vec<(CcusageRunnerKind, String)>> {
+    let result = ccusage_get_cached_runners_read_only(state, now_ms);
+    if result.is_none() {
+        state.runner_cache = None;
+    }
+    result
+}
+
+fn ccusage_set_cached_runners(state: &mut CcusageCacheState, runners: Vec<(CcusageRunnerKind, String)>) {
+    state.runner_cache = Some(CcusageRunnerCacheEntry {
+        runners,
+        cached_at_ms: now_epoch_ms(),
+    });
+}
+
+fn ccusage_generation(cache_state: Option<&Arc<RwLock<CcusageCacheState>>>) -> Option<u64> {
+    let Some(cache_state) = cache_state else {
+        return None;
+    };
+    match cache_state.read() {
+        Ok(state) => Some(state.generation),
+        Err(error) => {
+            log::warn!("ccusage cache read lock poisoned while reading generation: {}", error);
+            None
+        }
+    }
+}
+
+fn collect_ccusage_runners_cached(
+    cache_state: Option<&Arc<RwLock<CcusageCacheState>>>,
+) -> Vec<(CcusageRunnerKind, String)> {
+    if let Some(cache_state) = cache_state {
+        let now_ms = now_epoch_ms();
+        match cache_state.read() {
+            Ok(state) => {
+                if let Some(runners) = ccusage_get_cached_runners_read_only(&state, now_ms) {
+                    return runners;
+                }
+            }
+            Err(error) => {
+                log::warn!(
+                    "ccusage cache read lock poisoned while resolving runners: {}",
+                    error
+                );
+            }
+        }
+        match cache_state.write() {
+            Ok(mut state) => {
+                if let Some(runners) = ccusage_get_cached_runners(&mut state, now_ms) {
+                    return runners;
+                }
+            }
+            Err(error) => {
+                log::warn!(
+                    "ccusage cache write lock poisoned while resolving runners: {}",
+                    error
+                );
+            }
+        }
+        let discovered = collect_ccusage_runners();
+        match cache_state.write() {
+            Ok(mut state) => {
+                ccusage_set_cached_runners(&mut state, discovered.clone());
+            }
+            Err(error) => {
+                log::warn!(
+                    "ccusage cache write lock poisoned while caching runners: {}",
+                    error
+                );
+            }
+        }
+        return discovered;
+    }
+    collect_ccusage_runners()
 }
 
 fn ccusage_runner_candidates(kind: CcusageRunnerKind) -> Vec<String> {
@@ -1669,13 +2072,83 @@ fn run_ccusage_with_runner(
     }
 }
 
+fn ccusage_read_cached_payload(
+    cache_state: Option<&Arc<RwLock<CcusageCacheState>>>,
+    key: &str,
+) -> Option<String> {
+    let cache_state = cache_state?;
+    let now_ms = now_epoch_ms();
+    match cache_state.read() {
+        Ok(state) => {
+            if state.loaded_from_disk {
+                if let Some(payload) = ccusage_get_cached_result_read_only(&state, key, now_ms) {
+                    return Some(payload);
+                }
+            }
+        }
+        Err(error) => {
+            log::warn!("ccusage cache read lock poisoned while reading payload: {}", error);
+        }
+    }
+
+    match cache_state.write() {
+        Ok(mut state) => ccusage_get_cached_result(&mut state, key),
+        Err(error) => {
+            log::warn!("ccusage cache write lock poisoned while reading payload: {}", error);
+            None
+        }
+    }
+}
+
+fn ccusage_write_cached_payload(
+    cache_state: Option<&Arc<RwLock<CcusageCacheState>>>,
+    key: String,
+    payload: String,
+    is_success: bool,
+    expected_generation: Option<u64>,
+) {
+    let Some(cache_state) = cache_state else {
+        return;
+    };
+    let snapshot = match cache_state.write() {
+        Ok(mut state) => {
+            if let Some(expected_generation) = expected_generation {
+                if state.generation != expected_generation {
+                    return;
+                }
+            }
+            ccusage_set_cached_result(&mut state, key, payload, is_success);
+            Some((
+                state.cache_file_path.clone(),
+                state.result_cache.clone(),
+                state.generation,
+            ))
+        }
+        Err(error) => {
+            log::warn!("ccusage cache write lock poisoned while writing payload: {}", error);
+            None
+        }
+    };
+    let Some((cache_file_path, result_cache, snapshot_generation)) = snapshot else {
+        return;
+    };
+    if ccusage_generation(Some(cache_state)) != Some(snapshot_generation) {
+        return;
+    }
+    if let Err(error) = ccusage_persist_result_cache(cache_file_path.as_path(), &result_cache) {
+        log::warn!("ccusage cache persist failed: {}", error);
+    }
+}
+
 fn inject_ccusage<'js>(
     ctx: &Ctx<'js>,
     host: &Object<'js>,
     plugin_id: &str,
+    ccusage_cache_state: Option<Arc<RwLock<CcusageCacheState>>>,
 ) -> rquickjs::Result<()> {
     let ccusage_obj = Object::new(ctx.clone())?;
     let pid = plugin_id.to_string();
+    let cache_state = ccusage_cache_state.clone();
 
     ccusage_obj.set(
         "_queryRaw",
@@ -1690,10 +2163,24 @@ fn inject_ccusage<'js>(
                     }
                 };
                 let provider = resolve_ccusage_provider(&opts, &pid);
-                let runners = collect_ccusage_runners();
+                let cache_key = ccusage_cache_key(&opts, provider);
+                if let Some(payload) = ccusage_read_cached_payload(cache_state.as_ref(), &cache_key) {
+                    return Ok(payload);
+                }
+                let write_generation = ccusage_generation(cache_state.as_ref());
+
+                let runners = collect_ccusage_runners_cached(cache_state.as_ref());
                 if runners.is_empty() {
                     log::warn!("[plugin:{}] no package runner found for ccusage query", pid);
-                    return Ok(serde_json::json!({ "status": "no_runner" }).to_string());
+                    let payload = serde_json::json!({ "status": "no_runner" }).to_string();
+                    ccusage_write_cached_payload(
+                        cache_state.as_ref(),
+                        cache_key,
+                        payload.clone(),
+                        false,
+                        write_generation,
+                    );
+                    return Ok(payload);
                 }
 
                 for (kind, program) in runners {
@@ -1711,7 +2198,15 @@ fn inject_ccusage<'js>(
                                 continue;
                             }
                         };
-                        return Ok(serde_json::json!({ "status": "ok", "data": data }).to_string());
+                        let payload = serde_json::json!({ "status": "ok", "data": data }).to_string();
+                        ccusage_write_cached_payload(
+                            cache_state.as_ref(),
+                            cache_key,
+                            payload.clone(),
+                            true,
+                            write_generation,
+                        );
+                        return Ok(payload);
                     }
                 }
 
@@ -1719,7 +2214,15 @@ fn inject_ccusage<'js>(
                     "[plugin:{}] ccusage query failed with all available runners",
                     pid
                 );
-                Ok(serde_json::json!({ "status": "runner_failed" }).to_string())
+                let payload = serde_json::json!({ "status": "runner_failed" }).to_string();
+                ccusage_write_cached_payload(
+                    cache_state.as_ref(),
+                    cache_key,
+                    payload.clone(),
+                    false,
+                    write_generation,
+                );
+                Ok(payload)
             },
         )?,
     )?;
@@ -2007,7 +2510,7 @@ mod tests {
         let ctx = Context::full(&rt).expect("context");
         ctx.with(|ctx| {
             let app_data = std::env::temp_dir();
-            inject_host_api(&ctx, "test", &app_data, "0.0.0").expect("inject host api");
+            inject_host_api(&ctx, "test", &app_data, "0.0.0", None).expect("inject host api");
             let globals = ctx.globals();
             let probe_ctx: Object = globals.get("__openusage_ctx").expect("probe ctx");
             let host: Object = probe_ctx.get("host").expect("host");
@@ -2027,7 +2530,7 @@ mod tests {
         let ctx = Context::full(&rt).expect("context");
         ctx.with(|ctx| {
             let app_data = std::env::temp_dir();
-            inject_host_api(&ctx, "test", &app_data, "0.0.0").expect("inject host api");
+            inject_host_api(&ctx, "test", &app_data, "0.0.0", None).expect("inject host api");
             let globals = ctx.globals();
             let probe_ctx: Object = globals.get("__openusage_ctx").expect("probe ctx");
             let host: Object = probe_ctx.get("host").expect("host");
@@ -2095,7 +2598,7 @@ mod tests {
         let ctx = Context::full(&rt).expect("context");
         ctx.with(|ctx| {
             let app_data = std::env::temp_dir();
-            inject_host_api(&ctx, "test", &app_data, "0.0.0").expect("inject host api");
+            inject_host_api(&ctx, "test", &app_data, "0.0.0", None).expect("inject host api");
             let globals = ctx.globals();
             let probe_ctx: Object = globals.get("__openusage_ctx").expect("probe ctx");
             let host: Object = probe_ctx.get("host").expect("host");
@@ -2628,6 +3131,239 @@ mod tests {
             resolve_ccusage_provider(&opts_empty, "unknown-provider"),
             CcusageProvider::Claude
         );
+    }
+
+    fn temp_cache_file(label: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        std::env::temp_dir().join(format!("openusage-ccusage-cache-{label}-{nanos}.json"))
+    }
+
+    #[test]
+    fn ccusage_cache_key_uses_resolved_provider_enum_value() {
+        let opts = CcusageQueryOpts::default();
+        let claude_key = ccusage_cache_key(&opts, resolve_ccusage_provider(&opts, "claude"));
+        let codex_key = ccusage_cache_key(&opts, resolve_ccusage_provider(&opts, "codex"));
+
+        let claude_value: serde_json::Value =
+            serde_json::from_str(&claude_key).expect("claude cache key json");
+        let codex_value: serde_json::Value =
+            serde_json::from_str(&codex_key).expect("codex cache key json");
+        assert_eq!(claude_value.get("provider"), Some(&serde_json::json!("claude")));
+        assert_eq!(codex_value.get("provider"), Some(&serde_json::json!("codex")));
+        assert_ne!(claude_key, codex_key);
+    }
+
+    #[test]
+    fn ccusage_cache_key_marks_ambient_home_when_override_missing() {
+        let opts = CcusageQueryOpts::default();
+        let key = ccusage_cache_key(&opts, CcusageProvider::Claude);
+        let key_value: serde_json::Value = serde_json::from_str(&key).expect("cache key json");
+        assert_eq!(key_value.get("home"), Some(&serde_json::json!("ambient")));
+    }
+
+    #[test]
+    fn ccusage_cache_key_preserves_separator_chars_in_values() {
+        let opts = CcusageQueryOpts {
+            provider: None,
+            since: Some("2025-01-01|demo".to_string()),
+            until: Some("2025-01-31|demo".to_string()),
+            home_path: Some("/tmp/openusage|home".to_string()),
+            claude_path: None,
+        };
+        let key = ccusage_cache_key(&opts, CcusageProvider::Claude);
+        let key_value: serde_json::Value = serde_json::from_str(&key).expect("cache key json");
+        assert_eq!(
+            key_value.get("since"),
+            Some(&serde_json::json!("2025-01-01|demo"))
+        );
+        assert_eq!(
+            key_value.get("until"),
+            Some(&serde_json::json!("2025-01-31|demo"))
+        );
+        assert_eq!(
+            key_value.get("home"),
+            Some(&serde_json::json!("explicit:/tmp/openusage|home"))
+        );
+    }
+
+    #[test]
+    fn ccusage_cache_policy_ttl_values_match_expected_seconds() {
+        assert_eq!(
+            ccusage_entry_ttl_ms(true),
+            Duration::from_secs(CCUSAGE_CACHE_SUCCESS_TTL_SECS).as_millis() as i64
+        );
+        assert_eq!(
+            ccusage_entry_ttl_ms(false),
+            Duration::from_secs(CCUSAGE_CACHE_FAILURE_TTL_SECS).as_millis() as i64
+        );
+        assert_eq!(
+            ccusage_runner_cache_ttl_ms(),
+            Duration::from_secs(CCUSAGE_RUNNER_CACHE_TTL_SECS).as_millis() as i64
+        );
+    }
+
+    #[test]
+    fn ccusage_get_cached_result_read_only_respects_ttl() {
+        let mut state = CcusageCacheState::new(temp_cache_file("read-only-ttl"));
+        let key = "ttl-key".to_string();
+        ccusage_set_cached_result(
+            &mut state,
+            key.clone(),
+            serde_json::json!({ "status": "ok", "data": { "daily": [] } }).to_string(),
+            true,
+        );
+        let now_ms = now_epoch_ms();
+        assert!(ccusage_get_cached_result_read_only(&state, &key, now_ms).is_some());
+
+        if let Some(entry) = state.result_cache.get_mut(&key) {
+            entry.cached_at_ms = now_ms - ccusage_entry_ttl_ms(true) - 1;
+        }
+        assert!(ccusage_get_cached_result_read_only(&state, &key, now_ms).is_none());
+    }
+
+    #[test]
+    fn ccusage_load_result_cache_marks_terminal_io_error_as_loaded() {
+        let mut state = CcusageCacheState::new(std::env::temp_dir());
+        ccusage_load_result_cache_if_needed(&mut state);
+        assert!(
+            state.loaded_from_disk,
+            "terminal read errors should set loaded_from_disk=true to avoid hot-loop retries"
+        );
+    }
+
+    #[test]
+    fn ccusage_cache_state_invalidation_clears_memory_runner_and_file() {
+        let cache_file = temp_cache_file("invalidate");
+        let mut state = CcusageCacheState::new(cache_file.clone());
+        let generation_before = state.generation;
+        ccusage_set_cached_result(
+            &mut state,
+            "k".to_string(),
+            serde_json::json!({ "status": "ok", "data": { "daily": [] } }).to_string(),
+            true,
+        );
+        ccusage_set_cached_runners(
+            &mut state,
+            vec![(CcusageRunnerKind::Npx, "npx".to_string())],
+        );
+        ccusage_persist_result_cache(cache_file.as_path(), &state.result_cache)
+            .expect("persist cache file");
+        assert!(!state.result_cache.is_empty());
+        assert!(state.runner_cache.is_some());
+        assert!(cache_file.exists());
+
+        state.invalidate_all().expect("invalidate cache");
+        assert!(state.result_cache.is_empty());
+        assert!(state.runner_cache.is_none());
+        assert_eq!(state.generation, generation_before.saturating_add(1));
+        assert!(!cache_file.exists());
+    }
+
+    #[test]
+    fn ccusage_replace_persisted_file_overwrites_existing_target() {
+        let cache_file = temp_cache_file("replace-target");
+        let tmp_file = PathBuf::from(format!("{}.tmp", cache_file.to_string_lossy()));
+        std::fs::write(&cache_file, "old-cache").expect("write cache target");
+        std::fs::write(&tmp_file, "new-cache").expect("write cache tmp");
+
+        ccusage_replace_persisted_file(tmp_file.as_path(), cache_file.as_path())
+            .expect("replace cache file");
+
+        assert_eq!(
+            std::fs::read_to_string(&cache_file).expect("read replaced cache"),
+            "new-cache"
+        );
+        assert!(!tmp_file.exists(), "tmp file should be consumed");
+
+        let _ = std::fs::remove_file(cache_file);
+    }
+
+    #[test]
+    fn ccusage_write_cached_payload_skips_stale_write_after_invalidation() {
+        let cache_file = temp_cache_file("generation-guard");
+        let cache_state = Arc::new(RwLock::new(CcusageCacheState::new(cache_file.clone())));
+        let generation_before = ccusage_generation(Some(&cache_state));
+        {
+            let mut state = cache_state.write().expect("lock cache state");
+            state.invalidate_all().expect("invalidate cache state");
+        }
+
+        ccusage_write_cached_payload(
+            Some(&cache_state),
+            "stale-key".to_string(),
+            serde_json::json!({ "status": "ok", "data": { "daily": [] } }).to_string(),
+            true,
+            generation_before,
+        );
+
+        let state = cache_state.read().expect("lock cache state");
+        assert!(!state.result_cache.contains_key("stale-key"));
+    }
+
+    #[test]
+    fn ccusage_cache_load_discards_stale_entries() {
+        let cache_file = temp_cache_file("stale-prune");
+        let now_ms = now_epoch_ms();
+        let stale = now_ms - ccusage_entry_ttl_ms(true) - 1;
+        let fresh = now_ms;
+        let persisted = PersistedCcusageCache {
+            version: CCUSAGE_CACHE_VERSION,
+            entries: vec![
+                PersistedCcusageCacheEntry {
+                    key: "stale".to_string(),
+                    payload: serde_json::json!({ "status": "ok", "data": { "daily": [] } })
+                        .to_string(),
+                    cached_at_ms: stale,
+                    is_success: true,
+                },
+                PersistedCcusageCacheEntry {
+                    key: "fresh".to_string(),
+                    payload: serde_json::json!({ "status": "runner_failed" }).to_string(),
+                    cached_at_ms: fresh,
+                    is_success: false,
+                },
+            ],
+        };
+        std::fs::write(
+            &cache_file,
+            serde_json::to_vec(&persisted).expect("serialize persisted cache"),
+        )
+        .expect("write persisted cache");
+
+        let mut state = CcusageCacheState::new(cache_file.clone());
+        ccusage_load_result_cache_if_needed(&mut state);
+        assert!(state.result_cache.contains_key("fresh"));
+        assert!(!state.result_cache.contains_key("stale"));
+
+        let _ = std::fs::remove_file(cache_file);
+    }
+
+    #[test]
+    fn runner_cache_is_provider_agnostic() {
+        let mut state = CcusageCacheState::new(temp_cache_file("runner-cache"));
+        let runners = vec![
+            (CcusageRunnerKind::Bunx, "bunx".to_string()),
+            (CcusageRunnerKind::Npx, "npx".to_string()),
+        ];
+        ccusage_set_cached_runners(&mut state, runners.clone());
+        let now_ms = now_epoch_ms();
+        assert_eq!(ccusage_get_cached_runners(&mut state, now_ms), Some(runners));
+    }
+
+    #[test]
+    fn runner_cache_mutable_lookup_delegates_to_read_only_logic() {
+        let mut state = CcusageCacheState::new(temp_cache_file("runner-cache-shared-now"));
+        ccusage_set_cached_runners(
+            &mut state,
+            vec![(CcusageRunnerKind::NpmExec, "npm".to_string())],
+        );
+        let now_ms = now_epoch_ms();
+        let read_only = ccusage_get_cached_runners_read_only(&state, now_ms);
+        let mutable = ccusage_get_cached_runners(&mut state, now_ms);
+        assert_eq!(mutable, read_only);
     }
 
     #[test]

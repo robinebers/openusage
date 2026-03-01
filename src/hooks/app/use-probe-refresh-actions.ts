@@ -1,5 +1,6 @@
 import { useCallback } from "react"
 import type { MutableRefObject } from "react"
+import { invoke } from "@tauri-apps/api/core"
 import { track } from "@/lib/analytics"
 import { REFRESH_COOLDOWN_MS, getEnabledPluginIds, type PluginSettings } from "@/lib/settings"
 import type { PluginState } from "@/hooks/app/types"
@@ -30,13 +31,21 @@ export function useProbeRefreshActions({
       }
 
       setLoadingForPlugins(ids)
-      startBatch(ids).catch((error) => {
-        for (const id of ids) {
-          manualRefreshIdsRef.current.delete(id)
+      void (async () => {
+        try {
+          await invoke("invalidate_ccusage_cache")
+        } catch (error) {
+          console.error("Failed to invalidate ccusage cache:", error)
         }
-        console.error(errorMessage, error)
-        setErrorForPlugins(ids, "Failed to start probe")
-      })
+
+        startBatch(ids).catch((error) => {
+          for (const id of ids) {
+            manualRefreshIdsRef.current.delete(id)
+          }
+          console.error(errorMessage, error)
+          setErrorForPlugins(ids, "Failed to start probe")
+        })
+      })()
     },
     [manualRefreshIdsRef, setLoadingForPlugins, setErrorForPlugins, startBatch]
   )
