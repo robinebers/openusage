@@ -2,11 +2,15 @@
   "schemaVersion": 1,
   "id": "perplexity",
   "name": "Perplexity",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#20808D",
   "lines": [
-    { "type": "progress", "label": "Usage", "scope": "overview", "primaryOrder": 1 }
+    { "type": "progress", "label": "API credits", "scope": "overview", "primaryOrder": 1 },
+    { "type": "text", "label": "Queries", "scope": "overview" },
+    { "type": "text", "label": "Deep Research", "scope": "overview" },
+    { "type": "text", "label": "Labs", "scope": "detail" },
+    { "type": "text", "label": "Agentic Research", "scope": "detail" }
   ]
 }

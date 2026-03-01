@@ -28,7 +28,7 @@ Both use the same Codeium language server binary (`language_server_macos_arm`), 
 - **Usage model:** credit-based (prompt + flex credits, stored in hundredths)
 - **Billing cycle:** monthly (`planStart` / `planEnd`)
 - **Timestamps:** ISO 8601
-- **Requires:** Windsurf IDE running (language server is a child process)
+- **Requires:** Windsurf IDE running (language server is a child process), or signed-in credentials in SQLite (cloud fallback)
 
 ## Discovery
 
@@ -156,12 +156,53 @@ SQLite database — path depends on variant:
 |---|---|
 | `windsurfAuthStatus` | JSON: `{ apiKey: "sk-ws-01-...", ... }` |
 
+## Cloud API (fallback)
+
+When the language server is not running, the plugin falls back to Codeium's cloud API using the API key from SQLite.
+
+### GetUserStatus (cloud)
+
+```
+POST https://server.codeium.com/exa.seat_management_pb.SeatManagementService/GetUserStatus
+```
+
+#### Headers
+
+| Header | Required | Value |
+|---|---|---|
+| Content-Type | yes | `application/json` |
+| Connect-Protocol-Version | yes | `1` |
+
+#### Request
+
+```json
+{
+  "metadata": {
+    "apiKey": "sk-ws-01-...",
+    "ideName": "windsurf",
+    "ideVersion": "0.0.0",
+    "extensionName": "windsurf",
+    "extensionVersion": "0.0.0",
+    "locale": "en"
+  }
+}
+```
+
+Same metadata shape as the local LS endpoint. Required fields: `apiKey`, `ideName`, `ideVersion`, `extensionName`, and `extensionVersion`. Use semver versions (for example `"0.0.0"`). No CSRF token is required for cloud requests.
+
+#### Response
+
+Same `userStatus.planStatus` shape as the local LS response — credit fields in hundredths.
+
+Cloud fallback uses the same API key from SQLite (`windsurfAuthStatus`).
+
 ## Plugin Strategy
 
 1. Try each variant in order: Windsurf → Windsurf Next
 2. Discover LS process via `ctx.host.ls.discover()` (ps + lsof) with variant-specific marker
 3. Read API key from SQLite (`windsurfAuthStatus`) at variant-specific path
 4. Probe ports with `GetUnleashData` to find the Connect-RPC endpoint
-5. Call `GetUserStatus` with `apiKey` and variant-specific `ideName` in metadata
+5. Call local `GetUserStatus` with `apiKey` and variant-specific `ideName` in metadata
 6. Build prompt + flex credit lines with billing cycle pacing (÷100 for display)
-7. If no variant's LS is running: error "Start Windsurf and try again."
+7. If LS probe fails for all variants, call cloud `GetUserStatus` at `server.codeium.com` with API key in metadata
+8. If both local and cloud paths fail: error "Start Windsurf or sign in and try again."

@@ -220,10 +220,10 @@
     return { userId: userId, sessionToken: userId + "%3A%3A" + accessToken }
   }
 
-  function fetchEnterpriseUsage(ctx, accessToken) {
+  function fetchRequestBasedUsage(ctx, accessToken) {
     var session = buildSessionToken(ctx, accessToken)
     if (!session) {
-      ctx.host.log.warn("enterprise: cannot build session token")
+      ctx.host.log.warn("request-based: cannot build session token")
       return null
     }
     try {
@@ -236,18 +236,18 @@
         timeoutMs: 10000,
       })
       if (resp.status < 200 || resp.status >= 300) {
-        ctx.host.log.warn("enterprise usage returned status=" + resp.status)
+        ctx.host.log.warn("request-based usage returned status=" + resp.status)
         return null
       }
       return ctx.util.tryParseJson(resp.bodyText)
     } catch (e) {
-      ctx.host.log.warn("enterprise usage fetch failed: " + String(e))
+      ctx.host.log.warn("request-based usage fetch failed: " + String(e))
       return null
     }
   }
 
-  function buildEnterpriseResult(ctx, accessToken, planName, usage) {
-    var requestUsage = fetchEnterpriseUsage(ctx, accessToken)
+  function buildRequestBasedResult(ctx, accessToken, planName, unavailableMessage) {
+    var requestUsage = fetchRequestBasedUsage(ctx, accessToken)
     var lines = []
 
     if (requestUsage) {
@@ -274,8 +274,8 @@
     }
 
     if (lines.length === 0) {
-      ctx.host.log.warn("enterprise: no usage data available")
-      throw "Enterprise usage data unavailable. Try again later."
+      ctx.host.log.warn("request-based: no usage data available")
+      throw unavailableMessage
     }
 
     var plan = null
@@ -285,6 +285,33 @@
     }
 
     return { plan: plan, lines: lines }
+  }
+
+  function buildEnterpriseResult(ctx, accessToken, planName) {
+    return buildRequestBasedResult(
+      ctx,
+      accessToken,
+      planName,
+      "Enterprise usage data unavailable. Try again later."
+    )
+  }
+
+  function buildTeamRequestBasedResult(ctx, accessToken, planName) {
+    return buildRequestBasedResult(
+      ctx,
+      accessToken,
+      planName,
+      "Team request-based usage data unavailable. Try again later."
+    )
+  }
+
+  function buildUnknownRequestBasedResult(ctx, accessToken, planName) {
+    return buildRequestBasedResult(
+      ctx,
+      accessToken,
+      planName,
+      "Cursor request-based usage data unavailable. Try again later."
+    )
   }
 
   function probe(ctx) {
@@ -367,8 +394,9 @@
       throw "Usage response invalid. Try again later."
     }
 
-    // Fetch plan info early (needed for Enterprise detection)
+    // Fetch plan info early (needed for request-based fallback detection)
     let planName = ""
+    let planInfoUnavailable = false
     try {
       const planResp = connectPost(ctx, PLAN_URL, accessToken)
       if (planResp.status >= 200 && planResp.status < 300) {
@@ -376,17 +404,41 @@
         if (plan && plan.planInfo && plan.planInfo.planName) {
           planName = plan.planInfo.planName
         }
+      } else {
+        planInfoUnavailable = true
+        ctx.host.log.warn("plan info returned error: status=" + planResp.status)
       }
     } catch (e) {
+      planInfoUnavailable = true
       ctx.host.log.warn("plan info fetch failed: " + String(e))
     }
 
-    // Enterprise accounts return no planUsage from the Connect API.
-    // Detect Enterprise and use the REST usage API instead.
-    const isEnterprise = !usage.planUsage && planName.toLowerCase() === "enterprise"
-    if (isEnterprise) {
-      ctx.host.log.info("detected enterprise account, using REST usage API")
-      return buildEnterpriseResult(ctx, accessToken, planName, usage)
+    const normalizedPlanName = typeof planName === "string"
+      ? planName.toLowerCase()
+      : ""
+
+    // Enterprise and some Team request-based accounts return no planUsage from
+    // the Connect API. Detect them and use the REST usage API instead.
+    const needsRequestBasedFallback = usage.enabled !== false && !usage.planUsage && (
+      normalizedPlanName === "enterprise" ||
+      normalizedPlanName === "team"
+    )
+    if (needsRequestBasedFallback) {
+      if (normalizedPlanName === "enterprise") {
+        ctx.host.log.info("detected enterprise account, using REST usage API")
+        return buildEnterpriseResult(ctx, accessToken, planName)
+      }
+      ctx.host.log.info("detected team request-based account, using REST usage API")
+      return buildTeamRequestBasedResult(ctx, accessToken, planName)
+    }
+
+    const needsFallbackWithoutPlanInfo = usage.enabled !== false &&
+      !usage.planUsage &&
+      !normalizedPlanName &&
+      planInfoUnavailable
+    if (needsFallbackWithoutPlanInfo) {
+      ctx.host.log.info("plan info unavailable with missing planUsage, attempting REST usage API fallback")
+      return buildUnknownRequestBasedResult(ctx, accessToken, planName)
     }
 
     // Team plans may omit `enabled` even with valid plan usage data.
@@ -453,7 +505,7 @@
 
     const su = usage.spendLimitUsage
     const isTeamAccount = (
-      (typeof planName === "string" && planName.toLowerCase() === "team") ||
+      normalizedPlanName === "team" ||
       (su && su.limitType === "team") ||
       (su && typeof su.pooledLimit === "number")
     )
