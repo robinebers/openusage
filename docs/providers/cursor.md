@@ -16,7 +16,7 @@
 
 | Metric | Source field | Scope | Format | Notes |
 |---|---|---|---|---|
-| Credits | `GetCreditGrantsBalance` | overview | dollars | Only when `hasCreditGrants` is true |
+| Credits | `GetCreditGrantsBalance` + `/api/auth/stripe.customerBalance` | overview | dollars | Combined total: active grant total + Stripe prepaid balance (negative `customerBalance`). Used stays based on grant usage. |
 | Total usage | `planUsage.totalPercentUsed` | overview | percent (individual) / dollars (team) | Falls back to computed `(limit - remaining) / limit * 100` when `totalPercentUsed` is not finite. Team accounts use dollars format. |
 | Auto usage | `planUsage.autoPercentUsed` | detail | percent | Omitted when field is missing or non-finite |
 | API usage | `planUsage.apiPercentUsed` | detail | percent | Omitted when field is missing or non-finite |
@@ -118,6 +118,28 @@ Returns whether user is in slow pool, feature gates, and allowed models. Respons
 
 Returns limit policy status plus any active credit grants. Response undocumented.
 
+### GET /api/auth/stripe
+
+Returns subscription and Stripe customer balance metadata from `cursor.com`.
+
+#### Headers
+
+| Header | Required | Value |
+|---|---|---|
+| Cookie | yes | `WorkosCursorSessionToken=<userId>%3A%3A<access_token>` |
+
+#### Response (partial)
+
+```json
+{
+  "membershipType": "ultra",
+  "subscriptionStatus": "active",
+  "customerBalance": -123456
+}
+```
+
+`customerBalance` is in cents. Negative means customer credit/prepaid balance.
+
 ## Authentication
 
 ### Token Sources
@@ -195,3 +217,13 @@ Content-Type: application/json
 ```
 
 When `shouldLogout` is `true`, the refresh token is invalid and the user must re-authenticate via Cursor.
+
+### Session Cookie (for `cursor.com` endpoints)
+
+Some web endpoints (for example `/api/auth/stripe` and enterprise `/api/usage`) use a session cookie instead of bearer auth:
+
+```
+WorkosCursorSessionToken=<userId>%3A%3A<access_token>
+```
+
+`userId` is derived from JWT `sub` (e.g. `google-oauth2|user_abc` -> `user_abc`).

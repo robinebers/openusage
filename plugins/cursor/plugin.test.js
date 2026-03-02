@@ -771,6 +771,138 @@ describe("cursor plugin", () => {
     expect(onDemandIndex).toBeGreaterThan(1)
   })
 
+  it("combines credit grants with Stripe customer balance for Credits line", async () => {
+    const ctx = makeCtx()
+    const accessToken = makeJwt({ sub: "google-oauth2|user_abc123", exp: 9999999999 })
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: accessToken }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            enabled: true,
+            planUsage: { totalSpend: 1200, limit: 2400 },
+          }),
+        }
+      }
+      if (url.includes("GetCreditGrantsBalance")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            hasCreditGrants: true,
+            totalCents: "1000000",
+            usedCents: "264729",
+          }),
+        }
+      }
+      if (url.includes("/api/auth/stripe")) {
+        expect(opts.headers.Cookie).toBe(
+          "WorkosCursorSessionToken=user_abc123%3A%3A" + accessToken
+        )
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            customerBalance: -991544,
+          }),
+        }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const creditsLine = result.lines.find((line) => line.label === "Credits")
+
+    expect(creditsLine).toBeTruthy()
+    expect(creditsLine.used).toBeCloseTo(2647.29, 2)
+    expect(creditsLine.limit).toBeCloseTo(19915.44, 2)
+  })
+
+  it("shows Credits line from Stripe balance when grants are unavailable", async () => {
+    const ctx = makeCtx()
+    const accessToken = makeJwt({ sub: "google-oauth2|user_abc123", exp: 9999999999 })
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: accessToken }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            enabled: true,
+            planUsage: { totalSpend: 1200, limit: 2400 },
+          }),
+        }
+      }
+      if (url.includes("GetCreditGrantsBalance")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({ hasCreditGrants: false }),
+        }
+      }
+      if (url.includes("/api/auth/stripe")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            customerBalance: -50000,
+          }),
+        }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const creditsLine = result.lines.find((line) => line.label === "Credits")
+
+    expect(result.lines[0].label).toBe("Credits")
+    expect(creditsLine).toBeTruthy()
+    expect(creditsLine.used).toBe(0)
+    expect(creditsLine.limit).toBe(500)
+  })
+
+  it("accepts Stripe customer balance when returned as numeric string", async () => {
+    const ctx = makeCtx()
+    const accessToken = makeJwt({ sub: "google-oauth2|user_abc123", exp: 9999999999 })
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: accessToken }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            enabled: true,
+            planUsage: { totalSpend: 1200, limit: 2400 },
+          }),
+        }
+      }
+      if (url.includes("GetCreditGrantsBalance")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({ hasCreditGrants: false }),
+        }
+      }
+      if (url.includes("/api/auth/stripe")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            customerBalance: "-50000",
+          }),
+        }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const creditsLine = result.lines.find((line) => line.label === "Credits")
+
+    expect(result.lines[0].label).toBe("Credits")
+    expect(creditsLine).toBeTruthy()
+    expect(creditsLine.used).toBe(0)
+    expect(creditsLine.limit).toBe(500)
+  })
+
   it("outputs Total usage first when Credits not available", async () => {
     const ctx = makeCtx()
     ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: "token" }]))
