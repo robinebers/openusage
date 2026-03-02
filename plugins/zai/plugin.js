@@ -79,15 +79,23 @@
   }
 
   function findLimit(limits, type, unit) {
+    let fallback = null
     for (let i = 0; i < limits.length; i++) {
       const item = limits[i]
       if (item.type === type || item.name === type) {
-        if (unit === undefined || item.unit === unit) {
+        if (unit === undefined) {
           return item
+        }
+        if (item.unit === unit) {
+          return item
+        }
+        // Store first entry without unit as fallback
+        if (fallback === null && item.unit === undefined) {
+          fallback = item
         }
       }
     }
-    return null
+    return fallback
   }
 
   function probe(ctx) {
@@ -109,7 +117,7 @@
       return { plan, lines }
     }
 
-    const tokenLimit = findLimit(limits, "TOKENS_LIMIT")
+    const tokenLimit = findLimit(limits, "TOKENS_LIMIT", 3)
 
     if (!tokenLimit) {
       lines.push(ctx.line.badge({ label: "Session", text: "No usage data", color: "#a3a3a3" }))
@@ -133,7 +141,7 @@
 
     const weeklyTokenLimit = findLimit(limits, "TOKENS_LIMIT", 6)
     if (weeklyTokenLimit) {
-      const weeklyUsed = typeof weeklyTokenLimit.percentage === "number" ? weeklyTokenLimit.percentage : 0
+      const weeklyUsed = Number.isFinite(weeklyTokenLimit.percentage) ? weeklyTokenLimit.percentage : 0
       const weeklyResetsAt = weeklyTokenLimit.nextResetTime ? ctx.util.toIso(weeklyTokenLimit.nextResetTime) : undefined
 
       const weeklyOpts = {

@@ -403,7 +403,7 @@ describe("zai plugin", () => {
       return {
         status: 200,
         bodyText: JSON.stringify([
-          { type: "TOKENS_LIMIT", percentage: "10", nextResetTime: 1738368000000 },
+          { type: "TOKENS_LIMIT", percentage: "10", nextResetTime: 1738368000000, unit: 3 },
           { type: "TIME_LIMIT", currentValue: "1095", usage: "4000" },
         ]),
       }
@@ -471,5 +471,61 @@ describe("zai plugin", () => {
     expect(line).toBeTruthy()
     expect(line.resetsAt).toBe(new Date(1738972800000).toISOString())
     expect(line.periodDurationMs).toBe(7 * 24 * 60 * 60 * 1000)
+  })
+
+  it("correctly binds Session to unit 3 and Weekly to unit 6 when weekly appears first", async () => {
+    const ctx = makeCtx()
+    mockEnvWithKey(ctx, "test-key")
+    const quotaReversed = {
+      code: 200,
+      data: {
+        limits: [
+          {
+            type: "TOKENS_LIMIT",
+            usage: 1600000000,
+            currentValue: 4800000,
+            percentage: 75,
+            nextResetTime: 1738972800000,
+            unit: 6,
+            number: 7,
+          },
+          {
+            type: "TOKENS_LIMIT",
+            usage: 800000000,
+            currentValue: 1900000,
+            percentage: 10,
+            nextResetTime: 1738368000000,
+            unit: 3,
+            number: 5,
+          },
+          {
+            type: "TIME_LIMIT",
+            usage: 4000,
+            currentValue: 1095,
+            percentage: 27,
+            remaining: 2905,
+            unit: 5,
+            number: 1,
+          },
+        ],
+      },
+    }
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (opts.url.includes("subscription")) {
+        return { status: 200, bodyText: JSON.stringify(SUBSCRIPTION_RESPONSE) }
+      }
+      return { status: 200, bodyText: JSON.stringify(quotaReversed) }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const session = result.lines.find((l) => l.label === "Session")
+    const weekly = result.lines.find((l) => l.label === "Weekly")
+    expect(session).toBeTruthy()
+    expect(session.used).toBe(10)
+    expect(session.resetsAt).toBe(new Date(1738368000000).toISOString())
+    expect(weekly).toBeTruthy()
+    expect(weekly.used).toBe(75)
+    expect(weekly.resetsAt).toBe(new Date(1738972800000).toISOString())
   })
 })
