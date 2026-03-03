@@ -503,6 +503,7 @@
 
     const needsFallbackWithoutPlanInfo = usage.enabled !== false &&
       (!hasPlanUsage || planUsageLimitMissing) &&
+      !hasTotalUsagePercent &&
       !normalizedPlanName &&
       planInfoUnavailable
     if (needsFallbackWithoutPlanInfo) {

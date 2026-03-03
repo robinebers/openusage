@@ -319,6 +319,42 @@ describe("cursor plugin", () => {
     expect(totalLine.limit).toBe(100)
   })
 
+  it("renders percent-only usage when plan info is unavailable", async () => {
+    const ctx = makeCtx()
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: "token" }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            enabled: true,
+            billingCycleStart: "1772556293029",
+            billingCycleEnd: "1775234693029",
+            planUsage: {
+              totalPercentUsed: 42,
+            },
+          }),
+        }
+      }
+      if (String(opts.url).includes("GetPlanInfo")) {
+        return { status: 503, bodyText: "" }
+      }
+      if (String(opts.url).includes("cursor.com/api/usage")) {
+        throw new Error("unexpected REST usage fallback")
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.plan).toBeNull()
+    const totalLine = result.lines.find((line) => line.label === "Total usage")
+    expect(totalLine).toBeTruthy()
+    expect(totalLine.format).toEqual({ kind: "percent" })
+    expect(totalLine.used).toBe(42)
+    expect(totalLine.limit).toBe(100)
+  })
+
   it("falls back to computed percent when totalSpend missing and no totalPercentUsed", async () => {
     const ctx = makeCtx()
     ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: "token" }]))
