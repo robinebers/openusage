@@ -41,6 +41,46 @@ const QUOTA_RESPONSE = {
   },
 }
 
+const QUOTA_RESPONSE_WITH_WEEKLY = {
+  code: 200,
+  data: {
+    limits: [
+      {
+        type: "TOKENS_LIMIT",
+        usage: 800000000,
+        currentValue: 1900000,
+        percentage: 10,
+        nextResetTime: 1738368000000,
+        unit: 3,
+        number: 5,
+      },
+      {
+        type: "TOKENS_LIMIT",
+        usage: 1600000000,
+        currentValue: 4800000,
+        percentage: 10,
+        nextResetTime: 1738972800000,
+        unit: 6,
+        number: 7,
+      },
+      {
+        type: "TIME_LIMIT",
+        usage: 4000,
+        currentValue: 1095,
+        percentage: 27,
+        remaining: 2905,
+        usageDetails: [
+          { modelCode: "search-prime", usage: 951 },
+          { modelCode: "web-reader", usage: 211 },
+          { modelCode: "zread", usage: 0 },
+        ],
+        unit: 5,
+        number: 1,
+      },
+    ],
+  },
+}
+
 const QUOTA_RESPONSE_NO_TIME_LIMIT = {
   code: 200,
   data: {
@@ -363,7 +403,7 @@ describe("zai plugin", () => {
       return {
         status: 200,
         bodyText: JSON.stringify([
-          { type: "TOKENS_LIMIT", percentage: "10", nextResetTime: 1738368000000 },
+          { type: "TOKENS_LIMIT", percentage: "10", nextResetTime: 1738368000000, unit: 3 },
           { type: "TIME_LIMIT", currentValue: "1095", usage: "4000" },
         ]),
       }
@@ -392,5 +432,100 @@ describe("zai plugin", () => {
     const result = plugin.probe(ctx)
     expect(result.lines).toHaveLength(1)
     expect(result.lines[0].text).toBe("No usage data")
+  })
+
+  it("renders Weekly line with percent format and 7-day reset", async () => {
+    const ctx = makeCtx()
+    mockEnvWithKey(ctx, "test-key")
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (opts.url.includes("subscription")) {
+        return { status: 200, bodyText: JSON.stringify(SUBSCRIPTION_RESPONSE) }
+      }
+      return { status: 200, bodyText: JSON.stringify(QUOTA_RESPONSE_WITH_WEEKLY) }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const line = result.lines.find((l) => l.label === "Weekly")
+    expect(line).toBeTruthy()
+    expect(line.type).toBe("progress")
+    expect(line.used).toBe(10)
+    expect(line.limit).toBe(100)
+    expect(line.format).toEqual({ kind: "percent" })
+    expect(line.periodDurationMs).toBe(7 * 24 * 60 * 60 * 1000)
+  })
+
+  it("Weekly line has correct percentage, resetsAt, and periodDurationMs values", async () => {
+    const ctx = makeCtx()
+    mockEnvWithKey(ctx, "test-key")
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (opts.url.includes("subscription")) {
+        return { status: 200, bodyText: JSON.stringify(SUBSCRIPTION_RESPONSE) }
+      }
+      return { status: 200, bodyText: JSON.stringify(QUOTA_RESPONSE_WITH_WEEKLY) }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const line = result.lines.find((l) => l.label === "Weekly")
+    expect(line).toBeTruthy()
+    expect(line.resetsAt).toBe(new Date(1738972800000).toISOString())
+    expect(line.periodDurationMs).toBe(7 * 24 * 60 * 60 * 1000)
+  })
+
+  it("correctly binds Session to unit 3 and Weekly to unit 6 when weekly appears first", async () => {
+    const ctx = makeCtx()
+    mockEnvWithKey(ctx, "test-key")
+    const quotaReversed = {
+      code: 200,
+      data: {
+        limits: [
+          {
+            type: "TOKENS_LIMIT",
+            usage: 1600000000,
+            currentValue: 4800000,
+            percentage: 75,
+            nextResetTime: 1738972800000,
+            unit: 6,
+            number: 7,
+          },
+          {
+            type: "TOKENS_LIMIT",
+            usage: 800000000,
+            currentValue: 1900000,
+            percentage: 10,
+            nextResetTime: 1738368000000,
+            unit: 3,
+            number: 5,
+          },
+          {
+            type: "TIME_LIMIT",
+            usage: 4000,
+            currentValue: 1095,
+            percentage: 27,
+            remaining: 2905,
+            unit: 5,
+            number: 1,
+          },
+        ],
+      },
+    }
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (opts.url.includes("subscription")) {
+        return { status: 200, bodyText: JSON.stringify(SUBSCRIPTION_RESPONSE) }
+      }
+      return { status: 200, bodyText: JSON.stringify(quotaReversed) }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const session = result.lines.find((l) => l.label === "Session")
+    const weekly = result.lines.find((l) => l.label === "Weekly")
+    expect(session).toBeTruthy()
+    expect(session.used).toBe(10)
+    expect(session.resetsAt).toBe(new Date(1738368000000).toISOString())
+    expect(weekly).toBeTruthy()
+    expect(weekly.used).toBe(75)
+    expect(weekly.resetsAt).toBe(new Date(1738972800000).toISOString())
   })
 })

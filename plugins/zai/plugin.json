@@ -8,6 +8,7 @@
   "brandColor": "#2D2D2D",
   "lines": [
     { "type": "progress", "label": "Session", "scope": "overview", "primaryOrder": 1 },
+    { "type": "progress", "label": "Weekly", "scope": "overview" },
     { "type": "progress", "label": "Web Searches", "scope": "overview" }
   ]
 }

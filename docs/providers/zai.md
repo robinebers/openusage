@@ -11,8 +11,9 @@ Tracks [Z.ai](https://z.ai) (Zhipu AI) usage quotas for GLM coding plans.
 - **Base URL:** `https://api.z.ai/`
 - **Auth:** API key via environment variable (`ZAI_API_KEY`, fallback `GLM_API_KEY`)
 - **Session utilization:** percentage (0-100)
+- **Weekly utilization:** percentage (0-100)
 - **Web searches:** count-based (used / limit)
-- **Reset periods:** 5 hours (session), monthly (web searches, from subscription renewal date)
+- **Reset periods:** 5 hours (session), 7 days (weekly), monthly (web searches, from subscription renewal date)
 
 ## Setup
 
@@ -148,7 +149,8 @@ Returns session token usage and web search quotas.
 - `remaining` — tokens remaining
 - `percentage` — usage as percentage (0-100)
 - `nextResetTime` — epoch milliseconds of next reset
-- `unit: 3, number: 5` — 5-hour rolling period
+- `unit: 3, number: 5` — 5-hour rolling period (session)
+- `unit: 6, number: 7` — 7-day rolling period (weekly)
 
 **TIME_LIMIT:**
 
@@ -164,6 +166,7 @@ Returns session token usage and web search quotas.
 | Line         | Description                                                                  |
 |--------------|------------------------------------------------------------------------------|
 | Session      | Token usage as percentage (0-100%) with 5h reset timer                       |
+| Weekly       | Token usage as percentage (0-100%) with 7-day reset timer                   |
 | Web Searches | Web search/reader call count (used / limit), resets on the 1st of each month |
 
 ## Errors
