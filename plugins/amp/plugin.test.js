@@ -308,7 +308,7 @@ describe("amp plugin", () => {
   it("parses credits-only text with top-up hint", async () => {
     var ctx = makeCtx()
     writeSecrets(ctx)
-    var text = "Signed in as david.arutyunyan@protonmail.com (waosdx)\n"
+    var text = "Signed in as person@example.com (exampleuser)\n"
       + "Individual credits: $5 remaining (set up automatic top-up to avoid running out) - https://ampcode.com/settings"
     ctx.host.http.request.mockReturnValue(balanceResponse(text))
     var plugin = await loadPlugin()
