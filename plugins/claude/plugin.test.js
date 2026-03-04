@@ -865,6 +865,63 @@ describe("claude plugin", () => {
       expect(yesterdayLine.value).toContain("$0.60")
     })
 
+    it("matches UTC timestamp day keys at month boundary (regression)", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date(2026, 2, 1, 12, 0, 0))
+      try {
+        const ctx = makeProbeCtx({
+          ccusageResult: okUsage([
+              { date: "2026-03-01T12:00:00Z", inputTokens: 10, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 10, totalCost: 0.1 },
+            ]),
+        })
+        const plugin = await loadPlugin()
+        const result = plugin.probe(ctx)
+        const todayLine = result.lines.find((l) => l.label === "Today")
+        expect(todayLine).toBeTruthy()
+        expect(todayLine.value).toContain("10 tokens")
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it("matches UTC+9 timestamp day keys at month boundary (regression)", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date(2026, 2, 1, 12, 0, 0))
+      try {
+        const ctx = makeProbeCtx({
+          ccusageResult: okUsage([
+              { date: "2026-03-01T00:30:00+09:00", inputTokens: 20, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 20, totalCost: 0.2 },
+            ]),
+        })
+        const plugin = await loadPlugin()
+        const result = plugin.probe(ctx)
+        const todayLine = result.lines.find((l) => l.label === "Today")
+        expect(todayLine).toBeTruthy()
+        expect(todayLine.value).toContain("20 tokens")
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it("matches UTC-8 timestamp day keys at day boundary (regression)", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date(2026, 2, 1, 12, 0, 0))
+      try {
+        const ctx = makeProbeCtx({
+          ccusageResult: okUsage([
+              { date: "2026-03-01T23:30:00-08:00", inputTokens: 30, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, totalTokens: 30, totalCost: 0.3 },
+            ]),
+        })
+        const plugin = await loadPlugin()
+        const result = plugin.probe(ctx)
+        const todayLine = result.lines.find((l) => l.label === "Today")
+        expect(todayLine).toBeTruthy()
+        expect(todayLine.value).toContain("30 tokens")
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
     it("adds Last 30 Days line summing all daily entries", async () => {
       const todayKey = localDayKey(new Date())
       const ctx = makeProbeCtx({

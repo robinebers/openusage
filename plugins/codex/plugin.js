@@ -356,6 +356,11 @@
       return isoMatch[1] + "-" + isoMatch[2] + "-" + isoMatch[3]
     }
 
+    const isoDatePrefixMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:[Tt\s]|$)/)
+    if (isoDatePrefixMatch) {
+      return isoDatePrefixMatch[1] + "-" + isoDatePrefixMatch[2] + "-" + isoDatePrefixMatch[3]
+    }
+
     const compactMatch = value.match(/^(\d{4})(\d{2})(\d{2})$/)
     if (compactMatch) {
       return compactMatch[1] + "-" + compactMatch[2] + "-" + compactMatch[3]
