@@ -450,6 +450,93 @@ describe("codex plugin", () => {
     expect(yesterdayLine.value).toContain("$1.10")
   })
 
+  it("matches UTC timestamp day keys at month boundary (regression)", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 2, 1, 12, 0, 0))
+    try {
+      const ctx = makeCtx()
+      ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+        tokens: { access_token: "token" },
+        last_refresh: new Date().toISOString(),
+      }))
+      ctx.host.http.request.mockReturnValue({
+        status: 200,
+        headers: { "x-codex-primary-used-percent": "10" },
+        bodyText: JSON.stringify({}),
+      })
+      ctx.host.ccusage.query.mockReturnValue({
+        status: "ok",
+        data: { daily: [{ date: "2026-03-01T12:00:00Z", totalTokens: 10, costUSD: 0.1 }] },
+      })
+
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      const todayLine = result.lines.find((line) => line.label === "Today")
+      expect(todayLine).toBeTruthy()
+      expect(todayLine.value).toContain("10 tokens")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("matches UTC+9 timestamp day keys at month boundary (regression)", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 2, 1, 12, 0, 0))
+    try {
+      const ctx = makeCtx()
+      ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+        tokens: { access_token: "token" },
+        last_refresh: new Date().toISOString(),
+      }))
+      ctx.host.http.request.mockReturnValue({
+        status: 200,
+        headers: { "x-codex-primary-used-percent": "10" },
+        bodyText: JSON.stringify({}),
+      })
+      ctx.host.ccusage.query.mockReturnValue({
+        status: "ok",
+        data: { daily: [{ date: "2026-03-01T00:30:00+09:00", totalTokens: 20, costUSD: 0.2 }] },
+      })
+
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      const todayLine = result.lines.find((line) => line.label === "Today")
+      expect(todayLine).toBeTruthy()
+      expect(todayLine.value).toContain("20 tokens")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("matches UTC-8 timestamp day keys at day boundary (regression)", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 2, 1, 12, 0, 0))
+    try {
+      const ctx = makeCtx()
+      ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+        tokens: { access_token: "token" },
+        last_refresh: new Date().toISOString(),
+      }))
+      ctx.host.http.request.mockReturnValue({
+        status: 200,
+        headers: { "x-codex-primary-used-percent": "10" },
+        bodyText: JSON.stringify({}),
+      })
+      ctx.host.ccusage.query.mockReturnValue({
+        status: "ok",
+        data: { daily: [{ date: "2026-03-01T23:30:00-08:00", totalTokens: 30, costUSD: 0.3 }] },
+      })
+
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      const todayLine = result.lines.find((line) => line.label === "Today")
+      expect(todayLine).toBeTruthy()
+      expect(todayLine.value).toContain("30 tokens")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("throws token expired when refresh fails", async () => {
     const ctx = makeCtx()
     ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
