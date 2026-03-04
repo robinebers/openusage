@@ -75,7 +75,7 @@ The plugin parses the display text with regex to extract:
 |------------|----------|-----------------------------|----------------------------------------|
 | Free       | overview | Amp Free enabled            | Dollar amount consumed as progress bar |
 | Bonus      | detail   | Amp Free + active promotion | Bonus percentage and duration          |
-| Credits    | detail   | Credits > $0                | Individual credits balance             |
+| Credits    | overview | Credits > $0, or credits-only accounts | Individual credits balance      |
 
 Progress line includes:
 - `resetsAt` — ISO timestamp of estimated full replenishment (null if nothing used or rate is zero)
