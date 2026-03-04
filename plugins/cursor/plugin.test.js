@@ -598,6 +598,56 @@ describe("cursor plugin", () => {
     expect(reqLine.limit).toBe(500)
   })
 
+  it("falls back to REST usage for team-inferred account with percent-only and unavailable plan info", async () => {
+    const ctx = makeCtx()
+    const accessToken = makeJwt({ sub: "google-oauth2|user_abc123", exp: 9999999999 })
+
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: accessToken }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            enabled: true,
+            billingCycleStart: "1772556293029",
+            billingCycleEnd: "1775234693029",
+            planUsage: {
+              totalPercentUsed: 35,
+            },
+            spendLimitUsage: {
+              limitType: "team",
+              pooledLimit: 5000,
+            },
+          }),
+        }
+      }
+      if (String(opts.url).includes("GetPlanInfo")) {
+        return { status: 503, bodyText: "" }
+      }
+      if (String(opts.url).includes("cursor.com/api/usage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            "gpt-4": {
+              numRequests: 150,
+              maxRequestUsage: 500,
+            },
+            startOfMonth: "2026-02-01T06:12:57.000Z",
+          }),
+        }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const reqLine = result.lines.find((l) => l.label === "Requests")
+    expect(reqLine).toBeTruthy()
+    expect(reqLine.used).toBe(150)
+    expect(reqLine.limit).toBe(500)
+    expect(reqLine.format).toEqual({ kind: "count", suffix: "requests" })
+  })
+
   it("handles team account with request-based usage", async () => {
     const ctx = makeCtx()
     const accessToken = makeJwt({ sub: "google-oauth2|user_abc123", exp: 9999999999 })

@@ -600,7 +600,8 @@
 
     if (isTeamAccount) {
       if (!hasPlanUsageLimit) {
-        throw "Total usage limit missing from API response."
+        ctx.host.log.warn("team-inferred account missing planUsage.limit, attempting REST usage API fallback")
+        return buildUnknownRequestBasedResult(ctx, accessToken, planName)
       }
       lines.push(ctx.line.progress({
         label: "Total usage",
