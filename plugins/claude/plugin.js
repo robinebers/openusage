@@ -266,7 +266,7 @@
         Accept: "application/json",
         "Content-Type": "application/json",
         "anthropic-beta": "oauth-2025-04-20",
-        "User-Agent": "OpenUsage",
+        "User-Agent": "claude-code/2.1.69",
       },
       timeoutMs: 10000,
     })

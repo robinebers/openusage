@@ -27,6 +27,37 @@ describe("claude plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Not logged in")
   })
 
+  it("treats credentials file read failures as missing credentials", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () => {
+      throw new Error("disk read failed")
+    }
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Not logged in")
+    expect(ctx.host.log.warn).toHaveBeenCalled()
+  })
+
+  it("warns when credentials file exists but lacks a usable access token", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { refreshToken: "only-refresh" } })
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Not logged in")
+    expect(ctx.host.log.warn).toHaveBeenCalled()
+  })
+
+  it("treats keychain read errors as missing credentials", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => false
+    ctx.host.keychain.readGenericPassword.mockImplementation(() => {
+      throw new Error("keychain unavailable")
+    })
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Not logged in")
+    expect(ctx.host.log.info).toHaveBeenCalled()
+  })
+
   it("falls back to keychain when credentials file is corrupt", async () => {
     const ctx = makeCtx()
     ctx.host.fs.exists = () => true
@@ -94,6 +125,15 @@ describe("claude plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Token expired")
   })
 
+  it("throws HTTP status details for non-auth usage failures", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
+    ctx.host.fs.exists = () => true
+    ctx.host.http.request.mockReturnValue({ status: 429, bodyText: "" })
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Usage request failed (HTTP 429)")
+  })
+
   it("uses keychain credentials", async () => {
     const ctx = makeCtx()
     ctx.host.fs.exists = () => false
@@ -111,6 +151,23 @@ describe("claude plugin", () => {
     const result = plugin.probe(ctx)
     expect(result.lines.find((line) => line.label === "Sonnet")).toBeTruthy()
     expect(result.lines.find((line) => line.label === "Extra usage spent")).toBeTruthy()
+  })
+
+  it("omits extra usage line when used credits are zero and no limit exists", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.readText = () =>
+      JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
+    ctx.host.fs.exists = () => true
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+        extra_usage: { is_enabled: true, used_credits: 0, monthly_limit: null },
+      }),
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Extra usage spent")).toBeUndefined()
   })
 
   it("uses keychain credentials when value is hex-encoded JSON", async () => {
@@ -220,6 +277,81 @@ describe("claude plugin", () => {
       ctx.host.fs.exists = () => false
       // Invalid UTF-8 bytes (will produce replacement chars).
       ctx.host.keychain.readGenericPassword.mockReturnValue("c200ff")
+      const plugin = await loadPlugin()
+      expect(() => plugin.probe(ctx)).toThrow("Not logged in")
+    } finally {
+      globalThis.TextDecoder = original
+    }
+  })
+
+  it("custom decoder handles truncated 3-byte sequences in hex payloads", async () => {
+    const original = globalThis.TextDecoder
+    // eslint-disable-next-line no-undef
+    delete globalThis.TextDecoder
+    try {
+      const ctx = makeCtx()
+      ctx.host.fs.exists = () => false
+      ctx.host.keychain.readGenericPassword.mockReturnValue("e282")
+      const plugin = await loadPlugin()
+      expect(() => plugin.probe(ctx)).toThrow("Not logged in")
+    } finally {
+      globalThis.TextDecoder = original
+    }
+  })
+
+  it("custom decoder handles truncated 2-byte sequences in hex payloads", async () => {
+    const original = globalThis.TextDecoder
+    // eslint-disable-next-line no-undef
+    delete globalThis.TextDecoder
+    try {
+      const ctx = makeCtx()
+      ctx.host.fs.exists = () => false
+      ctx.host.keychain.readGenericPassword.mockReturnValue("c2")
+      const plugin = await loadPlugin()
+      expect(() => plugin.probe(ctx)).toThrow("Not logged in")
+    } finally {
+      globalThis.TextDecoder = original
+    }
+  })
+
+  it("custom decoder handles invalid 3-byte continuation sequences in hex payloads", async () => {
+    const original = globalThis.TextDecoder
+    // eslint-disable-next-line no-undef
+    delete globalThis.TextDecoder
+    try {
+      const ctx = makeCtx()
+      ctx.host.fs.exists = () => false
+      ctx.host.keychain.readGenericPassword.mockReturnValue("e228a1")
+      const plugin = await loadPlugin()
+      expect(() => plugin.probe(ctx)).toThrow("Not logged in")
+    } finally {
+      globalThis.TextDecoder = original
+    }
+  })
+
+  it("custom decoder handles invalid 4-byte sequences in hex payloads", async () => {
+    const original = globalThis.TextDecoder
+    // eslint-disable-next-line no-undef
+    delete globalThis.TextDecoder
+    try {
+      const ctx = makeCtx()
+      ctx.host.fs.exists = () => false
+      ctx.host.keychain.readGenericPassword.mockReturnValue("f0808080")
+      const plugin = await loadPlugin()
+      expect(() => plugin.probe(ctx)).toThrow("Not logged in")
+    } finally {
+      globalThis.TextDecoder = original
+    }
+  })
+
+  it("custom decoder handles truncated 4-byte sequences in hex payloads", async () => {
+    const original = globalThis.TextDecoder
+    // eslint-disable-next-line no-undef
+    delete globalThis.TextDecoder
+    try {
+      const ctx = makeCtx()
+      ctx.host.fs.exists = () => false
+      ctx.host.keychain.readGenericPassword.mockReturnValue("f09f98")
       const plugin = await loadPlugin()
       expect(() => plugin.probe(ctx)).toThrow("Not logged in")
     } finally {
@@ -398,9 +530,11 @@ describe("claude plugin", () => {
       })
 
     let usageCalls = 0
+    let firstUsageHeaders = null
     ctx.host.http.request.mockImplementation((opts) => {
       if (String(opts.url).includes("/api/oauth/usage")) {
         usageCalls += 1
+        if (!firstUsageHeaders) firstUsageHeaders = opts.headers
         if (usageCalls === 1) {
           return { status: 401, bodyText: "" }
         }
@@ -421,6 +555,7 @@ describe("claude plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
     expect(usageCalls).toBe(2)
+    expect(firstUsageHeaders["User-Agent"]).toBe("claude-code/2.1.69")
     expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
   })
 
@@ -720,6 +855,26 @@ describe("claude plugin", () => {
 
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Usage request failed after refresh")
+  })
+
+  it("throws usage request failed when retryOnceOnAuth throws a non-string error", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () =>
+      JSON.stringify({
+        claudeAiOauth: {
+          accessToken: "token",
+          refreshToken: "refresh",
+          expiresAt: Date.now() + 60_000,
+        },
+      })
+
+    ctx.util.retryOnceOnAuth = () => {
+      throw new Error("network blew up")
+    }
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Usage request failed. Check your connection.")
   })
 
   it("throws token expired when refresh response cannot be parsed", async () => {
@@ -1052,6 +1207,31 @@ describe("claude plugin", () => {
       }
     })
 
+    it("matches compact day keys and falls back from invalid totalCost to costUSD", async () => {
+      const today = new Date()
+      const todayKey = localCompactDayKey(today)
+      const ctx = makeProbeCtx({
+        ccusageResult: okUsage([
+          {
+            date: todayKey,
+            inputTokens: 100,
+            outputTokens: 50,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            totalTokens: 150,
+            totalCost: "not-a-number",
+            costUSD: 0.25,
+          },
+        ]),
+      })
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      const todayLine = result.lines.find((l) => l.label === "Today")
+      expect(todayLine).toBeTruthy()
+      expect(todayLine.value).toContain("150 tokens")
+      expect(todayLine.value).toContain("$0.25")
+    })
+
     it("includes cache tokens in total", async () => {
       const todayKey = localDayKey(new Date())
       const ctx = makeProbeCtx({
@@ -1064,6 +1244,38 @@ describe("claude plugin", () => {
       const todayLine = result.lines.find((l) => l.label === "Today")
       expect(todayLine).toBeTruthy()
       expect(todayLine.value).toContain("650 tokens")
+    })
+
+    it("formats compact token values with decimal and rounded K suffixes", async () => {
+      const todayKey = localDayKey(new Date())
+      const ctx = makeProbeCtx({
+        ccusageResult: okUsage([
+          {
+            date: todayKey,
+            inputTokens: 0,
+            outputTokens: 0,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            totalTokens: 1500,
+            totalCost: 0.5,
+          },
+          {
+            date: "2026-02-01",
+            inputTokens: 0,
+            outputTokens: 0,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            totalTokens: 10500,
+            totalCost: 1.5,
+          },
+        ]),
+      })
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      const todayLine = result.lines.find((l) => l.label === "Today")
+      const last30 = result.lines.find((l) => l.label === "Last 30 Days")
+      expect(todayLine.value).toContain("1.5K tokens")
+      expect(last30.value).toContain("12K tokens")
     })
   })
 })
