@@ -30,6 +30,12 @@ pub fn initialize_plugins(
     (install_dir, plugins)
 }
 
+/// Load plugins from a directory without copying bundled plugins.
+/// Useful for CLI tools that point directly at a plugins directory.
+pub fn load_plugins_from_dir(plugins_dir: &Path) -> Vec<LoadedPlugin> {
+    manifest::load_plugins_from_dir(plugins_dir)
+}
+
 fn find_dev_plugins_dir() -> Option<PathBuf> {
     let cwd = std::env::current_dir().ok()?;
     let direct = cwd.join("plugins");
