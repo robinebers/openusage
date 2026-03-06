@@ -65,6 +65,42 @@ describe("factory plugin", () => {
     expect(result.lines.find((line) => line.label === "Standard")).toBeTruthy()
   })
 
+  it("prefers auth.encrypted over stale auth.json when both exist", async () => {
+    const ctx = makeCtx()
+    const pastExp = Math.floor(Date.now() / 1000) - 1000
+    const futureExp = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
+    // Stale auth.json with expired token and dead refresh token
+    ctx.host.fs.writeText("~/.factory/auth.json", JSON.stringify({
+      access_token: makeJwt(pastExp),
+      refresh_token: "stale-refresh",
+    }))
+    // Fresh auth.encrypted written by a recent `droid` login
+    ctx.host.fs.writeText("~/.factory/auth.encrypted", JSON.stringify({
+      access_token: makeJwt(futureExp),
+      refresh_token: "fresh-refresh",
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        usage: {
+          startDate: 1770623326000,
+          endDate: 1772956800000,
+          standard: { orgTotalTokensUsed: 1000000, totalAllowance: 20000000 },
+          premium: { orgTotalTokensUsed: 0, totalAllowance: 0 },
+        },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Standard")).toBeTruthy()
+    // Should not have attempted to refresh (fresh token doesn't need it)
+    expect(ctx.host.http.request).not.toHaveBeenCalledWith(
+      expect.objectContaining({ url: expect.stringContaining("workos.com") }),
+    )
+  })
+
   it("loads auth from keychain when auth files are missing", async () => {
     const ctx = makeCtx()
     const futureExp = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
