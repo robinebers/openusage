@@ -154,7 +154,35 @@ struct ProgressInfo {
     pct: u8,
 }
 
-fn extract_primary_progress(output: &PluginOutput) -> Option<ProgressInfo> {
+fn extract_primary_progress(
+    plugin: &LoadedPlugin,
+    output: &PluginOutput,
+) -> Option<ProgressInfo> {
+    // Build ordered list of primary candidate labels from manifest
+    let mut candidates: Vec<_> = plugin
+        .manifest
+        .lines
+        .iter()
+        .filter(|l| l.line_type == "progress" && l.primary_order.is_some())
+        .collect();
+    candidates.sort_by_key(|l| l.primary_order.unwrap());
+
+    // Try each candidate in primaryOrder, then fall back to first progress line
+    for candidate in &candidates {
+        for line in &output.lines {
+            if let MetricLine::Progress { label, used, limit, .. } = line {
+                if label == &candidate.label {
+                    let pct = used_percentage(*used, *limit);
+                    return Some(ProgressInfo {
+                        provider: output.display_name.clone(),
+                        pct,
+                    });
+                }
+            }
+        }
+    }
+
+    // Fallback: first progress line
     for line in &output.lines {
         if let MetricLine::Progress { used, limit, .. } = line {
             let pct = used_percentage(*used, *limit);
@@ -340,8 +368,8 @@ fn main() {
     let mut primary_progress: Vec<ProgressInfo> = Vec::new();
     let mut tooltip_sections: Vec<String> = Vec::new();
 
-    for output in &outputs {
-        if let Some(info) = extract_primary_progress(output) {
+    for (plugin, output) in selected.iter().zip(outputs.iter()) {
+        if let Some(info) = extract_primary_progress(plugin, output) {
             primary_progress.push(info);
         }
         tooltip_sections.push(build_tooltip_for_output(output));
