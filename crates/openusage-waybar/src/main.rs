@@ -60,19 +60,6 @@ fn app_data_dir() -> PathBuf {
         .join("openusage")
 }
 
-fn format_progress(used: f64, limit: f64, format: &ProgressFormat) -> String {
-    match format {
-        ProgressFormat::Percent => {
-            format!("{:.0}%", used)
-        }
-        ProgressFormat::Dollars => {
-            format!("${:.2}/${:.2}", used, limit)
-        }
-        ProgressFormat::Count { suffix } => {
-            format!("{:.0}/{:.0} {}", used, limit, suffix)
-        }
-    }
-}
 
 fn used_percentage(used: f64, limit: f64) -> u8 {
     if limit <= 0.0 {
@@ -164,21 +151,15 @@ fn format_remaining(used: f64, limit: f64, format: &ProgressFormat) -> String {
 
 struct ProgressInfo {
     provider: String,
-    used: f64,
-    limit: f64,
-    format: ProgressFormat,
     pct: u8,
 }
 
 fn extract_primary_progress(output: &PluginOutput) -> Option<ProgressInfo> {
     for line in &output.lines {
-        if let MetricLine::Progress { used, limit, format, .. } = line {
+        if let MetricLine::Progress { used, limit, .. } = line {
             let pct = used_percentage(*used, *limit);
             return Some(ProgressInfo {
                 provider: output.display_name.clone(),
-                used: *used,
-                limit: *limit,
-                format: format.clone(),
                 pct,
             });
         }
@@ -364,12 +345,14 @@ fn main() {
         }
     } else if primary_progress.len() == 1 {
         let info = &primary_progress[0];
-        let text = format!("{} {}", info.provider, format_progress(info.used, info.limit, &info.format));
+        let remaining = 100u8.saturating_sub(info.pct);
+        let text = format!("{} {}%", info.provider, remaining);
         (text, info.pct, severity_class(info.pct))
     } else {
         // Multiple providers: show the one with highest usage percentage
         let worst = primary_progress.iter().max_by_key(|p| p.pct).unwrap();
-        let text = format!("{} {}", worst.provider, format_progress(worst.used, worst.limit, &worst.format));
+        let remaining = 100u8.saturating_sub(worst.pct);
+        let text = format!("{} {}%", worst.provider, remaining);
         (text, worst.pct, severity_class(worst.pct))
     };
 
