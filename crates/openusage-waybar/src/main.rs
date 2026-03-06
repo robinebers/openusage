@@ -90,9 +90,10 @@ fn severity_color(pct: u8) -> &'static str {
     }
 }
 
-fn build_progress_bar(used_pct: u8) -> String {
+/// Renders a Pango progress bar. `remaining_pct` is 0–100 representing how much is left.
+/// The filled portion (colored by severity) shows remaining; the dim portion shows used.
+fn build_progress_bar(remaining_pct: u8, used_pct: u8) -> String {
     let total_chars = 20;
-    let remaining_pct = 100u8.saturating_sub(used_pct);
     let filled = if remaining_pct > 0 {
         ((remaining_pct as usize * total_chars) / 100).max(1)
     } else {
@@ -221,10 +222,11 @@ fn build_tooltip_for_output(output: &PluginOutput) -> String {
         match line {
             MetricLine::Progress { label, used, limit, format, resets_at, .. } => {
                 let label = pango_escape(label);
-                let pct = used_percentage(*used, *limit);
-                let color = severity_color(pct);
+                let used_pct = used_percentage(*used, *limit);
+                let remaining_pct = 100u8.saturating_sub(used_pct);
+                let color = severity_color(used_pct);
                 let dot = format!("<span foreground=\"{color}\">●</span>");
-                let bar = build_progress_bar(pct);
+                let bar = build_progress_bar(remaining_pct, used_pct);
                 let remaining = format_remaining(*used, *limit, format);
                 let resets = resets_at
                     .as_deref()
