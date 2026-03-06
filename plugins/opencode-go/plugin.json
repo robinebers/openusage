@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "id": "opencode-go",
+  "name": "OpenCode Go",
+  "version": "0.0.1",
+  "entry": "plugin.js",
+  "icon": "icon.svg",
+  "brandColor": "#000000",
+  "links": [
+    {
+      "label": "Console",
+      "url": "https://opencode.ai/auth"
+    },
+    {
+      "label": "Docs",
+      "url": "https://opencode.ai/docs/go/"
+    }
+  ],
+  "lines": [
+    {
+      "type": "progress",
+      "label": "5h",
+      "scope": "overview",
+      "primaryOrder": 1
+    },
+    {
+      "type": "progress",
+      "label": "Weekly",
+      "scope": "detail"
+    },
+    {
+      "type": "progress",
+      "label": "Monthly",
+      "scope": "detail"
+    }
+  ]
+}
