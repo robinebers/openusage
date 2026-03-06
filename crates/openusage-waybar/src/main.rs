@@ -144,7 +144,7 @@ fn format_remaining(used: f64, limit: f64, format: &ProgressFormat) -> String {
             format!("${:.2} left", remaining)
         }
         ProgressFormat::Count { suffix } => {
-            format!("{:.0} {} left", remaining, suffix)
+            format!("{:.0} {} left", remaining, pango_escape(suffix))
         }
     }
 }
@@ -167,23 +167,32 @@ fn extract_primary_progress(output: &PluginOutput) -> Option<ProgressInfo> {
     None
 }
 
+fn pango_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
 fn build_tooltip_for_output(output: &PluginOutput) -> String {
     let mut parts: Vec<String> = Vec::new();
 
     // Header: provider name + plan badge
+    let name = pango_escape(&output.display_name);
     let header = if let Some(plan) = &output.plan {
+        let plan = pango_escape(plan);
         format!(
-            "<b>{}</b>  <span bgcolor=\"#374151\" fgcolor=\"#e5e7eb\"> {} </span>",
-            output.display_name, plan
+            "<b>{name}</b>  <span bgcolor=\"#374151\" fgcolor=\"#e5e7eb\"> {plan} </span>",
         )
     } else {
-        format!("<b>{}</b>", output.display_name)
+        format!("<b>{name}</b>")
     };
     parts.push(header);
 
     for line in &output.lines {
         match line {
             MetricLine::Progress { label, used, limit, format, resets_at, .. } => {
+                let label = pango_escape(label);
                 let pct = used_percentage(*used, *limit);
                 let color = severity_color(pct);
                 let dot = format!("<span foreground=\"{color}\">●</span>");
@@ -203,9 +212,13 @@ fn build_tooltip_for_output(output: &PluginOutput) -> String {
                 }
             }
             MetricLine::Text { label, value, .. } => {
+                let label = pango_escape(label);
+                let value = pango_escape(value);
                 parts.push(format!("{label}: {value}"));
             }
             MetricLine::Badge { label, text, .. } => {
+                let label = pango_escape(label);
+                let text = pango_escape(text);
                 parts.push(format!("{label}: {text}"));
             }
         }
