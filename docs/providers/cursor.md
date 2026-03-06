@@ -17,7 +17,7 @@
 | Metric | Source field | Scope | Format | Notes |
 |---|---|---|---|---|
 | Credits | `GetCreditGrantsBalance` + `/api/auth/stripe.customerBalance` | overview | dollars | Combined total: active grant total + Stripe prepaid balance (negative `customerBalance`). Used stays based on grant usage. |
-| Total usage | `planUsage.totalPercentUsed` | overview | percent (individual) / dollars (team) | Falls back to computed `(limit - remaining) / limit * 100` when `totalPercentUsed` is not finite. Team accounts use dollars format. |
+| Total usage | `planUsage.totalPercentUsed` | overview | percent (individual) / dollars (team) | Falls back to computed `(limit - remaining) / limit * 100` when `totalPercentUsed` is not finite. Free/individual payloads observed on 2026-03-06 may omit `limit`; plugin uses `totalPercentUsed` directly in that case. Team accounts use dollars format and still require `limit`. |
 | Auto usage | `planUsage.autoPercentUsed` | detail | percent | Omitted when field is missing or non-finite |
 | API usage | `planUsage.apiPercentUsed` | detail | percent | Omitted when field is missing or non-finite |
 | Requests | `/api/usage` (enterprise) | overview | count | Enterprise accounts only; unchanged from previous behavior |
