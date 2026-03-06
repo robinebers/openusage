@@ -74,13 +74,14 @@ fn format_progress(used: f64, limit: f64, format: &ProgressFormat) -> String {
     }
 }
 
-fn percentage(used: f64, limit: f64) -> u8 {
+fn used_percentage(used: f64, limit: f64) -> u8 {
     if limit <= 0.0 {
         return 0;
     }
     let pct = (used / limit * 100.0).round() as u8;
     pct.min(100)
 }
+
 
 fn severity_class(pct: u8) -> &'static str {
     if pct >= 90 {
@@ -172,7 +173,7 @@ struct ProgressInfo {
 fn extract_primary_progress(output: &PluginOutput) -> Option<ProgressInfo> {
     for line in &output.lines {
         if let MetricLine::Progress { used, limit, format, .. } = line {
-            let pct = percentage(*used, *limit);
+            let pct = used_percentage(*used, *limit);
             return Some(ProgressInfo {
                 provider: output.display_name.clone(),
                 used: *used,
@@ -202,7 +203,7 @@ fn build_tooltip_for_output(output: &PluginOutput) -> String {
     for line in &output.lines {
         match line {
             MetricLine::Progress { label, used, limit, format, resets_at, .. } => {
-                let pct = percentage(*used, *limit);
+                let pct = used_percentage(*used, *limit);
                 let color = severity_color(pct);
                 let dot = format!("<span foreground=\"{color}\">●</span>");
                 let bar = build_progress_bar(pct);
@@ -378,7 +379,7 @@ fn main() {
         text,
         tooltip,
         class: class.to_string(),
-        percentage: pct,
+        percentage: 100u8.saturating_sub(pct),
     };
 
     println!("{}", serde_json::to_string(&output).unwrap());
