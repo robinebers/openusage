@@ -10,6 +10,56 @@ See your usage at a glance from your menu bar. No digging through dashboards.
 
 The app auto-updates. Install once and you're set.
 
+<details>
+<summary><strong>Install on Linux / Wayland (Waybar)</strong></summary>
+
+![OpenUsage Linux Screenshot](linux_screenshot.png)
+
+OpenUsage runs as a Waybar module on Linux. It uses the same plugin system as the macOS app, outputting JSON with Pango-formatted tooltips including progress bars.
+
+**Install from source:**
+
+```sh
+cargo install --git https://github.com/robinebers/openusage --bin openusage-waybar
+```
+
+**Set up plugins:**
+
+```sh
+# Clone the repo to get the bundled plugins
+git clone https://github.com/robinebers/openusage /tmp/openusage
+mkdir -p ~/.local/share/openusage
+cp -r /tmp/openusage/plugins ~/.local/share/openusage/plugins
+```
+
+**Add to your Waybar config** (`~/.config/waybar/config.jsonc`):
+
+```jsonc
+// Add "custom/openusage" to your modules-right (or modules-left/center)
+"modules-right": ["custom/openusage", ...],
+
+"custom/openusage": {
+  "exec": "openusage-waybar claude codex",  // plugin IDs to show
+  "return-type": "json",
+  "interval": 300,
+  "format": "{}",
+  "tooltip": true,
+  "signal": 8  // optional: refresh with pkill -SIGRTMIN+8 waybar
+}
+```
+
+Run `openusage-waybar --list` to see available plugin IDs. Pass no arguments to run all plugins.
+
+**Environment variables:**
+
+| Variable | Description |
+|---|---|
+| `OPENUSAGE_PLUGINS_DIR` | Custom path to plugins directory |
+| `OPENUSAGE_DATA_DIR` | Custom path to data/cache directory |
+| `RUST_LOG` | Log level (default: `warn`) |
+
+</details>
+
 ## What It Does
 
 OpenUsage lives in your menu bar and shows you how much of your AI coding subscriptions you've used. Progress bars, badges, and clear labels. No mental math required.

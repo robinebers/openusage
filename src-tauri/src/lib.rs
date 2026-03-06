@@ -1,10 +1,11 @@
 #[cfg(target_os = "macos")]
 mod app_nap;
 mod panel;
-mod plugin_engine;
 mod tray;
 #[cfg(target_os = "macos")]
 mod webkit_config;
+
+use openusage_plugin_engine as plugin_engine;
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
