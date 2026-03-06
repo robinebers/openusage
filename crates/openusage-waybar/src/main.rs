@@ -92,6 +92,75 @@ fn severity_class(pct: u8) -> &'static str {
     }
 }
 
+fn severity_color(pct: u8) -> &'static str {
+    if pct >= 90 {
+        "#ef4444"
+    } else if pct >= 75 {
+        "#eab308"
+    } else {
+        "#22c55e"
+    }
+}
+
+fn build_progress_bar(used_pct: u8) -> String {
+    let total_chars = 20;
+    let remaining_pct = 100u8.saturating_sub(used_pct);
+    let filled = if remaining_pct > 0 {
+        ((remaining_pct as usize * total_chars) / 100).max(1)
+    } else {
+        0
+    };
+    let empty = total_chars - filled;
+    let color = severity_color(used_pct);
+    let filled_str: String = "█".repeat(filled);
+    let empty_str: String = "█".repeat(empty);
+    format!(
+        "<span foreground=\"{color}\">{filled_str}</span><span foreground=\"#4b5563\">{empty_str}</span>"
+    )
+}
+
+fn format_resets_in(resets_at: &str) -> Option<String> {
+    use time::format_description::well_known::Iso8601;
+    use time::OffsetDateTime;
+
+    let target = OffsetDateTime::parse(resets_at, &Iso8601::DEFAULT).ok()?;
+    let now = OffsetDateTime::now_utc();
+    let dur = target - now;
+
+    if dur.is_negative() {
+        return Some("Expired".to_string());
+    }
+
+    let total_secs = dur.whole_seconds();
+    let days = total_secs / 86400;
+    let hours = (total_secs % 86400) / 3600;
+    let mins = (total_secs % 3600) / 60;
+
+    if days > 0 {
+        Some(format!("Resets in {}d {}h", days, hours))
+    } else if hours > 0 {
+        Some(format!("Resets in {}h {}m", hours, mins))
+    } else {
+        Some(format!("Resets in {}m", mins))
+    }
+}
+
+fn format_remaining(used: f64, limit: f64, format: &ProgressFormat) -> String {
+    let remaining = (limit - used).max(0.0);
+    match format {
+        ProgressFormat::Percent => {
+            let pct = if limit > 0.0 { (remaining / limit * 100.0).round() } else { 0.0 };
+            format!("{:.0}% left", pct)
+        }
+        ProgressFormat::Dollars => {
+            format!("${:.2} left", remaining)
+        }
+        ProgressFormat::Count { suffix } => {
+            format!("{:.0} {} left", remaining, suffix)
+        }
+    }
+}
+
 struct ProgressInfo {
     provider: String,
     used: f64,
@@ -117,24 +186,45 @@ fn extract_primary_progress(output: &PluginOutput) -> Option<ProgressInfo> {
 }
 
 fn build_tooltip_for_output(output: &PluginOutput) -> String {
-    let mut parts = vec![format!("<b>{}</b>", output.display_name)];
+    let mut parts: Vec<String> = Vec::new();
 
-    if let Some(plan) = &output.plan {
-        parts.push(format!("  Plan: {}", plan));
-    }
+    // Header: provider name + plan badge
+    let header = if let Some(plan) = &output.plan {
+        format!(
+            "<b>{}</b>  <span bgcolor=\"#374151\" fgcolor=\"#e5e7eb\"> {} </span>",
+            output.display_name, plan
+        )
+    } else {
+        format!("<b>{}</b>", output.display_name)
+    };
+    parts.push(header);
 
     for line in &output.lines {
         match line {
-            MetricLine::Progress { label, used, limit, format, .. } => {
+            MetricLine::Progress { label, used, limit, format, resets_at, .. } => {
                 let pct = percentage(*used, *limit);
-                let formatted = format_progress(*used, *limit, format);
-                parts.push(format!("  {} {} ({}%)", label, formatted, pct));
+                let color = severity_color(pct);
+                let dot = format!("<span foreground=\"{color}\">●</span>");
+                let bar = build_progress_bar(pct);
+                let remaining = format_remaining(*used, *limit, format);
+                let resets = resets_at
+                    .as_deref()
+                    .and_then(format_resets_in)
+                    .unwrap_or_default();
+
+                parts.push(format!("<b>{label}</b> {dot}"));
+                parts.push(bar);
+                if resets.is_empty() {
+                    parts.push(remaining);
+                } else {
+                    parts.push(format!("{remaining}    {resets}"));
+                }
             }
             MetricLine::Text { label, value, .. } => {
-                parts.push(format!("  {}: {}", label, value));
+                parts.push(format!("{label}: {value}"));
             }
             MetricLine::Badge { label, text, .. } => {
-                parts.push(format!("  {}: {}", label, text));
+                parts.push(format!("{label}: {text}"));
             }
         }
     }
