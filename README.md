@@ -33,6 +33,7 @@ OpenUsage lives in your menu bar and shows you how much of your AI coding subscr
 - [**JetBrains AI Assistant**](docs/providers/jetbrains-ai-assistant.md) / quota, remaining
 - [**Kimi Code**](docs/providers/kimi.md) / session, weekly
 - [**MiniMax**](docs/providers/minimax.md) / coding plan session
+- [**OpenCode Go**](docs/providers/opencode-go.md) / 5h, weekly, monthly spend limits
 - [**Windsurf**](docs/providers/windsurf.md) / prompt credits, flex credits
 - [**Z.ai**](docs/providers/zai.md) / session, weekly, web searches
 
