@@ -1,5 +1,5 @@
 (function () {
-  const AUTH_PATHS = ["~/.factory/auth.json", "~/.factory/auth.encrypted"]
+  const AUTH_PATHS = ["~/.factory/auth.encrypted", "~/.factory/auth.json"]
   const KEYCHAIN_SERVICES = ["Factory Token", "Factory token", "Factory Auth", "Droid Auth"]
   const WORKOS_CLIENT_ID = "client_01HNM792M5G5G1A2THWPXKFMXB"
   const WORKOS_AUTH_URL = "https://api.workos.com/user_management/authenticate"
