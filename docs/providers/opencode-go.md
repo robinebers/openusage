@@ -55,7 +55,7 @@ Monthly usage is inferred from local history, not read from OpenCode’s account
 
 ## Failure Behavior
 
-If auth or prior history already indicates OpenCode Go is in use, but SQLite becomes unreadable or malformed, the provider stays visible and falls back to a soft empty state instead of failing hard.
+If auth or prior history already indicates OpenCode Go is in use, but SQLite becomes unreadable or malformed, the provider stays visible and shows a grey `Status: No usage data` badge instead of failing hard.
 
 ## Future Compatibility
 

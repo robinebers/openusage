@@ -232,7 +232,17 @@ describe("opencode-go plugin", () => {
     });
 
     const plugin = await loadPlugin();
-    expect(plugin.probe(ctx)).toEqual({ plan: "Go", lines: [] });
+    expect(plugin.probe(ctx)).toEqual({
+      plan: "Go",
+      lines: [
+        {
+          type: "badge",
+          label: "Status",
+          text: "No usage data",
+          color: "#a3a3a3",
+        },
+      ],
+    });
   });
 
   it("returns a soft empty state when sqlite returns malformed JSON and auth exists", async () => {
@@ -241,6 +251,16 @@ describe("opencode-go plugin", () => {
     ctx.host.sqlite.query.mockReturnValue("not-json");
 
     const plugin = await loadPlugin();
-    expect(plugin.probe(ctx)).toEqual({ plan: "Go", lines: [] });
+    expect(plugin.probe(ctx)).toEqual({
+      plan: "Go",
+      lines: [
+        {
+          type: "badge",
+          label: "Status",
+          text: "No usage data",
+          color: "#a3a3a3",
+        },
+      ],
+    });
   });
 });

@@ -249,6 +249,16 @@
     ];
   }
 
+  function buildSoftEmptyLines(ctx) {
+    return [
+      ctx.line.badge({
+        label: "Status",
+        text: "No usage data",
+        color: "#a3a3a3",
+      }),
+    ];
+  }
+
   function probe(ctx) {
     const authKey = loadAuthKey(ctx);
     const history = hasHistory(ctx);
@@ -259,12 +269,12 @@
     }
 
     if (!history.ok) {
-      return { plan: "Go", lines: [] };
+      return { plan: "Go", lines: buildSoftEmptyLines(ctx) };
     }
 
     const rowsResult = loadHistory(ctx);
     if (!rowsResult.ok) {
-      return { plan: "Go", lines: [] };
+      return { plan: "Go", lines: buildSoftEmptyLines(ctx) };
     }
 
     return {
