@@ -459,11 +459,11 @@
     const lines = []
     let plan = null
     if (creds.oauth.subscriptionType) {
-      var basePlan = ctx.fmt.planLabel(creds.oauth.subscriptionType)
+      const basePlan = ctx.fmt.planLabel(creds.oauth.subscriptionType)
       if (basePlan) {
-        var tierSuffix = ""
-        var rlt = String(creds.oauth.rateLimitTier || "")
-        var tierMatch = rlt.match(/(\d+)x/)
+        let tierSuffix = ""
+        const rlt = String(creds.oauth.rateLimitTier || "")
+        const tierMatch = rlt.match(/(\d+)x/)
         if (tierMatch) {
           tierSuffix = " " + tierMatch[1] + "x"
         }
