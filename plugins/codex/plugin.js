@@ -6,6 +6,7 @@
   const REFRESH_URL = "https://auth.openai.com/oauth/token"
   const USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
   const REFRESH_AGE_MS = 8 * 24 * 60 * 60 * 1000
+  const RATE_LIMIT_RESET_URL = "https://hascodexratelimitreset.today/api/status"
 
   function joinPath(base, leaf) {
     return base.replace(/[\\/]+$/, "") + "/" + leaf
@@ -286,6 +287,46 @@
   // Period durations in milliseconds
   var PERIOD_SESSION_MS = 5 * 60 * 60 * 1000    // 5 hours
   var PERIOD_WEEKLY_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
+
+  function fetchRateLimitResetStatus(ctx) {
+    try {
+      var resp = ctx.host.http.request({
+        method: "GET",
+        url: RATE_LIMIT_RESET_URL,
+        headers: { "Accept": "application/json" },
+        timeoutMs: 5000,
+      })
+      if (resp.status !== 200) {
+        ctx.host.log.warn("rate limit reset API returned status " + resp.status)
+        return null
+      }
+      var data = ctx.util.tryParseJson(resp.bodyText)
+      if (!data || typeof data.state !== "string") {
+        ctx.host.log.warn("rate limit reset API returned invalid data")
+        return null
+      }
+      return {
+        hasReset: data.state !== "no",
+        updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : null,
+      }
+    } catch (e) {
+      ctx.host.log.info("rate limit reset API unavailable: " + String(e))
+      return null
+    }
+  }
+
+  function formatUpdatedAgo(updatedAtMs, nowMs) {
+    if (updatedAtMs === null || !Number.isFinite(updatedAtMs)) return null
+    var diffMs = nowMs - updatedAtMs
+    if (diffMs < 0) return "just now"
+    var diffMin = Math.floor(diffMs / 60000)
+    if (diffMin < 1) return "just now"
+    if (diffMin < 60) return "Updated " + diffMin + "m ago"
+    var diffHours = Math.floor(diffMin / 60)
+    if (diffHours < 24) return "Updated " + diffHours + "h ago"
+    var diffDays = Math.floor(diffHours / 24)
+    return "Updated " + diffDays + "d ago"
+  }
 
   function queryTokenUsage(ctx) {
     if (!ctx.host.ccusage || typeof ctx.host.ccusage.query !== "function") {
@@ -662,6 +703,18 @@
 
       if (lines.length === 0) {
         lines.push(ctx.line.badge({ label: "Status", text: "No usage data", color: "#a3a3a3" }))
+      }
+
+      var resetStatus = fetchRateLimitResetStatus(ctx)
+      if (resetStatus) {
+        var badgeText = resetStatus.hasReset ? "Reset ✓" : "Not Reset"
+        var badgeColor = resetStatus.hasReset ? "#22c55e" : "#ef4444"
+        var badgeOpts = { label: "Rate Limit", text: badgeText, color: badgeColor }
+        var subtitle = formatUpdatedAgo(resetStatus.updatedAt, Date.now())
+        if (subtitle) {
+          badgeOpts.subtitle = subtitle
+        }
+        lines.push(ctx.line.badge(badgeOpts))
       }
 
       return { plan: plan, lines: lines }

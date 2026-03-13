@@ -238,8 +238,8 @@ describe("codex plugin", () => {
       status: "ok",
       data: {
         daily: [
-        { date: todayKey, totalTokens: 150, costUSD: 0.75 },
-        { date: "Feb 01, 2026", totalTokens: 300, costUSD: 1.0 },
+          { date: todayKey, totalTokens: 150, costUSD: 0.75 },
+          { date: "Feb 01, 2026", totalTokens: 300, costUSD: 1.0 },
         ],
       },
     })
@@ -365,7 +365,7 @@ describe("codex plugin", () => {
       status: "ok",
       data: {
         daily: [
-        { date: yesterdayKey, totalTokens: 0, costUSD: 0 },
+          { date: yesterdayKey, totalTokens: 0, costUSD: 0 },
         ],
       },
     })
@@ -393,7 +393,7 @@ describe("codex plugin", () => {
       status: "ok",
       data: {
         daily: [
-        { date: "Feb 01, 2026", totalTokens: 300, costUSD: 1.0 },
+          { date: "Feb 01, 2026", totalTokens: 300, costUSD: 1.0 },
         ],
       },
     })
@@ -437,7 +437,7 @@ describe("codex plugin", () => {
       status: "ok",
       data: {
         daily: [
-        { date: yesterdayKey, totalTokens: 220, costUSD: 1.1 },
+          { date: yesterdayKey, totalTokens: 220, costUSD: 1.1 },
         ],
       },
     })
@@ -1154,5 +1154,166 @@ describe("codex plugin", () => {
     const saved = JSON.parse(ctx.host.fs.readText("~/.codex/auth.json"))
     expect(saved.tokens.refresh_token).toBe("new-refresh")
     expect(saved.tokens.id_token).toBe(idToken)
+  })
+
+  describe("rate limit reset status", () => {
+    function makeAuthCtx() {
+      const ctx = makeCtx()
+      ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+        tokens: { access_token: "token" },
+        last_refresh: new Date().toISOString(),
+      }))
+      return ctx
+    }
+
+    function mockUsageAndResetApi(ctx, resetResponse) {
+      ctx.host.http.request.mockImplementation((opts) => {
+        const url = String(opts.url)
+        if (url.includes("hascodexratelimitreset.today")) {
+          return resetResponse
+        }
+        return {
+          status: 200,
+          headers: { "x-codex-primary-used-percent": "10" },
+          bodyText: JSON.stringify({}),
+        }
+      })
+    }
+
+    it("shows Reset badge when rate limit has reset", async () => {
+      const ctx = makeAuthCtx()
+      mockUsageAndResetApi(ctx, {
+        status: 200,
+        headers: {},
+        bodyText: JSON.stringify({ state: "yes", updatedAt: Date.now() - 60000 }),
+      })
+
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      const badge = result.lines.find((l) => l.label === "Rate Limit")
+      expect(badge).toBeTruthy()
+      expect(badge.text).toBe("Reset ✓")
+      expect(badge.color).toBe("#22c55e")
+    })
+
+    it("shows Not Reset badge when rate limit has not reset", async () => {
+      const ctx = makeAuthCtx()
+      mockUsageAndResetApi(ctx, {
+        status: 200,
+        headers: {},
+        bodyText: JSON.stringify({ state: "no", updatedAt: Date.now() - 120000 }),
+      })
+
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      const badge = result.lines.find((l) => l.label === "Rate Limit")
+      expect(badge).toBeTruthy()
+      expect(badge.text).toBe("Not Reset")
+      expect(badge.color).toBe("#ef4444")
+    })
+
+    it("skips rate limit badge when API request fails", async () => {
+      const ctx = makeAuthCtx()
+      ctx.host.http.request.mockImplementation((opts) => {
+        const url = String(opts.url)
+        if (url.includes("hascodexratelimitreset.today")) {
+          throw new Error("network error")
+        }
+        return {
+          status: 200,
+          headers: { "x-codex-primary-used-percent": "10" },
+          bodyText: JSON.stringify({}),
+        }
+      })
+
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      expect(result.lines.find((l) => l.label === "Rate Limit")).toBeUndefined()
+    })
+
+    it("skips rate limit badge when API returns non-200", async () => {
+      const ctx = makeAuthCtx()
+      mockUsageAndResetApi(ctx, {
+        status: 500,
+        headers: {},
+        bodyText: "error",
+      })
+
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      expect(result.lines.find((l) => l.label === "Rate Limit")).toBeUndefined()
+    })
+
+    it("skips rate limit badge when API returns invalid JSON", async () => {
+      const ctx = makeAuthCtx()
+      mockUsageAndResetApi(ctx, {
+        status: 200,
+        headers: {},
+        bodyText: "not-json",
+      })
+
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      expect(result.lines.find((l) => l.label === "Rate Limit")).toBeUndefined()
+    })
+
+    it("shows subtitle with relative time from updatedAt", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date("2026-03-13T12:00:00.000Z"))
+      try {
+        const ctx = makeAuthCtx()
+        const tenMinAgo = Date.now() - 10 * 60 * 1000
+        mockUsageAndResetApi(ctx, {
+          status: 200,
+          headers: {},
+          bodyText: JSON.stringify({ state: "no", updatedAt: tenMinAgo }),
+        })
+
+        const plugin = await loadPlugin()
+        const result = plugin.probe(ctx)
+        const badge = result.lines.find((l) => l.label === "Rate Limit")
+        expect(badge).toBeTruthy()
+        expect(badge.subtitle).toBe("Updated 10m ago")
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it("shows hours in subtitle when updatedAt is hours ago", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date("2026-03-13T12:00:00.000Z"))
+      try {
+        const ctx = makeAuthCtx()
+        const twoHoursAgo = Date.now() - 2 * 60 * 60 * 1000
+        mockUsageAndResetApi(ctx, {
+          status: 200,
+          headers: {},
+          bodyText: JSON.stringify({ state: "yes", updatedAt: twoHoursAgo }),
+        })
+
+        const plugin = await loadPlugin()
+        const result = plugin.probe(ctx)
+        const badge = result.lines.find((l) => l.label === "Rate Limit")
+        expect(badge).toBeTruthy()
+        expect(badge.subtitle).toBe("Updated 2h ago")
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it("omits subtitle when updatedAt is missing", async () => {
+      const ctx = makeAuthCtx()
+      mockUsageAndResetApi(ctx, {
+        status: 200,
+        headers: {},
+        bodyText: JSON.stringify({ state: "no" }),
+      })
+
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      const badge = result.lines.find((l) => l.label === "Rate Limit")
+      expect(badge).toBeTruthy()
+      expect(badge.subtitle).toBeUndefined()
+    })
   })
 })
