@@ -222,6 +222,103 @@ describe("cursor plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Total usage limit missing")
   })
 
+  it("accepts percent-only free plan usage when limit is omitted", async () => {
+    const ctx = makeCtx()
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: "token" }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            enabled: true,
+            billingCycleStart: "1772707936000",
+            billingCycleEnd: "1775386336000",
+            planUsage: {
+              remainingBonus: false,
+              autoPercentUsed: 0,
+              apiPercentUsed: 0,
+              totalPercentUsed: 0,
+            },
+            spendLimitUsage: {
+              limitType: "user",
+            },
+          }),
+        }
+      }
+      if (String(opts.url).includes("GetPlanInfo")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            planInfo: {
+              planName: "Free",
+              price: "Free",
+              billingCycleEnd: "1775386336000",
+            },
+          }),
+        }
+      }
+      if (String(opts.url).includes("GetCreditGrantsBalance")) {
+        return { status: 200, bodyText: "{}" }
+      }
+      if (String(opts.url).includes("cursor.com/api/auth/stripe")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            membershipType: "free",
+            customerBalance: 0,
+          }),
+        }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const totalLine = result.lines.find((line) => line.label === "Total usage")
+    expect(result.plan).toBe("Free")
+    expect(totalLine).toBeTruthy()
+    expect(totalLine.format).toEqual({ kind: "percent" })
+    expect(totalLine.used).toBe(0)
+    expect(totalLine.limit).toBe(100)
+  })
+
+  it("still throws for team usage when limit is omitted even if totalPercentUsed exists", async () => {
+    const ctx = makeCtx()
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: "token" }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            billingCycleStart: "1772707936000",
+            billingCycleEnd: "1775386336000",
+            planUsage: {
+              totalPercentUsed: 42,
+            },
+            spendLimitUsage: {
+              limitType: "team",
+              pooledRemaining: 1000,
+            },
+          }),
+        }
+      }
+      if (String(opts.url).includes("GetPlanInfo")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            planInfo: {
+              planName: "Team",
+            },
+          }),
+        }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Total usage limit missing")
+  })
+
   it("falls back to computed percent when totalSpend missing and no totalPercentUsed", async () => {
     const ctx = makeCtx()
     ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: "token" }]))

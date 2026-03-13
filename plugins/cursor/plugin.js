@@ -520,19 +520,36 @@
       }))
     }
 
-    // Total usage (always present) - fallback primary metric
-    if (typeof pu.limit !== "number") {
+    const su = usage.spendLimitUsage
+    const isTeamAccount = (
+      normalizedPlanName === "team" ||
+      (su && su.limitType === "team") ||
+      (su && typeof su.pooledLimit === "number")
+    )
+    const hasFiniteLimit = typeof pu.limit === "number" && Number.isFinite(pu.limit)
+    const hasFinitePercent = Number.isFinite(pu.totalPercentUsed)
+
+    // Free/individual plans can be percent-only; team rendering still needs dollars.
+    if (isTeamAccount && !hasFiniteLimit) {
       throw "Total usage limit missing from API response."
     }
-    const planUsed = typeof pu.totalSpend === "number"
-      ? pu.totalSpend
-      : pu.limit - (pu.remaining ?? 0)
-    const computedPercentUsed = pu.limit > 0
-      ? (planUsed / pu.limit) * 100
-      : 0
-    const totalUsagePercent = Number.isFinite(pu.totalPercentUsed)
+    if (!isTeamAccount && !hasFiniteLimit && !hasFinitePercent) {
+      throw "Total usage limit missing from API response."
+    }
+
+    const planUsed = hasFiniteLimit
+      ? (typeof pu.totalSpend === "number" ? pu.totalSpend : pu.limit - (pu.remaining ?? 0))
+      : null
+    const computedPercentUsed = hasFiniteLimit
+      ? (pu.limit > 0 ? (planUsed / pu.limit) * 100 : 0)
+      : null
+    const totalUsagePercent = hasFinitePercent
       ? pu.totalPercentUsed
       : computedPercentUsed
+
+    if (!isTeamAccount && !hasFiniteLimit && hasFinitePercent) {
+      ctx.host.log.info("total usage limit missing; using totalPercentUsed for individual account")
+    }
 
     // Calculate billing cycle period duration
     var billingPeriodMs = 30 * 24 * 60 * 60 * 1000 // 30 days default
@@ -541,13 +558,6 @@
     if (Number.isFinite(cycleStart) && Number.isFinite(cycleEnd) && cycleEnd > cycleStart) {
       billingPeriodMs = cycleEnd - cycleStart // already in ms
     }
-
-    const su = usage.spendLimitUsage
-    const isTeamAccount = (
-      normalizedPlanName === "team" ||
-      (su && su.limitType === "team") ||
-      (su && typeof su.pooledLimit === "number")
-    )
 
     if (isTeamAccount) {
       lines.push(ctx.line.progress({
