@@ -38,7 +38,7 @@
       if (typeof TextDecoder !== "undefined") {
         try {
           return new TextDecoder("utf-8", { fatal: false }).decode(new Uint8Array(bytes))
-        } catch {}
+        } catch { }
       }
 
       let escaped = ""
@@ -288,13 +288,41 @@
   var PERIOD_SESSION_MS = 5 * 60 * 60 * 1000    // 5 hours
   var PERIOD_WEEKLY_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
-  function fetchRateLimitResetStatus(ctx) {
+  var RATE_LIMIT_RESET_CACHE_MS = 5 * 60 * 1000 // 5 minutes
+
+  function readCachedResetStatus(ctx) {
+    var cachePath = ctx.app.pluginDataDir + "/rate_limit_reset_cache.json"
+    if (!ctx.host.fs.exists(cachePath)) return null
     try {
-      var resp = ctx.host.http.request({
+      var data = ctx.util.tryParseJson(ctx.host.fs.readText(cachePath))
+      if (!data || typeof data.cachedAt !== "number") return null
+      if (Date.now() - data.cachedAt > RATE_LIMIT_RESET_CACHE_MS) return null
+      return data.result
+    } catch {
+      return null
+    }
+  }
+
+  function writeCachedResetStatus(ctx, result) {
+    var cachePath = ctx.app.pluginDataDir + "/rate_limit_reset_cache.json"
+    try {
+      ctx.host.fs.writeText(cachePath, JSON.stringify({ cachedAt: Date.now(), result: result }))
+    } catch {
+      // Ignore cache write failures
+    }
+  }
+
+  function fetchRateLimitResetStatus(ctx) {
+    var cached = readCachedResetStatus(ctx)
+    if (cached !== null) return cached
+
+    var result = null
+    try {
+      var resp = ctx.util.request({
         method: "GET",
         url: RATE_LIMIT_RESET_URL,
         headers: { "Accept": "application/json" },
-        timeoutMs: 5000,
+        timeoutMs: 3000,
       })
       if (resp.status !== 200) {
         ctx.host.log.warn("rate limit reset API returned status " + resp.status)
@@ -305,14 +333,21 @@
         ctx.host.log.warn("rate limit reset API returned invalid data")
         return null
       }
-      return {
-        hasReset: data.state !== "no",
+      if (data.state !== "yes" && data.state !== "no") {
+        ctx.host.log.warn("rate limit reset API returned unknown state: " + data.state)
+        return null
+      }
+      result = {
+        hasReset: data.state === "yes",
         updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : null,
       }
     } catch (e) {
       ctx.host.log.info("rate limit reset API unavailable: " + String(e))
       return null
     }
+
+    writeCachedResetStatus(ctx, result)
+    return result
   }
 
   function formatUpdatedAgo(updatedAtMs, nowMs) {

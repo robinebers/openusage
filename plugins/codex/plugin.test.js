@@ -1257,6 +1257,19 @@ describe("codex plugin", () => {
       expect(result.lines.find((l) => l.label === "Rate Limit")).toBeUndefined()
     })
 
+    it("skips rate limit badge when API returns unknown state", async () => {
+      const ctx = makeAuthCtx()
+      mockUsageAndResetApi(ctx, {
+        status: 200,
+        headers: {},
+        bodyText: JSON.stringify({ state: "unknown" }),
+      })
+
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      expect(result.lines.find((l) => l.label === "Rate Limit")).toBeUndefined()
+    })
+
     it("shows subtitle with relative time from updatedAt", async () => {
       vi.useFakeTimers()
       vi.setSystemTime(new Date("2026-03-13T12:00:00.000Z"))
@@ -1314,6 +1327,47 @@ describe("codex plugin", () => {
       const badge = result.lines.find((l) => l.label === "Rate Limit")
       expect(badge).toBeTruthy()
       expect(badge.subtitle).toBeUndefined()
+    })
+
+    it("uses cached result within TTL instead of calling API again", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date("2026-03-13T12:00:00.000Z"))
+      try {
+        const ctx = makeAuthCtx()
+        let resetApiCalls = 0
+        ctx.host.http.request.mockImplementation((opts) => {
+          const url = String(opts.url)
+          if (url.includes("hascodexratelimitreset.today")) {
+            resetApiCalls++
+            return {
+              status: 200,
+              headers: {},
+              bodyText: JSON.stringify({ state: "yes", updatedAt: Date.now() }),
+            }
+          }
+          return {
+            status: 200,
+            headers: { "x-codex-primary-used-percent": "10" },
+            bodyText: JSON.stringify({}),
+          }
+        })
+
+        const plugin = await loadPlugin()
+        // First probe should call API
+        plugin.probe(ctx)
+        expect(resetApiCalls).toBe(1)
+
+        // Second probe within TTL should use cache
+        plugin.probe(ctx)
+        expect(resetApiCalls).toBe(1)
+
+        // Advance time past the 5-minute cache TTL
+        vi.advanceTimersByTime(6 * 60 * 1000)
+        plugin.probe(ctx)
+        expect(resetApiCalls).toBe(2)
+      } finally {
+        vi.useRealTimers()
+      }
     })
   })
 })

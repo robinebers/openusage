@@ -16,7 +16,7 @@
       "url": "https://platform.openai.com/usage"
     },
     {
-      "label": "Rate limit status",
+      "label": "Rate limit reset (community)",
       "url": "https://hascodexratelimitreset.today"
     }
   ],
