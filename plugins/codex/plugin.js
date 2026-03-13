@@ -289,17 +289,18 @@
   var PERIOD_WEEKLY_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
   var RATE_LIMIT_RESET_CACHE_MS = 5 * 60 * 1000 // 5 minutes
+  var CACHE_MISS = {} // sentinel to distinguish "no cache" from "cached null"
 
   function readCachedResetStatus(ctx) {
     var cachePath = ctx.app.pluginDataDir + "/rate_limit_reset_cache.json"
-    if (!ctx.host.fs.exists(cachePath)) return null
+    if (!ctx.host.fs.exists(cachePath)) return CACHE_MISS
     try {
       var data = ctx.util.tryParseJson(ctx.host.fs.readText(cachePath))
-      if (!data || typeof data.cachedAt !== "number") return null
-      if (Date.now() - data.cachedAt > RATE_LIMIT_RESET_CACHE_MS) return null
+      if (!data || typeof data.cachedAt !== "number") return CACHE_MISS
+      if (Date.now() - data.cachedAt > RATE_LIMIT_RESET_CACHE_MS) return CACHE_MISS
       return data.result
     } catch {
-      return null
+      return CACHE_MISS
     }
   }
 
@@ -314,7 +315,7 @@
 
   function fetchRateLimitResetStatus(ctx) {
     var cached = readCachedResetStatus(ctx)
-    if (cached !== null) return cached
+    if (cached !== CACHE_MISS) return cached
 
     var result = null
     try {
@@ -326,15 +327,18 @@
       })
       if (resp.status !== 200) {
         ctx.host.log.warn("rate limit reset API returned status " + resp.status)
+        writeCachedResetStatus(ctx, null)
         return null
       }
       var data = ctx.util.tryParseJson(resp.bodyText)
       if (!data || typeof data.state !== "string") {
         ctx.host.log.warn("rate limit reset API returned invalid data")
+        writeCachedResetStatus(ctx, null)
         return null
       }
       if (data.state !== "yes" && data.state !== "no") {
         ctx.host.log.warn("rate limit reset API returned unknown state: " + data.state)
+        writeCachedResetStatus(ctx, null)
         return null
       }
       result = {
@@ -343,6 +347,7 @@
       }
     } catch (e) {
       ctx.host.log.info("rate limit reset API unavailable: " + String(e))
+      writeCachedResetStatus(ctx, null)
       return null
     }
 

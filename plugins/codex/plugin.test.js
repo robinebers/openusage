@@ -1360,6 +1360,43 @@ describe("codex plugin", () => {
         vi.useRealTimers()
       }
     })
+
+    it("caches failure so subsequent probes within TTL do not call API again", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date("2026-03-13T12:00:00.000Z"))
+      try {
+        const ctx = makeAuthCtx()
+        let resetApiCalls = 0
+        ctx.host.http.request.mockImplementation((opts) => {
+          const url = String(opts.url)
+          if (url.includes("hascodexratelimitreset.today")) {
+            resetApiCalls++
+            throw new Error("network error")
+          }
+          return {
+            status: 200,
+            headers: { "x-codex-primary-used-percent": "10" },
+            bodyText: JSON.stringify({}),
+          }
+        })
+
+        const plugin = await loadPlugin()
+        // First probe should call API (and fail)
+        plugin.probe(ctx)
+        expect(resetApiCalls).toBe(1)
+
+        // Second probe within TTL should use cached failure, not call API
+        plugin.probe(ctx)
+        expect(resetApiCalls).toBe(1)
+
+        // Advance time past the 5-minute cache TTL
+        vi.advanceTimersByTime(6 * 60 * 1000)
+        plugin.probe(ctx)
+        expect(resetApiCalls).toBe(2)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
   })
 
 })
