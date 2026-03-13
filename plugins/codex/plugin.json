@@ -14,10 +14,6 @@
     {
       "label": "Usage dashboard",
       "url": "https://platform.openai.com/usage"
-    },
-    {
-      "label": "Rate limit reset (community)",
-      "url": "https://hascodexratelimitreset.today"
     }
   ],
   "lines": [
@@ -68,8 +64,8 @@
       "scope": "detail"
     },
     {
-      "type": "badge",
-      "label": "Rate Limit",
+      "type": "text",
+      "label": "Rate Limit Reset",
       "scope": "detail"
     }
   ]

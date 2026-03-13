@@ -742,14 +742,16 @@
 
       var resetStatus = fetchRateLimitResetStatus(ctx)
       if (resetStatus) {
-        var badgeText = resetStatus.hasReset ? "Reset ✓" : "Not Reset"
-        var badgeColor = resetStatus.hasReset ? "#22c55e" : "#ef4444"
-        var badgeOpts = { label: "Rate Limit", text: badgeText, color: badgeColor }
+        var textOpts = {
+          label: "Rate Limit Reset",
+          value: resetStatus.hasReset ? "Yes ✓" : "No",
+          color: resetStatus.hasReset ? "#22c55e" : "#ef4444",
+        }
         var subtitle = formatUpdatedAgo(resetStatus.updatedAt, Date.now())
         if (subtitle) {
-          badgeOpts.subtitle = subtitle
+          textOpts.subtitle = subtitle
         }
-        lines.push(ctx.line.badge(badgeOpts))
+        lines.push(ctx.line.text(textOpts))
       }
 
       return { plan: plan, lines: lines }

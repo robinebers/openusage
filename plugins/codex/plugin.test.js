@@ -1180,7 +1180,7 @@ describe("codex plugin", () => {
       })
     }
 
-    it("shows Reset badge when rate limit has reset", async () => {
+    it("shows Yes when rate limit has reset", async () => {
       const ctx = makeAuthCtx()
       mockUsageAndResetApi(ctx, {
         status: 200,
@@ -1190,13 +1190,13 @@ describe("codex plugin", () => {
 
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)
-      const badge = result.lines.find((l) => l.label === "Rate Limit")
-      expect(badge).toBeTruthy()
-      expect(badge.text).toBe("Reset ✓")
-      expect(badge.color).toBe("#22c55e")
+      const line = result.lines.find((l) => l.label === "Rate Limit Reset")
+      expect(line).toBeTruthy()
+      expect(line.value).toBe("Yes ✓")
+      expect(line.color).toBe("#22c55e")
     })
 
-    it("shows Not Reset badge when rate limit has not reset", async () => {
+    it("shows No when rate limit has not reset", async () => {
       const ctx = makeAuthCtx()
       mockUsageAndResetApi(ctx, {
         status: 200,
@@ -1206,10 +1206,10 @@ describe("codex plugin", () => {
 
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)
-      const badge = result.lines.find((l) => l.label === "Rate Limit")
-      expect(badge).toBeTruthy()
-      expect(badge.text).toBe("Not Reset")
-      expect(badge.color).toBe("#ef4444")
+      const line = result.lines.find((l) => l.label === "Rate Limit Reset")
+      expect(line).toBeTruthy()
+      expect(line.value).toBe("No")
+      expect(line.color).toBe("#ef4444")
     })
 
     it("skips rate limit badge when API request fails", async () => {
@@ -1228,7 +1228,7 @@ describe("codex plugin", () => {
 
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)
-      expect(result.lines.find((l) => l.label === "Rate Limit")).toBeUndefined()
+      expect(result.lines.find((l) => l.label === "Rate Limit Reset")).toBeUndefined()
     })
 
     it("skips rate limit badge when API returns non-200", async () => {
@@ -1241,7 +1241,7 @@ describe("codex plugin", () => {
 
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)
-      expect(result.lines.find((l) => l.label === "Rate Limit")).toBeUndefined()
+      expect(result.lines.find((l) => l.label === "Rate Limit Reset")).toBeUndefined()
     })
 
     it("skips rate limit badge when API returns invalid JSON", async () => {
@@ -1254,7 +1254,7 @@ describe("codex plugin", () => {
 
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)
-      expect(result.lines.find((l) => l.label === "Rate Limit")).toBeUndefined()
+      expect(result.lines.find((l) => l.label === "Rate Limit Reset")).toBeUndefined()
     })
 
     it("skips rate limit badge when API returns unknown state", async () => {
@@ -1267,7 +1267,7 @@ describe("codex plugin", () => {
 
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)
-      expect(result.lines.find((l) => l.label === "Rate Limit")).toBeUndefined()
+      expect(result.lines.find((l) => l.label === "Rate Limit Reset")).toBeUndefined()
     })
 
     it("shows subtitle with relative time from updatedAt", async () => {
@@ -1284,9 +1284,9 @@ describe("codex plugin", () => {
 
         const plugin = await loadPlugin()
         const result = plugin.probe(ctx)
-        const badge = result.lines.find((l) => l.label === "Rate Limit")
-        expect(badge).toBeTruthy()
-        expect(badge.subtitle).toBe("Updated 10m ago")
+        const line = result.lines.find((l) => l.label === "Rate Limit Reset")
+        expect(line).toBeTruthy()
+        expect(line.subtitle).toBe("Updated 10m ago")
       } finally {
         vi.useRealTimers()
       }
@@ -1306,9 +1306,9 @@ describe("codex plugin", () => {
 
         const plugin = await loadPlugin()
         const result = plugin.probe(ctx)
-        const badge = result.lines.find((l) => l.label === "Rate Limit")
-        expect(badge).toBeTruthy()
-        expect(badge.subtitle).toBe("Updated 2h ago")
+        const line = result.lines.find((l) => l.label === "Rate Limit Reset")
+        expect(line).toBeTruthy()
+        expect(line.subtitle).toBe("Updated 2h ago")
       } finally {
         vi.useRealTimers()
       }
@@ -1324,9 +1324,9 @@ describe("codex plugin", () => {
 
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)
-      const badge = result.lines.find((l) => l.label === "Rate Limit")
-      expect(badge).toBeTruthy()
-      expect(badge.subtitle).toBeUndefined()
+      const line = result.lines.find((l) => l.label === "Rate Limit Reset")
+      expect(line).toBeTruthy()
+      expect(line.subtitle).toBeUndefined()
     })
 
     it("uses cached result within TTL instead of calling API again", async () => {
