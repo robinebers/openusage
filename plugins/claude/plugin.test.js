@@ -92,9 +92,37 @@ describe("claude plugin", () => {
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    expect(result.plan).toBeTruthy()
+    expect(result.plan).toBe("Pro")
     expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
     expect(result.lines.find((line) => line.label === "Weekly")).toBeTruthy()
+  })
+
+  it("appends max rate limit tier to the plan label when present", async () => {
+    const runCase = async (rateLimitTier, expectedPlan) => {
+      const ctx = makeCtx()
+      ctx.host.fs.exists = () => true
+      ctx.host.fs.readText = () =>
+        JSON.stringify({
+          claudeAiOauth: {
+            accessToken: "token",
+            subscriptionType: "max",
+            rateLimitTier,
+          },
+        })
+      ctx.host.http.request.mockReturnValue({
+        status: 200,
+        bodyText: JSON.stringify({
+          five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+        }),
+      })
+
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      expect(result.plan).toBe(expectedPlan)
+    }
+
+    await runCase("claude_max_subscription_20x", "Max 20x")
+    await runCase("claude_max_subscription_5x", "Max 5x")
   })
 
   it("omits resetsAt when resets_at is missing", async () => {
