@@ -215,6 +215,138 @@ describe("codex plugin", () => {
     expect(result.lines.find((l) => l.label === "Session")).toBeTruthy()
   })
 
+  it("handles OpenCode path access failures gracefully", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    const originalExists = ctx.host.fs.exists
+    ctx.host.fs.exists = vi.fn((path) => {
+      if (path === "~/.local/share/opencode/opencode.db") {
+        throw new Error("permission denied")
+      }
+      return originalExists(path)
+    })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: { "x-codex-primary-used-percent": "10" },
+      bodyText: JSON.stringify({}),
+    })
+    ctx.host.ccusage.query.mockReturnValue({ status: "no_runner" })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((l) => l.label === "Session")).toBeTruthy()
+    expect(result.lines.find((l) => l.label === "Today")).toBeUndefined()
+    expect(
+      ctx.host.log.warn.mock.calls.some((call) =>
+        String(call[0]).includes("opencode db exists check failed")
+      )
+    ).toBe(true)
+  })
+
+  it("handles OpenCode sqlite query failures gracefully", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.fs.writeText("~/.local/share/opencode/opencode.db", "sqlite-placeholder")
+    ctx.host.sqlite.query.mockImplementation(() => {
+      throw new Error("sqlite unavailable")
+    })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: { "x-codex-primary-used-percent": "10" },
+      bodyText: JSON.stringify({}),
+    })
+    ctx.host.ccusage.query.mockReturnValue({ status: "no_runner" })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((l) => l.label === "Session")).toBeTruthy()
+    expect(result.lines.find((l) => l.label === "Today")).toBeUndefined()
+    expect(
+      ctx.host.log.warn.mock.calls.some((call) =>
+        String(call[0]).includes("opencode usage query failed")
+      )
+    ).toBe(true)
+  })
+
+  it("ignores malformed OpenCode sqlite payloads", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.fs.writeText("~/.local/share/opencode/opencode.db", "sqlite-placeholder")
+    ctx.host.sqlite.query.mockReturnValue("{}")
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: { "x-codex-primary-used-percent": "10" },
+      bodyText: JSON.stringify({}),
+    })
+    ctx.host.ccusage.query.mockReturnValue({ status: "no_runner" })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((l) => l.label === "Session")).toBeTruthy()
+    expect(result.lines.find((l) => l.label === "Today")).toBeUndefined()
+  })
+
+  it("falls back to next OpenCode DB when first returns non-array rows", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-02-20T16:00:00.000Z"))
+
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.fs.writeText("~/.local/share/opencode/opencode.db", "sqlite-placeholder")
+    ctx.host.fs.writeText("~/Library/Application Support/opencode/opencode.db", "sqlite-placeholder")
+    ctx.host.sqlite.query.mockImplementation((dbPath) => {
+      if (dbPath === "~/.local/share/opencode/opencode.db") return "{}"
+      if (dbPath === "~/Library/Application Support/opencode/opencode.db") {
+        return JSON.stringify([
+          {
+            date: "2026-02-20",
+            modelID: "gpt-5.3-codex",
+            inputTokens: 1000000,
+            outputTokens: 0,
+            reasoningTokens: 0,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+          },
+        ])
+      }
+      return "[]"
+    })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: { "x-codex-primary-used-percent": "10" },
+      bodyText: JSON.stringify({}),
+    })
+    ctx.host.ccusage.query.mockReturnValue({ status: "no_runner" })
+
+    try {
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      const today = result.lines.find((l) => l.label === "Today")
+      expect(today).toBeTruthy()
+      expect(today.value).toContain("1M tokens")
+      expect(today.value).toContain("$1.75")
+      expect(
+        ctx.host.log.warn.mock.calls.some((call) =>
+          String(call[0]).includes("opencode usage query returned non-array rows")
+        )
+      ).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("adds token lines from codex ccusage format and passes codex provider", async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date("2026-02-20T16:00:00.000Z"))
@@ -267,6 +399,111 @@ describe("codex plugin", () => {
       const sinceMonth = String(since.getMonth() + 1).padStart(2, "0")
       const sinceDay = String(since.getDate()).padStart(2, "0")
       expect(firstCall.since).toBe(sinceYear + sinceMonth + sinceDay)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("merges OpenCode codex usage into token totals", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-02-20T16:00:00.000Z"))
+
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: { "x-codex-primary-used-percent": "10" },
+      bodyText: JSON.stringify({}),
+    })
+
+    const now = new Date()
+    const month = now.toLocaleString("en-US", { month: "short" })
+    const day = String(now.getDate()).padStart(2, "0")
+    const year = now.getFullYear()
+    const todayKey = month + " " + day + ", " + year
+    ctx.host.ccusage.query.mockReturnValue({
+      status: "ok",
+      data: {
+        daily: [{ date: todayKey, totalTokens: 150, costUSD: 0.75 }],
+      },
+    })
+
+    ctx.host.fs.writeText("~/.local/share/opencode/opencode.db", "sqlite-placeholder")
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([
+      {
+        date: "2026-02-20",
+        modelID: "gpt-5.3-codex",
+        inputTokens: 1000000,
+        outputTokens: 0,
+        reasoningTokens: 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+      },
+    ]))
+
+    try {
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+
+      const today = result.lines.find((l) => l.label === "Today")
+      expect(today).toBeTruthy()
+      expect(today.value).toContain("1M tokens")
+      expect(today.value).toContain("$2.50")
+
+      const last30 = result.lines.find((l) => l.label === "Last 30 Days")
+      expect(last30).toBeTruthy()
+      expect(last30.value).toContain("1M tokens")
+      expect(last30.value).toContain("$2.50")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("includes OpenCode spark usage as tokens without synthetic pricing", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-02-20T16:00:00.000Z"))
+
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: { "x-codex-primary-used-percent": "10" },
+      bodyText: JSON.stringify({}),
+    })
+    ctx.host.ccusage.query.mockReturnValue({ status: "no_runner" })
+
+    ctx.host.fs.writeText("~/.local/share/opencode/opencode.db", "sqlite-placeholder")
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([
+      {
+        date: "2026-02-20",
+        modelID: "gpt-5.3-codex-spark",
+        inputTokens: 5000,
+        outputTokens: 0,
+        reasoningTokens: 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+      },
+    ]))
+
+    try {
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+
+      const today = result.lines.find((l) => l.label === "Today")
+      expect(today).toBeTruthy()
+      expect(today.value).toContain("5K tokens")
+      expect(today.value).not.toContain("$")
+
+      const last30 = result.lines.find((l) => l.label === "Last 30 Days")
+      expect(last30).toBeTruthy()
+      expect(last30.value).toContain("5K tokens")
+      expect(last30.value).not.toContain("$")
     } finally {
       vi.useRealTimers()
     }
