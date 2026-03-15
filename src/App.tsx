@@ -236,6 +236,7 @@ function App() {
       selectedPlugin={selectedPlugin}
       onPluginContextAction={handlePluginContextAction}
       isPluginRefreshAvailable={isPluginRefreshAvailable}
+      onNavReorder={handleReorder}
       appContentProps={{
         onRetryPlugin: handleRetryPlugin,
         onReorder: handleReorder,
