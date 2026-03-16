@@ -19,6 +19,17 @@ function makeAuthStatus(apiKey) {
   return JSON.stringify([{ value: JSON.stringify({ apiKey: apiKey || "sk-ws-01-test" }) }])
 }
 
+function makeInfoPlist(version) {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleShortVersionString</key>
+  <string>${version}</string>
+</dict>
+</plist>`
+}
+
 function makeLsResponse(overrides) {
   var base = {
     userStatus: {
@@ -175,6 +186,18 @@ describe("windsurf plugin", () => {
 
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Start Windsurf or sign in and try again.")
+  })
+
+  it("treats SQLite read errors as missing API key", async () => {
+    const ctx = makeCtx()
+    ctx.host.ls.discover.mockReturnValue(makeDiscovery())
+    ctx.host.sqlite.query.mockImplementation(() => {
+      throw new Error("db unavailable")
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Start Windsurf or sign in and try again.")
+    expect(ctx.host.log.warn).toHaveBeenCalled()
   })
 
   it("calculates billing period duration from planStart/planEnd", async () => {
@@ -391,6 +414,21 @@ describe("windsurf plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Start Windsurf or sign in and try again.")
   })
 
+  it("falls through when LS GetUserStatus throws", async () => {
+    const ctx = makeCtx()
+    setupLsMock(ctx, makeDiscovery(), "sk-ws-01-test", makeLsResponse())
+    ctx.host.http.request.mockImplementation((reqOpts) => {
+      if (String(reqOpts.url).includes("GetUnleashData")) {
+        return { status: 200, bodyText: "{}" }
+      }
+      throw new Error("connection reset")
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Start Windsurf or sign in and try again.")
+    expect(ctx.host.log.warn).toHaveBeenCalledWith(expect.stringContaining("GetUserStatus threw"))
+  })
+
   it("treats missing apiKey in SQLite auth payload as unavailable", async () => {
     const ctx = makeCtx()
     ctx.host.ls.discover.mockReturnValue(makeDiscovery())
@@ -453,7 +491,10 @@ describe("windsurf plugin", () => {
 
   function setupCloudMock(ctx, apiKey, cloudResponse, opts) {
     var stateDb = (opts && opts.stateDb) || "Windsurf/"
+    var appPlist = (opts && opts.appPlist) || "/Applications/Windsurf.app/Contents/Info.plist"
+    var appVersion = (opts && opts.appVersion) || "1.108.2"
     ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.fs.writeText(appPlist, makeInfoPlist(appVersion))
     ctx.host.sqlite.query.mockImplementation((db, sql) => {
       if (String(sql).includes("windsurfAuthStatus") && String(db).includes(stateDb)) {
         return makeAuthStatus(apiKey)
@@ -514,7 +555,8 @@ describe("windsurf plugin", () => {
     expect(body.metadata.apiKey).toBe("sk-ws-01-cloud")
     expect(body.metadata.ideName).toBe("windsurf")
     expect(body.metadata.extensionName).toBe("windsurf")
-    expect(body.metadata.ideVersion).toBe("0.0.0")
+    expect(body.metadata.ideVersion).toBe("1.108.2")
+    expect(body.metadata.extensionVersion).toBe("1.108.2")
     expect(body.metadata.locale).toBe("en")
   })
 
@@ -583,6 +625,59 @@ describe("windsurf plugin", () => {
     const body = JSON.parse(capturedReq.bodyText)
     expect(body.metadata.ideName).toBe("windsurf-next")
     expect(body.metadata.extensionName).toBe("windsurf-next")
+  })
+
+  it("cloud fallback uses 0.0.0 when installed app version is unavailable", async () => {
+    const ctx = makeCtx()
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.sqlite.query.mockImplementation((db, sql) => {
+      if (String(sql).includes("windsurfAuthStatus")) {
+        return makeAuthStatus("sk-ws-01-cloud")
+      }
+      return "[]"
+    })
+
+    let capturedReq = null
+    ctx.host.http.request.mockImplementation((reqOpts) => {
+      capturedReq = reqOpts
+      return { status: 200, bodyText: JSON.stringify(makeLsResponse()) }
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    const body = JSON.parse(capturedReq.bodyText)
+    expect(body.metadata.ideVersion).toBe("0.0.0")
+    expect(body.metadata.extensionVersion).toBe("0.0.0")
+  })
+
+  it("cloud fallback ignores Info.plist read failures", async () => {
+    const ctx = makeCtx()
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.fs.writeText("/Applications/Windsurf.app/Contents/Info.plist", makeInfoPlist("1.108.2"))
+    ctx.host.fs.readText = () => {
+      throw new Error("plist unreadable")
+    }
+    ctx.host.sqlite.query.mockImplementation((db, sql) => {
+      if (String(sql).includes("windsurfAuthStatus")) {
+        return makeAuthStatus("sk-ws-01-cloud")
+      }
+      return "[]"
+    })
+
+    let capturedReq = null
+    ctx.host.http.request.mockImplementation((reqOpts) => {
+      capturedReq = reqOpts
+      return { status: 200, bodyText: JSON.stringify(makeLsResponse()) }
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    const body = JSON.parse(capturedReq.bodyText)
+    expect(body.metadata.ideVersion).toBe("0.0.0")
+    expect(body.metadata.extensionVersion).toBe("0.0.0")
+    expect(ctx.host.log.warn).toHaveBeenCalledWith(expect.stringContaining("failed to read installed version"))
   })
 
   it("cloud fallback fails when no API key in SQLite", async () => {
