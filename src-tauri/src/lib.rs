@@ -21,11 +21,8 @@ use uuid::Uuid;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 const GLOBAL_SHORTCUT_STORE_KEY: &str = "globalShortcut";
-const APP_STARTED_TRACKED_DAY_KEY_PREFIX: &str = "analytics.app_started_day.";
-
-fn app_started_day_key(version: &str) -> String {
-    format!("{}{}", APP_STARTED_TRACKED_DAY_KEY_PREFIX, version)
-}
+const DAILY_ACTIVE_TRACKED_DAY_KEY: &str = "analytics.daily_active_day";
+const DAILY_ACTIVE_EVENT_NAME: &str = "app_started";
 
 fn today_utc_ymd() -> String {
     let date = time::OffsetDateTime::now_utc().date();
@@ -37,7 +34,7 @@ fn today_utc_ymd() -> String {
     )
 }
 
-fn should_track_app_started(last_tracked_day: Option<&str>, today: &str) -> bool {
+fn should_track_daily_active(last_tracked_day: Option<&str>, today: &str) -> bool {
     match last_tracked_day {
         Some(day) => day != today,
         None => true,
@@ -45,40 +42,74 @@ fn should_track_app_started(last_tracked_day: Option<&str>, today: &str) -> bool
 }
 
 #[cfg(desktop)]
-fn track_app_started_once_per_day_per_version(app: &tauri::App) {
+fn track_daily_active_if_needed(app_handle: &tauri::AppHandle) {
     use tauri_plugin_store::StoreExt;
 
-    let version = app.package_info().version.to_string();
-    let key = app_started_day_key(&version);
     let today = today_utc_ymd();
 
-    let store = match app.handle().store("settings.json") {
+    let store = match app_handle.store("settings.json") {
         Ok(store) => store,
         Err(error) => {
-            log::warn!("Failed to access settings store for app_started gate: {}", error);
+            log::warn!(
+                "Failed to access settings store for daily analytics gate: {}",
+                error
+            );
             return;
         }
     };
 
     let last_tracked_day = store
-        .get(&key)
+        .get(DAILY_ACTIVE_TRACKED_DAY_KEY)
         .and_then(|value| value.as_str().map(|value| value.to_string()));
 
-    if !should_track_app_started(last_tracked_day.as_deref(), &today) {
+    if !should_track_daily_active(last_tracked_day.as_deref(), &today) {
         return;
     }
 
-    let _ = app.track_event("app_started", None);
+    if let Err(error) = app_handle.track_event(DAILY_ACTIVE_EVENT_NAME, None) {
+        log::warn!("Failed to track daily analytics event: {}", error);
+        return;
+    }
 
-    store.set(&key, serde_json::Value::String(today));
+    store.set(
+        DAILY_ACTIVE_TRACKED_DAY_KEY,
+        serde_json::Value::String(today),
+    );
     if let Err(error) = store.save() {
-        log::warn!("Failed to save app_started tracked day: {}", error);
+        log::warn!("Failed to save daily analytics tracked day: {}", error);
     }
 }
 
 #[cfg(not(desktop))]
-fn track_app_started_once_per_day_per_version(app: &tauri::App) {
-    let _ = app.track_event("app_started", None);
+fn track_daily_active_if_needed(app_handle: &tauri::AppHandle) {
+    let _ = app_handle.track_event(DAILY_ACTIVE_EVENT_NAME, None);
+}
+
+#[cfg(desktop)]
+fn seconds_until_next_utc_day(now: time::OffsetDateTime) -> u64 {
+    let now_time = now.time();
+    let seconds_since_midnight = u64::from(now_time.hour()) * 60 * 60
+        + u64::from(now_time.minute()) * 60
+        + u64::from(now_time.second());
+    let seconds_until_next_day = 86_400_u64.saturating_sub(seconds_since_midnight);
+    if seconds_until_next_day == 0 {
+        86_400
+    } else {
+        seconds_until_next_day
+    }
+}
+
+#[cfg(desktop)]
+fn spawn_daily_active_rollover_tracker(app_handle: tauri::AppHandle) {
+    std::thread::spawn(move || {
+        loop {
+            let sleep_for = std::time::Duration::from_secs(seconds_until_next_utc_day(
+                time::OffsetDateTime::now_utc(),
+            ));
+            std::thread::sleep(sleep_for);
+            track_daily_active_if_needed(&app_handle);
+        }
+    });
 }
 
 #[cfg(desktop)]
@@ -89,7 +120,10 @@ fn managed_shortcut_slot() -> &'static Mutex<Option<String>> {
 
 /// Shared shortcut handler that toggles the panel when the shortcut is pressed.
 #[cfg(desktop)]
-fn handle_global_shortcut(app: &tauri::AppHandle, event: tauri_plugin_global_shortcut::ShortcutEvent) {
+fn handle_global_shortcut(
+    app: &tauri::AppHandle,
+    event: tauri_plugin_global_shortcut::ShortcutEvent,
+) {
     if event.state == ShortcutState::Pressed {
         log::debug!("Global shortcut triggered");
         panel::toggle_panel(app);
@@ -270,9 +304,19 @@ async fn start_probe_batch(
                     if has_error {
                         log::warn!("probe {} completed with error", plugin_id);
                     } else {
-                        log::info!("probe {} completed ok ({} lines)", plugin_id, output.lines.len());
+                        log::info!(
+                            "probe {} completed ok ({} lines)",
+                            plugin_id,
+                            output.lines.len()
+                        );
                     }
-                    let _ = handle.emit("probe:result", ProbeResult { batch_id: bid, output });
+                    let _ = handle.emit(
+                        "probe:result",
+                        ProbeResult {
+                            batch_id: bid,
+                            output,
+                        },
+                    );
                 }
                 Err(_) => {
                     log::error!("probe {} panicked", plugin_id);
@@ -311,7 +355,10 @@ fn get_log_path(app_handle: tauri::AppHandle) -> Result<String, String> {
 /// Pass `null` to disable the shortcut, or a shortcut string like "CommandOrControl+Shift+U".
 #[cfg(desktop)]
 #[tauri::command]
-fn update_global_shortcut(app_handle: tauri::AppHandle, shortcut: Option<String>) -> Result<(), String> {
+fn update_global_shortcut(
+    app_handle: tauri::AppHandle,
+    shortcut: Option<String>,
+) -> Result<(), String> {
     let global_shortcut = app_handle.global_shortcut();
     let normalized_shortcut = shortcut.and_then(|value| {
         let trimmed = value.trim().to_string();
@@ -338,7 +385,11 @@ fn update_global_shortcut(app_handle: tauri::AppHandle, shortcut: Option<String>
                 *managed_shortcut = None;
             }
             Err(e) => {
-                log::warn!("Failed to unregister existing shortcut '{}': {}", existing, e);
+                log::warn!(
+                    "Failed to unregister existing shortcut '{}': {}",
+                    existing,
+                    e
+                );
             }
         }
     }
@@ -462,7 +513,9 @@ pub fn run() {
             let version = app.package_info().version.to_string();
             log::info!("OpenUsage v{} starting", version);
 
-            track_app_started_once_per_day_per_version(app);
+            track_daily_active_if_needed(app.handle());
+            #[cfg(desktop)]
+            spawn_daily_active_rollover_tracker(app.handle().clone());
 
             let app_data_dir = app.path().app_data_dir().expect("no app data dir");
             let resource_dir = app.path().resource_dir().expect("no resource dir");
@@ -477,7 +530,8 @@ pub fn run() {
 
             tray::create(app.handle())?;
 
-            app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
+            app.handle()
+                .plugin(tauri_plugin_updater::Builder::new().build())?;
 
             // Register global shortcut from stored settings
             #[cfg(desktop)]
@@ -498,7 +552,8 @@ pub fn run() {
                                     },
                                 ) {
                                     log::warn!("Failed to register initial global shortcut: {}", e);
-                                } else if let Ok(mut managed_shortcut) = managed_shortcut_slot().lock()
+                                } else if let Ok(mut managed_shortcut) =
+                                    managed_shortcut_slot().lock()
                                 {
                                     *managed_shortcut = Some(shortcut.to_string());
                                 } else {
@@ -519,29 +574,41 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{app_started_day_key, should_track_app_started};
+    use super::{
+        DAILY_ACTIVE_TRACKED_DAY_KEY, seconds_until_next_utc_day, should_track_daily_active,
+    };
+    use time::{Date, Month, PrimitiveDateTime, Time};
 
     #[test]
     fn should_track_when_no_previous_day() {
-        assert!(should_track_app_started(None, "2026-02-12"));
+        assert!(should_track_daily_active(None, "2026-02-12"));
     }
 
     #[test]
     fn should_not_track_when_same_day() {
-        assert!(!should_track_app_started(Some("2026-02-12"), "2026-02-12"));
+        assert!(!should_track_daily_active(Some("2026-02-12"), "2026-02-12"));
     }
 
     #[test]
     fn should_track_when_day_changes() {
-        assert!(should_track_app_started(Some("2026-02-11"), "2026-02-12"));
+        assert!(should_track_daily_active(Some("2026-02-11"), "2026-02-12"));
     }
 
     #[test]
-    fn key_is_version_scoped() {
-        let v1_key = app_started_day_key("0.6.2");
-        let v2_key = app_started_day_key("0.6.3");
-        assert_ne!(v1_key, v2_key);
-        assert!(v1_key.ends_with("0.6.2"));
-        assert!(v2_key.ends_with("0.6.3"));
+    fn daily_active_key_is_not_version_scoped() {
+        assert_eq!(DAILY_ACTIVE_TRACKED_DAY_KEY, "analytics.daily_active_day");
+        assert!(!DAILY_ACTIVE_TRACKED_DAY_KEY.contains("0.6.2"));
+        assert!(!DAILY_ACTIVE_TRACKED_DAY_KEY.contains("0.6.3"));
+    }
+
+    #[test]
+    fn rollover_sleep_waits_for_next_utc_day_boundary() {
+        let now = PrimitiveDateTime::new(
+            Date::from_calendar_date(2026, Month::February, 12).unwrap(),
+            Time::from_hms(23, 59, 50).unwrap(),
+        )
+        .assume_utc();
+
+        assert_eq!(seconds_until_next_utc_day(now), 10);
     }
 }
