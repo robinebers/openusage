@@ -491,7 +491,7 @@ describe("windsurf plugin", () => {
 
   function setupCloudMock(ctx, apiKey, cloudResponse, opts) {
     var stateDb = (opts && opts.stateDb) || "Windsurf/"
-    var appPlist = (opts && opts.appPlist) || "/Applications/Windsurf.app/Contents/Info.plist"
+    var appPlist = (opts && opts.appPlist) || (stateDb === "Windsurf - Next/" ? "/Applications/Windsurf - Next.app/Contents/Info.plist" : "/Applications/Windsurf.app/Contents/Info.plist")
     var appVersion = (opts && opts.appVersion) || "1.108.2"
     ctx.host.ls.discover.mockReturnValue(null)
     ctx.host.fs.writeText(appPlist, makeInfoPlist(appVersion))
