@@ -6,11 +6,12 @@ const RESET_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
   minute: "2-digit",
 })
 
-const RESET_MONTH_FORMATTER = new Intl.DateTimeFormat(undefined, {
+const RESET_MONTH_DAY_FORMATTER = new Intl.DateTimeFormat(undefined, {
   month: "short",
+  day: "numeric",
 })
 
-export const RESET_SOON_THRESHOLD_MS = 5 * 60 * 1000
+const RESET_SOON_THRESHOLD_MS = 5 * 60 * 1000
 
 function parseResetTimestamp(resetsAtIso: string): number | null {
   const resetsAtMs = Date.parse(resetsAtIso)
@@ -22,21 +23,8 @@ function getLocalDayIndex(timestampMs: number): number {
   return Math.floor(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86_400_000)
 }
 
-function getEnglishOrdinalSuffix(day: number): string {
-  const mod100 = day % 100
-  if (mod100 >= 11 && mod100 <= 13) return "th"
-  const mod10 = day % 10
-  if (mod10 === 1) return "st"
-  if (mod10 === 2) return "nd"
-  if (mod10 === 3) return "rd"
-  return "th"
-}
-
-function formatMonthDayWithOrdinal(timestampMs: number): string {
-  const date = new Date(timestampMs)
-  const monthText = RESET_MONTH_FORMATTER.format(date)
-  const day = date.getDate()
-  return `${monthText} ${day}${getEnglishOrdinalSuffix(day)}`
+function formatMonthDay(timestampMs: number): string {
+  return RESET_MONTH_DAY_FORMATTER.format(timestampMs)
 }
 
 export function formatResetRelativeLabel(nowMs: number, resetsAtIso: string): string | null {
@@ -56,7 +44,7 @@ export function formatResetAbsoluteLabel(nowMs: number, resetsAtIso: string): st
   const timeText = RESET_TIME_FORMATTER.format(resetsAtMs)
   if (dayDiff <= 0) return `Resets today at ${timeText}`
   if (dayDiff === 1) return `Resets tomorrow at ${timeText}`
-  const dateText = formatMonthDayWithOrdinal(resetsAtMs)
+  const dateText = formatMonthDay(resetsAtMs)
   return `Resets ${dateText} at ${timeText}`
 }
 

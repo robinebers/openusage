@@ -45,17 +45,22 @@ describe("reset-tooltip", () => {
     expect(formatResetAbsoluteLabel(nowMs, resetsAtIso)).toBe(`Resets tomorrow at ${timeText}`)
   })
 
-  it("formats absolute reset labels with ordinal month-day context", () => {
+  it("formats absolute reset labels with locale-aware month-day context", () => {
     const nowMs = new Date(2026, 0, 28, 9, 0, 0).getTime()
     const cases = [
-      { iso: new Date(2026, 1, 1, 8, 0, 0).toISOString(), label: "1st" },
-      { iso: new Date(2026, 1, 2, 8, 0, 0).toISOString(), label: "2nd" },
-      { iso: new Date(2026, 1, 3, 8, 0, 0).toISOString(), label: "3rd" },
-      { iso: new Date(2026, 1, 11, 8, 0, 0).toISOString(), label: "11th" },
+      new Date(2026, 1, 1, 8, 0, 0).toISOString(),
+      new Date(2026, 1, 2, 8, 0, 0).toISOString(),
+      new Date(2026, 1, 3, 8, 0, 0).toISOString(),
+      new Date(2026, 1, 11, 8, 0, 0).toISOString(),
     ]
 
-    for (const testCase of cases) {
-      expect(formatResetAbsoluteLabel(nowMs, testCase.iso)).toContain(testCase.label)
+    for (const resetsAtIso of cases) {
+      const dateText = new Intl.DateTimeFormat(undefined, {
+        month: "short",
+        day: "numeric",
+      }).format(Date.parse(resetsAtIso))
+
+      expect(formatResetAbsoluteLabel(nowMs, resetsAtIso)).toContain(dateText)
     }
   })
 

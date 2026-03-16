@@ -32,22 +32,11 @@ vi.mock("@/components/ui/tooltip", () => ({
   TooltipContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }))
 
-function getEnglishOrdinalSuffix(day: number): string {
-  const mod100 = day % 100
-  if (mod100 >= 11 && mod100 <= 13) return "th"
-  const mod10 = day % 10
-  if (mod10 === 1) return "st"
-  if (mod10 === 2) return "nd"
-  if (mod10 === 3) return "rd"
-  return "th"
-}
-
-function formatOrdinalDate(date: Date): string {
-  const monthText = new Intl.DateTimeFormat(undefined, {
+function formatMonthDay(date: Date): string {
+  return new Intl.DateTimeFormat(undefined, {
     month: "short",
+    day: "numeric",
   }).format(date)
-  const day = date.getDate()
-  return `${monthText} ${day}${getEnglishOrdinalSuffix(day)}`
 }
 
 describe("ProviderCard", () => {
@@ -463,7 +452,7 @@ describe("ProviderCard", () => {
     const now = new Date(2026, 1, 2, 10, 0, 0)
     const resetsAt = new Date(2026, 1, 5, 16, 0, 0)
     vi.setSystemTime(now)
-    const dateText = formatOrdinalDate(resetsAt)
+    const dateText = formatMonthDay(resetsAt)
     render(
       <ProviderCard
         name="Resets"
@@ -492,7 +481,7 @@ describe("ProviderCard", () => {
     const now = new Date(2026, 1, 2, 10, 0, 0)
     const resetsAt = new Date(2026, 1, 20, 16, 0, 0)
     vi.setSystemTime(now)
-    const dateText = formatOrdinalDate(resetsAt)
+    const dateText = formatMonthDay(resetsAt)
     render(
       <ProviderCard
         name="Resets"

@@ -1,6 +1,8 @@
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
+import { openUrl } from "@tauri-apps/plugin-opener"
+import { invoke } from "@tauri-apps/api/core"
 
 import { SideNav } from "@/components/side-nav"
 
@@ -10,6 +12,14 @@ const darkModeState = vi.hoisted(() => ({
 
 vi.mock("@/hooks/use-dark-mode", () => ({
   useDarkMode: darkModeState.useDarkModeMock,
+}))
+
+vi.mock("@tauri-apps/plugin-opener", () => ({
+  openUrl: vi.fn(() => Promise.resolve()),
+}))
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: vi.fn(() => Promise.resolve()),
 }))
 
 describe("SideNav", () => {
@@ -70,5 +80,14 @@ describe("SideNav", () => {
     const p2Style = screen.getByRole("img", { name: "P2" }).getAttribute("style") ?? ""
     expect(p2Style).toContain("rgb(255, 255, 255)")
   })
-})
 
+  it("opens the issues page and hides the panel from Help", async () => {
+    const onViewChange = vi.fn()
+    render(<SideNav activeView="home" onViewChange={onViewChange} plugins={[]} />)
+
+    await userEvent.click(screen.getByRole("button", { name: "Help" }))
+
+    expect(openUrl).toHaveBeenCalledWith("https://github.com/robinebers/openusage/issues")
+    expect(invoke).toHaveBeenCalledWith("hide_panel")
+  })
+})
