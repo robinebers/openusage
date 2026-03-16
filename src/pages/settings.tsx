@@ -270,6 +270,8 @@ interface SettingsPageProps {
   onGlobalShortcutChange: (value: GlobalShortcut) => void;
   startOnLogin: boolean;
   onStartOnLoginChange: (value: boolean) => void;
+  compactMode: boolean;
+  onCompactModeChange: (value: boolean) => void;
 }
 
 export function SettingsPage({
@@ -291,6 +293,8 @@ export function SettingsPage({
   onGlobalShortcutChange,
   startOnLogin,
   onStartOnLoginChange,
+  compactMode,
+  onCompactModeChange,
 }: SettingsPageProps) {
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -482,6 +486,20 @@ export function SettingsPage({
             onCheckedChange={(checked) => onStartOnLoginChange(checked === true)}
           />
           Start on login
+        </label>
+      </section>
+      <section>
+        <h3 className="text-lg font-semibold mb-0">Compact Mode</h3>
+        <p className="text-sm text-muted-foreground mb-2">
+          Smaller text and tighter spacing
+        </p>
+        <label className="flex items-center gap-2 text-sm select-none text-foreground">
+          <Checkbox
+            key={`compact-mode-${compactMode}`}
+            checked={compactMode}
+            onCheckedChange={(checked) => onCompactModeChange(checked === true)}
+          />
+          Compact mode
         </label>
       </section>
       <section>

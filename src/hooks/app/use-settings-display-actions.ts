@@ -1,6 +1,7 @@
 import { useCallback } from "react"
 import { track } from "@/lib/analytics"
 import {
+  saveCompactMode,
   saveDisplayMode,
   saveMenubarIconStyle,
   saveResetTimerDisplayMode,
@@ -19,6 +20,7 @@ type UseSettingsDisplayActionsArgs = {
   resetTimerDisplayMode: ResetTimerDisplayMode
   setResetTimerDisplayMode: (value: ResetTimerDisplayMode) => void
   setMenubarIconStyle: (value: MenubarIconStyle) => void
+  setCompactMode: (value: boolean) => void
   scheduleTrayIconUpdate: ScheduleTrayIconUpdate
 }
 
@@ -28,6 +30,7 @@ export function useSettingsDisplayActions({
   resetTimerDisplayMode,
   setResetTimerDisplayMode,
   setMenubarIconStyle,
+  setCompactMode,
   scheduleTrayIconUpdate,
 }: UseSettingsDisplayActionsArgs) {
   const handleThemeModeChange = useCallback((mode: ThemeMode) => {
@@ -69,11 +72,20 @@ export function useSettingsDisplayActions({
     })
   }, [scheduleTrayIconUpdate, setMenubarIconStyle])
 
+  const handleCompactModeChange = useCallback((value: boolean) => {
+    track("setting_changed", { setting: "compact_mode", value: String(value) })
+    setCompactMode(value)
+    void saveCompactMode(value).catch((error) => {
+      console.error("Failed to save compact mode:", error)
+    })
+  }, [setCompactMode])
+
   return {
     handleThemeModeChange,
     handleDisplayModeChange,
     handleResetTimerDisplayModeChange,
     handleResetTimerDisplayModeToggle,
     handleMenubarIconStyleChange,
+    handleCompactModeChange,
   }
 }

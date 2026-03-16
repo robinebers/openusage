@@ -9,6 +9,7 @@ import type { PluginMeta } from "@/lib/plugin-types"
 import {
   arePluginSettingsEqual,
   DEFAULT_AUTO_UPDATE_INTERVAL,
+  DEFAULT_COMPACT_MODE,
   DEFAULT_DISPLAY_MODE,
   DEFAULT_GLOBAL_SHORTCUT,
   DEFAULT_MENUBAR_ICON_STYLE,
@@ -17,6 +18,7 @@ import {
   DEFAULT_THEME_MODE,
   getEnabledPluginIds,
   loadAutoUpdateInterval,
+  loadCompactMode,
   loadDisplayMode,
   loadGlobalShortcut,
   loadMenubarIconStyle,
@@ -46,6 +48,7 @@ type UseSettingsBootstrapArgs = {
   setGlobalShortcut: (value: GlobalShortcut) => void
   setStartOnLogin: (value: boolean) => void
   setMenubarIconStyle: (value: MenubarIconStyle) => void
+  setCompactMode: (value: boolean) => void
   setLoadingForPlugins: (ids: string[]) => void
   setErrorForPlugins: (ids: string[], error: string) => void
   startBatch: (pluginIds?: string[]) => Promise<string[] | undefined>
@@ -61,6 +64,7 @@ export function useSettingsBootstrap({
   setGlobalShortcut,
   setStartOnLogin,
   setMenubarIconStyle,
+  setCompactMode,
   setLoadingForPlugins,
   setErrorForPlugins,
   startBatch,
@@ -153,6 +157,13 @@ export function useSettingsBootstrap({
           console.error("Failed to load menubar icon style:", error)
         }
 
+        let storedCompactMode = DEFAULT_COMPACT_MODE
+        try {
+          storedCompactMode = await loadCompactMode()
+        } catch (error) {
+          console.error("Failed to load compact mode:", error)
+        }
+
         if (isMounted) {
           setPluginSettings(normalized)
           setAutoUpdateInterval(storedInterval)
@@ -162,6 +173,7 @@ export function useSettingsBootstrap({
           setGlobalShortcut(storedGlobalShortcut)
           setStartOnLogin(storedStartOnLogin)
           setMenubarIconStyle(storedMenubarIconStyle)
+          setCompactMode(storedCompactMode)
 
           const enabledIds = getEnabledPluginIds(normalized)
           setLoadingForPlugins(enabledIds)
@@ -187,6 +199,7 @@ export function useSettingsBootstrap({
   }, [
     applyStartOnLogin,
     setAutoUpdateInterval,
+    setCompactMode,
     setDisplayMode,
     setErrorForPlugins,
     setGlobalShortcut,

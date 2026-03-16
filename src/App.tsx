@@ -9,6 +9,7 @@ import { useSettingsPluginActions } from "@/hooks/app/use-settings-plugin-action
 import { useSettingsPluginList } from "@/hooks/app/use-settings-plugin-list"
 import { useSettingsSystemActions } from "@/hooks/app/use-settings-system-actions"
 import { useSettingsTheme } from "@/hooks/app/use-settings-theme"
+import { useSettingsCompact } from "@/hooks/app/use-settings-compact"
 import { useTrayIcon } from "@/hooks/app/use-tray-icon"
 import { track } from "@/lib/analytics"
 import { REFRESH_COOLDOWN_MS, savePluginSettings } from "@/lib/settings"
@@ -58,6 +59,8 @@ function App() {
     setResetTimerDisplayMode,
     setGlobalShortcut,
     setStartOnLogin,
+    compactMode,
+    setCompactMode,
   } = useAppPreferencesStore(
     useShallow((state) => ({
       autoUpdateInterval: state.autoUpdateInterval,
@@ -72,6 +75,8 @@ function App() {
       setResetTimerDisplayMode: state.setResetTimerDisplayMode,
       setGlobalShortcut: state.setGlobalShortcut,
       setStartOnLogin: state.setStartOnLogin,
+      compactMode: state.compactMode,
+      setCompactMode: state.setCompactMode,
     }))
   )
 
@@ -120,12 +125,14 @@ function App() {
     setResetTimerDisplayMode,
     setGlobalShortcut,
     setStartOnLogin,
+    setCompactMode,
     setLoadingForPlugins,
     setErrorForPlugins,
     startBatch,
   })
 
   useSettingsTheme(themeMode)
+  useSettingsCompact(compactMode)
 
   const {
     handleThemeModeChange,
@@ -133,12 +140,14 @@ function App() {
     handleResetTimerDisplayModeChange,
     handleResetTimerDisplayModeToggle,
     handleMenubarIconStyleChange,
+    handleCompactModeChange,
   } = useSettingsDisplayActions({
     setThemeMode,
     setDisplayMode,
     resetTimerDisplayMode,
     setResetTimerDisplayMode,
     setMenubarIconStyle,
+    setCompactMode,
     scheduleTrayIconUpdate,
   })
 
@@ -250,6 +259,7 @@ function App() {
         traySettingsPreview,
         onGlobalShortcutChange: handleGlobalShortcutChange,
         onStartOnLoginChange: handleStartOnLoginChange,
+        onCompactModeChange: handleCompactModeChange,
       }}
     />
   )
