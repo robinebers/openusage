@@ -10,11 +10,13 @@
       marker: "windsurf",
       ideName: "windsurf",
       stateDb: "~/Library/Application Support/Windsurf/User/globalStorage/state.vscdb",
+      appPlist: "/Applications/Windsurf.app/Contents/Info.plist",
     },
     {
       marker: "windsurf-next",
       ideName: "windsurf-next",
       stateDb: "~/Library/Application Support/Windsurf - Next/User/globalStorage/state.vscdb",
+      appPlist: "/Applications/Windsurf - Next.app/Contents/Info.plist",
     },
   ]
 
@@ -43,6 +45,23 @@
       return auth.apiKey
     } catch (e) {
       ctx.host.log.warn("failed to read API key from " + variant.marker + ": " + String(e))
+      return null
+    }
+  }
+
+  function loadInstalledVersion(ctx, variant) {
+    var path = variant && variant.appPlist
+    if (!path) return null
+    try {
+      if (!ctx.host.fs || !ctx.host.fs.exists || !ctx.host.fs.readText) return null
+      if (!ctx.host.fs.exists(path)) return null
+      var text = ctx.host.fs.readText(path)
+      if (!text) return null
+      var match = String(text).match(/<key>CFBundleShortVersionString<\/key>\s*<string>([^<]+)<\/string>/)
+      if (!match || !match[1]) return null
+      return String(match[1]).trim() || null
+    } catch (e) {
+      ctx.host.log.warn("failed to read installed version for " + variant.marker + ": " + String(e))
       return null
     }
   }
@@ -201,6 +220,7 @@
   // --- Cloud fallback ---
 
   function callCloud(ctx, apiKey, variant) {
+    var appVersion = loadInstalledVersion(ctx, variant) || "0.0.0"
     try {
       var resp = ctx.host.http.request({
         method: "POST",
@@ -213,9 +233,9 @@
           metadata: {
             apiKey: apiKey,
             ideName: variant.ideName,
-            ideVersion: "0.0.0",
+            ideVersion: appVersion,
             extensionName: variant.ideName,
-            extensionVersion: "0.0.0",
+            extensionVersion: appVersion,
             locale: "en",
           },
         }),
