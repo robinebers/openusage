@@ -59,8 +59,8 @@ function App() {
     setResetTimerDisplayMode,
     setGlobalShortcut,
     setStartOnLogin,
-    compactMode,
-    setCompactMode,
+    uiScale,
+    setUIScale,
   } = useAppPreferencesStore(
     useShallow((state) => ({
       autoUpdateInterval: state.autoUpdateInterval,
@@ -75,8 +75,8 @@ function App() {
       setResetTimerDisplayMode: state.setResetTimerDisplayMode,
       setGlobalShortcut: state.setGlobalShortcut,
       setStartOnLogin: state.setStartOnLogin,
-      compactMode: state.compactMode,
-      setCompactMode: state.setCompactMode,
+      uiScale: state.uiScale,
+      setUIScale: state.setUIScale,
     }))
   )
 
@@ -125,14 +125,14 @@ function App() {
     setResetTimerDisplayMode,
     setGlobalShortcut,
     setStartOnLogin,
-    setCompactMode,
+    setUIScale,
     setLoadingForPlugins,
     setErrorForPlugins,
     startBatch,
   })
 
   useSettingsTheme(themeMode)
-  useSettingsCompact(compactMode)
+  useSettingsCompact(uiScale)
 
   const {
     handleThemeModeChange,
@@ -140,14 +140,14 @@ function App() {
     handleResetTimerDisplayModeChange,
     handleResetTimerDisplayModeToggle,
     handleMenubarIconStyleChange,
-    handleCompactModeChange,
+    handleUIScaleChange,
   } = useSettingsDisplayActions({
     setThemeMode,
     setDisplayMode,
     resetTimerDisplayMode,
     setResetTimerDisplayMode,
     setMenubarIconStyle,
-    setCompactMode,
+    setUIScale,
     scheduleTrayIconUpdate,
   })
 
@@ -259,7 +259,7 @@ function App() {
         traySettingsPreview,
         onGlobalShortcutChange: handleGlobalShortcutChange,
         onStartOnLoginChange: handleStartOnLoginChange,
-        onCompactModeChange: handleCompactModeChange,
+        onUIScaleChange: handleUIScaleChange,
       }}
     />
   )

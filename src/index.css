@@ -140,9 +140,12 @@
   }
 }
 
-/* Compact mode: reduce font size and spacing globally */
+/* UI scale: reduce font size and spacing globally */
+html.small {
+  font-size: 14px;
+}
 html.compact {
-  font-size: 13px;
+  font-size: 11px;
 }
 
 /* Panel-specific styles for transparent Tauri window */

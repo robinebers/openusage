@@ -1,7 +1,10 @@
 import { useEffect } from "react"
+import type { UIScale } from "@/lib/settings"
 
-export function useSettingsCompact(compactMode: boolean) {
+export function useSettingsCompact(uiScale: UIScale) {
   useEffect(() => {
-    document.documentElement.classList.toggle("compact", compactMode)
-  }, [compactMode])
+    const root = document.documentElement
+    root.classList.remove("small", "compact")
+    if (uiScale !== "normal") root.classList.add(uiScale)
+  }, [uiScale])
 }

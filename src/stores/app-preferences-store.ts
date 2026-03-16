@@ -1,7 +1,7 @@
 import { create } from "zustand"
 import {
   DEFAULT_AUTO_UPDATE_INTERVAL,
-  DEFAULT_COMPACT_MODE,
+  DEFAULT_UI_SCALE,
   DEFAULT_DISPLAY_MODE,
   DEFAULT_GLOBAL_SHORTCUT,
   DEFAULT_MENUBAR_ICON_STYLE,
@@ -10,6 +10,7 @@ import {
   DEFAULT_THEME_MODE,
   type AutoUpdateIntervalMinutes,
   type DisplayMode,
+  type UIScale,
   type GlobalShortcut,
   type MenubarIconStyle,
   type ResetTimerDisplayMode,
@@ -24,7 +25,7 @@ type AppPreferencesStore = {
   globalShortcut: GlobalShortcut
   startOnLogin: boolean
   menubarIconStyle: MenubarIconStyle
-  compactMode: boolean
+  uiScale: UIScale
   setAutoUpdateInterval: (value: AutoUpdateIntervalMinutes) => void
   setThemeMode: (value: ThemeMode) => void
   setDisplayMode: (value: DisplayMode) => void
@@ -32,7 +33,7 @@ type AppPreferencesStore = {
   setGlobalShortcut: (value: GlobalShortcut) => void
   setStartOnLogin: (value: boolean) => void
   setMenubarIconStyle: (value: MenubarIconStyle) => void
-  setCompactMode: (value: boolean) => void
+  setUIScale: (value: UIScale) => void
   resetState: () => void
 }
 
@@ -44,7 +45,7 @@ const initialState = {
   globalShortcut: DEFAULT_GLOBAL_SHORTCUT,
   startOnLogin: DEFAULT_START_ON_LOGIN,
   menubarIconStyle: DEFAULT_MENUBAR_ICON_STYLE,
-  compactMode: DEFAULT_COMPACT_MODE,
+  uiScale: DEFAULT_UI_SCALE,
 }
 
 export const useAppPreferencesStore = create<AppPreferencesStore>((set) => ({
@@ -56,6 +57,6 @@ export const useAppPreferencesStore = create<AppPreferencesStore>((set) => ({
   setGlobalShortcut: (value) => set({ globalShortcut: value }),
   setStartOnLogin: (value) => set({ startOnLogin: value }),
   setMenubarIconStyle: (value) => set({ menubarIconStyle: value }),
-  setCompactMode: (value) => set({ compactMode: value }),
+  setUIScale: (value) => set({ uiScale: value }),
   resetState: () => set(initialState),
 }))
