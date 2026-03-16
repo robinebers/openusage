@@ -14,8 +14,8 @@ import type { ManifestLine, MetricLine, PluginLink } from "@/lib/plugin-types"
 import { groupLinesByType } from "@/lib/group-lines-by-type"
 import { clamp01, formatCountNumber, formatFixedPrecisionNumber } from "@/lib/utils"
 import { calculateDeficit, calculatePaceStatus, type PaceStatus } from "@/lib/pace-status"
-import { buildPaceDetailText, formatCompactDuration, formatDeficitText, formatRunsOutText, getPaceStatusText } from "@/lib/pace-tooltip"
-import { formatResetTooltipText } from "@/lib/reset-tooltip"
+import { buildPaceDetailText, formatDeficitText, formatRunsOutText, getPaceStatusText } from "@/lib/pace-tooltip"
+import { formatResetAbsoluteLabel, formatResetRelativeLabel, formatResetTooltipText } from "@/lib/reset-tooltip"
 
 interface ProviderCardProps {
   name: string
@@ -38,61 +38,6 @@ const PACE_VISUALS: Record<PaceStatus, { dotClass: string }> = {
   ahead: { dotClass: "bg-green-500" },
   "on-track": { dotClass: "bg-yellow-500" },
   behind: { dotClass: "bg-red-500" },
-}
-
-
-const RESET_SOON_THRESHOLD_MS = 5 * 60 * 1000
-
-function formatResetIn(nowMs: number, resetsAtIso: string): string | null {
-  const resetsAtMs = Date.parse(resetsAtIso)
-  if (!Number.isFinite(resetsAtMs)) return null
-  const deltaMs = resetsAtMs - nowMs
-  if (deltaMs < RESET_SOON_THRESHOLD_MS) return "Resets soon"
-  const durationText = formatCompactDuration(deltaMs)!
-  return `Resets in ${durationText}`
-}
-
-const RESET_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
-  hour: "numeric",
-  minute: "2-digit",
-})
-
-const RESET_MONTH_FORMATTER = new Intl.DateTimeFormat(undefined, {
-  month: "short",
-})
-
-function getLocalDayIndex(timestampMs: number): number {
-  const date = new Date(timestampMs)
-  return Math.floor(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86_400_000)
-}
-
-function getEnglishOrdinalSuffix(day: number): string {
-  const mod100 = day % 100
-  if (mod100 >= 11 && mod100 <= 13) return "th"
-  const mod10 = day % 10
-  if (mod10 === 1) return "st"
-  if (mod10 === 2) return "nd"
-  if (mod10 === 3) return "rd"
-  return "th"
-}
-
-function formatMonthDayWithOrdinal(timestampMs: number): string {
-  const date = new Date(timestampMs)
-  const monthText = RESET_MONTH_FORMATTER.format(date)
-  const day = date.getDate()
-  return `${monthText} ${day}${getEnglishOrdinalSuffix(day)}`
-}
-
-function formatResetAt(nowMs: number, resetsAtIso: string): string | null {
-  const resetsAtMs = Date.parse(resetsAtIso)
-  if (!Number.isFinite(resetsAtMs)) return null
-  if (resetsAtMs - nowMs <= 0) return "Resets soon"
-  const dayDiff = getLocalDayIndex(resetsAtMs) - getLocalDayIndex(nowMs)
-  const timeText = RESET_TIME_FORMATTER.format(resetsAtMs)
-  if (dayDiff <= 0) return `Resets today at ${timeText}`
-  if (dayDiff === 1) return `Resets tomorrow at ${timeText}`
-  const dateText = formatMonthDayWithOrdinal(resetsAtMs)
-  return `Resets ${dateText} at ${timeText}`
 }
 
 /** Colored dot indicator showing pace status */
@@ -421,10 +366,16 @@ function MetricLineRenderer({
 
     const resetLabel = line.resetsAt
       ? resetTimerDisplayMode === "absolute"
-        ? formatResetAt(now, line.resetsAt)
-        : formatResetIn(now, line.resetsAt)
+        ? formatResetAbsoluteLabel(now, line.resetsAt)
+        : formatResetRelativeLabel(now, line.resetsAt)
       : null
-    const resetTooltipText = line.resetsAt ? formatResetTooltipText(line.resetsAt) : null
+    const resetTooltipText = line.resetsAt
+      ? formatResetTooltipText({
+          nowMs: now,
+          resetsAtIso: line.resetsAt,
+          visibleMode: resetTimerDisplayMode,
+        })
+      : null
 
     const secondaryText =
       resetLabel ??
