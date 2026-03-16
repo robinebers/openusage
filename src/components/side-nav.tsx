@@ -3,6 +3,21 @@ import { CircleHelp, Settings } from "lucide-react"
 import { openUrl } from "@tauri-apps/plugin-opener"
 import { invoke } from "@tauri-apps/api/core"
 import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu"
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core"
+import {
+  arrayMove,
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 
 function GaugeIcon({ className }: { className?: string }) {
   return (
@@ -32,6 +47,7 @@ interface SideNavProps {
   plugins: NavPlugin[]
   onPluginContextAction?: (pluginId: string, action: PluginContextAction) => void
   isPluginRefreshAvailable?: (pluginId: string) => boolean
+  onReorder?: (orderedIds: string[]) => void
 }
 
 interface NavButtonProps {
@@ -70,14 +86,89 @@ function getIconColor(brandColor: string | undefined, isDark: boolean): string {
   return brandColor
 }
 
+interface SortableNavPluginProps {
+  plugin: NavPlugin
+  isActive: boolean
+  isDark: boolean
+  onClick: () => void
+  onContextMenu: (e: React.MouseEvent) => void
+}
+
+function SortableNavPlugin({ plugin, isActive, isDark, onClick, onContextMenu }: SortableNavPluginProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: plugin.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : undefined,
+  }
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners} role="presentation">
+      <NavButton
+        isActive={isActive}
+        onClick={onClick}
+        onContextMenu={onContextMenu}
+        aria-label={plugin.name}
+      >
+        <span
+          role="img"
+          aria-label={plugin.name}
+          className="size-6 inline-block"
+          style={{
+            backgroundColor: getIconColor(plugin.brandColor, isDark),
+            WebkitMaskImage: `url(${plugin.iconUrl})`,
+            WebkitMaskSize: "contain",
+            WebkitMaskRepeat: "no-repeat",
+            WebkitMaskPosition: "center",
+            maskImage: `url(${plugin.iconUrl})`,
+            maskSize: "contain",
+            maskRepeat: "no-repeat",
+            maskPosition: "center",
+          }}
+        />
+      </NavButton>
+    </div>
+  )
+}
+
 export function SideNav({
   activeView,
   onViewChange,
   plugins,
   onPluginContextAction,
   isPluginRefreshAvailable,
+  onReorder,
 }: SideNavProps) {
   const isDark = useDarkMode()
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { delay: 300, tolerance: 5 },
+    })
+  )
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      if (!onReorder) return
+      const { active, over } = event
+      if (over && active.id !== over.id) {
+        const oldIndex = plugins.findIndex((p) => p.id === active.id)
+        const newIndex = plugins.findIndex((p) => p.id === over.id)
+        if (oldIndex === -1 || newIndex === -1) return
+        const next = arrayMove(plugins, oldIndex, newIndex)
+        onReorder(next.map((p) => p.id))
+      }
+    },
+    [onReorder, plugins]
+  )
 
   const handlePluginContextMenu = useCallback(
     (e: React.MouseEvent, pluginId: string) => {
@@ -135,32 +226,27 @@ export function SideNav({
       </NavButton>
 
       {/* Plugin icons */}
-      {plugins.map((plugin) => (
-        <NavButton
-          key={plugin.id}
-          isActive={activeView === plugin.id}
-          onClick={() => onViewChange(plugin.id)}
-          onContextMenu={(e) => handlePluginContextMenu(e, plugin.id)}
-          aria-label={plugin.name}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext
+          items={plugins.map((p) => p.id)}
+          strategy={verticalListSortingStrategy}
         >
-          <span
-            role="img"
-            aria-label={plugin.name}
-            className="size-6 inline-block"
-            style={{
-              backgroundColor: getIconColor(plugin.brandColor, isDark),
-              WebkitMaskImage: `url(${plugin.iconUrl})`,
-              WebkitMaskSize: "contain",
-              WebkitMaskRepeat: "no-repeat",
-              WebkitMaskPosition: "center",
-              maskImage: `url(${plugin.iconUrl})`,
-              maskSize: "contain",
-              maskRepeat: "no-repeat",
-              maskPosition: "center",
-            }}
-          />
-        </NavButton>
-      ))}
+          {plugins.map((plugin) => (
+            <SortableNavPlugin
+              key={plugin.id}
+              plugin={plugin}
+              isActive={activeView === plugin.id}
+              isDark={isDark}
+              onClick={() => onViewChange(plugin.id)}
+              onContextMenu={(e) => handlePluginContextMenu(e, plugin.id)}
+            />
+          ))}
+        </SortableContext>
+      </DndContext>
 
       {/* Spacer */}
       <div className="flex-1" />
