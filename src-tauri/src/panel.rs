@@ -1,5 +1,7 @@
 use tauri::{AppHandle, Manager, Position, Size};
-use tauri_nspanel::{tauri_panel, CollectionBehavior, ManagerExt, PanelLevel, StyleMask, WebviewWindowExt};
+use tauri_nspanel::{
+    CollectionBehavior, ManagerExt, PanelLevel, StyleMask, WebviewWindowExt, tauri_panel,
+};
 
 /// Macro to get existing panel or initialize it if needed.
 /// Returns Option<Panel> - Some if panel is available, None on error.
@@ -174,7 +176,8 @@ pub fn position_panel_at_tray_icon(
         None => {
             log::warn!(
                 "No monitor found for cursor at ({:.0}, {:.0}), using primary",
-                mouse_x, mouse_y
+                mouse_x,
+                mouse_y
             );
             match window.primary_monitor() {
                 Ok(Some(m)) => m,
@@ -204,9 +207,8 @@ pub fn position_panel_at_tray_icon(
     let panel_width = match (window.outer_size(), window.scale_factor()) {
         (Ok(s), Ok(win_scale)) => s.width as f64 / win_scale,
         _ => {
-            let conf: serde_json::Value =
-                serde_json::from_str(include_str!("../tauri.conf.json"))
-                    .expect("tauri.conf.json must be valid JSON");
+            let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json"))
+                .expect("tauri.conf.json must be valid JSON");
             conf["app"]["windows"][0]["width"]
                 .as_f64()
                 .expect("width must be set in tauri.conf.json")

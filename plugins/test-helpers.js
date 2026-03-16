@@ -1,3 +1,4 @@
+import crypto from "node:crypto"
 import { vi } from "vitest"
 
 export const makeCtx = () => {
@@ -44,6 +45,19 @@ export const makeCtx = () => {
         readGenericPassword: vi.fn(),
         writeGenericPassword: vi.fn(),
         deleteGenericPassword: vi.fn(),
+      },
+      crypto: {
+        decryptAes256Gcm: vi.fn((envelope, keyB64) => {
+          const parts = String(envelope || "").trim().split(":")
+          if (parts.length !== 3) throw new Error("invalid AES-GCM envelope")
+          const key = Buffer.from(String(keyB64 || "").trim(), "base64")
+          const iv = Buffer.from(parts[0], "base64")
+          const tag = Buffer.from(parts[1], "base64")
+          const ciphertext = Buffer.from(parts[2], "base64")
+          const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv)
+          decipher.setAuthTag(tag)
+          return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8")
+        }),
       },
       sqlite: {
         query: vi.fn(() => "[]"),

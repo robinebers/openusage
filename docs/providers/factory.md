@@ -81,8 +81,9 @@ Premium tokens (`premium.totalAllowance > 0`) are only available on Max/Enterpri
 
 ### Token Location
 
-- `~/.factory/auth.json` (legacy droid auth file)
-- `~/.factory/auth.encrypted` (current droid auth file)
+- `~/.factory/auth.v2.file` + `~/.factory/auth.v2.key` (current droid auth store; AES-256-GCM encrypted JSON)
+- `~/.factory/auth.encrypted` (legacy droid auth file)
+- `~/.factory/auth.json` (older droid auth file)
 - macOS keychain entry (when droid uses keyring-backed storage)
 
 ```jsonc
