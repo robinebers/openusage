@@ -66,7 +66,7 @@ function NavButton({ isActive, onClick, onContextMenu, children, "aria-label": a
       onContextMenu={onContextMenu}
       aria-label={ariaLabel}
       className={cn(
-        "relative flex items-center justify-center w-full p-2.5 transition-colors",
+        "relative flex items-center justify-center w-[calc(100%-1px)] p-2.5 transition-colors",
         "hover:bg-accent",
         isActive
           ? "text-foreground before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-0.5 before:bg-primary dark:before:bg-page-accent before:rounded-full"
@@ -215,7 +215,7 @@ export function SideNav({
   )
 
   return (
-    <nav className="flex flex-col w-12 border-r bg-muted/50 dark:bg-card py-3">
+    <nav className="app-side-nav flex flex-col w-12 border-r py-3">
       {/* Home */}
       <NavButton
         isActive={activeView === "home"}
