@@ -1166,7 +1166,7 @@ fn ls_parse_listening_ports(output: &str) -> Vec<i32> {
     ports.into_iter().collect()
 }
 
-const CCUSAGE_VERSION: &str = "18.0.8";
+const CCUSAGE_VERSION: &str = "18.0.10";
 const CCUSAGE_CLAUDE_PACKAGE_NAME: &str = "ccusage";
 const CCUSAGE_CODEX_PACKAGE_NAME: &str = "@ccusage/codex";
 const CCUSAGE_TIMEOUT_SECS: u64 = 15;
