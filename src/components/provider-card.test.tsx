@@ -261,7 +261,15 @@ describe("ProviderCard", () => {
       />
     )
     expect(screen.getByText("Resets in 1h 5m")).toBeInTheDocument()
-    expect(screen.getByText(formatResetTooltipText("2026-02-02T01:05:00.000Z")!)).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        formatResetTooltipText({
+          nowMs: now.getTime(),
+          resetsAtIso: "2026-02-02T01:05:00.000Z",
+          visibleMode: "relative",
+        })!
+      )
+    ).toBeInTheDocument()
     vi.useRealTimers()
   })
 
@@ -355,7 +363,7 @@ describe("ProviderCard", () => {
         ]}
       />
     )
-    expect(screen.getByText("Resets soon")).toBeInTheDocument()
+    expect(screen.getAllByText("Resets soon")).toHaveLength(2)
     vi.useRealTimers()
   })
 
@@ -380,7 +388,7 @@ describe("ProviderCard", () => {
         ]}
       />
     )
-    expect(screen.getByText("Resets soon")).toBeInTheDocument()
+    expect(screen.getAllByText("Resets soon")).toHaveLength(2)
     vi.useRealTimers()
   })
 
@@ -410,7 +418,15 @@ describe("ProviderCard", () => {
     )
     const resetButton = screen.getByRole("button", { name: /^Resets today at / })
     expect(resetButton).toBeInTheDocument()
-    expect(screen.getByText(formatResetTooltipText(resetsAt)!)).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        formatResetTooltipText({
+          nowMs: now.getTime(),
+          resetsAtIso: resetsAt,
+          visibleMode: "absolute",
+        })!
+      )
+    ).toBeInTheDocument()
     fireEvent.click(resetButton)
     expect(onToggle).toHaveBeenCalledTimes(1)
     vi.useRealTimers()
