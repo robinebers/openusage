@@ -29,6 +29,13 @@ pub trait Terminal {
 
     /// Print a line to the terminal without newline.
     fn print(&mut self, message: &str);
+
+    /// Show a status line that overwrites itself (for progress indication).
+    /// Subsequent calls replace the previous status. Call `clear_status` when done.
+    fn status(&mut self, message: &str);
+
+    /// Clear the current status line.
+    fn clear_status(&mut self);
 }
 
 // ---------------------------------------------------------------------------
@@ -219,6 +226,29 @@ impl Terminal for CrosstermTerminal {
         print!("{message}");
         let _ = io::stdout().flush();
     }
+
+    fn status(&mut self, message: &str) {
+        use std::io::Write;
+        let mut stdout = io::stdout();
+        let _ = execute!(
+            stdout,
+            ct::Clear(ClearType::CurrentLine),
+            cursor::MoveToColumn(0),
+            Print(message),
+        );
+        let _ = stdout.flush();
+    }
+
+    fn clear_status(&mut self) {
+        use std::io::Write;
+        let mut stdout = io::stdout();
+        let _ = execute!(
+            stdout,
+            ct::Clear(ClearType::CurrentLine),
+            cursor::MoveToColumn(0),
+        );
+        let _ = stdout.flush();
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -316,6 +346,14 @@ impl Terminal for MockTerminal {
 
     fn print(&mut self, message: &str) {
         self.printed.push(message.to_string());
+    }
+
+    fn status(&mut self, message: &str) {
+        self.printed.push(message.to_string());
+    }
+
+    fn clear_status(&mut self) {
+        // no-op for mock
     }
 }
 

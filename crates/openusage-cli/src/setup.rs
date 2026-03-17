@@ -48,13 +48,33 @@ pub fn run_setup(
         Err(_) => return vec![],
     };
 
+    let total = selected_ids.len();
     let mut configured = Vec::new();
-    for id in &selected_ids {
+    for (i, id) in selected_ids.iter().enumerate() {
         if let Some(plugin) = plugins.iter().find(|p| &p.manifest.id == id) {
+            terminal.println(&format!(
+                "\n[{}/{}] Setting up {}...",
+                i + 1,
+                total,
+                plugin.manifest.name
+            ));
             if setup_provider(terminal, plugin, data_dir, config_base, app_version) {
+                terminal.println(&format!("  -> {} configured", plugin.manifest.name));
                 configured.push(id.clone());
+            } else {
+                terminal.println(&format!("  -> {} skipped", plugin.manifest.name));
             }
         }
+    }
+
+    if !configured.is_empty() {
+        terminal.println(&format!(
+            "\nDone! {} provider(s) configured: {}",
+            configured.len(),
+            configured.join(", ")
+        ));
+    } else {
+        terminal.println("\nNo providers were configured.");
     }
 
     configured
@@ -98,8 +118,8 @@ fn setup_cli_provider(
     // Step 1: Check binary
     if !binary_name.is_empty() && !is_binary_installed(binary_name) {
         if let Some(install_cmd) = &cli.install_cmd {
-            terminal.println(&format!("Install command: {}", install_cmd));
-            let do_install = terminal.confirm("Install now?", true).unwrap_or(false);
+            terminal.println(&format!("  Install command: {}", install_cmd));
+            let do_install = terminal.confirm("  Install now?", true).unwrap_or(false);
             if !do_install {
                 return false;
             }
@@ -110,29 +130,36 @@ fn setup_cli_provider(
             match status {
                 Ok(s) if s.success() => {}
                 _ => {
-                    terminal.println("Installation failed.");
+                    terminal.println("  Installation failed.");
                     return false;
                 }
             }
         } else {
             terminal.println(&format!(
-                "{} binary not found. Install it manually and try again.",
+                "  {} binary not found. Install it manually and try again.",
                 plugin.manifest.name
             ));
-            let _ = terminal.wait_for_enter("Press Enter to continue...");
+            let _ = terminal.wait_for_enter("  Press Enter to continue...");
             return false;
         }
     }
 
     // Step 2: Binary present, inject keys and check auth
     config::inject_env_keys_from(&plugin.manifest.id, env_var_names, config_base);
+    terminal.status("  Checking authentication...");
     if is_authenticated(plugin, data_dir, app_version) {
+        terminal.clear_status();
         return true;
     }
+    terminal.clear_status();
 
     // Step 3: Not authenticated
     if let Some(login_cmd) = &cli.login_cmd {
-        terminal.println(&format!("Running: {}", login_cmd));
+        terminal.println(&format!("  Command: {}", login_cmd));
+        let do_login = terminal.confirm("  Run login command?", true).unwrap_or(false);
+        if !do_login {
+            return false;
+        }
         let status = std::process::Command::new("sh")
             .arg("-c")
             .arg(login_cmd)
@@ -142,20 +169,23 @@ fn setup_cli_provider(
             .status();
         match status {
             Ok(s) if s.success() => {
+                terminal.status("  Verifying authentication...");
                 if is_authenticated(plugin, data_dir, app_version) {
+                    terminal.clear_status();
                     return true;
                 }
-                terminal.println("Authentication check failed after login. Debug this on your own.");
+                terminal.clear_status();
+                terminal.println("  Authentication check failed after login. Debug this on your own.");
                 false
             }
             _ => {
-                terminal.println("Login command failed.");
+                terminal.println("  Login command failed.");
                 false
             }
         }
     } else {
-        terminal.println("Not authenticated. Set up authentication manually and try again.");
-        let _ = terminal.wait_for_enter("Press Enter to continue...");
+        terminal.println("  Not authenticated. Set up authentication manually and try again.");
+        let _ = terminal.wait_for_enter("  Press Enter to continue...");
         false
     }
 }
@@ -169,14 +199,17 @@ fn setup_ide_provider(
     env_var_names: &[String],
 ) -> bool {
     config::inject_env_keys_from(&plugin.manifest.id, env_var_names, config_base);
+    terminal.status("  Checking authentication...");
     if is_authenticated(plugin, data_dir, app_version) {
+        terminal.clear_status();
         return true;
     }
+    terminal.clear_status();
     terminal.println(&format!(
-        "{} IDE not detected or not authenticated on this system.",
+        "  {} IDE not detected or not authenticated on this system.",
         plugin.manifest.name
     ));
-    let _ = terminal.wait_for_enter("Press Enter to continue...");
+    let _ = terminal.wait_for_enter("  Press Enter to continue...");
     false
 }
 
@@ -231,10 +264,13 @@ fn setup_env_provider(
 
     // Step 5: Inject and verify
     config::inject_env_keys_from(&plugin.manifest.id, env_var_names, config_base);
+    terminal.status("  Verifying API key...");
     if is_authenticated(plugin, data_dir, app_version) {
+        terminal.clear_status();
         return true;
     }
-    terminal.println("API key verification failed.");
+    terminal.clear_status();
+    terminal.println("  API key verification failed.");
     false
 }
 
