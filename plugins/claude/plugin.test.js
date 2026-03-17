@@ -1397,5 +1397,45 @@ describe("claude plugin", () => {
       expect(result.lines.find((l) => l.label === "2x active")).toBeUndefined()
       expect(result.lines.find((l) => l.label === "Peak hours")).toBeUndefined()
     })
+
+    it("still shows 'No usage data' alongside 2x badge when API returns no usage", async () => {
+      // Promo active weekend, API returns no usage data → 2x badge + "No usage data" both shown
+      vi.setSystemTime(new Date("2026-03-14T15:00:00.000Z")) // Saturday off-peak → 2x active
+      const ctx = makeCtx()
+      ctx.host.fs.exists = () => true
+      ctx.host.fs.readText = () => makeCreds()
+      ctx.host.http.request.mockReturnValue({ status: 200, bodyText: JSON.stringify({}) })
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      expect(result.lines.find((l) => l.label === "2x active")).toBeTruthy()
+      expect(result.lines.find((l) => l.label === "Status" && l.text === "No usage data")).toBeTruthy()
+    })
+
+    it("includes countdown text in 2x active badge", async () => {
+      // 2026-03-14 Saturday 15:00 UTC; next weekday peak = Monday 2026-03-16 12:00 UTC
+      // delta = 2026-03-16T12:00Z - 2026-03-14T15:00Z = 45h → "45h 00m"
+      vi.setSystemTime(new Date("2026-03-14T15:00:00.000Z"))
+      const ctx = makeCtx()
+      ctx.host.fs.exists = () => true
+      ctx.host.fs.readText = () => makeCreds()
+      ctx.host.http.request.mockReturnValue(makeUsageResp())
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      const badge = result.lines.find((l) => l.label === "2x active")
+      expect(badge.text).toMatch(/^ends in \d+h \d{2}m$/)
+    })
+
+    it("includes countdown text in Peak hours badge", async () => {
+      // 2026-03-17 Tuesday 14:00 UTC; peak ends at 18:00 UTC → 4h remaining → "4h 00m"
+      vi.setSystemTime(new Date("2026-03-17T14:00:00.000Z"))
+      const ctx = makeCtx()
+      ctx.host.fs.exists = () => true
+      ctx.host.fs.readText = () => makeCreds()
+      ctx.host.http.request.mockReturnValue(makeUsageResp())
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      const badge = result.lines.find((l) => l.label === "Peak hours")
+      expect(badge.text).toBe("2x in 4h 00m")
+    })
   })
 })
