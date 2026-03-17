@@ -103,6 +103,14 @@ function makeLoadCodeAssistResponse(overrides) {
   )
 }
 
+function writePlanCache(ctx, plan, updatedAtMs) {
+  const cachePath = ctx.app.pluginDataDir + "/plan.json"
+  ctx.host.fs.writeText(cachePath, JSON.stringify({
+    plan,
+    updatedAtMs: updatedAtMs ?? Date.now(),
+  }))
+}
+
 function makeAuthStatusJson(overrides) {
   return JSON.stringify(
     Object.assign({ apiKey: "test-api-key-123", email: "user@example.com", name: "Test User" }, overrides)
@@ -212,23 +220,20 @@ describe("antigravity plugin", () => {
     expect(labels).toEqual(["Gemini Pro", "Gemini Flash", "Claude"])
   })
 
-  it("prefers Cloud tier over stale LS plan when Cloud identifies Ultra", async () => {
+  it("prefers cached Cloud tier over stale LS plan without calling Cloud in LS fast path", async () => {
     const ctx = makeCtx()
     const futureExpiry = Math.floor(Date.now() / 1000) + 3600
     setupSqliteMock(ctx, makeAuthStatusJson(), makeProtobufBase64(ctx, "ya29.test-token", "1//refresh", futureExpiry))
-    const discovery = makeDiscovery()
-    const response = makeUserStatusResponse({ planName: "Pro" })
+    ctx.host.ls.discover.mockReturnValue(null)
 
-    ctx.host.ls.discover.mockReturnValue(discovery)
+    let loadCodeAssistCalls = 0
     ctx.host.http.request.mockImplementation((opts) => {
       const url = String(opts.url)
-      if (url.includes("GetUnleashData")) {
-        return { status: 200, bodyText: "{}" }
-      }
-      if (url.includes("GetUserStatus")) {
-        return { status: 200, bodyText: JSON.stringify(response) }
+      if (url.includes("fetchAvailableModels")) {
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
       }
       if (url.includes("loadCodeAssist")) {
+        loadCodeAssistCalls += 1
         return {
           status: 200,
           bodyText: JSON.stringify(makeLoadCodeAssistResponse({
@@ -241,13 +246,35 @@ describe("antigravity plugin", () => {
     })
 
     const plugin = await loadPlugin()
+    const cloudFallbackResult = plugin.probe(ctx)
+
+    expect(cloudFallbackResult.plan).toBe("Ultra")
+    expect(loadCodeAssistCalls).toBe(1)
+
+    const discovery = makeDiscovery()
+    const response = makeUserStatusResponse({ planName: "Pro" })
+    ctx.host.ls.discover.mockReturnValue(discovery)
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("GetUnleashData")) {
+        return { status: 200, bodyText: "{}" }
+      }
+      if (url.includes("GetUserStatus")) {
+        return { status: 200, bodyText: JSON.stringify(response) }
+      }
+      if (url.includes("loadCodeAssist")) {
+        throw new Error("should not call Cloud tier lookup from LS fast path")
+      }
+      return { status: 500, bodyText: "" }
+    })
+
     const result = plugin.probe(ctx)
 
     expect(result.plan).toBe("Ultra")
     expect(result.lines.map((l) => l.label)).toEqual(["Gemini Pro", "Gemini Flash", "Claude"])
   })
 
-  it("keeps LS plan when Cloud tier lookup throws", async () => {
+  it("keeps LS plan when no cached override exists", async () => {
     const ctx = makeCtx()
     const futureExpiry = Math.floor(Date.now() / 1000) + 3600
     setupSqliteMock(ctx, makeAuthStatusJson(), makeProtobufBase64(ctx, "ya29.test-token", "1//refresh", futureExpiry))
@@ -264,7 +291,7 @@ describe("antigravity plugin", () => {
         return { status: 200, bodyText: JSON.stringify(response) }
       }
       if (url.includes("loadCodeAssist")) {
-        throw new Error("loadCodeAssist unavailable")
+        throw new Error("should not call Cloud tier lookup from LS fast path")
       }
       return { status: 500, bodyText: "" }
     })
@@ -275,10 +302,11 @@ describe("antigravity plugin", () => {
     expect(result.plan).toBe("Pro")
   })
 
-  it("keeps LS plan when Cloud tier lookup returns no supported tier", async () => {
+  it("ignores stale cached override on LS fast path", async () => {
     const ctx = makeCtx()
     const futureExpiry = Math.floor(Date.now() / 1000) + 3600
     setupSqliteMock(ctx, makeAuthStatusJson(), makeProtobufBase64(ctx, "ya29.test-token", "1//refresh", futureExpiry))
+    writePlanCache(ctx, "Ultra", Date.now() - (31 * 60 * 1000))
     const discovery = makeDiscovery()
     const response = makeUserStatusResponse({ planName: "Pro" })
 
@@ -292,7 +320,7 @@ describe("antigravity plugin", () => {
         return { status: 200, bodyText: JSON.stringify(response) }
       }
       if (url.includes("loadCodeAssist")) {
-        return { status: 500, bodyText: "" }
+        throw new Error("should not call Cloud tier lookup from LS fast path")
       }
       return { status: 500, bodyText: "" }
     })

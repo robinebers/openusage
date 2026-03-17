@@ -10,6 +10,7 @@
   var GOOGLE_OAUTH_URL = "https://oauth2.googleapis.com/token"
   var GOOGLE_CLIENT_ID = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
   var GOOGLE_CLIENT_SECRET = "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"
+  var PLAN_CACHE_MAX_AGE_MS = 30 * 60 * 1000
   var CC_MODEL_BLACKLIST = {
     "MODEL_CHAT_20706": true,
     "MODEL_CHAT_23310": true,
@@ -171,6 +172,33 @@
       }))
     } catch (e) {
       ctx.host.log.warn("failed to cache refreshed token: " + String(e))
+    }
+  }
+
+  function loadCachedPlan(ctx) {
+    var path = ctx.app.pluginDataDir + "/plan.json"
+    try {
+      if (!ctx.host.fs.exists(path)) return null
+      var data = ctx.util.tryParseJson(ctx.host.fs.readText(path))
+      if (!data || typeof data.plan !== "string" || !data.plan || !data.updatedAtMs) return null
+      if (Date.now() - Number(data.updatedAtMs) > PLAN_CACHE_MAX_AGE_MS) return null
+      return data.plan
+    } catch (e) {
+      ctx.host.log.warn("failed to read cached plan: " + String(e))
+      return null
+    }
+  }
+
+  function cachePlan(ctx, plan) {
+    if (typeof plan !== "string" || !plan) return
+    var path = ctx.app.pluginDataDir + "/plan.json"
+    try {
+      ctx.host.fs.writeText(path, JSON.stringify({
+        plan: plan,
+        updatedAtMs: Date.now(),
+      }))
+    } catch (e) {
+      ctx.host.log.warn("failed to cache plan: " + String(e))
     }
   }
 
@@ -449,7 +477,10 @@
   function resolveCloudCodePlan(ctx, tokens, refreshTokenValue, allowRefresh) {
     for (var i = 0; i < tokens.length; i++) {
       var result = fetchCloudCodePlan(ctx, tokens[i])
-      if (result && !result._authFailed && result.plan) return result.plan
+      if (result && !result._authFailed && result.plan) {
+        cachePlan(ctx, result.plan)
+        return result.plan
+      }
     }
 
     if (allowRefresh !== false && refreshTokenValue) {
@@ -457,6 +488,7 @@
       if (refreshed) {
         var refreshedResult = fetchCloudCodePlan(ctx, refreshed)
         if (refreshedResult && !refreshedResult._authFailed && refreshedResult.plan) {
+          cachePlan(ctx, refreshedResult.plan)
           return refreshedResult.plan
         }
       }
@@ -547,9 +579,9 @@
       var ps = data.userStatus.planStatus || {}
       var pi = ps.planInfo || {}
       plan = pi.planName || null
-      var cloudOverridePlan = resolveCloudCodePlan(ctx, tokens || [], refreshTokenValue, false)
-      if (planRank(cloudOverridePlan) > planRank(plan)) {
-        plan = cloudOverridePlan
+      var cachedOverridePlan = loadCachedPlan(ctx)
+      if (planRank(cachedOverridePlan) > planRank(plan)) {
+        plan = cachedOverridePlan
       }
     } else {
       plan = resolveCloudCodePlan(ctx, tokens || [], refreshTokenValue, true)
