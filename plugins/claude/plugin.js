@@ -392,12 +392,19 @@
 
   // --- Claude 2x Promo Banner ---
   // TEMPORARY: Remove this block after promo ends.
+  let _2xCache = null
   function get2xStatus(ctx) {
+    const nowMs = Date.now()
+    if (_2xCache && nowMs < _2xCache.expiresAt) return _2xCache.data
     try {
-      const resp = ctx.util.request({ method: "GET", url: "https://isclaude2x.com/json", timeoutMs: 5000 })
-      if (resp.status === 200) return ctx.util.tryParseJson(resp.bodyText)
-    } catch {}
-    return null
+      const resp = ctx.util.request({ method: "GET", url: "https://isclaude2x.com/json", timeoutMs: 3000 })
+      const data = resp.status === 200 ? ctx.util.tryParseJson(resp.bodyText) : null
+      _2xCache = { data, expiresAt: nowMs + 5 * 60 * 1000 }
+      return data
+    } catch {
+      _2xCache = { data: null, expiresAt: nowMs + 5 * 60 * 1000 }
+      return null
+    }
   }
   // --- End 2x Promo Banner ---
 
