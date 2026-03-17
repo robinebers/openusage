@@ -6,6 +6,12 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#4285F4",
+  "cli": {
+    "category": "cli",
+    "binaryName": "gemini",
+    "installCmd": "npm install -g @google/gemini-cli",
+    "loginCmd": "gemini auth login"
+  },
   "lines": [
     { "type": "progress", "label": "Pro", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Flash", "scope": "overview", "primaryOrder": 2 },

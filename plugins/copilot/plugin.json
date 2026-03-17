@@ -6,6 +6,12 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#A855F7",
+  "cli": {
+    "category": "cli",
+    "binaryName": "gh",
+    "installCmd": "sudo apt install gh",
+    "loginCmd": "gh auth login"
+  },
   "lines": [
     { "type": "progress", "label": "Premium", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Chat", "scope": "overview", "primaryOrder": 2 },

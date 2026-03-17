@@ -6,6 +6,9 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#111111",
+  "cli": {
+    "category": "ide"
+  },
   "lines": [
     { "type": "progress", "label": "Prompt credits", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Flex credits", "scope": "overview" }

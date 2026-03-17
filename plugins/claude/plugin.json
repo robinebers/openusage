@@ -6,6 +6,12 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#DE7356",
+  "cli": {
+    "category": "cli",
+    "binaryName": "claude",
+    "installCmd": "curl -fsSL https://claude.ai/install.sh | sh",
+    "loginCmd": "claude auth login"
+  },
   "links": [
     { "label": "Status", "url": "https://status.anthropic.com/" },
     { "label": "Console", "url": "https://console.anthropic.com/" }

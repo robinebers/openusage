@@ -6,6 +6,12 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#F34E3F",
+  "cli": {
+    "category": "cli",
+    "binaryName": "amp",
+    "installCmd": null,
+    "loginCmd": "amp auth login"
+  },
   "lines": [
     { "type": "progress", "label": "Free", "scope": "overview", "primaryOrder": 1 },
     { "type": "text", "label": "Bonus", "scope": "detail" },

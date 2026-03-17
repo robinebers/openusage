@@ -1,6 +1,17 @@
 use base64::{engine::general_purpose::STANDARD, Engine};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct CliMeta {
+    pub category: String,
+    pub binary_name: Option<String>,
+    pub install_cmd: Option<String>,
+    pub login_cmd: Option<String>,
+    pub env_var_names: Option<Vec<String>>,
+    pub env_key_label: Option<String>,
+}
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -34,6 +45,8 @@ pub struct PluginManifest {
     pub lines: Vec<ManifestLine>,
     #[serde(default)]
     pub links: Vec<PluginLink>,
+    #[serde(default)]
+    pub cli: Option<CliMeta>,
 }
 
 #[derive(Debug, Clone)]
@@ -263,6 +276,93 @@ mod tests {
         assert_eq!(manifest.links.len(), 2);
         assert_eq!(manifest.links[0].label, "Status");
         assert_eq!(manifest.links[1].url, "https://example.com/billing");
+    }
+
+    #[test]
+    fn cli_field_is_none_when_absent() {
+        let manifest = parse_manifest(
+            r#"
+            {
+              "schemaVersion": 1,
+              "id": "x",
+              "name": "X",
+              "version": "0.0.1",
+              "entry": "plugin.js",
+              "icon": "icon.svg",
+              "brandColor": null,
+              "lines": [
+                { "type": "progress", "label": "A", "scope": "overview" }
+              ]
+            }
+            "#,
+        );
+        assert!(manifest.cli.is_none());
+    }
+
+    #[test]
+    fn cli_field_parsed_correctly() {
+        let manifest = parse_manifest(
+            r##"
+            {
+              "schemaVersion": 1,
+              "id": "claude",
+              "name": "Claude",
+              "version": "0.0.1",
+              "entry": "plugin.js",
+              "icon": "icon.svg",
+              "brandColor": "#DE7356",
+              "cli": {
+                "category": "cli",
+                "binaryName": "claude",
+                "installCmd": "curl -fsSL https://claude.ai/install.sh | sh",
+                "loginCmd": "claude auth login"
+              },
+              "lines": [
+                { "type": "progress", "label": "A", "scope": "overview" }
+              ]
+            }
+            "##,
+        );
+        let cli = manifest.cli.expect("cli should be Some");
+        assert_eq!(cli.category, "cli");
+        assert_eq!(cli.binary_name.as_deref(), Some("claude"));
+        assert_eq!(
+            cli.install_cmd.as_deref(),
+            Some("curl -fsSL https://claude.ai/install.sh | sh")
+        );
+        assert_eq!(cli.login_cmd.as_deref(), Some("claude auth login"));
+        assert!(cli.env_var_names.is_none());
+        assert!(cli.env_key_label.is_none());
+    }
+
+    #[test]
+    fn cli_field_with_env_vars() {
+        let manifest = parse_manifest(
+            r#"
+            {
+              "schemaVersion": 1,
+              "id": "minimax",
+              "name": "MiniMax",
+              "version": "0.0.1",
+              "entry": "plugin.js",
+              "icon": "icon.svg",
+              "cli": {
+                "category": "env",
+                "envVarNames": ["MINIMAX_API_KEY", "MINIMAX_CN_API_KEY"],
+                "envKeyLabel": "MiniMax API Key"
+              },
+              "lines": [
+                { "type": "progress", "label": "A", "scope": "overview" }
+              ]
+            }
+            "#,
+        );
+        let cli = manifest.cli.expect("cli should be Some");
+        assert_eq!(cli.category, "env");
+        assert!(cli.binary_name.is_none());
+        let vars = cli.env_var_names.expect("env_var_names should be Some");
+        assert_eq!(vars, vec!["MINIMAX_API_KEY", "MINIMAX_CN_API_KEY"]);
+        assert_eq!(cli.env_key_label.as_deref(), Some("MiniMax API Key"));
     }
 
     #[test]

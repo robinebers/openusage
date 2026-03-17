@@ -1,16 +1,32 @@
+use crate::ProviderError;
 use openusage_plugin_engine::runtime::{MetricLine, PluginOutput, ProgressFormat};
+use std::collections::HashMap;
 
 const BAR_WIDTH: usize = 10;
 const FULL_BLOCK: char = '\u{2588}';
 const LIGHT_SHADE: char = '\u{2591}';
 
-pub fn format(outputs: &[PluginOutput]) -> String {
-    if outputs.is_empty() {
-        return String::new();
+pub fn format(outputs: &[PluginOutput], errors: &HashMap<String, ProviderError>) -> String {
+    let mut out = String::new();
+
+    if !outputs.is_empty() {
+        let rows = build_rows(outputs);
+        out.push_str(&render_table(&rows));
     }
 
-    let rows = build_rows(outputs);
-    render_table(&rows)
+    if !errors.is_empty() {
+        out.push_str("Logs\n");
+        let mut sorted_errors: Vec<_> = errors.iter().collect();
+        sorted_errors.sort_by_key(|(k, _)| (*k).clone());
+        for (provider_id, error) in sorted_errors {
+            out.push_str(&format!(
+                "  [{}] {}: {}\n",
+                error.code, provider_id, error.message
+            ));
+        }
+    }
+
+    out
 }
 
 struct Row {
@@ -244,7 +260,7 @@ mod tests {
 
     #[test]
     fn format_empty_outputs() {
-        assert_eq!(format(&[]), "");
+        assert_eq!(format(&[], &HashMap::new()), "");
     }
 
     #[test]
@@ -269,6 +285,54 @@ mod tests {
         let lines: Vec<&str> = output.lines().collect();
         // Line 0: header, Line 1: solid separator, Line 2: Claude row, Line 3: dotted separator, Line 4: Cursor row
         assert!(lines[3].contains('\u{00B7}'), "should have dotted separator between providers");
+    }
+
+    #[test]
+    fn format_empty_errors_no_logs_section() {
+        let outputs = vec![PluginOutput {
+            provider_id: "claude".to_string(),
+            display_name: "Claude".to_string(),
+            plan: Some("Max".to_string()),
+            lines: vec![MetricLine::Progress {
+                label: "Session".to_string(),
+                used: 80.0,
+                limit: 100.0,
+                format: ProgressFormat::Percent,
+                resets_at: None,
+                period_duration_ms: None,
+                color: None,
+            }],
+            icon_url: String::new(),
+        }];
+        let result = format(&outputs, &HashMap::new());
+        assert!(!result.contains("Logs"), "should not contain Logs section when errors is empty");
+    }
+
+    #[test]
+    fn format_with_errors_shows_logs_section() {
+        let mut errors = HashMap::new();
+        errors.insert(
+            "claude".to_string(),
+            ProviderError {
+                code: "provider_not_found".to_string(),
+                message: "no plugin matches provider 'claude'".to_string(),
+            },
+        );
+        errors.insert(
+            "copilot".to_string(),
+            ProviderError {
+                code: "plugin_error".to_string(),
+                message: "Not logged in. Run `gh auth login` first.".to_string(),
+            },
+        );
+        let result = format(&[], &errors);
+        assert!(result.contains("Logs\n"));
+        assert!(result.contains("  [provider_not_found] claude: no plugin matches provider 'claude'\n"));
+        assert!(result.contains("  [plugin_error] copilot: Not logged in. Run `gh auth login` first.\n"));
+        // Check sorted order: claude before copilot
+        let claude_pos = result.find("claude").unwrap();
+        let copilot_pos = result.find("copilot").unwrap();
+        assert!(claude_pos < copilot_pos, "errors should be sorted by provider ID");
     }
 
     #[test]
@@ -306,7 +370,7 @@ mod tests {
             },
         ];
 
-        let output = format(&outputs);
+        let output = format(&outputs, &HashMap::new());
         assert!(output.contains("Claude"));
         assert!(output.contains("Cursor"));
         assert!(output.contains("Session"));

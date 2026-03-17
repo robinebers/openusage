@@ -6,6 +6,12 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#74AA9C",
+  "cli": {
+    "category": "cli",
+    "binaryName": "codex",
+    "installCmd": "npm install -g @openai/codex",
+    "loginCmd": "codex auth login"
+  },
   "links": [
     { "label": "Status", "url": "https://status.openai.com/" },
     { "label": "Usage dashboard", "url": "https://platform.openai.com/usage" }

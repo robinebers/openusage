@@ -1,9 +1,13 @@
+use crate::ProviderError;
 use openusage_plugin_engine::runtime::PluginOutput;
 use serde::Serialize;
+use std::collections::HashMap;
 
 #[derive(Serialize)]
 struct JsonOutput<'a> {
     providers: Vec<JsonProvider<'a>>,
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    errors: HashMap<&'a str, &'a ProviderError>,
 }
 
 #[derive(Serialize)]
@@ -16,7 +20,7 @@ struct JsonProvider<'a> {
     lines: &'a [openusage_plugin_engine::runtime::MetricLine],
 }
 
-pub fn format(outputs: &[PluginOutput]) -> String {
+pub fn format(outputs: &[PluginOutput], errors: &HashMap<String, ProviderError>) -> String {
     let providers: Vec<JsonProvider> = outputs
         .iter()
         .map(|o| JsonProvider {
@@ -27,7 +31,15 @@ pub fn format(outputs: &[PluginOutput]) -> String {
         })
         .collect();
 
-    let wrapper = JsonOutput { providers };
+    let json_errors: HashMap<&str, &ProviderError> = errors
+        .iter()
+        .map(|(k, v)| (k.as_str(), v))
+        .collect();
+
+    let wrapper = JsonOutput {
+        providers,
+        errors: json_errors,
+    };
     serde_json::to_string_pretty(&wrapper).unwrap_or_else(|e| {
         format!("{{\"error\": \"{}\"}}", e)
     })
@@ -66,14 +78,14 @@ mod tests {
 
     #[test]
     fn json_output_contains_providers_key() {
-        let output = format(&[sample_output()]);
+        let output = format(&[sample_output()], &HashMap::new());
         let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
         assert!(parsed.get("providers").is_some());
     }
 
     #[test]
     fn json_output_strips_icon_url() {
-        let output = format(&[sample_output()]);
+        let output = format(&[sample_output()], &HashMap::new());
         assert!(!output.contains("iconUrl"), "icon_url should be stripped from JSON output");
         assert!(!output.contains("icon_url"), "icon_url should be stripped from JSON output");
         assert!(!output.contains("AAAA"), "base64 icon data should not appear");
@@ -81,7 +93,7 @@ mod tests {
 
     #[test]
     fn json_output_includes_provider_fields() {
-        let output = format(&[sample_output()]);
+        let output = format(&[sample_output()], &HashMap::new());
         let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
         let provider = &parsed["providers"][0];
         assert_eq!(provider["providerId"], "claude");
@@ -91,7 +103,7 @@ mod tests {
 
     #[test]
     fn json_output_includes_lines() {
-        let output = format(&[sample_output()]);
+        let output = format(&[sample_output()], &HashMap::new());
         let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
         let lines = parsed["providers"][0]["lines"].as_array().unwrap();
         assert_eq!(lines.len(), 2);
@@ -104,15 +116,40 @@ mod tests {
     fn json_output_skips_null_plan() {
         let mut o = sample_output();
         o.plan = None;
-        let output = format(&[o]);
+        let output = format(&[o], &HashMap::new());
         let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
         assert!(parsed["providers"][0].get("plan").is_none());
     }
 
     #[test]
     fn json_output_empty_providers() {
-        let output = format(&[]);
+        let output = format(&[], &HashMap::new());
         let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
         assert_eq!(parsed["providers"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn json_output_no_errors_key_when_empty() {
+        let output = format(&[sample_output()], &HashMap::new());
+        let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert!(parsed.get("errors").is_none(), "errors key should be absent when no errors");
+    }
+
+    #[test]
+    fn json_output_includes_errors_key_when_present() {
+        let mut errors = HashMap::new();
+        errors.insert(
+            "claude".to_string(),
+            ProviderError {
+                code: "provider_not_found".to_string(),
+                message: "no plugin matches provider 'claude'".to_string(),
+            },
+        );
+        let output = format(&[], &errors);
+        let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
+        let errs = parsed.get("errors").expect("errors key should be present");
+        let claude_err = errs.get("claude").expect("should have claude error");
+        assert_eq!(claude_err["code"], "provider_not_found");
+        assert_eq!(claude_err["message"], "no plugin matches provider 'claude'");
     }
 }

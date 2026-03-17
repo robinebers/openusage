@@ -6,6 +6,12 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#000000",
+  "cli": {
+    "category": "cli",
+    "binaryName": "kimi",
+    "installCmd": null,
+    "loginCmd": "kimi login"
+  },
   "lines": [
     { "type": "progress", "label": "Session", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Weekly", "scope": "overview", "primaryOrder": 2 }

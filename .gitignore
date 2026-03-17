@@ -28,6 +28,9 @@ tmpcov-gem
 .env*
 !.env.example
 
+# Development tracking
+.work/
+
 # Agent working files
 docs/choices.md
 docs/breadcrumbs.md

@@ -6,6 +6,12 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#020202",
+  "cli": {
+    "category": "cli",
+    "binaryName": "droid",
+    "installCmd": null,
+    "loginCmd": "droid auth login"
+  },
   "lines": [
     { "type": "progress", "label": "Standard", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Premium", "scope": "detail" }

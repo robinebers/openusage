@@ -6,6 +6,9 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#000000",
+  "cli": {
+    "category": "ide"
+  },
   "links": [
     { "label": "Status", "url": "https://status.cursor.com/" },
     { "label": "Dashboard", "url": "https://www.cursor.com/dashboard" }

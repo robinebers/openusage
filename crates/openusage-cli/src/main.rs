@@ -1,9 +1,28 @@
+mod config;
 mod format_table;
 mod format_json;
 
 use clap::Parser;
 use openusage_plugin_engine::{manifest, runtime};
+use std::collections::HashMap;
 use std::path::PathBuf;
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub(crate) struct ProviderError {
+    pub code: String,
+    pub message: String,
+}
+
+pub(crate) fn extract_error_message(output: &runtime::PluginOutput) -> String {
+    for line in &output.lines {
+        if let runtime::MetricLine::Badge { label, text, .. } = line {
+            if label == "Error" {
+                return text.clone();
+            }
+        }
+    }
+    "unknown error".to_string()
+}
 
 #[derive(Parser)]
 #[command(name = "openusage", about = "CLI tool for tracking AI coding subscription usage")]
@@ -59,16 +78,31 @@ fn main() {
         std::process::exit(1);
     }
 
+    let mut errors: HashMap<String, ProviderError> = HashMap::new();
+
     let selected: Vec<_> = if cli.providers.is_empty() {
         plugins
     } else {
+        // Collect unmatched provider IDs as errors
+        let plugin_ids: Vec<&str> = plugins.iter().map(|p| p.manifest.id.as_str()).collect();
+        for requested in &cli.providers {
+            if !plugin_ids.contains(&requested.as_str()) {
+                errors.insert(
+                    requested.clone(),
+                    ProviderError {
+                        code: "provider_not_found".to_string(),
+                        message: format!("no plugin matches provider '{}'", requested),
+                    },
+                );
+            }
+        }
         plugins
             .into_iter()
             .filter(|p| cli.providers.iter().any(|id| id == &p.manifest.id))
             .collect()
     };
 
-    if selected.is_empty() {
+    if selected.is_empty() && errors.is_empty() {
         eprintln!("no matching providers found");
         std::process::exit(1);
     }
@@ -85,16 +119,23 @@ fn main() {
         handles.into_iter().map(|h| h.join().unwrap()).collect()
     });
 
-    // Filter out error-only results (unauthenticated providers)
-    let outputs: Vec<_> = outputs
-        .into_iter()
-        .filter(|o| !is_error_only(o))
-        .collect();
+    // Partition outputs: error-only ones become ProviderErrors
+    let (good, bad): (Vec<_>, Vec<_>) = outputs.into_iter().partition(|o| !is_error_only(o));
+    for output in bad {
+        let msg = extract_error_message(&output);
+        errors.insert(
+            output.provider_id.clone(),
+            ProviderError {
+                code: "plugin_error".to_string(),
+                message: msg,
+            },
+        );
+    }
 
     if cli.json {
-        print!("{}", format_json::format(&outputs));
+        print!("{}", format_json::format(&good, &errors));
     } else {
-        print!("{}", format_table::format(&outputs));
+        print!("{}", format_table::format(&good, &errors));
     }
 }
 
@@ -149,6 +190,32 @@ mod tests {
             icon_url: String::new(),
         };
         assert!(is_error_only(&output));
+    }
+
+    #[test]
+    fn extract_error_message_extracts_error_badge_text() {
+        let output = PluginOutput {
+            provider_id: "copilot".to_string(),
+            display_name: "Copilot".to_string(),
+            plan: None,
+            lines: vec![MetricLine::Badge {
+                label: "Error".to_string(),
+                text: "Not logged in. Run `gh auth login` first.".to_string(),
+                color: Some("#ef4444".to_string()),
+                subtitle: None,
+            }],
+            icon_url: String::new(),
+        };
+        assert_eq!(
+            extract_error_message(&output),
+            "Not logged in. Run `gh auth login` first."
+        );
+    }
+
+    #[test]
+    fn extract_error_message_returns_fallback_for_non_error_output() {
+        let output = sample_output();
+        assert_eq!(extract_error_message(&output), "unknown error");
     }
 
     #[test]

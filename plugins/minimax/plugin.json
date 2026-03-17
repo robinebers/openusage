@@ -6,6 +6,11 @@
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#F5433C",
+  "cli": {
+    "category": "env",
+    "envVarNames": ["MINIMAX_API_KEY", "MINIMAX_CN_API_KEY"],
+    "envKeyLabel": "MiniMax API Key"
+  },
   "lines": [
     { "type": "progress", "label": "Session", "scope": "overview", "primaryOrder": 1 }
   ]
