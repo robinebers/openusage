@@ -8,6 +8,8 @@ use clap::{Parser, Subcommand};
 use openusage_plugin_engine::{manifest, runtime};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::mpsc;
+use std::time::Duration;
 use terminal::Terminal;
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -249,6 +251,8 @@ fn cmd_default(cli: &Cli, data_dir: &PathBuf) {
     cmd_probe(cli, data_dir, &settings);
 }
 
+const SPINNER_FRAMES: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
 fn cmd_probe(cli: &Cli, data_dir: &PathBuf, settings: &Option<config::Settings>) {
     let plugins = load_plugins_or_exit(&cli.plugins_dir);
     let config_base = config::config_dir();
@@ -298,17 +302,31 @@ fn cmd_probe(cli: &Cli, data_dir: &PathBuf, settings: &Option<config::Settings>)
         }
     }
 
+    let show_spinner = !cli.json && std::io::IsTerminal::is_terminal(&std::io::stderr());
+
+    // Build display name lookup for spinner
+    let provider_names: Vec<(String, String)> = selected
+        .iter()
+        .map(|p| (p.manifest.id.clone(), p.manifest.name.clone()))
+        .collect();
+
     let version = env!("CARGO_PKG_VERSION");
-    let outputs: Vec<runtime::PluginOutput> = std::thread::scope(|s| {
-        let handles: Vec<_> = selected
-            .iter()
-            .map(|plugin| {
-                let data = data_dir;
-                s.spawn(move || runtime::run_probe(plugin, &data.to_path_buf(), version))
-            })
-            .collect();
-        handles.into_iter().map(|h| h.join().unwrap()).collect()
-    });
+
+    let outputs: Vec<runtime::PluginOutput> = if show_spinner {
+        probe_with_spinner(&selected, data_dir, version, &provider_names)
+    } else {
+        // Silent mode: --json or non-TTY
+        std::thread::scope(|s| {
+            let handles: Vec<_> = selected
+                .iter()
+                .map(|plugin| {
+                    let data = data_dir;
+                    s.spawn(move || runtime::run_probe(plugin, &data.to_path_buf(), version))
+                })
+                .collect();
+            handles.into_iter().map(|h| h.join().unwrap()).collect()
+        })
+    };
 
     // Partition outputs: error-only ones become ProviderErrors
     let (good, bad): (Vec<_>, Vec<_>) = outputs.into_iter().partition(|o| !is_error_only(o));
@@ -328,6 +346,114 @@ fn cmd_probe(cli: &Cli, data_dir: &PathBuf, settings: &Option<config::Settings>)
     } else {
         print!("{}", format_table::format(&good, &errors));
     }
+}
+
+fn probe_with_spinner(
+    selected: &[manifest::LoadedPlugin],
+    data_dir: &PathBuf,
+    version: &str,
+    provider_names: &[(String, String)],
+) -> Vec<runtime::PluginOutput> {
+    use crossterm::{cursor, execute, style::Print, terminal as ct};
+    use std::io::Write;
+
+    let count = selected.len();
+    let mut stderr = std::io::stderr();
+
+    // Print initial spinner lines
+    for (_id, name) in provider_names {
+        let _ = execute!(stderr, Print(format!("{} {}\n", SPINNER_FRAMES[0], name)));
+    }
+    let _ = stderr.flush();
+
+    // Track completion state per provider
+    let mut completed: Vec<Option<bool>> = vec![None; count]; // None=pending, Some(true)=ok, Some(false)=error
+    let mut results: Vec<Option<runtime::PluginOutput>> = (0..count).map(|_| None).collect();
+
+    // Spawn probes with channel
+    let (tx, rx) = mpsc::channel::<(usize, runtime::PluginOutput)>();
+
+    std::thread::scope(|s| {
+        for (i, plugin) in selected.iter().enumerate() {
+            let tx = tx.clone();
+            let data = data_dir.clone();
+            let ver = version.to_string();
+            s.spawn(move || {
+                let output = runtime::run_probe(plugin, &data, &ver);
+                let _ = tx.send((i, output));
+            });
+        }
+        drop(tx); // Close sender so rx will terminate
+
+        let mut frame = 0usize;
+        let mut done_count = 0;
+
+        while done_count < count {
+            // Try to receive results (non-blocking with short timeout for animation)
+            match rx.recv_timeout(Duration::from_millis(80)) {
+                Ok((idx, output)) => {
+                    let is_ok = !is_error_only(&output);
+                    completed[idx] = Some(is_ok);
+                    results[idx] = Some(output);
+                    done_count += 1;
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            }
+
+            // Redraw all lines
+            frame = (frame + 1) % SPINNER_FRAMES.len();
+            let _ = execute!(stderr, cursor::MoveUp(count as u16));
+            for (i, (_id, name)) in provider_names.iter().enumerate() {
+                let line = match completed[i] {
+                    None => format!("\x1b[33m{}\x1b[0m {}", SPINNER_FRAMES[frame], name),
+                    Some(true) => format!("\x1b[32m\u{2713}\x1b[0m {}", name),
+                    Some(false) => format!("\x1b[31m\u{2717}\x1b[0m {}", name),
+                };
+                let _ = execute!(
+                    stderr,
+                    ct::Clear(ct::ClearType::CurrentLine),
+                    cursor::MoveToColumn(0),
+                    Print(&line),
+                    Print("\n"),
+                );
+            }
+            let _ = stderr.flush();
+        }
+
+        // Final redraw to ensure all are resolved
+        let _ = execute!(stderr, cursor::MoveUp(count as u16));
+        for (i, (_id, name)) in provider_names.iter().enumerate() {
+            let line = match completed[i] {
+                Some(true) => format!("\x1b[32m\u{2713}\x1b[0m {}", name),
+                Some(false) => format!("\x1b[31m\u{2717}\x1b[0m {}", name),
+                None => format!("? {}", name),
+            };
+            let _ = execute!(
+                stderr,
+                ct::Clear(ct::ClearType::CurrentLine),
+                cursor::MoveToColumn(0),
+                Print(&line),
+                Print("\n"),
+            );
+        }
+        let _ = stderr.flush();
+
+        // Clear spinner lines so table output is clean
+        let _ = execute!(stderr, cursor::MoveUp(count as u16));
+        for _ in 0..count {
+            let _ = execute!(
+                stderr,
+                ct::Clear(ct::ClearType::CurrentLine),
+                Print("\n"),
+            );
+        }
+        let _ = execute!(stderr, cursor::MoveUp(count as u16));
+        let _ = stderr.flush();
+    });
+
+    // Collect results in original order
+    results.into_iter().flatten().collect()
 }
 
 pub(crate) fn is_error_only(output: &runtime::PluginOutput) -> bool {
