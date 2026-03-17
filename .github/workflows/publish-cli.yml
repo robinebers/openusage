@@ -1,0 +1,188 @@
+name: Publish CLI to npm
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (e.g. 0.1.0)"
+        required: true
+        type: string
+      dry_run:
+        description: "Dry run (skip npm publish)"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            npm_pkg: openusage-linux-x64
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            npm_pkg: openusage-linux-arm64
+            cross: true
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            npm_pkg: openusage-darwin-x64
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            npm_pkg: openusage-darwin-arm64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      # Linux ARM64 cross-compilation dependencies
+      - name: Install cross-compilation tools (Linux ARM64)
+        if: matrix.cross
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          sudo apt-get install -y libclang-dev clang
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+          echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+          echo "CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++" >> $GITHUB_ENV
+
+      # Linux x64 build dependencies
+      - name: Install build dependencies (Linux x64)
+        if: matrix.os == 'ubuntu-latest' && !matrix.cross
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libclang-dev clang pkg-config libssl-dev
+
+      - name: Build CLI binary
+        run: cargo build -p openusage-cli --release --target ${{ matrix.target }}
+
+      - name: Prepare npm package
+        run: |
+          mkdir -p npm/${{ matrix.npm_pkg }}/bin
+          cp target/${{ matrix.target }}/release/openusage npm/${{ matrix.npm_pkg }}/bin/openusage
+          chmod +x npm/${{ matrix.npm_pkg }}/bin/openusage
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.npm_pkg }}
+          path: npm/${{ matrix.npm_pkg }}
+
+  publish:
+    name: Publish to npm
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      # Download all platform binaries
+      - uses: actions/download-artifact@v4
+        with:
+          name: openusage-linux-x64
+          path: npm/openusage-linux-x64
+      - uses: actions/download-artifact@v4
+        with:
+          name: openusage-linux-arm64
+          path: npm/openusage-linux-arm64
+      - uses: actions/download-artifact@v4
+        with:
+          name: openusage-darwin-x64
+          path: npm/openusage-darwin-x64
+      - uses: actions/download-artifact@v4
+        with:
+          name: openusage-darwin-arm64
+          path: npm/openusage-darwin-arm64
+
+      # Bundle plugins into the root package
+      - name: Bundle plugins
+        run: |
+          mkdir -p npm/openusage/plugins
+          for plugin_dir in plugins/*/; do
+            plugin_name="$(basename "$plugin_dir")"
+            if [ "$plugin_name" = "mock" ]; then continue; fi
+            cp -r "$plugin_dir" "npm/openusage/plugins/$plugin_name"
+          done
+
+      # Set version in all package.json files
+      - name: Set version
+        run: |
+          VERSION="${{ inputs.version }}"
+          for pkg in npm/openusage npm/openusage-linux-x64 npm/openusage-linux-arm64 npm/openusage-darwin-x64 npm/openusage-darwin-arm64; do
+            cd "$pkg"
+            npm version "$VERSION" --no-git-tag-version --allow-same-version
+            cd "$GITHUB_WORKSPACE"
+          done
+          # Update optionalDependencies versions in root package
+          cd npm/openusage
+          node -e "
+            const pkg = require('./package.json');
+            for (const dep of Object.keys(pkg.optionalDependencies || {})) {
+              pkg.optionalDependencies[dep] = '$VERSION';
+            }
+            require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+          cd "$GITHUB_WORKSPACE"
+
+      # Verify all binaries are present
+      - name: Verify artifacts
+        run: |
+          for pkg in openusage-linux-x64 openusage-linux-arm64 openusage-darwin-x64 openusage-darwin-arm64; do
+            if [ ! -f "npm/$pkg/bin/openusage" ]; then
+              echo "Missing binary in $pkg"
+              exit 1
+            fi
+            echo "OK: $pkg/bin/openusage ($(file npm/$pkg/bin/openusage))"
+          done
+
+      # Publish platform packages first, then root package
+      - name: Publish platform packages
+        if: ${{ !inputs.dry_run }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          for pkg in openusage-linux-x64 openusage-linux-arm64 openusage-darwin-x64 openusage-darwin-arm64; do
+            echo "Publishing $pkg..."
+            cd "npm/$pkg"
+            npm publish --access public
+            cd "$GITHUB_WORKSPACE"
+          done
+
+      - name: Publish root package
+        if: ${{ !inputs.dry_run }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          cd npm/openusage
+          npm publish --access public
+
+      - name: Dry run summary
+        if: ${{ inputs.dry_run }}
+        run: |
+          echo "DRY RUN — would have published:"
+          for pkg in openusage-linux-x64 openusage-linux-arm64 openusage-darwin-x64 openusage-darwin-arm64 openusage; do
+            echo "  - $(node -p "require('./npm/$pkg/package.json').name")@$(node -p "require('./npm/$pkg/package.json').version")"
+          done

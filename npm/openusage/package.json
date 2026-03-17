@@ -1,0 +1,33 @@
+{
+  "name": "openusage",
+  "version": "0.1.0",
+  "description": "CLI tool for tracking AI coding subscription usage across providers",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nicepkg/openusage.git"
+  },
+  "bin": {
+    "openusage": "bin/openusage"
+  },
+  "files": [
+    "bin",
+    "plugins"
+  ],
+  "optionalDependencies": {
+    "openusage-linux-x64": "0.1.0",
+    "openusage-linux-arm64": "0.1.0",
+    "openusage-darwin-x64": "0.1.0",
+    "openusage-darwin-arm64": "0.1.0"
+  },
+  "keywords": [
+    "ai",
+    "usage",
+    "cli",
+    "claude",
+    "copilot",
+    "cursor",
+    "openai",
+    "subscription"
+  ]
+}

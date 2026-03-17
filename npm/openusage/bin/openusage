@@ -1,0 +1,91 @@
+#!/usr/bin/env node
+"use strict";
+
+const { execFileSync } = require("child_process");
+const path = require("path");
+const os = require("os");
+
+const PLATFORM_PACKAGES = {
+  "linux-x64": "openusage-linux-x64",
+  "linux-arm64": "openusage-linux-arm64",
+  "darwin-x64": "openusage-darwin-x64",
+  "darwin-arm64": "openusage-darwin-arm64",
+};
+
+function getPlatformKey() {
+  const platform = os.platform();
+  const arch = os.arch();
+
+  // Normalize arch names
+  const archMap = { x64: "x64", arm64: "arm64" };
+  const normalizedArch = archMap[arch];
+
+  if (!normalizedArch) {
+    throw new Error(
+      `Unsupported architecture: ${arch}. openusage supports x64 and arm64.`
+    );
+  }
+
+  const key = `${platform}-${normalizedArch}`;
+  if (!PLATFORM_PACKAGES[key]) {
+    throw new Error(
+      `Unsupported platform: ${platform} ${arch}. openusage supports Linux and macOS on x64/arm64.`
+    );
+  }
+
+  return key;
+}
+
+function findBinary() {
+  const key = getPlatformKey();
+  const pkg = PLATFORM_PACKAGES[key];
+
+  // Try npm-installed package first
+  try {
+    const pkgDir = path.dirname(require.resolve(`${pkg}/package.json`));
+    const binPath = path.join(pkgDir, "bin", "openusage");
+    return binPath;
+  } catch {
+    // Fall back to sibling directory (local development / monorepo layout)
+    const siblingPath = path.join(__dirname, "..", "..", pkg, "bin", "openusage");
+    if (require("fs").existsSync(siblingPath)) {
+      return siblingPath;
+    }
+
+    throw new Error(
+      `Could not find the openusage binary for your platform (${key}).\n` +
+        `Make sure the optional dependency "${pkg}" is installed.\n` +
+        `Try: npm install ${pkg}`
+    );
+  }
+}
+
+function main() {
+  const binPath = findBinary();
+
+  // Resolve plugins directory: bundled with the root package
+  const pluginsDir = path.join(__dirname, "..", "plugins");
+
+  // Build args, injecting --plugins-dir if not already specified
+  const args = process.argv.slice(2);
+  if (!args.includes("--plugins-dir")) {
+    args.unshift("--plugins-dir", pluginsDir);
+  }
+
+  try {
+    execFileSync(binPath, args, {
+      stdio: "inherit",
+      env: {
+        ...process.env,
+        OPENUSAGE_PLUGINS_DIR: pluginsDir,
+      },
+    });
+  } catch (err) {
+    if (err.status != null) {
+      process.exit(err.status);
+    }
+    throw err;
+  }
+}
+
+main();

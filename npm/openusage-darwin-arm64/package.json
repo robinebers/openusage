@@ -1,0 +1,19 @@
+{
+  "name": "openusage-darwin-arm64",
+  "version": "0.1.0",
+  "description": "openusage native binary for macOS Apple Silicon",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nicepkg/openusage.git"
+  },
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "files": [
+    "bin"
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "name": "openusage-darwin-x64",
+  "version": "0.1.0",
+  "description": "openusage native binary for macOS Intel",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nicepkg/openusage.git"
+  },
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "files": [
+    "bin"
+  ]
+}

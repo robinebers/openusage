@@ -1,0 +1,4 @@
+# Built native binaries (added by build-npm.sh / CI)
+openusage-*/bin/
+# Bundled plugins (copied by build-npm.sh / CI)
+openusage/plugins/
