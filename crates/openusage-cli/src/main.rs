@@ -1,6 +1,7 @@
 mod config;
 mod format_table;
 mod format_json;
+pub mod terminal;
 
 use clap::Parser;
 use openusage_plugin_engine::{manifest, runtime};
