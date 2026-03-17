@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { makeCtx } from "../test-helpers.js"
 
 const loadPlugin = async () => {
@@ -77,54 +77,63 @@ describe("claude plugin", () => {
   })
 
   it("renders usage lines from response", async () => {
-    vi.setSystemTime(new Date("2026-03-29T12:00:00.000Z")) // after promo, no 2x suffix
-    const ctx = makeCtx()
-    ctx.host.fs.readText = () =>
-      JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
-    ctx.host.fs.exists = () => true
-    ctx.host.http.request.mockReturnValue({
-      status: 200,
-      bodyText: JSON.stringify({
-        five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
-        seven_day: { utilization: 20, resets_at: "2099-01-01T00:00:00.000Z" },
-        extra_usage: { is_enabled: true, used_credits: 500, monthly_limit: 1000 },
-      }),
-    })
-
-    const plugin = await loadPlugin()
-    const result = plugin.probe(ctx)
-    expect(result.plan).toBe("Pro")
-    expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
-    expect(result.lines.find((line) => line.label === "Weekly")).toBeTruthy()
-  })
-
-  it("appends max rate limit tier to the plan label when present", async () => {
-    vi.setSystemTime(new Date("2026-03-29T12:00:00.000Z")) // after promo, no 2x suffix
-    const runCase = async (rateLimitTier, expectedPlan) => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(new Date("2026-03-29T12:00:00.000Z")) // after promo, no 2x suffix
       const ctx = makeCtx()
-      ctx.host.fs.exists = () => true
       ctx.host.fs.readText = () =>
-        JSON.stringify({
-          claudeAiOauth: {
-            accessToken: "token",
-            subscriptionType: "max",
-            rateLimitTier,
-          },
-        })
+        JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
+      ctx.host.fs.exists = () => true
       ctx.host.http.request.mockReturnValue({
         status: 200,
         bodyText: JSON.stringify({
           five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+          seven_day: { utilization: 20, resets_at: "2099-01-01T00:00:00.000Z" },
+          extra_usage: { is_enabled: true, used_credits: 500, monthly_limit: 1000 },
         }),
       })
-
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)
-      expect(result.plan).toBe(expectedPlan)
+      expect(result.plan).toBe("Pro")
+      expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+      expect(result.lines.find((line) => line.label === "Weekly")).toBeTruthy()
+    } finally {
+      vi.useRealTimers()
     }
+  })
 
-    await runCase("claude_max_subscription_20x", "Max 20x")
-    await runCase("claude_max_subscription_5x", "Max 5x")
+  it("appends max rate limit tier to the plan label when present", async () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(new Date("2026-03-29T12:00:00.000Z")) // after promo, no 2x suffix
+      const runCase = async (rateLimitTier, expectedPlan) => {
+        const ctx = makeCtx()
+        ctx.host.fs.exists = () => true
+        ctx.host.fs.readText = () =>
+          JSON.stringify({
+            claudeAiOauth: {
+              accessToken: "token",
+              subscriptionType: "max",
+              rateLimitTier,
+            },
+          })
+        ctx.host.http.request.mockReturnValue({
+          status: 200,
+          bodyText: JSON.stringify({
+            five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+          }),
+        })
+
+        const plugin = await loadPlugin()
+        const result = plugin.probe(ctx)
+        expect(result.plan).toBe(expectedPlan)
+      }
+
+      await runCase("claude_max_subscription_20x", "Max 20x")
+      await runCase("claude_max_subscription_5x", "Max 5x")
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("omits resetsAt when resets_at is missing", async () => {
@@ -1316,6 +1325,9 @@ describe("claude plugin", () => {
       status: 200,
       bodyText: JSON.stringify({ five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" } }),
     })
+
+    beforeEach(() => { vi.useFakeTimers() })
+    afterEach(() => { vi.useRealTimers() })
 
     it("shows green 2x badge during promo weekend", async () => {
       // 2026-03-14 is Saturday; 15:00 UTC = 11 AM ET — off-peak, weekend → 2x active

@@ -407,7 +407,7 @@
   }
 
   function get2xStatus(nowMs) {
-    const promoActive = nowMs > PROMO_START_MS && nowMs < PROMO_END_MS
+    const promoActive = nowMs >= PROMO_START_MS && nowMs < PROMO_END_MS
     const promoEnded = nowMs >= PROMO_END_MS
 
     if (!promoActive) return { is2x: false, promoActive: false, promoEnded }
@@ -434,13 +434,13 @@
         }
       }
       const cappedMs = Math.min(nextPeakMs, PROMO_END_MS)
-      secondsToNextChange = Math.max(0, Math.floor((cappedMs - nowMs) / 1000))
+      secondsToNextChange = Math.max(0, Math.ceil((cappedMs - nowMs) / 1000))
       nextLabel = cappedMs === PROMO_END_MS ? "Promotion ends" : "Standard hours begin"
     } else {
       // Peak hours: 2x resumes at 18:00 UTC
       const todayStartUTC = nowMs - (nowMs % 86400000)
       const peakEndMs = todayStartUTC + PEAK_END_UTC * 3600000
-      secondsToNextChange = Math.max(0, Math.floor((peakEndMs - nowMs) / 1000))
+      secondsToNextChange = Math.max(0, Math.ceil((peakEndMs - nowMs) / 1000))
       nextLabel = "2x resumes"
     }
 
@@ -451,7 +451,6 @@
     if (seconds <= 0) return "\u2014"
     const h = Math.floor(seconds / 3600)
     const m = Math.floor((seconds % 3600) / 60)
-    const s = seconds % 60
     if (h > 0) return h + "h " + String(m).padStart(2, "0") + "m"
     if (m > 0) return m + "m"
     return "< 1m"
