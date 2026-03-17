@@ -132,20 +132,18 @@ jobs:
         run: |
           VERSION="${{ inputs.version }}"
           for pkg in npm/openusage npm/openusage-linux-x64 npm/openusage-linux-arm64 npm/openusage-darwin-x64 npm/openusage-darwin-arm64; do
-            cd "$pkg"
-            npm version "$VERSION" --no-git-tag-version --allow-same-version
-            cd "$GITHUB_WORKSPACE"
+            (cd "$pkg" && npm version "$VERSION" --no-git-tag-version --allow-same-version)
           done
           # Update optionalDependencies versions in root package
-          cd npm/openusage
+          PKG_FILE="${GITHUB_WORKSPACE}/npm/openusage/package.json"
           node -e "
-            const pkg = require('./package.json');
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('${PKG_FILE}', 'utf8'));
             for (const dep of Object.keys(pkg.optionalDependencies || {})) {
-              pkg.optionalDependencies[dep] = '$VERSION';
+              pkg.optionalDependencies[dep] = '${VERSION}';
             }
-            require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+            fs.writeFileSync('${PKG_FILE}', JSON.stringify(pkg, null, 2) + '\n');
           "
-          cd "$GITHUB_WORKSPACE"
 
       # Verify all binaries are present
       - name: Verify artifacts
