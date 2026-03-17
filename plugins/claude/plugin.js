@@ -408,19 +408,15 @@
 
   function get2xStatus(nowMs) {
     const promoActive = nowMs >= PROMO_START_MS && nowMs < PROMO_END_MS
-    const promoEnded = nowMs >= PROMO_END_MS
 
-    if (!promoActive) return { is2x: false, promoActive: false, promoEnded }
+    if (!promoActive) return { is2x: false, promoActive: false, secondsToNextChange: 0 }
 
     const utcHour = new Date(nowMs).getUTCHours()
     const isPeakHour = utcHour >= PEAK_START_UTC && utcHour < PEAK_END_UTC
     const isWeekend = isWeekendET(nowMs)
-    const isPeak = !isWeekend && isPeakHour
     const is2x = isWeekend || !isPeakHour
 
-    // Compute seconds to next change
     let secondsToNextChange = 0
-    let nextLabel = ""
 
     if (is2x) {
       // Find next weekday 12:00 UTC
@@ -435,16 +431,14 @@
       }
       const cappedMs = Math.min(nextPeakMs, PROMO_END_MS)
       secondsToNextChange = Math.max(0, Math.ceil((cappedMs - nowMs) / 1000))
-      nextLabel = cappedMs === PROMO_END_MS ? "Promotion ends" : "Standard hours begin"
     } else {
       // Peak hours: 2x resumes at 18:00 UTC
       const todayStartUTC = nowMs - (nowMs % 86400000)
       const peakEndMs = todayStartUTC + PEAK_END_UTC * 3600000
       secondsToNextChange = Math.max(0, Math.ceil((peakEndMs - nowMs) / 1000))
-      nextLabel = "2x resumes"
     }
 
-    return { is2x, promoActive, promoEnded, isPeak, isWeekend, secondsToNextChange, nextLabel }
+    return { is2x, promoActive, secondsToNextChange }
   }
 
   function format2xCountdown(seconds) {
@@ -652,8 +646,8 @@
       }
     }
 
-    const hasDataLines = lines.some((l) => l.label !== "2x active" && l.label !== "Peak hours")
-    if (!hasDataLines) {
+    const hasUsageData = lines.some((l) => l.type !== "badge")
+    if (!hasUsageData) {
       lines.push(ctx.line.badge({ label: "Status", text: "No usage data", color: "#a3a3a3" }))
     }
 
