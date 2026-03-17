@@ -255,6 +255,7 @@ fn is_authenticated(plugin: &LoadedPlugin, data_dir: &Path, app_version: &str) -
 
 /// Build picker items from plugins, filtering out demo/mock.
 /// Exposed for testing.
+#[allow(dead_code)]
 pub fn build_picker_items(plugins: &[LoadedPlugin]) -> Vec<PickerItem> {
     plugins
         .iter()

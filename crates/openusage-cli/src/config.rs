@@ -20,10 +20,12 @@ pub fn config_dir() -> PathBuf {
         .join(".openusage")
 }
 
+#[allow(dead_code)]
 pub fn settings_path() -> PathBuf {
     settings_path_from(&config_dir())
 }
 
+#[allow(dead_code)]
 pub fn keys_path() -> PathBuf {
     keys_path_from(&config_dir())
 }
@@ -36,6 +38,7 @@ pub fn keys_path_from(base: &Path) -> PathBuf {
     base.join("env").join("keys.json")
 }
 
+#[allow(dead_code)]
 pub fn load_settings() -> Option<Settings> {
     load_settings_from(&config_dir())
 }
@@ -49,6 +52,7 @@ pub fn load_settings_from(base: &Path) -> Option<Settings> {
     serde_json::from_str(&content).ok()
 }
 
+#[allow(dead_code)]
 pub fn save_settings(settings: &Settings) -> std::io::Result<()> {
     save_settings_to(settings, &config_dir())
 }
@@ -60,6 +64,7 @@ pub fn save_settings_to(settings: &Settings, base: &Path) -> std::io::Result<()>
     std::fs::write(&path, json)
 }
 
+#[allow(dead_code)]
 pub fn load_keys() -> HashMap<String, KeyEntry> {
     load_keys_from(&config_dir())
 }
@@ -76,6 +81,7 @@ pub fn load_keys_from(base: &Path) -> HashMap<String, KeyEntry> {
     serde_json::from_str(&content).unwrap_or_default()
 }
 
+#[allow(dead_code)]
 pub fn save_keys(keys: &HashMap<String, KeyEntry>) -> std::io::Result<()> {
     save_keys_to(keys, &config_dir())
 }
@@ -87,6 +93,7 @@ pub fn save_keys_to(keys: &HashMap<String, KeyEntry>, base: &Path) -> std::io::R
     std::fs::write(&path, json)
 }
 
+#[allow(dead_code)]
 pub fn add_provider(provider_id: &str) -> std::io::Result<()> {
     add_provider_to(provider_id, &config_dir())
 }
@@ -99,6 +106,7 @@ pub fn add_provider_to(provider_id: &str, base: &Path) -> std::io::Result<()> {
     save_settings_to(&settings, base)
 }
 
+#[allow(dead_code)]
 pub fn remove_provider(provider_id: &str) -> std::io::Result<bool> {
     remove_provider_from(provider_id, &config_dir())
 }
@@ -112,6 +120,7 @@ pub fn remove_provider_from(provider_id: &str, base: &Path) -> std::io::Result<b
     Ok(removed)
 }
 
+#[allow(dead_code)]
 pub fn inject_env_keys(provider_id: &str, env_var_names: &[String]) {
     inject_env_keys_from(provider_id, env_var_names, &config_dir())
 }
