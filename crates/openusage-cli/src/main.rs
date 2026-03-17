@@ -23,6 +23,10 @@ struct Cli {
     /// Path to app data directory
     #[arg(long)]
     data_dir: Option<PathBuf>,
+
+    /// Enable verbose logging output
+    #[arg(long, short)]
+    verbose: bool,
 }
 
 fn default_data_dir() -> PathBuf {
@@ -32,10 +36,11 @@ fn default_data_dir() -> PathBuf {
 }
 
 fn main() {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("error"))
-        .init();
-
     let cli = Cli::parse();
+
+    let default_level = if cli.verbose { "debug" } else { "error" };
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(default_level))
+        .init();
 
     let data_dir = cli.data_dir.unwrap_or_else(default_data_dir);
     if let Err(e) = std::fs::create_dir_all(&data_dir) {
