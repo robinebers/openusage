@@ -1,5 +1,5 @@
-use crate::plugin_engine::host_api;
-use crate::plugin_engine::manifest::LoadedPlugin;
+use crate::host_api;
+use crate::manifest::LoadedPlugin;
 use rquickjs::{Array, Context, Ctx, Error, Object, Promise, Runtime, Value};
 use serde::Serialize;
 use std::path::PathBuf;
@@ -451,7 +451,7 @@ fn error_line(message: String) -> MetricLine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plugin_engine::manifest::{LoadedPlugin, PluginManifest};
+    use crate::manifest::{LoadedPlugin, PluginManifest};
     use serde_json::Value as JsonValue;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};

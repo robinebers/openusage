@@ -1,0 +1,3 @@
+[workspace]
+members = ["src-tauri", "crates/plugin-engine", "crates/openusage-cli"]
+resolver = "2"

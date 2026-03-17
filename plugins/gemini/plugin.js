@@ -9,6 +9,34 @@
     "/usr/local/opt/gemini-cli/libexec/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/code_assist/oauth2.js",
   ]
 
+  // Dynamic discovery for pnpm global installs (path varies by pnpm version)
+  function discoverPnpmOauth2Paths(ctx) {
+    const pnpmGlobal = "~/.local/share/pnpm/global"
+    if (!ctx.host.fs.exists(pnpmGlobal)) return []
+    try {
+      const entries = ctx.host.fs.listDir(pnpmGlobal)
+      const paths = []
+      for (let i = 0; i < entries.length; i += 1) {
+        const versionDir = pnpmGlobal + "/" + entries[i]
+        const pnpmDir = versionDir + "/.pnpm"
+        if (!ctx.host.fs.exists(pnpmDir)) continue
+        try {
+          const pnpmEntries = ctx.host.fs.listDir(pnpmDir)
+          for (let j = 0; j < pnpmEntries.length; j += 1) {
+            if (pnpmEntries[j].indexOf("@google+gemini-cli-core") === 0) {
+              const candidate = pnpmDir + "/" + pnpmEntries[j] +
+                "/node_modules/@google/gemini-cli-core/dist/src/code_assist/oauth2.js"
+              paths.push(candidate)
+            }
+          }
+        } catch (e) { /* ignore */ }
+      }
+      return paths
+    } catch (e) {
+      return []
+    }
+  }
+
   const LOAD_CODE_ASSIST_URL = "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist"
   const QUOTA_URL = "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota"
   const PROJECTS_URL = "https://cloudresourcemanager.googleapis.com/v1/projects"
@@ -77,8 +105,9 @@
   }
 
   function loadOauthClientCreds(ctx) {
-    for (let i = 0; i < OAUTH2_JS_PATHS.length; i += 1) {
-      const path = OAUTH2_JS_PATHS[i]
+    const allPaths = OAUTH2_JS_PATHS.concat(discoverPnpmOauth2Paths(ctx))
+    for (let i = 0; i < allPaths.length; i += 1) {
+      const path = allPaths[i]
       if (!ctx.host.fs.exists(path)) continue
       try {
         const parsed = parseOauthClientCreds(ctx.host.fs.readText(path))
