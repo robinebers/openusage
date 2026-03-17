@@ -480,9 +480,9 @@
     const status2x = get2xStatus(ctx)
     if (status2x && status2x.promoActive) {
       if (status2x.is2x) {
-        lines.push(ctx.line.badge({ label: "2x active", text: "ends in " + (status2x["2xWindowExpiresIn"] || "\u2014"), color: "#22c55e" }))
+        lines.push(ctx.line.badge({ label: "2x active", text: "ends in " + (status2x["2xWindowExpiresIn"] ?? "\u2014"), color: "#22c55e" }))
       } else {
-        lines.push(ctx.line.badge({ label: "Peak hours", text: "2x in " + (status2x["standardWindowExpiresIn"] || "\u2014"), color: "#f59e0b" }))
+        lines.push(ctx.line.badge({ label: "Peak hours", text: "2x in " + (status2x["standardWindowExpiresIn"] ?? "\u2014"), color: "#f59e0b" }))
       }
     }
 
