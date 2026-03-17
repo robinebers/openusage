@@ -11,6 +11,8 @@
     { "label": "Console", "url": "https://console.anthropic.com/" }
   ],
   "lines": [
+    { "type": "badge", "label": "2x active", "scope": "overview", "_remove_after": "2026-03-28" },
+    { "type": "badge", "label": "Peak hours", "scope": "overview", "_remove_after": "2026-03-28" },
     { "type": "progress", "label": "Session", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Weekly", "scope": "overview" },
     { "type": "progress", "label": "Sonnet", "scope": "detail" },

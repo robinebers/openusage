@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### New Features
+- Show Claude 2x promotion banner in Claude tab and overview (active March 13–28, 2026) — displays green "2x active · ends in Xh XXm" badge during off-peak/weekend hours and amber "Peak hours · 2x in XXm" during weekday 12–18 UTC
+
 ## 0.6.10
 
 ### New Features

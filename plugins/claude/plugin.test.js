@@ -77,6 +77,7 @@ describe("claude plugin", () => {
   })
 
   it("renders usage lines from response", async () => {
+    vi.setSystemTime(new Date("2026-03-29T12:00:00.000Z")) // after promo, no 2x suffix
     const ctx = makeCtx()
     ctx.host.fs.readText = () =>
       JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
@@ -98,6 +99,7 @@ describe("claude plugin", () => {
   })
 
   it("appends max rate limit tier to the plan label when present", async () => {
+    vi.setSystemTime(new Date("2026-03-29T12:00:00.000Z")) // after promo, no 2x suffix
     const runCase = async (rateLimitTier, expectedPlan) => {
       const ctx = makeCtx()
       ctx.host.fs.exists = () => true
@@ -1304,6 +1306,84 @@ describe("claude plugin", () => {
       const last30 = result.lines.find((l) => l.label === "Last 30 Days")
       expect(todayLine.value).toContain("1.5K tokens")
       expect(last30.value).toContain("12K tokens")
+    })
+  })
+
+  describe("2x promo banner", () => {
+    const makeCreds = () =>
+      JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
+    const makeUsageResp = () => ({
+      status: 200,
+      bodyText: JSON.stringify({ five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" } }),
+    })
+
+    it("shows green 2x badge during promo weekend", async () => {
+      // 2026-03-14 is Saturday; 15:00 UTC = 11 AM ET — off-peak, weekend → 2x active
+      vi.setSystemTime(new Date("2026-03-14T15:00:00.000Z"))
+      const ctx = makeCtx()
+      ctx.host.fs.exists = () => true
+      ctx.host.fs.readText = () => makeCreds()
+      ctx.host.http.request.mockReturnValue(makeUsageResp())
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      const badge = result.lines.find((l) => l.label === "2x active")
+      expect(badge).toBeTruthy()
+      expect(badge.color).toBe("#22c55e")
+    })
+
+    it("shows green 2x badge during promo weekday off-peak", async () => {
+      // 2026-03-17 is Tuesday; 20:00 UTC = 4 PM ET — after peak window → 2x active
+      vi.setSystemTime(new Date("2026-03-17T20:00:00.000Z"))
+      const ctx = makeCtx()
+      ctx.host.fs.exists = () => true
+      ctx.host.fs.readText = () => makeCreds()
+      ctx.host.http.request.mockReturnValue(makeUsageResp())
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      const badge = result.lines.find((l) => l.label === "2x active")
+      expect(badge).toBeTruthy()
+      expect(badge.color).toBe("#22c55e")
+    })
+
+    it("shows amber Peak hours badge during promo weekday peak hours (12–18 UTC)", async () => {
+      // 2026-03-17 is Tuesday; 14:00 UTC = 10 AM ET — within peak window
+      vi.setSystemTime(new Date("2026-03-17T14:00:00.000Z"))
+      const ctx = makeCtx()
+      ctx.host.fs.exists = () => true
+      ctx.host.fs.readText = () => makeCreds()
+      ctx.host.http.request.mockReturnValue(makeUsageResp())
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      const badge = result.lines.find((l) => l.label === "Peak hours")
+      expect(badge).toBeTruthy()
+      expect(badge.color).toBe("#f59e0b")
+      expect(result.lines.find((l) => l.label === "2x active")).toBeUndefined()
+    })
+
+    it("shows no 2x badge after promo ends", async () => {
+      // 2026-03-29 — after promo end (2026-03-28T04:00Z)
+      vi.setSystemTime(new Date("2026-03-29T12:00:00.000Z"))
+      const ctx = makeCtx()
+      ctx.host.fs.exists = () => true
+      ctx.host.fs.readText = () => makeCreds()
+      ctx.host.http.request.mockReturnValue(makeUsageResp())
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      expect(result.lines.find((l) => l.label === "2x active")).toBeUndefined()
+      expect(result.lines.find((l) => l.label === "Peak hours")).toBeUndefined()
+    })
+
+    it("shows no 2x badge before promo starts", async () => {
+      // 2026-03-12 — before promo start (2026-03-13T04:00Z)
+      vi.setSystemTime(new Date("2026-03-12T12:00:00.000Z"))
+      const ctx = makeCtx()
+      ctx.host.fs.exists = () => true
+      ctx.host.fs.readText = () => makeCreds()
+      ctx.host.http.request.mockReturnValue(makeUsageResp())
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      expect(result.lines.find((l) => l.label === "2x active")).toBeUndefined()
+      expect(result.lines.find((l) => l.label === "Peak hours")).toBeUndefined()
     })
   })
 })

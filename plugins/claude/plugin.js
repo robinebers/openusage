@@ -390,6 +390,74 @@
     }))
   }
 
+  // --- Claude 2x Promo Banner (March 13–28, 2026) ---
+  // TEMPORARY: Remove this entire block after 2026-03-28.
+  // Also remove: the status2x block in probe(),
+  // and the "2x active" / "Peak hours" entries in plugin.json lines[].
+  const PROMO_START_MS = Date.UTC(2026, 2, 13, 4, 0, 0) // 2026-03-13T04:00:00Z
+  const PROMO_END_MS = Date.UTC(2026, 2, 28, 4, 0, 0)   // 2026-03-28T04:00:00Z
+  const PEAK_START_UTC = 12
+  const PEAK_END_UTC = 18
+
+  function isWeekendET(nowMs) {
+    // ET = UTC-4 during DST (DST started March 8, 2026)
+    const etMs = nowMs - 4 * 60 * 60 * 1000
+    const etDay = new Date(etMs).getUTCDay()
+    return etDay === 0 || etDay === 6
+  }
+
+  function get2xStatus(nowMs) {
+    const promoActive = nowMs > PROMO_START_MS && nowMs < PROMO_END_MS
+    const promoEnded = nowMs >= PROMO_END_MS
+
+    if (!promoActive) return { is2x: false, promoActive: false, promoEnded }
+
+    const utcHour = new Date(nowMs).getUTCHours()
+    const isPeakHour = utcHour >= PEAK_START_UTC && utcHour < PEAK_END_UTC
+    const isWeekend = isWeekendET(nowMs)
+    const isPeak = !isWeekend && isPeakHour
+    const is2x = isWeekend || !isPeakHour
+
+    // Compute seconds to next change
+    let secondsToNextChange = 0
+    let nextLabel = ""
+
+    if (is2x) {
+      // Find next weekday 12:00 UTC
+      const todayStartUTC = nowMs - (nowMs % 86400000)
+      let nextPeakMs = todayStartUTC + PEAK_START_UTC * 3600000
+      for (let i = 0; i < 8; i++) {
+        const candidate = nextPeakMs + i * 86400000
+        if (candidate > nowMs && !isWeekendET(candidate)) {
+          nextPeakMs = candidate
+          break
+        }
+      }
+      const cappedMs = Math.min(nextPeakMs, PROMO_END_MS)
+      secondsToNextChange = Math.max(0, Math.floor((cappedMs - nowMs) / 1000))
+      nextLabel = cappedMs === PROMO_END_MS ? "Promotion ends" : "Standard hours begin"
+    } else {
+      // Peak hours: 2x resumes at 18:00 UTC
+      const todayStartUTC = nowMs - (nowMs % 86400000)
+      const peakEndMs = todayStartUTC + PEAK_END_UTC * 3600000
+      secondsToNextChange = Math.max(0, Math.floor((peakEndMs - nowMs) / 1000))
+      nextLabel = "2x resumes"
+    }
+
+    return { is2x, promoActive, promoEnded, isPeak, isWeekend, secondsToNextChange, nextLabel }
+  }
+
+  function format2xCountdown(seconds) {
+    if (seconds <= 0) return "\u2014"
+    const h = Math.floor(seconds / 3600)
+    const m = Math.floor((seconds % 3600) / 60)
+    const s = seconds % 60
+    if (h > 0) return h + "h " + String(m).padStart(2, "0") + "m"
+    if (m > 0) return m + "m"
+    return "< 1m"
+  }
+  // --- End 2x Promo Banner ---
+
   function probe(ctx) {
     const creds = loadCredentials(ctx)
     if (!creds || !creds.oauth || !creds.oauth.accessToken || !creds.oauth.accessToken.trim()) {
@@ -457,6 +525,26 @@
     }
 
     const lines = []
+
+    // TEMPORARY: 2x promo badge — remove after 2026-03-28
+    const status2x = get2xStatus(nowMs)
+    if (status2x.promoActive) {
+      const countdown = format2xCountdown(status2x.secondsToNextChange)
+      if (status2x.is2x) {
+        lines.push(ctx.line.badge({
+          label: "2x active",
+          text: "ends in " + countdown,
+          color: "#22c55e"
+        }))
+      } else {
+        lines.push(ctx.line.badge({
+          label: "Peak hours",
+          text: "2x in " + countdown,
+          color: "#f59e0b"
+        }))
+      }
+    }
+
     let plan = null
     if (creds.oauth.subscriptionType) {
       const basePlan = ctx.fmt.planLabel(creds.oauth.subscriptionType)
@@ -565,7 +653,8 @@
       }
     }
 
-    if (lines.length === 0) {
+    const hasDataLines = lines.some((l) => l.label !== "2x active" && l.label !== "Peak hours")
+    if (!hasDataLines) {
       lines.push(ctx.line.badge({ label: "Status", text: "No usage data", color: "#a3a3a3" }))
     }
 
