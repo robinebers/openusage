@@ -93,6 +93,16 @@ function makeCloudCodeResponse(overrides) {
   )
 }
 
+function makeLoadCodeAssistResponse(overrides) {
+  return Object.assign(
+    {
+      currentTier: { id: "free-tier" },
+      paidTier: null,
+    },
+    overrides
+  )
+}
+
 function makeAuthStatusJson(overrides) {
   return JSON.stringify(
     Object.assign({ apiKey: "test-api-key-123", email: "user@example.com", name: "Test User" }, overrides)
@@ -200,6 +210,41 @@ describe("antigravity plugin", () => {
     // Model lines exist — 3 pool lines
     const labels = result.lines.map((l) => l.label)
     expect(labels).toEqual(["Gemini Pro", "Gemini Flash", "Claude"])
+  })
+
+  it("prefers Cloud tier over stale LS plan when Cloud identifies Ultra", async () => {
+    const ctx = makeCtx()
+    const futureExpiry = Math.floor(Date.now() / 1000) + 3600
+    setupSqliteMock(ctx, makeAuthStatusJson(), makeProtobufBase64(ctx, "ya29.test-token", "1//refresh", futureExpiry))
+    const discovery = makeDiscovery()
+    const response = makeUserStatusResponse({ planName: "Pro" })
+
+    ctx.host.ls.discover.mockReturnValue(discovery)
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("GetUnleashData")) {
+        return { status: 200, bodyText: "{}" }
+      }
+      if (url.includes("GetUserStatus")) {
+        return { status: 200, bodyText: JSON.stringify(response) }
+      }
+      if (url.includes("loadCodeAssist")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify(makeLoadCodeAssistResponse({
+            currentTier: { id: "free-tier" },
+            paidTier: { id: "ultra" },
+          })),
+        }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Ultra")
+    expect(result.lines.map((l) => l.label)).toEqual(["Gemini Pro", "Gemini Flash", "Claude"])
   })
 
   it("deduplicates models by normalized label (keeps worst-case fraction)", async () => {
@@ -660,6 +705,53 @@ describe("antigravity plugin", () => {
     expect(ccCalls.length).toBe(0)
   })
 
+  it("fills plan from loadCodeAssist when LS falls back to GetCommandModelConfigs", async () => {
+    const ctx = makeCtx()
+    const futureExpiry = Math.floor(Date.now() / 1000) + 3600
+    setupSqliteMock(ctx, makeAuthStatusJson(), makeProtobufBase64(ctx, "ya29.test-token", "1//refresh", futureExpiry))
+    ctx.host.ls.discover.mockReturnValue(makeDiscovery())
+
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("GetUnleashData")) {
+        return { status: 200, bodyText: "{}" }
+      }
+      if (url.includes("GetUserStatus")) {
+        return { status: 500, bodyText: "" }
+      }
+      if (url.includes("GetCommandModelConfigs")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            clientModelConfigs: [
+              {
+                label: "Gemini 3 Pro (High)",
+                modelOrAlias: { model: "MODEL_PLACEHOLDER_M8" },
+                quotaInfo: { remainingFraction: 0.7, resetTime: "2026-02-08T09:10:56Z" },
+              },
+            ],
+          }),
+        }
+      }
+      if (url.includes("loadCodeAssist")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify(makeLoadCodeAssistResponse({
+            currentTier: { id: "free-tier" },
+            paidTier: { id: "ultra" },
+          })),
+        }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Ultra")
+    expect(result.lines.map((l) => l.label)).toEqual(["Gemini Pro"])
+  })
+
   it("Cloud Code treats models without quotaInfo as depleted (100% used)", async () => {
     const ctx = makeCtx()
     const futureExpiry = Math.floor(Date.now() / 1000) + 3600
@@ -718,6 +810,36 @@ describe("antigravity plugin", () => {
     const result = plugin.probe(ctx)
 
     expect(capturedAuth).toBe("Bearer ya29.test-access")
+    expect(result.lines.length).toBeGreaterThan(0)
+  })
+
+  it("fills plan from loadCodeAssist during Cloud Code fallback", async () => {
+    const ctx = makeCtx()
+    const futureExpiry = Math.floor(Date.now() / 1000) + 3600
+    setupSqliteMock(ctx, makeAuthStatusJson(), makeProtobufBase64(ctx, "ya29.test-access", "1//refresh-token", futureExpiry))
+    ctx.host.ls.discover.mockReturnValue(null)
+
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("fetchAvailableModels")) {
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      if (url.includes("loadCodeAssist")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify(makeLoadCodeAssistResponse({
+            currentTier: { name: "Google AI Pro" },
+            paidTier: null,
+          })),
+        }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Pro")
     expect(result.lines.length).toBeGreaterThan(0)
   })
 

@@ -6,6 +6,7 @@
     "https://cloudcode-pa.googleapis.com",
   ]
   var FETCH_MODELS_PATH = "/v1internal:fetchAvailableModels"
+  var LOAD_CODE_ASSIST_PATH = "/v1internal:loadCodeAssist"
   var GOOGLE_OAUTH_URL = "https://oauth2.googleapis.com/token"
   var GOOGLE_CLIENT_ID = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
   var GOOGLE_CLIENT_SECRET = "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"
@@ -173,6 +174,27 @@
     }
   }
 
+  function pushUniqueToken(tokens, token) {
+    if (typeof token !== "string" || !token) return
+    for (var i = 0; i < tokens.length; i++) {
+      if (tokens[i] === token) return
+    }
+    tokens.push(token)
+  }
+
+  function collectTokens(ctx, apiKey, proto) {
+    var tokens = []
+    if (proto && proto.accessToken) {
+      if (!proto.expirySeconds || proto.expirySeconds > Math.floor(Date.now() / 1000)) {
+        pushUniqueToken(tokens, proto.accessToken)
+      }
+    }
+
+    pushUniqueToken(tokens, loadCachedToken(ctx))
+    pushUniqueToken(tokens, apiKey)
+    return tokens
+  }
+
   // --- LS discovery ---
 
   function discoverLs(ctx) {
@@ -322,6 +344,55 @@
     return lines
   }
 
+  function readFirstStringDeep(value, keys) {
+    if (!value || typeof value !== "object") return null
+
+    for (var i = 0; i < keys.length; i++) {
+      var direct = value[keys[i]]
+      if (typeof direct === "string" && direct.trim()) return direct.trim()
+    }
+
+    var nested = Object.values(value)
+    for (var j = 0; j < nested.length; j++) {
+      var found = readFirstStringDeep(nested[j], keys)
+      if (found) return found
+    }
+    return null
+  }
+
+  function mapTierToPlan(value) {
+    if (!value) return null
+    var normalized = String(value).trim().toLowerCase()
+    if (!normalized) return null
+    if (normalized.indexOf("ultra") !== -1) return "Ultra"
+    if (normalized.indexOf("pro") !== -1) return "Pro"
+    if (normalized.indexOf("free") !== -1) return "Free"
+    if (normalized === "standard-tier") return "Paid"
+    if (normalized === "legacy-tier") return "Legacy"
+    if (normalized.indexOf("workspace") !== -1) return "Workspace"
+    return null
+  }
+
+  function planRank(value) {
+    var normalized = String(value || "").trim().toLowerCase()
+    if (normalized === "ultra") return 3
+    if (normalized === "pro") return 2
+    if (normalized === "free") return 1
+    return 0
+  }
+
+  function extractTierValue(data) {
+    if (!data || typeof data !== "object") return null
+    var paidTier = data.paidTier && typeof data.paidTier === "object" ? data.paidTier : null
+    var currentTier = data.currentTier && typeof data.currentTier === "object" ? data.currentTier : null
+
+    return (
+      readFirstStringDeep(paidTier, ["id", "name", "slug", "quotaTier"]) ||
+      readFirstStringDeep(currentTier, ["id", "name", "slug", "quotaTier"]) ||
+      readFirstStringDeep(data, ["tier", "userTier", "subscriptionTier"])
+    )
+  }
+
   // --- Cloud Code API ---
 
   function probeCloudCode(ctx, token) {
@@ -346,6 +417,51 @@
         ctx.host.log.warn("Cloud Code request failed (" + CLOUD_CODE_URLS[i] + "): " + String(e))
       }
     }
+    return null
+  }
+
+  function fetchCloudCodePlan(ctx, token) {
+    for (var i = 0; i < CLOUD_CODE_URLS.length; i++) {
+      try {
+        var resp = ctx.host.http.request({
+          method: "POST",
+          url: CLOUD_CODE_URLS[i] + LOAD_CODE_ASSIST_PATH,
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + token,
+            "User-Agent": "antigravity",
+          },
+          bodyText: JSON.stringify({ metadata: { ideType: "ANTIGRAVITY" } }),
+          timeoutMs: 15000,
+        })
+        if (ctx.util.isAuthStatus(resp.status)) return { _authFailed: true }
+        if (resp.status >= 200 && resp.status < 300) {
+          var data = ctx.util.tryParseJson(resp.bodyText)
+          return { plan: mapTierToPlan(extractTierValue(data)) }
+        }
+      } catch (e) {
+        ctx.host.log.warn("Cloud Code plan request failed (" + CLOUD_CODE_URLS[i] + "): " + String(e))
+      }
+    }
+    return null
+  }
+
+  function resolveCloudCodePlan(ctx, tokens, refreshTokenValue, allowRefresh) {
+    for (var i = 0; i < tokens.length; i++) {
+      var result = fetchCloudCodePlan(ctx, tokens[i])
+      if (result && !result._authFailed && result.plan) return result.plan
+    }
+
+    if (allowRefresh !== false && refreshTokenValue) {
+      var refreshed = refreshAccessToken(ctx, refreshTokenValue)
+      if (refreshed) {
+        var refreshedResult = fetchCloudCodePlan(ctx, refreshed)
+        if (refreshedResult && !refreshedResult._authFailed && refreshedResult.plan) {
+          return refreshedResult.plan
+        }
+      }
+    }
+
     return null
   }
 
@@ -375,7 +491,7 @@
 
   // --- LS probe ---
 
-  function probeLs(ctx, apiKey) {
+  function probeLs(ctx, apiKey, tokens, refreshTokenValue) {
     var discovery = discoverLs(ctx)
     if (!discovery) return null
 
@@ -431,6 +547,12 @@
       var ps = data.userStatus.planStatus || {}
       var pi = ps.planInfo || {}
       plan = pi.planName || null
+      var cloudOverridePlan = resolveCloudCodePlan(ctx, tokens || [], refreshTokenValue, false)
+      if (planRank(cloudOverridePlan) > planRank(plan)) {
+        plan = cloudOverridePlan
+      }
+    } else {
+      plan = resolveCloudCodePlan(ctx, tokens || [], refreshTokenValue, true)
     }
 
     return { plan: plan, lines: lines }
@@ -441,40 +563,45 @@
   function probe(ctx) {
     var apiKey = loadApiKey(ctx)
     var proto = loadProtoTokens(ctx)
+    var tokens = collectTokens(ctx, apiKey, proto)
 
-    var lsResult = probeLs(ctx, apiKey)
+    var lsResult = probeLs(ctx, apiKey, tokens, proto && proto.refreshToken)
     if (lsResult) return lsResult
-
-    var tokens = []
-    if (proto && proto.accessToken) {
-      if (!proto.expirySeconds || proto.expirySeconds > Math.floor(Date.now() / 1000)) {
-        tokens.push(proto.accessToken)
-      }
-    }
-
-    var cached = loadCachedToken(ctx)
-    if (cached && cached !== (proto && proto.accessToken)) tokens.push(cached)
-
-    if (apiKey && apiKey !== (proto && proto.accessToken) && apiKey !== cached) tokens.push(apiKey)
 
     if (tokens.length === 0) throw "Start Antigravity and try again."
 
     var ccData = null
+    var cloudPlan = null
+    var winningToken = null
     for (var i = 0; i < tokens.length; i++) {
       ccData = probeCloudCode(ctx, tokens[i])
-      if (ccData && !ccData._authFailed) break
+      if (ccData && !ccData._authFailed) {
+        winningToken = tokens[i]
+        break
+      }
       ccData = null
     }
 
     if (!ccData && proto && proto.refreshToken) {
       var refreshed = refreshAccessToken(ctx, proto.refreshToken)
-      if (refreshed) ccData = probeCloudCode(ctx, refreshed)
+      if (refreshed) {
+        ccData = probeCloudCode(ctx, refreshed)
+        if (ccData && !ccData._authFailed) winningToken = refreshed
+      }
     }
 
     if (ccData && !ccData._authFailed) {
       var configs = parseCloudCodeModels(ccData)
       var lines = buildModelLines(ctx, configs)
-      if (lines.length > 0) return { plan: null, lines: lines }
+      if (lines.length > 0) {
+        cloudPlan = resolveCloudCodePlan(
+          ctx,
+          winningToken ? [winningToken] : tokens,
+          proto && proto.refreshToken,
+          true
+        )
+        return { plan: cloudPlan, lines: lines }
+      }
     }
 
     throw "Start Antigravity and try again."
