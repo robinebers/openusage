@@ -9,7 +9,7 @@ import { useSettingsPluginActions } from "@/hooks/app/use-settings-plugin-action
 import { useSettingsPluginList } from "@/hooks/app/use-settings-plugin-list"
 import { useSettingsSystemActions } from "@/hooks/app/use-settings-system-actions"
 import { useSettingsTheme } from "@/hooks/app/use-settings-theme"
-import { useSettingsCompact } from "@/hooks/app/use-settings-compact"
+import { useSettingsUIScale } from "@/hooks/app/use-settings-ui-scale"
 import { useTrayIcon } from "@/hooks/app/use-tray-icon"
 import { track } from "@/lib/analytics"
 import { REFRESH_COOLDOWN_MS, savePluginSettings } from "@/lib/settings"
@@ -132,7 +132,7 @@ function App() {
   })
 
   useSettingsTheme(themeMode)
-  useSettingsCompact(uiScale)
+  useSettingsUIScale(uiScale)
 
   const {
     handleThemeModeChange,

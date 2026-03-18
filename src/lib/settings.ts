@@ -313,9 +313,13 @@ export async function saveStartOnLogin(value: boolean): Promise<void> {
   await store.save();
 }
 
+export function isUIScale(value: unknown): value is UIScale {
+  return typeof value === "string" && UI_SCALE_VALUES.includes(value as UIScale);
+}
+
 export async function loadUIScale(): Promise<UIScale> {
   const stored = await store.get<unknown>(UI_SCALE_KEY);
-  if (typeof stored === "string" && UI_SCALE_VALUES.includes(stored as UIScale)) return stored as UIScale;
+  if (isUIScale(stored)) return stored;
   return DEFAULT_UI_SCALE;
 }
 
