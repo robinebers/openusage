@@ -8,8 +8,18 @@ const openerState = vi.hoisted(() => ({
   openUrlMock: vi.fn(() => Promise.resolve()),
 }))
 
+const changelogState = vi.hoisted(() => ({
+  releases: [] as import("@/hooks/use-changelog").Release[],
+  loading: false,
+  error: null as string | null,
+}))
+
 vi.mock("@tauri-apps/plugin-opener", () => ({
   openUrl: openerState.openUrlMock,
+}))
+
+vi.mock("@/hooks/use-changelog", () => ({
+  useChangelog: () => changelogState,
 }))
 
 describe("AboutDialog", () => {
