@@ -88,7 +88,7 @@ function SimpleMarkdown({ content }: { content: string }) {
             onClick={() => openUrl(part.url!).catch(console.error)}
             className={linkClass}
           >
-            {renderText(part.content)}
+            {part.content}
           </button>
         );
       }
