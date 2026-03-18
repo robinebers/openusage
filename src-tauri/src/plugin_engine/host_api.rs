@@ -1,5 +1,8 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
-use openssl::symm::{Cipher, Crypter, Mode};
+use openssl::{
+    rand::rand_bytes,
+    symm::{Cipher, Crypter, Mode},
+};
 use rquickjs::{Ctx, Exception, Function, Object};
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
@@ -314,6 +317,42 @@ fn decrypt_aes_256_gcm_envelope(envelope: &str, key_b64: &str) -> Result<String,
     String::from_utf8(plaintext).map_err(|e| format!("decrypted payload is not UTF-8: {}", e))
 }
 
+fn encrypt_aes_256_gcm_envelope(plaintext: &str, key_b64: &str) -> Result<String, String> {
+    let trimmed_key = key_b64.trim();
+    let key = BASE64_STANDARD
+        .decode(trimmed_key)
+        .map_err(|e| format!("invalid base64 key: {}", e))?;
+
+    let cipher = Cipher::aes_256_gcm();
+    let mut iv = [0_u8; 16];
+    rand_bytes(&mut iv).map_err(|e| format!("iv generation failed: {}", e))?;
+
+    let mut crypter = Crypter::new(cipher, Mode::Encrypt, &key, Some(&iv))
+        .map_err(|e| format!("encrypt init failed: {}", e))?;
+    crypter.pad(false);
+
+    let mut ciphertext = vec![0_u8; plaintext.len() + cipher.block_size()];
+    let mut count = crypter
+        .update(plaintext.as_bytes(), &mut ciphertext)
+        .map_err(|e| format!("encrypt update failed: {}", e))?;
+    count += crypter
+        .finalize(&mut ciphertext[count..])
+        .map_err(|e| format!("encrypt finalize failed: {}", e))?;
+    ciphertext.truncate(count);
+
+    let mut tag = [0_u8; 16];
+    crypter
+        .get_tag(&mut tag)
+        .map_err(|e| format!("encrypt tag retrieval failed: {}", e))?;
+
+    Ok(format!(
+        "{}:{}:{}",
+        BASE64_STANDARD.encode(iv),
+        BASE64_STANDARD.encode(tag),
+        BASE64_STANDARD.encode(ciphertext)
+    ))
+}
+
 pub fn inject_host_api<'js>(
     ctx: &Ctx<'js>,
     plugin_id: &str,
@@ -469,6 +508,20 @@ fn inject_crypto<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                   key_b64: String|
                   -> rquickjs::Result<String> {
                 decrypt_aes_256_gcm_envelope(&envelope, &key_b64)
+                    .map_err(|e| Exception::throw_message(&ctx_inner, &e))
+            },
+        )?,
+    )?;
+
+    crypto_obj.set(
+        "encryptAes256Gcm",
+        Function::new(
+            ctx.clone(),
+            move |ctx_inner: Ctx<'_>,
+                  plaintext: String,
+                  key_b64: String|
+                  -> rquickjs::Result<String> {
+                encrypt_aes_256_gcm_envelope(&plaintext, &key_b64)
                     .map_err(|e| Exception::throw_message(&ctx_inner, &e))
             },
         )?,
@@ -2103,6 +2156,19 @@ mod tests {
     }
 
     #[test]
+    fn encrypt_aes_256_gcm_envelope_round_trips_plaintext() {
+        let key = [21_u8; 32];
+        let key_b64 = BASE64_STANDARD.encode(key);
+        let plaintext = r#"{"access_token":"token-2","refresh_token":"refresh-2"}"#;
+
+        let envelope = encrypt_aes_256_gcm_envelope(plaintext, &key_b64).expect("encrypt envelope");
+        let decrypted =
+            decrypt_aes_256_gcm_envelope(&envelope, &key_b64).expect("decrypt envelope");
+
+        assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
     fn crypto_api_exposes_decrypt() {
         let rt = Runtime::new().expect("runtime");
         let ctx = Context::full(&rt).expect("context");
@@ -2114,6 +2180,7 @@ mod tests {
             let host: Object = probe_ctx.get("host").expect("host");
             let crypto: Object = host.get("crypto").expect("crypto");
             let _decrypt: Function = crypto.get("decryptAes256Gcm").expect("decryptAes256Gcm");
+            let _encrypt: Function = crypto.get("encryptAes256Gcm").expect("encryptAes256Gcm");
         });
     }
 

@@ -239,7 +239,7 @@ describe("factory plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Not logged in")
   })
 
-  it("refreshes v2 auth in memory without persisting unsupported v2 storage", async () => {
+  it("persists refreshed v2 auth back to auth.v2.file", async () => {
     const ctx = makeCtx()
     const nearExp = Math.floor(Date.now() / 1000) + 12 * 60 * 60
     const futureExp = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
@@ -278,7 +278,14 @@ describe("factory plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
     expect(result.lines.find((line) => line.label === "Standard")).toBeTruthy()
-    expect(ctx.host.fs.writeText).not.toHaveBeenCalled()
+    expect(ctx.host.fs.writeText).toHaveBeenCalledTimes(1)
+    expect(ctx.host.fs.writeText).toHaveBeenCalledWith("~/.factory/auth.v2.file", expect.any(String))
+
+    const persistedEnvelope = ctx.host.fs.readText("~/.factory/auth.v2.file")
+    const persistedRaw = ctx.host.crypto.decryptAes256Gcm(persistedEnvelope, authV2.keyB64)
+    const persisted = JSON.parse(persistedRaw)
+    expect(persisted.refresh_token).toBe("new-refresh")
+    expect(persisted.access_token).toBe(makeJwt(futureExp))
   })
 
   it("prefers auth.encrypted over stale auth.json when both exist", async () => {

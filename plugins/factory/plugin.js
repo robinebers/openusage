@@ -115,6 +115,7 @@
         auth,
         source: "file-v2",
         authPath: AUTH_V2_PATH,
+        authKey: key,
         keychainService: null,
       }
     } catch (e) {
@@ -200,9 +201,15 @@
     if (!auth) return false
 
     try {
-      if (authState.source === "file-v2" && authState.authPath) {
-        ctx.host.log.warn("auth persistence skipped: unsupported source " + authState.source)
-        return false
+      if (authState.source === "file-v2" && authState.authPath && authState.authKey) {
+        if (!ctx.host.crypto || typeof ctx.host.crypto.encryptAes256Gcm !== "function") {
+          ctx.host.log.warn("auth persistence skipped: unsupported source " + authState.source)
+          return false
+        }
+        const envelope = ctx.host.crypto.encryptAes256Gcm(JSON.stringify(auth, null, 2), authState.authKey)
+        ctx.host.fs.writeText(authState.authPath, envelope)
+        ctx.host.log.info("auth file updated: " + authState.authPath)
+        return true
       }
 
       if (authState.source === "file" && authState.authPath) {

@@ -58,6 +58,14 @@ export const makeCtx = () => {
           decipher.setAuthTag(tag)
           return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8")
         }),
+        encryptAes256Gcm: vi.fn((plaintext, keyB64) => {
+          const key = Buffer.from(String(keyB64 || "").trim(), "base64")
+          const iv = crypto.randomBytes(16)
+          const cipher = crypto.createCipheriv("aes-256-gcm", key, iv)
+          const ciphertext = Buffer.concat([cipher.update(String(plaintext), "utf8"), cipher.final()])
+          const tag = cipher.getAuthTag()
+          return `${iv.toString("base64")}:${tag.toString("base64")}:${ciphertext.toString("base64")}`
+        }),
       },
       sqlite: {
         query: vi.fn(() => "[]"),
