@@ -103,10 +103,11 @@ function makeLoadCodeAssistResponse(overrides) {
   )
 }
 
-function writePlanCache(ctx, plan, updatedAtMs) {
+function writePlanCache(ctx, plan, updatedAtMs, accountId) {
   const cachePath = ctx.app.pluginDataDir + "/plan.json"
   ctx.host.fs.writeText(cachePath, JSON.stringify({
     plan,
+    accountId: accountId ?? "user@example.com",
     updatedAtMs: updatedAtMs ?? Date.now(),
   }))
 }
@@ -329,6 +330,93 @@ describe("antigravity plugin", () => {
     const result = plugin.probe(ctx)
 
     expect(result.plan).toBe("Pro")
+  })
+
+  it("ignores cached override from a different account on LS fast path", async () => {
+    const ctx = makeCtx()
+    const futureExpiry = Math.floor(Date.now() / 1000) + 3600
+    setupSqliteMock(
+      ctx,
+      makeAuthStatusJson({ email: "current@example.com" }),
+      makeProtobufBase64(ctx, "ya29.test-token", "1//refresh", futureExpiry)
+    )
+    writePlanCache(ctx, "Ultra", Date.now(), "other@example.com")
+    const discovery = makeDiscovery()
+    const response = makeUserStatusResponse({ planName: "Pro" })
+
+    ctx.host.ls.discover.mockReturnValue(discovery)
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("GetUnleashData")) {
+        return { status: 200, bodyText: "{}" }
+      }
+      if (url.includes("GetUserStatus")) {
+        return { status: 200, bodyText: JSON.stringify(response) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Pro")
+  })
+
+  it("ignores cached plan with non-numeric updatedAtMs", async () => {
+    const ctx = makeCtx()
+    const futureExpiry = Math.floor(Date.now() / 1000) + 3600
+    setupSqliteMock(ctx, makeAuthStatusJson(), makeProtobufBase64(ctx, "ya29.test-token", "1//refresh", futureExpiry))
+    const cachePath = ctx.app.pluginDataDir + "/plan.json"
+    ctx.host.fs.writeText(cachePath, JSON.stringify({
+      plan: "Ultra",
+      accountId: "user@example.com",
+      updatedAtMs: "not-a-number",
+    }))
+    const discovery = makeDiscovery()
+    const response = makeUserStatusResponse({ planName: "Pro" })
+
+    ctx.host.ls.discover.mockReturnValue(discovery)
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("GetUnleashData")) {
+        return { status: 200, bodyText: "{}" }
+      }
+      if (url.includes("GetUserStatus")) {
+        return { status: 200, bodyText: JSON.stringify(response) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Pro")
+  })
+
+  it("prefers cached Ultra over longer LS Pro labels", async () => {
+    const ctx = makeCtx()
+    const futureExpiry = Math.floor(Date.now() / 1000) + 3600
+    setupSqliteMock(ctx, makeAuthStatusJson(), makeProtobufBase64(ctx, "ya29.test-token", "1//refresh", futureExpiry))
+    writePlanCache(ctx, "Ultra", Date.now(), "user@example.com")
+    const discovery = makeDiscovery()
+    const response = makeUserStatusResponse({ planName: "Google AI Pro" })
+
+    ctx.host.ls.discover.mockReturnValue(discovery)
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("GetUnleashData")) {
+        return { status: 200, bodyText: "{}" }
+      }
+      if (url.includes("GetUserStatus")) {
+        return { status: 200, bodyText: JSON.stringify(response) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Ultra")
   })
 
   it("deduplicates models by normalized label (keeps worst-case fraction)", async () => {

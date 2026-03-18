@@ -65,7 +65,7 @@
 
   // --- SQLite credential reading ---
 
-  function loadApiKey(ctx) {
+  function loadAuthStatus(ctx) {
     try {
       var rows = ctx.host.sqlite.query(
         STATE_DB,
@@ -74,8 +74,8 @@
       var parsed = ctx.util.tryParseJson(rows)
       if (!parsed || !parsed.length || !parsed[0].value) return null
       var auth = ctx.util.tryParseJson(parsed[0].value)
-      if (!auth || !auth.apiKey) return null
-      return auth.apiKey
+      if (!auth || typeof auth !== "object") return null
+      return auth
     } catch (e) {
       ctx.host.log.warn("failed to read auth from antigravity DB: " + String(e))
       return null
@@ -175,13 +175,24 @@
     }
   }
 
-  function loadCachedPlan(ctx) {
+  function normalizeAccountId(value) {
+    if (typeof value !== "string") return null
+    var normalized = value.trim().toLowerCase()
+    return normalized || null
+  }
+
+  function loadCachedPlan(ctx, accountId) {
+    if (!accountId) return null
     var path = ctx.app.pluginDataDir + "/plan.json"
     try {
       if (!ctx.host.fs.exists(path)) return null
       var data = ctx.util.tryParseJson(ctx.host.fs.readText(path))
       if (!data || typeof data.plan !== "string" || !data.plan || !data.updatedAtMs) return null
-      if (Date.now() - Number(data.updatedAtMs) > PLAN_CACHE_MAX_AGE_MS) return null
+      var updatedAtMs = Number(data.updatedAtMs)
+      if (!Number.isFinite(updatedAtMs)) return null
+      if (updatedAtMs > Date.now()) return null
+      if (Date.now() - updatedAtMs > PLAN_CACHE_MAX_AGE_MS) return null
+      if (normalizeAccountId(data.accountId) !== accountId) return null
       return data.plan
     } catch (e) {
       ctx.host.log.warn("failed to read cached plan: " + String(e))
@@ -189,12 +200,13 @@
     }
   }
 
-  function cachePlan(ctx, plan) {
-    if (typeof plan !== "string" || !plan) return
+  function cachePlan(ctx, plan, accountId) {
+    if (typeof plan !== "string" || !plan || !accountId) return
     var path = ctx.app.pluginDataDir + "/plan.json"
     try {
       ctx.host.fs.writeText(path, JSON.stringify({
         plan: plan,
+        accountId: accountId,
         updatedAtMs: Date.now(),
       }))
     } catch (e) {
@@ -402,7 +414,7 @@
   }
 
   function planRank(value) {
-    var normalized = String(value || "").trim().toLowerCase()
+    var normalized = String(mapTierToPlan(value) || "").trim().toLowerCase()
     if (normalized === "ultra") return 3
     if (normalized === "pro") return 2
     if (normalized === "free") return 1
@@ -474,11 +486,11 @@
     return null
   }
 
-  function resolveCloudCodePlan(ctx, tokens, refreshTokenValue, allowRefresh) {
+  function resolveCloudCodePlan(ctx, tokens, refreshTokenValue, allowRefresh, accountId) {
     for (var i = 0; i < tokens.length; i++) {
       var result = fetchCloudCodePlan(ctx, tokens[i])
       if (result && !result._authFailed && result.plan) {
-        cachePlan(ctx, result.plan)
+        cachePlan(ctx, result.plan, accountId)
         return result.plan
       }
     }
@@ -488,7 +500,7 @@
       if (refreshed) {
         var refreshedResult = fetchCloudCodePlan(ctx, refreshed)
         if (refreshedResult && !refreshedResult._authFailed && refreshedResult.plan) {
-          cachePlan(ctx, refreshedResult.plan)
+          cachePlan(ctx, refreshedResult.plan, accountId)
           return refreshedResult.plan
         }
       }
@@ -523,7 +535,7 @@
 
   // --- LS probe ---
 
-  function probeLs(ctx, apiKey, tokens, refreshTokenValue) {
+  function probeLs(ctx, apiKey, accountId, tokens, refreshTokenValue) {
     var discovery = discoverLs(ctx)
     if (!discovery) return null
 
@@ -579,12 +591,12 @@
       var ps = data.userStatus.planStatus || {}
       var pi = ps.planInfo || {}
       plan = pi.planName || null
-      var cachedOverridePlan = loadCachedPlan(ctx)
+      var cachedOverridePlan = loadCachedPlan(ctx, accountId)
       if (planRank(cachedOverridePlan) > planRank(plan)) {
         plan = cachedOverridePlan
       }
     } else {
-      plan = resolveCloudCodePlan(ctx, tokens || [], refreshTokenValue, true)
+      plan = resolveCloudCodePlan(ctx, tokens || [], refreshTokenValue, true, accountId)
     }
 
     return { plan: plan, lines: lines }
@@ -593,11 +605,13 @@
   // --- Probe ---
 
   function probe(ctx) {
-    var apiKey = loadApiKey(ctx)
+    var auth = loadAuthStatus(ctx)
+    var apiKey = auth && typeof auth.apiKey === "string" ? auth.apiKey : null
+    var accountId = normalizeAccountId(auth && auth.email)
     var proto = loadProtoTokens(ctx)
     var tokens = collectTokens(ctx, apiKey, proto)
 
-    var lsResult = probeLs(ctx, apiKey, tokens, proto && proto.refreshToken)
+    var lsResult = probeLs(ctx, apiKey, accountId, tokens, proto && proto.refreshToken)
     if (lsResult) return lsResult
 
     if (tokens.length === 0) throw "Start Antigravity and try again."
@@ -630,7 +644,8 @@
           ctx,
           winningToken ? [winningToken] : tokens,
           proto && proto.refreshToken,
-          true
+          true,
+          accountId
         )
         return { plan: cloudPlan, lines: lines }
       }
