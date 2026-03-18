@@ -1,8 +1,9 @@
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
-use openssl::{
-    rand::rand_bytes,
-    symm::{Cipher, Crypter, Mode},
+use aes_gcm::{
+    AesGcm, Nonce,
+    aead::{Aead, KeyInit, OsRng, generic_array::typenum::U16, rand_core::RngCore},
+    aes::Aes256,
 };
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use rquickjs::{Ctx, Exception, Function, Object};
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
@@ -287,32 +288,47 @@ fn decrypt_aes_256_gcm_envelope(envelope: &str, key_b64: &str) -> Result<String,
     let key = BASE64_STANDARD
         .decode(trimmed_key)
         .map_err(|e| format!("invalid base64 key: {}", e))?;
+    if key.len() != 32 {
+        return Err(format!(
+            "invalid AES-256 key length: expected 32 bytes, got {}",
+            key.len()
+        ));
+    }
+
     let iv = BASE64_STANDARD
         .decode(parts[0])
         .map_err(|e| format!("invalid base64 iv: {}", e))?;
+    if iv.len() != 16 {
+        return Err(format!(
+            "invalid AES-GCM iv length: expected 16 bytes, got {}",
+            iv.len()
+        ));
+    }
+
     let tag = BASE64_STANDARD
         .decode(parts[1])
         .map_err(|e| format!("invalid base64 auth tag: {}", e))?;
+    if tag.len() != 16 {
+        return Err(format!(
+            "invalid AES-GCM auth tag length: expected 16 bytes, got {}",
+            tag.len()
+        ));
+    }
+
     let ciphertext = BASE64_STANDARD
         .decode(parts[2])
         .map_err(|e| format!("invalid base64 ciphertext: {}", e))?;
 
-    let cipher = Cipher::aes_256_gcm();
-    let mut crypter = Crypter::new(cipher, Mode::Decrypt, &key, Some(&iv))
-        .map_err(|e| format!("decrypt init failed: {}", e))?;
-    crypter.pad(false);
-    crypter
-        .set_tag(&tag)
-        .map_err(|e| format!("decrypt tag setup failed: {}", e))?;
+    type Aes256Gcm16 = AesGcm<Aes256, U16>;
+    let cipher =
+        Aes256Gcm16::new_from_slice(&key).map_err(|e| format!("decrypt init failed: {}", e))?;
+    let nonce = Nonce::<U16>::from_slice(&iv);
 
-    let mut plaintext = vec![0_u8; ciphertext.len() + cipher.block_size()];
-    let mut count = crypter
-        .update(&ciphertext, &mut plaintext)
-        .map_err(|e| format!("decrypt update failed: {}", e))?;
-    count += crypter
-        .finalize(&mut plaintext[count..])
-        .map_err(|e| format!("decrypt finalize failed: {}", e))?;
-    plaintext.truncate(count);
+    let mut ciphertext_and_tag = ciphertext;
+    ciphertext_and_tag.extend_from_slice(&tag);
+    let plaintext = cipher
+        .decrypt(nonce, ciphertext_and_tag.as_ref())
+        .map_err(|_| "decrypt finalize failed".to_string())?;
 
     String::from_utf8(plaintext).map_err(|e| format!("decrypted payload is not UTF-8: {}", e))
 }
@@ -322,28 +338,27 @@ fn encrypt_aes_256_gcm_envelope(plaintext: &str, key_b64: &str) -> Result<String
     let key = BASE64_STANDARD
         .decode(trimmed_key)
         .map_err(|e| format!("invalid base64 key: {}", e))?;
+    if key.len() != 32 {
+        return Err(format!(
+            "invalid AES-256 key length: expected 32 bytes, got {}",
+            key.len()
+        ));
+    }
 
-    let cipher = Cipher::aes_256_gcm();
+    type Aes256Gcm16 = AesGcm<Aes256, U16>;
+    let cipher =
+        Aes256Gcm16::new_from_slice(&key).map_err(|e| format!("encrypt init failed: {}", e))?;
     let mut iv = [0_u8; 16];
-    rand_bytes(&mut iv).map_err(|e| format!("iv generation failed: {}", e))?;
-
-    let mut crypter = Crypter::new(cipher, Mode::Encrypt, &key, Some(&iv))
-        .map_err(|e| format!("encrypt init failed: {}", e))?;
-    crypter.pad(false);
-
-    let mut ciphertext = vec![0_u8; plaintext.len() + cipher.block_size()];
-    let mut count = crypter
-        .update(plaintext.as_bytes(), &mut ciphertext)
-        .map_err(|e| format!("encrypt update failed: {}", e))?;
-    count += crypter
-        .finalize(&mut ciphertext[count..])
-        .map_err(|e| format!("encrypt finalize failed: {}", e))?;
-    ciphertext.truncate(count);
-
-    let mut tag = [0_u8; 16];
-    crypter
-        .get_tag(&mut tag)
-        .map_err(|e| format!("encrypt tag retrieval failed: {}", e))?;
+    OsRng.fill_bytes(&mut iv);
+    let nonce = Nonce::<U16>::from_slice(&iv);
+    let ciphertext_and_tag = cipher
+        .encrypt(nonce, plaintext.as_bytes())
+        .map_err(|_| "encrypt finalize failed".to_string())?;
+    if ciphertext_and_tag.len() < 16 {
+        return Err("encrypted payload missing auth tag".to_string());
+    }
+    let split_at = ciphertext_and_tag.len() - 16;
+    let (ciphertext, tag) = ciphertext_and_tag.split_at(split_at);
 
     Ok(format!(
         "{}:{}:{}",
@@ -2103,22 +2118,14 @@ mod tests {
 
     fn encrypt_aes_256_gcm_envelope_for_test(key: &[u8], plaintext: &str) -> String {
         let iv = [7_u8; 16];
-        let cipher = Cipher::aes_256_gcm();
-        let mut crypter =
-            Crypter::new(cipher, Mode::Encrypt, key, Some(&iv)).expect("encrypt init");
-        crypter.pad(false);
-
-        let mut ciphertext = vec![0_u8; plaintext.len() + cipher.block_size()];
-        let mut count = crypter
-            .update(plaintext.as_bytes(), &mut ciphertext)
-            .expect("encrypt update");
-        count += crypter
-            .finalize(&mut ciphertext[count..])
+        type Aes256Gcm16 = AesGcm<Aes256, U16>;
+        let cipher = Aes256Gcm16::new_from_slice(key).expect("encrypt init");
+        let nonce = Nonce::<U16>::from_slice(&iv);
+        let ciphertext_and_tag = cipher
+            .encrypt(nonce, plaintext.as_bytes())
             .expect("encrypt finalize");
-        ciphertext.truncate(count);
-
-        let mut tag = [0_u8; 16];
-        crypter.get_tag(&mut tag).expect("encrypt get tag");
+        let split_at = ciphertext_and_tag.len() - 16;
+        let (ciphertext, tag) = ciphertext_and_tag.split_at(split_at);
 
         format!(
             "{}:{}:{}",
@@ -2166,6 +2173,39 @@ mod tests {
             decrypt_aes_256_gcm_envelope(&envelope, &key_b64).expect("decrypt envelope");
 
         assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
+    fn decrypt_aes_256_gcm_envelope_rejects_invalid_component_lengths() {
+        let key_b64 = BASE64_STANDARD.encode([9_u8; 32]);
+        let short_key_b64 = BASE64_STANDARD.encode([7_u8; 31]);
+        let iv_b64 = BASE64_STANDARD.encode([1_u8; 15]);
+        let tag_b64 = BASE64_STANDARD.encode([2_u8; 16]);
+        let ciphertext_b64 = BASE64_STANDARD.encode([3_u8; 8]);
+
+        let key_err =
+            decrypt_aes_256_gcm_envelope("AQ==:AQ==:AQ==", &short_key_b64).expect_err("key length");
+        assert!(key_err.contains("expected 32 bytes"));
+
+        let iv_err = decrypt_aes_256_gcm_envelope(
+            &format!("{}:{}:{}", iv_b64, tag_b64, ciphertext_b64),
+            &key_b64,
+        )
+        .expect_err("iv length");
+        assert!(iv_err.contains("iv length"));
+
+        let short_tag_b64 = BASE64_STANDARD.encode([2_u8; 15]);
+        let tag_err = decrypt_aes_256_gcm_envelope(
+            &format!(
+                "{}:{}:{}",
+                BASE64_STANDARD.encode([1_u8; 16]),
+                short_tag_b64,
+                ciphertext_b64
+            ),
+            &key_b64,
+        )
+        .expect_err("tag length");
+        assert!(tag_err.contains("auth tag length"));
     }
 
     #[test]
