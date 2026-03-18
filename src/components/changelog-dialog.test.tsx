@@ -127,6 +127,30 @@ describe("ChangelogDialog", () => {
     )
   })
 
+  it("handles null body without crashing", () => {
+    changelogState.releases = [
+      {
+        id: 1,
+        tag_name: "v1.0.0",
+        name: "v1.0.0",
+        body: null as any,
+        published_at: "2024-01-02T00:00:00Z",
+        html_url: "https://github.com/robinebers/openusage/releases/tag/v1.0.0",
+      },
+    ]
+
+    render(
+      <ChangelogDialog
+        currentVersion="1.0.0"
+        onBack={() => {}}
+        onClose={() => {}}
+      />,
+    )
+
+    // If it renders the title, we know it didn't crash when rendering the markdown.
+    expect(screen.getByText("v1.0.0")).toBeInTheDocument()
+  })
+
   it("shows link to full changelog when multiple releases exist", async () => {
     changelogState.releases = [
       {

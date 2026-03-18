@@ -1,5 +1,5 @@
 import { useEffect } from "react"
-import { Loader2, X, ChevronRight, ExternalLink as ExternalLinkIcon } from "lucide-react"
+import { Loader2, ChevronRight, ExternalLink as ExternalLinkIcon } from "lucide-react"
 import { useChangelog } from "@/hooks/use-changelog"
 import { Button } from "@/components/ui/button"
 import { openUrl } from "@tauri-apps/plugin-opener"
@@ -238,7 +238,7 @@ export function ChangelogDialog({ currentVersion, onBack, onClose }: ChangelogDi
               </div>
               
               <div className="bg-muted/10 rounded-lg p-1">
-                <SimpleMarkdown content={currentRelease.body} />
+                <SimpleMarkdown content={currentRelease.body ?? ""} />
               </div>
 
               {releases.length > 1 && (
