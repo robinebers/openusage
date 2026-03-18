@@ -15,6 +15,8 @@ function SimpleMarkdown({ content }: { content: string }) {
   const patterns = [
     // Markdown links: [label](url)
     { type: "link", regex: /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g },
+    // Plain URLs: https://...
+    { type: "url", regex: /(https?:\/\/[^\s<]+[^.,:;?!"'\s<)])/g },
     // Bolds: **text** or __text__
     { type: "bold", regex: /(\*\*|__)(.*?)\1/g },
     // Italics: *text* or _text_
@@ -25,8 +27,6 @@ function SimpleMarkdown({ content }: { content: string }) {
     { type: "user", regex: /(@[\w-]+)/g },
     // Commit hashes: 7 chars hex
     { type: "commit", regex: /\b([a-f0-9]{7})\b/g },
-    // Plain URLs: https://...
-    { type: "url", regex: /(https?:\/\/[^\s<]+)/g },
   ];
 
   const renderText = (text: string): React.ReactNode => {
