@@ -37,6 +37,8 @@ export function useChangelog(currentVersion: string) {
 
     const fetchForCurrentVersion = async () => {
       setLoading(true)
+      setReleases([])
+      setError(null)
       try {
         let release: Release | null = null
 
