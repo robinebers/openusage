@@ -1,6 +1,6 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { act, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { GlobalShortcutSection } from "@/components/global-shortcut-section"
 
 function renderSection(globalShortcut: string | null = null) {
@@ -20,6 +20,10 @@ async function startRecording() {
 }
 
 describe("GlobalShortcutSection", () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it("formats persisted shortcuts for display", () => {
     renderSection("CommandOrControl+Alt+Delete")
     expect(screen.getByText("Cmd + Opt + Delete")).toBeInTheDocument()
@@ -78,6 +82,20 @@ describe("GlobalShortcutSection", () => {
     expect(onGlobalShortcutChange).toHaveBeenCalledWith("CommandOrControl+A")
   })
 
+  it("records and saves Alt shortcuts", async () => {
+    const { onGlobalShortcutChange } = renderSection()
+    const textbox = await startRecording()
+
+    fireEvent.keyDown(textbox, { key: "Alt", code: "AltLeft" })
+    fireEvent.keyDown(textbox, { key: "/", code: "Slash" })
+    expect(screen.getByText("Opt + /")).toBeInTheDocument()
+
+    fireEvent.keyUp(textbox, { key: "/", code: "Slash" })
+    fireEvent.keyUp(textbox, { key: "Alt", code: "AltLeft" })
+
+    expect(onGlobalShortcutChange).toHaveBeenCalledWith("Alt+Slash")
+  })
+
   it("does not save when only modifiers are pressed", async () => {
     const { onGlobalShortcutChange } = renderSection()
     const textbox = await startRecording()
@@ -121,6 +139,20 @@ describe("GlobalShortcutSection", () => {
 
     fireEvent.keyDown(trigger, { key: " " })
     expect(screen.getByRole("textbox", { name: /Press keys/i })).toBeInTheDocument()
+  })
+
+  it("focuses the recording textbox after starting", async () => {
+    vi.useFakeTimers()
+    renderSection()
+
+    fireEvent.click(screen.getByRole("button", { name: /Click to set/i }))
+    const textbox = screen.getByRole("textbox", { name: /Press keys/i })
+
+    await act(async () => {
+      vi.advanceTimersByTime(10)
+    })
+
+    expect(textbox).toHaveFocus()
   })
 
   it("cancels recording on blur without saving pending shortcut", async () => {
