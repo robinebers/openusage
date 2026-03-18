@@ -35,6 +35,10 @@ export function AboutDialog({ version, onClose }: AboutDialogProps) {
 
   // Close on ESC key
   useEffect(() => {
+    if (view !== "about") {
+      return;
+    }
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -43,7 +47,7 @@ export function AboutDialog({ version, onClose }: AboutDialogProps) {
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
+  }, [onClose, view]);
 
   // Close when panel hides (loses visibility)
   useEffect(() => {
@@ -64,7 +68,15 @@ export function AboutDialog({ version, onClose }: AboutDialogProps) {
   };
 
   if (view === "changelog") {
-    return <ChangelogDialog currentVersion={version} onBack={() => setView("about")} onClose={onClose} />;
+    return (
+      <ChangelogDialog
+        currentVersion={version}
+        onBack={() => setView("about")}
+        // In changelog view, Escape should go back to About instead of
+        // closing the entire dialog, so hand off to setView.
+        onClose={() => setView("about")}
+      />
+    );
   }
 
   return (

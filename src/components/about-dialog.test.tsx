@@ -40,6 +40,20 @@ describe("AboutDialog", () => {
     expect(onClose).toHaveBeenCalled()
   })
 
+  it("goes back to about view on Escape when showing changelog", async () => {
+    const onClose = vi.fn()
+    render(<AboutDialog version="1.2.3" onClose={onClose} />)
+
+    // Switch to changelog view.
+    await userEvent.click(screen.getByRole("button", { name: "View Changelog" }))
+
+    // Press Escape; should go back to About view, not close.
+    await userEvent.keyboard("{Escape}")
+
+    expect(onClose).not.toHaveBeenCalled()
+    expect(screen.getByText("OpenUsage")).toBeInTheDocument()
+  })
+
   it("does not close on other keys", async () => {
     const onClose = vi.fn()
     render(<AboutDialog version="1.2.3" onClose={onClose} />)

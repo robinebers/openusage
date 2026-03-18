@@ -201,13 +201,6 @@ export function ChangelogDialog({ currentVersion, onBack, onClose }: ChangelogDi
             </button>
             <h2 className="font-semibold text-sm tracking-tight">Release Notes</h2>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 hover:bg-muted rounded-md transition-colors text-muted-foreground hover:text-foreground"
-            title="Close"
-          >
-            <X className="w-4 h-4" />
-          </button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-5 custom-scrollbar overflow-x-hidden">
