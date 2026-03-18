@@ -167,7 +167,7 @@ function SimpleMarkdown({ content }: { content: string }) {
 }
 
 export function ChangelogDialog({ currentVersion, onBack, onClose }: ChangelogDialogProps) {
-  const { releases, loading, error } = useChangelog()
+  const { releases, loading, error } = useChangelog(currentVersion)
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -246,7 +246,7 @@ export function ChangelogDialog({ currentVersion, onBack, onClose }: ChangelogDi
                 <SimpleMarkdown content={currentRelease.body ?? ""} />
               </div>
 
-              {releases.length > 1 && (
+              {releases.length >= 1 && (
                 <div className="mt-8 pt-6 border-t border-dashed">
                   <p className="text-[10px] text-muted-foreground text-center">
                     Looking for older versions? Check the{" "}

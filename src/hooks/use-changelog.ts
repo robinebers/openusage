@@ -9,41 +9,70 @@ export interface Release {
   html_url: string
 }
 
-export function useChangelog() {
+async function fetchReleaseByTag(tag: string): Promise<Release | null> {
+  const url = `https://api.github.com/repos/robinebers/openusage/releases/tags/${encodeURIComponent(
+    tag,
+  )}`
+  const res = await fetch(url)
+
+  if (res.status === 404) {
+    return null
+  }
+
+  if (!res.ok) {
+    throw new Error("Failed to fetch releases")
+  }
+
+  const data = (await res.json()) as Release
+  return data
+}
+
+export function useChangelog(currentVersion: string) {
   const [releases, setReleases] = useState<Release[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let mounted = true
-    setLoading(true)
 
-    fetch("https://api.github.com/repos/robinebers/openusage/releases")
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to fetch releases")
-        return res.json()
-      })
-      .then((data) => {
+    const fetchForCurrentVersion = async () => {
+      setLoading(true)
+      try {
+        let release: Release | null = null
+
+        if (currentVersion.startsWith("v")) {
+          release =
+            (await fetchReleaseByTag(currentVersion)) ??
+            (await fetchReleaseByTag(currentVersion.slice(1)))
+        } else {
+          release =
+            (await fetchReleaseByTag(`v${currentVersion}`) ??
+            (await fetchReleaseByTag(currentVersion)))
+        }
+
         if (mounted) {
-          setReleases(data)
+          setReleases(release ? [release] : [])
           setError(null)
         }
-      })
-      .catch((err) => {
+      } catch (err) {
         if (mounted) {
-          setError(err.message)
+          const message =
+            err instanceof Error ? err.message : "Failed to fetch releases"
+          setError(message)
         }
-      })
-      .finally(() => {
+      } finally {
         if (mounted) {
           setLoading(false)
         }
-      })
+      }
+    }
+
+    fetchForCurrentVersion()
 
     return () => {
       mounted = false
     }
-  }, [])
+  }, [currentVersion])
 
   return { releases, loading, error }
 }
