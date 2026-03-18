@@ -16,7 +16,7 @@ function SimpleMarkdown({ content }: { content: string }) {
     // Markdown links: [label](url)
     { type: "link", regex: /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g },
     // Plain URLs: https://...
-    { type: "url", regex: /(https?:\/\/[^\s<]+[^.,:;?!"'\s<)])/g },
+    { type: "url", regex: /(https?:\/\/[^\s<>]*[^\s<>.,:;!'")\]])/g },
     // Bolds: **text** or __text__
     { type: "bold", regex: /(\*\*|__)(.*?)\1/g },
     // Italics: *text* or _text_
