@@ -141,6 +141,25 @@ describe("windsurf plugin", () => {
     expect(sentBody.metadata.extensionVersion).toBe(CLOUD_COMPAT_VERSION)
   })
 
+  it("falls through when the first variant returns 200 without userStatus", async () => {
+    const ctx = makeCtx()
+    setupCloudMock(ctx, {
+      stableAuth: "sk-ws-01-stable",
+      nextAuth: "sk-ws-01-next",
+      stableResponse: { status: 200, bodyText: "{}" },
+      nextResponse: {
+        status: 200,
+        bodyText: JSON.stringify(makeQuotaResponse({ planInfo: { planName: "Next" } })),
+      },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Next")
+    expect(ctx.host.http.request).toHaveBeenCalledTimes(2)
+  })
+
   it("prefers Windsurf over Windsurf Next when both auth DBs are available", async () => {
     const ctx = makeCtx()
     setupCloudMock(ctx, {
@@ -227,17 +246,24 @@ describe("windsurf plugin", () => {
     expect(result.lines.find((line) => line.label === "Extra usage balance")?.value).toBe("$0.00")
   })
 
-  it("falls back to Unknown plan when planInfo is missing", async () => {
+  it("falls back to Unknown plan when planInfo is null", async () => {
     const ctx = makeCtx()
     setupCloudMock(ctx, {
       stableAuth: "sk-ws-01-stable",
       stableResponse: {
         status: 200,
-        bodyText: JSON.stringify(
-          makeQuotaResponse({
-            planInfo: { planName: null },
-          })
-        ),
+        bodyText: JSON.stringify({
+          userStatus: {
+            planStatus: {
+              planInfo: null,
+              dailyQuotaRemainingPercent: 100,
+              weeklyQuotaRemainingPercent: 100,
+              overageBalanceMicros: "964220000",
+              dailyQuotaResetAtUnix: "1774080000",
+              weeklyQuotaResetAtUnix: "1774166400",
+            },
+          },
+        }),
       },
     })
 
@@ -282,6 +308,49 @@ describe("windsurf plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Start Windsurf or sign in and try again.")
     expect(ctx.host.log.warn).toHaveBeenCalledWith(expect.stringContaining("failed to read API key"))
     expect(ctx.host.http.request).not.toHaveBeenCalled()
+  })
+
+  it("treats malformed nested auth JSON as a missing API key", async () => {
+    const ctx = makeCtx()
+    ctx.host.sqlite.query.mockImplementation((db, sql) => {
+      if (!String(sql).includes("windsurfAuthStatus")) return "[]"
+      if (String(db).includes("Windsurf/User/globalStorage")) {
+        return JSON.stringify([{ value: "{not-json}" }])
+      }
+      return "[]"
+    })
+
+    const plugin = await loadPlugin()
+
+    expect(() => plugin.probe(ctx)).toThrow("Start Windsurf or sign in and try again.")
+    expect(ctx.host.http.request).not.toHaveBeenCalled()
+  })
+
+  it("falls through when the first auth row is missing a value", async () => {
+    const ctx = makeCtx()
+    ctx.host.sqlite.query.mockImplementation((db, sql) => {
+      if (!String(sql).includes("windsurfAuthStatus")) return "[]"
+      if (String(db).includes("Windsurf/User/globalStorage")) {
+        return JSON.stringify([{ value: "" }])
+      }
+      if (String(db).includes("Windsurf - Next")) {
+        return makeAuthStatus("sk-ws-01-next")
+      }
+      return "[]"
+    })
+    ctx.host.http.request.mockImplementation((reqOpts) => {
+      const body = JSON.parse(String(reqOpts.bodyText || "{}"))
+      if (body.metadata?.ideName === "windsurf-next") {
+        return { status: 200, bodyText: JSON.stringify(makeQuotaResponse({ planInfo: { planName: "Pro" } })) }
+      }
+      return { status: 500, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Pro")
+    expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
   })
 
   it("throws quota unavailable when the cloud returns non-2xx for every variant", async () => {
@@ -344,6 +413,22 @@ describe("windsurf plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Windsurf quota data unavailable. Try again later.")
   })
 
+  it("throws quota unavailable when the weekly progress line cannot be built", async () => {
+    const ctx = makeCtx()
+    const originalProgress = ctx.line.progress
+    ctx.line.progress = vi.fn((opts) => {
+      if (opts.label === "Weekly quota") return null
+      return originalProgress(opts)
+    })
+    setupCloudMock(ctx, {
+      stableAuth: "sk-ws-01-stable",
+      stableResponse: { status: 200, bodyText: JSON.stringify(makeQuotaResponse()) },
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Windsurf quota data unavailable. Try again later.")
+  })
+
   it("throws quota unavailable when quota fields are missing", async () => {
     const ctx = makeCtx()
     setupCloudMock(ctx, {
@@ -358,6 +443,239 @@ describe("windsurf plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Windsurf quota data unavailable. Try again later.")
   })
 
+  it("throws quota unavailable when a quota field is an empty string", async () => {
+    const ctx = makeCtx()
+    setupCloudMock(ctx, {
+      stableAuth: "sk-ws-01-stable",
+      stableResponse: {
+        status: 200,
+        bodyText: JSON.stringify(makeQuotaResponse({ dailyQuotaRemainingPercent: "   " })),
+      },
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Windsurf quota data unavailable. Try again later.")
+  })
+
+  it("throws quota unavailable when a quota field is a non-numeric string", async () => {
+    const ctx = makeCtx()
+    setupCloudMock(ctx, {
+      stableAuth: "sk-ws-01-stable",
+      stableResponse: {
+        status: 200,
+        bodyText: JSON.stringify(makeQuotaResponse({ dailyQuotaRemainingPercent: "not-a-number" })),
+      },
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Windsurf quota data unavailable. Try again later.")
+  })
+
+  it("throws quota unavailable when a quota field is a non-finite number", async () => {
+    const ctx = makeCtx()
+    const originalTryParseJson = ctx.util.tryParseJson
+    ctx.util.tryParseJson = vi.fn((text) => {
+      if (text === "__quota__") {
+        return {
+          userStatus: {
+            planStatus: {
+              planInfo: { planName: "Teams" },
+              dailyQuotaRemainingPercent: Infinity,
+              weeklyQuotaRemainingPercent: 100,
+              overageBalanceMicros: "964220000",
+              dailyQuotaResetAtUnix: "1774080000",
+              weeklyQuotaResetAtUnix: "1774166400",
+            },
+          },
+        }
+      }
+      return originalTryParseJson(text)
+    })
+    setupCloudMock(ctx, {
+      stableAuth: "sk-ws-01-stable",
+      stableResponse: { status: 200, bodyText: "__quota__" },
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Windsurf quota data unavailable. Try again later.")
+  })
+
+  it("throws quota unavailable when a daily quota value becomes invalid during line building", async () => {
+    const ctx = makeCtx()
+    const originalTryParseJson = ctx.util.tryParseJson
+    ctx.util.tryParseJson = vi.fn((text) => {
+      if (text === "__quota__") {
+        return {
+          userStatus: {
+            planStatus: {
+              planInfo: { planName: "Teams" },
+              dailyQuotaRemainingPercent: NaN,
+              weeklyQuotaRemainingPercent: 100,
+              overageBalanceMicros: "964220000",
+              dailyQuotaResetAtUnix: "1774080000",
+              weeklyQuotaResetAtUnix: "1774166400",
+            },
+          },
+        }
+      }
+      return originalTryParseJson(text)
+    })
+    const originalIsFinite = Number.isFinite
+    const finiteSpy = vi.spyOn(Number, "isFinite")
+    let nanChecks = 0
+    finiteSpy.mockImplementation((value) => {
+      if (typeof value === "number" && Number.isNaN(value)) {
+        nanChecks += 1
+        return nanChecks === 1
+      }
+      return originalIsFinite(value)
+    })
+    setupCloudMock(ctx, {
+      stableAuth: "sk-ws-01-stable",
+      stableResponse: { status: 200, bodyText: "__quota__" },
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Windsurf quota data unavailable. Try again later.")
+    finiteSpy.mockRestore()
+  })
+
+  it("clamps a daily quota value when it becomes non-finite during clamping", async () => {
+    const ctx = makeCtx()
+    const originalTryParseJson = ctx.util.tryParseJson
+    ctx.util.tryParseJson = vi.fn((text) => {
+      if (text === "__quota__") {
+        return {
+          userStatus: {
+            planStatus: {
+              planInfo: { planName: "Teams" },
+              dailyQuotaRemainingPercent: NaN,
+              weeklyQuotaRemainingPercent: 100,
+              overageBalanceMicros: "964220000",
+              dailyQuotaResetAtUnix: "1774080000",
+              weeklyQuotaResetAtUnix: "1774166400",
+            },
+          },
+        }
+      }
+      return originalTryParseJson(text)
+    })
+    const originalIsFinite = Number.isFinite
+    const finiteSpy = vi.spyOn(Number, "isFinite")
+    let nanChecks = 0
+    finiteSpy.mockImplementation((value) => {
+      if (typeof value === "number" && value !== value) {
+        nanChecks += 1
+        return nanChecks < 3
+      }
+      return originalIsFinite(value)
+    })
+    setupCloudMock(ctx, {
+      stableAuth: "sk-ws-01-stable",
+      stableResponse: { status: 200, bodyText: "__quota__" },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((line) => line.label === "Daily quota")?.used).toBe(0)
+    finiteSpy.mockRestore()
+  })
+
+  it("throws quota unavailable when a reset field becomes invalid after contract validation", async () => {
+    const ctx = makeCtx()
+    const originalTryParseJson = ctx.util.tryParseJson
+    ctx.util.tryParseJson = vi.fn((text) => {
+      if (text === "__quota__") {
+        return {
+          userStatus: {
+            planStatus: {
+              planInfo: { planName: "Teams" },
+              dailyQuotaRemainingPercent: 100,
+              weeklyQuotaRemainingPercent: 100,
+              overageBalanceMicros: "964220000",
+              dailyQuotaResetAtUnix: NaN,
+              weeklyQuotaResetAtUnix: "1774166400",
+            },
+          },
+        }
+      }
+      return originalTryParseJson(text)
+    })
+    const originalIsFinite = Number.isFinite
+    const finiteSpy = vi.spyOn(Number, "isFinite")
+    let nanChecks = 0
+    finiteSpy.mockImplementation((value) => {
+      if (typeof value === "number" && value !== value) {
+        nanChecks += 1
+        return nanChecks === 1
+      }
+      return originalIsFinite(value)
+    })
+    setupCloudMock(ctx, {
+      stableAuth: "sk-ws-01-stable",
+      stableResponse: { status: 200, bodyText: "__quota__" },
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Windsurf quota data unavailable. Try again later.")
+    finiteSpy.mockRestore()
+  })
+
+  it("throws quota unavailable when extra usage balance becomes invalid after contract validation", async () => {
+    const ctx = makeCtx()
+    const originalTryParseJson = ctx.util.tryParseJson
+    ctx.util.tryParseJson = vi.fn((text) => {
+      if (text === "__quota__") {
+        return {
+          userStatus: {
+            planStatus: {
+              planInfo: { planName: "Teams" },
+              dailyQuotaRemainingPercent: 100,
+              weeklyQuotaRemainingPercent: 100,
+              overageBalanceMicros: NaN,
+              dailyQuotaResetAtUnix: "1774080000",
+              weeklyQuotaResetAtUnix: "1774166400",
+            },
+          },
+        }
+      }
+      return originalTryParseJson(text)
+    })
+    const originalIsFinite = Number.isFinite
+    const finiteSpy = vi.spyOn(Number, "isFinite")
+    let nanChecks = 0
+    finiteSpy.mockImplementation((value) => {
+      if (typeof value === "number" && value !== value) {
+        nanChecks += 1
+        return nanChecks === 1
+      }
+      return originalIsFinite(value)
+    })
+    setupCloudMock(ctx, {
+      stableAuth: "sk-ws-01-stable",
+      stableResponse: { status: 200, bodyText: "__quota__" },
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Windsurf quota data unavailable. Try again later.")
+    finiteSpy.mockRestore()
+  })
+
+  it("throws quota unavailable when the weekly reset field is missing", async () => {
+    const ctx = makeCtx()
+    setupCloudMock(ctx, {
+      stableAuth: "sk-ws-01-stable",
+      stableResponse: {
+        status: 200,
+        bodyText: JSON.stringify(makeQuotaResponse({ weeklyQuotaResetAtUnix: undefined })),
+      },
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Windsurf quota data unavailable. Try again later.")
+  })
+
   it("throws quota unavailable when planStatus is null", async () => {
     const ctx = makeCtx()
     setupCloudMock(ctx, {
@@ -365,6 +683,20 @@ describe("windsurf plugin", () => {
       stableResponse: {
         status: 200,
         bodyText: JSON.stringify({ userStatus: { planStatus: null } }),
+      },
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Windsurf quota data unavailable. Try again later.")
+  })
+
+  it("throws quota unavailable when userStatus has no planStatus", async () => {
+    const ctx = makeCtx()
+    setupCloudMock(ctx, {
+      stableAuth: "sk-ws-01-stable",
+      stableResponse: {
+        status: 200,
+        bodyText: JSON.stringify({ userStatus: {} }),
       },
     })
 

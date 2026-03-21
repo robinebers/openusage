@@ -54,6 +54,31 @@ describe("useAppUpdate", () => {
     expect(result.current.updateStatus).toEqual({ status: "checking" })
   })
 
+  it("stays idle when not running in Tauri", async () => {
+    globalThis.isTauri = false
+
+    const { result } = renderHook(() => useAppUpdate())
+    await act(() => Promise.resolve())
+
+    expect(checkMock).not.toHaveBeenCalled()
+    expect(result.current.updateStatus).toEqual({ status: "idle" })
+  })
+
+  it("ignores a manual re-check while a check is already in flight", async () => {
+    let resolveCheck: ((value: null) => void) | undefined
+    checkMock.mockReturnValue(new Promise<null>((resolve) => { resolveCheck = resolve }))
+
+    const { result } = renderHook(() => useAppUpdate())
+    await act(() => Promise.resolve())
+    expect(result.current.updateStatus).toEqual({ status: "checking" })
+
+    await act(() => result.current.checkForUpdates())
+    expect(checkMock).toHaveBeenCalledTimes(1)
+
+    resolveCheck?.(null)
+    await act(() => Promise.resolve())
+  })
+
   it("clears a pending up-to-date timeout on re-check", async () => {
     vi.useFakeTimers()
     const clearTimeoutSpy = vi.spyOn(window, "clearTimeout")
@@ -154,6 +179,23 @@ describe("useAppUpdate", () => {
     await act(async () => { resolveDownload?.() })
   })
 
+  it("ignores progress chunks when total content length is unknown", async () => {
+    let resolveDownload: (() => void) | null = null
+    const downloadMock = vi.fn((onEvent: (event: any) => void) => {
+      onEvent({ event: "Started", data: { contentLength: null } })
+      onEvent({ event: "Progress", data: { chunkLength: 500 } })
+      return new Promise<void>((resolve) => { resolveDownload = resolve })
+    })
+    checkMock.mockResolvedValue({ version: "1.0.0", download: downloadMock, install: vi.fn() })
+
+    const { result } = renderHook(() => useAppUpdate())
+    await act(() => Promise.resolve())
+
+    expect(result.current.updateStatus).toEqual({ status: "downloading", progress: -1 })
+
+    await act(async () => { resolveDownload?.() })
+  })
+
   it("transitions to error on download failure", async () => {
     const downloadMock = vi.fn().mockRejectedValue(new Error("download failed"))
     checkMock.mockResolvedValue({ version: "1.0.0", download: downloadMock, install: vi.fn() })
@@ -208,6 +250,40 @@ describe("useAppUpdate", () => {
     unmount()
     resolveRef.current?.({ version: "1.0.0", download: vi.fn(), install: vi.fn() })
     await act(() => Promise.resolve())
+    expect(result.current.updateStatus).toEqual(statusAtUnmount)
+  })
+
+  it("does not update state after unmount when check rejects", async () => {
+    const rejectRef: { current: ((error: unknown) => void) | null } = { current: null }
+    checkMock.mockReturnValue(new Promise((_, reject) => { rejectRef.current = reject }))
+
+    const { result, unmount } = renderHook(() => useAppUpdate())
+    const statusAtUnmount = result.current.updateStatus
+    unmount()
+    rejectRef.current?.(new Error("network error"))
+    await act(() => Promise.resolve())
+    expect(result.current.updateStatus).toEqual(statusAtUnmount)
+  })
+
+  it("ignores download events after unmount", async () => {
+    let emitEvent: ((event: any) => void) | null = null
+    let resolveDownload: (() => void) | null = null
+    const downloadMock = vi.fn((onEvent: (event: any) => void) => {
+      emitEvent = onEvent
+      return new Promise<void>((resolve) => { resolveDownload = resolve })
+    })
+    checkMock.mockResolvedValue({ version: "1.0.0", download: downloadMock, install: vi.fn() })
+
+    const { result, unmount } = renderHook(() => useAppUpdate())
+    await act(() => Promise.resolve())
+    const statusAtUnmount = result.current.updateStatus
+    unmount()
+
+    emitEvent?.({ event: "Started", data: { contentLength: 100 } })
+    emitEvent?.({ event: "Progress", data: { chunkLength: 50 } })
+    emitEvent?.({ event: "Finished", data: {} })
+    await act(async () => { resolveDownload?.() })
+
     expect(result.current.updateStatus).toEqual(statusAtUnmount)
   })
 
