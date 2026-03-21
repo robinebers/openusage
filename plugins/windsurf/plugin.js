@@ -76,6 +76,9 @@
       })
       if (resp.status < 200 || resp.status >= 300) {
         ctx.host.log.warn("cloud request returned status " + resp.status + " for " + variant.marker)
+        if (ctx.util && typeof ctx.util.isAuthStatus === "function" && ctx.util.isAuthStatus(resp.status)) {
+          return { __openusageAuthError: true }
+        }
         return null
       }
       return ctx.util.tryParseJson(resp.bodyText)
@@ -154,6 +157,7 @@
 
   function probe(ctx) {
     var sawApiKey = false
+    var sawAuthFailure = false
 
     for (var i = 0; i < VARIANTS.length; i++) {
       var variant = VARIANTS[i]
@@ -162,11 +166,24 @@
       sawApiKey = true
 
       var data = callCloud(ctx, apiKey, variant)
+      if (data && data.__openusageAuthError) {
+        sawAuthFailure = true
+        continue
+      }
       if (!data || !data.userStatus) continue
 
-      return buildOutput(ctx, data.userStatus)
+      try {
+        return buildOutput(ctx, data.userStatus)
+      } catch (e) {
+        if (e === QUOTA_HINT) {
+          ctx.host.log.warn("quota contract unavailable for " + variant.marker)
+          continue
+        }
+        throw e
+      }
     }
 
+    if (sawAuthFailure) throw LOGIN_HINT
     if (sawApiKey) throw QUOTA_HINT
     throw LOGIN_HINT
   }

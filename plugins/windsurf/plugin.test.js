@@ -160,6 +160,36 @@ describe("windsurf plugin", () => {
     expect(ctx.host.http.request).toHaveBeenCalledTimes(2)
   })
 
+  it("falls through when the first variant returns a non-quota payload", async () => {
+    const ctx = makeCtx()
+    setupCloudMock(ctx, {
+      stableAuth: "sk-ws-01-stable",
+      nextAuth: "sk-ws-01-next",
+      stableResponse: {
+        status: 200,
+        bodyText: JSON.stringify({
+          userStatus: {
+            planStatus: {
+              planInfo: { planName: "Legacy" },
+              availablePromptCredits: 50000,
+            },
+          },
+        }),
+      },
+      nextResponse: {
+        status: 200,
+        bodyText: JSON.stringify(makeQuotaResponse({ planInfo: { planName: "Next" } })),
+      },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Next")
+    expect(ctx.host.http.request).toHaveBeenCalledTimes(2)
+    expect(ctx.host.log.warn).toHaveBeenCalledWith("quota contract unavailable for windsurf")
+  })
+
   it("prefers Windsurf over Windsurf Next when both auth DBs are available", async () => {
     const ctx = makeCtx()
     setupCloudMock(ctx, {
@@ -353,20 +383,55 @@ describe("windsurf plugin", () => {
     expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
   })
 
-  it("throws quota unavailable when the cloud returns non-2xx for every variant", async () => {
+  it("throws quota unavailable when the cloud returns only transient failures", async () => {
     const ctx = makeCtx()
     setupCloudMock(ctx, {
       stableAuth: "sk-ws-01-stable",
       nextAuth: "sk-ws-01-next",
       stableResponse: { status: 503, bodyText: "{}" },
-      nextResponse: { status: 401, bodyText: "{}" },
+      nextResponse: { status: 502, bodyText: "{}" },
     })
 
     const plugin = await loadPlugin()
 
     expect(() => plugin.probe(ctx)).toThrow("Windsurf quota data unavailable. Try again later.")
     expect(ctx.host.log.warn).toHaveBeenCalledWith(expect.stringContaining("cloud request returned status 503"))
+    expect(ctx.host.log.warn).toHaveBeenCalledWith(expect.stringContaining("cloud request returned status 502"))
+  })
+
+  it("throws the login hint when every cloud response is an auth failure", async () => {
+    const ctx = makeCtx()
+    setupCloudMock(ctx, {
+      stableAuth: "sk-ws-01-stable",
+      nextAuth: "sk-ws-01-next",
+      stableResponse: { status: 401, bodyText: "{}" },
+      nextResponse: { status: 403, bodyText: "{}" },
+    })
+
+    const plugin = await loadPlugin()
+
+    expect(() => plugin.probe(ctx)).toThrow("Start Windsurf or sign in and try again.")
     expect(ctx.host.log.warn).toHaveBeenCalledWith(expect.stringContaining("cloud request returned status 401"))
+    expect(ctx.host.log.warn).toHaveBeenCalledWith(expect.stringContaining("cloud request returned status 403"))
+  })
+
+  it("falls through when the first variant returns an auth failure", async () => {
+    const ctx = makeCtx()
+    setupCloudMock(ctx, {
+      stableAuth: "sk-ws-01-stable",
+      nextAuth: "sk-ws-01-next",
+      stableResponse: { status: 401, bodyText: "{}" },
+      nextResponse: {
+        status: 200,
+        bodyText: JSON.stringify(makeQuotaResponse({ planInfo: { planName: "Pro" } })),
+      },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Pro")
+    expect(ctx.host.http.request).toHaveBeenCalledTimes(2)
   })
 
   it("falls through to the next variant when a cloud request throws", async () => {
