@@ -140,6 +140,16 @@ export function useTrayIcon({
         return Promise.resolve()
       }
 
+      const maybeSetTooltip = (tray as TrayIcon & { setTooltip?: (value: string) => Promise<void> }).setTooltip
+      const setTooltipFn =
+        typeof maybeSetTooltip === "function" ? (value: string) => maybeSetTooltip.call(tray, value) : null
+      const setTrayTooltip = (tooltip: string) => {
+        if (setTooltipFn) {
+          return setTooltipFn(tooltip)
+        }
+        return Promise.resolve()
+      }
+
       const restoreGaugeIcon = () => {
         const gaugePath = trayGaugeIconPathRef.current
         if (gaugePath) {
@@ -147,7 +157,7 @@ export function useTrayIcon({
             tray.setIcon(gaugePath),
             tray.setIconAsTemplate(true),
             setTrayTitle(""),
-            tray.setTooltip("OpenUsage"),
+            setTrayTooltip("OpenUsage"),
           ])
             .catch((e) => {
               console.error("Failed to restore tray gauge icon:", e)
@@ -234,7 +244,7 @@ export function useTrayIcon({
         displayMode: displayModeRef.current,
       })
       const tooltip = formatTrayTooltip(tooltipBars, pluginsMetaRef.current)
-      const updateTooltip = () => tray.setTooltip(tooltip)
+      const updateTooltip = () => setTrayTooltip(tooltip)
 
       if (style === "bars") {
         renderTrayBarsIcon({

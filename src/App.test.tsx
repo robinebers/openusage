@@ -594,6 +594,7 @@ describe("App", () => {
     state.trayGetByIdMock.mockResolvedValueOnce({
       setIcon: state.traySetIconMock.mockResolvedValue(undefined),
       setIconAsTemplate: state.traySetIconAsTemplateMock.mockResolvedValue(undefined),
+      setTooltip: state.traySetTooltipMock.mockResolvedValue(undefined),
     })
 
     render(<App />)
