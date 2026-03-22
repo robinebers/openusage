@@ -7,7 +7,8 @@
   "icon": "icon.svg",
   "brandColor": "#111111",
   "lines": [
-    { "type": "progress", "label": "Prompt credits", "scope": "overview", "primaryOrder": 1 },
-    { "type": "progress", "label": "Flex credits", "scope": "overview" }
+    { "type": "progress", "label": "Daily quota", "scope": "overview", "primaryOrder": 1 },
+    { "type": "progress", "label": "Weekly quota", "scope": "overview" },
+    { "type": "text", "label": "Extra usage balance", "scope": "detail" }
   ]
 }
