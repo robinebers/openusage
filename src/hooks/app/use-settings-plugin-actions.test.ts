@@ -99,6 +99,80 @@ describe("useSettingsPluginActions", () => {
     expect(savePluginSettingsMock).toHaveBeenCalledWith(expectedSettings)
   })
 
+  it("reorder tolerates missing saved order metadata", () => {
+    const setPluginSettings = vi.fn()
+
+    const { result } = renderHook(() =>
+      useSettingsPluginActions({
+        pluginSettings: { order: undefined as unknown as string[], disabled: [] },
+        setPluginSettings,
+        setLoadingForPlugins: vi.fn(),
+        setErrorForPlugins: vi.fn(),
+        startBatch: vi.fn(),
+        scheduleTrayIconUpdate: vi.fn(),
+      })
+    )
+
+    act(() => {
+      result.current.handleReorder(["c", "a"])
+    })
+
+    expect(setPluginSettings).toHaveBeenCalledWith({ order: ["c", "a"], disabled: [] })
+    expect(savePluginSettingsMock).toHaveBeenCalledWith({ order: ["c", "a"], disabled: [] })
+  })
+
+  it("reorder restores the full saved order when no visible plugins are passed", () => {
+    const setPluginSettings = vi.fn()
+
+    const { result } = renderHook(() =>
+      useSettingsPluginActions({
+        pluginSettings: { order: ["b", "a", "c"], disabled: ["b"] },
+        setPluginSettings,
+        setLoadingForPlugins: vi.fn(),
+        setErrorForPlugins: vi.fn(),
+        startBatch: vi.fn(),
+        scheduleTrayIconUpdate: vi.fn(),
+      })
+    )
+
+    act(() => {
+      result.current.handleReorder([])
+    })
+
+    expect(setPluginSettings).toHaveBeenCalledWith({ order: ["b", "a", "c"], disabled: ["b"] })
+    expect(savePluginSettingsMock).toHaveBeenCalledWith({ order: ["b", "a", "c"], disabled: ["b"] })
+  })
+
+  it("reorder tolerates order metadata disappearing during merge", () => {
+    const setPluginSettings = vi.fn()
+    let orderReads = 0
+    const pluginSettings = {
+      disabled: [],
+      get order() {
+        orderReads += 1
+        return orderReads === 1 ? ["b", "a"] : undefined
+      },
+    } as unknown as { order: string[]; disabled: string[] }
+
+    const { result } = renderHook(() =>
+      useSettingsPluginActions({
+        pluginSettings,
+        setPluginSettings,
+        setLoadingForPlugins: vi.fn(),
+        setErrorForPlugins: vi.fn(),
+        startBatch: vi.fn(),
+        scheduleTrayIconUpdate: vi.fn(),
+      })
+    )
+
+    act(() => {
+      result.current.handleReorder(["a"])
+    })
+
+    expect(setPluginSettings).toHaveBeenCalledWith({ order: ["b", "a"], disabled: [] })
+    expect(savePluginSettingsMock).toHaveBeenCalledWith({ order: ["b", "a"], disabled: [] })
+  })
+
   it("enables and disables plugins with correct side effects", () => {
     const setPluginSettings = vi.fn()
     const setLoadingForPlugins = vi.fn()
