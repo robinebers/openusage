@@ -225,6 +225,16 @@
       );
       if (premiumLine) lines.push(premiumLine);
 
+      // Show raw request counts for premium interactions
+      const pi = snapshots.premium_interactions;
+      if (pi && typeof pi.entitlement === "number" && typeof pi.remaining === "number" && pi.entitlement > 0) {
+        var used = pi.entitlement - pi.remaining;
+        lines.push(ctx.line.text({
+          label: "Requests Used",
+          value: String(Math.max(0, used)) + " / " + String(pi.entitlement),
+        }));
+      }
+
       const chatLine = makeProgressLine(
         ctx,
         "Chat",

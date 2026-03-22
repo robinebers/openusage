@@ -83,11 +83,12 @@ X-Github-Api-Version: 2025-04-01
 
 ## Displayed Lines
 
-| Line         | Tier | Description                              |
-|--------------|------|------------------------------------------|
-| Premium      | Paid | Premium interactions remaining (percent) |
-| Chat         | Both | Chat messages remaining                  |
-| Completions  | Free | Code completions remaining               |
+| Line           | Tier | Description                                          |
+|----------------|------|------------------------------------------------------|
+| Premium        | Paid | Premium interactions remaining (percent)             |
+| Requests Used  | Paid | Premium requests used vs. entitlement (e.g. 60 / 300)|
+| Chat           | Both | Chat messages remaining                              |
+| Completions    | Free | Code completions remaining                           |
 
 All progress lines include:
 - `resetsAt` — ISO timestamp of next quota reset

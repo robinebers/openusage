@@ -8,6 +8,7 @@
   "brandColor": "#A855F7",
   "lines": [
     { "type": "progress", "label": "Premium", "scope": "overview", "primaryOrder": 1 },
+    { "type": "text", "label": "Requests Used", "scope": "detail" },
     { "type": "progress", "label": "Chat", "scope": "overview", "primaryOrder": 2 },
     { "type": "progress", "label": "Completions", "scope": "overview" }
   ]

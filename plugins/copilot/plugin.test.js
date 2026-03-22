@@ -179,6 +179,82 @@ describe("copilot plugin", () => {
     expect(chat.used).toBe(5); // 100 - 95
   });
 
+  it("shows Requests Used text line for paid tier", async () => {
+    const ctx = makePluginTestContext();
+    setKeychainToken(ctx, "tok");
+    mockUsageOk(ctx);
+    const plugin = await loadPlugin();
+    const result = plugin.probe(ctx);
+    const reqLine = result.lines.find((l) => l.label === "Requests Used");
+    expect(reqLine).toBeTruthy();
+    expect(reqLine.type).toBe("text");
+    expect(reqLine.value).toBe("60 / 300"); // 300 - 240 = 60
+  });
+
+  it("omits Requests Used when entitlement/remaining are missing", async () => {
+    const ctx = makePluginTestContext();
+    setKeychainToken(ctx, "tok");
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify(
+        makeUsageResponse({
+          quota_snapshots: {
+            premium_interactions: {
+              percent_remaining: 80,
+              quota_id: "premium",
+            },
+          },
+        }),
+      ),
+    });
+    const plugin = await loadPlugin();
+    const result = plugin.probe(ctx);
+    expect(result.lines.find((l) => l.label === "Requests Used")).toBeFalsy();
+  });
+
+  it("clamps Requests Used to 0 when remaining exceeds entitlement", async () => {
+    const ctx = makePluginTestContext();
+    setKeychainToken(ctx, "tok");
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify(
+        makeUsageResponse({
+          quota_snapshots: {
+            premium_interactions: {
+              percent_remaining: 120,
+              entitlement: 300,
+              remaining: 360,
+              quota_id: "premium",
+            },
+          },
+        }),
+      ),
+    });
+    const plugin = await loadPlugin();
+    const result = plugin.probe(ctx);
+    const reqLine = result.lines.find((l) => l.label === "Requests Used");
+    expect(reqLine).toBeTruthy();
+    expect(reqLine.value).toBe("0 / 300");
+  });
+
+  it("omits Requests Used for free tier", async () => {
+    const ctx = makePluginTestContext();
+    setKeychainToken(ctx, "tok");
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        copilot_plan: "individual",
+        access_type_sku: "free_limited_copilot",
+        limited_user_quotas: { chat: 410, completions: 4000 },
+        monthly_quotas: { chat: 500, completions: 4000 },
+        limited_user_reset_date: "2026-02-11",
+      }),
+    });
+    const plugin = await loadPlugin();
+    const result = plugin.probe(ctx);
+    expect(result.lines.find((l) => l.label === "Requests Used")).toBeFalsy();
+  });
+
   it("renders only Premium when Chat is missing", async () => {
     const ctx = makePluginTestContext();
     setKeychainToken(ctx, "tok");
