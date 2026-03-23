@@ -7,6 +7,10 @@
   "icon": "icon.svg",
   "brandColor": "#F5433C",
   "lines": [
-    { "type": "progress", "label": "Session", "scope": "overview", "primaryOrder": 1 }
+    { "type": "progress", "label": "Session", "scope": "overview", "primaryOrder": 1 },
+    { "type": "progress", "label": "Text to Speech HD", "scope": "detail" },
+    { "type": "progress", "label": "Text to Speech Turbo", "scope": "detail" },
+    { "type": "progress", "label": "Image Generation", "scope": "detail" },
+    { "type": "progress", "label": "image-01", "scope": "detail" }
   ]
 }

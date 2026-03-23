@@ -8,6 +8,9 @@
 - **Endpoint:** `GET https://api.minimax.io/v1/api/openplatform/coding_plan/remains`
 - **Auth:** `Authorization: Bearer <api_key>`
 - **Window model:** dynamic rolling 5-hour limit (per MiniMax Coding Plan docs)
+- **Display note:** OpenUsage shows the raw text-session counts from the remains API as `model-calls`, because that matches the observed official usage display.
+- **Docs note:** as of 2026-03-23, MiniMax public pricing/FAQ pages still describe Coding Plan in `prompts`, so this provider doc explains the mismatch explicitly.
+- **CN note:** current CN docs use `https://www.minimaxi.com/v1/api/openplatform/coding_plan/remains`.
 
 ## Authentication
 
@@ -44,6 +47,7 @@ Fallbacks:
 
 When the selected region is `CN`, requests use:
 
+- `https://www.minimaxi.com/v1/api/openplatform/coding_plan/remains`
 - `https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains`
 - `https://api.minimaxi.com/v1/coding_plan/remains`
 
@@ -62,24 +66,45 @@ Expected payload fields:
 ## Usage Mapping
 
 - Treat `current_interval_usage_count` as remaining prompts (MiniMax remains API behavior).
+- For the main text `Session` line, OpenUsage displays the raw remains numbers as `model-calls` rather than converting them to `prompts`.
 - If only remaining aliases are provided, compute `used = total - remaining`.
 - If explicit used-count fields are provided, prefer them.
-- Plan name is taken from explicit plan/title fields when available.
-- If plan fields are missing in GLOBAL mode, infer plan tier from known limits (`100/300/1000/2000` prompts or `1500/4500/15000/30000` model-call equivalents).
-- If plan fields are missing in CN mode, infer only exact known CN limits (`600/1500/4500` model-call counts).
+- Plan name is taken from explicit plan/title fields when available, and normalized to a shared six-plan naming scheme:
+  - `Starter`
+  - `Plus`
+  - `Max`
+  - `Plus-High-Speed`
+  - `Max-High-Speed`
+  - `Ultra-High-Speed`
+- If plan fields are missing in GLOBAL mode, infer only unambiguous plan tiers from known limits:
+  - `100` prompts or `1500` raw model-calls => `Starter`
+  - `2000` prompts or `30000` raw model-calls => `Ultra-High-Speed`
+- Do not infer a GLOBAL plan from ambiguous limits (`300/1000` prompts or `4500/15000` raw model-calls), because current public docs expose both Standard and High-Speed plans for those quotas.
+- In CN mode, infer only unambiguous raw model-call tiers from the CN subscription table:
+  - `600` => `Starter`
+  - `30000` => `Ultra-High-Speed`
+- Do not infer a CN plan from ambiguous limits (`1500/4500` raw model-calls), because CN standard and CN High-Speed plans overlap on those quotas.
+- In CN mode, additional `model_remains[]` entries may appear as separate daily resource buckets, for example `Text to Speech HD` or `image-01`.
 - Use `end_time` for reset timestamp when present.
 - Fallback to `remains_time` when `end_time` is absent.
 - Use `start_time` + `end_time` as `periodDurationMs` when both are valid.
+- Historical note: MiniMax public docs and pricing copy still describe Coding Plan in `prompts`, but the plugin follows the raw remains reading and labels the main text session as `model-calls`.
+- Official package tables used for this split, checked on 2026-03-23:
+  - Global: <https://platform.minimax.io/docs/guides/pricing-coding-plan>
+  - CN: <https://platform.minimaxi.com/docs/coding-plan/intro>
 
 ## Output
 
 - **Plan**: best-effort from API payload (normalized to concise label, with ` (CN)` or ` (GLOBAL)` suffix)
 - **Session** (overview progress line):
   - `label`: `Session`
-  - `format`: count (`prompts`)
-  - `used`: computed used prompts
-  - `limit`: total prompt limit for current window
+  - `format`: count (`model-calls`)
+  - `used`: computed used model-call count from raw remains data
+  - `limit`: raw session limit from the remains payload
   - `resetsAt`: derived from `end_time` or `remains_time`
+- **CN extra resources** (detail progress lines when present):
+  - `Text to Speech HD` / `Text to Speech Turbo`: count (`chars`)
+  - `Image Generation` / `image-01`: count (`images`)
 
 ## Errors
 

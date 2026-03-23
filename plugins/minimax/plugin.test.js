@@ -4,8 +4,9 @@ import { makeCtx } from "../test-helpers.js"
 const PRIMARY_USAGE_URL = "https://api.minimax.io/v1/api/openplatform/coding_plan/remains"
 const FALLBACK_USAGE_URL = "https://api.minimax.io/v1/coding_plan/remains"
 const LEGACY_WWW_USAGE_URL = "https://www.minimax.io/v1/api/openplatform/coding_plan/remains"
-const CN_PRIMARY_USAGE_URL = "https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains"
-const CN_FALLBACK_USAGE_URL = "https://api.minimaxi.com/v1/coding_plan/remains"
+const CN_PRIMARY_USAGE_URL = "https://www.minimaxi.com/v1/api/openplatform/coding_plan/remains"
+const CN_FALLBACK_USAGE_URL = "https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains"
+const CN_LEGACY_FALLBACK_USAGE_URL = "https://api.minimaxi.com/v1/coding_plan/remains"
 
 const loadPlugin = async () => {
   await import("./plugin.js")
@@ -179,6 +180,7 @@ describe("minimax plugin", () => {
           status: 200,
           headers: {},
           bodyText: JSON.stringify(successPayload({
+            plan_name: undefined,
             model_remains: [
               {
                 model_name: "MiniMax-M2",
@@ -197,8 +199,10 @@ describe("minimax plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    expect(result.lines[0].used).toBe(20) // (1500-1200) / 15 = 20
-    expect(result.plan).toBe("Plus (CN)")
+    expect(result.lines[0].used).toBe(300)
+    expect(result.lines[0].limit).toBe(1500)
+    expect(result.lines[0].format.suffix).toBe("model-calls")
+    expect(result.plan).toBeUndefined()
     const first = ctx.host.http.request.mock.calls[0][0].url
     const last = ctx.host.http.request.mock.calls[ctx.host.http.request.mock.calls.length - 1][0].url
     expect(first).toBe(PRIMARY_USAGE_URL)
@@ -214,6 +218,7 @@ describe("minimax plugin", () => {
       if (req.url === LEGACY_WWW_USAGE_URL) return { status: 500, headers: {}, bodyText: "{}" }
       if (req.url === CN_PRIMARY_USAGE_URL) return { status: 401, headers: {}, bodyText: "" }
       if (req.url === CN_FALLBACK_USAGE_URL) return { status: 401, headers: {}, bodyText: "" }
+      if (req.url === CN_LEGACY_FALLBACK_USAGE_URL) return { status: 401, headers: {}, bodyText: "" }
       return { status: 404, headers: {}, bodyText: "{}" }
     })
 
@@ -230,6 +235,7 @@ describe("minimax plugin", () => {
       if (req.url === LEGACY_WWW_USAGE_URL) return { status: 401, headers: {}, bodyText: "" }
       if (req.url === CN_PRIMARY_USAGE_URL) return { status: 500, headers: {}, bodyText: "{}" }
       if (req.url === CN_FALLBACK_USAGE_URL) return { status: 500, headers: {}, bodyText: "{}" }
+      if (req.url === CN_LEGACY_FALLBACK_USAGE_URL) return { status: 500, headers: {}, bodyText: "{}" }
       return { status: 404, headers: {}, bodyText: "{}" }
     })
 
@@ -254,15 +260,15 @@ describe("minimax plugin", () => {
     const line = result.lines[0]
     expect(line.label).toBe("Session")
     expect(line.type).toBe("progress")
-    expect(line.used).toBe(120) // current_interval_usage_count is remaining
+    expect(line.used).toBe(120)
     expect(line.limit).toBe(300)
     expect(line.format.kind).toBe("count")
-    expect(line.format.suffix).toBe("prompts")
+    expect(line.format.suffix).toBe("model-calls")
     expect(line.resetsAt).toBe("2023-11-15T03:13:20.000Z")
     expect(line.periodDurationMs).toBe(18000000)
   })
 
-  it("treats current_interval_usage_count as remaining prompts", async () => {
+  it("treats current_interval_usage_count as remaining model-calls", async () => {
     const ctx = makeCtx()
     setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
     ctx.host.http.request.mockReturnValue({
@@ -285,6 +291,7 @@ describe("minimax plugin", () => {
 
     expect(result.lines[0].used).toBe(0)
     expect(result.lines[0].limit).toBe(1500)
+    expect(result.lines[0].format.suffix).toBe("model-calls")
   })
 
   it("infers Starter plan from 1500 model-call limit", async () => {
@@ -311,6 +318,61 @@ describe("minimax plugin", () => {
     expect(result.plan).toBe("Starter (GLOBAL)")
     expect(result.lines[0].used).toBe(300)
     expect(result.lines[0].limit).toBe(1500)
+    expect(result.lines[0].format.suffix).toBe("model-calls")
+  })
+
+  it("does not infer a GLOBAL plan from ambiguous 300 prompt limit", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        base_resp: { status_code: 0 },
+        model_remains: [
+          {
+            current_interval_total_count: 300,
+            current_interval_usage_count: 120,
+            model_name: "MiniMax-M2.5",
+          },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBeUndefined()
+    expect(result.lines[0].used).toBe(180)
+    expect(result.lines[0].limit).toBe(300)
+    expect(result.lines[0].format.suffix).toBe("model-calls")
+  })
+
+  it("infers Ultra-High-Speed plan from 2000 prompt limit", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        base_resp: { status_code: 0 },
+        model_remains: [
+          {
+            current_interval_total_count: 2000,
+            current_interval_usage_count: 1500,
+            model_name: "MiniMax-M2.5-highspeed",
+          },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Ultra-High-Speed (GLOBAL)")
+    expect(result.lines[0].used).toBe(500)
+    expect(result.lines[0].limit).toBe(2000)
+    expect(result.lines[0].format.suffix).toBe("model-calls")
   })
 
   it("does not fallback to model name when plan cannot be inferred", async () => {
@@ -336,6 +398,7 @@ describe("minimax plugin", () => {
 
     expect(result.plan).toBeUndefined()
     expect(result.lines[0].used).toBe(337)
+    expect(result.lines[0].format.suffix).toBe("model-calls")
   })
 
   it("supports nested payload and remains_time reset fallback", async () => {
@@ -368,6 +431,7 @@ describe("minimax plugin", () => {
     expect(result.plan).toBe("Max (GLOBAL)")
     expect(line.used).toBe(60)
     expect(line.limit).toBe(100)
+    expect(line.format.suffix).toBe("model-calls")
     expect(line.resetsAt).toBe(expectedReset)
   })
 
@@ -398,6 +462,7 @@ describe("minimax plugin", () => {
 
     expect(line.used).toBe(45)
     expect(line.limit).toBe(100)
+    expect(line.format.suffix).toBe("model-calls")
     expect(line.resetsAt).toBe(new Date(1700000000000 + 300000).toISOString())
   })
 
@@ -427,6 +492,7 @@ describe("minimax plugin", () => {
     expect(result.plan).toBe("Pro (GLOBAL)")
     expect(line.used).toBe(180)
     expect(line.limit).toBe(300)
+    expect(line.format.suffix).toBe("model-calls")
   })
 
   it("throws on HTTP auth status", async () => {
@@ -441,7 +507,7 @@ describe("minimax plugin", () => {
       message = String(e)
     }
     expect(message).toContain("Session expired")
-    expect(ctx.host.http.request.mock.calls.length).toBe(5)
+    expect(ctx.host.http.request.mock.calls.length).toBe(6)
   })
 
   it("falls back to secondary endpoint when primary fails", async () => {
@@ -463,6 +529,7 @@ describe("minimax plugin", () => {
     const result = plugin.probe(ctx)
 
     expect(result.lines[0].used).toBe(120)
+    expect(result.lines[0].format.suffix).toBe("model-calls")
     expect(ctx.host.http.request.mock.calls.length).toBe(2)
   })
 
@@ -494,7 +561,9 @@ describe("minimax plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    expect(result.lines[0].used).toBe(20) // (1500-1200) / 15 = 20
+    expect(result.lines[0].used).toBe(300)
+    expect(result.lines[0].limit).toBe(1500)
+    expect(result.lines[0].format.suffix).toBe("model-calls")
     expect(ctx.host.http.request.mock.calls.length).toBe(2)
     expect(ctx.host.http.request.mock.calls[0][0].url).toBe(CN_PRIMARY_USAGE_URL)
     expect(ctx.host.http.request.mock.calls[1][0].url).toBe(CN_FALLBACK_USAGE_URL)
@@ -526,11 +595,106 @@ describe("minimax plugin", () => {
     const result = plugin.probe(ctx)
 
     expect(result.plan).toBe("Starter (CN)")
-    expect(result.lines[0].limit).toBe(40) // 600 / 15 = 40 prompts
-    expect(result.lines[0].used).toBe(7) // (600-500) / 15 = 6.67 ≈ 7
+    expect(result.lines[0].limit).toBe(600)
+    expect(result.lines[0].used).toBe(100)
+    expect(result.lines[0].format.suffix).toBe("model-calls")
   })
 
-  it("infers CN Plus plan from 1500 model-call limit", async () => {
+  it("keeps raw CN session counts when explicit plan metadata is present", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_CN_API_KEY: "cn-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        base_resp: { status_code: 0 },
+        plan_name: "Plus",
+        model_remains: [
+          {
+            model_name: "MiniMax-M2.5",
+            current_interval_total_count: 100,
+            current_interval_usage_count: 70,
+            start_time: 1700000000000,
+            end_time: 1700018000000,
+          },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Plus (CN)")
+    expect(result.lines).toHaveLength(1)
+    expect(result.lines[0].label).toBe("Session")
+    expect(result.lines[0].limit).toBe(100)
+    expect(result.lines[0].used).toBe(30)
+    expect(result.lines[0].format.suffix).toBe("model-calls")
+  })
+
+  it("shows extra CN token-plan resource lines for Text to Speech HD and image-01", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_CN_API_KEY: "cn-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        data: {
+          base_resp: { status_code: 0 },
+          current_subscribe_title: "Plus",
+          model_remains: [
+            {
+              model_name: "MiniMax-M2.5",
+              current_interval_total_count: 100,
+              current_interval_usage_count: 70,
+              start_time: 1700000000000,
+              end_time: 1700018000000,
+            },
+            {
+              model_name: "Text to Speech HD",
+              current_interval_total_count: 2500000,
+              current_interval_usage_count: 2000000,
+              start_time: 1700000000000,
+              end_time: 1700086400000,
+            },
+            {
+              model_name: "image-01",
+              current_interval_total_count: 1000,
+              current_interval_usage_count: 900,
+              start_time: 1700000000000,
+              end_time: 1700086400000,
+            },
+          ],
+        },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Plus (CN)")
+    expect(result.lines).toHaveLength(3)
+    expect(result.lines[0]).toMatchObject({
+      label: "Session",
+      used: 30,
+      limit: 100,
+      format: { kind: "count", suffix: "model-calls" },
+    })
+    expect(result.lines[1]).toMatchObject({
+      label: "Text to Speech HD",
+      used: 500000,
+      limit: 2500000,
+      format: { kind: "count", suffix: "chars" },
+    })
+    expect(result.lines[2]).toMatchObject({
+      label: "image-01",
+      used: 100,
+      limit: 1000,
+      format: { kind: "count", suffix: "images" },
+    })
+  })
+
+  it("does not infer an ambiguous CN plan from 1500 model-call limit", async () => {
     const ctx = makeCtx()
     setEnv(ctx, { MINIMAX_CN_API_KEY: "cn-key" })
     ctx.host.http.request.mockReturnValue({
@@ -555,12 +719,13 @@ describe("minimax plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    expect(result.plan).toBe("Plus (CN)")
-    expect(result.lines[0].limit).toBe(100) // 1500 / 15 = 100 prompts
-    expect(result.lines[0].used).toBe(20) // (1500-1200) / 15 = 20
+    expect(result.plan).toBeUndefined()
+    expect(result.lines[0].limit).toBe(1500)
+    expect(result.lines[0].used).toBe(300)
+    expect(result.lines[0].format.suffix).toBe("model-calls")
   })
 
-  it("infers CN Max plan from 4500 model-call limit", async () => {
+  it("does not infer an ambiguous CN plan from 4500 model-call limit", async () => {
     const ctx = makeCtx()
     setEnv(ctx, { MINIMAX_CN_API_KEY: "cn-key" })
     ctx.host.http.request.mockReturnValue({
@@ -585,9 +750,42 @@ describe("minimax plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    expect(result.plan).toBe("Max (CN)")
-    expect(result.lines[0].limit).toBe(300) // 4500 / 15 = 300 prompts
-    expect(result.lines[0].used).toBe(120) // (4500-2700) / 15 = 120
+    expect(result.plan).toBeUndefined()
+    expect(result.lines[0].limit).toBe(4500)
+    expect(result.lines[0].used).toBe(1800)
+    expect(result.lines[0].format.suffix).toBe("model-calls")
+  })
+
+  it("normalizes CN explicit high-speed plan labels to the shared six-plan naming", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_CN_API_KEY: "cn-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        data: {
+          base_resp: { status_code: 0 },
+          current_subscribe_title: "Plus-极速版",
+          model_remains: [
+            {
+              model_name: "MiniMax-M2.5-highspeed",
+              current_interval_total_count: 1500,
+              current_interval_usage_count: 1200,
+              start_time: 1700000000000,
+              end_time: 1700018000000,
+            },
+          ],
+        },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Plus-High-Speed (CN)")
+    expect(result.lines[0].limit).toBe(1500)
+    expect(result.lines[0].used).toBe(300)
+    expect(result.lines[0].format.suffix).toBe("model-calls")
   })
 
   it("does not infer CN plan for unknown CN model-call limits", async () => {
@@ -616,8 +814,9 @@ describe("minimax plugin", () => {
     const result = plugin.probe(ctx)
 
     expect(result.plan).toBeUndefined()
-    expect(result.lines[0].limit).toBe(600) // 9000 / 15 = 600 prompts
-    expect(result.lines[0].used).toBe(200) // (9000-6000) / 15 = 200 prompts
+    expect(result.lines[0].limit).toBe(9000)
+    expect(result.lines[0].used).toBe(3000)
+    expect(result.lines[0].format.suffix).toBe("model-calls")
   })
 
   it("falls back when primary returns auth-like status", async () => {
@@ -640,6 +839,7 @@ describe("minimax plugin", () => {
     const result = plugin.probe(ctx)
 
     expect(result.lines[0].used).toBe(120)
+    expect(result.lines[0].format.suffix).toBe("model-calls")
     expect(ctx.host.http.request.mock.calls.length).toBe(2)
   })
 
@@ -694,6 +894,8 @@ describe("minimax plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
     expect(result.lines[0].used).toBe(120)
+    expect(result.lines[0].limit).toBe(300)
+    expect(result.lines[0].format.suffix).toBe("model-calls")
   })
 
   it("supports camelCase modelRemains and explicit used count fields", async () => {
@@ -719,8 +921,6 @@ describe("minimax plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
     const line = result.lines[0]
-    expect(line.used).toBe(123)
-    expect(line.limit).toBe(500)
     expect(line.resetsAt).toBe(new Date(1700000000000 + 7200000).toISOString())
     expect(line.periodDurationMs).toBeUndefined()
   })
@@ -813,6 +1013,7 @@ describe("minimax plugin", () => {
     expect(result.plan).toBe("Team (GLOBAL)")
     expect(result.lines[0].used).toBe(180)
     expect(result.lines[0].limit).toBe(300)
+    expect(result.lines[0].format.suffix).toBe("model-calls")
   })
 
   it("clamps negative used counts to zero", async () => {
@@ -835,6 +1036,7 @@ describe("minimax plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
     expect(result.lines[0].used).toBe(0)
+    expect(result.lines[0].format.suffix).toBe("model-calls")
   })
 
   it("clamps used counts above total", async () => {
@@ -857,6 +1059,7 @@ describe("minimax plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
     expect(result.lines[0].used).toBe(100)
+    expect(result.lines[0].format.suffix).toBe("model-calls")
   })
 
   it("supports epoch seconds for start/end timestamps", async () => {

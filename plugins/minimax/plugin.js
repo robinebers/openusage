@@ -4,26 +4,34 @@
     "https://api.minimax.io/v1/coding_plan/remains",
     "https://www.minimax.io/v1/api/openplatform/coding_plan/remains",
   ]
-  const CN_PRIMARY_USAGE_URL = "https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains"
-  const CN_FALLBACK_USAGE_URLS = ["https://api.minimaxi.com/v1/coding_plan/remains"]
+  const CN_PRIMARY_USAGE_URL = "https://www.minimaxi.com/v1/api/openplatform/coding_plan/remains"
+  const CN_FALLBACK_USAGE_URLS = [
+    "https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains",
+    "https://api.minimaxi.com/v1/coding_plan/remains",
+  ]
   const GLOBAL_API_KEY_ENV_VARS = ["MINIMAX_API_KEY", "MINIMAX_API_TOKEN"]
   const CN_API_KEY_ENV_VARS = ["MINIMAX_CN_API_KEY", "MINIMAX_API_KEY", "MINIMAX_API_TOKEN"]
   const CODING_PLAN_WINDOW_MS = 5 * 60 * 60 * 1000
   const CODING_PLAN_WINDOW_TOLERANCE_MS = 10 * 60 * 1000
-  // GLOBAL plan tiers (based on prompt limits)
-  const GLOBAL_PROMPT_LIMIT_TO_PLAN = {
+  const DAILY_WINDOW_MS = 24 * 60 * 60 * 1000
+  // Unambiguous prompt-based tiers kept for compatibility with older docs/examples.
+  const UNAMBIGUOUS_PROMPT_LIMIT_TO_PLAN = {
     100: "Starter",
-    300: "Plus",
-    1000: "Max",
-    2000: "Ultra",
+    2000: "Ultra-High-Speed",
   }
-  // CN plan tiers (based on model call counts = prompts × 15)
-  // Starter: 40 prompts = 600, Plus: 100 prompts = 1500, Max: 300 prompts = 4500
-  const CN_PROMPT_LIMIT_TO_PLAN = {
+  // Raw model-call tiers inferred from the current Global six-package lineup.
+  // 4500 and 15000 are ambiguous between Standard and High-Speed variants.
+  const GLOBAL_UNAMBIGUOUS_MODEL_CALL_LIMIT_TO_PLAN = {
+    1500: "Starter",
+    30000: "Ultra-High-Speed",
+  }
+  // Raw model-call tiers inferred from the current CN six-package lineup.
+  // 1500 and 4500 are ambiguous between Standard and High-Speed variants.
+  const CN_UNAMBIGUOUS_MODEL_CALL_LIMIT_TO_PLAN = {
     600: "Starter",
-    1500: "Plus",
-    4500: "Max",
+    30000: "Ultra-High-Speed",
   }
+  const MODEL_CALLS_SUFFIX = "model-calls"
   const MODEL_CALLS_PER_PROMPT = 15
 
   function readString(value) {
@@ -54,9 +62,24 @@
     if (!raw) return null
     const compact = raw.replace(/\s+/g, " ").trim()
     const withoutPrefix = compact.replace(/^minimax\s+coding\s+plan\b[:\-]?\s*/i, "").trim()
-    if (withoutPrefix) return withoutPrefix
-    if (/coding\s+plan/i.test(compact)) return "Coding Plan"
-    return compact
+    const base = withoutPrefix || compact
+    if (/coding\s+plan/i.test(compact) && !withoutPrefix) return "Coding Plan"
+
+    const canonical = base
+      .replace(/\s*-\s*/g, "-")
+      .replace(/极速版/gi, "High-Speed")
+      .replace(/highspeed/gi, "High-Speed")
+      .replace(/high-speed/gi, "High-Speed")
+      .replace(/\s+/g, " ")
+      .trim()
+
+    if (/^starter$/i.test(canonical)) return "Starter"
+    if (/^plus$/i.test(canonical)) return "Plus"
+    if (/^max$/i.test(canonical)) return "Max"
+    if (/^plus-?high-speed$/i.test(canonical)) return "Plus-High-Speed"
+    if (/^max-?high-speed$/i.test(canonical)) return "Max-High-Speed"
+    if (/^ultra-?high-speed$/i.test(canonical)) return "Ultra-High-Speed"
+    return canonical
   }
 
   function inferPlanNameFromLimit(totalCount, endpointSelection) {
@@ -65,15 +88,78 @@
 
     const normalized = Math.round(n)
     if (endpointSelection === "CN") {
-      // CN totals are model-call counts; only exact known CN tiers should infer.
-      return CN_PROMPT_LIMIT_TO_PLAN[normalized] || null
+      if (CN_UNAMBIGUOUS_MODEL_CALL_LIMIT_TO_PLAN[normalized]) {
+        return CN_UNAMBIGUOUS_MODEL_CALL_LIMIT_TO_PLAN[normalized]
+      }
+      return null
+    } else if (GLOBAL_UNAMBIGUOUS_MODEL_CALL_LIMIT_TO_PLAN[normalized]) {
+      return GLOBAL_UNAMBIGUOUS_MODEL_CALL_LIMIT_TO_PLAN[normalized]
     }
 
-    if (GLOBAL_PROMPT_LIMIT_TO_PLAN[normalized]) return GLOBAL_PROMPT_LIMIT_TO_PLAN[normalized]
+    if (UNAMBIGUOUS_PROMPT_LIMIT_TO_PLAN[normalized]) {
+      return UNAMBIGUOUS_PROMPT_LIMIT_TO_PLAN[normalized]
+    }
 
     if (normalized % MODEL_CALLS_PER_PROMPT !== 0) return null
     const inferredPromptLimit = normalized / MODEL_CALLS_PER_PROMPT
-    return GLOBAL_PROMPT_LIMIT_TO_PLAN[inferredPromptLimit] || null
+    return UNAMBIGUOUS_PROMPT_LIMIT_TO_PLAN[inferredPromptLimit] || null
+  }
+
+  function normalizeUsageName(value) {
+    const raw = readString(value)
+    if (!raw) return null
+    return raw.replace(/\s+/g, " ").trim()
+  }
+
+  function classifyUsageEntry(item, endpointSelection, index) {
+    const rawName = normalizeUsageName(
+      pickFirstString([
+        item.model_name,
+        item.modelName,
+        item.resource_name,
+        item.resourceName,
+        item.name,
+      ])
+    )
+    const name = rawName ? rawName.toLowerCase() : ""
+
+    if (endpointSelection !== "CN") {
+      return { label: "Session", suffix: MODEL_CALLS_SUFFIX, isSession: true }
+    }
+
+    if (
+      name.includes("text to speech hd") ||
+      /^speech-[\d.]+-hd$/.test(name)
+    ) {
+      return { label: "Text to Speech HD", suffix: "chars", isSession: false }
+    }
+    if (
+      name.includes("text to speech turbo") ||
+      /^speech-[\d.]+-turbo$/.test(name)
+    ) {
+      return { label: "Text to Speech Turbo", suffix: "chars", isSession: false }
+    }
+    if (name.includes("image-01")) {
+      return { label: "image-01", suffix: "images", isSession: false }
+    }
+    if (name.includes("image generation")) {
+      return { label: "Image Generation", suffix: "images", isSession: false }
+    }
+    if (
+      name.includes("minimax-m") ||
+      name.includes("text model") ||
+      name.includes("coding")
+    ) {
+      return { label: "Session", suffix: MODEL_CALLS_SUFFIX, isSession: true }
+    }
+    if (index === 0) {
+      return { label: "Session", suffix: MODEL_CALLS_SUFFIX, isSession: true }
+    }
+    return {
+      label: rawName || "Usage",
+      suffix: "count",
+      isSession: false,
+    }
   }
 
   function epochToMs(epoch) {
@@ -212,6 +298,74 @@
     throw "Could not parse usage data."
   }
 
+  function parseModelRemainEntry(ctx, item, endpointSelection, index) {
+    if (!item || typeof item !== "object") return null
+
+    const usageMeta = classifyUsageEntry(item, endpointSelection, index)
+    let total = readNumber(item.current_interval_total_count ?? item.currentIntervalTotalCount)
+    if (total === null || total <= 0) return null
+
+    const usageFieldCount = readNumber(item.current_interval_usage_count ?? item.currentIntervalUsageCount)
+    const remainingCount = readNumber(
+      item.current_interval_remaining_count ??
+        item.currentIntervalRemainingCount ??
+        item.current_interval_remains_count ??
+        item.currentIntervalRemainsCount ??
+        item.current_interval_remain_count ??
+        item.currentIntervalRemainCount ??
+        item.remaining_count ??
+        item.remainingCount ??
+        item.remains_count ??
+        item.remainsCount ??
+        item.remaining ??
+        item.remains ??
+        item.left_count ??
+        item.leftCount
+    )
+    // MiniMax "coding_plan/remains" commonly returns remaining usage in current_interval_usage_count.
+    const inferredRemainingCount = remainingCount !== null ? remainingCount : usageFieldCount
+    const explicitUsed = readNumber(
+      item.current_interval_used_count ??
+        item.currentIntervalUsedCount ??
+        item.used_count ??
+        item.used
+    )
+    let used = explicitUsed
+
+    if (used === null && inferredRemainingCount !== null) used = total - inferredRemainingCount
+    if (used === null) return null
+
+    if (used < 0) used = 0
+    if (used > total) used = total
+
+    const startMs = epochToMs(item.start_time ?? item.startTime)
+    const endMs = epochToMs(item.end_time ?? item.endTime)
+    const remainsRaw = readNumber(item.remains_time ?? item.remainsTime)
+    const nowMs = Date.now()
+    const remainsMs = inferRemainsMs(remainsRaw, endMs, nowMs)
+
+    let resetsAt = endMs !== null ? ctx.util.toIso(endMs) : null
+    if (!resetsAt && remainsMs !== null) {
+      resetsAt = ctx.util.toIso(nowMs + remainsMs)
+    }
+
+    let periodDurationMs = null
+    if (startMs !== null && endMs !== null && endMs > startMs) {
+      periodDurationMs = endMs - startMs
+    } else if (endpointSelection === "CN" && !usageMeta.isSession) {
+      periodDurationMs = DAILY_WINDOW_MS
+    }
+
+    return {
+      label: usageMeta.label,
+      used,
+      total,
+      suffix: usageMeta.suffix,
+      resetsAt,
+      periodDurationMs,
+    }
+  }
+
   function parsePayloadShape(ctx, payload, endpointSelection) {
     if (!payload || typeof payload !== "object") return null
 
@@ -244,69 +398,18 @@
 
     if (!modelRemains || modelRemains.length === 0) return null
 
-    let chosen = modelRemains[0]
+    const entries = []
+    const seenLabels = Object.create(null)
     for (let i = 0; i < modelRemains.length; i += 1) {
-      const item = modelRemains[i]
-      if (!item || typeof item !== "object") continue
-      const total = readNumber(item.current_interval_total_count ?? item.currentIntervalTotalCount)
-      if (total !== null && total > 0) {
-        chosen = item
-        break
-      }
+      const entry = parseModelRemainEntry(ctx, modelRemains[i], endpointSelection, i)
+      if (!entry) continue
+      if (seenLabels[entry.label]) continue
+      seenLabels[entry.label] = true
+      entries.push(entry)
+      if (endpointSelection !== "CN") break
     }
 
-    if (!chosen || typeof chosen !== "object") return null
-
-    const total = readNumber(chosen.current_interval_total_count ?? chosen.currentIntervalTotalCount)
-    if (total === null || total <= 0) return null
-
-    const usageFieldCount = readNumber(chosen.current_interval_usage_count ?? chosen.currentIntervalUsageCount)
-    const remainingCount = readNumber(
-      chosen.current_interval_remaining_count ??
-        chosen.currentIntervalRemainingCount ??
-        chosen.current_interval_remains_count ??
-        chosen.currentIntervalRemainsCount ??
-        chosen.current_interval_remain_count ??
-        chosen.currentIntervalRemainCount ??
-        chosen.remaining_count ??
-        chosen.remainingCount ??
-        chosen.remains_count ??
-        chosen.remainsCount ??
-        chosen.remaining ??
-        chosen.remains ??
-        chosen.left_count ??
-        chosen.leftCount
-    )
-    // MiniMax "coding_plan/remains" commonly returns remaining prompts in current_interval_usage_count.
-    const inferredRemainingCount = remainingCount !== null ? remainingCount : usageFieldCount
-    const explicitUsed = readNumber(
-      chosen.current_interval_used_count ??
-        chosen.currentIntervalUsedCount ??
-        chosen.used_count ??
-        chosen.used
-    )
-    let used = explicitUsed
-
-    if (used === null && inferredRemainingCount !== null) used = total - inferredRemainingCount
-    if (used === null) return null
-    if (used < 0) used = 0
-    if (used > total) used = total
-
-    const startMs = epochToMs(chosen.start_time ?? chosen.startTime)
-    const endMs = epochToMs(chosen.end_time ?? chosen.endTime)
-    const remainsRaw = readNumber(chosen.remains_time ?? chosen.remainsTime)
-    const nowMs = Date.now()
-    const remainsMs = inferRemainsMs(remainsRaw, endMs, nowMs)
-
-    let resetsAt = endMs !== null ? ctx.util.toIso(endMs) : null
-    if (!resetsAt && remainsMs !== null) {
-      resetsAt = ctx.util.toIso(nowMs + remainsMs)
-    }
-
-    let periodDurationMs = null
-    if (startMs !== null && endMs !== null && endMs > startMs) {
-      periodDurationMs = endMs - startMs
-    }
+    if (entries.length === 0) return null
 
     const explicitPlanName = normalizePlanName(pickFirstString([
       data.current_subscribe_title,
@@ -318,15 +421,13 @@
       payload.plan_name,
       payload.plan,
     ]))
-    const inferredPlanName = inferPlanNameFromLimit(total, endpointSelection)
+    const sessionEntry = entries.find((entry) => entry.label === "Session") || entries[0]
+    const inferredPlanName = inferPlanNameFromLimit(sessionEntry.total, endpointSelection)
     const planName = explicitPlanName || inferredPlanName
 
     return {
       planName,
-      used,
-      total,
-      resetsAt,
-      periodDurationMs,
+      entries,
     }
   }
 
@@ -362,21 +463,19 @@
       throw "MiniMax API key missing. Set MINIMAX_API_KEY or MINIMAX_CN_API_KEY."
     }
 
-    // CN API returns model call counts (needs division by 15 for prompts)
-    // GLOBAL API returns prompt counts directly
-    const isCnEndpoint = successfulEndpoint === "CN"
-    const displayMultiplier = isCnEndpoint ? 1 / MODEL_CALLS_PER_PROMPT : 1
+    const lines = parsed.entries.map((entry) => {
+      const line = {
+        label: entry.label,
+        used: Math.round(entry.used),
+        limit: Math.round(entry.total),
+        format: { kind: "count", suffix: entry.suffix },
+      }
+      if (entry.resetsAt) line.resetsAt = entry.resetsAt
+      if (entry.periodDurationMs !== null) line.periodDurationMs = entry.periodDurationMs
+      return ctx.line.progress(line)
+    })
 
-    const line = {
-      label: "Session",
-      used: Math.round(parsed.used * displayMultiplier),
-      limit: Math.round(parsed.total * displayMultiplier),
-      format: { kind: "count", suffix: "prompts" },
-    }
-    if (parsed.resetsAt) line.resetsAt = parsed.resetsAt
-    if (parsed.periodDurationMs !== null) line.periodDurationMs = parsed.periodDurationMs
-
-    const result = { lines: [ctx.line.progress(line)] }
+    const result = { lines }
     if (parsed.planName) {
       const regionLabel = successfulEndpoint === "CN" ? " (CN)" : " (GLOBAL)"
       result.plan = parsed.planName + regionLabel
