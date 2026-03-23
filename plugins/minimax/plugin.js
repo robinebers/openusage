@@ -459,6 +459,24 @@
     }
   }
 
+  function pickGlobalSessionRemainItem(modelRemains) {
+    let fallbackItem = null
+
+    for (let i = 0; i < modelRemains.length; i += 1) {
+      const item = modelRemains[i]
+      if (!item || typeof item !== "object") continue
+
+      const total = readNumber(item.current_interval_total_count ?? item.currentIntervalTotalCount)
+      if (total === null || total <= 0) continue
+      if (!fallbackItem) fallbackItem = item
+
+      const name = normalizeUsageNameKey(readUsageRawName(item))
+      if (isSessionUsageName(name)) return item
+    }
+
+    return fallbackItem
+  }
+
   function parsePayloadShape(ctx, payload, endpointSelection) {
     if (!payload || typeof payload !== "object") return null
 
@@ -493,13 +511,17 @@
 
     const entries = []
     const seenLabels = Object.create(null)
-    for (let i = 0; i < modelRemains.length; i += 1) {
-      const entry = parseModelRemainEntry(ctx, modelRemains[i], endpointSelection, i)
+    const remainsToParse =
+      endpointSelection === "CN"
+        ? modelRemains
+        : [pickGlobalSessionRemainItem(modelRemains)]
+
+    for (let i = 0; i < remainsToParse.length; i += 1) {
+      const entry = parseModelRemainEntry(ctx, remainsToParse[i], endpointSelection, i)
       if (!entry) continue
       if (seenLabels[entry.label]) continue
       seenLabels[entry.label] = true
       entries.push(entry)
-      if (endpointSelection !== "CN") break
     }
 
     if (entries.length === 0) return null

@@ -407,6 +407,42 @@ describe("minimax plugin", () => {
     expect(result.lines[0].limit).toBe(4500)
   })
 
+  it("prefers the GLOBAL session entry when a companion bucket appears first", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        base_resp: { status_code: 0 },
+        model_remains: [
+          {
+            model_name: "image-01",
+            current_interval_total_count: 100,
+            current_interval_usage_count: 90,
+          },
+          {
+            model_name: "MiniMax-M2.7-highspeed",
+            current_interval_total_count: 4500,
+            current_interval_usage_count: 4200,
+          },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Plus-High-Speed (GLOBAL)")
+    expect(result.lines).toHaveLength(1)
+    expect(result.lines[0]).toMatchObject({
+      label: "Session",
+      used: 300,
+      limit: 4500,
+      format: { kind: "count", suffix: "model-calls" },
+    })
+  })
+
   it("infers GLOBAL Max-High-Speed from companion speech quota", async () => {
     const ctx = makeCtx()
     setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
@@ -1124,6 +1160,8 @@ describe("minimax plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
     const line = result.lines[0]
+    expect(line.used).toBe(123)
+    expect(line.limit).toBe(500)
     expect(line.resetsAt).toBe(new Date(1700000000000 + 7200000).toISOString())
     expect(line.periodDurationMs).toBeUndefined()
   })
