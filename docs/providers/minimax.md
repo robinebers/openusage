@@ -76,22 +76,25 @@ Expected payload fields:
   - `Plus-High-Speed`
   - `Max-High-Speed`
   - `Ultra-High-Speed`
-- If plan fields are missing in GLOBAL mode, infer only unambiguous plan tiers from known limits:
-  - `100` prompts or `1500` raw model-calls => `Starter`
-  - `2000` prompts or `30000` raw model-calls => `Ultra-High-Speed`
-- Do not infer a GLOBAL plan from ambiguous limits (`300/1000` prompts or `4500/15000` raw model-calls), because current public docs expose both Standard and High-Speed plans for those quotas.
-- In CN mode, infer only unambiguous raw model-call tiers from the CN subscription table:
-  - `600` => `Starter`
-  - `30000` => `Ultra-High-Speed`
-- Do not infer a CN plan from ambiguous limits (`1500/4500` raw model-calls), because CN standard and CN High-Speed plans overlap on those quotas.
-- In CN mode, additional `model_remains[]` entries may appear as separate daily resource buckets, for example `Text to Speech HD` or `image-01`.
+- If plan fields are missing, infer the plan tier from the current Token Plan quota table for the selected region:
+  - `GLOBAL` raw `model-calls`: `1500 => Starter`, `4500 => Plus`, `15000 => Max`, `30000 => Ultra-High-Speed`
+  - `GLOBAL` legacy prompt-sized payloads: `100 => Starter`, `300 => Plus`, `1000 => Max`, `2000 => Ultra-High-Speed`
+  - `CN` raw `model-calls`: `600 => Starter`, `1500 => Plus`, `4500 => Max`, `30000 => Ultra-High-Speed`
+  - `CN` legacy prompt-sized payloads: `40 => Starter`, `100 => Plus`, `300 => Max`, `2000 => Ultra-High-Speed`
+- For overlapping middle tiers, the plugin also inspects companion daily quotas when present to disambiguate `Standard` vs `High-Speed`:
+  - `GLOBAL 4500`: `image-01 50` or `Speech 2.8 4000` => `Plus`; `image-01 100` or `Speech 2.8 9000` => `Plus-High-Speed`
+  - `GLOBAL 15000`: `image-01 120` or `Speech 2.8 11000` => `Max`; `image-01 200` or `Speech 2.8 19000` => `Max-High-Speed`
+  - `CN 1500`: `image-01 50` or `speech-hd 4000` => `Plus`; `image-01 100` or `speech-hd 9000` => `Plus-High-Speed`
+  - `CN 4500`: `image-01 120` or `speech-hd 11000` => `Max`; `image-01 200` or `speech-hd 19000` => `Max-High-Speed`
+- If those companion quotas are absent or conflicting, the plugin falls back to the coarse family label (`Plus` / `Max`) instead of guessing.
+- In CN mode, additional `model_remains[]` entries may appear as separate daily resource buckets, for example `speech-hd` (`Text to Speech HD`) or `image-01`.
 - Use `end_time` for reset timestamp when present.
 - Fallback to `remains_time` when `end_time` is absent.
 - Use `start_time` + `end_time` as `periodDurationMs` when both are valid.
 - Historical note: MiniMax public docs and pricing copy still describe Coding Plan in `prompts`, but the plugin follows the raw remains reading and labels the main text session as `model-calls`.
 - Official package tables used for this split, checked on 2026-03-23:
-  - Global: <https://platform.minimax.io/docs/guides/pricing-coding-plan>
-  - CN: <https://platform.minimaxi.com/docs/coding-plan/intro>
+  - Global: <https://platform.minimax.io/docs/token-plan/intro>
+  - CN: <https://platform.minimaxi.com/docs/token-plan/intro>
 
 ## Output
 

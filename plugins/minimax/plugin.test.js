@@ -202,7 +202,7 @@ describe("minimax plugin", () => {
     expect(result.lines[0].used).toBe(300)
     expect(result.lines[0].limit).toBe(1500)
     expect(result.lines[0].format.suffix).toBe("model-calls")
-    expect(result.plan).toBeUndefined()
+    expect(result.plan).toBe("Plus (CN)")
     const first = ctx.host.http.request.mock.calls[0][0].url
     const last = ctx.host.http.request.mock.calls[ctx.host.http.request.mock.calls.length - 1][0].url
     expect(first).toBe(PRIMARY_USAGE_URL)
@@ -321,7 +321,125 @@ describe("minimax plugin", () => {
     expect(result.lines[0].format.suffix).toBe("model-calls")
   })
 
-  it("does not infer a GLOBAL plan from ambiguous 300 prompt limit", async () => {
+  it("infers Plus tier from 4500 GLOBAL model-call limit", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        base_resp: { status_code: 0 },
+        model_remains: [
+          {
+            current_interval_total_count: 4500,
+            current_interval_usage_count: 4200,
+            model_name: "MiniMax-M2.7",
+          },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Plus (GLOBAL)")
+    expect(result.lines[0].used).toBe(300)
+    expect(result.lines[0].limit).toBe(4500)
+    expect(result.lines[0].format.suffix).toBe("model-calls")
+  })
+
+  it("infers Max tier from 15000 GLOBAL model-call limit", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        base_resp: { status_code: 0 },
+        model_remains: [
+          {
+            current_interval_total_count: 15000,
+            current_interval_usage_count: 12000,
+            model_name: "MiniMax-M2.7",
+          },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Max (GLOBAL)")
+    expect(result.lines[0].used).toBe(3000)
+    expect(result.lines[0].limit).toBe(15000)
+    expect(result.lines[0].format.suffix).toBe("model-calls")
+  })
+
+  it("infers GLOBAL Plus-High-Speed from companion image-01 quota", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        base_resp: { status_code: 0 },
+        model_remains: [
+          {
+            model_name: "MiniMax-M2.7-highspeed",
+            current_interval_total_count: 4500,
+            current_interval_usage_count: 4200,
+          },
+          {
+            model_name: "image-01",
+            current_interval_total_count: 100,
+            current_interval_usage_count: 100,
+          },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Plus-High-Speed (GLOBAL)")
+    expect(result.lines).toHaveLength(1)
+    expect(result.lines[0].label).toBe("Session")
+    expect(result.lines[0].limit).toBe(4500)
+  })
+
+  it("infers GLOBAL Max-High-Speed from companion speech quota", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        base_resp: { status_code: 0 },
+        model_remains: [
+          {
+            model_name: "MiniMax-M2.7-highspeed",
+            current_interval_total_count: 15000,
+            current_interval_usage_count: 12000,
+          },
+          {
+            model_name: "speech-hd",
+            current_interval_total_count: 19000,
+            current_interval_usage_count: 19000,
+          },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Max-High-Speed (GLOBAL)")
+    expect(result.lines).toHaveLength(1)
+    expect(result.lines[0].label).toBe("Session")
+    expect(result.lines[0].limit).toBe(15000)
+  })
+
+  it("infers Plus tier from 300 GLOBAL prompt limit", async () => {
     const ctx = makeCtx()
     setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
     ctx.host.http.request.mockReturnValue({
@@ -342,7 +460,7 @@ describe("minimax plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    expect(result.plan).toBeUndefined()
+    expect(result.plan).toBe("Plus (GLOBAL)")
     expect(result.lines[0].used).toBe(180)
     expect(result.lines[0].limit).toBe(300)
     expect(result.lines[0].format.suffix).toBe("model-calls")
@@ -632,7 +750,7 @@ describe("minimax plugin", () => {
     expect(result.lines[0].format.suffix).toBe("model-calls")
   })
 
-  it("shows extra CN token-plan resource lines for Text to Speech HD and image-01", async () => {
+  it("shows extra CN token-plan resource lines for speech-hd and image-01", async () => {
     const ctx = makeCtx()
     setEnv(ctx, { MINIMAX_CN_API_KEY: "cn-key" })
     ctx.host.http.request.mockReturnValue({
@@ -651,16 +769,16 @@ describe("minimax plugin", () => {
               end_time: 1700018000000,
             },
             {
-              model_name: "Text to Speech HD",
-              current_interval_total_count: 2500000,
-              current_interval_usage_count: 2000000,
+              model_name: "speech-hd",
+              current_interval_total_count: 4000,
+              current_interval_usage_count: 3200,
               start_time: 1700000000000,
               end_time: 1700086400000,
             },
             {
               model_name: "image-01",
-              current_interval_total_count: 1000,
-              current_interval_usage_count: 900,
+              current_interval_total_count: 50,
+              current_interval_usage_count: 40,
               start_time: 1700000000000,
               end_time: 1700086400000,
             },
@@ -682,19 +800,19 @@ describe("minimax plugin", () => {
     })
     expect(result.lines[1]).toMatchObject({
       label: "Text to Speech HD",
-      used: 500000,
-      limit: 2500000,
+      used: 800,
+      limit: 4000,
       format: { kind: "count", suffix: "chars" },
     })
     expect(result.lines[2]).toMatchObject({
       label: "image-01",
-      used: 100,
-      limit: 1000,
+      used: 10,
+      limit: 50,
       format: { kind: "count", suffix: "images" },
     })
   })
 
-  it("does not infer an ambiguous CN plan from 1500 model-call limit", async () => {
+  it("infers Plus tier from 1500 CN model-call limit", async () => {
     const ctx = makeCtx()
     setEnv(ctx, { MINIMAX_CN_API_KEY: "cn-key" })
     ctx.host.http.request.mockReturnValue({
@@ -719,13 +837,13 @@ describe("minimax plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    expect(result.plan).toBeUndefined()
+    expect(result.plan).toBe("Plus (CN)")
     expect(result.lines[0].limit).toBe(1500)
     expect(result.lines[0].used).toBe(300)
     expect(result.lines[0].format.suffix).toBe("model-calls")
   })
 
-  it("does not infer an ambiguous CN plan from 4500 model-call limit", async () => {
+  it("infers Max tier from 4500 CN model-call limit", async () => {
     const ctx = makeCtx()
     setEnv(ctx, { MINIMAX_CN_API_KEY: "cn-key" })
     ctx.host.http.request.mockReturnValue({
@@ -750,10 +868,72 @@ describe("minimax plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    expect(result.plan).toBeUndefined()
+    expect(result.plan).toBe("Max (CN)")
     expect(result.lines[0].limit).toBe(4500)
     expect(result.lines[0].used).toBe(1800)
     expect(result.lines[0].format.suffix).toBe("model-calls")
+  })
+
+  it("infers CN Plus-High-Speed from companion image-01 quota", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_CN_API_KEY: "cn-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        base_resp: { status_code: 0 },
+        model_remains: [
+          {
+            model_name: "MiniMax-M*",
+            current_interval_total_count: 1500,
+            current_interval_usage_count: 1466,
+          },
+          {
+            model_name: "image-01",
+            current_interval_total_count: 100,
+            current_interval_usage_count: 100,
+          },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Plus-High-Speed (CN)")
+    expect(result.lines[0].label).toBe("Session")
+    expect(result.lines[0].limit).toBe(1500)
+  })
+
+  it("infers CN Max-High-Speed from companion speech quota", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_CN_API_KEY: "cn-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        base_resp: { status_code: 0 },
+        model_remains: [
+          {
+            model_name: "MiniMax-M*",
+            current_interval_total_count: 4500,
+            current_interval_usage_count: 4000,
+          },
+          {
+            model_name: "speech-hd",
+            current_interval_total_count: 19000,
+            current_interval_usage_count: 19000,
+          },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Max-High-Speed (CN)")
+    expect(result.lines[0].label).toBe("Session")
+    expect(result.lines[0].limit).toBe(4500)
   })
 
   it("normalizes CN explicit high-speed plan labels to the shared six-plan naming", async () => {

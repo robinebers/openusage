@@ -14,25 +14,51 @@
   const CODING_PLAN_WINDOW_MS = 5 * 60 * 60 * 1000
   const CODING_PLAN_WINDOW_TOLERANCE_MS = 10 * 60 * 1000
   const DAILY_WINDOW_MS = 24 * 60 * 60 * 1000
-  // Unambiguous prompt-based tiers kept for compatibility with older docs/examples.
-  const UNAMBIGUOUS_PROMPT_LIMIT_TO_PLAN = {
+  const GLOBAL_PROMPT_LIMIT_TO_PLAN = {
     100: "Starter",
+    300: "Plus",
+    1000: "Max",
     2000: "Ultra-High-Speed",
   }
-  // Raw model-call tiers inferred from the current Global six-package lineup.
-  // 4500 and 15000 are ambiguous between Standard and High-Speed variants.
-  const GLOBAL_UNAMBIGUOUS_MODEL_CALL_LIMIT_TO_PLAN = {
+  const GLOBAL_MODEL_CALL_LIMIT_TO_PLAN = {
     1500: "Starter",
+    4500: "Plus",
+    15000: "Max",
     30000: "Ultra-High-Speed",
   }
-  // Raw model-call tiers inferred from the current CN six-package lineup.
-  // 1500 and 4500 are ambiguous between Standard and High-Speed variants.
-  const CN_UNAMBIGUOUS_MODEL_CALL_LIMIT_TO_PLAN = {
+  const CN_PROMPT_LIMIT_TO_PLAN = {
+    40: "Starter",
+    100: "Plus",
+    300: "Max",
+    2000: "Ultra-High-Speed",
+  }
+  const CN_MODEL_CALL_LIMIT_TO_PLAN = {
     600: "Starter",
+    1500: "Plus",
+    4500: "Max",
     30000: "Ultra-High-Speed",
+  }
+  const GLOBAL_COMPANION_QUOTA_HINTS = {
+    4500: {
+      image01: { 50: "Plus", 100: "Plus-High-Speed" },
+      speechHd: { 4000: "Plus", 9000: "Plus-High-Speed" },
+    },
+    15000: {
+      image01: { 120: "Max", 200: "Max-High-Speed" },
+      speechHd: { 11000: "Max", 19000: "Max-High-Speed" },
+    },
+  }
+  const CN_COMPANION_QUOTA_HINTS = {
+    1500: {
+      image01: { 50: "Plus", 100: "Plus-High-Speed" },
+      speechHd: { 4000: "Plus", 9000: "Plus-High-Speed" },
+    },
+    4500: {
+      image01: { 120: "Max", 200: "Max-High-Speed" },
+      speechHd: { 11000: "Max", 19000: "Max-High-Speed" },
+    },
   }
   const MODEL_CALLS_SUFFIX = "model-calls"
-  const MODEL_CALLS_PER_PROMPT = 15
 
   function readString(value) {
     if (typeof value !== "string") return null
@@ -88,21 +114,118 @@
 
     const normalized = Math.round(n)
     if (endpointSelection === "CN") {
-      if (CN_UNAMBIGUOUS_MODEL_CALL_LIMIT_TO_PLAN[normalized]) {
-        return CN_UNAMBIGUOUS_MODEL_CALL_LIMIT_TO_PLAN[normalized]
+      return CN_MODEL_CALL_LIMIT_TO_PLAN[normalized] || CN_PROMPT_LIMIT_TO_PLAN[normalized] || null
+    }
+    return GLOBAL_MODEL_CALL_LIMIT_TO_PLAN[normalized] || GLOBAL_PROMPT_LIMIT_TO_PLAN[normalized] || null
+  }
+
+  function readUsageRawName(item) {
+    return normalizeUsageName(
+      pickFirstString([
+        item.model_name,
+        item.modelName,
+        item.resource_name,
+        item.resourceName,
+        item.name,
+      ])
+    )
+  }
+
+  function normalizeUsageNameKey(value) {
+    return value ? value.toLowerCase() : ""
+  }
+
+  function isSpeechHdUsageName(name) {
+    return (
+      name.includes("text to speech hd") ||
+      name.includes("speech 2.8") ||
+      /^speech(?:-[\d.]+)?-hd$/.test(name)
+    )
+  }
+
+  function isSpeechTurboUsageName(name) {
+    return (
+      name.includes("text to speech turbo") ||
+      /^speech(?:-[\d.]+)?-turbo$/.test(name)
+    )
+  }
+
+  function isImage01UsageName(name) {
+    return name.includes("image-01")
+  }
+
+  function isSessionUsageName(name) {
+    return (
+      name.includes("minimax-m") ||
+      name.includes("text model") ||
+      name.includes("coding")
+    )
+  }
+
+  function inferPlanNameFromSignals(signals, endpointSelection) {
+    const sessionTotal = readNumber(signals && signals.sessionTotal)
+    if (sessionTotal === null || sessionTotal <= 0) return null
+
+    const basePlanName = inferPlanNameFromLimit(sessionTotal, endpointSelection)
+    if (!basePlanName) return null
+
+    const hintTable =
+      endpointSelection === "CN" ? CN_COMPANION_QUOTA_HINTS : GLOBAL_COMPANION_QUOTA_HINTS
+    const hintSpec = hintTable[Math.round(sessionTotal)]
+    if (!hintSpec) return basePlanName
+
+    const image01Total = readNumber(signals.image01Total)
+    const speechHdTotal = readNumber(signals.speechHdTotal)
+    const candidates = []
+
+    if (image01Total !== null) {
+      const planFromImage = hintSpec.image01[Math.round(image01Total)]
+      if (planFromImage) candidates.push(planFromImage)
+    }
+    if (speechHdTotal !== null) {
+      const planFromSpeech = hintSpec.speechHd[Math.round(speechHdTotal)]
+      if (planFromSpeech) candidates.push(planFromSpeech)
+    }
+
+    if (candidates.length === 0) return basePlanName
+    if (candidates.every((candidate) => candidate === candidates[0])) return candidates[0]
+    return basePlanName
+  }
+
+  function collectPlanInferenceSignals(modelRemains) {
+    const signals = {
+      sessionTotal: null,
+      speechHdTotal: null,
+      image01Total: null,
+    }
+    let fallbackSessionTotal = null
+
+    for (let i = 0; i < modelRemains.length; i += 1) {
+      const item = modelRemains[i]
+      if (!item || typeof item !== "object") continue
+
+      const total = readNumber(item.current_interval_total_count ?? item.currentIntervalTotalCount)
+      if (total === null || total <= 0) continue
+
+      const normalizedTotal = Math.round(total)
+      if (fallbackSessionTotal === null) fallbackSessionTotal = normalizedTotal
+
+      const name = normalizeUsageNameKey(readUsageRawName(item))
+      if (signals.speechHdTotal === null && isSpeechHdUsageName(name)) {
+        signals.speechHdTotal = normalizedTotal
+        continue
       }
-      return null
-    } else if (GLOBAL_UNAMBIGUOUS_MODEL_CALL_LIMIT_TO_PLAN[normalized]) {
-      return GLOBAL_UNAMBIGUOUS_MODEL_CALL_LIMIT_TO_PLAN[normalized]
+      if (signals.image01Total === null && isImage01UsageName(name)) {
+        signals.image01Total = normalizedTotal
+        continue
+      }
+      if (signals.sessionTotal === null && isSessionUsageName(name)) {
+        signals.sessionTotal = normalizedTotal
+      }
     }
 
-    if (UNAMBIGUOUS_PROMPT_LIMIT_TO_PLAN[normalized]) {
-      return UNAMBIGUOUS_PROMPT_LIMIT_TO_PLAN[normalized]
-    }
-
-    if (normalized % MODEL_CALLS_PER_PROMPT !== 0) return null
-    const inferredPromptLimit = normalized / MODEL_CALLS_PER_PROMPT
-    return UNAMBIGUOUS_PROMPT_LIMIT_TO_PLAN[inferredPromptLimit] || null
+    if (signals.sessionTotal === null) signals.sessionTotal = fallbackSessionTotal
+    return signals
   }
 
   function normalizeUsageName(value) {
@@ -112,44 +235,26 @@
   }
 
   function classifyUsageEntry(item, endpointSelection, index) {
-    const rawName = normalizeUsageName(
-      pickFirstString([
-        item.model_name,
-        item.modelName,
-        item.resource_name,
-        item.resourceName,
-        item.name,
-      ])
-    )
-    const name = rawName ? rawName.toLowerCase() : ""
+    const rawName = readUsageRawName(item)
+    const name = normalizeUsageNameKey(rawName)
 
     if (endpointSelection !== "CN") {
       return { label: "Session", suffix: MODEL_CALLS_SUFFIX, isSession: true }
     }
 
-    if (
-      name.includes("text to speech hd") ||
-      /^speech-[\d.]+-hd$/.test(name)
-    ) {
+    if (isSpeechHdUsageName(name)) {
       return { label: "Text to Speech HD", suffix: "chars", isSession: false }
     }
-    if (
-      name.includes("text to speech turbo") ||
-      /^speech-[\d.]+-turbo$/.test(name)
-    ) {
+    if (isSpeechTurboUsageName(name)) {
       return { label: "Text to Speech Turbo", suffix: "chars", isSession: false }
     }
-    if (name.includes("image-01")) {
+    if (isImage01UsageName(name)) {
       return { label: "image-01", suffix: "images", isSession: false }
     }
     if (name.includes("image generation")) {
       return { label: "Image Generation", suffix: "images", isSession: false }
     }
-    if (
-      name.includes("minimax-m") ||
-      name.includes("text model") ||
-      name.includes("coding")
-    ) {
+    if (isSessionUsageName(name)) {
       return { label: "Session", suffix: MODEL_CALLS_SUFFIX, isSession: true }
     }
     if (index === 0) {
@@ -421,8 +526,10 @@
       payload.plan_name,
       payload.plan,
     ]))
-    const sessionEntry = entries.find((entry) => entry.label === "Session") || entries[0]
-    const inferredPlanName = inferPlanNameFromLimit(sessionEntry.total, endpointSelection)
+    const inferredPlanName = inferPlanNameFromSignals(
+      collectPlanInferenceSignals(modelRemains),
+      endpointSelection
+    )
     const planName = explicitPlanName || inferredPlanName
 
     return {
