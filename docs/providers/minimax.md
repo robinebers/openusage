@@ -84,10 +84,11 @@ Expected payload fields:
   - `CN 1500`: `image-01 50` or `speech-hd 4000` => `Plus`; `image-01 100` or `speech-hd 9000` => `Plus-High-Speed`
   - `CN 4500`: `image-01 120` or `speech-hd 11000` => `Max`; `image-01 200` or `speech-hd 19000` => `Max-High-Speed`
 - If those companion quotas are absent or conflicting, the plugin falls back to the coarse family label (`Plus` / `Max`) instead of guessing.
-- In CN mode, additional `model_remains[]` entries may appear as separate daily resource buckets, for example `speech-hd` (`Text to Speech HD`) or `image-01`.
+- Additional `model_remains[]` companion resource buckets are rendered as separate daily detail lines in both `GLOBAL` and `CN` mode, for example `speech-hd` (`Text to Speech HD`) or `image-01`.
 - Use `end_time` for reset timestamp when present.
 - Fallback to `remains_time` when `end_time` is absent.
 - Use `start_time` + `end_time` as `periodDurationMs` when both are valid.
+- Non-session companion resource lines use a daily window when only `remains_time` is present.
 - Prompt-based marketing copy is ignored by the plugin; all inference is based on raw remains quotas and companion resource buckets.
 - Official package tables used for this split, checked on 2026-03-23:
   - Global: <https://platform.minimax.io/docs/token-plan/intro>
@@ -102,7 +103,7 @@ Expected payload fields:
   - `used`: computed used model-call count from raw remains data
   - `limit`: raw session limit from the remains payload
   - `resetsAt`: derived from `end_time` or `remains_time`
-- **CN extra resources** (detail progress lines when present):
+- **Extra resources** (detail progress lines when present in either region):
   - `Text to Speech HD` / `Text to Speech Turbo`: count (`chars`)
   - `Image Generation` / `image-01`: count (`images`)
 

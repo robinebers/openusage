@@ -402,9 +402,15 @@ describe("minimax plugin", () => {
     const result = plugin.probe(ctx)
 
     expect(result.plan).toBe("Plus-High-Speed (GLOBAL)")
-    expect(result.lines).toHaveLength(1)
+    expect(result.lines).toHaveLength(2)
     expect(result.lines[0].label).toBe("Session")
     expect(result.lines[0].limit).toBe(4500)
+    expect(result.lines[1]).toMatchObject({
+      label: "image-01",
+      used: 0,
+      limit: 100,
+      format: { kind: "count", suffix: "images" },
+    })
   })
 
   it("prefers the GLOBAL session entry when a companion bucket appears first", async () => {
@@ -434,12 +440,18 @@ describe("minimax plugin", () => {
     const result = plugin.probe(ctx)
 
     expect(result.plan).toBe("Plus-High-Speed (GLOBAL)")
-    expect(result.lines).toHaveLength(1)
+    expect(result.lines).toHaveLength(2)
     expect(result.lines[0]).toMatchObject({
       label: "Session",
       used: 300,
       limit: 4500,
       format: { kind: "count", suffix: "model-calls" },
+    })
+    expect(result.lines[1]).toMatchObject({
+      label: "image-01",
+      used: 10,
+      limit: 100,
+      format: { kind: "count", suffix: "images" },
     })
   })
 
@@ -470,9 +482,129 @@ describe("minimax plugin", () => {
     const result = plugin.probe(ctx)
 
     expect(result.plan).toBe("Max-High-Speed (GLOBAL)")
-    expect(result.lines).toHaveLength(1)
+    expect(result.lines).toHaveLength(2)
     expect(result.lines[0].label).toBe("Session")
     expect(result.lines[0].limit).toBe(15000)
+    expect(result.lines[1]).toMatchObject({
+      label: "Text to Speech HD",
+      used: 0,
+      limit: 19000,
+      format: { kind: "count", suffix: "chars" },
+    })
+  })
+
+  it("shows extra GLOBAL token-plan resource lines for speech-hd and image-01", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        data: {
+          base_resp: { status_code: 0 },
+          current_subscribe_title: "Plus-High-Speed",
+          model_remains: [
+            {
+              model_name: "MiniMax-M2.7-highspeed",
+              current_interval_total_count: 4500,
+              current_interval_usage_count: 4200,
+              start_time: 1700000000000,
+              end_time: 1700018000000,
+            },
+            {
+              model_name: "speech-hd",
+              current_interval_total_count: 9000,
+              current_interval_usage_count: 7200,
+              start_time: 1700000000000,
+              end_time: 1700086400000,
+            },
+            {
+              model_name: "image-01",
+              current_interval_total_count: 100,
+              current_interval_usage_count: 80,
+              start_time: 1700000000000,
+              end_time: 1700086400000,
+            },
+          ],
+        },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Plus-High-Speed (GLOBAL)")
+    expect(result.lines).toHaveLength(3)
+    expect(result.lines[0]).toMatchObject({
+      label: "Session",
+      used: 300,
+      limit: 4500,
+      format: { kind: "count", suffix: "model-calls" },
+    })
+    expect(result.lines[1]).toMatchObject({
+      label: "Text to Speech HD",
+      used: 1800,
+      limit: 9000,
+      format: { kind: "count", suffix: "chars" },
+    })
+    expect(result.lines[2]).toMatchObject({
+      label: "image-01",
+      used: 20,
+      limit: 100,
+      format: { kind: "count", suffix: "images" },
+    })
+  })
+
+  it("uses a daily remains_time window for GLOBAL resource lines without end_time", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
+    vi.spyOn(Date, "now").mockReturnValue(1700000000000)
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        data: {
+          base_resp: { status_code: 0 },
+          current_subscribe_title: "Plus-High-Speed",
+          model_remains: [
+            {
+              model_name: "MiniMax-M2.7-highspeed",
+              current_interval_total_count: 4500,
+              current_interval_usage_count: 4200,
+              start_time: 1700000000000,
+              end_time: 1700018000000,
+            },
+            {
+              model_name: "speech-hd",
+              current_interval_total_count: 9000,
+              current_interval_usage_count: 7200,
+              remains_time: 86400,
+            },
+            {
+              model_name: "image-01",
+              current_interval_total_count: 100,
+              current_interval_usage_count: 80,
+              remains_time: 86400,
+            },
+          ],
+        },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const expectedReset = new Date(1700000000000 + 86400 * 1000).toISOString()
+
+    expect(result.lines[1]).toMatchObject({
+      label: "Text to Speech HD",
+      resetsAt: expectedReset,
+      periodDurationMs: 86400000,
+    })
+    expect(result.lines[2]).toMatchObject({
+      label: "image-01",
+      resetsAt: expectedReset,
+      periodDurationMs: 86400000,
+    })
   })
 
   it("does not fallback to model name when plan cannot be inferred", async () => {
@@ -791,6 +923,58 @@ describe("minimax plugin", () => {
       used: 10,
       limit: 50,
       format: { kind: "count", suffix: "images" },
+    })
+  })
+
+  it("uses a daily remains_time window for CN resource lines without end_time", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_CN_API_KEY: "cn-key" })
+    vi.spyOn(Date, "now").mockReturnValue(1700000000000)
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        data: {
+          base_resp: { status_code: 0 },
+          current_subscribe_title: "Plus",
+          model_remains: [
+            {
+              model_name: "MiniMax-M2.5",
+              current_interval_total_count: 100,
+              current_interval_usage_count: 70,
+              start_time: 1700000000000,
+              end_time: 1700018000000,
+            },
+            {
+              model_name: "speech-hd",
+              current_interval_total_count: 4000,
+              current_interval_usage_count: 3200,
+              remains_time: 86400,
+            },
+            {
+              model_name: "image-01",
+              current_interval_total_count: 50,
+              current_interval_usage_count: 40,
+              remains_time: 86400,
+            },
+          ],
+        },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const expectedReset = new Date(1700000000000 + 86400 * 1000).toISOString()
+
+    expect(result.lines[1]).toMatchObject({
+      label: "Text to Speech HD",
+      resetsAt: expectedReset,
+      periodDurationMs: 86400000,
+    })
+    expect(result.lines[2]).toMatchObject({
+      label: "image-01",
+      resetsAt: expectedReset,
+      periodDurationMs: 86400000,
     })
   })
 

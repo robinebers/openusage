@@ -226,10 +226,6 @@
     const rawName = readUsageRawName(item)
     const name = normalizeUsageNameKey(rawName)
 
-    if (endpointSelection !== "CN") {
-      return { label: "Session", suffix: MODEL_CALLS_SUFFIX, isSession: true }
-    }
-
     if (isSpeechHdUsageName(name)) {
       return { label: "Text to Speech HD", suffix: "chars", isSession: false }
     }
@@ -261,7 +257,7 @@
     return Math.abs(n) < 1e10 ? n * 1000 : n
   }
 
-  function inferRemainsMs(remainsRaw, endMs, nowMs) {
+  function inferRemainsMs(remainsRaw, endMs, nowMs, expectedWindowMs) {
     if (remainsRaw === null || remainsRaw <= 0) return null
 
     const asSecondsMs = remainsRaw * 1000
@@ -278,7 +274,8 @@
     }
 
     // Coding Plan resets every 5h. Use that constraint before defaulting.
-    const maxExpectedMs = CODING_PLAN_WINDOW_MS + CODING_PLAN_WINDOW_TOLERANCE_MS
+    const maxExpectedMs =
+      (expectedWindowMs || CODING_PLAN_WINDOW_MS) + CODING_PLAN_WINDOW_TOLERANCE_MS
     const secondsLooksValid = asSecondsMs <= maxExpectedMs
     const millisecondsLooksValid = asMillisecondsMs <= maxExpectedMs
 
@@ -435,7 +432,9 @@
     const endMs = epochToMs(item.end_time ?? item.endTime)
     const remainsRaw = readNumber(item.remains_time ?? item.remainsTime)
     const nowMs = Date.now()
-    const remainsMs = inferRemainsMs(remainsRaw, endMs, nowMs)
+    const expectedRemainsWindowMs =
+      !usageMeta.isSession ? DAILY_WINDOW_MS : CODING_PLAN_WINDOW_MS
+    const remainsMs = inferRemainsMs(remainsRaw, endMs, nowMs, expectedRemainsWindowMs)
 
     let resetsAt = endMs !== null ? ctx.util.toIso(endMs) : null
     if (!resetsAt && remainsMs !== null) {
@@ -445,7 +444,7 @@
     let periodDurationMs = null
     if (startMs !== null && endMs !== null && endMs > startMs) {
       periodDurationMs = endMs - startMs
-    } else if (endpointSelection === "CN" && !usageMeta.isSession) {
+    } else if (!usageMeta.isSession) {
       periodDurationMs = DAILY_WINDOW_MS
     }
 
@@ -475,6 +474,24 @@
     }
 
     return fallbackItem
+  }
+
+  function orderRemainItemsForDisplay(modelRemains, endpointSelection) {
+    if (!Array.isArray(modelRemains) || modelRemains.length === 0) return []
+
+    const ordered = []
+    const sessionItem =
+      endpointSelection === "GLOBAL" ? pickGlobalSessionRemainItem(modelRemains) : null
+    if (sessionItem) ordered.push(sessionItem)
+
+    for (let i = 0; i < modelRemains.length; i += 1) {
+      const item = modelRemains[i]
+      if (!item || typeof item !== "object") continue
+      if (sessionItem && item === sessionItem) continue
+      ordered.push(item)
+    }
+
+    return ordered
   }
 
   function parsePayloadShape(ctx, payload, endpointSelection) {
@@ -511,10 +528,7 @@
 
     const entries = []
     const seenLabels = Object.create(null)
-    const remainsToParse =
-      endpointSelection === "CN"
-        ? modelRemains
-        : [pickGlobalSessionRemainItem(modelRemains)]
+    const remainsToParse = orderRemainItemsForDisplay(modelRemains, endpointSelection)
 
     for (let i = 0; i < remainsToParse.length; i += 1) {
       const entry = parseModelRemainEntry(ctx, remainsToParse[i], endpointSelection, i)
