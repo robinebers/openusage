@@ -1,13 +1,12 @@
 # AGENTS.md
 
-Version: 0.26 (2026-02-10)
+Version: 0.27 (2026-03-17)
 
-Start: say hi + 1 motivating line.
 Work style: Be radically precise. No fluff. Pure information only (drop grammar; min tokens).
 
 ## Agent Protocol
-- Contact: Robin Ebers (@robinebers, rob@robinebers.com).
 - “Make a note” => edit AGENTS.md (Ignore `CLAUDE.md`, symlink for AGENTS.md).
+- "Remember" (or similar) -> edit AGENTS.md under "User Notes"
 - Editor: `cursor <path>`.
 - New deps: quick health check (recent releases/commits, adoption).
 - When asked to update the `AGENTS.md` to the latest version:
@@ -19,18 +18,16 @@ Work style: Be radically precise. No fluff. Pure information only (drop grammar;
 - Use `mv` / `cp` to move and copy files.
 - Bugs: add regression test when it fits.
 - Keep files <~400 LOC; split/refactor as needed.
-- Simplicity first: handle only important cases; no enterprise over-engineering.
+- Simplicity first: handle only important cases; no enterprise over-engineering/fallbacks.
 - New functionality: small OR absolutely necessary.
 - NEVER delete files, folders or other data unless explicilty approved or part of a plan.
-- Before writing code, stricly follow the blow research rules
-- Always start with "Executive Summary" and summarize the plan for a non-technical reader in a few short bullets (what will change, behavior outcomes, intent, etc), avoiding jargon and implementation details. After that, show the full technical plan with details needed to implement.
+- Before writing code, stricly follow the below research rules
 
 ## Research
-- Always create a spec in-memory (no files), even if minimal
-- Prefer skills if available over research
-- Prefer researched knowledge over existing knowledge when skills are unavailable
+- Prefer skills if available over research.
+- Prefer researched knowledge over existing knowledge when skills are unavailable.
 - Research: Exa to websearch early, and Ref to seek specific documention or web fetch.
-- Best results: Quote exact errors; prefer 2025-2026 sources.
+- Best results: Quote exact errors; prefer 2025-2026+ sources.
 
 ## Git
 - Always use `gh` to communicate with GitHub.
@@ -45,17 +42,16 @@ Work style: Be radically precise. No fluff. Pure information only (drop grammar;
 - Avoid manual `git stash`; if Git auto-stashes during pull/rebase, that’s fine (hint, not hard guardrail).
 - If user types a command (“pull and push”), that’s consent for that command.
 - Big review: `git --no-pager diff --color=never`.
-- Before creating a PR, run `bun run test:coverage`; coverage minimums must pass.
 
 ## Error Handling
 - Expected issues: explicit result types (not throw/try/catch).
   - Exception: external systems (git, gh) → try/catch ok.
   - Exception: React Query mutations → throw ok.
-- Unexpected issues: fail loud (throw/console.error + toast.error); NEVER add fallbacks.
+- Unexpected issues: fail LOUD (throw/console.error + toast.error); NEVER add fallbacks.
 
 ## Backwards Compat
-- Local/uncommitted: none needed; rewrite as if fresh.
-- In main: probably needed, ask user.
+- Always minimum only, you typically overthink this. Keep things simple.
+- When in doubt, ask the user before you overengineer solutions.
 
 ## Critical Thinking
 - Fix root cause (not band-aid).
@@ -86,6 +82,7 @@ Work style: Be radically precise. No fluff. Pure information only (drop grammar;
 ## Useful Tidbits
 - When using Vercel AI Gateway, use a single API key across the project, not individual providers.
 - When using Convex, run `bunx convex dev --once` to verify, not `bunx convex codegen`.
+- When tasked to use the computer, prefer simple screenshot/mouse pointer events over accessibility.
 
 ## Before Creating Pull Request
 - Before creating a PR or pushing to main, ensure that `README.md` is updated with what plugins are supported.

@@ -1,10 +1,12 @@
 (function () {
-  var LS_SERVICE = "exa.language_server_pb.LanguageServerService"
   var CLOUD_SERVICE = "exa.seat_management_pb.SeatManagementService"
-  var CLOUD_URL = "https://server.codeium.com"
+  var CLOUD_URL = "https://server.self-serve.windsurf.com"
+  var CLOUD_COMPAT_VERSION = "1.108.2"
+  var LOGIN_HINT = "Start Windsurf or sign in and try again."
+  var QUOTA_HINT = "Windsurf quota data unavailable. Try again later."
+  var DAY_MS = 24 * 60 * 60 * 1000
+  var WEEK_MS = 7 * DAY_MS
 
-  // Windsurf variants — tried in order (Windsurf first, then Windsurf Next).
-  // Markers use --ide_name exact matching in the Rust discover code.
   var VARIANTS = [
     {
       marker: "windsurf",
@@ -18,16 +20,20 @@
     },
   ]
 
-  // --- LS discovery ---
+  function readFiniteNumber(value) {
+    if (typeof value === "number") return Number.isFinite(value) ? value : null
+    if (typeof value !== "string") return null
+    var trimmed = value.trim()
+    if (!trimmed) return null
+    var parsed = Number(trimmed)
+    return Number.isFinite(parsed) ? parsed : null
+  }
 
-  function discoverLs(ctx, variant) {
-    return ctx.host.ls.discover({
-      processName: "language_server_macos",
-      markers: [variant.marker],
-      csrfFlag: "--csrf_token",
-      portFlag: "--extension_server_port",
-      extraFlags: ["--windsurf_version"],
-    })
+  function clampPercent(value) {
+    if (!Number.isFinite(value)) return 0
+    if (value < 0) return 0
+    if (value > 100) return 100
+    return value
   }
 
   function loadApiKey(ctx, variant) {
@@ -47,159 +53,6 @@
     }
   }
 
-  function probePort(ctx, scheme, port, csrf, ideName) {
-    ctx.host.http.request({
-      method: "POST",
-      url: scheme + "://127.0.0.1:" + port + "/" + LS_SERVICE + "/GetUnleashData",
-      headers: {
-        "Content-Type": "application/json",
-        "Connect-Protocol-Version": "1",
-        "x-codeium-csrf-token": csrf,
-      },
-      bodyText: JSON.stringify({
-        context: {
-          properties: {
-            devMode: "false",
-            extensionVersion: "unknown",
-            ide: ideName,
-            ideVersion: "unknown",
-            os: "macos",
-          },
-        },
-      }),
-      timeoutMs: 5000,
-      dangerouslyIgnoreTls: scheme === "https",
-    })
-    return true
-  }
-
-  function findWorkingPort(ctx, discovery, ideName) {
-    var ports = discovery.ports || []
-    for (var i = 0; i < ports.length; i++) {
-      var port = ports[i]
-      try { if (probePort(ctx, "https", port, discovery.csrf, ideName)) return { port: port, scheme: "https" } } catch (e) { /* ignore */ }
-      try { if (probePort(ctx, "http", port, discovery.csrf, ideName)) return { port: port, scheme: "http" } } catch (e) { /* ignore */ }
-      ctx.host.log.info("port " + port + " probe failed on both schemes")
-    }
-    if (discovery.extensionPort) return { port: discovery.extensionPort, scheme: "http" }
-    return null
-  }
-
-  function callLs(ctx, port, scheme, csrf, method, body) {
-    var resp = ctx.host.http.request({
-      method: "POST",
-      url: scheme + "://127.0.0.1:" + port + "/" + LS_SERVICE + "/" + method,
-      headers: {
-        "Content-Type": "application/json",
-        "Connect-Protocol-Version": "1",
-        "x-codeium-csrf-token": csrf,
-      },
-      bodyText: JSON.stringify(body || {}),
-      timeoutMs: 10000,
-      dangerouslyIgnoreTls: scheme === "https",
-    })
-    if (resp.status < 200 || resp.status >= 300) {
-      ctx.host.log.warn("callLs " + method + " returned " + resp.status)
-      return null
-    }
-    return ctx.util.tryParseJson(resp.bodyText)
-  }
-
-  // --- Credit line builder ---
-
-  function creditLine(ctx, label, used, total, resetsAt, periodMs) {
-    if (typeof total !== "number" || total <= 0) return null
-    if (typeof used !== "number") used = 0
-    if (used < 0) used = 0
-    var line = {
-      label: label,
-      used: used,
-      limit: total,
-      format: { kind: "count", suffix: "credits" },
-    }
-    if (resetsAt) line.resetsAt = resetsAt
-    if (periodMs) line.periodDurationMs = periodMs
-    return ctx.line.progress(line)
-  }
-
-  function billingPeriodMs(planStart, planEnd) {
-    if (!planStart || !planEnd) return null
-    var startMs = Date.parse(planStart)
-    var endMs = Date.parse(planEnd)
-    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return null
-    return endMs - startMs
-  }
-
-  function buildPlanLines(ctx, userStatus) {
-    var ps = (userStatus && userStatus.planStatus) || {}
-    var pi = ps.planInfo || {}
-    var plan = pi.planName || null
-    var planEnd = ps.planEnd || null
-    var periodMs = billingPeriodMs(ps.planStart || null, planEnd)
-
-    var lines = []
-
-    var promptTotal = ps.availablePromptCredits
-    var promptUsed = ps.usedPromptCredits || 0
-    if (typeof promptTotal === "number" && promptTotal > 0) {
-      var pl = creditLine(ctx, "Prompt credits", promptUsed / 100, promptTotal / 100, planEnd, periodMs)
-      if (pl) lines.push(pl)
-    }
-
-    var flexTotal = ps.availableFlexCredits
-    var flexUsed = ps.usedFlexCredits || 0
-    if (typeof flexTotal === "number" && flexTotal > 0) {
-      var xl = creditLine(ctx, "Flex credits", flexUsed / 100, flexTotal / 100, null, null)
-      if (xl) lines.push(xl)
-    }
-
-    if (lines.length === 0) {
-      lines.push(ctx.line.badge({ label: "Credits", text: "Unlimited" }))
-    }
-
-    return { plan: plan, lines: lines }
-  }
-
-  // --- LS probe for a specific variant ---
-
-  function probeVariant(ctx, variant) {
-    var discovery = discoverLs(ctx, variant)
-    if (!discovery) return null
-
-    var found = findWorkingPort(ctx, discovery, variant.ideName)
-    if (!found) return null
-
-    var apiKey = loadApiKey(ctx, variant)
-    if (!apiKey) {
-      ctx.host.log.warn("no API key found in SQLite for " + variant.marker)
-      return null
-    }
-
-    var version = (discovery.extra && discovery.extra.windsurf_version) || "unknown"
-
-    var metadata = {
-      apiKey: apiKey,
-      ideName: variant.ideName,
-      ideVersion: version,
-      extensionName: variant.ideName,
-      extensionVersion: version,
-      locale: "en",
-    }
-
-    var data = null
-    try {
-      data = callLs(ctx, found.port, found.scheme, discovery.csrf, "GetUserStatus", { metadata: metadata })
-    } catch (e) {
-      ctx.host.log.warn("GetUserStatus threw for " + variant.marker + ": " + String(e))
-    }
-
-    if (!data || !data.userStatus) return null
-
-    return buildPlanLines(ctx, data.userStatus)
-  }
-
-  // --- Cloud fallback ---
-
   function callCloud(ctx, apiKey, variant) {
     try {
       var resp = ctx.host.http.request({
@@ -213,47 +66,126 @@
           metadata: {
             apiKey: apiKey,
             ideName: variant.ideName,
-            ideVersion: "0.0.0",
+            ideVersion: CLOUD_COMPAT_VERSION,
             extensionName: variant.ideName,
-            extensionVersion: "0.0.0",
+            extensionVersion: CLOUD_COMPAT_VERSION,
             locale: "en",
           },
         }),
         timeoutMs: 15000,
       })
-      if (resp.status >= 200 && resp.status < 300) {
-        return ctx.util.tryParseJson(resp.bodyText)
+      if (resp.status < 200 || resp.status >= 300) {
+        ctx.host.log.warn("cloud request returned status " + resp.status + " for " + variant.marker)
+        if (ctx.util && typeof ctx.util.isAuthStatus === "function" && ctx.util.isAuthStatus(resp.status)) {
+          return { __openusageAuthError: true }
+        }
+        return null
       }
+      return ctx.util.tryParseJson(resp.bodyText)
     } catch (e) {
-      ctx.host.log.warn("cloud request failed: " + String(e))
+      ctx.host.log.warn("cloud request failed for " + variant.marker + ": " + String(e))
+      return null
     }
-    return null
   }
 
-  function probeCloudVariant(ctx, variant) {
-    var apiKey = loadApiKey(ctx, variant)
-    if (!apiKey) return null
-
-    var data = callCloud(ctx, apiKey, variant)
-    if (!data || !data.userStatus) return null
-
-    return buildPlanLines(ctx, data.userStatus)
+  function unixSecondsToIso(ctx, value) {
+    var seconds = readFiniteNumber(value)
+    if (seconds === null) return null
+    return ctx.util.toIso(seconds * 1000)
   }
 
-  // --- Probe ---
+  function formatDollarsFromMicros(value) {
+    var micros = readFiniteNumber(value)
+    if (micros === null) return null
+    if (micros < 0) micros = 0
+    return "$" + (micros / 1000000).toFixed(2)
+  }
+
+  function buildQuotaLine(ctx, label, remainingPercent, resetsAt, periodDurationMs) {
+    var remaining = readFiniteNumber(remainingPercent)
+    if (remaining === null) return null
+    var line = {
+      label: label,
+      used: clampPercent(100 - remaining),
+      limit: 100,
+      format: { kind: "percent" },
+      periodDurationMs: periodDurationMs,
+    }
+    if (resetsAt) line.resetsAt = resetsAt
+    return ctx.line.progress(line)
+  }
+
+  function hasQuotaContract(planStatus) {
+    return (
+      readFiniteNumber(planStatus && planStatus.dailyQuotaRemainingPercent) !== null &&
+      readFiniteNumber(planStatus && planStatus.weeklyQuotaRemainingPercent) !== null &&
+      readFiniteNumber(planStatus && planStatus.overageBalanceMicros) !== null &&
+      readFiniteNumber(planStatus && planStatus.dailyQuotaResetAtUnix) !== null &&
+      readFiniteNumber(planStatus && planStatus.weeklyQuotaResetAtUnix) !== null
+    )
+  }
+
+  function buildOutput(ctx, userStatus) {
+    var planStatus = (userStatus && userStatus.planStatus) || {}
+    if (!hasQuotaContract(planStatus)) throw QUOTA_HINT
+
+    var planInfo = planStatus.planInfo || {}
+    var planName = typeof planInfo.planName === "string" && planInfo.planName.trim()
+      ? planInfo.planName.trim()
+      : "Unknown"
+
+    var dailyReset = unixSecondsToIso(ctx, planStatus.dailyQuotaResetAtUnix)
+    var weeklyReset = unixSecondsToIso(ctx, planStatus.weeklyQuotaResetAtUnix)
+    var extraUsageBalance = formatDollarsFromMicros(planStatus.overageBalanceMicros)
+
+    if (!dailyReset || !weeklyReset || !extraUsageBalance) throw QUOTA_HINT
+
+    var dailyLine = buildQuotaLine(ctx, "Daily quota", planStatus.dailyQuotaRemainingPercent, dailyReset, DAY_MS)
+    var weeklyLine = buildQuotaLine(ctx, "Weekly quota", planStatus.weeklyQuotaRemainingPercent, weeklyReset, WEEK_MS)
+
+    if (!dailyLine || !weeklyLine) throw QUOTA_HINT
+
+    return {
+      plan: planName,
+      lines: [
+        dailyLine,
+        weeklyLine,
+        ctx.line.text({ label: "Extra usage balance", value: extraUsageBalance }),
+      ],
+    }
+  }
 
   function probe(ctx) {
-    for (var i = 0; i < VARIANTS.length; i++) {
-      var result = probeVariant(ctx, VARIANTS[i])
-      if (result) return result
-    }
+    var sawApiKey = false
+    var sawAuthFailure = false
 
     for (var i = 0; i < VARIANTS.length; i++) {
-      var result = probeCloudVariant(ctx, VARIANTS[i])
-      if (result) return result
+      var variant = VARIANTS[i]
+      var apiKey = loadApiKey(ctx, variant)
+      if (!apiKey) continue
+      sawApiKey = true
+
+      var data = callCloud(ctx, apiKey, variant)
+      if (data && data.__openusageAuthError) {
+        sawAuthFailure = true
+        continue
+      }
+      if (!data || !data.userStatus) continue
+
+      try {
+        return buildOutput(ctx, data.userStatus)
+      } catch (e) {
+        if (e === QUOTA_HINT) {
+          ctx.host.log.warn("quota contract unavailable for " + variant.marker)
+          continue
+        }
+        throw e
+      }
     }
 
-    throw "Start Windsurf or sign in and try again."
+    if (sawAuthFailure) throw LOGIN_HINT
+    if (sawApiKey) throw QUOTA_HINT
+    throw LOGIN_HINT
   }
 
   globalThis.__openusage_plugin = { id: "windsurf", probe: probe }

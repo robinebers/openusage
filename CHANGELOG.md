@@ -1,5 +1,48 @@
 # Changelog
 
+## 0.6.11
+
+### New Features
+- Add in-app changelog ([#309](https://github.com/robinebers/openusage/pull/309)) by @hearsilent
+- Add drag-to-reorder plugin icons in sidebar by @hearsilent
+
+### Bug Fixes
+- Refresh Windsurf quota cloud plugin ([#313](https://github.com/robinebers/openusage/pull/313)) by @robinebers
+- Send real app version to credits API by @robinebers
+- Fix reset tooltips to mirror display mode ([#297](https://github.com/robinebers/openusage/pull/297)) by @robinebers
+- Preserve leading disabled plugin on reorder by @hearsilent
+- Preserve disabled plugins when reordering by @hearsilent
+- Fix test issue by @hearsilent
+
+### Chores
+- Update bun.lock by @robinebers
+- Bump jsdom from 28.1.0 to 29.0.1 ([#312](https://github.com/robinebers/openusage/pull/312)) by @dependabot
+- Bump tauri-nspanel in /src-tauri ([#311](https://github.com/robinebers/openusage/pull/311)) by @dependabot
+- Update AGENTS.md to version 0.27 by @robinebers
+- Update lucide-react lockfile by @robinebers
+- Use next plist path in cloud mocks by @robinebers
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.6.10...v0.6.11](https://github.com/robinebers/openusage/compare/v0.6.10...v0.6.11)
+
+- [f5edf2a](https://github.com/robinebers/openusage/commit/f5edf2a) update bun.lock by @robinebers
+- [3a66f32](https://github.com/robinebers/openusage/commit/3a66f32) chore(deps-dev): bump jsdom from 28.1.0 to 29.0.1 (#312) by @dependabot
+- [0ba68d8](https://github.com/robinebers/openusage/commit/0ba68d8) chore(deps): bump tauri-nspanel in /src-tauri (#311) by @dependabot
+- [11ce2d5](https://github.com/robinebers/openusage/commit/11ce2d5) fix: refresh Windsurf quota cloud plugin (#313) by @robinebers
+- [0bfcaa3](https://github.com/robinebers/openusage/commit/0bfcaa3) feat: in-app changelog (#309) by @hearsilent
+- [73fe349](https://github.com/robinebers/openusage/commit/73fe349) Update AGENTS.md to version 0.27 by @robinebers
+- [459647c](https://github.com/robinebers/openusage/commit/459647c) build: update lucide-react lockfile by @robinebers
+- [086ad7d](https://github.com/robinebers/openusage/commit/086ad7d) test(windsurf): use next plist path in cloud mocks by @robinebers
+- [0c716fb](https://github.com/robinebers/openusage/commit/0c716fb) fix(windsurf): send real app version to credits API by @robinebers
+- [0766afc](https://github.com/robinebers/openusage/commit/0766afc) Fix reset tooltips to mirror display mode (#297) by @robinebers
+- [a71a4c1](https://github.com/robinebers/openusage/commit/a71a4c1) fix: preserve leading disabled plugin on reorder by @hearsilent
+- [c84ba87](https://github.com/robinebers/openusage/commit/c84ba87) fix: preserve disabled plugins when reordering by @hearsilent
+- [7ac86fb](https://github.com/robinebers/openusage/commit/7ac86fb) fix: test issue by @hearsilent
+- [b1d290d](https://github.com/robinebers/openusage/commit/b1d290d) feat: add drag-to-reorder plugin icons in sidebar by @hearsilent
+
 ## 0.6.10
 
 ### New Features
