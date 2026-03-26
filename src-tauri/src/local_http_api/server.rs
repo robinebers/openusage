@@ -71,7 +71,7 @@ fn route(method: &str, path: &str) -> String {
     if path == "/v1/usage" {
         return match method {
             "GET" => handle_get_usage_collection(),
-            "OPTIONS" => response_cors_preflight(),
+            "OPTIONS" => response_no_content(),
             _ => response_method_not_allowed(),
         };
     }
@@ -80,7 +80,7 @@ fn route(method: &str, path: &str) -> String {
         if !provider_id.is_empty() && !provider_id.contains('/') {
             return match method {
                 "GET" => handle_get_usage_single(provider_id),
-                "OPTIONS" => response_cors_preflight(),
+                "OPTIONS" => response_no_content(),
                 _ => response_method_not_allowed(),
             };
         }
@@ -137,13 +137,6 @@ fn response_json(status: u16, reason: &str, body: &str) -> String {
 }
 
 fn response_no_content() -> String {
-    format!(
-        "HTTP/1.1 204 No Content\r\nConnection: close\r\n{}\r\n\r\n",
-        CORS_HEADERS,
-    )
-}
-
-fn response_cors_preflight() -> String {
     format!(
         "HTTP/1.1 204 No Content\r\nConnection: close\r\n{}\r\n\r\n",
         CORS_HEADERS,

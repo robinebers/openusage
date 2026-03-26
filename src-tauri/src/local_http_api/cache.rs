@@ -119,14 +119,11 @@ pub fn cache_successful_output(output: &PluginOutput) {
         fetched_at,
     };
 
-    let (app_data_dir, snapshots) = {
-        let mut state = cache_state().lock().expect("cache state poisoned");
-        state
-            .snapshots
-            .insert(output.provider_id.clone(), snapshot);
-        (state.app_data_dir.clone(), state.snapshots.clone())
-    };
-    save_cache(&app_data_dir, &snapshots);
+    let mut state = cache_state().lock().expect("cache state poisoned");
+    state
+        .snapshots
+        .insert(output.provider_id.clone(), snapshot);
+    save_cache(&state.app_data_dir, &state.snapshots);
 }
 
 // ---------------------------------------------------------------------------
