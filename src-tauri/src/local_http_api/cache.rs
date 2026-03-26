@@ -1,12 +1,9 @@
 use crate::plugin_engine::runtime::{MetricLine, PluginOutput};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::io::{Read, Write};
-use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
-const BIND_ADDR: &str = "127.0.0.1:6736";
 const CACHE_FILE_NAME: &str = "usage-api-cache.json";
 const SETTINGS_FILE_NAME: &str = "settings.json";
 const DEFAULT_ENABLED_PLUGINS: &[&str] = &["claude", "codex", "cursor"];
@@ -32,17 +29,17 @@ struct UsageApiCacheFile {
     snapshots: HashMap<String, CachedPluginSnapshot>,
 }
 
-struct CacheState {
-    snapshots: HashMap<String, CachedPluginSnapshot>,
-    app_data_dir: PathBuf,
-    known_plugin_ids: Vec<String>,
+pub(super) struct CacheState {
+    pub snapshots: HashMap<String, CachedPluginSnapshot>,
+    pub app_data_dir: PathBuf,
+    pub known_plugin_ids: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
 // Global cache state (same pattern as managed_shortcut_slot in lib.rs)
 // ---------------------------------------------------------------------------
 
-fn cache_state() -> &'static Mutex<CacheState> {
+pub(super) fn cache_state() -> &'static Mutex<CacheState> {
     static STATE: OnceLock<Mutex<CacheState>> = OnceLock::new();
     STATE.get_or_init(|| {
         Mutex::new(CacheState {
@@ -82,10 +79,15 @@ fn save_cache(app_data_dir: &Path, snapshots: &HashMap<String, CachedPluginSnaps
         snapshots: snapshots.clone(),
     };
     let path = app_data_dir.join(CACHE_FILE_NAME);
+    let tmp_path = app_data_dir.join(".usage-api-cache.json.tmp");
     match serde_json::to_string(&file) {
         Ok(json) => {
-            if let Err(e) = std::fs::write(&path, json) {
-                log::warn!("failed to write usage-api-cache.json: {}", e);
+            if let Err(e) = std::fs::write(&tmp_path, &json) {
+                log::warn!("failed to write temp cache file: {}", e);
+                return;
+            }
+            if let Err(e) = std::fs::rename(&tmp_path, &path) {
+                log::warn!("failed to rename cache file: {}", e);
             }
         }
         Err(e) => log::warn!("failed to serialize usage cache: {}", e),
@@ -117,11 +119,14 @@ pub fn cache_successful_output(output: &PluginOutput) {
         fetched_at,
     };
 
-    let mut state = cache_state().lock().expect("cache state poisoned");
-    state
-        .snapshots
-        .insert(output.provider_id.clone(), snapshot);
-    save_cache(&state.app_data_dir, &state.snapshots);
+    let (app_data_dir, snapshots) = {
+        let mut state = cache_state().lock().expect("cache state poisoned");
+        state
+            .snapshots
+            .insert(output.provider_id.clone(), snapshot);
+        (state.app_data_dir.clone(), state.snapshots.clone())
+    };
+    save_cache(&app_data_dir, &snapshots);
 }
 
 // ---------------------------------------------------------------------------
@@ -139,11 +144,11 @@ struct PluginSettingsJson {
     disabled: Option<Vec<String>>,
 }
 
-fn read_plugin_settings(app_data_dir: &Path) -> (Vec<String>, HashSet<String>) {
+fn read_plugin_settings(app_data_dir: &Path) -> (Vec<String>, HashSet<String>, bool) {
     let path = app_data_dir.join(SETTINGS_FILE_NAME);
     let data = match std::fs::read_to_string(&path) {
         Ok(d) => d,
-        Err(_) => return (Vec::new(), HashSet::new()),
+        Err(_) => return (Vec::new(), HashSet::new(), false),
     };
     match serde_json::from_str::<SettingsFile>(&data) {
         Ok(sf) => {
@@ -151,20 +156,18 @@ fn read_plugin_settings(app_data_dir: &Path) -> (Vec<String>, HashSet<String>) {
                 order: None,
                 disabled: None,
             });
+            let has_settings = ps.order.is_some() || ps.disabled.is_some();
             let order = ps.order.unwrap_or_default();
             let disabled: HashSet<String> = ps.disabled.unwrap_or_default().into_iter().collect();
-            (order, disabled)
+            (order, disabled, has_settings)
         }
-        Err(_) => (Vec::new(), HashSet::new()),
+        Err(_) => (Vec::new(), HashSet::new(), false),
     }
 }
 
 /// Build the ordered list of enabled cached snapshots for GET /v1/usage.
-fn enabled_snapshots_ordered(state: &CacheState) -> Vec<CachedPluginSnapshot> {
-    let (settings_order, disabled) = read_plugin_settings(&state.app_data_dir);
-
-    // If settings are present, use them; otherwise apply defaults.
-    let has_settings = !settings_order.is_empty();
+pub(super) fn enabled_snapshots_ordered(state: &CacheState) -> Vec<CachedPluginSnapshot> {
+    let (settings_order, disabled, has_settings) = read_plugin_settings(&state.app_data_dir);
 
     let default_enabled: HashSet<&str> = DEFAULT_ENABLED_PLUGINS.iter().copied().collect();
 
@@ -195,156 +198,6 @@ fn enabled_snapshots_ordered(state: &CacheState) -> Vec<CachedPluginSnapshot> {
         .filter(|id| is_enabled(id))
         .filter_map(|id| state.snapshots.get(&id).cloned())
         .collect()
-}
-
-// ---------------------------------------------------------------------------
-// HTTP server
-// ---------------------------------------------------------------------------
-
-pub fn start_server() {
-    std::thread::spawn(|| {
-        let listener = match TcpListener::bind(BIND_ADDR) {
-            Ok(l) => {
-                log::info!("local HTTP API listening on {}", BIND_ADDR);
-                l
-            }
-            Err(e) => {
-                log::warn!(
-                    "failed to bind local HTTP API on {}: {} — feature disabled for this session",
-                    BIND_ADDR,
-                    e
-                );
-                return;
-            }
-        };
-
-        for stream in listener.incoming() {
-            match stream {
-                Ok(stream) => handle_connection(stream),
-                Err(e) => log::debug!("local HTTP API accept error: {}", e),
-            }
-        }
-    });
-}
-
-fn handle_connection(mut stream: TcpStream) {
-    // Read request (up to 4 KB is plenty for a request line + headers)
-    let mut buf = [0u8; 4096];
-    let n = match stream.read(&mut buf) {
-        Ok(n) => n,
-        Err(_) => return,
-    };
-    let request = String::from_utf8_lossy(&buf[..n]);
-
-    // Parse request line: "METHOD /path HTTP/1.x\r\n..."
-    let first_line = request.lines().next().unwrap_or("");
-    let mut parts = first_line.split_whitespace();
-    let method = parts.next().unwrap_or("");
-    let raw_path = parts.next().unwrap_or("");
-
-    // Strip query string and trailing slash (but keep root "/v1/usage" intact)
-    let path = raw_path.split('?').next().unwrap_or(raw_path);
-    let path = if path.len() > 1 {
-        path.trim_end_matches('/')
-    } else {
-        path
-    };
-
-    let response = route(method, path);
-    let _ = stream.write_all(response.as_bytes());
-    let _ = stream.flush();
-}
-
-fn route(method: &str, path: &str) -> String {
-    // Match routes
-    if path == "/v1/usage" {
-        return match method {
-            "GET" => handle_get_usage_collection(),
-            "OPTIONS" => response_cors_preflight(),
-            _ => response_method_not_allowed(),
-        };
-    }
-
-    if let Some(provider_id) = path.strip_prefix("/v1/usage/") {
-        if !provider_id.is_empty() && !provider_id.contains('/') {
-            return match method {
-                "GET" => handle_get_usage_single(provider_id),
-                "OPTIONS" => response_cors_preflight(),
-                _ => response_method_not_allowed(),
-            };
-        }
-    }
-
-    response_not_found("not_found")
-}
-
-fn handle_get_usage_collection() -> String {
-    let state = cache_state().lock().expect("cache state poisoned");
-    let snapshots = enabled_snapshots_ordered(&state);
-    let body = serde_json::to_string(&snapshots).unwrap_or_else(|_| "[]".to_string());
-    response_json(200, "OK", &body)
-}
-
-fn handle_get_usage_single(provider_id: &str) -> String {
-    let state = cache_state().lock().expect("cache state poisoned");
-
-    // Check if provider is known at all
-    let is_known = state.known_plugin_ids.iter().any(|id| id == provider_id);
-    if !is_known {
-        return response_not_found("provider_not_found");
-    }
-
-    match state.snapshots.get(provider_id) {
-        Some(snapshot) => {
-            let body = serde_json::to_string(snapshot).unwrap_or_else(|_| "{}".to_string());
-            response_json(200, "OK", &body)
-        }
-        None => response_no_content(),
-    }
-}
-
-// ---------------------------------------------------------------------------
-// HTTP response builders
-// ---------------------------------------------------------------------------
-
-const CORS_HEADERS: &str = "\
-Access-Control-Allow-Origin: *\r\n\
-Access-Control-Allow-Methods: GET, OPTIONS\r\n\
-Access-Control-Allow-Headers: Content-Type";
-
-fn response_json(status: u16, reason: &str, body: &str) -> String {
-    format!(
-        "HTTP/1.1 {} {}\r\nContent-Type: application/json; charset=utf-8\r\n{}\r\nContent-Length: {}\r\n\r\n{}",
-        status,
-        reason,
-        CORS_HEADERS,
-        body.len(),
-        body,
-    )
-}
-
-fn response_no_content() -> String {
-    format!(
-        "HTTP/1.1 204 No Content\r\n{}\r\n\r\n",
-        CORS_HEADERS,
-    )
-}
-
-fn response_cors_preflight() -> String {
-    format!(
-        "HTTP/1.1 204 No Content\r\n{}\r\n\r\n",
-        CORS_HEADERS,
-    )
-}
-
-fn response_not_found(error_code: &str) -> String {
-    let body = format!(r#"{{"error":"{}"}}"#, error_code);
-    response_json(404, "Not Found", &body)
-}
-
-fn response_method_not_allowed() -> String {
-    let body = r#"{"error":"method_not_allowed"}"#;
-    response_json(405, "Method Not Allowed", body)
 }
 
 #[cfg(test)]
@@ -397,7 +250,13 @@ mod tests {
 
     #[test]
     fn load_cache_returns_empty_on_missing_file() {
-        let dir = std::env::temp_dir().join("openusage-test-no-cache");
+        let dir = std::env::temp_dir().join(format!(
+            "openusage-test-no-cache-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         let loaded = load_cache(&dir);
         assert!(loaded.is_empty());
     }
@@ -418,96 +277,6 @@ mod tests {
         assert!(loaded.is_empty());
 
         let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn route_get_usage_returns_200() {
-        let resp = route("GET", "/v1/usage");
-        assert!(resp.starts_with("HTTP/1.1 200"));
-    }
-
-    #[test]
-    fn route_unknown_path_returns_404() {
-        let resp = route("GET", "/v2/something");
-        assert!(resp.starts_with("HTTP/1.1 404"));
-    }
-
-    #[test]
-    fn route_post_returns_405() {
-        let resp = route("POST", "/v1/usage");
-        assert!(resp.starts_with("HTTP/1.1 405"));
-    }
-
-    #[test]
-    fn route_options_returns_204_with_cors() {
-        let resp = route("OPTIONS", "/v1/usage");
-        assert!(resp.starts_with("HTTP/1.1 204"));
-        assert!(resp.contains("Access-Control-Allow-Origin: *"));
-    }
-
-    #[test]
-    fn route_unknown_provider_returns_404() {
-        // Initialize cache state with known plugins
-        {
-            let mut state = cache_state().lock().unwrap();
-            state.known_plugin_ids = vec!["claude".to_string()];
-            state.snapshots.clear();
-        }
-
-        let resp = route("GET", "/v1/usage/nonexistent");
-        assert!(resp.starts_with("HTTP/1.1 404"));
-        assert!(resp.contains("provider_not_found"));
-    }
-
-    #[test]
-    fn route_known_uncached_provider_returns_204() {
-        {
-            let mut state = cache_state().lock().unwrap();
-            state.known_plugin_ids = vec!["claude".to_string()];
-            state.snapshots.clear();
-        }
-
-        let resp = route("GET", "/v1/usage/claude");
-        assert!(resp.starts_with("HTTP/1.1 204"));
-    }
-
-    #[test]
-    fn route_known_cached_provider_returns_200() {
-        {
-            let mut state = cache_state().lock().unwrap();
-            state.known_plugin_ids = vec!["claude".to_string()];
-            state
-                .snapshots
-                .insert("claude".to_string(), make_snapshot("claude", "Claude"));
-        }
-
-        let resp = route("GET", "/v1/usage/claude");
-        assert!(resp.starts_with("HTTP/1.1 200"));
-        assert!(resp.contains("fetchedAt"));
-    }
-
-    #[test]
-    fn route_trailing_slash_tolerated() {
-        let resp = route("GET", "/v1/usage");
-        let resp_slash = route("GET", "/v1/usage");
-        // Both should be 200 (the trailing slash is stripped in handle_connection,
-        // but route itself receives the cleaned path)
-        assert!(resp.starts_with("HTTP/1.1 200"));
-        assert!(resp_slash.starts_with("HTTP/1.1 200"));
-    }
-
-    #[test]
-    fn route_options_on_provider_returns_204() {
-        let resp = route("OPTIONS", "/v1/usage/claude");
-        assert!(resp.starts_with("HTTP/1.1 204"));
-        assert!(resp.contains("Access-Control-Allow-Methods: GET, OPTIONS"));
-    }
-
-    #[test]
-    fn response_json_includes_cors_headers() {
-        let resp = response_json(200, "OK", "[]");
-        assert!(resp.contains("Access-Control-Allow-Origin: *"));
-        assert!(resp.contains("Content-Type: application/json; charset=utf-8"));
     }
 
     #[test]
