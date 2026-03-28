@@ -20,7 +20,7 @@ If neither signal exists, the plugin stays hidden.
 
 ## Data Source
 
-OpenUsage reads the local OpenCode SQLite database directly:
+UsageTray reads the local OpenCode SQLite database directly:
 
 ```sql
 SELECT
@@ -37,7 +37,7 @@ Only assistant messages with numeric `cost` count. Missing remote or other-devic
 
 ## Limits
 
-OpenUsage uses the current published OpenCode Go plan limits from the official docs:
+UsageTray uses the current published OpenCode Go plan limits from the official docs:
 
 - `5h`: `$12`
 - `Weekly`: `$30`
@@ -51,7 +51,7 @@ Bars show observed local spend as a percentage of those fixed limits and clamp a
 - `Weekly`: UTC Monday `00:00` through the next UTC Monday `00:00`
 - `Monthly`: inferred subscription-style monthly window using the earliest local OpenCode Go usage timestamp as the anchor
 
-Monthly usage is inferred from local history, not read from OpenCode’s account API. OpenUsage reuses the earliest observed local OpenCode Go usage timestamp as the monthly anchor. If no local history exists yet, it falls back to UTC calendar month boundaries until the first Go usage is recorded.
+Monthly usage is inferred from local history, not read from OpenCode’s account API. UsageTray reuses the earliest observed local OpenCode Go usage timestamp as the monthly anchor. If no local history exists yet, it falls back to UTC calendar month boundaries until the first Go usage is recorded.
 
 ## Failure Behavior
 
@@ -59,4 +59,4 @@ If auth or prior history already indicates OpenCode Go is in use, but SQLite bec
 
 ## Future Compatibility
 
-The public provider identity stays `opencode-go`. If OpenCode later exposes account-truth usage by API key, OpenUsage can swap the backend without changing the provider ID or UI contract.
+The public provider identity stays `opencode-go`. If OpenCode later exposes account-truth usage by API key, UsageTray can swap the backend without changing the provider ID or UI contract.

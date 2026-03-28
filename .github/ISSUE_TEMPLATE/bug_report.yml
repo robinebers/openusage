@@ -1,5 +1,5 @@
 name: Bug Report
-description: Report a bug in OpenUsage
+description: Report a bug in UsageTray
 labels: ["bug"]
 body:
   - type: markdown
@@ -20,7 +20,7 @@ body:
       label: Steps to Reproduce
       description: How can we reproduce this?
       placeholder: |
-        1. Open OpenUsage
+        1. Open UsageTray
         2. Go to ...
         3. Click on ...
         4. See error
@@ -43,7 +43,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: OpenUsage Version
+      label: UsageTray Version
       description: Which version are you running? (Check Settings or About)
       placeholder: "e.g. 0.4.2"
     validations:
@@ -53,8 +53,8 @@ body:
     attributes:
       label: Operating System
       options:
-        - macOS (Apple Silicon)
-        - macOS (Intel)
+        - Windows 11
+        - Windows 10
     validations:
       required: true
   - type: textarea

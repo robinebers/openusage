@@ -24,7 +24,7 @@ From `quotaInfo`:
 
 From `nextRefill`:
 - `tariff.duration` -> period duration when present (for pacing in UI)
-- `next` -> primary renewal/reset timestamp used in OpenUsage
+- `next` -> primary renewal/reset timestamp used in UsageTray
 
 From nested quota buckets:
 - `tariffQuota.available` + `topUpQuota.available` are used as remaining when top-level `available` is missing.

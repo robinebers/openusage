@@ -2,19 +2,15 @@
 
 ## Reporting a Vulnerability
 
-If you find a security vulnerability in OpenUsage, please report it responsibly. Do not open a public issue.
+If you find a security vulnerability in UsageTray, please report it responsibly. Do not open a public issue.
 
 ### Preferred: GitHub Security Advisories
 
-1. Go to the [Security Advisories page](https://github.com/robinebers/openusage/security/advisories/new)
+1. Go to the [Security Advisories page](https://github.com/Rana-Faraz/usage-tray-windows/security/advisories/new)
 2. Click "Report a vulnerability"
 3. Fill in the details
 
 This keeps the report private until a fix is released.
-
-### Alternative: Email
-
-Send details to [rob@robinebers.com](mailto:rob@robinebers.com) with the subject line "OpenUsage Security Report".
 
 ## What to Include
 
@@ -33,8 +29,8 @@ Send details to [rob@robinebers.com](mailto:rob@robinebers.com) with the subject
 
 The following are in scope:
 
-- The OpenUsage desktop application
-- Provider plugins shipped with OpenUsage
+- The UsageTray desktop application
+- Provider plugins shipped with UsageTray
 - Build and release infrastructure
 
 The following are out of scope:

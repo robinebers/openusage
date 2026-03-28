@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { makePluginTestContext } from "../test-helpers.js";
 
+const KEYCHAIN_SERVICE = "UsageTray-copilot";
+const LEGACY_KEYCHAIN_SERVICE = "OpenUsage-copilot";
+
 const loadPlugin = async () => {
   await import("./plugin.js");
   return globalThis.__openusage_plugin;
@@ -30,7 +33,7 @@ function makeUsageResponse(overrides = {}) {
 
 function setKeychainToken(ctx, token) {
   ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
-    if (service === "OpenUsage-copilot") return JSON.stringify({ token });
+    if (service === KEYCHAIN_SERVICE || service === LEGACY_KEYCHAIN_SERVICE) return JSON.stringify({ token });
     return null;
   });
 }
@@ -68,7 +71,7 @@ describe("copilot plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Not logged in. Run `gh auth login` first.");
   });
 
-  it("loads token from OpenUsage keychain", async () => {
+  it("loads token from UsageTray keychain", async () => {
     const ctx = makePluginTestContext();
     setKeychainToken(ctx, "ghu_keychain");
     mockUsageOk(ctx);
@@ -116,7 +119,7 @@ describe("copilot plugin", () => {
   it("prefers keychain over gh-cli", async () => {
     const ctx = makePluginTestContext();
     ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
-      if (service === "OpenUsage-copilot")
+      if (service === KEYCHAIN_SERVICE)
         return JSON.stringify({ token: "ghu_keychain" });
       if (service === "gh:github.com") return "gho_ghcli";
       return null;
@@ -146,7 +149,7 @@ describe("copilot plugin", () => {
     const plugin = await loadPlugin();
     plugin.probe(ctx);
     expect(ctx.host.keychain.writeGenericPassword).toHaveBeenCalledWith(
-      "OpenUsage-copilot",
+      KEYCHAIN_SERVICE,
       JSON.stringify({ token: "gho_persist" }),
     );
     const stateFile = ctx.host.fs.readText(
@@ -155,7 +158,7 @@ describe("copilot plugin", () => {
     expect(JSON.parse(stateFile).token).toBe("gho_persist");
   });
 
-  it("does not persist token loaded from OpenUsage keychain", async () => {
+  it("does not persist token loaded from UsageTray keychain", async () => {
     const ctx = makePluginTestContext();
     setKeychainToken(ctx, "ghu_already");
     mockUsageOk(ctx);
@@ -455,7 +458,7 @@ describe("copilot plugin", () => {
     let callCount = 0;
     // First call returns stale keychain token, second call returns fresh gh-cli token
     ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
-      if (service === "OpenUsage-copilot") {
+      if (service === KEYCHAIN_SERVICE) {
         return JSON.stringify({ token: "stale_token" });
       }
       if (service === "gh:github.com") {
@@ -476,7 +479,8 @@ describe("copilot plugin", () => {
     expect(result.lines.find((l) => l.label === "Premium")).toBeTruthy();
     expect(callCount).toBe(2);
     // Should have cleared the stale token
-    expect(ctx.host.keychain.deleteGenericPassword).toHaveBeenCalledWith("OpenUsage-copilot");
+    expect(ctx.host.keychain.deleteGenericPassword).toHaveBeenCalledWith(KEYCHAIN_SERVICE);
+    expect(ctx.host.keychain.deleteGenericPassword).toHaveBeenCalledWith(LEGACY_KEYCHAIN_SERVICE);
     // Should have saved the fresh token
     expect(ctx.host.keychain.writeGenericPassword).toHaveBeenCalled();
   });
@@ -484,7 +488,7 @@ describe("copilot plugin", () => {
   it("throws when stale keychain token and no fallback available", async () => {
     const ctx = makePluginTestContext();
     ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
-      if (service === "OpenUsage-copilot") {
+      if (service === KEYCHAIN_SERVICE) {
         return JSON.stringify({ token: "stale_token" });
       }
       return null; // No gh-cli fallback
@@ -494,10 +498,10 @@ describe("copilot plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Token invalid");
   });
 
-  it("falls back when OpenUsage keychain payload lacks token field", async () => {
+  it("falls back when UsageTray keychain payload lacks token field", async () => {
     const ctx = makePluginTestContext();
     ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
-      if (service === "OpenUsage-copilot") return JSON.stringify({ notToken: "x" });
+      if (service === KEYCHAIN_SERVICE) return JSON.stringify({ notToken: "x" });
       if (service === "gh:github.com") return "gho_fallback";
       return null;
     });

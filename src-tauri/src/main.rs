@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    openusage_windows_lib::run()
+    usage_tray_windows_lib::run()
 }

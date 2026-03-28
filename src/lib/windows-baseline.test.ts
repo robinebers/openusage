@@ -12,9 +12,9 @@ describe("windows baseline", () => {
   it("forks the app identity and removes updater metadata from tauri config", () => {
     const tauriConfig = JSON.parse(readRepoFile("src-tauri/tauri.conf.json"))
 
-    expect(tauriConfig.productName).toBe("OpenUsage Windows")
-    expect(tauriConfig.identifier).toBe("com.rfara.openusagewindows")
-    expect(tauriConfig.app.windows[0].title).toBe("OpenUsage Windows")
+    expect(tauriConfig.productName).toBe("UsageTray")
+    expect(tauriConfig.identifier).toBe("com.rfara.usagetraywindows")
+    expect(tauriConfig.app.windows[0].title).toBe("UsageTray")
     expect(tauriConfig.app.macOSPrivateApi).toBeUndefined()
     expect(tauriConfig.bundle.createUpdaterArtifacts).toBe(false)
     expect(tauriConfig.plugins?.updater).toBeUndefined()
@@ -23,7 +23,7 @@ describe("windows baseline", () => {
   it("keeps the repo on Bun while removing telemetry and updater packages", () => {
     const packageJson = JSON.parse(readRepoFile("package.json"))
 
-    expect(packageJson.name).toBe("openusage-windows")
+    expect(packageJson.name).toBe("usage-tray-windows")
     expect(packageJson.scripts.bundlePlugins ?? packageJson.scripts["bundle:plugins"]).toBeDefined()
     expect(packageJson.dependencies["@aptabase/tauri"]).toBeUndefined()
     expect(packageJson.dependencies["@tauri-apps/plugin-updater"]).toBeUndefined()

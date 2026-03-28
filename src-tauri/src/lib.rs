@@ -446,7 +446,7 @@ pub fn run() {
             use tauri::Manager;
 
             let version = app.package_info().version.to_string();
-            log::info!("OpenUsage Windows v{} starting", version);
+    log::info!("UsageTray v{} starting", version);
 
             let app_data_dir = app.path().app_data_dir().expect("no app data dir");
             let resource_dir = app.path().resource_dir().expect("no resource dir");

@@ -36,7 +36,7 @@ export const WINDOWS_PROVIDER_SUPPORT: Record<string, WindowsProviderSupport> = 
     status: "v1",
     detectionStrategy: "Primary file check at `~/.claude/.credentials.json`; Windows keychain fallback is out of v1 scope.",
     dependencies: ["Claude Code signed in locally", "optional `ccusage` runner for token history"],
-    note: "No local Claude login was detected yet. OpenUsage Windows checks `~/.claude/.credentials.json`. Sign in with `claude` first.",
+    note: "No local Claude login was detected yet. UsageTray checks `~/.claude/.credentials.json`. Sign in with `claude` first.",
   },
   codex: {
     status: "v1",
@@ -46,7 +46,7 @@ export const WINDOWS_PROVIDER_SUPPORT: Record<string, WindowsProviderSupport> = 
   },
   copilot: {
     status: "planned",
-    detectionStrategy: "GitHub CLI or OpenUsage-managed credential storage.",
+    detectionStrategy: "GitHub CLI or UsageTray-managed credential storage.",
     dependencies: ["GitHub CLI auth or Windows credential bridge"],
     note: "Windows credential-manager support needs to land before Copilot can be promoted to the first support wave.",
   },

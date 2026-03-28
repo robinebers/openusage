@@ -675,13 +675,13 @@ describe("App", () => {
     render(<App />)
 
     // Open about via version button in footer
-    await userEvent.click(await screen.findByRole("button", { name: /OpenUsage/i }))
-    await screen.findByText("Built by")
+    await userEvent.click(await screen.findByRole("button", { name: /UsageTray/i }))
+    await screen.findByText("Maintained by")
 
     // Close about via ESC key
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }))
     await waitFor(() => {
-      expect(screen.queryByText("Built by")).not.toBeInTheDocument()
+      expect(screen.queryByText("Maintained by")).not.toBeInTheDocument()
     })
   })
 

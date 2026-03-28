@@ -110,24 +110,23 @@ export function AboutDialog({ version, onClose }: AboutDialogProps) {
 
         <div className="text-sm text-muted-foreground space-y-1">
           <p>
-            Built by{" "}
-            <ExternalLink href="https://itsbyrob.in/x">Robin Ebers</ExternalLink>
+            Maintained by{" "}
+            <ExternalLink href="https://github.com/Rana-Faraz">Rana-Faraz</ExternalLink>
           </p>
           <p>
-            Open source on{" "}
+            Unofficial Windows fork of{" "}
+            <ExternalLink href="https://github.com/robinebers/openusage">
+              OpenUsage
+            </ExternalLink>
+          </p>
+          <p>
+            Source on{" "}
             <ExternalLink href={REPO_URL}>
               GitHub
             </ExternalLink>
           </p>
           <p className="text-xs pt-1">
-            Maintainers:{" "}
-            <ExternalLink href="https://github.com/validatedev">
-              validatedev
-            </ExternalLink>
-            ,{" "}
-            <ExternalLink href="https://github.com/davidarny">
-              davidarny
-            </ExternalLink>
+            Not affiliated with or endorsed by the original OpenUsage project.
           </p>
         </div>
       </div>
