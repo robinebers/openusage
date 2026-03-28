@@ -102,6 +102,17 @@ describe("settings", () => {
     expect(result.disabled).toEqual(["copilot", "windsurf"])
   })
 
+  it("keeps the mock plugin enabled when it is the only available shell-spike provider", () => {
+    const plugins: PluginMeta[] = [
+      { id: "mock", name: "Mock", iconUrl: "", lines: [], primaryCandidates: [] },
+    ]
+
+    const result = normalizePluginSettings({ order: [], disabled: [] }, plugins)
+
+    expect(result.order).toEqual(["mock"])
+    expect(result.disabled).toEqual([])
+  })
+
   it("compares settings equality", () => {
     const a = { order: ["a"], disabled: [] }
     const b = { order: ["a"], disabled: [] }

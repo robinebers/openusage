@@ -1168,28 +1168,20 @@ describe("App", () => {
     await waitFor(() => expect(state.setSizeMock).toHaveBeenCalled())
   })
 
-  it("resizes again via ResizeObserver callback", async () => {
+  it("uses a fixed panel height instead of content-driven resizing", async () => {
     state.isTauriMock.mockReturnValue(true)
-    const OriginalResizeObserver = globalThis.ResizeObserver
-    const observeSpy = vi.fn()
-    globalThis.ResizeObserver = class ResizeObserverImmediate {
-      private cb: ResizeObserverCallback
-      constructor(cb: ResizeObserverCallback) {
-        this.cb = cb
-      }
-      observe() {
-        observeSpy()
-        this.cb([], this as unknown as ResizeObserver)
-      }
-      unobserve() {}
-      disconnect() {}
-    } as unknown as typeof ResizeObserver
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() {
+        return 2000
+      },
+    })
 
     render(<App />)
-    await waitFor(() => expect(observeSpy).toHaveBeenCalled())
     await waitFor(() => expect(state.setSizeMock).toHaveBeenCalled())
-
-    globalThis.ResizeObserver = OriginalResizeObserver
+    const firstSize = state.setSizeMock.mock.calls[0]?.[0]
+    expect(firstSize?.width).toBe(400)
+    expect(firstSize?.height).toBe(500)
   })
 
   it("logs resize failures", async () => {
@@ -1328,7 +1320,6 @@ describe("App", () => {
 
   it("fires auto-update interval and schedules next", async () => {
     vi.useFakeTimers()
-    // Set a very short interval for testing (5 min = 300000ms)
     state.loadAutoUpdateIntervalMock.mockResolvedValueOnce(5)
     state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a"], disabled: [] })
 

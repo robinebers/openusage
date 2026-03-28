@@ -1,222 +1,264 @@
-use tauri::{AppHandle, Manager, Position, Size};
-use tauri_nspanel::{tauri_panel, CollectionBehavior, ManagerExt, PanelLevel, StyleMask, WebviewWindowExt};
+use std::sync::OnceLock;
 
-/// Macro to get existing panel or initialize it if needed.
-/// Returns Option<Panel> - Some if panel is available, None on error.
-macro_rules! get_or_init_panel {
-    ($app_handle:expr) => {
-        match $app_handle.get_webview_panel("main") {
-            Ok(panel) => Some(panel),
-            Err(_) => {
-                if let Err(err) = crate::panel::init($app_handle) {
-                    log::error!("Failed to init panel: {}", err);
-                    None
-                } else {
-                    match $app_handle.get_webview_panel("main") {
-                        Ok(panel) => Some(panel),
-                        Err(err) => {
-                            log::error!("Panel missing after init: {:?}", err);
-                            None
-                        }
-                    }
-                }
-            }
-        }
-    };
+use tauri::window::Monitor;
+use tauri::{AppHandle, Manager, Position, Size, WebviewWindow, WindowEvent};
+
+const PANEL_GAP: f64 = 12.0;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct PanelPlacement {
+    x: f64,
+    y: f64,
 }
 
-// Export macro for use in other modules
-pub(crate) use get_or_init_panel;
+#[derive(Debug, Clone, Copy)]
+struct PhysicalRect {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
 
-/// Show the panel (initializing if needed).
-pub fn show_panel(app_handle: &AppHandle) {
-    if let Some(panel) = get_or_init_panel!(app_handle) {
-        panel.show_and_make_key();
+fn main_window(app_handle: &AppHandle) -> Option<WebviewWindow> {
+    app_handle.get_webview_window("main")
+}
+
+fn blur_handler_registered() -> &'static OnceLock<()> {
+    static REGISTERED: OnceLock<()> = OnceLock::new();
+    &REGISTERED
+}
+
+fn physical_position_components(position: &Position) -> (f64, f64) {
+    match position {
+        Position::Physical(pos) => (pos.x as f64, pos.y as f64),
+        Position::Logical(pos) => (pos.x, pos.y),
     }
 }
 
-/// Toggle panel visibility. If visible, hide it. If hidden, show it.
-/// Used by global shortcut handler.
-pub fn toggle_panel(app_handle: &AppHandle) {
-    let Some(panel) = get_or_init_panel!(app_handle) else {
-        return;
-    };
+fn physical_size_components(size: &Size) -> (f64, f64) {
+    match size {
+        Size::Physical(size) => (size.width as f64, size.height as f64),
+        Size::Logical(size) => (size.width, size.height),
+    }
+}
 
-    if panel.is_visible() {
-        log::debug!("toggle_panel: hiding panel");
-        panel.hide();
+fn panel_size(window: &WebviewWindow, monitor_scale_factor: f64) -> (f64, f64) {
+    match window.outer_size() {
+        Ok(size) => (size.width as f64, size.height as f64),
+        Err(_) => {
+            let conf: serde_json::Value =
+                serde_json::from_str(include_str!("../tauri.conf.json"))
+                    .expect("tauri.conf.json must be valid JSON");
+            let configured_width = conf["app"]["windows"][0]["width"]
+                .as_f64()
+                .expect("width must be set in tauri.conf.json");
+            let configured_height = conf["app"]["windows"][0]["height"]
+                .as_f64()
+                .expect("height must be set in tauri.conf.json");
+
+            (
+                configured_width * monitor_scale_factor,
+                configured_height * monitor_scale_factor,
+            )
+        }
+    }
+}
+
+fn monitor_work_area_rect(monitor: &Monitor) -> PhysicalRect {
+    let work_area = monitor.work_area();
+    PhysicalRect {
+        x: work_area.position.x as f64,
+        y: work_area.position.y as f64,
+        width: work_area.size.width as f64,
+        height: work_area.size.height as f64,
+    }
+}
+
+fn calculate_panel_position(
+    icon_x: f64,
+    icon_y: f64,
+    icon_width: f64,
+    icon_height: f64,
+    panel_width: f64,
+    panel_height: f64,
+    work_area_x: f64,
+    work_area_y: f64,
+    work_area_width: f64,
+    work_area_height: f64,
+) -> PanelPlacement {
+    let work_area_right = work_area_x + work_area_width;
+    let work_area_bottom = work_area_y + work_area_height;
+
+    let centered_x = icon_x + (icon_width / 2.0) - (panel_width / 2.0);
+    let max_x = (work_area_right - panel_width).max(work_area_x);
+    let clamped_x = centered_x.clamp(work_area_x, max_x);
+
+    let preferred_below_y = icon_y + icon_height + PANEL_GAP;
+    let preferred_above_y = icon_y - panel_height - PANEL_GAP;
+    let fits_below = preferred_below_y + panel_height <= work_area_bottom;
+    let fits_above = preferred_above_y >= work_area_y;
+
+    let y = if fits_below {
+        preferred_below_y
+    } else if fits_above {
+        preferred_above_y
     } else {
-        log::debug!("toggle_panel: showing panel");
-        panel.show_and_make_key();
-    }
+        let max_y = (work_area_bottom - panel_height).max(work_area_y);
+        preferred_above_y.clamp(work_area_y, max_y)
+    };
+
+    PanelPlacement { x: clamped_x, y }
 }
 
-// Define our panel class and event handler together
-tauri_panel! {
-    panel!(OpenUsagePanel {
-        config: {
-            can_become_key_window: true,
-            is_floating_panel: true
-        }
-    })
-
-    panel_event!(OpenUsagePanelEventHandler {
-        window_did_resign_key(notification: &NSNotification) -> ()
-    })
-}
-
-pub fn init(app_handle: &tauri::AppHandle) -> tauri::Result<()> {
-    if app_handle.get_webview_panel("main").is_ok() {
+pub fn init(app_handle: &AppHandle) -> tauri::Result<()> {
+    let Some(window) = main_window(app_handle) else {
+        log::error!("main window not available during panel init");
         return Ok(());
+    };
+
+    window.set_skip_taskbar(true)?;
+    window.set_always_on_top(true)?;
+    let _ = window.set_shadow(false);
+    if blur_handler_registered().set(()).is_ok() {
+        let handle = app_handle.clone();
+        window.on_window_event(move |event| {
+            if matches!(event, WindowEvent::Focused(false)) {
+                hide_panel(&handle);
+            }
+        });
     }
-
-    let window = app_handle.get_webview_window("main").unwrap();
-
-    let panel = window.to_panel::<OpenUsagePanel>()?;
-
-    // Disable native shadow - it causes gray border on transparent windows
-    // Let CSS handle shadow via shadow-xl class
-    panel.set_has_shadow(false);
-    panel.set_opaque(false);
-
-    // Configure panel behavior
-    panel.set_level(PanelLevel::MainMenu.value() + 1);
-
-    panel.set_collection_behavior(
-        CollectionBehavior::new()
-            .move_to_active_space()
-            .full_screen_auxiliary()
-            .value(),
-    );
-
-    panel.set_style_mask(StyleMask::empty().nonactivating_panel().value());
-
-    // Set up event handler to hide panel when it loses focus
-    let event_handler = OpenUsagePanelEventHandler::new();
-
-    let handle = app_handle.clone();
-    event_handler.window_did_resign_key(move |_notification| {
-        if let Ok(panel) = handle.get_webview_panel("main") {
-            panel.hide();
-        }
-    });
-
-    panel.set_event_handler(Some(event_handler.as_ref()));
 
     Ok(())
 }
 
-pub fn position_panel_at_tray_icon(
-    app_handle: &tauri::AppHandle,
-    icon_position: Position,
-    icon_size: Size,
-) {
-    let window = app_handle.get_webview_window("main").unwrap();
-
-    // Tray icon events on macOS report coordinates in a hybrid physical space where
-    // each monitor region uses its own scale (logical_pos × scale = physical origin).
-    // On mixed-DPI setups this creates overlapping regions, making it impossible to
-    // reliably determine the correct monitor from tray coordinates alone.
-    //
-    // Instead, we use NSEvent::mouseLocation() which returns the cursor position in
-    // macOS's unified logical (point) coordinate space — always unambiguous regardless
-    // of how many monitors or scale factors are involved. We find which monitor
-    // contains the cursor, then convert the tray icon's physical coordinates to
-    // logical coordinates within that monitor.
-
-    let (icon_phys_x, icon_phys_y) = match &icon_position {
-        Position::Physical(pos) => (pos.x as f64, pos.y as f64),
-        Position::Logical(pos) => (pos.x, pos.y),
-    };
-    let (icon_phys_w, icon_phys_h) = match &icon_size {
-        Size::Physical(s) => (s.width as f64, s.height as f64),
-        Size::Logical(s) => (s.width, s.height),
+pub fn show_panel(app_handle: &AppHandle) {
+    let Some(window) = main_window(app_handle) else {
+        log::error!("main window not available while showing panel");
+        return;
     };
 
-    // Get the cursor's logical position via NSEvent — this is in macOS's flipped
-    // coordinate system (origin at bottom-left of primary screen).
-    let mouse_logical = objc2_app_kit::NSEvent::mouseLocation();
-
-    // Convert from macOS bottom-left origin to top-left origin used by Tauri.
-    // Primary screen height (in points) defines the flip axis.
-    let monitors = window.available_monitors().expect("failed to get monitors");
-    let primary_logical_h = window
-        .primary_monitor()
-        .ok()
-        .flatten()
-        .map(|m| m.size().height as f64 / m.scale_factor())
-        .unwrap_or(0.0);
-
-    let mouse_x = mouse_logical.x;
-    let mouse_y = primary_logical_h - mouse_logical.y;
-
-    // Find the monitor containing the cursor in logical space (no ambiguity).
-    let mut found_monitor = None;
-    for m in &monitors {
-        let pos = m.position();
-        let scale = m.scale_factor();
-        let logical_w = m.size().width as f64 / scale;
-        let logical_h = m.size().height as f64 / scale;
-
-        let logical_x = pos.x as f64 / scale;
-        let logical_y = pos.y as f64 / scale;
-        let x_in = mouse_x >= logical_x && mouse_x < logical_x + logical_w;
-        let y_in = mouse_y >= logical_y && mouse_y < logical_y + logical_h;
-
-        if x_in && y_in {
-            found_monitor = Some(m.clone());
-            break;
-        }
+    if let Err(err) = init(app_handle) {
+        log::error!("Failed to initialize panel state: {}", err);
+        return;
     }
 
-    let monitor = match found_monitor {
-        Some(m) => m,
+    let _ = window.unminimize();
+    if let Err(err) = window.show() {
+        log::error!("Failed to show panel: {}", err);
+        return;
+    }
+
+    if let Err(err) = window.set_focus() {
+        log::warn!("Failed to focus panel: {}", err);
+    }
+}
+
+pub fn hide_panel(app_handle: &AppHandle) {
+    let Some(window) = main_window(app_handle) else {
+        log::error!("main window not available while hiding panel");
+        return;
+    };
+
+    if let Err(err) = window.hide() {
+        log::warn!("Failed to hide panel: {}", err);
+    }
+}
+
+pub fn toggle_panel(app_handle: &AppHandle) {
+    let Some(window) = main_window(app_handle) else {
+        log::error!("main window not available while toggling panel");
+        return;
+    };
+
+    match window.is_visible() {
+        Ok(true) => {
+            log::debug!("toggle_panel: hiding panel");
+            hide_panel(app_handle);
+        }
+        Ok(false) => {
+            log::debug!("toggle_panel: showing panel");
+            show_panel(app_handle);
+        }
+        Err(err) => {
+            log::warn!("Failed to read panel visibility: {}", err);
+            show_panel(app_handle);
+        }
+    }
+}
+
+pub fn position_panel_at_tray_icon(app_handle: &AppHandle, icon_position: Position, icon_size: Size) {
+    let Some(window) = main_window(app_handle) else {
+        log::error!("main window not available while positioning panel");
+        return;
+    };
+
+    let (icon_x, icon_y) = physical_position_components(&icon_position);
+    let (icon_width, icon_height) = physical_size_components(&icon_size);
+    let icon_center_x = icon_x + (icon_width / 2.0);
+    let icon_center_y = icon_y + (icon_height / 2.0);
+
+    let monitor = match window
+        .monitor_from_point(icon_center_x, icon_center_y)
+        .ok()
+        .flatten()
+        .or_else(|| window.current_monitor().ok().flatten())
+        .or_else(|| window.primary_monitor().ok().flatten())
+    {
+        Some(monitor) => monitor,
         None => {
-            log::warn!(
-                "No monitor found for cursor at ({:.0}, {:.0}), using primary",
-                mouse_x, mouse_y
-            );
-            match window.primary_monitor() {
-                Ok(Some(m)) => m,
-                _ => return,
+            log::warn!("No monitor found while positioning panel");
+            return;
+        }
+    };
+
+    let work_area = monitor_work_area_rect(&monitor);
+    let (panel_width, panel_height) = panel_size(&window, monitor.scale_factor());
+    let placement = calculate_panel_position(
+        icon_x,
+        icon_y,
+        icon_width,
+        icon_height,
+        panel_width,
+        panel_height,
+        work_area.x,
+        work_area.y,
+        work_area.width,
+        work_area.height,
+    );
+
+    if let Err(err) = window.set_position(tauri::PhysicalPosition::new(
+        placement.x.round() as i32,
+        placement.y.round() as i32,
+    )) {
+        log::warn!("Failed to position panel: {}", err);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{calculate_panel_position, PanelPlacement};
+
+    #[test]
+    fn positions_panel_above_bottom_tray_icons_and_clamps_right_edge() {
+        let placement = calculate_panel_position(
+            1840.0, 1040.0, 24.0, 24.0, 400.0, 500.0, 0.0, 0.0, 1920.0, 1080.0,
+        );
+
+        assert_eq!(
+            placement,
+            PanelPlacement {
+                x: 1520.0,
+                y: 528.0,
             }
-        }
-    };
+        );
+    }
 
-    let target_scale = monitor.scale_factor();
-    let mon_logical_x = monitor.position().x as f64;
-    let mon_logical_y = monitor.position().y as f64;
+    #[test]
+    fn positions_panel_below_top_tray_icons_and_clamps_left_edge() {
+        let placement = calculate_panel_position(
+            8.0, 10.0, 24.0, 24.0, 400.0, 500.0, 0.0, 0.0, 1920.0, 1080.0,
+        );
 
-    // Convert tray icon physical coords to logical within the identified monitor.
-    // Physical origin of this monitor in the hybrid tray coordinate space:
-    let phys_origin_x = mon_logical_x * target_scale;
-    let phys_origin_y = mon_logical_y * target_scale;
-
-    let icon_logical_x = mon_logical_x + (icon_phys_x - phys_origin_x) / target_scale;
-    let icon_logical_y = mon_logical_y + (icon_phys_y - phys_origin_y) / target_scale;
-    let icon_logical_w = icon_phys_w / target_scale;
-    let icon_logical_h = icon_phys_h / target_scale;
-
-    // Read panel width from the window, converted to logical points.
-    // outer_size() returns physical pixels at the window's current scale factor.
-    // If the window isn't available yet, parse the configured width from tauri.conf.json
-    // (embedded at compile time) so it stays in sync automatically.
-    let panel_width = match (window.outer_size(), window.scale_factor()) {
-        (Ok(s), Ok(win_scale)) => s.width as f64 / win_scale,
-        _ => {
-            let conf: serde_json::Value =
-                serde_json::from_str(include_str!("../tauri.conf.json"))
-                    .expect("tauri.conf.json must be valid JSON");
-            conf["app"]["windows"][0]["width"]
-                .as_f64()
-                .expect("width must be set in tauri.conf.json")
-        }
-    };
-
-    let icon_center_x = icon_logical_x + (icon_logical_w / 2.0);
-    let panel_x = icon_center_x - (panel_width / 2.0);
-    let nudge_up: f64 = 6.0;
-    let panel_y = icon_logical_y + icon_logical_h - nudge_up;
-
-    let _ = window.set_position(tauri::LogicalPosition::new(panel_x, panel_y));
+        assert_eq!(placement, PanelPlacement { x: 0.0, y: 46.0 });
+    }
 }

@@ -26,6 +26,40 @@ describe("cursor plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Not logged in")
   })
 
+  it("uses the Windows Cursor state database path when available", async () => {
+    const ctx = makeCtx()
+    ctx.app.platform = "windows"
+    ctx.host.windows.knownPath.mockImplementation((name) =>
+      name === "appData" ? "C:/Users/tester/AppData/Roaming" : null
+    )
+    ctx.host.sqlite.query.mockImplementation((db, sql) => {
+      expect(db).toBe("C:/Users/tester/AppData/Roaming/Cursor/User/globalStorage/state.vscdb")
+      if (String(sql).includes("cursorAuth/accessToken")) {
+        return JSON.stringify([{ value: makeJwt({ sub: "github|user", exp: 9999999999 }) }])
+      }
+      if (String(sql).includes("cursorAuth/refreshToken")) {
+        return JSON.stringify([{ value: "refresh-token" }])
+      }
+      return JSON.stringify([])
+    })
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            enabled: true,
+            planUsage: { totalSpend: 1200, limit: 2400 },
+          }),
+        }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Total usage")).toBeTruthy()
+  })
+
   it("loads tokens from keychain when sqlite has none", async () => {
     const ctx = makeCtx()
     ctx.host.sqlite.query.mockReturnValue(JSON.stringify([]))

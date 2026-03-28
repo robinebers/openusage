@@ -9,8 +9,6 @@ import { usePanel } from "@/hooks/app/use-panel"
 import { useAppUpdate } from "@/hooks/use-app-update"
 import { useAppUiStore } from "@/stores/app-ui-store"
 
-const ARROW_OVERHEAD_PX = 37
-
 type AppShellProps = {
   onRefreshAll: () => void
   navPlugins: NavPlugin[]
@@ -54,24 +52,25 @@ export function AppShell({
     containerRef,
     scrollRef,
     canScrollDown,
-    maxPanelHeightPx,
+    panelHeightPx,
   } = usePanel({
     activeView,
     setActiveView,
     showAbout,
     setShowAbout,
-    displayPlugins,
   })
 
   const appVersion = useAppVersion()
   const { updateStatus, triggerInstall, checkForUpdates } = useAppUpdate()
 
   return (
-    <div ref={containerRef} className="flex flex-col items-center p-6 pt-1.5 bg-transparent">
-      <div className="tray-arrow" />
+    <div
+      ref={containerRef}
+      className="flex h-full flex-col items-center p-6 bg-transparent"
+      style={{ height: `${panelHeightPx}px` }}
+    >
       <div
-        className="relative bg-card rounded-xl overflow-hidden select-none w-full border shadow-lg flex flex-col"
-        style={maxPanelHeightPx ? { maxHeight: `${maxPanelHeightPx - ARROW_OVERHEAD_PX}px` } : undefined}
+        className="relative bg-card rounded-xl overflow-hidden select-none w-full border shadow-lg flex flex-1 flex-col"
       >
         <div className="flex flex-1 min-h-0 flex-row">
           <SideNav

@@ -34,7 +34,7 @@ describe("tray-tooltip", () => {
     ]
 
     it("should show app name when no bars", () => {
-      expect(formatTrayTooltip([], mockMeta)).toBe("OpenUsage")
+    expect(formatTrayTooltip([], mockMeta)).toBe("OpenUsage Windows")
     })
 
     it("should list enabled plugins with percentages", () => {
@@ -43,7 +43,7 @@ describe("tray-tooltip", () => {
         { id: "p2", fraction: 0.12 },
       ]
       const tooltip = formatTrayTooltip(bars, mockMeta)
-      expect(tooltip).toBe("OpenUsage\nPlugin 1: 45%\nPlugin 2: 12%")
+    expect(tooltip).toBe("OpenUsage Windows\nPlugin 1: 45%\nPlugin 2: 12%")
     })
 
     it("should handle missing plugin metadata gracefully", () => {
@@ -52,7 +52,7 @@ describe("tray-tooltip", () => {
         { id: "unknown", fraction: 0.5 },
       ]
       const tooltip = formatTrayTooltip(bars, mockMeta)
-      expect(tooltip).toBe("OpenUsage\nPlugin 1: 45%")
+    expect(tooltip).toBe("OpenUsage Windows\nPlugin 1: 45%")
     })
 
     it("should show --% for missing fractions", () => {
@@ -60,7 +60,7 @@ describe("tray-tooltip", () => {
         { id: "p1", fraction: undefined },
       ]
       const tooltip = formatTrayTooltip(bars, mockMeta)
-      expect(tooltip).toBe("OpenUsage\nPlugin 1: --%")
+    expect(tooltip).toBe("OpenUsage Windows\nPlugin 1: --%")
     })
   })
 })

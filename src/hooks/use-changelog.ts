@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { REPO_API_RELEASES_BASE_URL } from "@/lib/app-metadata"
 
 export interface Release {
   id: number
@@ -10,9 +11,7 @@ export interface Release {
 }
 
 async function fetchReleaseByTag(tag: string): Promise<Release | null> {
-  const url = `https://api.github.com/repos/robinebers/openusage/releases/tags/${encodeURIComponent(
-    tag,
-  )}`
+  const url = `${REPO_API_RELEASES_BASE_URL}/tags/${encodeURIComponent(tag)}`
   const res = await fetch(url)
 
   if (res.status === 404) {

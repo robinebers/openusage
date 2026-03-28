@@ -1,6 +1,8 @@
 use rquickjs::{Ctx, Exception, Function, Object};
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
@@ -13,6 +15,159 @@ const WHITELISTED_ENV_VARS: [&str; 6] = [
     "MINIMAX_API_TOKEN",
     "MINIMAX_CN_API_KEY",
 ];
+const PLUGIN_SHELL_SETTINGS_KEY: &str = "windowsPluginShellEnabled";
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct WindowsProcessInfo {
+    name: String,
+    pid: u32,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ShellExecRequest {
+    program: String,
+    #[serde(default)]
+    args: Vec<String>,
+    cwd: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ShellExecResponse {
+    status: i32,
+    stdout: String,
+    stderr: String,
+}
+
+fn env_flag_enabled(name: &str) -> bool {
+    match std::env::var(name) {
+        Ok(value) => matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        ),
+        Err(_) => false,
+    }
+}
+
+fn shell_execution_allowed(app_data_dir: &Path) -> bool {
+    if env_flag_enabled("OPENUSAGE_WINDOWS_ENABLE_PLUGIN_SHELL") {
+        return true;
+    }
+
+    let settings_path = app_data_dir.join("settings.json");
+    let Ok(settings_text) = std::fs::read_to_string(settings_path) else {
+        return false;
+    };
+    let Ok(settings_json) = serde_json::from_str::<serde_json::Value>(&settings_text) else {
+        return false;
+    };
+
+    settings_json
+        .get(PLUGIN_SHELL_SETTINGS_KEY)
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false)
+}
+
+fn configure_background_command(command: &mut Command) -> &mut Command {
+    #[cfg(windows)]
+    {
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    command
+}
+
+fn windows_known_path(name: &str) -> Option<PathBuf> {
+    let normalized = name.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "appdata" => std::env::var_os("APPDATA").map(PathBuf::from),
+        "localappdata" => std::env::var_os("LOCALAPPDATA").map(PathBuf::from),
+        "userprofile" => std::env::var_os("USERPROFILE").map(PathBuf::from),
+        "programdata" => std::env::var_os("ProgramData").map(PathBuf::from),
+        "temp" => Some(std::env::temp_dir()),
+        _ => None,
+    }
+}
+
+fn parse_tasklist_csv_line(line: &str) -> Option<WindowsProcessInfo> {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let normalized = trimmed.trim_matches('"');
+    let fields: Vec<&str> = normalized.split("\",\"").collect();
+    if fields.len() < 2 {
+        return None;
+    }
+
+    let name = fields[0].trim().to_string();
+    let pid = fields[1].trim().parse::<u32>().ok()?;
+    if name.is_empty() {
+        return None;
+    }
+
+    Some(WindowsProcessInfo { name, pid })
+}
+
+fn list_windows_processes(name_like: Option<&str>) -> Vec<WindowsProcessInfo> {
+    if !cfg!(target_os = "windows") {
+        return Vec::new();
+    }
+
+    let filter = name_like
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty());
+
+    let mut command = Command::new("tasklist");
+    configure_background_command(&mut command);
+    let output = match command.args(["/FO", "CSV", "/NH"]).output() {
+        Ok(output) if output.status.success() => output,
+        _ => return Vec::new(),
+    };
+
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(parse_tasklist_csv_line)
+        .filter(|process| match &filter {
+            Some(filter) => process.name.to_ascii_lowercase().contains(filter),
+            None => true,
+        })
+        .collect()
+}
+
+fn extract_registry_query_value(stdout: &str) -> Option<String> {
+    stdout.lines().find_map(|line| {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || !trimmed.contains("REG_") {
+            return None;
+        }
+
+        let parts: Vec<&str> = trimmed.split_whitespace().collect();
+        if parts.len() < 3 {
+            return None;
+        }
+
+        Some(parts[2..].join(" "))
+    })
+}
+
+fn read_registry_value(path: &str, value_name: &str) -> Option<String> {
+    if !cfg!(target_os = "windows") {
+        return None;
+    }
+
+    let mut command = Command::new("reg");
+    configure_background_command(&mut command);
+    let output = command.args(["query", path, "/v", value_name]).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    extract_registry_query_value(&String::from_utf8_lossy(&output.stdout))
+}
 
 fn last_non_empty_trimmed_line(text: &str) -> Option<String> {
     text.lines()
@@ -33,7 +188,9 @@ fn read_env_from_process(name: &str) -> Option<String> {
 }
 
 fn read_env_value_via_command(program: &str, args: &[&str]) -> Option<String> {
-    let output = Command::new(program).args(args).output().ok()?;
+    let mut command = Command::new(program);
+    configure_background_command(&mut command);
+    let output = command.args(args).output().ok()?;
     if !output.status.success() {
         return None;
     }
@@ -308,6 +465,8 @@ pub fn inject_host_api<'js>(
     inject_keychain(ctx, &host)?;
     inject_sqlite(ctx, &host)?;
     inject_ls(ctx, &host, plugin_id)?;
+    inject_windows(ctx, &host)?;
+    inject_shell(ctx, &host, app_data_dir)?;
     inject_ccusage(ctx, &host, plugin_id)?;
 
     probe_ctx.set("host", host)?;
@@ -576,6 +735,113 @@ pub fn patch_http_wrapper(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
                 });
                 var respJson = rawFn(json);
                 return JSON.parse(respJson);
+            };
+        })();
+        "#
+        .as_bytes(),
+    )
+}
+
+fn inject_windows<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
+    let windows_obj = Object::new(ctx.clone())?;
+
+    windows_obj.set(
+        "knownPath",
+        Function::new(ctx.clone(), move |name: String| -> Option<String> {
+            windows_known_path(&name).map(|path| path.to_string_lossy().to_string())
+        })?,
+    )?;
+
+    windows_obj.set(
+        "listProcesses",
+        Function::new(
+            ctx.clone(),
+            move |name_like: Option<String>| -> Vec<String> {
+                list_windows_processes(name_like.as_deref())
+                    .into_iter()
+                    .map(|process| format!("{}:{}", process.name, process.pid))
+                    .collect()
+            },
+        )?,
+    )?;
+
+    windows_obj.set(
+        "readRegistry",
+        Function::new(
+            ctx.clone(),
+            move |path: String, value_name: String| -> Option<String> {
+                read_registry_value(&path, &value_name)
+            },
+        )?,
+    )?;
+
+    host.set("windows", windows_obj)?;
+    Ok(())
+}
+
+fn inject_shell<'js>(
+    ctx: &Ctx<'js>,
+    host: &Object<'js>,
+    app_data_dir: &PathBuf,
+) -> rquickjs::Result<()> {
+    let shell_obj = Object::new(ctx.clone())?;
+    let app_data_dir = app_data_dir.clone();
+
+    shell_obj.set(
+        "_execRaw",
+        Function::new(
+            ctx.clone(),
+            move |ctx_inner: Ctx<'_>, req_json: String| -> rquickjs::Result<String> {
+                if !shell_execution_allowed(&app_data_dir) {
+                    return Err(Exception::throw_message(
+                        &ctx_inner,
+                        "plugin shell execution is disabled; opt in via windowsPluginShellEnabled or OPENUSAGE_WINDOWS_ENABLE_PLUGIN_SHELL",
+                    ));
+                }
+
+                let req: ShellExecRequest = serde_json::from_str(&req_json).map_err(|e| {
+                    Exception::throw_message(&ctx_inner, &format!("invalid shell request: {}", e))
+                })?;
+
+                let mut command = Command::new(&req.program);
+                configure_background_command(&mut command);
+                command.args(&req.args);
+                if let Some(cwd) = req.cwd {
+                    command.current_dir(expand_path(&cwd));
+                }
+
+                let output = command
+                    .output()
+                    .map_err(|e| Exception::throw_message(&ctx_inner, &e.to_string()))?;
+
+                let response = ShellExecResponse {
+                    status: output.status.code().unwrap_or(-1),
+                    stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+                    stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+                };
+
+                serde_json::to_string(&response)
+                    .map_err(|e| Exception::throw_message(&ctx_inner, &e.to_string()))
+            },
+        )?,
+    )?;
+
+    host.set("shell", shell_obj)?;
+    Ok(())
+}
+
+pub fn patch_shell_wrapper(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
+    ctx.eval::<(), _>(
+        r#"
+        (function() {
+            var rawFn = __openusage_ctx.host.shell._execRaw;
+            __openusage_ctx.host.shell.exec = function(req) {
+                var reqJson = JSON.stringify({
+                    program: req.program,
+                    args: req.args || [],
+                    cwd: req.cwd || null
+                });
+                return JSON.parse(rawFn(reqJson));
             };
         })();
         "#
@@ -1390,6 +1656,7 @@ fn ccusage_enriched_path() -> Option<OsString> {
 
 fn ccusage_runner_available(candidate: &str, enriched_path: Option<&OsStr>) -> bool {
     let mut command = std::process::Command::new(candidate);
+    configure_background_command(&mut command);
     command.arg("--version");
     if let Some(path) = enriched_path {
         command.env("PATH", path);
@@ -1406,6 +1673,7 @@ fn configure_ccusage_command(
     args: &[String],
     enriched_path: Option<&OsStr>,
 ) {
+    configure_background_command(command);
     command.args(args);
     if let Some(path) = enriched_path {
         command.env("PATH", path);
@@ -1880,7 +2148,9 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
 
                 // Prefer a normal read-only open so WAL contents are visible (common for app state DBs).
                 // Fall back to immutable=1 to bypass WAL/SHM lock issues after macOS sleep.
-                let primary = std::process::Command::new("sqlite3")
+                let mut primary_command = std::process::Command::new("sqlite3");
+                configure_background_command(&mut primary_command);
+                let primary = primary_command
                     .args(["-readonly", "-json", &expanded, &sql])
                     .output()
                     .map_err(|e| {
@@ -1898,7 +2168,9 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                     .replace('#', "%23")
                     .replace('?', "%3F");
                 let uri_path = format!("file:{}?immutable=1", encoded);
-                let fallback = std::process::Command::new("sqlite3")
+                let mut fallback_command = std::process::Command::new("sqlite3");
+                configure_background_command(&mut fallback_command);
+                let fallback = fallback_command
                     .args(["-readonly", "-json", &uri_path, &sql])
                     .output()
                     .map_err(|e| {
@@ -1935,7 +2207,9 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                     ));
                 }
                 let expanded = expand_path(&db_path);
-                let output = std::process::Command::new("sqlite3")
+                let mut command = std::process::Command::new("sqlite3");
+                configure_background_command(&mut command);
+                let output = command
                     .args([&expanded, &sql])
                     .output()
                     .map_err(|e| {
@@ -2719,5 +2993,81 @@ Saved lockfile
     fn collect_ccusage_runners_returns_empty_when_none_available() {
         let runners = collect_ccusage_runners_with(|_| None);
         assert!(runners.is_empty());
+    }
+
+    fn temp_settings_dir(label: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "openusage-windows-host-api-{}-{}",
+            label,
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp settings dir");
+        dir
+    }
+
+    #[test]
+    fn shell_execution_gate_defaults_off() {
+        let dir = temp_settings_dir("shell-default-off");
+        assert!(!shell_execution_allowed(&dir));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn shell_execution_gate_reads_settings_opt_in() {
+        let dir = temp_settings_dir("shell-settings-on");
+        std::fs::write(
+            dir.join("settings.json"),
+            r#"{ "windowsPluginShellEnabled": true }"#,
+        )
+        .expect("write settings");
+
+        assert!(shell_execution_allowed(&dir));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn shell_execution_gate_reads_env_opt_in() {
+        let dir = temp_settings_dir("shell-env-on");
+        unsafe {
+            std::env::set_var("OPENUSAGE_WINDOWS_ENABLE_PLUGIN_SHELL", "true");
+        }
+        assert!(shell_execution_allowed(&dir));
+        unsafe {
+            std::env::remove_var("OPENUSAGE_WINDOWS_ENABLE_PLUGIN_SHELL");
+        }
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn windows_known_path_returns_temp_path() {
+        let temp_path = windows_known_path("temp").expect("temp path");
+        assert_eq!(temp_path, std::env::temp_dir());
+    }
+
+    #[test]
+    fn parse_tasklist_csv_line_extracts_name_and_pid() {
+        let process = parse_tasklist_csv_line(
+            r#""Cursor.exe","12345","Console","1","123,456 K""#,
+        )
+        .expect("process");
+
+        assert_eq!(
+            process,
+            WindowsProcessInfo {
+                name: "Cursor.exe".to_string(),
+                pid: 12345,
+            }
+        );
+    }
+
+    #[test]
+    fn extract_registry_query_value_reads_data_column() {
+        let stdout = r#"
+HKEY_CURRENT_USER\Software\OpenUsage
+    InstallPath    REG_SZ    C:\Users\rfara\AppData\Local\Programs\OpenUsage
+"#;
+        let value = extract_registry_query_value(stdout).expect("registry value");
+        assert_eq!(value, r#"C:\Users\rfara\AppData\Local\Programs\OpenUsage"#);
     }
 }

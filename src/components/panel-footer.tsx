@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { AboutDialog } from "@/components/about-dialog";
 import type { UpdateStatus } from "@/hooks/use-app-update";
 import { useNowTicker } from "@/hooks/use-now-ticker";
+import { APP_NAME } from "@/lib/app-metadata";
 
 interface PanelFooterProps {
   version: string;
@@ -78,7 +79,7 @@ function VersionDisplay({
           onClick={onVersionClick}
           className="text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
         >
-          OpenUsage {version}
+          {APP_NAME} {version}
         </button>
       );
   }

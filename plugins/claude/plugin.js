@@ -7,6 +7,28 @@
   const SCOPES = "user:profile user:inference user:sessions:claude_code user:mcp_servers"
   const REFRESH_BUFFER_MS = 5 * 60 * 1000 // refresh 5 minutes before expiration
 
+  function joinPath(base, leaf) {
+    return base.replace(/[\\/]+$/, "") + "/" + leaf.replace(/^[\\/]+/, "")
+  }
+
+  function resolveCredentialPaths(ctx) {
+    const paths = []
+    const windowsHost = ctx.host && ctx.host.windows
+    if (
+      ctx.app &&
+      ctx.app.platform === "windows" &&
+      windowsHost &&
+      typeof windowsHost.knownPath === "function"
+    ) {
+      const userProfile = windowsHost.knownPath("userProfile")
+      if (typeof userProfile === "string" && userProfile.trim()) {
+        paths.push(joinPath(userProfile.trim(), ".claude/.credentials.json"))
+      }
+    }
+    paths.push(CRED_FILE)
+    return Array.from(new Set(paths))
+  }
+
   function utf8DecodeBytes(bytes) {
     // Prefer native TextDecoder when available (QuickJS may not expose it).
     if (typeof TextDecoder !== "undefined") {
@@ -123,18 +145,21 @@
 
   function loadCredentials(ctx) {
     // Try file first
-    if (ctx.host.fs.exists(CRED_FILE)) {
+    const credentialPaths = resolveCredentialPaths(ctx)
+    for (let i = 0; i < credentialPaths.length; i += 1) {
+      const credentialPath = credentialPaths[i]
+      if (!ctx.host.fs.exists(credentialPath)) continue
       try {
-        const text = ctx.host.fs.readText(CRED_FILE)
+        const text = ctx.host.fs.readText(credentialPath)
         const parsed = tryParseCredentialJSON(ctx, text)
         if (parsed) {
           const oauth = parsed.claudeAiOauth
           if (oauth && oauth.accessToken) {
-            ctx.host.log.info("credentials loaded from file")
-            return { oauth, source: "file", fullData: parsed }
+            ctx.host.log.info("credentials loaded from file: " + credentialPath)
+            return { oauth, source: "file", fullData: parsed, credentialPath }
           }
         }
-        ctx.host.log.warn("credentials file exists but no valid oauth data")
+        ctx.host.log.warn("credentials file exists but no valid oauth data: " + credentialPath)
       } catch (e) {
         ctx.host.log.warn("credentials file read failed: " + String(e))
       }
@@ -162,13 +187,13 @@
     return null
   }
 
-  function saveCredentials(ctx, source, fullData) {
+  function saveCredentials(ctx, source, fullData, credentialPath) {
     // MUST use minified JSON - macOS `security -w` hex-encodes values with newlines,
     // which Claude Code can't read back, causing it to invalidate the session.
     const text = JSON.stringify(fullData)
     if (source === "file") {
       try {
-        ctx.host.fs.writeText(CRED_FILE, text)
+        ctx.host.fs.writeText(credentialPath || CRED_FILE, text)
       } catch (e) {
         ctx.host.log.error("Failed to write Claude credentials file: " + String(e))
       }
@@ -190,7 +215,7 @@
   }
 
   function refreshToken(ctx, creds) {
-    const { oauth, source, fullData } = creds
+    const { oauth, source, fullData, credentialPath } = creds
     if (!oauth.refreshToken) {
       ctx.host.log.warn("refresh skipped: no refresh token")
       return null
@@ -246,7 +271,7 @@
 
       // Persist updated credentials
       fullData.claudeAiOauth = oauth
-      saveCredentials(ctx, source, fullData)
+      saveCredentials(ctx, source, fullData, credentialPath)
 
       ctx.host.log.info("refresh succeeded, new token expires in " + (body.expires_in || "unknown") + "s")
       return newAccessToken

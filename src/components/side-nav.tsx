@@ -18,6 +18,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
+import { REPO_ISSUES_URL } from "@/lib/app-metadata"
 
 function GaugeIcon({ className }: { className?: string }) {
   return (
@@ -215,7 +216,7 @@ export function SideNav({
   )
 
   return (
-    <nav className="flex flex-col w-12 border-r bg-muted/50 dark:bg-card py-3">
+    <nav className="flex h-full min-h-0 w-12 flex-col overflow-hidden border-r bg-muted/50 py-3 dark:bg-card">
       {/* Home */}
       <NavButton
         isActive={activeView === "home"}
@@ -226,36 +227,35 @@ export function SideNav({
       </NavButton>
 
       {/* Plugin icons */}
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragEnd={handleDragEnd}
-      >
-        <SortableContext
-          items={plugins.map((p) => p.id)}
-          strategy={verticalListSortingStrategy}
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-none">
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
         >
-          {plugins.map((plugin) => (
-            <SortableNavPlugin
-              key={plugin.id}
-              plugin={plugin}
-              isActive={activeView === plugin.id}
-              isDark={isDark}
-              onClick={() => onViewChange(plugin.id)}
-              onContextMenu={(e) => handlePluginContextMenu(e, plugin.id)}
-            />
-          ))}
-        </SortableContext>
-      </DndContext>
-
-      {/* Spacer */}
-      <div className="flex-1" />
+          <SortableContext
+            items={plugins.map((p) => p.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            {plugins.map((plugin) => (
+              <SortableNavPlugin
+                key={plugin.id}
+                plugin={plugin}
+                isActive={activeView === plugin.id}
+                isDark={isDark}
+                onClick={() => onViewChange(plugin.id)}
+                onContextMenu={(e) => handlePluginContextMenu(e, plugin.id)}
+              />
+            ))}
+          </SortableContext>
+        </DndContext>
+      </div>
 
       {/* Help */}
       <NavButton
         isActive={false}
         onClick={() => {
-          openUrl("https://github.com/robinebers/openusage/issues").catch(console.error)
+          openUrl(REPO_ISSUES_URL).catch(console.error)
           invoke("hide_panel").catch(console.error)
         }}
         aria-label="Help"

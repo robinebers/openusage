@@ -1,5 +1,5 @@
 (function () {
-  const STATE_DB =
+  const MAC_STATE_DB =
     "~/Library/Application Support/Cursor/User/globalStorage/state.vscdb"
   const KEYCHAIN_ACCESS_TOKEN_SERVICE = "cursor-access-token"
   const KEYCHAIN_REFRESH_TOKEN_SERVICE = "cursor-refresh-token"
@@ -14,11 +14,33 @@
   const REFRESH_BUFFER_MS = 5 * 60 * 1000 // refresh 5 minutes before expiration
   const LOGIN_HINT = "Sign in via Cursor app or run `agent login`."
 
-  function readStateValue(ctx, key) {
+  function joinPath(base, leaf) {
+    return base.replace(/[\\/]+$/, "") + "/" + leaf.replace(/^[\\/]+/, "")
+  }
+
+  function resolveStateDbPaths(ctx) {
+    const paths = []
+    const windowsHost = ctx.host && ctx.host.windows
+    if (
+      ctx.app &&
+      ctx.app.platform === "windows" &&
+      windowsHost &&
+      typeof windowsHost.knownPath === "function"
+    ) {
+      const appData = windowsHost.knownPath("appData")
+      if (typeof appData === "string" && appData.trim()) {
+        paths.push(joinPath(appData.trim(), "Cursor/User/globalStorage/state.vscdb"))
+      }
+    }
+    paths.push(MAC_STATE_DB)
+    return Array.from(new Set(paths))
+  }
+
+  function readStateValue(ctx, dbPath, key) {
     try {
       const sql =
         "SELECT value FROM ItemTable WHERE key = '" + key + "' LIMIT 1;"
-      const json = ctx.host.sqlite.query(STATE_DB, sql)
+      const json = ctx.host.sqlite.query(dbPath, sql)
       const rows = ctx.util.tryParseJson(json)
       if (!Array.isArray(rows)) {
         throw new Error("sqlite returned invalid json")
@@ -27,12 +49,12 @@
         return rows[0].value
       }
     } catch (e) {
-      ctx.host.log.warn("sqlite read failed for " + key + ": " + String(e))
+      ctx.host.log.warn("sqlite read failed for " + key + " at " + dbPath + ": " + String(e))
     }
     return null
   }
 
-  function writeStateValue(ctx, key, value) {
+  function writeStateValue(ctx, dbPath, key, value) {
     try {
       // Escape single quotes in value for SQL
       const escaped = String(value).replace(/'/g, "''")
@@ -42,10 +64,10 @@
         "', '" +
         escaped +
         "');"
-      ctx.host.sqlite.exec(STATE_DB, sql)
+      ctx.host.sqlite.exec(dbPath, sql)
       return true
     } catch (e) {
-      ctx.host.log.warn("sqlite write failed for " + key + ": " + String(e))
+      ctx.host.log.warn("sqlite write failed for " + key + " at " + dbPath + ": " + String(e))
       return false
     }
   }
@@ -80,13 +102,18 @@
   }
 
   function loadAuthState(ctx) {
-    const sqliteAccessToken = readStateValue(ctx, "cursorAuth/accessToken")
-    const sqliteRefreshToken = readStateValue(ctx, "cursorAuth/refreshToken")
-    if (sqliteAccessToken || sqliteRefreshToken) {
-      return {
-        accessToken: sqliteAccessToken,
-        refreshToken: sqliteRefreshToken,
-        source: "sqlite",
+    const stateDbPaths = resolveStateDbPaths(ctx)
+    for (let i = 0; i < stateDbPaths.length; i += 1) {
+      const stateDbPath = stateDbPaths[i]
+      const sqliteAccessToken = readStateValue(ctx, stateDbPath, "cursorAuth/accessToken")
+      const sqliteRefreshToken = readStateValue(ctx, stateDbPath, "cursorAuth/refreshToken")
+      if (sqliteAccessToken || sqliteRefreshToken) {
+        return {
+          accessToken: sqliteAccessToken,
+          refreshToken: sqliteRefreshToken,
+          source: "sqlite",
+          stateDbPath: stateDbPath,
+        }
       }
     }
 
@@ -107,11 +134,15 @@
     }
   }
 
-  function persistAccessToken(ctx, source, accessToken) {
-    if (source === "keychain") {
+  function persistAccessToken(ctx, authState, accessToken) {
+    if (authState.source === "keychain") {
       return writeKeychainValue(ctx, KEYCHAIN_ACCESS_TOKEN_SERVICE, accessToken)
     }
-    return writeStateValue(ctx, "cursorAuth/accessToken", accessToken)
+    const stateDbPath =
+      authState.stateDbPath ||
+      resolveStateDbPaths(ctx)[0] ||
+      MAC_STATE_DB
+    return writeStateValue(ctx, stateDbPath, "cursorAuth/accessToken", accessToken)
   }
 
   function getTokenExpiration(ctx, token) {
@@ -130,7 +161,8 @@
     })
   }
 
-  function refreshToken(ctx, refreshTokenValue, source) {
+  function refreshToken(ctx, authState) {
+    const refreshTokenValue = authState ? authState.refreshToken : null
     if (!refreshTokenValue) {
       ctx.host.log.warn("refresh skipped: no refresh token")
       return null
@@ -185,7 +217,7 @@
       }
 
       // Persist updated access token to source where auth was loaded from.
-      persistAccessToken(ctx, source, newAccessToken)
+      persistAccessToken(ctx, authState, newAccessToken)
       ctx.host.log.info("refresh succeeded, token persisted")
 
       // Note: Cursor refresh returns access_token which is used as both
@@ -366,7 +398,7 @@
       ctx.host.log.info("token needs refresh (expired or expiring soon)")
       let refreshed = null
       try {
-        refreshed = refreshToken(ctx, refreshTokenValue, authSource)
+        refreshed = refreshToken(ctx, authState)
       } catch (e) {
         // If refresh fails but we have an access token, try it anyway
         ctx.host.log.warn("refresh failed but have access token, will try: " + String(e))
@@ -398,7 +430,7 @@
         refresh: () => {
           ctx.host.log.info("usage returned 401, attempting refresh")
           didRefresh = true
-          const refreshed = refreshToken(ctx, refreshTokenValue, authSource)
+          const refreshed = refreshToken(ctx, authState)
           if (refreshed) accessToken = refreshed
           return refreshed
         },

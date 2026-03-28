@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { ChangelogDialog } from "./changelog-dialog";
 import { Button } from "@/components/ui/button";
+import { APP_NAME, REPO_URL } from "@/lib/app-metadata";
 
 interface AboutDialogProps {
   version: string;
@@ -87,11 +88,11 @@ export function AboutDialog({ version, onClose }: AboutDialogProps) {
       <div className="bg-card rounded-lg border shadow-xl p-6 max-w-xs w-full mx-4 text-center animate-in fade-in zoom-in-95 duration-200">
         <img
           src="/icon.png"
-          alt="OpenUsage"
+          alt={APP_NAME}
           className="w-16 h-16 mx-auto mb-3 rounded-xl"
         />
 
-        <h2 className="text-xl font-semibold mb-1">OpenUsage</h2>
+        <h2 className="text-xl font-semibold mb-1">{APP_NAME}</h2>
 
         <div className="flex flex-col items-center gap-2 mb-4">
           <span className="inline-block text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
@@ -114,7 +115,7 @@ export function AboutDialog({ version, onClose }: AboutDialogProps) {
           </p>
           <p>
             Open source on{" "}
-            <ExternalLink href="https://github.com/robinebers/openusage">
+            <ExternalLink href={REPO_URL}>
               GitHub
             </ExternalLink>
           </p>

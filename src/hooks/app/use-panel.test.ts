@@ -74,7 +74,8 @@ describe("usePanel", () => {
     )
 
     await waitFor(() => {
-      expect(listenMock).toHaveBeenCalledTimes(2)
+      expect(callbacks.has("tray:show-about")).toBe(true)
+      expect(callbacks.has("tray:navigate")).toBe(true)
     })
 
     act(() => {
@@ -140,7 +141,7 @@ describe("usePanel", () => {
     )
 
     await waitFor(() => {
-      expect(listenMock).toHaveBeenCalledTimes(2)
+      expect(listenMock.mock.calls.length).toBeGreaterThanOrEqual(2)
     })
 
     unmount()

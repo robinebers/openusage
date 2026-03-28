@@ -124,6 +124,7 @@ export function normalizePluginSettings(
   plugins: PluginMeta[]
 ): PluginSettings {
   const knownIds = plugins.map((plugin) => plugin.id);
+  const isMockOnlyShellSpike = knownIds.length === 1 && knownIds[0] === "mock";
   const knownSet = new Set(knownIds);
 
   const order: string[] = [];
@@ -144,6 +145,7 @@ export function normalizePluginSettings(
 
   const disabled = settings.disabled.filter((id) => knownSet.has(id));
   for (const id of newlyAdded) {
+    if (isMockOnlyShellSpike && id === "mock") continue;
     if (!DEFAULT_ENABLED_PLUGINS.has(id) && !disabled.includes(id)) {
       disabled.push(id);
     }

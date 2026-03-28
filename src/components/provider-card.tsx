@@ -7,10 +7,12 @@ import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { SkeletonLines } from "@/components/skeleton-lines"
+import { ProviderAvailabilityNote } from "@/components/provider-availability-note"
 import { PluginError } from "@/components/plugin-error"
 import { useNowTicker } from "@/hooks/use-now-ticker"
 import { REFRESH_COOLDOWN_MS, type DisplayMode, type ResetTimerDisplayMode } from "@/lib/settings"
 import type { ManifestLine, MetricLine, PluginLink } from "@/lib/plugin-types"
+import type { WindowsProviderAvailabilityNote } from "@/lib/windows-provider-support"
 import { groupLinesByType } from "@/lib/group-lines-by-type"
 import { clamp01, formatCountNumber, formatFixedPrecisionNumber } from "@/lib/utils"
 import { calculateDeficit, calculatePaceStatus, type PaceStatus } from "@/lib/pace-status"
@@ -21,6 +23,7 @@ interface ProviderCardProps {
   name: string
   plan?: string
   links?: PluginLink[]
+  availabilityNote?: WindowsProviderAvailabilityNote | null
   showSeparator?: boolean
   loading?: boolean
   error?: string | null
@@ -83,6 +86,7 @@ export function ProviderCard({
   name,
   plan,
   links = [],
+  availabilityNote = null,
   showSeparator = true,
   loading = false,
   error = null,
@@ -242,13 +246,14 @@ export function ProviderCard({
             ))}
           </div>
         )}
-        {error && <PluginError message={error} />}
+        {availabilityNote && <ProviderAvailabilityNote note={availabilityNote} />}
+        {error && !availabilityNote?.suppressError && <PluginError message={error} />}
 
         {loading && !error && (
           <SkeletonLines lines={filteredSkeletonLines} />
         )}
 
-        {!loading && !error && (
+        {!loading && !error && !availabilityNote?.suppressError && (
           <div className="space-y-4">
             {groupLinesByType(filteredLines).map((group, gi) =>
               group.kind === "text" ? (
