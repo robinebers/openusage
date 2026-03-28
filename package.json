@@ -1,5 +1,5 @@
 {
-  "name": "openusage-windows",
+  "name": "usage-tray-windows",
   "private": true,
   "version": "0.6.11",
   "type": "module",

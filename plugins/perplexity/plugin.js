@@ -145,7 +145,7 @@
       const headers = {
         Authorization: "Bearer " + authToken,
         Accept: "application/json",
-        "User-Agent": "OpenUsage",
+        "User-Agent": "UsageTray",
       }
       if (extraHeaders && typeof extraHeaders === "object") for (const k in extraHeaders) headers[k] = extraHeaders[k]
       resp = ctx.util.request({ method: "GET", url: url, headers: headers, timeoutMs: 10000 })

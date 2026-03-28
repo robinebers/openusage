@@ -1,35 +1,29 @@
-# OpenUsage Windows
+# UsageTray
 
-Windows tray app for tracking AI coding subscription usage in one place.
+UsageTray is a Windows tray app for tracking AI coding subscription usage in one place.
 
-This project is a Windows-focused fork of the original [OpenUsage](https://github.com/robinebers/openusage). It keeps the same core idea and provider model, but the desktop shell and packaging are adapted for Windows.
+This repository is an unofficial Windows-focused fork of [OpenUsage](https://github.com/robinebers/openusage). It is not affiliated with, endorsed by, or an official part of the original OpenUsage project.
 
-See your usage at a glance from your Windows tray. No digging through dashboards.
+## Status
 
-![OpenUsage Screenshot](screenshot.png)
+- Windows-only fork
+- Tested locally with both Codex and Claude Code
+- Manual updates through GitHub releases
 
 ## Download
 
-[**Download the latest release**](https://github.com/Rana-Faraz/openusage-windows/releases/latest) (Windows x64)
-
-Install from the latest release and update manually from GitHub releases for now.
-
-## Fork Notes
-
-- Forked from [robinebers/openusage](https://github.com/robinebers/openusage)
-- This repo is focused on Windows behavior, packaging, and provider support
-- Tested locally with both Codex and Claude Code, and working well on both
+[**Download the latest release**](https://github.com/Rana-Faraz/usage-tray-windows/releases/latest) (Windows x64)
 
 ## What It Does
 
-OpenUsage lives in your menu bar and shows you how much of your AI coding subscriptions you've used. Progress bars, badges, and clear labels. No mental math required.
+UsageTray lives in your Windows tray and shows usage data for supported AI coding tools in a single popup panel.
 
-- **One glance.** All your AI tools, one panel.
-- **Always up-to-date.** Refreshes automatically on a schedule you pick.
-- **Global shortcut.** Toggle the panel from anywhere with a customizable keyboard shortcut.
-- **Lightweight.** Opens instantly, stays out of your way.
-- **Plugin-based.** New providers get added without updating the whole app.
-- **[Local HTTP API](docs/local-http-api.md).** Other apps can read your usage data from `127.0.0.1:6736`.
+- One-glance usage visibility across supported providers
+- Automatic refresh on a configurable schedule
+- Global shortcut support
+- Single-popup tray UI
+- Local plugin-based provider architecture
+- [Local HTTP API](docs/local-http-api.md) on `127.0.0.1:6736`
 
 ## Supported Providers
 
@@ -48,58 +42,14 @@ OpenUsage lives in your menu bar and shows you how much of your AI coding subscr
 - [**Windsurf**](docs/providers/windsurf.md) / prompt credits, flex credits
 - [**Z.ai**](docs/providers/zai.md) / session, weekly, web searches
 
-### Maybe Soon
+## Trademark Note
 
-- [Vercel AI Gateway](https://github.com/robinebers/openusage/issues/18)
+OpenUsage is a trademark of Robin Ebers. This project uses the OpenUsage name only to identify the upstream project it was forked from.
 
-Community contributions welcome.
-Want a provider that's not listed? [Open an issue.](https://github.com/robinebers/openusage/issues/new)
+## Contributing
 
-## Open Source, Community Driven
-
-OpenUsage is built by its users. Hundreds of people use it daily, and the project grows through community contributions: new providers, bug fixes, and ideas.
-
-I maintain the project as a guide and quality gatekeeper, but this is your app as much as mine. If something is missing or broken, the best way to get it fixed is to contribute by opening an issue, or submitting a PR.
-
-Plugins are currently bundled as we build our the API, but soon will be made flexible so you can build and load their own.
-
-### How to Contribute
-
-- **Add a provider.** Each one is just a plugin. See the [Plugin API](docs/plugins/api.md).
-- **Fix a bug.** PRs welcome. Provide before/after screenshots.
-- **Request a feature.** [Open an issue](https://github.com/robinebers/openusage/issues/new) and make your case.
-
-Keep it simple. No feature creep, no AI-generated commit messages, test your changes.
-
-## Built Entirely with AI
-
-Not a single line of code in this project was read or written by hand. 100% AI-generated, AI-reviewed, AI-shipped — using [Cursor](https://cursor.com), [Claude Code](https://docs.anthropic.com/en/docs/claude-code), and [Codex CLI](https://github.com/openai/codex).
-
-OpenUsage is a real-world example of what I teach in the [AI Builder's Blueprint](https://itsbyrob.in/EBDqgJ6) — a proven process for building and shipping software with AI, no coding background required.
-
-## Sponsors
-
-OpenUsage is supported by our sponsors. Become a sponsor to get your logo here and on [openusage.ai](https://openusage.ai).
-
-[Become a Sponsor](https://github.com/sponsors/robinebers)
-
-<!-- Add sponsor logos here -->
-
-## Credits
-
-Inspired by [CodexBar](https://github.com/steipete/CodexBar) by [@steipete](https://github.com/steipete). Same idea, very different approach.
+Contributions are welcome for Windows provider support, shell behavior, and packaging improvements.
 
 ## License
 
 [MIT](LICENSE)
-
----
-
-<details>
-<summary><strong>Build from source</strong></summary>
-
-> **Warning**: The `main` branch may not be stable. It is merged directly without staging, so users are advised to use tagged versions for stable builds. Tagged versions are fully tested while `main` may contain unreleased features.
-
-### Stack
-
-...

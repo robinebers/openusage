@@ -1,6 +1,6 @@
 # Local HTTP API
 
-OpenUsage exposes a read-only HTTP API on the loopback interface so other local apps can consume the same usage data shown in the menu bar.
+UsageTray exposes a read-only HTTP API on the loopback interface so other local apps can consume the same usage data shown in the tray popup.
 
 **Base URL:** `http://127.0.0.1:6736`
 

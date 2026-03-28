@@ -1,6 +1,6 @@
-export const APP_NAME = "OpenUsage Windows"
+export const APP_NAME = "UsageTray"
 export const REPO_OWNER = "Rana-Faraz"
-export const REPO_NAME = "openusage-windows"
+export const REPO_NAME = "usage-tray-windows"
 
 export const REPO_URL = `https://github.com/${REPO_OWNER}/${REPO_NAME}`
 export const REPO_ISSUES_URL = `${REPO_URL}/issues`

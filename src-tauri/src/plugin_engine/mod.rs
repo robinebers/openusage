@@ -64,7 +64,9 @@ fn initialize_plugins_with_mode(
 }
 
 fn plugin_load_mode_from_env() -> PluginLoadMode {
-    match std::env::var("OPENUSAGE_WINDOWS_PLUGIN_MODE") {
+    let mode = std::env::var("USAGETRAY_PLUGIN_MODE")
+        .or_else(|_| std::env::var("OPENUSAGE_WINDOWS_PLUGIN_MODE"));
+    match mode {
         Ok(value) if value.eq_ignore_ascii_case("mock") => PluginLoadMode::MockOnly,
         _ => PluginLoadMode::Default,
     }
@@ -235,7 +237,7 @@ mod tests {
 
     fn unique_temp_dir(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
-            "openusage-windows-plugin-engine-{}-{}",
+            "usage-tray-plugin-engine-{}-{}",
             name,
             uuid::Uuid::new_v4()
         ));

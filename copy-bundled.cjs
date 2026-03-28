@@ -2,7 +2,9 @@ const { cpSync, readdirSync, rmSync } = require("fs")
 const { join } = require("path")
 
 const root = __dirname
-const mockOnly = process.env.OPENUSAGE_WINDOWS_PLUGIN_MODE === "mock"
+const pluginMode =
+  process.env.USAGETRAY_PLUGIN_MODE || process.env.OPENUSAGE_WINDOWS_PLUGIN_MODE
+const mockOnly = pluginMode === "mock"
 const exclude = new Set(mockOnly ? [] : ["mock"])
 const srcDir = join(root, "plugins")
 const dstDir = join(root, "src-tauri", "resources", "bundled_plugins")

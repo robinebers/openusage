@@ -97,7 +97,7 @@ describe("useTrayIcon", () => {
         percentText: "42%",
       })
     )
-    expect(tray.setTooltip).toHaveBeenCalledWith("OpenUsage Windows\nMock: 42%")
+    expect(tray.setTooltip).toHaveBeenCalledWith("UsageTray\nMock: 42%")
   })
 
   it("uses native tray title text when Windows tray title support is available", async () => {
@@ -135,6 +135,6 @@ describe("useTrayIcon", () => {
       })
     )
     expect(tray.setTitle).toHaveBeenCalledWith("42%")
-    expect(tray.setTooltip).toHaveBeenCalledWith("OpenUsage Windows\nMock: 42%")
+    expect(tray.setTooltip).toHaveBeenCalledWith("UsageTray\nMock: 42%")
   })
 })

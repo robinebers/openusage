@@ -260,7 +260,7 @@
         Authorization: "Bearer " + accessToken,
         "Content-Type": "application/json",
         Accept: "application/json",
-        "User-Agent": "OpenUsage",
+        "User-Agent": "UsageTray",
       },
       bodyText: JSON.stringify({ useCache: true }),
       timeoutMs: 10000,

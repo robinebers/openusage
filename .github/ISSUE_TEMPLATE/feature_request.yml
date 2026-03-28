@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         Before requesting a feature, check existing issues to avoid duplicates.
-        OpenUsage focuses on AI subscription usage tracking. Requests outside that scope will be closed.
+        UsageTray focuses on AI subscription usage tracking on Windows. Requests outside that scope will be closed.
   - type: textarea
     id: problem
     attributes:

@@ -1,6 +1,6 @@
 # Windows Provider Compatibility Matrix
 
-This is the source of truth for Windows provider scope in `OpenUsage Windows`.
+This is the source of truth for Windows provider scope in `UsageTray`.
 
 ## First support wave
 

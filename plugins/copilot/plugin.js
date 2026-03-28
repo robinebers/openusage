@@ -1,5 +1,6 @@
 (function () {
-  const KEYCHAIN_SERVICE = "OpenUsage-copilot";
+  const KEYCHAIN_SERVICE = "UsageTray-copilot";
+  const LEGACY_KEYCHAIN_SERVICE = "OpenUsage-copilot";
   const GH_KEYCHAIN_SERVICE = "gh:github.com";
   const USAGE_URL = "https://api.github.com/copilot_internal/user";
 
@@ -37,6 +38,7 @@
   function clearCachedToken(ctx) {
     try {
       ctx.host.keychain.deleteGenericPassword(KEYCHAIN_SERVICE);
+      ctx.host.keychain.deleteGenericPassword(LEGACY_KEYCHAIN_SERVICE);
     } catch (e) {
       ctx.host.log.info("keychain delete failed: " + String(e));
     }
@@ -45,16 +47,20 @@
 
   function loadTokenFromKeychain(ctx) {
     try {
-      const raw = ctx.host.keychain.readGenericPassword(KEYCHAIN_SERVICE);
-      if (raw) {
-        const parsed = ctx.util.tryParseJson(raw);
-        if (parsed && parsed.token) {
-          ctx.host.log.info("token loaded from OpenUsage keychain");
-          return { token: parsed.token, source: "keychain" };
+      const services = [KEYCHAIN_SERVICE, LEGACY_KEYCHAIN_SERVICE];
+      for (const service of services) {
+        const raw = ctx.host.keychain.readGenericPassword(service);
+        if (raw) {
+          const parsed = ctx.util.tryParseJson(raw);
+          if (parsed && parsed.token) {
+            const source = service === KEYCHAIN_SERVICE ? "UsageTray" : "legacy OpenUsage";
+            ctx.host.log.info("token loaded from " + source + " keychain");
+            return { token: parsed.token, source: "keychain" };
+          }
         }
       }
     } catch (e) {
-      ctx.host.log.info("OpenUsage keychain read failed: " + String(e));
+      ctx.host.log.info("UsageTray keychain read failed: " + String(e));
     }
     return null;
   }
@@ -196,7 +202,7 @@
       );
     }
 
-    // Persist gh-cli token to OpenUsage keychain for future use
+    // Persist gh-cli token to UsageTray keychain for future use
     if (source === "gh-cli") {
       saveToken(ctx, token);
     }

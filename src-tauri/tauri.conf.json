@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "OpenUsage Windows",
+  "productName": "UsageTray",
   "version": "0.6.11",
-  "identifier": "com.rfara.openusagewindows",
+  "identifier": "com.rfara.usagetraywindows",
   "build": {
     "beforeDevCommand": "bun run bundle:plugins && bun run dev",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "OpenUsage Windows",
+        "title": "UsageTray",
         "width": 400,
         "height": 500,
         "resizable": false,

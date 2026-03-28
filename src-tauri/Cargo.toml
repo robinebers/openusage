@@ -1,8 +1,8 @@
 [package]
-name = "openusage-windows"
+name = "usage-tray-windows"
 version = "0.6.11"
-description = "OpenUsage Windows is an open source AI subscription limit tracker for Windows"
-authors = ["Robin Ebers"]
+description = "UsageTray is an unofficial Windows fork of OpenUsage for tracking AI coding subscription usage"
+authors = ["Faraz Rana"]
 edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -11,7 +11,7 @@ edition = "2024"
 # The `_lib` suffix may seem redundant but it is necessary
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
-name = "openusage_windows_lib"
+name = "usage_tray_windows_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

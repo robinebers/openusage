@@ -473,7 +473,7 @@ export function SettingsPage({
       <section>
         <h3 className="text-lg font-semibold mb-0">Start on Login</h3>
         <p className="text-sm text-muted-foreground mb-2">
-          OpenUsage starts when you sign in
+          UsageTray starts when you sign in
         </p>
         <label className="flex items-center gap-2 text-sm select-none text-foreground">
           <Checkbox

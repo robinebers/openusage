@@ -73,7 +73,7 @@ Codex CLI supports multiple credential storage modes:
 
 For `keyring`/`auto`, Codex may not keep `auth.json` on disk. If keyring save succeeds, Codex removes the fallback `auth.json`.
 
-OpenUsage Codex plugin auth lookup order:
+UsageTray Codex plugin auth lookup order:
 
 1. `CODEX_HOME/auth.json` (when `CODEX_HOME` is set)
 2. `~/.config/codex/auth.json`

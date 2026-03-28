@@ -271,7 +271,7 @@
     const headers = {
       Authorization: "Bearer " + accessToken,
       Accept: "application/json",
-      "User-Agent": "OpenUsage",
+      "User-Agent": "UsageTray",
     }
     if (accountId) {
       headers["ChatGPT-Account-Id"] = accountId

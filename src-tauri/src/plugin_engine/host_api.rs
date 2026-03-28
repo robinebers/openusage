@@ -52,7 +52,9 @@ fn env_flag_enabled(name: &str) -> bool {
 }
 
 fn shell_execution_allowed(app_data_dir: &Path) -> bool {
-    if env_flag_enabled("OPENUSAGE_WINDOWS_ENABLE_PLUGIN_SHELL") {
+    if env_flag_enabled("USAGETRAY_ENABLE_PLUGIN_SHELL")
+        || env_flag_enabled("OPENUSAGE_WINDOWS_ENABLE_PLUGIN_SHELL")
+    {
         return true;
     }
 
@@ -795,7 +797,7 @@ fn inject_shell<'js>(
                 if !shell_execution_allowed(&app_data_dir) {
                     return Err(Exception::throw_message(
                         &ctx_inner,
-                        "plugin shell execution is disabled; opt in via windowsPluginShellEnabled or OPENUSAGE_WINDOWS_ENABLE_PLUGIN_SHELL",
+                "plugin shell execution is disabled; opt in via windowsPluginShellEnabled, USAGETRAY_ENABLE_PLUGIN_SHELL, or OPENUSAGE_WINDOWS_ENABLE_PLUGIN_SHELL",
                     ));
                 }
 
@@ -2997,7 +2999,7 @@ Saved lockfile
 
     fn temp_settings_dir(label: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
-            "openusage-windows-host-api-{}-{}",
+            "usage-tray-host-api-{}-{}",
             label,
             uuid::Uuid::new_v4()
         ));
