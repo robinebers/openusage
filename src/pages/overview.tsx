@@ -1,6 +1,7 @@
 import { ProviderCard } from "@/components/provider-card"
 import type { PluginDisplayState } from "@/lib/plugin-types"
 import type { DisplayMode, ResetTimerDisplayMode } from "@/lib/settings"
+import { getWindowsProviderAvailabilityNote } from "@/lib/windows-provider-support"
 
 interface OverviewPageProps {
   plugins: PluginDisplayState[]
@@ -32,6 +33,7 @@ export function OverviewPage({
           key={plugin.meta.id}
           name={plugin.meta.name}
           plan={plugin.data?.plan}
+          availabilityNote={getWindowsProviderAvailabilityNote(plugin)}
           showSeparator={index < plugins.length - 1}
           loading={plugin.loading}
           error={plugin.error}

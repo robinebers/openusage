@@ -3,10 +3,9 @@ use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::path::BaseDirectory;
 use tauri::tray::{MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager};
-use tauri_nspanel::ManagerExt;
 use tauri_plugin_store::StoreExt;
 
-use crate::panel::{get_or_init_panel, position_panel_at_tray_icon, show_panel};
+use crate::panel::{hide_panel, position_panel_at_tray_icon, show_panel};
 
 const LOG_LEVEL_STORE_KEY: &str = "logLevel";
 
@@ -80,7 +79,7 @@ pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
     ];
 
     let separator = PredefinedMenuItem::separator(app_handle)?;
-    let about = MenuItem::with_id(app_handle, "about", "About OpenUsage", true, None::<&str>)?;
+    let about = MenuItem::with_id(app_handle, "about", "About OpenUsage Windows", true, None::<&str>)?;
     let quit = MenuItem::with_id(app_handle, "quit", "Quit", true, None::<&str>)?;
 
     let menu = Menu::with_items(app_handle, &[&show_stats, &go_to_settings, &log_level_submenu, &separator, &about, &quit])?;
@@ -88,7 +87,7 @@ pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
     TrayIconBuilder::with_id("tray")
         .icon(icon)
         .icon_as_template(true)
-        .tooltip("OpenUsage")
+        .tooltip("OpenUsage Windows")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(move |app_handle, event| {
@@ -136,20 +135,27 @@ pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
             } = event
             {
                 if button_state == MouseButtonState::Up {
-                    let Some(panel) = get_or_init_panel!(app_handle) else {
+                    let Some(window) = app_handle.get_webview_window("main") else {
+                        log::error!("main window not available during tray click");
                         return;
                     };
 
-                    if panel.is_visible() {
-                        log::debug!("tray click: hiding panel");
-                        panel.hide();
-                        return;
+                    match window.is_visible() {
+                        Ok(true) => {
+                            log::debug!("tray click: hiding panel");
+                            hide_panel(app_handle);
+                        }
+                        Ok(false) => {
+                            log::debug!("tray click: showing panel");
+                            position_panel_at_tray_icon(app_handle, rect.position, rect.size);
+                            show_panel(app_handle);
+                        }
+                        Err(err) => {
+                            log::warn!("Failed to read panel visibility from tray click: {}", err);
+                            position_panel_at_tray_icon(app_handle, rect.position, rect.size);
+                            show_panel(app_handle);
+                        }
                     }
-                    log::debug!("tray click: showing panel");
-
-                    // macOS quirk: must show window before positioning to another monitor
-                    panel.show_and_make_key();
-                    position_panel_at_tray_icon(app_handle, rect.position, rect.size);
                 }
             }
         })

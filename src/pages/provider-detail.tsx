@@ -1,6 +1,7 @@
 import { ProviderCard } from "@/components/provider-card"
 import type { PluginDisplayState } from "@/lib/plugin-types"
 import type { DisplayMode, ResetTimerDisplayMode } from "@/lib/settings"
+import { getWindowsProviderAvailabilityNote } from "@/lib/windows-provider-support"
 
 interface ProviderDetailPageProps {
   plugin: PluginDisplayState | null
@@ -30,6 +31,7 @@ export function ProviderDetailPage({
       name={plugin.meta.name}
       plan={plugin.data?.plan}
       links={plugin.meta.links}
+      availabilityNote={getWindowsProviderAvailabilityNote(plugin)}
       showSeparator={false}
       loading={plugin.loading}
       error={plugin.error}

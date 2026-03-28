@@ -18,6 +18,29 @@ describe("claude plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Not logged in")
   })
 
+  it("uses the Windows Claude credentials path when available", async () => {
+    const ctx = makeCtx()
+    ctx.app.platform = "windows"
+    ctx.host.windows.knownPath.mockImplementation((name) =>
+      name === "userProfile" ? "C:/Users/tester" : null
+    )
+    ctx.host.fs.writeText(
+      "C:/Users/tester/.claude/.credentials.json",
+      JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
+    )
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.plan).toBe("Pro")
+    expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+  })
+
   it("throws when credentials are unreadable", async () => {
     const ctx = makeCtx()
     ctx.host.fs.exists = () => true

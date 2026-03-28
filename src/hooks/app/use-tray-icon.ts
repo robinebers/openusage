@@ -8,6 +8,7 @@ import { getTrayIconSizePx, renderTrayBarsIcon } from "@/lib/tray-bars-icon"
 import { getTrayPrimaryBars, type TrayPrimaryBar } from "@/lib/tray-primary-progress"
 import { formatTrayPercentText, formatTrayTooltip } from "@/lib/tray-tooltip"
 import type { PluginState } from "@/hooks/app/types"
+import { APP_NAME } from "@/lib/app-metadata"
 
 type TrayUpdateReason = "probe" | "settings" | "init"
 
@@ -157,7 +158,7 @@ export function useTrayIcon({
             tray.setIcon(gaugePath),
             tray.setIconAsTemplate(true),
             setTrayTitle(""),
-            setTrayTooltip("OpenUsage"),
+            setTrayTooltip(APP_NAME),
           ])
             .catch((e) => {
               console.error("Failed to restore tray gauge icon:", e)

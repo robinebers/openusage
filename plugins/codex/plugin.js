@@ -69,13 +69,35 @@
 
   function resolveAuthPaths(ctx) {
     const codexHome = readCodexHome(ctx)
+    const paths = []
 
     // If CODEX_HOME is set, use it
     if (codexHome) {
       return [joinPath(codexHome, AUTH_FILE)]
     }
 
-    return CONFIG_AUTH_PATHS.map((basePath) => joinPath(basePath, AUTH_FILE))
+    const windowsHost = ctx.host && ctx.host.windows
+    if (
+      ctx.app &&
+      ctx.app.platform === "windows" &&
+      windowsHost &&
+      typeof windowsHost.knownPath === "function"
+    ) {
+      const appData = windowsHost.knownPath("appData")
+      const localAppData = windowsHost.knownPath("localAppData")
+      if (typeof appData === "string" && appData.trim()) {
+        paths.push(joinPath(joinPath(appData.trim(), "codex"), AUTH_FILE))
+      }
+      if (typeof localAppData === "string" && localAppData.trim()) {
+        paths.push(joinPath(joinPath(localAppData.trim(), "codex"), AUTH_FILE))
+      }
+    }
+
+    for (const basePath of CONFIG_AUTH_PATHS) {
+      paths.push(joinPath(basePath, AUTH_FILE))
+    }
+
+    return Array.from(new Set(paths))
   }
 
   function hasTokenLikeAuth(auth) {

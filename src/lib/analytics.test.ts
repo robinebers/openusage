@@ -27,12 +27,12 @@ describe("analytics track", () => {
     expect(state.invokeMock).not.toHaveBeenCalled()
   })
 
-  it("tracks all events when running in tauri", async () => {
+  it("remains a no-op when running in tauri", async () => {
     const { track } = await import("./analytics")
 
     track("setting_changed", { setting: "theme", value: "dark" })
     track("setting_changed", { setting: "theme", value: "dark" })
 
-    expect(state.invokeMock).toHaveBeenCalledTimes(2)
+    expect(state.invokeMock).not.toHaveBeenCalled()
   })
 })

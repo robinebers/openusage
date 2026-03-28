@@ -87,7 +87,29 @@ describe("SideNav", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Help" }))
 
-    expect(openUrl).toHaveBeenCalledWith("https://github.com/robinebers/openusage/issues")
+    expect(openUrl).toHaveBeenCalledWith("https://github.com/Rana-Faraz/openusage-windows/issues")
     expect(invoke).toHaveBeenCalledWith("hide_panel")
+  })
+
+  it("keeps provider icons in a scrollable region", () => {
+    const onViewChange = vi.fn()
+    render(
+      <SideNav
+        activeView="home"
+        onViewChange={onViewChange}
+        plugins={Array.from({ length: 20 }, (_, index) => ({
+          id: `p${index}`,
+          name: `Plugin ${index}`,
+          iconUrl: "icon.svg",
+        }))}
+      />
+    )
+
+    const nav = screen.getByRole("navigation")
+    expect(nav).toHaveClass("overflow-hidden")
+
+    const scrollRegion = screen.getByRole("button", { name: "Plugin 0" }).parentElement?.parentElement
+    expect(scrollRegion).toHaveClass("overflow-y-auto")
+    expect(scrollRegion).toHaveClass("min-h-0")
   })
 })

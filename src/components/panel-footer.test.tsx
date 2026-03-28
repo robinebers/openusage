@@ -182,7 +182,7 @@ describe("PanelFooter", () => {
     }
 
     render(<Harness />)
-    await userEvent.click(screen.getByRole("button", { name: /OpenUsage/ }))
+    await userEvent.click(screen.getByRole("button", { name: /OpenUsage Windows/ }))
     expect(screen.getByText("Open source on")).toBeInTheDocument()
 
     // Close via Escape to exercise AboutDialog onClose path.

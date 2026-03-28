@@ -33,6 +33,25 @@ describe("codex plugin", () => {
     plugin.probe(ctx)
   })
 
+  it("uses the Windows AppData auth path when available", async () => {
+    const ctx = makeCtx()
+    ctx.app.platform = "windows"
+    ctx.host.windows.knownPath.mockImplementation((name) =>
+      name === "appData" ? "C:/Users/tester/AppData/Roaming" : null
+    )
+    ctx.host.fs.writeText("C:/Users/tester/AppData/Roaming/codex/auth.json", JSON.stringify({
+      tokens: { access_token: "appdata-token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockImplementation((opts) => {
+      expect(opts.headers.Authorization).toBe("Bearer appdata-token")
+      return { status: 200, headers: {}, bodyText: JSON.stringify({}) }
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+  })
+
   it("uses CODEX_HOME auth path when env var is set", async () => {
     const ctx = makeCtx()
     ctx.host.env.get.mockImplementation((name) => (name === "CODEX_HOME" ? "/tmp/codex-home" : null))

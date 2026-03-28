@@ -1,14 +1,24 @@
-# Track all your AI coding subscriptions in one place
+# OpenUsage Windows
 
-See your usage at a glance from your menu bar. No digging through dashboards.
+Windows tray app for tracking AI coding subscription usage in one place.
+
+This project is a Windows-focused fork of the original [OpenUsage](https://github.com/robinebers/openusage). It keeps the same core idea and provider model, but the desktop shell and packaging are adapted for Windows.
+
+See your usage at a glance from your Windows tray. No digging through dashboards.
 
 ![OpenUsage Screenshot](screenshot.png)
 
 ## Download
 
-[**Download the latest release**](https://github.com/robinebers/openusage/releases/latest) (macOS, Apple Silicon & Intel)
+[**Download the latest release**](https://github.com/Rana-Faraz/openusage-windows/releases/latest) (Windows x64)
 
-The app auto-updates. Install once and you're set.
+Install from the latest release and update manually from GitHub releases for now.
+
+## Fork Notes
+
+- Forked from [robinebers/openusage](https://github.com/robinebers/openusage)
+- This repo is focused on Windows behavior, packaging, and provider support
+- Tested locally with both Codex and Claude Code, and working well on both
 
 ## What It Does
 

@@ -77,7 +77,7 @@ describe("ChangelogDialog", () => {
         name: "v1.2.3",
         body,
         published_at: "2024-01-02T00:00:00Z",
-        html_url: "https://github.com/robinebers/openusage/releases/tag/v1.2.3",
+      html_url: "https://github.com/Rana-Faraz/openusage-windows/releases/tag/v1.2.3",
       },
     ]
 
@@ -97,7 +97,7 @@ describe("ChangelogDialog", () => {
     // GitHub button opens the release URL.
     await userEvent.click(screen.getByRole("button", { name: "GitHub" }))
     expect(openerState.openUrlMock).toHaveBeenCalledWith(
-      "https://github.com/robinebers/openusage/releases/tag/v1.2.3",
+      "https://github.com/Rana-Faraz/openusage-windows/releases/tag/v1.2.3",
     )
 
     openerState.openUrlMock.mockClear()
@@ -111,7 +111,7 @@ describe("ChangelogDialog", () => {
     // PR, user, and commit buttons.
     await userEvent.click(screen.getByRole("button", { name: "#123" }))
     expect(openerState.openUrlMock).toHaveBeenCalledWith(
-      "https://github.com/robinebers/openusage/pull/123",
+      "https://github.com/Rana-Faraz/openusage-windows/pull/123",
     )
 
     openerState.openUrlMock.mockClear()
@@ -123,7 +123,7 @@ describe("ChangelogDialog", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "abcdef1" }))
     expect(openerState.openUrlMock).toHaveBeenCalledWith(
-      "https://github.com/robinebers/openusage/commit/abcdef1",
+      "https://github.com/Rana-Faraz/openusage-windows/commit/abcdef1",
     )
 
     openerState.openUrlMock.mockClear()
@@ -140,7 +140,7 @@ describe("ChangelogDialog", () => {
         name: "v1.0.0",
         body: null as any,
         published_at: "2024-01-02T00:00:00Z",
-        html_url: "https://github.com/robinebers/openusage/releases/tag/v1.0.0",
+      html_url: "https://github.com/Rana-Faraz/openusage-windows/releases/tag/v1.0.0",
       },
     ]
 
@@ -164,7 +164,7 @@ describe("ChangelogDialog", () => {
         name: "v1.0.1",
         body: "body",
         published_at: null,
-        html_url: "https://github.com/robinebers/openusage/releases/tag/v1.0.1",
+      html_url: "https://github.com/Rana-Faraz/openusage-windows/releases/tag/v1.0.1",
       },
     ]
 
@@ -188,7 +188,7 @@ describe("ChangelogDialog", () => {
         name: "v1.0.0",
         body: "body",
         published_at: "2024-01-02T00:00:00Z",
-        html_url: "https://github.com/robinebers/openusage/releases/tag/v1.0.0",
+      html_url: "https://github.com/Rana-Faraz/openusage-windows/releases/tag/v1.0.0",
       },
       {
         id: 2,
@@ -196,7 +196,7 @@ describe("ChangelogDialog", () => {
         name: "v0.9.0",
         body: "older",
         published_at: "2024-01-01T00:00:00Z",
-        html_url: "https://github.com/robinebers/openusage/releases/tag/v0.9.0",
+      html_url: "https://github.com/Rana-Faraz/openusage-windows/releases/tag/v0.9.0",
       },
     ]
 
@@ -212,7 +212,7 @@ describe("ChangelogDialog", () => {
     await userEvent.click(fullChangelogButton)
 
     expect(openerState.openUrlMock).toHaveBeenCalledWith(
-      "https://github.com/robinebers/openusage/releases",
+      "https://github.com/Rana-Faraz/openusage-windows/releases",
     )
   })
 
@@ -224,7 +224,7 @@ describe("ChangelogDialog", () => {
         name: "v0.1.0",
         body: "old",
         published_at: "2023-01-01T00:00:00Z",
-        html_url: "https://github.com/robinebers/openusage/releases/tag/v0.1.0",
+      html_url: "https://github.com/Rana-Faraz/openusage-windows/releases/tag/v0.1.0",
       },
     ]
 
@@ -245,7 +245,7 @@ describe("ChangelogDialog", () => {
     )
 
     expect(openerState.openUrlMock).toHaveBeenCalledWith(
-      "https://github.com/robinebers/openusage/releases",
+      "https://github.com/Rana-Faraz/openusage-windows/releases",
     )
   })
 
@@ -260,7 +260,7 @@ describe("ChangelogDialog", () => {
         name: "v1.0.0",
         body: "body",
         published_at: "2024-01-02T00:00:00Z",
-        html_url: "https://github.com/robinebers/openusage/releases/tag/v1.0.0",
+      html_url: "https://github.com/Rana-Faraz/openusage-windows/releases/tag/v1.0.0",
       },
     ]
 

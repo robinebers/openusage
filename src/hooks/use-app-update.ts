@@ -1,8 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react"
-import { isTauri } from "@tauri-apps/api/core"
-import { check, type Update } from "@tauri-apps/plugin-updater"
-import { relaunch } from "@tauri-apps/plugin-process"
-import { track } from "@/lib/analytics"
+import { useCallback, useState } from "react"
 
 export type UpdateStatus =
   | { status: "idle" }
@@ -21,125 +17,14 @@ interface UseAppUpdateReturn {
 
 export function useAppUpdate(): UseAppUpdateReturn {
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ status: "idle" })
-  const statusRef = useRef<UpdateStatus>({ status: "idle" })
-  const updateRef = useRef<Update | null>(null)
-  const mountedRef = useRef(true)
-  const inFlightRef = useRef({ checking: false, downloading: false, installing: false })
-  const upToDateTimeoutRef = useRef<number | null>(null)
-
-  const setStatus = useCallback((next: UpdateStatus) => {
-    statusRef.current = next
-    if (!mountedRef.current) return
-    setUpdateStatus(next)
-  }, [])
 
   const checkForUpdates = useCallback(async () => {
-    if (!isTauri()) return
-    if (inFlightRef.current.checking || inFlightRef.current.downloading || inFlightRef.current.installing) return
-    if (statusRef.current.status === "ready") return
-
-    // Clear any pending up-to-date timeout
-    if (upToDateTimeoutRef.current !== null) {
-      clearTimeout(upToDateTimeoutRef.current)
-      upToDateTimeoutRef.current = null
-    }
-    inFlightRef.current.checking = true
-    setStatus({ status: "checking" })
-    try {
-      const update = await check()
-      inFlightRef.current.checking = false
-      if (!mountedRef.current) return
-      if (!update) {
-        setStatus({ status: "up-to-date" })
-        upToDateTimeoutRef.current = window.setTimeout(() => {
-          upToDateTimeoutRef.current = null
-          if (mountedRef.current) setStatus({ status: "idle" })
-        }, 3000)
-        return
-      }
-      if (update) {
-        updateRef.current = update
-        inFlightRef.current.downloading = true
-        setStatus({ status: "downloading", progress: -1 })
-
-        let totalBytes: number | null = null
-        let downloadedBytes = 0
-
-        try {
-          await update.download((event) => {
-            if (!mountedRef.current) return
-            if (event.event === "Started") {
-              totalBytes = event.data.contentLength ?? null
-              downloadedBytes = 0
-              setStatus({
-                status: "downloading",
-                progress: totalBytes ? 0 : -1,
-              })
-            } else if (event.event === "Progress") {
-              downloadedBytes += event.data.chunkLength
-              if (totalBytes && totalBytes > 0) {
-                const pct = Math.min(100, Math.round((downloadedBytes / totalBytes) * 100))
-                setStatus({ status: "downloading", progress: pct })
-              }
-            } else if (event.event === "Finished") {
-              setStatus({ status: "ready" })
-            }
-          })
-          setStatus({ status: "ready" })
-        } catch (err) {
-          console.error("Update download failed:", err)
-          setStatus({ status: "error", message: "Download failed" })
-        } finally {
-          inFlightRef.current.downloading = false
-        }
-      }
-    } catch (err) {
-      inFlightRef.current.checking = false
-      if (!mountedRef.current) return
-      console.error("Update check failed:", err)
-      setStatus({ status: "error", message: "Update check failed" })
-    }
-  }, [setStatus])
-
-  useEffect(() => {
-    mountedRef.current = true
-    void checkForUpdates()
-
-    // Check every 15 minutes
-    const intervalId = setInterval(() => {
-      void checkForUpdates()
-    }, 15 * 60 * 1000)
-
-    return () => {
-      mountedRef.current = false
-      clearInterval(intervalId)
-      if (upToDateTimeoutRef.current !== null) {
-        clearTimeout(upToDateTimeoutRef.current)
-      }
-    }
-  }, [checkForUpdates])
+    setUpdateStatus({ status: "idle" })
+  }, [])
 
   const triggerInstall = useCallback(async () => {
-    const update = updateRef.current
-    if (!update) return
-    if (statusRef.current.status !== "ready") return
-    if (inFlightRef.current.installing || inFlightRef.current.downloading) return
-
-    track("update_accepted", { version: update.version })
-
-    try {
-      inFlightRef.current.installing = true
-      setStatus({ status: "installing" })
-      await update.install()
-      await relaunch()
-      setStatus({ status: "idle" })
-    } catch (err) {
-      console.error("Update install failed:", err)
-      setStatus({ status: "error", message: "Install failed" })
-    } finally {
-      inFlightRef.current.installing = false
-    }
-  }, [setStatus])
+    setUpdateStatus({ status: "idle" })
+  }, [])
 
   return { updateStatus, triggerInstall, checkForUpdates }
 }

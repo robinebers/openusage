@@ -13,8 +13,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use serde::Serialize;
-use tauri::Emitter;
-use tauri_plugin_aptabase::EventTracker;
+use tauri::{Emitter, Manager};
 use tauri_plugin_log::{Target, TargetKind};
 use uuid::Uuid;
 
@@ -22,95 +21,39 @@ use uuid::Uuid;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 const GLOBAL_SHORTCUT_STORE_KEY: &str = "globalShortcut";
-const DAILY_ACTIVE_TRACKED_DAY_KEY: &str = "analytics.daily_active_day";
-const DAILY_ACTIVE_EVENT_NAME: &str = "app_started";
+const FIRST_RUN_MARKER_FILE: &str = ".first-run-complete";
 
-fn today_utc_ymd() -> String {
-    let date = time::OffsetDateTime::now_utc().date();
-    format!(
-        "{:04}-{:02}-{:02}",
-        date.year(),
-        date.month() as u8,
-        date.day()
-    )
-}
-
-fn should_track_daily_active(last_tracked_day: Option<&str>, today: &str) -> bool {
-    match last_tracked_day {
-        Some(day) => day != today,
-        None => true,
-    }
+fn should_show_panel_on_start(first_run_completed: Option<bool>) -> bool {
+    !matches!(first_run_completed, Some(true))
 }
 
 #[cfg(desktop)]
-fn track_daily_active_if_needed(app_handle: &tauri::AppHandle) {
-    use tauri_plugin_store::StoreExt;
+fn show_panel_on_first_run_if_needed(app_handle: &tauri::AppHandle) {
+    let first_run_completed = app_handle
+        .path()
+        .app_data_dir()
+        .ok()
+        .map(|app_data_dir| app_data_dir.join(FIRST_RUN_MARKER_FILE).exists());
 
-    let today = today_utc_ymd();
+    if !should_show_panel_on_start(first_run_completed) {
+        return;
+    }
 
-    let store = match app_handle.store("settings.json") {
-        Ok(store) => store,
+    panel::show_panel(app_handle);
+    match app_handle.path().app_data_dir() {
+        Ok(app_data_dir) => {
+            if let Err(error) = std::fs::create_dir_all(&app_data_dir) {
+                log::warn!("Failed to create app data dir for first-run marker: {}", error);
+                return;
+            }
+            if let Err(error) = std::fs::write(app_data_dir.join(FIRST_RUN_MARKER_FILE), b"done") {
+                log::warn!("Failed to persist first-run marker: {}", error);
+            }
+        }
         Err(error) => {
-            log::warn!(
-                "Failed to access settings store for daily analytics gate: {}",
-                error
-            );
-            return;
+            log::warn!("Failed to resolve app data dir for first-run marker: {}", error);
         }
-    };
-
-    let last_tracked_day = store
-        .get(DAILY_ACTIVE_TRACKED_DAY_KEY)
-        .and_then(|value| value.as_str().map(|value| value.to_string()));
-
-    if !should_track_daily_active(last_tracked_day.as_deref(), &today) {
-        return;
     }
-
-    if let Err(error) = app_handle.track_event(DAILY_ACTIVE_EVENT_NAME, None) {
-        log::warn!("Failed to track daily analytics event: {}", error);
-        return;
-    }
-
-    store.set(
-        DAILY_ACTIVE_TRACKED_DAY_KEY,
-        serde_json::Value::String(today),
-    );
-    if let Err(error) = store.save() {
-        log::warn!("Failed to save daily analytics tracked day: {}", error);
-    }
-}
-
-#[cfg(not(desktop))]
-fn track_daily_active_if_needed(app_handle: &tauri::AppHandle) {
-    let _ = app_handle.track_event(DAILY_ACTIVE_EVENT_NAME, None);
-}
-
-#[cfg(desktop)]
-fn seconds_until_next_utc_day(now: time::OffsetDateTime) -> u64 {
-    let now_time = now.time();
-    let seconds_since_midnight = u64::from(now_time.hour()) * 60 * 60
-        + u64::from(now_time.minute()) * 60
-        + u64::from(now_time.second());
-    let seconds_until_next_day = 86_400_u64.saturating_sub(seconds_since_midnight);
-    if seconds_until_next_day == 0 {
-        86_400
-    } else {
-        seconds_until_next_day
-    }
-}
-
-#[cfg(desktop)]
-fn spawn_daily_active_rollover_tracker(app_handle: tauri::AppHandle) {
-    std::thread::spawn(move || {
-        loop {
-            let sleep_for = std::time::Duration::from_secs(seconds_until_next_utc_day(
-                time::OffsetDateTime::now_utc(),
-            ));
-            std::thread::sleep(sleep_for);
-            track_daily_active_if_needed(&app_handle);
-        }
-    });
 }
 
 #[cfg(desktop)]
@@ -194,10 +137,7 @@ fn init_panel(app_handle: tauri::AppHandle) {
 
 #[tauri::command]
 fn hide_panel(app_handle: tauri::AppHandle) {
-    use tauri_nspanel::ManagerExt;
-    if let Ok(panel) = app_handle.get_webview_panel("main") {
-        panel.hide();
-    }
+    panel::hide_panel(&app_handle);
 }
 
 #[tauri::command]
@@ -345,10 +285,7 @@ async fn start_probe_batch(
 
 #[tauri::command]
 fn get_log_path(app_handle: tauri::AppHandle) -> Result<String, String> {
-    // macOS log directory: ~/Library/Logs/{bundleIdentifier}
-    let home = dirs::home_dir().ok_or("no home dir")?;
-    let bundle_id = app_handle.config().identifier.clone();
-    let log_dir = home.join("Library").join("Logs").join(&bundle_id);
+    let log_dir = app_handle.path().app_log_dir().map_err(|e| e.to_string())?;
     let log_file = log_dir.join(format!("{}.log", app_handle.package_info().name));
     Ok(log_file.to_string_lossy().to_string())
 }
@@ -470,10 +407,8 @@ pub fn run() {
     let _guard = runtime.enter();
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_aptabase::Builder::new("A-US-6435241436").build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())
-        .plugin(tauri_nspanel::init())
         .plugin(
             tauri_plugin_log::Builder::new()
                 .targets([
@@ -485,10 +420,8 @@ pub fn run() {
                 .level_for("hyper", log::LevelFilter::Warn)
                 .level_for("reqwest", log::LevelFilter::Warn)
                 .level_for("tao", log::LevelFilter::Info)
-                .level_for("tauri_plugin_updater", log::LevelFilter::Info)
                 .build(),
         )
-        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
@@ -513,11 +446,7 @@ pub fn run() {
             use tauri::Manager;
 
             let version = app.package_info().version.to_string();
-            log::info!("OpenUsage v{} starting", version);
-
-            track_daily_active_if_needed(app.handle());
-            #[cfg(desktop)]
-            spawn_daily_active_rollover_tracker(app.handle().clone());
+            log::info!("OpenUsage Windows v{} starting", version);
 
             let app_data_dir = app.path().app_data_dir().expect("no app data dir");
             let resource_dir = app.path().resource_dir().expect("no resource dir");
@@ -536,9 +465,9 @@ pub fn run() {
             local_http_api::start_server();
 
             tray::create(app.handle())?;
-
-            app.handle()
-                .plugin(tauri_plugin_updater::Builder::new().build())?;
+            panel::init(app.handle())?;
+            #[cfg(desktop)]
+            show_panel_on_first_run_if_needed(app.handle());
 
             // Register global shortcut from stored settings
             #[cfg(desktop)]
@@ -581,41 +510,20 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        DAILY_ACTIVE_TRACKED_DAY_KEY, seconds_until_next_utc_day, should_track_daily_active,
-    };
-    use time::{Date, Month, PrimitiveDateTime, Time};
+    use super::should_show_panel_on_start;
 
     #[test]
-    fn should_track_when_no_previous_day() {
-        assert!(should_track_daily_active(None, "2026-02-12"));
+    fn shows_panel_when_first_run_flag_is_missing() {
+        assert!(should_show_panel_on_start(None));
     }
 
     #[test]
-    fn should_not_track_when_same_day() {
-        assert!(!should_track_daily_active(Some("2026-02-12"), "2026-02-12"));
+    fn hides_panel_when_first_run_flag_is_completed() {
+        assert!(!should_show_panel_on_start(Some(true)));
     }
 
     #[test]
-    fn should_track_when_day_changes() {
-        assert!(should_track_daily_active(Some("2026-02-11"), "2026-02-12"));
-    }
-
-    #[test]
-    fn daily_active_key_is_not_version_scoped() {
-        assert_eq!(DAILY_ACTIVE_TRACKED_DAY_KEY, "analytics.daily_active_day");
-        assert!(!DAILY_ACTIVE_TRACKED_DAY_KEY.contains("0.6.2"));
-        assert!(!DAILY_ACTIVE_TRACKED_DAY_KEY.contains("0.6.3"));
-    }
-
-    #[test]
-    fn rollover_sleep_waits_for_next_utc_day_boundary() {
-        let now = PrimitiveDateTime::new(
-            Date::from_calendar_date(2026, Month::February, 12).unwrap(),
-            Time::from_hms(23, 59, 50).unwrap(),
-        )
-        .assume_utc();
-
-        assert_eq!(seconds_until_next_utc_day(now), 10);
+    fn shows_panel_when_first_run_flag_is_false() {
+        assert!(should_show_panel_on_start(Some(false)));
     }
 }
