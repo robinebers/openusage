@@ -3,6 +3,8 @@ import { makePluginTestContext } from "../test-helpers.js";
 
 const KEYCHAIN_SERVICE = "UsageTray-copilot";
 const LEGACY_KEYCHAIN_SERVICE = "OpenUsage-copilot";
+const GH_KEYCHAIN_PRIMARY_SERVICE = "gh:github.com";
+const GH_KEYCHAIN_WINDOWS_ALIAS = "gh:github.com:";
 
 const loadPlugin = async () => {
   await import("./plugin.js");
@@ -40,7 +42,10 @@ function setKeychainToken(ctx, token) {
 
 function setGhCliKeychain(ctx, value) {
   ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
-    if (service === "gh:github.com") return value;
+    if (
+      service === GH_KEYCHAIN_PRIMARY_SERVICE ||
+      service === GH_KEYCHAIN_WINDOWS_ALIAS
+    ) return value;
     return null;
   });
 }
@@ -82,6 +87,20 @@ describe("copilot plugin", () => {
     expect(call.headers.Authorization).toBe("token ghu_keychain");
   });
 
+  it("falls back to legacy keychain service when primary keychain entry is missing", async () => {
+    const ctx = makePluginTestContext();
+    ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
+      if (service === KEYCHAIN_SERVICE) throw new Error("not found");
+      if (service === LEGACY_KEYCHAIN_SERVICE) return JSON.stringify({ token: "ghu_legacy" });
+      return null;
+    });
+    mockUsageOk(ctx);
+    const plugin = await loadPlugin();
+    plugin.probe(ctx);
+    const call = ctx.host.http.request.mock.calls[0][0];
+    expect(call.headers.Authorization).toBe("token ghu_legacy");
+  });
+
   it("loads token from gh CLI keychain (plain)", async () => {
     const ctx = makePluginTestContext();
     setGhCliKeychain(ctx, "gho_plain_token");
@@ -105,6 +124,20 @@ describe("copilot plugin", () => {
     expect(call.headers.Authorization).toBe("token gho_encoded_token");
   });
 
+  it("loads token from gh CLI Windows alias target", async () => {
+    const ctx = makePluginTestContext();
+    ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
+      if (service === GH_KEYCHAIN_PRIMARY_SERVICE) throw new Error("not found");
+      if (service === GH_KEYCHAIN_WINDOWS_ALIAS) return "gho_windows_alias";
+      return null;
+    });
+    mockUsageOk(ctx);
+    const plugin = await loadPlugin();
+    plugin.probe(ctx);
+    const call = ctx.host.http.request.mock.calls[0][0];
+    expect(call.headers.Authorization).toBe("token gho_windows_alias");
+  });
+
   it("loads token from state file", async () => {
     const ctx = makePluginTestContext();
     setStateFileToken(ctx, "ghu_state");
@@ -121,7 +154,10 @@ describe("copilot plugin", () => {
     ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
       if (service === KEYCHAIN_SERVICE)
         return JSON.stringify({ token: "ghu_keychain" });
-      if (service === "gh:github.com") return "gho_ghcli";
+      if (
+        service === GH_KEYCHAIN_PRIMARY_SERVICE ||
+        service === GH_KEYCHAIN_WINDOWS_ALIAS
+      ) return "gho_ghcli";
       return null;
     });
     mockUsageOk(ctx);
@@ -180,6 +216,43 @@ describe("copilot plugin", () => {
     expect(premium.limit).toBe(100);
     expect(chat).toBeTruthy();
     expect(chat.used).toBe(5); // 100 - 95
+  });
+
+  it("renders Completions when quota snapshots include it", async () => {
+    const ctx = makePluginTestContext();
+    setKeychainToken(ctx, "tok");
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify(
+        makeUsageResponse({
+          quota_snapshots: {
+            premium_interactions: {
+              percent_remaining: 80,
+              entitlement: 300,
+              remaining: 240,
+              quota_id: "premium_interactions",
+            },
+            chat: {
+              percent_remaining: 95,
+              entitlement: 1000,
+              remaining: 950,
+              quota_id: "chat",
+            },
+            completions: {
+              percent_remaining: 60,
+              entitlement: 2000,
+              remaining: 1200,
+              quota_id: "completions",
+            },
+          },
+        }),
+      ),
+    });
+    const plugin = await loadPlugin();
+    const result = plugin.probe(ctx);
+    const completions = result.lines.find((l) => l.label === "Completions");
+    expect(completions).toBeTruthy();
+    expect(completions.used).toBe(40);
   });
 
   it("renders only Premium when Chat is missing", async () => {
@@ -249,6 +322,19 @@ describe("copilot plugin", () => {
     const result = plugin.probe(ctx);
     const premium = result.lines.find((l) => l.label === "Premium");
     expect(premium.resetsAt).toBe("2099-01-15T00:00:00.000Z");
+  });
+
+  it("prefers quota_reset_date_utc when present", async () => {
+    const ctx = makePluginTestContext();
+    setKeychainToken(ctx, "tok");
+    mockUsageOk(ctx, makeUsageResponse({
+      quota_reset_date: "2099-01-15",
+      quota_reset_date_utc: "2099-01-16T12:00:00.000Z",
+    }));
+    const plugin = await loadPlugin();
+    const result = plugin.probe(ctx);
+    const premium = result.lines.find((l) => l.label === "Premium");
+    expect(premium.resetsAt).toBe("2099-01-16T12:00:00.000Z");
   });
 
   it("clamps usedPercent to 0 when percent_remaining > 100", async () => {
@@ -461,7 +547,10 @@ describe("copilot plugin", () => {
       if (service === KEYCHAIN_SERVICE) {
         return JSON.stringify({ token: "stale_token" });
       }
-      if (service === "gh:github.com") {
+      if (
+        service === GH_KEYCHAIN_PRIMARY_SERVICE ||
+        service === GH_KEYCHAIN_WINDOWS_ALIAS
+      ) {
         return "fresh_gh_token";
       }
       return null;
@@ -502,7 +591,10 @@ describe("copilot plugin", () => {
     const ctx = makePluginTestContext();
     ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
       if (service === KEYCHAIN_SERVICE) return JSON.stringify({ notToken: "x" });
-      if (service === "gh:github.com") return "gho_fallback";
+      if (
+        service === GH_KEYCHAIN_PRIMARY_SERVICE ||
+        service === GH_KEYCHAIN_WINDOWS_ALIAS
+      ) return "gho_fallback";
       return null;
     });
     mockUsageOk(ctx, makeUsageResponse({ copilot_plan: null }));

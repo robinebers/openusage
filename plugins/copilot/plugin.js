@@ -1,7 +1,7 @@
 (function () {
   const KEYCHAIN_SERVICE = "UsageTray-copilot";
   const LEGACY_KEYCHAIN_SERVICE = "OpenUsage-copilot";
-  const GH_KEYCHAIN_SERVICE = "gh:github.com";
+  const GH_KEYCHAIN_SERVICES = ["gh:github.com", "gh:github.com:"];
   const USAGE_URL = "https://api.github.com/copilot_internal/user";
 
   function readJson(ctx, path) {
@@ -36,19 +36,21 @@
   }
 
   function clearCachedToken(ctx) {
-    try {
-      ctx.host.keychain.deleteGenericPassword(KEYCHAIN_SERVICE);
-      ctx.host.keychain.deleteGenericPassword(LEGACY_KEYCHAIN_SERVICE);
-    } catch (e) {
-      ctx.host.log.info("keychain delete failed: " + String(e));
+    const services = [KEYCHAIN_SERVICE, LEGACY_KEYCHAIN_SERVICE];
+    for (const service of services) {
+      try {
+        ctx.host.keychain.deleteGenericPassword(service);
+      } catch (e) {
+        ctx.host.log.info("keychain delete failed for " + service + ": " + String(e));
+      }
     }
     writeJson(ctx, ctx.app.pluginDataDir + "/auth.json", null);
   }
 
   function loadTokenFromKeychain(ctx) {
-    try {
-      const services = [KEYCHAIN_SERVICE, LEGACY_KEYCHAIN_SERVICE];
-      for (const service of services) {
+    const services = [KEYCHAIN_SERVICE, LEGACY_KEYCHAIN_SERVICE];
+    for (const service of services) {
+      try {
         const raw = ctx.host.keychain.readGenericPassword(service);
         if (raw) {
           const parsed = ctx.util.tryParseJson(raw);
@@ -58,31 +60,29 @@
             return { token: parsed.token, source: "keychain" };
           }
         }
+      } catch (e) {
+        ctx.host.log.info("keychain read failed for " + service + ": " + String(e));
       }
-    } catch (e) {
-      ctx.host.log.info("UsageTray keychain read failed: " + String(e));
     }
     return null;
   }
 
   function loadTokenFromGhCli(ctx) {
-    try {
-      const raw = ctx.host.keychain.readGenericPassword(GH_KEYCHAIN_SERVICE);
-      if (raw) {
+    for (const service of GH_KEYCHAIN_SERVICES) {
+      try {
+        const raw = ctx.host.keychain.readGenericPassword(service);
+        if (!raw) continue;
         let token = raw;
-        if (
-          typeof token === "string" &&
-          token.indexOf("go-keyring-base64:") === 0
-        ) {
+        if (typeof token === "string" && token.indexOf("go-keyring-base64:") === 0) {
           token = ctx.base64.decode(token.slice("go-keyring-base64:".length));
         }
         if (token) {
           ctx.host.log.info("token loaded from gh CLI keychain");
           return { token: token, source: "gh-cli" };
         }
+      } catch (e) {
+        ctx.host.log.info("gh CLI keychain read failed for " + service + ": " + String(e));
       }
-    } catch (e) {
-      ctx.host.log.info("gh CLI keychain read failed: " + String(e));
     }
     return null;
   }
@@ -216,6 +216,7 @@
 
     const lines = [];
     let plan = null;
+    const quotaResetDate = data.quota_reset_date_utc || data.quota_reset_date;
     if (data.copilot_plan) {
       plan = ctx.fmt.planLabel(data.copilot_plan);
     }
@@ -227,7 +228,7 @@
         ctx,
         "Premium",
         snapshots.premium_interactions,
-        data.quota_reset_date,
+        quotaResetDate,
       );
       if (premiumLine) lines.push(premiumLine);
 
@@ -235,9 +236,17 @@
         ctx,
         "Chat",
         snapshots.chat,
-        data.quota_reset_date,
+        quotaResetDate,
       );
       if (chatLine) lines.push(chatLine);
+
+      const completionsLine = makeProgressLine(
+        ctx,
+        "Completions",
+        snapshots.completions,
+        quotaResetDate,
+      );
+      if (completionsLine) lines.push(completionsLine);
     }
 
     // Free tier: limited_user_quotas

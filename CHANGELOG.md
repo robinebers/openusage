@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.6.12
+
+### New Features
+- Add Windows v1 provider support for Antigravity, Copilot, Factory / Droid, and Windsurf
+- Add Windows keychain, crypto, and local language-server host APIs for credentialed provider plugins
+
+### Bug Fixes
+- Read GitHub CLI credentials from Windows Credential Manager aliases and show Copilot completions quotas
+- Support Factory `auth.v2.file` sessions and persist refreshed auth back to encrypted storage
+- Detect Antigravity and Windsurf Windows app-data state, including Windsurf plans without extra-usage balance
+
+### Chores
+- Update README with the current Windows provider coverage and compatibility-matrix link
+- Document Copilot Windows auth behavior and provider API changes
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.6.11...v0.6.12](https://github.com/Rana-Faraz/usage-tray-windows/compare/v0.6.11...v0.6.12)
+
 ## 0.6.11
 
 ### New Features

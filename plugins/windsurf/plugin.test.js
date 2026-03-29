@@ -141,6 +141,27 @@ describe("windsurf plugin", () => {
     expect(sentBody.metadata.extensionVersion).toBe(CLOUD_COMPAT_VERSION)
   })
 
+  it("reads the Windows AppData state DB when running on windows", async () => {
+    const ctx = makeCtx()
+    ctx.app.platform = "windows"
+    ctx.host.windows.knownPath.mockReturnValue("C:/Users/test/AppData/Roaming")
+    ctx.host.sqlite.query.mockImplementation((db, sql) => {
+      expect(String(db)).toBe("C:/Users/test/AppData/Roaming/Windsurf/User/globalStorage/state.vscdb")
+      expect(String(sql)).toContain("windsurfAuthStatus")
+      return makeAuthStatus("sk-ws-01-win")
+    })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify(makeQuotaResponse({ planInfo: { planName: "Windows" } })),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Windows")
+    expect(ctx.host.windows.knownPath).toHaveBeenCalledWith("appData")
+  })
+
   it("falls through when the first variant returns 200 without userStatus", async () => {
     const ctx = makeCtx()
     setupCloudMock(ctx, {
@@ -274,6 +295,30 @@ describe("windsurf plugin", () => {
 
     expect(result.plan).toBe("Unknown")
     expect(result.lines.find((line) => line.label === "Extra usage balance")?.value).toBe("$0.00")
+  })
+
+  it("renders daily and weekly quota without extra usage balance when overage is missing", async () => {
+    const ctx = makeCtx()
+    setupCloudMock(ctx, {
+      stableAuth: "sk-ws-01-stable",
+      stableResponse: {
+        status: 200,
+        bodyText: JSON.stringify(
+          makeQuotaResponse({
+            planInfo: { planName: "Free" },
+            overageBalanceMicros: undefined,
+          })
+        ),
+      },
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Free")
+    expect(result.lines.find((line) => line.label === "Daily quota")).toBeTruthy()
+    expect(result.lines.find((line) => line.label === "Weekly quota")).toBeTruthy()
+    expect(result.lines.find((line) => line.label === "Extra usage balance")).toBeUndefined()
   })
 
   it("falls back to Unknown plan when planInfo is null", async () => {
@@ -687,7 +732,7 @@ describe("windsurf plugin", () => {
     finiteSpy.mockRestore()
   })
 
-  it("throws quota unavailable when extra usage balance becomes invalid after contract validation", async () => {
+  it("omits extra usage balance when it becomes invalid after contract validation", async () => {
     const ctx = makeCtx()
     const originalTryParseJson = ctx.util.tryParseJson
     ctx.util.tryParseJson = vi.fn((text) => {
@@ -723,7 +768,11 @@ describe("windsurf plugin", () => {
     })
 
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Windsurf quota data unavailable. Try again later.")
+    const result = plugin.probe(ctx)
+    expect(result.plan).toBe("Teams")
+    expect(result.lines.find((line) => line.label === "Daily quota")).toBeTruthy()
+    expect(result.lines.find((line) => line.label === "Weekly quota")).toBeTruthy()
+    expect(result.lines.find((line) => line.label === "Extra usage balance")).toBeUndefined()
     finiteSpy.mockRestore()
   })
 

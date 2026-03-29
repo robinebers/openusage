@@ -1,4 +1,5 @@
 pub mod host_api;
+mod keychain;
 pub mod manifest;
 pub mod runtime;
 
@@ -37,14 +38,20 @@ fn initialize_plugins_with_mode(
                     let plugins = manifest::load_plugins_from_dir(&dev_dir);
                     (dev_dir, plugins)
                 }
-                PluginLoadMode::MockOnly => load_selected_plugins(&dev_dir, app_data_dir, &["mock"]),
+                PluginLoadMode::MockOnly => {
+                    load_selected_plugins(&dev_dir, app_data_dir, &["mock"])
+                }
             };
         }
     }
 
     let install_dir = app_data_dir.join("plugins");
     if let Err(err) = std::fs::create_dir_all(&install_dir) {
-        log::warn!("failed to create install dir {}: {}", install_dir.display(), err);
+        log::warn!(
+            "failed to create install dir {}: {}",
+            install_dir.display(),
+            err
+        );
     }
 
     let bundled_dir = resolve_bundled_dir(resource_dir);
@@ -55,7 +62,9 @@ fn initialize_plugins_with_mode(
                 let plugins = manifest::load_plugins_from_dir(&install_dir);
                 (install_dir, plugins)
             }
-            PluginLoadMode::MockOnly => load_selected_plugins(&bundled_dir, app_data_dir, &["mock"]),
+            PluginLoadMode::MockOnly => {
+                load_selected_plugins(&bundled_dir, app_data_dir, &["mock"])
+            }
         };
     }
 
@@ -162,7 +171,11 @@ fn copy_dir_recursive(src: &Path, dst: &Path) {
                 let file_type = match entry.file_type() {
                     Ok(file_type) => file_type,
                     Err(err) => {
-                        log::warn!("failed to read file type for {}: {}", src_path.display(), err);
+                        log::warn!(
+                            "failed to read file type for {}: {}",
+                            src_path.display(),
+                            err
+                        );
                         continue;
                     }
                 };
@@ -171,11 +184,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) {
                 }
                 if file_type.is_dir() {
                     if let Err(err) = std::fs::create_dir_all(&dst_path) {
-                        log::warn!(
-                            "failed to create dir {}: {}",
-                            dst_path.display(),
-                            err
-                        );
+                        log::warn!("failed to create dir {}: {}", dst_path.display(), err);
                         continue;
                     }
                     copy_dir_recursive(&src_path, &dst_path);
@@ -199,7 +208,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) {
 
 #[cfg(test)]
 mod tests {
-    use super::{initialize_plugins_with_mode, PluginLoadMode};
+    use super::{PluginLoadMode, initialize_plugins_with_mode};
     use std::path::{Path, PathBuf};
 
     fn create_plugin(root: &Path, id: &str) {
@@ -264,7 +273,10 @@ mod tests {
             Some(&cwd),
         );
 
-        let ids: Vec<_> = plugins.iter().map(|plugin| plugin.manifest.id.as_str()).collect();
+        let ids: Vec<_> = plugins
+            .iter()
+            .map(|plugin| plugin.manifest.id.as_str())
+            .collect();
         assert_eq!(ids, vec!["codex", "mock"]);
 
         let _ = std::fs::remove_dir_all(root);
@@ -289,7 +301,10 @@ mod tests {
             Some(&cwd),
         );
 
-        let ids: Vec<_> = plugins.iter().map(|plugin| plugin.manifest.id.as_str()).collect();
+        let ids: Vec<_> = plugins
+            .iter()
+            .map(|plugin| plugin.manifest.id.as_str())
+            .collect();
         assert_eq!(ids, vec!["mock"]);
         assert!(install_dir.join("mock").exists());
         assert!(!install_dir.join("codex").exists());

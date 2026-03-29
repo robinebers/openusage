@@ -17,7 +17,15 @@ type WindowsProviderSupport = {
   note: string
 }
 
-export const WINDOWS_V1_PROVIDER_IDS = ["claude", "codex", "cursor"] as const
+export const WINDOWS_V1_PROVIDER_IDS = [
+  "antigravity",
+  "claude",
+  "codex",
+  "copilot",
+  "cursor",
+  "factory",
+  "windsurf",
+] as const
 
 export const WINDOWS_PROVIDER_SUPPORT: Record<string, WindowsProviderSupport> = {
   amp: {
@@ -27,10 +35,10 @@ export const WINDOWS_PROVIDER_SUPPORT: Record<string, WindowsProviderSupport> = 
     note: "Unix-only local data layout needs a Windows discovery pass before this provider is worth enabling.",
   },
   antigravity: {
-    status: "blocked",
-    detectionStrategy: "macOS VS Code-style sqlite state under `~/Library/Application Support/Antigravity/...`.",
-    dependencies: ["Antigravity desktop app", "sqlite3"],
-    note: "Current implementation is tied to the macOS app-storage layout and cannot run on Windows unchanged.",
+    status: "v1",
+    detectionStrategy: "Reads `%APPDATA%/Antigravity/User/globalStorage/state.vscdb` and probes the local Antigravity language server when the desktop app is running.",
+    dependencies: ["Antigravity desktop app signed in locally", "sqlite3"],
+    note: "No usable Antigravity session was detected yet. Open Antigravity once, sign in, and keep its local state database available.",
   },
   claude: {
     status: "v1",
@@ -45,10 +53,10 @@ export const WINDOWS_PROVIDER_SUPPORT: Record<string, WindowsProviderSupport> = 
     note: "No local Codex auth was detected yet. Run `codex login` so an `auth.json` is present.",
   },
   copilot: {
-    status: "planned",
-    detectionStrategy: "GitHub CLI or UsageTray-managed credential storage.",
-    dependencies: ["GitHub CLI auth or Windows credential bridge"],
-    note: "Windows credential-manager support needs to land before Copilot can be promoted to the first support wave.",
+    status: "v1",
+    detectionStrategy: "Reads UsageTray-managed credentials first, then Windows Credential Manager entries created by `gh auth login`.",
+    dependencies: ["GitHub CLI signed in locally or a cached UsageTray token"],
+    note: "No local Copilot auth was detected yet. Run `gh auth login` and keep the GitHub CLI session available for UsageTray.",
   },
   cursor: {
     status: "v1",
@@ -57,10 +65,10 @@ export const WINDOWS_PROVIDER_SUPPORT: Record<string, WindowsProviderSupport> = 
     note: "No usable Cursor session was detected yet. Open Cursor, sign in once, and keep the local state database intact.",
   },
   factory: {
-    status: "planned",
-    detectionStrategy: "Local auth files under `~/.factory` with optional keychain fallback.",
+    status: "v1",
+    detectionStrategy: "Reads `~/.factory/auth.v2.file` or legacy auth files, with Windows keychain fallback.",
     dependencies: ["Factory CLI auth"],
-    note: "Factory looks close to portable, but it is outside the first Windows milestone.",
+    note: "No local Factory auth was detected yet. Run `droid` so `~/.factory` contains a valid auth session.",
   },
   gemini: {
     status: "deferred",
@@ -99,10 +107,10 @@ export const WINDOWS_PROVIDER_SUPPORT: Record<string, WindowsProviderSupport> = 
     note: "Perplexity is blocked behind macOS-specific cache discovery and is not yet supportable on Windows.",
   },
   windsurf: {
-    status: "blocked",
-    detectionStrategy: "macOS state database under `~/Library/Application Support/Windsurf/...`.",
+    status: "v1",
+    detectionStrategy: "Reads `%APPDATA%/Windsurf/User/globalStorage/state.vscdb` and `%APPDATA%/Windsurf - Next/User/globalStorage/state.vscdb`.",
     dependencies: ["Windsurf desktop app", "sqlite3"],
-    note: "Windsurf is still hard-coded to macOS application data paths and is not yet supportable on Windows.",
+    note: "No usable Windsurf session was detected yet. Open Windsurf, sign in once, and keep the local state database intact.",
   },
   zai: {
     status: "planned",
@@ -118,6 +126,7 @@ function looksLikeDetectionGap(error: string | null): boolean {
     /^Not logged in\b/i,
     /^No active Cursor subscription\./i,
     /^Usage not available for API key\./i,
+    /^Start .+ and try again\./i,
   ].some((pattern) => pattern.test(error))
 }
 

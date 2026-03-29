@@ -132,6 +132,40 @@ describe("factory plugin", () => {
     expect(ctx.host.keychain.readGenericPassword).toHaveBeenCalledWith("Factory Token")
   })
 
+  it("loads auth from auth.v2.file when present", async () => {
+    const ctx = makeCtx()
+    const futureExp = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
+    ctx.host.fs.writeText("~/.factory/auth.v2.file", "iv:tag:ciphertext")
+    ctx.host.fs.writeText("~/.factory/auth.v2.key", "key-b64")
+    ctx.host.crypto.aes256GcmDecrypt.mockReturnValue(JSON.stringify({
+      access_token: makeJwt(futureExp),
+      refresh_token: "refresh",
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        usage: {
+          startDate: 1770623326000,
+          endDate: 1772956800000,
+          standard: { orgTotalTokensUsed: 1, totalAllowance: 20000000 },
+          premium: { orgTotalTokensUsed: 0, totalAllowance: 0 },
+        },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((line) => line.label === "Standard")).toBeTruthy()
+    expect(ctx.host.crypto.aes256GcmDecrypt).toHaveBeenCalledWith({
+      keyB64: "key-b64",
+      ivB64: "iv",
+      tagB64: "tag",
+      ciphertextB64: "ciphertext",
+    })
+  })
+
   it("loads auth from keychain when payload is hex-encoded JSON", async () => {
     const ctx = makeCtx()
     const futureExp = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
@@ -240,6 +274,53 @@ describe("factory plugin", () => {
     expect(service).toBe("Factory Token")
     const parsed = JSON.parse(writtenPayload)
     expect(parsed.refresh_token).toBe("new-refresh")
+  })
+
+  it("refreshes auth.v2.file and writes encrypted payload back", async () => {
+    const ctx = makeCtx()
+    const nearExp = Math.floor(Date.now() / 1000) + 12 * 60 * 60
+    const futureExp = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
+    ctx.host.fs.writeText("~/.factory/auth.v2.file", "iv:tag:ciphertext")
+    ctx.host.fs.writeText("~/.factory/auth.v2.key", "key-b64")
+    ctx.host.crypto.aes256GcmDecrypt.mockReturnValue(JSON.stringify({
+      access_token: makeJwt(nearExp),
+      refresh_token: "refresh",
+    }))
+    ctx.host.crypto.aes256GcmEncrypt.mockReturnValue({
+      ivB64: "new-iv",
+      tagB64: "new-tag",
+      ciphertextB64: "new-ciphertext",
+    })
+
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("workos.com")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            access_token: makeJwt(futureExp),
+            refresh_token: "new-refresh",
+          }),
+        }
+      }
+      return {
+        status: 200,
+        headers: {},
+        bodyText: JSON.stringify({
+          usage: {
+            startDate: 1770623326000,
+            endDate: 1772956800000,
+            standard: { orgTotalTokensUsed: 0, totalAllowance: 20000000 },
+            premium: { orgTotalTokensUsed: 0, totalAllowance: 0 },
+          },
+        }),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    expect(ctx.host.crypto.aes256GcmEncrypt).toHaveBeenCalledTimes(1)
+    expect(ctx.host.fs.writeText).toHaveBeenCalledWith("~/.factory/auth.v2.file", "new-iv:new-tag:new-ciphertext")
   })
 
   it("fetches usage and formats standard tokens", async () => {

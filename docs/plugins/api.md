@@ -199,18 +199,22 @@ const resp = ctx.host.http.request({
 })
 ```
 
-## Keychain (macOS only)
+## Keychain
 
 ```typescript
 host.keychain.readGenericPassword(service: string): string
+host.keychain.writeGenericPassword(service: string, value: string): void
+host.keychain.deleteGenericPassword(service: string): void
 ```
 
-Reads a generic password from the macOS Keychain.
+Reads or writes a generic password in the platform credential store.
 
 ### Behavior
 
-- **macOS only**: Throws on other platforms
-- **Throws if not found**: Returns the password string if found, throws otherwise
+- **macOS**: Uses the system Keychain
+- **Windows**: Uses Windows Credential Manager generic credentials
+- **Throws if not found**: `readGenericPassword` returns the password string if found, throws otherwise
+- **Prefix lookup on Windows**: If an exact generic credential is missing, `readGenericPassword("gh:github.com")` also checks matching targets like `gh:github.com:` and `gh:github.com:<account>`
 
 ### Example
 
@@ -228,6 +232,21 @@ if (ctx.host.fs.exists("~/.myapp/credentials.json")) {
     throw "Login required. Sign in to continue."
   }
 }
+```
+
+Persisting a cached token:
+
+```javascript
+ctx.host.keychain.writeGenericPassword(
+  "UsageTray-copilot",
+  JSON.stringify({ token: "gho_example" }),
+)
+```
+
+Deleting a stale token:
+
+```javascript
+ctx.host.keychain.deleteGenericPassword("UsageTray-copilot")
 ```
 
 ## SQLite

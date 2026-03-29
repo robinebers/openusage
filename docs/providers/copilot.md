@@ -7,7 +7,7 @@ Tracks GitHub Copilot usage quotas for both paid and free tier users.
 The plugin looks for a GitHub token in this order:
 
 1. **UsageTray Keychain** (`UsageTray-copilot`) — Token previously cached by the plugin
-2. **GitHub CLI Keychain** (`gh:github.com`) — Token from `gh auth login`
+2. **GitHub CLI Keychain** (`gh:github.com`) — Token from `gh auth login`; on Windows the credential may be stored under matching targets such as `gh:github.com:` or `gh:github.com:<account>`
 3. **State File** (`auth.json`) — Fallback file-based storage
 
 ### Setup
@@ -17,6 +17,9 @@ Install and authenticate with the GitHub CLI:
 ```bash
 # Install gh CLI (macOS)
 brew install gh
+
+# Install gh CLI (Windows)
+winget install --id GitHub.cli
 
 # Authenticate
 gh auth login
@@ -58,6 +61,12 @@ X-Github-Api-Version: 2025-04-01
       "entitlement": 1000,
       "remaining": 950,
       "quota_id": "chat"
+    },
+    "completions": {
+      "percent_remaining": 60,
+      "entitlement": 2000,
+      "remaining": 1200,
+      "quota_id": "completions"
     }
   }
 }
@@ -87,7 +96,7 @@ X-Github-Api-Version: 2025-04-01
 |--------------|------|------------------------------------------|
 | Premium      | Paid | Premium interactions remaining (percent) |
 | Chat         | Both | Chat messages remaining                  |
-| Completions  | Free | Code completions remaining               |
+| Completions  | Paid, Free | Code completions remaining         |
 
 All progress lines include:
 - `resetsAt` — ISO timestamp of next quota reset

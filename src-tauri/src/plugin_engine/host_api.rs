@@ -1,3 +1,11 @@
+use super::keychain;
+use aes_gcm::AesGcm;
+use aes_gcm::aead::consts::U16;
+use aes_gcm::aead::generic_array::GenericArray;
+use aes_gcm::aead::{Aead, KeyInit};
+use aes_gcm::aes::Aes256;
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use rquickjs::{Ctx, Exception, Function, Object};
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
@@ -26,6 +34,18 @@ struct WindowsProcessInfo {
 }
 
 #[derive(Debug, serde::Deserialize)]
+struct WindowsProcessCommandRecord {
+    #[serde(rename = "Name")]
+    name: Option<String>,
+    #[serde(rename = "ProcessId")]
+    process_id: Option<u32>,
+    #[serde(rename = "CommandLine")]
+    command_line: Option<String>,
+}
+
+type Aes256Gcm16 = AesGcm<Aes256, U16>;
+
+#[derive(Debug, serde::Deserialize)]
 struct ShellExecRequest {
     program: String,
     #[serde(default)]
@@ -39,6 +59,31 @@ struct ShellExecResponse {
     status: i32,
     stdout: String,
     stderr: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Aes256GcmDecryptRequest {
+    key_b64: String,
+    iv_b64: String,
+    tag_b64: String,
+    ciphertext_b64: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Aes256GcmEncryptRequest {
+    key_b64: String,
+    plaintext: String,
+    iv_b64: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Aes256GcmEncryptResponse {
+    iv_b64: String,
+    tag_b64: String,
+    ciphertext_b64: String,
 }
 
 fn env_flag_enabled(name: &str) -> bool {
@@ -140,6 +185,110 @@ fn list_windows_processes(name_like: Option<&str>) -> Vec<WindowsProcessInfo> {
         .collect()
 }
 
+fn decode_windows_process_command_records(stdout: &[u8]) -> Vec<WindowsProcessCommandRecord> {
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(stdout) else {
+        return Vec::new();
+    };
+
+    let items = match value {
+        serde_json::Value::Array(items) => items,
+        serde_json::Value::Null => Vec::new(),
+        other => vec![other],
+    };
+
+    items
+        .into_iter()
+        .filter_map(|item| serde_json::from_value::<WindowsProcessCommandRecord>(item).ok())
+        .collect()
+}
+
+fn list_windows_process_commands(name_like: Option<&str>) -> Vec<(i32, String)> {
+    if !cfg!(target_os = "windows") {
+        return Vec::new();
+    }
+
+    let filter = name_like
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty());
+    let script = "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-CimInstance Win32_Process | Select-Object Name,ProcessId,CommandLine | ConvertTo-Json -Compress";
+
+    let mut command = Command::new("powershell");
+    configure_background_command(&mut command);
+    let output = match command
+        .args(["-NoProfile", "-NonInteractive", "-Command", script])
+        .output()
+    {
+        Ok(output) if output.status.success() => output,
+        _ => return Vec::new(),
+    };
+
+    decode_windows_process_command_records(&output.stdout)
+        .into_iter()
+        .filter_map(|record| {
+            let pid = record.process_id?;
+            let command_line = record.command_line?.trim().to_string();
+            if command_line.is_empty() {
+                return None;
+            }
+
+            let name = record.name.unwrap_or_default().to_ascii_lowercase();
+            let command_lower = command_line.to_ascii_lowercase();
+            if let Some(filter) = &filter {
+                if !name.contains(filter) && !command_lower.contains(filter) {
+                    return None;
+                }
+            }
+
+            Some((pid as i32, command_line))
+        })
+        .collect()
+}
+
+fn list_windows_listening_ports(pid: i32) -> Vec<i32> {
+    if !cfg!(target_os = "windows") {
+        return Vec::new();
+    }
+
+    let mut command = Command::new("netstat");
+    configure_background_command(&mut command);
+    let output = match command.args(["-ano", "-p", "tcp"]).output() {
+        Ok(output) if output.status.success() => output,
+        _ => return Vec::new(),
+    };
+
+    let mut ports = std::collections::BTreeSet::new();
+    for line in String::from_utf8_lossy(&output.stdout).lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || !trimmed.contains("LISTENING") {
+            continue;
+        }
+
+        let parts: Vec<&str> = trimmed.split_whitespace().collect();
+        if parts.len() < 5 {
+            continue;
+        }
+
+        let Ok(line_pid) = parts[parts.len() - 1].parse::<i32>() else {
+            continue;
+        };
+        if line_pid != pid {
+            continue;
+        }
+
+        let local_address = parts[1];
+        if let Some(colon_pos) = local_address.rfind(':') {
+            let port_str = &local_address[colon_pos + 1..];
+            if let Ok(port) = port_str.parse::<i32>() {
+                if port > 0 && port < 65536 {
+                    ports.insert(port);
+                }
+            }
+        }
+    }
+
+    ports.into_iter().collect()
+}
+
 fn extract_registry_query_value(stdout: &str) -> Option<String> {
     stdout.lines().find_map(|line| {
         let trimmed = line.trim();
@@ -163,7 +312,10 @@ fn read_registry_value(path: &str, value_name: &str) -> Option<String> {
 
     let mut command = Command::new("reg");
     configure_background_command(&mut command);
-    let output = command.args(["query", path, "/v", value_name]).output().ok()?;
+    let output = command
+        .args(["query", path, "/v", value_name])
+        .output()
+        .ok()?;
     if !output.status.success() {
         return None;
     }
@@ -270,6 +422,99 @@ fn resolve_env_value(name: &str) -> Option<String> {
         cache.insert(name.to_string(), resolved.clone());
     }
     resolved
+}
+
+fn decode_b64_field(ctx: &Ctx<'_>, label: &str, value: &str) -> rquickjs::Result<Vec<u8>> {
+    BASE64_STANDARD
+        .decode(value)
+        .map_err(|e| Exception::throw_message(ctx, &format!("invalid {} base64: {}", label, e)))
+}
+
+fn aes256_gcm_decrypt(ctx: &Ctx<'_>, req: Aes256GcmDecryptRequest) -> rquickjs::Result<String> {
+    let key = decode_b64_field(ctx, "key", &req.key_b64)?;
+    let iv = decode_b64_field(ctx, "iv", &req.iv_b64)?;
+    let tag = decode_b64_field(ctx, "tag", &req.tag_b64)?;
+    let ciphertext = decode_b64_field(ctx, "ciphertext", &req.ciphertext_b64)?;
+
+    if key.len() != 32 {
+        return Err(Exception::throw_message(
+            ctx,
+            "aes256-gcm key must be 32 bytes",
+        ));
+    }
+    if iv.len() != 16 {
+        return Err(Exception::throw_message(
+            ctx,
+            "aes256-gcm iv must be 16 bytes",
+        ));
+    }
+    if tag.len() != 16 {
+        return Err(Exception::throw_message(
+            ctx,
+            "aes256-gcm tag must be 16 bytes",
+        ));
+    }
+
+    let cipher = Aes256Gcm16::new(GenericArray::from_slice(&key));
+    let nonce = GenericArray::from_slice(&iv);
+    let mut payload = ciphertext;
+    payload.extend_from_slice(&tag);
+
+    let plaintext = cipher
+        .decrypt(nonce, payload.as_ref())
+        .map_err(|_| Exception::throw_message(ctx, "aes256-gcm decrypt failed"))?;
+
+    String::from_utf8(plaintext).map_err(|e| {
+        Exception::throw_message(ctx, &format!("decrypted plaintext is not utf-8: {}", e))
+    })
+}
+
+fn aes256_gcm_encrypt(
+    ctx: &Ctx<'_>,
+    req: Aes256GcmEncryptRequest,
+) -> rquickjs::Result<Aes256GcmEncryptResponse> {
+    let key = decode_b64_field(ctx, "key", &req.key_b64)?;
+    if key.len() != 32 {
+        return Err(Exception::throw_message(
+            ctx,
+            "aes256-gcm key must be 32 bytes",
+        ));
+    }
+
+    let iv = match req.iv_b64 {
+        Some(iv_b64) => {
+            let iv = decode_b64_field(ctx, "iv", &iv_b64)?;
+            if iv.len() != 16 {
+                return Err(Exception::throw_message(
+                    ctx,
+                    "aes256-gcm iv must be 16 bytes",
+                ));
+            }
+            iv
+        }
+        None => uuid::Uuid::new_v4().as_bytes().to_vec(),
+    };
+
+    let cipher = Aes256Gcm16::new(GenericArray::from_slice(&key));
+    let nonce = GenericArray::from_slice(&iv);
+    let mut payload = cipher
+        .encrypt(nonce, req.plaintext.as_bytes())
+        .map_err(|_| Exception::throw_message(ctx, "aes256-gcm encrypt failed"))?;
+
+    if payload.len() < 16 {
+        return Err(Exception::throw_message(
+            ctx,
+            "aes256-gcm output missing tag",
+        ));
+    }
+
+    let tag = payload.split_off(payload.len() - 16);
+
+    Ok(Aes256GcmEncryptResponse {
+        iv_b64: BASE64_STANDARD.encode(iv),
+        tag_b64: BASE64_STANDARD.encode(tag),
+        ciphertext_b64: BASE64_STANDARD.encode(payload),
+    })
 }
 
 /// Redact sensitive value to first4...last4 format (UTF-8 safe)
@@ -464,6 +709,7 @@ pub fn inject_host_api<'js>(
     inject_fs(ctx, &host)?;
     inject_env(ctx, &host, plugin_id)?;
     inject_http(ctx, &host, plugin_id)?;
+    inject_crypto(ctx, &host)?;
     inject_keychain(ctx, &host)?;
     inject_sqlite(ctx, &host)?;
     inject_ls(ctx, &host, plugin_id)?;
@@ -719,6 +965,80 @@ fn inject_http<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rqui
 
     host.set("http", http_obj)?;
     Ok(())
+}
+
+fn inject_crypto<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
+    let crypto_obj = Object::new(ctx.clone())?;
+
+    crypto_obj.set(
+        "_aes256GcmDecryptRaw",
+        Function::new(
+            ctx.clone(),
+            move |ctx_inner: Ctx<'_>, req_json: String| -> rquickjs::Result<String> {
+                let req: Aes256GcmDecryptRequest =
+                    serde_json::from_str(&req_json).map_err(|e| {
+                        Exception::throw_message(
+                            &ctx_inner,
+                            &format!("invalid aes256-gcm decrypt request: {}", e),
+                        )
+                    })?;
+                aes256_gcm_decrypt(&ctx_inner, req)
+            },
+        )?,
+    )?;
+
+    crypto_obj.set(
+        "_aes256GcmEncryptRaw",
+        Function::new(
+            ctx.clone(),
+            move |ctx_inner: Ctx<'_>, req_json: String| -> rquickjs::Result<String> {
+                let req: Aes256GcmEncryptRequest =
+                    serde_json::from_str(&req_json).map_err(|e| {
+                        Exception::throw_message(
+                            &ctx_inner,
+                            &format!("invalid aes256-gcm encrypt request: {}", e),
+                        )
+                    })?;
+                let response = aes256_gcm_encrypt(&ctx_inner, req)?;
+                serde_json::to_string(&response).map_err(|e| {
+                    Exception::throw_message(
+                        &ctx_inner,
+                        &format!("serialize aes256-gcm response failed: {}", e),
+                    )
+                })
+            },
+        )?,
+    )?;
+
+    host.set("crypto", crypto_obj)?;
+    Ok(())
+}
+
+pub fn patch_crypto_wrapper(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
+    ctx.eval::<(), _>(
+        r#"
+        (function() {
+            var decryptRaw = __openusage_ctx.host.crypto._aes256GcmDecryptRaw;
+            var encryptRaw = __openusage_ctx.host.crypto._aes256GcmEncryptRaw;
+            __openusage_ctx.host.crypto.aes256GcmDecrypt = function(req) {
+                return decryptRaw(JSON.stringify({
+                    keyB64: req.keyB64,
+                    ivB64: req.ivB64,
+                    tagB64: req.tagB64,
+                    ciphertextB64: req.ciphertextB64
+                }));
+            };
+            __openusage_ctx.host.crypto.aes256GcmEncrypt = function(req) {
+                return JSON.parse(encryptRaw(JSON.stringify({
+                    keyB64: req.keyB64,
+                    plaintext: req.plaintext,
+                    ivB64: req.ivB64 || null
+                })));
+            };
+        })();
+        "#
+        .as_bytes(),
+    )
 }
 
 pub fn patch_http_wrapper(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
@@ -1195,23 +1515,6 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
                     opts.markers
                 );
 
-                let ps_output = match std::process::Command::new("/bin/ps")
-                    .args(["-ax", "-o", "pid=,command="])
-                    .output()
-                {
-                    Ok(o) => o,
-                    Err(e) => {
-                        log::warn!("[plugin:{}] ps failed: {}", pid, e);
-                        return Ok("null".to_string());
-                    }
-                };
-
-                if !ps_output.status.success() {
-                    log::warn!("[plugin:{}] ps returned non-zero", pid);
-                    return Ok("null".to_string());
-                }
-
-                let ps_stdout = String::from_utf8_lossy(&ps_output.stdout);
                 let process_name_lower = opts.process_name.to_lowercase();
                 let markers_lower: Vec<String> =
                     opts.markers.iter().map(|m| m.to_lowercase()).collect();
@@ -1221,28 +1524,11 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
                 //   1. Exact --ide_name / --app_data_dir flag value (prevents
                 //      "windsurf" matching "windsurf-next")
                 //   2. Path substring (/<marker>/) as fallback when no flags found
-                let mut found: Option<(i32, String)> = None;
-
-                for line in ps_stdout.lines() {
-                    let trimmed = line.trim();
-                    if trimmed.is_empty() {
-                        continue;
-                    }
-
-                    let mut parts = trimmed.splitn(2, char::is_whitespace);
-                    let pid_str = match parts.next() {
-                        Some(s) => s.trim(),
-                        None => continue,
-                    };
-                    let command = match parts.next() {
-                        Some(s) => s.trim(),
-                        None => continue,
-                    };
-
+                let inspect_process = |process_pid: i32, command: &str| -> Option<(i32, String)> {
                     let command_lower = command.to_lowercase();
 
                     if !command_lower.contains(&process_name_lower) {
-                        continue;
+                        return None;
                     }
 
                     let ide_name = ls_extract_flag(command, "--ide_name").map(|v| v.to_lowercase());
@@ -1260,16 +1546,65 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
                         }
                         // Fallback: path substring
                         command_lower.contains(&format!("/{}/", m))
+                            || command_lower.contains(&format!("\\{}\\", m))
                     });
                     if !has_marker {
-                        continue;
+                        return None;
                     }
 
-                    if let Ok(p) = pid_str.parse::<i32>() {
-                        found = Some((p, command.to_string()));
-                        break;
+                    Some((process_pid, command.to_string()))
+                };
+
+                let found: Option<(i32, String)> = if cfg!(target_os = "windows") {
+                    list_windows_process_commands(Some(&opts.process_name))
+                        .into_iter()
+                        .find_map(|(process_pid, command)| inspect_process(process_pid, &command))
+                } else {
+                    let ps_output = match std::process::Command::new("/bin/ps")
+                        .args(["-ax", "-o", "pid=,command="])
+                        .output()
+                    {
+                        Ok(o) => o,
+                        Err(e) => {
+                            log::warn!("[plugin:{}] ps failed: {}", pid, e);
+                            return Ok("null".to_string());
+                        }
+                    };
+
+                    if !ps_output.status.success() {
+                        log::warn!("[plugin:{}] ps returned non-zero", pid);
+                        return Ok("null".to_string());
                     }
-                }
+
+                    let ps_stdout = String::from_utf8_lossy(&ps_output.stdout);
+                    let mut found = None;
+                    for line in ps_stdout.lines() {
+                        let trimmed = line.trim();
+                        if trimmed.is_empty() {
+                            continue;
+                        }
+
+                        let mut parts = trimmed.splitn(2, char::is_whitespace);
+                        let pid_str = match parts.next() {
+                            Some(s) => s.trim(),
+                            None => continue,
+                        };
+                        let command = match parts.next() {
+                            Some(s) => s.trim(),
+                            None => continue,
+                        };
+
+                        let Ok(process_pid) = pid_str.parse::<i32>() else {
+                            continue;
+                        };
+
+                        if let Some(pair) = inspect_process(process_pid, command) {
+                            found = Some(pair);
+                            break;
+                        }
+                    }
+                    found
+                };
 
                 let (process_pid, command) = match found {
                     Some(pair) => pair,
@@ -1311,7 +1646,9 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
                     .find(|p| std::path::Path::new(p).exists())
                     .copied();
 
-                let ports = if let Some(lsof) = lsof_path {
+                let ports = if cfg!(target_os = "windows") {
+                    list_windows_listening_ports(process_pid)
+                } else if let Some(lsof) = lsof_path {
                     match std::process::Command::new(lsof)
                         .args([
                             "-nP",
@@ -1750,16 +2087,12 @@ fn ccusage_runner_args(
     let package_spec = ccusage_package_spec(provider);
     let mut args: Vec<String> = match kind {
         CcusageRunnerKind::Bunx => vec!["--silent".to_string(), package_spec.clone()],
-        CcusageRunnerKind::PnpmDlx => vec![
-            "-s".to_string(),
-            "dlx".to_string(),
-            package_spec.clone(),
-        ],
-        CcusageRunnerKind::YarnDlx => vec![
-            "dlx".to_string(),
-            "-q".to_string(),
-            package_spec.clone(),
-        ],
+        CcusageRunnerKind::PnpmDlx => {
+            vec!["-s".to_string(), "dlx".to_string(), package_spec.clone()]
+        }
+        CcusageRunnerKind::YarnDlx => {
+            vec!["dlx".to_string(), "-q".to_string(), package_spec.clone()]
+        }
         CcusageRunnerKind::NpmExec => vec![
             "exec".to_string(),
             "--yes".to_string(),
@@ -2027,32 +2360,8 @@ fn inject_keychain<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<
         Function::new(
             ctx.clone(),
             move |ctx_inner: Ctx<'_>, service: String| -> rquickjs::Result<String> {
-                if !cfg!(target_os = "macos") {
-                    return Err(Exception::throw_message(
-                        &ctx_inner,
-                        "keychain API is only supported on macOS",
-                    ));
-                }
-                let output = std::process::Command::new("security")
-                    .args(["find-generic-password", "-s", &service, "-w"])
-                    .output()
-                    .map_err(|e| {
-                        Exception::throw_message(
-                            &ctx_inner,
-                            &format!("keychain read failed: {}", e),
-                        )
-                    })?;
-
-                if !output.status.success() {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    let first_line = stderr.lines().next().unwrap_or("").trim();
-                    return Err(Exception::throw_message(
-                        &ctx_inner,
-                        &format!("keychain item not found: {}", first_line),
-                    ));
-                }
-
-                Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+                keychain::read_generic_password(&service)
+                    .map_err(|err| Exception::throw_message(&ctx_inner, &err))
             },
         )?,
     )?;
@@ -2062,68 +2371,19 @@ fn inject_keychain<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<
         Function::new(
             ctx.clone(),
             move |ctx_inner: Ctx<'_>, service: String, value: String| -> rquickjs::Result<()> {
-                if !cfg!(target_os = "macos") {
-                    return Err(Exception::throw_message(
-                        &ctx_inner,
-                        "keychain API is only supported on macOS",
-                    ));
-                }
+                keychain::write_generic_password(&service, &value)
+                    .map_err(|err| Exception::throw_message(&ctx_inner, &err))
+            },
+        )?,
+    )?;
 
-                // First, try to find existing entry and extract its account
-                let mut account_arg: Option<String> = None;
-                let find_output = std::process::Command::new("security")
-                    .args(["find-generic-password", "-s", &service])
-                    .output();
-
-                if let Ok(output) = find_output {
-                    if output.status.success() {
-                        // Parse account from output: "acct"<blob>="value"
-                        let stdout = String::from_utf8_lossy(&output.stdout);
-                        for line in stdout.lines() {
-                            if let Some(start) = line.find("\"acct\"<blob>=\"") {
-                                let rest = &line[start + 14..];
-                                if let Some(end) = rest.find('"') {
-                                    account_arg = Some(rest[..end].to_string());
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Build command with account if found
-                let output = if let Some(ref acct) = account_arg {
-                    std::process::Command::new("security")
-                        .args([
-                            "add-generic-password",
-                            "-s",
-                            &service,
-                            "-a",
-                            acct,
-                            "-w",
-                            &value,
-                            "-U",
-                        ])
-                        .output()
-                } else {
-                    std::process::Command::new("security")
-                        .args(["add-generic-password", "-s", &service, "-w", &value, "-U"])
-                        .output()
-                }
-                .map_err(|e| {
-                    Exception::throw_message(&ctx_inner, &format!("keychain write failed: {}", e))
-                })?;
-
-                if !output.status.success() {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    let first_line = stderr.lines().next().unwrap_or("").trim();
-                    return Err(Exception::throw_message(
-                        &ctx_inner,
-                        &format!("keychain write failed: {}", first_line),
-                    ));
-                }
-
-                Ok(())
+    keychain_obj.set(
+        "deleteGenericPassword",
+        Function::new(
+            ctx.clone(),
+            move |ctx_inner: Ctx<'_>, service: String| -> rquickjs::Result<()> {
+                keychain::delete_generic_password(&service)
+                    .map_err(|err| Exception::throw_message(&ctx_inner, &err))
             },
         )?,
     )?;
@@ -2211,12 +2471,9 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                 let expanded = expand_path(&db_path);
                 let mut command = std::process::Command::new("sqlite3");
                 configure_background_command(&mut command);
-                let output = command
-                    .args([&expanded, &sql])
-                    .output()
-                    .map_err(|e| {
-                        Exception::throw_message(&ctx_inner, &format!("sqlite3 exec failed: {}", e))
-                    })?;
+                let output = command.args([&expanded, &sql]).output().map_err(|e| {
+                    Exception::throw_message(&ctx_inner, &format!("sqlite3 exec failed: {}", e))
+                })?;
 
                 if !output.status.success() {
                     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -2278,7 +2535,7 @@ mod tests {
     }
 
     #[test]
-    fn keychain_api_exposes_write() {
+    fn keychain_api_exposes_crud() {
         let rt = Runtime::new().expect("runtime");
         let ctx = Context::full(&rt).expect("context");
         ctx.with(|ctx| {
@@ -2294,6 +2551,9 @@ mod tests {
             let _write: Function = keychain
                 .get("writeGenericPassword")
                 .expect("writeGenericPassword");
+            let _delete: Function = keychain
+                .get("deleteGenericPassword")
+                .expect("deleteGenericPassword");
         });
     }
 
@@ -3049,10 +3309,8 @@ Saved lockfile
 
     #[test]
     fn parse_tasklist_csv_line_extracts_name_and_pid() {
-        let process = parse_tasklist_csv_line(
-            r#""Cursor.exe","12345","Console","1","123,456 K""#,
-        )
-        .expect("process");
+        let process = parse_tasklist_csv_line(r#""Cursor.exe","12345","Console","1","123,456 K""#)
+            .expect("process");
 
         assert_eq!(
             process,

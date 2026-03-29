@@ -46,9 +46,8 @@ fn panel_size(window: &WebviewWindow, monitor_scale_factor: f64) -> (f64, f64) {
     match window.outer_size() {
         Ok(size) => (size.width as f64, size.height as f64),
         Err(_) => {
-            let conf: serde_json::Value =
-                serde_json::from_str(include_str!("../tauri.conf.json"))
-                    .expect("tauri.conf.json must be valid JSON");
+            let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json"))
+                .expect("tauri.conf.json must be valid JSON");
             let configured_width = conf["app"]["windows"][0]["width"]
                 .as_f64()
                 .expect("width must be set in tauri.conf.json");
@@ -186,7 +185,11 @@ pub fn toggle_panel(app_handle: &AppHandle) {
     }
 }
 
-pub fn position_panel_at_tray_icon(app_handle: &AppHandle, icon_position: Position, icon_size: Size) {
+pub fn position_panel_at_tray_icon(
+    app_handle: &AppHandle,
+    icon_position: Position,
+    icon_size: Size,
+) {
     let Some(window) = main_window(app_handle) else {
         log::error!("main window not available while positioning panel");
         return;
@@ -236,7 +239,7 @@ pub fn position_panel_at_tray_icon(app_handle: &AppHandle, icon_position: Positi
 
 #[cfg(test)]
 mod tests {
-    use super::{calculate_panel_position, PanelPlacement};
+    use super::{PanelPlacement, calculate_panel_position};
 
     #[test]
     fn positions_panel_above_bottom_tray_icons_and_clamps_right_edge() {

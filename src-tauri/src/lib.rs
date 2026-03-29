@@ -43,7 +43,10 @@ fn show_panel_on_first_run_if_needed(app_handle: &tauri::AppHandle) {
     match app_handle.path().app_data_dir() {
         Ok(app_data_dir) => {
             if let Err(error) = std::fs::create_dir_all(&app_data_dir) {
-                log::warn!("Failed to create app data dir for first-run marker: {}", error);
+                log::warn!(
+                    "Failed to create app data dir for first-run marker: {}",
+                    error
+                );
                 return;
             }
             if let Err(error) = std::fs::write(app_data_dir.join(FIRST_RUN_MARKER_FILE), b"done") {
@@ -51,7 +54,10 @@ fn show_panel_on_first_run_if_needed(app_handle: &tauri::AppHandle) {
             }
         }
         Err(error) => {
-            log::warn!("Failed to resolve app data dir for first-run marker: {}", error);
+            log::warn!(
+                "Failed to resolve app data dir for first-run marker: {}",
+                error
+            );
         }
     }
 }
@@ -446,7 +452,7 @@ pub fn run() {
             use tauri::Manager;
 
             let version = app.package_info().version.to_string();
-    log::info!("UsageTray v{} starting", version);
+            log::info!("UsageTray v{} starting", version);
 
             let app_data_dir = app.path().app_data_dir().expect("no app data dir");
             let resource_dir = app.path().resource_dir().expect("no resource dir");

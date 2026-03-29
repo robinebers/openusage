@@ -62,6 +62,57 @@ describe("windows provider support", () => {
     )
   })
 
+  it("treats Copilot as a supported Windows provider when auth is missing", () => {
+    const plugin = makePluginState({
+      id: "copilot",
+      name: "Copilot",
+      error: "Not logged in. Run `gh auth login` first.",
+    })
+
+    expect(classifyWindowsProviderAvailability(plugin)).toBe("not-detected")
+    expect(getWindowsProviderAvailabilityNote(plugin)).toEqual(
+      expect.objectContaining({
+        kind: "not-detected",
+        title: "Supported on Windows",
+        suppressError: true,
+      })
+    )
+  })
+
+  it("treats Windsurf as a supported Windows provider when local state is missing", () => {
+    const plugin = makePluginState({
+      id: "windsurf",
+      name: "Windsurf",
+      error: "Start Windsurf or sign in and try again.",
+    })
+
+    expect(classifyWindowsProviderAvailability(plugin)).toBe("not-detected")
+    expect(getWindowsProviderAvailabilityNote(plugin)).toEqual(
+      expect.objectContaining({
+        kind: "not-detected",
+        title: "Supported on Windows",
+        suppressError: true,
+      })
+    )
+  })
+
+  it("treats Antigravity as a supported Windows provider when local state is missing", () => {
+    const plugin = makePluginState({
+      id: "antigravity",
+      name: "Antigravity",
+      error: "Start Antigravity and try again.",
+    })
+
+    expect(classifyWindowsProviderAvailability(plugin)).toBe("not-detected")
+    expect(getWindowsProviderAvailabilityNote(plugin)).toEqual(
+      expect.objectContaining({
+        kind: "not-detected",
+        title: "Supported on Windows",
+        suppressError: true,
+      })
+    )
+  })
+
   it("marks deferred providers as planned on Windows", () => {
     const plugin = makePluginState({
       id: "amp",

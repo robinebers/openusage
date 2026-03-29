@@ -45,6 +45,10 @@ export const makeCtx = () => {
         writeGenericPassword: vi.fn(),
         deleteGenericPassword: vi.fn(),
       },
+      crypto: {
+        aes256GcmDecrypt: vi.fn(),
+        aes256GcmEncrypt: vi.fn(),
+      },
       windows: {
         knownPath: vi.fn(() => null),
         readRegistry: vi.fn(() => null),

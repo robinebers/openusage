@@ -1,6 +1,5 @@
 (function () {
   var LS_SERVICE = "exa.language_server_pb.LanguageServerService"
-  var STATE_DB = "~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb"
   var CLOUD_CODE_URLS = [
     "https://daily-cloudcode-pa.googleapis.com",
     "https://cloudcode-pa.googleapis.com",
@@ -19,6 +18,34 @@
     "MODEL_PLACEHOLDER_M19": true,
     "MODEL_PLACEHOLDER_M9": true,
     "MODEL_PLACEHOLDER_M12": true,
+  }
+
+  function joinPath(base, suffix) {
+    if (!base) return suffix
+    return String(base).replace(/[\\/]+$/, "") + "/" + suffix.replace(/^[/\\]+/, "")
+  }
+
+  function isWindowsPlatform(ctx) {
+    return ctx.app.platform === "windows" || ctx.app.platform === "win32"
+  }
+
+  function stateDbPaths(ctx) {
+    var paths = ["~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb"]
+    if (isWindowsPlatform(ctx) && ctx.host.windows && typeof ctx.host.windows.knownPath === "function") {
+      var appData = ctx.host.windows.knownPath("appData")
+      if (appData) {
+        paths.unshift(joinPath(appData, "Antigravity/User/globalStorage/state.vscdb"))
+      }
+    }
+    return paths
+  }
+
+  function lsProcessName(ctx) {
+    return isWindowsPlatform(ctx) ? "language_server_windows_x64" : "language_server_macos"
+  }
+
+  function lsOs(ctx) {
+    return isWindowsPlatform(ctx) ? "windows" : "macos"
   }
   // --- Protobuf wire-format decoder ---
 
@@ -64,47 +91,53 @@
   // --- SQLite credential reading ---
 
   function loadApiKey(ctx) {
-    try {
-      var rows = ctx.host.sqlite.query(
-        STATE_DB,
-        "SELECT value FROM ItemTable WHERE key = 'antigravityAuthStatus' LIMIT 1"
-      )
-      var parsed = ctx.util.tryParseJson(rows)
-      if (!parsed || !parsed.length || !parsed[0].value) return null
-      var auth = ctx.util.tryParseJson(parsed[0].value)
-      if (!auth || !auth.apiKey) return null
-      return auth.apiKey
-    } catch (e) {
-      ctx.host.log.warn("failed to read auth from antigravity DB: " + String(e))
-      return null
+    var dbs = stateDbPaths(ctx)
+    for (var i = 0; i < dbs.length; i++) {
+      try {
+        var rows = ctx.host.sqlite.query(
+          dbs[i],
+          "SELECT value FROM ItemTable WHERE key = 'antigravityAuthStatus' LIMIT 1"
+        )
+        var parsed = ctx.util.tryParseJson(rows)
+        if (!parsed || !parsed.length || !parsed[0].value) continue
+        var auth = ctx.util.tryParseJson(parsed[0].value)
+        if (!auth || !auth.apiKey) continue
+        return auth.apiKey
+      } catch (e) {
+        ctx.host.log.warn("failed to read auth from antigravity DB: " + String(e))
+      }
     }
+    return null
   }
 
   function loadProtoTokens(ctx) {
-    try {
-      var rows = ctx.host.sqlite.query(
-        STATE_DB,
-        "SELECT value FROM ItemTable WHERE key = 'jetskiStateSync.agentManagerInitState' LIMIT 1"
-      )
-      var parsed = ctx.util.tryParseJson(rows)
-      if (!parsed || !parsed.length || !parsed[0].value) return null
-      var raw = ctx.base64.decode(parsed[0].value)
-      var outer = readFields(raw)
-      if (!outer[6] || outer[6].type !== 2) return null
-      var inner = readFields(outer[6].data)
-      var accessToken = (inner[1] && inner[1].type === 2) ? inner[1].data : null
-      var refreshToken = (inner[3] && inner[3].type === 2) ? inner[3].data : null
-      var expirySeconds = null
-      if (inner[4] && inner[4].type === 2) {
-        var ts = readFields(inner[4].data)
-        if (ts[1] && ts[1].type === 0) expirySeconds = ts[1].value
+    var dbs = stateDbPaths(ctx)
+    for (var i = 0; i < dbs.length; i++) {
+      try {
+        var rows = ctx.host.sqlite.query(
+          dbs[i],
+          "SELECT value FROM ItemTable WHERE key = 'jetskiStateSync.agentManagerInitState' LIMIT 1"
+        )
+        var parsed = ctx.util.tryParseJson(rows)
+        if (!parsed || !parsed.length || !parsed[0].value) continue
+        var raw = ctx.base64.decode(parsed[0].value)
+        var outer = readFields(raw)
+        if (!outer[6] || outer[6].type !== 2) continue
+        var inner = readFields(outer[6].data)
+        var accessToken = (inner[1] && inner[1].type === 2) ? inner[1].data : null
+        var refreshToken = (inner[3] && inner[3].type === 2) ? inner[3].data : null
+        var expirySeconds = null
+        if (inner[4] && inner[4].type === 2) {
+          var ts = readFields(inner[4].data)
+          if (ts[1] && ts[1].type === 0) expirySeconds = ts[1].value
+        }
+        if (!accessToken) continue
+        return { accessToken: accessToken, refreshToken: refreshToken, expirySeconds: expirySeconds }
+      } catch (e) {
+        ctx.host.log.warn("failed to read proto tokens from antigravity DB: " + String(e))
       }
-      if (!accessToken) return null
-      return { accessToken: accessToken, refreshToken: refreshToken, expirySeconds: expirySeconds }
-    } catch (e) {
-      ctx.host.log.warn("failed to read proto tokens from antigravity DB: " + String(e))
-      return null
     }
+    return null
   }
 
   // --- Google OAuth token refresh ---
@@ -177,7 +210,7 @@
 
   function discoverLs(ctx) {
     return ctx.host.ls.discover({
-      processName: "language_server_macos",
+      processName: lsProcessName(ctx),
       markers: ["antigravity"],
       csrfFlag: "--csrf_token",
       portFlag: "--extension_server_port",
@@ -200,7 +233,7 @@
             extensionVersion: "unknown",
             ide: "antigravity",
             ideVersion: "unknown",
-            os: "macos",
+            os: lsOs(ctx),
           },
         },
       }),

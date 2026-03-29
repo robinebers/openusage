@@ -8,6 +8,8 @@ This repository is an unofficial Windows-focused fork of [OpenUsage](https://git
 
 - Windows-only fork
 - Tested locally with both Codex and Claude Code
+- Windows v1 providers: Antigravity, Claude, Codex, Copilot, Cursor, Factory / Droid, Windsurf
+- Full provider matrix: [docs/providers/windows-compatibility-matrix.md](docs/providers/windows-compatibility-matrix.md)
 - Manual updates through GitHub releases
 
 ## Download

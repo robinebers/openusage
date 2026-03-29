@@ -7,18 +7,42 @@
   var DAY_MS = 24 * 60 * 60 * 1000
   var WEEK_MS = 7 * DAY_MS
 
-  var VARIANTS = [
-    {
-      marker: "windsurf",
-      ideName: "windsurf",
-      stateDb: "~/Library/Application Support/Windsurf/User/globalStorage/state.vscdb",
-    },
-    {
-      marker: "windsurf-next",
-      ideName: "windsurf-next",
-      stateDb: "~/Library/Application Support/Windsurf - Next/User/globalStorage/state.vscdb",
-    },
-  ]
+  function joinPath(base, suffix) {
+    if (!base) return suffix
+    return String(base).replace(/[\\/]+$/, "") + "/" + suffix.replace(/^[/\\]+/, "")
+  }
+
+  function isWindowsPlatform(ctx) {
+    return ctx.app.platform === "windows" || ctx.app.platform === "win32"
+  }
+
+  function buildVariants(ctx) {
+    var appData = null
+    if (isWindowsPlatform(ctx) && ctx.host.windows && typeof ctx.host.windows.knownPath === "function") {
+      appData = ctx.host.windows.knownPath("appData")
+    }
+
+    var stablePaths = ["~/Library/Application Support/Windsurf/User/globalStorage/state.vscdb"]
+    var nextPaths = ["~/Library/Application Support/Windsurf - Next/User/globalStorage/state.vscdb"]
+
+    if (appData) {
+      stablePaths.unshift(joinPath(appData, "Windsurf/User/globalStorage/state.vscdb"))
+      nextPaths.unshift(joinPath(appData, "Windsurf - Next/User/globalStorage/state.vscdb"))
+    }
+
+    return [
+      {
+        marker: "windsurf",
+        ideName: "windsurf",
+        stateDbs: stablePaths,
+      },
+      {
+        marker: "windsurf-next",
+        ideName: "windsurf-next",
+        stateDbs: nextPaths,
+      },
+    ]
+  }
 
   function readFiniteNumber(value) {
     if (typeof value === "number") return Number.isFinite(value) ? value : null
@@ -37,20 +61,22 @@
   }
 
   function loadApiKey(ctx, variant) {
-    try {
-      var rows = ctx.host.sqlite.query(
-        variant.stateDb,
-        "SELECT value FROM ItemTable WHERE key = 'windsurfAuthStatus' LIMIT 1"
-      )
-      var parsed = ctx.util.tryParseJson(rows)
-      if (!parsed || !parsed.length || !parsed[0].value) return null
-      var auth = ctx.util.tryParseJson(parsed[0].value)
-      if (!auth || !auth.apiKey) return null
-      return auth.apiKey
-    } catch (e) {
-      ctx.host.log.warn("failed to read API key from " + variant.marker + ": " + String(e))
-      return null
+    for (var i = 0; i < variant.stateDbs.length; i++) {
+      try {
+        var rows = ctx.host.sqlite.query(
+          variant.stateDbs[i],
+          "SELECT value FROM ItemTable WHERE key = 'windsurfAuthStatus' LIMIT 1"
+        )
+        var parsed = ctx.util.tryParseJson(rows)
+        if (!parsed || !parsed.length || !parsed[0].value) continue
+        var auth = ctx.util.tryParseJson(parsed[0].value)
+        if (!auth || !auth.apiKey) continue
+        return auth.apiKey
+      } catch (e) {
+        ctx.host.log.warn("failed to read API key from " + variant.marker + ": " + String(e))
+      }
     }
+    return null
   }
 
   function callCloud(ctx, apiKey, variant) {
@@ -97,6 +123,7 @@
   function formatDollarsFromMicros(value) {
     var micros = readFiniteNumber(value)
     if (micros === null) return null
+    if (!Number.isFinite(micros)) return null
     if (micros < 0) micros = 0
     return "$" + (micros / 1000000).toFixed(2)
   }
@@ -119,7 +146,6 @@
     return (
       readFiniteNumber(planStatus && planStatus.dailyQuotaRemainingPercent) !== null &&
       readFiniteNumber(planStatus && planStatus.weeklyQuotaRemainingPercent) !== null &&
-      readFiniteNumber(planStatus && planStatus.overageBalanceMicros) !== null &&
       readFiniteNumber(planStatus && planStatus.dailyQuotaResetAtUnix) !== null &&
       readFiniteNumber(planStatus && planStatus.weeklyQuotaResetAtUnix) !== null
     )
@@ -138,29 +164,31 @@
     var weeklyReset = unixSecondsToIso(ctx, planStatus.weeklyQuotaResetAtUnix)
     var extraUsageBalance = formatDollarsFromMicros(planStatus.overageBalanceMicros)
 
-    if (!dailyReset || !weeklyReset || !extraUsageBalance) throw QUOTA_HINT
+    if (!dailyReset || !weeklyReset) throw QUOTA_HINT
 
     var dailyLine = buildQuotaLine(ctx, "Daily quota", planStatus.dailyQuotaRemainingPercent, dailyReset, DAY_MS)
     var weeklyLine = buildQuotaLine(ctx, "Weekly quota", planStatus.weeklyQuotaRemainingPercent, weeklyReset, WEEK_MS)
 
     if (!dailyLine || !weeklyLine) throw QUOTA_HINT
 
+    var lines = [dailyLine, weeklyLine]
+    if (extraUsageBalance) {
+      lines.push(ctx.line.text({ label: "Extra usage balance", value: extraUsageBalance }))
+    }
+
     return {
       plan: planName,
-      lines: [
-        dailyLine,
-        weeklyLine,
-        ctx.line.text({ label: "Extra usage balance", value: extraUsageBalance }),
-      ],
+      lines: lines,
     }
   }
 
   function probe(ctx) {
+    var variants = buildVariants(ctx)
     var sawApiKey = false
     var sawAuthFailure = false
 
-    for (var i = 0; i < VARIANTS.length; i++) {
-      var variant = VARIANTS[i]
+    for (var i = 0; i < variants.length; i++) {
+      var variant = variants[i]
       var apiKey = loadApiKey(ctx, variant)
       if (!apiKey) continue
       sawApiKey = true

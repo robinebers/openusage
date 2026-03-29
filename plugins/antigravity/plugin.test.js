@@ -202,6 +202,37 @@ describe("antigravity plugin", () => {
     expect(labels).toEqual(["Gemini Pro", "Gemini Flash", "Claude"])
   })
 
+  it("uses Windows AppData DB lookup and Windows LS metadata on windows", async () => {
+    const ctx = makeCtx()
+    ctx.app.platform = "windows"
+    ctx.host.windows.knownPath.mockReturnValue("C:/Users/test/AppData/Roaming")
+    ctx.host.sqlite.query.mockImplementation((db, sql) => {
+      expect(String(db)).toBe("C:/Users/test/AppData/Roaming/Antigravity/User/globalStorage/state.vscdb")
+      if (String(sql).includes("antigravityAuthStatus")) {
+        return JSON.stringify([{ value: makeAuthStatusJson() }])
+      }
+      return "[]"
+    })
+    ctx.host.ls.discover.mockImplementation((opts) => {
+      expect(opts.processName).toBe("language_server_windows_x64")
+      return makeDiscovery()
+    })
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("GetUnleashData")) {
+        const body = JSON.parse(String(opts.bodyText))
+        expect(body.context.properties.os).toBe("windows")
+        return { status: 200, bodyText: "{}" }
+      }
+      return { status: 200, bodyText: JSON.stringify(makeUserStatusResponse({ planName: "Windows" })) }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Windows")
+    expect(ctx.host.windows.knownPath).toHaveBeenCalledWith("appData")
+  })
+
   it("deduplicates models by normalized label (keeps worst-case fraction)", async () => {
     const ctx = makeCtx()
     const discovery = makeDiscovery()
