@@ -2068,6 +2068,7 @@ struct Aes256GcmDecryptOpts {
 struct Aes256GcmEncryptOpts {
     key_b64: String,
     plaintext: String,
+    iv_length_bytes: Option<usize>,
 }
 
 #[derive(serde::Serialize)]
@@ -2093,7 +2094,12 @@ fn encrypt_aes_256_gcm_base64(opts: &Aes256GcmEncryptOpts) -> Result<Aes256GcmEn
         ));
     }
 
-    let mut iv = [0_u8; 16];
+    let iv_length = opts.iv_length_bytes.unwrap_or(16);
+    if iv_length == 0 {
+        return Err("invalid iv length: expected at least 1 byte".to_string());
+    }
+
+    let mut iv = vec![0_u8; iv_length];
     rand_bytes(&mut iv).map_err(|e| format!("iv generation failed: {}", e))?;
 
     let mut auth_tag = [0_u8; 16];
@@ -2108,7 +2114,7 @@ fn encrypt_aes_256_gcm_base64(opts: &Aes256GcmEncryptOpts) -> Result<Aes256GcmEn
     .map_err(|e| format!("encrypt failed: {}", e))?;
 
     Ok(Aes256GcmEncryptResult {
-        iv_b64: STANDARD.encode(iv),
+        iv_b64: STANDARD.encode(&iv),
         auth_tag_b64: STANDARD.encode(auth_tag),
         ciphertext_b64: STANDARD.encode(ciphertext),
     })
@@ -2223,6 +2229,34 @@ mod tests {
                 r#"{"access_token":"token","refresh_token":"refresh"}"#,
                 "AES-GCM helper should round-trip plaintext"
             );
+        });
+    }
+
+    #[test]
+    fn util_api_encrypts_aes_256_gcm_with_requested_iv_length() {
+        let rt = Runtime::new().expect("runtime");
+        let ctx = Context::full(&rt).expect("context");
+        ctx.with(|ctx| {
+            let app_data = std::env::temp_dir();
+            inject_host_api(&ctx, "test", &app_data, "0.0.0").expect("inject host api");
+            inject_utils(&ctx).expect("inject utils");
+
+            let iv_length: i32 = ctx
+                .eval(
+                    r#"
+                    (function() {
+                        var encrypted = __openusage_ctx.util.encryptAes256GcmBase64({
+                            keyB64: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+                            plaintext: "hello",
+                            ivLengthBytes: 12
+                        });
+                        return __openusage_ctx.base64.decode(encrypted.ivB64).length;
+                    })()
+                    "#,
+                )
+                .expect("iv length");
+
+            assert_eq!(iv_length, 12, "AES-GCM helper should honor requested IV length");
         });
     }
 

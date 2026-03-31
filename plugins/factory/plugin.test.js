@@ -15,8 +15,9 @@ function makeJwt(expSeconds) {
   return `${header}.${payload}.${sig}`
 }
 
-function makeAuthV2Envelope(auth, keyBytes = randomBytes(32)) {
-  const iv = randomBytes(16)
+function makeAuthV2Envelope(auth, keyBytes = randomBytes(32), opts = {}) {
+  const ivLength = Number.isInteger(opts.ivLength) && opts.ivLength > 0 ? opts.ivLength : 16
+  const iv = randomBytes(ivLength)
   const cipher = createCipheriv("aes-256-gcm", keyBytes, iv)
   const ciphertext = Buffer.concat([cipher.update(JSON.stringify(auth), "utf8"), cipher.final()])
   const authTag = cipher.getAuthTag()
@@ -39,6 +40,11 @@ function decryptAuthV2Envelope(fileText, keyText) {
     decipher.final(),
   ]).toString("utf8")
   return JSON.parse(plaintext)
+}
+
+function getAuthV2IvByteLength(fileText) {
+  const [ivB64] = String(fileText).trim().split(":")
+  return Buffer.from(ivB64, "base64").length
 }
 
 describe("factory plugin", () => {
@@ -615,6 +621,47 @@ describe("factory plugin", () => {
 
     const persisted = decryptAuthV2Envelope(ctx.host.fs.readText("~/.factory/auth.v2.file"), keyText)
     expect(persisted.refresh_token).toBe("new-refresh-v2")
+  })
+
+  it("preserves auth.v2 iv length when refreshing", async () => {
+    const ctx = makeCtx()
+    const nearExp = Math.floor(Date.now() / 1000) + 12 * 60 * 60
+    const futureExp = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
+    const { fileText, keyText } = makeAuthV2Envelope({
+      access_token: makeJwt(nearExp),
+      refresh_token: "refresh-v2",
+    }, randomBytes(32), { ivLength: 12 })
+    ctx.host.fs.writeText("~/.factory/auth.v2.file", fileText)
+    ctx.host.fs.writeText("~/.factory/auth.v2.key", keyText)
+
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("workos.com")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            access_token: makeJwt(futureExp),
+            refresh_token: "new-refresh-v2",
+          }),
+        }
+      }
+      return {
+        status: 200,
+        headers: {},
+        bodyText: JSON.stringify({
+          usage: {
+            startDate: 1770623326000,
+            endDate: 1772956800000,
+            standard: { orgTotalTokensUsed: 0, totalAllowance: 20000000 },
+            premium: { orgTotalTokensUsed: 0, totalAllowance: 0 },
+          },
+        }),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    expect(getAuthV2IvByteLength(ctx.host.fs.readText("~/.factory/auth.v2.file"))).toBe(12)
   })
 
   it("falls back to existing token when proactive refresh throws", async () => {

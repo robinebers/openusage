@@ -106,6 +106,10 @@
       throw new Error("auth.v2 payload must use iv:authTag:ciphertext format")
     }
 
+    const ivByteLength = ctx.base64 && typeof ctx.base64.decode === "function"
+      ? ctx.base64.decode(parts[0]).length
+      : null
+
     const plaintext = decrypt({
       keyB64: String(keyText || "").trim(),
       ivB64: parts[0],
@@ -113,7 +117,10 @@
       ciphertextB64: parts[2],
     })
 
-    return parseAuthPayload(ctx, plaintext, { allowPartial: true })
+    return {
+      auth: parseAuthPayload(ctx, plaintext, { allowPartial: true }),
+      ivByteLength: Number.isInteger(ivByteLength) && ivByteLength > 0 ? ivByteLength : null,
+    }
   }
 
   function loadAuthFromFiles(ctx) {
@@ -122,6 +129,7 @@
 
       try {
         let auth = null
+        let ivByteLength = null
 
         if (source.source === "file-v2") {
           if (!source.keyPath || !ctx.host.fs.exists(source.keyPath)) {
@@ -131,7 +139,9 @@
 
           const encryptedText = ctx.host.fs.readText(source.authPath)
           const keyText = ctx.host.fs.readText(source.keyPath)
-          auth = parseAuthV2Payload(ctx, encryptedText, keyText)
+          const parsed = parseAuthV2Payload(ctx, encryptedText, keyText)
+          auth = parsed && parsed.auth
+          ivByteLength = parsed && parsed.ivByteLength
         } else {
           const text = ctx.host.fs.readText(source.authPath)
           auth = parseAuthPayload(ctx, text, { allowPartial: true })
@@ -147,6 +157,7 @@
           source: source.source,
           authPath: source.authPath,
           keyPath: source.keyPath,
+          ivByteLength,
           keychainService: null,
         }
       } catch (e) {
@@ -223,6 +234,10 @@
         const encrypted = encrypt({
           keyB64: String(keyText || "").trim(),
           plaintext: JSON.stringify(auth),
+          ivLengthBytes:
+            Number.isInteger(authState.ivByteLength) && authState.ivByteLength > 0
+              ? authState.ivByteLength
+              : undefined,
         })
         if (!encrypted || !encrypted.ivB64 || !encrypted.authTagB64 || !encrypted.ciphertextB64) {
           ctx.host.log.warn("auth.v2 persistence skipped: encrypt helper returned invalid payload")

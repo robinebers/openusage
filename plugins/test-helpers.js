@@ -333,8 +333,9 @@ export const makeCtx = () => {
         decipher.final(),
       ]).toString("utf8")
     },
-    encryptAes256GcmBase64: ({ keyB64, plaintext }) => {
-      const iv = randomBytes(16)
+    encryptAes256GcmBase64: ({ keyB64, plaintext, ivLengthBytes }) => {
+      const ivLength = Number.isInteger(ivLengthBytes) && ivLengthBytes > 0 ? ivLengthBytes : 16
+      const iv = randomBytes(ivLength)
       const cipher = createCipheriv(
         "aes-256-gcm",
         Buffer.from(String(keyB64).trim(), "base64"),
