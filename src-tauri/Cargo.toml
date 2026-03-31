@@ -30,6 +30,7 @@ reqwest = { version = "0.13", features = ["blocking"] }
 rquickjs = { version = "0.11", features = ["bindgen"] }
 tauri-plugin-store = "2.4.2"
 base64 = "0.22"
+openssl = "0.10.75"
 uuid = { version = "1", features = ["v4"] }
 tauri-plugin-log = "2"
 tauri-plugin-aptabase = { git = "https://github.com/aptabase/tauri-plugin-aptabase", rev = "e896cceb" }

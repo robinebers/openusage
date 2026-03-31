@@ -1,5 +1,9 @@
 (function () {
-  const AUTH_PATHS = ["~/.factory/auth.encrypted", "~/.factory/auth.json"]
+  const AUTH_SOURCES = [
+    { source: "file-v2", authPath: "~/.factory/auth.v2.file", keyPath: "~/.factory/auth.v2.key" },
+    { source: "file", authPath: "~/.factory/auth.encrypted", keyPath: null },
+    { source: "file", authPath: "~/.factory/auth.json", keyPath: null },
+  ]
   const KEYCHAIN_SERVICES = ["Factory Token", "Factory token", "Factory Auth", "Droid Auth"]
   const WORKOS_CLIENT_ID = "client_01HNM792M5G5G1A2THWPXKFMXB"
   const WORKOS_AUTH_URL = "https://api.workos.com/user_management/authenticate"
@@ -91,19 +95,60 @@
     return null
   }
 
+  function parseAuthV2Payload(ctx, encryptedText, keyText) {
+    const decrypt = ctx.util && ctx.util.decryptAes256GcmBase64
+    if (typeof decrypt !== "function") {
+      throw new Error("auth.v2 decryption is unsupported in this host")
+    }
+
+    const parts = String(encryptedText || "").trim().split(":")
+    if (parts.length !== 3 || parts.some((part) => !String(part).trim())) {
+      throw new Error("auth.v2 payload must use iv:authTag:ciphertext format")
+    }
+
+    const plaintext = decrypt({
+      keyB64: String(keyText || "").trim(),
+      ivB64: parts[0],
+      authTagB64: parts[1],
+      ciphertextB64: parts[2],
+    })
+
+    return parseAuthPayload(ctx, plaintext, { allowPartial: true })
+  }
+
   function loadAuthFromFiles(ctx) {
-    for (const authPath of AUTH_PATHS) {
-      if (!ctx.host.fs.exists(authPath)) continue
+    for (const source of AUTH_SOURCES) {
+      if (!ctx.host.fs.exists(source.authPath)) continue
 
       try {
-        const text = ctx.host.fs.readText(authPath)
-        const auth = parseAuthPayload(ctx, text, { allowPartial: true })
+        let auth = null
+
+        if (source.source === "file-v2") {
+          if (!source.keyPath || !ctx.host.fs.exists(source.keyPath)) {
+            ctx.host.log.warn("auth.v2 key file not found: " + source.keyPath)
+            continue
+          }
+
+          const encryptedText = ctx.host.fs.readText(source.authPath)
+          const keyText = ctx.host.fs.readText(source.keyPath)
+          auth = parseAuthV2Payload(ctx, encryptedText, keyText)
+        } else {
+          const text = ctx.host.fs.readText(source.authPath)
+          auth = parseAuthPayload(ctx, text, { allowPartial: true })
+        }
+
         if (!auth) {
-          ctx.host.log.warn("auth file exists but has no valid auth payload: " + authPath)
+          ctx.host.log.warn("auth file exists but has no valid auth payload: " + source.authPath)
           continue
         }
-        ctx.host.log.info("auth loaded from file: " + authPath)
-        return { auth, source: "file", authPath, keychainService: null }
+        ctx.host.log.info("auth loaded from file: " + source.authPath)
+        return {
+          auth,
+          source: source.source,
+          authPath: source.authPath,
+          keyPath: source.keyPath,
+          keychainService: null,
+        }
       } catch (e) {
         ctx.host.log.warn("auth file read failed: " + String(e))
       }
@@ -145,9 +190,12 @@
     const keychainAuth = loadAuthFromKeychain(ctx)
     if (keychainAuth) return keychainAuth
 
-    for (const authPath of AUTH_PATHS) {
-      if (!ctx.host.fs.exists(authPath)) {
-        ctx.host.log.warn("auth file not found: " + authPath)
+    for (const source of AUTH_SOURCES) {
+      if (!ctx.host.fs.exists(source.authPath)) {
+        ctx.host.log.warn("auth file not found: " + source.authPath)
+      }
+      if (source.keyPath && !ctx.host.fs.exists(source.keyPath)) {
+        ctx.host.log.warn("auth file not found: " + source.keyPath)
       }
     }
 
@@ -159,6 +207,36 @@
     if (!auth) return false
 
     try {
+      if (authState.source === "file-v2" && authState.authPath && authState.keyPath) {
+        const encrypt = ctx.util && ctx.util.encryptAes256GcmBase64
+        if (typeof encrypt !== "function") {
+          ctx.host.log.warn("auth.v2 persistence skipped: encryption unsupported in this host")
+          return false
+        }
+
+        if (!ctx.host.fs.exists(authState.keyPath)) {
+          ctx.host.log.warn("auth.v2 persistence skipped: key file missing")
+          return false
+        }
+
+        const keyText = ctx.host.fs.readText(authState.keyPath)
+        const encrypted = encrypt({
+          keyB64: String(keyText || "").trim(),
+          plaintext: JSON.stringify(auth),
+        })
+        if (!encrypted || !encrypted.ivB64 || !encrypted.authTagB64 || !encrypted.ciphertextB64) {
+          ctx.host.log.warn("auth.v2 persistence skipped: encrypt helper returned invalid payload")
+          return false
+        }
+
+        ctx.host.fs.writeText(
+          authState.authPath,
+          encrypted.ivB64 + ":" + encrypted.authTagB64 + ":" + encrypted.ciphertextB64,
+        )
+        ctx.host.log.info("auth file updated: " + authState.authPath)
+        return true
+      }
+
       if (authState.source === "file" && authState.authPath) {
         ctx.host.fs.writeText(authState.authPath, JSON.stringify(auth, null, 2))
         ctx.host.log.info("auth file updated: " + authState.authPath)

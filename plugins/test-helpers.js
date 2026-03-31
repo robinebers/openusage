@@ -1,3 +1,4 @@
+import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto"
 import { vi } from "vitest"
 
 export const makeCtx = () => {
@@ -319,6 +320,36 @@ export const makeCtx = () => {
       if (!Number.isFinite(expiresAtMs)) return true
       if (!Number.isFinite(bufferMs)) bufferMs = 0
       return nowMs + bufferMs >= expiresAtMs
+    },
+    decryptAes256GcmBase64: ({ keyB64, ivB64, authTagB64, ciphertextB64 }) => {
+      const decipher = createDecipheriv(
+        "aes-256-gcm",
+        Buffer.from(String(keyB64).trim(), "base64"),
+        Buffer.from(String(ivB64).trim(), "base64"),
+      )
+      decipher.setAuthTag(Buffer.from(String(authTagB64).trim(), "base64"))
+      return Buffer.concat([
+        decipher.update(Buffer.from(String(ciphertextB64).trim(), "base64")),
+        decipher.final(),
+      ]).toString("utf8")
+    },
+    encryptAes256GcmBase64: ({ keyB64, plaintext }) => {
+      const iv = randomBytes(16)
+      const cipher = createCipheriv(
+        "aes-256-gcm",
+        Buffer.from(String(keyB64).trim(), "base64"),
+        iv,
+      )
+      const ciphertext = Buffer.concat([
+        cipher.update(String(plaintext), "utf8"),
+        cipher.final(),
+      ])
+      const authTag = cipher.getAuthTag()
+      return {
+        ivB64: iv.toString("base64"),
+        authTagB64: authTag.toString("base64"),
+        ciphertextB64: ciphertext.toString("base64"),
+      }
     },
   }
 

@@ -2983,6 +2983,7 @@ dependencies = [
  "objc2-app-kit",
  "objc2-foundation",
  "objc2-web-kit",
+ "openssl",
  "regex-lite",
  "reqwest 0.13.2",
  "rquickjs",

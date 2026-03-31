@@ -1,3 +1,6 @@
+use base64::{Engine, engine::general_purpose::STANDARD};
+use openssl::rand::rand_bytes;
+use openssl::symm::{Cipher, decrypt_aead, encrypt_aead};
 use rquickjs::{Ctx, Exception, Function, Object};
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
@@ -863,7 +866,76 @@ pub fn inject_utils(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
         })();
         "#
         .as_bytes(),
-    )
+    )?;
+
+    let globals = ctx.globals();
+    let probe_ctx: Object = globals.get("__openusage_ctx")?;
+    let util: Object = probe_ctx.get("util")?;
+
+    util.set(
+        "_decryptAes256GcmBase64Raw",
+        Function::new(
+            ctx.clone(),
+            move |ctx_inner: Ctx<'_>, opts_json: String| -> rquickjs::Result<String> {
+                let opts: Aes256GcmDecryptOpts = serde_json::from_str(&opts_json).map_err(|e| {
+                    Exception::throw_message(
+                        &ctx_inner,
+                        &format!("decryptAes256GcmBase64 invalid opts: {}", e),
+                    )
+                })?;
+                decrypt_aes_256_gcm_base64(&opts).map_err(|e| {
+                    Exception::throw_message(
+                        &ctx_inner,
+                        &format!("decryptAes256GcmBase64 failed: {}", e),
+                    )
+                })
+            },
+        )?,
+    )?;
+
+    util.set(
+        "_encryptAes256GcmBase64Raw",
+        Function::new(
+            ctx.clone(),
+            move |ctx_inner: Ctx<'_>, opts_json: String| -> rquickjs::Result<String> {
+                let opts: Aes256GcmEncryptOpts = serde_json::from_str(&opts_json).map_err(|e| {
+                    Exception::throw_message(
+                        &ctx_inner,
+                        &format!("encryptAes256GcmBase64 invalid opts: {}", e),
+                    )
+                })?;
+                let encrypted = encrypt_aes_256_gcm_base64(&opts).map_err(|e| {
+                    Exception::throw_message(
+                        &ctx_inner,
+                        &format!("encryptAes256GcmBase64 failed: {}", e),
+                    )
+                })?;
+                serde_json::to_string(&encrypted).map_err(|e| {
+                    Exception::throw_message(
+                        &ctx_inner,
+                        &format!("encryptAes256GcmBase64 serialize failed: {}", e),
+                    )
+                })
+            },
+        )?,
+    )?;
+
+    ctx.eval::<(), _>(
+        r#"
+        (function() {
+            var ctx = __openusage_ctx;
+            ctx.util.decryptAes256GcmBase64 = function(opts) {
+                return ctx.util._decryptAes256GcmBase64Raw(JSON.stringify(opts));
+            };
+            ctx.util.encryptAes256GcmBase64 = function(opts) {
+                return ctx.util.tryParseJson(ctx.util._encryptAes256GcmBase64Raw(JSON.stringify(opts)));
+            };
+        })();
+        "#
+        .as_bytes(),
+    )?;
+
+    Ok(())
 }
 
 #[derive(serde::Deserialize)]
@@ -1982,6 +2054,101 @@ fn expand_path(path: &str) -> String {
     path.to_string()
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Aes256GcmDecryptOpts {
+    key_b64: String,
+    iv_b64: String,
+    auth_tag_b64: String,
+    ciphertext_b64: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Aes256GcmEncryptOpts {
+    key_b64: String,
+    plaintext: String,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Aes256GcmEncryptResult {
+    iv_b64: String,
+    auth_tag_b64: String,
+    ciphertext_b64: String,
+}
+
+fn decode_base64_field(value: &str, field_name: &str) -> Result<Vec<u8>, String> {
+    STANDARD
+        .decode(value.trim())
+        .map_err(|e| format!("invalid {} base64: {}", field_name, e))
+}
+
+fn encrypt_aes_256_gcm_base64(opts: &Aes256GcmEncryptOpts) -> Result<Aes256GcmEncryptResult, String> {
+    let key = decode_base64_field(&opts.key_b64, "keyB64")?;
+    if key.len() != 32 {
+        return Err(format!(
+            "invalid key length: expected 32 bytes, got {}",
+            key.len()
+        ));
+    }
+
+    let mut iv = [0_u8; 16];
+    rand_bytes(&mut iv).map_err(|e| format!("iv generation failed: {}", e))?;
+
+    let mut auth_tag = [0_u8; 16];
+    let ciphertext = encrypt_aead(
+        Cipher::aes_256_gcm(),
+        &key,
+        Some(&iv),
+        &[],
+        opts.plaintext.as_bytes(),
+        &mut auth_tag,
+    )
+    .map_err(|e| format!("encrypt failed: {}", e))?;
+
+    Ok(Aes256GcmEncryptResult {
+        iv_b64: STANDARD.encode(iv),
+        auth_tag_b64: STANDARD.encode(auth_tag),
+        ciphertext_b64: STANDARD.encode(ciphertext),
+    })
+}
+
+fn decrypt_aes_256_gcm_base64(opts: &Aes256GcmDecryptOpts) -> Result<String, String> {
+    let key = decode_base64_field(&opts.key_b64, "keyB64")?;
+    let iv = decode_base64_field(&opts.iv_b64, "ivB64")?;
+    let auth_tag = decode_base64_field(&opts.auth_tag_b64, "authTagB64")?;
+    let ciphertext = decode_base64_field(&opts.ciphertext_b64, "ciphertextB64")?;
+
+    if key.len() != 32 {
+        return Err(format!(
+            "invalid key length: expected 32 bytes, got {}",
+            key.len()
+        ));
+    }
+    if auth_tag.len() != 16 {
+        return Err(format!(
+            "invalid auth tag length: expected 16 bytes, got {}",
+            auth_tag.len()
+        ));
+    }
+    if iv.is_empty() {
+        return Err("invalid iv length: expected at least 1 byte".to_string());
+    }
+
+    let plaintext = decrypt_aead(
+        Cipher::aes_256_gcm(),
+        &key,
+        Some(&iv),
+        &[],
+        &ciphertext,
+        &auth_tag,
+    )
+    .map_err(|e| format!("decrypt failed: {}", e))?;
+
+    String::from_utf8(plaintext).map_err(|e| format!("decrypted plaintext was not utf-8: {}", e))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2018,6 +2185,44 @@ mod tests {
             let _write: Function = keychain
                 .get("writeGenericPassword")
                 .expect("writeGenericPassword");
+        });
+    }
+
+    #[test]
+    fn util_api_encrypts_and_decrypts_aes_256_gcm_base64() {
+        let rt = Runtime::new().expect("runtime");
+        let ctx = Context::full(&rt).expect("context");
+        ctx.with(|ctx| {
+            let app_data = std::env::temp_dir();
+            inject_host_api(&ctx, "test", &app_data, "0.0.0").expect("inject host api");
+            inject_utils(&ctx).expect("inject utils");
+
+            let round_trip: String = ctx
+                .eval(
+                    r#"
+                    (function() {
+                        var keyB64 = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
+                        var plaintext = JSON.stringify({ access_token: "token", refresh_token: "refresh" });
+                        var encrypted = __openusage_ctx.util.encryptAes256GcmBase64({
+                            keyB64: keyB64,
+                            plaintext: plaintext
+                        });
+                        return __openusage_ctx.util.decryptAes256GcmBase64({
+                            keyB64: keyB64,
+                            ivB64: encrypted.ivB64,
+                            authTagB64: encrypted.authTagB64,
+                            ciphertextB64: encrypted.ciphertextB64
+                        });
+                    })()
+                    "#,
+                )
+                .expect("round trip");
+
+            assert_eq!(
+                round_trip,
+                r#"{"access_token":"token","refresh_token":"refresh"}"#,
+                "AES-GCM helper should round-trip plaintext"
+            );
         });
     }
 
