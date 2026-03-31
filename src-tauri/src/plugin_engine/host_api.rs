@@ -2135,6 +2135,14 @@ mod tests {
         )
     }
 
+    fn node_generated_aes_256_gcm_vector_for_test() -> (&'static str, &'static str, &'static str) {
+        (
+            "CwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCws=",
+            "BwcHBwcHBwcHBwcHBwcHBw==:yFbCs4LOJ0aj9NPNf5pfVA==:7PKjtOdATLClvaWrMw0b0M8Nov4KPhxwQX4hdczqQlcZi9Zhi6DjAoK+WolvMwuhPIk=",
+            r#"{"access_token":"token","refresh_token":"refresh"}"#,
+        )
+    }
+
     #[test]
     fn last_non_empty_trimmed_line_uses_final_value_when_stdout_is_noisy() {
         let stdout = "banner line\nanother message\n  sk-test-key-12345  \n";
@@ -2221,6 +2229,23 @@ mod tests {
             let crypto: Object = host.get("crypto").expect("crypto");
             let _decrypt: Function = crypto.get("decryptAes256Gcm").expect("decryptAes256Gcm");
             let _encrypt: Function = crypto.get("encryptAes256Gcm").expect("encryptAes256Gcm");
+        });
+    }
+
+    #[test]
+    fn crypto_api_decrypts_node_generated_envelope_from_js() {
+        let (key_b64, envelope, expected_plaintext) = node_generated_aes_256_gcm_vector_for_test();
+        let rt = Runtime::new().expect("runtime");
+        let ctx = Context::full(&rt).expect("context");
+        ctx.with(|ctx| {
+            let app_data = std::env::temp_dir();
+            inject_host_api(&ctx, "test", &app_data, "0.0.0").expect("inject host api");
+            let js_expr = format!(
+                r#"__openusage_ctx.host.crypto.decryptAes256Gcm("{}", "{}")"#,
+                envelope, key_b64
+            );
+            let decrypted: String = ctx.eval(js_expr).expect("js decrypt");
+            assert_eq!(decrypted, expected_plaintext);
         });
     }
 
