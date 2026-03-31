@@ -16,6 +16,13 @@ This repository is an unofficial Windows-focused fork of [OpenUsage](https://git
 
 [**Download the latest release**](https://github.com/Rana-Faraz/usage-tray-windows/releases/latest) (Windows x64)
 
+## Or From Source
+If you don't want to install the binary, or you want to develop on the project, you can run it from source with these steps:
+1. Clone the repo
+2. Install Deps: Make sure you have rust (with cargo) installed, and bun
+3. Restore packages: `bun install`
+4. Run in dev mode with hot reload: `bun run tauri dev`
+
 ## What It Does
 
 UsageTray lives in your Windows tray and shows usage data for supported AI coding tools in a single popup panel.
