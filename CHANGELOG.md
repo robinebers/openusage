@@ -1,5 +1,36 @@
 # Changelog
 
+## v0.6.12
+
+### New Features
+- Add local HTTP API for usage data ([#319](https://github.com/robinebers/openusage/pull/319)) by @robinebers
+- Dynamic tray tooltip with usage percentages ([#314](https://github.com/robinebers/openusage/pull/314)) by @hearsilent
+- Add release-tag skill for automated versioning and changelog generation by @robinebers
+
+### Bug Fixes
+- Fix new typescript v6 requirement by @robinebers
+- Add runtime macOS version check for WKPreferences.inactiveSchedulingPolicy ([#322](https://github.com/robinebers/openusage/pull/322)) by @beznazwiska
+
+### Chores
+- Bump lucide-react from 0.577.0 to 1.7.0 ([#324](https://github.com/robinebers/openusage/pull/324)) by @dependabot
+- Bump typescript from 5.9.3 to 6.0.2 ([#325](https://github.com/robinebers/openusage/pull/325)) by @dependabot
+- Bump uuid from 1.22.0 to 1.23.0 in /src-tauri ([#323](https://github.com/robinebers/openusage/pull/323)) by @dependabot
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.6.11...v0.6.12](https://github.com/robinebers/openusage/compare/v0.6.11...v0.6.12)
+
+- [c1e7db8](https://github.com/robinebers/openusage/commit/c1e7db8725ad4d885198aa7c84cc885ae01e4edd) fix new typescript v6 requirement by @robinebers
+- [97dde5b](https://github.com/robinebers/openusage/commit/97dde5bd7189cd95725568a935c3ba98058c2779) feat: add release-tag skill for automated versioning and changelog generation by @robinebers
+- [ff0efa1](https://github.com/robinebers/openusage/commit/ff0efa1086f18f53405771d010fecdd8a8e20ffd) chore(deps): bump lucide-react from 0.577.0 to 1.7.0 by @dependabot
+- [a3f7b7e](https://github.com/robinebers/openusage/commit/a3f7b7e53dbd9995b393ed0fafe36171cd4d876e) chore(deps-dev): bump typescript from 5.9.3 to 6.0.2 by @dependabot
+- [4f7373f](https://github.com/robinebers/openusage/commit/4f7373f368a8d8147299a36c1be87b15873ee5bf) chore(deps): bump uuid from 1.22.0 to 1.23.0 in /src-tauri by @dependabot
+- [4e152f7](https://github.com/robinebers/openusage/commit/4e152f7719f29a0e1936eb058df770138b306338) fix: add runtime macOS version check for WKPreferences.inactiveSchedulingPolicy by @beznazwiska
+- [630e7dd](https://github.com/robinebers/openusage/commit/630e7dd0b3cdfd3d79e922a95286dd3d013d2292) feat: add local HTTP API for usage data by @robinebers
+- [ddf73eb](https://github.com/robinebers/openusage/commit/ddf73eb3d3da8327ff2c22fc57761983039e11c4) feat(tooltip): dynamic tray tooltip with usage percentages by @hearsilent
+
 ## 0.6.11
 
 ### New Features

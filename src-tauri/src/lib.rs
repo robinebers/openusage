@@ -1,5 +1,6 @@
 #[cfg(target_os = "macos")]
 mod app_nap;
+mod local_http_api;
 mod panel;
 mod plugin_engine;
 mod tray;
@@ -309,6 +310,7 @@ async fn start_probe_batch(
                             plugin_id,
                             output.lines.len()
                         );
+                        local_http_api::cache_successful_output(&output);
                     }
                     let _ = handle.emit(
                         "probe:result",
@@ -522,11 +524,16 @@ pub fn run() {
             log::debug!("app_data_dir: {:?}", app_data_dir);
 
             let (_, plugins) = plugin_engine::initialize_plugins(&app_data_dir, &resource_dir);
+            let known_plugin_ids: Vec<String> =
+                plugins.iter().map(|p| p.manifest.id.clone()).collect();
             app.manage(Mutex::new(AppState {
                 plugins,
-                app_data_dir,
+                app_data_dir: app_data_dir.clone(),
                 app_version: app.package_info().version.to_string(),
             }));
+
+            local_http_api::init(&app_data_dir, known_plugin_ids);
+            local_http_api::start_server();
 
             tray::create(app.handle())?;
 
