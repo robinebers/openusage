@@ -25,6 +25,7 @@ export const WINDOWS_V1_PROVIDER_IDS = [
   "cursor",
   "factory",
   "windsurf",
+  "zai",
 ] as const
 
 export const WINDOWS_PROVIDER_SUPPORT: Record<string, WindowsProviderSupport> = {
@@ -113,10 +114,10 @@ export const WINDOWS_PROVIDER_SUPPORT: Record<string, WindowsProviderSupport> = 
     note: "No usable Windsurf session was detected yet. Open Windsurf, sign in once, and keep the local state database intact.",
   },
   zai: {
-    status: "planned",
+    status: "v1",
     detectionStrategy: "API-key based via `ZAI_API_KEY` or `GLM_API_KEY`.",
     dependencies: ["Windows environment variable setup"],
-    note: "Z.ai is likely portable, but the v1 support set is intentionally limited to Claude, Codex, and Cursor.",
+    note: "No Z.ai API key was detected yet. Set `ZAI_API_KEY` (or `GLM_API_KEY`) in your Windows environment and restart UsageTray.",
   },
 }
 
@@ -126,6 +127,7 @@ function looksLikeDetectionGap(error: string | null): boolean {
     /^Not logged in\b/i,
     /^No active Cursor subscription\./i,
     /^Usage not available for API key\./i,
+    /^No ZAI_API_KEY found\./i,
     /^Start .+ and try again\./i,
   ].some((pattern) => pattern.test(error))
 }

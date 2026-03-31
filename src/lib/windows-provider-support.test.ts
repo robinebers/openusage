@@ -113,6 +113,23 @@ describe("windows provider support", () => {
     )
   })
 
+  it("treats Z.ai as a supported Windows provider when API key is missing", () => {
+    const plugin = makePluginState({
+      id: "zai",
+      name: "Z.ai",
+      error: "No ZAI_API_KEY found. Set up environment variable first.",
+    })
+
+    expect(classifyWindowsProviderAvailability(plugin)).toBe("not-detected")
+    expect(getWindowsProviderAvailabilityNote(plugin)).toEqual(
+      expect.objectContaining({
+        kind: "not-detected",
+        title: "Supported on Windows",
+        suppressError: true,
+      })
+    )
+  })
+
   it("marks deferred providers as planned on Windows", () => {
     const plugin = makePluginState({
       id: "amp",
