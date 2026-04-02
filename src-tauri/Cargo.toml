@@ -1,6 +1,6 @@
 [package]
 name = "usage-tray-windows"
-version = "0.6.12"
+version = "0.6.13"
 description = "UsageTray is an unofficial Windows fork of OpenUsage for tracking AI coding subscription usage"
 authors = ["Faraz Rana"]
 edition = "2024"

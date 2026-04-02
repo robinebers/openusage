@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.6.13
+
+### New Features
+- Add Z.ai to the supported Windows provider set
+
+### Chores
+- Update Windows compatibility docs and add source-run setup notes to README
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.6.12...v0.6.13](https://github.com/Rana-Faraz/usage-tray-windows/compare/v0.6.12...v0.6.13)
+
 ## 0.6.12
 
 ### New Features
