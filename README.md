@@ -8,13 +8,20 @@ This repository is an unofficial Windows-focused fork of [OpenUsage](https://git
 
 - Windows-only fork
 - Tested locally with both Codex and Claude Code
-- Windows v1 providers: Antigravity, Claude, Codex, Copilot, Cursor, Factory / Droid, Windsurf
+- Windows providers: Antigravity, Claude, Codex, Copilot, Cursor, Factory / Droid, Windsurf, Z.ai
 - Full provider matrix: [docs/providers/windows-compatibility-matrix.md](docs/providers/windows-compatibility-matrix.md)
 - Manual updates through GitHub releases
 
 ## Download
 
 [**Download the latest release**](https://github.com/Rana-Faraz/usage-tray-windows/releases/latest) (Windows x64)
+
+## Or From Source
+If you don't want to install the binary, or you want to develop on the project, you can run it from source with these steps:
+1. Clone the repo
+2. Install Deps: Make sure you have rust (with cargo) installed, and bun
+3. Restore packages: `bun install`
+4. Run in dev mode with hot reload: `bun run tauri dev`
 
 ## What It Does
 
