@@ -30,6 +30,7 @@ interface ProviderCardProps {
   onRetry?: () => void
   scopeFilter?: "overview" | "all"
   displayMode: DisplayMode
+  disabledOverviewLabels?: string[]
   resetTimerDisplayMode?: ResetTimerDisplayMode
   onResetTimerDisplayModeToggle?: () => void
 }
@@ -94,6 +95,7 @@ export function ProviderCard({
   displayMode,
   resetTimerDisplayMode = "relative",
   onResetTimerDisplayModeToggle,
+  disabledOverviewLabels = [],
 }: ProviderCardProps) {
   const cooldownRemainingMs = useMemo(() => {
     if (!lastManualRefreshAt) return 0
@@ -102,14 +104,15 @@ export function ProviderCard({
   }, [lastManualRefreshAt])
 
   // Filter lines based on scope - match by label since runtime lines can differ from manifest
+  const disabledSet = new Set(disabledOverviewLabels)
   const overviewLabels = new Set(
     skeletonLines
-      .filter(line => line.scope === "overview")
+      .filter(line => line.scope === "overview" && !disabledSet.has(line.label))
       .map(line => line.label)
   )
   const filteredSkeletonLines = scopeFilter === "all"
     ? skeletonLines
-    : skeletonLines.filter(line => line.scope === "overview")
+    : skeletonLines.filter(line => line.scope === "overview" && !disabledSet.has(line.label))
   const filteredLines = scopeFilter === "all"
     ? lines
     : lines.filter(line => overviewLabels.has(line.label))

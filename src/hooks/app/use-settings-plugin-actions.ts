@@ -91,8 +91,32 @@ export function useSettingsPluginActions({
     startBatch,
   ])
 
+  const handleToggleOverviewLabel = useCallback((pluginId: string, label: string) => {
+    if (!pluginSettings) return
+    const currentDisabled = pluginSettings.disabledOverviewLabels?.[pluginId] || []
+    const isCurrentlyDisabled = currentDisabled.includes(label)
+    
+    const nextDisabled = isCurrentlyDisabled
+      ? currentDisabled.filter((l) => l !== label)
+      : [...currentDisabled, label]
+
+    const nextSettings: PluginSettings = {
+      ...pluginSettings,
+      disabledOverviewLabels: {
+        ...pluginSettings.disabledOverviewLabels,
+        [pluginId]: nextDisabled,
+      },
+    }
+
+    setPluginSettings(nextSettings)
+    scheduleTrayIconUpdate("settings", TRAY_SETTINGS_DEBOUNCE_MS)
+    void savePluginSettings(nextSettings).catch((error) => {
+      console.error("Failed to save plugin overview label toggle:", error)
+    })
+  }, [pluginSettings, scheduleTrayIconUpdate, setPluginSettings])
   return {
     handleReorder,
     handleToggle,
+    handleToggleOverviewLabel,
   }
 }

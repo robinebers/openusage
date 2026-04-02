@@ -8,6 +8,7 @@ export const REFRESH_COOLDOWN_MS = 300_000;
 export type PluginSettings = {
   order: string[];
   disabled: string[];
+  disabledOverviewLabels?: Record<string, string[]>;
 };
 
 export type AutoUpdateIntervalMinutes = 5 | 15 | 30 | 60;
@@ -83,6 +84,7 @@ const DEFAULT_ENABLED_PLUGINS = new Set(["claude", "codex", "cursor"]);
 export const DEFAULT_PLUGIN_SETTINGS: PluginSettings = {
   order: [],
   disabled: [],
+  disabledOverviewLabels: {},
 };
 
 export async function loadPluginSettings(): Promise<PluginSettings> {
@@ -91,6 +93,7 @@ export async function loadPluginSettings(): Promise<PluginSettings> {
   return {
     order: Array.isArray(stored.order) ? stored.order : [],
     disabled: Array.isArray(stored.disabled) ? stored.disabled : [],
+    disabledOverviewLabels: stored.disabledOverviewLabels || {},
   };
 }
 
@@ -148,7 +151,16 @@ export function normalizePluginSettings(
       disabled.push(id);
     }
   }
-  return { order, disabled };
+  const disabledOverviewLabels: Record<string, string[]> = {};
+  if (settings.disabledOverviewLabels) {
+    for (const [id, labels] of Object.entries(settings.disabledOverviewLabels)) {
+      if (knownSet.has(id) && Array.isArray(labels)) {
+        disabledOverviewLabels[id] = labels;
+      }
+    }
+  }
+
+  return { order, disabled, disabledOverviewLabels };
 }
 
 export function arePluginSettingsEqual(
@@ -162,6 +174,19 @@ export function arePluginSettingsEqual(
   }
   for (let i = 0; i < a.disabled.length; i += 1) {
     if (a.disabled[i] !== b.disabled[i]) return false;
+  }
+  const aLabels = a.disabledOverviewLabels || {};
+  const bLabels = b.disabledOverviewLabels || {};
+  const aKeys = Object.keys(aLabels);
+  const bKeys = Object.keys(bLabels);
+  if (aKeys.length !== bKeys.length) return false;
+  for (const key of aKeys) {
+    const aList = aLabels[key];
+    const bList = bLabels[key];
+    if (!bList || aList.length !== bList.length) return false;
+    for (let i = 0; i < aList.length; i += 1) {
+      if (aList[i] !== bList[i]) return false;
+    }
   }
   return true;
 }

@@ -158,6 +158,7 @@ function App() {
   const {
     handleReorder,
     handleToggle,
+    handleToggleOverviewLabel,
   } = useSettingsPluginActions({
     pluginSettings,
     setPluginSettings,
@@ -241,6 +242,7 @@ function App() {
         onRetryPlugin: handleRetryPlugin,
         onReorder: handleReorder,
         onToggle: handleToggle,
+        onToggleOverviewLabel: handleToggleOverviewLabel,
         onAutoUpdateIntervalChange: handleAutoUpdateIntervalChange,
         onThemeModeChange: handleThemeModeChange,
         onDisplayModeChange: handleDisplayModeChange,

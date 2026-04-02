@@ -43,6 +43,7 @@ export function OverviewPage({
           displayMode={displayMode}
           resetTimerDisplayMode={resetTimerDisplayMode}
           onResetTimerDisplayModeToggle={onResetTimerDisplayModeToggle}
+          disabledOverviewLabels={plugin.disabledOverviewLabels}
         />
       ))}
     </div>

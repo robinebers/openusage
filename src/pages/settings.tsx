@@ -40,6 +40,8 @@ interface PluginConfig {
   id: string;
   name: string;
   enabled: boolean;
+  lines: import("@/lib/plugin-types").ManifestLine[];
+  disabledOverviewLabels: string[];
 }
 
 const TRAY_PREVIEW_SIZE_PX = getTrayIconSizePx(1);
@@ -196,9 +198,11 @@ function MenubarIconStylePreview({
 function SortablePluginItem({
   plugin,
   onToggle,
+  onToggleOverviewLabel,
 }: {
   plugin: PluginConfig;
   onToggle: (id: string) => void;
+  onToggleOverviewLabel: (pluginId: string, label: string) => void;
 }) {
   const {
     attributes,
@@ -208,45 +212,61 @@ function SortablePluginItem({
     transition,
     isDragging,
   } = useSortable({ id: plugin.id });
-
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
   };
 
+  const overviewLines = plugin.lines ? plugin.lines.filter((l) => l.scope === "overview") : [];
   return (
     <div
       ref={setNodeRef}
       style={style}
       className={cn(
-        "flex items-center gap-3 px-3 py-2 rounded-md bg-card",
-        "border border-transparent",
+        "flex flex-col gap-2 px-3 py-2 rounded-md bg-card border border-transparent",
         isDragging && "opacity-50 border-border"
       )}
     >
-      <button
-        type="button"
-        className="touch-none cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground transition-colors"
-        {...attributes}
-        {...listeners}
-      >
-        <GripVertical className="h-4 w-4" />
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          className="touch-none cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground transition-colors"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="h-4 w-4" />
       </button>
-
-      <span
-        className={cn(
-          "flex-1 text-sm",
-          !plugin.enabled && "text-muted-foreground"
-        )}
-      >
-        {plugin.name}
-      </span>
-
-      <Checkbox
-        key={`${plugin.id}-${plugin.enabled}`}
-        checked={plugin.enabled}
-        onCheckedChange={() => onToggle(plugin.id)}
-      />
+        <span
+          className={cn(
+            "flex-1 text-sm",
+            !plugin.enabled && "text-muted-foreground"
+          )}
+        >
+          {plugin.name}
+        </span>
+        <Checkbox
+          key={`${plugin.id}-${plugin.enabled}`}
+          checked={plugin.enabled}
+          onCheckedChange={() => onToggle(plugin.id)}
+        />
+      </div>
+      {plugin.enabled && overviewLines.length > 0 && (
+        <div className="flex flex-col gap-1.5 pl-7 pr-1 pb-1">
+          {overviewLines.map((line) => {
+            const isLineEnabled = !plugin.disabledOverviewLabels.includes(line.label);
+            return (
+              <label key={line.label} className="flex items-center gap-2 text-xs select-none text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
+                <Checkbox
+                  checked={isLineEnabled}
+                  onCheckedChange={() => onToggleOverviewLabel(plugin.id, line.label)}
+                  className="h-3.5 w-3.5"
+                />
+                {line.label}
+              </label>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -255,6 +275,7 @@ interface SettingsPageProps {
   plugins: PluginConfig[];
   onReorder: (orderedIds: string[]) => void;
   onToggle: (id: string) => void;
+  onToggleOverviewLabel: (pluginId: string, label: string) => void;
   autoUpdateInterval: AutoUpdateIntervalMinutes;
   onAutoUpdateIntervalChange: (value: AutoUpdateIntervalMinutes) => void;
   themeMode: ThemeMode;
@@ -276,6 +297,7 @@ export function SettingsPage({
   plugins,
   onReorder,
   onToggle,
+  onToggleOverviewLabel,
   autoUpdateInterval,
   onAutoUpdateIntervalChange,
   themeMode,
@@ -504,6 +526,7 @@ export function SettingsPage({
                   key={plugin.id}
                   plugin={plugin}
                   onToggle={onToggle}
+                  onToggleOverviewLabel={onToggleOverviewLabel}
                 />
               ))}
             </SortableContext>
