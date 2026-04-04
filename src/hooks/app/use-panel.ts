@@ -5,6 +5,7 @@ import { getCurrentWindow, PhysicalSize, currentMonitor } from "@tauri-apps/api/
 import type { ActiveView } from "@/components/side-nav"
 
 const PANEL_WIDTH = 400
+// Keep the tray shell stable across short and long provider states; overflow should scroll inside the panel.
 const PANEL_PREFERRED_HEIGHT = 560
 const MAX_HEIGHT_FALLBACK_PX = 600
 const MAX_HEIGHT_FRACTION_OF_MONITOR = 0.8
