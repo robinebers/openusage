@@ -1,4 +1,5 @@
-import { act, renderHook, waitFor } from "@testing-library/react"
+import { act, render, renderHook, waitFor } from "@testing-library/react"
+import { createElement } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const {
@@ -7,12 +8,16 @@ const {
   invokeMock,
   isTauriMock,
   listenMock,
+  onMovedMock,
+  onScaleChangedMock,
 } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
   isTauriMock: vi.fn(),
   listenMock: vi.fn(),
   getCurrentWindowMock: vi.fn(),
   currentMonitorMock: vi.fn(),
+  onMovedMock: vi.fn(),
+  onScaleChangedMock: vi.fn(),
 }))
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -47,11 +52,20 @@ describe("usePanel", () => {
     listenMock.mockReset()
     getCurrentWindowMock.mockReset()
     currentMonitorMock.mockReset()
+    onMovedMock.mockReset()
+    onScaleChangedMock.mockReset()
 
     isTauriMock.mockReturnValue(true)
     invokeMock.mockResolvedValue(undefined)
+    listenMock.mockResolvedValue(vi.fn())
     currentMonitorMock.mockResolvedValue(null)
-    getCurrentWindowMock.mockReturnValue({ setSize: vi.fn().mockResolvedValue(undefined) })
+    onMovedMock.mockResolvedValue(vi.fn())
+    onScaleChangedMock.mockResolvedValue(vi.fn())
+    getCurrentWindowMock.mockReturnValue({
+      setSize: vi.fn().mockResolvedValue(undefined),
+      onMoved: onMovedMock,
+      onScaleChanged: onScaleChangedMock,
+    })
   })
 
   it("handles tray show-about event", async () => {
@@ -69,7 +83,6 @@ describe("usePanel", () => {
         setActiveView: vi.fn(),
         showAbout: false,
         setShowAbout,
-        displayPlugins: [],
       })
     )
 
@@ -103,7 +116,6 @@ describe("usePanel", () => {
         setActiveView: vi.fn(),
         showAbout: false,
         setShowAbout: vi.fn(),
-        displayPlugins: [],
       })
     )
 
@@ -135,7 +147,6 @@ describe("usePanel", () => {
         setActiveView: vi.fn(),
         showAbout: false,
         setShowAbout: vi.fn(),
-        displayPlugins: [],
       })
     )
 
@@ -148,6 +159,47 @@ describe("usePanel", () => {
 
     await waitFor(() => {
       expect(unlistenShowAbout).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it("recalculates panel sizing when the window scale changes", async () => {
+    const setSize = vi.fn().mockResolvedValue(undefined)
+    let scaleChangedHandler: (() => void) | null = null
+
+    currentMonitorMock.mockResolvedValue({ size: { height: 1000 } })
+    onScaleChangedMock.mockImplementation(async (handler: () => void) => {
+      scaleChangedHandler = handler
+      return vi.fn()
+    })
+    getCurrentWindowMock.mockReturnValue({
+      setSize,
+      onMoved: onMovedMock,
+      onScaleChanged: onScaleChangedMock,
+    })
+
+    function Harness() {
+      const { containerRef, scrollRef } = usePanel({
+        activeView: "home",
+        setActiveView: vi.fn(),
+        showAbout: false,
+        setShowAbout: vi.fn(),
+      })
+
+      return createElement("div", { ref: containerRef }, createElement("div", { ref: scrollRef }))
+    }
+
+    render(createElement(Harness))
+
+    await waitFor(() => {
+      expect(setSize).toHaveBeenCalledTimes(1)
+    })
+
+    act(() => {
+      scaleChangedHandler?.()
+    })
+
+    await waitFor(() => {
+      expect(currentMonitorMock).toHaveBeenCalledTimes(2)
     })
   })
 })

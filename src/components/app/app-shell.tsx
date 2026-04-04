@@ -60,12 +60,11 @@ export function AppShell({
     setActiveView,
     showAbout,
     setShowAbout,
-    displayPlugins,
   })
 
   const appVersion = useAppVersion()
   const { updateStatus, triggerInstall, checkForUpdates } = useAppUpdate()
-  const cardHeightPx = panelHeightPx ? Math.max(1, panelHeightPx - ARROW_OVERHEAD_PX) : null
+  const cardHeightPx = panelHeightPx !== null ? Math.max(0, panelHeightPx - ARROW_OVERHEAD_PX) : null
 
   return (
     <div ref={containerRef} className="flex flex-col items-center p-6 pt-1.5 bg-transparent">
@@ -85,7 +84,7 @@ export function AppShell({
           />
           <div className="flex-1 flex flex-col px-3 pt-2 pb-1.5 min-w-0 bg-card dark:bg-muted/50">
             <div className="relative flex-1 min-h-0">
-              <div ref={scrollRef} className="h-full overflow-y-auto scrollbar-none">
+              <div ref={scrollRef} className="h-full overflow-y-auto">
                 <AppContent
                   {...appContentProps}
                   displayPlugins={displayPlugins}

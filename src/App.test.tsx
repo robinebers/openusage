@@ -8,6 +8,8 @@ const state = vi.hoisted(() => ({
   isTauriMock: vi.fn(() => false),
   trackMock: vi.fn(),
   setSizeMock: vi.fn(),
+  windowOnMovedMock: vi.fn(),
+  windowOnScaleChangedMock: vi.fn(),
   currentMonitorMock: vi.fn(),
   startBatchMock: vi.fn(),
   savePluginSettingsMock: vi.fn(),
@@ -172,7 +174,11 @@ vi.mock("@tauri-apps/api/path", () => ({
 }))
 
 vi.mock("@tauri-apps/api/window", () => ({
-  getCurrentWindow: () => ({ setSize: state.setSizeMock }),
+  getCurrentWindow: () => ({
+    setSize: state.setSizeMock,
+    onMoved: state.windowOnMovedMock,
+    onScaleChanged: state.windowOnScaleChangedMock,
+  }),
   PhysicalSize: class {
     width: number
     height: number
@@ -259,6 +265,8 @@ describe("App", () => {
     state.isTauriMock.mockReturnValue(false)
     state.trackMock.mockReset()
     state.setSizeMock.mockReset()
+    state.windowOnMovedMock.mockReset()
+    state.windowOnScaleChangedMock.mockReset()
     state.currentMonitorMock.mockReset()
     state.startBatchMock.mockReset()
     state.savePluginSettingsMock.mockReset()
@@ -320,6 +328,8 @@ describe("App", () => {
     state.autostartDisableMock.mockResolvedValue(undefined)
     state.autostartIsEnabledMock.mockResolvedValue(false)
     state.renderTrayBarsIconMock.mockResolvedValue({})
+    state.windowOnMovedMock.mockResolvedValue(() => {})
+    state.windowOnScaleChangedMock.mockResolvedValue(() => {})
     Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
       configurable: true,
       get() {
@@ -1168,9 +1178,9 @@ describe("App", () => {
     await waitFor(() => expect(state.setSizeMock).toHaveBeenCalled())
   })
 
-  it("keeps a stable preferred panel height when content is shorter", async () => {
+  it("uses the preferred stable panel height on standard monitors", async () => {
     state.isTauriMock.mockReturnValue(true)
-    state.currentMonitorMock.mockResolvedValueOnce({ size: { height: 1000 } })
+    state.currentMonitorMock.mockResolvedValue({ size: { height: 1000 } })
     render(<App />)
 
     await waitFor(() =>
@@ -1182,7 +1192,7 @@ describe("App", () => {
 
   it("clamps the stable panel height to small monitors", async () => {
     state.isTauriMock.mockReturnValue(true)
-    state.currentMonitorMock.mockResolvedValueOnce({ size: { height: 500 } })
+    state.currentMonitorMock.mockResolvedValue({ size: { height: 500 } })
     render(<App />)
 
     await waitFor(() =>

@@ -5,6 +5,8 @@ import { getCurrentWindow, PhysicalSize, currentMonitor } from "@tauri-apps/api/
 import type { ActiveView } from "@/components/side-nav"
 
 const PANEL_WIDTH = 400
+const PANEL_WINDOW_OVERHEAD_PX = 37
+const PANEL_MIN_CONTENT_HEIGHT_PX = 120
 // Keep the tray shell stable across short and long provider states; overflow should scroll inside the panel.
 const PANEL_PREFERRED_HEIGHT = 560
 const MAX_HEIGHT_FALLBACK_PX = 600
@@ -15,7 +17,6 @@ type UsePanelArgs = {
   setActiveView: (view: ActiveView) => void
   showAbout: boolean
   setShowAbout: (value: boolean) => void
-  displayPlugins: unknown[]
 }
 
 export function usePanel({
@@ -23,13 +24,13 @@ export function usePanel({
   setActiveView,
   showAbout,
   setShowAbout,
-  displayPlugins,
 }: UsePanelArgs) {
   const containerRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [canScrollDown, setCanScrollDown] = useState(false)
   const [panelHeightPx, setPanelHeightPx] = useState<number | null>(null)
   const panelHeightPxRef = useRef<number | null>(null)
+  const lastWindowSizeRef = useRef<{ width: number; height: number } | null>(null)
 
   useEffect(() => {
     if (!isTauri()) return
@@ -87,6 +88,9 @@ export function usePanel({
     if (!isTauri()) return
     const container = containerRef.current
     if (!container) return
+    const currentWindow = getCurrentWindow()
+    let cancelled = false
+    const unlisteners: (() => void)[] = []
 
     const resizeWindow = async () => {
       const factor = window.devicePixelRatio
@@ -111,33 +115,78 @@ export function usePanel({
         maxHeightPhysical = Math.floor(maxHeightLogical * factor)
       }
 
+      const minPanelHeightLogical = Math.min(
+        maxHeightLogical,
+        PANEL_WINDOW_OVERHEAD_PX + PANEL_MIN_CONTENT_HEIGHT_PX
+      )
+
       // Keep the tray panel visually stable; scrolling should happen inside the shell.
-      const nextPanelHeightLogical = Math.max(1, Math.min(PANEL_PREFERRED_HEIGHT, maxHeightLogical))
+      const nextPanelHeightLogical = Math.max(
+        minPanelHeightLogical,
+        Math.min(PANEL_PREFERRED_HEIGHT, maxHeightLogical)
+      )
 
       if (panelHeightPxRef.current !== nextPanelHeightLogical) {
         panelHeightPxRef.current = nextPanelHeightLogical
         setPanelHeightPx(nextPanelHeightLogical)
       }
 
-      const height = Math.ceil(Math.min(nextPanelHeightLogical * factor, maxHeightPhysical!))
+      const nextWindowSize = {
+        width,
+        height: Math.ceil(Math.min(nextPanelHeightLogical * factor, maxHeightPhysical!)),
+      }
+
+      if (
+        lastWindowSizeRef.current?.width === nextWindowSize.width &&
+        lastWindowSizeRef.current?.height === nextWindowSize.height
+      ) {
+        return
+      }
+
+      lastWindowSizeRef.current = nextWindowSize
 
       try {
-        const currentWindow = getCurrentWindow()
-        await currentWindow.setSize(new PhysicalSize(width, height))
+        await currentWindow.setSize(new PhysicalSize(nextWindowSize.width, nextWindowSize.height))
       } catch (e) {
         console.error("Failed to resize window:", e)
       }
     }
 
-    resizeWindow()
+    void resizeWindow()
 
     const observer = new ResizeObserver(() => {
-      resizeWindow()
+      void resizeWindow()
     })
     observer.observe(container)
 
-    return () => observer.disconnect()
-  }, [activeView, displayPlugins])
+    async function setupWindowListeners() {
+      const unlistenMoved = await currentWindow.onMoved(() => {
+        void resizeWindow()
+      })
+      if (cancelled) {
+        unlistenMoved()
+        return
+      }
+      unlisteners.push(unlistenMoved)
+
+      const unlistenScaleChanged = await currentWindow.onScaleChanged(() => {
+        void resizeWindow()
+      })
+      if (cancelled) {
+        unlistenScaleChanged()
+        return
+      }
+      unlisteners.push(unlistenScaleChanged)
+    }
+
+    void setupWindowListeners()
+
+    return () => {
+      cancelled = true
+      observer.disconnect()
+      for (const fn of unlisteners) fn()
+    }
+  }, [])
 
   useEffect(() => {
     const el = scrollRef.current
