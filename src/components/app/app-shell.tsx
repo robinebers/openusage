@@ -84,7 +84,7 @@ export function AppShell({
           />
           <div className="flex-1 flex flex-col px-3 pt-2 pb-1.5 min-w-0 bg-card dark:bg-muted/50">
             <div className="relative flex-1 min-h-0">
-              <div ref={scrollRef} className="h-full overflow-y-auto">
+              <div ref={scrollRef} className="panel-scroll h-full overflow-y-auto pr-3">
                 <AppContent
                   {...appContentProps}
                   displayPlugins={displayPlugins}
