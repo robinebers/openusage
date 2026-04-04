@@ -82,15 +82,17 @@ export function AppShell({
             isPluginRefreshAvailable={isPluginRefreshAvailable}
             onReorder={onNavReorder}
           />
-          <div className="flex-1 flex flex-col px-3 pt-2 pb-1.5 min-w-0 bg-card dark:bg-muted/50">
+          <div className="flex-1 flex flex-col pl-3 pr-1 pt-2 pb-1.5 min-w-0 bg-card dark:bg-muted/50">
             <div className="relative flex-1 min-h-0">
-              <div ref={scrollRef} className="panel-scroll h-full overflow-y-auto pr-3">
-                <AppContent
-                  {...appContentProps}
-                  displayPlugins={displayPlugins}
-                  settingsPlugins={settingsPlugins}
-                  selectedPlugin={selectedPlugin}
-                />
+              <div ref={scrollRef} className="panel-scroll h-full overflow-y-auto">
+                <div className="pr-3">
+                  <AppContent
+                    {...appContentProps}
+                    displayPlugins={displayPlugins}
+                    settingsPlugins={settingsPlugins}
+                    selectedPlugin={selectedPlugin}
+                  />
+                </div>
               </div>
               <div
                 className={`pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-card dark:from-muted/50 to-transparent transition-opacity duration-200 ${canScrollDown ? "opacity-100" : "opacity-0"}`}
