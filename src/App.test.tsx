@@ -1168,6 +1168,30 @@ describe("App", () => {
     await waitFor(() => expect(state.setSizeMock).toHaveBeenCalled())
   })
 
+  it("keeps a stable preferred panel height when content is shorter", async () => {
+    state.isTauriMock.mockReturnValue(true)
+    state.currentMonitorMock.mockResolvedValueOnce({ size: { height: 1000 } })
+    render(<App />)
+
+    await waitFor(() =>
+      expect(state.setSizeMock).toHaveBeenCalledWith(
+        expect.objectContaining({ width: 400, height: 560 })
+      )
+    )
+  })
+
+  it("clamps the stable panel height to small monitors", async () => {
+    state.isTauriMock.mockReturnValue(true)
+    state.currentMonitorMock.mockResolvedValueOnce({ size: { height: 500 } })
+    render(<App />)
+
+    await waitFor(() =>
+      expect(state.setSizeMock).toHaveBeenCalledWith(
+        expect.objectContaining({ width: 400, height: 400 })
+      )
+    )
+  })
+
   it("resizes again via ResizeObserver callback", async () => {
     state.isTauriMock.mockReturnValue(true)
     const OriginalResizeObserver = globalThis.ResizeObserver

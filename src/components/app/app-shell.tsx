@@ -54,7 +54,7 @@ export function AppShell({
     containerRef,
     scrollRef,
     canScrollDown,
-    maxPanelHeightPx,
+    panelHeightPx,
   } = usePanel({
     activeView,
     setActiveView,
@@ -65,13 +65,14 @@ export function AppShell({
 
   const appVersion = useAppVersion()
   const { updateStatus, triggerInstall, checkForUpdates } = useAppUpdate()
+  const cardHeightPx = panelHeightPx ? Math.max(1, panelHeightPx - ARROW_OVERHEAD_PX) : null
 
   return (
     <div ref={containerRef} className="flex flex-col items-center p-6 pt-1.5 bg-transparent">
       <div className="tray-arrow" />
       <div
         className="relative bg-card rounded-xl overflow-hidden select-none w-full border shadow-lg flex flex-col"
-        style={maxPanelHeightPx ? { maxHeight: `${maxPanelHeightPx - ARROW_OVERHEAD_PX}px` } : undefined}
+        style={cardHeightPx ? { height: `${cardHeightPx}px`, maxHeight: `${cardHeightPx}px` } : undefined}
       >
         <div className="flex flex-1 min-h-0 flex-row">
           <SideNav

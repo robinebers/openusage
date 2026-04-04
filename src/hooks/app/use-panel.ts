@@ -5,6 +5,7 @@ import { getCurrentWindow, PhysicalSize, currentMonitor } from "@tauri-apps/api/
 import type { ActiveView } from "@/components/side-nav"
 
 const PANEL_WIDTH = 400
+const PANEL_PREFERRED_HEIGHT = 560
 const MAX_HEIGHT_FALLBACK_PX = 600
 const MAX_HEIGHT_FRACTION_OF_MONITOR = 0.8
 
@@ -26,8 +27,8 @@ export function usePanel({
   const containerRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [canScrollDown, setCanScrollDown] = useState(false)
-  const [maxPanelHeightPx, setMaxPanelHeightPx] = useState<number | null>(null)
-  const maxPanelHeightPxRef = useRef<number | null>(null)
+  const [panelHeightPx, setPanelHeightPx] = useState<number | null>(null)
+  const panelHeightPxRef = useRef<number | null>(null)
 
   useEffect(() => {
     if (!isTauri()) return
@@ -89,7 +90,6 @@ export function usePanel({
     const resizeWindow = async () => {
       const factor = window.devicePixelRatio
       const width = Math.ceil(PANEL_WIDTH * factor)
-      const desiredHeightLogical = Math.max(1, container.scrollHeight)
 
       let maxHeightPhysical: number | null = null
       let maxHeightLogical: number | null = null
@@ -110,13 +110,15 @@ export function usePanel({
         maxHeightPhysical = Math.floor(maxHeightLogical * factor)
       }
 
-      if (maxPanelHeightPxRef.current !== maxHeightLogical) {
-        maxPanelHeightPxRef.current = maxHeightLogical
-        setMaxPanelHeightPx(maxHeightLogical)
+      // Keep the tray panel visually stable; scrolling should happen inside the shell.
+      const nextPanelHeightLogical = Math.max(1, Math.min(PANEL_PREFERRED_HEIGHT, maxHeightLogical))
+
+      if (panelHeightPxRef.current !== nextPanelHeightLogical) {
+        panelHeightPxRef.current = nextPanelHeightLogical
+        setPanelHeightPx(nextPanelHeightLogical)
       }
 
-      const desiredHeightPhysical = Math.ceil(desiredHeightLogical * factor)
-      const height = Math.ceil(Math.min(desiredHeightPhysical, maxHeightPhysical!))
+      const height = Math.ceil(Math.min(nextPanelHeightLogical * factor, maxHeightPhysical!))
 
       try {
         const currentWindow = getCurrentWindow()
@@ -164,6 +166,6 @@ export function usePanel({
     containerRef,
     scrollRef,
     canScrollDown,
-    maxPanelHeightPx,
+    panelHeightPx,
   }
 }
