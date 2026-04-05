@@ -82,10 +82,10 @@ export function AppShell({
             isPluginRefreshAvailable={isPluginRefreshAvailable}
             onReorder={onNavReorder}
           />
-          <div className="flex-1 flex flex-col pl-3 pr-1 pt-2 pb-1.5 min-w-0 bg-card dark:bg-muted/50">
+          <div className="flex-1 flex flex-col pt-2 pb-1.5 min-w-0 bg-card dark:bg-muted/50">
             <div className="relative flex-1 min-h-0">
               <div ref={scrollRef} className="panel-scroll h-full overflow-y-auto">
-                <div className="pr-4">
+                <div data-testid="panel-content-wrapper" className="px-3">
                   <AppContent
                     {...appContentProps}
                     displayPlugins={displayPlugins}

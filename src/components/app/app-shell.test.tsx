@@ -96,5 +96,8 @@ describe("AppShell", () => {
 
     expect(screen.getByTestId("app-content")).toBeInTheDocument()
     expect(container.querySelector(".panel-scroll")).toBeTruthy()
+    const contentWrapper = screen.getByTestId("panel-content-wrapper")
+    expect(contentWrapper).toBeTruthy()
+    expect(contentWrapper.querySelector("[data-testid='app-content']")).toBeTruthy()
   })
 })

@@ -158,28 +158,18 @@ body,
   display: none;                  /* Chrome / Safari / WebKit */
 }
 
-/* Slim in-panel scrollbar with a reserved gutter so it doesn't sit on top of content. */
+/* In-panel scrollbar: thin, no reserved idle gutter. */
 .panel-scroll {
-  scrollbar-gutter: stable;
+  --scrollbar-thumb: color-mix(in oklch, var(--muted-foreground) 72%, transparent);
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in oklch, var(--muted-foreground) 58%, transparent) transparent;
-}
-.panel-scroll::-webkit-scrollbar {
-  width: 10px;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 .panel-scroll::-webkit-scrollbar-track {
   background: transparent;
 }
 .panel-scroll::-webkit-scrollbar-thumb {
-  background: color-mix(in oklch, var(--muted-foreground) 42%, transparent);
-  border: 2px solid transparent;
+  background: var(--scrollbar-thumb);
   border-radius: 999px;
-  background-clip: padding-box;
-}
-.panel-scroll::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in oklch, var(--foreground) 36%, transparent);
-  border: 2px solid transparent;
-  background-clip: padding-box;
 }
 
 /* Arrow pointing up toward the tray icon */
