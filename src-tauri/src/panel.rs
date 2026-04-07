@@ -30,9 +30,30 @@ macro_rules! get_or_init_panel {
 // Export macro for use in other modules
 pub(crate) use get_or_init_panel;
 
-/// Show the panel (initializing if needed).
+/// Retrieve the tray icon rect and position the panel beneath it.
+/// No-ops gracefully if the tray icon or its rect is unavailable.
+fn position_panel_from_tray(app_handle: &AppHandle) {
+    let Some(tray) = app_handle.tray_by_id("tray") else {
+        log::debug!("position_panel_from_tray: tray icon not found");
+        return;
+    };
+    match tray.rect() {
+        Ok(Some(rect)) => {
+            position_panel_at_tray_icon(app_handle, rect.position, rect.size);
+        }
+        Ok(None) => {
+            log::debug!("position_panel_from_tray: tray rect not available yet");
+        }
+        Err(e) => {
+            log::warn!("position_panel_from_tray: failed to get tray rect: {}", e);
+        }
+    }
+}
+
+/// Show the panel (initializing if needed), positioned under the tray icon.
 pub fn show_panel(app_handle: &AppHandle) {
     if let Some(panel) = get_or_init_panel!(app_handle) {
+        position_panel_from_tray(app_handle);
         panel.show_and_make_key();
     }
 }
@@ -49,6 +70,7 @@ pub fn toggle_panel(app_handle: &AppHandle) {
         panel.hide();
     } else {
         log::debug!("toggle_panel: showing panel");
+        position_panel_from_tray(app_handle);
         panel.show_and_make_key();
     }
 }
@@ -220,5 +242,23 @@ pub fn position_panel_at_tray_icon(
     let nudge_up: f64 = 6.0;
     let panel_y = icon_logical_y + icon_logical_h - nudge_up;
 
-    let _ = window.set_position(tauri::LogicalPosition::new(panel_x, panel_y));
+    // Set position synchronously on the NSPanel via setFrameTopLeftPoint:.
+    // Tauri's window.set_position() dispatches through tao's exec_async, so
+    // the actual setFrameTopLeftPoint runs on the NEXT main run-loop tick.
+    // If show_and_make_key() fires before that tick, the panel briefly
+    // appears at the old position (flicker). Bypassing tao and calling the
+    // selector directly makes the position change immediate.
+    unsafe {
+        unsafe extern "C" {
+            fn CGMainDisplayID() -> u32;
+            fn CGDisplayPixelsHigh(display: u32) -> u64;
+        }
+
+        if let Ok(panel_handle) = app_handle.get_webview_panel("main") {
+            let ns_panel = panel_handle.as_panel();
+            let screen_height = CGDisplayPixelsHigh(CGMainDisplayID()) as f64;
+            let point = tauri_nspanel::NSPoint::new(panel_x, screen_height - panel_y);
+            let _: () = objc2::msg_send![ns_panel, setFrameTopLeftPoint: point];
+        }
+    }
 }
