@@ -1,10 +1,13 @@
 (function () {
-  const CRED_FILE = "~/.claude/.credentials.json"
-  const KEYCHAIN_SERVICE = "Claude Code-credentials"
-  const USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
-  const REFRESH_URL = "https://platform.claude.com/v1/oauth/token"
-  const CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
-  const SCOPES = "user:profile user:inference user:sessions:claude_code user:mcp_servers"
+  const DEFAULT_CLAUDE_HOME = "~/.claude"
+  const CRED_FILE_NAME = ".credentials.json"
+  const KEYCHAIN_SERVICE_PREFIX = "Claude Code"
+  const PROD_BASE_API_URL = "https://api.anthropic.com"
+  const PROD_REFRESH_URL = "https://platform.claude.com/v1/oauth/token"
+  const PROD_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
+  const NON_PROD_CLIENT_ID = "22422756-60c9-4084-8eb7-27705fd5cf9a"
+  const SCOPES =
+    "user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload"
   const REFRESH_BUFFER_MS = 5 * 60 * 1000 // refresh 5 minutes before expiration
 
   function utf8DecodeBytes(bytes) {
@@ -121,11 +124,117 @@
     return null
   }
 
-  function loadCredentials(ctx) {
-    // Try file first
-    if (ctx.host.fs.exists(CRED_FILE)) {
+  function readEnvText(ctx, name) {
+    try {
+      const value = ctx.host.env.get(name)
+      if (value === null || value === undefined) return null
+      const text = String(value).trim()
+      return text || null
+    } catch {
+      return null
+    }
+  }
+
+  function readEnvFlag(ctx, name) {
+    const value = readEnvText(ctx, name)
+    if (!value) return false
+    const lower = value.toLowerCase()
+    return lower !== "0" && lower !== "false" && lower !== "no" && lower !== "off"
+  }
+
+  function getClaudeHomePath(ctx) {
+    return readEnvText(ctx, "CLAUDE_CONFIG_DIR") || DEFAULT_CLAUDE_HOME
+  }
+
+  function getClaudeHomeOverride(ctx) {
+    return readEnvText(ctx, "CLAUDE_CONFIG_DIR")
+  }
+
+  function getClaudeCredentialsPath(ctx) {
+    return getClaudeHomePath(ctx) + "/" + CRED_FILE_NAME
+  }
+
+  function getOauthConfig(ctx) {
+    let baseApiUrl = PROD_BASE_API_URL
+    let refreshUrl = PROD_REFRESH_URL
+    let clientId = PROD_CLIENT_ID
+    let oauthFileSuffix = ""
+
+    const isAntUser = readEnvText(ctx, "USER_TYPE") === "ant"
+    if (isAntUser && readEnvFlag(ctx, "USE_LOCAL_OAUTH")) {
+      const localApiBase = readEnvText(ctx, "CLAUDE_LOCAL_OAUTH_API_BASE")
+      baseApiUrl = (localApiBase || "http://localhost:8000").replace(/\/+$/, "")
+      refreshUrl = baseApiUrl + "/v1/oauth/token"
+      clientId = NON_PROD_CLIENT_ID
+      oauthFileSuffix = "-local-oauth"
+    } else if (isAntUser && readEnvFlag(ctx, "USE_STAGING_OAUTH")) {
+      baseApiUrl = "https://api-staging.anthropic.com"
+      refreshUrl = "https://platform.staging.ant.dev/v1/oauth/token"
+      clientId = NON_PROD_CLIENT_ID
+      oauthFileSuffix = "-staging-oauth"
+    }
+
+    const customOauthBase = readEnvText(ctx, "CLAUDE_CODE_CUSTOM_OAUTH_URL")
+    if (customOauthBase) {
+      const base = customOauthBase.replace(/\/+$/, "")
+      baseApiUrl = base
+      refreshUrl = base + "/v1/oauth/token"
+      oauthFileSuffix = "-custom-oauth"
+    }
+
+    const clientIdOverride = readEnvText(ctx, "CLAUDE_CODE_OAUTH_CLIENT_ID")
+    if (clientIdOverride) {
+      clientId = clientIdOverride
+    }
+
+    return {
+      baseApiUrl: baseApiUrl,
+      usageUrl: baseApiUrl + "/api/oauth/usage",
+      refreshUrl: refreshUrl,
+      clientId: clientId,
+      oauthFileSuffix: oauthFileSuffix,
+    }
+  }
+
+  function getClaudeKeychainService(ctx) {
+    return KEYCHAIN_SERVICE_PREFIX + getOauthConfig(ctx).oauthFileSuffix + "-credentials"
+  }
+
+  function readKeychainCredentialText(ctx, service) {
+    const keychain = ctx.host.keychain
+    if (!keychain) return null
+
+    if (typeof keychain.readGenericPasswordForCurrentUser === "function") {
       try {
-        const text = ctx.host.fs.readText(CRED_FILE)
+        const value = keychain.readGenericPasswordForCurrentUser(service)
+        if (value) {
+          return { value, source: "keychain-current-user" }
+        }
+      } catch (e) {
+        ctx.host.log.info("current-user keychain read failed, trying legacy lookup: " + String(e))
+      }
+    }
+
+    if (typeof keychain.readGenericPassword !== "function") return null
+
+    try {
+      const value = keychain.readGenericPassword(service)
+      if (value) {
+        return { value, source: "keychain-legacy" }
+      }
+    } catch (e) {
+      ctx.host.log.info("keychain read failed (may not exist): " + String(e))
+    }
+
+    return null
+  }
+
+  function loadStoredCredentials(ctx, suppressMissingWarn) {
+    const credFile = getClaudeCredentialsPath(ctx)
+    // Try file first
+    if (ctx.host.fs.exists(credFile)) {
+      try {
+        const text = ctx.host.fs.readText(credFile)
         const parsed = tryParseCredentialJSON(ctx, text)
         if (parsed) {
           const oauth = parsed.claudeAiOauth
@@ -141,25 +250,51 @@
     }
 
     // Try keychain fallback
-    try {
-      const keychainValue = ctx.host.keychain.readGenericPassword(KEYCHAIN_SERVICE)
-      if (keychainValue) {
-        const parsed = tryParseCredentialJSON(ctx, keychainValue)
-        if (parsed) {
-          const oauth = parsed.claudeAiOauth
-          if (oauth && oauth.accessToken) {
-            ctx.host.log.info("credentials loaded from keychain")
-            return { oauth, source: "keychain", fullData: parsed }
-          }
+    const keychainResult = readKeychainCredentialText(ctx, getClaudeKeychainService(ctx))
+    if (keychainResult && keychainResult.value) {
+      const parsed = tryParseCredentialJSON(ctx, keychainResult.value)
+      if (parsed) {
+        const oauth = parsed.claudeAiOauth
+        if (oauth && oauth.accessToken) {
+          ctx.host.log.info("credentials loaded from keychain")
+          return { oauth, source: keychainResult.source, fullData: parsed }
         }
-        ctx.host.log.warn("keychain has data but no valid oauth")
       }
-    } catch (e) {
-      ctx.host.log.info("keychain read failed (may not exist): " + String(e))
+      ctx.host.log.warn("keychain has data but no valid oauth")
     }
 
-    ctx.host.log.warn("no credentials found")
+    if (!suppressMissingWarn) {
+      ctx.host.log.warn("no credentials found")
+    }
     return null
+  }
+
+  function loadCredentials(ctx) {
+    const envAccessToken = readEnvText(ctx, "CLAUDE_CODE_OAUTH_TOKEN")
+    const stored = loadStoredCredentials(ctx, !!envAccessToken)
+    if (!envAccessToken) {
+      return stored
+    }
+
+    const oauth = stored && stored.oauth ? Object.assign({}, stored.oauth) : {}
+    oauth.accessToken = envAccessToken
+    return {
+      oauth: oauth,
+      source: stored ? stored.source : null,
+      fullData: stored ? stored.fullData : null,
+      inferenceOnly: true,
+    }
+  }
+
+  function hasProfileScope(creds) {
+    if (!creds || creds.inferenceOnly) {
+      return false
+    }
+    const scopes = creds.oauth && creds.oauth.scopes
+    if (Array.isArray(scopes) && scopes.length > 0) {
+      return scopes.indexOf("user:profile") !== -1
+    }
+    return true
   }
 
   function saveCredentials(ctx, source, fullData) {
@@ -168,13 +303,23 @@
     const text = JSON.stringify(fullData)
     if (source === "file") {
       try {
-        ctx.host.fs.writeText(CRED_FILE, text)
+        ctx.host.fs.writeText(getClaudeCredentialsPath(ctx), text)
       } catch (e) {
         ctx.host.log.error("Failed to write Claude credentials file: " + String(e))
       }
-    } else if (source === "keychain") {
+    } else if (source === "keychain-current-user") {
       try {
-        ctx.host.keychain.writeGenericPassword(KEYCHAIN_SERVICE, text)
+        if (typeof ctx.host.keychain.writeGenericPasswordForCurrentUser === "function") {
+          ctx.host.keychain.writeGenericPasswordForCurrentUser(getClaudeKeychainService(ctx), text)
+        } else {
+          ctx.host.keychain.writeGenericPassword(getClaudeKeychainService(ctx), text)
+        }
+      } catch (e) {
+        ctx.host.log.error("Failed to write Claude credentials keychain: " + String(e))
+      }
+    } else if (source === "keychain-legacy" || source === "keychain") {
+      try {
+        ctx.host.keychain.writeGenericPassword(getClaudeKeychainService(ctx), text)
       } catch (e) {
         ctx.host.log.error("Failed to write Claude credentials keychain: " + String(e))
       }
@@ -196,16 +341,17 @@
       return null
     }
 
+    const oauthConfig = getOauthConfig(ctx)
     ctx.host.log.info("attempting token refresh")
     try {
       const resp = ctx.util.request({
         method: "POST",
-        url: REFRESH_URL,
+        url: oauthConfig.refreshUrl,
         headers: { "Content-Type": "application/json" },
         bodyText: JSON.stringify({
           grant_type: "refresh_token",
           refresh_token: oauth.refreshToken,
-          client_id: CLIENT_ID,
+          client_id: oauthConfig.clientId,
           scope: SCOPES,
         }),
         timeoutMs: 15000,
@@ -258,9 +404,10 @@
   }
 
   function fetchUsage(ctx, accessToken) {
+    const oauthConfig = getOauthConfig(ctx)
     return ctx.util.request({
       method: "GET",
-      url: USAGE_URL,
+      url: oauthConfig.usageUrl,
       headers: {
         Authorization: "Bearer " + accessToken.trim(),
         Accept: "application/json",
@@ -272,7 +419,7 @@
     })
   }
 
-  function queryTokenUsage(ctx) {
+  function queryTokenUsage(ctx, homePath) {
     const since = new Date()
     // Inclusive range: today + previous 30 days = 31 calendar days.
     since.setDate(since.getDate() - 30)
@@ -281,7 +428,12 @@
     const d = since.getDate()
     const sinceStr = "" + y + (m < 10 ? "0" : "") + m + (d < 10 ? "0" : "") + d
 
-    const result = ctx.host.ccusage.query({ since: sinceStr })
+    const queryOpts = { since: sinceStr }
+    if (homePath) {
+      queryOpts.homePath = homePath
+    }
+
+    const result = ctx.host.ccusage.query(queryOpts)
     if (!result || typeof result !== "object" || typeof result.status !== "string") {
       return { status: "runner_failed", data: null }
     }
@@ -399,64 +551,70 @@
 
     const nowMs = Date.now()
     let accessToken = creds.oauth.accessToken
+    const homePath = getClaudeHomeOverride(ctx)
+    const canFetchLiveUsage = hasProfileScope(creds)
 
-    // Proactively refresh if token is expired or about to expire
-    if (needsRefresh(ctx, creds.oauth, nowMs)) {
-      ctx.host.log.info("token needs refresh (expired or expiring soon)")
-      const refreshed = refreshToken(ctx, creds)
-      if (refreshed) {
-        accessToken = refreshed
-      } else {
-        ctx.host.log.warn("proactive refresh failed, trying with existing token")
+    let data = null
+    let lines = []
+    if (canFetchLiveUsage) {
+      // Proactively refresh if token is expired or about to expire
+      if (needsRefresh(ctx, creds.oauth, nowMs)) {
+        ctx.host.log.info("token needs refresh (expired or expiring soon)")
+        const refreshed = refreshToken(ctx, creds)
+        if (refreshed) {
+          accessToken = refreshed
+        } else {
+          ctx.host.log.warn("proactive refresh failed, trying with existing token")
+        }
       }
-    }
 
-    let resp
-    let didRefresh = false
-    try {
-      resp = ctx.util.retryOnceOnAuth({
-        request: (token) => {
-          try {
-            return fetchUsage(ctx, token || accessToken)
-          } catch (e) {
-            ctx.host.log.error("usage request exception: " + String(e))
-            if (didRefresh) {
-              throw "Usage request failed after refresh. Try again."
+      let resp
+      let didRefresh = false
+      try {
+        resp = ctx.util.retryOnceOnAuth({
+          request: (token) => {
+            try {
+              return fetchUsage(ctx, token || accessToken)
+            } catch (e) {
+              ctx.host.log.error("usage request exception: " + String(e))
+              if (didRefresh) {
+                throw "Usage request failed after refresh. Try again."
+              }
+              throw "Usage request failed. Check your connection."
             }
-            throw "Usage request failed. Check your connection."
-          }
-        },
-        refresh: () => {
-          ctx.host.log.info("usage returned 401, attempting refresh")
-          didRefresh = true
-          return refreshToken(ctx, creds)
-        },
-      })
-    } catch (e) {
-      if (typeof e === "string") throw e
-      ctx.host.log.error("usage request failed: " + String(e))
-      throw "Usage request failed. Check your connection."
+          },
+          refresh: () => {
+            ctx.host.log.info("usage returned 401, attempting refresh")
+            didRefresh = true
+            return refreshToken(ctx, creds)
+          },
+        })
+      } catch (e) {
+        if (typeof e === "string") throw e
+        ctx.host.log.error("usage request failed: " + String(e))
+        throw "Usage request failed. Check your connection."
+      }
+
+      if (ctx.util.isAuthStatus(resp.status)) {
+        ctx.host.log.error("usage returned auth error after all retries: status=" + resp.status)
+        throw "Token expired. Run `claude` to log in again."
+      }
+
+      if (resp.status < 200 || resp.status >= 300) {
+        ctx.host.log.error("usage returned error: status=" + resp.status)
+        throw "Usage request failed (HTTP " + String(resp.status) + "). Try again later."
+      }
+
+      ctx.host.log.info("usage fetch succeeded")
+
+      data = ctx.util.tryParseJson(resp.bodyText)
+      if (data === null) {
+        throw "Usage response invalid. Try again later."
+      }
+    } else {
+      ctx.host.log.info("skipping live usage fetch for inference-only token")
     }
 
-    if (ctx.util.isAuthStatus(resp.status)) {
-      ctx.host.log.error("usage returned auth error after all retries: status=" + resp.status)
-      throw "Token expired. Run `claude` to log in again."
-    }
-
-    if (resp.status < 200 || resp.status >= 300) {
-      ctx.host.log.error("usage returned error: status=" + resp.status)
-      throw "Usage request failed (HTTP " + String(resp.status) + "). Try again later."
-    }
-    
-    ctx.host.log.info("usage fetch succeeded")
-
-    let data
-    data = ctx.util.tryParseJson(resp.bodyText)
-    if (data === null) {
-      throw "Usage response invalid. Try again later."
-    }
-
-    const lines = []
     let plan = null
     if (creds.oauth.subscriptionType) {
       const basePlan = ctx.fmt.planLabel(creds.oauth.subscriptionType)
@@ -471,53 +629,55 @@
       }
     }
 
-    if (data.five_hour && typeof data.five_hour.utilization === "number") {
-      lines.push(ctx.line.progress({
-        label: "Session",
-        used: data.five_hour.utilization,
-        limit: 100,
-        format: { kind: "percent" },
-        resetsAt: ctx.util.toIso(data.five_hour.resets_at),
-        periodDurationMs: 5 * 60 * 60 * 1000 // 5 hours
-      }))
-    }
-    if (data.seven_day && typeof data.seven_day.utilization === "number") {
-      lines.push(ctx.line.progress({
-        label: "Weekly",
-        used: data.seven_day.utilization,
-        limit: 100,
-        format: { kind: "percent" },
-        resetsAt: ctx.util.toIso(data.seven_day.resets_at),
-        periodDurationMs: 7 * 24 * 60 * 60 * 1000 // 7 days
-      }))
-    }
-    if (data.seven_day_sonnet && typeof data.seven_day_sonnet.utilization === "number") {
-      lines.push(ctx.line.progress({
-        label: "Sonnet",
-        used: data.seven_day_sonnet.utilization,
-        limit: 100,
-        format: { kind: "percent" },
-        resetsAt: ctx.util.toIso(data.seven_day_sonnet.resets_at),
-        periodDurationMs: 7 * 24 * 60 * 60 * 1000 // 7 days
-      }))
-    }
-
-    if (data.extra_usage && data.extra_usage.is_enabled) {
-      const used = data.extra_usage.used_credits
-      const limit = data.extra_usage.monthly_limit
-      if (typeof used === "number" && typeof limit === "number" && limit > 0) {
+    if (data) {
+      if (data.five_hour && typeof data.five_hour.utilization === "number") {
         lines.push(ctx.line.progress({
-          label: "Extra usage spent",
-          used: ctx.fmt.dollars(used),
-          limit: ctx.fmt.dollars(limit),
-          format: { kind: "dollars" }
+          label: "Session",
+          used: data.five_hour.utilization,
+          limit: 100,
+          format: { kind: "percent" },
+          resetsAt: ctx.util.toIso(data.five_hour.resets_at),
+          periodDurationMs: 5 * 60 * 60 * 1000 // 5 hours
         }))
-      } else if (typeof used === "number" && used > 0) {
-        lines.push(ctx.line.text({ label: "Extra usage spent", value: "$" + String(ctx.fmt.dollars(used)) }))
+      }
+      if (data.seven_day && typeof data.seven_day.utilization === "number") {
+        lines.push(ctx.line.progress({
+          label: "Weekly",
+          used: data.seven_day.utilization,
+          limit: 100,
+          format: { kind: "percent" },
+          resetsAt: ctx.util.toIso(data.seven_day.resets_at),
+          periodDurationMs: 7 * 24 * 60 * 60 * 1000 // 7 days
+        }))
+      }
+      if (data.seven_day_sonnet && typeof data.seven_day_sonnet.utilization === "number") {
+        lines.push(ctx.line.progress({
+          label: "Sonnet",
+          used: data.seven_day_sonnet.utilization,
+          limit: 100,
+          format: { kind: "percent" },
+          resetsAt: ctx.util.toIso(data.seven_day_sonnet.resets_at),
+          periodDurationMs: 7 * 24 * 60 * 60 * 1000 // 7 days
+        }))
+      }
+
+      if (data.extra_usage && data.extra_usage.is_enabled) {
+        const used = data.extra_usage.used_credits
+        const limit = data.extra_usage.monthly_limit
+        if (typeof used === "number" && typeof limit === "number" && limit > 0) {
+          lines.push(ctx.line.progress({
+            label: "Extra usage spent",
+            used: ctx.fmt.dollars(used),
+            limit: ctx.fmt.dollars(limit),
+            format: { kind: "dollars" }
+          }))
+        } else if (typeof used === "number" && used > 0) {
+          lines.push(ctx.line.text({ label: "Extra usage spent", value: "$" + String(ctx.fmt.dollars(used)) }))
+        }
       }
     }
 
-    const usageResult = queryTokenUsage(ctx)
+    const usageResult = queryTokenUsage(ctx, homePath)
     if (usageResult.status === "ok") {
       const usage = usageResult.data
       const now = new Date()

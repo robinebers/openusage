@@ -1,5 +1,58 @@
 # Changelog
 
+## v0.6.13
+
+### New Features
+- Add Kiro plugin for usage tracking and management by @sayuru-akash
+- add Synthetic provider plugin by @ben-vargas
+- add SOCKS5/HTTP proxy support via ~/.openusage/config.json by @zergzorg
+- Support custom Claude OAuth config and credentials by @robinebers
+
+### Bug Fixes
+- address synthetic plugin review feedback by @ben-vargas
+- scope keychain user lookup by @robinebers
+- address PR 331 review comments by @robinebers
+- use REST fallback for team-inferred accounts missing planUsage.limit by @drewwells
+- skip fallback when percent usage is available by @drewwells
+- prefer enterprise auth and handle missing limits by @drewwells
+- correct proxy redaction output by @robinebers
+- prevent relative config path when home dir is unavailable by @zergzorg
+- load factory auth from droid v2 store ([#298](https://github.com/robinebers/openusage/pull/298)) by @davidarny
+- Harden Windsurf quota parsing for missing and invalid balance data by @prayzey
+- Handle missing Windsurf extra usage balance so quota still loads by @prayzey
+
+### Refactor
+- update release process to push commits and tags before creating GitHub releases by @robinebers
+
+### Chores
+- bump tokio from 1.50.0 to 1.51.0 in /src-tauri by @dependabot[bot]
+- add proxy configuration guide by @robinebers
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.6.12...v0.6.13](https://github.com/robinebers/openusage/compare/v0.6.12...v0.6.13)
+
+- [96eede6](https://github.com/robinebers/openusage/commit/96eede6a77c08494f23ca07247bf4b629304fe78) feat: Add Kiro plugin for usage tracking and management by @sayuru-akash
+- [2a8f550](https://github.com/robinebers/openusage/commit/2a8f5505e66e305cdc0ba7610e2382f02aaad19e) fix: address synthetic plugin review feedback by @ben-vargas
+- [8031849](https://github.com/robinebers/openusage/commit/8031849b557339e3212a614065e6db7b6385a29b) feat: add Synthetic provider plugin by @ben-vargas
+- [110bee6](https://github.com/robinebers/openusage/commit/110bee64868396840d1f44e8c16f2c97d98bbe01) fix(claude): scope keychain user lookup by @robinebers
+- [25b0029](https://github.com/robinebers/openusage/commit/25b00291fc1ff05fbe74b9de90fa49c493e7e464) fix: address PR 331 review comments by @robinebers
+- [fed094a](https://github.com/robinebers/openusage/commit/fed094ae0413d3c4110e213db27fb1733a023efa) Support custom Claude OAuth config and credentials by @robinebers
+- [b821f34](https://github.com/robinebers/openusage/commit/b821f34bd3a1b09153ec7d33a51399953105c1a3) fix(cursor): use REST fallback for team-inferred accounts missing planUsage.limit by @drewwells
+- [6a5145b](https://github.com/robinebers/openusage/commit/6a5145b2c9b4a37df493f6c8a7a57d2200c402ba) fix(cursor): skip fallback when percent usage is available by @drewwells
+- [64c9840](https://github.com/robinebers/openusage/commit/64c9840a01075e47ff1ae46c8cf899fc704ddc74) fix(cursor): prefer enterprise auth and handle missing limits by @drewwells
+- [7dc38fe](https://github.com/robinebers/openusage/commit/7dc38fe961f393189fc79e87d934a2d0760987c6) docs: add proxy configuration guide by @robinebers
+- [29c9ff0](https://github.com/robinebers/openusage/commit/29c9ff0e79d0eb2913f4ef6b50aa170bca6d3177) fix(config): correct proxy redaction output by @robinebers
+- [2c27806](https://github.com/robinebers/openusage/commit/2c278068cdbfbd03937e232428271bc68208d778) fix: prevent relative config path when home dir is unavailable by @zergzorg
+- [1f48faf](https://github.com/robinebers/openusage/commit/1f48fafe8699f0831ed6e387ea4e99f8be31a375) feat: add SOCKS5/HTTP proxy support via ~/.openusage/config.json by @zergzorg
+- [bbbb6cc](https://github.com/robinebers/openusage/commit/bbbb6ccc1b29dec5c32bf1224317ebf41f91f9c4) Harden Windsurf quota parsing for missing and invalid balance data by @prayzey
+- [c9ab800](https://github.com/robinebers/openusage/commit/c9ab800333e49793123456f4e72dd17aba44fb42) Handle missing Windsurf extra usage balance so quota still loads by @prayzey
+- [d6ee9c6](https://github.com/robinebers/openusage/commit/d6ee9c68c13dddc650cfc78b4e26b3572489b35f) chore(deps): bump tokio from 1.50.0 to 1.51.0 in /src-tauri by @dependabot[bot]
+- [857f537](https://github.com/robinebers/openusage/commit/857f537a243483acf98ccd9ea32e20b380c63823) fix: load factory auth from droid v2 store (#298) by @davidarny
+- [625ae4e](https://github.com/robinebers/openusage/commit/625ae4e4b63a2b8597773aea94c3b86c8d45885f) refactor: update release process to push commits and tags before creating GitHub releases by @robinebers
+
 ## v0.6.12
 
 ### New Features

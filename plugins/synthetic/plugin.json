@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "synthetic",
+  "name": "Synthetic",
+  "version": "0.0.1",
+  "entry": "plugin.js",
+  "icon": "icon.svg",
+  "brandColor": "#000000",
+  "lines": [
+    { "type": "progress", "label": "5h Rate Limit", "scope": "overview", "primaryOrder": 1 },
+    { "type": "progress", "label": "Mana Bar", "scope": "overview" },
+    { "type": "badge", "label": "Rate Limited", "scope": "detail" },
+    { "type": "progress", "label": "Subscription", "scope": "overview", "primaryOrder": 2 },
+    { "type": "progress", "label": "Free Tool Calls", "scope": "detail" },
+    { "type": "progress", "label": "Search", "scope": "detail" }
+  ],
+  "links": [
+    { "label": "Dashboard", "url": "https://synthetic.new/billing" }
+  ]
+}

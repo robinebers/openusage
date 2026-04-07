@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "kiro",
+  "name": "Kiro",
+  "version": "0.0.1",
+  "entry": "plugin.js",
+  "icon": "icon.svg",
+  "brandColor": "#C09CFF",
+  "lines": [
+    { "type": "progress", "label": "Credits", "scope": "overview", "primaryOrder": 1 },
+    { "type": "progress", "label": "Bonus Credits", "scope": "overview" },
+    { "type": "badge", "label": "Overages", "scope": "detail" }
+  ]
+}
