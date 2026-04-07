@@ -37,6 +37,7 @@ OpenUsage lives in your menu bar and shows you how much of your AI coding subscr
 - [**Kimi Code**](docs/providers/kimi.md) / session, weekly
 - [**MiniMax**](docs/providers/minimax.md) / coding plan session
 - [**OpenCode Go**](docs/providers/opencode-go.md) / 5h, weekly, monthly spend limits
+- [**OpenRouter**](docs/providers/openrouter.md) / credits, this month, all time
 - [**Windsurf**](docs/providers/windsurf.md) / prompt credits, flex credits
 - [**Z.ai**](docs/providers/zai.md) / session, weekly, web searches
 
