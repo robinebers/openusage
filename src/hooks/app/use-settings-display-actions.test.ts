@@ -4,13 +4,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 const {
   trackMock,
   saveDisplayModeMock,
+  saveMenubarIconStyleMock,
   saveResetTimerDisplayModeMock,
   saveThemeModeMock,
+  saveWeeklyWarningThresholdPercentMock,
 } = vi.hoisted(() => ({
   trackMock: vi.fn(),
   saveThemeModeMock: vi.fn(),
   saveDisplayModeMock: vi.fn(),
+  saveMenubarIconStyleMock: vi.fn(),
   saveResetTimerDisplayModeMock: vi.fn(),
+  saveWeeklyWarningThresholdPercentMock: vi.fn(),
 }))
 
 vi.mock("@/lib/analytics", () => ({
@@ -20,7 +24,9 @@ vi.mock("@/lib/analytics", () => ({
 vi.mock("@/lib/settings", () => ({
   saveThemeMode: saveThemeModeMock,
   saveDisplayMode: saveDisplayModeMock,
+  saveMenubarIconStyle: saveMenubarIconStyleMock,
   saveResetTimerDisplayMode: saveResetTimerDisplayModeMock,
+  saveWeeklyWarningThresholdPercent: saveWeeklyWarningThresholdPercentMock,
 }))
 
 import { useSettingsDisplayActions } from "@/hooks/app/use-settings-display-actions"
@@ -30,16 +36,22 @@ describe("useSettingsDisplayActions", () => {
     trackMock.mockReset()
     saveThemeModeMock.mockReset()
     saveDisplayModeMock.mockReset()
+    saveMenubarIconStyleMock.mockReset()
     saveResetTimerDisplayModeMock.mockReset()
+    saveWeeklyWarningThresholdPercentMock.mockReset()
     saveThemeModeMock.mockResolvedValue(undefined)
     saveDisplayModeMock.mockResolvedValue(undefined)
+    saveMenubarIconStyleMock.mockResolvedValue(undefined)
     saveResetTimerDisplayModeMock.mockResolvedValue(undefined)
+    saveWeeklyWarningThresholdPercentMock.mockResolvedValue(undefined)
   })
 
   it("tracks and applies display-related setting changes", () => {
     const setThemeMode = vi.fn()
     const setDisplayMode = vi.fn()
     const setResetTimerDisplayMode = vi.fn()
+    const setMenubarIconStyle = vi.fn()
+    const setWeeklyWarningThresholdPercent = vi.fn()
     const scheduleTrayIconUpdate = vi.fn()
 
     const { result } = renderHook(() =>
@@ -48,6 +60,8 @@ describe("useSettingsDisplayActions", () => {
         setDisplayMode,
         resetTimerDisplayMode: "relative",
         setResetTimerDisplayMode,
+        setMenubarIconStyle,
+        setWeeklyWarningThresholdPercent,
         scheduleTrayIconUpdate,
       })
     )
@@ -56,6 +70,8 @@ describe("useSettingsDisplayActions", () => {
       result.current.handleThemeModeChange("dark")
       result.current.handleDisplayModeChange("used")
       result.current.handleResetTimerDisplayModeChange("absolute")
+      result.current.handleMenubarIconStyleChange("bars")
+      result.current.handleWeeklyWarningThresholdPercentChange(40)
     })
 
     expect(trackMock).toHaveBeenCalledWith("setting_changed", { setting: "theme", value: "dark" })
@@ -67,15 +83,27 @@ describe("useSettingsDisplayActions", () => {
       setting: "reset_timer_display_mode",
       value: "absolute",
     })
+    expect(trackMock).toHaveBeenCalledWith("setting_changed", {
+      setting: "menubar_icon_style",
+      value: "bars",
+    })
+    expect(trackMock).toHaveBeenCalledWith("setting_changed", {
+      setting: "weekly_warning_threshold_percent",
+      value: "40",
+    })
 
     expect(setThemeMode).toHaveBeenCalledWith("dark")
     expect(setDisplayMode).toHaveBeenCalledWith("used")
     expect(setResetTimerDisplayMode).toHaveBeenCalledWith("absolute")
+    expect(setMenubarIconStyle).toHaveBeenCalledWith("bars")
+    expect(setWeeklyWarningThresholdPercent).toHaveBeenCalledWith(40)
     expect(scheduleTrayIconUpdate).toHaveBeenCalledWith("settings", 0)
 
     expect(saveThemeModeMock).toHaveBeenCalledWith("dark")
     expect(saveDisplayModeMock).toHaveBeenCalledWith("used")
     expect(saveResetTimerDisplayModeMock).toHaveBeenCalledWith("absolute")
+    expect(saveMenubarIconStyleMock).toHaveBeenCalledWith("bars")
+    expect(saveWeeklyWarningThresholdPercentMock).toHaveBeenCalledWith(40)
   })
 
   it("toggles reset timer mode in both directions", () => {
@@ -88,6 +116,8 @@ describe("useSettingsDisplayActions", () => {
           setDisplayMode: vi.fn(),
           resetTimerDisplayMode: mode,
           setResetTimerDisplayMode,
+          setMenubarIconStyle: vi.fn(),
+          setWeeklyWarningThresholdPercent: vi.fn(),
           scheduleTrayIconUpdate: vi.fn(),
         }),
       { initialProps: { mode: "relative" as const } }
@@ -109,10 +139,14 @@ describe("useSettingsDisplayActions", () => {
     const themeError = new Error("theme failed")
     const displayError = new Error("display failed")
     const resetError = new Error("reset failed")
+    const menubarError = new Error("menubar failed")
+    const weeklyWarningError = new Error("weekly warning failed")
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
     saveThemeModeMock.mockRejectedValueOnce(themeError)
     saveDisplayModeMock.mockRejectedValueOnce(displayError)
     saveResetTimerDisplayModeMock.mockRejectedValueOnce(resetError)
+    saveMenubarIconStyleMock.mockRejectedValueOnce(menubarError)
+    saveWeeklyWarningThresholdPercentMock.mockRejectedValueOnce(weeklyWarningError)
 
     const { result } = renderHook(() =>
       useSettingsDisplayActions({
@@ -120,6 +154,8 @@ describe("useSettingsDisplayActions", () => {
         setDisplayMode: vi.fn(),
         resetTimerDisplayMode: "relative",
         setResetTimerDisplayMode: vi.fn(),
+        setMenubarIconStyle: vi.fn(),
+        setWeeklyWarningThresholdPercent: vi.fn(),
         scheduleTrayIconUpdate: vi.fn(),
       })
     )
@@ -128,12 +164,16 @@ describe("useSettingsDisplayActions", () => {
       result.current.handleThemeModeChange("light")
       result.current.handleDisplayModeChange("left")
       result.current.handleResetTimerDisplayModeChange("relative")
+      result.current.handleMenubarIconStyleChange("provider")
+      result.current.handleWeeklyWarningThresholdPercentChange(30)
     })
 
     await waitFor(() => {
       expect(errorSpy).toHaveBeenCalledWith("Failed to save theme mode:", themeError)
       expect(errorSpy).toHaveBeenCalledWith("Failed to save display mode:", displayError)
       expect(errorSpy).toHaveBeenCalledWith("Failed to save reset timer display mode:", resetError)
+      expect(errorSpy).toHaveBeenCalledWith("Failed to save menubar icon style:", menubarError)
+      expect(errorSpy).toHaveBeenCalledWith("Failed to save weekly warning threshold:", weeklyWarningError)
     })
 
     errorSpy.mockRestore()

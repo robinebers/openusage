@@ -2,8 +2,14 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { resolveResource } from "@tauri-apps/api/path"
 import { TrayIcon } from "@tauri-apps/api/tray"
 import type { PluginMeta } from "@/lib/plugin-types"
-import type { DisplayMode, MenubarIconStyle, PluginSettings } from "@/lib/settings"
+import type {
+  DisplayMode,
+  MenubarIconStyle,
+  PluginSettings,
+  WeeklyWarningThresholdPercent,
+} from "@/lib/settings"
 import { getEnabledPluginIds } from "@/lib/settings"
+import type { TrayAlertSeverity } from "@/lib/tray-alert"
 import { getTrayIconSizePx, renderTrayBarsIcon } from "@/lib/tray-bars-icon"
 import { getTrayPrimaryBars, type TrayPrimaryBar } from "@/lib/tray-primary-progress"
 import { formatTrayPercentText, formatTrayTooltip } from "@/lib/tray-tooltip"
@@ -17,6 +23,7 @@ type UseTrayIconArgs = {
   pluginStates: Record<string, PluginState>
   displayMode: DisplayMode
   menubarIconStyle: MenubarIconStyle
+  weeklyWarningThresholdPercent: WeeklyWarningThresholdPercent
   activeView: string
 }
 
@@ -25,28 +32,41 @@ export type TraySettingsPreview = {
   providerBars: TrayPrimaryBar[]
   providerIconUrl?: string
   providerPercentText: string
+  providerAlertSeverity: TrayAlertSeverity
 }
 
 const EMPTY_TRAY_SETTINGS_PREVIEW: TraySettingsPreview = {
   bars: [],
   providerBars: [],
   providerPercentText: "--%",
+  providerAlertSeverity: "none",
 }
 
 function isSameTraySettingsPreview(a: TraySettingsPreview, b: TraySettingsPreview): boolean {
   if (a.providerIconUrl !== b.providerIconUrl) return false
   if (a.providerPercentText !== b.providerPercentText) return false
+  if (a.providerAlertSeverity !== b.providerAlertSeverity) return false
   if (a.bars.length !== b.bars.length) return false
   if (a.providerBars.length !== b.providerBars.length) return false
   for (let i = 0; i < a.bars.length; i += 1) {
     if (a.bars[i]?.id !== b.bars[i]?.id) return false
+    if (a.bars[i]?.label !== b.bars[i]?.label) return false
     if (a.bars[i]?.fraction !== b.bars[i]?.fraction) return false
+    if (a.bars[i]?.warningSeverity !== b.bars[i]?.warningSeverity) return false
   }
   for (let i = 0; i < a.providerBars.length; i += 1) {
     if (a.providerBars[i]?.id !== b.providerBars[i]?.id) return false
+    if (a.providerBars[i]?.label !== b.providerBars[i]?.label) return false
     if (a.providerBars[i]?.fraction !== b.providerBars[i]?.fraction) return false
+    if (a.providerBars[i]?.warningSeverity !== b.providerBars[i]?.warningSeverity) return false
   }
   return true
+}
+
+function getTrayAlertSeverity(bars: TrayPrimaryBar[]): TrayAlertSeverity {
+  if (bars.some((bar) => bar.warningSeverity === "critical")) return "critical"
+  if (bars.some((bar) => bar.warningSeverity === "warning")) return "warning"
+  return "none"
 }
 
 export function useTrayIcon({
@@ -55,6 +75,7 @@ export function useTrayIcon({
   pluginStates,
   displayMode,
   menubarIconStyle,
+  weeklyWarningThresholdPercent,
   activeView,
 }: UseTrayIconArgs) {
   const trayRef = useRef<TrayIcon | null>(null)
@@ -72,6 +93,7 @@ export function useTrayIcon({
   const pluginStatesRef = useRef(pluginStates)
   const displayModeRef = useRef(displayMode)
   const menubarIconStyleRef = useRef(menubarIconStyle)
+  const weeklyWarningThresholdPercentRef = useRef(weeklyWarningThresholdPercent)
   const activeViewRef = useRef(activeView)
   const lastTrayProviderIdRef = useRef<string | null>(null)
 
@@ -94,6 +116,10 @@ export function useTrayIcon({
   useEffect(() => {
     menubarIconStyleRef.current = menubarIconStyle
   }, [menubarIconStyle])
+
+  useEffect(() => {
+    weeklyWarningThresholdPercentRef.current = weeklyWarningThresholdPercent
+  }, [weeklyWarningThresholdPercent])
 
   useEffect(() => {
     activeViewRef.current = activeView
@@ -208,6 +234,7 @@ export function useTrayIcon({
         pluginStates: pluginStatesRef.current,
         maxBars: 4,
         displayMode: displayModeRef.current,
+        weeklyWarningThresholdPercent: weeklyWarningThresholdPercentRef.current,
       })
 
       const providerBars = trayProviderId
@@ -218,6 +245,7 @@ export function useTrayIcon({
             maxBars: 1,
             displayMode: displayModeRef.current,
             pluginId: trayProviderId,
+            weeklyWarningThresholdPercent: weeklyWarningThresholdPercentRef.current,
           })
         : []
 
@@ -225,12 +253,14 @@ export function useTrayIcon({
         ? pluginsMetaRef.current.find((plugin) => plugin.id === trayProviderId)?.iconUrl
         : undefined
       const providerPercentText = formatTrayPercentText(providerBars[0]?.fraction)
+      const providerAlertSeverity = providerBars[0]?.warningSeverity ?? "none"
 
       const nextPreview: TraySettingsPreview = {
         bars: barsForPreview,
         providerBars,
         providerIconUrl,
         providerPercentText,
+        providerAlertSeverity,
       }
       setTraySettingsPreview((prev) =>
         isSameTraySettingsPreview(prev, nextPreview) ? prev : nextPreview
@@ -242,20 +272,23 @@ export function useTrayIcon({
         pluginStates: pluginStatesRef.current,
         maxBars: 20, // Show more in tooltip
         displayMode: displayModeRef.current,
+        weeklyWarningThresholdPercent: weeklyWarningThresholdPercentRef.current,
       })
       const tooltip = formatTrayTooltip(tooltipBars, pluginsMetaRef.current)
       const updateTooltip = () => setTrayTooltip(tooltip)
 
       if (style === "bars") {
+        const barsAlertSeverity = getTrayAlertSeverity(barsForPreview)
         renderTrayBarsIcon({
           bars: barsForPreview,
           sizePx,
           style: "bars",
+          tone: barsAlertSeverity,
         })
           .then(async (img) => {
             await tray.setIcon(img)
-            await tray.setIconAsTemplate(true)
-            await setTrayTitle("")
+            await tray.setIconAsTemplate(barsAlertSeverity === "none")
+            await setTrayTitle(barsAlertSeverity === "none" ? "" : "!")
             await updateTooltip()
           })
           .catch((e) => {
@@ -279,11 +312,12 @@ export function useTrayIcon({
           sizePx,
           style: "donut",
           providerIconUrl,
+          tone: providerAlertSeverity,
         })
           .then(async (img) => {
             await tray.setIcon(img)
-            await tray.setIconAsTemplate(true)
-            await setTrayTitle("")
+            await tray.setIconAsTemplate(providerAlertSeverity === "none")
+            await setTrayTitle(providerAlertSeverity === "none" ? "" : "!")
             await updateTooltip()
           })
           .catch((e) => {
@@ -295,17 +329,26 @@ export function useTrayIcon({
         return
       }
 
+      const shouldRenderProviderTextInIcon =
+        providerAlertSeverity !== "none" || !supportsNativeTrayTitle
+      const providerPercentTextForIcon = shouldRenderProviderTextInIcon
+        ? providerAlertSeverity === "none"
+          ? providerPercentText
+          : `!${providerPercentText}`
+        : undefined
+
       renderTrayBarsIcon({
         bars: providerBars,
         sizePx,
         style: "provider",
-        percentText: supportsNativeTrayTitle ? undefined : providerPercentText,
+        percentText: providerPercentTextForIcon,
         providerIconUrl,
+        tone: providerAlertSeverity,
       })
         .then(async (img) => {
           await tray.setIcon(img)
-          await tray.setIconAsTemplate(true)
-          await setTrayTitle(providerPercentText)
+          await tray.setIconAsTemplate(providerAlertSeverity === "none")
+          await setTrayTitle(shouldRenderProviderTextInIcon ? "" : providerPercentText)
           await updateTooltip()
         })
         .catch((e) => {
@@ -357,7 +400,7 @@ export function useTrayIcon({
   useEffect(() => {
     if (!trayReady) return
     scheduleTrayIconUpdate("settings", 0)
-  }, [activeView, menubarIconStyle, scheduleTrayIconUpdate, trayReady])
+  }, [activeView, menubarIconStyle, scheduleTrayIconUpdate, trayReady, weeklyWarningThresholdPercent])
 
   useEffect(() => {
     return () => {

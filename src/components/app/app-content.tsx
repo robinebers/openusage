@@ -14,6 +14,7 @@ import type {
   MenubarIconStyle,
   ResetTimerDisplayMode,
   ThemeMode,
+  WeeklyWarningThresholdPercent,
 } from "@/lib/settings"
 
 type AppContentDerivedProps = {
@@ -32,6 +33,7 @@ export type AppContentActionProps = {
   onResetTimerDisplayModeChange: (mode: ResetTimerDisplayMode) => void
   onResetTimerDisplayModeToggle: () => void
   onMenubarIconStyleChange: (value: MenubarIconStyle) => void
+  onWeeklyWarningThresholdPercentChange: (value: WeeklyWarningThresholdPercent) => void
   traySettingsPreview: TraySettingsPreview
   onGlobalShortcutChange: (value: GlobalShortcut) => void
   onStartOnLoginChange: (value: boolean) => void
@@ -52,6 +54,7 @@ export function AppContent({
   onResetTimerDisplayModeChange,
   onResetTimerDisplayModeToggle,
   onMenubarIconStyleChange,
+  onWeeklyWarningThresholdPercentChange,
   traySettingsPreview,
   onGlobalShortcutChange,
   onStartOnLoginChange,
@@ -67,6 +70,7 @@ export function AppContent({
     resetTimerDisplayMode,
     menubarIconStyle,
     autoUpdateInterval,
+    weeklyWarningThresholdPercent,
     globalShortcut,
     themeMode,
     startOnLogin,
@@ -76,6 +80,7 @@ export function AppContent({
       resetTimerDisplayMode: state.resetTimerDisplayMode,
       menubarIconStyle: state.menubarIconStyle,
       autoUpdateInterval: state.autoUpdateInterval,
+      weeklyWarningThresholdPercent: state.weeklyWarningThresholdPercent,
       globalShortcut: state.globalShortcut,
       themeMode: state.themeMode,
       startOnLogin: state.startOnLogin,
@@ -110,6 +115,8 @@ export function AppContent({
         onResetTimerDisplayModeChange={onResetTimerDisplayModeChange}
         menubarIconStyle={menubarIconStyle}
         onMenubarIconStyleChange={onMenubarIconStyleChange}
+        weeklyWarningThresholdPercent={weeklyWarningThresholdPercent}
+        onWeeklyWarningThresholdPercentChange={onWeeklyWarningThresholdPercentChange}
         traySettingsPreview={traySettingsPreview}
         globalShortcut={globalShortcut}
         onGlobalShortcutChange={onGlobalShortcutChange}

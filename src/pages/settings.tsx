@@ -26,12 +26,14 @@ import {
   MENUBAR_ICON_STYLE_OPTIONS,
   RESET_TIMER_DISPLAY_OPTIONS,
   THEME_OPTIONS,
+  WEEKLY_WARNING_THRESHOLD_PERCENT_OPTIONS,
   type AutoUpdateIntervalMinutes,
   type DisplayMode,
   type GlobalShortcut,
   type MenubarIconStyle,
   type ResetTimerDisplayMode,
   type ThemeMode,
+  type WeeklyWarningThresholdPercent,
 } from "@/lib/settings";
 import type { TraySettingsPreview } from "@/hooks/app/use-tray-icon";
 import { cn } from "@/lib/utils";
@@ -265,6 +267,8 @@ interface SettingsPageProps {
   onResetTimerDisplayModeChange: (value: ResetTimerDisplayMode) => void;
   menubarIconStyle: MenubarIconStyle;
   onMenubarIconStyleChange: (value: MenubarIconStyle) => void;
+  weeklyWarningThresholdPercent: WeeklyWarningThresholdPercent;
+  onWeeklyWarningThresholdPercentChange: (value: WeeklyWarningThresholdPercent) => void;
   traySettingsPreview: TraySettingsPreview;
   globalShortcut: GlobalShortcut;
   onGlobalShortcutChange: (value: GlobalShortcut) => void;
@@ -286,6 +290,8 @@ export function SettingsPage({
   onResetTimerDisplayModeChange,
   menubarIconStyle,
   onMenubarIconStyleChange,
+  weeklyWarningThresholdPercent,
+  onWeeklyWarningThresholdPercentChange,
   traySettingsPreview,
   globalShortcut,
   onGlobalShortcutChange,
@@ -433,6 +439,33 @@ export function SettingsPage({
                     isActive={isActive}
                     traySettingsPreview={traySettingsPreview}
                   />
+                </Button>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+      <section>
+        <h3 className="text-lg font-semibold mb-0">Weekly Warning</h3>
+        <p className="text-sm text-muted-foreground mb-2">
+          Switch the menubar to weekly budget when remaining drops this low
+        </p>
+        <div className="bg-muted/50 rounded-lg p-1">
+          <div className="flex gap-1" role="radiogroup" aria-label="Weekly warning threshold">
+            {WEEKLY_WARNING_THRESHOLD_PERCENT_OPTIONS.map((option) => {
+              const isActive = option.value === weeklyWarningThresholdPercent;
+              return (
+                <Button
+                  key={option.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={isActive}
+                  variant={isActive ? "default" : "outline"}
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => onWeeklyWarningThresholdPercentChange(option.value)}
+                >
+                  {option.label}
                 </Button>
               );
             })}

@@ -37,7 +37,7 @@ describe("tray-bars-icon", () => {
 
   it("style=bars renders bar SVG elements and no image", () => {
     const svg = makeTrayBarsSvg({
-      bars: [{ id: "a", fraction: 0.5 }],
+      bars: [{ id: "a", fraction: 0.5, warningSeverity: "none" }],
       sizePx: 36,
       style: "bars",
     })
@@ -59,7 +59,7 @@ describe("tray-bars-icon", () => {
 
   it("style=bars with high-end quantized fraction (0.95) renders bars (rect and path)", () => {
     const svg = makeTrayBarsSvg({
-      bars: [{ id: "a", fraction: 0.95 }],
+      bars: [{ id: "a", fraction: 0.95, warningSeverity: "none" }],
       sizePx: 36,
       style: "bars",
     })
@@ -70,7 +70,7 @@ describe("tray-bars-icon", () => {
 
   it("style=donut renders ring arc and centered provider icon", () => {
     const svg = makeTrayBarsSvg({
-      bars: [{ id: "a", fraction: 0.42 }],
+      bars: [{ id: "a", fraction: 0.42, warningSeverity: "none" }],
       sizePx: 36,
       style: "donut",
       providerIconUrl: "data:image/svg+xml;base64,ABC",
@@ -82,7 +82,7 @@ describe("tray-bars-icon", () => {
 
   it("style=donut falls back to center glyph when provider icon is missing", () => {
     const svg = makeTrayBarsSvg({
-      bars: [{ id: "a", fraction: 0.42 }],
+      bars: [{ id: "a", fraction: 0.42, warningSeverity: "none" }],
       sizePx: 36,
       style: "donut",
     })
@@ -133,6 +133,16 @@ describe("tray-bars-icon", () => {
       percentText: "70%",
     })
     expect(svg).toContain(">70%</text>")
+  })
+
+  it("uses warning colors when a tone is provided", () => {
+    const svg = makeTrayBarsSvg({
+      bars: [{ id: "a", fraction: 0.25, warningSeverity: "warning" }],
+      sizePx: 18,
+      style: "bars",
+      tone: "warning",
+    })
+    expect(svg).toContain("#d97706")
   })
 
   it("renderTrayBarsIcon rasterizes SVG to an Image using canvas", async () => {
