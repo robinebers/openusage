@@ -1,13 +1,62 @@
 (function () {
   const SETTINGS_PATH = "~/.gemini/settings.json"
   const CREDS_PATH = "~/.gemini/oauth_creds.json"
-  const OAUTH2_JS_PATHS = [
-    "~/.bun/install/global/node_modules/@google/gemini-cli-core/dist/src/code_assist/oauth2.js",
-    "~/.npm-global/lib/node_modules/@google/gemini-cli-core/dist/src/code_assist/oauth2.js",
-    "~/.nvm/versions/node/current/lib/node_modules/@google/gemini-cli-core/dist/src/code_assist/oauth2.js",
-    "/opt/homebrew/opt/gemini-cli/libexec/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/code_assist/oauth2.js",
-    "/usr/local/opt/gemini-cli/libexec/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/code_assist/oauth2.js",
+  const OAUTH2_SUFFIX_FLAT = "/@google/gemini-cli-core/dist/src/code_assist/oauth2.js"
+  const OAUTH2_SUFFIX_NESTED = "/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/code_assist/oauth2.js"
+
+  const STATIC_MODULE_ROOTS = [
+    "~/.bun/install/global/node_modules",
+    "~/.npm-global/lib/node_modules",
+    "/usr/local/lib/node_modules",
+    "~/Library/pnpm/global/5/node_modules",
   ]
+
+  const STATIC_NESTED_ONLY = [
+    "/opt/homebrew/opt/gemini-cli/libexec/lib/node_modules",
+    "/usr/local/opt/gemini-cli/libexec/lib/node_modules",
+  ]
+
+  const VERSION_MANAGER_ROOTS = [
+    "~/.nvm/versions/node",
+    "~/Library/Application Support/fnm/node-versions",
+  ]
+
+  function listDirSafe(ctx, path) {
+    try {
+      return ctx.host.fs.listDir(path)
+    } catch (e) {
+      return []
+    }
+  }
+
+  function buildOauthCandidatePaths(ctx) {
+    var paths = []
+
+    for (var i = 0; i < STATIC_MODULE_ROOTS.length; i += 1) {
+      paths.push(STATIC_MODULE_ROOTS[i] + OAUTH2_SUFFIX_FLAT)
+      paths.push(STATIC_MODULE_ROOTS[i] + OAUTH2_SUFFIX_NESTED)
+    }
+
+    for (var i = 0; i < STATIC_NESTED_ONLY.length; i += 1) {
+      paths.push(STATIC_NESTED_ONLY[i] + OAUTH2_SUFFIX_NESTED)
+    }
+
+    for (var i = 0; i < VERSION_MANAGER_ROOTS.length; i += 1) {
+      var root = VERSION_MANAGER_ROOTS[i]
+      var versions = listDirSafe(ctx, root)
+      for (var j = 0; j < versions.length; j += 1) {
+        var base = root + "/" + versions[j] + "/lib/node_modules"
+        paths.push(base + OAUTH2_SUFFIX_FLAT)
+        paths.push(base + OAUTH2_SUFFIX_NESTED)
+      }
+    }
+
+    // volta stores packages differently
+    paths.push("~/.volta/tools/image/packages/@google/gemini-cli/lib/node_modules" + OAUTH2_SUFFIX_NESTED)
+    paths.push("~/.volta/tools/image/packages/@google/gemini-cli/lib/node_modules" + OAUTH2_SUFFIX_FLAT)
+
+    return paths
+  }
 
   const LOAD_CODE_ASSIST_URL = "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist"
   const QUOTA_URL = "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota"
@@ -77,16 +126,18 @@
   }
 
   function loadOauthClientCreds(ctx) {
-    for (let i = 0; i < OAUTH2_JS_PATHS.length; i += 1) {
-      const path = OAUTH2_JS_PATHS[i]
+    const candidates = buildOauthCandidatePaths(ctx)
+    for (let i = 0; i < candidates.length; i += 1) {
+      const path = candidates[i]
       if (!ctx.host.fs.exists(path)) continue
       try {
         const parsed = parseOauthClientCreds(ctx.host.fs.readText(path))
         if (parsed) return parsed
       } catch (e) {
-        ctx.host.log.warn("failed reading oauth2.js: " + String(e))
+        ctx.host.log.warn("failed reading oauth2.js at " + path + ": " + String(e))
       }
     }
+    ctx.host.log.warn("Gemini OAuth client credentials not found in any known install path")
     return null
   }
 
