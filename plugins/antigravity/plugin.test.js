@@ -69,6 +69,7 @@ function makeUserStatusResponse(overrides) {
     if (overrides.planName !== undefined) base.userStatus.planStatus.planInfo.planName = overrides.planName
     if (overrides.configs !== undefined) base.userStatus.cascadeModelConfigData.clientModelConfigs = overrides.configs
     if (overrides.planStatus !== undefined) base.userStatus.planStatus = overrides.planStatus
+    if (overrides.userTier !== undefined) base.userStatus.userTier = overrides.userTier
   }
   return base
 }
@@ -195,6 +196,7 @@ describe("antigravity plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
+    // No userTier in default fixture → falls back to planInfo.planName
     expect(result.plan).toBe("Pro")
 
     // Model lines exist — 3 pool lines
@@ -654,6 +656,7 @@ describe("antigravity plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
+    // No userTier in default fixture → falls back to planInfo.planName
     expect(result.plan).toBe("Pro")
     const calls = ctx.host.http.request.mock.calls.map((c) => String(c[0].url))
     const ccCalls = calls.filter((u) => u.includes("fetchAvailableModels"))
@@ -1286,6 +1289,7 @@ describe("antigravity plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
+    // No userTier in default fixture → falls back to planInfo.planName
     expect(result.plan).toBe("Pro")
     const calls = ctx.host.http.request.mock.calls.map((c) => String(c[0].url))
     expect(calls.filter((u) => u.includes("fetchAvailableModels")).length).toBe(0)
@@ -1352,5 +1356,52 @@ describe("antigravity plugin", () => {
     const result = plugin.probe(ctx)
     expect(result.lines.length).toBeGreaterThan(0)
     expect(ccCalls).toBe(2)
+  })
+
+  it("prefers userTier.name over legacy planInfo.planName for Ultra subscribers", async () => {
+    const ctx = makeCtx()
+    const discovery = makeDiscovery()
+    const response = makeUserStatusResponse({
+      userTier: {
+        id: "g1-ultra-tier",
+        name: "Google AI Ultra",
+        description: "Google AI Ultra",
+        upgradeSubscriptionText: "You are subscribed to the best plan.",
+      },
+    })
+    setupLsMock(ctx, discovery, response)
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Google AI Ultra")
+    const labels = result.lines.map((l) => l.label)
+    expect(labels).toEqual(["Gemini Pro", "Gemini Flash", "Claude"])
+  })
+
+  it("falls back to planInfo.planName when userTier is absent", async () => {
+    const ctx = makeCtx()
+    const discovery = makeDiscovery()
+    const response = makeUserStatusResponse()  // no userTier override
+    setupLsMock(ctx, discovery, response)
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Pro")
+  })
+
+  it("falls back to planInfo.planName when userTier.name is empty", async () => {
+    const ctx = makeCtx()
+    const discovery = makeDiscovery()
+    const response = makeUserStatusResponse({
+      userTier: { id: "g1-pro-tier", name: "" },
+    })
+    setupLsMock(ctx, discovery, response)
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Pro")
   })
 })
