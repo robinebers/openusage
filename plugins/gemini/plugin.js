@@ -17,8 +17,8 @@
   ]
 
   const VERSION_MANAGER_ROOTS = [
-    "~/.nvm/versions/node",
-    "~/Library/Application Support/fnm/node-versions",
+    { root: "~/.nvm/versions/node", modulePath: "/lib/node_modules" },
+    { root: "~/Library/Application Support/fnm/node-versions", modulePath: "/installation/lib/node_modules" },
   ]
 
   function listDirSafe(ctx, path) {
@@ -42,10 +42,11 @@
     }
 
     for (var i = 0; i < VERSION_MANAGER_ROOTS.length; i += 1) {
-      var root = VERSION_MANAGER_ROOTS[i]
+      var versionManager = VERSION_MANAGER_ROOTS[i]
+      var root = versionManager.root
       var versions = listDirSafe(ctx, root)
       for (var j = 0; j < versions.length; j += 1) {
-        var base = root + "/" + versions[j] + "/lib/node_modules"
+        var base = root + "/" + versions[j] + versionManager.modulePath
         paths.push(base + OAUTH2_SUFFIX_FLAT)
         paths.push(base + OAUTH2_SUFFIX_NESTED)
       }
