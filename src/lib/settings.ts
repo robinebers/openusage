@@ -10,7 +10,11 @@ export type PluginSettings = {
   disabled: string[];
 };
 
-export type AutoUpdateIntervalMinutes = 5 | 15 | 30 | 60;
+/**
+ * Auto-update interval stored in minutes.
+ * Preset values: 5, 15, 30, 60. Custom values allowed (minimum 0.5 = 30 seconds).
+ */
+export type AutoUpdateIntervalMinutes = number;
 
 export type ThemeMode = "system" | "light" | "dark";
 
@@ -42,7 +46,9 @@ export const DEFAULT_MENUBAR_ICON_STYLE: MenubarIconStyle = "provider";
 export const DEFAULT_GLOBAL_SHORTCUT: GlobalShortcut = null;
 export const DEFAULT_START_ON_LOGIN = false;
 
-const AUTO_UPDATE_INTERVALS: AutoUpdateIntervalMinutes[] = [5, 15, 30, 60];
+const AUTO_UPDATE_PRESET_VALUES: number[] = [5, 15, 30, 60];
+export const MIN_CUSTOM_INTERVAL_MINUTES = 0.5; // 30 seconds
+export const MAX_CUSTOM_INTERVAL_MINUTES = 1440; // 24 hours
 const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
 const DISPLAY_MODES: DisplayMode[] = ["used", "left"];
 const RESET_TIMER_DISPLAY_MODES: ResetTimerDisplayMode[] = ["relative", "absolute"];
@@ -55,10 +61,27 @@ export const MENUBAR_ICON_STYLE_OPTIONS: { value: MenubarIconStyle; label: strin
 ];
 
 export const AUTO_UPDATE_OPTIONS: { value: AutoUpdateIntervalMinutes; label: string }[] =
-  AUTO_UPDATE_INTERVALS.map((value) => ({
+  AUTO_UPDATE_PRESET_VALUES.map((value) => ({
     value,
     label: value === 60 ? "1 hour" : `${value} min`,
   }));
+
+export function isPresetInterval(value: number): boolean {
+  return AUTO_UPDATE_PRESET_VALUES.includes(value);
+}
+
+export function clampCustomInterval(minutes: number): number {
+  return Math.min(MAX_CUSTOM_INTERVAL_MINUTES, Math.max(MIN_CUSTOM_INTERVAL_MINUTES, minutes));
+}
+
+export function formatIntervalLabel(minutes: number): string {
+  const totalSeconds = Math.round(minutes * 60);
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  if (minutes < 60) return Number.isInteger(minutes) ? `${minutes} min` : `${totalSeconds}s`;
+  const h = Math.floor(minutes / 60);
+  const m = Math.round(minutes % 60);
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
 
 export const THEME_OPTIONS: { value: ThemeMode; label: string }[] =
   THEME_MODES.map((value) => ({
@@ -102,7 +125,9 @@ export async function savePluginSettings(settings: PluginSettings): Promise<void
 function isAutoUpdateInterval(value: unknown): value is AutoUpdateIntervalMinutes {
   return (
     typeof value === "number" &&
-    AUTO_UPDATE_INTERVALS.includes(value as AutoUpdateIntervalMinutes)
+    Number.isFinite(value) &&
+    value >= MIN_CUSTOM_INTERVAL_MINUTES &&
+    value <= MAX_CUSTOM_INTERVAL_MINUTES
   );
 }
 

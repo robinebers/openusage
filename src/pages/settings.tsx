@@ -20,12 +20,18 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { GlobalShortcutSection } from "@/components/global-shortcut-section";
 import { getBarFillLayout, getTrayIconSizePx } from "@/lib/tray-bars-icon";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
   AUTO_UPDATE_OPTIONS,
   DISPLAY_MODE_OPTIONS,
   MENUBAR_ICON_STYLE_OPTIONS,
   RESET_TIMER_DISPLAY_OPTIONS,
   THEME_OPTIONS,
+  isPresetInterval,
+  clampCustomInterval,
+  formatIntervalLabel,
+  MIN_CUSTOM_INTERVAL_MINUTES,
+  MAX_CUSTOM_INTERVAL_MINUTES,
   type AutoUpdateIntervalMinutes,
   type DisplayMode,
   type GlobalShortcut,
@@ -252,6 +258,175 @@ function SortablePluginItem({
   );
 }
 
+type IntervalUnit = "sec" | "min";
+
+function minutesToUnitValue(minutes: number): { value: number; unit: IntervalUnit } {
+  const totalSeconds = Math.round(minutes * 60);
+  if (totalSeconds < 60 || totalSeconds % 60 !== 0) {
+    return { value: totalSeconds, unit: "sec" };
+  }
+  return { value: minutes, unit: "min" };
+}
+
+function unitValueToMinutes(value: number, unit: IntervalUnit): number {
+  return unit === "sec" ? value / 60 : value;
+}
+
+function CustomIntervalEditor({
+  currentInterval,
+  onIntervalChange,
+}: {
+  currentInterval: AutoUpdateIntervalMinutes;
+  onIntervalChange: (value: AutoUpdateIntervalMinutes) => void;
+}) {
+  const initial = minutesToUnitValue(currentInterval);
+  const [unit, setUnit] = useState<IntervalUnit>(initial.unit);
+  const [inputValue, setInputValue] = useState(String(initial.value));
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+
+  const commit = useCallback(() => {
+    const parsed = Number(inputValue);
+    if (!Number.isFinite(parsed) || parsed <= 0) return;
+    const minutes = clampCustomInterval(unitValueToMinutes(parsed, unit));
+    onIntervalChange(minutes);
+  }, [inputValue, unit, onIntervalChange]);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commit();
+    }
+  };
+
+  const minValue = unit === "sec" ? Math.round(MIN_CUSTOM_INTERVAL_MINUTES * 60) : MIN_CUSTOM_INTERVAL_MINUTES;
+  const maxValue = unit === "sec" ? Math.round(MAX_CUSTOM_INTERVAL_MINUTES * 60) : MAX_CUSTOM_INTERVAL_MINUTES;
+
+  return (
+    <div className="flex items-center gap-1.5 mt-2">
+      <input
+        ref={inputRef}
+        type="number"
+        min={minValue}
+        max={maxValue}
+        value={inputValue}
+        onChange={(e) => setInputValue(e.target.value)}
+        onKeyDown={handleKeyDown}
+        onBlur={commit}
+        className={cn(
+          "h-8 w-20 rounded-md border border-border bg-background px-2 text-sm text-foreground",
+          "placeholder:text-muted-foreground",
+          "focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent",
+          "dark:bg-input/30 dark:border-input",
+          "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+        )}
+        placeholder={String(minValue)}
+      />
+      <div className="flex rounded-md border border-border dark:border-input overflow-hidden">
+        {(["sec", "min"] as const).map((u) => (
+          <button
+            key={u}
+            type="button"
+            onClick={() => {
+              if (u === unit) return;
+              const parsed = Number(inputValue);
+              if (Number.isFinite(parsed) && parsed > 0) {
+                const converted = u === "sec" ? Math.round(parsed * 60) : +(parsed / 60).toFixed(1);
+                setInputValue(String(converted));
+              }
+              setUnit(u);
+            }}
+            className={cn(
+              "px-2 h-8 text-xs font-medium transition-colors",
+              u === unit
+                ? "bg-primary text-primary-foreground"
+                : "bg-background text-muted-foreground hover:text-foreground hover:bg-muted dark:bg-input/30 dark:hover:bg-input/50"
+            )}
+          >
+            {u}
+          </button>
+        ))}
+      </div>
+      <Button
+        type="button"
+        variant="default"
+        size="sm"
+        className="h-8 px-3 text-xs"
+        onClick={commit}
+      >
+        Set
+      </Button>
+    </div>
+  );
+}
+
+function AutoRefreshSection({
+  autoUpdateInterval,
+  onAutoUpdateIntervalChange,
+}: {
+  autoUpdateInterval: AutoUpdateIntervalMinutes;
+  onAutoUpdateIntervalChange: (value: AutoUpdateIntervalMinutes) => void;
+}) {
+  const isCustom = !isPresetInterval(autoUpdateInterval);
+  const [showCustomEditor, setShowCustomEditor] = useState(isCustom);
+
+  return (
+    <section>
+      <h3 className="text-lg font-semibold mb-0">Auto Refresh</h3>
+      <p className="text-sm text-muted-foreground mb-2">
+        How obsessive are you
+      </p>
+      <div className="bg-muted/50 rounded-lg p-1 space-y-1">
+        <div className="flex gap-1" role="radiogroup" aria-label="Auto-update interval">
+          {AUTO_UPDATE_OPTIONS.map((option) => {
+            const isActive = !showCustomEditor && option.value === autoUpdateInterval;
+            return (
+              <Button
+                key={option.value}
+                type="button"
+                role="radio"
+                aria-checked={isActive}
+                variant={isActive ? "default" : "outline"}
+                size="sm"
+                className="flex-1"
+                onClick={() => {
+                  setShowCustomEditor(false);
+                  onAutoUpdateIntervalChange(option.value);
+                }}
+              >
+                {option.label}
+              </Button>
+            );
+          })}
+        </div>
+        <Button
+          type="button"
+          role="radio"
+          aria-checked={showCustomEditor}
+          variant={showCustomEditor ? "default" : "outline"}
+          size="sm"
+          className="w-full"
+          onClick={() => setShowCustomEditor(true)}
+        >
+          {showCustomEditor && isCustom ? `Custom (${formatIntervalLabel(autoUpdateInterval)})` : "Custom"}
+        </Button>
+        {showCustomEditor && (
+          <CustomIntervalEditor
+            currentInterval={autoUpdateInterval}
+            onIntervalChange={(value) => {
+              onAutoUpdateIntervalChange(value);
+            }}
+          />
+        )}
+      </div>
+    </section>
+  );
+}
+
 interface SettingsPageProps {
   plugins: PluginConfig[];
   onReorder: (orderedIds: string[]) => void;
@@ -314,33 +489,10 @@ export function SettingsPage({
 
   return (
     <div className="py-3 space-y-4">
-      <section>
-        <h3 className="text-lg font-semibold mb-0">Auto Refresh</h3>
-        <p className="text-sm text-muted-foreground mb-2">
-          How obsessive are you
-        </p>
-        <div className="bg-muted/50 rounded-lg p-1">
-          <div className="flex gap-1" role="radiogroup" aria-label="Auto-update interval">
-            {AUTO_UPDATE_OPTIONS.map((option) => {
-              const isActive = option.value === autoUpdateInterval;
-              return (
-                <Button
-                  key={option.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={isActive}
-                  variant={isActive ? "default" : "outline"}
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => onAutoUpdateIntervalChange(option.value)}
-                >
-                  {option.label}
-                </Button>
-              );
-            })}
-          </div>
-        </div>
-      </section>
+      <AutoRefreshSection
+        autoUpdateInterval={autoUpdateInterval}
+        onAutoUpdateIntervalChange={onAutoUpdateIntervalChange}
+      />
       <section>
         <h3 className="text-lg font-semibold mb-0">Usage Mode</h3>
         <p className="text-sm text-muted-foreground mb-2">
