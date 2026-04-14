@@ -1871,9 +1871,10 @@ describe("claude plugin", () => {
         ctx.host.fs.exists = () => true
         // Isolate Promoclock so it doesn't add extra calls to ctx.host.http.request
         ctx.util.requestJson = vi.fn(() => ({ resp: { status: 200, bodyText: "{}", headers: {} }, json: {} }))
+        const usageBody = JSON.stringify({ five_hour: { utilization: 50, resets_at: null } })
         ctx.host.http.request
           .mockReturnValueOnce({ status: 429, bodyText: "", headers: { "Retry-After": "60" } })
-          .mockReturnValue({ status: 200, bodyText: "{}", headers: {} })
+          .mockReturnValue({ status: 200, bodyText: usageBody, headers: {} })
         const plugin = await loadPlugin()
 
         // First probe → 429
@@ -1884,8 +1885,8 @@ describe("claude plugin", () => {
         vi.setSystemTime(new Date("2026-04-14T10:01:30.000Z"))
         const result2 = plugin.probe(ctx)
         expect(ctx.host.http.request).toHaveBeenCalledTimes(2)
-        // No rate-limited badge after success
-        expect(result2.lines.find((l) => l.label === "Status")).toBeUndefined()
+        // No rate-limited badge after success (amber color = rate-limited)
+        expect(result2.lines.find((l) => l.label === "Status" && l.color === "#f59e0b")).toBeUndefined()
       } finally {
         vi.useRealTimers()
       }
