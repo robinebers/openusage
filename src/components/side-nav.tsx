@@ -66,10 +66,10 @@ function NavButton({ isActive, onClick, onContextMenu, children, "aria-label": a
       onContextMenu={onContextMenu}
       aria-label={ariaLabel}
       className={cn(
-        "relative flex items-center justify-center w-[calc(100%-1px)] p-2.5 transition-colors",
+        "relative mx-px flex items-center justify-center w-[calc(100%-2px)] rounded-[8px] p-2.5 transition-colors",
         "hover:bg-accent",
         isActive
-          ? "text-foreground before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-0.5 before:bg-primary dark:before:bg-page-accent before:rounded-full"
+          ? "text-foreground before:absolute before:left-[-1px] before:top-1.5 before:bottom-1.5 before:w-0.5 before:bg-primary dark:before:bg-page-accent before:rounded-full"
           : "text-muted-foreground"
       )}
     >

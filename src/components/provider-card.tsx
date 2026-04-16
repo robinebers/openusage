@@ -304,9 +304,9 @@ function MetricLineRenderer({
     return (
       <div>
         <div className="flex justify-between items-center h-[18px]">
-          <span className="text-xs text-muted-foreground flex-shrink-0">{line.label}</span>
+          <span className="text-xs text-foreground/75 font-normal flex-shrink-0">{line.label}</span>
           <span
-            className="text-xs text-muted-foreground truncate min-w-0 max-w-[60%] text-right"
+            className="text-xs font-semibold text-foreground truncate min-w-0 max-w-[60%] text-right"
             style={line.color ? { color: line.color } : undefined}
             title={line.value}
           >
@@ -314,7 +314,7 @@ function MetricLineRenderer({
           </span>
         </div>
         {line.subtitle && (
-          <div className="text-[10px] text-muted-foreground text-right -mt-0.5">{line.subtitle}</div>
+          <div className="text-[10px] text-foreground/65 text-right -mt-0.5">{line.subtitle}</div>
         )}
       </div>
     )
@@ -324,7 +324,7 @@ function MetricLineRenderer({
     return (
       <div>
         <div className="flex justify-between items-center h-[22px]">
-          <span className="text-sm text-muted-foreground flex-shrink-0">{line.label}</span>
+          <span className="text-sm text-foreground/75 font-normal flex-shrink-0">{line.label}</span>
           <Badge
             variant="outline"
             className="truncate min-w-0 max-w-[60%]"
@@ -339,7 +339,7 @@ function MetricLineRenderer({
           </Badge>
         </div>
         {line.subtitle && (
-          <div className="text-xs text-muted-foreground text-right -mt-0.5">{line.subtitle}</div>
+          <div className="text-xs text-foreground/65 text-right -mt-0.5">{line.subtitle}</div>
         )}
       </div>
     )
@@ -443,7 +443,7 @@ function MetricLineRenderer({
           markerValue={paceMarkerValue}
         />
         <div className="flex justify-between items-center mt-1.5">
-          <span className="text-xs text-muted-foreground tabular-nums">
+          <span className="text-xs font-semibold text-foreground tabular-nums">
             {primaryText}
           </span>
           {secondaryText && (
@@ -456,12 +456,12 @@ function MetricLineRenderer({
                         {...props}
                         type="button"
                         onClick={onResetTimerDisplayModeToggle}
-                        className="text-xs text-muted-foreground tabular-nums hover:text-foreground transition-colors"
+                        className="text-xs text-foreground/70 tabular-nums hover:text-foreground transition-colors"
                       >
                         {secondaryText}
                       </button>
                     ) : (
-                      <span {...props} className="text-xs text-muted-foreground tabular-nums">
+                      <span {...props} className="text-xs text-foreground/70 tabular-nums">
                         {secondaryText}
                       </span>
                     )
@@ -473,12 +473,12 @@ function MetricLineRenderer({
               <button
                 type="button"
                 onClick={onResetTimerDisplayModeToggle}
-                className="text-xs text-muted-foreground tabular-nums hover:text-foreground transition-colors"
+                className="text-xs text-foreground/70 tabular-nums hover:text-foreground transition-colors"
               >
                 {secondaryText}
               </button>
             ) : (
-              <span className="text-xs text-muted-foreground">
+              <span className="text-xs text-foreground/70">
                 {secondaryText}
               </span>
             )
@@ -487,12 +487,12 @@ function MetricLineRenderer({
         {(deficitText || runsOutText) && (
           <div className="flex justify-between items-center mt-0.5">
             {deficitText && (
-              <span className="text-xs text-muted-foreground tabular-nums">
+              <span className="text-xs text-foreground/65 tabular-nums">
                 {deficitText}
               </span>
             )}
             {runsOutText && (
-              <span className="text-xs text-muted-foreground tabular-nums ml-auto">
+              <span className="text-xs text-foreground/65 tabular-nums ml-auto">
                 {runsOutText}
               </span>
             )}

@@ -192,6 +192,135 @@ body,
   background: linear-gradient(to top, var(--muted), transparent);
 }
 
+.settings-copy {
+  color: var(--muted-foreground);
+}
+
+.settings-surface {
+  background: color-mix(in oklab, var(--muted) 56%, transparent);
+}
+
+.settings-plugin-list {
+  background: color-mix(in oklab, var(--muted) 52%, transparent);
+  border: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+  overflow: hidden;
+}
+
+.settings-plugin-row {
+  background: transparent;
+}
+
+.settings-plugin-row + .settings-plugin-row {
+  border-top: 1px solid color-mix(in oklab, var(--border) 65%, transparent);
+}
+
+.settings-plugin-row:hover {
+  background: color-mix(in oklab, var(--muted) 72%, transparent);
+}
+
+.settings-plugin-row-enabled .settings-plugin-name {
+  font-weight: 600;
+}
+
+.settings-plugin-row-disabled .settings-plugin-name {
+  font-weight: 500;
+}
+
+.settings-plugin-name {
+  color: var(--foreground);
+}
+
+.settings-plugin-name-disabled {
+  color: color-mix(in oklab, var(--foreground) 55%, var(--muted-foreground));
+}
+
+.settings-plugin-grip {
+  color: var(--muted-foreground);
+}
+
+.settings-plugin-grip:hover {
+  color: var(--foreground);
+}
+
+.settings-input-surface {
+  background: color-mix(in oklab, var(--muted) 52%, transparent);
+  border-color: var(--border);
+}
+
+.settings-input-surface:hover {
+  background: color-mix(in oklab, var(--muted) 66%, transparent);
+}
+
+.menubar-bars-preview {
+  background: transparent;
+  border: 0;
+  backdrop-filter: none;
+}
+
+.usage-progress-track {
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--border) 90%, transparent);
+}
+
+:root.glass .settings-surface,
+:root.glass .settings-input-surface {
+  background: rgba(255, 255, 255, 0.48);
+  border-color: rgba(255, 255, 255, 0.58);
+  backdrop-filter: blur(14px) saturate(130%);
+}
+
+:root.glass .settings-plugin-list {
+  background: rgba(255, 255, 255, 0.34);
+  border-color: rgba(255, 255, 255, 0.56);
+  backdrop-filter: blur(14px) saturate(130%);
+}
+
+:root.glass .settings-plugin-row + .settings-plugin-row {
+  border-top-color: rgba(255, 255, 255, 0.38);
+}
+
+:root.glass .settings-plugin-row:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+:root.glass .settings-copy {
+  color: rgba(20, 24, 33, 0.72);
+}
+
+:root.glass .settings-plugin-name {
+  color: rgba(16, 20, 30, 0.9);
+}
+
+:root.glass .settings-plugin-name-disabled {
+  color: rgba(16, 20, 30, 0.68);
+}
+
+:root.glass .settings-plugin-grip {
+  color: rgba(16, 20, 30, 0.52);
+}
+
+:root.glass .settings-plugin-grip:hover {
+  color: rgba(16, 20, 30, 0.85);
+}
+
+:root.glass .settings-plugin-checkbox {
+  border-color: rgba(16, 20, 30, 0.35);
+  background: rgba(255, 255, 255, 0.65);
+}
+
+:root.glass .usage-progress-track {
+  background: rgba(255, 255, 255, 0.34);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.48);
+}
+
+:root.glass .usage-progress-indicator {
+  filter: saturate(1.05);
+}
+
+:root.glass .usage-progress-marker {
+  background: rgba(255, 255, 255, 0.7);
+  opacity: 0.8;
+}
+
 :root.glass .app-panel-surface {
   background: transparent;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.52);
@@ -212,6 +341,60 @@ body,
 
 :root.dark.glass .app-scroll-fade {
   background: linear-gradient(to top, rgba(0, 0, 0, 0.26), rgba(0, 0, 0, 0.08), transparent);
+}
+
+:root.dark.glass .settings-surface,
+:root.dark.glass .settings-input-surface {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+:root.dark.glass .settings-plugin-list {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.32);
+}
+
+:root.dark.glass .settings-plugin-row + .settings-plugin-row {
+  border-top-color: rgba(255, 255, 255, 0.24);
+}
+
+:root.dark.glass .settings-plugin-row:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+:root.dark.glass .settings-copy {
+  color: rgba(245, 247, 251, 0.84);
+}
+
+:root.dark.glass .settings-plugin-name {
+  color: rgba(245, 247, 251, 0.96);
+}
+
+:root.dark.glass .settings-plugin-name-disabled {
+  color: rgba(245, 247, 251, 0.72);
+}
+
+:root.dark.glass .settings-plugin-grip {
+  color: rgba(245, 247, 251, 0.5);
+}
+
+:root.dark.glass .settings-plugin-grip:hover {
+  color: rgba(245, 247, 251, 0.86);
+}
+
+:root.dark.glass .settings-plugin-checkbox {
+  border-color: rgba(245, 247, 251, 0.34);
+  background: rgba(255, 255, 255, 0.2);
+}
+
+:root.dark.glass .usage-progress-track {
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+}
+
+:root.dark.glass .usage-progress-marker {
+  background: rgba(255, 255, 255, 0.48);
+  opacity: 0.75;
 }
 
 /* Hide scrollbar track globally */

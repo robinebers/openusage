@@ -127,16 +127,16 @@ function MenubarIconStylePreview({
       : [0.83, 0.7, 0.56];
 
     return (
-      <div className="flex items-center">
+      <div className="menubar-bars-preview flex items-center px-1 py-0.5">
         <div className="flex flex-col gap-0.5 w-5">
           {fractions.map((fraction, i) => {
             const { fillPercent, remainderPercent } = getPreviewBarLayout(fraction);
             return (
-              <div key={i} className={cn("relative h-1 rounded-sm", trackClass)}>
+              <div key={i} className={cn("menubar-bars-track relative h-1 rounded-sm", trackClass)}>
                 {remainderPercent > 0 && (
                   <span
                     aria-hidden
-                    className={remainderClass}
+                    className={cn("menubar-bars-remainder", remainderClass)}
                     style={{
                       position: "absolute",
                       right: 0,
@@ -148,7 +148,7 @@ function MenubarIconStylePreview({
                   />
                 )}
                 <div
-                  className={cn("h-1", fillClass)}
+                  className={cn("menubar-bars-fill h-1", fillClass)}
                   style={{ width: `${fillPercent}%`, borderRadius: "2px 1px 1px 2px" }}
                 />
               </div>
@@ -220,15 +220,15 @@ function SortablePluginItem({
       style={style}
       onClick={() => onToggle(plugin.id)}
       className={cn(
-        "flex items-center gap-3 px-3 py-2 rounded-md bg-card cursor-pointer",
-        "border border-transparent",
-        isDragging && "opacity-50 border-border"
+        "settings-plugin-row flex items-center gap-3 px-3 py-2 cursor-pointer transition-colors",
+        plugin.enabled ? "settings-plugin-row-enabled" : "settings-plugin-row-disabled",
+        isDragging && "opacity-70"
       )}
     >
       <button
         type="button"
         onClick={(e) => e.stopPropagation()}
-        className="touch-none cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground transition-colors"
+        className="settings-plugin-grip touch-none cursor-grab active:cursor-grabbing transition-colors"
         {...attributes}
         {...listeners}
       >
@@ -237,8 +237,8 @@ function SortablePluginItem({
 
       <span
         className={cn(
-          "flex-1 text-sm",
-          !plugin.enabled && "text-muted-foreground"
+          "settings-plugin-name flex-1 text-sm",
+          !plugin.enabled && "settings-plugin-name-disabled"
         )}
       >
         {plugin.name}
@@ -247,6 +247,7 @@ function SortablePluginItem({
       <Checkbox
         key={`${plugin.id}-${plugin.enabled}`}
         checked={plugin.enabled}
+        className="settings-plugin-checkbox"
       />
     </div>
   );
@@ -316,10 +317,10 @@ export function SettingsPage({
     <div className="py-3 space-y-4">
       <section>
         <h3 className="text-lg font-semibold mb-0">Auto Refresh</h3>
-        <p className="text-sm text-muted-foreground mb-2">
+        <p className="settings-copy text-sm mb-2">
           How obsessive are you
         </p>
-        <div className="bg-muted/50 rounded-lg p-1">
+        <div className="settings-surface rounded-lg p-1">
           <div className="flex gap-1" role="radiogroup" aria-label="Auto-update interval">
             {AUTO_UPDATE_OPTIONS.map((option) => {
               const isActive = option.value === autoUpdateInterval;
@@ -343,10 +344,10 @@ export function SettingsPage({
       </section>
       <section>
         <h3 className="text-lg font-semibold mb-0">Usage Mode</h3>
-        <p className="text-sm text-muted-foreground mb-2">
+        <p className="settings-copy text-sm mb-2">
           Glass half full or half empty
         </p>
-        <div className="bg-muted/50 rounded-lg p-1">
+        <div className="settings-surface rounded-lg p-1">
           <div className="flex gap-1" role="radiogroup" aria-label="Usage display mode">
             {DISPLAY_MODE_OPTIONS.map((option) => {
               const isActive = option.value === displayMode;
@@ -370,10 +371,10 @@ export function SettingsPage({
       </section>
       <section>
         <h3 className="text-lg font-semibold mb-0">Reset Timers</h3>
-        <p className="text-sm text-muted-foreground mb-2">
+        <p className="settings-copy text-sm mb-2">
           Countdown or clock time
         </p>
-        <div className="bg-muted/50 rounded-lg p-1">
+        <div className="settings-surface rounded-lg p-1">
           <div className="flex gap-1" role="radiogroup" aria-label="Reset timer display mode">
             {RESET_TIMER_DISPLAY_OPTIONS.map((option) => {
               const isActive = option.value === resetTimerDisplayMode;
@@ -397,7 +398,7 @@ export function SettingsPage({
                   <span
                     className={cn(
                       "text-xs font-normal",
-                      isActive ? "text-primary-foreground/80" : "text-muted-foreground"
+                      isActive ? "text-primary-foreground/80" : "settings-copy"
                     )}
                   >
                     {example}
@@ -410,10 +411,10 @@ export function SettingsPage({
       </section>
       <section>
         <h3 className="text-lg font-semibold mb-0">Menubar Icon</h3>
-        <p className="text-sm text-muted-foreground mb-2">
+        <p className="settings-copy text-sm mb-2">
           What shows in the menu bar
         </p>
-        <div className="bg-muted/50 rounded-lg p-1">
+        <div className="settings-surface rounded-lg p-1">
           <div className="flex gap-1" role="radiogroup" aria-label="Menubar icon style">
             {MENUBAR_ICON_STYLE_OPTIONS.map((option) => {
               const isActive = option.value === menubarIconStyle;
@@ -442,10 +443,10 @@ export function SettingsPage({
       </section>
       <section>
         <h3 className="text-lg font-semibold mb-0">App Theme</h3>
-        <p className="text-sm text-muted-foreground mb-2">
+        <p className="settings-copy text-sm mb-2">
           How it looks around here
         </p>
-        <div className="bg-muted/50 rounded-lg p-1">
+        <div className="settings-surface rounded-lg p-1">
           <div className="flex gap-1" role="radiogroup" aria-label="Theme mode">
             {THEME_OPTIONS.map((option) => {
               const isActive = option.value === themeMode;
@@ -473,7 +474,7 @@ export function SettingsPage({
       />
       <section>
         <h3 className="text-lg font-semibold mb-0">Start on Login</h3>
-        <p className="text-sm text-muted-foreground mb-2">
+        <p className="settings-copy text-sm mb-2">
           OpenUsage starts when you sign in
         </p>
         <label className="flex items-center gap-2 text-sm select-none text-foreground">
@@ -487,10 +488,10 @@ export function SettingsPage({
       </section>
       <section>
         <h3 className="text-lg font-semibold mb-0">Plugins</h3>
-        <p className="text-sm text-muted-foreground mb-2">
+        <p className="settings-copy text-sm mb-2">
           Your AI coding lineup
         </p>
-        <div className="bg-muted/50 rounded-lg p-1 space-y-1">
+        <div className="settings-plugin-list rounded-lg">
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
