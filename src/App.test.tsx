@@ -800,7 +800,9 @@ describe("App", () => {
   })
 
   it("toggles plugins in settings", async () => {
+    state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a", "b"], disabled: [] })
     render(<App />)
+    await waitFor(() => expect(state.invokeMock).toHaveBeenCalledWith("list_plugins"))
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
     const checkboxes = await screen.findAllByRole("checkbox")
