@@ -21,7 +21,9 @@ pub fn configure_webview(app_handle: &tauri::AppHandle) {
 
     let can_disable_inactive_scheduling = macos_at_least(14, 0);
     if !can_disable_inactive_scheduling {
-        log::info!("WebKit inactiveSchedulingPolicy requires macOS 14.0+; skipping on this system");
+        log::info!(
+            "WebKit inactiveSchedulingPolicy requires macOS 14.0+; skipping scheduling override on this system"
+        );
     }
 
     if let Err(e) = window.with_webview(move |webview| unsafe {
@@ -61,8 +63,14 @@ pub fn configure_webview(app_handle: &tauri::AppHandle) {
             ns_window.setBackgroundColor(Some(&clear));
         }
 
-        log::info!("Configured transparent WKWebView and disabled inactive scheduling");
+        if can_disable_inactive_scheduling {
+            log::info!("Configured transparent WKWebView and disabled inactive scheduling");
+        } else {
+            log::info!(
+                "Configured transparent WKWebView; inactive scheduling override not applied on this macOS version"
+            );
+        }
     }) {
-        log::warn!("Failed to configure WebKit scheduling: {e}");
+        log::warn!("Failed to configure WKWebView transparency/scheduling: {e}");
     }
 }

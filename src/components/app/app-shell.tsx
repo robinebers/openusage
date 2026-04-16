@@ -65,7 +65,7 @@ export function AppShell({
   const { updateStatus, triggerInstall, checkForUpdates } = useAppUpdate()
 
   return (
-    <div ref={containerRef} className="w-full bg-transparent">
+    <div ref={containerRef} tabIndex={-1} className="w-full bg-transparent outline-none">
       <div
         className="app-panel-surface relative rounded-[22px] overflow-hidden select-none w-full flex flex-col"
         style={maxPanelHeightPx ? { maxHeight: `${maxPanelHeightPx}px` } : undefined}
