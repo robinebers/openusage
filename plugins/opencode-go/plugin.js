@@ -223,7 +223,7 @@
 
     return [
       ctx.line.progress({
-        label: "5h",
+        label: "Session",
         used: clampPercent(sessionCost, LIMITS.session),
         limit: 100,
         format: { kind: "percent" },

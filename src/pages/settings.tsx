@@ -218,14 +218,16 @@ function SortablePluginItem({
     <div
       ref={setNodeRef}
       style={style}
+      onClick={() => onToggle(plugin.id)}
       className={cn(
-        "flex items-center gap-3 px-3 py-2 rounded-md bg-card",
+        "flex items-center gap-3 px-3 py-2 rounded-md bg-card cursor-pointer",
         "border border-transparent",
         isDragging && "opacity-50 border-border"
       )}
     >
       <button
         type="button"
+        onClick={(e) => e.stopPropagation()}
         className="touch-none cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground transition-colors"
         {...attributes}
         {...listeners}
@@ -245,7 +247,6 @@ function SortablePluginItem({
       <Checkbox
         key={`${plugin.id}-${plugin.enabled}`}
         checked={plugin.enabled}
-        onCheckedChange={() => onToggle(plugin.id)}
       />
     </div>
   );

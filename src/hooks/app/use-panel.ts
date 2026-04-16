@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { invoke, isTauri } from "@tauri-apps/api/core"
 import { listen } from "@tauri-apps/api/event"
 import { getCurrentWindow, PhysicalSize, currentMonitor } from "@tauri-apps/api/window"
 import type { ActiveView } from "@/components/side-nav"
+import type { DisplayPluginState } from "@/hooks/app/use-app-plugin-views"
 
 const PANEL_WIDTH = 400
 const MAX_HEIGHT_FALLBACK_PX = 600
@@ -13,7 +14,18 @@ type UsePanelArgs = {
   setActiveView: (view: ActiveView) => void
   showAbout: boolean
   setShowAbout: (value: boolean) => void
-  displayPlugins: unknown[]
+  displayPlugins: DisplayPluginState[]
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+
+  if (target.isContentEditable) return true
+  if (target.closest("input, textarea, select, [contenteditable='true'], [role='textbox']")) {
+    return true
+  }
+
+  return false
 }
 
 export function usePanel({
@@ -28,6 +40,27 @@ export function usePanel({
   const [canScrollDown, setCanScrollDown] = useState(false)
   const [maxPanelHeightPx, setMaxPanelHeightPx] = useState<number | null>(null)
   const maxPanelHeightPxRef = useRef<number | null>(null)
+  const focusContainer = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      containerRef.current?.focus({ preventScroll: true })
+    })
+  }, [])
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        focusContainer()
+      }
+    }
+
+    window.addEventListener("focus", focusContainer)
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+
+    return () => {
+      window.removeEventListener("focus", focusContainer)
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+    }
+  }, [focusContainer])
 
   useEffect(() => {
     if (!isTauri()) return
@@ -56,6 +89,7 @@ export function usePanel({
     async function setup() {
       const u1 = await listen<string>("tray:navigate", (event) => {
         setActiveView(event.payload as ActiveView)
+        focusContainer()
       })
       if (cancelled) {
         u1()
@@ -65,6 +99,7 @@ export function usePanel({
 
       const u2 = await listen("tray:show-about", () => {
         setShowAbout(true)
+        focusContainer()
       })
       if (cancelled) {
         u2()
@@ -79,7 +114,40 @@ export function usePanel({
       cancelled = true
       for (const fn of unlisteners) fn()
     }
-  }, [setActiveView, setShowAbout])
+  }, [focusContainer, setActiveView, setShowAbout])
+
+  useEffect(() => {
+    if (showAbout) return
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return
+      if (!event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return
+      if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return
+      if (isEditableTarget(event.target)) return
+
+      const views: ActiveView[] = ["home", ...displayPlugins.map((plugin) => plugin.meta.id)]
+      if (views.length === 0) return
+
+      let nextView: ActiveView | undefined
+
+      if (activeView === "settings") {
+        nextView = event.key === "ArrowUp" ? views[views.length - 1] : views[0]
+      } else {
+        const currentIndex = views.indexOf(activeView)
+        if (currentIndex === -1) return
+        const offset = event.key === "ArrowUp" ? -1 : 1
+        nextView = views[(currentIndex + offset + views.length) % views.length]
+      }
+
+      if (!nextView || nextView === activeView) return
+
+      event.preventDefault()
+      setActiveView(nextView)
+    }
+
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [activeView, displayPlugins, setActiveView, showAbout])
 
   useEffect(() => {
     if (!isTauri()) return

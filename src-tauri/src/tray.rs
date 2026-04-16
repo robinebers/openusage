@@ -55,14 +55,55 @@ pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
     log::set_max_level(current_level);
 
     let show_stats = MenuItem::with_id(app_handle, "show_stats", "Show Stats", true, None::<&str>)?;
-    let go_to_settings = MenuItem::with_id(app_handle, "go_to_settings", "Go to Settings", true, None::<&str>)?;
+    let go_to_settings = MenuItem::with_id(
+        app_handle,
+        "go_to_settings",
+        "Go to Settings",
+        true,
+        None::<&str>,
+    )?;
 
     // Log level submenu - clone items for use in event handler
-    let log_error = CheckMenuItem::with_id(app_handle, "log_error", "Error", true, current_level == log::LevelFilter::Error, None::<&str>)?;
-    let log_warn = CheckMenuItem::with_id(app_handle, "log_warn", "Warn", true, current_level == log::LevelFilter::Warn, None::<&str>)?;
-    let log_info = CheckMenuItem::with_id(app_handle, "log_info", "Info", true, current_level == log::LevelFilter::Info, None::<&str>)?;
-    let log_debug = CheckMenuItem::with_id(app_handle, "log_debug", "Debug", true, current_level == log::LevelFilter::Debug, None::<&str>)?;
-    let log_trace = CheckMenuItem::with_id(app_handle, "log_trace", "Trace", true, current_level == log::LevelFilter::Trace, None::<&str>)?;
+    let log_error = CheckMenuItem::with_id(
+        app_handle,
+        "log_error",
+        "Error",
+        true,
+        current_level == log::LevelFilter::Error,
+        None::<&str>,
+    )?;
+    let log_warn = CheckMenuItem::with_id(
+        app_handle,
+        "log_warn",
+        "Warn",
+        true,
+        current_level == log::LevelFilter::Warn,
+        None::<&str>,
+    )?;
+    let log_info = CheckMenuItem::with_id(
+        app_handle,
+        "log_info",
+        "Info",
+        true,
+        current_level == log::LevelFilter::Info,
+        None::<&str>,
+    )?;
+    let log_debug = CheckMenuItem::with_id(
+        app_handle,
+        "log_debug",
+        "Debug",
+        true,
+        current_level == log::LevelFilter::Debug,
+        None::<&str>,
+    )?;
+    let log_trace = CheckMenuItem::with_id(
+        app_handle,
+        "log_trace",
+        "Trace",
+        true,
+        current_level == log::LevelFilter::Trace,
+        None::<&str>,
+    )?;
     let log_level_submenu = Submenu::with_items(
         app_handle,
         "Debug Level",
@@ -83,7 +124,17 @@ pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
     let about = MenuItem::with_id(app_handle, "about", "About OpenUsage", true, None::<&str>)?;
     let quit = MenuItem::with_id(app_handle, "quit", "Quit", true, None::<&str>)?;
 
-    let menu = Menu::with_items(app_handle, &[&show_stats, &go_to_settings, &log_level_submenu, &separator, &about, &quit])?;
+    let menu = Menu::with_items(
+        app_handle,
+        &[
+            &show_stats,
+            &go_to_settings,
+            &log_level_submenu,
+            &separator,
+            &about,
+            &quit,
+        ],
+    )?;
 
     TrayIconBuilder::with_id("tray")
         .icon(icon)

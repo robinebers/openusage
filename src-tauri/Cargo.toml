@@ -1,6 +1,6 @@
 [package]
 name = "openusage"
-version = "0.6.11"
+version = "0.6.14"
 description = "OpenUsage is an open source AI subscription limit tracker"
 authors = ["Robin Ebers"]
 edition = "2024"
@@ -26,7 +26,7 @@ tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.
 time = { version = "0.3.47", features = ["formatting"] }
 dirs = "6"
 log = "0.4"
-reqwest = { version = "0.13", features = ["blocking"] }
+reqwest = { version = "0.13", features = ["blocking", "socks"] }
 rquickjs = { version = "0.11", features = ["bindgen"] }
 tauri-plugin-store = "2.4.2"
 base64 = "0.22"
@@ -40,9 +40,13 @@ tauri-plugin-autostart = "2.5.1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 regex-lite = "0.1.9"
 tauri-plugin-liquid-glass = "0.1.6"
+aes-gcm = "0.10.3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
 objc2-foundation = { version = "0.3", features = ["NSKeyValueCoding", "NSProcessInfo", "NSString"] }
 objc2-app-kit = { version = "0.3", features = ["NSClipView", "NSColor", "NSEvent", "NSGraphics", "NSScreen", "NSScrollView", "NSView", "NSWindow"] }
 objc2-web-kit = { version = "0.3", features = ["WKPreferences", "WKWebView", "WKWebViewConfiguration"] }
+
+[dev-dependencies]
+serial_test = "3.4.0"

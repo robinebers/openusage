@@ -136,7 +136,61 @@ describe("cursor plugin", () => {
     const result = plugin.probe(ctx)
 
     expect(result.lines.find((line) => line.label === "Total usage")).toBeTruthy()
-    expect(ctx.host.keychain.readGenericPassword).not.toHaveBeenCalled()
+    expect(ctx.host.keychain.readGenericPassword).toHaveBeenCalledWith("cursor-access-token")
+    expect(ctx.host.keychain.readGenericPassword).toHaveBeenCalledWith("cursor-refresh-token")
+  })
+
+  it("prefers keychain when sqlite looks free and token subjects differ", async () => {
+    const ctx = makeCtx()
+    const sqlitePayload = Buffer.from(
+      JSON.stringify({ exp: 9999999999, sub: "google-oauth2|sqlite-user" }),
+      "utf8"
+    )
+      .toString("base64")
+      .replace(/=+$/g, "")
+    const sqliteToken = `a.${sqlitePayload}.c`
+
+    const keychainPayload = Buffer.from(
+      JSON.stringify({ exp: 9999999999, sub: "auth0|keychain-user" }),
+      "utf8"
+    )
+      .toString("base64")
+      .replace(/=+$/g, "")
+    const keychainToken = `a.${keychainPayload}.c`
+
+    ctx.host.sqlite.query.mockImplementation((db, sql) => {
+      if (String(sql).includes("cursorAuth/accessToken")) {
+        return JSON.stringify([{ value: sqliteToken }])
+      }
+      if (String(sql).includes("cursorAuth/refreshToken")) {
+        return JSON.stringify([{ value: "sqlite-refresh-token" }])
+      }
+      if (String(sql).includes("cursorAuth/stripeMembershipType")) {
+        return JSON.stringify([{ value: "free" }])
+      }
+      return JSON.stringify([])
+    })
+    ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
+      if (service === "cursor-access-token") return keychainToken
+      if (service === "cursor-refresh-token") return "keychain-refresh-token"
+      return null
+    })
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("GetCurrentPeriodUsage")) {
+        expect(opts.headers.Authorization).toBe("Bearer " + keychainToken)
+      }
+      return {
+        status: 200,
+        bodyText: JSON.stringify({
+          enabled: true,
+          planUsage: { totalSpend: 1200, limit: 2400 },
+        }),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Total usage")).toBeTruthy()
   })
 
   it("throws on sqlite errors when reading token", async () => {
@@ -222,7 +276,7 @@ describe("cursor plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Total usage limit missing")
   })
 
-  it("accepts percent-only free plan usage when limit is omitted", async () => {
+  it("uses percent-only usage when totalPercentUsed exists but limit is missing", async () => {
     const ctx = makeCtx()
     ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: "token" }]))
     ctx.host.http.request.mockImplementation((opts) => {
@@ -231,16 +285,12 @@ describe("cursor plugin", () => {
           status: 200,
           bodyText: JSON.stringify({
             enabled: true,
-            billingCycleStart: "1772707936000",
-            billingCycleEnd: "1775386336000",
+            billingCycleStart: "1772556293029",
+            billingCycleEnd: "1775234693029",
             planUsage: {
-              remainingBonus: false,
               autoPercentUsed: 0,
               apiPercentUsed: 0,
               totalPercentUsed: 0,
-            },
-            spendLimitUsage: {
-              limitType: "user",
             },
           }),
         }
@@ -249,40 +299,27 @@ describe("cursor plugin", () => {
         return {
           status: 200,
           bodyText: JSON.stringify({
-            planInfo: {
-              planName: "Free",
-              price: "Free",
-              billingCycleEnd: "1775386336000",
-            },
+            planInfo: { planName: "Free" },
           }),
         }
       }
-      if (String(opts.url).includes("GetCreditGrantsBalance")) {
-        return { status: 200, bodyText: "{}" }
-      }
-      if (String(opts.url).includes("cursor.com/api/auth/stripe")) {
-        return {
-          status: 200,
-          bodyText: JSON.stringify({
-            membershipType: "free",
-            customerBalance: 0,
-          }),
-        }
+      if (String(opts.url).includes("cursor.com/api/usage")) {
+        throw new Error("unexpected REST usage fallback")
       }
       return { status: 200, bodyText: "{}" }
     })
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    const totalLine = result.lines.find((line) => line.label === "Total usage")
     expect(result.plan).toBe("Free")
+    const totalLine = result.lines.find((line) => line.label === "Total usage")
     expect(totalLine).toBeTruthy()
     expect(totalLine.format).toEqual({ kind: "percent" })
     expect(totalLine.used).toBe(0)
     expect(totalLine.limit).toBe(100)
   })
 
-  it("still throws for team usage when limit is omitted even if totalPercentUsed exists", async () => {
+  it("renders percent-only usage when plan info is unavailable", async () => {
     const ctx = makeCtx()
     ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: "token" }]))
     ctx.host.http.request.mockImplementation((opts) => {
@@ -290,33 +327,32 @@ describe("cursor plugin", () => {
         return {
           status: 200,
           bodyText: JSON.stringify({
-            billingCycleStart: "1772707936000",
-            billingCycleEnd: "1775386336000",
+            enabled: true,
+            billingCycleStart: "1772556293029",
+            billingCycleEnd: "1775234693029",
             planUsage: {
               totalPercentUsed: 42,
-            },
-            spendLimitUsage: {
-              limitType: "team",
-              pooledRemaining: 1000,
             },
           }),
         }
       }
       if (String(opts.url).includes("GetPlanInfo")) {
-        return {
-          status: 200,
-          bodyText: JSON.stringify({
-            planInfo: {
-              planName: "Team",
-            },
-          }),
-        }
+        return { status: 503, bodyText: "" }
+      }
+      if (String(opts.url).includes("cursor.com/api/usage")) {
+        throw new Error("unexpected REST usage fallback")
       }
       return { status: 200, bodyText: "{}" }
     })
 
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Total usage limit missing")
+    const result = plugin.probe(ctx)
+    expect(result.plan).toBeNull()
+    const totalLine = result.lines.find((line) => line.label === "Total usage")
+    expect(totalLine).toBeTruthy()
+    expect(totalLine.format).toEqual({ kind: "percent" })
+    expect(totalLine.used).toBe(42)
+    expect(totalLine.limit).toBe(100)
   })
 
   it("falls back to computed percent when totalSpend missing and no totalPercentUsed", async () => {
@@ -506,6 +542,108 @@ describe("cursor plugin", () => {
     const reqLine = result.lines.find((l) => l.label === "Requests")
     expect(reqLine).toBeTruthy()
     expect(reqLine.used).toBe(422)
+    expect(reqLine.limit).toBe(500)
+    expect(reqLine.format).toEqual({ kind: "count", suffix: "requests" })
+  })
+
+  it("falls back to enterprise request-based usage when planUsage.limit is missing", async () => {
+    const ctx = makeCtx()
+    const accessToken = makeJwt({ sub: "google-oauth2|user_abc123", exp: 9999999999 })
+
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: accessToken }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            enabled: true,
+            billingCycleStart: "1770539602363",
+            billingCycleEnd: "1770539602363",
+            planUsage: {
+              totalSpend: 1234,
+              totalPercentUsed: 12,
+            },
+          }),
+        }
+      }
+      if (String(opts.url).includes("GetPlanInfo")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            planInfo: { planName: "Enterprise" },
+          }),
+        }
+      }
+      if (String(opts.url).includes("cursor.com/api/usage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            "gpt-4": {
+              numRequests: 211,
+              maxRequestUsage: 500,
+            },
+            startOfMonth: "2026-02-01T06:12:57.000Z",
+          }),
+        }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.plan).toBe("Enterprise")
+    const reqLine = result.lines.find((line) => line.label === "Requests")
+    expect(reqLine).toBeTruthy()
+    expect(reqLine.used).toBe(211)
+    expect(reqLine.limit).toBe(500)
+  })
+
+  it("falls back to REST usage for team-inferred account with percent-only and unavailable plan info", async () => {
+    const ctx = makeCtx()
+    const accessToken = makeJwt({ sub: "google-oauth2|user_abc123", exp: 9999999999 })
+
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([{ value: accessToken }]))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("GetCurrentPeriodUsage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            enabled: true,
+            billingCycleStart: "1772556293029",
+            billingCycleEnd: "1775234693029",
+            planUsage: {
+              totalPercentUsed: 35,
+            },
+            spendLimitUsage: {
+              limitType: "team",
+              pooledLimit: 5000,
+            },
+          }),
+        }
+      }
+      if (String(opts.url).includes("GetPlanInfo")) {
+        return { status: 503, bodyText: "" }
+      }
+      if (String(opts.url).includes("cursor.com/api/usage")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            "gpt-4": {
+              numRequests: 150,
+              maxRequestUsage: 500,
+            },
+            startOfMonth: "2026-02-01T06:12:57.000Z",
+          }),
+        }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const reqLine = result.lines.find((l) => l.label === "Requests")
+    expect(reqLine).toBeTruthy()
+    expect(reqLine.used).toBe(150)
     expect(reqLine.limit).toBe(500)
     expect(reqLine.format).toEqual({ kind: "count", suffix: "requests" })
   })

@@ -428,9 +428,20 @@
 
     var plan = null
     if (hasUserStatus) {
-      var ps = data.userStatus.planStatus || {}
-      var pi = ps.planInfo || {}
-      plan = pi.planName || null
+      // Prefer userTier.name (Google's own subscription system) over the legacy
+      // planInfo.planName field inherited from Windsurf/Codeium, which always
+      // returns "Pro" for all paid tiers including Google AI Ultra.
+      var ut = data.userStatus.userTier
+      var userTierName =
+        ut && typeof ut.name === "string" && ut.name.trim() ? ut.name.trim() : null
+      if (userTierName) {
+        plan = userTierName
+      } else {
+        var ps = data.userStatus.planStatus || {}
+        var pi = ps.planInfo || {}
+        plan =
+          typeof pi.planName === "string" && pi.planName.trim() ? pi.planName.trim() : null
+      }
     }
 
     return { plan: plan, lines: lines }

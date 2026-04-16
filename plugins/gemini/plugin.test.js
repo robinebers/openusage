@@ -695,6 +695,190 @@ describe("gemini plugin", () => {
     expect(result.lines.find((line) => line.label === "Flash")).toBeTruthy()
   })
 
+  it("discovers oauth2.js via dynamic NVM version scanning", async () => {
+    const ctx = makeCtx()
+    const nowMs = 1_700_000_000_000
+    vi.spyOn(Date, "now").mockReturnValue(nowMs)
+
+    const nvmOauth2Path =
+      "~/.nvm/versions/node/v22.0.0/lib/node_modules/@google/gemini-cli-core/dist/src/code_assist/oauth2.js"
+
+    ctx.host.fs.writeText(
+      CREDS_PATH,
+      JSON.stringify({
+        access_token: "old-token",
+        refresh_token: "refresh-token",
+        expiry_date: nowMs - 1000,
+      })
+    )
+    ctx.host.fs.writeText(
+      nvmOauth2Path,
+      "const OAUTH_CLIENT_ID='nvm-client-id'; const OAUTH_CLIENT_SECRET='nvm-client-secret';"
+    )
+
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url === TOKEN_URL) {
+        return { status: 200, bodyText: JSON.stringify({ access_token: "refreshed-token", expires_in: 3600 }) }
+      }
+      if (url === LOAD_CODE_ASSIST_URL) {
+        return { status: 200, bodyText: JSON.stringify({ tier: "standard-tier" }) }
+      }
+      if (url === PROJECTS_URL) {
+        return { status: 200, bodyText: JSON.stringify({ projects: [{ projectId: "gen-lang-client-nvm" }] }) }
+      }
+      if (url === QUOTA_URL) {
+        expect(opts.headers.Authorization).toBe("Bearer refreshed-token")
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            quotaBuckets: [{ modelId: "gemini-2.5-pro", remainingFraction: 0.5, resetTime: "2099-01-01T00:00:00Z" }],
+          }),
+        }
+      }
+      throw new Error("unexpected url: " + url)
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Pro")).toBeTruthy()
+    const persisted = JSON.parse(ctx.host.fs.readText(CREDS_PATH))
+    expect(persisted.access_token).toBe("refreshed-token")
+  })
+
+  it("discovers oauth2.js via dynamic fnm version scanning", async () => {
+    const ctx = makeCtx()
+    const nowMs = 1_700_000_000_000
+    vi.spyOn(Date, "now").mockReturnValue(nowMs)
+
+    const fnmOauth2Path =
+      "~/Library/Application Support/fnm/node-versions/v22.0.0/installation/lib/node_modules/@google/gemini-cli-core/dist/src/code_assist/oauth2.js"
+
+    ctx.host.fs.writeText(
+      CREDS_PATH,
+      JSON.stringify({
+        access_token: "old-token",
+        refresh_token: "refresh-token",
+        expiry_date: nowMs - 1000,
+      })
+    )
+    ctx.host.fs.writeText(
+      fnmOauth2Path,
+      "const OAUTH_CLIENT_ID='fnm-client-id'; const OAUTH_CLIENT_SECRET='fnm-client-secret';"
+    )
+
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url === TOKEN_URL) {
+        return { status: 200, bodyText: JSON.stringify({ access_token: "fnm-token", expires_in: 3600 }) }
+      }
+      if (url === LOAD_CODE_ASSIST_URL) {
+        return { status: 200, bodyText: JSON.stringify({ tier: "standard-tier" }) }
+      }
+      if (url === PROJECTS_URL) {
+        return { status: 200, bodyText: JSON.stringify({ projects: [{ projectId: "gen-lang-client-fnm" }] }) }
+      }
+      if (url === QUOTA_URL) {
+        expect(opts.headers.Authorization).toBe("Bearer fnm-token")
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            quotaBuckets: [{ modelId: "gemini-2.5-pro", remainingFraction: 0.5, resetTime: "2099-01-01T00:00:00Z" }],
+          }),
+        }
+      }
+      throw new Error("unexpected url: " + url)
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Pro")).toBeTruthy()
+
+    const persisted = JSON.parse(ctx.host.fs.readText(CREDS_PATH))
+    expect(persisted.access_token).toBe("fnm-token")
+  })
+
+  it("discovers oauth2.js via nested package structure", async () => {
+    const ctx = makeCtx()
+    const nowMs = 1_700_000_000_000
+    vi.spyOn(Date, "now").mockReturnValue(nowMs)
+
+    const nestedPath =
+      "~/.npm-global/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/code_assist/oauth2.js"
+
+    ctx.host.fs.writeText(
+      CREDS_PATH,
+      JSON.stringify({
+        access_token: "old-token",
+        refresh_token: "refresh-token",
+        expiry_date: nowMs - 1000,
+      })
+    )
+    ctx.host.fs.writeText(
+      nestedPath,
+      "const OAUTH_CLIENT_ID='nested-id'; const OAUTH_CLIENT_SECRET='nested-secret';"
+    )
+
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url === TOKEN_URL) {
+        return { status: 200, bodyText: JSON.stringify({ access_token: "nested-token", expires_in: 3600 }) }
+      }
+      if (url === LOAD_CODE_ASSIST_URL) return { status: 200, bodyText: JSON.stringify({ tier: "standard-tier" }) }
+      if (url === PROJECTS_URL) return { status: 200, bodyText: JSON.stringify({ projects: [{ projectId: "gen-lang-client-nested" }] }) }
+      if (url === QUOTA_URL) {
+        expect(opts.headers.Authorization).toBe("Bearer nested-token")
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            quotaBuckets: [{ modelId: "gemini-2.5-pro", remainingFraction: 0.3, resetTime: "2099-01-01T00:00:00Z" }],
+          }),
+        }
+      }
+      throw new Error("unexpected url: " + url)
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Pro")).toBeTruthy()
+  })
+
+  it("logs warning when no oauth2.js is found at any path", async () => {
+    const ctx = makeCtx()
+    const nowMs = 1_700_000_000_000
+    vi.spyOn(Date, "now").mockReturnValue(nowMs)
+
+    ctx.host.fs.writeText(
+      CREDS_PATH,
+      JSON.stringify({
+        access_token: "existing-token",
+        refresh_token: "refresh-token",
+        expiry_date: nowMs - 1000,
+      })
+    )
+
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url === LOAD_CODE_ASSIST_URL) return { status: 200, bodyText: JSON.stringify({ tier: "standard-tier" }) }
+      if (url === PROJECTS_URL) return { status: 200, bodyText: JSON.stringify({ projects: [{ projectId: "gen-lang-client-warn" }] }) }
+      if (url === QUOTA_URL) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            quotaBuckets: [{ modelId: "gemini-2.5-pro", remainingFraction: 0.5, resetTime: "2099-01-01T00:00:00Z" }],
+          }),
+        }
+      }
+      throw new Error("unexpected url: " + url)
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    const warnCalls = ctx.host.log.warn.mock.calls.map((c) => c[0])
+    expect(warnCalls.some((msg) => msg.includes("not found in any known install path"))).toBe(true)
+  })
+
   it("uses snake_case quota fields and still renders lines", async () => {
     const ctx = makeCtx()
     const nowMs = 1_700_000_000_000

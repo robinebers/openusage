@@ -1,3 +1,4 @@
+import crypto from "node:crypto"
 import { vi } from "vitest"
 
 export const makeCtx = () => {
@@ -42,8 +43,31 @@ export const makeCtx = () => {
       },
       keychain: {
         readGenericPassword: vi.fn(),
+        readGenericPasswordForCurrentUser: vi.fn(),
         writeGenericPassword: vi.fn(),
+        writeGenericPasswordForCurrentUser: vi.fn(),
         deleteGenericPassword: vi.fn(),
+      },
+      crypto: {
+        decryptAes256Gcm: vi.fn((envelope, keyB64) => {
+          const parts = String(envelope || "").trim().split(":")
+          if (parts.length !== 3) throw new Error("invalid AES-GCM envelope")
+          const key = Buffer.from(String(keyB64 || "").trim(), "base64")
+          const iv = Buffer.from(parts[0], "base64")
+          const tag = Buffer.from(parts[1], "base64")
+          const ciphertext = Buffer.from(parts[2], "base64")
+          const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv)
+          decipher.setAuthTag(tag)
+          return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8")
+        }),
+        encryptAes256Gcm: vi.fn((plaintext, keyB64) => {
+          const key = Buffer.from(String(keyB64 || "").trim(), "base64")
+          const iv = crypto.randomBytes(16)
+          const cipher = crypto.createCipheriv("aes-256-gcm", key, iv)
+          const ciphertext = Buffer.concat([cipher.update(String(plaintext), "utf8"), cipher.final()])
+          const tag = cipher.getAuthTag()
+          return `${iv.toString("base64")}:${tag.toString("base64")}:${ciphertext.toString("base64")}`
+        }),
       },
       sqlite: {
         query: vi.fn(() => "[]"),

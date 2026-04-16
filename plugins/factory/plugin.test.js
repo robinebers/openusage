@@ -1,3 +1,4 @@
+import crypto from "node:crypto"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { makeCtx } from "../test-helpers.js"
 
@@ -12,6 +13,18 @@ function makeJwt(expSeconds) {
   const payload = btoa(JSON.stringify({ exp: expSeconds, org_id: "org_123", email: "test@example.com" }))
   const sig = "signature"
   return `${header}.${payload}.${sig}`
+}
+
+function makeEncryptedAuthV2(payload) {
+  const key = crypto.randomBytes(32)
+  const iv = crypto.randomBytes(16)
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv)
+  const ciphertext = Buffer.concat([cipher.update(JSON.stringify(payload), "utf8"), cipher.final()])
+  const tag = cipher.getAuthTag()
+  return {
+    keyB64: key.toString("base64"),
+    envelope: `${iv.toString("base64")}:${tag.toString("base64")}:${ciphertext.toString("base64")}`,
+  }
 }
 
 describe("factory plugin", () => {
@@ -63,6 +76,216 @@ describe("factory plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
     expect(result.lines.find((line) => line.label === "Standard")).toBeTruthy()
+  })
+
+  it("loads auth from auth.v2.file when present", async () => {
+    const ctx = makeCtx()
+    const futureExp = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
+    const authV2 = makeEncryptedAuthV2({
+      access_token: makeJwt(futureExp),
+      refresh_token: "refresh",
+    })
+    ctx.host.fs.writeText("~/.factory/auth.v2.file", authV2.envelope)
+    ctx.host.fs.writeText("~/.factory/auth.v2.key", authV2.keyB64)
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        usage: {
+          startDate: 1770623326000,
+          endDate: 1772956800000,
+          standard: { orgTotalTokensUsed: 456, totalAllowance: 20000000 },
+          premium: { orgTotalTokensUsed: 0, totalAllowance: 0 },
+        },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Standard")).toBeTruthy()
+  })
+
+  it("prefers auth.v2.file over expired auth.encrypted", async () => {
+    const ctx = makeCtx()
+    const pastExp = Math.floor(Date.now() / 1000) - 1000
+    const futureExp = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
+    const authV2 = makeEncryptedAuthV2({
+      access_token: makeJwt(futureExp),
+      refresh_token: "refresh",
+    })
+    ctx.host.fs.writeText("~/.factory/auth.v2.file", authV2.envelope)
+    ctx.host.fs.writeText("~/.factory/auth.v2.key", authV2.keyB64)
+    ctx.host.fs.writeText("~/.factory/auth.encrypted", JSON.stringify({
+      access_token: makeJwt(pastExp),
+      refresh_token: "stale-refresh",
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        usage: {
+          startDate: 1770623326000,
+          endDate: 1772956800000,
+          standard: { orgTotalTokensUsed: 789, totalAllowance: 20000000 },
+          premium: { orgTotalTokensUsed: 0, totalAllowance: 0 },
+        },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Standard")).toBeTruthy()
+    expect(ctx.host.http.request).not.toHaveBeenCalledWith(
+      expect.objectContaining({ url: expect.stringContaining("workos.com") }),
+    )
+  })
+
+  it("falls back to auth.encrypted when auth.v2.file cannot be decrypted", async () => {
+    const ctx = makeCtx()
+    const futureExp = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
+    ctx.host.fs.writeText("~/.factory/auth.v2.file", "bad:envelope")
+    ctx.host.fs.writeText("~/.factory/auth.v2.key", "bad-key")
+    ctx.host.fs.writeText("~/.factory/auth.encrypted", JSON.stringify({
+      access_token: makeJwt(futureExp),
+      refresh_token: "refresh",
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        usage: {
+          startDate: 1770623326000,
+          endDate: 1772956800000,
+          standard: { orgTotalTokensUsed: 321, totalAllowance: 20000000 },
+          premium: { orgTotalTokensUsed: 0, totalAllowance: 0 },
+        },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Standard")).toBeTruthy()
+  })
+
+  it("falls back to auth.encrypted when v2 crypto helper is unavailable", async () => {
+    const ctx = makeCtx()
+    const futureExp = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
+    const authV2 = makeEncryptedAuthV2({
+      access_token: makeJwt(futureExp),
+      refresh_token: "refresh",
+    })
+    ctx.host.crypto = null
+    ctx.host.fs.writeText("~/.factory/auth.v2.file", authV2.envelope)
+    ctx.host.fs.writeText("~/.factory/auth.v2.key", authV2.keyB64)
+    ctx.host.fs.writeText("~/.factory/auth.encrypted", JSON.stringify({
+      access_token: makeJwt(futureExp),
+      refresh_token: "legacy-refresh",
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        usage: {
+          startDate: 1770623326000,
+          endDate: 1772956800000,
+          standard: { orgTotalTokensUsed: 654, totalAllowance: 20000000 },
+          premium: { orgTotalTokensUsed: 0, totalAllowance: 0 },
+        },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Standard")).toBeTruthy()
+  })
+
+  it("falls back to auth.encrypted when auth.v2.file decrypts to invalid auth data", async () => {
+    const ctx = makeCtx()
+    const futureExp = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
+    const authV2 = makeEncryptedAuthV2({ foo: "bar" })
+    ctx.host.fs.writeText("~/.factory/auth.v2.file", authV2.envelope)
+    ctx.host.fs.writeText("~/.factory/auth.v2.key", authV2.keyB64)
+    ctx.host.fs.writeText("~/.factory/auth.encrypted", JSON.stringify({
+      access_token: makeJwt(futureExp),
+      refresh_token: "legacy-refresh",
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        usage: {
+          startDate: 1770623326000,
+          endDate: 1772956800000,
+          standard: { orgTotalTokensUsed: 987, totalAllowance: 20000000 },
+          premium: { orgTotalTokensUsed: 0, totalAllowance: 0 },
+        },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Standard")).toBeTruthy()
+  })
+
+  it("throws not logged in when auth.v2.file exists without its key", async () => {
+    const ctx = makeCtx()
+    const authV2 = makeEncryptedAuthV2({
+      access_token: makeJwt(Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60),
+      refresh_token: "refresh",
+    })
+    ctx.host.fs.writeText("~/.factory/auth.v2.file", authV2.envelope)
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Not logged in")
+  })
+
+  it("persists refreshed v2 auth back to auth.v2.file", async () => {
+    const ctx = makeCtx()
+    const nearExp = Math.floor(Date.now() / 1000) + 12 * 60 * 60
+    const futureExp = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
+    const authV2 = makeEncryptedAuthV2({
+      access_token: makeJwt(nearExp),
+      refresh_token: "refresh",
+    })
+    ctx.host.fs.writeText("~/.factory/auth.v2.file", authV2.envelope)
+    ctx.host.fs.writeText("~/.factory/auth.v2.key", authV2.keyB64)
+    ctx.host.fs.writeText.mockClear()
+
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("workos.com")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            access_token: makeJwt(futureExp),
+            refresh_token: "new-refresh",
+          }),
+        }
+      }
+      return {
+        status: 200,
+        headers: {},
+        bodyText: JSON.stringify({
+          usage: {
+            startDate: 1770623326000,
+            endDate: 1772956800000,
+            standard: { orgTotalTokensUsed: 111, totalAllowance: 20000000 },
+            premium: { orgTotalTokensUsed: 0, totalAllowance: 0 },
+          },
+        }),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Standard")).toBeTruthy()
+    expect(ctx.host.fs.writeText).toHaveBeenCalledTimes(1)
+    expect(ctx.host.fs.writeText).toHaveBeenCalledWith("~/.factory/auth.v2.file", expect.any(String))
+
+    const persistedEnvelope = ctx.host.fs.readText("~/.factory/auth.v2.file")
+    const persistedRaw = ctx.host.crypto.decryptAes256Gcm(persistedEnvelope, authV2.keyB64)
+    const persisted = JSON.parse(persistedRaw)
+    expect(persisted.refresh_token).toBe("new-refresh")
+    expect(persisted.access_token).toBe(makeJwt(futureExp))
   })
 
   it("prefers auth.encrypted over stale auth.json when both exist", async () => {
@@ -423,6 +646,49 @@ describe("factory plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
     expect(result.lines.find((line) => line.label === "Standard")).toBeTruthy()
+  })
+
+  it("continues with existing token when proactive refresh returns invalid_grant but token is still valid", async () => {
+    const ctx = makeCtx()
+    const nearExp = Math.floor(Date.now() / 1000) + 12 * 60 * 60
+    const currentToken = makeJwt(nearExp)
+    ctx.host.fs.writeText("~/.factory/auth.json", JSON.stringify({
+      access_token: currentToken,
+      refresh_token: "refresh",
+    }))
+
+    let usageSawCurrentToken = false
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("workos.com")) {
+        return {
+          status: 400,
+          headers: {},
+          bodyText: JSON.stringify({
+            error: "invalid_grant",
+            error_description: "Session has already ended.",
+          }),
+        }
+      }
+
+      usageSawCurrentToken = opts.headers.Authorization === "Bearer " + currentToken
+      return {
+        status: 200,
+        headers: {},
+        bodyText: JSON.stringify({
+          usage: {
+            startDate: 1770623326000,
+            endDate: 1772956800000,
+            standard: { orgTotalTokensUsed: 0, totalAllowance: 20000000 },
+            premium: { orgTotalTokensUsed: 0, totalAllowance: 0 },
+          },
+        }),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Standard")).toBeTruthy()
+    expect(usageSawCurrentToken).toBe(true)
   })
 
   it("throws session expired when refresh fails with 401", async () => {
