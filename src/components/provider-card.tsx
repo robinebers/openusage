@@ -348,8 +348,7 @@ function MetricLineRenderer({
   if (line.type === "progress") {
     const resetsAtMs = line.resetsAt ? Date.parse(line.resetsAt) : Number.NaN
     const periodDurationMs = line.periodDurationMs
-    const hasPaceContext = Number.isFinite(resetsAtMs) && Number.isFinite(periodDurationMs)
-    const hasTimeMarkerContext = hasPaceContext && periodDurationMs! > 0
+    const hasPaceContext = Number.isFinite(resetsAtMs) && Number.isFinite(periodDurationMs) && periodDurationMs! > 0
     const shownAmount =
       displayMode === "used"
         ? line.used
@@ -390,7 +389,7 @@ function MetricLineRenderer({
       ? calculatePaceStatus(line.used, line.limit, resetsAtMs, periodDurationMs!, now)
       : null
     const paceStatus = paceResult?.status ?? null
-    const paceMarkerValue = hasTimeMarkerContext && paceStatus && paceStatus !== "on-track"
+    const paceMarkerValue = hasPaceContext
       ? (() => {
           const periodStartMs = resetsAtMs - periodDurationMs!
           const elapsedFraction = clamp01((now - periodStartMs) / periodDurationMs!)
