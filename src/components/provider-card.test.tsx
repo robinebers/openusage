@@ -551,13 +551,15 @@ describe("ProviderCard", () => {
     expect(screen.getByText("90% used at reset")).toBeInTheDocument()
     expect(screen.getByText("Limit in 8h 0m")).toBeInTheDocument()
 
-    // On-track hides the marker (like CodexBar); only ahead + behind show it
+    // All three bars show the pace marker (always visible when hasPaceContext)
     const markers = document.querySelectorAll<HTMLElement>('[data-slot="progress-marker"]')
-    expect(markers).toHaveLength(2)
+    expect(markers).toHaveLength(3)
     expect(markers[0]?.style.left).toBe("50%")
     expect(markers[1]?.style.left).toBe("50%")
+    expect(markers[2]?.style.left).toBe("50%")
     expect(markers[0]).toHaveClass("bg-muted-foreground")
     expect(markers[1]).toHaveClass("bg-muted-foreground")
+    expect(markers[2]).toHaveClass("bg-muted-foreground")
     vi.useRealTimers()
   })
 
@@ -666,7 +668,8 @@ describe("ProviderCard", () => {
       />
     )
     expect(screen.queryByLabelText("Plenty of room")).not.toBeInTheDocument()
-    expect(document.querySelector('[data-slot="progress-marker"]')).toBeNull()
+    // Marker always shows when hasPaceContext (resetsAt + periodDurationMs > 0), even early in period
+    expect(document.querySelector('[data-slot="progress-marker"]')).not.toBeNull()
     vi.useRealTimers()
   })
 
