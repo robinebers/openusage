@@ -898,6 +898,47 @@ describe("factory plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Token expired")
   })
 
+  it("retries with GET when POST returns 405", async () => {
+    const ctx = makeCtx()
+    const futureExp = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
+    ctx.host.fs.writeText("~/.factory/auth.json", JSON.stringify({
+      access_token: makeJwt(futureExp),
+      refresh_token: "refresh",
+    }))
+
+    let calls = []
+    ctx.host.http.request.mockImplementation((opts) => {
+      calls.push(opts)
+      if (opts.method === "POST" && String(opts.url).includes("usage")) {
+        return { status: 405, headers: {}, bodyText: "" }
+      }
+      if (opts.method === "GET" && String(opts.url).includes("usage")) {
+        return {
+          status: 200,
+          headers: {},
+          bodyText: JSON.stringify({
+            usage: {
+              startDate: 1770623326000,
+              endDate: 1772956800000,
+              standard: { orgTotalTokensUsed: 100, totalAllowance: 20000000 },
+              premium: { orgTotalTokensUsed: 0, totalAllowance: 0 },
+            },
+          }),
+        }
+      }
+      return { status: 500, headers: {}, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Standard")).toBeTruthy()
+    const usageCalls = calls.filter((c) => String(c.url).includes("usage"))
+    expect(usageCalls).toHaveLength(2)
+    expect(usageCalls[0].method).toBe("POST")
+    expect(usageCalls[1].method).toBe("GET")
+    expect(usageCalls[1].headers.Authorization).toContain("Bearer ")
+  })
+
   it("infers Basic plan from low allowance", async () => {
     const ctx = makeCtx()
     const futureExp = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
