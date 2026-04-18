@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it, vi } from "vitest"
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 import { makeCtx } from "../test-helpers.js"
 
 let plugin = null
@@ -6,6 +6,11 @@ let plugin = null
 beforeAll(async () => {
   await import("./plugin.js")
   plugin = globalThis.__openusage_plugin
+})
+
+beforeEach(() => {
+  // Reset module-scope rate-limit state so tests don't bleed into each other
+  plugin?._resetState()
 })
 
 const loadPlugin = async () => plugin
@@ -468,13 +473,67 @@ describe("claude plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Token expired")
   })
 
-  it("throws HTTP status details for non-auth usage failures", async () => {
+  it("shows rate limited badge on 429 without throwing", async () => {
     const ctx = makeCtx()
     ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
     ctx.host.fs.exists = () => true
-    ctx.host.http.request.mockReturnValue({ status: 429, bodyText: "" })
+    ctx.host.http.request.mockReturnValue({ status: 429, bodyText: "", headers: {} })
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Usage request failed (HTTP 429)")
+    const result = plugin.probe(ctx)
+    const statusLine = result.lines.find((line) => line.label === "Status")
+    expect(statusLine).toBeTruthy()
+    expect(statusLine.text).toContain("Rate limited")
+    expect(result.lines.find((line) => line.label === "Note")).toBeTruthy()
+  })
+
+  it("shows Retry-After info on 429 when header is present", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
+    ctx.host.fs.exists = () => true
+    ctx.host.http.request.mockReturnValue({
+      status: 429,
+      bodyText: "",
+      headers: { "Retry-After": "600" }, // 10 minutes
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const statusLine = result.lines.find((line) => line.label === "Status")
+    expect(statusLine).toBeTruthy()
+    expect(statusLine.text).toContain("10m")
+    const noteLine = result.lines.find((line) => line.label === "Note")
+    expect(noteLine).toBeTruthy()
+    expect(noteLine.value).toContain("10m")
+  })
+
+  it("shows generic rate limited message when Retry-After is missing", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
+    ctx.host.fs.exists = () => true
+    ctx.host.http.request.mockReturnValue({ status: 429, bodyText: "", headers: {} })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const statusLine = result.lines.find((line) => line.label === "Status")
+    expect(statusLine).toBeTruthy()
+    expect(statusLine.text).toContain("try again later")
+  })
+
+  it("shows retry-now when Retry-After: 0", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
+    ctx.host.fs.exists = () => true
+    ctx.host.http.request.mockReturnValue({
+      status: 429,
+      bodyText: "",
+      headers: { "Retry-After": "0" },
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const statusLine = result.lines.find((line) => line.label === "Status")
+    expect(statusLine).toBeTruthy()
+    expect(statusLine.text).toContain("~now")
+    const noteLine = result.lines.find((line) => line.label === "Note")
+    expect(noteLine).toBeTruthy()
+    expect(noteLine.value).toContain("~now")
   })
 
   it("uses keychain credentials", async () => {
@@ -494,6 +553,59 @@ describe("claude plugin", () => {
     const result = plugin.probe(ctx)
     expect(result.lines.find((line) => line.label === "Sonnet")).toBeTruthy()
     expect(result.lines.find((line) => line.label === "Extra usage spent")).toBeTruthy()
+  })
+
+  it("renders Claude Design line from seven_day_omelette with normalized resetsAt", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.readText = () =>
+      JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
+    ctx.host.fs.exists = () => true
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        seven_day_omelette: { utilization: 7, resets_at: "2099-01-01 00:00:00 UTC" },
+      }),
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const line = result.lines.find((l) => l.label === "Claude Design")
+    expect(line).toBeTruthy()
+    expect(line.used).toBe(7)
+    expect(line.limit).toBe(100)
+    expect(line.format).toEqual({ kind: "percent" })
+    expect(line.resetsAt).toBe("2099-01-01T00:00:00.000Z")
+  })
+
+  it("omits Claude Design line when seven_day_omelette has no utilization", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.readText = () =>
+      JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
+    ctx.host.fs.exists = () => true
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        seven_day_omelette: {},
+      }),
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((l) => l.label === "Claude Design")).toBeUndefined()
+  })
+
+  it("omits Claude Design line when seven_day_omelette utilization is non-numeric", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.readText = () =>
+      JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
+    ctx.host.fs.exists = () => true
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        seven_day_omelette: { utilization: "5", resets_at: "2099-01-01T00:00:00.000Z" },
+      }),
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((l) => l.label === "Claude Design")).toBeUndefined()
   })
 
   it("omits extra usage line when used credits are zero and no limit exists", async () => {
@@ -718,6 +830,8 @@ describe("claude plugin", () => {
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("HTTP 500")
 
+    // Reset lastUsageFetchMs so the second probe is not throttled by min-interval guard
+    plugin._resetState()
     ctx.host.http.request.mockReturnValueOnce({ status: 200, bodyText: "not-json" })
     expect(() => plugin.probe(ctx)).toThrow("Usage response invalid")
   })
@@ -1716,6 +1830,209 @@ describe("claude plugin", () => {
       const last30 = result.lines.find((l) => l.label === "Last 30 Days")
       expect(todayLine.value).toContain("1.5K tokens")
       expect(last30.value).toContain("12K tokens")
+    })
+
+    it("shows rate limited status after all retries exhausted", async () => {
+      const todayKey = localDayKey(new Date())
+      const ctx = makeProbeCtx({
+        ccusageResult: okUsage([
+          { date: todayKey, inputTokens: 100, outputTokens: 50, totalTokens: 150, totalCost: 0.25 },
+        ]),
+      })
+      // All calls return 429
+      ctx.host.http.request.mockReturnValue({
+        status: 429,
+        bodyText: '{"error":"rate limited"}',
+        headers: { "Retry-After": "1200" }, // 20 minutes
+      })
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      expect(result.lines.find((line) => line.label === "Today")).toBeTruthy()
+      const statusLine = result.lines.find((line) => line.label === "Status")
+      expect(statusLine).toBeTruthy()
+      expect(statusLine.text).toContain("20m")
+      const noteLine = result.lines.find((line) => line.label === "Note")
+      expect(noteLine).toBeTruthy()
+      expect(noteLine.value).toContain("20m")
+    })
+  })
+
+  describe("rate limiting (429)", () => {
+    it("parses Retry-After HTTP-date header", async () => {
+      // Freeze time so HTTP-date parsing is deterministic
+      const frozenNow = new Date("2026-04-14T10:00:00.000Z")
+      vi.useFakeTimers()
+      vi.setSystemTime(frozenNow)
+      try {
+        const ctx = makeCtx()
+        ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
+        ctx.host.fs.exists = () => true
+        // 15 minutes after frozenNow → expect "~15m"
+        ctx.host.http.request.mockReturnValue({
+          status: 429,
+          bodyText: "",
+          headers: { "Retry-After": "Mon, 14 Apr 2026 10:15:00 GMT" },
+        })
+        const plugin = await loadPlugin()
+        const result = plugin.probe(ctx)
+        const noteLine = result.lines.find((line) => line.label === "Note")
+        expect(noteLine).toBeTruthy()
+        expect(noteLine.value).toBe("Live usage rate limited — retry in ~15m")
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it("does not call API again while rate-limit window is active", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
+      try {
+        const ctx = makeCtx()
+        ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
+        ctx.host.fs.exists = () => true
+        // Isolate Promoclock so it doesn't add extra calls to ctx.host.http.request
+        ctx.util.requestJson = vi.fn(() => ({ resp: { status: 200, bodyText: "{}", headers: {} }, json: {} }))
+        ctx.host.http.request.mockReturnValue({
+          status: 429,
+          bodyText: "",
+          headers: { "Retry-After": "300" }, // 5 minutes
+        })
+        const plugin = await loadPlugin()
+
+        // First probe — gets 429, stores rateLimitedUntilMs
+        plugin.probe(ctx)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+
+        // Second probe 60 s later — still within window, must NOT call API
+        vi.setSystemTime(new Date("2026-04-14T10:01:00.000Z"))
+        const result2 = plugin.probe(ctx)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(1) // no new request
+        const statusLine = result2.lines.find((l) => l.label === "Status")
+        expect(statusLine).toBeTruthy()
+        expect(statusLine.text).toMatch(/4m/) // ~4 minutes remaining
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it("resumes API calls after rate-limit window expires", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
+      try {
+        const ctx = makeCtx()
+        ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
+        ctx.host.fs.exists = () => true
+        // Isolate Promoclock so it doesn't add extra calls to ctx.host.http.request
+        ctx.util.requestJson = vi.fn(() => ({ resp: { status: 200, bodyText: "{}", headers: {} }, json: {} }))
+        const usageBody = JSON.stringify({ five_hour: { utilization: 50, resets_at: null } })
+        ctx.host.http.request
+          .mockReturnValueOnce({ status: 429, bodyText: "", headers: { "Retry-After": "60" } })
+          .mockReturnValue({ status: 200, bodyText: usageBody, headers: {} })
+        const plugin = await loadPlugin()
+
+        // First probe → 429
+        plugin.probe(ctx)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+
+        // 90 s later — window expired, should attempt API again
+        vi.setSystemTime(new Date("2026-04-14T10:01:30.000Z"))
+        const result2 = plugin.probe(ctx)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(2)
+        // No rate-limited badge after success (amber color = rate-limited)
+        expect(result2.lines.find((l) => l.label === "Status" && l.color === "#f59e0b")).toBeUndefined()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it("skips API call when minimum fetch interval has not elapsed", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
+      try {
+        const ctx = makeCtx()
+        ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
+        ctx.host.fs.exists = () => true
+        // Isolate Promoclock so it doesn't add extra calls to ctx.host.http.request
+        ctx.util.requestJson = vi.fn(() => ({ resp: { status: 200, bodyText: "{}", headers: {} }, json: {} }))
+        ctx.host.http.request.mockReturnValue({ status: 200, bodyText: "{}", headers: {} })
+        const plugin = await loadPlugin()
+
+        // First probe — succeeds
+        plugin.probe(ctx)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+
+        // 30 s later — within MIN_USAGE_FETCH_INTERVAL_MS (5 min), no new request
+        vi.setSystemTime(new Date("2026-04-14T10:00:30.000Z"))
+        plugin.probe(ctx)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+
+        // 5+ minutes later — interval elapsed, should fetch again
+        vi.setSystemTime(new Date("2026-04-14T10:05:01.000Z"))
+        plugin.probe(ctx)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(2)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it("shows cached plan data while rate-limited", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
+      try {
+        const successBody = JSON.stringify({
+          five_hour: { utilization: 42, resets_at: null },
+        })
+        const ctx = makeCtx()
+        ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
+        ctx.host.fs.exists = () => true
+        ctx.host.http.request
+          .mockReturnValueOnce({ status: 200, bodyText: successBody, headers: {} })
+          .mockReturnValue({ status: 429, bodyText: "", headers: { "Retry-After": "300" } })
+        const plugin = await loadPlugin()
+
+        // First probe succeeds → data cached
+        const result1 = plugin.probe(ctx)
+        expect(result1.lines.find((l) => l.label === "Session")).toBeTruthy()
+
+        // Second probe — 429, but cached data is shown alongside rate-limit badge
+        vi.setSystemTime(new Date("2026-04-14T10:05:01.000Z")) // past min interval
+        const result2 = plugin.probe(ctx)
+        expect(result2.lines.find((l) => l.label === "Session")).toBeTruthy()
+        expect(result2.lines.find((l) => l.label === "Status")).toBeTruthy()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it("uses default 5-minute backoff when no Retry-After header on 429", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
+      try {
+        const ctx = makeCtx()
+        ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
+        ctx.host.fs.exists = () => true
+        // Isolate Promoclock so it doesn't add extra calls to ctx.host.http.request
+        ctx.util.requestJson = vi.fn(() => ({ resp: { status: 200, bodyText: "{}", headers: {} }, json: {} }))
+        ctx.host.http.request
+          .mockReturnValueOnce({ status: 429, bodyText: "", headers: {} }) // no Retry-After
+          .mockReturnValue({ status: 200, bodyText: "{}", headers: {} })
+        const plugin = await loadPlugin()
+
+        plugin.probe(ctx)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+
+        // 4 min 59 s later — default 5 min backoff still active
+        vi.setSystemTime(new Date("2026-04-14T10:04:59.000Z"))
+        plugin.probe(ctx)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+
+        // 5 min 1 s later — backoff expired
+        vi.setSystemTime(new Date("2026-04-14T10:05:01.000Z"))
+        plugin.probe(ctx)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(2)
+      } finally {
+        vi.useRealTimers()
+      }
     })
   })
 })
