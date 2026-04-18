@@ -460,22 +460,22 @@
   // --- Probe ---
 
   function probe(ctx) {
-    var proto = loadOAuthTokens(ctx)
+    var dbTokens = loadOAuthTokens(ctx)
 
     var lsResult = probeLs(ctx)
     if (lsResult) return lsResult
 
     var tokens = []
-    if (proto && proto.accessToken) {
-      if (!proto.expirySeconds || proto.expirySeconds > Math.floor(Date.now() / 1000)) {
-        tokens.push(proto.accessToken)
+    if (dbTokens && dbTokens.accessToken) {
+      if (!dbTokens.expirySeconds || dbTokens.expirySeconds > Math.floor(Date.now() / 1000)) {
+        tokens.push(dbTokens.accessToken)
       }
     }
 
     var cached = loadCachedToken(ctx)
     if (cached && tokens.indexOf(cached) === -1) tokens.push(cached)
 
-    if (tokens.length === 0 && !(proto && proto.refreshToken)) {
+    if (tokens.length === 0 && !(dbTokens && dbTokens.refreshToken)) {
       throw "Start Antigravity and try again."
     }
 
@@ -486,8 +486,8 @@
       ccData = null
     }
 
-    if ((!ccData || ccData._authFailed) && proto && proto.refreshToken) {
-      var refreshed = refreshAccessToken(ctx, proto.refreshToken)
+    if ((!ccData || ccData._authFailed) && dbTokens && dbTokens.refreshToken) {
+      var refreshed = refreshAccessToken(ctx, dbTokens.refreshToken)
       if (refreshed) ccData = probeCloudCode(ctx, refreshed)
     }
 

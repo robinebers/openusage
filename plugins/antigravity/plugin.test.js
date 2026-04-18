@@ -502,7 +502,7 @@ describe("antigravity plugin", () => {
     expect(labels).toContain("Claude")
   })
 
-  it("Cloud Code sends correct Authorization header with proto token", async () => {
+  it("Cloud Code sends correct Authorization header with DB token", async () => {
     const ctx = makeCtx()
     const futureExpiry = Math.floor(Date.now() / 1000) + 3600
     setupSqliteMock(ctx, makeOAuthSentinelB64(ctx, { accessToken: "ya29.proto-token", refreshToken: "1//refresh", expirySeconds: futureExpiry }))
@@ -794,7 +794,7 @@ describe("antigravity plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Start Antigravity and try again.")
   })
 
-  it("tries proto token first, then cached on auth failure", async () => {
+  it("tries DB token first, then cached on auth failure", async () => {
     const ctx = makeCtx()
     const futureExpiry = Math.floor(Date.now() / 1000) + 3600
     const protoB64 = makeOAuthSentinelB64(ctx, { accessToken: "ya29.proto-first", refreshToken: "1//refresh", expirySeconds: futureExpiry })
@@ -869,7 +869,7 @@ describe("antigravity plugin", () => {
     expect(result.lines.length).toBeGreaterThan(0)
   })
 
-  it("deduplicates proto access token and identical cached token", async () => {
+  it("deduplicates DB access token and identical cached token", async () => {
     const ctx = makeCtx()
     const futureExpiry = Math.floor(Date.now() / 1000) + 3600
     const protoB64 = makeOAuthSentinelB64(ctx, { accessToken: "ya29.same-token", refreshToken: "1//refresh", expirySeconds: futureExpiry })
@@ -937,7 +937,7 @@ describe("antigravity plugin", () => {
     expect(cached.expiresAtMs).toBeGreaterThan(Date.now())
   })
 
-  it("uses cached token when no proto access token", async () => {
+  it("uses cached token when no DB access token", async () => {
     const ctx = makeCtx()
     setupSqliteMock(ctx, null)
     ctx.host.ls.discover.mockReturnValue(null)
@@ -963,7 +963,7 @@ describe("antigravity plugin", () => {
     expect(capturedTokens[0]).toBe("Bearer ya29.cached-token")
   })
 
-  it("throws when cached token is expired and no proto tokens", async () => {
+  it("throws when cached token is expired and no DB tokens", async () => {
     const ctx = makeCtx()
     setupSqliteMock(ctx, null)
     ctx.host.ls.discover.mockReturnValue(null)
@@ -979,7 +979,7 @@ describe("antigravity plugin", () => {
     expect(ctx.host.http.request).not.toHaveBeenCalled()
   })
 
-  it("skips expired proto access token and falls through to refresh", async () => {
+  it("skips expired DB access token and falls through to refresh", async () => {
     const ctx = makeCtx()
     const pastExpiry = Math.floor(Date.now() / 1000) - 3600
     setupSqliteMock(ctx, makeOAuthSentinelB64(ctx, { accessToken: "ya29.expired-proto-token", refreshToken: "1//refresh", expirySeconds: pastExpiry }))
@@ -1001,12 +1001,12 @@ describe("antigravity plugin", () => {
     const plugin = await loadPlugin()
     plugin.probe(ctx)
 
-    // Expired proto token must NOT be sent. The refreshed token is used instead.
+    // Expired DB token must NOT be sent. The refreshed token is used instead.
     expect(capturedAuths).not.toContain("Bearer ya29.expired-proto-token")
     expect(capturedAuths[0]).toBe("Bearer ya29.refreshed")
   })
 
-  it("throws when cache file is corrupt and no proto tokens", async () => {
+  it("throws when cache file is corrupt and no DB tokens", async () => {
     const ctx = makeCtx()
     setupSqliteMock(ctx, null)
     ctx.host.ls.discover.mockReturnValue(null)
@@ -1210,7 +1210,7 @@ describe("antigravity plugin", () => {
     expect(labels).toEqual(["Gemini Pro", "Claude"])
   })
 
-  it("LS still takes priority over Cloud Code with proto tokens (no regression)", async () => {
+  it("LS still takes priority over Cloud Code with DB tokens (no regression)", async () => {
     const ctx = makeCtx()
     const futureExpiry = Math.floor(Date.now() / 1000) + 3600
     const protoB64 = makeOAuthSentinelB64(ctx, { accessToken: "ya29.proto-token", refreshToken: "1//refresh", expirySeconds: futureExpiry })
@@ -1404,7 +1404,7 @@ describe("antigravity plugin", () => {
     expect(ccCallTokens).toEqual(["Bearer ya29.new"])
   })
 
-  it("proto access token equals cached token: Cloud Code is called exactly once", async () => {
+  it("DB access token equals cached token: Cloud Code is called exactly once", async () => {
     const ctx = makeCtx()
     const futureExpiry = Math.floor(Date.now() / 1000) + 3600
     setupSqliteMock(ctx, makeOAuthSentinelB64(ctx, { accessToken: "ya29.shared", refreshToken: "1//refresh", expirySeconds: futureExpiry }))
