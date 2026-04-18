@@ -13,6 +13,13 @@
     "user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload"
   const REFRESH_BUFFER_MS = 5 * 60 * 1000 // refresh 5 minutes before expiration
 
+  // Rate-limit state persisted across probe() calls (module scope survives re-invocations).
+  const MIN_USAGE_FETCH_INTERVAL_MS = 5 * 60 * 1000  // never poll more than once per 5 min
+  const DEFAULT_RATE_LIMIT_BACKOFF_MS = 5 * 60 * 1000 // fallback when no Retry-After header
+  let rateLimitedUntilMs = 0  // epoch ms; 0 = not rate-limited
+  let lastUsageFetchMs = 0    // epoch ms of the most-recent API attempt
+  let cachedUsageData = null  // last successful API response body (parsed JSON)
+
   function utf8DecodeBytes(bytes) {
     // Prefer native TextDecoder when available (QuickJS may not expose it).
     if (typeof TextDecoder !== "undefined") {
@@ -422,6 +429,30 @@
     })
   }
 
+  function parseRetryAfterSeconds(headers) {
+    if (!headers) return null
+    const raw = headers["retry-after"] ?? headers["Retry-After"]
+    if (raw === undefined || raw === null) return null
+    const str = String(raw).trim()
+    if (!str) return null
+    // Retry-After can be a delay-seconds or HTTP-date (RFC 7231).
+    // 0 means "retry immediately" — return 0 as a valid value.
+    const seconds = parseInt(str, 10)
+    if (Number.isFinite(seconds) && seconds >= 0) return seconds
+    const dateMs = Date.parse(str)
+    if (Number.isFinite(dateMs)) {
+      const delay = Math.ceil((dateMs - Date.now()) / 1000)
+      return delay > 0 ? delay : 0
+    }
+    return null
+  }
+
+  function fmtRateLimitMinutes(seconds) {
+    if (seconds <= 0) return "now"
+    const mins = Math.ceil(seconds / 60)
+    return mins + "m"
+  }
+
   function queryTokenUsage(ctx, homePath) {
     const since = new Date()
     // Inclusive range: today + previous 30 days = 31 calendar days.
@@ -619,60 +650,101 @@
 
     let data = null
     let lines = []
+    let rateLimited = false
+    let retryAfterSeconds = null
     if (canFetchLiveUsage) {
-      // Proactively refresh if token is expired or about to expire
-      if (needsRefresh(ctx, creds.oauth, nowMs)) {
-        ctx.host.log.info("token needs refresh (expired or expiring soon)")
-        const refreshed = refreshToken(ctx, creds)
-        if (refreshed) {
-          accessToken = refreshed
+      if (nowMs < rateLimitedUntilMs) {
+        // Still within a rate-limit window from a previous probe call — skip the
+        // API request entirely and surface the remaining wait time to the user.
+        rateLimited = true
+        retryAfterSeconds = Math.ceil((rateLimitedUntilMs - nowMs) / 1000)
+        data = cachedUsageData
+        ctx.host.log.info("usage fetch skipped: rate-limited for " + retryAfterSeconds + "s more")
+      } else {
+        // Rate-limit window has expired (or was never set).  Check whether we were
+        // previously rate-limited so we can bypass the min-interval guard: a short
+        // Retry-After (< 5 min) must not be swallowed by the normal poll throttle.
+        const wasRateLimited = rateLimitedUntilMs > 0
+        rateLimitedUntilMs = 0
+
+        if (!wasRateLimited && nowMs - lastUsageFetchMs < MIN_USAGE_FETCH_INTERVAL_MS) {
+          // Polled too recently in normal operation — reuse last cached response.
+          data = cachedUsageData
+          ctx.host.log.info(
+            "usage fetch skipped: last fetch was " +
+            Math.round((nowMs - lastUsageFetchMs) / 1000) + "s ago (min interval " +
+            MIN_USAGE_FETCH_INTERVAL_MS / 1000 + "s)"
+          )
         } else {
-          ctx.host.log.warn("proactive refresh failed, trying with existing token")
+        // Proactively refresh if token is expired or about to expire
+        if (needsRefresh(ctx, creds.oauth, nowMs)) {
+          ctx.host.log.info("token needs refresh (expired or expiring soon)")
+          const refreshed = refreshToken(ctx, creds)
+          if (refreshed) {
+            accessToken = refreshed
+          } else {
+            ctx.host.log.warn("proactive refresh failed, trying with existing token")
+          }
         }
-      }
 
-      let resp
-      let didRefresh = false
-      try {
-        resp = ctx.util.retryOnceOnAuth({
-          request: (token) => {
-            try {
-              return fetchUsage(ctx, token || accessToken)
-            } catch (e) {
-              ctx.host.log.error("usage request exception: " + String(e))
-              if (didRefresh) {
-                throw "Usage request failed after refresh. Try again."
+        lastUsageFetchMs = nowMs
+        let resp
+        let didRefresh = false
+        try {
+          resp = ctx.util.retryOnceOnAuth({
+            request: (token) => {
+              try {
+                return fetchUsage(ctx, token || accessToken)
+              } catch (e) {
+                ctx.host.log.error("usage request exception: " + String(e))
+                if (didRefresh) {
+                  throw "Usage request failed after refresh. Try again."
+                }
+                throw "Usage request failed. Check your connection."
               }
-              throw "Usage request failed. Check your connection."
-            }
-          },
-          refresh: () => {
-            ctx.host.log.info("usage returned 401, attempting refresh")
-            didRefresh = true
-            return refreshToken(ctx, creds)
-          },
-        })
-      } catch (e) {
-        if (typeof e === "string") throw e
-        ctx.host.log.error("usage request failed: " + String(e))
-        throw "Usage request failed. Check your connection."
-      }
+            },
+            refresh: () => {
+              ctx.host.log.info("usage returned 401, attempting refresh")
+              didRefresh = true
+              return refreshToken(ctx, creds)
+            },
+          })
+        } catch (e) {
+          if (typeof e === "string") throw e
+          ctx.host.log.error("usage request failed: " + String(e))
+          throw "Usage request failed. Check your connection."
+        }
 
-      if (ctx.util.isAuthStatus(resp.status)) {
-        ctx.host.log.error("usage returned auth error after all retries: status=" + resp.status)
-        throw "Token expired. Run `claude` to log in again."
-      }
+        if (ctx.util.isAuthStatus(resp.status)) {
+          ctx.host.log.error("usage returned auth error after all retries: status=" + resp.status)
+          throw "Token expired. Run `claude` to log in again."
+        }
 
-      if (resp.status < 200 || resp.status >= 300) {
-        ctx.host.log.error("usage returned error: status=" + resp.status)
-        throw "Usage request failed (HTTP " + String(resp.status) + "). Try again later."
-      }
-
-      ctx.host.log.info("usage fetch succeeded")
-
-      data = ctx.util.tryParseJson(resp.bodyText)
-      if (data === null) {
-        throw "Usage response invalid. Try again later."
+        if (resp.status === 429) {
+          rateLimited = true
+          retryAfterSeconds = parseRetryAfterSeconds(resp.headers)
+          const backoffMs = retryAfterSeconds !== null
+            ? retryAfterSeconds * 1000
+            : DEFAULT_RATE_LIMIT_BACKOFF_MS
+          rateLimitedUntilMs = nowMs + backoffMs
+          data = cachedUsageData
+          ctx.host.log.warn(
+            "usage rate limited (429), backing off for " +
+            Math.round(backoffMs / 1000) + "s"
+          )
+        } else if (resp.status < 200 || resp.status >= 300) {
+          ctx.host.log.error("usage returned error: status=" + resp.status)
+          throw "Usage request failed (HTTP " + String(resp.status) + "). Try again later."
+        } else {
+          ctx.host.log.info("usage fetch succeeded")
+          data = ctx.util.tryParseJson(resp.bodyText)
+          if (data === null) {
+            throw "Usage response invalid. Try again later."
+          }
+          cachedUsageData = data
+          rateLimitedUntilMs = 0
+        }
+        } // end fetch else-branch
       }
     } else {
       ctx.host.log.info("skipping live usage fetch for inference-only token")
@@ -720,6 +792,16 @@
           limit: 100,
           format: { kind: "percent" },
           resetsAt: ctx.util.toIso(data.seven_day_sonnet.resets_at),
+          periodDurationMs: 7 * 24 * 60 * 60 * 1000 // 7 days
+        }))
+      }
+      if (data.seven_day_omelette && typeof data.seven_day_omelette.utilization === "number") {
+        lines.push(ctx.line.progress({
+          label: "Claude Design",
+          used: data.seven_day_omelette.utilization,
+          limit: 100,
+          format: { kind: "percent" },
+          resetsAt: ctx.util.toIso(data.seven_day_omelette.resets_at),
           periodDurationMs: 7 * 24 * 60 * 60 * 1000 // 7 days
         }))
       }
@@ -790,7 +872,19 @@
 
     const promoClockLine = fetchPromoClockLine(ctx)
 
-    if (lines.length === 0) {
+    if (rateLimited) {
+      const retryText = retryAfterSeconds !== null
+        ? fmtRateLimitMinutes(retryAfterSeconds)
+        : null
+      const waitText = retryText
+        ? "Rate limited, retry in ~" + retryText
+        : "Rate limited, try again later"
+      lines.unshift(ctx.line.badge({ label: "Status", text: waitText, color: "#f59e0b" }))
+      const noteText = retryText
+        ? "Live usage rate limited — retry in ~" + retryText
+        : "Live usage rate limited — data may be stale"
+      lines.push(ctx.line.text({ label: "Note", value: noteText }))
+    } else if (lines.length === 0) {
       lines.push(ctx.line.badge({ label: "Status", text: "No usage data", color: "#a3a3a3" }))
     }
 
@@ -799,5 +893,13 @@
     return { plan: plan, lines: lines }
   }
 
-  globalThis.__openusage_plugin = { id: "claude", probe }
+  // _resetState is a testing hook — resets module-scope rate-limit state between tests.
+  // The production host never calls this.
+  function _resetState() {
+    rateLimitedUntilMs = 0
+    lastUsageFetchMs = 0
+    cachedUsageData = null
+  }
+
+  globalThis.__openusage_plugin = { id: "claude", probe, _resetState }
 })()

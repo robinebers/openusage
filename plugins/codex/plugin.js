@@ -272,6 +272,14 @@
     return Number.isFinite(n) ? n : null
   }
 
+  function formatCodexPlan(ctx, planType) {
+    const rawPlan = typeof planType === "string" ? planType.trim() : ""
+    if (!rawPlan) return null
+    if (rawPlan.toLowerCase() === "prolite") return "Pro 5x"
+    if (rawPlan.toLowerCase() === "pro") return "Pro 10x"
+    return ctx.fmt.planLabel(rawPlan) || null
+  }
+
   function getResetsAtIso(ctx, nowSec, window) {
     if (!window) return null
     if (typeof window.reset_at === "number") {
@@ -604,7 +612,7 @@
 
       let plan = null
       if (data.plan_type) {
-        const planLabel = ctx.fmt.planLabel(data.plan_type)
+        const planLabel = formatCodexPlan(ctx, data.plan_type)
         if (planLabel) {
           plan = planLabel
         }

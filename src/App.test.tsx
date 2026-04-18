@@ -774,14 +774,17 @@ describe("App", () => {
   })
 
   it("toggles plugins in settings", async () => {
+    // Use already-normalised settings so no init save fires (b is disabled
+    // because "b" is not in DEFAULT_ENABLED_PLUGINS = ["claude","codex","cursor"])
+    state.loadPluginSettingsMock.mockResolvedValue({ order: ["a", "b"], disabled: ["b"] })
     render(<App />)
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
-    const checkboxes = await screen.findAllByRole("checkbox")
-    const pluginCheckbox = checkboxes[checkboxes.length - 1]
-    await userEvent.click(pluginCheckbox)
-    expect(state.savePluginSettingsMock).toHaveBeenCalled()
-    await userEvent.click(pluginCheckbox)
+    // Re-query before each click: the Checkbox remounts on each toggle because
+    // its key includes plugin.enabled, so the reference goes stale after click 1.
+    await userEvent.click((await screen.findAllByRole("checkbox")).at(-1)!)
+    expect(state.savePluginSettingsMock).toHaveBeenCalledTimes(1)
+    await userEvent.click((await screen.findAllByRole("checkbox")).at(-1)!)
     expect(state.savePluginSettingsMock).toHaveBeenCalledTimes(2)
   })
 

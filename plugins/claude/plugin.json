@@ -15,6 +15,7 @@
     { "type": "progress", "label": "Weekly", "scope": "overview" },
     { "type": "badge", "label": "Peak Hours", "scope": "overview" },
     { "type": "progress", "label": "Sonnet", "scope": "detail" },
+    { "type": "progress", "label": "Claude Design", "scope": "detail" },
     { "type": "progress", "label": "Extra usage spent", "scope": "detail" },
     { "type": "text", "label": "Today", "scope": "detail" },
     { "type": "text", "label": "Yesterday", "scope": "detail" },

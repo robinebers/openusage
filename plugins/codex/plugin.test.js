@@ -164,7 +164,39 @@ describe("codex plugin", () => {
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    expect(result.plan).toBeTruthy()
+    expect(result.plan).toBe("Pro 10x")
+    expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+    expect(result.lines.find((line) => line.label === "Weekly")).toBeTruthy()
+    const credits = result.lines.find((line) => line.label === "Credits")
+    expect(credits).toBeTruthy()
+    expect(credits.used).toBe(900)
+  })
+
+  it("maps prolite plan to Pro 5x", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {
+        "x-codex-primary-used-percent": "25",
+        "x-codex-secondary-used-percent": "50",
+        "x-codex-credits-balance": "100",
+      },
+      bodyText: JSON.stringify({
+        plan_type: "prolite",
+        rate_limit: {
+          primary_window: { reset_after_seconds: 60, used_percent: 10 },
+          secondary_window: { reset_after_seconds: 120, used_percent: 20 },
+        },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.plan).toBe("Pro 5x")
     expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
     expect(result.lines.find((line) => line.label === "Weekly")).toBeTruthy()
     const credits = result.lines.find((line) => line.label === "Credits")

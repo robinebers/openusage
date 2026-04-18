@@ -45,6 +45,10 @@ Returns rate limit windows and optional extra credits.
     "utilization": 0,
     "resets_at": "2026-02-01T00:00:00Z"
   },
+  "seven_day_omelette": {           // separate weekly Claude Design limit (optional, plan-dependent)
+    "utilization": 0,
+    "resets_at": "2026-02-01T00:00:00Z"
+  },
   "extra_usage": {                  // on-demand overage credits (optional)
     "is_enabled": true,
     "used_credits": 500,            // cents spent

@@ -1,5 +1,32 @@
 # Changelog
 
+## v0.6.15
+
+### New Features
+- feat(claude): add Claude Design weekly detail metric ([#388](https://github.com/robinebers/openusage/pull/388)) by @robinebers
+- Add CLAUDE.md by @robinebers
+- Add Codex environment config by @robinebers
+
+### Bug Fixes
+- fix(codex): map Codex plan labels to Pro 5x and Pro 10x ([#380](https://github.com/robinebers/openusage/pull/380)) by @arrowarcher1
+- fix(claude): graceful 429 rate limit handling with Retry-After support ([#378](https://github.com/robinebers/openusage/pull/378)) by @zergzorg
+- Update AGENTS.md by @robinebers
+- Star history by @robinebers
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.6.14...v0.6.15](https://github.com/robinebers/openusage/compare/v0.6.14...v0.6.15)
+
+- [cb16571](https://github.com/robinebers/openusage/commit/cb16571d969e7b2de44f9595fe09bcd7f1ed111e) feat(claude): add Claude Design weekly detail metric (#388) by @robinebers
+- [87c45b6](https://github.com/robinebers/openusage/commit/87c45b66663b5d4662cdb6fd8bb46ef4c8ae4c5f) Add CLAUDE.md by @robinebers
+- [455c857](https://github.com/robinebers/openusage/commit/455c857d2a4e2e5543a4295348fca9f70b1a3fcc) Update AGENTS.md by @robinebers
+- [510cbe4](https://github.com/robinebers/openusage/commit/510cbe48651d4c9c58b17a16e3b7c0214244c3f0) fix(codex): map Codex plan labels to Pro 5x and Pro 10x (#380) by @arrowarcher1
+- [0ffe3ad](https://github.com/robinebers/openusage/commit/0ffe3ad85a37b42723c56a494af216ee67978976) fix(claude): graceful 429 rate limit handling with Retry-After support (#378) by @zergzorg
+- [06113d6](https://github.com/robinebers/openusage/commit/06113d6b94c6f8306e67aedf51b42f3f03d8b3e5) Add Codex environment config by @robinebers
+- [abf6cff](https://github.com/robinebers/openusage/commit/abf6cffc3bc110abf306a82d45a67972e725b236) Star history by @robinebers
+
 ## v0.6.14
 
 ### New Features
