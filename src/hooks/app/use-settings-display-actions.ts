@@ -2,6 +2,7 @@ import { useCallback } from "react"
 import {
   saveDisplayMode,
   saveMenubarIconStyle,
+  savePreferMenubarWeeklyLimit,
   saveResetTimerDisplayMode,
   saveThemeMode,
   type DisplayMode,
@@ -18,6 +19,7 @@ type UseSettingsDisplayActionsArgs = {
   resetTimerDisplayMode: ResetTimerDisplayMode
   setResetTimerDisplayMode: (value: ResetTimerDisplayMode) => void
   setMenubarIconStyle: (value: MenubarIconStyle) => void
+  setPreferMenubarWeeklyLimit: (value: boolean) => void
   scheduleTrayIconUpdate: ScheduleTrayIconUpdate
 }
 
@@ -27,6 +29,7 @@ export function useSettingsDisplayActions({
   resetTimerDisplayMode,
   setResetTimerDisplayMode,
   setMenubarIconStyle,
+  setPreferMenubarWeeklyLimit,
   scheduleTrayIconUpdate,
 }: UseSettingsDisplayActionsArgs) {
   const handleThemeModeChange = useCallback((mode: ThemeMode) => {
@@ -64,11 +67,20 @@ export function useSettingsDisplayActions({
     })
   }, [scheduleTrayIconUpdate, setMenubarIconStyle])
 
+  const handlePreferMenubarWeeklyLimitChange = useCallback((value: boolean) => {
+    setPreferMenubarWeeklyLimit(value)
+    scheduleTrayIconUpdate("settings", 0)
+    void savePreferMenubarWeeklyLimit(value).catch((error) => {
+      console.error("Failed to save menubar weekly limit preference:", error)
+    })
+  }, [scheduleTrayIconUpdate, setPreferMenubarWeeklyLimit])
+
   return {
     handleThemeModeChange,
     handleDisplayModeChange,
     handleResetTimerDisplayModeChange,
     handleResetTimerDisplayModeToggle,
     handleMenubarIconStyleChange,
+    handlePreferMenubarWeeklyLimitChange,
   }
 }

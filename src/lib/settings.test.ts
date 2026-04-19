@@ -4,6 +4,7 @@ import {
   DEFAULT_DISPLAY_MODE,
   DEFAULT_GLOBAL_SHORTCUT,
   DEFAULT_MENUBAR_ICON_STYLE,
+  DEFAULT_PREFER_MENUBAR_WEEKLY_LIMIT,
   DEFAULT_PLUGIN_SETTINGS,
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
   DEFAULT_START_ON_LOGIN,
@@ -14,6 +15,7 @@ import {
   loadDisplayMode,
   loadGlobalShortcut,
   loadMenubarIconStyle,
+  loadPreferMenubarWeeklyLimit,
   loadPluginSettings,
   loadResetTimerDisplayMode,
   loadStartOnLogin,
@@ -24,6 +26,7 @@ import {
   saveDisplayMode,
   saveGlobalShortcut,
   saveMenubarIconStyle,
+  savePreferMenubarWeeklyLimit,
   savePluginSettings,
   saveResetTimerDisplayMode,
   saveStartOnLogin,
@@ -259,6 +262,22 @@ describe("settings", () => {
   it("falls back to default for invalid menubar icon style", async () => {
     storeState.set("menubarIconStyle", "invalid")
     await expect(loadMenubarIconStyle()).resolves.toBe(DEFAULT_MENUBAR_ICON_STYLE)
+  })
+
+  it("loads default menubar weekly limit preference when missing", async () => {
+    await expect(loadPreferMenubarWeeklyLimit()).resolves.toBe(
+      DEFAULT_PREFER_MENUBAR_WEEKLY_LIMIT
+    )
+  })
+
+  it("loads stored menubar weekly limit preference", async () => {
+    storeState.set("preferMenubarWeeklyLimit", true)
+    await expect(loadPreferMenubarWeeklyLimit()).resolves.toBe(true)
+  })
+
+  it("saves menubar weekly limit preference", async () => {
+    await savePreferMenubarWeeklyLimit(true)
+    await expect(loadPreferMenubarWeeklyLimit()).resolves.toBe(true)
   })
 
   it("skips legacy tray migration when keys are absent", async () => {

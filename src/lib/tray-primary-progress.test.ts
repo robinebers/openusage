@@ -286,6 +286,104 @@ describe("getTrayPrimaryBars", () => {
     expect(bars).toEqual([{ id: "a", fraction: 0.2 }])
   })
 
+  it("prefers weekly overview line when enabled", () => {
+    const bars = getTrayPrimaryBars({
+      displayMode: "used",
+      preferWeeklyLimit: true,
+      pluginsMeta: [
+        {
+          id: "a",
+          name: "A",
+          iconUrl: "",
+          primaryCandidates: ["Session"],
+          lines: [
+            { type: "progress", label: "Session", scope: "overview" },
+            { type: "progress", label: "Weekly", scope: "overview" },
+          ],
+        },
+      ],
+      pluginSettings: { order: ["a"], disabled: [] },
+      pluginStates: {
+        a: {
+          data: {
+            providerId: "a",
+            displayName: "A",
+            iconUrl: "",
+            lines: [
+              {
+                type: "progress",
+                label: "Session",
+                used: 20,
+                limit: 100,
+                format: { kind: "percent" },
+              },
+              {
+                type: "progress",
+                label: "Weekly",
+                used: 60,
+                limit: 100,
+                format: { kind: "percent" },
+              },
+            ],
+          },
+          loading: false,
+          error: null,
+        },
+      },
+    })
+
+    expect(bars).toEqual([{ id: "a", fraction: 0.6 }])
+  })
+
+  it("falls back to primary candidates when no weekly overview line is available", () => {
+    const bars = getTrayPrimaryBars({
+      displayMode: "used",
+      preferWeeklyLimit: true,
+      pluginsMeta: [
+        {
+          id: "a",
+          name: "A",
+          iconUrl: "",
+          primaryCandidates: ["Session"],
+          lines: [
+            { type: "progress", label: "Session", scope: "overview" },
+            { type: "progress", label: "Monthly", scope: "overview" },
+          ],
+        },
+      ],
+      pluginSettings: { order: ["a"], disabled: [] },
+      pluginStates: {
+        a: {
+          data: {
+            providerId: "a",
+            displayName: "A",
+            iconUrl: "",
+            lines: [
+              {
+                type: "progress",
+                label: "Session",
+                used: 20,
+                limit: 100,
+                format: { kind: "percent" },
+              },
+              {
+                type: "progress",
+                label: "Monthly",
+                used: 60,
+                limit: 100,
+                format: { kind: "percent" },
+              },
+            ],
+          },
+          loading: false,
+          error: null,
+        },
+      },
+    })
+
+    expect(bars).toEqual([{ id: "a", fraction: 0.2 }])
+  })
+
   it("skips plugins with empty primaryCandidates", () => {
     const bars = getTrayPrimaryBars({
       pluginsMeta: [
@@ -303,4 +401,3 @@ describe("getTrayPrimaryBars", () => {
     expect(bars).toEqual([])
   })
 })
-
