@@ -414,7 +414,9 @@ ctx.line.badge({
   label: string,      // Required: label shown on the left
   text: string,       // Required: badge text
   color?: string,     // Optional: hex color for badge border/text
-  subtitle?: string   // Optional: smaller text below the line
+  subtitle?: string,  // Optional: smaller text below the line
+  caption?: string,   // Optional: small muted text rendered between label and badge
+  tooltip?: string    // Optional: title attribute on the badge (overrides default)
 }): MetricLine
 ```
 
@@ -423,6 +425,12 @@ ctx.line.badge({
 ```javascript
 ctx.line.badge({ label: "Plan", text: "Pro", color: "#000000" })
 ctx.line.badge({ label: "Status", text: "Connected", color: "#22c55e" })
+ctx.line.badge({
+  label: "Peak Hours",
+  text: "Off-Peak",
+  caption: "peak in 2h 15m",
+  tooltip: "Peak hours: Weekdays 1pm-7pm UTC · Next change: 4:00 PM",
+})
 ```
 
 ## Formatters

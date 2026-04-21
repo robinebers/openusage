@@ -160,11 +160,13 @@ type MetricLine =
       periodDurationMs?: number; // period length in ms for pace tracking
       color?: string;
     }
-  | { type: "badge"; label: string; text: string; color?: string; subtitle?: string }
+  | { type: "badge"; label: string; text: string; color?: string; subtitle?: string; caption?: string; tooltip?: string }
 ```
 
 - `color`: optional hex string (e.g. `#22c55e`)
 - `subtitle`: optional text displayed below the line in smaller muted text
+- `caption`: optional small muted text rendered between the badge label and the badge itself (badge lines only)
+- `tooltip`: optional string used as the badge's `title` attribute, overriding the default (badge lines only)
 - `resetsAt`: optional ISO timestamp (UI shows "Resets in ..." automatically)
 - `periodDurationMs`: optional period length in milliseconds (enables pace indicator when combined with `resetsAt`)
 
@@ -205,6 +207,12 @@ Status indicator with colored border.
 ```javascript
 ctx.line.badge({ label: "Plan", text: "Pro", color: "#000000" })
 ctx.line.badge({ label: "Status", text: "Connected", color: "#22c55e", subtitle: "Last sync 5m ago" })
+ctx.line.badge({
+  label: "Peak Hours",
+  text: "Off-Peak",
+  caption: "peak in 2h 15m",
+  tooltip: "Peak hours: Weekdays 1pm-7pm UTC · Next change: 4:00 PM",
+})
 ```
 
 ## Error Handling
