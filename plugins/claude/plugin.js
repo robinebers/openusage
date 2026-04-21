@@ -19,6 +19,7 @@
   let rateLimitedUntilMs = 0  // epoch ms; 0 = not rate-limited
   let lastUsageFetchMs = 0    // epoch ms of the most-recent API attempt
   let cachedUsageData = null  // last successful API response body (parsed JSON)
+  let cachedProfileData = null  // last successful /api/oauth/profile body
 
   function utf8DecodeBytes(bytes) {
     // Prefer native TextDecoder when available (QuickJS may not expose it).
@@ -454,6 +455,10 @@
     return mins + "m"
   }
 
+  // 5s rather than fetchUsage's 10s: profile is a best-effort augmentation,
+  // so keep the worst-case added latency bounded when the endpoint is slow.
+  const PROFILE_TIMEOUT_MS = 5000
+
   function profileRequest(ctx, accessToken) {
     const oauthConfig = getOauthConfig(ctx)
     return ctx.util.request({
@@ -466,7 +471,7 @@
         "anthropic-beta": "oauth-2025-04-20",
         "User-Agent": "claude-code/2.1.69",
       },
-      timeoutMs: 10000,
+      timeoutMs: PROFILE_TIMEOUT_MS,
     })
   }
 
@@ -697,6 +702,7 @@
     let lines = []
     let rateLimited = false
     let retryAfterSeconds = null
+    let shouldFetchProfile = false
     if (canFetchLiveUsage) {
       if (nowMs < rateLimitedUntilMs) {
         // Still within a rate-limit window from a previous probe call — skip the
@@ -788,6 +794,9 @@
           }
           cachedUsageData = data
           rateLimitedUntilMs = 0
+          // Piggyback profile only when usage returned 2xx — keeps per-probe
+          // HTTP load at one call when usage is rate-limited or throttled.
+          shouldFetchProfile = true
         }
         } // end fetch else-branch
       }
@@ -795,7 +804,13 @@
       ctx.host.log.info("skipping live usage fetch for inference-only token")
     }
 
-    const profile = canFetchLiveUsage ? fetchProfile(ctx, creds, creds.oauth.accessToken) : null
+    // Piggyback profile on live usage fetches; reuse cached profile when usage
+    // was rate-limited / throttled. Don't replace cache with null on failure.
+    if (shouldFetchProfile) {
+      const fresh = fetchProfile(ctx, creds, creds.oauth.accessToken)
+      if (fresh) cachedProfileData = fresh
+    }
+    const profile = canFetchLiveUsage ? cachedProfileData : null
     const freshOrg = profile && profile.organization
     const freshTier = freshOrg && typeof freshOrg.rate_limit_tier === "string" ? freshOrg.rate_limit_tier : null
     const freshOrgType = freshOrg && typeof freshOrg.organization_type === "string" ? freshOrg.organization_type : null
@@ -809,7 +824,12 @@
       const basePlan = ctx.fmt.planLabel(subscriptionType)
       if (basePlan) {
         let tierSuffix = ""
-        const rlt = String(freshTier || creds.oauth.rateLimitTier || "")
+        // Only fall back to the stored tier when the whole profile fetch
+        // failed; if profile succeeded with a missing tier, trust the empty
+        // value rather than mixing a fresh org type with a stale suffix.
+        const rlt = profile
+          ? String(freshTier || "")
+          : String(creds.oauth.rateLimitTier || "")
         const tierMatch = rlt.match(/(\d+)x/)
         if (tierMatch) {
           tierSuffix = " " + tierMatch[1] + "x"
@@ -953,6 +973,7 @@
     rateLimitedUntilMs = 0
     lastUsageFetchMs = 0
     cachedUsageData = null
+    cachedProfileData = null
   }
 
   globalThis.__openusage_plugin = { id: "claude", probe, _resetState }

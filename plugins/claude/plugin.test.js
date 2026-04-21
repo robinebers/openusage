@@ -417,7 +417,7 @@ describe("claude plugin", () => {
     })
   })
 
-  it("appends max rate limit tier to the plan label when present", async () => {
+  it("appends max rate limit tier to the plan label when profile is unavailable", async () => {
     const runCase = async (rateLimitTier, expectedPlan) => {
       const ctx = makeCtx()
       ctx.host.fs.exists = () => true
@@ -429,11 +429,18 @@ describe("claude plugin", () => {
             rateLimitTier,
           },
         })
-      ctx.host.http.request.mockReturnValue({
-        status: 200,
-        bodyText: JSON.stringify({
-          five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
-        }),
+      ctx.host.http.request.mockImplementation((opts) => {
+        const url = String(opts && opts.url ? opts.url : "")
+        if (url.endsWith("/api/oauth/profile")) {
+          return { status: 503, headers: {}, bodyText: "" }
+        }
+        return {
+          status: 200,
+          headers: {},
+          bodyText: JSON.stringify({
+            five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+          }),
+        }
       })
 
       const plugin = await loadPlugin()
@@ -541,6 +548,46 @@ describe("claude plugin", () => {
     const result = plugin.probe(ctx)
     expect(refreshCalls).toBeGreaterThanOrEqual(1)
     expect(result.plan).toBe("Max 20x")
+  })
+
+  // Regression: don't mix a fresh organization_type with the stored (stale)
+  // rate_limit_tier when the profile payload is partial. Stored tier is only
+  // a fallback for a failed fetch, not for a missing field in a good response.
+  it("does not pair fresh org type with stored tier when profile omits rate_limit_tier", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () =>
+      JSON.stringify({
+        claudeAiOauth: {
+          accessToken: "token",
+          subscriptionType: "max",
+          rateLimitTier: "default_claude_max_5x", // stale
+        },
+      })
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts && opts.url ? opts.url : "")
+      if (url.endsWith("/api/oauth/profile")) {
+        return {
+          status: 200,
+          headers: {},
+          bodyText: JSON.stringify({
+            account: { has_claude_max: true, has_claude_pro: false },
+            organization: { organization_type: "claude_max" }, // no rate_limit_tier
+          }),
+        }
+      }
+      return {
+        status: 200,
+        headers: {},
+        bodyText: JSON.stringify({
+          five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+        }),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.plan).toBe("Max")
   })
 
   it("falls back to stored rateLimitTier when profile fetch fails", async () => {
@@ -2062,10 +2109,11 @@ describe("claude plugin", () => {
         plugin.probe(ctx)
         expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
 
-        // 90 s later — window expired, should attempt API again
+        // 90 s later — window expired, should attempt API again.
+        // Successful usage also triggers the piggybacked profile fetch (+1 call).
         vi.setSystemTime(new Date("2026-04-14T10:01:30.000Z"))
         const result2 = plugin.probe(ctx)
-        expect(ctx.host.http.request).toHaveBeenCalledTimes(2)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(3)
         // No rate-limited badge after success (amber color = rate-limited)
         expect(result2.lines.find((l) => l.label === "Status" && l.color === "#f59e0b")).toBeUndefined()
       } finally {
@@ -2085,19 +2133,19 @@ describe("claude plugin", () => {
         ctx.host.http.request.mockReturnValue({ status: 200, bodyText: "{}", headers: {} })
         const plugin = await loadPlugin()
 
-        // First probe — succeeds
-        plugin.probe(ctx)
-        expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
-
-        // 30 s later — within MIN_USAGE_FETCH_INTERVAL_MS (5 min), no new request
-        vi.setSystemTime(new Date("2026-04-14T10:00:30.000Z"))
-        plugin.probe(ctx)
-        expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
-
-        // 5+ minutes later — interval elapsed, should fetch again
-        vi.setSystemTime(new Date("2026-04-14T10:05:01.000Z"))
+        // First probe — succeeds (usage + piggyback profile = 2 http calls).
         plugin.probe(ctx)
         expect(ctx.host.http.request).toHaveBeenCalledTimes(2)
+
+        // 30 s later — within MIN_USAGE_FETCH_INTERVAL_MS (5 min), no new requests
+        vi.setSystemTime(new Date("2026-04-14T10:00:30.000Z"))
+        plugin.probe(ctx)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(2)
+
+        // 5+ minutes later — interval elapsed, usage + profile fetched again.
+        vi.setSystemTime(new Date("2026-04-14T10:05:01.000Z"))
+        plugin.probe(ctx)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(4)
       } finally {
         vi.useRealTimers()
       }
@@ -2154,10 +2202,11 @@ describe("claude plugin", () => {
         plugin.probe(ctx)
         expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
 
-        // 5 min 1 s later — backoff expired
+        // 5 min 1 s later — backoff expired; usage succeeds and triggers the
+        // piggybacked profile fetch, so +2 HTTP calls.
         vi.setSystemTime(new Date("2026-04-14T10:05:01.000Z"))
         plugin.probe(ctx)
-        expect(ctx.host.http.request).toHaveBeenCalledTimes(2)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(3)
       } finally {
         vi.useRealTimers()
       }
