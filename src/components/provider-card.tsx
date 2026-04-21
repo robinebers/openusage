@@ -321,26 +321,47 @@ function MetricLineRenderer({
   }
 
   if (line.type === "badge") {
+    const badgeStyle = line.color
+      ? { color: line.color, borderColor: line.color }
+      : undefined
+    const badgeElement = line.tooltip ? (
+      <Tooltip>
+        <TooltipTrigger
+          render={(props) => (
+            <Badge
+              {...props}
+              variant="outline"
+              className="truncate min-w-0"
+              style={badgeStyle}
+            >
+              {line.text}
+            </Badge>
+          )}
+        />
+        <TooltipContent side="top" className="text-xs text-center">
+          {line.tooltip}
+        </TooltipContent>
+      </Tooltip>
+    ) : (
+      <Badge
+        variant="outline"
+        className="truncate min-w-0"
+        style={badgeStyle}
+        title={line.text}
+      >
+        {line.text}
+      </Badge>
+    )
+
     return (
       <div>
         <div className="flex justify-between items-center h-[22px] gap-2">
           <span className="text-sm text-muted-foreground flex-shrink-0">{line.label}</span>
           <div className="flex items-center gap-2 min-w-0 max-w-[60%]">
+            {badgeElement}
             {line.caption && (
               <span className="text-xs text-muted-foreground truncate min-w-0">{line.caption}</span>
             )}
-            <Badge
-              variant="outline"
-              className="truncate min-w-0"
-              style={
-                line.color
-                  ? { color: line.color, borderColor: line.color }
-                  : undefined
-              }
-              title={line.tooltip ?? line.text}
-            >
-              {line.text}
-            </Badge>
           </div>
         </div>
         {line.subtitle && (

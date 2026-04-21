@@ -129,8 +129,8 @@ describe("ProviderCard", () => {
     expect(screen.getByText("Off-Peak")).toBeInTheDocument()
   })
 
-  it("uses badge tooltip text on the title attribute", () => {
-    const { container } = render(
+  it("renders badge tooltip text via Tooltip component", () => {
+    render(
       <ProviderCard
         name="BadgeTooltip"
         displayMode="used"
@@ -139,16 +139,14 @@ describe("ProviderCard", () => {
             type: "badge",
             label: "Peak Hours",
             text: "Off-Peak",
-            tooltip: "Peak hours: Weekdays 1pm-7pm UTC · Next change: 4:00 PM",
+            tooltip: "Peak hours: 6:00 AM – 12:00 PM · Next change: 4:00 PM",
           },
         ]}
       />
     )
-    const badge = Array.from(container.querySelectorAll('[title]'))
-      .find((el) => el.textContent === "Off-Peak") as HTMLElement | undefined
-    expect(badge?.getAttribute("title")).toBe(
-      "Peak hours: Weekdays 1pm-7pm UTC · Next change: 4:00 PM"
-    )
+    expect(
+      screen.getByText("Peak hours: 6:00 AM – 12:00 PM · Next change: 4:00 PM")
+    ).toBeInTheDocument()
   })
 
   it("renders badges without caption/tooltip identically (no regression)", () => {

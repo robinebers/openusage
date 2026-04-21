@@ -616,12 +616,47 @@
     return null
   }
 
+  function parseUtcPeakRange(peakHoursStr) {
+    if (typeof peakHoursStr !== "string") return null
+    const m = /(\d{1,2})(?::(\d{2}))?\s*(am|pm)\s*[-–—]\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)\s*utc/i.exec(peakHoursStr)
+    if (!m) return null
+    const to24 = (h, ap) => {
+      let hh = parseInt(h, 10) % 12
+      if (ap.toLowerCase() === "pm") hh += 12
+      return hh
+    }
+    return {
+      startHour: to24(m[1], m[3]),
+      startMin: m[2] ? parseInt(m[2], 10) : 0,
+      endHour: to24(m[4], m[6]),
+      endMin: m[5] ? parseInt(m[5], 10) : 0,
+    }
+  }
+
+  function formatTodayPeakLocal(data, tz) {
+    const range = parseUtcPeakRange(data && data.peakHours)
+    if (!range) return null
+    const start = new Date()
+    start.setUTCHours(range.startHour, range.startMin, 0, 0)
+    const end = new Date()
+    end.setUTCHours(range.endHour, range.endMin, 0, 0)
+    if (end.getTime() <= start.getTime()) {
+      end.setUTCDate(end.getUTCDate() + 1)
+    }
+    const startStr = formatLocalTime(start.toISOString(), tz)
+    const endStr = formatLocalTime(end.toISOString(), tz)
+    if (!startStr || !endStr) return null
+    return startStr + " – " + endStr
+  }
+
   function buildPeakTooltip(data, tz) {
     if (!data || typeof data !== "object") return null
-    const peakHours = typeof data.peakHours === "string" ? data.peakHours.trim() : ""
-    const localTime = formatLocalTime(data.nextChange, tz)
     const parts = []
-    if (peakHours) parts.push("Peak hours: " + peakHours)
+    if (data.isWeekend !== true) {
+      const todayPeak = formatTodayPeakLocal(data, tz)
+      if (todayPeak) parts.push("Peak hours: " + todayPeak)
+    }
+    const localTime = formatLocalTime(data.nextChange, tz)
     if (localTime) parts.push("Next change: " + localTime)
     return parts.length ? parts.join(" · ") : null
   }

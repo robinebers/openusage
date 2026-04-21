@@ -325,7 +325,7 @@ describe("claude plugin", () => {
         color: "#22c55e",
         caption: "peak in 12h",
       })
-      expect(badge.tooltip).toContain("Weekdays 1pm")
+      expect(badge.tooltip).toContain("Peak hours: 1:00 PM – 7:00 PM")
       expect(badge.tooltip).toContain("Next change: 1:00 PM")
     })
 
@@ -384,7 +384,7 @@ describe("claude plugin", () => {
       expect(badge.text).toBe("Off-Peak")
       expect(badge.color).toBe("#22c55e")
       expect(badge.caption).toBe("peak resumes Mon 1pm")
-      expect(badge.tooltip).toContain("Weekdays 1pm")
+      expect(badge.tooltip).toBe("Next change: 1:00 PM")
     })
 
     it("ignores PromoClock failures and still returns Claude usage lines", async () => {
@@ -448,7 +448,7 @@ describe("claude plugin", () => {
       const badge = findBadge(result)
       expect(badge).toBeTruthy()
       expect(badge.caption).toBeUndefined()
-      expect(badge.tooltip).toContain("Weekdays 1pm")
+      expect(badge.tooltip).toBe("Peak hours: 1:00 PM – 7:00 PM")
       expect(badge.tooltip).not.toContain("Next change")
     })
 
