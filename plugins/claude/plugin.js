@@ -564,7 +564,7 @@
     try {
       // Normalize narrow no-break space (U+202F) inserted by recent ICU between
       // time and AM/PM, so consumers can match against a regular ASCII space.
-      return new Date(ms).toLocaleTimeString("en-US", opts).replace(/ /g, " ")
+      return new Date(ms).toLocaleTimeString("en-US", opts).replace(/\u202F/g, " ")
     } catch (e) {
       return null
     }
