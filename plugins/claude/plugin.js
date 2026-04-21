@@ -454,23 +454,36 @@
     return mins + "m"
   }
 
+  function profileRequest(ctx, accessToken) {
+    const oauthConfig = getOauthConfig(ctx)
+    return ctx.util.request({
+      method: "GET",
+      url: oauthConfig.profileUrl,
+      headers: {
+        Authorization: "Bearer " + accessToken.trim(),
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "anthropic-beta": "oauth-2025-04-20",
+        "User-Agent": "claude-code/2.1.69",
+      },
+      timeoutMs: 10000,
+    })
+  }
+
   // Best-effort: returns the parsed profile object, or null on any failure.
   // The stored rateLimitTier/subscriptionType in credentials is a snapshot from
   // login time and does not track plan changes; /api/oauth/profile is live truth.
-  function fetchProfile(ctx, accessToken) {
-    const oauthConfig = getOauthConfig(ctx)
+  // Mirrors fetchUsage's retry-once-on-auth pattern so a refreshable 401/403 is
+  // recovered instead of falling back to the stale local tier.
+  function fetchProfile(ctx, creds, accessToken) {
     let resp
     try {
-      resp = ctx.util.request({
-        method: "GET",
-        url: oauthConfig.profileUrl,
-        headers: {
-          Authorization: "Bearer " + accessToken.trim(),
-          Accept: "application/json",
-          "anthropic-beta": "oauth-2025-04-20",
-          "User-Agent": "claude-code/2.1.69",
+      resp = ctx.util.retryOnceOnAuth({
+        request: (token) => profileRequest(ctx, token || accessToken),
+        refresh: () => {
+          ctx.host.log.info("profile returned auth error, attempting refresh")
+          return refreshToken(ctx, creds)
         },
-        timeoutMs: 10000,
       })
     } catch (e) {
       ctx.host.log.warn("profile fetch exception: " + String(e))
@@ -782,7 +795,7 @@
       ctx.host.log.info("skipping live usage fetch for inference-only token")
     }
 
-    const profile = canFetchLiveUsage ? fetchProfile(ctx, creds.oauth.accessToken) : null
+    const profile = canFetchLiveUsage ? fetchProfile(ctx, creds, creds.oauth.accessToken) : null
     const freshOrg = profile && profile.organization
     const freshTier = freshOrg && typeof freshOrg.rate_limit_tier === "string" ? freshOrg.rate_limit_tier : null
     const freshOrgType = freshOrg && typeof freshOrg.organization_type === "string" ? freshOrg.organization_type : null

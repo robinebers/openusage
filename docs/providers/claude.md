@@ -67,7 +67,16 @@ tier. Used to resolve the plan badge when the locally stored `rateLimitTier` /
 `subscriptionType` have gone stale — those are snapshots written at login time
 and are not refreshed when the user changes plan.
 
-Same headers as `/api/oauth/usage`. Fields consumed:
+#### Headers
+
+| Header | Required | Value |
+|---|---|---|
+| Authorization | yes | `Bearer <access_token>` |
+| Accept | yes | `application/json` |
+| Content-Type | yes | `application/json` |
+| anthropic-beta | yes | `oauth-2025-04-20` |
+
+#### Response (fields consumed)
 
 ```jsonc
 {

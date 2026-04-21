@@ -487,6 +487,62 @@ describe("claude plugin", () => {
     expect(result.plan).toBe("Max 20x")
   })
 
+  it("refreshes token and retries when /api/oauth/profile returns 401", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () =>
+      JSON.stringify({
+        claudeAiOauth: {
+          accessToken: "old",
+          refreshToken: "refresh",
+          subscriptionType: "max",
+          rateLimitTier: "default_claude_max_5x",
+        },
+      })
+
+    let refreshCalls = 0
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts && opts.url ? opts.url : "")
+      const auth = opts && opts.headers ? opts.headers.Authorization : ""
+      if (url.endsWith("/v1/oauth/token")) {
+        refreshCalls += 1
+        return {
+          status: 200,
+          headers: {},
+          bodyText: JSON.stringify({ access_token: "new", expires_in: 3600 }),
+        }
+      }
+      if (url.endsWith("/api/oauth/profile")) {
+        if (auth === "Bearer new") {
+          return {
+            status: 200,
+            headers: {},
+            bodyText: JSON.stringify({
+              account: { has_claude_max: true, has_claude_pro: false },
+              organization: {
+                organization_type: "claude_max",
+                rate_limit_tier: "default_claude_max_20x",
+              },
+            }),
+          }
+        }
+        return { status: 401, headers: {}, bodyText: "" }
+      }
+      return {
+        status: 200,
+        headers: {},
+        bodyText: JSON.stringify({
+          five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+        }),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(refreshCalls).toBeGreaterThanOrEqual(1)
+    expect(result.plan).toBe("Max 20x")
+  })
+
   it("falls back to stored rateLimitTier when profile fetch fails", async () => {
     const ctx = makeCtx()
     ctx.host.fs.exists = () => true
