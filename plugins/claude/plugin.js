@@ -200,6 +200,7 @@
     return {
       baseApiUrl: baseApiUrl,
       usageUrl: baseApiUrl + "/api/oauth/usage",
+      profileUrl: baseApiUrl + "/api/oauth/profile",
       refreshUrl: refreshUrl,
       clientId: clientId,
       oauthFileSuffix: oauthFileSuffix,
@@ -451,6 +452,37 @@
     if (seconds <= 0) return "now"
     const mins = Math.ceil(seconds / 60)
     return mins + "m"
+  }
+
+  // Best-effort: returns the parsed profile object, or null on any failure.
+  // The stored rateLimitTier/subscriptionType in credentials is a snapshot from
+  // login time and does not track plan changes; /api/oauth/profile is live truth.
+  function fetchProfile(ctx, accessToken) {
+    const oauthConfig = getOauthConfig(ctx)
+    let resp
+    try {
+      resp = ctx.util.request({
+        method: "GET",
+        url: oauthConfig.profileUrl,
+        headers: {
+          Authorization: "Bearer " + accessToken.trim(),
+          Accept: "application/json",
+          "anthropic-beta": "oauth-2025-04-20",
+          "User-Agent": "claude-code/2.1.69",
+        },
+        timeoutMs: 10000,
+      })
+    } catch (e) {
+      ctx.host.log.warn("profile fetch exception: " + String(e))
+      return null
+    }
+    if (!resp || resp.status < 200 || resp.status >= 300) {
+      ctx.host.log.warn("profile fetch returned status: " + String(resp && resp.status))
+      return null
+    }
+    const parsed = ctx.util.tryParseJson(resp.bodyText)
+    if (!parsed || typeof parsed !== "object") return null
+    return parsed
   }
 
   function queryTokenUsage(ctx, homePath) {
@@ -750,12 +782,21 @@
       ctx.host.log.info("skipping live usage fetch for inference-only token")
     }
 
+    const profile = canFetchLiveUsage ? fetchProfile(ctx, creds.oauth.accessToken) : null
+    const freshOrg = profile && profile.organization
+    const freshTier = freshOrg && typeof freshOrg.rate_limit_tier === "string" ? freshOrg.rate_limit_tier : null
+    const freshOrgType = freshOrg && typeof freshOrg.organization_type === "string" ? freshOrg.organization_type : null
+
+    let subscriptionType = creds.oauth.subscriptionType
+    if (freshOrgType === "claude_max") subscriptionType = "max"
+    else if (freshOrgType === "claude_pro") subscriptionType = "pro"
+
     let plan = null
-    if (creds.oauth.subscriptionType) {
-      const basePlan = ctx.fmt.planLabel(creds.oauth.subscriptionType)
+    if (subscriptionType) {
+      const basePlan = ctx.fmt.planLabel(subscriptionType)
       if (basePlan) {
         let tierSuffix = ""
-        const rlt = String(creds.oauth.rateLimitTier || "")
+        const rlt = String(freshTier || creds.oauth.rateLimitTier || "")
         const tierMatch = rlt.match(/(\d+)x/)
         if (tierMatch) {
           tierSuffix = " " + tierMatch[1] + "x"

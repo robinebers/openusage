@@ -60,6 +60,32 @@ Returns rate limit windows and optional extra credits.
 
 All windows are enforced simultaneously — hitting any limit throttles the user.
 
+### GET /api/oauth/profile
+
+Returns the authenticated account + organization, including the live subscription
+tier. Used to resolve the plan badge when the locally stored `rateLimitTier` /
+`subscriptionType` have gone stale — those are snapshots written at login time
+and are not refreshed when the user changes plan.
+
+Same headers as `/api/oauth/usage`. Fields consumed:
+
+```jsonc
+{
+  "account": {
+    "has_claude_max": true,
+    "has_claude_pro": false
+  },
+  "organization": {
+    "organization_type": "claude_max",            // or "claude_pro"
+    "rate_limit_tier": "default_claude_max_20x"   // "...Nx" → "Nx" badge suffix
+  }
+}
+```
+
+`organization.rate_limit_tier` is preferred over the local
+`claudeAiOauth.rateLimitTier`. The local value is used only as a fallback when
+the profile call fails (network error, non-2xx, non-JSON).
+
 ## Supplemental Peak Hours Status
 
 OpenUsage also augments the Claude card with PromoClock peak/off-peak status:

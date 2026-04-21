@@ -445,6 +445,78 @@ describe("claude plugin", () => {
     await runCase("claude_max_subscription_5x", "Max 5x")
   })
 
+  // Regression for #394: stored rateLimitTier is a login-time snapshot and
+  // goes stale after a plan change; /api/oauth/profile is live truth.
+  it("prefers /api/oauth/profile rate_limit_tier over stale stored tier", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () =>
+      JSON.stringify({
+        claudeAiOauth: {
+          accessToken: "token",
+          subscriptionType: "max",
+          rateLimitTier: "default_claude_max_5x", // stale
+        },
+      })
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts && opts.url ? opts.url : "")
+      if (url.endsWith("/api/oauth/profile")) {
+        return {
+          status: 200,
+          headers: {},
+          bodyText: JSON.stringify({
+            account: { has_claude_max: true, has_claude_pro: false },
+            organization: {
+              organization_type: "claude_max",
+              rate_limit_tier: "default_claude_max_20x", // fresh
+            },
+          }),
+        }
+      }
+      return {
+        status: 200,
+        headers: {},
+        bodyText: JSON.stringify({
+          five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+        }),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.plan).toBe("Max 20x")
+  })
+
+  it("falls back to stored rateLimitTier when profile fetch fails", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () =>
+      JSON.stringify({
+        claudeAiOauth: {
+          accessToken: "token",
+          subscriptionType: "max",
+          rateLimitTier: "default_claude_max_5x",
+        },
+      })
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts && opts.url ? opts.url : "")
+      if (url.endsWith("/api/oauth/profile")) {
+        return { status: 503, headers: {}, bodyText: "" }
+      }
+      return {
+        status: 200,
+        headers: {},
+        bodyText: JSON.stringify({
+          five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+        }),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.plan).toBe("Max 5x")
+  })
+
   it("omits resetsAt when resets_at is missing", async () => {
     const ctx = makeCtx()
     ctx.host.fs.readText = () =>
