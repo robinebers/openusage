@@ -110,6 +110,61 @@ describe("ProviderCard", () => {
     expect(screen.getByText("342 credits")).toBeInTheDocument()
   })
 
+  it("renders badge caption next to the badge", () => {
+    render(
+      <ProviderCard
+        name="BadgeCaption"
+        displayMode="used"
+        lines={[
+          {
+            type: "badge",
+            label: "Peak Hours",
+            text: "Off-Peak",
+            caption: "peak in 2h 15m",
+          },
+        ]}
+      />
+    )
+    expect(screen.getByText("peak in 2h 15m")).toBeInTheDocument()
+    expect(screen.getByText("Off-Peak")).toBeInTheDocument()
+  })
+
+  it("uses badge tooltip text on the title attribute", () => {
+    const { container } = render(
+      <ProviderCard
+        name="BadgeTooltip"
+        displayMode="used"
+        lines={[
+          {
+            type: "badge",
+            label: "Peak Hours",
+            text: "Off-Peak",
+            tooltip: "Peak hours: Weekdays 1pm-7pm UTC · Next change: 4:00 PM",
+          },
+        ]}
+      />
+    )
+    const badge = Array.from(container.querySelectorAll('[title]'))
+      .find((el) => el.textContent === "Off-Peak") as HTMLElement | undefined
+    expect(badge?.getAttribute("title")).toBe(
+      "Peak hours: Weekdays 1pm-7pm UTC · Next change: 4:00 PM"
+    )
+  })
+
+  it("renders badges without caption/tooltip identically (no regression)", () => {
+    const { container } = render(
+      <ProviderCard
+        name="BadgePlain"
+        displayMode="used"
+        lines={[{ type: "badge", label: "Plan", text: "Pro" }]}
+      />
+    )
+    const badge = Array.from(container.querySelectorAll('[title="Pro"]'))
+      .find((el) => el.textContent === "Pro") as HTMLElement | undefined
+    expect(badge).toBeTruthy()
+    expect(screen.queryByText(/peak in /)).toBeNull()
+  })
+
   it("renders quick links and opens URL", async () => {
     render(
       <ProviderCard

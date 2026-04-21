@@ -323,20 +323,25 @@ function MetricLineRenderer({
   if (line.type === "badge") {
     return (
       <div>
-        <div className="flex justify-between items-center h-[22px]">
+        <div className="flex justify-between items-center h-[22px] gap-2">
           <span className="text-sm text-muted-foreground flex-shrink-0">{line.label}</span>
-          <Badge
-            variant="outline"
-            className="truncate min-w-0 max-w-[60%]"
-            style={
-              line.color
-                ? { color: line.color, borderColor: line.color }
-                : undefined
-            }
-            title={line.text}
-          >
-            {line.text}
-          </Badge>
+          <div className="flex items-center gap-2 min-w-0">
+            {line.caption && (
+              <span className="text-xs text-muted-foreground truncate">{line.caption}</span>
+            )}
+            <Badge
+              variant="outline"
+              className="truncate min-w-0 max-w-[60%]"
+              style={
+                line.color
+                  ? { color: line.color, borderColor: line.color }
+                  : undefined
+              }
+              title={line.tooltip ?? line.text}
+            >
+              {line.text}
+            </Badge>
+          </div>
         </div>
         {line.subtitle && (
           <div className="text-xs text-muted-foreground text-right -mt-0.5">{line.subtitle}</div>
