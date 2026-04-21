@@ -545,6 +545,90 @@
     }))
   }
 
+  function formatCountdown(minutes) {
+    if (!Number.isFinite(minutes) || minutes < 0) return null
+    const m = Math.round(minutes)
+    if (m < 1) return "<1m"
+    if (m < 60) return m + "m"
+    const h = Math.floor(m / 60)
+    const rem = m % 60
+    return rem === 0 ? h + "h" : h + "h " + rem + "m"
+  }
+
+  function formatLocalTime(iso, tz) {
+    if (typeof iso !== "string" || !iso) return null
+    const ms = Date.parse(iso)
+    if (!Number.isFinite(ms)) return null
+    const opts = { hour: "numeric", minute: "2-digit", hour12: true }
+    if (tz) opts.timeZone = tz
+    try {
+      // Normalize narrow no-break space (U+202F) inserted by recent ICU between
+      // time and AM/PM, so consumers can match against a regular ASCII space.
+      return new Date(ms).toLocaleTimeString("en-US", opts).replace(/ /g, " ")
+    } catch (e) {
+      return null
+    }
+  }
+
+  function formatLocalDayHour(iso, tz) {
+    if (typeof iso !== "string" || !iso) return null
+    const ms = Date.parse(iso)
+    if (!Number.isFinite(ms)) return null
+    try {
+      const dayOpts = { weekday: "short" }
+      const hourOpts = { hour: "numeric", hour12: true }
+      if (tz) {
+        dayOpts.timeZone = tz
+        hourOpts.timeZone = tz
+      }
+      const day = new Intl.DateTimeFormat("en-US", dayOpts).format(new Date(ms))
+      const hour = new Intl.DateTimeFormat("en-US", hourOpts)
+        .format(new Date(ms))
+        .toLowerCase()
+        .replace(/[\s ]+/g, "")
+      return day + " " + hour
+    } catch (e) {
+      return null
+    }
+  }
+
+  function buildPeakCaption(ctx, data, tz) {
+    if (!data || typeof data !== "object") return null
+
+    if (data.isWeekend === true) {
+      const phrase = formatLocalDayHour(data.nextChange, tz)
+      return phrase ? "peak resumes " + phrase : null
+    }
+
+    const minutes = Number(data.minutesUntilChange)
+    if (!Number.isFinite(minutes)) return null
+    if (minutes < 0) {
+      ctx.host.log.warn("promoclock minutesUntilChange negative: " + String(minutes))
+      return null
+    }
+
+    const cd = formatCountdown(minutes)
+    if (!cd) return null
+
+    if (data.isPeak === true) return "ends in " + cd
+    if (data.isOffPeak === true) return "peak in " + cd
+
+    const status = typeof data.status === "string" ? data.status.trim().toLowerCase() : ""
+    if (status === "peak") return "ends in " + cd
+    if (status === "off_peak" || status === "off-peak") return "peak in " + cd
+    return null
+  }
+
+  function buildPeakTooltip(data, tz) {
+    if (!data || typeof data !== "object") return null
+    const peakHours = typeof data.peakHours === "string" ? data.peakHours.trim() : ""
+    const localTime = formatLocalTime(data.nextChange, tz)
+    const parts = []
+    if (peakHours) parts.push("Peak hours: " + peakHours)
+    if (localTime) parts.push("Next change: " + localTime)
+    return parts.length ? parts.join(" · ") : null
+  }
+
   function getPromoClockBadgeText(data) {
     if (!data || typeof data !== "object") return null
     if (data.isPeak === true) return "Peak"
@@ -562,7 +646,7 @@
     return null
   }
 
-  function fetchPromoClockLine(ctx) {
+  function fetchPromoClockLine(ctx, tz) {
     let resp
     let json
     try {
@@ -598,14 +682,19 @@
       return null
     }
 
+    const caption = buildPeakCaption(ctx, json, tz)
+    const tooltip = buildPeakTooltip(json, tz)
+
     return ctx.line.badge({
       label: "Peak Hours",
       text: badgeText,
       color: getPromoClockColor(badgeText),
+      caption: caption || undefined,
+      tooltip: tooltip || undefined,
     })
   }
 
-  function probe(ctx) {
+  function probe(ctx, opts) {
     const creds = loadCredentials(ctx)
     if (!creds || !creds.oauth || !creds.oauth.accessToken || !creds.oauth.accessToken.trim()) {
       ctx.host.log.error("probe failed: not logged in")
@@ -788,7 +877,7 @@
       }
     }
 
-    const promoClockLine = fetchPromoClockLine(ctx)
+    const promoClockLine = fetchPromoClockLine(ctx, opts && opts.promoClockTz)
 
     if (lines.length === 0) {
       lines.push(ctx.line.badge({ label: "Status", text: "No usage data", color: "#a3a3a3" }))

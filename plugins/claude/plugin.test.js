@@ -299,7 +299,13 @@ describe("claude plugin", () => {
   })
 
   describe("PromoClock integration", () => {
-    it("maps the real off-peak endpoint payload to the compact badge", async () => {
+    const PROMOCLOCK_TZ = "UTC"
+
+    function findBadge(result) {
+      return result.lines.find((line) => line.label === "Peak Hours")
+    }
+
+    it("maps the real off-peak endpoint payload to the compact badge with caption + tooltip", async () => {
       const ctx = makeCtx()
       ctx.host.fs.readText = () =>
         JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
@@ -307,20 +313,23 @@ describe("claude plugin", () => {
       mockClaudeUsageAndPromoClock(ctx)
 
       const plugin = await loadPlugin()
-      const result = plugin.probe(ctx)
+      const result = plugin.probe(ctx, { promoClockTz: PROMOCLOCK_TZ })
 
       expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
       expect(result.lines.find((line) => line.label === "Weekly")).toBeTruthy()
-      expect(result.lines.find((line) => line.label === "Peak Hours")).toEqual({
+      const badge = findBadge(result)
+      expect(badge).toMatchObject({
         type: "badge",
         label: "Peak Hours",
         text: "Off-Peak",
         color: "#22c55e",
+        caption: "peak in 12h",
       })
-      expect(result.lines.find((line) => line.label === "Next change")).toBeUndefined()
+      expect(badge.tooltip).toContain("Weekdays 1pm")
+      expect(badge.tooltip).toContain("Next change: 1:00 PM")
     })
 
-    it("maps peak PromoClock responses into the badge-only UI", async () => {
+    it("maps peak PromoClock responses with countdown caption", async () => {
       const ctx = makeCtx()
       ctx.host.fs.readText = () =>
         JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
@@ -341,13 +350,16 @@ describe("claude plugin", () => {
       })
 
       const plugin = await loadPlugin()
-      const result = plugin.probe(ctx)
+      const result = plugin.probe(ctx, { promoClockTz: PROMOCLOCK_TZ })
 
-      expect(result.lines.find((line) => line.label === "Peak Hours")?.text).toBe("Peak")
-      expect(result.lines.find((line) => line.label === "Peak Hours")?.color).toBe("#ef4444")
+      const badge = findBadge(result)
+      expect(badge.text).toBe("Peak")
+      expect(badge.color).toBe("#ef4444")
+      expect(badge.caption).toBe("ends in 1h 51m")
+      expect(badge.tooltip).toContain("Next change: 7:00 PM")
     })
 
-    it("treats weekend as off-peak", async () => {
+    it("treats weekend as off-peak with 'peak resumes' caption", async () => {
       const ctx = makeCtx()
       ctx.host.fs.readText = () =>
         JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
@@ -360,14 +372,19 @@ describe("claude plugin", () => {
           isOffPeak: false,
           isWeekend: true,
           label: "Weekend — Normal Speed",
+          nextChange: "2026-04-13T13:00:00.000Z",
+          minutesUntilChange: 60 * 24 * 2,
         },
       })
 
       const plugin = await loadPlugin()
-      const result = plugin.probe(ctx)
+      const result = plugin.probe(ctx, { promoClockTz: PROMOCLOCK_TZ })
 
-      expect(result.lines.find((line) => line.label === "Peak Hours")?.text).toBe("Off-Peak")
-      expect(result.lines.find((line) => line.label === "Peak Hours")?.color).toBe("#22c55e")
+      const badge = findBadge(result)
+      expect(badge.text).toBe("Off-Peak")
+      expect(badge.color).toBe("#22c55e")
+      expect(badge.caption).toBe("peak resumes Mon 1pm")
+      expect(badge.tooltip).toContain("Weekdays 1pm")
     })
 
     it("ignores PromoClock failures and still returns Claude usage lines", async () => {
@@ -385,11 +402,10 @@ describe("claude plugin", () => {
 
       expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
       expect(result.lines.find((line) => line.label === "Weekly")).toBeTruthy()
-      expect(result.lines.find((line) => line.label === "Peak Hours")).toBeUndefined()
-      expect(result.lines.find((line) => line.label === "Next change")).toBeUndefined()
+      expect(findBadge(result)).toBeUndefined()
     })
 
-    it("falls back to status string when boolean flags are absent", async () => {
+    it("falls back to status string when boolean flags are absent (caption still derives from countdown)", async () => {
       const ctx = makeCtx()
       ctx.host.fs.readText = () =>
         JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
@@ -405,10 +421,58 @@ describe("claude plugin", () => {
       })
 
       const plugin = await loadPlugin()
-      const result = plugin.probe(ctx)
+      const result = plugin.probe(ctx, { promoClockTz: PROMOCLOCK_TZ })
 
-      expect(result.lines.find((line) => line.label === "Peak Hours")?.text).toBe("Off-Peak")
-      expect(result.lines.find((line) => line.label === "Peak Hours")?.color).toBe("#22c55e")
+      const badge = findBadge(result)
+      expect(badge.text).toBe("Off-Peak")
+      expect(badge.color).toBe("#22c55e")
+      expect(badge.caption).toBe("peak in 12h")
+    })
+
+    it("omits caption when nextChange is missing but still renders badge + tooltip", async () => {
+      const ctx = makeCtx()
+      ctx.host.fs.readText = () =>
+        JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
+      ctx.host.fs.exists = () => true
+      mockClaudeUsageAndPromoClock(ctx, {
+        promoClockBody: {
+          ...SAMPLE_PROMOCLOCK_RESPONSE,
+          nextChange: undefined,
+          minutesUntilChange: undefined,
+        },
+      })
+
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx, { promoClockTz: PROMOCLOCK_TZ })
+
+      const badge = findBadge(result)
+      expect(badge).toBeTruthy()
+      expect(badge.caption).toBeUndefined()
+      expect(badge.tooltip).toContain("Weekdays 1pm")
+      expect(badge.tooltip).not.toContain("Next change")
+    })
+
+    it("omits caption and logs a warning when minutesUntilChange is negative", async () => {
+      const ctx = makeCtx()
+      ctx.host.fs.readText = () =>
+        JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
+      ctx.host.fs.exists = () => true
+      mockClaudeUsageAndPromoClock(ctx, {
+        promoClockBody: {
+          ...SAMPLE_PROMOCLOCK_RESPONSE,
+          minutesUntilChange: -5,
+        },
+      })
+
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx, { promoClockTz: PROMOCLOCK_TZ })
+
+      const badge = findBadge(result)
+      expect(badge).toBeTruthy()
+      expect(badge.caption).toBeUndefined()
+      expect(ctx.host.log.warn).toHaveBeenCalledWith(
+        expect.stringContaining("promoclock minutesUntilChange negative")
+      )
     })
   })
 
