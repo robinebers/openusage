@@ -585,7 +585,7 @@
       const hour = new Intl.DateTimeFormat("en-US", hourOpts)
         .format(new Date(ms))
         .toLowerCase()
-        .replace(/[\s ]+/g, "")
+        .replace(/[\s ]+/g, "")
       return day + " " + hour
     } catch (e) {
       return null
