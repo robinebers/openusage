@@ -559,37 +559,34 @@
     if (typeof iso !== "string" || !iso) return null
     const ms = Date.parse(iso)
     if (!Number.isFinite(ms)) return null
-    const opts = { hour: "numeric", minute: "2-digit", hour12: true }
-    if (tz) opts.timeZone = tz
-    try {
-      // Normalize narrow no-break space (U+202F) inserted by recent ICU between
-      // time and AM/PM, so consumers can match against a regular ASCII space.
-      return new Date(ms).toLocaleTimeString("en-US", opts).replace(/\u202F/g, " ")
-    } catch (e) {
-      return null
-    }
+    const d = new Date(ms)
+    const useUtc = tz === "UTC"
+    let h = useUtc ? d.getUTCHours() : d.getHours()
+    const m = useUtc ? d.getUTCMinutes() : d.getMinutes()
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return null
+    const ampm = h < 12 ? "AM" : "PM"
+    h = h % 12
+    if (h === 0) h = 12
+    const mm = m < 10 ? "0" + m : String(m)
+    return h + ":" + mm + " " + ampm
   }
 
   function formatLocalDayHour(iso, tz) {
     if (typeof iso !== "string" || !iso) return null
     const ms = Date.parse(iso)
     if (!Number.isFinite(ms)) return null
-    try {
-      const dayOpts = { weekday: "short" }
-      const hourOpts = { hour: "numeric", hour12: true }
-      if (tz) {
-        dayOpts.timeZone = tz
-        hourOpts.timeZone = tz
-      }
-      const day = new Intl.DateTimeFormat("en-US", dayOpts).format(new Date(ms))
-      const hour = new Intl.DateTimeFormat("en-US", hourOpts)
-        .format(new Date(ms))
-        .toLowerCase()
-        .replace(/[\s ]+/g, "")
-      return day + " " + hour
-    } catch (e) {
-      return null
-    }
+    const d = new Date(ms)
+    const useUtc = tz === "UTC"
+    const dayIdx = useUtc ? d.getUTCDay() : d.getDay()
+    let h = useUtc ? d.getUTCHours() : d.getHours()
+    if (!Number.isFinite(dayIdx) || !Number.isFinite(h)) return null
+    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+    const day = dayNames[dayIdx]
+    if (!day) return null
+    const ampm = h < 12 ? "am" : "pm"
+    h = h % 12
+    if (h === 0) h = 12
+    return day + " " + h + ampm
   }
 
   function buildPeakCaption(ctx, data, tz) {
