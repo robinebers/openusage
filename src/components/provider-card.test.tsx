@@ -139,13 +139,13 @@ describe("ProviderCard", () => {
             type: "badge",
             label: "Peak Hours",
             text: "Off-Peak",
-            tooltip: "Peak hours: 6:00 AM – 12:00 PM · Next change: 4:00 PM",
+            tooltip: "Peak hours: 6:00 AM – 12:00 PM",
           },
         ]}
       />
     )
     expect(
-      screen.getByText("Peak hours: 6:00 AM – 12:00 PM · Next change: 4:00 PM")
+      screen.getByText("Peak hours: 6:00 AM – 12:00 PM")
     ).toBeInTheDocument()
   })
 

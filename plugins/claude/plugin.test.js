@@ -325,8 +325,7 @@ describe("claude plugin", () => {
         color: "#22c55e",
         caption: "peak in 12h",
       })
-      expect(badge.tooltip).toContain("Peak hours: 1:00 PM – 7:00 PM")
-      expect(badge.tooltip).toContain("Next change: 1:00 PM")
+      expect(badge.tooltip).toBe("Peak hours: 1:00 PM – 7:00 PM")
     })
 
     it("maps peak PromoClock responses with countdown caption", async () => {
@@ -356,7 +355,7 @@ describe("claude plugin", () => {
       expect(badge.text).toBe("Peak")
       expect(badge.color).toBe("#ef4444")
       expect(badge.caption).toBe("ends in 1h 51m")
-      expect(badge.tooltip).toContain("Next change: 7:00 PM")
+      expect(badge.tooltip).toBe("Peak hours: 1:00 PM – 7:00 PM")
     })
 
     it("treats weekend as off-peak with 'peak resumes' caption", async () => {
@@ -384,7 +383,7 @@ describe("claude plugin", () => {
       expect(badge.text).toBe("Off-Peak")
       expect(badge.color).toBe("#22c55e")
       expect(badge.caption).toBe("peak resumes Mon 1pm")
-      expect(badge.tooltip).toBe("Next change: 1:00 PM")
+      expect(badge.tooltip).toBeUndefined()
     })
 
     it("ignores PromoClock failures and still returns Claude usage lines", async () => {

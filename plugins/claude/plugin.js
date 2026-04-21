@@ -651,14 +651,10 @@
 
   function buildPeakTooltip(data, tz) {
     if (!data || typeof data !== "object") return null
-    const parts = []
-    if (data.isWeekend !== true) {
-      const todayPeak = formatTodayPeakLocal(data, tz)
-      if (todayPeak) parts.push("Peak hours: " + todayPeak)
-    }
-    const localTime = formatLocalTime(data.nextChange, tz)
-    if (localTime) parts.push("Next change: " + localTime)
-    return parts.length ? parts.join(" · ") : null
+    if (data.isWeekend === true) return null
+    const todayPeak = formatTodayPeakLocal(data, tz)
+    if (!todayPeak) return null
+    return "Peak hours: " + todayPeak
   }
 
   function getPromoClockBadgeText(data) {

@@ -211,7 +211,7 @@ ctx.line.badge({
   label: "Peak Hours",
   text: "Off-Peak",
   caption: "peak in 2h 15m",
-  tooltip: "Peak hours: Weekdays 1pm-7pm UTC · Next change: 4:00 PM",
+  tooltip: "Peak hours: 1:00 PM – 7:00 PM",
 })
 ```
 
