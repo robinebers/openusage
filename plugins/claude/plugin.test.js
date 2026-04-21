@@ -620,6 +620,65 @@ describe("claude plugin", () => {
     expect(result.plan).toBe("Max 5x")
   })
 
+  // If the user switches Claude accounts, the new access token won't match the
+  // one cachedProfileData was fetched with. Without invalidation, the old
+  // account's tier would still drive the plan badge while usage is throttled
+  // by MIN_USAGE_FETCH_INTERVAL_MS and the profile fetch is skipped.
+  it("drops cached profile on access-token change to prevent cross-account plan leakage", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
+    try {
+      const ctx = makeCtx()
+      let currentToken = "token_account_a"
+      ctx.host.fs.exists = () => true
+      ctx.host.fs.readText = () =>
+        JSON.stringify({
+          claudeAiOauth: {
+            accessToken: currentToken,
+            subscriptionType: "pro",
+          },
+        })
+      ctx.util.requestJson = vi.fn(() => ({
+        resp: { status: 200, bodyText: "{}", headers: {} },
+        json: {},
+      }))
+      ctx.host.http.request.mockImplementation((opts) => {
+        const url = String(opts && opts.url ? opts.url : "")
+        if (url.endsWith("/api/oauth/profile")) {
+          return {
+            status: 200,
+            headers: {},
+            bodyText: JSON.stringify({
+              organization: {
+                organization_type: "claude_max",
+                rate_limit_tier: "default_claude_max_20x",
+              },
+            }),
+          }
+        }
+        return {
+          status: 200,
+          headers: {},
+          bodyText: JSON.stringify({ five_hour: { utilization: 0 } }),
+        }
+      })
+
+      const plugin = await loadPlugin()
+      const r1 = plugin.probe(ctx)
+      expect(r1.plan).toBe("Max 20x")
+
+      // Simulate account switch: different token loaded from disk. Within the
+      // min-fetch interval, usage (and the piggyback profile call) is skipped,
+      // so only the in-memory cache drives the plan badge.
+      currentToken = "token_account_b"
+      vi.setSystemTime(new Date("2026-04-14T10:02:00.000Z"))
+      const r2 = plugin.probe(ctx)
+      expect(r2.plan).toBe("Pro")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("omits resetsAt when resets_at is missing", async () => {
     const ctx = makeCtx()
     ctx.host.fs.readText = () =>

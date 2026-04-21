@@ -20,6 +20,9 @@
   let lastUsageFetchMs = 0    // epoch ms of the most-recent API attempt
   let cachedUsageData = null  // last successful API response body (parsed JSON)
   let cachedProfileData = null  // last successful /api/oauth/profile body
+  let cachedProfileToken = null  // access token cachedProfileData was fetched with; used to drop
+                                 // the cache on account switch so another account's plan badge
+                                 // never leaks into this probe's output
 
   function utf8DecodeBytes(bytes) {
     // Prefer native TextDecoder when available (QuickJS may not expose it).
@@ -808,7 +811,16 @@
     // was rate-limited / throttled. Don't replace cache with null on failure.
     if (shouldFetchProfile) {
       const fresh = fetchProfile(ctx, creds, creds.oauth.accessToken)
-      if (fresh) cachedProfileData = fresh
+      if (fresh) {
+        cachedProfileData = fresh
+        cachedProfileToken = creds.oauth.accessToken
+      }
+    }
+    // Drop the cached profile if the current access token doesn't match the one
+    // it was fetched with: another account's tier must not leak into this probe.
+    if (cachedProfileToken !== creds.oauth.accessToken) {
+      cachedProfileData = null
+      cachedProfileToken = null
     }
     const profile = canFetchLiveUsage ? cachedProfileData : null
     const freshOrg = profile && profile.organization
@@ -974,6 +986,7 @@
     lastUsageFetchMs = 0
     cachedUsageData = null
     cachedProfileData = null
+    cachedProfileToken = null
   }
 
   globalThis.__openusage_plugin = { id: "claude", probe, _resetState }
