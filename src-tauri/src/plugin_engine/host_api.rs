@@ -854,6 +854,8 @@ pub fn inject_utils(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
                     var line = { type: "badge", label: opts.label, text: opts.text };
                     if (opts.color) line.color = opts.color;
                     if (opts.subtitle) line.subtitle = opts.subtitle;
+                    if (opts.caption) line.caption = opts.caption;
+                    if (opts.tooltip) line.tooltip = opts.tooltip;
                     return line;
                 }
             };

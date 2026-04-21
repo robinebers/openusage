@@ -37,6 +37,8 @@ pub enum MetricLine {
         text: String,
         color: Option<String>,
         subtitle: Option<String>,
+        caption: Option<String>,
+        tooltip: Option<String>,
     },
 }
 
@@ -415,11 +417,15 @@ fn parse_lines(result: &Object) -> Result<Vec<MetricLine>, String> {
             }
             "badge" => {
                 let text = line.get::<_, String>("text").unwrap_or_default();
+                let caption = line.get::<_, String>("caption").ok();
+                let tooltip = line.get::<_, String>("tooltip").ok();
                 out.push(MetricLine::Badge {
                     label,
                     text,
                     color,
                     subtitle,
+                    caption,
+                    tooltip,
                 });
             }
             _ => {
@@ -465,6 +471,8 @@ fn error_line(message: String) -> MetricLine {
         text: message,
         color: Some("#ef4444".to_string()),
         subtitle: None,
+        caption: None,
+        tooltip: None,
     }
 }
 
@@ -559,5 +567,34 @@ mod tests {
             obj.get("resets_at").is_none(),
             "did not expect resets_at key"
         );
+    }
+
+    #[test]
+    fn badge_round_trips_caption_and_tooltip_fields() {
+        let line = MetricLine::Badge {
+            label: "Peak Hours".to_string(),
+            text: "Off-Peak".to_string(),
+            color: None,
+            subtitle: None,
+            caption: Some("ends in 2h 15m".to_string()),
+            tooltip: Some("Peak hours: Weekdays 1pm-7pm UTC".to_string()),
+        };
+
+        let json: JsonValue = serde_json::to_value(&line).expect("serialize");
+        let obj = json.as_object().expect("object");
+        assert_eq!(obj.get("caption").and_then(|v| v.as_str()), Some("ends in 2h 15m"));
+        assert_eq!(
+            obj.get("tooltip").and_then(|v| v.as_str()),
+            Some("Peak hours: Weekdays 1pm-7pm UTC")
+        );
+
+        let back: MetricLine = serde_json::from_value(json).expect("deserialize");
+        match back {
+            MetricLine::Badge { caption, tooltip, .. } => {
+                assert_eq!(caption.as_deref(), Some("ends in 2h 15m"));
+                assert_eq!(tooltip.as_deref(), Some("Peak hours: Weekdays 1pm-7pm UTC"));
+            }
+            _ => panic!("expected Badge variant"),
+        }
     }
 }

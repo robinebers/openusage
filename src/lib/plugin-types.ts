@@ -15,7 +15,7 @@ export type MetricLine =
       periodDurationMs?: number
       color?: string
     }
-  | { type: "badge"; label: string; text: string; color?: string; subtitle?: string }
+  | { type: "badge"; label: string; text: string; color?: string; subtitle?: string; caption?: string; tooltip?: string }
 
 export type ManifestLine = {
   type: "text" | "progress" | "badge"
