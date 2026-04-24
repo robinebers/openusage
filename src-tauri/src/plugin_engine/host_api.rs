@@ -1414,7 +1414,7 @@ fn ls_parse_listening_ports(output: &str) -> Vec<i32> {
 const CCUSAGE_VERSION: &str = "18.0.10";
 const CCUSAGE_CLAUDE_PACKAGE_NAME: &str = "ccusage";
 const CCUSAGE_CODEX_PACKAGE_NAME: &str = "@ccusage/codex";
-const CCUSAGE_TIMEOUT_SECS: u64 = 15;
+const CCUSAGE_TIMEOUT_SECS: u64 = 60;
 const CCUSAGE_POLL_INTERVAL_MS: u64 = 100;
 
 #[derive(Default, serde::Deserialize)]
@@ -1772,64 +1772,27 @@ fn extract_last_json_value(stdout: &str) -> Option<String> {
     None
 }
 
-fn normalize_ccusage_output(stdout: &str) -> Option<String> {
+fn normalize_ccusage_output(stdout: &str) -> Option<serde_json::Value> {
     let json_value = extract_last_json_value(stdout)?;
     let parsed: serde_json::Value = serde_json::from_str(&json_value).ok()?;
 
-    let normalized = match parsed {
-        serde_json::Value::Array(daily) => serde_json::json!({ "daily": daily }),
+    match parsed {
+        serde_json::Value::Array(daily) => Some(serde_json::json!({ "daily": daily })),
         serde_json::Value::Object(map) => {
-            let daily = map.get("daily")?;
-            if !daily.is_array() {
+            if !map.get("daily")?.is_array() {
                 return None;
             }
-            serde_json::Value::Object(map)
+            Some(serde_json::Value::Object(map))
         }
-        _ => return None,
-    };
-
-    serde_json::to_string(&normalized).ok()
+        _ => None,
+    }
 }
 
-fn run_ccusage_with_runner(
-    kind: CcusageRunnerKind,
-    program: &str,
-    opts: &CcusageQueryOpts,
-    provider: CcusageProvider,
+fn spawn_and_wait_ccusage(
+    mut child: std::process::Child,
     plugin_id: &str,
-) -> Option<String> {
-    let args = ccusage_runner_args(kind, opts, provider);
-    let enriched_path = ccusage_enriched_path();
-    let mut command = std::process::Command::new(program);
-    configure_ccusage_command(&mut command, &args, enriched_path.as_deref());
-
-    if let Some(home_path) = ccusage_home_override(opts, provider) {
-        let config = ccusage_provider_config(provider);
-        command.env(config.home_env_var, expand_path(&home_path));
-    }
-
-    let redacted_program = redact_log_message(program);
-
-    log::info!(
-        "[plugin:{}] ccusage query via {} ({})",
-        plugin_id,
-        ccusage_runner_label(kind),
-        redacted_program
-    );
-
-    let mut child = match command.spawn() {
-        Ok(c) => c,
-        Err(e) => {
-            log::warn!(
-                "[plugin:{}] ccusage spawn failed for {}: {}",
-                plugin_id,
-                ccusage_runner_label(kind),
-                e
-            );
-            return None;
-        }
-    };
-
+    label: &str,
+) -> Option<serde_json::Value> {
     // Drain pipes concurrently while the process is running so the child cannot block on full
     // stdout/stderr buffers before exit.
     let mut stdout_reader = child.stdout.take().map(|mut stdout| {
@@ -1863,13 +1826,13 @@ fn run_ccusage_with_runner(
 
                 if status.success() {
                     let out = String::from_utf8_lossy(&stdout);
-                    if let Some(normalized_json) = normalize_ccusage_output(&out) {
-                        return Some(normalized_json);
+                    if let Some(normalized) = normalize_ccusage_output(&out) {
+                        return Some(normalized);
                     }
                     log::warn!(
                         "[plugin:{}] ccusage output parse failed for {}",
                         plugin_id,
-                        ccusage_runner_label(kind)
+                        label
                     );
                     return None;
                 }
@@ -1878,7 +1841,7 @@ fn run_ccusage_with_runner(
                 log::warn!(
                     "[plugin:{}] ccusage failed for {}: {}",
                     plugin_id,
-                    ccusage_runner_label(kind),
+                    label,
                     err.trim()
                 );
                 return None;
@@ -1893,7 +1856,7 @@ fn run_ccusage_with_runner(
                         "[plugin:{}] ccusage timed out after {}s for {}",
                         plugin_id,
                         CCUSAGE_TIMEOUT_SECS,
-                        ccusage_runner_label(kind)
+                        label
                     );
                     return None;
                 }
@@ -1903,13 +1866,134 @@ fn run_ccusage_with_runner(
                 log::warn!(
                     "[plugin:{}] ccusage wait failed for {}: {}",
                     plugin_id,
-                    ccusage_runner_label(kind),
+                    label,
                     e
                 );
                 return None;
             }
         }
     }
+}
+
+fn run_ccusage_with_runner(
+    kind: CcusageRunnerKind,
+    program: &str,
+    opts: &CcusageQueryOpts,
+    provider: CcusageProvider,
+    enriched_path: Option<&OsStr>,
+    plugin_id: &str,
+) -> Option<serde_json::Value> {
+    let args = ccusage_runner_args(kind, opts, provider);
+    let mut command = std::process::Command::new(program);
+    configure_ccusage_command(&mut command, &args, enriched_path);
+
+    if let Some(home_path) = ccusage_home_override(opts, provider) {
+        let config = ccusage_provider_config(provider);
+        command.env(config.home_env_var, expand_path(home_path));
+    }
+
+    let label = ccusage_runner_label(kind);
+    log::info!(
+        "[plugin:{}] ccusage query via {} ({})",
+        plugin_id,
+        label,
+        redact_log_message(program)
+    );
+
+    let child = match command.spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            log::warn!(
+                "[plugin:{}] ccusage spawn failed for {}: {}",
+                plugin_id,
+                label,
+                e
+            );
+            return None;
+        }
+    };
+
+    spawn_and_wait_ccusage(child, plugin_id, label)
+}
+
+fn local_ccusage_candidates(provider: CcusageProvider) -> Vec<String> {
+    let bin = ccusage_provider_config(provider).npm_exec_bin;
+    let mut candidates: Vec<String> = Vec::new();
+    if let Some(home) = dirs::home_dir() {
+        candidates.push(
+            home.join(".bun/bin")
+                .join(bin)
+                .to_string_lossy()
+                .to_string(),
+        );
+    }
+    candidates.extend([
+        format!("/opt/homebrew/bin/{bin}"),
+        format!("/usr/local/bin/{bin}"),
+        bin.to_string(),
+    ]);
+
+    let mut unique = Vec::new();
+    for candidate in candidates {
+        if candidate.is_empty() || unique.iter().any(|c| c == &candidate) {
+            continue;
+        }
+        unique.push(candidate);
+    }
+    unique
+}
+
+fn resolve_local_ccusage_binary(
+    provider: CcusageProvider,
+    enriched_path: Option<&OsStr>,
+) -> Option<String> {
+    for candidate in local_ccusage_candidates(provider) {
+        // Avoid the ~100ms `--version` probe for absolute paths that don't exist. Bare names
+        // (e.g. "ccusage") still go through the spawn probe since PATH resolution is required.
+        let path = Path::new(&candidate);
+        if path.is_absolute() && !path.exists() {
+            continue;
+        }
+        if ccusage_runner_available(&candidate, enriched_path) {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+fn run_local_ccusage(
+    binary: &str,
+    opts: &CcusageQueryOpts,
+    provider: CcusageProvider,
+    enriched_path: Option<&OsStr>,
+    plugin_id: &str,
+) -> Option<serde_json::Value> {
+    let mut args: Vec<String> = Vec::new();
+    append_ccusage_common_args(&mut args, opts);
+
+    let mut command = std::process::Command::new(binary);
+    configure_ccusage_command(&mut command, &args, enriched_path);
+
+    if let Some(home_path) = ccusage_home_override(opts, provider) {
+        let config = ccusage_provider_config(provider);
+        command.env(config.home_env_var, expand_path(home_path));
+    }
+
+    log::info!(
+        "[plugin:{}] ccusage query via local ({})",
+        plugin_id,
+        redact_log_message(binary)
+    );
+
+    let child = match command.spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            log::warn!("[plugin:{}] local ccusage spawn failed: {}", plugin_id, e);
+            return None;
+        }
+    };
+
+    spawn_and_wait_ccusage(child, plugin_id, "local")
 }
 
 fn inject_ccusage<'js>(
@@ -1933,6 +2017,28 @@ fn inject_ccusage<'js>(
                     }
                 };
                 let provider = resolve_ccusage_provider(&opts, &pid);
+                let enriched_path = ccusage_enriched_path();
+
+                // GUI-launched Tauri apps inherit a minimal PATH that omits ~/.bun/bin and
+                // /opt/homebrew/bin, so calling `ccusage` directly fails there. Probe the
+                // usual install locations first and skip bunx/npx (saves a package-manager
+                // resolution + potential network fetch) when the provider binary is local.
+                if let Some(binary) =
+                    resolve_local_ccusage_binary(provider, enriched_path.as_deref())
+                {
+                    if let Some(data) = run_local_ccusage(
+                        &binary,
+                        &opts,
+                        provider,
+                        enriched_path.as_deref(),
+                        &pid,
+                    ) {
+                        return Ok(
+                            serde_json::json!({ "status": "ok", "data": data }).to_string()
+                        );
+                    }
+                }
+
                 let runners = collect_ccusage_runners();
                 if runners.is_empty() {
                     log::warn!("[plugin:{}] no package runner found for ccusage query", pid);
@@ -1940,21 +2046,17 @@ fn inject_ccusage<'js>(
                 }
 
                 for (kind, program) in runners {
-                    if let Some(result) =
-                        run_ccusage_with_runner(kind, &program, &opts, provider, &pid)
-                    {
-                        let data: serde_json::Value = match serde_json::from_str(&result) {
-                            Ok(v) => v,
-                            Err(e) => {
-                                log::warn!(
-                                    "[plugin:{}] ccusage normalized payload parse failed: {}",
-                                    pid,
-                                    e
-                                );
-                                continue;
-                            }
-                        };
-                        return Ok(serde_json::json!({ "status": "ok", "data": data }).to_string());
+                    if let Some(data) = run_ccusage_with_runner(
+                        kind,
+                        &program,
+                        &opts,
+                        provider,
+                        enriched_path.as_deref(),
+                        &pid,
+                    ) {
+                        return Ok(
+                            serde_json::json!({ "status": "ok", "data": data }).to_string()
+                        );
                     }
                 }
 
@@ -3392,8 +3494,7 @@ mod tests {
     #[test]
     fn normalize_ccusage_output_converts_empty_array_to_daily_object() {
         let normalized = normalize_ccusage_output("noise\n[]\n").expect("normalized output");
-        let value: serde_json::Value = serde_json::from_str(&normalized).expect("valid json");
-        assert_eq!(value, serde_json::json!({ "daily": [] }));
+        assert_eq!(normalized, serde_json::json!({ "daily": [] }));
     }
 
     #[test]
@@ -3408,9 +3509,8 @@ Saved lockfile
 }
 "#;
         let normalized = normalize_ccusage_output(output).expect("normalized output");
-        let value: serde_json::Value = serde_json::from_str(&normalized).expect("valid json");
-        assert!(value.get("daily").and_then(|v| v.as_array()).is_some());
-        assert!(value.get("totals").is_some());
+        assert!(normalized.get("daily").and_then(|v| v.as_array()).is_some());
+        assert!(normalized.get("totals").is_some());
     }
 
     #[test]
@@ -3443,5 +3543,77 @@ Saved lockfile
     fn collect_ccusage_runners_returns_empty_when_none_available() {
         let runners = collect_ccusage_runners_with(|_| None);
         assert!(runners.is_empty());
+    }
+
+    #[test]
+    fn local_ccusage_candidates_use_provider_specific_binary_names() {
+        let claude = local_ccusage_candidates(CcusageProvider::Claude);
+        assert!(
+            claude.iter().any(|c| c.ends_with("/.bun/bin/ccusage")),
+            "claude candidates should include ~/.bun/bin/ccusage, got {:?}",
+            claude
+        );
+        assert!(claude.contains(&"/opt/homebrew/bin/ccusage".to_string()));
+        assert!(claude.contains(&"/usr/local/bin/ccusage".to_string()));
+        assert!(claude.contains(&"ccusage".to_string()));
+        assert!(
+            claude.iter().all(|c| !c.contains("ccusage-codex")),
+            "claude candidates must not include ccusage-codex, got {:?}",
+            claude
+        );
+
+        let codex = local_ccusage_candidates(CcusageProvider::Codex);
+        assert!(
+            codex.iter().any(|c| c.ends_with("/.bun/bin/ccusage-codex")),
+            "codex candidates should include ~/.bun/bin/ccusage-codex, got {:?}",
+            codex
+        );
+        assert!(codex.contains(&"/opt/homebrew/bin/ccusage-codex".to_string()));
+        assert!(codex.contains(&"ccusage-codex".to_string()));
+    }
+
+    // End-to-end test that actually invokes the resolver + runner against the
+    // real filesystem. Intentionally `#[ignore]` so CI / default `cargo test`
+    // stays hermetic; run with `cargo test -- --ignored e2e_local_ccusage`.
+    #[test]
+    #[ignore]
+    fn e2e_local_ccusage_returns_real_daily_payload() {
+        let enriched_path = ccusage_enriched_path();
+        let binary = match resolve_local_ccusage_binary(
+            CcusageProvider::Claude,
+            enriched_path.as_deref(),
+        ) {
+            Some(b) => b,
+            None => panic!("no local ccusage binary resolved — install `ccusage` globally"),
+        };
+        eprintln!("resolved binary: {}", binary);
+
+        let opts = CcusageQueryOpts {
+            provider: Some("claude".to_string()),
+            since: Some("20260101".to_string()),
+            until: None,
+            home_path: None,
+            claude_path: None,
+        };
+        let parsed = run_local_ccusage(
+            &binary,
+            &opts,
+            CcusageProvider::Claude,
+            enriched_path.as_deref(),
+            "e2e-test",
+        )
+        .expect("run_local_ccusage produced no output");
+        let daily = parsed
+            .get("daily")
+            .and_then(|v| v.as_array())
+            .expect("payload has `daily` array");
+        eprintln!("daily entries: {}", daily.len());
+        assert!(!daily.is_empty(), "expected at least one daily entry");
+        let first = &daily[0];
+        assert!(first.get("date").is_some(), "daily entry missing `date`");
+        assert!(
+            first.get("totalTokens").is_some(),
+            "daily entry missing `totalTokens`"
+        );
     }
 }
