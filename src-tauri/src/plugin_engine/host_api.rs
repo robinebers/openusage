@@ -3574,7 +3574,7 @@ Saved lockfile
 
     // End-to-end test that actually invokes the resolver + runner against the
     // real filesystem. Intentionally `#[ignore]` so CI / default `cargo test`
-    // stays hermetic; run with `cargo test -- --ignored e2e_local_ccusage`.
+    // stays hermetic; run with `cargo test e2e_local_ccusage_returns_real_daily_payload -- --ignored`.
     #[test]
     #[ignore]
     fn e2e_local_ccusage_returns_real_daily_payload() {
