@@ -331,7 +331,7 @@ describe("App", () => {
     state.saveGlobalShortcutMock.mockResolvedValue(undefined)
     state.loadStartOnLoginMock.mockResolvedValue(false)
     state.saveStartOnLoginMock.mockResolvedValue(undefined)
-    state.loadSessionAlertSettingsMock.mockResolvedValue({ enabledAlerts: [], minutesBefore: 5, sound: "system" })
+    state.loadSessionAlertSettingsMock.mockResolvedValue({ enabledAlerts: [], sound: "system" })
     state.saveSessionAlertSettingsMock.mockResolvedValue(undefined)
     state.requestNotificationPermissionMock.mockResolvedValue("granted")
     state.autostartEnableMock.mockResolvedValue(undefined)

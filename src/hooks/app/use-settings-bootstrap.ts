@@ -13,6 +13,7 @@ import {
   DEFAULT_GLOBAL_SHORTCUT,
   DEFAULT_MENUBAR_ICON_STYLE,
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
+  DEFAULT_SESSION_ALERT_SETTINGS,
   DEFAULT_START_ON_LOGIN,
   DEFAULT_THEME_MODE,
   getEnabledPluginIds,
@@ -157,7 +158,12 @@ export function useSettingsBootstrap({
           console.error("Failed to load menubar icon style:", error)
         }
 
-        let storedSessionAlertSettings = await loadSessionAlertSettings()
+        let storedSessionAlertSettings = DEFAULT_SESSION_ALERT_SETTINGS
+        try {
+          storedSessionAlertSettings = await loadSessionAlertSettings()
+        } catch (error) {
+          console.error("Failed to load session alert settings:", error)
+        }
 
         if (isMounted) {
           setPluginSettings(normalized)

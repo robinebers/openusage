@@ -348,24 +348,23 @@ describe("settings", () => {
   })
 
   it("loads stored session alert settings", async () => {
-    const stored = {
+    storeState.set("sessionAlertSettings", {
       enabledAlerts: ["claude:session", "codex:weekly"],
-      minutesBefore: 10,
       sound: "bundled" as const,
-    }
-    storeState.set("sessionAlertSettings", stored)
-    await expect(loadSessionAlertSettings()).resolves.toEqual(stored)
+    })
+    await expect(loadSessionAlertSettings()).resolves.toEqual({
+      enabledAlerts: ["claude:session", "codex:weekly"],
+      sound: "bundled",
+    })
   })
 
   it("migrates legacy enabledPluginIds to per-metric enabledAlerts", async () => {
     storeState.set("sessionAlertSettings", {
       enabledPluginIds: ["windsurf"],
-      minutesBefore: 10,
       sound: "bundled",
     })
     await expect(loadSessionAlertSettings()).resolves.toEqual({
       enabledAlerts: ["windsurf:daily quota", "windsurf:weekly quota"],
-      minutesBefore: 10,
       sound: "bundled",
     })
   })
@@ -373,13 +372,11 @@ describe("settings", () => {
   it("migrates legacy custom alert sound to bundled", async () => {
     storeState.set("sessionAlertSettings", {
       enabledAlerts: ["claude:session"],
-      minutesBefore: 10,
       sound: "custom",
       customSoundPath: "/path/to/sound.mp3",
     })
     await expect(loadSessionAlertSettings()).resolves.toEqual({
       enabledAlerts: ["claude:session"],
-      minutesBefore: 10,
       sound: "bundled",
     })
   })
@@ -387,7 +384,6 @@ describe("settings", () => {
   it("saves session alert settings", async () => {
     const settings = {
       enabledAlerts: ["claude:session"],
-      minutesBefore: 15,
       sound: "system" as const,
     }
     await saveSessionAlertSettings(settings)
@@ -395,7 +391,7 @@ describe("settings", () => {
   })
 
   it("falls back to default for invalid session alert settings", async () => {
-    storeState.set("sessionAlertSettings", { enabledAlerts: "bad", minutesBefore: "5", sound: 1 })
+    storeState.set("sessionAlertSettings", { enabledAlerts: "bad", sound: 1 })
     await expect(loadSessionAlertSettings()).resolves.toEqual(DEFAULT_SESSION_ALERT_SETTINGS)
   })
 })

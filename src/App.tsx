@@ -18,7 +18,6 @@ import { saveSessionAlertSettings } from "@/lib/settings"
 import { useAppPluginStore } from "@/stores/app-plugin-store"
 import { useAppPreferencesStore } from "@/stores/app-preferences-store"
 import { useAppUiStore } from "@/stores/app-ui-store"
-import { useNotificationPermission } from "@/hooks/use-notification-permission"
 
 const TRAY_PROBE_DEBOUNCE_MS = 500
 const TRAY_SETTINGS_DEBOUNCE_MS = 2000
@@ -134,7 +133,6 @@ function App() {
   })
 
   useSettingsTheme(themeMode)
-  useNotificationPermission()
 
   const {
     handleThemeModeChange,

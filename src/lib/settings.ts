@@ -27,7 +27,6 @@ export type AlertSound = "system" | "bundled";
 
 export type SessionAlertSettings = {
   enabledAlerts: string[];
-  minutesBefore: number;
   sound: AlertSound;
 };
 
@@ -316,7 +315,6 @@ export async function saveStartOnLogin(value: boolean): Promise<void> {
 
 export const DEFAULT_SESSION_ALERT_SETTINGS: SessionAlertSettings = {
   enabledAlerts: [],
-  minutesBefore: 5,
   sound: "system",
 };
 
@@ -334,7 +332,6 @@ function isSessionAlertSettings(value: unknown): value is Record<string, unknown
   if (typeof value !== "object" || value === null) return false;
   const v = value as Record<string, unknown>;
   if (!Array.isArray(v.enabledAlerts) && !Array.isArray(v.enabledPluginIds)) return false;
-  if (typeof v.minutesBefore !== "number") return false;
   if (typeof v.sound !== "string") return false;
   return true;
 }
@@ -355,7 +352,6 @@ export async function loadSessionAlertSettings(): Promise<SessionAlertSettings> 
   }
   return {
     enabledAlerts: alerts,
-    minutesBefore: stored.minutesBefore as number,
     sound: normalizeAlertSound(stored.sound),
   };
 }

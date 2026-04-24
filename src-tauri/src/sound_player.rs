@@ -21,15 +21,21 @@ fn ensure_worker() -> Result<mpsc::Sender<PathBuf>, String> {
     }
 
     let (sender, receiver) = mpsc::channel::<PathBuf>();
+    let (init_tx, init_rx) = mpsc::sync_channel::<Result<(), String>>(1);
     std::thread::spawn(move || {
         let sink_handle = match rodio::DeviceSinkBuilder::open_default_sink() {
             Ok(handle) => handle,
             Err(error) => {
-                log::error!("Failed to open default audio output: {}", error);
+                let message = format!("Failed to open default audio output: {}", error);
+                log::error!("{}", message);
+                let _ = init_tx.send(Err(message));
                 return;
             }
         };
         let player = rodio::Player::connect_new(&sink_handle.mixer());
+        if init_tx.send(Ok(())).is_err() {
+            return;
+        }
 
         for path in receiver {
             match File::open(&path)
@@ -47,8 +53,14 @@ fn ensure_worker() -> Result<mpsc::Sender<PathBuf>, String> {
         }
     });
 
-    *slot = Some(sender.clone());
-    Ok(sender)
+    match init_rx.recv() {
+        Ok(Ok(())) => {
+            *slot = Some(sender.clone());
+            Ok(sender)
+        }
+        Ok(Err(error)) => Err(error),
+        Err(_) => Err("audio worker exited before initialization".to_string()),
+    }
 }
 
 #[tauri::command]

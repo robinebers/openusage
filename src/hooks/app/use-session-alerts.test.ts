@@ -43,7 +43,6 @@ function createPluginState(resetsAt: string, providerId = "claude", displayName 
 
 const defaultSettings: SessionAlertSettings = {
   enabledAlerts: ["claude:session"],
-  minutesBefore: 5,
   sound: "system",
 }
 
