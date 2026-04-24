@@ -61,7 +61,7 @@ vi.mock("@/lib/settings", () => ({
   DEFAULT_GLOBAL_SHORTCUT: null,
   DEFAULT_MENUBAR_ICON_STYLE: "provider",
   DEFAULT_RESET_TIMER_DISPLAY_MODE: "relative",
-  DEFAULT_SESSION_ALERT_SETTINGS: { enabledPluginIds: [], minutesBefore: 5, sound: "default", customSoundPath: null },
+  DEFAULT_SESSION_ALERT_SETTINGS: { enabledAlerts: [], minutesBefore: 5, sound: "system" },
   DEFAULT_START_ON_LOGIN: false,
   DEFAULT_THEME_MODE: "system",
   getEnabledPluginIds: getEnabledPluginIdsMock,
@@ -142,7 +142,7 @@ describe("useSettingsBootstrap", () => {
     loadResetTimerDisplayModeMock.mockResolvedValue("relative")
     loadGlobalShortcutMock.mockResolvedValue("CommandOrControl+Shift+O")
     loadMenubarIconStyleMock.mockResolvedValue("provider")
-    loadSessionAlertSettingsMock.mockResolvedValue({ enabledPluginIds: [], minutesBefore: 5, sound: "default", customSoundPath: null })
+    loadSessionAlertSettingsMock.mockResolvedValue({ enabledAlerts: [], minutesBefore: 5, sound: "system" })
     loadStartOnLoginMock.mockResolvedValue(true)
     migrateLegacyTraySettingsMock.mockResolvedValue(undefined)
     savePluginSettingsMock.mockResolvedValue(undefined)

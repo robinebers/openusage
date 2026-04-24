@@ -349,28 +349,53 @@ describe("settings", () => {
 
   it("loads stored session alert settings", async () => {
     const stored = {
-      enabledPluginIds: ["claude", "codex"],
+      enabledAlerts: ["claude:session", "codex:weekly"],
       minutesBefore: 10,
-      sound: "custom" as const,
-      customSoundPath: "/path/to/sound.mp3",
+      sound: "bundled" as const,
     }
     storeState.set("sessionAlertSettings", stored)
     await expect(loadSessionAlertSettings()).resolves.toEqual(stored)
   })
 
+  it("migrates legacy enabledPluginIds to per-metric enabledAlerts", async () => {
+    storeState.set("sessionAlertSettings", {
+      enabledPluginIds: ["windsurf"],
+      minutesBefore: 10,
+      sound: "bundled",
+    })
+    await expect(loadSessionAlertSettings()).resolves.toEqual({
+      enabledAlerts: ["windsurf:daily quota", "windsurf:weekly quota"],
+      minutesBefore: 10,
+      sound: "bundled",
+    })
+  })
+
+  it("migrates legacy custom alert sound to bundled", async () => {
+    storeState.set("sessionAlertSettings", {
+      enabledAlerts: ["claude:session"],
+      minutesBefore: 10,
+      sound: "custom",
+      customSoundPath: "/path/to/sound.mp3",
+    })
+    await expect(loadSessionAlertSettings()).resolves.toEqual({
+      enabledAlerts: ["claude:session"],
+      minutesBefore: 10,
+      sound: "bundled",
+    })
+  })
+
   it("saves session alert settings", async () => {
     const settings = {
-      enabledPluginIds: ["claude"],
+      enabledAlerts: ["claude:session"],
       minutesBefore: 15,
-      sound: "none" as const,
-      customSoundPath: null,
+      sound: "system" as const,
     }
     await saveSessionAlertSettings(settings)
     await expect(loadSessionAlertSettings()).resolves.toEqual(settings)
   })
 
   it("falls back to default for invalid session alert settings", async () => {
-    storeState.set("sessionAlertSettings", { enabledPluginIds: "bad", minutesBefore: "5", sound: 1 })
+    storeState.set("sessionAlertSettings", { enabledAlerts: "bad", minutesBefore: "5", sound: 1 })
     await expect(loadSessionAlertSettings()).resolves.toEqual(DEFAULT_SESSION_ALERT_SETTINGS)
   })
 })

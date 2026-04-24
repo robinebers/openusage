@@ -15,20 +15,20 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical } from "lucide-react";
+import { useState } from "react";
+import { ChevronDown, ChevronRight, GripVertical } from "lucide-react";
+import { getAlertableLineLabels, buildAlertKey } from "@/lib/notification-sounds";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { GlobalShortcutSection } from "@/components/global-shortcut-section";
 import { getBarFillLayout, getTrayIconSizePx } from "@/lib/tray-bars-icon";
 import {
-  ALERT_MINUTE_OPTIONS,
   ALERT_SOUND_OPTIONS,
   AUTO_UPDATE_OPTIONS,
   DISPLAY_MODE_OPTIONS,
   MENUBAR_ICON_STYLE_OPTIONS,
   RESET_TIMER_DISPLAY_OPTIONS,
   THEME_OPTIONS,
-  type AlertSound,
   type AutoUpdateIntervalMinutes,
   type DisplayMode,
   type GlobalShortcut,
@@ -44,6 +44,88 @@ interface PluginConfig {
   id: string;
   name: string;
   enabled: boolean;
+}
+
+function ProviderAlertRow({
+  plugin,
+  enabledAlerts,
+  onEnabledAlertsChange,
+}: {
+  plugin: PluginConfig;
+  enabledAlerts: string[];
+  onEnabledAlertsChange: (next: string[]) => void;
+}) {
+  const lineLabels = getAlertableLineLabels(plugin.id);
+  const [expanded, setExpanded] = useState(false);
+
+  if (lineLabels.length === 0) {
+    return (
+      <div className="flex items-center gap-2 text-sm select-none text-muted-foreground pl-6">
+        {plugin.name}
+        <span className="text-xs">(no bundled alerts)</span>
+      </div>
+    );
+  }
+
+  const keys = lineLabels.map((label) => buildAlertKey(plugin.id, label));
+  const enabledSet = new Set(enabledAlerts);
+  const enabledCount = keys.filter((k) => enabledSet.has(k)).length;
+  const allChecked = enabledCount === keys.length;
+  const someChecked = enabledCount > 0 && !allChecked;
+
+  const toggleAll = (checked: boolean) => {
+    const other = enabledAlerts.filter((k) => !keys.includes(k));
+    onEnabledAlertsChange(checked ? [...other, ...keys] : other);
+  };
+
+  const toggleOne = (alertKey: string, checked: boolean) => {
+    const next = checked
+      ? [...enabledAlerts, alertKey]
+      : enabledAlerts.filter((k) => k !== alertKey);
+    onEnabledAlertsChange(next);
+  };
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-1 text-sm select-none text-foreground">
+        <button
+          type="button"
+          aria-label={expanded ? "Collapse" : "Expand"}
+          className="p-0.5 text-muted-foreground hover:text-foreground"
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+        </button>
+        <label className="flex items-center gap-2 cursor-pointer flex-1">
+          <Checkbox
+            checked={allChecked}
+            indeterminate={someChecked}
+            onCheckedChange={(c) => toggleAll(c === true)}
+          />
+          {plugin.name}
+        </label>
+      </div>
+      {expanded && (
+        <div className="pl-7 space-y-1">
+          {lineLabels.map((label) => {
+            const alertKey = buildAlertKey(plugin.id, label);
+            return (
+              <label
+                key={alertKey}
+                className="flex items-center gap-2 text-sm select-none text-foreground cursor-pointer"
+              >
+                <Checkbox
+                  checked={enabledSet.has(alertKey)}
+                  onCheckedChange={(c) => toggleOne(alertKey, c === true)}
+                />
+                {label}
+              </label>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 const TRAY_PREVIEW_SIZE_PX = getTrayIconSizePx(1);
@@ -498,64 +580,27 @@ export function SettingsPage({
         </label>
       </section>
       <section>
-        <h3 className="text-lg font-semibold mb-0">Session Alerts</h3>
+        <h3 className="text-lg font-semibold mb-0">Reset Alerts</h3>
         <p className="text-sm text-muted-foreground mb-2">
-          Get notified before sessions reset
+          Get notified when limits reset
         </p>
         <div className="bg-muted/50 rounded-lg p-3 space-y-3">
           <div className="space-y-2">
             <p className="text-sm font-medium">Providers</p>
             <div className="space-y-1">
-              {plugins.map((plugin) => {
-                const isAlertEnabled = sessionAlertSettings.enabledPluginIds.includes(plugin.id);
-                return (
-                  <label
-                    key={plugin.id}
-                    className="flex items-center gap-2 text-sm select-none text-foreground cursor-pointer"
-                  >
-                    <Checkbox
-                      checked={isAlertEnabled}
-                      onCheckedChange={(checked) => {
-                        const nextIds = checked === true
-                          ? [...sessionAlertSettings.enabledPluginIds, plugin.id]
-                          : sessionAlertSettings.enabledPluginIds.filter((id) => id !== plugin.id);
-                        onSessionAlertSettingsChange({
-                          ...sessionAlertSettings,
-                          enabledPluginIds: nextIds,
-                        });
-                      }}
-                    />
-                    {plugin.name}
-                  </label>
-                );
-              })}
-            </div>
-          </div>
-          <div className="space-y-2">
-            <p className="text-sm font-medium">Notify me</p>
-            <div className="flex gap-1" role="radiogroup" aria-label="Minutes before reset">
-              {ALERT_MINUTE_OPTIONS.map((option) => {
-                const isActive = option === sessionAlertSettings.minutesBefore;
-                return (
-                  <Button
-                    key={option}
-                    type="button"
-                    role="radio"
-                    aria-checked={isActive}
-                    variant={isActive ? "default" : "outline"}
-                    size="sm"
-                    className="flex-1"
-                    onClick={() =>
-                      onSessionAlertSettingsChange({
-                        ...sessionAlertSettings,
-                        minutesBefore: option,
-                      })
-                    }
-                  >
-                    {option === 1 ? "1 min" : `${option} min`}
-                  </Button>
-                );
-              })}
+              {plugins.map((plugin) => (
+                <ProviderAlertRow
+                  key={plugin.id}
+                  plugin={plugin}
+                  enabledAlerts={sessionAlertSettings.enabledAlerts}
+                  onEnabledAlertsChange={(next) =>
+                    onSessionAlertSettingsChange({
+                      ...sessionAlertSettings,
+                      enabledAlerts: next,
+                    })
+                  }
+                />
+              ))}
             </div>
           </div>
           <div className="space-y-2">
@@ -584,20 +629,6 @@ export function SettingsPage({
                 );
               })}
             </div>
-            {sessionAlertSettings.sound === "custom" && (
-              <input
-                type="text"
-                placeholder="/path/to/sound.mp3"
-                value={sessionAlertSettings.customSoundPath ?? ""}
-                onChange={(e) =>
-                  onSessionAlertSettingsChange({
-                    ...sessionAlertSettings,
-                    customSoundPath: e.target.value || null,
-                  })
-                }
-                className="w-full mt-1 px-2 py-1 text-sm rounded border bg-background text-foreground border-input focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              />
-            )}
           </div>
         </div>
       </section>

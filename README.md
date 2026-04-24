@@ -16,7 +16,7 @@ OpenUsage lives in your menu bar and shows you how much of your AI coding subscr
 
 - **One glance.** All your AI tools, one panel.
 - **Always up-to-date.** Refreshes automatically on a schedule you pick.
-- **Session reset alerts.** Get notified before your provider sessions reset, with configurable lead time and sound.
+- **Reset alerts.** Get notified when provider limits reset, with system sound or provider-specific OpenUsage sounds.
 - **Global shortcut.** Toggle the panel from anywhere with a customizable keyboard shortcut.
 - **Lightweight.** Opens instantly, stays out of your way.
 - **Plugin-based.** New providers get added without updating the whole app.

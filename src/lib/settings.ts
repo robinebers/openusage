@@ -1,5 +1,6 @@
 import { LazyStore } from "@tauri-apps/plugin-store";
 import type { PluginMeta } from "@/lib/plugin-types";
+import { buildAlertKey, getAlertableLineLabels } from "@/lib/notification-sounds";
 
 // Refresh cooldown duration in milliseconds (5 minutes)
 export const REFRESH_COOLDOWN_MS = 300_000;
@@ -22,13 +23,12 @@ export type MenubarIconStyle = "provider" | "bars" | "donut";
 
 export type GlobalShortcut = string | null;
 
-export type AlertSound = "default" | "none" | "custom";
+export type AlertSound = "system" | "bundled";
 
 export type SessionAlertSettings = {
-  enabledPluginIds: string[];
+  enabledAlerts: string[];
   minutesBefore: number;
   sound: AlertSound;
-  customSoundPath: string | null;
 };
 
 const SETTINGS_STORE_PATH = "settings.json";
@@ -315,38 +315,48 @@ export async function saveStartOnLogin(value: boolean): Promise<void> {
 }
 
 export const DEFAULT_SESSION_ALERT_SETTINGS: SessionAlertSettings = {
-  enabledPluginIds: [],
+  enabledAlerts: [],
   minutesBefore: 5,
-  sound: "default",
-  customSoundPath: null,
+  sound: "system",
 };
 
-export const ALERT_MINUTE_OPTIONS: number[] = [1, 5, 10, 15, 30, 60];
-
 export const ALERT_SOUND_OPTIONS: { value: AlertSound; label: string }[] = [
-  { value: "default", label: "Default" },
-  { value: "none", label: "None" },
-  { value: "custom", label: "Custom" },
+  { value: "system", label: "System" },
+  { value: "bundled", label: "OpenUsage" },
 ];
 
-function isSessionAlertSettings(value: unknown): value is SessionAlertSettings {
+function normalizeAlertSound(value: unknown): AlertSound {
+  if (value === "bundled" || value === "custom") return "bundled";
+  return "system";
+}
+
+function isSessionAlertSettings(value: unknown): value is Record<string, unknown> {
   if (typeof value !== "object" || value === null) return false;
   const v = value as Record<string, unknown>;
-  if (!Array.isArray(v.enabledPluginIds)) return false;
+  if (!Array.isArray(v.enabledAlerts) && !Array.isArray(v.enabledPluginIds)) return false;
   if (typeof v.minutesBefore !== "number") return false;
-  if (!["default", "none", "custom"].includes(v.sound as string)) return false;
-  if (v.customSoundPath !== null && typeof v.customSoundPath !== "string") return false;
+  if (typeof v.sound !== "string") return false;
   return true;
 }
 
 export async function loadSessionAlertSettings(): Promise<SessionAlertSettings> {
   const stored = await store.get<unknown>(SESSION_ALERT_SETTINGS_KEY);
   if (!isSessionAlertSettings(stored)) return { ...DEFAULT_SESSION_ALERT_SETTINGS };
+  const rawAlerts = Array.isArray(stored.enabledAlerts) ? (stored.enabledAlerts as unknown[]) : [];
+  const legacyPluginIds = Array.isArray(stored.enabledPluginIds) ? (stored.enabledPluginIds as unknown[]) : [];
+  const alerts = rawAlerts.filter((id): id is string => typeof id === "string");
+  if (alerts.length === 0 && legacyPluginIds.length > 0) {
+    for (const raw of legacyPluginIds) {
+      if (typeof raw !== "string") continue;
+      for (const label of getAlertableLineLabels(raw)) {
+        alerts.push(buildAlertKey(raw, label));
+      }
+    }
+  }
   return {
-    enabledPluginIds: stored.enabledPluginIds,
-    minutesBefore: stored.minutesBefore,
-    sound: stored.sound,
-    customSoundPath: stored.customSoundPath,
+    enabledAlerts: alerts,
+    minutesBefore: stored.minutesBefore as number,
+    sound: normalizeAlertSound(stored.sound),
   };
 }
 

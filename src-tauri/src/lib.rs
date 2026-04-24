@@ -4,6 +4,7 @@ mod config;
 mod local_http_api;
 mod panel;
 mod plugin_engine;
+mod sound_player;
 mod tray;
 #[cfg(target_os = "macos")]
 mod webkit_config;
@@ -500,7 +501,8 @@ pub fn run() {
             start_probe_batch,
             list_plugins,
             get_log_path,
-            update_global_shortcut
+            update_global_shortcut,
+            sound_player::play_notification_sound
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]

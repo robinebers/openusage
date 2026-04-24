@@ -55,6 +55,7 @@
     ],
     "resources": [
       "resources/bundled_plugins/**/*",
+      "resources/notification_sounds/**/*",
       "icons/tray-icon.png"
     ],
     "createUpdaterArtifacts": true

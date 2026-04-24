@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import type { ReactNode } from "react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest"
@@ -29,6 +29,8 @@ const state = vi.hoisted(() => ({
   saveStartOnLoginMock: vi.fn(),
   loadSessionAlertSettingsMock: vi.fn(),
   saveSessionAlertSettingsMock: vi.fn(),
+  requestNotificationPermissionMock: vi.fn(),
+  sendNotificationMock: vi.fn(),
   autostartEnableMock: vi.fn(),
   autostartDisableMock: vi.fn(),
   autostartIsEnabledMock: vi.fn(),
@@ -204,6 +206,11 @@ vi.mock("@tauri-apps/plugin-autostart", () => ({
   isEnabled: state.autostartIsEnabledMock,
 }))
 
+vi.mock("@tauri-apps/plugin-notification", () => ({
+  requestPermission: state.requestNotificationPermissionMock,
+  sendNotification: state.sendNotificationMock,
+}))
+
 vi.mock("@/lib/tray-bars-icon", async () => {
   const actual = await vi.importActual<typeof import("@/lib/tray-bars-icon")>("@/lib/tray-bars-icon")
   return {
@@ -284,6 +291,8 @@ describe("App", () => {
     state.saveStartOnLoginMock.mockReset()
     state.loadSessionAlertSettingsMock.mockReset()
     state.saveSessionAlertSettingsMock.mockReset()
+    state.requestNotificationPermissionMock.mockReset()
+    state.sendNotificationMock.mockReset()
     state.autostartEnableMock.mockReset()
     state.autostartDisableMock.mockReset()
     state.autostartIsEnabledMock.mockReset()
@@ -322,8 +331,9 @@ describe("App", () => {
     state.saveGlobalShortcutMock.mockResolvedValue(undefined)
     state.loadStartOnLoginMock.mockResolvedValue(false)
     state.saveStartOnLoginMock.mockResolvedValue(undefined)
-    state.loadSessionAlertSettingsMock.mockResolvedValue({ enabledPluginIds: [], minutesBefore: 5, sound: "default", customSoundPath: null })
+    state.loadSessionAlertSettingsMock.mockResolvedValue({ enabledAlerts: [], minutesBefore: 5, sound: "system" })
     state.saveSessionAlertSettingsMock.mockResolvedValue(undefined)
+    state.requestNotificationPermissionMock.mockResolvedValue("granted")
     state.autostartEnableMock.mockResolvedValue(undefined)
     state.autostartDisableMock.mockResolvedValue(undefined)
     state.autostartIsEnabledMock.mockResolvedValue(false)
@@ -388,17 +398,20 @@ describe("App", () => {
     render(<App />)
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
+    const appThemeSection = (await screen.findByText("App Theme")).closest("section")
+    if (!appThemeSection) throw new Error("App Theme section not found")
+    const appTheme = within(appThemeSection)
 
     // Dark
-    await userEvent.click(await screen.findByRole("radio", { name: "Dark" }))
+    await userEvent.click(appTheme.getByRole("radio", { name: "Dark" }))
     expect(document.documentElement.classList.contains("dark")).toBe(true)
 
     // Light
-    await userEvent.click(await screen.findByRole("radio", { name: "Light" }))
+    await userEvent.click(appTheme.getByRole("radio", { name: "Light" }))
     expect(document.documentElement.classList.contains("dark")).toBe(false)
 
     // Back to system should subscribe to matchMedia changes
-    await userEvent.click(await screen.findByRole("radio", { name: "System" }))
+    await userEvent.click(appTheme.getByRole("radio", { name: "System" }))
     expect(mq.addEventListener).toHaveBeenCalled()
 
     mmSpy.mockRestore()

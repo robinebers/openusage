@@ -143,11 +143,12 @@ describe("SettingsPage", () => {
 
   it("renders app theme section with theme options", () => {
     render(<SettingsPage {...defaultProps} />)
-    expect(screen.getByText("App Theme")).toBeInTheDocument()
-    expect(screen.getByText("How it looks around here")).toBeInTheDocument()
-    expect(screen.getByText("System")).toBeInTheDocument()
-    expect(screen.getByText("Light")).toBeInTheDocument()
-    expect(screen.getByText("Dark")).toBeInTheDocument()
+    const appThemeSection = screen.getByText("App Theme").closest("section")
+    if (!appThemeSection) throw new Error("App Theme section not found")
+    expect(appThemeSection).toHaveTextContent("How it looks around here")
+    expect(appThemeSection).toHaveTextContent("System")
+    expect(appThemeSection).toHaveTextContent("Light")
+    expect(appThemeSection).toHaveTextContent("Dark")
   })
 
   it("updates theme mode", async () => {
