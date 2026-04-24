@@ -18,6 +18,10 @@
     "process:allow-restart",
     "global-shortcut:default",
     "autostart:default",
+    "notification:default",
+    "notification:allow-request-permission",
+    "notification:allow-send",
+    "notification:allow-register-listener",
     "core:menu:default"
   ]
 }

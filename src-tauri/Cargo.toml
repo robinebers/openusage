@@ -37,6 +37,7 @@ tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-autostart = "2.5.1"
+tauri-plugin-notification = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 regex-lite = "0.1.9"
 aes-gcm = "0.10.3"

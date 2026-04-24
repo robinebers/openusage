@@ -21,16 +21,20 @@ import { Button } from "@/components/ui/button";
 import { GlobalShortcutSection } from "@/components/global-shortcut-section";
 import { getBarFillLayout, getTrayIconSizePx } from "@/lib/tray-bars-icon";
 import {
+  ALERT_MINUTE_OPTIONS,
+  ALERT_SOUND_OPTIONS,
   AUTO_UPDATE_OPTIONS,
   DISPLAY_MODE_OPTIONS,
   MENUBAR_ICON_STYLE_OPTIONS,
   RESET_TIMER_DISPLAY_OPTIONS,
   THEME_OPTIONS,
+  type AlertSound,
   type AutoUpdateIntervalMinutes,
   type DisplayMode,
   type GlobalShortcut,
   type MenubarIconStyle,
   type ResetTimerDisplayMode,
+  type SessionAlertSettings,
   type ThemeMode,
 } from "@/lib/settings";
 import type { TraySettingsPreview } from "@/hooks/app/use-tray-icon";
@@ -275,6 +279,8 @@ interface SettingsPageProps {
   onGlobalShortcutChange: (value: GlobalShortcut) => void;
   startOnLogin: boolean;
   onStartOnLoginChange: (value: boolean) => void;
+  sessionAlertSettings: SessionAlertSettings;
+  onSessionAlertSettingsChange: (value: SessionAlertSettings) => void;
 }
 
 export function SettingsPage({
@@ -296,6 +302,8 @@ export function SettingsPage({
   onGlobalShortcutChange,
   startOnLogin,
   onStartOnLoginChange,
+  sessionAlertSettings,
+  onSessionAlertSettingsChange,
 }: SettingsPageProps) {
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -488,6 +496,110 @@ export function SettingsPage({
           />
           Start on login
         </label>
+      </section>
+      <section>
+        <h3 className="text-lg font-semibold mb-0">Session Alerts</h3>
+        <p className="text-sm text-muted-foreground mb-2">
+          Get notified before sessions reset
+        </p>
+        <div className="bg-muted/50 rounded-lg p-3 space-y-3">
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Providers</p>
+            <div className="space-y-1">
+              {plugins.map((plugin) => {
+                const isAlertEnabled = sessionAlertSettings.enabledPluginIds.includes(plugin.id);
+                return (
+                  <label
+                    key={plugin.id}
+                    className="flex items-center gap-2 text-sm select-none text-foreground cursor-pointer"
+                  >
+                    <Checkbox
+                      checked={isAlertEnabled}
+                      onCheckedChange={(checked) => {
+                        const nextIds = checked === true
+                          ? [...sessionAlertSettings.enabledPluginIds, plugin.id]
+                          : sessionAlertSettings.enabledPluginIds.filter((id) => id !== plugin.id);
+                        onSessionAlertSettingsChange({
+                          ...sessionAlertSettings,
+                          enabledPluginIds: nextIds,
+                        });
+                      }}
+                    />
+                    {plugin.name}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Notify me</p>
+            <div className="flex gap-1" role="radiogroup" aria-label="Minutes before reset">
+              {ALERT_MINUTE_OPTIONS.map((option) => {
+                const isActive = option === sessionAlertSettings.minutesBefore;
+                return (
+                  <Button
+                    key={option}
+                    type="button"
+                    role="radio"
+                    aria-checked={isActive}
+                    variant={isActive ? "default" : "outline"}
+                    size="sm"
+                    className="flex-1"
+                    onClick={() =>
+                      onSessionAlertSettingsChange({
+                        ...sessionAlertSettings,
+                        minutesBefore: option,
+                      })
+                    }
+                  >
+                    {option === 1 ? "1 min" : `${option} min`}
+                  </Button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Sound</p>
+            <div className="flex gap-1" role="radiogroup" aria-label="Alert sound">
+              {ALERT_SOUND_OPTIONS.map((option) => {
+                const isActive = option.value === sessionAlertSettings.sound;
+                return (
+                  <Button
+                    key={option.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={isActive}
+                    variant={isActive ? "default" : "outline"}
+                    size="sm"
+                    className="flex-1"
+                    onClick={() =>
+                      onSessionAlertSettingsChange({
+                        ...sessionAlertSettings,
+                        sound: option.value,
+                      })
+                    }
+                  >
+                    {option.label}
+                  </Button>
+                );
+              })}
+            </div>
+            {sessionAlertSettings.sound === "custom" && (
+              <input
+                type="text"
+                placeholder="/path/to/sound.mp3"
+                value={sessionAlertSettings.customSoundPath ?? ""}
+                onChange={(e) =>
+                  onSessionAlertSettingsChange({
+                    ...sessionAlertSettings,
+                    customSoundPath: e.target.value || null,
+                  })
+                }
+                className="w-full mt-1 px-2 py-1 text-sm rounded border bg-background text-foreground border-input focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
+            )}
+          </div>
+        </div>
       </section>
       <section>
         <h3 className="text-lg font-semibold mb-0">Plugins</h3>

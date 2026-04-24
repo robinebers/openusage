@@ -15,6 +15,7 @@ const {
   loadMenubarIconStyleMock,
   loadPluginSettingsMock,
   loadResetTimerDisplayModeMock,
+  loadSessionAlertSettingsMock,
   loadStartOnLoginMock,
   loadThemeModeMock,
   migrateLegacyTraySettingsMock,
@@ -34,6 +35,7 @@ const {
   loadMenubarIconStyleMock: vi.fn(),
   loadPluginSettingsMock: vi.fn(),
   loadResetTimerDisplayModeMock: vi.fn(),
+  loadSessionAlertSettingsMock: vi.fn(),
   loadStartOnLoginMock: vi.fn(),
   loadThemeModeMock: vi.fn(),
   migrateLegacyTraySettingsMock: vi.fn(),
@@ -59,6 +61,7 @@ vi.mock("@/lib/settings", () => ({
   DEFAULT_GLOBAL_SHORTCUT: null,
   DEFAULT_MENUBAR_ICON_STYLE: "provider",
   DEFAULT_RESET_TIMER_DISPLAY_MODE: "relative",
+  DEFAULT_SESSION_ALERT_SETTINGS: { enabledPluginIds: [], minutesBefore: 5, sound: "default", customSoundPath: null },
   DEFAULT_START_ON_LOGIN: false,
   DEFAULT_THEME_MODE: "system",
   getEnabledPluginIds: getEnabledPluginIdsMock,
@@ -68,6 +71,7 @@ vi.mock("@/lib/settings", () => ({
   loadMenubarIconStyle: loadMenubarIconStyleMock,
   loadPluginSettings: loadPluginSettingsMock,
   loadResetTimerDisplayMode: loadResetTimerDisplayModeMock,
+  loadSessionAlertSettings: loadSessionAlertSettingsMock,
   loadStartOnLogin: loadStartOnLoginMock,
   loadThemeMode: loadThemeModeMock,
   migrateLegacyTraySettings: migrateLegacyTraySettingsMock,
@@ -88,6 +92,7 @@ function createArgs() {
     setGlobalShortcut: vi.fn(),
     setStartOnLogin: vi.fn(),
     setMenubarIconStyle: vi.fn(),
+    setSessionAlertSettings: vi.fn(),
     setLoadingForPlugins: vi.fn(),
     setErrorForPlugins: vi.fn(),
     startBatch: vi.fn().mockResolvedValue(undefined),
@@ -109,6 +114,7 @@ describe("useSettingsBootstrap", () => {
     loadMenubarIconStyleMock.mockReset()
     loadPluginSettingsMock.mockReset()
     loadResetTimerDisplayModeMock.mockReset()
+    loadSessionAlertSettingsMock.mockReset()
     loadStartOnLoginMock.mockReset()
     loadThemeModeMock.mockReset()
     migrateLegacyTraySettingsMock.mockReset()
@@ -136,6 +142,7 @@ describe("useSettingsBootstrap", () => {
     loadResetTimerDisplayModeMock.mockResolvedValue("relative")
     loadGlobalShortcutMock.mockResolvedValue("CommandOrControl+Shift+O")
     loadMenubarIconStyleMock.mockResolvedValue("provider")
+    loadSessionAlertSettingsMock.mockResolvedValue({ enabledPluginIds: [], minutesBefore: 5, sound: "default", customSoundPath: null })
     loadStartOnLoginMock.mockResolvedValue(true)
     migrateLegacyTraySettingsMock.mockResolvedValue(undefined)
     savePluginSettingsMock.mockResolvedValue(undefined)

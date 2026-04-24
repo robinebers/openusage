@@ -13,6 +13,8 @@ import { useTrayIcon } from "@/hooks/app/use-tray-icon"
 import { track } from "@/lib/analytics"
 import { REFRESH_COOLDOWN_MS, savePluginSettings } from "@/lib/settings"
 import { type PluginContextAction } from "@/components/side-nav"
+import { useSessionAlerts } from "@/hooks/app/use-session-alerts"
+import { saveSessionAlertSettings } from "@/lib/settings"
 import { useAppPluginStore } from "@/stores/app-plugin-store"
 import { useAppPreferencesStore } from "@/stores/app-preferences-store"
 import { useAppUiStore } from "@/stores/app-ui-store"
@@ -58,6 +60,8 @@ function App() {
     setResetTimerDisplayMode,
     setGlobalShortcut,
     setStartOnLogin,
+    sessionAlertSettings,
+    setSessionAlertSettings,
   } = useAppPreferencesStore(
     useShallow((state) => ({
       autoUpdateInterval: state.autoUpdateInterval,
@@ -72,6 +76,8 @@ function App() {
       setResetTimerDisplayMode: state.setResetTimerDisplayMode,
       setGlobalShortcut: state.setGlobalShortcut,
       setStartOnLogin: state.setStartOnLogin,
+      sessionAlertSettings: state.sessionAlertSettings,
+      setSessionAlertSettings: state.setSessionAlertSettings,
     }))
   )
 
@@ -120,6 +126,7 @@ function App() {
     setResetTimerDisplayMode,
     setGlobalShortcut,
     setStartOnLogin,
+    setSessionAlertSettings,
     setLoadingForPlugins,
     setErrorForPlugins,
     startBatch,
@@ -141,6 +148,15 @@ function App() {
     setMenubarIconStyle,
     scheduleTrayIconUpdate,
   })
+
+  useSessionAlerts({ pluginStates, sessionAlertSettings })
+
+  const handleSessionAlertSettingsChange = useCallback((value: typeof sessionAlertSettings) => {
+    setSessionAlertSettings(value)
+    void saveSessionAlertSettings(value).catch((error) => {
+      console.error("Failed to save session alert settings:", error)
+    })
+  }, [setSessionAlertSettings])
 
   const {
     handleAutoUpdateIntervalChange,
@@ -250,6 +266,8 @@ function App() {
         traySettingsPreview,
         onGlobalShortcutChange: handleGlobalShortcutChange,
         onStartOnLoginChange: handleStartOnLoginChange,
+        sessionAlertSettings,
+        onSessionAlertSettingsChange: handleSessionAlertSettingsChange,
       }}
     />
   )

@@ -27,6 +27,8 @@ const state = vi.hoisted(() => ({
   saveGlobalShortcutMock: vi.fn(),
   loadStartOnLoginMock: vi.fn(),
   saveStartOnLoginMock: vi.fn(),
+  loadSessionAlertSettingsMock: vi.fn(),
+  saveSessionAlertSettingsMock: vi.fn(),
   autostartEnableMock: vi.fn(),
   autostartDisableMock: vi.fn(),
   autostartIsEnabledMock: vi.fn(),
@@ -239,6 +241,8 @@ vi.mock("@/lib/settings", async () => {
     saveGlobalShortcut: state.saveGlobalShortcutMock,
     loadStartOnLogin: state.loadStartOnLoginMock,
     saveStartOnLogin: state.saveStartOnLoginMock,
+    loadSessionAlertSettings: state.loadSessionAlertSettingsMock,
+    saveSessionAlertSettings: state.saveSessionAlertSettingsMock,
   }
 })
 
@@ -278,6 +282,8 @@ describe("App", () => {
     state.saveGlobalShortcutMock.mockReset()
     state.loadStartOnLoginMock.mockReset()
     state.saveStartOnLoginMock.mockReset()
+    state.loadSessionAlertSettingsMock.mockReset()
+    state.saveSessionAlertSettingsMock.mockReset()
     state.autostartEnableMock.mockReset()
     state.autostartDisableMock.mockReset()
     state.autostartIsEnabledMock.mockReset()
@@ -316,6 +322,8 @@ describe("App", () => {
     state.saveGlobalShortcutMock.mockResolvedValue(undefined)
     state.loadStartOnLoginMock.mockResolvedValue(false)
     state.saveStartOnLoginMock.mockResolvedValue(undefined)
+    state.loadSessionAlertSettingsMock.mockResolvedValue({ enabledPluginIds: [], minutesBefore: 5, sound: "default", customSoundPath: null })
+    state.saveSessionAlertSettingsMock.mockResolvedValue(undefined)
     state.autostartEnableMock.mockResolvedValue(undefined)
     state.autostartDisableMock.mockResolvedValue(undefined)
     state.autostartIsEnabledMock.mockResolvedValue(false)
@@ -792,7 +800,7 @@ describe("App", () => {
     render(<App />)
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
-    await userEvent.click(await screen.findByRole("radio", { name: "30 min" }))
+    await userEvent.click((await screen.findAllByRole("radio", { name: "30 min" }))[0])
     expect(state.saveAutoUpdateIntervalMock).toHaveBeenCalledWith(30)
   })
 
@@ -802,7 +810,7 @@ describe("App", () => {
     render(<App />)
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
-    await userEvent.click(await screen.findByRole("radio", { name: "30 min" }))
+    await userEvent.click((await screen.findAllByRole("radio", { name: "30 min" }))[0])
     await waitFor(() => expect(errorSpy).toHaveBeenCalled())
     errorSpy.mockRestore()
   })
@@ -1370,7 +1378,7 @@ describe("App", () => {
     await userEvent.click(settingsButtons[0])
 
     // Change interval - this triggers the else branch (enabledIds.length === 0)
-    await userEvent.click(await screen.findByRole("radio", { name: "30 min" }))
+    await userEvent.click((await screen.findAllByRole("radio", { name: "30 min" }))[0])
 
     expect(state.saveAutoUpdateIntervalMock).toHaveBeenCalledWith(30)
   })

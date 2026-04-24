@@ -42,6 +42,7 @@ vi.mock("@dnd-kit/utilities", () => ({
 }))
 
 import { SettingsPage } from "@/pages/settings"
+import { DEFAULT_SESSION_ALERT_SETTINGS } from "@/lib/settings"
 
 const defaultProps = {
   plugins: [{ id: "a", name: "Alpha", enabled: true }],
@@ -67,6 +68,8 @@ const defaultProps = {
   onGlobalShortcutChange: vi.fn(),
   startOnLogin: false,
   onStartOnLoginChange: vi.fn(),
+  sessionAlertSettings: DEFAULT_SESSION_ALERT_SETTINGS,
+  onSessionAlertSettingsChange: vi.fn(),
 }
 
 afterEach(() => {
@@ -127,7 +130,9 @@ describe("SettingsPage", () => {
         onAutoUpdateIntervalChange={onAutoUpdateIntervalChange}
       />
     )
-    await userEvent.click(screen.getByText("30 min"))
+    const autoRefreshSection = screen.getByText("Auto Refresh").closest("section")
+    if (!autoRefreshSection) throw new Error("Auto Refresh section not found")
+    await userEvent.click(autoRefreshSection.querySelectorAll("[role=radio]")[2])
     expect(onAutoUpdateIntervalChange).toHaveBeenCalledWith(30)
   })
 

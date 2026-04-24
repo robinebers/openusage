@@ -13,6 +13,7 @@ import type {
   GlobalShortcut,
   MenubarIconStyle,
   ResetTimerDisplayMode,
+  SessionAlertSettings,
   ThemeMode,
 } from "@/lib/settings"
 
@@ -35,6 +36,8 @@ export type AppContentActionProps = {
   traySettingsPreview: TraySettingsPreview
   onGlobalShortcutChange: (value: GlobalShortcut) => void
   onStartOnLoginChange: (value: boolean) => void
+  sessionAlertSettings: SessionAlertSettings
+  onSessionAlertSettingsChange: (value: SessionAlertSettings) => void
 }
 
 export type AppContentProps = AppContentDerivedProps & AppContentActionProps
@@ -55,6 +58,8 @@ export function AppContent({
   traySettingsPreview,
   onGlobalShortcutChange,
   onStartOnLoginChange,
+  sessionAlertSettings,
+  onSessionAlertSettingsChange,
 }: AppContentProps) {
   const { activeView } = useAppUiStore(
     useShallow((state) => ({
@@ -115,6 +120,8 @@ export function AppContent({
         onGlobalShortcutChange={onGlobalShortcutChange}
         startOnLogin={startOnLogin}
         onStartOnLoginChange={onStartOnLoginChange}
+        sessionAlertSettings={sessionAlertSettings}
+        onSessionAlertSettingsChange={onSessionAlertSettingsChange}
       />
     )
   }

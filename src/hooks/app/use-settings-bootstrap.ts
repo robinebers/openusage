@@ -23,6 +23,7 @@ import {
   migrateLegacyTraySettings,
   loadPluginSettings,
   loadResetTimerDisplayMode,
+  loadSessionAlertSettings,
   loadStartOnLogin,
   loadThemeMode,
   normalizePluginSettings,
@@ -33,6 +34,7 @@ import {
   type MenubarIconStyle,
   type PluginSettings,
   type ResetTimerDisplayMode,
+  type SessionAlertSettings,
   type ThemeMode,
 } from "@/lib/settings"
 
@@ -46,6 +48,7 @@ type UseSettingsBootstrapArgs = {
   setGlobalShortcut: (value: GlobalShortcut) => void
   setStartOnLogin: (value: boolean) => void
   setMenubarIconStyle: (value: MenubarIconStyle) => void
+  setSessionAlertSettings: (value: SessionAlertSettings) => void
   setLoadingForPlugins: (ids: string[]) => void
   setErrorForPlugins: (ids: string[], error: string) => void
   startBatch: (pluginIds?: string[]) => Promise<string[] | undefined>
@@ -61,6 +64,7 @@ export function useSettingsBootstrap({
   setGlobalShortcut,
   setStartOnLogin,
   setMenubarIconStyle,
+  setSessionAlertSettings,
   setLoadingForPlugins,
   setErrorForPlugins,
   startBatch,
@@ -153,6 +157,8 @@ export function useSettingsBootstrap({
           console.error("Failed to load menubar icon style:", error)
         }
 
+        let storedSessionAlertSettings = await loadSessionAlertSettings()
+
         if (isMounted) {
           setPluginSettings(normalized)
           setAutoUpdateInterval(storedInterval)
@@ -162,6 +168,7 @@ export function useSettingsBootstrap({
           setGlobalShortcut(storedGlobalShortcut)
           setStartOnLogin(storedStartOnLogin)
           setMenubarIconStyle(storedMenubarIconStyle)
+          setSessionAlertSettings(storedSessionAlertSettings)
 
           const enabledIds = getEnabledPluginIds(normalized)
           setLoadingForPlugins(enabledIds)
@@ -192,6 +199,7 @@ export function useSettingsBootstrap({
     setGlobalShortcut,
     setLoadingForPlugins,
     setMenubarIconStyle,
+    setSessionAlertSettings,
     migrateLegacyTraySettings,
     setPluginSettings,
     setPluginsMeta,

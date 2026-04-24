@@ -6,6 +6,7 @@ import {
   DEFAULT_MENUBAR_ICON_STYLE,
   DEFAULT_PLUGIN_SETTINGS,
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
+  DEFAULT_SESSION_ALERT_SETTINGS,
   DEFAULT_START_ON_LOGIN,
   DEFAULT_THEME_MODE,
   arePluginSettingsEqual,
@@ -16,6 +17,7 @@ import {
   loadMenubarIconStyle,
   loadPluginSettings,
   loadResetTimerDisplayMode,
+  loadSessionAlertSettings,
   loadStartOnLogin,
   migrateLegacyTraySettings,
   loadThemeMode,
@@ -26,6 +28,7 @@ import {
   saveMenubarIconStyle,
   savePluginSettings,
   saveResetTimerDisplayMode,
+  saveSessionAlertSettings,
   saveStartOnLogin,
   saveThemeMode,
 } from "@/lib/settings"
@@ -338,5 +341,36 @@ describe("settings", () => {
   it("falls back to default for invalid start on login value", async () => {
     storeState.set("startOnLogin", "invalid")
     await expect(loadStartOnLogin()).resolves.toBe(DEFAULT_START_ON_LOGIN)
+  })
+
+  it("loads default session alert settings when missing", async () => {
+    await expect(loadSessionAlertSettings()).resolves.toEqual(DEFAULT_SESSION_ALERT_SETTINGS)
+  })
+
+  it("loads stored session alert settings", async () => {
+    const stored = {
+      enabledPluginIds: ["claude", "codex"],
+      minutesBefore: 10,
+      sound: "custom" as const,
+      customSoundPath: "/path/to/sound.mp3",
+    }
+    storeState.set("sessionAlertSettings", stored)
+    await expect(loadSessionAlertSettings()).resolves.toEqual(stored)
+  })
+
+  it("saves session alert settings", async () => {
+    const settings = {
+      enabledPluginIds: ["claude"],
+      minutesBefore: 15,
+      sound: "none" as const,
+      customSoundPath: null,
+    }
+    await saveSessionAlertSettings(settings)
+    await expect(loadSessionAlertSettings()).resolves.toEqual(settings)
+  })
+
+  it("falls back to default for invalid session alert settings", async () => {
+    storeState.set("sessionAlertSettings", { enabledPluginIds: "bad", minutesBefore: "5", sound: 1 })
+    await expect(loadSessionAlertSettings()).resolves.toEqual(DEFAULT_SESSION_ALERT_SETTINGS)
   })
 })

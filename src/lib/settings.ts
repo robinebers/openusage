@@ -22,6 +22,15 @@ export type MenubarIconStyle = "provider" | "bars" | "donut";
 
 export type GlobalShortcut = string | null;
 
+export type AlertSound = "default" | "none" | "custom";
+
+export type SessionAlertSettings = {
+  enabledPluginIds: string[];
+  minutesBefore: number;
+  sound: AlertSound;
+  customSoundPath: string | null;
+};
+
 const SETTINGS_STORE_PATH = "settings.json";
 const PLUGIN_SETTINGS_KEY = "plugins";
 const AUTO_UPDATE_SETTINGS_KEY = "autoUpdateInterval";
@@ -33,6 +42,7 @@ const LEGACY_TRAY_ICON_STYLE_KEY = "trayIconStyle";
 const LEGACY_TRAY_SHOW_PERCENTAGE_KEY = "trayShowPercentage";
 const GLOBAL_SHORTCUT_KEY = "globalShortcut";
 const START_ON_LOGIN_KEY = "startOnLogin";
+const SESSION_ALERT_SETTINGS_KEY = "sessionAlertSettings";
 
 export const DEFAULT_AUTO_UPDATE_INTERVAL: AutoUpdateIntervalMinutes = 15;
 export const DEFAULT_THEME_MODE: ThemeMode = "system";
@@ -301,5 +311,46 @@ export async function loadStartOnLogin(): Promise<boolean> {
 
 export async function saveStartOnLogin(value: boolean): Promise<void> {
   await store.set(START_ON_LOGIN_KEY, value);
+  await store.save();
+}
+
+export const DEFAULT_SESSION_ALERT_SETTINGS: SessionAlertSettings = {
+  enabledPluginIds: [],
+  minutesBefore: 5,
+  sound: "default",
+  customSoundPath: null,
+};
+
+export const ALERT_MINUTE_OPTIONS: number[] = [1, 5, 10, 15, 30, 60];
+
+export const ALERT_SOUND_OPTIONS: { value: AlertSound; label: string }[] = [
+  { value: "default", label: "Default" },
+  { value: "none", label: "None" },
+  { value: "custom", label: "Custom" },
+];
+
+function isSessionAlertSettings(value: unknown): value is SessionAlertSettings {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  if (!Array.isArray(v.enabledPluginIds)) return false;
+  if (typeof v.minutesBefore !== "number") return false;
+  if (!["default", "none", "custom"].includes(v.sound as string)) return false;
+  if (v.customSoundPath !== null && typeof v.customSoundPath !== "string") return false;
+  return true;
+}
+
+export async function loadSessionAlertSettings(): Promise<SessionAlertSettings> {
+  const stored = await store.get<unknown>(SESSION_ALERT_SETTINGS_KEY);
+  if (!isSessionAlertSettings(stored)) return { ...DEFAULT_SESSION_ALERT_SETTINGS };
+  return {
+    enabledPluginIds: stored.enabledPluginIds,
+    minutesBefore: stored.minutesBefore,
+    sound: stored.sound,
+    customSoundPath: stored.customSoundPath,
+  };
+}
+
+export async function saveSessionAlertSettings(settings: SessionAlertSettings): Promise<void> {
+  await store.set(SESSION_ALERT_SETTINGS_KEY, settings);
   await store.save();
 }
