@@ -3,8 +3,12 @@
   var QUOTA_URL = "https://api.neuralwatt.com/v1/quota"
 
   function readNumber(value) {
-    var n = Number(value)
-    return Number.isFinite(n) ? n : null
+    if (typeof value === "number") return Number.isFinite(value) ? value : null
+    if (typeof value === "string") {
+      var parsed = Number(value)
+      return Number.isFinite(parsed) ? parsed : null
+    }
+    return null
   }
 
   function readString(value) {
