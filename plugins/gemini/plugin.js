@@ -3,6 +3,7 @@
   const CREDS_PATH = "~/.gemini/oauth_creds.json"
   const OAUTH2_SUFFIX_FLAT = "/@google/gemini-cli-core/dist/src/code_assist/oauth2.js"
   const OAUTH2_SUFFIX_NESTED = "/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/code_assist/oauth2.js"
+  const BUNDLE_SUFFIX = "/@google/gemini-cli/bundle"
 
   const STATIC_MODULE_ROOTS = [
     "~/.bun/install/global/node_modules",
@@ -39,6 +40,18 @@
 
     for (var i = 0; i < STATIC_NESTED_ONLY.length; i += 1) {
       paths.push(STATIC_NESTED_ONLY[i] + OAUTH2_SUFFIX_NESTED)
+    }
+
+    // Homebrew builds bundle everything into bundle/chunk-*.js — hash names vary per version
+    for (var i = 0; i < STATIC_NESTED_ONLY.length; i += 1) {
+      var bundleDir = STATIC_NESTED_ONLY[i] + BUNDLE_SUFFIX
+      var entries = listDirSafe(ctx, bundleDir)
+      for (var j = 0; j < entries.length; j += 1) {
+        var name = entries[j]
+        if (name.indexOf("chunk-") === 0 && name.slice(-3) === ".js") {
+          paths.push(bundleDir + "/" + name)
+        }
+      }
     }
 
     for (var i = 0; i < VERSION_MANAGER_ROOTS.length; i += 1) {
@@ -135,7 +148,7 @@
         const parsed = parseOauthClientCreds(ctx.host.fs.readText(path))
         if (parsed) return parsed
       } catch (e) {
-        ctx.host.log.warn("failed reading oauth2.js at " + path + ": " + String(e))
+        ctx.host.log.warn("failed reading oauth candidate at " + path + ": " + String(e))
       }
     }
     ctx.host.log.warn("Gemini OAuth client credentials not found in any known install path")
@@ -192,7 +205,7 @@
     }
 
     if (ctx.util.isAuthStatus(resp.status)) {
-      throw "Gemini session expired. Run `gemini auth login` to authenticate."
+      throw "Gemini session expired. Run `gemini` and re-authenticate when prompted."
     }
     if (resp.status < 200 || resp.status >= 300) return null
 
@@ -368,7 +381,7 @@
     })
 
     if (ctx.util.isAuthStatus(resp.status)) {
-      throw "Gemini session expired. Run `gemini auth login` to authenticate."
+      throw "Gemini session expired. Run `gemini` and re-authenticate when prompted."
     }
     if (resp.status < 200 || resp.status >= 300) return { data: null, accessToken: currentToken }
     return { data: ctx.util.tryParseJson(resp.bodyText), accessToken: currentToken }
@@ -389,7 +402,7 @@
     })
 
     if (ctx.util.isAuthStatus(resp.status)) {
-      throw "Gemini session expired. Run `gemini auth login` to authenticate."
+      throw "Gemini session expired. Run `gemini` and re-authenticate when prompted."
     }
     if (resp.status < 200 || resp.status >= 300) {
       throw "Gemini quota request failed (HTTP " + String(resp.status) + "). Try again later."
@@ -401,13 +414,13 @@
     assertSupportedAuthType(ctx)
 
     const creds = loadOauthCreds(ctx)
-    if (!creds) throw "Not logged in. Run `gemini auth login` to authenticate."
+    if (!creds) throw "Not logged in. Run `gemini` and complete the OAuth prompt."
 
     let accessToken = creds.access_token
     if (needsRefresh(creds)) {
       const refreshed = refreshToken(ctx, creds)
       if (refreshed) accessToken = refreshed
-      else if (!accessToken) throw "Not logged in. Run `gemini auth login` to authenticate."
+      else if (!accessToken) throw "Not logged in. Run `gemini` and complete the OAuth prompt."
     }
 
     const idTokenPayload = decodeIdToken(ctx, creds.id_token)
