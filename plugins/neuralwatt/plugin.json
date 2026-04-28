@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "neuralwatt",
   "name": "Neuralwatt",
-  "version": "0.0.2",
+  "version": "0.0.1",
   "entry": "plugin.js",
   "icon": "icon.svg",
   "brandColor": "#D55934",
