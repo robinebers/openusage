@@ -80,7 +80,7 @@ OpenUsage Codex plugin auth lookup order:
 3. `~/.codex/auth.json`
 4. macOS keychain service `Codex Auth` (fallback)
 
-If file OAuth auth is missing, invalid, or fails with an auth/session error during refresh or usage lookup, OpenUsage tries the macOS keychain fallback. Non-auth usage failures, such as server errors or invalid responses, are shown directly.
+If file-based OAuth credentials are missing, invalid, or fail with an auth/session error during refresh or usage lookup, OpenUsage tries the macOS keychain fallback. Non-auth usage failures, such as server errors or invalid responses, are shown directly.
 
 Keychain fallback is available on macOS only.
 
