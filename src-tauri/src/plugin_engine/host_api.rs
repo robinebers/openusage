@@ -11,10 +11,11 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 
-const WHITELISTED_ENV_VARS: [&str; 16] = [
+const WHITELISTED_ENV_VARS: [&str; 17] = [
     "CODEX_HOME",
     "CLAUDE_CONFIG_DIR",
     "CLAUDE_CODE_OAUTH_TOKEN",
+    "CROFAI_API_KEY",
     "USER_TYPE",
     "USE_STAGING_OAUTH",
     "USE_LOCAL_OAUTH",

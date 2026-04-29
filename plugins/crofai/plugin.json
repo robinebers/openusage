@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "crofai",
+  "name": "CrofAI",
+  "version": "0.0.1",
+  "entry": "plugin.js",
+  "icon": "icon.svg",
+  "brandColor": "#000000",
+  "links": [
+    { "label": "Status", "url": "https://status.nahcrof.com" }
+  ],
+  "lines": [
+    { "type": "progress", "label": "Requests", "scope": "overview" },
+    { "type": "text", "label": "Credits", "scope": "overview" }
+  ]
+}
