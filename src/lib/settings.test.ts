@@ -8,6 +8,7 @@ import {
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
   DEFAULT_START_ON_LOGIN,
   DEFAULT_THEME_MODE,
+  DEFAULT_WEEKLY_WARNING_THRESHOLD_PERCENT,
   arePluginSettingsEqual,
   getEnabledPluginIds,
   loadAutoUpdateInterval,
@@ -17,6 +18,7 @@ import {
   loadPluginSettings,
   loadResetTimerDisplayMode,
   loadStartOnLogin,
+  loadWeeklyWarningThresholdPercent,
   migrateLegacyTraySettings,
   loadThemeMode,
   normalizePluginSettings,
@@ -28,6 +30,7 @@ import {
   saveResetTimerDisplayMode,
   saveStartOnLogin,
   saveThemeMode,
+  saveWeeklyWarningThresholdPercent,
 } from "@/lib/settings"
 import type { PluginMeta } from "@/lib/plugin-types"
 
@@ -259,6 +262,22 @@ describe("settings", () => {
   it("falls back to default for invalid menubar icon style", async () => {
     storeState.set("menubarIconStyle", "invalid")
     await expect(loadMenubarIconStyle()).resolves.toBe(DEFAULT_MENUBAR_ICON_STYLE)
+  })
+
+  it("loads default weekly warning threshold when missing", async () => {
+    await expect(loadWeeklyWarningThresholdPercent()).resolves.toBe(
+      DEFAULT_WEEKLY_WARNING_THRESHOLD_PERCENT
+    )
+  })
+
+  it("loads stored weekly warning threshold", async () => {
+    storeState.set("weeklyWarningThresholdPercent", 40)
+    await expect(loadWeeklyWarningThresholdPercent()).resolves.toBe(40)
+  })
+
+  it("saves weekly warning threshold", async () => {
+    await saveWeeklyWarningThresholdPercent(20)
+    await expect(loadWeeklyWarningThresholdPercent()).resolves.toBe(20)
   })
 
   it("skips legacy tray migration when keys are absent", async () => {

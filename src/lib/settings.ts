@@ -20,6 +20,8 @@ export type ResetTimerDisplayMode = "relative" | "absolute";
 
 export type MenubarIconStyle = "provider" | "bars" | "donut";
 
+export type WeeklyWarningThresholdPercent = 10 | 20 | 30 | 40 | 50;
+
 export type GlobalShortcut = string | null;
 
 const SETTINGS_STORE_PATH = "settings.json";
@@ -29,6 +31,7 @@ const THEME_MODE_KEY = "themeMode";
 const DISPLAY_MODE_KEY = "displayMode";
 const RESET_TIMER_DISPLAY_MODE_KEY = "resetTimerDisplayMode";
 const MENUBAR_ICON_STYLE_KEY = "menubarIconStyle";
+const WEEKLY_WARNING_THRESHOLD_KEY = "weeklyWarningThresholdPercent";
 const LEGACY_TRAY_ICON_STYLE_KEY = "trayIconStyle";
 const LEGACY_TRAY_SHOW_PERCENTAGE_KEY = "trayShowPercentage";
 const GLOBAL_SHORTCUT_KEY = "globalShortcut";
@@ -39,6 +42,7 @@ export const DEFAULT_THEME_MODE: ThemeMode = "system";
 export const DEFAULT_DISPLAY_MODE: DisplayMode = "left";
 export const DEFAULT_RESET_TIMER_DISPLAY_MODE: ResetTimerDisplayMode = "relative";
 export const DEFAULT_MENUBAR_ICON_STYLE: MenubarIconStyle = "provider";
+export const DEFAULT_WEEKLY_WARNING_THRESHOLD_PERCENT: WeeklyWarningThresholdPercent = 30;
 export const DEFAULT_GLOBAL_SHORTCUT: GlobalShortcut = null;
 export const DEFAULT_START_ON_LOGIN = false;
 
@@ -47,6 +51,7 @@ const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
 const DISPLAY_MODES: DisplayMode[] = ["used", "left"];
 const RESET_TIMER_DISPLAY_MODES: ResetTimerDisplayMode[] = ["relative", "absolute"];
 const MENUBAR_ICON_STYLES: MenubarIconStyle[] = ["provider", "donut", "bars"];
+const WEEKLY_WARNING_THRESHOLD_OPTIONS = [10, 20, 30, 40, 50] as const;
 
 export const MENUBAR_ICON_STYLE_OPTIONS: { value: MenubarIconStyle; label: string }[] = [
   { value: "provider", label: "Plugin" },
@@ -75,6 +80,14 @@ export const RESET_TIMER_DISPLAY_OPTIONS: { value: ResetTimerDisplayMode; label:
   { value: "relative", label: "Relative" },
   { value: "absolute", label: "Absolute" },
 ];
+
+export const WEEKLY_WARNING_THRESHOLD_PERCENT_OPTIONS: {
+  value: WeeklyWarningThresholdPercent
+  label: string
+}[] = WEEKLY_WARNING_THRESHOLD_OPTIONS.map((value) => ({
+  value,
+  label: `${value}%`,
+}));
 
 const store = new LazyStore(SETTINGS_STORE_PATH);
 
@@ -229,6 +242,26 @@ export async function loadMenubarIconStyle(): Promise<MenubarIconStyle> {
 
 export async function saveMenubarIconStyle(style: MenubarIconStyle): Promise<void> {
   await store.set(MENUBAR_ICON_STYLE_KEY, style);
+  await store.save();
+}
+
+function isWeeklyWarningThresholdPercent(value: unknown): value is WeeklyWarningThresholdPercent {
+  return (
+    typeof value === "number" &&
+    WEEKLY_WARNING_THRESHOLD_OPTIONS.includes(value as WeeklyWarningThresholdPercent)
+  );
+}
+
+export async function loadWeeklyWarningThresholdPercent(): Promise<WeeklyWarningThresholdPercent> {
+  const stored = await store.get<unknown>(WEEKLY_WARNING_THRESHOLD_KEY);
+  if (isWeeklyWarningThresholdPercent(stored)) return stored;
+  return DEFAULT_WEEKLY_WARNING_THRESHOLD_PERCENT;
+}
+
+export async function saveWeeklyWarningThresholdPercent(
+  value: WeeklyWarningThresholdPercent
+): Promise<void> {
+  await store.set(WEEKLY_WARNING_THRESHOLD_KEY, value);
   await store.save();
 }
 

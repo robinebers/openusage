@@ -22,6 +22,8 @@ const state = vi.hoisted(() => ({
   saveResetTimerDisplayModeMock: vi.fn(),
   loadMenubarIconStyleMock: vi.fn(),
   saveMenubarIconStyleMock: vi.fn(),
+  loadWeeklyWarningThresholdPercentMock: vi.fn(),
+  saveWeeklyWarningThresholdPercentMock: vi.fn(),
   migrateLegacyTraySettingsMock: vi.fn(),
   loadGlobalShortcutMock: vi.fn(),
   saveGlobalShortcutMock: vi.fn(),
@@ -234,6 +236,8 @@ vi.mock("@/lib/settings", async () => {
     saveResetTimerDisplayMode: state.saveResetTimerDisplayModeMock,
     loadMenubarIconStyle: state.loadMenubarIconStyleMock,
     saveMenubarIconStyle: state.saveMenubarIconStyleMock,
+    loadWeeklyWarningThresholdPercent: state.loadWeeklyWarningThresholdPercentMock,
+    saveWeeklyWarningThresholdPercent: state.saveWeeklyWarningThresholdPercentMock,
     migrateLegacyTraySettings: state.migrateLegacyTraySettingsMock,
     loadGlobalShortcut: state.loadGlobalShortcutMock,
     saveGlobalShortcut: state.saveGlobalShortcutMock,
@@ -273,6 +277,8 @@ describe("App", () => {
     state.saveResetTimerDisplayModeMock.mockReset()
     state.loadMenubarIconStyleMock.mockReset()
     state.saveMenubarIconStyleMock.mockReset()
+    state.loadWeeklyWarningThresholdPercentMock.mockReset()
+    state.saveWeeklyWarningThresholdPercentMock.mockReset()
     state.migrateLegacyTraySettingsMock.mockReset()
     state.loadGlobalShortcutMock.mockReset()
     state.saveGlobalShortcutMock.mockReset()
@@ -311,6 +317,8 @@ describe("App", () => {
     state.saveResetTimerDisplayModeMock.mockResolvedValue(undefined)
     state.loadMenubarIconStyleMock.mockResolvedValue("provider")
     state.saveMenubarIconStyleMock.mockResolvedValue(undefined)
+    state.loadWeeklyWarningThresholdPercentMock.mockResolvedValue(30)
+    state.saveWeeklyWarningThresholdPercentMock.mockResolvedValue(undefined)
     state.migrateLegacyTraySettingsMock.mockResolvedValue(undefined)
     state.loadGlobalShortcutMock.mockResolvedValue(null)
     state.saveGlobalShortcutMock.mockResolvedValue(undefined)
@@ -604,6 +612,48 @@ describe("App", () => {
     const firstCall = state.renderTrayBarsIconMock.mock.calls[0]?.[0]
     expect(firstCall.percentText).toBe("--%")
     expect(state.traySetTitleMock).not.toHaveBeenCalled()
+  })
+
+  it("switches to weekly tray metric and alert styling when weekly remaining reaches the threshold", async () => {
+    state.invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_plugins") {
+        return [
+          {
+            id: "a",
+            name: "Alpha",
+            iconUrl: "icon-a",
+            primaryCandidates: ["Session"],
+            lines: [
+              { type: "progress", label: "Session", scope: "overview" },
+              { type: "progress", label: "Weekly", scope: "overview" },
+            ],
+          },
+        ]
+      }
+      return null
+    })
+    state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a"], disabled: [] })
+
+    render(<App />)
+    await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
+
+    state.probeHandlers?.onResult({
+      providerId: "a",
+      displayName: "Alpha",
+      iconUrl: "icon-a",
+      lines: [
+        { type: "progress", label: "Session", used: 40, limit: 100, format: { kind: "percent" } },
+        { type: "progress", label: "Weekly", used: 75, limit: 100, format: { kind: "percent" } },
+      ],
+    })
+
+    await waitFor(() => {
+      const latestCall = state.renderTrayBarsIconMock.mock.calls.at(-1)?.[0]
+      expect(latestCall.tone).toBe("warning")
+      expect(latestCall.percentText).toBe("!25%")
+    })
+    await waitFor(() => expect(state.traySetIconAsTemplateMock).toHaveBeenLastCalledWith(false))
+    await waitFor(() => expect(state.traySetTitleMock).toHaveBeenLastCalledWith(""))
   })
 
   it("uses selected provider on detail view and keeps it on home/settings", async () => {

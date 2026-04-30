@@ -57,11 +57,14 @@ const defaultProps = {
   onResetTimerDisplayModeChange: vi.fn(),
   menubarIconStyle: "provider" as const,
   onMenubarIconStyleChange: vi.fn(),
+  weeklyWarningThresholdPercent: 30 as const,
+  onWeeklyWarningThresholdPercentChange: vi.fn(),
   traySettingsPreview: {
     bars: [{ id: "a", fraction: 0.7 }],
     providerBars: [{ id: "a", fraction: 0.7 }],
     providerIconUrl: "icon-a",
     providerPercentText: "70%",
+    providerAlertSeverity: "none" as const,
   },
   globalShortcut: null,
   onGlobalShortcutChange: vi.fn(),
@@ -195,6 +198,18 @@ describe("SettingsPage", () => {
     render(<SettingsPage {...defaultProps} />)
     expect(screen.getByText("Menubar Icon")).toBeInTheDocument()
     expect(screen.getByText("What shows in the menu bar")).toBeInTheDocument()
+  })
+
+  it("updates weekly warning threshold", async () => {
+    const onWeeklyWarningThresholdPercentChange = vi.fn()
+    render(
+      <SettingsPage
+        {...defaultProps}
+        onWeeklyWarningThresholdPercentChange={onWeeklyWarningThresholdPercentChange}
+      />
+    )
+    await userEvent.click(screen.getByRole("radio", { name: "40%" }))
+    expect(onWeeklyWarningThresholdPercentChange).toHaveBeenCalledWith(40)
   })
 
   it("clicking Bars triggers onMenubarIconStyleChange(\"bars\")", async () => {
