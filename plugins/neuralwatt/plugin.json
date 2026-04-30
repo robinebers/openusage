@@ -8,6 +8,7 @@
   "brandColor": "#D55934",
   "lines": [
     { "type": "progress", "label": "Subscription", "scope": "overview", "primaryOrder": 1 },
-    { "type": "progress", "label": "Balance", "scope": "detail" }
+    { "type": "progress", "label": "Method", "scope": "overview", "primaryOrder": 2 },
+    { "type": "progress", "label": "Balance", "scope": "overview", "primaryOrder": 3 }
   ]
 }

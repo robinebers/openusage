@@ -42,7 +42,7 @@ Expected payload fields:
 - **Balance** (progress line): `credits_used_usd` / `total_credits_usd` in dollars. Shown only when `total_credits_usd > 0`.
 - **Method** (badge): `accounting_method`, capitalized. Hidden when absent.
 
-Both lines include `resetsAt` and `periodDurationMs` from the subscription period dates when available.
+The **Subscription** line includes `resetsAt` and `periodDurationMs` from the subscription period dates when available; the **Balance** line does not.
 
 ## Output
 
