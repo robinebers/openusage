@@ -790,7 +790,7 @@ describe("App", () => {
         { id: "codex-slot-account-2", fraction: 0.95 },
       ])
     })
-    await waitFor(() => expect(state.traySetTitleMock).toHaveBeenCalledWith("62% 95%"))
+    await waitFor(() => expect(state.traySetTitleMock).toHaveBeenCalledWith("62% | 95%"))
     expect(state.saveCodexMenubarShowAllAccountsMock).toHaveBeenCalledWith(true)
   })
 

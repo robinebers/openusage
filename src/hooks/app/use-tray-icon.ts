@@ -268,7 +268,7 @@ export function useTrayIcon({
         : undefined
       const providerPercentText =
         providerBars.length > 1
-          ? providerBars.map((bar) => formatTrayPercentText(bar.fraction)).join(" ")
+          ? providerBars.map((bar) => formatTrayPercentText(bar.fraction)).join(" | ")
           : formatTrayPercentText(providerBars[0]?.fraction)
 
       const nextPreview: TraySettingsPreview = {
