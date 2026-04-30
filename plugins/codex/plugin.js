@@ -50,6 +50,11 @@
     return slot
   }
 
+  function readOpenUsageSlotHomePath(ctx) {
+    const slotName = readOpenUsageSlotName(ctx)
+    return slotName ? joinPath(OPENUSAGE_CODEX_ACCOUNTS_PATH, slotName) : null
+  }
+
   function isSecondaryCodexPlugin(ctx) {
     return Boolean(readOpenUsageSlotName(ctx))
   }
@@ -95,9 +100,9 @@
   }
 
   function resolveAuthPaths(ctx) {
-    const slotName = readOpenUsageSlotName(ctx)
-    if (slotName) {
-      return [joinPath(joinPath(OPENUSAGE_CODEX_ACCOUNTS_PATH, slotName), AUTH_FILE)]
+    const slotHomePath = readOpenUsageSlotHomePath(ctx)
+    if (slotHomePath) {
+      return [joinPath(slotHomePath, AUTH_FILE)]
     }
 
     const codexHome = readCodexHome(ctx)
@@ -356,9 +361,6 @@
     if (!ctx.host.ccusage || typeof ctx.host.ccusage.query !== "function") {
       return { status: "no_runner", data: null }
     }
-    if (isSecondaryCodexPlugin(ctx)) {
-      return { status: "no_runner", data: null }
-    }
 
     const since = new Date()
     // Inclusive range: today + previous 30 days = 31 calendar days.
@@ -368,7 +370,7 @@
     const d = since.getDate()
     const sinceStr = "" + y + (m < 10 ? "0" : "") + m + (d < 10 ? "0" : "") + d
     const queryOpts = { provider: "codex", since: sinceStr }
-    const codexHome = readCodexHome(ctx)
+    const codexHome = readOpenUsageSlotHomePath(ctx) || readCodexHome(ctx)
     if (codexHome) {
       queryOpts.homePath = codexHome
     }

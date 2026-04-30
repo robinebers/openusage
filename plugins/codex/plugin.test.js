@@ -302,11 +302,66 @@ describe("codex plugin", () => {
         bodyText: JSON.stringify({ plan_type: "pro" }),
       }
     })
+    ctx.host.ccusage.query.mockReturnValue({ status: "ok", data: { daily: [] } })
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
     expect(result.plan).toBe("slot@example.com - Pro 20x")
-    expect(ctx.host.ccusage.query).not.toHaveBeenCalled()
+    expect(ctx.host.ccusage.query).toHaveBeenCalled()
+    expect(ctx.host.ccusage.query.mock.calls[0][0].homePath).toBe("~/.openusage/codex-accounts/account-2")
+  })
+
+  it("adds token lines from OpenUsage Codex account slot history", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-02-20T16:00:00.000Z"))
+
+    const ctx = makeCtx()
+    ctx.app.pluginId = "codex-slot-account-2"
+    ctx.host.fs.writeText("~/.openusage/codex-accounts/account-2/auth.json", JSON.stringify({
+      tokens: {
+        access_token: "slot-token",
+        id_token: makeIdToken({ email: "slot@example.com" }),
+      },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: { "x-codex-primary-used-percent": "5" },
+      bodyText: JSON.stringify({ plan_type: "pro" }),
+    })
+    const now = new Date()
+    const month = now.toLocaleString("en-US", { month: "short" })
+    const day = String(now.getDate()).padStart(2, "0")
+    const year = now.getFullYear()
+    const todayKey = month + " " + day + ", " + year
+    ctx.host.ccusage.query.mockReturnValue({
+      status: "ok",
+      data: {
+        daily: [
+          { date: todayKey, totalTokens: 250, costUSD: 1.25 },
+        ],
+      },
+    })
+
+    try {
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      const today = result.lines.find((line) => line.label === "Today")
+      expect(today).toBeTruthy()
+      expect(today.value).toContain("250 tokens")
+      expect(today.value).toContain("$1.25")
+
+      const last30 = result.lines.find((line) => line.label === "Last 30 Days")
+      expect(last30).toBeTruthy()
+      expect(last30.value).toContain("250 tokens")
+
+      expect(ctx.host.ccusage.query).toHaveBeenCalled()
+      const firstCall = ctx.host.ccusage.query.mock.calls[0][0]
+      expect(firstCall.provider).toBe("codex")
+      expect(firstCall.homePath).toBe("~/.openusage/codex-accounts/account-2")
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("persists refreshed OpenUsage Codex account slot tokens", async () => {
