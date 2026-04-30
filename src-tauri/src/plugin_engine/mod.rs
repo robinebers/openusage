@@ -70,18 +70,6 @@ fn add_codex_account_plugins(plugins: &mut Vec<LoadedPlugin>) {
         push_codex_account_plugin(plugins, &codex, plugin_id, account_label);
     }
 
-    let hermes_auth_path = home.join(".hermes").join("auth.json");
-    if let Some(hermes_account) = read_hermes_codex_account_label(&hermes_auth_path) {
-        if !account_exists(&known_accounts, &hermes_account) {
-            push_codex_account_plugin(
-                plugins,
-                &codex,
-                "codex-hermes".to_string(),
-                hermes_account,
-            );
-        }
-    }
-
     plugins.sort_by(|a, b| a.manifest.id.cmp(&b.manifest.id));
 }
 
@@ -163,17 +151,6 @@ fn read_primary_codex_account_label(home: &Path) -> Option<String> {
 fn read_codex_auth_account_label(auth_path: &Path) -> Option<String> {
     let root = read_json_file(auth_path)?;
     let id_token = root
-        .get("tokens")?
-        .get("id_token")?
-        .as_str()?;
-    account_label_from_id_token(id_token)
-}
-
-fn read_hermes_codex_account_label(auth_path: &Path) -> Option<String> {
-    let root = read_json_file(auth_path)?;
-    let id_token = root
-        .get("providers")?
-        .get("openai-codex")?
         .get("tokens")?
         .get("id_token")?
         .as_str()?;

@@ -212,8 +212,8 @@ describe("useSettingsPluginActions", () => {
     const { result } = renderHook(() =>
       useSettingsPluginActions({
         pluginSettings: {
-          order: ["codex", "codex-hermes", "cursor"],
-          disabled: ["codex", "codex-hermes"],
+          order: ["codex", "codex-slot-account-2", "cursor"],
+          disabled: ["codex", "codex-slot-account-2"],
         },
         setPluginSettings,
         setLoadingForPlugins,
@@ -227,10 +227,10 @@ describe("useSettingsPluginActions", () => {
       result.current.handleToggle("codex")
     })
 
-    expect(setLoadingForPlugins).toHaveBeenCalledWith(["codex", "codex-hermes"])
-    expect(startBatch).toHaveBeenCalledWith(["codex", "codex-hermes"])
+    expect(setLoadingForPlugins).toHaveBeenCalledWith(["codex", "codex-slot-account-2"])
+    expect(startBatch).toHaveBeenCalledWith(["codex", "codex-slot-account-2"])
     expect(setPluginSettings).toHaveBeenCalledWith({
-      order: ["codex", "codex-hermes", "cursor"],
+      order: ["codex", "codex-slot-account-2", "cursor"],
       disabled: [],
     })
   })
@@ -241,8 +241,8 @@ describe("useSettingsPluginActions", () => {
     const { result } = renderHook(() =>
       useSettingsPluginActions({
         pluginSettings: {
-          order: ["codex", "codex-hermes", "cursor"],
-          disabled: ["codex-hermes"],
+          order: ["codex", "codex-slot-account-2", "cursor"],
+          disabled: ["codex-slot-account-2"],
         },
         setPluginSettings,
         setLoadingForPlugins: vi.fn(),
@@ -257,8 +257,8 @@ describe("useSettingsPluginActions", () => {
     })
 
     expect(setPluginSettings).toHaveBeenCalledWith({
-      order: ["codex", "codex-hermes", "cursor"],
-      disabled: ["codex-hermes", "codex"],
+      order: ["codex", "codex-slot-account-2", "cursor"],
+      disabled: ["codex-slot-account-2", "codex"],
     })
   })
 

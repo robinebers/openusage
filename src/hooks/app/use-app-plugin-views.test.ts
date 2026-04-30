@@ -134,13 +134,13 @@ describe("useAppPluginViews", () => {
 
   it("groups multiple Codex account providers into one nav and display item", () => {
     const pluginSettings: PluginSettings = {
-      order: ["codex", "codex-hermes", "cursor"],
+      order: ["codex", "codex-slot-account-2", "cursor"],
       disabled: [],
     }
 
     const pluginsMeta = [
       createPluginMeta("codex", "Codex"),
-      createPluginMeta("codex-hermes", "Codex"),
+      createPluginMeta("codex-slot-account-2", "Codex"),
       createPluginMeta("cursor", "Cursor"),
     ]
 
@@ -148,12 +148,12 @@ describe("useAppPluginViews", () => {
       useAppPluginViews({
         activeView: "home",
         setActiveView: vi.fn(),
-        selectedCodexProviderId: "codex-hermes",
+        selectedCodexProviderId: "codex-slot-account-2",
         pluginSettings,
         pluginsMeta,
         pluginStates: {
-          "codex-hermes": {
-            data: { providerId: "codex-hermes", displayName: "Codex", plan: "other@example.com - Pro 20x", lines: [], iconUrl: "" },
+          "codex-slot-account-2": {
+            data: { providerId: "codex-slot-account-2", displayName: "Codex", plan: "other@example.com - Pro 20x", lines: [], iconUrl: "" },
             loading: false,
             error: null,
             lastManualRefreshAt: null,
@@ -165,8 +165,8 @@ describe("useAppPluginViews", () => {
 
     expect(result.current.navPlugins.map((plugin) => plugin.id)).toEqual(["codex", "cursor"])
     expect(result.current.displayPlugins.map((plugin) => plugin.meta.id)).toEqual(["codex", "cursor"])
-    expect(result.current.displayPlugins[0]?.sourceProviderId).toBe("codex-hermes")
+    expect(result.current.displayPlugins[0]?.sourceProviderId).toBe("codex-slot-account-2")
     expect(result.current.displayPlugins[0]?.data?.plan).toBe("other@example.com - Pro 20x")
-    expect(result.current.codexAccountOptions.map((option) => option.providerId)).toEqual(["codex", "codex-hermes"])
+    expect(result.current.codexAccountOptions.map((option) => option.providerId)).toEqual(["codex", "codex-slot-account-2"])
   })
 })

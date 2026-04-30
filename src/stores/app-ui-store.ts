@@ -7,7 +7,7 @@ type AppUiStore = {
   selectedCodexProviderId: string | null
   setActiveView: (view: ActiveView) => void
   setShowAbout: (value: boolean) => void
-  setSelectedCodexProviderId: (value: string) => void
+  setSelectedCodexProviderId: (value: string | null) => void
   resetState: () => void
 }
 

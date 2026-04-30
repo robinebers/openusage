@@ -3,8 +3,6 @@
   const CONFIG_AUTH_PATHS = ["~/.config/codex", "~/.codex"]
   const OPENUSAGE_CODEX_ACCOUNTS_PATH = "~/.openusage/codex-accounts"
   const OPENUSAGE_SLOT_PLUGIN_PREFIX = "codex-slot-"
-  const HERMES_AUTH_PATH = "~/.hermes/auth.json"
-  const HERMES_PROVIDER_ID = "openai-codex"
   const KEYCHAIN_SERVICE = "Codex Auth"
   const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
   const REFRESH_URL = "https://auth.openai.com/oauth/token"
@@ -44,10 +42,6 @@
     return typeof value === "string" ? value.trim() : ""
   }
 
-  function isHermesCodexPlugin(ctx) {
-    return readPluginId(ctx) === "codex-hermes"
-  }
-
   function readOpenUsageSlotName(ctx) {
     const pluginId = readPluginId(ctx)
     if (!pluginId.startsWith(OPENUSAGE_SLOT_PLUGIN_PREFIX)) return null
@@ -57,7 +51,7 @@
   }
 
   function isSecondaryCodexPlugin(ctx) {
-    return isHermesCodexPlugin(ctx) || Boolean(readOpenUsageSlotName(ctx))
+    return Boolean(readOpenUsageSlotName(ctx))
   }
 
   function decodeHexUtf8(hex) {
@@ -101,7 +95,6 @@
   }
 
   function resolveAuthPaths(ctx) {
-    if (isHermesCodexPlugin(ctx)) return []
     const slotName = readOpenUsageSlotName(ctx)
     if (slotName) {
       return [joinPath(joinPath(OPENUSAGE_CODEX_ACCOUNTS_PATH, slotName), AUTH_FILE)]
@@ -157,67 +150,6 @@
     }
   }
 
-  function readHermesAuthRoot(ctx) {
-    if (!ctx.host.fs.exists(HERMES_AUTH_PATH)) return null
-    const text = ctx.host.fs.readText(HERMES_AUTH_PATH)
-    return ctx.util.tryParseJson(text)
-  }
-
-  function loadAuthFromHermes(ctx) {
-    if (!isHermesCodexPlugin(ctx)) return null
-
-    try {
-      const root = readHermesAuthRoot(ctx)
-      const provider = root && root.providers ? root.providers[HERMES_PROVIDER_ID] : null
-      const tokens = provider && provider.tokens ? provider.tokens : null
-      const auth = {
-        OPENAI_API_KEY: null,
-        auth_mode: provider && provider.auth_mode ? provider.auth_mode : "chatgpt",
-        tokens,
-        last_refresh: provider ? provider.last_refresh : null,
-      }
-      if (!hasTokenLikeAuth(auth)) {
-        ctx.host.log.warn("hermes auth exists but no valid openai-codex payload")
-        return null
-      }
-      ctx.host.log.info("auth loaded from hermes file")
-      return { auth, authPath: HERMES_AUTH_PATH, source: "hermes-file" }
-    } catch (e) {
-      ctx.host.log.warn("hermes auth read failed: " + String(e))
-      return null
-    }
-  }
-
-  function saveHermesAuth(ctx, authState) {
-    const auth = authState && authState.auth ? authState.auth : null
-    if (!auth || !auth.tokens) return false
-
-    const root = readHermesAuthRoot(ctx)
-    if (!root || typeof root !== "object") return false
-    if (!root.providers || typeof root.providers !== "object") root.providers = {}
-    if (!root.providers[HERMES_PROVIDER_ID] || typeof root.providers[HERMES_PROVIDER_ID] !== "object") {
-      root.providers[HERMES_PROVIDER_ID] = {}
-    }
-
-    const provider = root.providers[HERMES_PROVIDER_ID]
-    provider.tokens = auth.tokens
-    provider.last_refresh = auth.last_refresh
-    provider.auth_mode = auth.auth_mode || provider.auth_mode || "chatgpt"
-
-    const pool = root.credential_pool && Array.isArray(root.credential_pool[HERMES_PROVIDER_ID])
-      ? root.credential_pool[HERMES_PROVIDER_ID]
-      : []
-    for (const entry of pool) {
-      if (!entry || typeof entry !== "object") continue
-      entry.access_token = auth.tokens.access_token
-      if (auth.tokens.refresh_token) entry.refresh_token = auth.tokens.refresh_token
-      entry.last_refresh = auth.last_refresh
-    }
-
-    ctx.host.fs.writeText(HERMES_AUTH_PATH, JSON.stringify(root, null, 2))
-    return true
-  }
-
   function saveAuth(ctx, authState) {
     const auth = authState && authState.auth ? authState.auth : null
     if (!auth) return false
@@ -225,10 +157,6 @@
     if (authState.source === "file" && authState.authPath) {
       ctx.host.fs.writeText(authState.authPath, JSON.stringify(auth, null, 2))
       return true
-    }
-
-    if (authState.source === "hermes-file" && authState.authPath) {
-      return saveHermesAuth(ctx, authState)
     }
 
     if (authState.source === "keychain") {
@@ -245,9 +173,6 @@
   }
 
   function loadFileAuthCandidates(ctx) {
-    const hermesAuth = loadAuthFromHermes(ctx)
-    if (hermesAuth) return { candidates: [hermesAuth], missingPaths: [] }
-
     const authPaths = resolveAuthPaths(ctx)
     const candidates = []
     const missingPaths = []

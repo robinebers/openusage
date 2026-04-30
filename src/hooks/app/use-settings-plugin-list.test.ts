@@ -40,8 +40,8 @@ describe("useSettingsPluginList", () => {
 
   it("groups Codex account providers into one settings row", () => {
     const pluginSettings: PluginSettings = {
-      order: ["codex", "codex-hermes", "cursor"],
-      disabled: ["codex-hermes"],
+      order: ["codex", "codex-slot-account-2", "cursor"],
+      disabled: ["codex-slot-account-2"],
     }
 
     const { result } = renderHook(() =>
@@ -49,7 +49,7 @@ describe("useSettingsPluginList", () => {
         pluginSettings,
         pluginsMeta: [
           createPluginMeta("codex", "Codex"),
-          createPluginMeta("codex-hermes", "oscar@example.com"),
+          createPluginMeta("codex-slot-account-2", "oscar@example.com"),
           createPluginMeta("cursor", "Cursor"),
         ],
       })
@@ -63,8 +63,8 @@ describe("useSettingsPluginList", () => {
 
   it("marks grouped Codex disabled when all account providers are disabled", () => {
     const pluginSettings: PluginSettings = {
-      order: ["codex", "codex-hermes"],
-      disabled: ["codex", "codex-hermes"],
+      order: ["codex", "codex-slot-account-2"],
+      disabled: ["codex", "codex-slot-account-2"],
     }
 
     const { result } = renderHook(() =>
@@ -72,7 +72,7 @@ describe("useSettingsPluginList", () => {
         pluginSettings,
         pluginsMeta: [
           createPluginMeta("codex", "Codex"),
-          createPluginMeta("codex-hermes", "oscar@example.com"),
+          createPluginMeta("codex-slot-account-2", "oscar@example.com"),
         ],
       })
     )
