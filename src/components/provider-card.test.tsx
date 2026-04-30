@@ -60,6 +60,30 @@ describe("ProviderCard", () => {
     expect(onRetry).toHaveBeenCalledTimes(1)
   })
 
+  it("keeps account selector visible when selected account has no usage data", async () => {
+    const onPlanOptionChange = vi.fn()
+    render(
+      <ProviderCard
+        name="Codex"
+        providerId="codex-account-2"
+        displayMode="used"
+        error="Token conflict"
+        planOptions={[
+          { providerId: "codex", label: "lildev@example.com - Pro 20x" },
+          { providerId: "codex-account-2", label: "oscar@example.com" },
+        ]}
+        onPlanOptionChange={onPlanOptionChange}
+      />
+    )
+
+    const accountSelect = screen.getByRole("combobox", { name: "Account" })
+    expect(accountSelect).toHaveValue("codex-account-2")
+    expect(screen.getByText("Token conflict")).toBeInTheDocument()
+
+    await userEvent.selectOptions(accountSelect, "codex")
+    expect(onPlanOptionChange).toHaveBeenCalledWith("codex")
+  })
+
   it("renders loading skeleton", () => {
     render(
       <ProviderCard

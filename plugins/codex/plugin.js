@@ -1,16 +1,20 @@
 (function () {
   const AUTH_FILE = "auth.json"
   const CONFIG_AUTH_PATHS = ["~/.config/codex", "~/.codex"]
+  const OPENUSAGE_CODEX_ACCOUNTS_PATH = "~/.openusage/codex-accounts"
+  const OPENUSAGE_SLOT_PLUGIN_PREFIX = "codex-slot-"
+  const HERMES_AUTH_PATH = "~/.hermes/auth.json"
+  const HERMES_PROVIDER_ID = "openai-codex"
   const KEYCHAIN_SERVICE = "Codex Auth"
   const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
   const REFRESH_URL = "https://auth.openai.com/oauth/token"
   const USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
   const REFRESH_AGE_MS = 8 * 24 * 60 * 60 * 1000
-  const ERR_NOT_LOGGED_IN = "Not logged in. Run `codex` to authenticate."
-  const ERR_SESSION_EXPIRED = "Session expired. Run `codex` to log in again."
-  const ERR_TOKEN_CONFLICT = "Token conflict. Run `codex` to log in again."
-  const ERR_TOKEN_REVOKED = "Token revoked. Run `codex` to log in again."
-  const ERR_TOKEN_EXPIRED = "Token expired. Run `codex` to log in again."
+  const ERR_NOT_LOGGED_IN = "Not logged in. Log in to this Codex account."
+  const ERR_SESSION_EXPIRED = "Session expired. Log in to this Codex account again."
+  const ERR_TOKEN_CONFLICT = "Token conflict. Log in to this Codex account again."
+  const ERR_TOKEN_REVOKED = "Token revoked. Log in to this Codex account again."
+  const ERR_TOKEN_EXPIRED = "Token expired. Log in to this Codex account again."
   const ERR_USAGE_API_KEY = "Usage not available for API key."
   const ERR_USAGE_CONNECTION = "Usage request failed. Check your connection."
   const ERR_USAGE_AFTER_REFRESH = "Usage request failed after refresh. Try again."
@@ -33,6 +37,27 @@
       ctx.host.log.warn("CODEX_HOME read failed: " + String(e))
       return null
     }
+  }
+
+  function readPluginId(ctx) {
+    const value = ctx && ctx.app ? ctx.app.pluginId : null
+    return typeof value === "string" ? value.trim() : ""
+  }
+
+  function isHermesCodexPlugin(ctx) {
+    return readPluginId(ctx) === "codex-hermes"
+  }
+
+  function readOpenUsageSlotName(ctx) {
+    const pluginId = readPluginId(ctx)
+    if (!pluginId.startsWith(OPENUSAGE_SLOT_PLUGIN_PREFIX)) return null
+    const slot = pluginId.slice(OPENUSAGE_SLOT_PLUGIN_PREFIX.length)
+    if (!/^[a-zA-Z0-9_-]+$/.test(slot)) return null
+    return slot
+  }
+
+  function isSecondaryCodexPlugin(ctx) {
+    return isHermesCodexPlugin(ctx) || Boolean(readOpenUsageSlotName(ctx))
   }
 
   function decodeHexUtf8(hex) {
@@ -76,6 +101,12 @@
   }
 
   function resolveAuthPaths(ctx) {
+    if (isHermesCodexPlugin(ctx)) return []
+    const slotName = readOpenUsageSlotName(ctx)
+    if (slotName) {
+      return [joinPath(joinPath(OPENUSAGE_CODEX_ACCOUNTS_PATH, slotName), AUTH_FILE)]
+    }
+
     const codexHome = readCodexHome(ctx)
 
     // If CODEX_HOME is set, use it
@@ -104,6 +135,8 @@
   }
 
   function loadAuthFromKeychain(ctx) {
+    if (isSecondaryCodexPlugin(ctx)) return null
+
     if (!ctx.host.keychain || typeof ctx.host.keychain.readGenericPassword !== "function") {
       return null
     }
@@ -124,6 +157,67 @@
     }
   }
 
+  function readHermesAuthRoot(ctx) {
+    if (!ctx.host.fs.exists(HERMES_AUTH_PATH)) return null
+    const text = ctx.host.fs.readText(HERMES_AUTH_PATH)
+    return ctx.util.tryParseJson(text)
+  }
+
+  function loadAuthFromHermes(ctx) {
+    if (!isHermesCodexPlugin(ctx)) return null
+
+    try {
+      const root = readHermesAuthRoot(ctx)
+      const provider = root && root.providers ? root.providers[HERMES_PROVIDER_ID] : null
+      const tokens = provider && provider.tokens ? provider.tokens : null
+      const auth = {
+        OPENAI_API_KEY: null,
+        auth_mode: provider && provider.auth_mode ? provider.auth_mode : "chatgpt",
+        tokens,
+        last_refresh: provider ? provider.last_refresh : null,
+      }
+      if (!hasTokenLikeAuth(auth)) {
+        ctx.host.log.warn("hermes auth exists but no valid openai-codex payload")
+        return null
+      }
+      ctx.host.log.info("auth loaded from hermes file")
+      return { auth, authPath: HERMES_AUTH_PATH, source: "hermes-file" }
+    } catch (e) {
+      ctx.host.log.warn("hermes auth read failed: " + String(e))
+      return null
+    }
+  }
+
+  function saveHermesAuth(ctx, authState) {
+    const auth = authState && authState.auth ? authState.auth : null
+    if (!auth || !auth.tokens) return false
+
+    const root = readHermesAuthRoot(ctx)
+    if (!root || typeof root !== "object") return false
+    if (!root.providers || typeof root.providers !== "object") root.providers = {}
+    if (!root.providers[HERMES_PROVIDER_ID] || typeof root.providers[HERMES_PROVIDER_ID] !== "object") {
+      root.providers[HERMES_PROVIDER_ID] = {}
+    }
+
+    const provider = root.providers[HERMES_PROVIDER_ID]
+    provider.tokens = auth.tokens
+    provider.last_refresh = auth.last_refresh
+    provider.auth_mode = auth.auth_mode || provider.auth_mode || "chatgpt"
+
+    const pool = root.credential_pool && Array.isArray(root.credential_pool[HERMES_PROVIDER_ID])
+      ? root.credential_pool[HERMES_PROVIDER_ID]
+      : []
+    for (const entry of pool) {
+      if (!entry || typeof entry !== "object") continue
+      entry.access_token = auth.tokens.access_token
+      if (auth.tokens.refresh_token) entry.refresh_token = auth.tokens.refresh_token
+      entry.last_refresh = auth.last_refresh
+    }
+
+    ctx.host.fs.writeText(HERMES_AUTH_PATH, JSON.stringify(root, null, 2))
+    return true
+  }
+
   function saveAuth(ctx, authState) {
     const auth = authState && authState.auth ? authState.auth : null
     if (!auth) return false
@@ -131,6 +225,10 @@
     if (authState.source === "file" && authState.authPath) {
       ctx.host.fs.writeText(authState.authPath, JSON.stringify(auth, null, 2))
       return true
+    }
+
+    if (authState.source === "hermes-file" && authState.authPath) {
+      return saveHermesAuth(ctx, authState)
     }
 
     if (authState.source === "keychain") {
@@ -147,6 +245,9 @@
   }
 
   function loadFileAuthCandidates(ctx) {
+    const hermesAuth = loadAuthFromHermes(ctx)
+    if (hermesAuth) return { candidates: [hermesAuth], missingPaths: [] }
+
     const authPaths = resolveAuthPaths(ctx)
     const candidates = []
     const missingPaths = []
@@ -292,6 +393,25 @@
     return ctx.fmt.planLabel(rawPlan) || null
   }
 
+  function readAccountLabel(ctx, auth) {
+    const token = auth && auth.tokens ? auth.tokens.id_token : null
+    const payload = token && ctx.jwt && typeof ctx.jwt.decodePayload === "function"
+      ? ctx.jwt.decodePayload(token)
+      : null
+    const email = payload && typeof payload.email === "string" ? payload.email.trim() : ""
+    if (email) return email
+
+    const name = payload && typeof payload.name === "string" ? payload.name.trim() : ""
+    if (name) return name
+
+    return null
+  }
+
+  function formatPlanWithAccount(accountLabel, planLabel) {
+    if (accountLabel && planLabel) return accountLabel + " - " + planLabel
+    return accountLabel || planLabel || null
+  }
+
   function getResetsAtIso(ctx, nowSec, window) {
     if (!window) return null
     if (typeof window.reset_at === "number") {
@@ -309,6 +429,9 @@
 
   function queryTokenUsage(ctx) {
     if (!ctx.host.ccusage || typeof ctx.host.ccusage.query !== "function") {
+      return { status: "no_runner", data: null }
+    }
+    if (isSecondaryCodexPlugin(ctx)) {
       return { status: "no_runner", data: null }
     }
 
@@ -621,7 +744,7 @@
       if (data.plan_type) {
         const planLabel = formatCodexPlan(ctx, data.plan_type)
         if (planLabel) {
-          plan = planLabel
+          plan = formatPlanWithAccount(readAccountLabel(ctx, auth), planLabel)
         }
       }
 

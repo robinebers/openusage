@@ -38,6 +38,50 @@ describe("useSettingsPluginList", () => {
     ])
   })
 
+  it("groups Codex account providers into one settings row", () => {
+    const pluginSettings: PluginSettings = {
+      order: ["codex", "codex-hermes", "cursor"],
+      disabled: ["codex-hermes"],
+    }
+
+    const { result } = renderHook(() =>
+      useSettingsPluginList({
+        pluginSettings,
+        pluginsMeta: [
+          createPluginMeta("codex", "Codex"),
+          createPluginMeta("codex-hermes", "oscar@example.com"),
+          createPluginMeta("cursor", "Cursor"),
+        ],
+      })
+    )
+
+    expect(result.current).toEqual([
+      { id: "codex", name: "Codex", enabled: true },
+      { id: "cursor", name: "Cursor", enabled: true },
+    ])
+  })
+
+  it("marks grouped Codex disabled when all account providers are disabled", () => {
+    const pluginSettings: PluginSettings = {
+      order: ["codex", "codex-hermes"],
+      disabled: ["codex", "codex-hermes"],
+    }
+
+    const { result } = renderHook(() =>
+      useSettingsPluginList({
+        pluginSettings,
+        pluginsMeta: [
+          createPluginMeta("codex", "Codex"),
+          createPluginMeta("codex-hermes", "oscar@example.com"),
+        ],
+      })
+    )
+
+    expect(result.current).toEqual([
+      { id: "codex", name: "Codex", enabled: false },
+    ])
+  })
+
   it("returns empty list when settings are not loaded", () => {
     const { result } = renderHook(() =>
       useSettingsPluginList({

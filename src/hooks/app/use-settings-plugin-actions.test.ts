@@ -204,6 +204,64 @@ describe("useSettingsPluginActions", () => {
     expect(setPluginSettings).toHaveBeenNthCalledWith(2, { order: ["a", "b"], disabled: ["b", "a"] })
   })
 
+  it("toggles all Codex account providers from the grouped settings row", () => {
+    const setPluginSettings = vi.fn()
+    const setLoadingForPlugins = vi.fn()
+    const startBatch = vi.fn().mockResolvedValue(undefined)
+
+    const { result } = renderHook(() =>
+      useSettingsPluginActions({
+        pluginSettings: {
+          order: ["codex", "codex-hermes", "cursor"],
+          disabled: ["codex", "codex-hermes"],
+        },
+        setPluginSettings,
+        setLoadingForPlugins,
+        setErrorForPlugins: vi.fn(),
+        startBatch,
+        scheduleTrayIconUpdate: vi.fn(),
+      })
+    )
+
+    act(() => {
+      result.current.handleToggle("codex")
+    })
+
+    expect(setLoadingForPlugins).toHaveBeenCalledWith(["codex", "codex-hermes"])
+    expect(startBatch).toHaveBeenCalledWith(["codex", "codex-hermes"])
+    expect(setPluginSettings).toHaveBeenCalledWith({
+      order: ["codex", "codex-hermes", "cursor"],
+      disabled: [],
+    })
+  })
+
+  it("disables all Codex account providers when any grouped account is enabled", () => {
+    const setPluginSettings = vi.fn()
+
+    const { result } = renderHook(() =>
+      useSettingsPluginActions({
+        pluginSettings: {
+          order: ["codex", "codex-hermes", "cursor"],
+          disabled: ["codex-hermes"],
+        },
+        setPluginSettings,
+        setLoadingForPlugins: vi.fn(),
+        setErrorForPlugins: vi.fn(),
+        startBatch: vi.fn(),
+        scheduleTrayIconUpdate: vi.fn(),
+      })
+    )
+
+    act(() => {
+      result.current.handleToggle("codex")
+    })
+
+    expect(setPluginSettings).toHaveBeenCalledWith({
+      order: ["codex", "codex-hermes", "cursor"],
+      disabled: ["codex-hermes", "codex"],
+    })
+  })
+
   it("returns early when plugin settings are missing", () => {
     const setPluginSettings = vi.fn()
 

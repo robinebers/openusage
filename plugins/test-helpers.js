@@ -7,6 +7,7 @@ export const makeCtx = () => {
   const ctx = {
     nowIso: "2026-02-02T00:00:00.000Z",
     app: {
+      pluginId: "codex",
       version: "0.0.0",
       platform: "darwin",
       appDataDir: "/tmp/openusage-test",

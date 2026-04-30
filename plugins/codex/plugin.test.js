@@ -6,6 +6,9 @@ const loadPlugin = async () => {
   return globalThis.__openusage_plugin
 }
 
+const makeIdToken = (payload) =>
+  `header.${Buffer.from(JSON.stringify(payload), "utf8").toString("base64url")}.signature`
+
 describe("codex plugin", () => {
   beforeEach(() => {
     delete globalThis.__openusage_plugin
@@ -253,6 +256,150 @@ describe("codex plugin", () => {
     const credits = result.lines.find((line) => line.label === "Credits")
     expect(credits).toBeTruthy()
     expect(credits.used).toBe(900)
+  })
+
+  it("prefixes plan with account email from id token", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: {
+        access_token: "token",
+        id_token: makeIdToken({ email: "oscar@example.com", name: "Oscar" }),
+      },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: { "x-codex-primary-used-percent": "10" },
+      bodyText: JSON.stringify({ plan_type: "pro" }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.plan).toBe("oscar@example.com - Pro 20x")
+  })
+
+  it("loads Hermes OpenAI Codex auth for codex-hermes provider", async () => {
+    const ctx = makeCtx()
+    ctx.app.pluginId = "codex-hermes"
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "default-token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.fs.writeText("~/.hermes/auth.json", JSON.stringify({
+      providers: {
+        "openai-codex": {
+          auth_mode: "chatgpt",
+          tokens: {
+            access_token: "hermes-token",
+            id_token: makeIdToken({ email: "hermes@example.com" }),
+            account_id: "hermes-account",
+          },
+          last_refresh: new Date().toISOString(),
+        },
+      },
+      credential_pool: {
+        "openai-codex": [
+          { access_token: "old", refresh_token: "old-refresh" },
+        ],
+      },
+    }))
+    ctx.host.http.request.mockImplementation((opts) => {
+      expect(opts.headers.Authorization).toBe("Bearer hermes-token")
+      expect(opts.headers["ChatGPT-Account-Id"]).toBe("hermes-account")
+      return {
+        status: 200,
+        headers: { "x-codex-primary-used-percent": "7" },
+        bodyText: JSON.stringify({ plan_type: "pro" }),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.plan).toBe("hermes@example.com - Pro 20x")
+    expect(ctx.host.ccusage.query).not.toHaveBeenCalled()
+  })
+
+  it("loads OpenUsage Codex account slot auth without using default auth", async () => {
+    const ctx = makeCtx()
+    ctx.app.pluginId = "codex-slot-account-2"
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "default-token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.fs.writeText("~/.openusage/codex-accounts/account-2/auth.json", JSON.stringify({
+      tokens: {
+        access_token: "slot-token",
+        id_token: makeIdToken({ email: "slot@example.com" }),
+        account_id: "slot-account",
+      },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockImplementation((opts) => {
+      expect(opts.headers.Authorization).toBe("Bearer slot-token")
+      expect(opts.headers["ChatGPT-Account-Id"]).toBe("slot-account")
+      return {
+        status: 200,
+        headers: { "x-codex-primary-used-percent": "11" },
+        bodyText: JSON.stringify({ plan_type: "pro" }),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.plan).toBe("slot@example.com - Pro 20x")
+    expect(ctx.host.ccusage.query).not.toHaveBeenCalled()
+  })
+
+  it("persists refreshed Hermes OpenAI Codex tokens", async () => {
+    const ctx = makeCtx()
+    ctx.app.pluginId = "codex-hermes"
+    const nextIdToken = makeIdToken({ email: "hermes@example.com" })
+    ctx.host.fs.writeText("~/.hermes/auth.json", JSON.stringify({
+      providers: {
+        "openai-codex": {
+          auth_mode: "chatgpt",
+          tokens: {
+            access_token: "old",
+            refresh_token: "refresh",
+            id_token: makeIdToken({ email: "old@example.com" }),
+            account_id: "acc",
+          },
+          last_refresh: "2000-01-01T00:00:00.000Z",
+        },
+      },
+      credential_pool: {
+        "openai-codex": [
+          { access_token: "old", refresh_token: "refresh" },
+        ],
+      },
+    }))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("oauth/token")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            access_token: "new",
+            refresh_token: "new-refresh",
+            id_token: nextIdToken,
+          }),
+        }
+      }
+      return {
+        status: 200,
+        headers: { "x-codex-primary-used-percent": "1" },
+        bodyText: JSON.stringify({ plan_type: "pro" }),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    const saved = JSON.parse(ctx.host.fs.readText("~/.hermes/auth.json"))
+    expect(saved.providers["openai-codex"].tokens.access_token).toBe("new")
+    expect(saved.providers["openai-codex"].tokens.refresh_token).toBe("new-refresh")
+    expect(saved.providers["openai-codex"].tokens.id_token).toBe(nextIdToken)
+    expect(saved.credential_pool["openai-codex"][0].access_token).toBe("new")
+    expect(saved.credential_pool["openai-codex"][0].refresh_token).toBe("new-refresh")
   })
 
   it("refreshes keychain auth and writes back to keychain", async () => {
@@ -644,6 +791,27 @@ describe("codex plugin", () => {
     })
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Token conflict")
+  })
+
+  it("uses account-neutral copy for codex-hermes token conflicts", async () => {
+    const ctx = makeCtx()
+    ctx.app.pluginId = "codex-hermes"
+    ctx.host.fs.writeText("~/.hermes/auth.json", JSON.stringify({
+      providers: {
+        "openai-codex": {
+          auth_mode: "chatgpt",
+          tokens: { access_token: "old", refresh_token: "refresh" },
+          last_refresh: "2000-01-01T00:00:00.000Z",
+        },
+      },
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 400,
+      headers: {},
+      bodyText: JSON.stringify({ error: { code: "refresh_token_reused" } }),
+    })
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Log in to this Codex account again")
   })
 
   it("falls back to keychain when file refresh token was reused", async () => {

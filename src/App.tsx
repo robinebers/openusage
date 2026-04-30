@@ -23,11 +23,15 @@ const TRAY_SETTINGS_DEBOUNCE_MS = 2000
 function App() {
   const {
     activeView,
+    selectedCodexProviderId,
     setActiveView,
+    setSelectedCodexProviderId,
   } = useAppUiStore(
     useShallow((state) => ({
       activeView: state.activeView,
+      selectedCodexProviderId: state.selectedCodexProviderId,
       setActiveView: state.setActiveView,
+      setSelectedCodexProviderId: state.setSelectedCodexProviderId,
     }))
   )
 
@@ -172,9 +176,10 @@ function App() {
     pluginsMeta,
   })
 
-  const { displayPlugins, navPlugins, selectedPlugin } = useAppPluginViews({
+  const { displayPlugins, navPlugins, selectedPlugin, codexAccountOptions } = useAppPluginViews({
     activeView,
     setActiveView,
+    selectedCodexProviderId,
     pluginSettings,
     pluginsMeta,
     pluginStates,
@@ -250,6 +255,8 @@ function App() {
         traySettingsPreview,
         onGlobalShortcutChange: handleGlobalShortcutChange,
         onStartOnLoginChange: handleStartOnLoginChange,
+        codexAccountOptions,
+        onCodexAccountChange: setSelectedCodexProviderId,
       }}
     />
   )

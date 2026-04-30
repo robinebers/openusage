@@ -47,8 +47,15 @@ export type PluginMeta = {
   primaryCandidates: string[]
 }
 
+export const CODEX_GROUP_ID = "codex"
+
+export function isCodexAccountProviderId(id: string): boolean {
+  return id === CODEX_GROUP_ID || id.startsWith(`${CODEX_GROUP_ID}-`)
+}
+
 export type PluginDisplayState = {
   meta: PluginMeta
+  sourceProviderId?: string
   data: PluginOutput | null
   loading: boolean
   error: string | null

@@ -1,5 +1,5 @@
 import { LazyStore } from "@tauri-apps/plugin-store";
-import type { PluginMeta } from "@/lib/plugin-types";
+import { isCodexAccountProviderId, type PluginMeta } from "@/lib/plugin-types";
 
 // Refresh cooldown duration in milliseconds (5 minutes)
 export const REFRESH_COOLDOWN_MS = 300_000;
@@ -78,7 +78,11 @@ export const RESET_TIMER_DISPLAY_OPTIONS: { value: ResetTimerDisplayMode; label:
 
 const store = new LazyStore(SETTINGS_STORE_PATH);
 
-const DEFAULT_ENABLED_PLUGINS = new Set(["claude", "codex", "cursor"]);
+const DEFAULT_ENABLED_PLUGINS = new Set(["claude", "cursor"]);
+
+function isDefaultEnabledPlugin(id: string): boolean {
+  return DEFAULT_ENABLED_PLUGINS.has(id) || isCodexAccountProviderId(id);
+}
 
 export const DEFAULT_PLUGIN_SETTINGS: PluginSettings = {
   order: [],
@@ -144,7 +148,7 @@ export function normalizePluginSettings(
 
   const disabled = settings.disabled.filter((id) => knownSet.has(id));
   for (const id of newlyAdded) {
-    if (!DEFAULT_ENABLED_PLUGINS.has(id) && !disabled.includes(id)) {
+    if (!isDefaultEnabledPlugin(id) && !disabled.includes(id)) {
       disabled.push(id);
     }
   }

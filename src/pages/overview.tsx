@@ -1,4 +1,5 @@
 import { ProviderCard } from "@/components/provider-card"
+import type { AccountOption } from "@/hooks/app/use-app-plugin-views"
 import type { PluginDisplayState } from "@/lib/plugin-types"
 import type { DisplayMode, ResetTimerDisplayMode } from "@/lib/settings"
 
@@ -8,6 +9,8 @@ interface OverviewPageProps {
   displayMode: DisplayMode
   resetTimerDisplayMode: ResetTimerDisplayMode
   onResetTimerDisplayModeToggle?: () => void
+  codexAccountOptions?: AccountOption[]
+  onCodexAccountChange?: (providerId: string) => void
 }
 
 export function OverviewPage({
@@ -16,6 +19,8 @@ export function OverviewPage({
   displayMode,
   resetTimerDisplayMode,
   onResetTimerDisplayModeToggle,
+  codexAccountOptions = [],
+  onCodexAccountChange,
 }: OverviewPageProps) {
   if (plugins.length === 0) {
     return (
@@ -31,7 +36,10 @@ export function OverviewPage({
         <ProviderCard
           key={plugin.meta.id}
           name={plugin.meta.name}
+          providerId={plugin.sourceProviderId ?? plugin.meta.id}
           plan={plugin.data?.plan}
+          planOptions={plugin.meta.id === "codex" ? codexAccountOptions : []}
+          onPlanOptionChange={onCodexAccountChange}
           showSeparator={index < plugins.length - 1}
           loading={plugin.loading}
           error={plugin.error}
@@ -39,7 +47,7 @@ export function OverviewPage({
           skeletonLines={plugin.meta.lines}
           lastManualRefreshAt={plugin.lastManualRefreshAt}
           lastUpdatedAt={plugin.lastUpdatedAt}
-          onRetry={onRetryPlugin ? () => onRetryPlugin(plugin.meta.id) : undefined}
+          onRetry={onRetryPlugin ? () => onRetryPlugin(plugin.sourceProviderId ?? plugin.meta.id) : undefined}
           scopeFilter="overview"
           displayMode={displayMode}
           resetTimerDisplayMode={resetTimerDisplayMode}

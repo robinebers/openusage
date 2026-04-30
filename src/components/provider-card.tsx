@@ -19,7 +19,10 @@ import { formatResetAbsoluteLabel, formatResetRelativeLabel, formatResetTooltipT
 
 interface ProviderCardProps {
   name: string
+  providerId?: string
   plan?: string
+  planOptions?: { providerId: string; label: string }[]
+  onPlanOptionChange?: (providerId: string) => void
   links?: PluginLink[]
   showSeparator?: boolean
   loading?: boolean
@@ -93,7 +96,10 @@ function formatRelativeTime(diffMs: number): string {
 
 export function ProviderCard({
   name,
+  providerId,
   plan,
+  planOptions = [],
+  onPlanOptionChange,
   links = [],
   showSeparator = true,
   loading = false,
@@ -163,6 +169,14 @@ export function ProviderCard({
         ),
     [links]
   )
+
+  const selectedPlanLabel = plan
+    ?? planOptions.find((option) => option.providerId === providerId)?.label
+    ?? null
+  const showPlanSelector = planOptions.length > 1 && Boolean(providerId) && Boolean(onPlanOptionChange)
+  const handlePlanOptionChange = (value: string) => {
+    if (onPlanOptionChange) onPlanOptionChange(value)
+  }
 
   // Format remaining cooldown time as "Xm Ys"
   const formatRemainingTime = () => {
@@ -247,15 +261,29 @@ export function ProviderCard({
               )
             )}
           </div>
-          {plan && (
+          {showPlanSelector ? (
+            <select
+              aria-label="Account"
+              className="h-6 max-w-[52%] min-w-0 rounded-md border bg-transparent px-2 py-0.5 text-xs font-medium text-foreground outline-none"
+              title={selectedPlanLabel ?? undefined}
+              value={providerId}
+              onChange={(event) => handlePlanOptionChange(event.target.value)}
+            >
+              {planOptions.map((option) => (
+                <option key={option.providerId} value={option.providerId}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          ) : selectedPlanLabel ? (
             <Badge
               variant="outline"
               className="truncate min-w-0 max-w-[40%]"
-              title={plan}
+              title={selectedPlanLabel}
             >
-              {plan}
+              {selectedPlanLabel}
             </Badge>
-          )}
+          ) : null}
         </div>
         {visibleLinks.length > 0 && (
           <div className="mb-2 -mt-0.5 flex flex-wrap gap-1.5">

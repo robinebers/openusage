@@ -31,6 +31,7 @@ describe("useAppPluginViews", () => {
       useAppPluginViews({
         activeView: "home",
         setActiveView: vi.fn(),
+        selectedCodexProviderId: null,
         pluginSettings,
         pluginsMeta,
         pluginStates: {
@@ -69,6 +70,7 @@ describe("useAppPluginViews", () => {
       useAppPluginViews({
         activeView: "codex",
         setActiveView,
+        selectedCodexProviderId: null,
         pluginSettings,
         pluginsMeta: [createPluginMeta("codex", "Codex")],
         pluginStates: {},
@@ -88,6 +90,7 @@ describe("useAppPluginViews", () => {
         useAppPluginViews({
           activeView: "codex",
           setActiveView,
+          selectedCodexProviderId: null,
           pluginSettings,
           pluginsMeta,
           pluginStates: {},
@@ -119,6 +122,7 @@ describe("useAppPluginViews", () => {
       useAppPluginViews({
         activeView: "codex",
         setActiveView: vi.fn(),
+        selectedCodexProviderId: null,
         pluginSettings,
         pluginsMeta: [createPluginMeta("codex", "Codex")],
         pluginStates: {},
@@ -126,5 +130,43 @@ describe("useAppPluginViews", () => {
     )
 
     expect(result.current.selectedPlugin?.meta.id).toBe("codex")
+  })
+
+  it("groups multiple Codex account providers into one nav and display item", () => {
+    const pluginSettings: PluginSettings = {
+      order: ["codex", "codex-hermes", "cursor"],
+      disabled: [],
+    }
+
+    const pluginsMeta = [
+      createPluginMeta("codex", "Codex"),
+      createPluginMeta("codex-hermes", "Codex"),
+      createPluginMeta("cursor", "Cursor"),
+    ]
+
+    const { result } = renderHook(() =>
+      useAppPluginViews({
+        activeView: "home",
+        setActiveView: vi.fn(),
+        selectedCodexProviderId: "codex-hermes",
+        pluginSettings,
+        pluginsMeta,
+        pluginStates: {
+          "codex-hermes": {
+            data: { providerId: "codex-hermes", displayName: "Codex", plan: "other@example.com - Pro 20x", lines: [], iconUrl: "" },
+            loading: false,
+            error: null,
+            lastManualRefreshAt: null,
+            lastUpdatedAt: 1,
+          },
+        },
+      })
+    )
+
+    expect(result.current.navPlugins.map((plugin) => plugin.id)).toEqual(["codex", "cursor"])
+    expect(result.current.displayPlugins.map((plugin) => plugin.meta.id)).toEqual(["codex", "cursor"])
+    expect(result.current.displayPlugins[0]?.sourceProviderId).toBe("codex-hermes")
+    expect(result.current.displayPlugins[0]?.data?.plan).toBe("other@example.com - Pro 20x")
+    expect(result.current.codexAccountOptions.map((option) => option.providerId)).toEqual(["codex", "codex-hermes"])
   })
 })

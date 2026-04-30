@@ -2,7 +2,7 @@ import { useShallow } from "zustand/react/shallow"
 import { OverviewPage } from "@/pages/overview"
 import { ProviderDetailPage } from "@/pages/provider-detail"
 import { SettingsPage } from "@/pages/settings"
-import type { DisplayPluginState } from "@/hooks/app/use-app-plugin-views"
+import type { AccountOption, DisplayPluginState } from "@/hooks/app/use-app-plugin-views"
 import type { SettingsPluginState } from "@/hooks/app/use-settings-plugin-list"
 import type { TraySettingsPreview } from "@/hooks/app/use-tray-icon"
 import { useAppPreferencesStore } from "@/stores/app-preferences-store"
@@ -35,6 +35,8 @@ export type AppContentActionProps = {
   traySettingsPreview: TraySettingsPreview
   onGlobalShortcutChange: (value: GlobalShortcut) => void
   onStartOnLoginChange: (value: boolean) => void
+  codexAccountOptions: AccountOption[]
+  onCodexAccountChange: (providerId: string) => void
 }
 
 export type AppContentProps = AppContentDerivedProps & AppContentActionProps
@@ -55,6 +57,8 @@ export function AppContent({
   traySettingsPreview,
   onGlobalShortcutChange,
   onStartOnLoginChange,
+  codexAccountOptions,
+  onCodexAccountChange,
 }: AppContentProps) {
   const { activeView } = useAppUiStore(
     useShallow((state) => ({
@@ -90,6 +94,8 @@ export function AppContent({
         displayMode={displayMode}
         resetTimerDisplayMode={resetTimerDisplayMode}
         onResetTimerDisplayModeToggle={onResetTimerDisplayModeToggle}
+        codexAccountOptions={codexAccountOptions}
+        onCodexAccountChange={onCodexAccountChange}
       />
     )
   }
@@ -120,12 +126,14 @@ export function AppContent({
   }
 
   const handleRetry = selectedPlugin
-    ? () => onRetryPlugin(selectedPlugin.meta.id)
+    ? () => onRetryPlugin(selectedPlugin.sourceProviderId ?? selectedPlugin.meta.id)
     : /* v8 ignore next */ undefined
 
   return (
     <ProviderDetailPage
       plugin={selectedPlugin}
+      planOptions={selectedPlugin?.meta.id === "codex" ? codexAccountOptions : []}
+      onPlanOptionChange={onCodexAccountChange}
       onRetry={handleRetry}
       displayMode={displayMode}
       resetTimerDisplayMode={resetTimerDisplayMode}

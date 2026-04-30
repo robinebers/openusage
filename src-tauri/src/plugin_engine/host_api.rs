@@ -522,6 +522,7 @@ pub fn inject_host_api<'js>(
     probe_ctx.set("nowIso", iso_now())?;
 
     let app_obj = Object::new(ctx.clone())?;
+    app_obj.set("pluginId", plugin_id)?;
     app_obj.set("version", app_version)?;
     app_obj.set("platform", std::env::consts::OS)?;
     app_obj.set("appDataDir", app_data_dir.to_string_lossy().to_string())?;

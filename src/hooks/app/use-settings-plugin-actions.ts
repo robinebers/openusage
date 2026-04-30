@@ -1,5 +1,6 @@
 import { useCallback } from "react"
 import { track } from "@/lib/analytics"
+import { isCodexAccountProviderId } from "@/lib/plugin-types"
 import { savePluginSettings, type PluginSettings } from "@/lib/settings"
 
 const TRAY_SETTINGS_DEBOUNCE_MS = 2000
@@ -23,6 +24,12 @@ export function useSettingsPluginActions({
   startBatch,
   scheduleTrayIconUpdate,
 }: UseSettingsPluginActionsArgs) {
+  const resolveToggleIds = useCallback((id: string) => {
+    if (!pluginSettings || !isCodexAccountProviderId(id)) return [id]
+    const codexIds = (pluginSettings.order ?? []).filter(isCodexAccountProviderId)
+    return codexIds.length > 0 ? codexIds : [id]
+  }, [pluginSettings])
+
   const handleReorder = useCallback((orderedIds: string[]) => {
     if (!pluginSettings) return
     track("providers_reordered", { count: orderedIds.length })
@@ -58,19 +65,24 @@ export function useSettingsPluginActions({
 
   const handleToggle = useCallback((id: string) => {
     if (!pluginSettings) return
-    const wasDisabled = pluginSettings.disabled.includes(id)
+    const toggleIds = resolveToggleIds(id)
+    const wasDisabled = toggleIds.every((toggleId) => pluginSettings.disabled.includes(toggleId))
     track("provider_toggled", { provider_id: id, enabled: wasDisabled ? "true" : "false" })
     const disabled = new Set(pluginSettings.disabled)
 
     if (wasDisabled) {
-      disabled.delete(id)
-      setLoadingForPlugins([id])
-      startBatch([id]).catch((error) => {
+      for (const toggleId of toggleIds) {
+        disabled.delete(toggleId)
+      }
+      setLoadingForPlugins(toggleIds)
+      startBatch(toggleIds).catch((error) => {
         console.error("Failed to start probe for enabled plugin:", error)
-        setErrorForPlugins([id], "Failed to start probe")
+        setErrorForPlugins(toggleIds, "Failed to start probe")
       })
     } else {
-      disabled.add(id)
+      for (const toggleId of toggleIds) {
+        disabled.add(toggleId)
+      }
     }
 
     const nextSettings: PluginSettings = {
@@ -84,6 +96,7 @@ export function useSettingsPluginActions({
     })
   }, [
     pluginSettings,
+    resolveToggleIds,
     scheduleTrayIconUpdate,
     setErrorForPlugins,
     setLoadingForPlugins,

@@ -4,6 +4,8 @@ import type { DisplayMode, ResetTimerDisplayMode } from "@/lib/settings"
 
 interface ProviderDetailPageProps {
   plugin: PluginDisplayState | null
+  planOptions?: { providerId: string; label: string }[]
+  onPlanOptionChange?: (providerId: string) => void
   onRetry?: () => void
   displayMode: DisplayMode
   resetTimerDisplayMode: ResetTimerDisplayMode
@@ -12,6 +14,8 @@ interface ProviderDetailPageProps {
 
 export function ProviderDetailPage({
   plugin,
+  planOptions,
+  onPlanOptionChange,
   onRetry,
   displayMode,
   resetTimerDisplayMode,
@@ -28,7 +32,10 @@ export function ProviderDetailPage({
   return (
     <ProviderCard
       name={plugin.meta.name}
+      providerId={plugin.sourceProviderId ?? plugin.meta.id}
       plan={plugin.data?.plan}
+      planOptions={planOptions}
+      onPlanOptionChange={onPlanOptionChange}
       links={plugin.meta.links}
       showSeparator={false}
       loading={plugin.loading}
