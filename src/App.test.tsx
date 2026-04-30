@@ -384,16 +384,42 @@ describe("App", () => {
     // Dark
     await userEvent.click(await screen.findByRole("radio", { name: "Dark" }))
     expect(document.documentElement.classList.contains("dark")).toBe(true)
+    expect(document.documentElement.classList.contains("glass")).toBe(false)
 
     // Light
     await userEvent.click(await screen.findByRole("radio", { name: "Light" }))
     expect(document.documentElement.classList.contains("dark")).toBe(false)
+    expect(document.documentElement.classList.contains("glass")).toBe(false)
+
+    // Glass
+    await userEvent.click(await screen.findByRole("radio", { name: "Glass" }))
+    expect(document.documentElement.classList.contains("dark")).toBe(false)
+    expect(document.documentElement.classList.contains("glass")).toBe(true)
 
     // Back to system should subscribe to matchMedia changes
     await userEvent.click(await screen.findByRole("radio", { name: "System" }))
     expect(mq.addEventListener).toHaveBeenCalled()
+    expect(document.documentElement.classList.contains("glass")).toBe(false)
 
     mmSpy.mockRestore()
+  })
+
+  it("syncs native liquid glass mode when running in tauri", async () => {
+    state.isTauriMock.mockReturnValue(true)
+
+    render(<App />)
+    const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
+    await userEvent.click(settingsButtons[0])
+
+    await userEvent.click(await screen.findByRole("radio", { name: "Glass" }))
+    await waitFor(() =>
+      expect(state.invokeMock).toHaveBeenCalledWith("set_liquid_glass_enabled", { enabled: true })
+    )
+
+    await userEvent.click(await screen.findByRole("radio", { name: "Light" }))
+    await waitFor(() =>
+      expect(state.invokeMock).toHaveBeenCalledWith("set_liquid_glass_enabled", { enabled: false })
+    )
   })
 
   it("loads plugins, normalizes settings, and renders overview", async () => {
@@ -778,6 +804,7 @@ describe("App", () => {
     // because "b" is not in DEFAULT_ENABLED_PLUGINS = ["claude","codex","cursor"])
     state.loadPluginSettingsMock.mockResolvedValue({ order: ["a", "b"], disabled: ["b"] })
     render(<App />)
+    await waitFor(() => expect(state.invokeMock).toHaveBeenCalledWith("list_plugins"))
     const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
     await userEvent.click(settingsButtons[0])
     // Re-query before each click: the Checkbox remounts on each toggle because

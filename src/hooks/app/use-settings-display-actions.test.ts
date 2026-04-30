@@ -53,12 +53,12 @@ describe("useSettingsDisplayActions", () => {
     )
 
     act(() => {
-      result.current.handleThemeModeChange("dark")
+      result.current.handleThemeModeChange("glass")
       result.current.handleDisplayModeChange("used")
       result.current.handleResetTimerDisplayModeChange("absolute")
     })
 
-    expect(trackMock).toHaveBeenCalledWith("setting_changed", { setting: "theme", value: "dark" })
+    expect(trackMock).toHaveBeenCalledWith("setting_changed", { setting: "theme", value: "glass" })
     expect(trackMock).toHaveBeenCalledWith("setting_changed", {
       setting: "display_mode",
       value: "used",
@@ -68,12 +68,12 @@ describe("useSettingsDisplayActions", () => {
       value: "absolute",
     })
 
-    expect(setThemeMode).toHaveBeenCalledWith("dark")
+    expect(setThemeMode).toHaveBeenCalledWith("glass")
     expect(setDisplayMode).toHaveBeenCalledWith("used")
     expect(setResetTimerDisplayMode).toHaveBeenCalledWith("absolute")
     expect(scheduleTrayIconUpdate).toHaveBeenCalledWith("settings", 0)
 
-    expect(saveThemeModeMock).toHaveBeenCalledWith("dark")
+    expect(saveThemeModeMock).toHaveBeenCalledWith("glass")
     expect(saveDisplayModeMock).toHaveBeenCalledWith("used")
     expect(saveResetTimerDisplayModeMock).toHaveBeenCalledWith("absolute")
   })

@@ -137,6 +137,11 @@ describe("settings", () => {
     await expect(loadThemeMode()).resolves.toBe("dark")
   })
 
+  it("loads stored glass theme mode", async () => {
+    storeState.set("themeMode", "glass")
+    await expect(loadThemeMode()).resolves.toBe("glass")
+  })
+
   it("saves theme mode", async () => {
     await saveThemeMode("light")
     await expect(loadThemeMode()).resolves.toBe("light")
