@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 
-const WHITELISTED_ENV_VARS: [&str; 16] = [
+const WHITELISTED_ENV_VARS: [&str; 17] = [
     "CODEX_HOME",
     "CLAUDE_CONFIG_DIR",
     "CLAUDE_CODE_OAUTH_TOKEN",
@@ -28,6 +28,7 @@ const WHITELISTED_ENV_VARS: [&str; 16] = [
     "MINIMAX_CN_API_KEY",
     "SYNTHETIC_API_KEY",
     "PI_CODING_AGENT_DIR",
+    "FIREWORKS_API_KEY",
 ];
 
 fn last_non_empty_trimmed_line(text: &str) -> Option<String> {
@@ -256,6 +257,8 @@ fn redact_value(value: &str) -> String {
 
 /// Redact sensitive query parameters in URL
 fn redact_url(url: &str) -> String {
+    let account_path_pattern = regex_lite::Regex::new(r"(?P<prefix>/accounts/)(?P<value>[^/?#]+)")
+        .expect("valid account path regex");
     let sensitive_params = [
         "key",
         "api_key",
@@ -279,6 +282,12 @@ fn redact_url(url: &str) -> String {
         "login",
     ];
 
+    let url = account_path_pattern
+        .replace_all(url, |caps: &regex_lite::Captures| {
+            format!("{}{}", &caps["prefix"], redact_value(&caps["value"]))
+        })
+        .to_string();
+
     if let Some(query_start) = url.find('?') {
         let (base, query) = url.split_at(query_start + 1);
         let redacted_params: Vec<String> = query
@@ -301,7 +310,7 @@ fn redact_url(url: &str) -> String {
             .collect();
         format!("{}{}", base, redacted_params.join("&"))
     } else {
-        url.to_string()
+        url
     }
 }
 
@@ -549,6 +558,7 @@ pub fn inject_host_api<'js>(
     inject_sqlite(ctx, &host)?;
     inject_ls(ctx, &host, plugin_id)?;
     inject_ccusage(ctx, &host, plugin_id)?;
+    inject_fireworks(ctx, &host, plugin_id)?;
 
     probe_ctx.set("host", host)?;
     globals.set("__openusage_ctx", probe_ctx)?;
@@ -2032,6 +2042,164 @@ pub fn patch_ccusage_wrapper(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
     )
 }
 
+#[derive(Default, serde::Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+struct FireworksBillingExportOpts {
+    api_key: String,
+    account_id: String,
+    start_time: String,
+    end_time: String,
+}
+
+fn firectl_runner_candidates() -> [&'static str; 3] {
+    ["firectl", "/opt/homebrew/bin/firectl", "/usr/local/bin/firectl"]
+}
+
+fn resolve_firectl_runner() -> Option<String> {
+    for candidate in firectl_runner_candidates() {
+        if Command::new(candidate)
+            .arg("--help")
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
+        {
+            return Some(candidate.to_string());
+        }
+    }
+    None
+}
+
+fn run_fireworks_billing_export(
+    opts: &FireworksBillingExportOpts,
+    plugin_id: &str,
+) -> serde_json::Value {
+    if opts.api_key.trim().is_empty()
+        || opts.account_id.trim().is_empty()
+        || opts.start_time.trim().is_empty()
+        || opts.end_time.trim().is_empty()
+    {
+        return serde_json::json!({ "status": "invalid_opts" });
+    }
+
+    let Some(program) = resolve_firectl_runner() else {
+        log::warn!("[plugin:{}] firectl not found for billing export", plugin_id);
+        return serde_json::json!({ "status": "no_runner" });
+    };
+
+    let file_name = format!(
+        "openusage-fireworks-{}-{}.csv",
+        std::process::id(),
+        iso_now().replace([':', '.'], "-")
+    );
+    let temp_dir = std::env::temp_dir();
+    let output_path = temp_dir.join(&file_name);
+    let result = Command::new(&program)
+        .current_dir(&temp_dir)
+        .args([
+            "billing",
+            "export-metrics",
+            "--api-key",
+            opts.api_key.trim(),
+            "--account-id",
+            opts.account_id.trim(),
+            "--start-time",
+            opts.start_time.trim(),
+            "--end-time",
+            opts.end_time.trim(),
+            "--filename",
+            file_name.as_str(),
+        ])
+        .output();
+
+    let read_csv = || std::fs::read_to_string(&output_path).ok();
+    let cleanup = || {
+        let _ = std::fs::remove_file(&output_path);
+    };
+
+    match result {
+        Ok(output) if output.status.success() => {
+            let csv = read_csv();
+            cleanup();
+            match csv {
+                Some(text) if !text.trim().is_empty() => {
+                    serde_json::json!({ "status": "ok", "csv": text })
+                }
+                _ => {
+                    log::warn!(
+                        "[plugin:{}] billing export succeeded but no CSV was produced",
+                        plugin_id
+                    );
+                    serde_json::json!({ "status": "empty" })
+                }
+            }
+        }
+        Ok(output) => {
+            cleanup();
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            log::warn!(
+                "[plugin:{}] firectl billing export failed: {}",
+                plugin_id,
+                stderr.lines().next().unwrap_or("unknown error").trim()
+            );
+            serde_json::json!({ "status": "runner_failed" })
+        }
+        Err(err) => {
+            cleanup();
+            log::warn!(
+                "[plugin:{}] failed to spawn firectl billing export: {}",
+                plugin_id,
+                err
+            );
+            serde_json::json!({ "status": "runner_failed" })
+        }
+    }
+}
+
+fn inject_fireworks<'js>(
+    ctx: &Ctx<'js>,
+    host: &Object<'js>,
+    plugin_id: &str,
+) -> rquickjs::Result<()> {
+    let fireworks_obj = Object::new(ctx.clone())?;
+    let pid = plugin_id.to_string();
+
+    fireworks_obj.set(
+        "_exportBillingMetricsRaw",
+        Function::new(
+            ctx.clone(),
+            move |_ctx_inner: Ctx<'_>, opts_json: String| -> rquickjs::Result<String> {
+                let opts: FireworksBillingExportOpts =
+                    serde_json::from_str(&opts_json).unwrap_or_default();
+                Ok(run_fireworks_billing_export(&opts, &pid).to_string())
+            },
+        )?,
+    )?;
+
+    host.set("fireworks", fireworks_obj)?;
+    Ok(())
+}
+
+pub fn patch_fireworks_wrapper(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
+    ctx.eval::<(), _>(
+        r#"
+        (function() {
+            var rawFn = __openusage_ctx.host.fireworks._exportBillingMetricsRaw;
+            __openusage_ctx.host.fireworks.exportBillingMetrics = function(opts) {
+                var result = rawFn(JSON.stringify(opts || {}));
+                try {
+                    var parsed = JSON.parse(result);
+                    if (parsed && typeof parsed === "object" && typeof parsed.status === "string") {
+                        return parsed;
+                    }
+                } catch (e) {}
+                return { status: "runner_failed" };
+            };
+        })();
+        "#
+        .as_bytes(),
+    )
+}
+
 fn inject_keychain<'js>(
     ctx: &Ctx<'js>,
     host: &Object<'js>,
@@ -2632,6 +2800,27 @@ mod tests {
     }
 
     #[test]
+    fn fireworks_api_exposes_billing_export_helper() {
+        let rt = Runtime::new().expect("runtime");
+        let ctx = Context::full(&rt).expect("context");
+        ctx.with(|ctx| {
+            let app_data = std::env::temp_dir();
+            inject_host_api(&ctx, "test", &app_data, "0.0.0").expect("inject host api");
+            patch_fireworks_wrapper(&ctx).expect("patch fireworks wrapper");
+            let globals = ctx.globals();
+            let probe_ctx: Object = globals.get("__openusage_ctx").expect("probe ctx");
+            let host: Object = probe_ctx.get("host").expect("host");
+            let fireworks: Object = host.get("fireworks").expect("fireworks");
+            let _raw: Function = fireworks
+                .get("_exportBillingMetricsRaw")
+                .expect("_exportBillingMetricsRaw");
+            let _wrapped: Function = fireworks
+                .get("exportBillingMetrics")
+                .expect("exportBillingMetrics");
+        });
+    }
+
+    #[test]
     fn env_api_respects_allowlist_in_host_and_js() {
         let claude_env_vars = [
             "CLAUDE_CONFIG_DIR",
@@ -2744,6 +2933,57 @@ mod tests {
                 js_value.as_deref(),
                 Some("sk-process-env-test-1234567890"),
                 "process env should be preferred from JS"
+            );
+        });
+    }
+
+    #[test]
+    fn env_api_exposes_fireworks_api_key() {
+        struct RestoreEnvVar {
+            name: &'static str,
+            old: Option<String>,
+        }
+
+        impl Drop for RestoreEnvVar {
+            fn drop(&mut self) {
+                if let Some(value) = self.old.take() {
+                    unsafe { std::env::set_var(self.name, value) };
+                } else {
+                    unsafe { std::env::remove_var(self.name) };
+                }
+            }
+        }
+
+        let name = "FIREWORKS_API_KEY";
+        let old = std::env::var(name).ok();
+        let _restore = RestoreEnvVar { name, old };
+        unsafe { std::env::set_var(name, "fw-process-env-test-1234567890") };
+
+        let rt = Runtime::new().expect("runtime");
+        let ctx = Context::full(&rt).expect("context");
+        ctx.with(|ctx| {
+            let app_data = std::env::temp_dir();
+            inject_host_api(&ctx, "test", &app_data, "0.0.0").expect("inject host api");
+            let globals = ctx.globals();
+            let probe_ctx: Object = globals.get("__openusage_ctx").expect("probe ctx");
+            let host: Object = probe_ctx.get("host").expect("host");
+            let env: Object = host.get("env").expect("env");
+            let get: Function = env.get("get").expect("get");
+
+            let value: Option<String> = get.call((name.to_string(),)).expect("get");
+            assert_eq!(
+                value.as_deref(),
+                Some("fw-process-env-test-1234567890"),
+                "fireworks env should be exposed to plugins"
+            );
+
+            let js_value: Option<String> = ctx
+                .eval(r#"__openusage_ctx.host.env.get("FIREWORKS_API_KEY")"#)
+                .expect("js get");
+            assert_eq!(
+                js_value.as_deref(),
+                Some("fw-process-env-test-1234567890"),
+                "fireworks env should be exposed from JS"
             );
         });
     }
@@ -2903,6 +3143,23 @@ mod tests {
         assert!(
             redacted.contains("origin=AI_EDITOR"),
             "non-sensitive params should remain visible, got: {}",
+            redacted
+        );
+    }
+
+    #[test]
+    fn redact_url_redacts_account_id_path_segment() {
+        let url =
+            "https://api.fireworks.ai/v1/accounts/acct_1234567890abcdef/quotas?pageSize=200";
+        let redacted = redact_url(url);
+        assert!(
+            !redacted.contains("acct_1234567890abcdef"),
+            "account path segment should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            redacted.contains("/quotas?pageSize=200"),
+            "non-sensitive path/query parts should remain visible, got: {}",
             redacted
         );
     }
