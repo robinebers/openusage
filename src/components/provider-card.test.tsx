@@ -84,6 +84,28 @@ describe("ProviderCard", () => {
     expect(onPlanOptionChange).toHaveBeenCalledWith("codex")
   })
 
+  it("lets long account labels use the full card width", () => {
+    const label = "lildev.lehuu@gmail.com - Pro 20x"
+    render(
+      <ProviderCard
+        name="Codex"
+        providerId="codex"
+        displayMode="used"
+        planOptions={[
+          { providerId: "codex", label },
+          { providerId: "codex-slot-account-2", label: "oscar.lehuu@gmail.com - Pro 20x" },
+        ]}
+        onPlanOptionChange={vi.fn()}
+      />
+    )
+
+    const accountSelect = screen.getByRole("combobox", { name: "Account" })
+    expect(accountSelect).toHaveAttribute("title", label)
+    expect(accountSelect).toHaveClass("w-full")
+    expect(accountSelect).toHaveClass("max-w-full")
+    expect(accountSelect).not.toHaveClass("max-w-[52%]")
+  })
+
   it("renders loading skeleton", () => {
     render(
       <ProviderCard

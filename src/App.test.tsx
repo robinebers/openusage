@@ -671,6 +671,62 @@ describe("App", () => {
     await waitFor(() => expect(state.traySetTitleMock).toHaveBeenCalledWith("70%"))
   })
 
+  it("uses the selected Codex account for provider tray percent", async () => {
+    state.invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_plugins") {
+        return [
+          {
+            id: "codex",
+            name: "Codex",
+            iconUrl: "codex-icon",
+            primaryCandidates: ["Session"],
+            lines: [{ type: "progress", label: "Session", scope: "overview" }],
+          },
+          {
+            id: "codex-slot-account-2",
+            name: "oscar@example.com",
+            iconUrl: "codex-icon",
+            primaryCandidates: ["Session"],
+            lines: [{ type: "progress", label: "Session", scope: "overview" }],
+          },
+        ]
+      }
+      return null
+    })
+    state.loadPluginSettingsMock.mockResolvedValueOnce({
+      order: ["codex", "codex-slot-account-2"],
+      disabled: [],
+    })
+    state.startBatchMock.mockResolvedValue(["codex", "codex-slot-account-2"])
+
+    render(<App />)
+    await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
+
+    state.probeHandlers?.onResult({
+      providerId: "codex",
+      displayName: "Codex",
+      plan: "lildev@example.com - Pro 20x",
+      iconUrl: "codex-icon",
+      lines: [{ type: "progress", label: "Session", used: 38, limit: 100, format: { kind: "percent" } }],
+    })
+    state.probeHandlers?.onResult({
+      providerId: "codex-slot-account-2",
+      displayName: "Codex",
+      plan: "oscar@example.com - Pro 20x",
+      iconUrl: "codex-icon",
+      lines: [{ type: "progress", label: "Session", used: 5, limit: 100, format: { kind: "percent" } }],
+    })
+
+    const accountSelect = await screen.findByRole("combobox", { name: "Account" })
+    await userEvent.selectOptions(accountSelect, "codex-slot-account-2")
+
+    await waitFor(() => {
+      const latestCall = state.renderTrayBarsIconMock.mock.calls.at(-1)?.[0]
+      expect(latestCall.bars).toEqual([{ id: "codex-slot-account-2", fraction: 0.95 }])
+    })
+    await waitFor(() => expect(state.traySetTitleMock).toHaveBeenCalledWith("95%"))
+  })
+
   it("covers about open/close callbacks", async () => {
     render(<App />)
 

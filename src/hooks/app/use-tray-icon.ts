@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { resolveResource } from "@tauri-apps/api/path"
 import { TrayIcon } from "@tauri-apps/api/tray"
-import type { PluginMeta } from "@/lib/plugin-types"
+import { isCodexAccountProviderId, type PluginMeta } from "@/lib/plugin-types"
 import type { DisplayMode, MenubarIconStyle, PluginSettings } from "@/lib/settings"
 import { getEnabledPluginIds } from "@/lib/settings"
 import { getTrayIconSizePx, renderTrayBarsIcon } from "@/lib/tray-bars-icon"
@@ -18,6 +18,7 @@ type UseTrayIconArgs = {
   displayMode: DisplayMode
   menubarIconStyle: MenubarIconStyle
   activeView: string
+  selectedCodexProviderId?: string | null
 }
 
 export type TraySettingsPreview = {
@@ -56,6 +57,7 @@ export function useTrayIcon({
   displayMode,
   menubarIconStyle,
   activeView,
+  selectedCodexProviderId = null,
 }: UseTrayIconArgs) {
   const trayRef = useRef<TrayIcon | null>(null)
   const trayGaugeIconPathRef = useRef<string | null>(null)
@@ -73,6 +75,7 @@ export function useTrayIcon({
   const displayModeRef = useRef(displayMode)
   const menubarIconStyleRef = useRef(menubarIconStyle)
   const activeViewRef = useRef(activeView)
+  const selectedCodexProviderIdRef = useRef(selectedCodexProviderId)
   const lastTrayProviderIdRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -98,6 +101,10 @@ export function useTrayIcon({
   useEffect(() => {
     activeViewRef.current = activeView
   }, [activeView])
+
+  useEffect(() => {
+    selectedCodexProviderIdRef.current = selectedCodexProviderId
+  }, [selectedCodexProviderId])
 
   const scheduleTrayIconUpdate = useCallback((
     _reason: TrayUpdateReason,
@@ -189,10 +196,22 @@ export function useTrayIcon({
       const nextActiveView = activeViewRef.current
       const activeProviderId =
         nextActiveView !== "home" && nextActiveView !== "settings" ? nextActiveView : null
+      const selectedCodexProviderId = selectedCodexProviderIdRef.current
+      const activeCodexProviderId =
+        selectedCodexProviderId &&
+        isCodexAccountProviderId(selectedCodexProviderId) &&
+        enabledPluginIds.includes(selectedCodexProviderId)
+          ? selectedCodexProviderId
+          : null
 
       let trayProviderId: string | null = null
-      if (activeProviderId && enabledPluginIds.includes(activeProviderId)) {
+      if (activeProviderId && isCodexAccountProviderId(activeProviderId)) {
+        trayProviderId = activeCodexProviderId
+          ?? (enabledPluginIds.includes(activeProviderId) ? activeProviderId : null)
+      } else if (activeProviderId && enabledPluginIds.includes(activeProviderId)) {
         trayProviderId = activeProviderId
+      } else if (activeCodexProviderId) {
+        trayProviderId = activeCodexProviderId
       } else if (
         lastTrayProviderIdRef.current &&
         enabledPluginIds.includes(lastTrayProviderIdRef.current)
@@ -357,7 +376,7 @@ export function useTrayIcon({
   useEffect(() => {
     if (!trayReady) return
     scheduleTrayIconUpdate("settings", 0)
-  }, [activeView, menubarIconStyle, scheduleTrayIconUpdate, trayReady])
+  }, [activeView, menubarIconStyle, scheduleTrayIconUpdate, selectedCodexProviderId, trayReady])
 
   useEffect(() => {
     return () => {

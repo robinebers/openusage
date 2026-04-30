@@ -106,6 +106,7 @@ function App() {
     displayMode,
     menubarIconStyle,
     activeView,
+    selectedCodexProviderId,
   })
 
   useEffect(() => {

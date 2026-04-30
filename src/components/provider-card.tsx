@@ -195,8 +195,8 @@ export function ProviderCard({
   return (
     <div>
       <div className="py-3">
-        <div className="flex items-center justify-between mb-2">
-          <div className="relative flex items-center">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+          <div className="relative flex min-w-0 items-center">
             <h2 className="text-lg font-semibold" style={{ transform: "translateZ(0)" }}>{name}</h2>
             {onRetry && (
               loading ? (
@@ -264,7 +264,7 @@ export function ProviderCard({
           {showPlanSelector ? (
             <select
               aria-label="Account"
-              className="h-6 max-w-[52%] min-w-0 rounded-md border bg-transparent px-2 py-0.5 text-xs font-medium text-foreground outline-none"
+              className="ml-auto h-6 w-full min-w-0 max-w-full rounded-md border bg-transparent px-2 py-0.5 text-xs font-medium text-foreground outline-none"
               title={selectedPlanLabel ?? undefined}
               value={providerId}
               onChange={(event) => handlePlanOptionChange(event.target.value)}
@@ -278,7 +278,7 @@ export function ProviderCard({
           ) : selectedPlanLabel ? (
             <Badge
               variant="outline"
-              className="truncate min-w-0 max-w-[40%]"
+              className="ml-auto min-w-0 max-w-full truncate"
               title={selectedPlanLabel}
             >
               {selectedPlanLabel}
