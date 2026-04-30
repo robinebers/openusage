@@ -717,12 +717,13 @@
           }
         }
 
-        if (totalTokens > 0) {
-          lines.push(ctx.line.text({
-            label: "Last 30 Days",
-            value: costAndTokensLabel({ tokens: totalTokens, costUSD: hasCost ? totalCostNanos / 1e9 : null })
-          }))
-        }
+        lines.push(ctx.line.text({
+          label: "Last 30 Days",
+          value: costAndTokensLabel(
+            { tokens: totalTokens, costUSD: hasCost ? totalCostNanos / 1e9 : 0 },
+            { includeZeroTokens: true }
+          )
+        }))
       }
 
       if (lines.length === 0) {

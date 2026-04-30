@@ -574,7 +574,10 @@ describe("codex plugin", () => {
     expect(yesterdayLine).toBeTruthy()
     expect(yesterdayLine.value).toContain("$0.00")
     expect(yesterdayLine.value).toContain("0 tokens")
-    expect(result.lines.find((l) => l.label === "Last 30 Days")).toBeUndefined()
+    const last30 = result.lines.find((l) => l.label === "Last 30 Days")
+    expect(last30).toBeTruthy()
+    expect(last30.value).toContain("$0.00")
+    expect(last30.value).toContain("0 tokens")
   })
 
   it("shows empty Yesterday state when yesterday's totals are zero (regression)", async () => {
