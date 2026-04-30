@@ -58,6 +58,8 @@ function App() {
     setDisplayMode,
     menubarIconStyle,
     setMenubarIconStyle,
+    codexMenubarShowAllAccounts,
+    setCodexMenubarShowAllAccounts,
     resetTimerDisplayMode,
     setResetTimerDisplayMode,
     setGlobalShortcut,
@@ -72,6 +74,8 @@ function App() {
       setDisplayMode: state.setDisplayMode,
       menubarIconStyle: state.menubarIconStyle,
       setMenubarIconStyle: state.setMenubarIconStyle,
+      codexMenubarShowAllAccounts: state.codexMenubarShowAllAccounts,
+      setCodexMenubarShowAllAccounts: state.setCodexMenubarShowAllAccounts,
       resetTimerDisplayMode: state.resetTimerDisplayMode,
       setResetTimerDisplayMode: state.setResetTimerDisplayMode,
       setGlobalShortcut: state.setGlobalShortcut,
@@ -107,6 +111,7 @@ function App() {
     menubarIconStyle,
     activeView,
     selectedCodexProviderId,
+    codexMenubarShowAllAccounts,
   })
 
   useEffect(() => {
@@ -122,6 +127,7 @@ function App() {
     setThemeMode,
     setDisplayMode,
     setMenubarIconStyle,
+    setCodexMenubarShowAllAccounts,
     setResetTimerDisplayMode,
     setGlobalShortcut,
     setStartOnLogin,
@@ -138,12 +144,14 @@ function App() {
     handleResetTimerDisplayModeChange,
     handleResetTimerDisplayModeToggle,
     handleMenubarIconStyleChange,
+    handleCodexMenubarShowAllAccountsChange,
   } = useSettingsDisplayActions({
     setThemeMode,
     setDisplayMode,
     resetTimerDisplayMode,
     setResetTimerDisplayMode,
     setMenubarIconStyle,
+    setCodexMenubarShowAllAccounts,
     scheduleTrayIconUpdate,
   })
 
@@ -253,6 +261,8 @@ function App() {
         onResetTimerDisplayModeChange: handleResetTimerDisplayModeChange,
         onResetTimerDisplayModeToggle: handleResetTimerDisplayModeToggle,
         onMenubarIconStyleChange: handleMenubarIconStyleChange,
+        codexMenubarShowAllAccounts,
+        onCodexMenubarShowAllAccountsChange: handleCodexMenubarShowAllAccountsChange,
         traySettingsPreview,
         onGlobalShortcutChange: handleGlobalShortcutChange,
         onStartOnLoginChange: handleStartOnLoginChange,

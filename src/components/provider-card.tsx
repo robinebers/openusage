@@ -3,6 +3,7 @@ import { AlertCircle, ExternalLink, Hourglass, RefreshCw } from "lucide-react"
 import { openUrl } from "@tauri-apps/plugin-opener"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -36,6 +37,8 @@ interface ProviderCardProps {
   displayMode: DisplayMode
   resetTimerDisplayMode?: ResetTimerDisplayMode
   onResetTimerDisplayModeToggle?: () => void
+  codexMenubarShowAllAccounts?: boolean
+  onCodexMenubarShowAllAccountsChange?: (value: boolean) => void
 }
 
 const PACE_VISUALS: Record<PaceStatus, { dotClass: string }> = {
@@ -113,6 +116,8 @@ export function ProviderCard({
   displayMode,
   resetTimerDisplayMode = "relative",
   onResetTimerDisplayModeToggle,
+  codexMenubarShowAllAccounts = false,
+  onCodexMenubarShowAllAccountsChange,
 }: ProviderCardProps) {
   const cooldownRemainingMs = useMemo(() => {
     if (!lastManualRefreshAt) return 0
@@ -174,6 +179,7 @@ export function ProviderCard({
     ?? planOptions.find((option) => option.providerId === providerId)?.label
     ?? null
   const showPlanSelector = planOptions.length > 1 && Boolean(providerId) && Boolean(onPlanOptionChange)
+  const showCodexMenubarToggle = showPlanSelector && Boolean(onCodexMenubarShowAllAccountsChange)
   const handlePlanOptionChange = (value: string) => {
     if (onPlanOptionChange) onPlanOptionChange(value)
   }
@@ -285,6 +291,20 @@ export function ProviderCard({
             </Badge>
           ) : null}
         </div>
+        {showCodexMenubarToggle && (
+          <label className="mb-2 -mt-0.5 flex min-h-6 items-center gap-2 text-xs text-muted-foreground">
+            <Checkbox
+              aria-label="Menu bar: all accounts"
+              checked={codexMenubarShowAllAccounts}
+              onCheckedChange={(checked) => {
+                if (onCodexMenubarShowAllAccountsChange) {
+                  onCodexMenubarShowAllAccountsChange(Boolean(checked))
+                }
+              }}
+            />
+            <span>Menu bar: all accounts</span>
+          </label>
+        )}
         {visibleLinks.length > 0 && (
           <div className="mb-2 -mt-0.5 flex flex-wrap gap-1.5">
             {visibleLinks.map((link) => (

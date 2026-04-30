@@ -10,6 +10,7 @@ const {
   isAutostartEnabledMock,
   isTauriMock,
   loadAutoUpdateIntervalMock,
+  loadCodexMenubarShowAllAccountsMock,
   loadDisplayModeMock,
   loadGlobalShortcutMock,
   loadMenubarIconStyleMock,
@@ -29,6 +30,7 @@ const {
   arePluginSettingsEqualMock: vi.fn(),
   getEnabledPluginIdsMock: vi.fn(),
   loadAutoUpdateIntervalMock: vi.fn(),
+  loadCodexMenubarShowAllAccountsMock: vi.fn(),
   loadDisplayModeMock: vi.fn(),
   loadGlobalShortcutMock: vi.fn(),
   loadMenubarIconStyleMock: vi.fn(),
@@ -55,6 +57,7 @@ vi.mock("@tauri-apps/plugin-autostart", () => ({
 vi.mock("@/lib/settings", () => ({
   arePluginSettingsEqual: arePluginSettingsEqualMock,
   DEFAULT_AUTO_UPDATE_INTERVAL: 15,
+  DEFAULT_CODEX_MENUBAR_SHOW_ALL_ACCOUNTS: false,
   DEFAULT_DISPLAY_MODE: "left",
   DEFAULT_GLOBAL_SHORTCUT: null,
   DEFAULT_MENUBAR_ICON_STYLE: "provider",
@@ -63,6 +66,7 @@ vi.mock("@/lib/settings", () => ({
   DEFAULT_THEME_MODE: "system",
   getEnabledPluginIds: getEnabledPluginIdsMock,
   loadAutoUpdateInterval: loadAutoUpdateIntervalMock,
+  loadCodexMenubarShowAllAccounts: loadCodexMenubarShowAllAccountsMock,
   loadDisplayMode: loadDisplayModeMock,
   loadGlobalShortcut: loadGlobalShortcutMock,
   loadMenubarIconStyle: loadMenubarIconStyleMock,
@@ -88,6 +92,7 @@ function createArgs() {
     setGlobalShortcut: vi.fn(),
     setStartOnLogin: vi.fn(),
     setMenubarIconStyle: vi.fn(),
+    setCodexMenubarShowAllAccounts: vi.fn(),
     setLoadingForPlugins: vi.fn(),
     setErrorForPlugins: vi.fn(),
     startBatch: vi.fn().mockResolvedValue(undefined),
@@ -104,6 +109,7 @@ describe("useSettingsBootstrap", () => {
     arePluginSettingsEqualMock.mockReset()
     getEnabledPluginIdsMock.mockReset()
     loadAutoUpdateIntervalMock.mockReset()
+    loadCodexMenubarShowAllAccountsMock.mockReset()
     loadDisplayModeMock.mockReset()
     loadGlobalShortcutMock.mockReset()
     loadMenubarIconStyleMock.mockReset()
@@ -131,6 +137,7 @@ describe("useSettingsBootstrap", () => {
     normalizePluginSettingsMock.mockImplementation((stored) => stored)
     arePluginSettingsEqualMock.mockReturnValue(true)
     loadAutoUpdateIntervalMock.mockResolvedValue(15)
+    loadCodexMenubarShowAllAccountsMock.mockResolvedValue(false)
     loadThemeModeMock.mockResolvedValue("dark")
     loadDisplayModeMock.mockResolvedValue("used")
     loadResetTimerDisplayModeMock.mockResolvedValue("relative")

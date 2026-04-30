@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import {
   DEFAULT_AUTO_UPDATE_INTERVAL,
+  DEFAULT_CODEX_MENUBAR_SHOW_ALL_ACCOUNTS,
   DEFAULT_DISPLAY_MODE,
   DEFAULT_GLOBAL_SHORTCUT,
   DEFAULT_MENUBAR_ICON_STYLE,
@@ -10,6 +11,7 @@ import {
   DEFAULT_THEME_MODE,
   arePluginSettingsEqual,
   getEnabledPluginIds,
+  loadCodexMenubarShowAllAccounts,
   loadAutoUpdateInterval,
   loadDisplayMode,
   loadGlobalShortcut,
@@ -21,6 +23,7 @@ import {
   loadThemeMode,
   normalizePluginSettings,
   saveAutoUpdateInterval,
+  saveCodexMenubarShowAllAccounts,
   saveDisplayMode,
   saveGlobalShortcut,
   saveMenubarIconStyle,
@@ -259,6 +262,29 @@ describe("settings", () => {
   it("falls back to default for invalid menubar icon style", async () => {
     storeState.set("menubarIconStyle", "invalid")
     await expect(loadMenubarIconStyle()).resolves.toBe(DEFAULT_MENUBAR_ICON_STYLE)
+  })
+
+  it("loads default Codex menubar account setting when missing", async () => {
+    await expect(loadCodexMenubarShowAllAccounts()).resolves.toBe(
+      DEFAULT_CODEX_MENUBAR_SHOW_ALL_ACCOUNTS
+    )
+  })
+
+  it("loads stored Codex menubar account setting", async () => {
+    storeState.set("codexMenubarShowAllAccounts", true)
+    await expect(loadCodexMenubarShowAllAccounts()).resolves.toBe(true)
+  })
+
+  it("saves Codex menubar account setting", async () => {
+    await saveCodexMenubarShowAllAccounts(true)
+    await expect(loadCodexMenubarShowAllAccounts()).resolves.toBe(true)
+  })
+
+  it("falls back to default for invalid Codex menubar account setting", async () => {
+    storeState.set("codexMenubarShowAllAccounts", "yes")
+    await expect(loadCodexMenubarShowAllAccounts()).resolves.toBe(
+      DEFAULT_CODEX_MENUBAR_SHOW_ALL_ACCOUNTS
+    )
   })
 
   it("skips legacy tray migration when keys are absent", async () => {

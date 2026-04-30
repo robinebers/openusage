@@ -106,6 +106,27 @@ describe("ProviderCard", () => {
     expect(accountSelect).not.toHaveClass("max-w-[52%]")
   })
 
+  it("renders Codex menu bar account toggle for account selector", async () => {
+    const onCodexMenubarShowAllAccountsChange = vi.fn()
+    render(
+      <ProviderCard
+        name="Codex"
+        providerId="codex"
+        displayMode="used"
+        planOptions={[
+          { providerId: "codex", label: "lildev@example.com - Pro 20x" },
+          { providerId: "codex-slot-account-2", label: "oscar@example.com - Pro 20x" },
+        ]}
+        onPlanOptionChange={vi.fn()}
+        codexMenubarShowAllAccounts={false}
+        onCodexMenubarShowAllAccountsChange={onCodexMenubarShowAllAccountsChange}
+      />
+    )
+
+    await userEvent.click(screen.getByRole("checkbox", { name: "Menu bar: all accounts" }))
+    expect(onCodexMenubarShowAllAccountsChange).toHaveBeenCalledWith(true)
+  })
+
   it("renders loading skeleton", () => {
     render(
       <ProviderCard

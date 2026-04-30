@@ -22,6 +22,8 @@ const state = vi.hoisted(() => ({
   saveResetTimerDisplayModeMock: vi.fn(),
   loadMenubarIconStyleMock: vi.fn(),
   saveMenubarIconStyleMock: vi.fn(),
+  loadCodexMenubarShowAllAccountsMock: vi.fn(),
+  saveCodexMenubarShowAllAccountsMock: vi.fn(),
   migrateLegacyTraySettingsMock: vi.fn(),
   loadGlobalShortcutMock: vi.fn(),
   saveGlobalShortcutMock: vi.fn(),
@@ -234,6 +236,8 @@ vi.mock("@/lib/settings", async () => {
     saveResetTimerDisplayMode: state.saveResetTimerDisplayModeMock,
     loadMenubarIconStyle: state.loadMenubarIconStyleMock,
     saveMenubarIconStyle: state.saveMenubarIconStyleMock,
+    loadCodexMenubarShowAllAccounts: state.loadCodexMenubarShowAllAccountsMock,
+    saveCodexMenubarShowAllAccounts: state.saveCodexMenubarShowAllAccountsMock,
     migrateLegacyTraySettings: state.migrateLegacyTraySettingsMock,
     loadGlobalShortcut: state.loadGlobalShortcutMock,
     saveGlobalShortcut: state.saveGlobalShortcutMock,
@@ -273,6 +277,8 @@ describe("App", () => {
     state.saveResetTimerDisplayModeMock.mockReset()
     state.loadMenubarIconStyleMock.mockReset()
     state.saveMenubarIconStyleMock.mockReset()
+    state.loadCodexMenubarShowAllAccountsMock.mockReset()
+    state.saveCodexMenubarShowAllAccountsMock.mockReset()
     state.migrateLegacyTraySettingsMock.mockReset()
     state.loadGlobalShortcutMock.mockReset()
     state.saveGlobalShortcutMock.mockReset()
@@ -311,6 +317,8 @@ describe("App", () => {
     state.saveResetTimerDisplayModeMock.mockResolvedValue(undefined)
     state.loadMenubarIconStyleMock.mockResolvedValue("provider")
     state.saveMenubarIconStyleMock.mockResolvedValue(undefined)
+    state.loadCodexMenubarShowAllAccountsMock.mockResolvedValue(false)
+    state.saveCodexMenubarShowAllAccountsMock.mockResolvedValue(undefined)
     state.migrateLegacyTraySettingsMock.mockResolvedValue(undefined)
     state.loadGlobalShortcutMock.mockResolvedValue(null)
     state.saveGlobalShortcutMock.mockResolvedValue(undefined)
@@ -725,6 +733,65 @@ describe("App", () => {
       expect(latestCall.bars).toEqual([{ id: "codex-slot-account-2", fraction: 0.95 }])
     })
     await waitFor(() => expect(state.traySetTitleMock).toHaveBeenCalledWith("95%"))
+  })
+
+  it("can show all Codex account percents in provider tray mode", async () => {
+    state.invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_plugins") {
+        return [
+          {
+            id: "codex",
+            name: "Codex",
+            iconUrl: "codex-icon",
+            primaryCandidates: ["Session"],
+            lines: [{ type: "progress", label: "Session", scope: "overview" }],
+          },
+          {
+            id: "codex-slot-account-2",
+            name: "oscar@example.com",
+            iconUrl: "codex-icon",
+            primaryCandidates: ["Session"],
+            lines: [{ type: "progress", label: "Session", scope: "overview" }],
+          },
+        ]
+      }
+      return null
+    })
+    state.loadPluginSettingsMock.mockResolvedValueOnce({
+      order: ["codex", "codex-slot-account-2"],
+      disabled: [],
+    })
+    state.startBatchMock.mockResolvedValue(["codex", "codex-slot-account-2"])
+
+    render(<App />)
+    await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
+
+    state.probeHandlers?.onResult({
+      providerId: "codex",
+      displayName: "Codex",
+      plan: "lildev@example.com - Pro 20x",
+      iconUrl: "codex-icon",
+      lines: [{ type: "progress", label: "Session", used: 38, limit: 100, format: { kind: "percent" } }],
+    })
+    state.probeHandlers?.onResult({
+      providerId: "codex-slot-account-2",
+      displayName: "Codex",
+      plan: "oscar@example.com - Pro 20x",
+      iconUrl: "codex-icon",
+      lines: [{ type: "progress", label: "Session", used: 5, limit: 100, format: { kind: "percent" } }],
+    })
+
+    await userEvent.click(await screen.findByRole("checkbox", { name: "Menu bar: all accounts" }))
+
+    await waitFor(() => {
+      const latestCall = state.renderTrayBarsIconMock.mock.calls.at(-1)?.[0]
+      expect(latestCall.bars).toEqual([
+        { id: "codex", fraction: 0.62 },
+        { id: "codex-slot-account-2", fraction: 0.95 },
+      ])
+    })
+    await waitFor(() => expect(state.traySetTitleMock).toHaveBeenCalledWith("62% 95%"))
+    expect(state.saveCodexMenubarShowAllAccountsMock).toHaveBeenCalledWith(true)
   })
 
   it("covers about open/close callbacks", async () => {

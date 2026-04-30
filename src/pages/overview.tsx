@@ -11,6 +11,8 @@ interface OverviewPageProps {
   onResetTimerDisplayModeToggle?: () => void
   codexAccountOptions?: AccountOption[]
   onCodexAccountChange?: (providerId: string) => void
+  codexMenubarShowAllAccounts?: boolean
+  onCodexMenubarShowAllAccountsChange?: (value: boolean) => void
 }
 
 export function OverviewPage({
@@ -21,6 +23,8 @@ export function OverviewPage({
   onResetTimerDisplayModeToggle,
   codexAccountOptions = [],
   onCodexAccountChange,
+  codexMenubarShowAllAccounts = false,
+  onCodexMenubarShowAllAccountsChange,
 }: OverviewPageProps) {
   if (plugins.length === 0) {
     return (
@@ -40,6 +44,10 @@ export function OverviewPage({
           plan={plugin.data?.plan}
           planOptions={plugin.meta.id === "codex" ? codexAccountOptions : []}
           onPlanOptionChange={onCodexAccountChange}
+          codexMenubarShowAllAccounts={codexMenubarShowAllAccounts}
+          onCodexMenubarShowAllAccountsChange={
+            plugin.meta.id === "codex" ? onCodexMenubarShowAllAccountsChange : undefined
+          }
           showSeparator={index < plugins.length - 1}
           loading={plugin.loading}
           error={plugin.error}

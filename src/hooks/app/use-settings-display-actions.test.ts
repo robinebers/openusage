@@ -3,13 +3,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const {
   trackMock,
+  saveCodexMenubarShowAllAccountsMock,
   saveDisplayModeMock,
+  saveMenubarIconStyleMock,
   saveResetTimerDisplayModeMock,
   saveThemeModeMock,
 } = vi.hoisted(() => ({
   trackMock: vi.fn(),
   saveThemeModeMock: vi.fn(),
+  saveCodexMenubarShowAllAccountsMock: vi.fn(),
   saveDisplayModeMock: vi.fn(),
+  saveMenubarIconStyleMock: vi.fn(),
   saveResetTimerDisplayModeMock: vi.fn(),
 }))
 
@@ -19,7 +23,9 @@ vi.mock("@/lib/analytics", () => ({
 
 vi.mock("@/lib/settings", () => ({
   saveThemeMode: saveThemeModeMock,
+  saveCodexMenubarShowAllAccounts: saveCodexMenubarShowAllAccountsMock,
   saveDisplayMode: saveDisplayModeMock,
+  saveMenubarIconStyle: saveMenubarIconStyleMock,
   saveResetTimerDisplayMode: saveResetTimerDisplayModeMock,
 }))
 
@@ -29,10 +35,14 @@ describe("useSettingsDisplayActions", () => {
   beforeEach(() => {
     trackMock.mockReset()
     saveThemeModeMock.mockReset()
+    saveCodexMenubarShowAllAccountsMock.mockReset()
     saveDisplayModeMock.mockReset()
+    saveMenubarIconStyleMock.mockReset()
     saveResetTimerDisplayModeMock.mockReset()
     saveThemeModeMock.mockResolvedValue(undefined)
+    saveCodexMenubarShowAllAccountsMock.mockResolvedValue(undefined)
     saveDisplayModeMock.mockResolvedValue(undefined)
+    saveMenubarIconStyleMock.mockResolvedValue(undefined)
     saveResetTimerDisplayModeMock.mockResolvedValue(undefined)
   })
 
@@ -40,6 +50,8 @@ describe("useSettingsDisplayActions", () => {
     const setThemeMode = vi.fn()
     const setDisplayMode = vi.fn()
     const setResetTimerDisplayMode = vi.fn()
+    const setMenubarIconStyle = vi.fn()
+    const setCodexMenubarShowAllAccounts = vi.fn()
     const scheduleTrayIconUpdate = vi.fn()
 
     const { result } = renderHook(() =>
@@ -48,6 +60,8 @@ describe("useSettingsDisplayActions", () => {
         setDisplayMode,
         resetTimerDisplayMode: "relative",
         setResetTimerDisplayMode,
+        setMenubarIconStyle,
+        setCodexMenubarShowAllAccounts,
         scheduleTrayIconUpdate,
       })
     )
@@ -56,6 +70,8 @@ describe("useSettingsDisplayActions", () => {
       result.current.handleThemeModeChange("dark")
       result.current.handleDisplayModeChange("used")
       result.current.handleResetTimerDisplayModeChange("absolute")
+      result.current.handleMenubarIconStyleChange("bars")
+      result.current.handleCodexMenubarShowAllAccountsChange(true)
     })
 
     expect(trackMock).toHaveBeenCalledWith("setting_changed", { setting: "theme", value: "dark" })
@@ -67,15 +83,27 @@ describe("useSettingsDisplayActions", () => {
       setting: "reset_timer_display_mode",
       value: "absolute",
     })
+    expect(trackMock).toHaveBeenCalledWith("setting_changed", {
+      setting: "menubar_icon_style",
+      value: "bars",
+    })
+    expect(trackMock).toHaveBeenCalledWith("setting_changed", {
+      setting: "codex_menubar_show_all_accounts",
+      value: "true",
+    })
 
     expect(setThemeMode).toHaveBeenCalledWith("dark")
     expect(setDisplayMode).toHaveBeenCalledWith("used")
     expect(setResetTimerDisplayMode).toHaveBeenCalledWith("absolute")
+    expect(setMenubarIconStyle).toHaveBeenCalledWith("bars")
+    expect(setCodexMenubarShowAllAccounts).toHaveBeenCalledWith(true)
     expect(scheduleTrayIconUpdate).toHaveBeenCalledWith("settings", 0)
 
     expect(saveThemeModeMock).toHaveBeenCalledWith("dark")
     expect(saveDisplayModeMock).toHaveBeenCalledWith("used")
     expect(saveResetTimerDisplayModeMock).toHaveBeenCalledWith("absolute")
+    expect(saveMenubarIconStyleMock).toHaveBeenCalledWith("bars")
+    expect(saveCodexMenubarShowAllAccountsMock).toHaveBeenCalledWith(true)
   })
 
   it("toggles reset timer mode in both directions", () => {
@@ -88,6 +116,8 @@ describe("useSettingsDisplayActions", () => {
           setDisplayMode: vi.fn(),
           resetTimerDisplayMode: mode,
           setResetTimerDisplayMode,
+          setMenubarIconStyle: vi.fn(),
+          setCodexMenubarShowAllAccounts: vi.fn(),
           scheduleTrayIconUpdate: vi.fn(),
         }),
       { initialProps: { mode: "relative" as const } }
@@ -109,10 +139,14 @@ describe("useSettingsDisplayActions", () => {
     const themeError = new Error("theme failed")
     const displayError = new Error("display failed")
     const resetError = new Error("reset failed")
+    const menubarError = new Error("menubar failed")
+    const codexMenubarError = new Error("codex menubar failed")
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
     saveThemeModeMock.mockRejectedValueOnce(themeError)
     saveDisplayModeMock.mockRejectedValueOnce(displayError)
     saveResetTimerDisplayModeMock.mockRejectedValueOnce(resetError)
+    saveMenubarIconStyleMock.mockRejectedValueOnce(menubarError)
+    saveCodexMenubarShowAllAccountsMock.mockRejectedValueOnce(codexMenubarError)
 
     const { result } = renderHook(() =>
       useSettingsDisplayActions({
@@ -120,6 +154,8 @@ describe("useSettingsDisplayActions", () => {
         setDisplayMode: vi.fn(),
         resetTimerDisplayMode: "relative",
         setResetTimerDisplayMode: vi.fn(),
+        setMenubarIconStyle: vi.fn(),
+        setCodexMenubarShowAllAccounts: vi.fn(),
         scheduleTrayIconUpdate: vi.fn(),
       })
     )
@@ -128,12 +164,19 @@ describe("useSettingsDisplayActions", () => {
       result.current.handleThemeModeChange("light")
       result.current.handleDisplayModeChange("left")
       result.current.handleResetTimerDisplayModeChange("relative")
+      result.current.handleMenubarIconStyleChange("provider")
+      result.current.handleCodexMenubarShowAllAccountsChange(false)
     })
 
     await waitFor(() => {
       expect(errorSpy).toHaveBeenCalledWith("Failed to save theme mode:", themeError)
       expect(errorSpy).toHaveBeenCalledWith("Failed to save display mode:", displayError)
       expect(errorSpy).toHaveBeenCalledWith("Failed to save reset timer display mode:", resetError)
+      expect(errorSpy).toHaveBeenCalledWith("Failed to save menubar icon style:", menubarError)
+      expect(errorSpy).toHaveBeenCalledWith(
+        "Failed to save Codex menu bar account setting:",
+        codexMenubarError
+      )
     })
 
     errorSpy.mockRestore()

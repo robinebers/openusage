@@ -20,6 +20,8 @@ export type ResetTimerDisplayMode = "relative" | "absolute";
 
 export type MenubarIconStyle = "provider" | "bars" | "donut";
 
+export type CodexMenubarShowAllAccounts = boolean;
+
 export type GlobalShortcut = string | null;
 
 const SETTINGS_STORE_PATH = "settings.json";
@@ -29,6 +31,7 @@ const THEME_MODE_KEY = "themeMode";
 const DISPLAY_MODE_KEY = "displayMode";
 const RESET_TIMER_DISPLAY_MODE_KEY = "resetTimerDisplayMode";
 const MENUBAR_ICON_STYLE_KEY = "menubarIconStyle";
+const CODEX_MENUBAR_SHOW_ALL_ACCOUNTS_KEY = "codexMenubarShowAllAccounts";
 const LEGACY_TRAY_ICON_STYLE_KEY = "trayIconStyle";
 const LEGACY_TRAY_SHOW_PERCENTAGE_KEY = "trayShowPercentage";
 const GLOBAL_SHORTCUT_KEY = "globalShortcut";
@@ -39,6 +42,7 @@ export const DEFAULT_THEME_MODE: ThemeMode = "system";
 export const DEFAULT_DISPLAY_MODE: DisplayMode = "left";
 export const DEFAULT_RESET_TIMER_DISPLAY_MODE: ResetTimerDisplayMode = "relative";
 export const DEFAULT_MENUBAR_ICON_STYLE: MenubarIconStyle = "provider";
+export const DEFAULT_CODEX_MENUBAR_SHOW_ALL_ACCOUNTS = false;
 export const DEFAULT_GLOBAL_SHORTCUT: GlobalShortcut = null;
 export const DEFAULT_START_ON_LOGIN = false;
 
@@ -233,6 +237,17 @@ export async function loadMenubarIconStyle(): Promise<MenubarIconStyle> {
 
 export async function saveMenubarIconStyle(style: MenubarIconStyle): Promise<void> {
   await store.set(MENUBAR_ICON_STYLE_KEY, style);
+  await store.save();
+}
+
+export async function loadCodexMenubarShowAllAccounts(): Promise<boolean> {
+  const stored = await store.get<unknown>(CODEX_MENUBAR_SHOW_ALL_ACCOUNTS_KEY);
+  if (typeof stored === "boolean") return stored;
+  return DEFAULT_CODEX_MENUBAR_SHOW_ALL_ACCOUNTS;
+}
+
+export async function saveCodexMenubarShowAllAccounts(value: boolean): Promise<void> {
+  await store.set(CODEX_MENUBAR_SHOW_ALL_ACCOUNTS_KEY, value);
   await store.save();
 }
 

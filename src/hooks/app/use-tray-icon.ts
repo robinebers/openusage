@@ -19,6 +19,7 @@ type UseTrayIconArgs = {
   menubarIconStyle: MenubarIconStyle
   activeView: string
   selectedCodexProviderId?: string | null
+  codexMenubarShowAllAccounts?: boolean
 }
 
 export type TraySettingsPreview = {
@@ -58,6 +59,7 @@ export function useTrayIcon({
   menubarIconStyle,
   activeView,
   selectedCodexProviderId = null,
+  codexMenubarShowAllAccounts = false,
 }: UseTrayIconArgs) {
   const trayRef = useRef<TrayIcon | null>(null)
   const trayGaugeIconPathRef = useRef<string | null>(null)
@@ -76,6 +78,7 @@ export function useTrayIcon({
   const menubarIconStyleRef = useRef(menubarIconStyle)
   const activeViewRef = useRef(activeView)
   const selectedCodexProviderIdRef = useRef(selectedCodexProviderId)
+  const codexMenubarShowAllAccountsRef = useRef(codexMenubarShowAllAccounts)
   const lastTrayProviderIdRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -105,6 +108,10 @@ export function useTrayIcon({
   useEffect(() => {
     selectedCodexProviderIdRef.current = selectedCodexProviderId
   }, [selectedCodexProviderId])
+
+  useEffect(() => {
+    codexMenubarShowAllAccountsRef.current = codexMenubarShowAllAccounts
+  }, [codexMenubarShowAllAccounts])
 
   const scheduleTrayIconUpdate = useCallback((
     _reason: TrayUpdateReason,
@@ -203,6 +210,10 @@ export function useTrayIcon({
         enabledPluginIds.includes(selectedCodexProviderId)
           ? selectedCodexProviderId
           : null
+      const enabledCodexProviderIds = enabledPluginIds.filter((id) =>
+        isCodexAccountProviderId(id) &&
+        pluginsMetaRef.current.some((plugin) => plugin.id === id)
+      )
 
       let trayProviderId: string | null = null
       if (activeProviderId && isCodexAccountProviderId(activeProviderId)) {
@@ -229,21 +240,36 @@ export function useTrayIcon({
         displayMode: displayModeRef.current,
       })
 
-      const providerBars = trayProviderId
+      const providerBarIds =
+        trayProviderId &&
+        codexMenubarShowAllAccountsRef.current &&
+        isCodexAccountProviderId(trayProviderId) &&
+        enabledCodexProviderIds.length > 1
+          ? enabledCodexProviderIds
+          : trayProviderId
+            ? [trayProviderId]
+            : []
+
+      const providerBars = providerBarIds.length > 0
         ? getTrayPrimaryBars({
             pluginsMeta: pluginsMetaRef.current,
-            pluginSettings: currentSettings,
+            pluginSettings: {
+              order: providerBarIds,
+              disabled: [],
+            },
             pluginStates: pluginStatesRef.current,
-            maxBars: 1,
+            maxBars: 4,
             displayMode: displayModeRef.current,
-            pluginId: trayProviderId,
           })
         : []
 
       const providerIconUrl = trayProviderId
         ? pluginsMetaRef.current.find((plugin) => plugin.id === trayProviderId)?.iconUrl
         : undefined
-      const providerPercentText = formatTrayPercentText(providerBars[0]?.fraction)
+      const providerPercentText =
+        providerBars.length > 1
+          ? providerBars.map((bar) => formatTrayPercentText(bar.fraction)).join(" ")
+          : formatTrayPercentText(providerBars[0]?.fraction)
 
       const nextPreview: TraySettingsPreview = {
         bars: barsForPreview,
@@ -376,7 +402,14 @@ export function useTrayIcon({
   useEffect(() => {
     if (!trayReady) return
     scheduleTrayIconUpdate("settings", 0)
-  }, [activeView, menubarIconStyle, scheduleTrayIconUpdate, selectedCodexProviderId, trayReady])
+  }, [
+    activeView,
+    codexMenubarShowAllAccounts,
+    menubarIconStyle,
+    scheduleTrayIconUpdate,
+    selectedCodexProviderId,
+    trayReady,
+  ])
 
   useEffect(() => {
     return () => {

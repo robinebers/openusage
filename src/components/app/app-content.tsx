@@ -37,6 +37,8 @@ export type AppContentActionProps = {
   onStartOnLoginChange: (value: boolean) => void
   codexAccountOptions: AccountOption[]
   onCodexAccountChange: (providerId: string) => void
+  codexMenubarShowAllAccounts?: boolean
+  onCodexMenubarShowAllAccountsChange?: (value: boolean) => void
 }
 
 export type AppContentProps = AppContentDerivedProps & AppContentActionProps
@@ -59,6 +61,8 @@ export function AppContent({
   onStartOnLoginChange,
   codexAccountOptions,
   onCodexAccountChange,
+  codexMenubarShowAllAccounts = false,
+  onCodexMenubarShowAllAccountsChange,
 }: AppContentProps) {
   const { activeView } = useAppUiStore(
     useShallow((state) => ({
@@ -96,6 +100,8 @@ export function AppContent({
         onResetTimerDisplayModeToggle={onResetTimerDisplayModeToggle}
         codexAccountOptions={codexAccountOptions}
         onCodexAccountChange={onCodexAccountChange}
+        codexMenubarShowAllAccounts={codexMenubarShowAllAccounts}
+        onCodexMenubarShowAllAccountsChange={onCodexMenubarShowAllAccountsChange}
       />
     )
   }
@@ -134,6 +140,8 @@ export function AppContent({
       plugin={selectedPlugin}
       planOptions={selectedPlugin?.meta.id === "codex" ? codexAccountOptions : []}
       onPlanOptionChange={onCodexAccountChange}
+      codexMenubarShowAllAccounts={codexMenubarShowAllAccounts}
+      onCodexMenubarShowAllAccountsChange={onCodexMenubarShowAllAccountsChange}
       onRetry={handleRetry}
       displayMode={displayMode}
       resetTimerDisplayMode={resetTimerDisplayMode}

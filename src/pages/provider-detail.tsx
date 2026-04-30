@@ -10,6 +10,8 @@ interface ProviderDetailPageProps {
   displayMode: DisplayMode
   resetTimerDisplayMode: ResetTimerDisplayMode
   onResetTimerDisplayModeToggle?: () => void
+  codexMenubarShowAllAccounts?: boolean
+  onCodexMenubarShowAllAccountsChange?: (value: boolean) => void
 }
 
 export function ProviderDetailPage({
@@ -20,6 +22,8 @@ export function ProviderDetailPage({
   displayMode,
   resetTimerDisplayMode,
   onResetTimerDisplayModeToggle,
+  codexMenubarShowAllAccounts = false,
+  onCodexMenubarShowAllAccountsChange,
 }: ProviderDetailPageProps) {
   if (!plugin) {
     return (
@@ -49,6 +53,10 @@ export function ProviderDetailPage({
       displayMode={displayMode}
       resetTimerDisplayMode={resetTimerDisplayMode}
       onResetTimerDisplayModeToggle={onResetTimerDisplayModeToggle}
+      codexMenubarShowAllAccounts={codexMenubarShowAllAccounts}
+      onCodexMenubarShowAllAccountsChange={
+        plugin.meta.id === "codex" ? onCodexMenubarShowAllAccountsChange : undefined
+      }
     />
   )
 }

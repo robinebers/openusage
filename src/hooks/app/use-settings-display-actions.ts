@@ -2,6 +2,7 @@ import { useCallback } from "react"
 import { track } from "@/lib/analytics"
 import {
   saveDisplayMode,
+  saveCodexMenubarShowAllAccounts,
   saveMenubarIconStyle,
   saveResetTimerDisplayMode,
   saveThemeMode,
@@ -19,6 +20,7 @@ type UseSettingsDisplayActionsArgs = {
   resetTimerDisplayMode: ResetTimerDisplayMode
   setResetTimerDisplayMode: (value: ResetTimerDisplayMode) => void
   setMenubarIconStyle: (value: MenubarIconStyle) => void
+  setCodexMenubarShowAllAccounts: (value: boolean) => void
   scheduleTrayIconUpdate: ScheduleTrayIconUpdate
 }
 
@@ -28,6 +30,7 @@ export function useSettingsDisplayActions({
   resetTimerDisplayMode,
   setResetTimerDisplayMode,
   setMenubarIconStyle,
+  setCodexMenubarShowAllAccounts,
   scheduleTrayIconUpdate,
 }: UseSettingsDisplayActionsArgs) {
   const handleThemeModeChange = useCallback((mode: ThemeMode) => {
@@ -69,11 +72,24 @@ export function useSettingsDisplayActions({
     })
   }, [scheduleTrayIconUpdate, setMenubarIconStyle])
 
+  const handleCodexMenubarShowAllAccountsChange = useCallback((value: boolean) => {
+    track("setting_changed", {
+      setting: "codex_menubar_show_all_accounts",
+      value: value ? "true" : "false",
+    })
+    setCodexMenubarShowAllAccounts(value)
+    scheduleTrayIconUpdate("settings", 0)
+    void saveCodexMenubarShowAllAccounts(value).catch((error) => {
+      console.error("Failed to save Codex menu bar account setting:", error)
+    })
+  }, [scheduleTrayIconUpdate, setCodexMenubarShowAllAccounts])
+
   return {
     handleThemeModeChange,
     handleDisplayModeChange,
     handleResetTimerDisplayModeChange,
     handleResetTimerDisplayModeToggle,
     handleMenubarIconStyleChange,
+    handleCodexMenubarShowAllAccountsChange,
   }
 }

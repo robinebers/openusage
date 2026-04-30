@@ -9,6 +9,7 @@ import type { PluginMeta } from "@/lib/plugin-types"
 import {
   arePluginSettingsEqual,
   DEFAULT_AUTO_UPDATE_INTERVAL,
+  DEFAULT_CODEX_MENUBAR_SHOW_ALL_ACCOUNTS,
   DEFAULT_DISPLAY_MODE,
   DEFAULT_GLOBAL_SHORTCUT,
   DEFAULT_MENUBAR_ICON_STYLE,
@@ -16,6 +17,7 @@ import {
   DEFAULT_START_ON_LOGIN,
   DEFAULT_THEME_MODE,
   getEnabledPluginIds,
+  loadCodexMenubarShowAllAccounts,
   loadAutoUpdateInterval,
   loadDisplayMode,
   loadGlobalShortcut,
@@ -46,6 +48,7 @@ type UseSettingsBootstrapArgs = {
   setGlobalShortcut: (value: GlobalShortcut) => void
   setStartOnLogin: (value: boolean) => void
   setMenubarIconStyle: (value: MenubarIconStyle) => void
+  setCodexMenubarShowAllAccounts: (value: boolean) => void
   setLoadingForPlugins: (ids: string[]) => void
   setErrorForPlugins: (ids: string[], error: string) => void
   startBatch: (pluginIds?: string[]) => Promise<string[] | undefined>
@@ -61,6 +64,7 @@ export function useSettingsBootstrap({
   setGlobalShortcut,
   setStartOnLogin,
   setMenubarIconStyle,
+  setCodexMenubarShowAllAccounts,
   setLoadingForPlugins,
   setErrorForPlugins,
   startBatch,
@@ -153,6 +157,13 @@ export function useSettingsBootstrap({
           console.error("Failed to load menubar icon style:", error)
         }
 
+        let storedCodexMenubarShowAllAccounts = DEFAULT_CODEX_MENUBAR_SHOW_ALL_ACCOUNTS
+        try {
+          storedCodexMenubarShowAllAccounts = await loadCodexMenubarShowAllAccounts()
+        } catch (error) {
+          console.error("Failed to load Codex menu bar account setting:", error)
+        }
+
         if (isMounted) {
           setPluginSettings(normalized)
           setAutoUpdateInterval(storedInterval)
@@ -162,6 +173,7 @@ export function useSettingsBootstrap({
           setGlobalShortcut(storedGlobalShortcut)
           setStartOnLogin(storedStartOnLogin)
           setMenubarIconStyle(storedMenubarIconStyle)
+          setCodexMenubarShowAllAccounts(storedCodexMenubarShowAllAccounts)
 
           const enabledIds = getEnabledPluginIds(normalized)
           setLoadingForPlugins(enabledIds)
@@ -192,6 +204,7 @@ export function useSettingsBootstrap({
     setGlobalShortcut,
     setLoadingForPlugins,
     setMenubarIconStyle,
+    setCodexMenubarShowAllAccounts,
     migrateLegacyTraySettings,
     setPluginSettings,
     setPluginsMeta,
