@@ -370,7 +370,10 @@
     const d = since.getDate()
     const sinceStr = "" + y + (m < 10 ? "0" : "") + m + (d < 10 ? "0" : "") + d
     const queryOpts = { provider: "codex", since: sinceStr }
-    const codexHome = readOpenUsageSlotHomePath(ctx) || readCodexHome(ctx)
+    // Codex session logs are local CODEX_HOME state and are not reliably tied to
+    // an authenticated account email, so account slots intentionally share the
+    // same token usage source while quotas stay account-specific.
+    const codexHome = readCodexHome(ctx)
     if (codexHome) {
       queryOpts.homePath = codexHome
     }

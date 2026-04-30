@@ -308,10 +308,10 @@ describe("codex plugin", () => {
     const result = plugin.probe(ctx)
     expect(result.plan).toBe("slot@example.com - Pro 20x")
     expect(ctx.host.ccusage.query).toHaveBeenCalled()
-    expect(ctx.host.ccusage.query.mock.calls[0][0].homePath).toBe("~/.openusage/codex-accounts/account-2")
+    expect(ctx.host.ccusage.query.mock.calls[0][0]).not.toHaveProperty("homePath")
   })
 
-  it("adds token lines from OpenUsage Codex account slot history", async () => {
+  it("adds shared token lines to OpenUsage Codex account slots", async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date("2026-02-20T16:00:00.000Z"))
 
@@ -358,7 +358,7 @@ describe("codex plugin", () => {
       expect(ctx.host.ccusage.query).toHaveBeenCalled()
       const firstCall = ctx.host.ccusage.query.mock.calls[0][0]
       expect(firstCall.provider).toBe("codex")
-      expect(firstCall.homePath).toBe("~/.openusage/codex-accounts/account-2")
+      expect(firstCall).not.toHaveProperty("homePath")
     } finally {
       vi.useRealTimers()
     }
