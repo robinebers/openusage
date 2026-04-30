@@ -9,6 +9,7 @@ import { useSettingsPluginActions } from "@/hooks/app/use-settings-plugin-action
 import { useSettingsPluginList } from "@/hooks/app/use-settings-plugin-list"
 import { useSettingsSystemActions } from "@/hooks/app/use-settings-system-actions"
 import { useSettingsTheme } from "@/hooks/app/use-settings-theme"
+import { useSettingsUIScale } from "@/hooks/app/use-settings-ui-scale"
 import { useTrayIcon } from "@/hooks/app/use-tray-icon"
 import { track } from "@/lib/analytics"
 import { REFRESH_COOLDOWN_MS, savePluginSettings } from "@/lib/settings"
@@ -58,6 +59,8 @@ function App() {
     setResetTimerDisplayMode,
     setGlobalShortcut,
     setStartOnLogin,
+    uiScale,
+    setUIScale,
   } = useAppPreferencesStore(
     useShallow((state) => ({
       autoUpdateInterval: state.autoUpdateInterval,
@@ -72,6 +75,8 @@ function App() {
       setResetTimerDisplayMode: state.setResetTimerDisplayMode,
       setGlobalShortcut: state.setGlobalShortcut,
       setStartOnLogin: state.setStartOnLogin,
+      uiScale: state.uiScale,
+      setUIScale: state.setUIScale,
     }))
   )
 
@@ -120,12 +125,14 @@ function App() {
     setResetTimerDisplayMode,
     setGlobalShortcut,
     setStartOnLogin,
+    setUIScale,
     setLoadingForPlugins,
     setErrorForPlugins,
     startBatch,
   })
 
   useSettingsTheme(themeMode)
+  useSettingsUIScale(uiScale)
 
   const {
     handleThemeModeChange,
@@ -133,12 +140,14 @@ function App() {
     handleResetTimerDisplayModeChange,
     handleResetTimerDisplayModeToggle,
     handleMenubarIconStyleChange,
+    handleUIScaleChange,
   } = useSettingsDisplayActions({
     setThemeMode,
     setDisplayMode,
     resetTimerDisplayMode,
     setResetTimerDisplayMode,
     setMenubarIconStyle,
+    setUIScale,
     scheduleTrayIconUpdate,
   })
 
@@ -250,6 +259,7 @@ function App() {
         traySettingsPreview,
         onGlobalShortcutChange: handleGlobalShortcutChange,
         onStartOnLoginChange: handleStartOnLoginChange,
+        onUIScaleChange: handleUIScaleChange,
       }}
     />
   )

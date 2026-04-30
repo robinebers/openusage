@@ -9,6 +9,7 @@ import type { PluginMeta } from "@/lib/plugin-types"
 import {
   arePluginSettingsEqual,
   DEFAULT_AUTO_UPDATE_INTERVAL,
+  DEFAULT_UI_SCALE,
   DEFAULT_DISPLAY_MODE,
   DEFAULT_GLOBAL_SHORTCUT,
   DEFAULT_MENUBAR_ICON_STYLE,
@@ -17,6 +18,7 @@ import {
   DEFAULT_THEME_MODE,
   getEnabledPluginIds,
   loadAutoUpdateInterval,
+  loadUIScale,
   loadDisplayMode,
   loadGlobalShortcut,
   loadMenubarIconStyle,
@@ -34,6 +36,7 @@ import {
   type PluginSettings,
   type ResetTimerDisplayMode,
   type ThemeMode,
+  type UIScale,
 } from "@/lib/settings"
 
 type UseSettingsBootstrapArgs = {
@@ -46,6 +49,7 @@ type UseSettingsBootstrapArgs = {
   setGlobalShortcut: (value: GlobalShortcut) => void
   setStartOnLogin: (value: boolean) => void
   setMenubarIconStyle: (value: MenubarIconStyle) => void
+  setUIScale: (value: UIScale) => void
   setLoadingForPlugins: (ids: string[]) => void
   setErrorForPlugins: (ids: string[], error: string) => void
   startBatch: (pluginIds?: string[]) => Promise<string[] | undefined>
@@ -61,6 +65,7 @@ export function useSettingsBootstrap({
   setGlobalShortcut,
   setStartOnLogin,
   setMenubarIconStyle,
+  setUIScale,
   setLoadingForPlugins,
   setErrorForPlugins,
   startBatch,
@@ -153,6 +158,13 @@ export function useSettingsBootstrap({
           console.error("Failed to load menubar icon style:", error)
         }
 
+        let storedUIScale = DEFAULT_UI_SCALE
+        try {
+          storedUIScale = await loadUIScale()
+        } catch (error) {
+          console.error("Failed to load UI scale:", error)
+        }
+
         if (isMounted) {
           setPluginSettings(normalized)
           setAutoUpdateInterval(storedInterval)
@@ -162,6 +174,7 @@ export function useSettingsBootstrap({
           setGlobalShortcut(storedGlobalShortcut)
           setStartOnLogin(storedStartOnLogin)
           setMenubarIconStyle(storedMenubarIconStyle)
+          setUIScale(storedUIScale)
 
           const enabledIds = getEnabledPluginIds(normalized)
           setLoadingForPlugins(enabledIds)
@@ -187,6 +200,7 @@ export function useSettingsBootstrap({
   }, [
     applyStartOnLogin,
     setAutoUpdateInterval,
+    setUIScale,
     setDisplayMode,
     setErrorForPlugins,
     setGlobalShortcut,

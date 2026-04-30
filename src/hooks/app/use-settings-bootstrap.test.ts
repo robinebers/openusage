@@ -17,6 +17,7 @@ const {
   loadResetTimerDisplayModeMock,
   loadStartOnLoginMock,
   loadThemeModeMock,
+  loadUIScaleMock,
   migrateLegacyTraySettingsMock,
   normalizePluginSettingsMock,
   savePluginSettingsMock,
@@ -36,6 +37,7 @@ const {
   loadResetTimerDisplayModeMock: vi.fn(),
   loadStartOnLoginMock: vi.fn(),
   loadThemeModeMock: vi.fn(),
+  loadUIScaleMock: vi.fn(),
   migrateLegacyTraySettingsMock: vi.fn(),
   normalizePluginSettingsMock: vi.fn(),
   savePluginSettingsMock: vi.fn(),
@@ -61,6 +63,7 @@ vi.mock("@/lib/settings", () => ({
   DEFAULT_RESET_TIMER_DISPLAY_MODE: "relative",
   DEFAULT_START_ON_LOGIN: false,
   DEFAULT_THEME_MODE: "system",
+  DEFAULT_UI_SCALE: "normal",
   getEnabledPluginIds: getEnabledPluginIdsMock,
   loadAutoUpdateInterval: loadAutoUpdateIntervalMock,
   loadDisplayMode: loadDisplayModeMock,
@@ -70,6 +73,7 @@ vi.mock("@/lib/settings", () => ({
   loadResetTimerDisplayMode: loadResetTimerDisplayModeMock,
   loadStartOnLogin: loadStartOnLoginMock,
   loadThemeMode: loadThemeModeMock,
+  loadUIScale: loadUIScaleMock,
   migrateLegacyTraySettings: migrateLegacyTraySettingsMock,
   normalizePluginSettings: normalizePluginSettingsMock,
   savePluginSettings: savePluginSettingsMock,
@@ -88,6 +92,7 @@ function createArgs() {
     setGlobalShortcut: vi.fn(),
     setStartOnLogin: vi.fn(),
     setMenubarIconStyle: vi.fn(),
+    setUIScale: vi.fn(),
     setLoadingForPlugins: vi.fn(),
     setErrorForPlugins: vi.fn(),
     startBatch: vi.fn().mockResolvedValue(undefined),
@@ -111,6 +116,7 @@ describe("useSettingsBootstrap", () => {
     loadResetTimerDisplayModeMock.mockReset()
     loadStartOnLoginMock.mockReset()
     loadThemeModeMock.mockReset()
+    loadUIScaleMock.mockReset()
     migrateLegacyTraySettingsMock.mockReset()
     normalizePluginSettingsMock.mockReset()
     savePluginSettingsMock.mockReset()
@@ -137,6 +143,7 @@ describe("useSettingsBootstrap", () => {
     loadGlobalShortcutMock.mockResolvedValue("CommandOrControl+Shift+O")
     loadMenubarIconStyleMock.mockResolvedValue("provider")
     loadStartOnLoginMock.mockResolvedValue(true)
+    loadUIScaleMock.mockResolvedValue("normal")
     migrateLegacyTraySettingsMock.mockResolvedValue(undefined)
     savePluginSettingsMock.mockResolvedValue(undefined)
     getEnabledPluginIdsMock.mockReturnValue(["codex"])
@@ -150,6 +157,25 @@ describe("useSettingsBootstrap", () => {
 
     expect(disableAutostartMock).toHaveBeenCalledTimes(1)
     expect(enableAutostartMock).not.toHaveBeenCalled()
+  })
+
+  it("falls back to default UI scale when loading fails", async () => {
+    const uiScaleError = new Error("ui scale unavailable")
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    loadUIScaleMock.mockRejectedValueOnce(uiScaleError)
+    const args = createArgs()
+
+    renderHook(() => useSettingsBootstrap(args))
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith(
+        "Failed to load UI scale:",
+        uiScaleError
+      )
+      expect(args.setUIScale).toHaveBeenCalledWith("normal")
+    })
+
+    errorSpy.mockRestore()
   })
 
   it("falls back to default reset timer mode when loading fails", async () => {
