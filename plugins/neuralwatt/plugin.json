@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "neuralwatt",
+  "name": "Neuralwatt",
+  "version": "0.0.1",
+  "entry": "plugin.js",
+  "icon": "icon.svg",
+  "brandColor": "#D55934",
+  "lines": [
+    { "type": "progress", "label": "Subscription", "scope": "overview", "primaryOrder": 1 },
+    { "type": "progress", "label": "Balance", "scope": "detail" }
+  ]
+}
