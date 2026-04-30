@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "openrouter",
+  "name": "OpenRouter",
+  "version": "0.0.1",
+  "entry": "plugin.js",
+  "icon": "icon.svg",
+  "brandColor": "#6666f1",
+  "links": [
+    { "label": "Dashboard", "url": "https://openrouter.ai/activity" },
+    { "label": "Keys", "url": "https://openrouter.ai/settings/keys" }
+  ],
+  "lines": [
+    { "type": "text", "label": "Credits", "scope": "overview" },
+    { "type": "text", "label": "This Month", "scope": "overview" },
+    { "type": "text", "label": "All Time", "scope": "overview" }
+  ]
+}
