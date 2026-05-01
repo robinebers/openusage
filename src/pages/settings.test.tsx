@@ -55,6 +55,8 @@ const defaultProps = {
   onDisplayModeChange: vi.fn(),
   resetTimerDisplayMode: "relative" as const,
   onResetTimerDisplayModeChange: vi.fn(),
+  timeFormatMode: "auto" as const,
+  onTimeFormatModeChange: vi.fn(),
   menubarIconStyle: "provider" as const,
   onMenubarIconStyleChange: vi.fn(),
   traySettingsPreview: {
@@ -189,6 +191,36 @@ describe("SettingsPage", () => {
   it("renders reset timers section heading", () => {
     render(<SettingsPage {...defaultProps} />)
     expect(screen.getByText("Reset Timers")).toBeInTheDocument()
+  })
+
+  it("renders time format section heading", () => {
+    render(<SettingsPage {...defaultProps} />)
+    expect(screen.getByText("Time Format")).toBeInTheDocument()
+    expect(screen.getByText("12-hour or 24-hour clock")).toBeInTheDocument()
+  })
+
+  it("updates time format mode to 12h", async () => {
+    const onTimeFormatModeChange = vi.fn()
+    render(
+      <SettingsPage
+        {...defaultProps}
+        onTimeFormatModeChange={onTimeFormatModeChange}
+      />
+    )
+    await userEvent.click(screen.getByRole("radio", { name: "12-hour" }))
+    expect(onTimeFormatModeChange).toHaveBeenCalledWith("12h")
+  })
+
+  it("updates time format mode to 24h", async () => {
+    const onTimeFormatModeChange = vi.fn()
+    render(
+      <SettingsPage
+        {...defaultProps}
+        onTimeFormatModeChange={onTimeFormatModeChange}
+      />
+    )
+    await userEvent.click(screen.getByRole("radio", { name: "24-hour" }))
+    expect(onTimeFormatModeChange).toHaveBeenCalledWith("24h")
   })
 
   it("renders menubar icon section", () => {
