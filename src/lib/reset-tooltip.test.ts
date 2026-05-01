@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { formatResetAbsoluteLabel, formatResetRelativeLabel, formatResetTooltipText } from "@/lib/reset-tooltip"
+import { formatResetAbsoluteLabel, formatResetRelativeLabel, formatResetTooltipText, getTimeFormatter } from "@/lib/reset-tooltip"
 
 describe("reset-tooltip", () => {
   it("returns null for invalid reset timestamp", () => {
@@ -93,34 +93,32 @@ describe("reset-tooltip", () => {
     ).toBe("Resets in 1h 5m")
   })
 
-  it("formats absolute reset labels with 12-hour time format", () => {
+  it("formats absolute reset labels differently for 12h vs 24h", () => {
     const nowMs = new Date(2026, 1, 3, 0, 0, 0).getTime()
-    const resetsAtIso = new Date(2026, 1, 3, 14, 5, 0).toISOString()
-    const label = formatResetAbsoluteLabel(nowMs, resetsAtIso, "12h")
-    expect(label).toBeTruthy()
-    expect(label).toMatch(/AM|PM/i)
-    expect(label).toContain("2:05")
-  })
+    const resetsAtMs = new Date(2026, 1, 3, 14, 5, 0).getTime()
+    const resetsAtIso = new Date(resetsAtMs).toISOString()
+    const expected12 = getTimeFormatter("12h").format(resetsAtMs)
+    const expected24 = getTimeFormatter("24h").format(resetsAtMs)
 
-  it("formats absolute reset labels with 24-hour time format", () => {
-    const nowMs = new Date(2026, 1, 3, 0, 0, 0).getTime()
-    const resetsAtIso = new Date(2026, 1, 3, 14, 5, 0).toISOString()
-    const label = formatResetAbsoluteLabel(nowMs, resetsAtIso, "24h")
-    expect(label).toBeTruthy()
-    expect(label).not.toMatch(/AM|PM/i)
-    expect(label).toContain("14:05")
+    expect(formatResetAbsoluteLabel(nowMs, resetsAtIso, "12h")).toBe(`Resets today at ${expected12}`)
+    expect(formatResetAbsoluteLabel(nowMs, resetsAtIso, "24h")).toBe(`Resets today at ${expected24}`)
+    // Sanity: the two formats differ at this hour.
+    expect(expected12).not.toBe(expected24)
   })
 
   it("threads timeFormat through formatResetTooltipText", () => {
     const nowMs = new Date(2026, 1, 3, 0, 0, 0).getTime()
-    const resetsAtIso = new Date(2026, 1, 3, 14, 5, 0).toISOString()
-    const label = formatResetTooltipText({
-      nowMs,
-      resetsAtIso,
-      visibleMode: "relative",
-      timeFormat: "24h",
-    })
-    expect(label).toContain("14:05")
-    expect(label).not.toMatch(/AM|PM/i)
+    const resetsAtMs = new Date(2026, 1, 3, 14, 5, 0).getTime()
+    const resetsAtIso = new Date(resetsAtMs).toISOString()
+    const expected24 = getTimeFormatter("24h").format(resetsAtMs)
+
+    expect(
+      formatResetTooltipText({
+        nowMs,
+        resetsAtIso,
+        visibleMode: "relative",
+        timeFormat: "24h",
+      })
+    ).toBe(`Resets today at ${expected24}`)
   })
 })

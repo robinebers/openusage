@@ -193,7 +193,7 @@ describe("settings", () => {
   })
 
   it("loads stored time format mode", async () => {
-    storeState.set("timeFormat", "24h")
+    storeState.set("timeFormatMode", "24h")
     await expect(loadTimeFormatMode()).resolves.toBe("24h")
   })
 
@@ -203,7 +203,7 @@ describe("settings", () => {
   })
 
   it("falls back to default for invalid time format mode", async () => {
-    storeState.set("timeFormat", "invalid")
+    storeState.set("timeFormatMode", "invalid")
     await expect(loadTimeFormatMode()).resolves.toBe(DEFAULT_TIME_FORMAT_MODE)
   })
 

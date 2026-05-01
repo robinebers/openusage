@@ -55,6 +55,7 @@ describe("useSettingsDisplayActions", () => {
         resetTimerDisplayMode: "relative",
         setResetTimerDisplayMode,
         setTimeFormatMode,
+        setMenubarIconStyle: vi.fn(),
         scheduleTrayIconUpdate,
       })
     )
@@ -103,6 +104,7 @@ describe("useSettingsDisplayActions", () => {
           resetTimerDisplayMode: mode,
           setResetTimerDisplayMode,
           setTimeFormatMode: vi.fn(),
+          setMenubarIconStyle: vi.fn(),
           scheduleTrayIconUpdate: vi.fn(),
         }),
       { initialProps: { mode: "relative" as const } }
@@ -139,6 +141,7 @@ describe("useSettingsDisplayActions", () => {
         resetTimerDisplayMode: "relative",
         setResetTimerDisplayMode: vi.fn(),
         setTimeFormatMode: vi.fn(),
+        setMenubarIconStyle: vi.fn(),
         scheduleTrayIconUpdate: vi.fn(),
       })
     )
