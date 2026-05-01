@@ -8,6 +8,7 @@ import {
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
   DEFAULT_START_ON_LOGIN,
   DEFAULT_THEME_MODE,
+  DEFAULT_TIME_FORMAT_MODE,
   arePluginSettingsEqual,
   getEnabledPluginIds,
   loadAutoUpdateInterval,
@@ -17,6 +18,7 @@ import {
   loadPluginSettings,
   loadResetTimerDisplayMode,
   loadStartOnLogin,
+  loadTimeFormatMode,
   migrateLegacyTraySettings,
   loadThemeMode,
   normalizePluginSettings,
@@ -28,6 +30,7 @@ import {
   saveResetTimerDisplayMode,
   saveStartOnLogin,
   saveThemeMode,
+  saveTimeFormatMode,
 } from "@/lib/settings"
 import type { PluginMeta } from "@/lib/plugin-types"
 
@@ -183,6 +186,25 @@ describe("settings", () => {
   it("falls back to default for invalid reset timer display mode", async () => {
     storeState.set("resetTimerDisplayMode", "invalid")
     await expect(loadResetTimerDisplayMode()).resolves.toBe(DEFAULT_RESET_TIMER_DISPLAY_MODE)
+  })
+
+  it("loads default time format mode when missing", async () => {
+    await expect(loadTimeFormatMode()).resolves.toBe(DEFAULT_TIME_FORMAT_MODE)
+  })
+
+  it("loads stored time format mode", async () => {
+    storeState.set("timeFormat", "24h")
+    await expect(loadTimeFormatMode()).resolves.toBe("24h")
+  })
+
+  it("saves time format mode", async () => {
+    await saveTimeFormatMode("12h")
+    await expect(loadTimeFormatMode()).resolves.toBe("12h")
+  })
+
+  it("falls back to default for invalid time format mode", async () => {
+    storeState.set("timeFormat", "invalid")
+    await expect(loadTimeFormatMode()).resolves.toBe(DEFAULT_TIME_FORMAT_MODE)
   })
 
   it("migrates and removes legacy tray settings keys", async () => {
