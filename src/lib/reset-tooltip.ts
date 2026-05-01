@@ -1,10 +1,19 @@
-import type { ResetTimerDisplayMode } from "@/lib/settings"
+import type { ResetTimerDisplayMode, TimeFormatMode } from "@/lib/settings"
 import { formatCompactDuration } from "@/lib/pace-tooltip"
 
-const RESET_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
-  hour: "numeric",
-  minute: "2-digit",
-})
+const timeFormatterCache = new Map<TimeFormatMode, Intl.DateTimeFormat>()
+
+export function getTimeFormatter(mode: TimeFormatMode): Intl.DateTimeFormat {
+  const cached = timeFormatterCache.get(mode)
+  if (cached) return cached
+  const opts: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit" }
+  if (mode === "12h") opts.hour12 = true
+  else if (mode === "24h") opts.hour12 = false
+  // "auto" leaves hour12 unset so the user's locale decides.
+  const formatter = new Intl.DateTimeFormat(undefined, opts)
+  timeFormatterCache.set(mode, formatter)
+  return formatter
+}
 
 const RESET_MONTH_DAY_FORMATTER = new Intl.DateTimeFormat(undefined, {
   month: "short",
@@ -36,12 +45,16 @@ export function formatResetRelativeLabel(nowMs: number, resetsAtIso: string): st
   return durationText ? `Resets in ${durationText}` : null
 }
 
-export function formatResetAbsoluteLabel(nowMs: number, resetsAtIso: string): string | null {
+export function formatResetAbsoluteLabel(
+  nowMs: number,
+  resetsAtIso: string,
+  timeFormat: TimeFormatMode = "auto",
+): string | null {
   const resetsAtMs = parseResetTimestamp(resetsAtIso)
   if (resetsAtMs === null) return null
   if (resetsAtMs - nowMs <= 0) return "Resets soon"
   const dayDiff = getLocalDayIndex(resetsAtMs) - getLocalDayIndex(nowMs)
-  const timeText = RESET_TIME_FORMATTER.format(resetsAtMs)
+  const timeText = getTimeFormatter(timeFormat).format(resetsAtMs)
   if (dayDiff <= 0) return `Resets today at ${timeText}`
   if (dayDiff === 1) return `Resets tomorrow at ${timeText}`
   const dateText = formatMonthDay(resetsAtMs)
@@ -52,12 +65,14 @@ export function formatResetTooltipText({
   nowMs,
   resetsAtIso,
   visibleMode,
+  timeFormat = "auto",
 }: {
   nowMs: number
   resetsAtIso: string
   visibleMode: ResetTimerDisplayMode
+  timeFormat?: TimeFormatMode
 }): string | null {
   return visibleMode === "absolute"
     ? formatResetRelativeLabel(nowMs, resetsAtIso)
-    : formatResetAbsoluteLabel(nowMs, resetsAtIso)
+    : formatResetAbsoluteLabel(nowMs, resetsAtIso, timeFormat)
 }

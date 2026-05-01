@@ -92,4 +92,35 @@ describe("reset-tooltip", () => {
       })
     ).toBe("Resets in 1h 5m")
   })
+
+  it("formats absolute reset labels with 12-hour time format", () => {
+    const nowMs = new Date(2026, 1, 3, 0, 0, 0).getTime()
+    const resetsAtIso = new Date(2026, 1, 3, 14, 5, 0).toISOString()
+    const label = formatResetAbsoluteLabel(nowMs, resetsAtIso, "12h")
+    expect(label).toBeTruthy()
+    expect(label).toMatch(/AM|PM/i)
+    expect(label).toContain("2:05")
+  })
+
+  it("formats absolute reset labels with 24-hour time format", () => {
+    const nowMs = new Date(2026, 1, 3, 0, 0, 0).getTime()
+    const resetsAtIso = new Date(2026, 1, 3, 14, 5, 0).toISOString()
+    const label = formatResetAbsoluteLabel(nowMs, resetsAtIso, "24h")
+    expect(label).toBeTruthy()
+    expect(label).not.toMatch(/AM|PM/i)
+    expect(label).toContain("14:05")
+  })
+
+  it("threads timeFormat through formatResetTooltipText", () => {
+    const nowMs = new Date(2026, 1, 3, 0, 0, 0).getTime()
+    const resetsAtIso = new Date(2026, 1, 3, 14, 5, 0).toISOString()
+    const label = formatResetTooltipText({
+      nowMs,
+      resetsAtIso,
+      visibleMode: "relative",
+      timeFormat: "24h",
+    })
+    expect(label).toContain("14:05")
+    expect(label).not.toMatch(/AM|PM/i)
+  })
 })
