@@ -8,12 +8,13 @@ Confirmed on this laptop:
 
 - Codex
 - Antigravity
+- Copilot
 
 Not confirmed on this laptop:
 
 - Claude Code
+- Opencode Go
 - Cursor
-- Copilot
 - Other providers
 
 Reason: this machine only has working Codex and Antigravity accounts for validation. Claude Code and Cursor may be installed, but without a paid/logged-in account I can only verify obvious compatibility paths, not real quota or usage responses.

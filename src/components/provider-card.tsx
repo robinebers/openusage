@@ -279,22 +279,35 @@ export function ProviderCard({
         {error && !hasStaleData && <PluginError message={error} onRetry={onRetry} />}
 
         {error && hasStaleData && (
-          <Tooltip>
-            <TooltipTrigger
-              render={(props) => (
-                <div
-                  {...props}
-                  className="flex items-center gap-1.5 mb-2 text-xs text-destructive"
-                >
-                  <AlertCircle className="h-3 w-3 flex-shrink-0" />
-                  <span className="truncate">{error}</span>
-                </div>
-              )}
-            />
-            <TooltipContent side="top" className="max-w-xs break-words text-xs">
-              {error}
-            </TooltipContent>
-          </Tooltip>
+          <div className="mb-2 flex items-center gap-2 text-xs text-destructive">
+            <Tooltip>
+              <TooltipTrigger
+                render={(props) => (
+                  <div
+                    {...props}
+                    className="flex min-w-0 flex-1 items-center gap-1.5"
+                  >
+                    <AlertCircle className="h-3 w-3 flex-shrink-0" />
+                    <span className="truncate">{error}</span>
+                  </div>
+                )}
+              />
+              <TooltipContent side="top" className="max-w-xs break-words text-xs">
+                {error}
+              </TooltipContent>
+            </Tooltip>
+            {onRetry && (
+              <Button
+                type="button"
+                variant="outline"
+                size="xs"
+                className="h-7 min-w-14 shrink-0 justify-center rounded-md border-destructive/40 px-0 text-xs text-destructive hover:text-destructive"
+                onClick={onRetry}
+              >
+                Retry
+              </Button>
+            )}
+          </div>
         )}
 
         {loading && !hasStaleData && !error && (

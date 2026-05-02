@@ -888,6 +888,29 @@ describe("ProviderCard", () => {
     expect(screen.queryByRole("alert")).toBeNull()
   })
 
+  it("shows retry action with stale data on refresh error", async () => {
+    const onRetry = vi.fn()
+    render(
+      <ProviderCard
+        name="StaleRetry"
+        displayMode="used"
+        error="Couldn't update data. Try again?"
+        onRetry={onRetry}
+        lastUpdatedAt={Date.now() - 60_000}
+        lines={[
+          { type: "progress", label: "Session", used: 40, limit: 100, format: { kind: "percent" } },
+        ]}
+      />
+    )
+
+    const inlineRetry = screen
+      .getAllByRole("button", { name: "Retry" })
+      .find((button) => button.textContent === "Retry")
+    expect(inlineRetry).toBeTruthy()
+    await userEvent.click(inlineRetry!)
+    expect(onRetry).toHaveBeenCalledTimes(1)
+  })
+
   it("shows full PluginError when errored without stale data", () => {
     render(
       <ProviderCard
