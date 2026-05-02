@@ -341,6 +341,11 @@ describe("codex plugin", () => {
       expect(last30.value).toContain("450 tokens")
       expect(last30.value).toContain("$1.75")
 
+      const thisMonth = result.lines.find((l) => l.label === "This Month")
+      expect(thisMonth).toBeTruthy()
+      expect(thisMonth.value).toContain("450 tokens")
+      expect(thisMonth.value).toContain("$1.75")
+
       expect(ctx.host.ccusage.query).toHaveBeenCalled()
       const firstCall = ctx.host.ccusage.query.mock.calls[0][0]
       expect(firstCall.provider).toBe("codex")
@@ -375,6 +380,26 @@ describe("codex plugin", () => {
     expect(ctx.host.ccusage.query).toHaveBeenCalled()
     const firstCall = ctx.host.ccusage.query.mock.calls[0][0]
     expect(firstCall.homePath).toBe("/tmp/codex-home")
+  })
+
+  it("passes discovered file auth directory to ccusage when CODEX_HOME is absent", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: { "x-codex-primary-used-percent": "10" },
+      bodyText: JSON.stringify({}),
+    })
+    ctx.host.ccusage.query.mockReturnValue({ status: "ok", data: { daily: [] } })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    const firstCall = ctx.host.ccusage.query.mock.calls[0][0]
+    expect(firstCall.homePath).toBe("~/.codex")
   })
 
   it("queries ccusage on each probe", async () => {
@@ -425,6 +450,48 @@ describe("codex plugin", () => {
     expect(yesterdayLine.value).toContain("$0.00")
     expect(yesterdayLine.value).toContain("0 tokens")
     expect(result.lines.find((l) => l.label === "Last 30 Days")).toBeUndefined()
+  })
+
+  it("adds This Month from current-month codex ccusage rows only", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-05-20T12:00:00.000Z"))
+
+    try {
+      const ctx = makeCtx()
+      ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+        tokens: { access_token: "token" },
+        last_refresh: new Date().toISOString(),
+      }))
+      ctx.host.http.request.mockReturnValue({
+        status: 200,
+        headers: { "x-codex-primary-used-percent": "10" },
+        bodyText: JSON.stringify({}),
+      })
+      ctx.host.ccusage.query.mockReturnValue({
+        status: "ok",
+        data: {
+          daily: [
+            { date: "May 20, 2026", totalTokens: 200, costUSD: 1.25 },
+            { date: "2026-05-01", totalTokens: 300, costUSD: 2.5 },
+            { date: "2026-04-30", totalTokens: 400, costUSD: 3.75 },
+          ],
+        },
+      })
+
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+
+      const thisMonth = result.lines.find((l) => l.label === "This Month")
+      expect(thisMonth).toBeTruthy()
+      expect(thisMonth.value).toContain("500 tokens")
+      expect(thisMonth.value).toContain("$3.75")
+
+      const last30 = result.lines.find((l) => l.label === "Last 30 Days")
+      expect(last30.value).toContain("900 tokens")
+      expect(last30.value).toContain("$7.50")
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("shows empty Yesterday state when yesterday's totals are zero (regression)", async () => {

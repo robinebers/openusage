@@ -9,6 +9,10 @@ vi.mock("react-dom/client", () => ({
   },
 }))
 
+vi.mock("@/App", () => ({
+  App: () => <div data-testid="app" />,
+}))
+
 describe("main", () => {
   it("mounts app", async () => {
     document.body.innerHTML = '<div id="root"></div>'

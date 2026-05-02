@@ -4,6 +4,11 @@ import { error as logError, warn as logWarn } from "@tauri-apps/plugin-log";
 import { App } from "./App";
 import "./index.css";
 
+// Tag Windows platform on <html> so CSS can skip transparent background
+if (/win/i.test(navigator.userAgent) && !/mac/i.test(navigator.userAgent)) {
+  document.documentElement.classList.add("platform-windows");
+}
+
 // Forward console.error and console.warn to Tauri log file
 function stringify(arg: unknown): string {
   if (arg === null) return "null";

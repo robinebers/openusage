@@ -8,23 +8,23 @@ const BIND_ADDR: &str = "127.0.0.1:6736";
 // HTTP server
 // ---------------------------------------------------------------------------
 
-pub fn start_server() {
-    std::thread::spawn(|| {
-        let listener = match TcpListener::bind(BIND_ADDR) {
-            Ok(l) => {
-                log::info!("local HTTP API listening on {}", BIND_ADDR);
-                l
-            }
-            Err(e) => {
-                log::warn!(
-                    "failed to bind local HTTP API on {}: {} — feature disabled for this session",
-                    BIND_ADDR,
-                    e
-                );
-                return;
-            }
-        };
+pub fn start_server() -> bool {
+    let listener = match TcpListener::bind(BIND_ADDR) {
+        Ok(l) => {
+            log::info!("local HTTP API listening on {}", BIND_ADDR);
+            l
+        }
+        Err(e) => {
+            log::warn!(
+                "failed to bind local HTTP API on {}: {} — another OpenUsage instance is likely running",
+                BIND_ADDR,
+                e
+            );
+            return false;
+        }
+    };
 
+    std::thread::spawn(move || {
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {
@@ -34,6 +34,7 @@ pub fn start_server() {
             }
         }
     });
+    true
 }
 
 fn handle_connection(mut stream: TcpStream) {
@@ -155,7 +156,7 @@ fn response_method_not_allowed() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::super::cache::{cache_state, CachedPluginSnapshot};
+    use super::super::cache::{CachedPluginSnapshot, cache_state};
     use super::*;
     use serial_test::serial;
 

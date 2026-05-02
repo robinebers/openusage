@@ -1,6 +1,15 @@
 (function () {
   var LS_SERVICE = "exa.language_server_pb.LanguageServerService"
-  var STATE_DB = "~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb"
+  function isWindows(ctx) {
+    return ctx.app.platform === "windows"
+  }
+
+  function stateDbPath(ctx) {
+    if (isWindows(ctx)) {
+      return "~/AppData/Roaming/Antigravity/User/globalStorage/state.vscdb"
+    }
+    return "~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb"
+  }
   var CLOUD_CODE_URLS = [
     "https://daily-cloudcode-pa.googleapis.com",
     "https://cloudcode-pa.googleapis.com",
@@ -95,7 +104,7 @@
   function loadOAuthTokens(ctx) {
     try {
       var rows = ctx.host.sqlite.query(
-        STATE_DB,
+        stateDbPath(ctx),
         "SELECT value FROM ItemTable WHERE key = '" + OAUTH_TOKEN_KEY + "' LIMIT 1"
       )
       var parsed = ctx.util.tryParseJson(rows)
@@ -188,7 +197,9 @@
 
   function discoverLs(ctx) {
     return ctx.host.ls.discover({
-      processName: "language_server_macos",
+      processName: isWindows(ctx)
+        ? "language_server_windows_x64"
+        : "language_server_macos",
       markers: ["antigravity"],
       csrfFlag: "--csrf_token",
       portFlag: "--extension_server_port",
@@ -211,7 +222,7 @@
             extensionVersion: "unknown",
             ide: "antigravity",
             ideVersion: "unknown",
-            os: "macos",
+            os: isWindows(ctx) ? "windows" : "macos",
           },
         },
       }),
@@ -395,17 +406,10 @@
 
     ctx.host.log.info("using LS at " + found.scheme + "://127.0.0.1:" + found.port)
 
-    var metadata = {
-      ideName: "antigravity",
-      extensionName: "antigravity",
-      ideVersion: "unknown",
-      locale: "en",
-    }
-
     // Try GetUserStatus first, fall back to GetCommandModelConfigs
     var data = null
     try {
-      data = callLs(ctx, found.port, found.scheme, discovery.csrf, "GetUserStatus", { metadata: metadata })
+      data = callLs(ctx, found.port, found.scheme, discovery.csrf, "GetUserStatus", {})
     } catch (e) {
       ctx.host.log.warn("GetUserStatus threw: " + String(e))
     }
@@ -413,7 +417,7 @@
 
     if (!hasUserStatus) {
       ctx.host.log.warn("GetUserStatus failed, trying GetCommandModelConfigs")
-      data = callLs(ctx, found.port, found.scheme, discovery.csrf, "GetCommandModelConfigs", { metadata: metadata })
+      data = callLs(ctx, found.port, found.scheme, discovery.csrf, "GetCommandModelConfigs", {})
     }
 
     // Parse model configs

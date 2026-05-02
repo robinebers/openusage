@@ -86,6 +86,20 @@
     return CONFIG_AUTH_PATHS.map((basePath) => joinPath(basePath, AUTH_FILE))
   }
 
+  function dirname(path) {
+    if (typeof path !== "string") return null
+    const trimmed = path.trim().replace(/[\\/]+$/, "")
+    if (!trimmed) return null
+    const slash = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"))
+    if (slash <= 0) return null
+    return trimmed.slice(0, slash)
+  }
+
+  function authHomePath(authState) {
+    if (!authState || authState.source !== "file") return null
+    return dirname(authState.authPath)
+  }
+
   function hasTokenLikeAuth(auth) {
     if (!auth || typeof auth !== "object") return false
     if (auth.tokens && auth.tokens.access_token) return true
@@ -307,7 +321,7 @@
   var PERIOD_SESSION_MS = 5 * 60 * 60 * 1000    // 5 hours
   var PERIOD_WEEKLY_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
-  function queryTokenUsage(ctx) {
+  function queryTokenUsage(ctx, authState) {
     if (!ctx.host.ccusage || typeof ctx.host.ccusage.query !== "function") {
       return { status: "no_runner", data: null }
     }
@@ -320,7 +334,7 @@
     const d = since.getDate()
     const sinceStr = "" + y + (m < 10 ? "0" : "") + m + (d < 10 ? "0" : "") + d
     const queryOpts = { provider: "codex", since: sinceStr }
-    const codexHome = readCodexHome(ctx)
+    const codexHome = readCodexHome(ctx) || authHomePath(authState)
     if (codexHome) {
       queryOpts.homePath = codexHome
     }
@@ -391,6 +405,13 @@
     return dayKeyFromDate(new Date(ms))
   }
 
+  function monthKeyFromDayKey(dayKey) {
+    if (typeof dayKey !== "string") return null
+    const match = dayKey.match(/^(\d{4})-(\d{2})-\d{2}$/)
+    if (!match) return null
+    return match[1] + "-" + match[2]
+  }
+
   function usageCostUsd(day) {
     if (!day || typeof day !== "object") return null
 
@@ -414,7 +435,7 @@
     if (data.tokens > 0 || (includeZeroTokens && data.tokens === 0)) {
       parts.push(fmtTokens(data.tokens) + " tokens")
     }
-    return parts.join(" · ")
+    return parts.join(" - ")
   }
 
   function pushDayUsageLine(lines, ctx, label, dayEntry) {
@@ -625,7 +646,7 @@
         }
       }
 
-      const tokenUsageResult = queryTokenUsage(ctx)
+      const tokenUsageResult = queryTokenUsage(ctx, authState)
       if (tokenUsageResult.status === "ok") {
         const tokenUsage = tokenUsageResult.data
         const now = new Date()
@@ -653,6 +674,10 @@
         let totalTokens = 0
         let totalCostNanos = 0
         let hasCost = false
+        let monthTokens = 0
+        let monthCostNanos = 0
+        let monthHasCost = false
+        const currentMonthKey = monthKeyFromDayKey(todayKey)
         for (let i = 0; i < tokenUsage.daily.length; i++) {
           const day = tokenUsage.daily[i]
           const dayTokens = Number(day.totalTokens)
@@ -665,6 +690,24 @@
             totalCostNanos += Math.round(dayCost * 1e9)
             hasCost = true
           }
+
+          const usageDayKey = dayKeyFromUsageDate(day.date)
+          if (currentMonthKey && monthKeyFromDayKey(usageDayKey) === currentMonthKey) {
+            if (Number.isFinite(dayTokens)) {
+              monthTokens += dayTokens
+            }
+            if (dayCost != null) {
+              monthCostNanos += Math.round(dayCost * 1e9)
+              monthHasCost = true
+            }
+          }
+        }
+
+        if (monthTokens > 0) {
+          lines.push(ctx.line.text({
+            label: "This Month",
+            value: costAndTokensLabel({ tokens: monthTokens, costUSD: monthHasCost ? monthCostNanos / 1e9 : null })
+          }))
         }
 
         if (totalTokens > 0) {

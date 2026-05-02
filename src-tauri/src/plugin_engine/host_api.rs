@@ -11,6 +11,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
 const WHITELISTED_ENV_VARS: [&str; 16] = [
     "CODEX_HOME",
     "CLAUDE_CONFIG_DIR",
@@ -78,11 +81,25 @@ fn read_env_from_process(name: &str) -> Option<String> {
 }
 
 fn read_command_stdout(program: &str, args: &[&str]) -> Option<String> {
-    let output = Command::new(program).args(args).output().ok()?;
+    let output = hidden_command(program).args(args).output().ok()?;
     if !output.status.success() {
         return None;
     }
     Some(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+fn hidden_command(program: impl AsRef<OsStr>) -> Command {
+    let mut command = Command::new(program);
+    configure_hidden_command(&mut command);
+    command
+}
+
+fn configure_hidden_command(command: &mut Command) {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
 }
 
 fn read_env_value_via_command(program: &str, args: &[&str]) -> Option<String> {
@@ -154,6 +171,14 @@ fn keychain_add_generic_password_args_for_account(
         OsString::from("-w"),
         OsString::from(value),
     ]
+}
+
+fn windows_gh_cli_keychain_service(service: &str) -> bool {
+    service == "gh:github.com"
+}
+
+fn read_windows_gh_cli_token() -> Option<String> {
+    read_env_value_via_command("gh", &["auth", "token"])
 }
 
 fn terminal_env_cache() -> &'static Mutex<HashMap<String, Option<String>>> {
@@ -318,10 +343,11 @@ fn redact_body(body: &str) -> String {
         })
         .to_string();
 
-    // Redact common API key patterns (sk-xxx, pk-xxx, api_xxx, etc.)
-    let api_key_pattern =
-        regex_lite::Regex::new(r#"["']?(sk-|pk-|api_|key_|secret_)[A-Za-z0-9_-]{12,}["']?"#)
-            .unwrap();
+    // Redact common API key patterns (sk-xxx, pk-xxx, ghp_xxx, etc.)
+    let api_key_pattern = regex_lite::Regex::new(
+        r#"["']?((sk-|pk-|api_|key_|secret_)[A-Za-z0-9_-]{12,}|gh[opsru]_[A-Za-z0-9_]{12,})["']?"#,
+    )
+    .unwrap();
     result = api_key_pattern
         .replace_all(&result, |caps: &regex_lite::Captures| {
             let key = caps[0].trim_matches(|c| c == '"' || c == '\'');
@@ -377,13 +403,7 @@ fn redact_body(body: &str) -> String {
         }
     }
 
-    if let Ok(path_re) =
-        regex_lite::Regex::new(r#"(/(?:Users|home|opt|private|var|tmp|Applications)/[^\s"')]+)"#)
-    {
-        result = path_re.replace_all(&result, "[PATH]").to_string();
-    }
-
-    result
+    redact_paths(&result)
 }
 
 /// Lightweight redaction for log messages.
@@ -397,7 +417,9 @@ pub(crate) fn redact_log_message(msg: &str) -> String {
             })
             .to_string();
     }
-    if let Ok(api_re) = regex_lite::Regex::new(r#"(sk-|pk-|api_|key_|secret_)[A-Za-z0-9_-]{12,}"#) {
+    if let Ok(api_re) = regex_lite::Regex::new(
+        r#"((sk-|pk-|api_|key_|secret_)[A-Za-z0-9_-]{12,}|gh[opsru]_[A-Za-z0-9_]{12,})"#,
+    ) {
         result = api_re
             .replace_all(&result, |caps: &regex_lite::Captures| {
                 redact_value(&caps[0])
@@ -411,8 +433,18 @@ pub(crate) fn redact_log_message(msg: &str) -> String {
             })
             .to_string();
     }
+    redact_paths(&result)
+}
+
+fn redact_paths(msg: &str) -> String {
+    let mut result = msg.to_string();
     if let Ok(path_re) =
         regex_lite::Regex::new(r#"(/(?:Users|home|opt|private|var|tmp|Applications)/[^\s"')]+)"#)
+    {
+        result = path_re.replace_all(&result, "[PATH]").to_string();
+    }
+    if let Ok(path_re) =
+        regex_lite::Regex::new(r#"(?i)\b[A-Z]:\\(?:Users|ProgramData|Windows|Temp)[^\s"')]*"#)
     {
         result = path_re.replace_all(&result, "[PATH]").to_string();
     }
@@ -1192,6 +1224,243 @@ struct LsDiscoverResult {
     extension_port: Option<i32>,
 }
 
+struct LsProcess {
+    pid: i32,
+    command: String,
+}
+
+fn ls_command_matches(command: &str, process_name: &str, markers: &[String]) -> bool {
+    let command_lower = command.to_lowercase();
+    if !command_lower.contains(&process_name.to_lowercase()) {
+        return false;
+    }
+
+    let ide_name = ls_extract_flag(command, "--ide_name").map(|v| v.to_lowercase());
+    let app_data = ls_extract_flag(command, "--app_data_dir").map(|v| v.to_lowercase());
+
+    markers.iter().any(|marker| {
+        let marker = marker.to_lowercase();
+        if let Some(ref name) = ide_name {
+            return *name == marker;
+        }
+        if let Some(ref dir) = app_data {
+            return *dir == marker;
+        }
+
+        command_lower.contains(&format!("/{}/", marker))
+            || command_lower.contains(&format!("\\{}\\", marker))
+    })
+}
+
+#[cfg(not(target_os = "windows"))]
+fn ls_find_process(opts: &LsDiscoverOpts, plugin_id: &str) -> Option<LsProcess> {
+    let ps_output = match hidden_command("/bin/ps")
+        .args(["-ax", "-o", "pid=,command="])
+        .output()
+    {
+        Ok(o) => o,
+        Err(e) => {
+            log::warn!("[plugin:{}] ps failed: {}", plugin_id, e);
+            return None;
+        }
+    };
+
+    if !ps_output.status.success() {
+        log::warn!("[plugin:{}] ps returned non-zero", plugin_id);
+        return None;
+    }
+
+    let ps_stdout = String::from_utf8_lossy(&ps_output.stdout);
+    for line in ps_stdout.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        let mut parts = trimmed.splitn(2, char::is_whitespace);
+        let pid_str = parts.next()?.trim();
+        let command = parts.next()?.trim();
+
+        if !ls_command_matches(command, &opts.process_name, &opts.markers) {
+            continue;
+        }
+
+        if let Ok(pid) = pid_str.parse::<i32>() {
+            return Some(LsProcess {
+                pid,
+                command: command.to_string(),
+            });
+        }
+    }
+
+    None
+}
+
+#[cfg(target_os = "windows")]
+fn ls_find_process(opts: &LsDiscoverOpts, plugin_id: &str) -> Option<LsProcess> {
+    let needle = opts.process_name.replace('\'', "''");
+    let script = format!(
+        r#"
+$needle = '{}'
+$ErrorActionPreference = 'SilentlyContinue'
+Get-CimInstance Win32_Process |
+  Where-Object {{
+    ($_.Name -and $_.Name.ToLowerInvariant().Contains($needle.ToLowerInvariant())) -or
+    ($_.CommandLine -and $_.CommandLine.ToLowerInvariant().Contains($needle.ToLowerInvariant()))
+  }} |
+  Select-Object ProcessId,CommandLine |
+  ConvertTo-Json -Compress
+"#,
+        needle
+    );
+    let output = match hidden_command("powershell")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            &script,
+        ])
+        .output()
+    {
+        Ok(output) => output,
+        Err(error) => {
+            log::warn!("[plugin:{}] PowerShell process query failed: {}", plugin_id, error);
+            return None;
+        }
+    };
+
+    if !output.status.success() {
+        log::warn!("[plugin:{}] PowerShell process query returned non-zero", plugin_id);
+        return None;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let value = match serde_json::from_str::<serde_json::Value>(stdout.trim()) {
+        Ok(value) => value,
+        Err(error) => {
+            log::warn!("[plugin:{}] PowerShell process JSON parse failed: {}", plugin_id, error);
+            return None;
+        }
+    };
+
+    let rows: Vec<serde_json::Value> = match value {
+        serde_json::Value::Array(rows) => rows,
+        serde_json::Value::Object(_) => vec![value],
+        _ => Vec::new(),
+    };
+
+    for row in rows {
+        let Some(pid) = row.get("ProcessId").and_then(|value| value.as_i64()) else {
+            continue;
+        };
+        let Some(command) = row.get("CommandLine").and_then(|value| value.as_str()) else {
+            continue;
+        };
+        if !ls_command_matches(command, &opts.process_name, &opts.markers) {
+            continue;
+        }
+        return Some(LsProcess {
+            pid: pid as i32,
+            command: command.to_string(),
+        });
+    }
+
+    None
+}
+
+#[cfg(not(target_os = "windows"))]
+fn ls_listening_ports(pid: i32, plugin_id: &str) -> Vec<i32> {
+    let lsof_path = ["/usr/sbin/lsof", "/usr/bin/lsof"]
+        .iter()
+        .find(|p| std::path::Path::new(p).exists())
+        .copied();
+
+    if let Some(lsof) = lsof_path {
+        match hidden_command(lsof)
+            .args([
+                "-nP",
+                "-iTCP",
+                "-sTCP:LISTEN",
+                "-a",
+                "-p",
+                &pid.to_string(),
+            ])
+            .output()
+        {
+            Ok(o) if o.status.success() => {
+                return ls_parse_listening_ports(&String::from_utf8_lossy(&o.stdout));
+            }
+            Ok(_) => log::warn!("[plugin:{}] lsof returned non-zero", plugin_id),
+            Err(e) => log::warn!("[plugin:{}] lsof failed: {}", plugin_id, e),
+        }
+    } else {
+        log::warn!("[plugin:{}] lsof not found", plugin_id);
+    }
+
+    Vec::new()
+}
+
+#[cfg(target_os = "windows")]
+fn ls_listening_ports(pid: i32, plugin_id: &str) -> Vec<i32> {
+    let script = format!(
+        r#"
+$ErrorActionPreference = 'SilentlyContinue'
+Get-NetTCPConnection -State Listen -OwningProcess {} |
+  Select-Object -ExpandProperty LocalPort |
+  ConvertTo-Json -Compress
+"#,
+        pid
+    );
+    let output = match hidden_command("powershell")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            &script,
+        ])
+        .output()
+    {
+        Ok(output) => output,
+        Err(error) => {
+            log::warn!("[plugin:{}] PowerShell port query failed: {}", plugin_id, error);
+            return Vec::new();
+        }
+    };
+
+    if !output.status.success() {
+        log::warn!("[plugin:{}] PowerShell port query returned non-zero", plugin_id);
+        return Vec::new();
+    }
+
+    let text = String::from_utf8_lossy(&output.stdout);
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return Vec::new();
+    }
+
+    match serde_json::from_str::<serde_json::Value>(trimmed) {
+        Ok(serde_json::Value::Array(values)) => values
+            .into_iter()
+            .filter_map(|value| value.as_i64())
+            .filter(|port| *port > 0 && *port < 65536)
+            .map(|port| port as i32)
+            .collect(),
+        Ok(value) => value
+            .as_i64()
+            .filter(|port| *port > 0 && *port < 65536)
+            .map(|port| vec![port as i32])
+            .unwrap_or_default(),
+        Err(error) => {
+            log::warn!("[plugin:{}] PowerShell port JSON parse failed: {}", plugin_id, error);
+            Vec::new()
+        }
+    }
+}
+
 fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquickjs::Result<()> {
     let ls_obj = Object::new(ctx.clone())?;
     let pid = plugin_id.to_string();
@@ -1212,84 +1481,8 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
                     opts.markers
                 );
 
-                let ps_output = match std::process::Command::new("/bin/ps")
-                    .args(["-ax", "-o", "pid=,command="])
-                    .output()
-                {
-                    Ok(o) => o,
-                    Err(e) => {
-                        log::warn!("[plugin:{}] ps failed: {}", pid, e);
-                        return Ok("null".to_string());
-                    }
-                };
-
-                if !ps_output.status.success() {
-                    log::warn!("[plugin:{}] ps returned non-zero", pid);
-                    return Ok("null".to_string());
-                }
-
-                let ps_stdout = String::from_utf8_lossy(&ps_output.stdout);
-                let process_name_lower = opts.process_name.to_lowercase();
-                let markers_lower: Vec<String> =
-                    opts.markers.iter().map(|m| m.to_lowercase()).collect();
-
-                // Find the target process. Marker patterns are Codeium-derived.
-                // Matching priority:
-                //   1. Exact --ide_name / --app_data_dir flag value (prevents
-                //      "windsurf" matching "windsurf-next")
-                //   2. Path substring (/<marker>/) as fallback when no flags found
-                let mut found: Option<(i32, String)> = None;
-
-                for line in ps_stdout.lines() {
-                    let trimmed = line.trim();
-                    if trimmed.is_empty() {
-                        continue;
-                    }
-
-                    let mut parts = trimmed.splitn(2, char::is_whitespace);
-                    let pid_str = match parts.next() {
-                        Some(s) => s.trim(),
-                        None => continue,
-                    };
-                    let command = match parts.next() {
-                        Some(s) => s.trim(),
-                        None => continue,
-                    };
-
-                    let command_lower = command.to_lowercase();
-
-                    if !command_lower.contains(&process_name_lower) {
-                        continue;
-                    }
-
-                    let ide_name = ls_extract_flag(command, "--ide_name").map(|v| v.to_lowercase());
-                    let app_data =
-                        ls_extract_flag(command, "--app_data_dir").map(|v| v.to_lowercase());
-
-                    let has_marker = markers_lower.iter().any(|m| {
-                        // Prefer exact flag match; skip path fallback when
-                        // a distinguishing flag exists.
-                        if let Some(ref name) = ide_name {
-                            return *name == *m;
-                        }
-                        if let Some(ref dir) = app_data {
-                            return *dir == *m;
-                        }
-                        // Fallback: path substring
-                        command_lower.contains(&format!("/{}/", m))
-                    });
-                    if !has_marker {
-                        continue;
-                    }
-
-                    if let Ok(p) = pid_str.parse::<i32>() {
-                        found = Some((p, command.to_string()));
-                        break;
-                    }
-                }
-
-                let (process_pid, command) = match found {
-                    Some(pair) => pair,
+                let process = match ls_find_process(&opts, &pid) {
+                    Some(process) => process,
                     None => {
                         log::info!("[plugin:{}] LS process not found", pid);
                         return Ok("null".to_string());
@@ -1297,7 +1490,7 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
                 };
 
                 // Extract CSRF token
-                let csrf = match ls_extract_flag(&command, &opts.csrf_flag) {
+                let csrf = match ls_extract_flag(&process.command, &opts.csrf_flag) {
                     Some(c) => c,
                     None => {
                         log::warn!("[plugin:{}] CSRF token not found in process args", pid);
@@ -1307,14 +1500,14 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
 
                 // Extract extension port (optional)
                 let extension_port = opts.port_flag.as_ref().and_then(|flag| {
-                    ls_extract_flag(&command, flag).and_then(|v| v.parse::<i32>().ok())
+                    ls_extract_flag(&process.command, flag).and_then(|v| v.parse::<i32>().ok())
                 });
 
                 // Extract extra flags (optional)
                 let mut extra = std::collections::HashMap::new();
                 if let Some(ref flags) = opts.extra_flags {
                     for flag in flags {
-                        if let Some(val) = ls_extract_flag(&command, flag) {
+                        if let Some(val) = ls_extract_flag(&process.command, flag) {
                             // Use flag name without leading dashes as key
                             let key = flag.trim_start_matches('-').to_string();
                             extra.insert(key, val);
@@ -1322,46 +1515,13 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
                     }
                 }
 
-                // Find lsof binary
-                let lsof_path = ["/usr/sbin/lsof", "/usr/bin/lsof"]
-                    .iter()
-                    .find(|p| std::path::Path::new(p).exists())
-                    .copied();
-
-                let ports = if let Some(lsof) = lsof_path {
-                    match std::process::Command::new(lsof)
-                        .args([
-                            "-nP",
-                            "-iTCP",
-                            "-sTCP:LISTEN",
-                            "-a",
-                            "-p",
-                            &process_pid.to_string(),
-                        ])
-                        .output()
-                    {
-                        Ok(o) if o.status.success() => {
-                            ls_parse_listening_ports(&String::from_utf8_lossy(&o.stdout))
-                        }
-                        Ok(_) => {
-                            log::warn!("[plugin:{}] lsof returned non-zero", pid);
-                            Vec::new()
-                        }
-                        Err(e) => {
-                            log::warn!("[plugin:{}] lsof failed: {}", pid, e);
-                            Vec::new()
-                        }
-                    }
-                } else {
-                    log::warn!("[plugin:{}] lsof not found", pid);
-                    Vec::new()
-                };
+                let ports = ls_listening_ports(process.pid, &pid);
 
                 if ports.is_empty() && extension_port.is_none() {
                     log::warn!(
                         "[plugin:{}] no listening ports found for pid {}",
                         pid,
-                        process_pid
+                        process.pid
                     );
                     return Ok("null".to_string());
                 }
@@ -1369,12 +1529,12 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
                 log::info!(
                     "[plugin:{}] LS found: pid={}, ports={:?}, csrf=[REDACTED]",
                     pid,
-                    process_pid,
+                    process.pid,
                     ports
                 );
 
                 let result = LsDiscoverResult {
-                    pid: process_pid,
+                    pid: process.pid,
                     csrf,
                     ports,
                     extra,
@@ -1428,6 +1588,7 @@ fn ls_extract_flag(command: &str, flag: &str) -> Option<String> {
 }
 
 /// Parse listening port numbers from `lsof -nP -iTCP -sTCP:LISTEN` output.
+#[cfg(not(target_os = "windows"))]
 fn ls_parse_listening_ports(output: &str) -> Vec<i32> {
     let mut ports = std::collections::BTreeSet::new();
     for line in output.lines() {
@@ -1578,12 +1739,16 @@ fn ccusage_runner_candidates(kind: CcusageRunnerKind) -> Vec<String> {
         CcusageRunnerKind::Bunx => {
             if let Some(home) = dirs::home_dir() {
                 candidates.push(home.join(".bun/bin/bunx").to_string_lossy().to_string());
+                #[cfg(target_os = "windows")]
+                candidates.push(home.join(".bun/bin/bunx.exe").to_string_lossy().to_string());
             }
             candidates.extend(
                 ["/opt/homebrew/bin/bunx", "/usr/local/bin/bunx", "bunx"]
                     .into_iter()
                     .map(str::to_string),
             );
+            #[cfg(target_os = "windows")]
+            candidates.extend(["bunx.cmd", "bunx.exe"].into_iter().map(str::to_string));
         }
         CcusageRunnerKind::PnpmDlx => {
             candidates.extend(
@@ -1591,6 +1756,8 @@ fn ccusage_runner_candidates(kind: CcusageRunnerKind) -> Vec<String> {
                     .into_iter()
                     .map(str::to_string),
             );
+            #[cfg(target_os = "windows")]
+            candidates.extend(["pnpm.cmd", "pnpm.exe"].into_iter().map(str::to_string));
         }
         CcusageRunnerKind::YarnDlx => {
             candidates.extend(
@@ -1598,6 +1765,8 @@ fn ccusage_runner_candidates(kind: CcusageRunnerKind) -> Vec<String> {
                     .into_iter()
                     .map(str::to_string),
             );
+            #[cfg(target_os = "windows")]
+            candidates.extend(["yarn.cmd", "yarn.exe"].into_iter().map(str::to_string));
         }
         CcusageRunnerKind::NpmExec => {
             candidates.extend(
@@ -1605,6 +1774,8 @@ fn ccusage_runner_candidates(kind: CcusageRunnerKind) -> Vec<String> {
                     .into_iter()
                     .map(str::to_string),
             );
+            #[cfg(target_os = "windows")]
+            candidates.extend(["npm.cmd", "npm.exe"].into_iter().map(str::to_string));
         }
         CcusageRunnerKind::Npx => {
             candidates.extend(
@@ -1612,6 +1783,8 @@ fn ccusage_runner_candidates(kind: CcusageRunnerKind) -> Vec<String> {
                     .into_iter()
                     .map(str::to_string),
             );
+            #[cfg(target_os = "windows")]
+            candidates.extend(["npx.cmd", "npx.exe"].into_iter().map(str::to_string));
         }
     }
 
@@ -1674,7 +1847,7 @@ fn ccusage_enriched_path() -> Option<OsString> {
 }
 
 fn ccusage_runner_available(candidate: &str, enriched_path: Option<&OsStr>) -> bool {
-    let mut command = std::process::Command::new(candidate);
+    let mut command = hidden_command(candidate);
     command.arg("--version");
     if let Some(path) = enriched_path {
         command.env("PATH", path);
@@ -1840,7 +2013,7 @@ fn run_ccusage_with_runner(
 ) -> Option<String> {
     let args = ccusage_runner_args(kind, opts, provider);
     let enriched_path = ccusage_enriched_path();
-    let mut command = std::process::Command::new(program);
+    let mut command = hidden_command(program);
     configure_ccusage_command(&mut command, &args, enriched_path.as_deref());
 
     if let Some(home_path) = ccusage_home_override(opts, provider) {
@@ -2046,13 +2219,24 @@ fn inject_keychain<'js>(
             ctx.clone(),
             move |ctx_inner: Ctx<'_>, service: String| -> rquickjs::Result<String> {
                 if !cfg!(target_os = "macos") {
+                    if cfg!(target_os = "windows") && windows_gh_cli_keychain_service(&service) {
+                        log::info!(
+                            "[plugin:{}] keychain read via gh CLI: service={}",
+                            pid_read,
+                            service
+                        );
+                        if let Some(token) = read_windows_gh_cli_token() {
+                            return Ok(token);
+                        }
+                        return Err(Exception::throw_message(&ctx_inner, "gh auth token failed"));
+                    }
                     return Err(Exception::throw_message(
                         &ctx_inner,
                         "keychain API is only supported on macOS",
                     ));
                 }
                 log::info!("[plugin:{}] keychain read: service={}", pid_read, service);
-                let output = std::process::Command::new("security")
+                let output = hidden_command("security")
                     .args(keychain_find_generic_password_args(&service))
                     .output()
                     .map_err(|e| {
@@ -2108,7 +2292,7 @@ fn inject_keychain<'js>(
                     service,
                     redacted_account
                 );
-                let output = std::process::Command::new("security")
+                let output = hidden_command("security")
                     .args(&args)
                     .output()
                     .map_err(|e| {
@@ -2160,7 +2344,7 @@ fn inject_keychain<'js>(
                 log::info!("[plugin:{}] keychain write: service={}", pid_write, service);
 
                 let mut account_arg: Option<String> = None;
-                let find_output = std::process::Command::new("security")
+                let find_output = hidden_command("security")
                     .args(["find-generic-password", "-s", &service])
                     .output();
 
@@ -2180,13 +2364,13 @@ fn inject_keychain<'js>(
                 }
 
                 let output = if let Some(ref acct) = account_arg {
-                    std::process::Command::new("security")
+                    hidden_command("security")
                         .args(keychain_add_generic_password_args_for_account(
                             &service, acct, &value,
                         ))
                         .output()
                 } else {
-                    std::process::Command::new("security")
+                    hidden_command("security")
                         .args(keychain_add_generic_password_args(&service, &value))
                         .output()
                 }
@@ -2241,7 +2425,7 @@ fn inject_keychain<'js>(
                     service,
                     redacted_account
                 );
-                let output = std::process::Command::new("security")
+                let output = hidden_command("security")
                     .args(&args)
                     .output()
                     .map_err(|e| {
@@ -2300,7 +2484,7 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
 
                 // Prefer a normal read-only open so WAL contents are visible (common for app state DBs).
                 // Fall back to immutable=1 to bypass WAL/SHM lock issues after macOS sleep.
-                let primary = std::process::Command::new("sqlite3")
+                let primary = hidden_command("sqlite3")
                     .args(["-readonly", "-json", &expanded, &sql])
                     .output()
                     .map_err(|e| {
@@ -2318,7 +2502,7 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                     .replace('#', "%23")
                     .replace('?', "%3F");
                 let uri_path = format!("file:{}?immutable=1", encoded);
-                let fallback = std::process::Command::new("sqlite3")
+                let fallback = hidden_command("sqlite3")
                     .args(["-readonly", "-json", &uri_path, &sql])
                     .output()
                     .map_err(|e| {
@@ -2355,7 +2539,7 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                     ));
                 }
                 let expanded = expand_path(&db_path);
-                let output = std::process::Command::new("sqlite3")
+                let output = hidden_command("sqlite3")
                     .args([&expanded, &sql])
                     .output()
                     .map_err(|e| {
@@ -2388,13 +2572,41 @@ fn iso_now() -> String {
         })
 }
 
+#[cfg(target_os = "windows")]
+fn wsl_mount_path_to_windows(path: &str) -> Option<PathBuf> {
+    let normalized = path.replace('\\', "/");
+    let rest = normalized.strip_prefix("/mnt/")?;
+    let mut parts = rest.split('/');
+    let drive = parts.next()?;
+    if drive.len() != 1 {
+        return None;
+    }
+    let drive = drive.chars().next()?;
+    if !drive.is_ascii_alphabetic() {
+        return None;
+    }
+
+    let mut converted = PathBuf::from(format!("{}:\\", drive.to_ascii_uppercase()));
+    for part in parts {
+        if !part.is_empty() {
+            converted.push(part);
+        }
+    }
+    Some(converted)
+}
+
 fn expand_path(path: &str) -> String {
+    #[cfg(target_os = "windows")]
+    if let Some(converted) = wsl_mount_path_to_windows(path) {
+        return converted.to_string_lossy().to_string();
+    }
+
     if path == "~" {
         if let Some(home) = dirs::home_dir() {
             return home.to_string_lossy().to_string();
         }
     }
-    if path.starts_with("~/") {
+    if path.starts_with("~/") || path.starts_with("~\\") {
         if let Some(home) = dirs::home_dir() {
             return home.join(&path[2..]).to_string_lossy().to_string();
         }
@@ -2765,6 +2977,22 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "windows")]
+    fn expand_path_converts_wsl_mount_paths_on_windows() {
+        assert_eq!(
+            expand_path("/mnt/c/Users/chano/.codex"),
+            "C:\\Users\\chano\\.codex"
+        );
+    }
+
+    #[test]
+    fn redacts_windows_user_paths_from_logs() {
+        let redacted =
+            redact_log_message("auth file not found: C:\\Users\\chano\\.codex\\auth.json");
+        assert_eq!(redacted, "auth file not found: [PATH]");
+    }
+
+    #[test]
     fn keychain_find_generic_password_args_include_service_only_lookup() {
         let args = keychain_find_generic_password_args("Claude Code-credentials");
         let rendered: Vec<String> = args
@@ -2805,6 +3033,13 @@ mod tests {
                 "-w",
             ]
         );
+    }
+
+    #[test]
+    fn windows_gh_cli_keychain_service_only_matches_gh_service() {
+        assert!(windows_gh_cli_keychain_service("gh:github.com"));
+        assert!(!windows_gh_cli_keychain_service("OpenUsage-copilot"));
+        assert!(!windows_gh_cli_keychain_service("Claude Code-credentials"));
     }
 
     #[test]
@@ -3049,6 +3284,17 @@ mod tests {
             !redacted.contains("sk-1234567890abcdef"),
             "API key should be redacted"
         );
+    }
+
+    #[test]
+    fn redact_log_message_redacts_github_tokens() {
+        let msg = "gh token gho_abcdefghijklmnopqrstuvwxyz123456";
+        let redacted = redact_log_message(msg);
+        assert!(
+            !redacted.contains("gho_abcdefghijklmnopqrstuvwxyz123456"),
+            "GitHub token should be redacted"
+        );
+        assert!(redacted.contains("gho_...3456"));
     }
 
     #[test]
@@ -3525,6 +3771,31 @@ Saved lockfile
     }
 
     #[test]
+    fn ls_command_matches_windows_marker_paths() {
+        let command = r#"C:\Users\me\AppData\Local\Programs\Antigravity\resources\app\bin\language_server_windows_x64.exe --csrf_token abc --extension_server_port 1234"#;
+        assert!(ls_command_matches(
+            command,
+            "language_server_windows_x64",
+            &["antigravity".to_string()]
+        ));
+    }
+
+    #[test]
+    fn ls_command_matches_exact_ide_name_marker() {
+        let command = "language_server_macos --ide_name antigravity --csrf_token abc";
+        assert!(ls_command_matches(
+            command,
+            "language_server_macos",
+            &["antigravity".to_string()]
+        ));
+        assert!(!ls_command_matches(
+            command,
+            "language_server_macos",
+            &["windsurf".to_string()]
+        ));
+    }
+
+    #[test]
     fn collect_ccusage_runners_uses_fallback_order() {
         let runners = collect_ccusage_runners_with(|kind| match kind {
             CcusageRunnerKind::Bunx => None,
@@ -3542,6 +3813,17 @@ Saved lockfile
                 (CcusageRunnerKind::Npx, "npx".to_string()),
             ]
         );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn ccusage_runner_candidates_include_windows_launchers() {
+        assert!(ccusage_runner_candidates(CcusageRunnerKind::Npx)
+            .iter()
+            .any(|candidate| candidate == "npx.cmd"));
+        assert!(ccusage_runner_candidates(CcusageRunnerKind::NpmExec)
+            .iter()
+            .any(|candidate| candidate == "npm.cmd"));
     }
 
     #[test]

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { resolveResource } from "@tauri-apps/api/path"
 import { TrayIcon } from "@tauri-apps/api/tray"
+import { canUseLocalUsageApi } from "@/lib/local-usage-api"
 import type { PluginMeta } from "@/lib/plugin-types"
 import type { DisplayMode, MenubarIconStyle, PluginSettings } from "@/lib/settings"
 import { getEnabledPluginIds } from "@/lib/settings"
@@ -33,6 +34,10 @@ const EMPTY_TRAY_SETTINGS_PREVIEW: TraySettingsPreview = {
   providerPercentText: "--%",
 }
 
+function isWindowsRuntime(): boolean {
+  return typeof navigator !== "undefined" && navigator.userAgent.includes("Windows")
+}
+
 function isSameTraySettingsPreview(a: TraySettingsPreview, b: TraySettingsPreview): boolean {
   if (a.providerIconUrl !== b.providerIconUrl) return false
   if (a.providerPercentText !== b.providerPercentText) return false
@@ -59,6 +64,7 @@ export function useTrayIcon({
 }: UseTrayIconArgs) {
   const trayRef = useRef<TrayIcon | null>(null)
   const trayGaugeIconPathRef = useRef<string | null>(null)
+  const trayAppIconPathRef = useRef<string | null>(null)
   const trayUpdateTimerRef = useRef<number | null>(null)
   const trayUpdatePendingRef = useRef(false)
   const trayUpdateQueuedRef = useRef(false)
@@ -151,11 +157,13 @@ export function useTrayIcon({
       }
 
       const restoreGaugeIcon = () => {
-        const gaugePath = trayGaugeIconPathRef.current
+        const gaugePath = isWindowsRuntime()
+          ? trayAppIconPathRef.current
+          : trayGaugeIconPathRef.current
         if (gaugePath) {
           Promise.all([
             tray.setIcon(gaugePath),
-            tray.setIconAsTemplate(true),
+            tray.setIconAsTemplate(!isWindowsRuntime()),
             setTrayTitle(""),
             setTrayTooltip("OpenUsage"),
           ])
@@ -246,6 +254,25 @@ export function useTrayIcon({
       const tooltip = formatTrayTooltip(tooltipBars, pluginsMetaRef.current)
       const updateTooltip = () => setTrayTooltip(tooltip)
 
+      if (isWindowsRuntime()) {
+        const appIconPath = trayAppIconPathRef.current
+        const iconUpdate = appIconPath
+          ? tray.setIcon(appIconPath).then(() => tray.setIconAsTemplate(false))
+          : Promise.resolve()
+        Promise.all([
+          iconUpdate,
+          setTrayTitle(""),
+          updateTooltip(),
+        ])
+          .catch((e) => {
+            console.error("Failed to update Windows tray icon:", e)
+          })
+          .finally(() => {
+            finalizeUpdate()
+          })
+        return
+      }
+
       if (style === "bars") {
         renderTrayBarsIcon({
           bars: barsForPreview,
@@ -319,6 +346,7 @@ export function useTrayIcon({
 
   const trayInitializedRef = useRef(false)
   useEffect(() => {
+    if (canUseLocalUsageApi()) return
     if (trayInitializedRef.current) return
     let cancelled = false
 
@@ -333,6 +361,11 @@ export function useTrayIcon({
           trayGaugeIconPathRef.current = await resolveResource("icons/tray-icon.png")
         } catch (e) {
           console.error("Failed to resolve tray gauge icon resource:", e)
+        }
+        try {
+          trayAppIconPathRef.current = await resolveResource("icons/icon.png")
+        } catch (e) {
+          console.error("Failed to resolve tray app icon resource:", e)
         }
 
         if (cancelled) return

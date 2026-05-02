@@ -13,6 +13,7 @@ import { useProbeAutoUpdate } from "@/hooks/app/use-probe-auto-update"
 
 describe("useProbeAutoUpdate", () => {
   beforeEach(() => {
+    vi.useRealTimers()
     getEnabledPluginIdsMock.mockReset()
     getEnabledPluginIdsMock.mockImplementation((settings: { order: string[]; disabled: string[] }) =>
       settings.order.filter((id) => !settings.disabled.includes(id))
@@ -57,4 +58,5 @@ describe("useProbeAutoUpdate", () => {
     expect(result.current.autoUpdateNextAt).toBe(910_000)
     nowSpy.mockRestore()
   })
+
 })

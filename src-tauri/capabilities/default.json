@@ -11,6 +11,7 @@
     "core:window:allow-outer-size",
     "core:window:allow-inner-size",
     "core:window:allow-scale-factor",
+    "core:window:allow-start-dragging",
     "opener:default",
     "store:default",
     "aptabase:allow-track-event",

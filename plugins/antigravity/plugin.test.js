@@ -116,6 +116,16 @@ function setupSqliteMock(ctx, oauthEnvelopeB64) {
   })
 }
 
+function mockCloudCodeOk(ctx) {
+  ctx.host.ls.discover.mockReturnValue(null)
+  ctx.host.http.request.mockImplementation((opts) => {
+    if (String(opts.url).includes("fetchAvailableModels")) {
+      return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+    }
+    return { status: 404, bodyText: "{}" }
+  })
+}
+
 function encodeVarint(n) {
   var bytes = ""
   while (n > 0x7f) {
@@ -451,21 +461,20 @@ describe("antigravity plugin", () => {
     ])
   })
 
-  it("never sends apiKey in LS metadata (unified schema has no apiKey)", async () => {
+  it("calls Antigravity LS status with an empty body", async () => {
     const ctx = makeCtx()
     const discovery = makeDiscovery()
     const response = makeUserStatusResponse()
     setupLsMock(ctx, discovery, response)
 
-    let capturedMetadata = null
+    let capturedBody = null
     ctx.host.http.request.mockImplementation((opts) => {
       const url = String(opts.url)
       if (url.includes("GetUnleashData")) {
         return { status: 200, bodyText: "{}" }
       }
       if (url.includes("GetUserStatus")) {
-        const body = JSON.parse(opts.bodyText)
-        capturedMetadata = body.metadata
+        capturedBody = JSON.parse(opts.bodyText)
         return { status: 200, bodyText: JSON.stringify(response) }
       }
       return { status: 200, bodyText: "{}" }
@@ -475,8 +484,7 @@ describe("antigravity plugin", () => {
     const result = plugin.probe(ctx)
 
     expect(result.lines.length).toBeGreaterThan(0)
-    expect(capturedMetadata).toBeTruthy()
-    expect(capturedMetadata.apiKey).toBeUndefined()
+    expect(capturedBody).toEqual({})
   })
 
   it("falls back to Cloud Code API when LS is not available", async () => {
@@ -524,6 +532,25 @@ describe("antigravity plugin", () => {
     expect(capturedHeaders).toBeTruthy()
     expect(capturedHeaders.Authorization).toBe("Bearer ya29.proto-token")
     expect(capturedHeaders["User-Agent"]).toBe("antigravity")
+  })
+
+  it("reads Windows Antigravity global state db", async () => {
+    const ctx = makeCtx()
+    ctx.app.platform = "windows"
+    const futureExpiry = Math.floor(Date.now() / 1000) + 3600
+    setupSqliteMock(ctx, makeOAuthSentinelB64(ctx, {
+      accessToken: "ya29.windows-token",
+      refreshToken: "1//refresh",
+      expirySeconds: futureExpiry,
+    }))
+    mockCloudCodeOk(ctx)
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    expect(ctx.host.sqlite.query.mock.calls[0][0]).toContain(
+      "AppData/Roaming/Antigravity/User/globalStorage/state.vscdb"
+    )
   })
 
   it("Cloud Code returns null on 401/403 (invalid token, no refresh)", async () => {

@@ -52,7 +52,10 @@ describe("usePanel", () => {
     invokeMock.mockResolvedValue(undefined)
     listenMock.mockResolvedValue(vi.fn())
     currentMonitorMock.mockResolvedValue(null)
-    getCurrentWindowMock.mockReturnValue({ setSize: vi.fn().mockResolvedValue(undefined) })
+    getCurrentWindowMock.mockReturnValue({
+      setSize: vi.fn().mockResolvedValue(undefined),
+      outerSize: vi.fn().mockResolvedValue({ width: 0, height: 0 }),
+    })
   })
 
   it("handles tray show-about event", async () => {

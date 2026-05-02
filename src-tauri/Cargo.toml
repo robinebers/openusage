@@ -22,7 +22,6 @@ tauri = { version = "2", features = ["macos-private-api", "tray-icon", "image-pn
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }
 time = { version = "0.3.47", features = ["formatting"] }
 dirs = "6"
 log = "0.4"
@@ -42,6 +41,7 @@ regex-lite = "0.1.9"
 aes-gcm = "0.10.3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
+tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }
 objc2 = "0.6"
 objc2-foundation = { version = "0.3", features = ["NSProcessInfo", "NSString"] }
 objc2-app-kit = { version = "0.3", features = ["NSEvent", "NSScreen", "NSGraphics"] }

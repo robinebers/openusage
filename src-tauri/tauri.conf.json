@@ -19,7 +19,7 @@
         "resizable": false,
         "decorations": false,
         "transparent": true,
-        "visible": false
+        "visible": true
       }
     ],
     "security": {
@@ -55,7 +55,8 @@
     ],
     "resources": [
       "resources/bundled_plugins/**/*",
-      "icons/tray-icon.png"
+      "icons/tray-icon.png",
+      "icons/icon.png"
     ],
     "createUpdaterArtifacts": true
   },

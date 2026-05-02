@@ -67,7 +67,10 @@ pub fn load_cache(app_data_dir: &Path) -> HashMap<String, CachedPluginSnapshot> 
             HashMap::new()
         }
         Err(e) => {
-            log::warn!("failed to parse usage-api-cache.json: {}, starting empty", e);
+            log::warn!(
+                "failed to parse usage-api-cache.json: {}, starting empty",
+                e
+            );
             HashMap::new()
         }
     }
@@ -120,9 +123,7 @@ pub fn cache_successful_output(output: &PluginOutput) {
     };
 
     let mut state = cache_state().lock().expect("cache state poisoned");
-    state
-        .snapshots
-        .insert(output.provider_id.clone(), snapshot);
+    state.snapshots.insert(output.provider_id.clone(), snapshot);
     save_cache(&state.app_data_dir, &state.snapshots);
 }
 

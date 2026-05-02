@@ -26,6 +26,19 @@ describe("cursor plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Not logged in")
   })
 
+  it("uses Cursor's Windows state database path on Windows", async () => {
+    const ctx = makeCtx()
+    ctx.app.platform = "windows"
+    ctx.host.sqlite.query.mockReturnValue(JSON.stringify([]))
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Not logged in")
+
+    expect(ctx.host.sqlite.query).toHaveBeenCalled()
+    const [dbPath] = ctx.host.sqlite.query.mock.calls[0]
+    expect(dbPath).toBe("~/AppData/Roaming/Cursor/User/globalStorage/state.vscdb")
+  })
+
   it("loads tokens from keychain when sqlite has none", async () => {
     const ctx = makeCtx()
     ctx.host.sqlite.query.mockReturnValue(JSON.stringify([]))

@@ -135,6 +135,7 @@ export function ProviderCard({
   // or the parent is passing lines directly (tests + legacy state paths).
   const hasStaleData = lastUpdatedAt != null || filteredLines.length > 0
   const isRefreshingWithData = loading && hasStaleData
+  const showHeaderRetry = Boolean(onRetry) && (hasStaleData || !error)
 
   const tickerIntervalMs = cooldownRemainingMs > 0 ? 1000 : 30_000
 
@@ -184,7 +185,7 @@ export function ProviderCard({
         <div className="flex items-center justify-between mb-2">
           <div className="relative flex items-center">
             <h2 className="text-lg font-semibold" style={{ transform: "translateZ(0)" }}>{name}</h2>
-            {onRetry && (
+            {showHeaderRetry && onRetry && (
               loading ? (
                 <Button
                   variant="ghost"
@@ -275,7 +276,7 @@ export function ProviderCard({
             ))}
           </div>
         )}
-        {error && !hasStaleData && <PluginError message={error} />}
+        {error && !hasStaleData && <PluginError message={error} onRetry={onRetry} />}
 
         {error && hasStaleData && (
           <Tooltip>

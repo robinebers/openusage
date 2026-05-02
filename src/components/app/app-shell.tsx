@@ -7,9 +7,20 @@ import type { SettingsPluginState } from "@/hooks/app/use-settings-plugin-list"
 import { useAppVersion } from "@/hooks/app/use-app-version"
 import { usePanel } from "@/hooks/app/use-panel"
 import { useAppUpdate } from "@/hooks/use-app-update"
+import { cn } from "@/lib/utils"
 import { useAppUiStore } from "@/stores/app-ui-store"
 
 const ARROW_OVERHEAD_PX = 37
+
+function isWindowsWebView() {
+  if (typeof navigator === "undefined") return false
+
+  const nav = navigator as Navigator & {
+    userAgentData?: { platform?: string }
+  }
+  const platform = nav.userAgentData?.platform ?? navigator.platform ?? ""
+  return /win/i.test(`${platform} ${navigator.userAgent}`)
+}
 
 type AppShellProps = {
   onRefreshAll: () => void
@@ -65,17 +76,27 @@ export function AppShell({
 
   const appVersion = useAppVersion()
   const { updateStatus, triggerInstall, checkForUpdates } = useAppUpdate()
+  const isWindows = isWindowsWebView()
+  const panelMaxHeight = maxPanelHeightPx
+    ? `${maxPanelHeightPx - (isWindows ? 0 : ARROW_OVERHEAD_PX)}px`
+    : undefined
 
   return (
     <div
       ref={containerRef}
       tabIndex={-1}
-      className="flex flex-col items-center p-6 pt-1.5 bg-transparent outline-none"
+      className={cn(
+        "flex flex-col items-center outline-none",
+        isWindows ? "h-screen w-screen bg-card p-0" : "bg-transparent p-6 pt-1.5"
+      )}
     >
-      <div className="tray-arrow" />
+      {!isWindows && <div className="tray-arrow" />}
       <div
-        className="relative bg-card rounded-xl overflow-hidden select-none w-full border shadow-lg flex flex-col"
-        style={maxPanelHeightPx ? { maxHeight: `${maxPanelHeightPx - ARROW_OVERHEAD_PX}px` } : undefined}
+        className={cn(
+          "relative bg-card overflow-hidden select-none w-full flex flex-col",
+          isWindows ? "h-full rounded-none border-0 shadow-none" : "rounded-xl border shadow-lg"
+        )}
+        style={!isWindows && panelMaxHeight ? { maxHeight: panelMaxHeight } : undefined}
       >
         <div className="flex flex-1 min-h-0 flex-row">
           <SideNav

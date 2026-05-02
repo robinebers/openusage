@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const {
   arePluginSettingsEqualMock,
+  canUseLocalUsageApiMock,
+  fetchLocalUsageMock,
   disableAutostartMock,
   enableAutostartMock,
   getEnabledPluginIdsMock,
@@ -20,7 +22,10 @@ const {
   migrateLegacyTraySettingsMock,
   normalizePluginSettingsMock,
   savePluginSettingsMock,
+  usageToPluginMetaMock,
 } = vi.hoisted(() => ({
+  canUseLocalUsageApiMock: vi.fn(),
+  fetchLocalUsageMock: vi.fn(),
   invokeMock: vi.fn(),
   isTauriMock: vi.fn(),
   isAutostartEnabledMock: vi.fn(),
@@ -39,6 +44,7 @@ const {
   migrateLegacyTraySettingsMock: vi.fn(),
   normalizePluginSettingsMock: vi.fn(),
   savePluginSettingsMock: vi.fn(),
+  usageToPluginMetaMock: vi.fn(),
 }))
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -75,6 +81,12 @@ vi.mock("@/lib/settings", () => ({
   savePluginSettings: savePluginSettingsMock,
 }))
 
+vi.mock("@/lib/local-usage-api", () => ({
+  canUseLocalUsageApi: canUseLocalUsageApiMock,
+  fetchLocalUsage: fetchLocalUsageMock,
+  usageToPluginMeta: usageToPluginMetaMock,
+}))
+
 import { useSettingsBootstrap } from "@/hooks/app/use-settings-bootstrap"
 
 function createArgs() {
@@ -97,6 +109,8 @@ function createArgs() {
 describe("useSettingsBootstrap", () => {
   beforeEach(() => {
     invokeMock.mockReset()
+    fetchLocalUsageMock.mockReset()
+    canUseLocalUsageApiMock.mockReset()
     isTauriMock.mockReset()
     isAutostartEnabledMock.mockReset()
     enableAutostartMock.mockReset()
@@ -114,8 +128,10 @@ describe("useSettingsBootstrap", () => {
     migrateLegacyTraySettingsMock.mockReset()
     normalizePluginSettingsMock.mockReset()
     savePluginSettingsMock.mockReset()
+    usageToPluginMetaMock.mockReset()
 
     isTauriMock.mockReturnValue(true)
+    canUseLocalUsageApiMock.mockReturnValue(false)
     isAutostartEnabledMock.mockResolvedValue(true)
     invokeMock.mockResolvedValue([
       {
@@ -123,6 +139,19 @@ describe("useSettingsBootstrap", () => {
         name: "Codex",
         iconUrl: "/codex.svg",
         brandColor: "#000000",
+        lines: [],
+        primaryCandidates: [],
+      },
+    ])
+    fetchLocalUsageMock.mockResolvedValue([
+      { providerId: "codex", displayName: "Codex", lines: [], iconUrl: "icon.svg" },
+    ])
+    usageToPluginMetaMock.mockReturnValue([
+      {
+        id: "codex",
+        name: "Codex",
+        iconUrl: "icon.svg",
+        brandColor: "#74AA9C",
         lines: [],
         primaryCandidates: [],
       },
@@ -169,5 +198,29 @@ describe("useSettingsBootstrap", () => {
     })
 
     errorSpy.mockRestore()
+  })
+
+  it("loads plugin metadata from local usage API outside Tauri", async () => {
+    isTauriMock.mockReturnValue(false)
+    canUseLocalUsageApiMock.mockReturnValue(true)
+    const args = createArgs()
+
+    renderHook(() => useSettingsBootstrap(args))
+
+    await waitFor(() => {
+      expect(fetchLocalUsageMock).toHaveBeenCalledTimes(1)
+      expect(invokeMock).not.toHaveBeenCalledWith("list_plugins")
+      expect(args.setPluginsMeta).toHaveBeenCalledWith([
+        {
+          id: "codex",
+          name: "Codex",
+          iconUrl: "icon.svg",
+          brandColor: "#74AA9C",
+          lines: [],
+          primaryCandidates: [],
+        },
+      ])
+      expect(args.startBatch).toHaveBeenCalledWith(["codex"])
+    })
   })
 })

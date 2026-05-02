@@ -140,14 +140,23 @@
   }
 }
 
-/* Panel-specific styles for transparent Tauri window */
+/* Panel-specific styles for Tauri window */
 html,
 body,
 #root {
-  background: transparent;
   overflow: hidden;
   margin: 0;
   padding: 0;
+}
+
+/* Transparent background only on macOS for the floating panel effect.
+   On Windows, tauri.windows.conf.json sets a solid backgroundColor
+   so we must NOT force transparent here. The .platform-windows class
+   is set on <html> by main.tsx at startup. */
+html:not(.platform-windows),
+html:not(.platform-windows) body,
+html:not(.platform-windows) #root {
+  background: transparent;
 }
 
 /* Hide scrollbar track globally */

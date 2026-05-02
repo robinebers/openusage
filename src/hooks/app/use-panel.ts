@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { invoke, isTauri } from "@tauri-apps/api/core"
 import { listen } from "@tauri-apps/api/event"
-import { getCurrentWindow, PhysicalSize, currentMonitor } from "@tauri-apps/api/window"
+import { currentMonitor, getCurrentWindow, PhysicalSize } from "@tauri-apps/api/window"
 import type { ActiveView } from "@/components/side-nav"
 import type { DisplayPluginState } from "@/hooks/app/use-app-plugin-views"
 
@@ -19,13 +19,18 @@ type UsePanelArgs = {
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
-
   if (target.isContentEditable) return true
-  if (target.closest("input, textarea, select, [contenteditable='true'], [role='textbox']")) {
-    return true
-  }
+  return Boolean(target.closest("input, textarea, select, [contenteditable='true'], [role='textbox']"))
+}
 
-  return false
+function isWindowsWebView(): boolean {
+  if (typeof navigator === "undefined") return false
+
+  const nav = navigator as Navigator & {
+    userAgentData?: { platform?: string }
+  }
+  const platform = nav.userAgentData?.platform ?? navigator.platform ?? ""
+  return /win/i.test(`${platform} ${navigator.userAgent}`)
 }
 
 export function usePanel({
@@ -40,6 +45,8 @@ export function usePanel({
   const [canScrollDown, setCanScrollDown] = useState(false)
   const [maxPanelHeightPx, setMaxPanelHeightPx] = useState<number | null>(null)
   const maxPanelHeightPxRef = useRef<number | null>(null)
+  const isWindows = isWindowsWebView()
+
   const focusContainer = useCallback(() => {
     window.requestAnimationFrame(() => {
       containerRef.current?.focus({ preventScroll: true })
@@ -48,9 +55,7 @@ export function usePanel({
 
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        focusContainer()
-      }
+      if (!document.hidden) focusContainer()
     }
 
     window.addEventListener("focus", focusContainer)
@@ -63,16 +68,15 @@ export function usePanel({
   }, [focusContainer])
 
   useEffect(() => {
-    if (!isTauri()) return
+    if (!isTauri() || isWindows) return
     invoke("init_panel").catch(console.error)
-  }, [])
+  }, [isWindows])
 
   useEffect(() => {
-    if (!isTauri()) return
-    if (showAbout) return
+    if (!isTauri() || showAbout) return
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
         invoke("hide_panel")
       }
     }
@@ -83,36 +87,37 @@ export function usePanel({
 
   useEffect(() => {
     if (!isTauri()) return
+
     let cancelled = false
     const unlisteners: (() => void)[] = []
 
     async function setup() {
-      const u1 = await listen<string>("tray:navigate", (event) => {
+      const navigate = await listen<string>("tray:navigate", (event) => {
         setActiveView(event.payload as ActiveView)
         focusContainer()
       })
       if (cancelled) {
-        u1()
+        navigate()
         return
       }
-      unlisteners.push(u1)
+      unlisteners.push(navigate)
 
-      const u2 = await listen("tray:show-about", () => {
+      const showAboutListener = await listen("tray:show-about", () => {
         setShowAbout(true)
         focusContainer()
       })
       if (cancelled) {
-        u2()
+        showAboutListener()
         return
       }
-      unlisteners.push(u2)
+      unlisteners.push(showAboutListener)
     }
 
     void setup()
 
     return () => {
       cancelled = true
-      for (const fn of unlisteners) fn()
+      for (const unlisten of unlisteners) unlisten()
     }
   }, [focusContainer, setActiveView, setShowAbout])
 
@@ -129,7 +134,6 @@ export function usePanel({
       if (views.length === 0) return
 
       let nextView: ActiveView | undefined
-
       if (activeView === "settings") {
         nextView = event.key === "ArrowUp" ? views[views.length - 1] : views[0]
       } else {
@@ -151,6 +155,13 @@ export function usePanel({
 
   useEffect(() => {
     if (!isTauri()) return
+
+    if (isWindows) {
+      maxPanelHeightPxRef.current = null
+      setMaxPanelHeightPx(null)
+      return
+    }
+
     const container = containerRef.current
     if (!container) return
 
@@ -169,7 +180,7 @@ export function usePanel({
           maxHeightLogical = Math.floor(maxHeightPhysical / factor)
         }
       } catch {
-        // fall through to fallback
+        // Fall through to screen fallback.
       }
 
       if (maxHeightLogical === null) {
@@ -184,25 +195,24 @@ export function usePanel({
       }
 
       const desiredHeightPhysical = Math.ceil(desiredHeightLogical * factor)
-      const height = Math.ceil(Math.min(desiredHeightPhysical, maxHeightPhysical!))
+      const height = Math.ceil(Math.min(desiredHeightPhysical, maxHeightPhysical ?? desiredHeightPhysical))
 
       try {
-        const currentWindow = getCurrentWindow()
-        await currentWindow.setSize(new PhysicalSize(width, height))
-      } catch (e) {
-        console.error("Failed to resize window:", e)
+        await getCurrentWindow().setSize(new PhysicalSize(width, height))
+      } catch (error) {
+        console.error("Failed to resize window:", error)
       }
     }
 
-    resizeWindow()
+    void resizeWindow()
 
     const observer = new ResizeObserver(() => {
-      resizeWindow()
+      void resizeWindow()
     })
     observer.observe(container)
 
     return () => observer.disconnect()
-  }, [activeView, displayPlugins])
+  }, [activeView, displayPlugins, isWindows])
 
   useEffect(() => {
     const el = scrollRef.current

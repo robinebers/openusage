@@ -403,7 +403,7 @@ describe("App", () => {
     await waitFor(() => expect(state.savePluginSettingsMock).toHaveBeenCalled())
     await waitFor(() => expect(state.migrateLegacyTraySettingsMock).toHaveBeenCalled())
     expect(screen.getByText("Alpha")).toBeInTheDocument()
-    expect(state.setSizeMock).toHaveBeenCalled()
+    expect(state.setSizeMock).not.toHaveBeenCalled()
   })
 
   it("calls migrateLegacyTraySettings before loadMenubarIconStyle during bootstrap", async () => {
@@ -1164,14 +1164,16 @@ describe("App", () => {
     await waitFor(() => expect(state.startBatchMock).toHaveBeenCalledWith(["b"]))
   })
 
-  it("uses fallback monitor sizing when monitor missing", async () => {
+  it("does not resize the native Windows window when monitor missing", async () => {
     state.isTauriMock.mockReturnValue(true)
     state.currentMonitorMock.mockResolvedValueOnce(null)
     render(<App />)
-    await waitFor(() => expect(state.setSizeMock).toHaveBeenCalled())
+    await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
+    expect(state.currentMonitorMock).not.toHaveBeenCalled()
+    expect(state.setSizeMock).not.toHaveBeenCalled()
   })
 
-  it("resizes again via ResizeObserver callback", async () => {
+  it("does not resize the native Windows window via ResizeObserver", async () => {
     state.isTauriMock.mockReturnValue(true)
     const OriginalResizeObserver = globalThis.ResizeObserver
     const observeSpy = vi.fn()
@@ -1190,17 +1192,18 @@ describe("App", () => {
 
     render(<App />)
     await waitFor(() => expect(observeSpy).toHaveBeenCalled())
-    await waitFor(() => expect(state.setSizeMock).toHaveBeenCalled())
+    expect(state.setSizeMock).not.toHaveBeenCalled()
 
     globalThis.ResizeObserver = OriginalResizeObserver
   })
 
-  it("logs resize failures", async () => {
+  it("does not log resize failures on Windows because frontend resize is disabled", async () => {
     state.isTauriMock.mockReturnValue(true)
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
     state.setSizeMock.mockRejectedValueOnce(new Error("size fail"))
     render(<App />)
-    await waitFor(() => expect(errorSpy).toHaveBeenCalled())
+    await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
+    expect(errorSpy).not.toHaveBeenCalled()
     errorSpy.mockRestore()
   })
 
