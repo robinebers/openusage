@@ -1326,13 +1326,20 @@ Get-CimInstance Win32_Process |
     {
         Ok(output) => output,
         Err(error) => {
-            log::warn!("[plugin:{}] PowerShell process query failed: {}", plugin_id, error);
+            log::warn!(
+                "[plugin:{}] PowerShell process query failed: {}",
+                plugin_id,
+                error
+            );
             return None;
         }
     };
 
     if !output.status.success() {
-        log::warn!("[plugin:{}] PowerShell process query returned non-zero", plugin_id);
+        log::warn!(
+            "[plugin:{}] PowerShell process query returned non-zero",
+            plugin_id
+        );
         return None;
     }
 
@@ -1340,7 +1347,11 @@ Get-CimInstance Win32_Process |
     let value = match serde_json::from_str::<serde_json::Value>(stdout.trim()) {
         Ok(value) => value,
         Err(error) => {
-            log::warn!("[plugin:{}] PowerShell process JSON parse failed: {}", plugin_id, error);
+            log::warn!(
+                "[plugin:{}] PowerShell process JSON parse failed: {}",
+                plugin_id,
+                error
+            );
             return None;
         }
     };
@@ -1379,14 +1390,7 @@ fn ls_listening_ports(pid: i32, plugin_id: &str) -> Vec<i32> {
 
     if let Some(lsof) = lsof_path {
         match hidden_command(lsof)
-            .args([
-                "-nP",
-                "-iTCP",
-                "-sTCP:LISTEN",
-                "-a",
-                "-p",
-                &pid.to_string(),
-            ])
+            .args(["-nP", "-iTCP", "-sTCP:LISTEN", "-a", "-p", &pid.to_string()])
             .output()
         {
             Ok(o) if o.status.success() => {
@@ -1426,13 +1430,20 @@ Get-NetTCPConnection -State Listen -OwningProcess {} |
     {
         Ok(output) => output,
         Err(error) => {
-            log::warn!("[plugin:{}] PowerShell port query failed: {}", plugin_id, error);
+            log::warn!(
+                "[plugin:{}] PowerShell port query failed: {}",
+                plugin_id,
+                error
+            );
             return Vec::new();
         }
     };
 
     if !output.status.success() {
-        log::warn!("[plugin:{}] PowerShell port query returned non-zero", plugin_id);
+        log::warn!(
+            "[plugin:{}] PowerShell port query returned non-zero",
+            plugin_id
+        );
         return Vec::new();
     }
 
@@ -1455,7 +1466,11 @@ Get-NetTCPConnection -State Listen -OwningProcess {} |
             .map(|port| vec![port as i32])
             .unwrap_or_default(),
         Err(error) => {
-            log::warn!("[plugin:{}] PowerShell port JSON parse failed: {}", plugin_id, error);
+            log::warn!(
+                "[plugin:{}] PowerShell port JSON parse failed: {}",
+                plugin_id,
+                error
+            );
             Vec::new()
         }
     }
@@ -1805,6 +1820,23 @@ fn ccusage_path_entries_with(home: Option<&Path>, existing_path: Option<&OsStr>)
         entries.push(home.join(".bun/bin"));
         entries.push(home.join(".nvm/current/bin"));
         entries.push(home.join(".local/bin"));
+
+        #[cfg(target_os = "windows")]
+        {
+            entries.push(home.join("AppData").join("Roaming").join("npm"));
+            entries.push(
+                home.join("AppData")
+                    .join("Local")
+                    .join("Programs")
+                    .join("nodejs"),
+            );
+            entries.push(
+                home.join("AppData")
+                    .join("Local")
+                    .join("Programs")
+                    .join("bun"),
+            );
+        }
     }
 
     entries.extend(
@@ -3558,18 +3590,36 @@ mod tests {
         .expect("join existing path");
 
         let entries = ccusage_path_entries_with(Some(home.as_path()), Some(existing.as_os_str()));
-        assert_eq!(
-            entries,
-            vec![
+        assert_eq!(entries, {
+            let mut expected = vec![
                 home.join(".bun/bin"),
                 home.join(".nvm/current/bin"),
                 home.join(".local/bin"),
+            ];
+            #[cfg(target_os = "windows")]
+            {
+                expected.push(home.join("AppData").join("Roaming").join("npm"));
+                expected.push(
+                    home.join("AppData")
+                        .join("Local")
+                        .join("Programs")
+                        .join("nodejs"),
+                );
+                expected.push(
+                    home.join("AppData")
+                        .join("Local")
+                        .join("Programs")
+                        .join("bun"),
+                );
+            }
+            expected.extend([
                 std::path::PathBuf::from("/opt/homebrew/bin"),
                 std::path::PathBuf::from("/usr/local/bin"),
                 std::path::PathBuf::from("/usr/bin"),
                 std::path::PathBuf::from("/bin"),
-            ]
-        );
+            ]);
+            expected
+        });
     }
 
     #[test]
@@ -3621,18 +3671,36 @@ mod tests {
         let entries: Vec<std::path::PathBuf> =
             std::env::split_paths(enriched.as_os_str()).collect();
 
-        assert_eq!(
-            entries,
-            vec![
+        assert_eq!(entries, {
+            let mut expected = vec![
                 home.join(".bun/bin"),
                 home.join(".nvm/current/bin"),
                 home.join(".local/bin"),
+            ];
+            #[cfg(target_os = "windows")]
+            {
+                expected.push(home.join("AppData").join("Roaming").join("npm"));
+                expected.push(
+                    home.join("AppData")
+                        .join("Local")
+                        .join("Programs")
+                        .join("nodejs"),
+                );
+                expected.push(
+                    home.join("AppData")
+                        .join("Local")
+                        .join("Programs")
+                        .join("bun"),
+                );
+            }
+            expected.extend([
                 std::path::PathBuf::from("/opt/homebrew/bin"),
                 std::path::PathBuf::from("/usr/local/bin"),
                 std::path::PathBuf::from("/usr/bin"),
                 std::path::PathBuf::from("/bin"),
-            ]
-        );
+            ]);
+            expected
+        });
     }
 
     #[test]
@@ -3818,12 +3886,16 @@ Saved lockfile
     #[cfg(target_os = "windows")]
     #[test]
     fn ccusage_runner_candidates_include_windows_launchers() {
-        assert!(ccusage_runner_candidates(CcusageRunnerKind::Npx)
-            .iter()
-            .any(|candidate| candidate == "npx.cmd"));
-        assert!(ccusage_runner_candidates(CcusageRunnerKind::NpmExec)
-            .iter()
-            .any(|candidate| candidate == "npm.cmd"));
+        assert!(
+            ccusage_runner_candidates(CcusageRunnerKind::Npx)
+                .iter()
+                .any(|candidate| candidate == "npx.cmd")
+        );
+        assert!(
+            ccusage_runner_candidates(CcusageRunnerKind::NpmExec)
+                .iter()
+                .any(|candidate| candidate == "npm.cmd")
+        );
     }
 
     #[test]

@@ -1,7 +1,7 @@
 use tauri::image::Image;
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::path::BaseDirectory;
-use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::tray::{MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_store::StoreExt;
 
@@ -44,14 +44,9 @@ fn set_stored_log_level(app_handle: &AppHandle, level: log::LevelFilter) {
 }
 
 pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
-    let tray_icon_file = if cfg!(target_os = "macos") {
-        "tray-icon.png"
-    } else {
-        "icon.png"
-    };
     let tray_icon_path = app_handle
         .path()
-        .resolve(format!("icons/{}", tray_icon_file), BaseDirectory::Resource)?;
+        .resolve("icons/tray-icon.png", BaseDirectory::Resource)?;
     let icon = Image::from_path(tray_icon_path)?;
 
     let current_level = get_stored_log_level(app_handle);
@@ -123,7 +118,6 @@ pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
 
     let separator = PredefinedMenuItem::separator(app_handle)?;
     let about = MenuItem::with_id(app_handle, "about", "About OpenUsage", true, None::<&str>)?;
-    let restart = MenuItem::with_id(app_handle, "restart", "Restart", true, None::<&str>)?;
     let quit = MenuItem::with_id(app_handle, "quit", "Quit", true, None::<&str>)?;
 
     let menu = Menu::with_items(
@@ -134,65 +128,60 @@ pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
             &log_level_submenu,
             &separator,
             &about,
-            &restart,
             &quit,
         ],
     )?;
 
     TrayIconBuilder::with_id("tray")
         .icon(icon)
-        .icon_as_template(cfg!(target_os = "macos"))
+        .icon_as_template(true)
         .tooltip("OpenUsage")
         .menu(&menu)
         .show_menu_on_left_click(false)
-        .on_menu_event(move |app_handle, event| match event.id.as_ref() {
-            "show_stats" => {
-                show_panel(app_handle);
-                let _ = app_handle.emit("tray:navigate", "home");
-            }
-            "go_to_settings" => {
-                show_panel(app_handle);
-                let _ = app_handle.emit("tray:navigate", "settings");
-            }
-            "about" => {
-                show_panel(app_handle);
-                let _ = app_handle.emit("tray:show-about", ());
-            }
-            "restart" => {
-                log::info!("restart requested via tray");
-                app_handle.restart();
-            }
-            "quit" => {
-                log::info!("quit requested via tray");
-                app_handle.exit(0);
-            }
-            "log_error" | "log_warn" | "log_info" | "log_debug" | "log_trace" => {
-                let selected_level = match event.id.as_ref() {
-                    "log_error" => log::LevelFilter::Error,
-                    "log_warn" => log::LevelFilter::Warn,
-                    "log_info" => log::LevelFilter::Info,
-                    "log_debug" => log::LevelFilter::Debug,
-                    "log_trace" => log::LevelFilter::Trace,
-                    _ => unreachable!(),
-                };
-                set_stored_log_level(app_handle, selected_level);
-                for (item, level) in &log_items {
-                    let _ = item.set_checked(*level == selected_level);
+        .on_menu_event(move |app_handle, event| {
+            log::debug!("tray menu: {}", event.id.as_ref());
+            match event.id.as_ref() {
+                "show_stats" => {
+                    show_panel(app_handle);
+                    let _ = app_handle.emit("tray:navigate", "home");
                 }
+                "go_to_settings" => {
+                    show_panel(app_handle);
+                    let _ = app_handle.emit("tray:navigate", "settings");
+                }
+                "about" => {
+                    show_panel(app_handle);
+                    let _ = app_handle.emit("tray:show-about", ());
+                }
+                "quit" => {
+                    log::info!("quit requested via tray");
+                    app_handle.exit(0);
+                }
+                "log_error" | "log_warn" | "log_info" | "log_debug" | "log_trace" => {
+                    let selected_level = match event.id.as_ref() {
+                        "log_error" => log::LevelFilter::Error,
+                        "log_warn" => log::LevelFilter::Warn,
+                        "log_info" => log::LevelFilter::Info,
+                        "log_debug" => log::LevelFilter::Debug,
+                        "log_trace" => log::LevelFilter::Trace,
+                        _ => unreachable!(),
+                    };
+                    set_stored_log_level(app_handle, selected_level);
+                    for (item, level) in &log_items {
+                        let _ = item.set_checked(*level == selected_level);
+                    }
+                }
+                _ => {}
             }
-            _ => {}
         })
         .on_tray_icon_event(|tray, event| {
             let app_handle = tray.app_handle();
 
             if let TrayIconEvent::Click {
-                button,
-                button_state,
-                rect,
-                ..
+                button_state, rect, ..
             } = event
             {
-                if button == MouseButton::Left && button_state == MouseButtonState::Up {
+                if button_state == MouseButtonState::Up {
                     if is_visible(app_handle) {
                         log::debug!("tray click: hiding panel");
                         hide_panel(app_handle);

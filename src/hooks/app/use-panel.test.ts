@@ -5,11 +5,13 @@ const {
   currentMonitorMock,
   getCurrentWindowMock,
   invokeMock,
+  isWindowsRuntimeMock,
   isTauriMock,
   listenMock,
 } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
   isTauriMock: vi.fn(),
+  isWindowsRuntimeMock: vi.fn(),
   listenMock: vi.fn(),
   getCurrentWindowMock: vi.fn(),
   currentMonitorMock: vi.fn(),
@@ -38,17 +40,23 @@ vi.mock("@tauri-apps/api/window", () => ({
   },
 }))
 
+vi.mock("@/lib/platform", () => ({
+  isWindowsRuntime: isWindowsRuntimeMock,
+}))
+
 import { usePanel } from "@/hooks/app/use-panel"
 
 describe("usePanel", () => {
   beforeEach(() => {
     invokeMock.mockReset()
     isTauriMock.mockReset()
+    isWindowsRuntimeMock.mockReset()
     listenMock.mockReset()
     getCurrentWindowMock.mockReset()
     currentMonitorMock.mockReset()
 
     isTauriMock.mockReturnValue(true)
+    isWindowsRuntimeMock.mockReturnValue(false)
     invokeMock.mockResolvedValue(undefined)
     listenMock.mockResolvedValue(vi.fn())
     currentMonitorMock.mockResolvedValue(null)

@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event"
 import { currentMonitor, getCurrentWindow, PhysicalSize } from "@tauri-apps/api/window"
 import type { ActiveView } from "@/components/side-nav"
 import type { DisplayPluginState } from "@/hooks/app/use-app-plugin-views"
+import { isWindowsRuntime } from "@/lib/platform"
 
 const PANEL_WIDTH = 400
 const MAX_HEIGHT_FALLBACK_PX = 600
@@ -23,16 +24,6 @@ function isEditableTarget(target: EventTarget | null): boolean {
   return Boolean(target.closest("input, textarea, select, [contenteditable='true'], [role='textbox']"))
 }
 
-function isWindowsWebView(): boolean {
-  if (typeof navigator === "undefined") return false
-
-  const nav = navigator as Navigator & {
-    userAgentData?: { platform?: string }
-  }
-  const platform = nav.userAgentData?.platform ?? navigator.platform ?? ""
-  return /win/i.test(`${platform} ${navigator.userAgent}`)
-}
-
 export function usePanel({
   activeView,
   setActiveView,
@@ -45,7 +36,7 @@ export function usePanel({
   const [canScrollDown, setCanScrollDown] = useState(false)
   const [maxPanelHeightPx, setMaxPanelHeightPx] = useState<number | null>(null)
   const maxPanelHeightPxRef = useRef<number | null>(null)
-  const isWindows = isWindowsWebView()
+  const isWindows = isWindowsRuntime()
 
   const focusContainer = useCallback(() => {
     window.requestAnimationFrame(() => {

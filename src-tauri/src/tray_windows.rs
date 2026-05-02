@@ -41,7 +41,9 @@ fn menu_item_specs() -> [MenuItemSpec; 4] {
 }
 
 pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
-    let tray_icon_path = app_handle.path().resolve(TRAY_ICON_PATH, BaseDirectory::Resource)?;
+    let tray_icon_path = app_handle
+        .path()
+        .resolve(TRAY_ICON_PATH, BaseDirectory::Resource)?;
     let icon = Image::from_path(tray_icon_path)?;
 
     let [title_spec, open_spec, restart_spec, quit_spec] = menu_item_specs();
@@ -135,8 +137,17 @@ mod tests {
 
     #[test]
     fn windows_tray_open_rule_is_left_click_release_only() {
-        assert!(should_open_from_mouse(MouseButton::Left, MouseButtonState::Up));
-        assert!(!should_open_from_mouse(MouseButton::Right, MouseButtonState::Up));
-        assert!(!should_open_from_mouse(MouseButton::Left, MouseButtonState::Down));
+        assert!(should_open_from_mouse(
+            MouseButton::Left,
+            MouseButtonState::Up
+        ));
+        assert!(!should_open_from_mouse(
+            MouseButton::Right,
+            MouseButtonState::Up
+        ));
+        assert!(!should_open_from_mouse(
+            MouseButton::Left,
+            MouseButtonState::Down
+        ));
     }
 }

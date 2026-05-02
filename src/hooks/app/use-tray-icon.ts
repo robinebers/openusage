@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { resolveResource } from "@tauri-apps/api/path"
 import { TrayIcon } from "@tauri-apps/api/tray"
 import { canUseLocalUsageApi } from "@/lib/local-usage-api"
+import { isWindowsRuntime } from "@/lib/platform"
 import type { PluginMeta } from "@/lib/plugin-types"
 import type { DisplayMode, MenubarIconStyle, PluginSettings } from "@/lib/settings"
 import { getEnabledPluginIds } from "@/lib/settings"
@@ -32,10 +33,6 @@ const EMPTY_TRAY_SETTINGS_PREVIEW: TraySettingsPreview = {
   bars: [],
   providerBars: [],
   providerPercentText: "--%",
-}
-
-function isWindowsRuntime(): boolean {
-  return typeof navigator !== "undefined" && navigator.userAgent.includes("Windows")
 }
 
 function isSameTraySettingsPreview(a: TraySettingsPreview, b: TraySettingsPreview): boolean {

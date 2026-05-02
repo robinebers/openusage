@@ -30,6 +30,7 @@ const state = vi.hoisted(() => ({
   autostartEnableMock: vi.fn(),
   autostartDisableMock: vi.fn(),
   autostartIsEnabledMock: vi.fn(),
+  isWindowsRuntimeMock: vi.fn(),
   renderTrayBarsIconMock: vi.fn(),
   probeHandlers: null as null | { onResult: (output: any) => void; onBatchComplete: () => void },
   trayGetByIdMock: vi.fn(),
@@ -114,6 +115,10 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 vi.mock("@/lib/analytics", () => ({
   track: state.trackMock,
+}))
+
+vi.mock("@/lib/platform", () => ({
+  isWindowsRuntime: state.isWindowsRuntimeMock,
 }))
 
 vi.mock("@tauri-apps/api/event", () => ({
@@ -281,6 +286,8 @@ describe("App", () => {
     state.autostartEnableMock.mockReset()
     state.autostartDisableMock.mockReset()
     state.autostartIsEnabledMock.mockReset()
+    state.isWindowsRuntimeMock.mockReset()
+    state.isWindowsRuntimeMock.mockReturnValue(false)
     state.renderTrayBarsIconMock.mockReset()
     state.trayGetByIdMock.mockReset()
     state.traySetIconMock.mockReset()
@@ -403,7 +410,7 @@ describe("App", () => {
     await waitFor(() => expect(state.savePluginSettingsMock).toHaveBeenCalled())
     await waitFor(() => expect(state.migrateLegacyTraySettingsMock).toHaveBeenCalled())
     expect(screen.getByText("Alpha")).toBeInTheDocument()
-    expect(state.setSizeMock).not.toHaveBeenCalled()
+    expect(state.setSizeMock).toHaveBeenCalled()
   })
 
   it("calls migrateLegacyTraySettings before loadMenubarIconStyle during bootstrap", async () => {
@@ -1166,6 +1173,7 @@ describe("App", () => {
 
   it("does not resize the native Windows window when monitor missing", async () => {
     state.isTauriMock.mockReturnValue(true)
+    state.isWindowsRuntimeMock.mockReturnValue(true)
     state.currentMonitorMock.mockResolvedValueOnce(null)
     render(<App />)
     await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
@@ -1175,6 +1183,7 @@ describe("App", () => {
 
   it("does not resize the native Windows window via ResizeObserver", async () => {
     state.isTauriMock.mockReturnValue(true)
+    state.isWindowsRuntimeMock.mockReturnValue(true)
     const OriginalResizeObserver = globalThis.ResizeObserver
     const observeSpy = vi.fn()
     globalThis.ResizeObserver = class ResizeObserverImmediate {
@@ -1199,6 +1208,7 @@ describe("App", () => {
 
   it("does not log resize failures on Windows because frontend resize is disabled", async () => {
     state.isTauriMock.mockReturnValue(true)
+    state.isWindowsRuntimeMock.mockReturnValue(true)
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
     state.setSizeMock.mockRejectedValueOnce(new Error("size fail"))
     render(<App />)

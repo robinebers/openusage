@@ -547,10 +547,7 @@ pub fn run() {
             }));
 
             local_http_api::init(&app_data_dir, known_plugin_ids);
-            if !local_http_api::start_server() {
-                app.handle().exit(0);
-                return Ok(());
-            }
+            local_http_api::start_server();
 
             #[cfg(not(target_os = "macos"))]
             panel::init(app.handle())?;

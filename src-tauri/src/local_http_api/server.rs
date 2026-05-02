@@ -8,7 +8,7 @@ const BIND_ADDR: &str = "127.0.0.1:6736";
 // HTTP server
 // ---------------------------------------------------------------------------
 
-pub fn start_server() -> bool {
+pub fn start_server() {
     let listener = match TcpListener::bind(BIND_ADDR) {
         Ok(l) => {
             log::info!("local HTTP API listening on {}", BIND_ADDR);
@@ -16,11 +16,11 @@ pub fn start_server() -> bool {
         }
         Err(e) => {
             log::warn!(
-                "failed to bind local HTTP API on {}: {} — another OpenUsage instance is likely running",
+                "failed to bind local HTTP API on {}: {} - feature disabled for this session",
                 BIND_ADDR,
                 e
             );
-            return false;
+            return;
         }
     };
 
@@ -34,7 +34,6 @@ pub fn start_server() -> bool {
             }
         }
     });
-    true
 }
 
 fn handle_connection(mut stream: TcpStream) {

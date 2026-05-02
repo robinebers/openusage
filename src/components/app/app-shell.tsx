@@ -7,20 +7,11 @@ import type { SettingsPluginState } from "@/hooks/app/use-settings-plugin-list"
 import { useAppVersion } from "@/hooks/app/use-app-version"
 import { usePanel } from "@/hooks/app/use-panel"
 import { useAppUpdate } from "@/hooks/use-app-update"
+import { isWindowsRuntime } from "@/lib/platform"
 import { cn } from "@/lib/utils"
 import { useAppUiStore } from "@/stores/app-ui-store"
 
 const ARROW_OVERHEAD_PX = 37
-
-function isWindowsWebView() {
-  if (typeof navigator === "undefined") return false
-
-  const nav = navigator as Navigator & {
-    userAgentData?: { platform?: string }
-  }
-  const platform = nav.userAgentData?.platform ?? navigator.platform ?? ""
-  return /win/i.test(`${platform} ${navigator.userAgent}`)
-}
 
 type AppShellProps = {
   onRefreshAll: () => void
@@ -76,7 +67,7 @@ export function AppShell({
 
   const appVersion = useAppVersion()
   const { updateStatus, triggerInstall, checkForUpdates } = useAppUpdate()
-  const isWindows = isWindowsWebView()
+  const isWindows = isWindowsRuntime()
   const panelMaxHeight = maxPanelHeightPx
     ? `${maxPanelHeightPx - (isWindows ? 0 : ARROW_OVERHEAD_PX)}px`
     : undefined

@@ -1,7 +1,7 @@
 use std::sync::OnceLock;
+use tauri::{AppHandle, Manager};
 #[cfg(not(target_os = "windows"))]
 use tauri::{Position, Size};
-use tauri::{AppHandle, Manager};
 
 static INIT_DONE: OnceLock<()> = OnceLock::new();
 

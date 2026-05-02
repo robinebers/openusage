@@ -1,3 +1,4 @@
+import { isTauri } from "@tauri-apps/api/core"
 import type { PluginMeta, PluginOutput } from "@/lib/plugin-types"
 
 const LOCAL_USAGE_URL = "http://127.0.0.1:6736/v1/usage"
@@ -19,7 +20,7 @@ type CachedUsageSnapshot = Omit<PluginOutput, "iconUrl"> & {
 }
 
 export function canUseLocalUsageApi(): boolean {
-  return Boolean(import.meta.env.DEV) && !Boolean(import.meta.env.TEST)
+  return Boolean(import.meta.env.DEV) && !Boolean(import.meta.env.TEST) && !isTauri()
 }
 
 export async function fetchLocalUsage(): Promise<PluginOutput[]> {
