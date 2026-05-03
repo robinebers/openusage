@@ -3179,6 +3179,7 @@ dependencies = [
  "aes-gcm",
  "base64 0.22.1",
  "dirs 6.0.0",
+ "libc",
  "log",
  "objc2",
  "objc2-app-kit",
