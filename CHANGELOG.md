@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.6.22
+
+### Bug Fixes
+- fix(ccusage): kill timed-out process groups ([#433](https://github.com/robinebers/openusage/pull/433)) by @robinebers
+- fix(claude): support hashed macOS keychain service name (closes #423) ([#424](https://github.com/robinebers/openusage/pull/424)) by @robinebers
+
+### Chores
+- chore(deps): bump tauri from 2.10.3 to 2.11.0 in /src-tauri ([#429](https://github.com/robinebers/openusage/pull/429)) by @dependabot
+- chore(deps): bump reqwest from 0.13.2 to 0.13.3 in /src-tauri ([#428](https://github.com/robinebers/openusage/pull/428)) by @dependabot
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.6.21...v0.6.22](https://github.com/robinebers/openusage/compare/v0.6.21...v0.6.22)
+
+- [2730669](https://github.com/robinebers/openusage/commit/2730669a866cef4d38533466094e2347ae3d1f26) fix(ccusage): kill timed-out process groups (#433) by @robinebers
+- [5651a3a](https://github.com/robinebers/openusage/commit/5651a3ab32cd44c337fad3cb6749633afd62c492) fix(claude): only hash keychain when CLAUDE_CONFIG_DIR is set by @robinebers
+- [1562a07](https://github.com/robinebers/openusage/commit/1562a07e85a27d00c14cd9e919862314d430ca25) fix(claude): support hashed macOS keychain service name (closes #423) by @robinebers
+- [2b5c5db](https://github.com/robinebers/openusage/commit/2b5c5db95d73013c2917bd3540ee54d1ad9fb480) chore(deps): bump tauri from 2.10.3 to 2.11.0 in /src-tauri by @dependabot
+- [ee02c4c](https://github.com/robinebers/openusage/commit/ee02c4c582a9dfc7ba3ece20168919cb8616583c) chore(deps): bump reqwest from 0.13.2 to 0.13.3 in /src-tauri by @dependabot
+
 ## v0.6.21
 
 ### Bug Fixes

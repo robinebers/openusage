@@ -5,7 +5,8 @@ use aes_gcm::{
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use rquickjs::{Ctx, Exception, Function, Object};
-use std::collections::HashMap;
+use sha2::{Digest, Sha256};
+use std::collections::{HashMap, HashSet};
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -714,6 +715,21 @@ fn inject_crypto<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                     .map_err(|e| Exception::throw_message(&ctx_inner, &e))
             },
         )?,
+    )?;
+
+    crypto_obj.set(
+        "sha256Hex",
+        Function::new(ctx.clone(), move |text: String| -> String {
+            let digest = Sha256::digest(text.as_bytes());
+            // Lowercase hex, matches Node's `crypto.createHash("sha256").update(x).digest("hex")`
+            // and the upstream Claude Code keychain helper.
+            let mut out = String::with_capacity(digest.len() * 2);
+            for byte in digest.iter() {
+                use std::fmt::Write as _;
+                let _ = write!(&mut out, "{:02x}", byte);
+            }
+            out
+        })?,
     )?;
 
     host.set("crypto", crypto_obj)?;
@@ -1643,10 +1659,35 @@ struct CcusageQueryOpts {
     claude_path: Option<String>,
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 enum CcusageProvider {
     Claude,
     Codex,
+}
+
+static CCUSAGE_ACTIVE_PROVIDERS: OnceLock<Mutex<HashSet<CcusageProvider>>> = OnceLock::new();
+
+struct CcusageQueryGuard {
+    provider: CcusageProvider,
+}
+
+impl CcusageQueryGuard {
+    fn acquire(provider: CcusageProvider) -> Option<Self> {
+        let active = CCUSAGE_ACTIVE_PROVIDERS.get_or_init(|| Mutex::new(HashSet::new()));
+        let mut active = active.lock().unwrap_or_else(|err| err.into_inner());
+        if !active.insert(provider) {
+            return None;
+        }
+        Some(Self { provider })
+    }
+}
+
+impl Drop for CcusageQueryGuard {
+    fn drop(&mut self) {
+        let active = CCUSAGE_ACTIVE_PROVIDERS.get_or_init(|| Mutex::new(HashSet::new()));
+        let mut active = active.lock().unwrap_or_else(|err| err.into_inner());
+        active.remove(&self.provider);
+    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -1903,6 +1944,12 @@ fn configure_ccusage_command(
     command
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
 }
 
 fn resolve_ccusage_runner_binary(kind: CcusageRunnerKind) -> Option<String> {
@@ -2036,13 +2083,76 @@ fn normalize_ccusage_output(stdout: &str) -> Option<String> {
     serde_json::to_string(&normalized).ok()
 }
 
+#[derive(Debug, Eq, PartialEq)]
+enum CcusageRunnerResult {
+    Success(String),
+    Failed,
+    TimedOut,
+}
+
+#[cfg(unix)]
+fn kill_ccusage_process_group(child_id: u32) -> std::io::Result<()> {
+    let pgid = i32::try_from(child_id)
+        .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid child pid"))?;
+    let rc = unsafe { libc::kill(-pgid, libc::SIGKILL) };
+    if rc == 0 {
+        return Ok(());
+    }
+
+    let err = std::io::Error::last_os_error();
+    if err.raw_os_error() == Some(libc::ESRCH) {
+        return Ok(());
+    }
+    Err(err)
+}
+
+fn kill_ccusage_on_timeout(child: &mut std::process::Child) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        kill_ccusage_process_group(child.id())
+    }
+
+    #[cfg(not(unix))]
+    {
+        child.kill()
+    }
+}
+
+fn format_ccusage_timeout(timeout: std::time::Duration) -> String {
+    if timeout.subsec_millis() == 0 {
+        return format!("{}s", timeout.as_secs());
+    }
+    if timeout.as_secs() == 0 {
+        return format!("{}ms", timeout.as_millis());
+    }
+    format!("{:.3}s", timeout.as_secs_f64())
+}
+
 fn run_ccusage_with_runner(
     kind: CcusageRunnerKind,
     program: &str,
     opts: &CcusageQueryOpts,
     provider: CcusageProvider,
     plugin_id: &str,
-) -> Option<String> {
+) -> CcusageRunnerResult {
+    run_ccusage_with_runner_timeout(
+        kind,
+        program,
+        opts,
+        provider,
+        plugin_id,
+        std::time::Duration::from_secs(CCUSAGE_TIMEOUT_SECS),
+    )
+}
+
+fn run_ccusage_with_runner_timeout(
+    kind: CcusageRunnerKind,
+    program: &str,
+    opts: &CcusageQueryOpts,
+    provider: CcusageProvider,
+    plugin_id: &str,
+    timeout: std::time::Duration,
+) -> CcusageRunnerResult {
     let args = ccusage_runner_args(kind, opts, provider);
     let enriched_path = ccusage_enriched_path();
     let mut command = hidden_command(program);
@@ -2071,7 +2181,7 @@ fn run_ccusage_with_runner(
                 ccusage_runner_label(kind),
                 e
             );
-            return None;
+            return CcusageRunnerResult::Failed;
         }
     };
 
@@ -2092,7 +2202,6 @@ fn run_ccusage_with_runner(
         })
     });
 
-    let timeout = std::time::Duration::from_secs(CCUSAGE_TIMEOUT_SECS);
     let start = std::time::Instant::now();
     loop {
         match child.try_wait() {
@@ -2109,14 +2218,14 @@ fn run_ccusage_with_runner(
                 if status.success() {
                     let out = String::from_utf8_lossy(&stdout);
                     if let Some(normalized_json) = normalize_ccusage_output(&out) {
-                        return Some(normalized_json);
+                        return CcusageRunnerResult::Success(normalized_json);
                     }
                     log::warn!(
                         "[plugin:{}] ccusage output parse failed for {}",
                         plugin_id,
                         ccusage_runner_label(kind)
                     );
-                    return None;
+                    return CcusageRunnerResult::Failed;
                 }
 
                 let err = String::from_utf8_lossy(&stderr);
@@ -2126,21 +2235,29 @@ fn run_ccusage_with_runner(
                     ccusage_runner_label(kind),
                     err.trim()
                 );
-                return None;
+                return CcusageRunnerResult::Failed;
             }
             Ok(None) => {
                 if start.elapsed() > timeout {
-                    let _ = child.kill();
+                    if let Err(e) = kill_ccusage_on_timeout(&mut child) {
+                        log::warn!(
+                            "[plugin:{}] ccusage process group kill failed for {}: {}",
+                            plugin_id,
+                            ccusage_runner_label(kind),
+                            e
+                        );
+                        let _ = child.kill();
+                    }
                     let _ = child.wait();
                     let _ = stdout_reader.take().and_then(|reader| reader.join().ok());
                     let _ = stderr_reader.take().and_then(|reader| reader.join().ok());
                     log::warn!(
-                        "[plugin:{}] ccusage timed out after {}s for {}",
+                        "[plugin:{}] ccusage timed out after {} for {}",
                         plugin_id,
-                        CCUSAGE_TIMEOUT_SECS,
+                        format_ccusage_timeout(timeout),
                         ccusage_runner_label(kind)
                     );
-                    return None;
+                    return CcusageRunnerResult::TimedOut;
                 }
                 std::thread::sleep(std::time::Duration::from_millis(CCUSAGE_POLL_INTERVAL_MS));
             }
@@ -2151,10 +2268,68 @@ fn run_ccusage_with_runner(
                     ccusage_runner_label(kind),
                     e
                 );
-                return None;
+                return CcusageRunnerResult::Failed;
             }
         }
     }
+}
+
+fn run_ccusage_query_with_runners<F>(
+    runners: Vec<(CcusageRunnerKind, String)>,
+    opts: &CcusageQueryOpts,
+    provider: CcusageProvider,
+    plugin_id: &str,
+    mut run: F,
+) -> String
+where
+    F: FnMut(
+        CcusageRunnerKind,
+        &str,
+        &CcusageQueryOpts,
+        CcusageProvider,
+        &str,
+    ) -> CcusageRunnerResult,
+{
+    if runners.is_empty() {
+        log::warn!(
+            "[plugin:{}] no package runner found for ccusage query",
+            plugin_id
+        );
+        return serde_json::json!({ "status": "no_runner" }).to_string();
+    }
+
+    for (kind, program) in runners {
+        match run(kind, &program, opts, provider, plugin_id) {
+            CcusageRunnerResult::Success(result) => {
+                let data: serde_json::Value = match serde_json::from_str(&result) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        log::warn!(
+                            "[plugin:{}] ccusage normalized payload parse failed: {}",
+                            plugin_id,
+                            e
+                        );
+                        continue;
+                    }
+                };
+                return serde_json::json!({ "status": "ok", "data": data }).to_string();
+            }
+            CcusageRunnerResult::Failed => {}
+            CcusageRunnerResult::TimedOut => {
+                log::warn!(
+                    "[plugin:{}] ccusage query timed out; skipping fallback runners",
+                    plugin_id
+                );
+                return serde_json::json!({ "status": "runner_failed" }).to_string();
+            }
+        }
+    }
+
+    log::warn!(
+        "[plugin:{}] ccusage query failed with all available runners",
+        plugin_id
+    );
+    serde_json::json!({ "status": "runner_failed" }).to_string()
 }
 
 fn inject_ccusage<'js>(
@@ -2178,36 +2353,18 @@ fn inject_ccusage<'js>(
                     }
                 };
                 let provider = resolve_ccusage_provider(&opts, &pid);
+                let Some(_active_query) = CcusageQueryGuard::acquire(provider) else {
+                    log::warn!("[plugin:{}] ccusage query already running", pid);
+                    return Ok(serde_json::json!({ "status": "runner_failed" }).to_string());
+                };
                 let runners = collect_ccusage_runners();
-                if runners.is_empty() {
-                    log::warn!("[plugin:{}] no package runner found for ccusage query", pid);
-                    return Ok(serde_json::json!({ "status": "no_runner" }).to_string());
-                }
-
-                for (kind, program) in runners {
-                    if let Some(result) =
-                        run_ccusage_with_runner(kind, &program, &opts, provider, &pid)
-                    {
-                        let data: serde_json::Value = match serde_json::from_str(&result) {
-                            Ok(v) => v,
-                            Err(e) => {
-                                log::warn!(
-                                    "[plugin:{}] ccusage normalized payload parse failed: {}",
-                                    pid,
-                                    e
-                                );
-                                continue;
-                            }
-                        };
-                        return Ok(serde_json::json!({ "status": "ok", "data": data }).to_string());
-                    }
-                }
-
-                log::warn!(
-                    "[plugin:{}] ccusage query failed with all available runners",
-                    pid
-                );
-                Ok(serde_json::json!({ "status": "runner_failed" }).to_string())
+                Ok(run_ccusage_query_with_runners(
+                    runners,
+                    &opts,
+                    provider,
+                    &pid,
+                    run_ccusage_with_runner,
+                ))
             },
         )?,
     )?;
@@ -2846,6 +3003,32 @@ mod tests {
             );
             let decrypted: String = ctx.eval(js_expr).expect("js decrypt");
             assert_eq!(decrypted, expected_plaintext);
+        });
+    }
+
+    #[test]
+    fn crypto_api_exposes_sha256_hex() {
+        let rt = Runtime::new().expect("runtime");
+        let ctx = Context::full(&rt).expect("context");
+        ctx.with(|ctx| {
+            let app_data = std::env::temp_dir();
+            inject_host_api(&ctx, "test", &app_data, "0.0.0").expect("inject host api");
+            // Vector: `printf '%s' 'hello' | shasum -a 256`
+            let result: String = ctx
+                .eval(r#"__openusage_ctx.host.crypto.sha256Hex("hello")"#)
+                .expect("js sha256");
+            assert_eq!(
+                result,
+                "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+            );
+
+            let empty: String = ctx
+                .eval(r#"__openusage_ctx.host.crypto.sha256Hex("")"#)
+                .expect("js sha256 empty");
+            assert_eq!(
+                empty,
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            );
         });
     }
 
@@ -3902,5 +4085,136 @@ Saved lockfile
     fn collect_ccusage_runners_returns_empty_when_none_available() {
         let runners = collect_ccusage_runners_with(|_| None);
         assert!(runners.is_empty());
+    }
+
+    #[test]
+    fn ccusage_query_guard_blocks_overlapping_provider_query() {
+        let first = CcusageQueryGuard::acquire(CcusageProvider::Codex)
+            .expect("first query should acquire guard");
+        assert!(
+            CcusageQueryGuard::acquire(CcusageProvider::Codex).is_none(),
+            "second query for same provider should be blocked"
+        );
+        assert!(
+            CcusageQueryGuard::acquire(CcusageProvider::Claude).is_some(),
+            "different provider should have its own guard"
+        );
+        drop(first);
+        assert!(
+            CcusageQueryGuard::acquire(CcusageProvider::Codex).is_some(),
+            "guard should release on drop"
+        );
+    }
+
+    #[test]
+    fn ccusage_timeout_stops_runner_fallback() {
+        let opts = CcusageQueryOpts::default();
+        let runners = vec![
+            (CcusageRunnerKind::Bunx, "bunx".to_string()),
+            (CcusageRunnerKind::Npx, "npx".to_string()),
+        ];
+        let mut calls = Vec::new();
+
+        let result = run_ccusage_query_with_runners(
+            runners,
+            &opts,
+            CcusageProvider::Codex,
+            "codex",
+            |kind, _, _, _, _| {
+                calls.push(kind);
+                CcusageRunnerResult::TimedOut
+            },
+        );
+
+        let value: serde_json::Value = serde_json::from_str(&result).expect("valid status json");
+        assert_eq!(value["status"], "runner_failed");
+        assert_eq!(calls, vec![CcusageRunnerKind::Bunx]);
+    }
+
+    #[test]
+    fn ccusage_timeout_log_uses_actual_timeout() {
+        assert_eq!(
+            format_ccusage_timeout(std::time::Duration::from_millis(100)),
+            "100ms"
+        );
+        assert_eq!(
+            format_ccusage_timeout(std::time::Duration::from_secs(CCUSAGE_TIMEOUT_SECS)),
+            "15s"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ccusage_timeout_kills_descendant_and_closes_pipes() {
+        use std::io::Write;
+        use std::os::unix::fs::PermissionsExt;
+        use std::time::{Duration, Instant};
+
+        fn pid_exists(pid: i32) -> bool {
+            unsafe { libc::kill(pid, 0) == 0 }
+        }
+
+        let test_id = format!(
+            "openusage-ccusage-timeout-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time")
+                .as_nanos()
+        );
+        let dir = std::env::temp_dir().join(test_id);
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let script_path = dir.join("fake-ccusage-runner.sh");
+        let pid_path = dir.join("descendant.pid");
+
+        let mut script = std::fs::File::create(&script_path).expect("create script");
+        let script_body = format!(
+            r#"#!/bin/sh
+sh -c 'sleep 30' &
+echo $! > "{}"
+echo "started"
+wait
+"#,
+            pid_path.display()
+        );
+        script
+            .write_all(script_body.as_bytes())
+            .expect("write script");
+        let mut permissions = script.metadata().expect("script metadata").permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&script_path, permissions).expect("make script executable");
+
+        let opts = CcusageQueryOpts::default();
+        let start = Instant::now();
+        let result = run_ccusage_with_runner_timeout(
+            CcusageRunnerKind::Bunx,
+            script_path.to_string_lossy().as_ref(),
+            &opts,
+            CcusageProvider::Codex,
+            "codex",
+            Duration::from_millis(100),
+        );
+
+        assert_eq!(result, CcusageRunnerResult::TimedOut);
+        assert!(
+            start.elapsed() < Duration::from_secs(3),
+            "timeout cleanup should not hang on inherited stdout/stderr pipes"
+        );
+
+        let descendant_pid: i32 = std::fs::read_to_string(&pid_path)
+            .expect("read descendant pid")
+            .trim()
+            .parse()
+            .expect("parse descendant pid");
+
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while pid_exists(descendant_pid) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(
+            !pid_exists(descendant_pid),
+            "descendant process should be killed with ccusage process group"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

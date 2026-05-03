@@ -206,8 +206,38 @@
     }
   }
 
-  function getClaudeKeychainService(ctx) {
+  function buildClaudeBaseKeychainService(ctx) {
     return KEYCHAIN_SERVICE_PREFIX + getOauthConfig(ctx).oauthFileSuffix + "-credentials"
+  }
+
+  function computeKeychainHashSuffix(ctx) {
+    // Mirrors upstream Claude Code (decompiled from the binary):
+    //   const suffix = !process.env.CLAUDE_CONFIG_DIR
+    //     ? ""
+    //     : "-" + sha256(CLAUDE_CONFIG_DIR.normalize("NFC")).slice(0, 8)
+    // The hash is ONLY appended when CLAUDE_CONFIG_DIR is explicitly set;
+    // when unset, upstream uses the legacy unhashed service name.
+    const explicitConfigDir = readEnvText(ctx, "CLAUDE_CONFIG_DIR")
+    if (!explicitConfigDir) return null
+    const sha256Hex = ctx.host && ctx.host.crypto && ctx.host.crypto.sha256Hex
+    if (typeof sha256Hex !== "function") return null
+    // Match upstream's `.normalize("NFC")` exactly.
+    const normalized =
+      typeof explicitConfigDir.normalize === "function"
+        ? explicitConfigDir.normalize("NFC")
+        : explicitConfigDir
+    const digest = sha256Hex(normalized)
+    if (typeof digest !== "string" || digest.length < 8) return null
+    return digest.slice(0, 8)
+  }
+
+  function getClaudeKeychainServiceCandidates(ctx) {
+    const base = buildClaudeBaseKeychainService(ctx)
+    const candidates = []
+    const hash = computeKeychainHashSuffix(ctx)
+    if (hash) candidates.push(base + "-" + hash)  // hashed (CLAUDE_CONFIG_DIR set)
+    candidates.push(base)                          // legacy / default
+    return candidates
   }
 
   function readKeychainCredentialText(ctx, service) {
@@ -259,18 +289,21 @@
       }
     }
 
-    // Try keychain fallback
-    const keychainResult = readKeychainCredentialText(ctx, getClaudeKeychainService(ctx))
-    if (keychainResult && keychainResult.value) {
-      const parsed = tryParseCredentialJSON(ctx, keychainResult.value)
-      if (parsed) {
-        const oauth = parsed.claudeAiOauth
-        if (oauth && oauth.accessToken) {
-          ctx.host.log.info("credentials loaded from keychain")
-          return { oauth, source: keychainResult.source, fullData: parsed }
+    // Try keychain fallback — iterate hashed-then-legacy service names.
+    for (const service of getClaudeKeychainServiceCandidates(ctx)) {
+      const keychainResult = readKeychainCredentialText(ctx, service)
+      if (keychainResult && keychainResult.value) {
+        const parsed = tryParseCredentialJSON(ctx, keychainResult.value)
+        if (parsed) {
+          const oauth = parsed.claudeAiOauth
+          if (oauth && oauth.accessToken) {
+            ctx.host.log.info("credentials loaded from keychain (service=" + service + ")")
+            return { oauth, source: keychainResult.source, serviceName: service, fullData: parsed }
+          }
         }
+        ctx.host.log.warn("keychain has data for " + service + " but no valid oauth")
+        // Continue: a stale legacy entry shouldn't shadow a valid hashed one.
       }
-      ctx.host.log.warn("keychain has data but no valid oauth")
     }
 
     if (!suppressMissingWarn) {
@@ -291,6 +324,7 @@
     return {
       oauth: oauth,
       source: stored ? stored.source : null,
+      serviceName: stored ? stored.serviceName : null,
       fullData: stored ? stored.fullData : null,
       inferenceOnly: true,
     }
@@ -307,7 +341,7 @@
     return true
   }
 
-  function saveCredentials(ctx, source, fullData) {
+  function saveCredentials(ctx, source, serviceName, fullData) {
     // MUST use minified JSON - macOS `security -w` hex-encodes values with newlines,
     // which Claude Code can't read back, causing it to invalidate the session.
     const text = JSON.stringify(fullData)
@@ -317,19 +351,25 @@
       } catch (e) {
         ctx.host.log.error("Failed to write Claude credentials file: " + String(e))
       }
-    } else if (source === "keychain-current-user") {
+      return
+    }
+    if (!serviceName) {
+      ctx.host.log.error("Refusing keychain write: missing service name (source=" + source + ")")
+      return
+    }
+    if (source === "keychain-current-user") {
       try {
         if (typeof ctx.host.keychain.writeGenericPasswordForCurrentUser === "function") {
-          ctx.host.keychain.writeGenericPasswordForCurrentUser(getClaudeKeychainService(ctx), text)
+          ctx.host.keychain.writeGenericPasswordForCurrentUser(serviceName, text)
         } else {
-          ctx.host.keychain.writeGenericPassword(getClaudeKeychainService(ctx), text)
+          ctx.host.keychain.writeGenericPassword(serviceName, text)
         }
       } catch (e) {
         ctx.host.log.error("Failed to write Claude credentials keychain: " + String(e))
       }
     } else if (source === "keychain-legacy" || source === "keychain") {
       try {
-        ctx.host.keychain.writeGenericPassword(getClaudeKeychainService(ctx), text)
+        ctx.host.keychain.writeGenericPassword(serviceName, text)
       } catch (e) {
         ctx.host.log.error("Failed to write Claude credentials keychain: " + String(e))
       }
@@ -400,9 +440,9 @@
         oauth.expiresAt = Date.now() + body.expires_in * 1000
       }
 
-      // Persist updated credentials
+      // Persist updated credentials back to the same source we read from.
       fullData.claudeAiOauth = oauth
-      saveCredentials(ctx, source, fullData)
+      saveCredentials(ctx, source, creds.serviceName, fullData)
 
       ctx.host.log.info("refresh succeeded, new token expires in " + (body.expires_in || "unknown") + "s")
       return newAccessToken
