@@ -38,9 +38,9 @@ Expected payload fields:
 
 ## Usage Mapping
 
-- **Subscription** (progress line): `kwh_used` / `kwh_included` in kWh. Shown only when subscription is present and `kwh_included > 0`.
-- **Balance** (progress line): `credits_used_usd` / `total_credits_usd` in dollars. Shown only when `total_credits_usd > 0`.
-- **Method** (badge): `accounting_method`, capitalized. Hidden when absent.
+- **Subscription** (overview progress line): `kwh_used` / `kwh_included` in kWh. Shown only when subscription is present and `kwh_included > 0`.
+- **Balance** (overview progress line): `credits_used_usd` / `total_credits_usd` in dollars. Shown only when `total_credits_usd > 0`.
+- **Method** (detail badge): `accounting_method`, capitalized. Hidden when absent.
 
 The **Subscription** line includes `resetsAt` and `periodDurationMs` from the subscription period dates when available; the **Balance** line does not.
 
@@ -53,11 +53,12 @@ The **Subscription** line includes `resetsAt` and `periodDurationMs` from the su
   - `limit`: `kwh_included`
   - `resetsAt`: from `current_period_end`
   - `periodDurationMs`: `current_period_end` – `current_period_start`
-- **Balance** (detail progress line):
+- **Balance** (overview progress line):
   - `format`: dollars
   - `used`: `credits_used_usd`
   - `limit`: `total_credits_usd`
-- **Method** (badge): capitalized `accounting_method`
+- **Method** (detail badge): capitalized `accounting_method`
+- **Status** (overview badge): shown as "No usage data" (gray) when subscription and balance are both absent
 
 ## Errors
 

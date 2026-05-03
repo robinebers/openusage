@@ -80,6 +80,9 @@ describe("neuralwatt plugin", () => {
     const method = result.lines.find((l) => l.label === "Method")
     expect(method).toBeTruthy()
     expect(method.text).toBe("Energy")
+
+    // Line order must match manifest: Subscription, Balance, Method
+    expect(result.lines.map((l) => l.label)).toEqual(["Subscription", "Balance", "Method"])
   })
 
   it("includes resetsAt and periodDurationMs from subscription period", async () => {
