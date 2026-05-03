@@ -48,6 +48,7 @@ interface SideNavProps {
   onPluginContextAction?: (pluginId: string, action: PluginContextAction) => void
   isPluginRefreshAvailable?: (pluginId: string) => boolean
   onReorder?: (orderedIds: string[]) => void
+  onDragRegionMouseDown?: (event: React.MouseEvent<HTMLElement>) => void
 }
 
 interface NavButtonProps {
@@ -146,6 +147,7 @@ export function SideNav({
   onPluginContextAction,
   isPluginRefreshAvailable,
   onReorder,
+  onDragRegionMouseDown,
 }: SideNavProps) {
   const isDark = useDarkMode()
 
@@ -249,7 +251,10 @@ export function SideNav({
       </DndContext>
 
       {/* Spacer */}
-      <div className="flex-1" />
+      <div
+        className={cn("flex-1", onDragRegionMouseDown && "cursor-grab active:cursor-grabbing")}
+        onMouseDown={onDragRegionMouseDown}
+      />
 
       {/* Help */}
       <NavButton

@@ -4,7 +4,7 @@ use tauri::path::BaseDirectory;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager};
 
-use crate::panel::show_panel;
+use crate::panel::{show_panel, toggle_panel};
 
 const TRAY_ICON_PATH: &str = "icons/icon.png";
 
@@ -84,8 +84,8 @@ pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_tray_icon_event(|tray, event| {
-            if should_open_from_tray_event(&event) {
-                show_panel(tray.app_handle());
+            if should_toggle_from_tray_event(&event) {
+                toggle_panel(tray.app_handle());
             }
         })
         .on_menu_event(|app_handle, event| match event.id.as_ref() {
@@ -105,18 +105,18 @@ pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-fn should_open_from_tray_event(event: &TrayIconEvent) -> bool {
+fn should_toggle_from_tray_event(event: &TrayIconEvent) -> bool {
     match event {
         TrayIconEvent::Click {
             button,
             button_state,
             ..
-        } => should_open_from_mouse(*button, *button_state),
+        } => should_toggle_from_mouse(*button, *button_state),
         _ => false,
     }
 }
 
-fn should_open_from_mouse(button: MouseButton, button_state: MouseButtonState) -> bool {
+fn should_toggle_from_mouse(button: MouseButton, button_state: MouseButtonState) -> bool {
     button == MouseButton::Left && button_state == MouseButtonState::Up
 }
 
@@ -136,16 +136,16 @@ mod tests {
     }
 
     #[test]
-    fn windows_tray_open_rule_is_left_click_release_only() {
-        assert!(should_open_from_mouse(
+    fn windows_tray_toggle_rule_is_left_click_release_only() {
+        assert!(should_toggle_from_mouse(
             MouseButton::Left,
             MouseButtonState::Up
         ));
-        assert!(!should_open_from_mouse(
+        assert!(!should_toggle_from_mouse(
             MouseButton::Right,
             MouseButtonState::Up
         ));
-        assert!(!should_open_from_mouse(
+        assert!(!should_toggle_from_mouse(
             MouseButton::Left,
             MouseButtonState::Down
         ));

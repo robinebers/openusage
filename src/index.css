@@ -149,13 +149,10 @@ body,
   padding: 0;
 }
 
-/* Transparent background only on macOS for the floating panel effect.
-   On Windows, tauri.windows.conf.json sets a solid backgroundColor
-   so we must NOT force transparent here. The .platform-windows class
-   is set on <html> by main.tsx at startup. */
-html:not(.platform-windows),
-html:not(.platform-windows) body,
-html:not(.platform-windows) #root {
+/* Transparent Tauri window background for floating panel/widget shells. */
+html,
+body,
+#root {
   background: transparent;
 }
 

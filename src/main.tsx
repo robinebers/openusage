@@ -5,7 +5,7 @@ import { App } from "./App";
 import { isWindowsRuntime } from "@/lib/platform";
 import "./index.css";
 
-// Tag Windows platform on <html> so CSS can skip transparent background
+// Tag Windows platform on <html> for platform-specific CSS.
 if (isWindowsRuntime()) {
   document.documentElement.classList.add("platform-windows");
 }

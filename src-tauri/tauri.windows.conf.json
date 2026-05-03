@@ -6,11 +6,12 @@
         "label": "main",
         "title": "OpenUsage",
         "width": 400,
-        "height": 500,
+        "height": 640,
         "resizable": false,
-        "decorations": true,
-        "transparent": false,
-        "backgroundColor": "#1c1c1e",
+        "decorations": false,
+        "transparent": true,
+        "backgroundColor": "#00000000",
+        "skipTaskbar": true,
         "visible": false
       }
     ]

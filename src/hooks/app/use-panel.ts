@@ -147,12 +147,6 @@ export function usePanel({
   useEffect(() => {
     if (!isTauri()) return
 
-    if (isWindows) {
-      maxPanelHeightPxRef.current = null
-      setMaxPanelHeightPx(null)
-      return
-    }
-
     const container = containerRef.current
     if (!container) return
 

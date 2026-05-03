@@ -13,7 +13,7 @@
     "test": "vitest",
     "test:watch": "vitest --watch",
     "test:coverage": "vitest run --coverage.enabled",
-    "tauri": "tauri"
+    "tauri": "node scripts/tauri-local.mjs"
   },
   "dependencies": {
     "@aptabase/tauri": "^0.4.1",

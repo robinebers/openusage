@@ -2,6 +2,7 @@ import { useShallow } from "zustand/react/shallow"
 import { AppContent, type AppContentActionProps } from "@/components/app/app-content"
 import { PanelFooter } from "@/components/panel-footer"
 import { SideNav, type NavPlugin, type PluginContextAction } from "@/components/side-nav"
+import { getCurrentWindow } from "@tauri-apps/api/window"
 import type { DisplayPluginState } from "@/hooks/app/use-app-plugin-views"
 import type { SettingsPluginState } from "@/hooks/app/use-settings-plugin-list"
 import { useAppVersion } from "@/hooks/app/use-app-version"
@@ -71,6 +72,11 @@ export function AppShell({
   const panelMaxHeight = maxPanelHeightPx
     ? `${maxPanelHeightPx - (isWindows ? 0 : ARROW_OVERHEAD_PX)}px`
     : undefined
+  const handleWindowsDragRegionMouseDown = (event: React.MouseEvent<HTMLElement>) => {
+    if (!isWindows || event.button !== 0) return
+    event.preventDefault()
+    getCurrentWindow().startDragging().catch(console.error)
+  }
 
   return (
     <div
@@ -78,16 +84,16 @@ export function AppShell({
       tabIndex={-1}
       className={cn(
         "flex flex-col items-center outline-none",
-        isWindows ? "h-screen w-screen bg-card p-0" : "bg-transparent p-6 pt-1.5"
+        isWindows ? "w-screen bg-card p-0" : "bg-transparent p-6 pt-1.5"
       )}
     >
       {!isWindows && <div className="tray-arrow" />}
       <div
         className={cn(
           "relative bg-card overflow-hidden select-none w-full flex flex-col",
-          isWindows ? "h-full rounded-none border-0 shadow-none" : "rounded-xl border shadow-lg"
+          isWindows ? "rounded-none border-0 shadow-none" : "rounded-xl border shadow-lg"
         )}
-        style={!isWindows && panelMaxHeight ? { maxHeight: panelMaxHeight } : undefined}
+        style={panelMaxHeight ? { maxHeight: panelMaxHeight } : undefined}
       >
         <div className="flex flex-1 min-h-0 flex-row">
           <SideNav
@@ -97,6 +103,7 @@ export function AppShell({
             onPluginContextAction={onPluginContextAction}
             isPluginRefreshAvailable={isPluginRefreshAvailable}
             onReorder={onNavReorder}
+            onDragRegionMouseDown={isWindows ? handleWindowsDragRegionMouseDown : undefined}
           />
           <div className="flex-1 flex flex-col px-3 pt-2 pb-1.5 min-w-0 bg-card dark:bg-muted/50">
             <div className="relative flex-1 min-h-0">

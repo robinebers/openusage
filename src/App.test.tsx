@@ -1171,17 +1171,17 @@ describe("App", () => {
     await waitFor(() => expect(state.startBatchMock).toHaveBeenCalledWith(["b"]))
   })
 
-  it("does not resize the native Windows window when monitor missing", async () => {
+  it("resizes the native Windows window with screen fallback when monitor missing", async () => {
     state.isTauriMock.mockReturnValue(true)
     state.isWindowsRuntimeMock.mockReturnValue(true)
     state.currentMonitorMock.mockResolvedValueOnce(null)
     render(<App />)
     await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
-    expect(state.currentMonitorMock).not.toHaveBeenCalled()
-    expect(state.setSizeMock).not.toHaveBeenCalled()
+    await waitFor(() => expect(state.currentMonitorMock).toHaveBeenCalled())
+    expect(state.setSizeMock).toHaveBeenCalled()
   })
 
-  it("does not resize the native Windows window via ResizeObserver", async () => {
+  it("resizes the native Windows window via ResizeObserver", async () => {
     state.isTauriMock.mockReturnValue(true)
     state.isWindowsRuntimeMock.mockReturnValue(true)
     const OriginalResizeObserver = globalThis.ResizeObserver
@@ -1201,19 +1201,20 @@ describe("App", () => {
 
     render(<App />)
     await waitFor(() => expect(observeSpy).toHaveBeenCalled())
-    expect(state.setSizeMock).not.toHaveBeenCalled()
+    await waitFor(() => expect(state.setSizeMock).toHaveBeenCalled())
 
     globalThis.ResizeObserver = OriginalResizeObserver
   })
 
-  it("does not log resize failures on Windows because frontend resize is disabled", async () => {
+  it("logs resize failures on Windows", async () => {
     state.isTauriMock.mockReturnValue(true)
     state.isWindowsRuntimeMock.mockReturnValue(true)
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
-    state.setSizeMock.mockRejectedValueOnce(new Error("size fail"))
+    const resizeError = new Error("size fail")
+    state.setSizeMock.mockRejectedValueOnce(resizeError)
     render(<App />)
     await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
-    expect(errorSpy).not.toHaveBeenCalled()
+    await waitFor(() => expect(errorSpy).toHaveBeenCalledWith("Failed to resize window:", resizeError))
     errorSpy.mockRestore()
   })
 
