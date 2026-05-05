@@ -67,6 +67,8 @@ const defaultProps = {
   onGlobalShortcutChange: vi.fn(),
   startOnLogin: false,
   onStartOnLoginChange: vi.fn(),
+  showAccountIdentity: true,
+  onShowAccountIdentityChange: vi.fn(),
 }
 
 afterEach(() => {
@@ -237,5 +239,18 @@ describe("SettingsPage", () => {
     )
     await userEvent.click(screen.getByText("Start on login"))
     expect(onStartOnLoginChange).toHaveBeenCalledWith(true)
+  })
+
+  it("toggles account identity visibility", async () => {
+    const onShowAccountIdentityChange = vi.fn()
+    render(
+      <SettingsPage
+        {...defaultProps}
+        showAccountIdentity={false}
+        onShowAccountIdentityChange={onShowAccountIdentityChange}
+      />
+    )
+    await userEvent.click(screen.getByText("Show account identity"))
+    expect(onShowAccountIdentityChange).toHaveBeenCalledWith(true)
   })
 })

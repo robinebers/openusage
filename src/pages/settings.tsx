@@ -275,6 +275,8 @@ interface SettingsPageProps {
   onGlobalShortcutChange: (value: GlobalShortcut) => void;
   startOnLogin: boolean;
   onStartOnLoginChange: (value: boolean) => void;
+  showAccountIdentity: boolean;
+  onShowAccountIdentityChange: (value: boolean) => void;
 }
 
 export function SettingsPage({
@@ -296,6 +298,8 @@ export function SettingsPage({
   onGlobalShortcutChange,
   startOnLogin,
   onStartOnLoginChange,
+  showAccountIdentity,
+  onShowAccountIdentityChange,
 }: SettingsPageProps) {
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -487,6 +491,20 @@ export function SettingsPage({
             onCheckedChange={(checked) => onStartOnLoginChange(checked === true)}
           />
           Start on login
+        </label>
+      </section>
+      <section>
+        <h3 className="text-lg font-semibold mb-0">Account Identity</h3>
+        <p className="text-sm text-muted-foreground mb-2">
+          Show account email beside plan badges
+        </p>
+        <label className="flex items-center gap-2 text-sm select-none text-foreground">
+          <Checkbox
+            key={`show-account-identity-${showAccountIdentity}`}
+            checked={showAccountIdentity}
+            onCheckedChange={(checked) => onShowAccountIdentityChange(checked === true)}
+          />
+          Show account identity
         </label>
       </section>
       <section>

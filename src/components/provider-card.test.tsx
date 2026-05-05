@@ -177,6 +177,23 @@ describe("ProviderCard", () => {
     expect(screen.queryByText("Account")).toBeNull()
   })
 
+  it("hides account identity when disabled", () => {
+    render(
+      <ProviderCard
+        name="Codex"
+        plan="Plus"
+        displayMode="used"
+        showAccountIdentity={false}
+        lines={[
+          { type: "text", label: "Account", value: "dev@example.com" },
+        ]}
+      />
+    )
+
+    expect(screen.queryByText("dev@example.com")).not.toBeInTheDocument()
+    expect(screen.getByText("Plus")).toBeInTheDocument()
+  })
+
   it("renders quick links and opens URL", async () => {
     render(
       <ProviderCard

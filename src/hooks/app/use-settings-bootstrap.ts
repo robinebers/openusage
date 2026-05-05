@@ -13,6 +13,7 @@ import {
   DEFAULT_GLOBAL_SHORTCUT,
   DEFAULT_MENUBAR_ICON_STYLE,
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
+  DEFAULT_SHOW_ACCOUNT_IDENTITY,
   DEFAULT_START_ON_LOGIN,
   DEFAULT_THEME_MODE,
   getEnabledPluginIds,
@@ -23,6 +24,7 @@ import {
   migrateLegacyTraySettings,
   loadPluginSettings,
   loadResetTimerDisplayMode,
+  loadShowAccountIdentity,
   loadStartOnLogin,
   loadThemeMode,
   normalizePluginSettings,
@@ -45,6 +47,7 @@ type UseSettingsBootstrapArgs = {
   setResetTimerDisplayMode: (value: ResetTimerDisplayMode) => void
   setGlobalShortcut: (value: GlobalShortcut) => void
   setStartOnLogin: (value: boolean) => void
+  setShowAccountIdentity: (value: boolean) => void
   setMenubarIconStyle: (value: MenubarIconStyle) => void
   setLoadingForPlugins: (ids: string[]) => void
   setErrorForPlugins: (ids: string[], error: string) => void
@@ -60,6 +63,7 @@ export function useSettingsBootstrap({
   setResetTimerDisplayMode,
   setGlobalShortcut,
   setStartOnLogin,
+  setShowAccountIdentity,
   setMenubarIconStyle,
   setLoadingForPlugins,
   setErrorForPlugins,
@@ -135,6 +139,13 @@ export function useSettingsBootstrap({
           console.error("Failed to load start on login:", error)
         }
 
+        let storedShowAccountIdentity = DEFAULT_SHOW_ACCOUNT_IDENTITY
+        try {
+          storedShowAccountIdentity = await loadShowAccountIdentity()
+        } catch (error) {
+          console.error("Failed to load account identity visibility:", error)
+        }
+
         try {
           await applyStartOnLogin(storedStartOnLogin)
         } catch (error) {
@@ -161,6 +172,7 @@ export function useSettingsBootstrap({
           setResetTimerDisplayMode(storedResetTimerDisplayMode)
           setGlobalShortcut(storedGlobalShortcut)
           setStartOnLogin(storedStartOnLogin)
+          setShowAccountIdentity(storedShowAccountIdentity)
           setMenubarIconStyle(storedMenubarIconStyle)
 
           const enabledIds = getEnabledPluginIds(normalized)
@@ -197,6 +209,7 @@ export function useSettingsBootstrap({
     setPluginsMeta,
     setResetTimerDisplayMode,
     setStartOnLogin,
+    setShowAccountIdentity,
     setThemeMode,
     startBatch,
   ])

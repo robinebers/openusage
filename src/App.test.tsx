@@ -27,6 +27,8 @@ const state = vi.hoisted(() => ({
   saveGlobalShortcutMock: vi.fn(),
   loadStartOnLoginMock: vi.fn(),
   saveStartOnLoginMock: vi.fn(),
+  loadShowAccountIdentityMock: vi.fn(),
+  saveShowAccountIdentityMock: vi.fn(),
   autostartEnableMock: vi.fn(),
   autostartDisableMock: vi.fn(),
   autostartIsEnabledMock: vi.fn(),
@@ -239,6 +241,8 @@ vi.mock("@/lib/settings", async () => {
     saveGlobalShortcut: state.saveGlobalShortcutMock,
     loadStartOnLogin: state.loadStartOnLoginMock,
     saveStartOnLogin: state.saveStartOnLoginMock,
+    loadShowAccountIdentity: state.loadShowAccountIdentityMock,
+    saveShowAccountIdentity: state.saveShowAccountIdentityMock,
   }
 })
 
@@ -278,6 +282,8 @@ describe("App", () => {
     state.saveGlobalShortcutMock.mockReset()
     state.loadStartOnLoginMock.mockReset()
     state.saveStartOnLoginMock.mockReset()
+    state.loadShowAccountIdentityMock.mockReset()
+    state.saveShowAccountIdentityMock.mockReset()
     state.autostartEnableMock.mockReset()
     state.autostartDisableMock.mockReset()
     state.autostartIsEnabledMock.mockReset()
@@ -316,6 +322,8 @@ describe("App", () => {
     state.saveGlobalShortcutMock.mockResolvedValue(undefined)
     state.loadStartOnLoginMock.mockResolvedValue(false)
     state.saveStartOnLoginMock.mockResolvedValue(undefined)
+    state.loadShowAccountIdentityMock.mockResolvedValue(true)
+    state.saveShowAccountIdentityMock.mockResolvedValue(undefined)
     state.autostartEnableMock.mockResolvedValue(undefined)
     state.autostartDisableMock.mockResolvedValue(undefined)
     state.autostartIsEnabledMock.mockResolvedValue(false)

@@ -33,6 +33,7 @@ interface ProviderCardProps {
   displayMode: DisplayMode
   resetTimerDisplayMode?: ResetTimerDisplayMode
   onResetTimerDisplayModeToggle?: () => void
+  showAccountIdentity?: boolean
 }
 
 const PACE_VISUALS: Record<PaceStatus, { dotClass: string }> = {
@@ -107,6 +108,7 @@ export function ProviderCard({
   displayMode,
   resetTimerDisplayMode = "relative",
   onResetTimerDisplayModeToggle,
+  showAccountIdentity = true,
 }: ProviderCardProps) {
   const cooldownRemainingMs = useMemo(() => {
     if (!lastManualRefreshAt) return 0
@@ -262,7 +264,7 @@ export function ProviderCard({
             )}
           </div>
           <div className="ml-2 flex min-w-0 max-w-[55%] items-center justify-end gap-1.5">
-            {accountIdentity && (
+            {showAccountIdentity && accountIdentity && (
               <Badge
                 variant="secondary"
                 className="truncate min-w-0"

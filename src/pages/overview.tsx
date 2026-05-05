@@ -8,6 +8,7 @@ interface OverviewPageProps {
   displayMode: DisplayMode
   resetTimerDisplayMode: ResetTimerDisplayMode
   onResetTimerDisplayModeToggle?: () => void
+  showAccountIdentity?: boolean
 }
 
 export function OverviewPage({
@@ -16,6 +17,7 @@ export function OverviewPage({
   displayMode,
   resetTimerDisplayMode,
   onResetTimerDisplayModeToggle,
+  showAccountIdentity,
 }: OverviewPageProps) {
   if (plugins.length === 0) {
     return (
@@ -44,6 +46,7 @@ export function OverviewPage({
           displayMode={displayMode}
           resetTimerDisplayMode={resetTimerDisplayMode}
           onResetTimerDisplayModeToggle={onResetTimerDisplayModeToggle}
+          showAccountIdentity={showAccountIdentity}
         />
       ))}
     </div>

@@ -8,6 +8,7 @@ interface ProviderDetailPageProps {
   displayMode: DisplayMode
   resetTimerDisplayMode: ResetTimerDisplayMode
   onResetTimerDisplayModeToggle?: () => void
+  showAccountIdentity?: boolean
 }
 
 export function ProviderDetailPage({
@@ -16,6 +17,7 @@ export function ProviderDetailPage({
   displayMode,
   resetTimerDisplayMode,
   onResetTimerDisplayModeToggle,
+  showAccountIdentity,
 }: ProviderDetailPageProps) {
   if (!plugin) {
     return (
@@ -42,6 +44,7 @@ export function ProviderDetailPage({
       displayMode={displayMode}
       resetTimerDisplayMode={resetTimerDisplayMode}
       onResetTimerDisplayModeToggle={onResetTimerDisplayModeToggle}
+      showAccountIdentity={showAccountIdentity}
     />
   )
 }
