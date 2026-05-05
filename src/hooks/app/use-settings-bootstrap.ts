@@ -15,6 +15,7 @@ import {
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
   DEFAULT_START_ON_LOGIN,
   DEFAULT_THEME_MODE,
+  DEFAULT_WEEKLY_WARNING_THRESHOLD_PERCENT,
   getEnabledPluginIds,
   loadAutoUpdateInterval,
   loadDisplayMode,
@@ -25,6 +26,7 @@ import {
   loadResetTimerDisplayMode,
   loadStartOnLogin,
   loadThemeMode,
+  loadWeeklyWarningThresholdPercent,
   normalizePluginSettings,
   savePluginSettings,
   type AutoUpdateIntervalMinutes,
@@ -34,6 +36,7 @@ import {
   type PluginSettings,
   type ResetTimerDisplayMode,
   type ThemeMode,
+  type WeeklyWarningThresholdPercent,
 } from "@/lib/settings"
 
 type UseSettingsBootstrapArgs = {
@@ -46,6 +49,7 @@ type UseSettingsBootstrapArgs = {
   setGlobalShortcut: (value: GlobalShortcut) => void
   setStartOnLogin: (value: boolean) => void
   setMenubarIconStyle: (value: MenubarIconStyle) => void
+  setWeeklyWarningThresholdPercent: (value: WeeklyWarningThresholdPercent) => void
   setLoadingForPlugins: (ids: string[]) => void
   setErrorForPlugins: (ids: string[], error: string) => void
   startBatch: (pluginIds?: string[]) => Promise<string[] | undefined>
@@ -61,6 +65,7 @@ export function useSettingsBootstrap({
   setGlobalShortcut,
   setStartOnLogin,
   setMenubarIconStyle,
+  setWeeklyWarningThresholdPercent,
   setLoadingForPlugins,
   setErrorForPlugins,
   startBatch,
@@ -153,6 +158,13 @@ export function useSettingsBootstrap({
           console.error("Failed to load menubar icon style:", error)
         }
 
+        let storedWeeklyWarningThresholdPercent = DEFAULT_WEEKLY_WARNING_THRESHOLD_PERCENT
+        try {
+          storedWeeklyWarningThresholdPercent = await loadWeeklyWarningThresholdPercent()
+        } catch (error) {
+          console.error("Failed to load weekly warning threshold:", error)
+        }
+
         if (isMounted) {
           setPluginSettings(normalized)
           setAutoUpdateInterval(storedInterval)
@@ -162,6 +174,7 @@ export function useSettingsBootstrap({
           setGlobalShortcut(storedGlobalShortcut)
           setStartOnLogin(storedStartOnLogin)
           setMenubarIconStyle(storedMenubarIconStyle)
+          setWeeklyWarningThresholdPercent(storedWeeklyWarningThresholdPercent)
 
           const enabledIds = getEnabledPluginIds(normalized)
           setLoadingForPlugins(enabledIds)
@@ -192,6 +205,7 @@ export function useSettingsBootstrap({
     setGlobalShortcut,
     setLoadingForPlugins,
     setMenubarIconStyle,
+    setWeeklyWarningThresholdPercent,
     migrateLegacyTraySettings,
     setPluginSettings,
     setPluginsMeta,

@@ -17,6 +17,7 @@ const {
   loadResetTimerDisplayModeMock,
   loadStartOnLoginMock,
   loadThemeModeMock,
+  loadWeeklyWarningThresholdPercentMock,
   migrateLegacyTraySettingsMock,
   normalizePluginSettingsMock,
   savePluginSettingsMock,
@@ -36,6 +37,7 @@ const {
   loadResetTimerDisplayModeMock: vi.fn(),
   loadStartOnLoginMock: vi.fn(),
   loadThemeModeMock: vi.fn(),
+  loadWeeklyWarningThresholdPercentMock: vi.fn(),
   migrateLegacyTraySettingsMock: vi.fn(),
   normalizePluginSettingsMock: vi.fn(),
   savePluginSettingsMock: vi.fn(),
@@ -61,6 +63,7 @@ vi.mock("@/lib/settings", () => ({
   DEFAULT_RESET_TIMER_DISPLAY_MODE: "relative",
   DEFAULT_START_ON_LOGIN: false,
   DEFAULT_THEME_MODE: "system",
+  DEFAULT_WEEKLY_WARNING_THRESHOLD_PERCENT: 30,
   getEnabledPluginIds: getEnabledPluginIdsMock,
   loadAutoUpdateInterval: loadAutoUpdateIntervalMock,
   loadDisplayMode: loadDisplayModeMock,
@@ -70,6 +73,7 @@ vi.mock("@/lib/settings", () => ({
   loadResetTimerDisplayMode: loadResetTimerDisplayModeMock,
   loadStartOnLogin: loadStartOnLoginMock,
   loadThemeMode: loadThemeModeMock,
+  loadWeeklyWarningThresholdPercent: loadWeeklyWarningThresholdPercentMock,
   migrateLegacyTraySettings: migrateLegacyTraySettingsMock,
   normalizePluginSettings: normalizePluginSettingsMock,
   savePluginSettings: savePluginSettingsMock,
@@ -88,6 +92,7 @@ function createArgs() {
     setGlobalShortcut: vi.fn(),
     setStartOnLogin: vi.fn(),
     setMenubarIconStyle: vi.fn(),
+    setWeeklyWarningThresholdPercent: vi.fn(),
     setLoadingForPlugins: vi.fn(),
     setErrorForPlugins: vi.fn(),
     startBatch: vi.fn().mockResolvedValue(undefined),
@@ -111,6 +116,7 @@ describe("useSettingsBootstrap", () => {
     loadResetTimerDisplayModeMock.mockReset()
     loadStartOnLoginMock.mockReset()
     loadThemeModeMock.mockReset()
+    loadWeeklyWarningThresholdPercentMock.mockReset()
     migrateLegacyTraySettingsMock.mockReset()
     normalizePluginSettingsMock.mockReset()
     savePluginSettingsMock.mockReset()
@@ -136,6 +142,7 @@ describe("useSettingsBootstrap", () => {
     loadResetTimerDisplayModeMock.mockResolvedValue("relative")
     loadGlobalShortcutMock.mockResolvedValue("CommandOrControl+Shift+O")
     loadMenubarIconStyleMock.mockResolvedValue("provider")
+    loadWeeklyWarningThresholdPercentMock.mockResolvedValue(30)
     loadStartOnLoginMock.mockResolvedValue(true)
     migrateLegacyTraySettingsMock.mockResolvedValue(undefined)
     savePluginSettingsMock.mockResolvedValue(undefined)

@@ -63,6 +63,14 @@ function createProps(): AppContentProps {
     onDisplayModeChange: vi.fn(),
     onResetTimerDisplayModeChange: vi.fn(),
     onResetTimerDisplayModeToggle: vi.fn(),
+    onMenubarIconStyleChange: vi.fn(),
+    onWeeklyWarningThresholdPercentChange: vi.fn(),
+    traySettingsPreview: {
+      bars: [],
+      providerBars: [],
+      providerPercentText: "--%",
+      providerAlertSeverity: "none" as const,
+    },
     onGlobalShortcutChange: vi.fn(),
     onStartOnLoginChange: vi.fn(),
   }

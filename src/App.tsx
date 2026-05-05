@@ -54,6 +54,8 @@ function App() {
     setDisplayMode,
     menubarIconStyle,
     setMenubarIconStyle,
+    weeklyWarningThresholdPercent,
+    setWeeklyWarningThresholdPercent,
     resetTimerDisplayMode,
     setResetTimerDisplayMode,
     setGlobalShortcut,
@@ -68,6 +70,8 @@ function App() {
       setDisplayMode: state.setDisplayMode,
       menubarIconStyle: state.menubarIconStyle,
       setMenubarIconStyle: state.setMenubarIconStyle,
+      weeklyWarningThresholdPercent: state.weeklyWarningThresholdPercent,
+      setWeeklyWarningThresholdPercent: state.setWeeklyWarningThresholdPercent,
       resetTimerDisplayMode: state.resetTimerDisplayMode,
       setResetTimerDisplayMode: state.setResetTimerDisplayMode,
       setGlobalShortcut: state.setGlobalShortcut,
@@ -101,6 +105,7 @@ function App() {
     pluginStates,
     displayMode,
     menubarIconStyle,
+    weeklyWarningThresholdPercent,
     activeView,
   })
 
@@ -117,6 +122,7 @@ function App() {
     setThemeMode,
     setDisplayMode,
     setMenubarIconStyle,
+    setWeeklyWarningThresholdPercent,
     setResetTimerDisplayMode,
     setGlobalShortcut,
     setStartOnLogin,
@@ -133,12 +139,14 @@ function App() {
     handleResetTimerDisplayModeChange,
     handleResetTimerDisplayModeToggle,
     handleMenubarIconStyleChange,
+    handleWeeklyWarningThresholdPercentChange,
   } = useSettingsDisplayActions({
     setThemeMode,
     setDisplayMode,
     resetTimerDisplayMode,
     setResetTimerDisplayMode,
     setMenubarIconStyle,
+    setWeeklyWarningThresholdPercent,
     scheduleTrayIconUpdate,
   })
 
@@ -247,6 +255,7 @@ function App() {
         onResetTimerDisplayModeChange: handleResetTimerDisplayModeChange,
         onResetTimerDisplayModeToggle: handleResetTimerDisplayModeToggle,
         onMenubarIconStyleChange: handleMenubarIconStyleChange,
+        onWeeklyWarningThresholdPercentChange: handleWeeklyWarningThresholdPercentChange,
         traySettingsPreview,
         onGlobalShortcutChange: handleGlobalShortcutChange,
         onStartOnLoginChange: handleStartOnLoginChange,

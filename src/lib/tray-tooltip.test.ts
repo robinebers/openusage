@@ -39,8 +39,8 @@ describe("tray-tooltip", () => {
 
     it("should list enabled plugins with percentages", () => {
       const bars: TrayPrimaryBar[] = [
-        { id: "p1", fraction: 0.45 },
-        { id: "p2", fraction: 0.12 },
+        { id: "p1", fraction: 0.45, warningSeverity: "none" },
+        { id: "p2", fraction: 0.12, warningSeverity: "none" },
       ]
       const tooltip = formatTrayTooltip(bars, mockMeta)
       expect(tooltip).toBe("OpenUsage\nPlugin 1: 45%\nPlugin 2: 12%")
@@ -48,8 +48,8 @@ describe("tray-tooltip", () => {
 
     it("should handle missing plugin metadata gracefully", () => {
       const bars: TrayPrimaryBar[] = [
-        { id: "p1", fraction: 0.45 },
-        { id: "unknown", fraction: 0.5 },
+        { id: "p1", fraction: 0.45, warningSeverity: "none" },
+        { id: "unknown", fraction: 0.5, warningSeverity: "none" },
       ]
       const tooltip = formatTrayTooltip(bars, mockMeta)
       expect(tooltip).toBe("OpenUsage\nPlugin 1: 45%")
@@ -57,10 +57,18 @@ describe("tray-tooltip", () => {
 
     it("should show --% for missing fractions", () => {
       const bars: TrayPrimaryBar[] = [
-        { id: "p1", fraction: undefined },
+        { id: "p1", fraction: undefined, warningSeverity: "none" },
       ]
       const tooltip = formatTrayTooltip(bars, mockMeta)
       expect(tooltip).toBe("OpenUsage\nPlugin 1: --%")
+    })
+
+    it("prefixes alerted providers with an indicator", () => {
+      const bars: TrayPrimaryBar[] = [
+        { id: "p1", fraction: 0.18, warningSeverity: "warning" },
+      ]
+      const tooltip = formatTrayTooltip(bars, mockMeta)
+      expect(tooltip).toBe("OpenUsage\n! Plugin 1: 18%")
     })
   })
 })

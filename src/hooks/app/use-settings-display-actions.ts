@@ -5,10 +5,12 @@ import {
   saveMenubarIconStyle,
   saveResetTimerDisplayMode,
   saveThemeMode,
+  saveWeeklyWarningThresholdPercent,
   type DisplayMode,
   type MenubarIconStyle,
   type ResetTimerDisplayMode,
   type ThemeMode,
+  type WeeklyWarningThresholdPercent,
 } from "@/lib/settings"
 
 type ScheduleTrayIconUpdate = (reason: "probe" | "settings" | "init", delayMs?: number) => void
@@ -19,6 +21,7 @@ type UseSettingsDisplayActionsArgs = {
   resetTimerDisplayMode: ResetTimerDisplayMode
   setResetTimerDisplayMode: (value: ResetTimerDisplayMode) => void
   setMenubarIconStyle: (value: MenubarIconStyle) => void
+  setWeeklyWarningThresholdPercent: (value: WeeklyWarningThresholdPercent) => void
   scheduleTrayIconUpdate: ScheduleTrayIconUpdate
 }
 
@@ -28,6 +31,7 @@ export function useSettingsDisplayActions({
   resetTimerDisplayMode,
   setResetTimerDisplayMode,
   setMenubarIconStyle,
+  setWeeklyWarningThresholdPercent,
   scheduleTrayIconUpdate,
 }: UseSettingsDisplayActionsArgs) {
   const handleThemeModeChange = useCallback((mode: ThemeMode) => {
@@ -69,11 +73,21 @@ export function useSettingsDisplayActions({
     })
   }, [scheduleTrayIconUpdate, setMenubarIconStyle])
 
+  const handleWeeklyWarningThresholdPercentChange = useCallback((value: WeeklyWarningThresholdPercent) => {
+    track("setting_changed", { setting: "weekly_warning_threshold_percent", value: String(value) })
+    setWeeklyWarningThresholdPercent(value)
+    scheduleTrayIconUpdate("settings", 0)
+    void saveWeeklyWarningThresholdPercent(value).catch((error) => {
+      console.error("Failed to save weekly warning threshold:", error)
+    })
+  }, [scheduleTrayIconUpdate, setWeeklyWarningThresholdPercent])
+
   return {
     handleThemeModeChange,
     handleDisplayModeChange,
     handleResetTimerDisplayModeChange,
     handleResetTimerDisplayModeToggle,
     handleMenubarIconStyleChange,
+    handleWeeklyWarningThresholdPercentChange,
   }
 }
