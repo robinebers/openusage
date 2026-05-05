@@ -679,6 +679,10 @@
         lines.push(ctx.line.badge({ label: "Status", text: "No usage data", color: "#a3a3a3" }))
       }
 
+      if (typeof accountId === "string" && accountId.trim()) {
+        lines.push(ctx.line.text({ label: "Account", value: accountId.trim() }))
+      }
+
       return { plan: plan, lines: lines }
     }
 

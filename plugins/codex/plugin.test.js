@@ -218,6 +218,7 @@ describe("codex plugin", () => {
     expect(result.plan).toBe("Pro 20x")
     expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
     expect(result.lines.find((line) => line.label === "Weekly")).toBeTruthy()
+    expect(result.lines.find((line) => line.label === "Account")?.value).toBe("acc")
     const credits = result.lines.find((line) => line.label === "Credits")
     expect(credits).toBeTruthy()
     expect(credits.used).toBe(900)
