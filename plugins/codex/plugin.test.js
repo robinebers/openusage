@@ -234,6 +234,34 @@ describe("codex plugin", () => {
     expect(credits.used).toBe(900)
   })
 
+  it("uses account email from refreshed id token", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "old", refresh_token: "refresh", account_id: "acc" },
+      last_refresh: "2000-01-01T00:00:00.000Z",
+    }))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("oauth/token")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            access_token: "new",
+            id_token: jwtWithPayload({ email: "fresh@example.com" }),
+          }),
+        }
+      }
+      return {
+        status: 200,
+        headers: { "x-codex-primary-used-percent": "25" },
+        bodyText: JSON.stringify({}),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Account")?.value).toBe("fresh@example.com")
+  })
+
   it("maps prolite plan to Pro 5x", async () => {
     const ctx = makeCtx()
     ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({

@@ -504,7 +504,6 @@
       const nowMs = Date.now()
       let accessToken = auth.tokens.access_token
       const accountId = auth.tokens.account_id
-      const accountIdentity = getCodexAccountIdentity(ctx, auth)
 
       if (needsRefresh(ctx, auth, nowMs)) {
         ctx.host.log.info("token needs refresh (age > " + (REFRESH_AGE_MS / 1000 / 60 / 60 / 24) + " days)")
@@ -743,6 +742,7 @@
         lines.push(ctx.line.badge({ label: "Status", text: "No usage data", color: "#a3a3a3" }))
       }
 
+      const accountIdentity = getCodexAccountIdentity(ctx, auth)
       if (accountIdentity) {
         lines.push(ctx.line.text({ label: "Account", value: accountIdentity }))
       }
