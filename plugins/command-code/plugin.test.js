@@ -249,18 +249,18 @@ describe("command plugin", function () {
     ctx.host.http.request.mockReturnValueOnce(subsResponse({ planId: "individual-go" }));
     var plugin = await loadPlugin();
     var result = await plugin.probe(ctx);
-    expect(result.plan).toBe("individual-go");
+    expect(result.plan).toBe("Go");
     expect(result.lines.length).toBe(2);
     var line = result.lines[0];
-    expect(line.label).toBe("Go");
-    expect(line.used).toBe(7);
-    expect(line.limit).toBe(10);
-    expect(line.format.kind).toBe("dollars");
+    expect(line.label).toBe("Monthly Quota");
+    expect(line.used).toBe(70);
+    expect(line.limit).toBe(100);
+    expect(line.format.kind).toBe("percent");
     var pctLine = result.lines[1];
-    expect(pctLine.label).toBe("Monthly Quota");
-    expect(pctLine.used).toBe(70);
-    expect(pctLine.limit).toBe(100);
-    expect(pctLine.format.kind).toBe("percent");
+    expect(pctLine.label).toBe("Go");
+    expect(pctLine.used).toBe(7);
+    expect(pctLine.limit).toBe(10);
+    expect(pctLine.format.kind).toBe("dollars");
   });
 
   it("returns resetsAt and periodDurationMs", async function () {
@@ -272,7 +272,7 @@ describe("command plugin", function () {
     var result = await plugin.probe(ctx);
     var line = result.lines[0];
     expect(line.resetsAt).toBeTruthy();
-    expect(line.periodDurationMs).toBe(31 * 24 * 3600 * 1000);
+    expect(line.periodDurationMs).toBe(30 * 24 * 3600 * 1000);
   });
 
   it("clamaps used to 0 when remaining exceeds total", async function () {
@@ -295,7 +295,7 @@ describe("command plugin", function () {
     var plugin = await loadPlugin();
     var result = await plugin.probe(ctx);
     expect(result.lines.length).toBe(2);
-    var pctLine = result.lines[1];
+    var pctLine = result.lines[0];
     expect(pctLine.label).toBe("Monthly Quota");
     expect(pctLine.used).toBe(60);
     expect(pctLine.limit).toBe(100);
@@ -310,8 +310,8 @@ describe("command plugin", function () {
     ctx.host.http.request.mockReturnValueOnce(subsResponse({ planId: "individual-go" }));
     var plugin = await loadPlugin();
     var result = await plugin.probe(ctx);
-    expect(result.lines[1].used).toBe(100);
-    expect(result.lines[1].limit).toBe(100);
+    expect(result.lines[0].used).toBe(100);
+    expect(result.lines[0].limit).toBe(100);
   });
 
   // --- Plan labels ---
@@ -323,7 +323,7 @@ describe("command plugin", function () {
     ctx.host.http.request.mockReturnValueOnce(subsResponse({ planId: "individual-go" }));
     var plugin = await loadPlugin();
     var result = await plugin.probe(ctx);
-    expect(result.lines[0].label).toBe("Go");
+    expect(result.lines[1].label).toBe("Go");
   });
 
   it("displays Pro for individual-pro", async function () {
@@ -333,9 +333,9 @@ describe("command plugin", function () {
     ctx.host.http.request.mockReturnValueOnce(subsResponse({ planId: "individual-pro" }));
     var plugin = await loadPlugin();
     var result = await plugin.probe(ctx);
-    expect(result.lines[0].label).toBe("Pro");
-    expect(result.lines[0].used).toBe(15);
-    expect(result.lines[0].limit).toBe(30);
+    expect(result.lines[1].label).toBe("Pro");
+    expect(result.lines[1].used).toBe(15);
+    expect(result.lines[1].limit).toBe(30);
   });
 
   it("displays Max for individual-max", async function () {
@@ -345,9 +345,9 @@ describe("command plugin", function () {
     ctx.host.http.request.mockReturnValueOnce(subsResponse({ planId: "individual-max" }));
     var plugin = await loadPlugin();
     var result = await plugin.probe(ctx);
-    expect(result.lines[0].label).toBe("Max");
-    expect(result.lines[0].used).toBe(100);
-    expect(result.lines[0].limit).toBe(150);
+    expect(result.lines[1].label).toBe("Max");
+    expect(result.lines[1].used).toBe(100);
+    expect(result.lines[1].limit).toBe(150);
   });
 
   it("displays Ultra for individual-ultra", async function () {
@@ -357,9 +357,9 @@ describe("command plugin", function () {
     ctx.host.http.request.mockReturnValueOnce(subsResponse({ planId: "individual-ultra" }));
     var plugin = await loadPlugin();
     var result = await plugin.probe(ctx);
-    expect(result.lines[0].label).toBe("Ultra");
-    expect(result.lines[0].used).toBe(100);
-    expect(result.lines[0].limit).toBe(300);
+    expect(result.lines[1].label).toBe("Ultra");
+    expect(result.lines[1].used).toBe(100);
+    expect(result.lines[1].limit).toBe(300);
   });
 
   it("displays Teams Pro for teams-pro", async function () {
@@ -369,9 +369,9 @@ describe("command plugin", function () {
     ctx.host.http.request.mockReturnValueOnce(subsResponse({ planId: "teams-pro" }));
     var plugin = await loadPlugin();
     var result = await plugin.probe(ctx);
-    expect(result.lines[0].label).toBe("Teams Pro");
-    expect(result.lines[0].used).toBe(30);
-    expect(result.lines[0].limit).toBe(40);
+    expect(result.lines[1].label).toBe("Teams Pro");
+    expect(result.lines[1].used).toBe(30);
+    expect(result.lines[1].limit).toBe(40);
   });
 
   it("falls back to capitalized planId for unknown plans", async function () {
@@ -392,6 +392,6 @@ describe("command plugin", function () {
     ctx.host.http.request.mockReturnValueOnce(subsResponse({ planId: "individual-pro" }));
     var plugin = await loadPlugin();
     var result = await plugin.probe(ctx);
-    expect(result.plan).toBe("individual-pro");
+    expect(result.plan).toBe("Pro");
   });
 });
