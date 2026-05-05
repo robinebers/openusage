@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "command-code",
+  "name": "CommandCode",
+  "version": "0.0.1",
+  "entry": "plugin.js",
+  "icon": "icon.svg",
+  "brandColor": "#575757",
+  "links": [
+    { "label": "Docs", "url": "https://commandcode.ai/docs" },
+    { "label": "Dashboard", "url": "https://commandcode.ai/studio" }
+  ],
+  "lines": [
+    { "type": "progress", "label": "Monthly Quota", "scope": "overview", "primaryOrder": 1 },
+    { "type": "progress", "label": "Plan", "scope": "overview" }
+  ]
+}
