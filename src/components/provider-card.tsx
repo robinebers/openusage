@@ -165,11 +165,11 @@ export function ProviderCard({
   )
 
   const accountIdentity = useMemo(() => {
-    const accountLine = lines.find(
+    const accountLine = filteredLines.find(
       (line) => line.type === "text" && line.label.toLowerCase() === "account"
     )
     return accountLine?.type === "text" ? accountLine.value.trim() : ""
-  }, [lines])
+  }, [filteredLines])
 
   const displayLines = useMemo(
     () => filteredLines.filter(

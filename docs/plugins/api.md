@@ -365,6 +365,8 @@ ctx.line.text({ label: "Account", value: "user@example.com" })
 ctx.line.text({ label: "Status", value: "Active", color: "#22c55e", subtitle: "Since Jan 2024" })
 ```
 
+Note: `label: "Account"` is reserved. The UI displays it in the provider card header instead of the normal body line.
+
 ### `ctx.line.progress(opts)`
 
 Creates a progress bar line.

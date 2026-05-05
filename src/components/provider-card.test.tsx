@@ -130,7 +130,7 @@ describe("ProviderCard", () => {
     expect(screen.getAllByText("dev@example.com")).toHaveLength(1)
   })
 
-  it("shows account identity in header when body is filtered to overview", () => {
+  it("hides detail-scoped account identity when filtered to overview", () => {
     const { container } = render(
       <ProviderCard
         name="Codex"
@@ -140,6 +140,29 @@ describe("ProviderCard", () => {
         skeletonLines={[
           { type: "progress", label: "Session", scope: "overview" },
           { type: "text", label: "Account", scope: "detail" },
+        ]}
+        lines={[
+          { type: "progress", label: "Session", used: 25, limit: 100, format: { kind: "percent" } },
+          { type: "text", label: "Account", value: "dev@example.com" },
+        ]}
+      />
+    )
+
+    const header = container.querySelector("h2")?.parentElement?.parentElement
+    expect(header).toBeTruthy()
+    expect(within(header as HTMLElement).queryByText("dev@example.com")).toBeNull()
+    expect(screen.queryByText("Account")).toBeNull()
+  })
+
+  it("shows detail-scoped account identity in header on detail cards", () => {
+    const { container } = render(
+      <ProviderCard
+        name="Codex"
+        plan="Plus"
+        displayMode="used"
+        scopeFilter="all"
+        skeletonLines={[
+          { type: "progress", label: "Session", scope: "overview" },
         ]}
         lines={[
           { type: "progress", label: "Session", used: 25, limit: 100, format: { kind: "percent" } },
