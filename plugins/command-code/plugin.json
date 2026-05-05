@@ -12,6 +12,10 @@
   ],
   "lines": [
     { "type": "progress", "label": "Monthly Quota", "scope": "overview", "primaryOrder": 1 },
-    { "type": "progress", "label": "Plan", "scope": "overview" }
+    { "type": "progress", "label": "Go", "scope": "overview" },
+    { "type": "progress", "label": "Pro", "scope": "overview" },
+    { "type": "progress", "label": "Max", "scope": "overview" },
+    { "type": "progress", "label": "Ultra", "scope": "overview" },
+    { "type": "progress", "label": "Teams Pro", "scope": "overview" }
   ]
 }
