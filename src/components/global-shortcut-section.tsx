@@ -244,7 +244,7 @@ export function GlobalShortcutSection({
   return (
     <section>
       <h3 className="text-lg font-semibold mb-0">Global Shortcut</h3>
-      <p className="text-sm text-muted-foreground mb-2">
+      <p className="settings-copy text-sm mb-2">
         Show panel from anywhere
       </p>
       <div className="space-y-2">
@@ -258,9 +258,9 @@ export function GlobalShortcutSection({
             onKeyUp={handleKeyUp}
             onBlur={handleBlur}
             className={cn(
-              "w-full h-8 px-3 text-sm rounded-md border-2 border-primary bg-muted/50",
+              "settings-input-surface w-full h-8 px-3 text-sm rounded-md border-2 border-primary",
               "flex items-center outline-none",
-              !pendingDisplay && "text-muted-foreground"
+              !pendingDisplay && "settings-copy"
             )}
           >
             {getDisplayValue()}
@@ -268,9 +268,9 @@ export function GlobalShortcutSection({
         ) : (
           <div
             className={cn(
-              "w-full h-8 px-3 text-sm rounded-md border bg-muted/50",
-              "flex items-center text-left hover:bg-muted transition-colors cursor-pointer",
-              !hasShortcut && "text-muted-foreground"
+              "settings-input-surface w-full h-8 px-3 text-sm rounded-md border",
+              "flex items-center text-left transition-colors cursor-pointer",
+              !hasShortcut && "settings-copy"
             )}
             onClick={startRecording}
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") startRecording() }}
@@ -288,12 +288,12 @@ export function GlobalShortcutSection({
                 <X className="h-3.5 w-3.5" />
               </button>
             ) : (
-              <span className="ml-auto text-xs text-muted-foreground">Click to set</span>
+              <span className="ml-auto text-xs settings-copy">Click to set</span>
             )}
           </div>
         )}
       </div>
-      <p className="mt-2 text-xs text-muted-foreground">
+      <p className="mt-2 text-xs settings-copy">
         Press Escape while recording to clear.
       </p>
     </section>

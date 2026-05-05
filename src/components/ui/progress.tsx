@@ -42,18 +42,18 @@ const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
         aria-valuenow={clamped}
         aria-valuemin={0}
         aria-valuemax={100}
-        className={cn("relative h-3 w-full overflow-hidden rounded-full bg-muted dark:bg-[#353537]", className)}
+        className={cn("usage-progress-track relative h-3 w-full overflow-hidden rounded-full bg-muted dark:bg-[#353537]", className)}
         {...props}
       >
         <div
-          className="h-full transition-all bg-primary"
+          className="usage-progress-indicator h-full transition-all bg-primary"
           style={{ width: `${clamped}%`, ...indicatorStyle }}
         />
         {showMarker && (
           <div
             data-slot="progress-marker"
             aria-hidden="true"
-            className="absolute top-0 bottom-0 w-[2px] z-10 pointer-events-none bg-muted-foreground opacity-50"
+            className="usage-progress-marker absolute top-0 bottom-0 w-[2px] z-10 pointer-events-none bg-muted-foreground opacity-50"
             style={markerStyle}
           />
         )}

@@ -16,6 +16,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use serde::Serialize;
 use tauri::Emitter;
 use tauri_plugin_aptabase::EventTracker;
+use tauri_plugin_liquid_glass::{GlassMaterialVariant, LiquidGlassConfig, LiquidGlassExt};
 use tauri_plugin_log::{Target, TargetKind};
 use uuid::Uuid;
 
@@ -199,6 +200,33 @@ fn hide_panel(app_handle: tauri::AppHandle) {
     if let Ok(panel) = app_handle.get_webview_panel("main") {
         panel.hide();
     }
+}
+
+#[tauri::command]
+fn set_liquid_glass_enabled(app_handle: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    use tauri::Manager;
+
+    let Some(window) = app_handle.get_webview_window("main") else {
+        return Ok(());
+    };
+
+    let config = if enabled {
+        LiquidGlassConfig {
+            corner_radius: 22.0,
+            variant: GlassMaterialVariant::Sidebar,
+            ..Default::default()
+        }
+    } else {
+        LiquidGlassConfig {
+            enabled: false,
+            ..Default::default()
+        }
+    };
+
+    app_handle
+        .liquid_glass()
+        .set_effect(&window, config)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -492,9 +520,11 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::Builder::new().build())
+        .plugin(tauri_plugin_liquid_glass::init())
         .invoke_handler(tauri::generate_handler![
             init_panel,
             hide_panel,
+            set_liquid_glass_enabled,
             open_devtools,
             start_probe_batch,
             list_plugins,
@@ -508,7 +538,7 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             {
                 app_nap::disable_app_nap();
-                webkit_config::disable_webview_suspension(app.handle());
+                webkit_config::configure_webview(app.handle());
             }
 
             use tauri::Manager;

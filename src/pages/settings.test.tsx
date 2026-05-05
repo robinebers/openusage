@@ -143,6 +143,7 @@ describe("SettingsPage", () => {
     expect(screen.getByText("System")).toBeInTheDocument()
     expect(screen.getByText("Light")).toBeInTheDocument()
     expect(screen.getByText("Dark")).toBeInTheDocument()
+    expect(screen.getByText("Glass")).toBeInTheDocument()
   })
 
   it("updates theme mode", async () => {
@@ -155,6 +156,18 @@ describe("SettingsPage", () => {
     )
     await userEvent.click(screen.getByText("Dark"))
     expect(onThemeModeChange).toHaveBeenCalledWith("dark")
+  })
+
+  it("updates glass theme mode", async () => {
+    const onThemeModeChange = vi.fn()
+    render(
+      <SettingsPage
+        {...defaultProps}
+        onThemeModeChange={onThemeModeChange}
+      />
+    )
+    await userEvent.click(screen.getByText("Glass"))
+    expect(onThemeModeChange).toHaveBeenCalledWith("glass")
   })
 
   it("updates display mode", async () => {
