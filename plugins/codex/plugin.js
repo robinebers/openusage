@@ -59,6 +59,69 @@
     }
   }
 
+  function decodeBase64UrlUtf8(value) {
+    try {
+      let base64 = String(value).replace(/-/g, "+").replace(/_/g, "/")
+      while (base64.length % 4 !== 0) base64 += "="
+
+      let binary = null
+      if (typeof atob === "function") {
+        binary = atob(base64)
+      } else {
+        const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="
+        binary = ""
+        for (let i = 0; i < base64.length;) {
+          const e1 = chars.indexOf(base64.charAt(i++))
+          const e2 = chars.indexOf(base64.charAt(i++))
+          const e3 = chars.indexOf(base64.charAt(i++))
+          const e4 = chars.indexOf(base64.charAt(i++))
+          if (e1 < 0 || e2 < 0) return null
+          binary += String.fromCharCode((e1 << 2) | (e2 >> 4))
+          if (e3 !== 64 && e3 >= 0) binary += String.fromCharCode(((e2 & 15) << 4) | (e3 >> 2))
+          if (e4 !== 64 && e4 >= 0) binary += String.fromCharCode(((e3 & 3) << 6) | e4)
+        }
+      }
+
+      const bytes = []
+      for (let i = 0; i < binary.length; i++) bytes.push(binary.charCodeAt(i))
+      if (typeof TextDecoder !== "undefined") {
+        return new TextDecoder("utf-8", { fatal: false }).decode(new Uint8Array(bytes))
+      }
+      return decodeURIComponent(binary.split("").map((c) => {
+        const h = c.charCodeAt(0).toString(16)
+        return "%" + (h.length === 1 ? "0" + h : h)
+      }).join(""))
+    } catch {}
+    return null
+  }
+
+  function readString(value) {
+    return typeof value === "string" && value.trim() ? value.trim() : null
+  }
+
+  function parseIdTokenClaims(ctx, idToken) {
+    if (!idToken) return null
+    if (typeof idToken === "object") return idToken
+    if (typeof idToken !== "string") return null
+    const parts = idToken.split(".")
+    if (parts.length < 2) return null
+    const payload = decodeBase64UrlUtf8(parts[1])
+    return payload ? ctx.util.tryParseJson(payload) : null
+  }
+
+  function getCodexAccountIdentity(ctx, auth) {
+    const tokens = auth && auth.tokens ? auth.tokens : null
+    if (!tokens) return null
+
+    const claims = parseIdTokenClaims(ctx, tokens.id_token)
+    const email = readString(claims?.email) ||
+      readString(claims?.profile?.email) ||
+      readString(claims?.["https://api.openai.com/profile.email"])
+    if (email) return email
+
+    return readString(tokens.account_id)
+  }
+
   function tryParseAuthJson(ctx, text) {
     if (!text) return null
     const parsed = ctx.util.tryParseJson(text)
@@ -441,6 +504,7 @@
       const nowMs = Date.now()
       let accessToken = auth.tokens.access_token
       const accountId = auth.tokens.account_id
+      const accountIdentity = getCodexAccountIdentity(ctx, auth)
 
       if (needsRefresh(ctx, auth, nowMs)) {
         ctx.host.log.info("token needs refresh (age > " + (REFRESH_AGE_MS / 1000 / 60 / 60 / 24) + " days)")
@@ -679,8 +743,8 @@
         lines.push(ctx.line.badge({ label: "Status", text: "No usage data", color: "#a3a3a3" }))
       }
 
-      if (typeof accountId === "string" && accountId.trim()) {
-        lines.push(ctx.line.text({ label: "Account", value: accountId.trim() }))
+      if (accountIdentity) {
+        lines.push(ctx.line.text({ label: "Account", value: accountIdentity }))
       }
 
       return { plan: plan, lines: lines }
