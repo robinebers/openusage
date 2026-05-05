@@ -144,6 +144,9 @@
     var resetsAtMs = new Date(subJson.data.currentPeriodEnd).getTime();
 
     var lines = [];
+    var periodDurationMs =
+      new Date(subJson.data.currentPeriodEnd).getTime() -
+      new Date(subJson.data.currentPeriodStart).getTime();
     if (planId && total > 0) {
       lines.push(
         ctx.line.progress({
@@ -152,7 +155,7 @@
           limit: 100,
           format: { kind: "percent" },
           resetsAt: ctx.util.toIso(resetsAtMs),
-          periodDurationMs: 30 * 24 * 3600 * 1000,
+          periodDurationMs,
         }),
       );
       lines.push(
@@ -162,7 +165,7 @@
           limit: total,
           format: { kind: "dollars" },
           resetsAt: ctx.util.toIso(resetsAtMs),
-          periodDurationMs: 30 * 24 * 3600 * 1000,
+          periodDurationMs,
         }),
       );
     }
