@@ -64,8 +64,8 @@ Bars show used credits in dollars (plan label) and as a percentage (Monthly Quot
 
 ## Window Rules
 
-- **Period:** subscription billing period (`currentPeriodEnd` from the API)
-- **Resets at:** UTC midnight, 24h period duration displayed
+- **Period:** subscription billing period (`currentPeriodStart` - `currentPeriodEnd` from the API)
+- **Resets at:** the `currentPeriodEnd` timestamp returned by the API
 
 Usage is account-level from the API, not estimated from local history.
 
