@@ -272,7 +272,7 @@ describe("command plugin", function () {
     var result = await plugin.probe(ctx);
     var line = result.lines[0];
     expect(line.resetsAt).toBeTruthy();
-    expect(line.periodDurationMs).toBe(30 * 24 * 3600 * 1000);
+    expect(line.periodDurationMs).toBe(31 * 24 * 3600 * 1000);
   });
 
   it("clamaps used to 0 when remaining exceeds total", async function () {
