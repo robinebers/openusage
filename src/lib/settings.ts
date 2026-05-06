@@ -388,7 +388,10 @@ export async function saveUsageAlertThreshold(value: UsageAlertThreshold): Promi
 
 export async function loadUsageAlertCustomThreshold(): Promise<number | null> {
   const stored = await store.get<unknown>(USAGE_ALERT_CUSTOM_THRESHOLD_KEY);
-  if (typeof stored === "number" && Number.isFinite(stored)) return stored;
+  if (typeof stored === "number" && Number.isFinite(stored)) {
+    if (stored < 1 || stored > 99) return DEFAULT_USAGE_ALERT_CUSTOM_THRESHOLD;
+    return stored;
+  }
   return DEFAULT_USAGE_ALERT_CUSTOM_THRESHOLD;
 }
 
@@ -398,7 +401,8 @@ export async function saveUsageAlertCustomThreshold(value: number | null): Promi
     await store.save();
     return;
   }
-  await store.set(USAGE_ALERT_CUSTOM_THRESHOLD_KEY, value);
+  const clamped = Math.max(1, Math.min(99, Math.round(value)));
+  await store.set(USAGE_ALERT_CUSTOM_THRESHOLD_KEY, clamped);
   await store.save();
 }
 

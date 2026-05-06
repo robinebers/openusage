@@ -565,7 +565,16 @@ export function SettingsPage({
                   onChange={(e) => {
                     const raw = e.target.value
                     const next = raw === "" ? null : Number.parseInt(raw, 10)
-                    onUsageAlertCustomThresholdChange(Number.isFinite(next) ? next : null)
+                    if (next == null) {
+                      onUsageAlertCustomThresholdChange(null)
+                      return
+                    }
+                    if (!Number.isFinite(next)) {
+                      onUsageAlertCustomThresholdChange(null)
+                      return
+                    }
+                    const clamped = Math.max(1, Math.min(99, next))
+                    onUsageAlertCustomThresholdChange(clamped)
                   }}
                   className="flex h-9 w-20 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
                 />
