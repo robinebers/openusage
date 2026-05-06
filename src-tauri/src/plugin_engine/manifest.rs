@@ -110,6 +110,9 @@ fn load_single_plugin(
     let entry_script = std::fs::read_to_string(&canonical_entry_path)?;
 
     let icon_file_path = plugin_dir.join(&manifest.icon).canonicalize()?;
+    if !icon_file_path.starts_with(&canonical_plugin_dir) {
+        return Err("plugin icon must remain within plugin directory".into());
+    }
     let icon_bytes = std::fs::read(&icon_file_path)?;
     let icon_data_url = format!("data:image/svg+xml;base64,{}", STANDARD.encode(&icon_bytes));
 

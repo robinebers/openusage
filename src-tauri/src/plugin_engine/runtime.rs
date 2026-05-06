@@ -492,6 +492,7 @@ mod tests {
             plugin_dir: PathBuf::from("."),
             entry_script: entry_script.to_string(),
             icon_data_url: "data:image/svg+xml;base64,".to_string(),
+            icon_file_path: PathBuf::from("."),
         }
     }
 

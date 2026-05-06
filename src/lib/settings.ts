@@ -357,7 +357,7 @@ export async function saveStartOnLogin(value: boolean): Promise<void> {
 }
 
 export function isUsageAlertThreshold(value: unknown): value is UsageAlertThreshold {
-  return value === "custom" || (typeof value === "number" && [10, 20, 25, 30].includes(value));
+  return value === "custom" || (typeof value === "number" && [10, 20, 30].includes(value));
 }
 
 function isUsageAlertSound(value: unknown): value is UsageAlertSound {

@@ -58,11 +58,13 @@ export function useUsageAlert() {
         ...(iconFilePath
           ? { attachments: [{ id: "icon", url: convertFileSrc(iconFilePath) }] }
           : {}),
-      }).catch((error) => {
-        console.error("Failed to send usage alert notification:", error)
       })
-
-      notifiedMapRef.current[output.providerId] = true
+        .then(() => {
+          notifiedMapRef.current[output.providerId] = true
+        })
+        .catch((error) => {
+          console.error("Failed to send usage alert notification:", error)
+        })
     },
     [
       customUsageAlertThreshold,
