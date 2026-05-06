@@ -144,6 +144,7 @@ pub struct PluginMeta {
     pub id: String,
     pub name: String,
     pub icon_url: String,
+    pub icon_file_path: String,
     pub brand_color: Option<String>,
     pub lines: Vec<ManifestLineDto>,
     pub links: Vec<PluginLinkDto>,
@@ -439,6 +440,7 @@ fn list_plugins(state: tauri::State<'_, Mutex<AppState>>) -> Vec<PluginMeta> {
                 id: plugin.manifest.id,
                 name: plugin.manifest.name,
                 icon_url: plugin.icon_data_url,
+                icon_file_path: plugin.icon_file_path.to_string_lossy().to_string(),
                 brand_color: plugin.manifest.brand_color,
                 lines: plugin
                     .manifest
@@ -473,6 +475,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_aptabase::Builder::new("A-US-6435241436").build())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_nspanel::init())
         .plugin(

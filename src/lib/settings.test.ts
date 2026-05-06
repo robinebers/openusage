@@ -81,8 +81,8 @@ describe("settings", () => {
 
   it("normalizes order + disabled against known plugins", () => {
     const plugins: PluginMeta[] = [
-      { id: "a", name: "A", iconUrl: "", lines: [] },
-      { id: "b", name: "B", iconUrl: "", lines: [] },
+      { id: "a", name: "A", iconUrl: "", iconFilePath: "", lines: [], primaryCandidates: [] },
+      { id: "b", name: "B", iconUrl: "", iconFilePath: "", lines: [], primaryCandidates: [] },
     ]
     const normalized = normalizePluginSettings(
       { order: ["b", "b", "c"], disabled: ["c", "a"] },
@@ -93,9 +93,9 @@ describe("settings", () => {
 
   it("auto-disables new non-default plugins", () => {
     const plugins: PluginMeta[] = [
-      { id: "claude", name: "Claude", iconUrl: "", lines: [], primaryCandidates: [] },
-      { id: "copilot", name: "Copilot", iconUrl: "", lines: [], primaryCandidates: [] },
-      { id: "windsurf", name: "Windsurf", iconUrl: "", lines: [], primaryCandidates: [] },
+      { id: "claude", name: "Claude", iconUrl: "", iconFilePath: "", lines: [], primaryCandidates: [] },
+      { id: "copilot", name: "Copilot", iconUrl: "", iconFilePath: "", lines: [], primaryCandidates: [] },
+      { id: "windsurf", name: "Windsurf", iconUrl: "", iconFilePath: "", lines: [], primaryCandidates: [] },
     ]
     const result = normalizePluginSettings({ order: [], disabled: [] }, plugins)
     expect(result.order).toEqual(["claude", "copilot", "windsurf"])

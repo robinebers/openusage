@@ -3,7 +3,7 @@ import type { PluginOutput } from "@/lib/plugin-types"
 import type { PluginState } from "@/hooks/app/types"
 
 type UseProbeStateArgs = {
-  onProbeResult?: () => void
+  onProbeResult?: (output: PluginOutput) => void
 }
 
 export function useProbeState({ onProbeResult }: UseProbeStateArgs) {
@@ -84,7 +84,7 @@ export function useProbeState({ onProbeResult }: UseProbeStateArgs) {
         }
       })
 
-      onProbeResult?.()
+      onProbeResult?.(output)
     },
     [getErrorMessage, onProbeResult]
   )
