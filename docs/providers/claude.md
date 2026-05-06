@@ -12,7 +12,6 @@
 - **Utilization:** integer percentage (0-100)
 - **Credits:** cents (divide by 100 for dollars)
 - **Timestamps:** ISO 8601 (response), unix milliseconds (credentials file)
-- **Peak hours status:** supplemental best-effort data from PromoClock's public API; does not affect Claude usage math
 
 ## Endpoints
 
@@ -59,18 +58,6 @@ Returns rate limit windows and optional extra credits.
 ```
 
 All windows are enforced simultaneously — hitting any limit throttles the user.
-
-## Supplemental Peak Hours Status
-
-OpenUsage also augments the Claude card with PromoClock peak/off-peak status:
-
-- **Endpoint:** `GET https://promoclock.co/api/status`
-- **Auth:** none
-- **Fields used:** `isPeak`, `isOffPeak`, `isWeekend`, `status` (fallback)
-- **UI mapping:** binary Peak / Off-Peak badge (weekend is treated as off-peak)
-- **Failure mode:** ignored on network, HTTP, or payload errors; Claude usage lines still render normally
-
-This is informational only. PromoClock is an independent public service, not an official Anthropic API.
 
 ## Authentication
 
