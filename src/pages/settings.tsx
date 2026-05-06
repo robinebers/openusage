@@ -39,13 +39,7 @@ import {
 } from "@/lib/settings";
 import type { TraySettingsPreview } from "@/hooks/app/use-tray-icon";
 import { cn } from "@/lib/utils";
-
-async function sendNotificationAsync(payload: Parameters<
-  typeof import("@tauri-apps/plugin-notification").sendNotification
->[0]) {
-  const { sendNotification } = await import("@tauri-apps/plugin-notification")
-  return sendNotification(payload)
-}
+import { sendNotificationAsync } from "@/lib/notification";
 
 interface PluginConfig {
   id: string;

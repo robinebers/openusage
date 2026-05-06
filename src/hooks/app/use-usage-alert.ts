@@ -1,15 +1,9 @@
 import { useCallback, useRef } from "react"
 import { convertFileSrc } from "@tauri-apps/api/core"
 import type { PluginOutput } from "@/lib/plugin-types"
+import { sendNotificationAsync } from "@/lib/notification"
 import { useAppPluginStore } from "@/stores/app-plugin-store"
 import { useAppPreferencesStore } from "@/stores/app-preferences-store"
-
-async function sendNotificationAsync(payload: Parameters<
-  typeof import("@tauri-apps/plugin-notification").sendNotification
->[0]) {
-  const { sendNotification } = await import("@tauri-apps/plugin-notification")
-  return sendNotification(payload)
-}
 
 export function useUsageAlert() {
   const {
@@ -63,6 +57,7 @@ export function useUsageAlert() {
           notifiedMapRef.current[output.providerId] = true
         })
         .catch((error) => {
+          notifiedMapRef.current[output.providerId] = true
           console.error("Failed to send usage alert notification:", error)
         })
     },
