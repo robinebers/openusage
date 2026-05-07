@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "fireworks-ai",
+  "name": "Fireworks AI",
+  "version": "0.0.1",
+  "entry": "plugin.js",
+  "icon": "icon.svg",
+  "brandColor": "#5019C5",
+  "lines": [
+    { "type": "text", "label": "Serverless usage", "scope": "overview" },
+    { "type": "text", "label": "Prompt tokens", "scope": "overview" },
+    { "type": "text", "label": "Generated tokens", "scope": "overview" },
+    { "type": "text", "label": "Month spend", "scope": "overview" },
+    { "type": "text", "label": "Budget", "scope": "detail" },
+    { "type": "badge", "label": "Status", "scope": "detail" }
+  ]
+}

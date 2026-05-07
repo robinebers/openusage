@@ -83,6 +83,9 @@ export const makeCtx = () => {
       ccusage: {
         query: vi.fn(() => null),
       },
+      fireworks: {
+        exportBillingMetrics: vi.fn(() => ({ status: "unavailable" })),
+      },
       log: {
         trace: vi.fn(),
         debug: vi.fn(),
