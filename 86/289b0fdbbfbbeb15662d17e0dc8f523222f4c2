@@ -1,0 +1,27 @@
+src-tauri/Cargo.toml
+  s_057c28a52a370b::t_b0268e14e321d1 3
+src-tauri/Cargo.lock
+  ai_agent 3177
+package.json
+  s_057c28a52a370b::t_9dfac419fd7f0b 4
+src-tauri/tauri.conf.json
+  s_057c28a52a370b::t_2a63f64f739460 4
+CHANGELOG.md
+  s_057c28a52a370b::t_758bf00f0e7da8 3-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "86289b0fdbbfbbeb15662d17e0dc8f523222f4c2",
+  "prompts": {},
+  "sessions": {
+    "s_057c28a52a370b": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "441c2cba-9d3c-40b9-9832-ec5f4aeb2418",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Robin Ebers <robin.ebers@gmail.com>"
+    }
+  }
+}
