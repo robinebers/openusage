@@ -7,9 +7,7 @@ const {
   saveAutoUpdateIntervalMock,
   saveGlobalShortcutMock,
   saveStartOnLoginMock,
-  trackMock,
 } = vi.hoisted(() => ({
-  trackMock: vi.fn(),
   getEnabledPluginIdsMock: vi.fn(),
   saveAutoUpdateIntervalMock: vi.fn(),
   saveGlobalShortcutMock: vi.fn(),
@@ -19,10 +17,6 @@ const {
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: invokeMock,
-}))
-
-vi.mock("@/lib/analytics", () => ({
-  track: trackMock,
 }))
 
 vi.mock("@/lib/settings", () => ({
@@ -36,7 +30,6 @@ import { useSettingsSystemActions } from "@/hooks/app/use-settings-system-action
 
 describe("useSettingsSystemActions", () => {
   beforeEach(() => {
-    trackMock.mockReset()
     getEnabledPluginIdsMock.mockReset()
     saveAutoUpdateIntervalMock.mockReset()
     saveGlobalShortcutMock.mockReset()
@@ -72,7 +65,6 @@ describe("useSettingsSystemActions", () => {
       result.current.handleAutoUpdateIntervalChange(15)
     })
 
-    expect(trackMock).toHaveBeenCalledWith("setting_changed", { setting: "auto_refresh", value: "15" })
     expect(setAutoUpdateInterval).toHaveBeenCalledWith(15)
     expect(setAutoUpdateNextAt).toHaveBeenCalledWith(910_000)
     expect(saveAutoUpdateIntervalMock).toHaveBeenCalledWith(15)
@@ -119,15 +111,6 @@ describe("useSettingsSystemActions", () => {
     act(() => {
       result.current.handleGlobalShortcutChange("CommandOrControl+Shift+O")
       result.current.handleStartOnLoginChange(true)
-    })
-
-    expect(trackMock).toHaveBeenCalledWith("setting_changed", {
-      setting: "global_shortcut",
-      value: "CommandOrControl+Shift+O",
-    })
-    expect(trackMock).toHaveBeenCalledWith("setting_changed", {
-      setting: "start_on_login",
-      value: "true",
     })
 
     expect(setGlobalShortcut).toHaveBeenCalledWith("CommandOrControl+Shift+O")

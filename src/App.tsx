@@ -11,7 +11,6 @@ import { useSettingsSystemActions } from "@/hooks/app/use-settings-system-action
 import { useSettingsTheme } from "@/hooks/app/use-settings-theme"
 import { useTrayIcon } from "@/hooks/app/use-tray-icon"
 import { useUsageAlert } from "@/hooks/app/use-usage-alert"
-import { track } from "@/lib/analytics"
 import { REFRESH_COOLDOWN_MS, savePluginSettings } from "@/lib/settings"
 import { type PluginContextAction } from "@/components/side-nav"
 import type { PluginOutput } from "@/lib/plugin-types"
@@ -221,7 +220,6 @@ function App() {
       const alreadyDisabled = currentSettings.disabled.includes(pluginId)
       if (alreadyDisabled) return
 
-      track("provider_toggled", { provider_id: pluginId, enabled: "false" })
       const nextSettings = {
         ...currentSettings,
         disabled: [...currentSettings.disabled, pluginId],

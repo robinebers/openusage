@@ -13,7 +13,6 @@
   "lines": [
     { "type": "progress", "label": "Session", "scope": "overview", "primaryOrder": 1 },
     { "type": "progress", "label": "Weekly", "scope": "overview" },
-    { "type": "badge", "label": "Peak Hours", "scope": "overview" },
     { "type": "progress", "label": "Sonnet", "scope": "detail" },
     { "type": "progress", "label": "Claude Design", "scope": "detail" },
     { "type": "progress", "label": "Extra usage spent", "scope": "detail" },
