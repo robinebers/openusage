@@ -8,8 +8,17 @@ import {
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
   DEFAULT_START_ON_LOGIN,
   DEFAULT_THEME_MODE,
+  DEFAULT_USAGE_ALERT_CUSTOM_THRESHOLD,
+  DEFAULT_USAGE_ALERT_ENABLED,
+  DEFAULT_USAGE_ALERT_SOUND,
+  DEFAULT_USAGE_ALERT_THRESHOLD,
+  USAGE_ALERT_CUSTOM_THRESHOLD_KEY,
+  USAGE_ALERT_ENABLED_KEY,
+  USAGE_ALERT_SOUND_KEY,
+  USAGE_ALERT_THRESHOLD_KEY,
   arePluginSettingsEqual,
   getEnabledPluginIds,
+  isUsageAlertThreshold,
   loadAutoUpdateInterval,
   loadDisplayMode,
   loadGlobalShortcut,
@@ -17,6 +26,10 @@ import {
   loadPluginSettings,
   loadResetTimerDisplayMode,
   loadStartOnLogin,
+  loadUsageAlertCustomThreshold,
+  loadUsageAlertEnabled,
+  loadUsageAlertSound,
+  loadUsageAlertThreshold,
   migrateLegacyTraySettings,
   loadThemeMode,
   normalizePluginSettings,
@@ -28,6 +41,10 @@ import {
   saveResetTimerDisplayMode,
   saveStartOnLogin,
   saveThemeMode,
+  saveUsageAlertCustomThreshold,
+  saveUsageAlertEnabled,
+  saveUsageAlertSound,
+  saveUsageAlertThreshold,
 } from "@/lib/settings"
 import type { PluginMeta } from "@/lib/plugin-types"
 
@@ -81,8 +98,8 @@ describe("settings", () => {
 
   it("normalizes order + disabled against known plugins", () => {
     const plugins: PluginMeta[] = [
-      { id: "a", name: "A", iconUrl: "", lines: [] },
-      { id: "b", name: "B", iconUrl: "", lines: [] },
+      { id: "a", name: "A", iconUrl: "", iconFilePath: "", lines: [], primaryCandidates: [] },
+      { id: "b", name: "B", iconUrl: "", iconFilePath: "", lines: [], primaryCandidates: [] },
     ]
     const normalized = normalizePluginSettings(
       { order: ["b", "b", "c"], disabled: ["c", "a"] },
@@ -93,9 +110,9 @@ describe("settings", () => {
 
   it("auto-disables new non-default plugins", () => {
     const plugins: PluginMeta[] = [
-      { id: "claude", name: "Claude", iconUrl: "", lines: [], primaryCandidates: [] },
-      { id: "copilot", name: "Copilot", iconUrl: "", lines: [], primaryCandidates: [] },
-      { id: "windsurf", name: "Windsurf", iconUrl: "", lines: [], primaryCandidates: [] },
+      { id: "claude", name: "Claude", iconUrl: "", iconFilePath: "", lines: [], primaryCandidates: [] },
+      { id: "copilot", name: "Copilot", iconUrl: "", iconFilePath: "", lines: [], primaryCandidates: [] },
+      { id: "windsurf", name: "Windsurf", iconUrl: "", iconFilePath: "", lines: [], primaryCandidates: [] },
     ]
     const result = normalizePluginSettings({ order: [], disabled: [] }, plugins)
     expect(result.order).toEqual(["claude", "copilot", "windsurf"])
@@ -338,5 +355,114 @@ describe("settings", () => {
   it("falls back to default for invalid start on login value", async () => {
     storeState.set("startOnLogin", "invalid")
     await expect(loadStartOnLogin()).resolves.toBe(DEFAULT_START_ON_LOGIN)
+  })
+
+  describe("isUsageAlertThreshold", () => {
+    it("returns true for valid thresholds", () => {
+      expect(isUsageAlertThreshold(10)).toBe(true)
+      expect(isUsageAlertThreshold(20)).toBe(true)
+      expect(isUsageAlertThreshold(30)).toBe(true)
+      expect(isUsageAlertThreshold("custom")).toBe(true)
+    })
+
+    it("returns false for invalid thresholds", () => {
+      expect(isUsageAlertThreshold(25)).toBe(false)
+      expect(isUsageAlertThreshold(0)).toBe(false)
+      expect(isUsageAlertThreshold(-1)).toBe(false)
+      expect(isUsageAlertThreshold("bad")).toBe(false)
+      expect(isUsageAlertThreshold(null)).toBe(false)
+    })
+  })
+
+  describe("loadUsageAlertEnabled / saveUsageAlertEnabled", () => {
+    it("loads default when missing", async () => {
+      await expect(loadUsageAlertEnabled()).resolves.toBe(DEFAULT_USAGE_ALERT_ENABLED)
+    })
+
+    it("round-trips true/false", async () => {
+      await saveUsageAlertEnabled(true)
+      await expect(loadUsageAlertEnabled()).resolves.toBe(true)
+
+      await saveUsageAlertEnabled(false)
+      await expect(loadUsageAlertEnabled()).resolves.toBe(false)
+    })
+  })
+
+  describe("loadUsageAlertThreshold / saveUsageAlertThreshold", () => {
+    it("loads default when missing", async () => {
+      await expect(loadUsageAlertThreshold()).resolves.toBe(DEFAULT_USAGE_ALERT_THRESHOLD)
+    })
+
+    it("falls back to default for invalid stored value", async () => {
+      storeState.set(USAGE_ALERT_THRESHOLD_KEY, "invalid")
+      await expect(loadUsageAlertThreshold()).resolves.toBe(DEFAULT_USAGE_ALERT_THRESHOLD)
+    })
+
+    it("round-trips", async () => {
+      await saveUsageAlertThreshold(10)
+      await expect(loadUsageAlertThreshold()).resolves.toBe(10)
+
+      await saveUsageAlertThreshold("custom")
+      await expect(loadUsageAlertThreshold()).resolves.toBe("custom")
+    })
+  })
+
+  describe("loadUsageAlertCustomThreshold / saveUsageAlertCustomThreshold", () => {
+    it("loads default when missing", async () => {
+      await expect(loadUsageAlertCustomThreshold()).resolves.toBe(DEFAULT_USAGE_ALERT_CUSTOM_THRESHOLD)
+    })
+
+    it("falls back to default for out-of-range stored values", async () => {
+      storeState.set(USAGE_ALERT_CUSTOM_THRESHOLD_KEY, 0)
+      await expect(loadUsageAlertCustomThreshold()).resolves.toBe(DEFAULT_USAGE_ALERT_CUSTOM_THRESHOLD)
+
+      storeState.set(USAGE_ALERT_CUSTOM_THRESHOLD_KEY, -1)
+      await expect(loadUsageAlertCustomThreshold()).resolves.toBe(DEFAULT_USAGE_ALERT_CUSTOM_THRESHOLD)
+
+      storeState.set(USAGE_ALERT_CUSTOM_THRESHOLD_KEY, 100)
+      await expect(loadUsageAlertCustomThreshold()).resolves.toBe(DEFAULT_USAGE_ALERT_CUSTOM_THRESHOLD)
+    })
+
+    it("loads valid stored values", async () => {
+      storeState.set(USAGE_ALERT_CUSTOM_THRESHOLD_KEY, 1)
+      await expect(loadUsageAlertCustomThreshold()).resolves.toBe(1)
+
+      storeState.set(USAGE_ALERT_CUSTOM_THRESHOLD_KEY, 99)
+      await expect(loadUsageAlertCustomThreshold()).resolves.toBe(99)
+    })
+
+    it("clamps on save", async () => {
+      await saveUsageAlertCustomThreshold(0)
+      expect(storeState.get(USAGE_ALERT_CUSTOM_THRESHOLD_KEY)).toBe(1)
+
+      await saveUsageAlertCustomThreshold(100)
+      expect(storeState.get(USAGE_ALERT_CUSTOM_THRESHOLD_KEY)).toBe(99)
+
+      await saveUsageAlertCustomThreshold(1.7)
+      expect(storeState.get(USAGE_ALERT_CUSTOM_THRESHOLD_KEY)).toBe(2)
+    })
+
+    it("deletes key when saving null", async () => {
+      storeState.set(USAGE_ALERT_CUSTOM_THRESHOLD_KEY, 12)
+      await saveUsageAlertCustomThreshold(null)
+      expect(storeState.has(USAGE_ALERT_CUSTOM_THRESHOLD_KEY)).toBe(false)
+      expect(storeDeleteMock).toHaveBeenCalledWith(USAGE_ALERT_CUSTOM_THRESHOLD_KEY)
+    })
+  })
+
+  describe("loadUsageAlertSound / saveUsageAlertSound", () => {
+    it("loads default when missing", async () => {
+      await expect(loadUsageAlertSound()).resolves.toBe(DEFAULT_USAGE_ALERT_SOUND)
+    })
+
+    it("falls back to default for invalid stored value", async () => {
+      storeState.set(USAGE_ALERT_SOUND_KEY, "invalid")
+      await expect(loadUsageAlertSound()).resolves.toBe(DEFAULT_USAGE_ALERT_SOUND)
+    })
+
+    it("round-trips", async () => {
+      await saveUsageAlertSound("Basso")
+      await expect(loadUsageAlertSound()).resolves.toBe("Basso")
+    })
   })
 })

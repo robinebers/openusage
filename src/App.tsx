@@ -10,8 +10,10 @@ import { useSettingsPluginList } from "@/hooks/app/use-settings-plugin-list"
 import { useSettingsSystemActions } from "@/hooks/app/use-settings-system-actions"
 import { useSettingsTheme } from "@/hooks/app/use-settings-theme"
 import { useTrayIcon } from "@/hooks/app/use-tray-icon"
+import { useUsageAlert } from "@/hooks/app/use-usage-alert"
 import { REFRESH_COOLDOWN_MS, savePluginSettings } from "@/lib/settings"
 import { type PluginContextAction } from "@/components/side-nav"
+import type { PluginOutput } from "@/lib/plugin-types"
 import { useAppPluginStore } from "@/stores/app-plugin-store"
 import { useAppPreferencesStore } from "@/stores/app-preferences-store"
 import { useAppUiStore } from "@/stores/app-ui-store"
@@ -57,6 +59,10 @@ function App() {
     setResetTimerDisplayMode,
     setGlobalShortcut,
     setStartOnLogin,
+    setUsageAlertEnabled,
+    setUsageAlertThreshold,
+    setCustomUsageAlertThreshold,
+    setUsageAlertSound,
   } = useAppPreferencesStore(
     useShallow((state) => ({
       autoUpdateInterval: state.autoUpdateInterval,
@@ -71,13 +77,19 @@ function App() {
       setResetTimerDisplayMode: state.setResetTimerDisplayMode,
       setGlobalShortcut: state.setGlobalShortcut,
       setStartOnLogin: state.setStartOnLogin,
+      setUsageAlertEnabled: state.setUsageAlertEnabled,
+      setUsageAlertThreshold: state.setUsageAlertThreshold,
+      setCustomUsageAlertThreshold: state.setCustomUsageAlertThreshold,
+      setUsageAlertSound: state.setUsageAlertSound,
     }))
   )
 
   const scheduleProbeTrayUpdateRef = useRef<() => void>(() => {})
-  const handleProbeResult = useCallback(() => {
+  const { checkUsageAlert } = useUsageAlert()
+  const handleProbeResult = useCallback((output: PluginOutput) => {
     scheduleProbeTrayUpdateRef.current()
-  }, [])
+    checkUsageAlert(output)
+  }, [checkUsageAlert])
 
   const {
     pluginStates,
@@ -119,6 +131,10 @@ function App() {
     setResetTimerDisplayMode,
     setGlobalShortcut,
     setStartOnLogin,
+    setUsageAlertEnabled,
+    setUsageAlertThreshold,
+    setCustomUsageAlertThreshold,
+    setUsageAlertSound,
     setLoadingForPlugins,
     setErrorForPlugins,
     startBatch,
@@ -132,12 +148,20 @@ function App() {
     handleResetTimerDisplayModeChange,
     handleResetTimerDisplayModeToggle,
     handleMenubarIconStyleChange,
+    handleUsageAlertEnabledChange,
+    handleUsageAlertThresholdChange,
+    handleUsageAlertCustomThresholdChange,
+    handleUsageAlertSoundChange,
   } = useSettingsDisplayActions({
     setThemeMode,
     setDisplayMode,
     resetTimerDisplayMode,
     setResetTimerDisplayMode,
     setMenubarIconStyle,
+    setUsageAlertEnabled,
+    setUsageAlertThreshold,
+    setCustomUsageAlertThreshold,
+    setUsageAlertSound,
     scheduleTrayIconUpdate,
   })
 
@@ -248,6 +272,10 @@ function App() {
         traySettingsPreview,
         onGlobalShortcutChange: handleGlobalShortcutChange,
         onStartOnLoginChange: handleStartOnLoginChange,
+        onUsageAlertEnabledChange: handleUsageAlertEnabledChange,
+        onUsageAlertThresholdChange: handleUsageAlertThresholdChange,
+        onUsageAlertCustomThresholdChange: handleUsageAlertCustomThresholdChange,
+        onUsageAlertSoundChange: handleUsageAlertSoundChange,
       }}
     />
   )

@@ -42,6 +42,7 @@ pub struct LoadedPlugin {
     pub plugin_dir: PathBuf,
     pub entry_script: String,
     pub icon_data_url: String,
+    pub icon_file_path: PathBuf,
 }
 
 pub fn load_plugins_from_dir(plugins_dir: &std::path::Path) -> Vec<LoadedPlugin> {
@@ -108,8 +109,11 @@ fn load_single_plugin(
 
     let entry_script = std::fs::read_to_string(&canonical_entry_path)?;
 
-    let icon_file = plugin_dir.join(&manifest.icon);
-    let icon_bytes = std::fs::read(&icon_file)?;
+    let icon_file_path = plugin_dir.join(&manifest.icon).canonicalize()?;
+    if !icon_file_path.starts_with(&canonical_plugin_dir) {
+        return Err("plugin icon must remain within plugin directory".into());
+    }
+    let icon_bytes = std::fs::read(&icon_file_path)?;
     let icon_data_url = format!("data:image/svg+xml;base64,{}", STANDARD.encode(&icon_bytes));
 
     Ok(LoadedPlugin {
@@ -117,6 +121,7 @@ fn load_single_plugin(
         plugin_dir: plugin_dir.to_path_buf(),
         entry_script,
         icon_data_url,
+        icon_file_path,
     })
 }
 

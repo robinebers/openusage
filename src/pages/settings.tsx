@@ -26,15 +26,20 @@ import {
   MENUBAR_ICON_STYLE_OPTIONS,
   RESET_TIMER_DISPLAY_OPTIONS,
   THEME_OPTIONS,
+  USAGE_ALERT_SOUND_OPTIONS,
+  USAGE_ALERT_THRESHOLD_OPTIONS,
   type AutoUpdateIntervalMinutes,
   type DisplayMode,
   type GlobalShortcut,
   type MenubarIconStyle,
   type ResetTimerDisplayMode,
   type ThemeMode,
+  type UsageAlertSound,
+  type UsageAlertThreshold,
 } from "@/lib/settings";
 import type { TraySettingsPreview } from "@/hooks/app/use-tray-icon";
 import { cn } from "@/lib/utils";
+import { sendNotificationAsync } from "@/lib/notification";
 
 interface PluginConfig {
   id: string;
@@ -275,6 +280,14 @@ interface SettingsPageProps {
   onGlobalShortcutChange: (value: GlobalShortcut) => void;
   startOnLogin: boolean;
   onStartOnLoginChange: (value: boolean) => void;
+  usageAlertEnabled: boolean;
+  onUsageAlertEnabledChange: (value: boolean) => void;
+  usageAlertThreshold: UsageAlertThreshold;
+  onUsageAlertThresholdChange: (value: UsageAlertThreshold) => void;
+  customUsageAlertThreshold: number | null;
+  onUsageAlertCustomThresholdChange: (value: number | null) => void;
+  usageAlertSound: UsageAlertSound;
+  onUsageAlertSoundChange: (value: UsageAlertSound) => void;
 }
 
 export function SettingsPage({
@@ -296,6 +309,14 @@ export function SettingsPage({
   onGlobalShortcutChange,
   startOnLogin,
   onStartOnLoginChange,
+  usageAlertEnabled,
+  onUsageAlertEnabledChange,
+  usageAlertThreshold,
+  onUsageAlertThresholdChange,
+  customUsageAlertThreshold,
+  onUsageAlertCustomThresholdChange,
+  usageAlertSound,
+  onUsageAlertSoundChange,
 }: SettingsPageProps) {
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -488,6 +509,105 @@ export function SettingsPage({
           />
           Start on login
         </label>
+      </section>
+      <section>
+        <h3 className="text-lg font-semibold mb-0">Usage Alerts</h3>
+        <p className="text-sm text-muted-foreground mb-2">
+          Get notified before a session limit resets
+        </p>
+        <label className="flex items-center gap-2 text-sm select-none text-foreground">
+          <Checkbox
+            key={`usage-alert-enabled-${usageAlertEnabled}`}
+            checked={usageAlertEnabled}
+            onCheckedChange={(checked) => onUsageAlertEnabledChange(checked === true)}
+          />
+          Enable alerts <span className="text-muted-foreground">(Claude, Codex, Kimi, MiniMax, OpenCode Go, Zai)</span>
+        </label>
+
+        {usageAlertEnabled && (
+          <div className="mt-2 space-y-2">
+            <div className="bg-muted/50 rounded-lg p-1">
+              <div className="flex gap-1" role="radiogroup" aria-label="Usage alert threshold">
+                {USAGE_ALERT_THRESHOLD_OPTIONS.map((option) => {
+                  const isActive = option.value === usageAlertThreshold
+                  return (
+                    <Button
+                      key={String(option.value)}
+                      type="button"
+                      role="radio"
+                      aria-checked={isActive}
+                      variant={isActive ? "default" : "outline"}
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => onUsageAlertThresholdChange(option.value)}
+                    >
+                      {option.label}
+                    </Button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {usageAlertThreshold === "custom" && (
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm text-muted-foreground">Custom threshold (%)</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={99}
+                  value={customUsageAlertThreshold ?? ""}
+                  onChange={(e) => {
+                    const raw = e.target.value
+                    const next = raw === "" ? null : Number.parseInt(raw, 10)
+                    if (next == null) {
+                      onUsageAlertCustomThresholdChange(null)
+                      return
+                    }
+                    if (!Number.isFinite(next)) {
+                      onUsageAlertCustomThresholdChange(null)
+                      return
+                    }
+                    const clamped = Math.max(1, Math.min(99, next))
+                    onUsageAlertCustomThresholdChange(clamped)
+                  }}
+                  className="flex h-9 w-20 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                />
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm text-muted-foreground">Sound</span>
+              <select
+                value={usageAlertSound}
+                onChange={(e) => onUsageAlertSoundChange(e.target.value as UsageAlertSound)}
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+              >
+                {USAGE_ALERT_SOUND_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <Button
+              type="button"
+              className="w-full"
+              onClick={() => {
+                void sendNotificationAsync({
+                  title: "Usage Alert Test",
+                  body: "Notifications are working correctly.",
+                  sound: usageAlertSound,
+                  attachments: [{ id: "icon", url: "asset:///icon.png" }],
+                }).catch((error) => {
+                  console.error("Failed to send test notification:", error)
+                })
+              }}
+            >
+              Send Test Notification
+            </Button>
+          </div>
+        )}
       </section>
       <section>
         <h3 className="text-lg font-semibold mb-0">Plugins</h3>
