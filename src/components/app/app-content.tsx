@@ -35,6 +35,7 @@ export type AppContentActionProps = {
   traySettingsPreview: TraySettingsPreview
   onGlobalShortcutChange: (value: GlobalShortcut) => void
   onStartOnLoginChange: (value: boolean) => void
+  onShowAccountIdentityChange: (value: boolean) => void
 }
 
 export type AppContentProps = AppContentDerivedProps & AppContentActionProps
@@ -55,6 +56,7 @@ export function AppContent({
   traySettingsPreview,
   onGlobalShortcutChange,
   onStartOnLoginChange,
+  onShowAccountIdentityChange,
 }: AppContentProps) {
   const { activeView } = useAppUiStore(
     useShallow((state) => ({
@@ -70,6 +72,7 @@ export function AppContent({
     globalShortcut,
     themeMode,
     startOnLogin,
+    showAccountIdentity,
   } = useAppPreferencesStore(
     useShallow((state) => ({
       displayMode: state.displayMode,
@@ -79,6 +82,7 @@ export function AppContent({
       globalShortcut: state.globalShortcut,
       themeMode: state.themeMode,
       startOnLogin: state.startOnLogin,
+      showAccountIdentity: state.showAccountIdentity,
     }))
   )
 
@@ -90,6 +94,7 @@ export function AppContent({
         displayMode={displayMode}
         resetTimerDisplayMode={resetTimerDisplayMode}
         onResetTimerDisplayModeToggle={onResetTimerDisplayModeToggle}
+        showAccountIdentity={showAccountIdentity}
       />
     )
   }
@@ -115,6 +120,8 @@ export function AppContent({
         onGlobalShortcutChange={onGlobalShortcutChange}
         startOnLogin={startOnLogin}
         onStartOnLoginChange={onStartOnLoginChange}
+        showAccountIdentity={showAccountIdentity}
+        onShowAccountIdentityChange={onShowAccountIdentityChange}
       />
     )
   }
@@ -130,6 +137,7 @@ export function AppContent({
       displayMode={displayMode}
       resetTimerDisplayMode={resetTimerDisplayMode}
       onResetTimerDisplayModeToggle={onResetTimerDisplayModeToggle}
+      showAccountIdentity={showAccountIdentity}
     />
   )
 }

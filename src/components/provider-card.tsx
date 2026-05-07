@@ -33,6 +33,7 @@ interface ProviderCardProps {
   displayMode: DisplayMode
   resetTimerDisplayMode?: ResetTimerDisplayMode
   onResetTimerDisplayModeToggle?: () => void
+  showAccountIdentity?: boolean
 }
 
 const PACE_VISUALS: Record<PaceStatus, { dotClass: string }> = {
@@ -107,6 +108,7 @@ export function ProviderCard({
   displayMode,
   resetTimerDisplayMode = "relative",
   onResetTimerDisplayModeToggle,
+  showAccountIdentity = true,
 }: ProviderCardProps) {
   const cooldownRemainingMs = useMemo(() => {
     if (!lastManualRefreshAt) return 0
@@ -162,6 +164,20 @@ export function ProviderCard({
             (link.url.startsWith("https://") || link.url.startsWith("http://"))
         ),
     [links]
+  )
+
+  const accountIdentity = useMemo(() => {
+    const accountLine = filteredLines.find(
+      (line) => line.type === "text" && line.label.toLowerCase() === "account"
+    )
+    return accountLine?.type === "text" ? accountLine.value.trim() : ""
+  }, [filteredLines])
+
+  const displayLines = useMemo(
+    () => filteredLines.filter(
+      (line) => !(line.type === "text" && line.label.toLowerCase() === "account")
+    ),
+    [filteredLines]
   )
 
   // Format remaining cooldown time as "Xm Ys"
@@ -247,15 +263,26 @@ export function ProviderCard({
               )
             )}
           </div>
-          {plan && (
-            <Badge
-              variant="outline"
-              className="truncate min-w-0 max-w-[40%]"
-              title={plan}
-            >
-              {plan}
-            </Badge>
-          )}
+          <div className="ml-2 flex min-w-0 max-w-[55%] items-center justify-end gap-1.5">
+            {showAccountIdentity && accountIdentity && (
+              <Badge
+                variant="secondary"
+                className="truncate min-w-0"
+                title={accountIdentity}
+              >
+                {accountIdentity}
+              </Badge>
+            )}
+            {plan && (
+              <Badge
+                variant="outline"
+                className="shrink-0 truncate max-w-[45%]"
+                title={plan}
+              >
+                {plan}
+              </Badge>
+            )}
+          </div>
         </div>
         {visibleLinks.length > 0 && (
           <div className="mb-2 -mt-0.5 flex flex-wrap gap-1.5">
@@ -302,7 +329,7 @@ export function ProviderCard({
 
         {hasStaleData && (
           <div className="space-y-4">
-            {groupLinesByType(filteredLines).map((group, gi) =>
+            {groupLinesByType(displayLines).map((group, gi) =>
               group.kind === "text" ? (
                 <div key={gi} className="space-y-1">
                   {group.lines.map((line, li) => (

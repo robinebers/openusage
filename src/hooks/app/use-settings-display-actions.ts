@@ -3,6 +3,7 @@ import {
   saveDisplayMode,
   saveMenubarIconStyle,
   saveResetTimerDisplayMode,
+  saveShowAccountIdentity,
   saveThemeMode,
   type DisplayMode,
   type MenubarIconStyle,
@@ -17,6 +18,7 @@ type UseSettingsDisplayActionsArgs = {
   setDisplayMode: (value: DisplayMode) => void
   resetTimerDisplayMode: ResetTimerDisplayMode
   setResetTimerDisplayMode: (value: ResetTimerDisplayMode) => void
+  setShowAccountIdentity: (value: boolean) => void
   setMenubarIconStyle: (value: MenubarIconStyle) => void
   scheduleTrayIconUpdate: ScheduleTrayIconUpdate
 }
@@ -26,6 +28,7 @@ export function useSettingsDisplayActions({
   setDisplayMode,
   resetTimerDisplayMode,
   setResetTimerDisplayMode,
+  setShowAccountIdentity,
   setMenubarIconStyle,
   scheduleTrayIconUpdate,
 }: UseSettingsDisplayActionsArgs) {
@@ -64,11 +67,20 @@ export function useSettingsDisplayActions({
     })
   }, [scheduleTrayIconUpdate, setMenubarIconStyle])
 
+  const handleShowAccountIdentityChange = useCallback((value: boolean) => {
+    track("setting_changed", { setting: "show_account_identity", value: String(value) })
+    setShowAccountIdentity(value)
+    void saveShowAccountIdentity(value).catch((error) => {
+      console.error("Failed to save account identity visibility:", error)
+    })
+  }, [setShowAccountIdentity])
+
   return {
     handleThemeModeChange,
     handleDisplayModeChange,
     handleResetTimerDisplayModeChange,
     handleResetTimerDisplayModeToggle,
     handleMenubarIconStyleChange,
+    handleShowAccountIdentityChange,
   }
 }

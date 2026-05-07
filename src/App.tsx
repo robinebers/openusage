@@ -57,6 +57,7 @@ function App() {
     setResetTimerDisplayMode,
     setGlobalShortcut,
     setStartOnLogin,
+    setShowAccountIdentity,
   } = useAppPreferencesStore(
     useShallow((state) => ({
       autoUpdateInterval: state.autoUpdateInterval,
@@ -71,6 +72,7 @@ function App() {
       setResetTimerDisplayMode: state.setResetTimerDisplayMode,
       setGlobalShortcut: state.setGlobalShortcut,
       setStartOnLogin: state.setStartOnLogin,
+      setShowAccountIdentity: state.setShowAccountIdentity,
     }))
   )
 
@@ -119,6 +121,7 @@ function App() {
     setResetTimerDisplayMode,
     setGlobalShortcut,
     setStartOnLogin,
+    setShowAccountIdentity,
     setLoadingForPlugins,
     setErrorForPlugins,
     startBatch,
@@ -132,11 +135,13 @@ function App() {
     handleResetTimerDisplayModeChange,
     handleResetTimerDisplayModeToggle,
     handleMenubarIconStyleChange,
+    handleShowAccountIdentityChange,
   } = useSettingsDisplayActions({
     setThemeMode,
     setDisplayMode,
     resetTimerDisplayMode,
     setResetTimerDisplayMode,
+    setShowAccountIdentity,
     setMenubarIconStyle,
     scheduleTrayIconUpdate,
   })
@@ -245,6 +250,7 @@ function App() {
         onResetTimerDisplayModeChange: handleResetTimerDisplayModeChange,
         onResetTimerDisplayModeToggle: handleResetTimerDisplayModeToggle,
         onMenubarIconStyleChange: handleMenubarIconStyleChange,
+        onShowAccountIdentityChange: handleShowAccountIdentityChange,
         traySettingsPreview,
         onGlobalShortcutChange: handleGlobalShortcutChange,
         onStartOnLoginChange: handleStartOnLoginChange,

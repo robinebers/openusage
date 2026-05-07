@@ -6,6 +6,11 @@ const loadPlugin = async () => {
   return globalThis.__openusage_plugin
 }
 
+const jwtWithPayload = (payload) => {
+  const encode = (value) => Buffer.from(JSON.stringify(value), "utf8").toString("base64url")
+  return encode({ alg: "none" }) + "." + encode(payload) + "."
+}
+
 describe("codex plugin", () => {
   beforeEach(() => {
     delete globalThis.__openusage_plugin
@@ -189,7 +194,12 @@ describe("codex plugin", () => {
     const ctx = makeCtx()
     const authPath = "~/.codex/auth.json"
     ctx.host.fs.writeText(authPath, JSON.stringify({
-      tokens: { access_token: "old", refresh_token: "refresh", account_id: "acc" },
+      tokens: {
+        access_token: "old",
+        refresh_token: "refresh",
+        account_id: "acc",
+        id_token: jwtWithPayload({ email: "dev@example.com" }),
+      },
       last_refresh: "2000-01-01T00:00:00.000Z",
     }))
     ctx.host.http.request.mockImplementation((opts) => {
@@ -218,9 +228,38 @@ describe("codex plugin", () => {
     expect(result.plan).toBe("Pro 20x")
     expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
     expect(result.lines.find((line) => line.label === "Weekly")).toBeTruthy()
+    expect(result.lines.find((line) => line.label === "Account")?.value).toBe("dev@example.com")
     const credits = result.lines.find((line) => line.label === "Credits")
     expect(credits).toBeTruthy()
     expect(credits.used).toBe(900)
+  })
+
+  it("uses account email from refreshed id token", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "old", refresh_token: "refresh", account_id: "acc" },
+      last_refresh: "2000-01-01T00:00:00.000Z",
+    }))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("oauth/token")) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            access_token: "new",
+            id_token: jwtWithPayload({ email: "fresh@example.com" }),
+          }),
+        }
+      }
+      return {
+        status: 200,
+        headers: { "x-codex-primary-used-percent": "25" },
+        bodyText: JSON.stringify({}),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Account")?.value).toBe("fresh@example.com")
   })
 
   it("maps prolite plan to Pro 5x", async () => {

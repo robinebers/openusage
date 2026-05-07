@@ -6,6 +6,7 @@ import {
   DEFAULT_MENUBAR_ICON_STYLE,
   DEFAULT_PLUGIN_SETTINGS,
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
+  DEFAULT_SHOW_ACCOUNT_IDENTITY,
   DEFAULT_START_ON_LOGIN,
   DEFAULT_THEME_MODE,
   arePluginSettingsEqual,
@@ -16,6 +17,7 @@ import {
   loadMenubarIconStyle,
   loadPluginSettings,
   loadResetTimerDisplayMode,
+  loadShowAccountIdentity,
   loadStartOnLogin,
   migrateLegacyTraySettings,
   loadThemeMode,
@@ -26,6 +28,7 @@ import {
   saveMenubarIconStyle,
   savePluginSettings,
   saveResetTimerDisplayMode,
+  saveShowAccountIdentity,
   saveStartOnLogin,
   saveThemeMode,
 } from "@/lib/settings"
@@ -338,5 +341,24 @@ describe("settings", () => {
   it("falls back to default for invalid start on login value", async () => {
     storeState.set("startOnLogin", "invalid")
     await expect(loadStartOnLogin()).resolves.toBe(DEFAULT_START_ON_LOGIN)
+  })
+
+  it("loads default account identity visibility when missing", async () => {
+    await expect(loadShowAccountIdentity()).resolves.toBe(DEFAULT_SHOW_ACCOUNT_IDENTITY)
+  })
+
+  it("loads stored account identity visibility", async () => {
+    storeState.set("showAccountIdentity", false)
+    await expect(loadShowAccountIdentity()).resolves.toBe(false)
+  })
+
+  it("saves account identity visibility", async () => {
+    await saveShowAccountIdentity(false)
+    await expect(loadShowAccountIdentity()).resolves.toBe(false)
+  })
+
+  it("falls back to default for invalid account identity visibility", async () => {
+    storeState.set("showAccountIdentity", "invalid")
+    await expect(loadShowAccountIdentity()).resolves.toBe(DEFAULT_SHOW_ACCOUNT_IDENTITY)
   })
 })

@@ -63,8 +63,16 @@ function createProps(): AppContentProps {
     onDisplayModeChange: vi.fn(),
     onResetTimerDisplayModeChange: vi.fn(),
     onResetTimerDisplayModeToggle: vi.fn(),
+    onMenubarIconStyleChange: vi.fn(),
+    traySettingsPreview: {
+      bars: [],
+      providerBars: [],
+      providerIconUrl: null,
+      providerPercentText: "",
+    },
     onGlobalShortcutChange: vi.fn(),
     onStartOnLoginChange: vi.fn(),
+    onShowAccountIdentityChange: vi.fn(),
   }
 }
 
@@ -91,6 +99,17 @@ describe("AppContent", () => {
 
     expect(screen.getByTestId("settings-page")).toBeInTheDocument()
     expect(settingsPageMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("passes account identity visibility to child pages", () => {
+    const prefs = useAppPreferencesStore.getState()
+    prefs.setShowAccountIdentity(false)
+
+    useAppUiStore.getState().setActiveView("settings")
+    render(<AppContent {...createProps()} />)
+    expect(settingsPageMock).toHaveBeenCalledWith(
+      expect.objectContaining({ showAccountIdentity: false })
+    )
   })
 
   it("passes retry callback for provider detail view", () => {

@@ -110,6 +110,90 @@ describe("ProviderCard", () => {
     expect(screen.getByText("342 credits")).toBeInTheDocument()
   })
 
+  it("shows account identity beside the plan badge", () => {
+    const { container } = render(
+      <ProviderCard
+        name="Codex"
+        plan="Plus"
+        displayMode="used"
+        lines={[
+          { type: "text", label: "Account", value: "dev@example.com" },
+        ]}
+      />
+    )
+
+    const header = container.querySelector("h2")?.parentElement?.parentElement
+    expect(header).toBeTruthy()
+    expect(within(header as HTMLElement).getByText("Plus")).toBeInTheDocument()
+    const account = within(header as HTMLElement).getByText("dev@example.com")
+    expect(account.closest("[title]")).toHaveAttribute("title", "dev@example.com")
+    expect(screen.getAllByText("dev@example.com")).toHaveLength(1)
+  })
+
+  it("hides detail-scoped account identity when filtered to overview", () => {
+    const { container } = render(
+      <ProviderCard
+        name="Codex"
+        plan="Plus"
+        displayMode="used"
+        scopeFilter="overview"
+        skeletonLines={[
+          { type: "progress", label: "Session", scope: "overview" },
+          { type: "text", label: "Account", scope: "detail" },
+        ]}
+        lines={[
+          { type: "progress", label: "Session", used: 25, limit: 100, format: { kind: "percent" } },
+          { type: "text", label: "Account", value: "dev@example.com" },
+        ]}
+      />
+    )
+
+    const header = container.querySelector("h2")?.parentElement?.parentElement
+    expect(header).toBeTruthy()
+    expect(within(header as HTMLElement).queryByText("dev@example.com")).toBeNull()
+    expect(screen.queryByText("Account")).toBeNull()
+  })
+
+  it("shows detail-scoped account identity in header on detail cards", () => {
+    const { container } = render(
+      <ProviderCard
+        name="Codex"
+        plan="Plus"
+        displayMode="used"
+        scopeFilter="all"
+        skeletonLines={[
+          { type: "progress", label: "Session", scope: "overview" },
+        ]}
+        lines={[
+          { type: "progress", label: "Session", used: 25, limit: 100, format: { kind: "percent" } },
+          { type: "text", label: "Account", value: "dev@example.com" },
+        ]}
+      />
+    )
+
+    const header = container.querySelector("h2")?.parentElement?.parentElement
+    expect(header).toBeTruthy()
+    expect(within(header as HTMLElement).getByText("dev@example.com")).toBeInTheDocument()
+    expect(screen.queryByText("Account")).toBeNull()
+  })
+
+  it("hides account identity when disabled", () => {
+    render(
+      <ProviderCard
+        name="Codex"
+        plan="Plus"
+        displayMode="used"
+        showAccountIdentity={false}
+        lines={[
+          { type: "text", label: "Account", value: "dev@example.com" },
+        ]}
+      />
+    )
+
+    expect(screen.queryByText("dev@example.com")).not.toBeInTheDocument()
+    expect(screen.getByText("Plus")).toBeInTheDocument()
+  })
+
   it("renders quick links and opens URL", async () => {
     render(
       <ProviderCard
