@@ -6,7 +6,6 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest"
 const state = vi.hoisted(() => ({
   invokeMock: vi.fn(),
   isTauriMock: vi.fn(() => false),
-  trackMock: vi.fn(),
   setSizeMock: vi.fn(),
   currentMonitorMock: vi.fn(),
   startBatchMock: vi.fn(),
@@ -110,10 +109,6 @@ vi.mock("@dnd-kit/utilities", () => ({
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: state.invokeMock,
   isTauri: state.isTauriMock,
-}))
-
-vi.mock("@/lib/analytics", () => ({
-  track: state.trackMock,
 }))
 
 vi.mock("@tauri-apps/api/event", () => ({
@@ -257,7 +252,6 @@ describe("App", () => {
     state.invokeMock.mockReset()
     state.isTauriMock.mockReset()
     state.isTauriMock.mockReturnValue(false)
-    state.trackMock.mockReset()
     state.setSizeMock.mockReset()
     state.currentMonitorMock.mockReset()
     state.startBatchMock.mockReset()
@@ -415,17 +409,6 @@ describe("App", () => {
     const migrateOrder = state.migrateLegacyTraySettingsMock.mock.invocationCallOrder[0]
     const loadOrder = state.loadMenubarIconStyleMock.mock.invocationCallOrder[0]
     expect(migrateOrder).toBeLessThan(loadOrder)
-  })
-
-  it("does not track page_viewed on startup or navigation", async () => {
-    render(<App />)
-    await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
-
-    const settingsButtons = await screen.findAllByRole("button", { name: "Settings" })
-    await userEvent.click(settingsButtons[0])
-
-    expect(state.trackMock).not.toHaveBeenCalledWith("page_viewed", expect.anything())
-    expect(state.trackMock).not.toHaveBeenCalledWith("page_viewed", undefined)
   })
 
   it("skips saving settings when already normalized", async () => {
@@ -961,15 +944,12 @@ describe("App", () => {
       lines: [{ type: "text", label: "Now", value: "OK" }],
     })
     state.startBatchMock.mockClear()
-    state.trackMock.mockClear()
-
     const reloadAction = await triggerPluginContextAction("Beta", "b", "reload")
     const reloadConfig = menuState.iconMenuItemConfigs.find((item) => item.id === "ctx-reload-b")
     expect(reloadConfig?.enabled).toBe(true)
     reloadAction()
 
     await waitFor(() => expect(state.startBatchMock).toHaveBeenCalledWith(["b"]))
-    expect(state.trackMock).toHaveBeenCalledWith("provider_refreshed", { provider_id: "b" })
   })
 
   it("respects manual refresh cooldown for sidebar context menu reload", async () => {
@@ -990,8 +970,6 @@ describe("App", () => {
     })
     await waitFor(() => expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(2))
     state.startBatchMock.mockClear()
-    state.trackMock.mockClear()
-
     const reloadAction = await triggerPluginContextAction("Beta", "b", "reload")
     const firstReloadConfig = menuState.iconMenuItemConfigs.find((item) => item.id === "ctx-reload-b")
     expect(firstReloadConfig?.enabled).toBe(true)
@@ -1007,14 +985,12 @@ describe("App", () => {
     await waitFor(() => expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(1))
 
     state.startBatchMock.mockClear()
-    state.trackMock.mockClear()
     const cooldownReloadAction = await triggerPluginContextAction("Beta", "b", "reload")
     const cooldownReloadConfig = menuState.iconMenuItemConfigs.find((item) => item.id === "ctx-reload-b")
     expect(cooldownReloadConfig?.enabled).toBe(false)
     cooldownReloadAction()
 
     expect(state.startBatchMock).not.toHaveBeenCalled()
-    expect(state.trackMock).not.toHaveBeenCalled()
   })
 
   it("closes sidebar context menu resources after popup", async () => {
@@ -1050,7 +1026,6 @@ describe("App", () => {
     render(<App />)
     await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
     state.startBatchMock.mockClear()
-    state.trackMock.mockClear()
     state.savePluginSettingsMock.mockClear()
 
     const removeAction = await triggerPluginContextAction("Beta", "b", "remove")
@@ -1059,7 +1034,6 @@ describe("App", () => {
     await waitFor(() =>
       expect(state.savePluginSettingsMock).toHaveBeenCalledWith({ order: ["a", "b"], disabled: ["b"] })
     )
-    expect(state.trackMock).toHaveBeenCalledWith("provider_toggled", { provider_id: "b", enabled: "false" })
     expect(state.startBatchMock).not.toHaveBeenCalled()
   })
 
@@ -1067,7 +1041,6 @@ describe("App", () => {
     state.loadPluginSettingsMock.mockResolvedValueOnce({ order: ["a", "b"], disabled: [] })
     render(<App />)
     await waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
-    state.trackMock.mockClear()
     state.savePluginSettingsMock.mockClear()
 
     const removeAction = await triggerPluginContextAction("Beta", "b", "remove")
@@ -1078,12 +1051,10 @@ describe("App", () => {
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: "Beta" })).not.toBeInTheDocument()
     )
-    state.trackMock.mockClear()
     state.savePluginSettingsMock.mockClear()
 
     removeAction()
     expect(state.savePluginSettingsMock).not.toHaveBeenCalled()
-    expect(state.trackMock).not.toHaveBeenCalled()
   })
 
   it("returns to home when removing the active plugin from context menu", async () => {
