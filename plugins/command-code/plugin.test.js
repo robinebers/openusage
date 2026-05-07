@@ -275,7 +275,7 @@ describe("command plugin", function () {
     expect(line.periodDurationMs).toBe(31 * 24 * 3600 * 1000);
   });
 
-  it("clamaps used to 0 when remaining exceeds total", async function () {
+  it("clamps used to 0 when remaining exceeds total", async function () {
     var ctx = makeCtx();
     writeSecrets(ctx);
     ctx.host.http.request.mockReturnValueOnce(creditsResponse(15));
