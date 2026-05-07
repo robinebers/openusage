@@ -1,0 +1,26 @@
+src/hooks/app/use-settings-display-actions.test.ts
+  s_d373a2e28f049d::t_2f4e7c4503f11c 32
+src/hooks/app/use-probe-refresh-actions.test.ts
+  s_d373a2e28f049d::t_449f262e032cea 4
+  s_d373a2e28f049d::t_d13cb36910b9e8 23
+src/lib/analytics.test.ts
+  s_d373a2e28f049d::t_765207c488fd9a 25,33-34
+src/hooks/app/use-settings-plugin-actions.test.ts
+  s_d373a2e28f049d::t_7377a5b1e03ae8 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "235fedf2438d2db3cd0d942c5a6b04952e118fe3",
+  "prompts": {},
+  "sessions": {
+    "s_d373a2e28f049d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "1fcff024-10db-4771-995a-ce12cbc376c0",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Robin Ebers <robin.ebers@gmail.com>"
+    }
+  }
+}
