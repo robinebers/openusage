@@ -1,6 +1,5 @@
 import { useCallback } from "react"
 import { invoke } from "@tauri-apps/api/core"
-import { track } from "@/lib/analytics"
 import {
   getEnabledPluginIds,
   saveAutoUpdateInterval,
@@ -29,7 +28,6 @@ export function useSettingsSystemActions({
   applyStartOnLogin,
 }: UseSettingsSystemActionsArgs) {
   const handleAutoUpdateIntervalChange = useCallback((value: AutoUpdateIntervalMinutes) => {
-    track("setting_changed", { setting: "auto_refresh", value: String(value) })
     setAutoUpdateInterval(value)
 
     if (pluginSettings) {
@@ -47,7 +45,6 @@ export function useSettingsSystemActions({
   }, [pluginSettings, setAutoUpdateInterval, setAutoUpdateNextAt])
 
   const handleGlobalShortcutChange = useCallback((value: GlobalShortcut) => {
-    track("setting_changed", { setting: "global_shortcut", value: value ?? "disabled" })
     setGlobalShortcut(value)
     void saveGlobalShortcut(value).catch((error) => {
       console.error("Failed to save global shortcut:", error)
@@ -58,7 +55,6 @@ export function useSettingsSystemActions({
   }, [setGlobalShortcut])
 
   const handleStartOnLoginChange = useCallback((value: boolean) => {
-    track("setting_changed", { setting: "start_on_login", value: value ? "true" : "false" })
     setStartOnLogin(value)
     void saveStartOnLogin(value).catch((error) => {
       console.error("Failed to save start on login:", error)

@@ -1,5 +1,4 @@
 import { useCallback } from "react"
-import { track } from "@/lib/analytics"
 import {
   saveDisplayMode,
   saveMenubarIconStyle,
@@ -34,7 +33,6 @@ export function useSettingsDisplayActions({
   scheduleTrayIconUpdate,
 }: UseSettingsDisplayActionsArgs) {
   const handleThemeModeChange = useCallback((mode: ThemeMode) => {
-    track("setting_changed", { setting: "theme", value: mode })
     setThemeMode(mode)
     void saveThemeMode(mode).catch((error) => {
       console.error("Failed to save theme mode:", error)
@@ -42,7 +40,6 @@ export function useSettingsDisplayActions({
   }, [setThemeMode])
 
   const handleDisplayModeChange = useCallback((mode: DisplayMode) => {
-    track("setting_changed", { setting: "display_mode", value: mode })
     setDisplayMode(mode)
     scheduleTrayIconUpdate("settings", 0)
     void saveDisplayMode(mode).catch((error) => {
@@ -51,7 +48,6 @@ export function useSettingsDisplayActions({
   }, [scheduleTrayIconUpdate, setDisplayMode])
 
   const handleResetTimerDisplayModeChange = useCallback((mode: ResetTimerDisplayMode) => {
-    track("setting_changed", { setting: "reset_timer_display_mode", value: mode })
     setResetTimerDisplayMode(mode)
     void saveResetTimerDisplayMode(mode).catch((error) => {
       console.error("Failed to save reset timer display mode:", error)
@@ -64,7 +60,6 @@ export function useSettingsDisplayActions({
   }, [handleResetTimerDisplayModeChange, resetTimerDisplayMode])
 
   const handleMenubarIconStyleChange = useCallback((style: MenubarIconStyle) => {
-    track("setting_changed", { setting: "menubar_icon_style", value: style })
     setMenubarIconStyle(style)
     scheduleTrayIconUpdate("settings", 0)
     void saveMenubarIconStyle(style).catch((error) => {
