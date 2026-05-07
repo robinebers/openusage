@@ -14,6 +14,7 @@ import type {
   MenubarIconStyle,
   ResetTimerDisplayMode,
   ThemeMode,
+  UIScale,
 } from "@/lib/settings"
 
 type AppContentDerivedProps = {
@@ -35,6 +36,7 @@ export type AppContentActionProps = {
   traySettingsPreview: TraySettingsPreview
   onGlobalShortcutChange: (value: GlobalShortcut) => void
   onStartOnLoginChange: (value: boolean) => void
+  onUIScaleChange: (value: UIScale) => void
 }
 
 export type AppContentProps = AppContentDerivedProps & AppContentActionProps
@@ -55,6 +57,7 @@ export function AppContent({
   traySettingsPreview,
   onGlobalShortcutChange,
   onStartOnLoginChange,
+  onUIScaleChange,
 }: AppContentProps) {
   const { activeView } = useAppUiStore(
     useShallow((state) => ({
@@ -70,6 +73,7 @@ export function AppContent({
     globalShortcut,
     themeMode,
     startOnLogin,
+    uiScale,
   } = useAppPreferencesStore(
     useShallow((state) => ({
       displayMode: state.displayMode,
@@ -79,6 +83,7 @@ export function AppContent({
       globalShortcut: state.globalShortcut,
       themeMode: state.themeMode,
       startOnLogin: state.startOnLogin,
+      uiScale: state.uiScale,
     }))
   )
 
@@ -115,6 +120,8 @@ export function AppContent({
         onGlobalShortcutChange={onGlobalShortcutChange}
         startOnLogin={startOnLogin}
         onStartOnLoginChange={onStartOnLoginChange}
+        uiScale={uiScale}
+        onUIScaleChange={onUIScaleChange}
       />
     )
   }

@@ -33,6 +33,7 @@ const LEGACY_TRAY_ICON_STYLE_KEY = "trayIconStyle";
 const LEGACY_TRAY_SHOW_PERCENTAGE_KEY = "trayShowPercentage";
 const GLOBAL_SHORTCUT_KEY = "globalShortcut";
 const START_ON_LOGIN_KEY = "startOnLogin";
+const UI_SCALE_KEY = "uiScale";
 
 export const DEFAULT_AUTO_UPDATE_INTERVAL: AutoUpdateIntervalMinutes = 15;
 export const DEFAULT_THEME_MODE: ThemeMode = "system";
@@ -41,6 +42,14 @@ export const DEFAULT_RESET_TIMER_DISPLAY_MODE: ResetTimerDisplayMode = "relative
 export const DEFAULT_MENUBAR_ICON_STYLE: MenubarIconStyle = "provider";
 export const DEFAULT_GLOBAL_SHORTCUT: GlobalShortcut = null;
 export const DEFAULT_START_ON_LOGIN = false;
+export type UIScale = "normal" | "small" | "compact";
+export const DEFAULT_UI_SCALE: UIScale = "normal";
+const UI_SCALE_VALUES: UIScale[] = ["normal", "small", "compact"];
+export const UI_SCALE_OPTIONS: { value: UIScale; label: string }[] = [
+  { value: "normal", label: "Normal" },
+  { value: "small", label: "Small" },
+  { value: "compact", label: "Compact" },
+];
 
 const AUTO_UPDATE_INTERVALS: AutoUpdateIntervalMinutes[] = [5, 15, 30, 60];
 const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
@@ -301,5 +310,20 @@ export async function loadStartOnLogin(): Promise<boolean> {
 
 export async function saveStartOnLogin(value: boolean): Promise<void> {
   await store.set(START_ON_LOGIN_KEY, value);
+  await store.save();
+}
+
+export function isUIScale(value: unknown): value is UIScale {
+  return typeof value === "string" && UI_SCALE_VALUES.includes(value as UIScale);
+}
+
+export async function loadUIScale(): Promise<UIScale> {
+  const stored = await store.get<unknown>(UI_SCALE_KEY);
+  if (isUIScale(stored)) return stored;
+  return DEFAULT_UI_SCALE;
+}
+
+export async function saveUIScale(value: UIScale): Promise<void> {
+  await store.set(UI_SCALE_KEY, value);
   await store.save();
 }

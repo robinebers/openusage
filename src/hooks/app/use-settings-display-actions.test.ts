@@ -5,16 +5,19 @@ const {
   saveDisplayModeMock,
   saveResetTimerDisplayModeMock,
   saveThemeModeMock,
+  saveUIScaleMock,
 } = vi.hoisted(() => ({
   saveThemeModeMock: vi.fn(),
   saveDisplayModeMock: vi.fn(),
   saveResetTimerDisplayModeMock: vi.fn(),
+  saveUIScaleMock: vi.fn(),
 }))
 
 vi.mock("@/lib/settings", () => ({
   saveThemeMode: saveThemeModeMock,
   saveDisplayMode: saveDisplayModeMock,
   saveResetTimerDisplayMode: saveResetTimerDisplayModeMock,
+  saveUIScale: saveUIScaleMock,
 }))
 
 import { useSettingsDisplayActions } from "@/hooks/app/use-settings-display-actions"
@@ -24,15 +27,18 @@ describe("useSettingsDisplayActions", () => {
     saveThemeModeMock.mockReset()
     saveDisplayModeMock.mockReset()
     saveResetTimerDisplayModeMock.mockReset()
+    saveUIScaleMock.mockReset()
     saveThemeModeMock.mockResolvedValue(undefined)
     saveDisplayModeMock.mockResolvedValue(undefined)
     saveResetTimerDisplayModeMock.mockResolvedValue(undefined)
+    saveUIScaleMock.mockResolvedValue(undefined)
   })
 
   it("applies display-related setting changes", () => {
     const setThemeMode = vi.fn()
     const setDisplayMode = vi.fn()
     const setResetTimerDisplayMode = vi.fn()
+    const setUIScale = vi.fn()
     const scheduleTrayIconUpdate = vi.fn()
 
     const { result } = renderHook(() =>
@@ -41,6 +47,7 @@ describe("useSettingsDisplayActions", () => {
         setDisplayMode,
         resetTimerDisplayMode: "relative",
         setResetTimerDisplayMode,
+        setUIScale,
         scheduleTrayIconUpdate,
       })
     )
@@ -71,6 +78,7 @@ describe("useSettingsDisplayActions", () => {
           setDisplayMode: vi.fn(),
           resetTimerDisplayMode: mode,
           setResetTimerDisplayMode,
+          setUIScale: vi.fn(),
           scheduleTrayIconUpdate: vi.fn(),
         }),
       { initialProps: { mode: "relative" as const } }
@@ -103,6 +111,7 @@ describe("useSettingsDisplayActions", () => {
         setDisplayMode: vi.fn(),
         resetTimerDisplayMode: "relative",
         setResetTimerDisplayMode: vi.fn(),
+        setUIScale: vi.fn(),
         scheduleTrayIconUpdate: vi.fn(),
       })
     )
@@ -120,5 +129,31 @@ describe("useSettingsDisplayActions", () => {
     })
 
     errorSpy.mockRestore()
+  })
+
+  it("tracks and persists UI scale change", async () => {
+    const setUIScale = vi.fn()
+
+    const { result } = renderHook(() =>
+      useSettingsDisplayActions({
+        setThemeMode: vi.fn(),
+        setDisplayMode: vi.fn(),
+        resetTimerDisplayMode: "relative",
+        setResetTimerDisplayMode: vi.fn(),
+        setUIScale,
+        scheduleTrayIconUpdate: vi.fn(),
+      })
+    )
+
+    act(() => {
+      result.current.handleUIScaleChange("compact")
+    })
+
+    expect(trackMock).toHaveBeenCalledWith("setting_changed", { setting: "ui_scale", value: "compact" })
+    expect(setUIScale).toHaveBeenCalledWith("compact")
+
+    await waitFor(() => {
+      expect(saveUIScaleMock).toHaveBeenCalledWith("compact")
+    })
   })
 })

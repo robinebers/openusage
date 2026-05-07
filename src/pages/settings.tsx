@@ -26,12 +26,14 @@ import {
   MENUBAR_ICON_STYLE_OPTIONS,
   RESET_TIMER_DISPLAY_OPTIONS,
   THEME_OPTIONS,
+  UI_SCALE_OPTIONS,
   type AutoUpdateIntervalMinutes,
   type DisplayMode,
   type GlobalShortcut,
   type MenubarIconStyle,
   type ResetTimerDisplayMode,
   type ThemeMode,
+  type UIScale,
 } from "@/lib/settings";
 import type { TraySettingsPreview } from "@/hooks/app/use-tray-icon";
 import { cn } from "@/lib/utils";
@@ -275,6 +277,8 @@ interface SettingsPageProps {
   onGlobalShortcutChange: (value: GlobalShortcut) => void;
   startOnLogin: boolean;
   onStartOnLoginChange: (value: boolean) => void;
+  uiScale: UIScale;
+  onUIScaleChange: (value: UIScale) => void;
 }
 
 export function SettingsPage({
@@ -296,6 +300,8 @@ export function SettingsPage({
   onGlobalShortcutChange,
   startOnLogin,
   onStartOnLoginChange,
+  uiScale,
+  onUIScaleChange,
 }: SettingsPageProps) {
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -488,6 +494,33 @@ export function SettingsPage({
           />
           Start on login
         </label>
+      </section>
+      <section>
+        <h3 className="text-lg font-semibold mb-0">UI Scale</h3>
+        <p className="text-sm text-muted-foreground mb-2">
+          Adjust text size and spacing
+        </p>
+        <div className="bg-muted/50 rounded-lg p-1">
+          <div className="flex gap-1" role="radiogroup" aria-label="UI scale">
+            {UI_SCALE_OPTIONS.map((option) => {
+              const isActive = option.value === uiScale;
+              return (
+                <Button
+                  key={option.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={isActive}
+                  variant={isActive ? "default" : "outline"}
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => onUIScaleChange(option.value)}
+                >
+                  {option.label}
+                </Button>
+              );
+            })}
+          </div>
+        </div>
       </section>
       <section>
         <h3 className="text-lg font-semibold mb-0">Plugins</h3>

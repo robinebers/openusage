@@ -1,5 +1,6 @@
 import { useCallback } from "react"
 import {
+  saveUIScale,
   saveDisplayMode,
   saveMenubarIconStyle,
   saveResetTimerDisplayMode,
@@ -8,6 +9,7 @@ import {
   type MenubarIconStyle,
   type ResetTimerDisplayMode,
   type ThemeMode,
+  type UIScale,
 } from "@/lib/settings"
 
 type ScheduleTrayIconUpdate = (reason: "probe" | "settings" | "init", delayMs?: number) => void
@@ -18,6 +20,7 @@ type UseSettingsDisplayActionsArgs = {
   resetTimerDisplayMode: ResetTimerDisplayMode
   setResetTimerDisplayMode: (value: ResetTimerDisplayMode) => void
   setMenubarIconStyle: (value: MenubarIconStyle) => void
+  setUIScale: (value: UIScale) => void
   scheduleTrayIconUpdate: ScheduleTrayIconUpdate
 }
 
@@ -27,6 +30,7 @@ export function useSettingsDisplayActions({
   resetTimerDisplayMode,
   setResetTimerDisplayMode,
   setMenubarIconStyle,
+  setUIScale,
   scheduleTrayIconUpdate,
 }: UseSettingsDisplayActionsArgs) {
   const handleThemeModeChange = useCallback((mode: ThemeMode) => {
@@ -64,11 +68,20 @@ export function useSettingsDisplayActions({
     })
   }, [scheduleTrayIconUpdate, setMenubarIconStyle])
 
+  const handleUIScaleChange = useCallback((value: UIScale) => {
+    track("setting_changed", { setting: "ui_scale", value })
+    setUIScale(value)
+    void saveUIScale(value).catch((error) => {
+      console.error("Failed to save UI scale:", error)
+    })
+  }, [setUIScale])
+
   return {
     handleThemeModeChange,
     handleDisplayModeChange,
     handleResetTimerDisplayModeChange,
     handleResetTimerDisplayModeToggle,
     handleMenubarIconStyleChange,
+    handleUIScaleChange,
   }
 }
