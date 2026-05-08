@@ -6,9 +6,6 @@
   const PROD_REFRESH_URL = "https://platform.claude.com/v1/oauth/token"
   const PROD_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
   const NON_PROD_CLIENT_ID = "22422756-60c9-4084-8eb7-27705fd5cf9a"
-  const PROMOCLOCK_STATUS_URL = "https://promoclock.co/api/status"
-  const PROMOCLOCK_PEAK_COLOR = "#ef4444"
-  const PROMOCLOCK_OFF_PEAK_COLOR = "#22c55e"
   const SCOPES =
     "user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload"
   const REFRESH_BUFFER_MS = 5 * 60 * 1000 // refresh 5 minutes before expiration
@@ -616,66 +613,6 @@
     }))
   }
 
-  function getPromoClockBadgeText(data) {
-    if (!data || typeof data !== "object") return null
-    if (data.isPeak === true) return "Peak"
-    if (data.isOffPeak === true || data.isWeekend === true) return "Off-Peak"
-
-    const status = typeof data.status === "string" ? data.status.trim().toLowerCase() : ""
-    if (status === "peak") return "Peak"
-    if (status === "off_peak" || status === "off-peak" || status === "weekend") return "Off-Peak"
-    return null
-  }
-
-  function getPromoClockColor(badgeText) {
-    if (badgeText === "Peak") return PROMOCLOCK_PEAK_COLOR
-    if (badgeText === "Off-Peak") return PROMOCLOCK_OFF_PEAK_COLOR
-    return null
-  }
-
-  function fetchPromoClockLine(ctx) {
-    let resp
-    let json
-    try {
-      const result = ctx.util.requestJson({
-        method: "GET",
-        url: PROMOCLOCK_STATUS_URL,
-        headers: {
-          Accept: "application/json",
-        },
-        timeoutMs: 2000,
-      })
-      resp = result.resp
-      json = result.json
-    } catch (e) {
-      ctx.host.log.warn("promoclock request failed: " + String(e))
-      return null
-    }
-
-    if (!resp || resp.status < 200 || resp.status >= 300) {
-      ctx.host.log.warn("promoclock returned unexpected status: " + String(resp && resp.status))
-      return null
-    }
-
-    if (!json || typeof json !== "object") {
-      ctx.host.log.warn("promoclock response invalid")
-      return null
-    }
-
-    const badgeText = getPromoClockBadgeText(json)
-
-    if (!badgeText) {
-      ctx.host.log.warn("promoclock response missing expected fields")
-      return null
-    }
-
-    return ctx.line.badge({
-      label: "Peak Hours",
-      text: badgeText,
-      color: getPromoClockColor(badgeText),
-    })
-  }
-
   function probe(ctx) {
     const creds = loadCredentials(ctx)
     if (!creds || !creds.oauth || !creds.oauth.accessToken || !creds.oauth.accessToken.trim()) {
@@ -910,8 +847,6 @@
       }
     }
 
-    const promoClockLine = fetchPromoClockLine(ctx)
-
     if (rateLimited) {
       const retryText = retryAfterSeconds !== null
         ? fmtRateLimitMinutes(retryAfterSeconds)
@@ -927,8 +862,6 @@
     } else if (lines.length === 0) {
       lines.push(ctx.line.badge({ label: "Status", text: "No usage data", color: "#a3a3a3" }))
     }
-
-    if (promoClockLine) lines.push(promoClockLine)
 
     return { plan: plan, lines: lines }
   }

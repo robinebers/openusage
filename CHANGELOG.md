@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.6.23
+
+### Bug Fixes
+- fix(claude): remove peak hours indicator integration ([#447](https://github.com/robinebers/openusage/pull/447)) by @validatedev
+- fix(codex): correct usage dashboard URL to ChatGPT Codex settings ([#436](https://github.com/robinebers/openusage/pull/436)) by @devKagan
+
+### Chores
+- chore(analytics): drop UI-side Aptabase events ([#449](https://github.com/robinebers/openusage/pull/449)) by @robinebers
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.6.22...v0.6.23](https://github.com/robinebers/openusage/compare/v0.6.22...v0.6.23)
+
+- [cb365ef](https://github.com/robinebers/openusage/commit/cb365ef) chore(analytics): drop UI-side Aptabase events by @robinebers
+- [7aa655d](https://github.com/robinebers/openusage/commit/7aa655d) fix(claude): remove peak hours indicator integration by @validatedev
+- [7376251](https://github.com/robinebers/openusage/commit/7376251) fix(codex): correct usage dashboard URL to ChatGPT Codex settings by @devKagan
+
 ## v0.6.22
 
 ### Bug Fixes
