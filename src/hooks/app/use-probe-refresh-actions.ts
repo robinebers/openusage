@@ -1,6 +1,5 @@
 import { useCallback } from "react"
 import type { MutableRefObject } from "react"
-import { track } from "@/lib/analytics"
 import { REFRESH_COOLDOWN_MS, getEnabledPluginIds, type PluginSettings } from "@/lib/settings"
 import type { PluginState } from "@/hooks/app/types"
 
@@ -49,7 +48,6 @@ export function useProbeRefreshActions({
       const lastManualRefreshAt = currentState?.lastManualRefreshAt
       if (lastManualRefreshAt && Date.now() - lastManualRefreshAt < REFRESH_COOLDOWN_MS) return
 
-      track("provider_refreshed", { provider_id: id })
       resetAutoUpdateSchedule()
       startManualRefresh([id], "Failed to retry plugin:")
     },
