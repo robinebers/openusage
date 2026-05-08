@@ -461,8 +461,36 @@ describe("antigravity plugin", () => {
     ])
   })
 
-  it("calls Antigravity LS status with an empty body", async () => {
+  it("keeps Antigravity LS metadata on non-Windows", async () => {
     const ctx = makeCtx()
+    const discovery = makeDiscovery()
+    const response = makeUserStatusResponse()
+    setupLsMock(ctx, discovery, response)
+
+    let capturedMetadata = null
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("GetUnleashData")) {
+        return { status: 200, bodyText: "{}" }
+      }
+      if (url.includes("GetUserStatus")) {
+        capturedMetadata = JSON.parse(opts.bodyText).metadata
+        return { status: 200, bodyText: JSON.stringify(response) }
+      }
+      return { status: 200, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.length).toBeGreaterThan(0)
+    expect(capturedMetadata).toBeTruthy()
+    expect(capturedMetadata.apiKey).toBeUndefined()
+  })
+
+  it("calls Antigravity LS status with an empty body on Windows", async () => {
+    const ctx = makeCtx()
+    ctx.app.platform = "windows"
     const discovery = makeDiscovery()
     const response = makeUserStatusResponse()
     setupLsMock(ctx, discovery, response)

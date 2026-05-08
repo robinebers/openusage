@@ -3195,15 +3195,15 @@ mod tests {
     #[cfg(target_os = "windows")]
     fn expand_path_converts_wsl_mount_paths_on_windows() {
         assert_eq!(
-            expand_path("/mnt/c/Users/chano/.codex"),
-            "C:\\Users\\chano\\.codex"
+            expand_path("/mnt/c/Users/test-user/.codex"),
+            "C:\\Users\\test-user\\.codex"
         );
     }
 
     #[test]
     fn redacts_windows_user_paths_from_logs() {
         let redacted =
-            redact_log_message("auth file not found: C:\\Users\\chano\\.codex\\auth.json");
+            redact_log_message("auth file not found: C:\\Users\\test-user\\.codex\\auth.json");
         assert_eq!(redacted, "auth file not found: [PATH]");
     }
 

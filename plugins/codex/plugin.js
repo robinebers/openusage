@@ -405,13 +405,6 @@
     return dayKeyFromDate(new Date(ms))
   }
 
-  function monthKeyFromDayKey(dayKey) {
-    if (typeof dayKey !== "string") return null
-    const match = dayKey.match(/^(\d{4})-(\d{2})-\d{2}$/)
-    if (!match) return null
-    return match[1] + "-" + match[2]
-  }
-
   function usageCostUsd(day) {
     if (!day || typeof day !== "object") return null
 
@@ -435,7 +428,7 @@
     if (data.tokens > 0 || (includeZeroTokens && data.tokens === 0)) {
       parts.push(fmtTokens(data.tokens) + " tokens")
     }
-    return parts.join(" - ")
+    return parts.join(" · ")
   }
 
   function pushDayUsageLine(lines, ctx, label, dayEntry) {
@@ -674,10 +667,6 @@
         let totalTokens = 0
         let totalCostNanos = 0
         let hasCost = false
-        let monthTokens = 0
-        let monthCostNanos = 0
-        let monthHasCost = false
-        const currentMonthKey = monthKeyFromDayKey(todayKey)
         for (let i = 0; i < tokenUsage.daily.length; i++) {
           const day = tokenUsage.daily[i]
           const dayTokens = Number(day.totalTokens)
@@ -690,24 +679,6 @@
             totalCostNanos += Math.round(dayCost * 1e9)
             hasCost = true
           }
-
-          const usageDayKey = dayKeyFromUsageDate(day.date)
-          if (currentMonthKey && monthKeyFromDayKey(usageDayKey) === currentMonthKey) {
-            if (Number.isFinite(dayTokens)) {
-              monthTokens += dayTokens
-            }
-            if (dayCost != null) {
-              monthCostNanos += Math.round(dayCost * 1e9)
-              monthHasCost = true
-            }
-          }
-        }
-
-        if (monthTokens > 0) {
-          lines.push(ctx.line.text({
-            label: "This Month",
-            value: costAndTokensLabel({ tokens: monthTokens, costUSD: monthHasCost ? monthCostNanos / 1e9 : null })
-          }))
         }
 
         if (totalTokens > 0) {

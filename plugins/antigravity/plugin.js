@@ -406,10 +406,18 @@
 
     ctx.host.log.info("using LS at " + found.scheme + "://127.0.0.1:" + found.port)
 
+    var metadata = {
+      ideName: "antigravity",
+      extensionName: "antigravity",
+      ideVersion: "unknown",
+      locale: "en",
+    }
+    var statusBody = isWindows(ctx) ? {} : { metadata: metadata }
+
     // Try GetUserStatus first, fall back to GetCommandModelConfigs
     var data = null
     try {
-      data = callLs(ctx, found.port, found.scheme, discovery.csrf, "GetUserStatus", {})
+      data = callLs(ctx, found.port, found.scheme, discovery.csrf, "GetUserStatus", statusBody)
     } catch (e) {
       ctx.host.log.warn("GetUserStatus threw: " + String(e))
     }
@@ -417,7 +425,7 @@
 
     if (!hasUserStatus) {
       ctx.host.log.warn("GetUserStatus failed, trying GetCommandModelConfigs")
-      data = callLs(ctx, found.port, found.scheme, discovery.csrf, "GetCommandModelConfigs", {})
+      data = callLs(ctx, found.port, found.scheme, discovery.csrf, "GetCommandModelConfigs", statusBody)
     }
 
     // Parse model configs
