@@ -174,6 +174,18 @@ describe("antigravity plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Start Antigravity and try again.")
   })
 
+  it("explains sqlite3 requirement on Windows when sqlite3 is missing", async () => {
+    const ctx = makeCtx()
+    ctx.app.platform = "windows"
+    ctx.host.sqlite.query.mockImplementation(() => {
+      throw new Error("sqlite3 is required on Windows to read local provider state")
+    })
+    ctx.host.ls.discover.mockReturnValue(null)
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("sqlite3 is required on Windows to read Antigravity usage")
+  })
+
   it("throws when no working port found and no DB credentials", async () => {
     const ctx = makeCtx()
     ctx.host.ls.discover.mockReturnValue(makeDiscovery())

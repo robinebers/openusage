@@ -2,17 +2,7 @@ import { renderHook, act } from "@testing-library/react"
 import { describe, expect, it, vi, beforeEach } from "vitest"
 import type { PluginOutput } from "@/lib/plugin-types"
 
-const {
-  canUseLocalUsageApiMock,
-  fetchLocalUsageMock,
-  isTauriMock,
-  listeners,
-  invokeMock,
-  listenMock,
-} = vi.hoisted(() => ({
-  canUseLocalUsageApiMock: vi.fn(),
-  fetchLocalUsageMock: vi.fn(),
-  isTauriMock: vi.fn(),
+const { listeners, invokeMock, listenMock } = vi.hoisted(() => ({
   listeners: new Map<string, (event: { payload: any }) => void>(),
   invokeMock: vi.fn(),
   listenMock: vi.fn(),
@@ -24,12 +14,6 @@ vi.mock("@tauri-apps/api/event", () => ({
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: invokeMock,
-  isTauri: isTauriMock,
-}))
-
-vi.mock("@/lib/local-usage-api", () => ({
-  canUseLocalUsageApi: canUseLocalUsageApiMock,
-  fetchLocalUsage: fetchLocalUsageMock,
 }))
 
 import { useProbeEvents } from "@/hooks/use-probe-events"
@@ -38,12 +22,7 @@ describe("useProbeEvents", () => {
   beforeEach(() => {
     listeners.clear()
     invokeMock.mockReset()
-    isTauriMock.mockReset()
     listenMock.mockReset()
-    fetchLocalUsageMock.mockReset()
-    canUseLocalUsageApiMock.mockReset()
-    isTauriMock.mockReturnValue(true)
-    canUseLocalUsageApiMock.mockReturnValue(false)
     listenMock.mockImplementation(async (event: string, cb: (event: { payload: any }) => void) => {
       listeners.set(event, cb)
       return () => listeners.delete(event)
@@ -183,29 +162,6 @@ describe("useProbeEvents", () => {
     )
 
     await expect(result.current.startBatch(["a"])).rejects.toThrow("boom")
-  })
-
-  it("uses local usage API outside Tauri", async () => {
-    isTauriMock.mockReturnValue(false)
-    canUseLocalUsageApiMock.mockReturnValue(true)
-    const output = {
-      providerId: "codex",
-      displayName: "Codex",
-      lines: [],
-      iconUrl: "icon.svg",
-    } satisfies PluginOutput
-    fetchLocalUsageMock.mockResolvedValue([output])
-    const onResult = vi.fn()
-    const onBatchComplete = vi.fn()
-    const { result } = renderHook(() => useProbeEvents({ onResult, onBatchComplete }))
-
-    const ids = await act(() => result.current.startBatch(["codex"]))
-
-    expect(listenMock).not.toHaveBeenCalled()
-    expect(invokeMock).not.toHaveBeenCalled()
-    expect(onResult).toHaveBeenCalledWith(output)
-    expect(onBatchComplete).toHaveBeenCalledTimes(1)
-    expect(ids).toEqual(["codex"])
   })
 
   it("cancels before listeners are ready", async () => {

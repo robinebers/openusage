@@ -174,12 +174,19 @@ fn keychain_add_generic_password_args_for_account(
     ]
 }
 
-fn windows_gh_cli_keychain_service(service: &str) -> bool {
-    service == "gh:github.com"
+fn windows_gh_cli_keychain_service(plugin_id: &str, service: &str) -> bool {
+    plugin_id == "copilot" && service == "gh:github.com"
 }
 
 fn read_windows_gh_cli_token() -> Option<String> {
     read_env_value_via_command("gh", &["auth", "token"])
+}
+
+fn sqlite3_exec_failed_message(error: &std::io::Error) -> String {
+    if cfg!(target_os = "windows") && error.kind() == std::io::ErrorKind::NotFound {
+        return "sqlite3 is required on Windows to read local provider state. Install sqlite3 and make sure sqlite3.exe is on PATH.".to_string();
+    }
+    format!("sqlite3 exec failed: {}", error)
 }
 
 fn terminal_env_cache() -> &'static Mutex<HashMap<String, Option<String>>> {
@@ -1360,7 +1367,12 @@ Get-CimInstance Win32_Process |
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let value = match serde_json::from_str::<serde_json::Value>(stdout.trim()) {
+    let trimmed = stdout.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let value = match serde_json::from_str::<serde_json::Value>(trimmed) {
         Ok(value) => value,
         Err(error) => {
             log::warn!(
@@ -2408,7 +2420,9 @@ fn inject_keychain<'js>(
             ctx.clone(),
             move |ctx_inner: Ctx<'_>, service: String| -> rquickjs::Result<String> {
                 if !cfg!(target_os = "macos") {
-                    if cfg!(target_os = "windows") && windows_gh_cli_keychain_service(&service) {
+                    if cfg!(target_os = "windows")
+                        && windows_gh_cli_keychain_service(&pid_read, &service)
+                    {
                         log::info!(
                             "[plugin:{}] keychain read via gh CLI: service={}",
                             pid_read,
@@ -2677,7 +2691,7 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                     .args(["-readonly", "-json", &expanded, &sql])
                     .output()
                     .map_err(|e| {
-                        Exception::throw_message(&ctx_inner, &format!("sqlite3 exec failed: {}", e))
+                        Exception::throw_message(&ctx_inner, &sqlite3_exec_failed_message(&e))
                     })?;
 
                 if primary.status.success() {
@@ -2695,7 +2709,7 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                     .args(["-readonly", "-json", &uri_path, &sql])
                     .output()
                     .map_err(|e| {
-                        Exception::throw_message(&ctx_inner, &format!("sqlite3 exec failed: {}", e))
+                        Exception::throw_message(&ctx_inner, &sqlite3_exec_failed_message(&e))
                     })?;
 
                 if !fallback.status.success() {
@@ -2732,7 +2746,7 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                     .args([&expanded, &sql])
                     .output()
                     .map_err(|e| {
-                        Exception::throw_message(&ctx_inner, &format!("sqlite3 exec failed: {}", e))
+                        Exception::throw_message(&ctx_inner, &sqlite3_exec_failed_message(&e))
                     })?;
 
                 if !output.status.success() {
@@ -3251,10 +3265,29 @@ mod tests {
     }
 
     #[test]
-    fn windows_gh_cli_keychain_service_only_matches_gh_service() {
-        assert!(windows_gh_cli_keychain_service("gh:github.com"));
-        assert!(!windows_gh_cli_keychain_service("OpenUsage-copilot"));
-        assert!(!windows_gh_cli_keychain_service("Claude Code-credentials"));
+    fn windows_gh_cli_keychain_service_only_matches_copilot_gh_service() {
+        assert!(windows_gh_cli_keychain_service("copilot", "gh:github.com"));
+        assert!(!windows_gh_cli_keychain_service("codex", "gh:github.com"));
+        assert!(!windows_gh_cli_keychain_service(
+            "copilot",
+            "OpenUsage-copilot"
+        ));
+        assert!(!windows_gh_cli_keychain_service(
+            "copilot",
+            "Claude Code-credentials"
+        ));
+    }
+
+    #[test]
+    fn sqlite3_missing_error_mentions_windows_install_hint() {
+        let error = std::io::Error::new(std::io::ErrorKind::NotFound, "sqlite3 missing");
+        let message = sqlite3_exec_failed_message(&error);
+        if cfg!(target_os = "windows") {
+            assert!(message.contains("sqlite3 is required on Windows"));
+            assert!(message.contains("PATH"));
+        } else {
+            assert!(message.starts_with("sqlite3 exec failed:"));
+        }
     }
 
     #[test]

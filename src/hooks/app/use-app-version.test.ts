@@ -1,13 +1,8 @@
 import { renderHook, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-const { canUseLocalUsageApiMock, getVersionMock } = vi.hoisted(() => ({
-  canUseLocalUsageApiMock: vi.fn(),
+const { getVersionMock } = vi.hoisted(() => ({
   getVersionMock: vi.fn(),
-}))
-
-vi.mock("@/lib/local-usage-api", () => ({
-  canUseLocalUsageApi: canUseLocalUsageApiMock,
 }))
 
 vi.mock("@tauri-apps/api/app", () => ({
@@ -19,8 +14,6 @@ import { useAppVersion } from "@/hooks/app/use-app-version"
 describe("useAppVersion", () => {
   beforeEach(() => {
     getVersionMock.mockReset()
-    canUseLocalUsageApiMock.mockReset()
-    canUseLocalUsageApiMock.mockReturnValue(false)
   })
 
   it("loads app version", async () => {
@@ -45,14 +38,5 @@ describe("useAppVersion", () => {
     expect(result.current).toBe("...")
 
     errorSpy.mockRestore()
-  })
-
-  it("keeps placeholder outside Tauri", () => {
-    canUseLocalUsageApiMock.mockReturnValue(true)
-
-    const { result } = renderHook(() => useAppVersion())
-
-    expect(result.current).toBe("...")
-    expect(getVersionMock).not.toHaveBeenCalled()
   })
 })

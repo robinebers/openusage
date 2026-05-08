@@ -86,20 +86,6 @@
     return CONFIG_AUTH_PATHS.map((basePath) => joinPath(basePath, AUTH_FILE))
   }
 
-  function dirname(path) {
-    if (typeof path !== "string") return null
-    const trimmed = path.trim().replace(/[\\/]+$/, "")
-    if (!trimmed) return null
-    const slash = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"))
-    if (slash <= 0) return null
-    return trimmed.slice(0, slash)
-  }
-
-  function authHomePath(authState) {
-    if (!authState || authState.source !== "file") return null
-    return dirname(authState.authPath)
-  }
-
   function hasTokenLikeAuth(auth) {
     if (!auth || typeof auth !== "object") return false
     if (auth.tokens && auth.tokens.access_token) return true
@@ -321,7 +307,7 @@
   var PERIOD_SESSION_MS = 5 * 60 * 60 * 1000    // 5 hours
   var PERIOD_WEEKLY_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
-  function queryTokenUsage(ctx, authState) {
+  function queryTokenUsage(ctx) {
     if (!ctx.host.ccusage || typeof ctx.host.ccusage.query !== "function") {
       return { status: "no_runner", data: null }
     }
@@ -334,7 +320,7 @@
     const d = since.getDate()
     const sinceStr = "" + y + (m < 10 ? "0" : "") + m + (d < 10 ? "0" : "") + d
     const queryOpts = { provider: "codex", since: sinceStr }
-    const codexHome = readCodexHome(ctx) || authHomePath(authState)
+    const codexHome = readCodexHome(ctx)
     if (codexHome) {
       queryOpts.homePath = codexHome
     }
@@ -639,7 +625,7 @@
         }
       }
 
-      const tokenUsageResult = queryTokenUsage(ctx, authState)
+      const tokenUsageResult = queryTokenUsage(ctx)
       if (tokenUsageResult.status === "ok") {
         const tokenUsage = tokenUsageResult.data
         const now = new Date()

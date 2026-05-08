@@ -15,13 +15,20 @@
   const CLIENT_ID = "KbZUR41cY7W6zRSdpSUJ7I7mLYBKOCmB"
   const REFRESH_BUFFER_MS = 5 * 60 * 1000 // refresh 5 minutes before expiration
   const LOGIN_HINT = "Sign in via Cursor app or run `agent login`."
+  const WINDOWS_SQLITE_HINT =
+    "Install sqlite3 and make sure sqlite3.exe is on PATH."
 
   function stateDbPath(ctx) {
     if (ctx.app && ctx.app.platform === "windows") return WINDOWS_STATE_DB
     return DARWIN_STATE_DB
   }
 
-  function readStateValue(ctx, key) {
+  function isWindowsSqliteMissing(ctx, error) {
+    return ctx.app && ctx.app.platform === "windows" &&
+      String(error).indexOf("sqlite3 is required on Windows") !== -1
+  }
+
+  function readStateValue(ctx, key, sqliteStatus) {
     try {
       const sql =
         "SELECT value FROM ItemTable WHERE key = '" + key + "' LIMIT 1;"
@@ -34,6 +41,9 @@
         return rows[0].value
       }
     } catch (e) {
+      if (sqliteStatus && isWindowsSqliteMissing(ctx, e)) {
+        sqliteStatus.missing = true
+      }
       ctx.host.log.warn("sqlite read failed for " + key + ": " + String(e))
     }
     return null
@@ -87,9 +97,10 @@
   }
 
   function loadAuthState(ctx) {
-    const sqliteAccessToken = readStateValue(ctx, "cursorAuth/accessToken")
-    const sqliteRefreshToken = readStateValue(ctx, "cursorAuth/refreshToken")
-    const sqliteMembershipTypeRaw = readStateValue(ctx, "cursorAuth/stripeMembershipType")
+    const sqliteStatus = { missing: false }
+    const sqliteAccessToken = readStateValue(ctx, "cursorAuth/accessToken", sqliteStatus)
+    const sqliteRefreshToken = readStateValue(ctx, "cursorAuth/refreshToken", sqliteStatus)
+    const sqliteMembershipTypeRaw = readStateValue(ctx, "cursorAuth/stripeMembershipType", sqliteStatus)
     const sqliteMembershipType = typeof sqliteMembershipTypeRaw === "string"
       ? sqliteMembershipTypeRaw.trim().toLowerCase()
       : null
@@ -131,6 +142,7 @@
       accessToken: null,
       refreshToken: null,
       source: null,
+      sqliteMissing: sqliteStatus.missing,
     }
   }
 
@@ -388,6 +400,9 @@
     const authSource = authState.source
 
     if (!accessToken && !refreshTokenValue) {
+      if (authState.sqliteMissing) {
+        throw "sqlite3 is required on Windows to read Cursor usage. " + WINDOWS_SQLITE_HINT
+      }
       ctx.host.log.error("probe failed: no access or refresh token in sqlite/keychain")
       throw "Not logged in. " + LOGIN_HINT
     }

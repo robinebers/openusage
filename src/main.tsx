@@ -2,13 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { error as logError, warn as logWarn } from "@tauri-apps/plugin-log";
 import { App } from "./App";
-import { isWindowsRuntime } from "@/lib/platform";
 import "./index.css";
-
-// Tag Windows platform on <html> for platform-specific CSS.
-if (isWindowsRuntime()) {
-  document.documentElement.classList.add("platform-windows");
-}
 
 // Forward console.error and console.warn to Tauri log file
 function stringify(arg: unknown): string {

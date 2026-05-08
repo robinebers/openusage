@@ -18,6 +18,7 @@
   var GOOGLE_OAUTH_URL = "https://oauth2.googleapis.com/token"
   var GOOGLE_CLIENT_ID = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
   var GOOGLE_CLIENT_SECRET = "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"
+  var WINDOWS_SQLITE_HINT = "Install sqlite3 and make sure sqlite3.exe is on PATH."
   var OAUTH_TOKEN_KEY = "antigravityUnifiedStateSync.oauthToken"
   var OAUTH_TOKEN_SENTINEL = "oauthTokenInfoSentinelKey"
   var CC_MODEL_BLACKLIST = {
@@ -122,6 +123,10 @@
       if (!accessToken && !refreshToken) return null
       return { accessToken: accessToken, refreshToken: refreshToken, expirySeconds: expirySeconds }
     } catch (e) {
+      if (ctx.app && ctx.app.platform === "windows" &&
+          String(e).indexOf("sqlite3 is required on Windows") !== -1) {
+        return { sqliteMissing: true }
+      }
       ctx.host.log.warn("failed to read unified oauth token: " + String(e))
       return null
     }
@@ -488,6 +493,9 @@
     if (cached && tokens.indexOf(cached) === -1) tokens.push(cached)
 
     if (tokens.length === 0 && !(dbTokens && dbTokens.refreshToken)) {
+      if (dbTokens && dbTokens.sqliteMissing) {
+        throw "sqlite3 is required on Windows to read Antigravity usage. " + WINDOWS_SQLITE_HINT
+      }
       throw "Start Antigravity and try again."
     }
 

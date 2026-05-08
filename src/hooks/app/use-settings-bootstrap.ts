@@ -6,7 +6,6 @@ import {
   isEnabled as isAutostartEnabled,
 } from "@tauri-apps/plugin-autostart"
 import type { PluginMeta } from "@/lib/plugin-types"
-import { canUseLocalUsageApi, fetchLocalUsage, usageToPluginMeta } from "@/lib/local-usage-api"
 import {
   arePluginSettingsEqual,
   DEFAULT_AUTO_UPDATE_INTERVAL,
@@ -84,93 +83,74 @@ export function useSettingsBootstrap({
 
     const loadSettings = async () => {
       try {
-        const useLocalUsageApi = canUseLocalUsageApi()
-        const availablePlugins = useLocalUsageApi
-          ? usageToPluginMeta(await fetchLocalUsage())
-          : await invoke<PluginMeta[]>("list_plugins")
+        const availablePlugins = await invoke<PluginMeta[]>("list_plugins")
         if (!isMounted) return
         setPluginsMeta(availablePlugins)
 
-        const storedSettings = useLocalUsageApi
-          ? { order: availablePlugins.map((plugin) => plugin.id), disabled: [] }
-          : await loadPluginSettings()
+        const storedSettings = await loadPluginSettings()
         const normalized = normalizePluginSettings(storedSettings, availablePlugins)
-        if (!useLocalUsageApi && !arePluginSettingsEqual(storedSettings, normalized)) {
+        if (!arePluginSettingsEqual(storedSettings, normalized)) {
           await savePluginSettings(normalized)
         }
 
         let storedInterval = DEFAULT_AUTO_UPDATE_INTERVAL
-        if (!useLocalUsageApi) {
-          try {
-            storedInterval = await loadAutoUpdateInterval()
-          } catch (error) {
-            console.error("Failed to load auto-update interval:", error)
-          }
+        try {
+          storedInterval = await loadAutoUpdateInterval()
+        } catch (error) {
+          console.error("Failed to load auto-update interval:", error)
         }
 
         let storedThemeMode = DEFAULT_THEME_MODE
-        if (!useLocalUsageApi) {
-          try {
-            storedThemeMode = await loadThemeMode()
-          } catch (error) {
-            console.error("Failed to load theme mode:", error)
-          }
+        try {
+          storedThemeMode = await loadThemeMode()
+        } catch (error) {
+          console.error("Failed to load theme mode:", error)
         }
 
         let storedDisplayMode = DEFAULT_DISPLAY_MODE
-        if (!useLocalUsageApi) {
-          try {
-            storedDisplayMode = await loadDisplayMode()
-          } catch (error) {
-            console.error("Failed to load display mode:", error)
-          }
+        try {
+          storedDisplayMode = await loadDisplayMode()
+        } catch (error) {
+          console.error("Failed to load display mode:", error)
         }
 
         let storedResetTimerDisplayMode = DEFAULT_RESET_TIMER_DISPLAY_MODE
-        if (!useLocalUsageApi) {
-          try {
-            storedResetTimerDisplayMode = await loadResetTimerDisplayMode()
-          } catch (error) {
-            console.error("Failed to load reset timer display mode:", error)
-          }
+        try {
+          storedResetTimerDisplayMode = await loadResetTimerDisplayMode()
+        } catch (error) {
+          console.error("Failed to load reset timer display mode:", error)
         }
 
         let storedGlobalShortcut = DEFAULT_GLOBAL_SHORTCUT
-        if (!useLocalUsageApi) {
-          try {
-            storedGlobalShortcut = await loadGlobalShortcut()
-          } catch (error) {
-            console.error("Failed to load global shortcut:", error)
-          }
+        try {
+          storedGlobalShortcut = await loadGlobalShortcut()
+        } catch (error) {
+          console.error("Failed to load global shortcut:", error)
         }
 
         let storedStartOnLogin = DEFAULT_START_ON_LOGIN
-        if (!useLocalUsageApi) {
-          try {
-            storedStartOnLogin = await loadStartOnLogin()
-          } catch (error) {
-            console.error("Failed to load start on login:", error)
-          }
+        try {
+          storedStartOnLogin = await loadStartOnLogin()
+        } catch (error) {
+          console.error("Failed to load start on login:", error)
+        }
 
-          try {
-            await applyStartOnLogin(storedStartOnLogin)
-          } catch (error) {
-            console.error("Failed to apply start on login setting:", error)
-          }
-          try {
-            await migrateLegacyTraySettings()
-          } catch (error) {
-            console.error("Failed to migrate legacy tray settings:", error)
-          }
+        try {
+          await applyStartOnLogin(storedStartOnLogin)
+        } catch (error) {
+          console.error("Failed to apply start on login setting:", error)
+        }
+        try {
+          await migrateLegacyTraySettings()
+        } catch (error) {
+          console.error("Failed to migrate legacy tray settings:", error)
         }
 
         let storedMenubarIconStyle = DEFAULT_MENUBAR_ICON_STYLE
-        if (!useLocalUsageApi) {
-          try {
-            storedMenubarIconStyle = await loadMenubarIconStyle()
-          } catch (error) {
-            console.error("Failed to load menubar icon style:", error)
-          }
+        try {
+          storedMenubarIconStyle = await loadMenubarIconStyle()
+        } catch (error) {
+          console.error("Failed to load menubar icon style:", error)
         }
 
         if (isMounted) {

@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef } from "react"
 import { listen, type UnlistenFn } from "@tauri-apps/api/event"
-import { invoke, isTauri } from "@tauri-apps/api/core"
+import { invoke } from "@tauri-apps/api/core"
 import type { PluginOutput } from "@/lib/plugin-types"
-import { canUseLocalUsageApi, fetchLocalUsage } from "@/lib/local-usage-api"
 
 type ProbeResult = {
   batchId: string
@@ -30,8 +29,6 @@ export function useProbeEvents({ onResult, onBatchComplete }: UseProbeEventsOpti
   const listenersReadyResolveRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
-    if (!isTauri()) return
-
     let cancelled = false
 
     // Create the promise that will resolve when listeners are ready
@@ -84,18 +81,6 @@ export function useProbeEvents({ onResult, onBatchComplete }: UseProbeEventsOpti
   }, [onBatchComplete, onResult])
 
   const startBatch = useCallback(async (pluginIds?: string[]) => {
-    if (!isTauri()) {
-      if (canUseLocalUsageApi()) {
-        const outputs = await fetchLocalUsage()
-        const requested = new Set(pluginIds ?? outputs.map((output) => output.providerId))
-        const selected = outputs.filter((output) => requested.has(output.providerId))
-        selected.forEach((output) => onResult(output))
-        onBatchComplete()
-        return selected.map((output) => output.providerId)
-      }
-      throw new Error("Tauri API unavailable")
-    }
-
     // Wait for listeners to be ready before starting the batch
     if (listenersReadyRef.current) {
       await listenersReadyRef.current
@@ -117,7 +102,7 @@ export function useProbeEvents({ onResult, onBatchComplete }: UseProbeEventsOpti
       activeBatchIds.current.delete(batchId)
       throw error
     }
-  }, [onBatchComplete, onResult])
+  }, [])
 
   return { startBatch }
 }

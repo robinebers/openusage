@@ -377,26 +377,6 @@ describe("codex plugin", () => {
     expect(firstCall.homePath).toBe("/tmp/codex-home")
   })
 
-  it("passes discovered file auth directory to ccusage when CODEX_HOME is absent", async () => {
-    const ctx = makeCtx()
-    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
-      tokens: { access_token: "token" },
-      last_refresh: new Date().toISOString(),
-    }))
-    ctx.host.http.request.mockReturnValue({
-      status: 200,
-      headers: { "x-codex-primary-used-percent": "10" },
-      bodyText: JSON.stringify({}),
-    })
-    ctx.host.ccusage.query.mockReturnValue({ status: "ok", data: { daily: [] } })
-
-    const plugin = await loadPlugin()
-    plugin.probe(ctx)
-
-    const firstCall = ctx.host.ccusage.query.mock.calls[0][0]
-    expect(firstCall.homePath).toBe("~/.codex")
-  })
-
   it("queries ccusage on each probe", async () => {
     const ctx = makeCtx()
     ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({

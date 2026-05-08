@@ -1,9 +1,9 @@
 use std::sync::OnceLock;
 use tauri::{AppHandle, LogicalSize, Manager, Size};
-#[cfg(target_os = "windows")]
-use tauri::{image::Image, path::BaseDirectory};
 #[cfg(not(target_os = "windows"))]
 use tauri::{Position, Size as WindowSize};
+#[cfg(target_os = "windows")]
+use tauri::{image::Image, path::BaseDirectory};
 
 static INIT_DONE: OnceLock<()> = OnceLock::new();
 const PANEL_WIDTH: f64 = 400.0;
@@ -33,7 +33,6 @@ pub fn init(app_handle: &AppHandle) -> tauri::Result<()> {
             preferred_panel_height(&window),
         )))?;
         window.center()?;
-        window.show()?;
     }
 
     Ok(())
@@ -82,7 +81,11 @@ pub fn toggle_panel(app_handle: &AppHandle) {
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn show_panel_at_tray_icon(app_handle: &AppHandle, _icon_position: Position, _icon_size: WindowSize) {
+pub fn show_panel_at_tray_icon(
+    app_handle: &AppHandle,
+    _icon_position: Position,
+    _icon_size: WindowSize,
+) {
     show_window(app_handle);
 }
 

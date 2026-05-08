@@ -39,6 +39,17 @@ describe("cursor plugin", () => {
     expect(dbPath).toBe("~/AppData/Roaming/Cursor/User/globalStorage/state.vscdb")
   })
 
+  it("explains sqlite3 requirement on Windows when sqlite3 is missing", async () => {
+    const ctx = makeCtx()
+    ctx.app.platform = "windows"
+    ctx.host.sqlite.query.mockImplementation(() => {
+      throw new Error("sqlite3 is required on Windows to read local provider state")
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("sqlite3 is required on Windows to read Cursor usage")
+  })
+
   it("loads tokens from keychain when sqlite has none", async () => {
     const ctx = makeCtx()
     ctx.host.sqlite.query.mockReturnValue(JSON.stringify([]))

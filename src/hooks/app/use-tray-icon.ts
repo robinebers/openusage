@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { resolveResource } from "@tauri-apps/api/path"
 import { TrayIcon } from "@tauri-apps/api/tray"
-import { canUseLocalUsageApi } from "@/lib/local-usage-api"
 import { isWindowsRuntime } from "@/lib/platform"
 import type { PluginMeta } from "@/lib/plugin-types"
 import type { DisplayMode, MenubarIconStyle, PluginSettings } from "@/lib/settings"
@@ -343,7 +342,6 @@ export function useTrayIcon({
 
   const trayInitializedRef = useRef(false)
   useEffect(() => {
-    if (canUseLocalUsageApi()) return
     if (trayInitializedRef.current) return
     let cancelled = false
 
