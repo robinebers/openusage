@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   publish:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -19,6 +23,8 @@ jobs:
             args: "--target aarch64-apple-darwin"
           - platform: macos-latest
             args: "--target x86_64-apple-darwin"
+          - platform: windows-latest
+            args: ""
     runs-on: ${{ matrix.platform }}
     env:
       RELEASE_TAG: ${{ github.ref_name }}
@@ -28,8 +34,11 @@ jobs:
           ref: ${{ env.RELEASE_TAG }}
 
       - uses: dtolnay/rust-toolchain@stable
+        if: runner.os == 'macOS'
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: dtolnay/rust-toolchain@stable
+        if: runner.os != 'macOS'
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: "./src-tauri -> target"
@@ -81,6 +90,7 @@ jobs:
           fi
 
       - name: Import Apple Developer Certificate
+        if: runner.os == 'macOS'
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -112,16 +122,55 @@ jobs:
         with:
           tagName: ${{ env.RELEASE_TAG }}
           releaseName: ${{ env.RELEASE_TAG }}
-          releaseDraft: false
+          releaseDraft: true
           prerelease: false
           includeUpdaterJson: true
+          updaterJsonPreferNsis: true
+          retryAttempts: 3
           args: ${{ matrix.args }}
 
-      - name: Verify updater assets uploaded
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  verify-release:
+    needs: publish
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Verify updater manifest includes macOS and Windows
         run: |
-          ASSETS=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | tr -d '\r')
+          set -euo pipefail
 
-          printf '%s\n' "$ASSETS" | grep -Fxq 'latest.json' || { echo "Missing updater manifest: latest.json"; exit 1; }
-          printf '%s\n' "$ASSETS" | grep -Eq '\.sig$' || { echo "Missing updater signatures (.sig)"; exit 1; }
+          gh release download "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern latest.json \
+            -O latest.json
+
+          jq -e '
+            .version and
+            .platforms["darwin-aarch64"].url and .platforms["darwin-aarch64"].signature and
+            .platforms["darwin-x86_64"].url and .platforms["darwin-x86_64"].signature and
+            .platforms["windows-x86_64"].url and .platforms["windows-x86_64"].signature
+          ' latest.json
+
+          ASSETS="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | tr -d '\r')"
+
+          for key in darwin-aarch64 darwin-x86_64 windows-x86_64; do
+            url="$(jq -r ".platforms[\"$key\"].url" latest.json)"
+            asset="$(basename "$url")"
+
+            printf '%s\n' "$ASSETS" | grep -Fxq "$asset" || {
+              echo "Missing updater asset for $key: $asset"
+              exit 1
+            }
+
+            printf '%s\n' "$ASSETS" | grep -Fxq "$asset.sig" || {
+              echo "Missing updater signature asset for $key: $asset.sig"
+              exit 1
+            }
+          done
+
+      - name: Publish release
+        run: |
+          gh release edit "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft=false
