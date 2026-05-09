@@ -1,3 +1,6 @@
+import type { MouseEvent } from "react"
+import { isTauri } from "@tauri-apps/api/core"
+import { getCurrentWindow } from "@tauri-apps/api/window"
 import { useShallow } from "zustand/react/shallow"
 import { AppContent, type AppContentActionProps } from "@/components/app/app-content"
 import { PanelFooter } from "@/components/panel-footer"
@@ -6,10 +9,16 @@ import type { DisplayPluginState } from "@/hooks/app/use-app-plugin-views"
 import type { SettingsPluginState } from "@/hooks/app/use-settings-plugin-list"
 import { useAppVersion } from "@/hooks/app/use-app-version"
 import { usePanel } from "@/hooks/app/use-panel"
+import { cn } from "@/lib/utils"
 import { useAppUpdate } from "@/hooks/use-app-update"
 import { useAppUiStore } from "@/stores/app-ui-store"
 
 const ARROW_OVERHEAD_PX = 37
+
+function isWindowsPlatform() {
+  if (typeof navigator === "undefined") return false
+  return /Win/.test(navigator.platform)
+}
 
 type AppShellProps = {
   onRefreshAll: () => void
@@ -65,18 +74,42 @@ export function AppShell({
 
   const appVersion = useAppVersion()
   const { updateStatus, triggerInstall, checkForUpdates } = useAppUpdate()
+  const isWindows = isWindowsPlatform()
+  const panelHeightOverheadPx = isWindows ? 16 : ARROW_OVERHEAD_PX
+  const handleDragMouseDown = (event: MouseEvent<HTMLDivElement>) => {
+    if (!isWindows || event.button !== 0 || !isTauri()) return
+    void getCurrentWindow().startDragging().catch((error) => {
+      console.error("Failed to start window drag:", error)
+    })
+  }
 
   return (
     <div
       ref={containerRef}
       tabIndex={-1}
-      className="flex flex-col items-center p-6 pt-1.5 bg-transparent outline-none"
+      className={cn(
+        "flex flex-col items-center bg-transparent outline-none",
+        isWindows ? "p-2" : "p-6 pt-1.5"
+      )}
     >
-      <div className="tray-arrow" />
+      {!isWindows && <div className="tray-arrow" data-tauri-drag-region />}
       <div
-        className="relative bg-card rounded-xl overflow-hidden select-none w-full border shadow-lg flex flex-col"
-        style={maxPanelHeightPx ? { maxHeight: `${maxPanelHeightPx - ARROW_OVERHEAD_PX}px` } : undefined}
+        className={cn(
+          "relative bg-card rounded-xl overflow-hidden select-none w-full border flex flex-col",
+          isWindows ? "pt-4 shadow-none" : "shadow-lg"
+        )}
+        style={maxPanelHeightPx ? { maxHeight: `${maxPanelHeightPx - panelHeightOverheadPx}px` } : undefined}
       >
+        {isWindows && (
+          <div
+            aria-hidden="true"
+            data-tauri-drag-region
+            onMouseDown={handleDragMouseDown}
+            className="absolute inset-x-0 top-0 z-10 flex h-4 cursor-move items-center justify-center"
+          >
+            <div className="h-1 w-8 rounded-full bg-muted-foreground/25" />
+          </div>
+        )}
         <div className="flex flex-1 min-h-0 flex-row">
           <SideNav
             activeView={activeView}

@@ -8,7 +8,9 @@ See your usage at a glance from your menu bar. No digging through dashboards.
 
 [**Download the latest release**](https://github.com/robinebers/openusage/releases/latest) (macOS, Apple Silicon & Intel)
 
-The app auto-updates. Install once and you're set.
+Released macOS builds auto-update. Install once and you're set.
+
+Windows support is available from source. See [Windows setup](docs/windows-setup.md) for prerequisites and build instructions.
 
 ## What It Does
 
@@ -43,6 +45,11 @@ OpenUsage lives in your menu bar and shows you how much of your AI coding subscr
 Community contributions welcome.
 
 Want a provider that's not listed? [Open an issue.](https://github.com/robinebers/openusage/issues/new)
+
+## Supported Platforms
+
+- macOS (released builds)
+- Windows (source builds)
 
 ## Open Source, Community Driven
 

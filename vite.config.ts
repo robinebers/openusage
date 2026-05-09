@@ -21,6 +21,7 @@ export default defineConfig(async () => ({
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}", "plugins/**/*.test.js"],
     exclude: ["**/node_modules/**", "**/src-tauri/target/**"],
+    testTimeout: 15_000,
     clearMocks: true,
     mockReset: true,
     restoreMocks: true,

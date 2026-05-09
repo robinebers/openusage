@@ -70,6 +70,13 @@ const menuState = vi.hoisted(() => ({
   menuCloseMock: vi.fn(async () => undefined),
 }))
 
+function mockPlatform(platform: string) {
+  Object.defineProperty(navigator, "platform", {
+    configurable: true,
+    value: platform,
+  })
+}
+
 vi.mock("@dnd-kit/core", () => ({
   DndContext: ({ children, onDragEnd }: { children: ReactNode; onDragEnd?: (event: any) => void }) => {
     dndState.latestOnDragEnd = onDragEnd ?? null
@@ -244,6 +251,7 @@ import { useAppUiStore } from "@/stores/app-ui-store"
 
 describe("App", () => {
   beforeEach(() => {
+    mockPlatform("MacIntel")
     useAppUiStore.getState().resetState()
     useAppPluginStore.getState().resetState()
     useAppPreferencesStore.getState().resetState()

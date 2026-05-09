@@ -3,15 +3,30 @@ import { X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { GlobalShortcut } from "@/lib/settings"
 
-// Convert internal shortcut format to display format
-// e.g., "CommandOrControl+Shift+U" -> "Cmd + Shift + U"
+function isApplePlatform(): boolean {
+  if (typeof navigator === "undefined") return false
+  return /Mac|iPhone|iPad|iPod/.test(navigator.platform)
+}
+
+function platformModifierLabels() {
+  const apple = isApplePlatform()
+  return {
+    commandOrControl: apple ? "Cmd" : "Ctrl",
+    alt: apple ? "Opt" : "Alt",
+  }
+}
+
+// Convert internal shortcut format to display format.
+// e.g. macOS: "CommandOrControl+Shift+U" -> "Cmd + Shift + U"
+//      Windows: "CommandOrControl+Shift+U" -> "Ctrl + Shift + U"
 function formatShortcutForDisplay(shortcut: string): string {
+  const labels = platformModifierLabels()
   return shortcut
-    .replace(/CommandOrControl/g, "Cmd")
+    .replace(/CommandOrControl/g, labels.commandOrControl)
     .replace(/Command/g, "Cmd")
     .replace(/Control/g, "Ctrl")
-    .replace(/Option/g, "Opt")
-    .replace(/Alt/g, "Opt")
+    .replace(/Option/g, labels.alt)
+    .replace(/Alt/g, labels.alt)
     .replace(/\+/g, " + ")
 }
 
@@ -99,6 +114,7 @@ function codeToTauriKey(code: string): string {
 function buildShortcutFromCodes(codes: Set<string>): { display: string; tauri: string | null } {
   const modifiers: string[] = []
   const displayMods: string[] = []
+  const labels = platformModifierLabels()
   let mainCode: string | null = null
 
   for (const code of codes) {
@@ -107,12 +123,12 @@ function buildShortcutFromCodes(codes: Set<string>): { display: string; tauri: s
       if (normalized === "Meta" || normalized === "Control") {
         if (!modifiers.includes("CommandOrControl")) {
           modifiers.push("CommandOrControl")
-          displayMods.push("Cmd")
+          displayMods.push(labels.commandOrControl)
         }
       } else if (normalized === "Alt") {
         if (!modifiers.includes("Alt")) {
           modifiers.push("Alt")
-          displayMods.push("Opt")
+          displayMods.push(labels.alt)
         }
       } else if (normalized === "Shift") {
         if (!modifiers.includes("Shift")) {
