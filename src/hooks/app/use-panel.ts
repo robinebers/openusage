@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { invoke, isTauri } from "@tauri-apps/api/core"
 import { listen } from "@tauri-apps/api/event"
 import { currentMonitor, getCurrentWindow, PhysicalSize } from "@tauri-apps/api/window"
@@ -9,6 +9,12 @@ import { isWindowsRuntime } from "@/lib/platform"
 const PANEL_WIDTH = 400
 const MAX_HEIGHT_FALLBACK_PX = 600
 const MAX_HEIGHT_FRACTION_OF_MONITOR = 0.8
+
+type MaxHeightSnapshot = {
+  factor: number
+  logical: number
+  physical: number
+}
 
 type UsePanelArgs = {
   activeView: ActiveView
@@ -24,6 +30,16 @@ function isEditableTarget(target: EventTarget | null): boolean {
   return Boolean(target.closest("input, textarea, select, [contenteditable='true'], [role='textbox']"))
 }
 
+function getScreenMaxHeightSnapshot(factor: number): MaxHeightSnapshot {
+  const screenAvailHeight = Number(window.screen?.availHeight) || MAX_HEIGHT_FALLBACK_PX
+  const logical = Math.floor(screenAvailHeight * MAX_HEIGHT_FRACTION_OF_MONITOR)
+  return {
+    factor,
+    logical,
+    physical: Math.floor(logical * factor),
+  }
+}
+
 export function usePanel({
   activeView,
   setActiveView,
@@ -36,6 +52,7 @@ export function usePanel({
   const [canScrollDown, setCanScrollDown] = useState(false)
   const [maxPanelHeightPx, setMaxPanelHeightPx] = useState<number | null>(null)
   const maxPanelHeightPxRef = useRef<number | null>(null)
+  const windowsMaxHeightRef = useRef<MaxHeightSnapshot | null>(null)
   const isWindows = isWindowsRuntime()
 
   const focusContainer = useCallback(() => {
@@ -144,8 +161,77 @@ export function usePanel({
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [activeView, displayPlugins, setActiveView, showAbout])
 
+  useLayoutEffect(() => {
+    if (!isTauri() || !isWindows) return
+
+    const container = containerRef.current
+    if (!container) return
+
+    let cancelled = false
+
+    const applyMaxHeight = (snapshot: MaxHeightSnapshot) => {
+      windowsMaxHeightRef.current = snapshot
+      if (maxPanelHeightPxRef.current !== snapshot.logical) {
+        maxPanelHeightPxRef.current = snapshot.logical
+        setMaxPanelHeightPx(snapshot.logical)
+      }
+    }
+
+    const currentMaxHeight = (factor: number) => {
+      const cached = windowsMaxHeightRef.current
+      if (cached?.factor === factor) return cached
+
+      const fallback = getScreenMaxHeightSnapshot(factor)
+      applyMaxHeight(fallback)
+      return fallback
+    }
+
+    const resizeWindow = () => {
+      const factor = window.devicePixelRatio
+      const width = Math.ceil(PANEL_WIDTH * factor)
+      const desiredHeightPhysical = Math.ceil(Math.max(1, container.scrollHeight) * factor)
+      const maxHeight = currentMaxHeight(factor)
+      const height = Math.ceil(Math.min(desiredHeightPhysical, maxHeight.physical))
+
+      Promise.resolve(getCurrentWindow().setSize(new PhysicalSize(width, height))).catch((error) => {
+        console.error("Failed to resize window:", error)
+      })
+    }
+
+    resizeWindow()
+
+    const refreshMonitorMaxHeight = async () => {
+      const factor = window.devicePixelRatio
+
+      try {
+        const monitor = await currentMonitor()
+        if (cancelled || !monitor) return
+
+        const physical = Math.floor(monitor.size.height * MAX_HEIGHT_FRACTION_OF_MONITOR)
+        applyMaxHeight({
+          factor,
+          logical: Math.floor(physical / factor),
+          physical,
+        })
+        resizeWindow()
+      } catch {
+        // Keep the synchronous screen fallback.
+      }
+    }
+
+    void refreshMonitorMaxHeight()
+
+    const observer = new ResizeObserver(resizeWindow)
+    observer.observe(container)
+
+    return () => {
+      cancelled = true
+      observer.disconnect()
+    }
+  }, [activeView, displayPlugins, isWindows])
+
   useEffect(() => {
-    if (!isTauri()) return
+    if (!isTauri() || isWindows) return
 
     const container = containerRef.current
     if (!container) return

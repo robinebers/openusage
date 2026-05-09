@@ -41,6 +41,8 @@ interface NavPlugin {
   brandColor?: string
 }
 
+const INTERACTIVE_DRAG_SELECTOR = "button, a, input, textarea, select, [role='button'], [data-sortable-plugin]"
+
 interface SideNavProps {
   activeView: ActiveView
   onViewChange: (view: ActiveView) => void
@@ -112,7 +114,14 @@ function SortableNavPlugin({ plugin, isActive, isDark, onClick, onContextMenu }:
   }
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners} role="presentation">
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      role="presentation"
+      data-sortable-plugin
+    >
       <NavButton
         isActive={isActive}
         onClick={onClick}
@@ -216,8 +225,18 @@ export function SideNav({
     [isPluginRefreshAvailable, onPluginContextAction]
   )
 
+  const handleNavMouseDown = useCallback(
+    (event: React.MouseEvent<HTMLElement>) => {
+      if (!onDragRegionMouseDown) return
+      const target = event.target
+      if (target instanceof Element && target.closest(INTERACTIVE_DRAG_SELECTOR)) return
+      onDragRegionMouseDown(event)
+    },
+    [onDragRegionMouseDown]
+  )
+
   return (
-    <nav className="flex flex-col w-12 border-r bg-muted/50 dark:bg-card py-3">
+    <nav className="flex flex-col w-12 border-r bg-muted/50 dark:bg-card py-3" onMouseDown={handleNavMouseDown}>
       {/* Home */}
       <NavButton
         isActive={activeView === "home"}
@@ -253,7 +272,6 @@ export function SideNav({
       {/* Spacer */}
       <div
         className={cn("flex-1", onDragRegionMouseDown && "cursor-grab active:cursor-grabbing")}
-        onMouseDown={onDragRegionMouseDown}
       />
 
       {/* Help */}

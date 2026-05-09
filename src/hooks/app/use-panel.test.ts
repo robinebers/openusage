@@ -1,4 +1,5 @@
-import { act, renderHook, waitFor } from "@testing-library/react"
+import { act, render, renderHook, waitFor } from "@testing-library/react"
+import { createElement } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const {
@@ -315,6 +316,59 @@ describe("usePanel", () => {
     })
 
     expect(setActiveView).toHaveBeenCalledWith("b")
+  })
+
+  it("resizes Windows before monitor lookup resolves", () => {
+    isWindowsRuntimeMock.mockReturnValue(true)
+
+    const calls: string[] = []
+    const setSize = vi.fn().mockImplementation(() => {
+      calls.push("setSize")
+      return Promise.resolve()
+    })
+    getCurrentWindowMock.mockReturnValue({
+      setSize,
+      outerSize: vi.fn().mockResolvedValue({ width: 0, height: 0 }),
+    })
+
+    let resolveMonitor: ((value: null) => void) | null = null
+    currentMonitorMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          calls.push("currentMonitor")
+          resolveMonitor = resolve
+        })
+    )
+
+    const scrollHeightSpy = vi
+      .spyOn(HTMLElement.prototype, "scrollHeight", "get")
+      .mockReturnValue(320)
+
+    function Harness() {
+      const { containerRef } = usePanel({
+        activeView: "home",
+        setActiveView: vi.fn(),
+        showAbout: false,
+        setShowAbout: vi.fn(),
+        displayPlugins: [],
+      })
+
+      return createElement("div", { ref: containerRef })
+    }
+
+    try {
+      render(createElement(Harness))
+
+      expect(setSize).toHaveBeenCalled()
+      expect(currentMonitorMock).toHaveBeenCalled()
+      expect(calls[0]).toBe("setSize")
+
+      act(() => {
+        resolveMonitor?.(null)
+      })
+    } finally {
+      scrollHeightSpy.mockRestore()
+    }
   })
 
   it("focuses the panel container when the window regains focus", () => {

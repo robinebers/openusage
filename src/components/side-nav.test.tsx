@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 import { openUrl } from "@tauri-apps/plugin-opener"
@@ -89,5 +89,55 @@ describe("SideNav", () => {
 
     expect(openUrl).toHaveBeenCalledWith("https://github.com/robinebers/openusage/issues")
     expect(invoke).toHaveBeenCalledWith("hide_panel")
+  })
+
+  it("uses non-interactive sidebar chrome as a window drag region", () => {
+    const onViewChange = vi.fn()
+    const onDragRegionMouseDown = vi.fn()
+    const { container } = render(
+      <SideNav
+        activeView="home"
+        onViewChange={onViewChange}
+        plugins={[{ id: "p", name: "P", iconUrl: "icon.svg" }]}
+        onDragRegionMouseDown={onDragRegionMouseDown}
+      />
+    )
+
+    const nav = container.querySelector("nav")
+    expect(nav).not.toBeNull()
+
+    fireEvent.mouseDown(nav!)
+    expect(onDragRegionMouseDown).toHaveBeenCalledTimes(1)
+
+    const homeButton = screen.getByRole("button", { name: "Home" })
+    const homeIconPath = homeButton.querySelector("path")
+    expect(homeIconPath).not.toBeNull()
+
+    fireEvent.mouseDown(homeIconPath!)
+    fireEvent.mouseDown(screen.getByRole("button", { name: "P" }))
+    expect(onDragRegionMouseDown).toHaveBeenCalledTimes(1)
+  })
+
+  it("calls the drag handler once from the sidebar spacer", () => {
+    const onViewChange = vi.fn()
+    const onDragRegionMouseDown = vi.fn()
+    const { container } = render(
+      <SideNav
+        activeView="home"
+        onViewChange={onViewChange}
+        plugins={[]}
+        onDragRegionMouseDown={onDragRegionMouseDown}
+      />
+    )
+
+    const nav = container.querySelector("nav")
+    const spacer = Array.from(nav?.children ?? []).find((child) =>
+      child.classList.contains("flex-1")
+    )
+    expect(spacer).toBeDefined()
+
+    fireEvent.mouseDown(spacer!)
+
+    expect(onDragRegionMouseDown).toHaveBeenCalledTimes(1)
   })
 })
