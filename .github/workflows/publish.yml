@@ -19,12 +19,7 @@ jobs:
             args: "--target aarch64-apple-darwin"
           - platform: macos-latest
             args: "--target x86_64-apple-darwin"
-          - platform: windows-latest
-            args: ""
     runs-on: ${{ matrix.platform }}
-    defaults:
-      run:
-        shell: bash
     env:
       RELEASE_TAG: ${{ github.ref_name }}
     steps:
@@ -33,11 +28,8 @@ jobs:
           ref: ${{ env.RELEASE_TAG }}
 
       - uses: dtolnay/rust-toolchain@stable
-        if: startsWith(matrix.platform, 'macos')
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
-      - uses: dtolnay/rust-toolchain@stable
-        if: startsWith(matrix.platform, 'windows')
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: "./src-tauri -> target"
@@ -89,7 +81,6 @@ jobs:
           fi
 
       - name: Import Apple Developer Certificate
-        if: startsWith(matrix.platform, 'macos')
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
