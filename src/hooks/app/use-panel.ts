@@ -12,6 +12,7 @@ const MAX_HEIGHT_FRACTION_OF_MONITOR = 0.8
 
 type MaxHeightSnapshot = {
   factor: number
+  screenAvailHeight: number
   logical: number
   physical: number
 }
@@ -30,11 +31,15 @@ function isEditableTarget(target: EventTarget | null): boolean {
   return Boolean(target.closest("input, textarea, select, [contenteditable='true'], [role='textbox']"))
 }
 
-function getScreenMaxHeightSnapshot(factor: number): MaxHeightSnapshot {
-  const screenAvailHeight = Number(window.screen?.availHeight) || MAX_HEIGHT_FALLBACK_PX
+function getScreenAvailHeight(): number {
+  return Number(window.screen?.availHeight) || MAX_HEIGHT_FALLBACK_PX
+}
+
+function getScreenMaxHeightSnapshot(factor: number, screenAvailHeight = getScreenAvailHeight()): MaxHeightSnapshot {
   const logical = Math.floor(screenAvailHeight * MAX_HEIGHT_FRACTION_OF_MONITOR)
   return {
     factor,
+    screenAvailHeight,
     logical,
     physical: Math.floor(logical * factor),
   }
@@ -178,10 +183,11 @@ export function usePanel({
     }
 
     const currentMaxHeight = (factor: number) => {
+      const screenAvailHeight = getScreenAvailHeight()
       const cached = windowsMaxHeightRef.current
-      if (cached?.factor === factor) return cached
+      if (cached?.factor === factor && cached.screenAvailHeight === screenAvailHeight) return cached
 
-      const fallback = getScreenMaxHeightSnapshot(factor)
+      const fallback = getScreenMaxHeightSnapshot(factor, screenAvailHeight)
       applyMaxHeight(fallback)
       return fallback
     }
@@ -210,6 +216,7 @@ export function usePanel({
         const physical = Math.floor(monitor.size.height * MAX_HEIGHT_FRACTION_OF_MONITOR)
         applyMaxHeight({
           factor,
+          screenAvailHeight: getScreenAvailHeight(),
           logical: Math.floor(physical / factor),
           physical,
         })

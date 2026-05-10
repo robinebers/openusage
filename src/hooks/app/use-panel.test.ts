@@ -371,6 +371,53 @@ describe("usePanel", () => {
     }
   })
 
+  it("does not reuse Windows max height cache after same-DPI screen height changes", () => {
+    isWindowsRuntimeMock.mockReturnValue(true)
+
+    const setSize = vi.fn().mockResolvedValue(undefined)
+    getCurrentWindowMock.mockReturnValue({
+      setSize,
+      outerSize: vi.fn().mockResolvedValue({ width: 0, height: 0 }),
+    })
+
+    let screenAvailHeight = 1000
+    const screenAvailHeightSpy = vi
+      .spyOn(window.screen, "availHeight", "get")
+      .mockImplementation(() => screenAvailHeight)
+    const scrollHeightSpy = vi
+      .spyOn(HTMLElement.prototype, "scrollHeight", "get")
+      .mockReturnValue(1000)
+
+    function Harness({ activeView }: { activeView: "home" | "settings" }) {
+      const { containerRef } = usePanel({
+        activeView,
+        setActiveView: vi.fn(),
+        showAbout: false,
+        setShowAbout: vi.fn(),
+        displayPlugins: [],
+      })
+
+      return createElement("div", { ref: containerRef })
+    }
+
+    try {
+      const { rerender } = render(createElement(Harness, { activeView: "home" }))
+
+      expect(setSize).toHaveBeenCalled()
+      expect(setSize.mock.calls.at(-1)?.[0].height).toBe(800)
+
+      setSize.mockClear()
+      screenAvailHeight = 500
+      rerender(createElement(Harness, { activeView: "settings" }))
+
+      expect(setSize).toHaveBeenCalled()
+      expect(setSize.mock.calls[0]?.[0].height).toBe(400)
+    } finally {
+      screenAvailHeightSpy.mockRestore()
+      scrollHeightSpy.mockRestore()
+    }
+  })
+
   it("focuses the panel container when the window regains focus", () => {
     const requestAnimationFrameSpy = vi
       .spyOn(window, "requestAnimationFrame")
