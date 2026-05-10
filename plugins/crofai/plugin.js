@@ -137,12 +137,14 @@
       })
     );
 
-    lines.push(
-      ctx.line.text({
-        label: "Credits",
-        value: formatCredits(creditsValue),
-      })
-    );
+    if (creditsValue >= 0) {
+      lines.push(
+        ctx.line.text({
+          label: "Credits",
+          value: formatCredits(creditsValue),
+        })
+      );
+    }
 
     var models = [];
     var totalTokens = 0;
