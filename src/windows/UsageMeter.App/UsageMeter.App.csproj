@@ -20,4 +20,14 @@
   <ItemGroup>
     <ProjectReference Include="..\UsageMeter.Core\UsageMeter.Core.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\..\..\plugins\codex\icon.svg" Link="Assets\Providers\codex.svg" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\..\plugins\claude\icon.svg" Link="Assets\Providers\claude.svg" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\..\plugins\cursor\icon.svg" Link="Assets\Providers\cursor.svg" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\..\plugins\copilot\icon.svg" Link="Assets\Providers\copilot.svg" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\..\plugins\gemini\icon.svg" Link="Assets\Providers\gemini.svg" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\..\plugins\opencode-go\icon.svg" Link="Assets\Providers\opencode-go.svg" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\..\plugins\windsurf\icon.svg" Link="Assets\Providers\windsurf.svg" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
