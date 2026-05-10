@@ -355,6 +355,23 @@ describe("crofai plugin", () => {
     });
   });
 
+  it("uses requests_plan from usage API when no session key", async () => {
+    var ctx = makeCtx();
+    setEnv(ctx, API_KEY_ENV, "k");
+    ctx.host.http.request.mockReturnValue({
+      status: 200, headers: {}, bodyText: JSON.stringify({ usable_requests: 300, credits: 10, requests_plan: 1000 }),
+    });
+    var plugin = await loadPlugin();
+    var result = plugin.probe(ctx);
+
+    expect(result.lines[0]).toMatchObject({
+      type: "progress",
+      label: "Requests",
+      used: 700,
+      limit: 1000,
+    });
+  });
+
   it("gracefully falls back on pricing failure", async () => {
     var ctx = makeCtx();
     setEnv(ctx, API_KEY_ENV, "k");

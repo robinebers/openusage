@@ -104,7 +104,7 @@
     return sign + "$" + abs.toFixed(2);
   }
 
-  function buildLines(ctx, usageData, requestsCount, creditsValue, planInfo) {
+  function buildLines(ctx, usageData, requestsCount, creditsValue, planInfo, usagePlanRequests) {
     var lines = [];
 
     var maxRequests = FALLBACK_MAX_REQUESTS;
@@ -114,6 +114,12 @@
       planInfo.requests > 0
     ) {
       maxRequests = planInfo.requests;
+    } else if (
+      typeof usagePlanRequests === "number" &&
+      Number.isFinite(usagePlanRequests) &&
+      usagePlanRequests > 0
+    ) {
+      maxRequests = usagePlanRequests;
     }
 
     var used = 0;
@@ -214,6 +220,17 @@
       }
     }
 
+    var usagePlanRequests = null;
+    if ("requests_plan" in usageResp) {
+      if (
+        typeof usageResp.requests_plan === "number" &&
+        Number.isFinite(usageResp.requests_plan) &&
+        usageResp.requests_plan > 0
+      ) {
+        usagePlanRequests = usageResp.requests_plan;
+      }
+    }
+
     var sessionKey = readSessionKey(ctx);
 
     var userUsageData = null;
@@ -249,7 +266,7 @@
 
     return {
       plan: planName,
-      lines: buildLines(ctx, userUsageData, requestsCount, creditsValue, planInfo),
+      lines: buildLines(ctx, userUsageData, requestsCount, creditsValue, planInfo, usagePlanRequests),
     };
   }
 
