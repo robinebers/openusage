@@ -767,6 +767,95 @@ describe("crofai plugin", function () {
       expect(modelLine.value).toBe("3.0K tokens");
     });
 
+    it("skips models with string numeric total_tokens to avoid string concat", async function () {
+      var ctx = makeCtx();
+      setEnv(ctx, API_KEY_ENV, "k");
+      setEnv(ctx, SESSION_KEY_ENV, "s");
+      mockAllApis(ctx, {
+        usageDetailBody: JSON.stringify({ a: { total_tokens: "5000" }, b: { total_tokens: 1000 } }),
+      });
+      var p = await loadPlugin();
+      var result = p.probe(ctx);
+      var totalLine = result.lines.find(function (l) { return l.label === "Total tokens"; });
+      expect(totalLine.value).toBe("1.0K");
+      expect(result.lines.find(function (l) { return l.label === "a"; })).toBeUndefined();
+    });
+
+    it("skips models with boolean total_tokens", async function () {
+      var ctx = makeCtx();
+      setEnv(ctx, API_KEY_ENV, "k");
+      setEnv(ctx, SESSION_KEY_ENV, "s");
+      mockAllApis(ctx, {
+        usageDetailBody: JSON.stringify({ a: { total_tokens: true }, b: { total_tokens: 1000 } }),
+      });
+      var p = await loadPlugin();
+      var result = p.probe(ctx);
+      var totalLine = result.lines.find(function (l) { return l.label === "Total tokens"; });
+      expect(totalLine.value).toBe("1.0K");
+      expect(result.lines.find(function (l) { return l.label === "a"; })).toBeUndefined();
+    });
+
+    it("skips models with Infinity total_tokens", async function () {
+      var ctx = makeCtx();
+      setEnv(ctx, API_KEY_ENV, "k");
+      setEnv(ctx, SESSION_KEY_ENV, "s");
+      mockAllApis(ctx, {
+        usageDetailBody: JSON.stringify({ a: { total_tokens: Infinity }, b: { total_tokens: 1000 } }),
+      });
+      var p = await loadPlugin();
+      var result = p.probe(ctx);
+      expect(result.lines.find(function (l) { return l.label === "Total tokens"; }).value).toBe("1.0K");
+    });
+
+    it("skips models with negative total_tokens", async function () {
+      var ctx = makeCtx();
+      setEnv(ctx, API_KEY_ENV, "k");
+      setEnv(ctx, SESSION_KEY_ENV, "s");
+      mockAllApis(ctx, {
+        usageDetailBody: JSON.stringify({ a: { total_tokens: -500 }, b: { total_tokens: 1000 } }),
+      });
+      var p = await loadPlugin();
+      var result = p.probe(ctx);
+      expect(result.lines.find(function (l) { return l.label === "Total tokens"; }).value).toBe("1.0K");
+    });
+
+    it("skips models with object total_tokens", async function () {
+      var ctx = makeCtx();
+      setEnv(ctx, API_KEY_ENV, "k");
+      setEnv(ctx, SESSION_KEY_ENV, "s");
+      mockAllApis(ctx, {
+        usageDetailBody: JSON.stringify({ a: { total_tokens: { x: 1 } }, b: { total_tokens: 1000 } }),
+      });
+      var p = await loadPlugin();
+      var result = p.probe(ctx);
+      expect(result.lines.find(function (l) { return l.label === "Total tokens"; }).value).toBe("1.0K");
+    });
+
+    it("skips models with non-numeric string total_tokens", async function () {
+      var ctx = makeCtx();
+      setEnv(ctx, API_KEY_ENV, "k");
+      setEnv(ctx, SESSION_KEY_ENV, "s");
+      mockAllApis(ctx, {
+        usageDetailBody: JSON.stringify({ a: { total_tokens: "abc" }, b: { total_tokens: 1000 } }),
+      });
+      var p = await loadPlugin();
+      var result = p.probe(ctx);
+      expect(result.lines.find(function (l) { return l.label === "Total tokens"; }).value).toBe("1.0K");
+    });
+
+    it("prefers total_tokens over totalTokens when both present", async function () {
+      var ctx = makeCtx();
+      setEnv(ctx, API_KEY_ENV, "k");
+      setEnv(ctx, SESSION_KEY_ENV, "s");
+      mockAllApis(ctx, {
+        usageDetailBody: JSON.stringify({ a: { total_tokens: 2000, totalTokens: 999 } }),
+      });
+      var p = await loadPlugin();
+      var result = p.probe(ctx);
+      var modelLine = result.lines.find(function (l) { return l.label === "a"; });
+      expect(modelLine.value).toBe("2.0K tokens");
+    });
+
     it("shows no model lines when usage data is null", async function () {
       var ctx6 = makeCtx();
       setEnv(ctx6, API_KEY_ENV, "k");

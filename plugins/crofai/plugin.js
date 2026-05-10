@@ -153,10 +153,10 @@
       for (var key in usageData) {
         if (Object.prototype.hasOwnProperty.call(usageData, key)) {
           var model = usageData[key];
-          var tt = model.total_tokens || model.totalTokens || 0;
-          if (tt > 0) {
-            totalTokens += tt;
-            models.push({ name: key, tokens: tt });
+          var rawTt = model.total_tokens !== undefined ? model.total_tokens : model.totalTokens;
+          if (typeof rawTt === "number" && Number.isFinite(rawTt) && rawTt > 0) {
+            totalTokens += rawTt;
+            models.push({ name: key, tokens: rawTt });
           }
         }
       }
