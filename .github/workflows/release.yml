@@ -1,0 +1,55 @@
+name: Upload Windows Release Assets
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version, for example 1.0.0 or v1.0.0"
+        required: true
+      prerelease:
+        description: "Mark the GitHub Release as a prerelease"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Upload Windows assets
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: release
+        shell: pwsh
+        run: |
+          $version = "${{ inputs.version }}"
+
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            throw "Release version is required."
+          }
+
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $releaseArgs = @(
+            "-Version",
+            "${{ steps.release.outputs.version }}",
+            "-AssetsPath",
+            "release-assets/windows"
+          )
+
+          if ("${{ inputs.prerelease }}" -eq "true") {
+            $releaseArgs += "-Prerelease"
+          }
+
+          .\scripts\Publish-GitHubRelease.ps1 @releaseArgs

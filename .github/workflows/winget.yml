@@ -1,0 +1,95 @@
+name: Publish WinGet package
+
+on:
+  workflow_run:
+    workflows:
+      - Publish
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Package version, for example 1.0.0"
+        required: true
+      installer_urls:
+        description: "One installer URL per line"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  winget:
+    name: Submit WinGet manifest update
+    runs-on: windows-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download wingetcreate
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
+
+      - name: Submit package update
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WINGET_PACKAGE_IDENTIFIER: ${{ vars.WINGET_PACKAGE_IDENTIFIER }}
+          WINGET_PAT: ${{ secrets.WINGET_PAT }}
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          if ([string]::IsNullOrWhiteSpace($env:WINGET_PACKAGE_IDENTIFIER)) {
+            throw "Repository variable WINGET_PACKAGE_IDENTIFIER is required."
+          }
+
+          if ([string]::IsNullOrWhiteSpace($env:WINGET_PAT)) {
+            throw "Repository secret WINGET_PAT is required."
+          }
+
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $version = "${{ inputs.version }}"
+            $urls = @'
+          ${{ inputs.installer_urls }}
+          '@ -split "\r?\n" |
+              ForEach-Object { $_.Trim() } |
+              Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+          } else {
+            $event = Get-Content -LiteralPath $env:GITHUB_EVENT_PATH -Raw | ConvertFrom-Json
+            $headSha = [string]$event.workflow_run.head_sha
+            $tag = git tag --points-at $headSha |
+              Where-Object { $_ -match '^v[0-9]+\.[0-9]+\.[0-9]+$' } |
+              Select-Object -First 1
+
+            if ([string]::IsNullOrWhiteSpace($tag)) {
+              throw "Could not resolve a vMAJOR.MINOR.PATCH tag for workflow SHA $headSha."
+            }
+
+            $version = $tag.Substring(1)
+            $release = gh release view $tag --json assets | ConvertFrom-Json
+            $urls = @(
+              $release.assets |
+                Where-Object { $_.name -match '\.(exe|msi|msix|msixbundle|appx|appxbundle|zip)$' } |
+                ForEach-Object { $_.url }
+            )
+          }
+
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            throw "Package version is required."
+          }
+
+          if (-not $urls -or $urls.Count -eq 0) {
+            throw "No Windows installer URLs were found for the WinGet update."
+          }
+
+          .\wingetcreate.exe update `
+            $env:WINGET_PACKAGE_IDENTIFIER `
+            --version $version `
+            --urls $urls `
+            --submit `
+            --token $env:WINGET_PAT

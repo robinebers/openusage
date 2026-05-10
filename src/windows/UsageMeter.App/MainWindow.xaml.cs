@@ -27,26 +27,32 @@ public sealed partial class MainWindow : Window
     private string? _selectedProviderId;
     private TrayIconManager? _trayIcon;
     private readonly AppWindow _appWindow;
+    private readonly IntPtr _hwnd;
     private bool _isQuitting;
+    private bool _isHidingToTray;
+    private bool _canHideOnMinimize;
 
     public MainWindow()
     {
         InitializeComponent();
 
-        _appWindow = ResolveAppWindow();
+        _hwnd = WindowNative.GetWindowHandle(this);
+        _appWindow = ResolveAppWindow(_hwnd);
         _appWindow.Resize(new Windows.Graphics.SizeInt32(430, 680));
         _appWindow.Closing += OnAppWindowClosing;
+        _appWindow.Changed += OnAppWindowChanged;
+        InitializeTray();
 
         BuildLayout();
 
-        Closed += (_, _) => _trayIcon?.Dispose();
+        Closed += OnClosed;
 
         _ = RefreshAsync();
     }
 
-    public void InitializeTray()
+    private void InitializeTray()
     {
-        _trayIcon ??= new TrayIconManager(ShowWindow);
+        _trayIcon ??= new TrayIconManager(ShowAndActivate);
     }
 
     private void BuildLayout()
@@ -392,18 +398,56 @@ public sealed partial class MainWindow : Window
         return row;
     }
 
-    private void ShowWindow()
+    public void ShowAndActivate()
     {
         _appWindow.Show();
+        NativeMethods.ShowWindow(_hwnd, NativeMethods.SwRestore);
+        _canHideOnMinimize = true;
         Activate();
-        NativeMethods.SetForegroundWindow(WindowNative.GetWindowHandle(this));
+        NativeMethods.SetForegroundWindow(_hwnd);
     }
 
-    private AppWindow ResolveAppWindow()
+    private AppWindow ResolveAppWindow(IntPtr hwnd)
     {
-        var hwnd = WindowNative.GetWindowHandle(this);
         var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
         return AppWindow.GetFromWindowId(windowId);
+    }
+
+    private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
+    {
+        if (!sender.IsVisible || sender.Presenter is not OverlappedPresenter presenter)
+        {
+            return;
+        }
+
+        if (presenter.State is OverlappedPresenterState.Restored or OverlappedPresenterState.Maximized)
+        {
+            _canHideOnMinimize = true;
+            return;
+        }
+
+        if (_canHideOnMinimize && presenter.State == OverlappedPresenterState.Minimized)
+        {
+            HideToTray();
+        }
+    }
+
+    private void HideToTray()
+    {
+        if (_isQuitting || _trayIcon is null || _isHidingToTray)
+        {
+            return;
+        }
+
+        try
+        {
+            _isHidingToTray = true;
+            _appWindow.Hide();
+        }
+        finally
+        {
+            _isHidingToTray = false;
+        }
     }
 
     private void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
@@ -411,8 +455,13 @@ public sealed partial class MainWindow : Window
         if (!_isQuitting && _trayIcon is not null)
         {
             args.Cancel = true;
-            sender.Hide();
+            HideToTray();
         }
+    }
+
+    private void OnClosed(object sender, WindowEventArgs args)
+    {
+        _trayIcon?.Dispose();
     }
 
     private static SolidColorBrush Brush(byte red, byte green, byte blue) =>

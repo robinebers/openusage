@@ -133,6 +133,18 @@ pub fn toggle_panel(app_handle: &AppHandle) {
     }
 }
 
+pub fn hide_panel(app_handle: &AppHandle) {
+    if let Some(panel) = get_or_init_panel!(app_handle) {
+        panel.hide();
+    }
+}
+
+pub fn is_visible(app_handle: &AppHandle) -> bool {
+    get_or_init_panel!(app_handle)
+        .map(|panel| panel.is_visible())
+        .unwrap_or(false)
+}
+
 // Define our panel class and event handler together
 tauri_panel! {
     panel!(OpenUsagePanel {

@@ -6,9 +6,11 @@ See your usage at a glance from your menu bar. No digging through dashboards.
 
 ## Download
 
-[**Download the latest release**](https://github.com/robinebers/openusage/releases/latest) (macOS, Apple Silicon & Intel)
+[**Download the latest release**](https://github.com/robinebers/openusage/releases/latest) (macOS and Windows)
 
 The app auto-updates. Install once and you're set.
+
+Windows installer assets are attached to GitHub Releases when the publish workflow runs. WinGet publishing notes are in [release and winget docs](docs/release-and-winget.md).
 
 ## What It Does
 
