@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "crofai",
+  "name": "Crof.AI",
+  "version": "0.0.1",
+  "entry": "plugin.js",
+  "icon": "icon.svg",
+  "brandColor": "#6B52F2",
+  "links": [
+    {
+      "label": "Dashboard",
+      "url": "https://crof.ai"
+    }
+  ],
+  "lines": [
+    { "type": "badge", "label": "Status", "scope": "overview" },
+    { "type": "progress", "label": "Requests", "scope": "overview", "primaryOrder": 1 },
+    { "type": "text", "label": "Credits", "scope": "overview" },
+    { "type": "text", "label": "Total tokens", "scope": "overview" },
+    { "type": "text", "label": "Models", "scope": "detail" }
+  ]
+}
