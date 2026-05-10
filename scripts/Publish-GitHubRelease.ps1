@@ -51,12 +51,6 @@ if (-not (Test-Path -LiteralPath $assetRoot -PathType Container)) {
 }
 
 $supportedExtensions = @(
-    ".exe",
-    ".msi",
-    ".msix",
-    ".msixbundle",
-    ".appx",
-    ".appxbundle",
     ".zip"
 )
 
@@ -82,9 +76,9 @@ if ([string]::IsNullOrWhiteSpace($releaseTitle)) {
 
 $notesPath = Join-Path ([System.IO.Path]::GetTempPath()) "github-release-$releaseVersion.md"
 Set-Content -LiteralPath $notesPath -Encoding utf8 -Value @(
-    "Windows release assets for $tag.",
+    "UsageMeter release assets for $tag.",
     "",
-    "Download the installer or archive that matches your Windows architecture.",
+    "Download the Windows archive for your architecture.",
     "",
     "SHA256 hashes are available in SHA256SUMS.txt."
 )

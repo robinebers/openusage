@@ -1,53 +1,31 @@
-# Release and WinGet Publishing
+# Release And WinGet
 
-This repository publishes app installers to GitHub Releases. The main `Publish` workflow builds the Tauri app for macOS and Windows when a `vMAJOR.MINOR.PATCH` tag is pushed.
+UsageMeter ships as a Windows-only zip produced by `dotnet publish`.
 
-After the package is accepted once in the Windows Package Manager community repository, the `Publish WinGet package` workflow can submit manifest updates.
-
-## Release Windows executables
-
-The normal release path is a tag push:
+## Local Release Asset
 
 ```powershell
-git tag v1.0.0
-git push origin v1.0.0
+$version = "0.1.0"
+$publishDir = ".\artifacts\publish\UsageMeter-win-x64"
+$zipPath = ".\release-assets\windows\UsageMeter-v$version-win-x64.zip"
+
+dotnet publish .\src\UsageMeter.App\UsageMeter.App.csproj -c Release -r win-x64 --self-contained true -p:Version=$version -o $publishDir
+Compress-Archive -Path "$publishDir\*" -DestinationPath $zipPath -Force
 ```
 
-The `Publish` workflow uploads the Windows installers produced by Tauri to the GitHub Release.
-
-For a manual Windows-only asset upload, put Windows release assets in `release-assets/windows/`, then run:
+## GitHub Release
 
 ```powershell
-.\scripts\Publish-GitHubRelease.ps1 -Version 1.0.0
+.\scripts\Publish-GitHubRelease.ps1 -Version $version -AssetsPath .\release-assets\windows
 ```
 
-The repository must have a GitHub remote configured before publishing.
+The script uploads release assets and writes `SHA256SUMS.txt`.
 
-The release publisher uploads supported Windows installer formats:
+## WinGet
 
-- `.exe`
-- `.msi`
-- `.msix`
-- `.msixbundle`
-- `.appx`
-- `.appxbundle`
-- `.zip`
-
-It also generates and uploads `SHA256SUMS.txt`.
-
-The same publisher can also be started from the **Upload Windows Release Assets** workflow.
-
-## Publish to winget
-
-Winget packages are published through the Microsoft community repository, not from this repository directly.
+After the package exists in the Windows Package Manager community repository, `.github/workflows/winget.yml` can submit updates from release assets.
 
 Required repository settings:
 
-- Secret: `WINGET_PAT`
-- Variable: `WINGET_PACKAGE_IDENTIFIER`
-
-Use a package identifier in the form `Publisher.AppName`, for example `Contoso.Widget`.
-
-The first winget submission must create the package in `microsoft/winget-pkgs`. After that package exists, this repository's **Publish WinGet package** workflow can submit updates after the `Publish` workflow completes.
-
-See `winget/README.md` for the exact first-submission and update flow.
+- `WINGET_PACKAGE_IDENTIFIER` repository variable.
+- `WINGET_PAT` repository secret.

@@ -1,104 +1,54 @@
-# Track all your AI coding subscriptions in one place
+# UsageMeter
 
-See your usage at a glance from your menu bar. No digging through dashboards.
+Windows-native usage meter for AI coding subscriptions.
 
-![OpenUsage Screenshot](screenshot.png)
-
-## Download
-
-[**Download the latest release**](https://github.com/robinebers/openusage/releases/latest) (macOS and Windows)
-
-The app auto-updates. Install once and you're set.
-
-Windows installer assets are attached to GitHub Releases when the publish workflow runs. WinGet publishing notes are in [release and winget docs](docs/release-and-winget.md).
-
-## What It Does
-
-OpenUsage lives in your menu bar and shows you how much of your AI coding subscriptions you've used. Progress bars, badges, and clear labels. No mental math required.
-
-- **One glance.** All your AI tools, one panel.
-- **Always up-to-date.** Refreshes automatically on a schedule you pick.
-- **Global shortcut.** Toggle the panel from anywhere with a customizable keyboard shortcut.
-- **Lightweight.** Opens instantly, stays out of your way.
-- **Plugin-based.** New providers get added without updating the whole app.
-- **[Local HTTP API](docs/local-http-api.md).** Other apps can read your usage data from `127.0.0.1:6736`.
-- **[Proxy support](docs/proxy.md).** Route provider HTTP requests through a SOCKS5 or HTTP proxy.
+UsageMeter is a small internal WinUI app. It shows usage for the accounts already signed in on this Windows machine and stays available from the system tray.
 
 ## Supported Providers
 
-- [**Amp**](docs/providers/amp.md) / free tier, bonus, credits
-- [**Antigravity**](docs/providers/antigravity.md) / all models
-- [**Claude**](docs/providers/claude.md) / session, weekly, extra usage, local token usage (ccusage)
-- [**Codex**](docs/providers/codex.md) / session, weekly, reviews, credits
-- [**Copilot**](docs/providers/copilot.md) / premium, chat, completions
-- [**Cursor**](docs/providers/cursor.md) / credits, total usage, auto usage, API usage, on-demand, CLI auth
-- [**Factory / Droid**](docs/providers/factory.md) / standard, premium tokens
-- [**Gemini**](docs/providers/gemini.md) / pro, flash, workspace/free/paid tier
-- [**JetBrains AI Assistant**](docs/providers/jetbrains-ai-assistant.md) / quota, remaining
-- [**Kiro**](docs/providers/kiro.md) / credits, bonus credits, overages
-- [**Kimi Code**](docs/providers/kimi.md) / session, weekly
-- [**MiniMax**](docs/providers/minimax.md) / coding plan session
-- [**OpenCode Go**](docs/providers/opencode-go.md) / 5h, weekly, monthly spend limits
-- [**Windsurf**](docs/providers/windsurf.md) / prompt credits, flex credits
-- [**Z.ai**](docs/providers/zai.md) / session, weekly, web searches
+- Claude
+- Codex
+- Copilot
+- Cursor
+- Gemini
+- OpenCode Go
+- Windsurf
 
-Community contributions welcome.
+Provider support is native C#. Provider icons are stored in `src/UsageMeter.App/Assets/Providers`.
 
-Want a provider that's not listed? [Open an issue.](https://github.com/robinebers/openusage/issues/new)
+## Requirements
 
-## Open Source, Community Driven
+- Windows 10 1809 or newer
+- .NET 11 preview SDK
+- Visual Studio or Build Tools with Windows App SDK support
 
-OpenUsage is built by its users. Hundreds of people use it daily, and the project grows through community contributions: new providers, bug fixes, and ideas.
+The repo includes `global.json` pinned to the .NET 11 preview SDK used for local validation.
 
-I maintain the project as a guide and quality gatekeeper, but this is your app as much as mine. If something is missing or broken, the best way to get it fixed is to contribute by opening an issue, or submitting a PR.
+## Build, Test, Run
 
-Plugins are currently bundled as we build our the API, but soon will be made flexible so you can build and load their own.
+```powershell
+dotnet build .\UsageMeter.Windows.slnx
+dotnet test .\tests\UsageMeter.Tests\UsageMeter.Tests.csproj
+dotnet run --project .\src\UsageMeter.App\UsageMeter.App.csproj
+```
 
-<a href="https://www.star-history.com/?repos=robinebers%2Fopenusage&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=robinebers/openusage&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=robinebers/openusage&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=robinebers/openusage&type=date&legend=top-left" />
- </picture>
-</a>
+## Release
 
-### How to Contribute
+UsageMeter publishes a Windows-only zip from `dotnet publish`.
 
-- **Add a provider.** Each one is just a plugin. See the [Plugin API](docs/plugins/api.md).
-- **Fix a bug.** PRs welcome. Provide before/after screenshots.
-- **Request a feature.** [Open an issue](https://github.com/robinebers/openusage/issues/new) and make your case.
+```powershell
+$version = "0.1.0"
+dotnet publish .\src\UsageMeter.App\UsageMeter.App.csproj -c Release -r win-x64 --self-contained true -p:Version=$version -o .\artifacts\publish\UsageMeter-win-x64
+Compress-Archive -Path .\artifacts\publish\UsageMeter-win-x64\* -DestinationPath ".\release-assets\windows\UsageMeter-v$version-win-x64.zip" -Force
+.\scripts\Publish-GitHubRelease.ps1 -Version $version -AssetsPath .\release-assets\windows
+```
 
-Keep it simple. No feature creep, no AI-generated commit messages, test your changes.
+WinGet publishing notes are in [docs/release-and-winget.md](docs/release-and-winget.md).
 
-## Built Entirely with AI
+## Data
 
-Not a single line of code in this project was read or written by hand. 100% AI-generated, AI-reviewed, AI-shipped — using [Cursor](https://cursor.com), [Claude Code](https://docs.anthropic.com/en/docs/claude-code), and [Codex CLI](https://github.com/openai/codex).
-
-OpenUsage is a real-world example of what I teach in the [AI Builder's Blueprint](https://itsbyrob.in/EBDqgJ6) — a proven process for building and shipping software with AI, no coding background required.
-
-## Sponsors
-
-OpenUsage is supported by our sponsors. Become a sponsor to get your logo here and on [openusage.ai](https://openusage.ai).
-
-[Become a Sponsor](https://github.com/sponsors/robinebers)
-
-<!-- Add sponsor logos here -->
-
-## Credits
-
-Inspired by [CodexBar](https://github.com/steipete/CodexBar) by [@steipete](https://github.com/steipete). Same idea, very different approach.
+Usage snapshots are cached in `%LOCALAPPDATA%\UsageMeter\usage-cache.json`.
 
 ## License
 
 [MIT](LICENSE)
-
----
-
-<details>
-<summary><strong>Build from source</strong></summary>
-
-> **Warning**: The `main` branch may not be stable. It is merged directly without staging, so users are advised to use tagged versions for stable builds. Tagged versions are fully tested while `main` may contain unreleased features.
-
-### Stack
-
-...

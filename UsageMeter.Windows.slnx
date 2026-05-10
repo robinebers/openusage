@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="src/UsageMeter.App/UsageMeter.App.csproj" />
+  <Project Path="src/UsageMeter.Core/UsageMeter.Core.csproj" />
+  <Project Path="tests/UsageMeter.Tests/UsageMeter.Tests.csproj" />
+</Solution>

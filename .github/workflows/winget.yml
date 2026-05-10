@@ -12,7 +12,7 @@ on:
         description: "Package version, for example 1.0.0"
         required: true
       installer_urls:
-        description: "One installer URL per line"
+        description: "One release zip URL per line"
         required: true
 
 permissions:
@@ -74,7 +74,7 @@ jobs:
             $release = gh release view $tag --json assets | ConvertFrom-Json
             $urls = @(
               $release.assets |
-                Where-Object { $_.name -match '\.(exe|msi|msix|msixbundle|appx|appxbundle|zip)$' } |
+                Where-Object { $_.name -match '\.zip$' } |
                 ForEach-Object { $_.url }
             )
           }
@@ -84,7 +84,7 @@ jobs:
           }
 
           if (-not $urls -or $urls.Count -eq 0) {
-            throw "No Windows installer URLs were found for the WinGet update."
+            throw "No Windows release zip URLs were found for the WinGet update."
           }
 
           .\wingetcreate.exe update `

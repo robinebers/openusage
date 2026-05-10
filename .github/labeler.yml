@@ -1,19 +1,26 @@
-plugin:
+app:
   - changed-files:
-      - any-glob-to-any-file: "plugins/**"
+      - any-glob-to-any-file: "src/UsageMeter.App/**"
 
 core:
   - changed-files:
-      - any-glob-to-any-file: "src/**"
+      - any-glob-to-any-file: "src/UsageMeter.Core/**"
 
-rust:
+tests:
   - changed-files:
-      - any-glob-to-any-file: "src-tauri/**"
+      - any-glob-to-any-file: "tests/**"
 
 docs:
   - changed-files:
       - any-glob-to-any-file: "docs/**"
+      - any-glob-to-any-file: "README.md"
 
 ci:
   - changed-files:
       - any-glob-to-any-file: ".github/**"
+
+release:
+  - changed-files:
+      - any-glob-to-any-file: "scripts/**"
+      - any-glob-to-any-file: "release-assets/**"
+      - any-glob-to-any-file: "winget/**"

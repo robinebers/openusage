@@ -6,15 +6,15 @@ This repository includes `.github/workflows/winget.yml` to submit package update
 
 ## First submission
 
-1. Publish a GitHub Release with the Windows installer assets.
+1. Publish a GitHub Release with the Windows release zip.
 2. Install or download `wingetcreate`.
 3. Create and submit the first manifest:
 
 ```powershell
-wingetcreate.exe new "https://github.com/ddieppa/usage-meter/releases/download/v1.0.0/<windows-installer>.exe" --submit --token $env:WINGET_PAT
+wingetcreate.exe new "https://github.com/ddieppa/usage-meter/releases/download/v1.0.0/UsageMeter-v1.0.0-win-x64.zip" --submit --token $env:WINGET_PAT
 ```
 
-If you publish multiple architectures, include all installer URLs when creating the manifest.
+If you publish multiple architectures, include all release URLs when creating the manifest.
 
 ## Repository settings for updates
 
@@ -26,7 +26,7 @@ Add these in GitHub repository settings:
 After the first package manifest is accepted, every successful `Publish` workflow run can submit:
 
 ```powershell
-wingetcreate.exe update <PackageIdentifier> --version <Version> --urls <InstallerUrls> --submit --token <GitHubToken>
+wingetcreate.exe update <PackageIdentifier> --version <Version> --urls <ReleaseUrls> --submit --token <GitHubToken>
 ```
 
 ## Local manifest validation
@@ -37,4 +37,4 @@ Once a manifest exists, test it locally before submitting changes:
 winget install --manifest .\manifests\Publisher\AppName\1.0.0
 ```
 
-Use silent installer switches for `.exe` packages whenever the installer type needs them. Winget requires SHA256 hashes for installer URLs; `wingetcreate` fills those during submission.
+Winget requires SHA256 hashes for release URLs; `wingetcreate` fills those during submission.

@@ -9,19 +9,21 @@ permissions:
 
 jobs:
   check:
-    name: Lint, Type-check, Build, Test
-    runs-on: ubuntu-latest
+    name: Build and test
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-dotnet@v4
         with:
-          bun-version: latest
+          dotnet-version: 11.0.x
+          dotnet-quality: preview
 
-      - run: bun install
+      - name: Restore
+        run: dotnet restore .\UsageMeter.Windows.slnx
 
-      - name: Type-check and build
-        run: bun run build
+      - name: Build
+        run: dotnet build .\UsageMeter.Windows.slnx --configuration Release --no-restore
 
-      - name: Run tests
-        run: bun run test
+      - name: Test
+        run: dotnet test .\tests\UsageMeter.Tests\UsageMeter.Tests.csproj --configuration Release --no-build

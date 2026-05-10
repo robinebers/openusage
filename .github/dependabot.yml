@@ -1,13 +1,19 @@
 version: 2
 updates:
-  - package-ecosystem: npm
-    directory: /
+  - package-ecosystem: nuget
+    directory: /src/UsageMeter.App
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
 
-  - package-ecosystem: cargo
-    directory: /src-tauri
+  - package-ecosystem: nuget
+    directory: /src/UsageMeter.Core
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: nuget
+    directory: /tests/UsageMeter.Tests
     schedule:
       interval: weekly
     open-pull-requests-limit: 5

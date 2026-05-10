@@ -1,69 +1,49 @@
 name: Bug Report
-description: Report a bug in OpenUsage
+description: Report a UsageMeter bug
 labels: ["bug"]
 body:
-  - type: markdown
-    attributes:
-      value: |
-        Thanks for reporting a bug. Please fill in the details below.
   - type: textarea
     id: description
     attributes:
       label: Description
       description: What happened?
-      placeholder: A clear description of the bug.
     validations:
       required: true
   - type: textarea
     id: steps
     attributes:
-      label: Steps to Reproduce
+      label: Steps To Reproduce
       description: How can we reproduce this?
       placeholder: |
-        1. Open OpenUsage
-        2. Go to ...
-        3. Click on ...
-        4. See error
+        1. Open UsageMeter
+        2. Click ...
+        3. See ...
     validations:
       required: true
   - type: textarea
     id: expected
     attributes:
       label: Expected Behavior
-      description: What should have happened?
-    validations:
-      required: true
-  - type: textarea
-    id: actual
-    attributes:
-      label: Actual Behavior
-      description: What actually happened?
     validations:
       required: true
   - type: input
     id: version
     attributes:
-      label: OpenUsage Version
-      description: Which version are you running? (Check Settings or About)
-      placeholder: "e.g. 0.4.2"
+      label: UsageMeter Version
+      placeholder: "0.1.0"
     validations:
       required: true
   - type: dropdown
     id: os
     attributes:
-      label: Operating System
+      label: Windows Version
       options:
-        - macOS (Apple Silicon)
-        - macOS (Intel)
+        - Windows 11
+        - Windows 10
     validations:
       required: true
   - type: textarea
     id: screenshots
     attributes:
       label: Screenshots
-      description: If applicable, drag and drop or paste screenshots here.
-  - type: textarea
-    id: additional
-    attributes:
-      label: Additional Context
-      description: Any other information that might be helpful.
+      description: Add screenshots if useful.
