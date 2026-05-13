@@ -1666,12 +1666,30 @@ fn ccusage_runner_candidates(kind: CcusageRunnerKind) -> Vec<String> {
     unique
 }
 
+fn nvm_default_bin_path(home: &Path) -> Option<PathBuf> {
+    let alias_path = home.join(".nvm/alias/default");
+    let version = std::fs::read_to_string(&alias_path).ok()?;
+    let version = version.trim();
+    if version.is_empty() {
+        return None;
+    }
+    let version = if version.starts_with('v') {
+        version.to_string()
+    } else {
+        format!("v{version}")
+    };
+    Some(home.join(".nvm/versions/node").join(version).join("bin"))
+}
+
 fn ccusage_path_entries_with(home: Option<&Path>, existing_path: Option<&OsStr>) -> Vec<PathBuf> {
     let mut entries: Vec<PathBuf> = Vec::new();
 
     if let Some(home) = home {
         entries.push(home.join(".bun/bin"));
         entries.push(home.join(".nvm/current/bin"));
+        if let Some(nvm_bin) = nvm_default_bin_path(home) {
+            entries.push(nvm_bin);
+        }
         entries.push(home.join(".local/bin"));
     }
 
@@ -3569,6 +3587,56 @@ mod tests {
                 std::path::PathBuf::from("/usr/bin"),
                 std::path::PathBuf::from("/bin"),
             ]
+        );
+    }
+
+    #[test]
+    fn nvm_default_bin_path_resolves_version_with_v_prefix() {
+        let home = std::env::temp_dir().join("openusage-test-nvm-v-prefix");
+        let alias_dir = home.join(".nvm/alias");
+        std::fs::create_dir_all(&alias_dir).expect("create alias dir");
+        std::fs::write(alias_dir.join("default"), "v22.16.0").expect("write alias");
+        let result = nvm_default_bin_path(&home);
+        let _ = std::fs::remove_dir_all(&home);
+        assert_eq!(
+            result,
+            Some(home.join(".nvm/versions/node/v22.16.0/bin"))
+        );
+    }
+
+    #[test]
+    fn nvm_default_bin_path_resolves_version_without_v_prefix() {
+        let home = std::env::temp_dir().join("openusage-test-nvm-no-v-prefix");
+        let alias_dir = home.join(".nvm/alias");
+        std::fs::create_dir_all(&alias_dir).expect("create alias dir");
+        std::fs::write(alias_dir.join("default"), "22.16.0").expect("write alias");
+        let result = nvm_default_bin_path(&home);
+        let _ = std::fs::remove_dir_all(&home);
+        assert_eq!(
+            result,
+            Some(home.join(".nvm/versions/node/v22.16.0/bin"))
+        );
+    }
+
+    #[test]
+    fn nvm_default_bin_path_returns_none_when_alias_missing() {
+        let home = std::env::temp_dir().join("openusage-test-nvm-no-alias");
+        let _ = std::fs::remove_dir_all(&home);
+        let result = nvm_default_bin_path(&home);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn ccusage_path_entries_with_includes_nvm_default_version() {
+        let home = std::env::temp_dir().join("openusage-test-nvm-entries");
+        let alias_dir = home.join(".nvm/alias");
+        std::fs::create_dir_all(&alias_dir).expect("create alias dir");
+        std::fs::write(alias_dir.join("default"), "22.16.0").expect("write alias");
+        let entries = ccusage_path_entries_with(Some(&home), None);
+        let _ = std::fs::remove_dir_all(&home);
+        assert!(
+            entries.contains(&home.join(".nvm/versions/node/v22.16.0/bin")),
+            "expected nvm default version bin in entries"
         );
     }
 
