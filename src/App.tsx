@@ -53,6 +53,8 @@ function App() {
     setDisplayMode,
     menubarIconStyle,
     setMenubarIconStyle,
+    preferMenubarWeeklyLimit,
+    setPreferMenubarWeeklyLimit,
     resetTimerDisplayMode,
     setResetTimerDisplayMode,
     setGlobalShortcut,
@@ -67,6 +69,8 @@ function App() {
       setDisplayMode: state.setDisplayMode,
       menubarIconStyle: state.menubarIconStyle,
       setMenubarIconStyle: state.setMenubarIconStyle,
+      preferMenubarWeeklyLimit: state.preferMenubarWeeklyLimit,
+      setPreferMenubarWeeklyLimit: state.setPreferMenubarWeeklyLimit,
       resetTimerDisplayMode: state.resetTimerDisplayMode,
       setResetTimerDisplayMode: state.setResetTimerDisplayMode,
       setGlobalShortcut: state.setGlobalShortcut,
@@ -100,6 +104,7 @@ function App() {
     pluginStates,
     displayMode,
     menubarIconStyle,
+    preferMenubarWeeklyLimit,
     activeView,
   })
 
@@ -116,6 +121,7 @@ function App() {
     setThemeMode,
     setDisplayMode,
     setMenubarIconStyle,
+    setPreferMenubarWeeklyLimit,
     setResetTimerDisplayMode,
     setGlobalShortcut,
     setStartOnLogin,
@@ -132,12 +138,14 @@ function App() {
     handleResetTimerDisplayModeChange,
     handleResetTimerDisplayModeToggle,
     handleMenubarIconStyleChange,
+    handlePreferMenubarWeeklyLimitChange,
   } = useSettingsDisplayActions({
     setThemeMode,
     setDisplayMode,
     resetTimerDisplayMode,
     setResetTimerDisplayMode,
     setMenubarIconStyle,
+    setPreferMenubarWeeklyLimit,
     scheduleTrayIconUpdate,
   })
 
@@ -245,6 +253,7 @@ function App() {
         onResetTimerDisplayModeChange: handleResetTimerDisplayModeChange,
         onResetTimerDisplayModeToggle: handleResetTimerDisplayModeToggle,
         onMenubarIconStyleChange: handleMenubarIconStyleChange,
+        onPreferMenubarWeeklyLimitChange: handlePreferMenubarWeeklyLimitChange,
         traySettingsPreview,
         onGlobalShortcutChange: handleGlobalShortcutChange,
         onStartOnLoginChange: handleStartOnLoginChange,

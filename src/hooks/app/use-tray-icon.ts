@@ -17,6 +17,7 @@ type UseTrayIconArgs = {
   pluginStates: Record<string, PluginState>
   displayMode: DisplayMode
   menubarIconStyle: MenubarIconStyle
+  preferMenubarWeeklyLimit: boolean
   activeView: string
 }
 
@@ -55,6 +56,7 @@ export function useTrayIcon({
   pluginStates,
   displayMode,
   menubarIconStyle,
+  preferMenubarWeeklyLimit,
   activeView,
 }: UseTrayIconArgs) {
   const trayRef = useRef<TrayIcon | null>(null)
@@ -72,6 +74,7 @@ export function useTrayIcon({
   const pluginStatesRef = useRef(pluginStates)
   const displayModeRef = useRef(displayMode)
   const menubarIconStyleRef = useRef(menubarIconStyle)
+  const preferMenubarWeeklyLimitRef = useRef(preferMenubarWeeklyLimit)
   const activeViewRef = useRef(activeView)
   const lastTrayProviderIdRef = useRef<string | null>(null)
 
@@ -94,6 +97,10 @@ export function useTrayIcon({
   useEffect(() => {
     menubarIconStyleRef.current = menubarIconStyle
   }, [menubarIconStyle])
+
+  useEffect(() => {
+    preferMenubarWeeklyLimitRef.current = preferMenubarWeeklyLimit
+  }, [preferMenubarWeeklyLimit])
 
   useEffect(() => {
     activeViewRef.current = activeView
@@ -208,6 +215,7 @@ export function useTrayIcon({
         pluginStates: pluginStatesRef.current,
         maxBars: 4,
         displayMode: displayModeRef.current,
+        preferWeeklyLimit: preferMenubarWeeklyLimitRef.current,
       })
 
       const providerBars = trayProviderId
@@ -218,6 +226,7 @@ export function useTrayIcon({
             maxBars: 1,
             displayMode: displayModeRef.current,
             pluginId: trayProviderId,
+            preferWeeklyLimit: preferMenubarWeeklyLimitRef.current,
           })
         : []
 
@@ -242,6 +251,7 @@ export function useTrayIcon({
         pluginStates: pluginStatesRef.current,
         maxBars: 20, // Show more in tooltip
         displayMode: displayModeRef.current,
+        preferWeeklyLimit: preferMenubarWeeklyLimitRef.current,
       })
       const tooltip = formatTrayTooltip(tooltipBars, pluginsMetaRef.current)
       const updateTooltip = () => setTrayTooltip(tooltip)

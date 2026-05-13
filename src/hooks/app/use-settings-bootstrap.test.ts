@@ -13,6 +13,7 @@ const {
   loadDisplayModeMock,
   loadGlobalShortcutMock,
   loadMenubarIconStyleMock,
+  loadPreferMenubarWeeklyLimitMock,
   loadPluginSettingsMock,
   loadResetTimerDisplayModeMock,
   loadStartOnLoginMock,
@@ -32,6 +33,7 @@ const {
   loadDisplayModeMock: vi.fn(),
   loadGlobalShortcutMock: vi.fn(),
   loadMenubarIconStyleMock: vi.fn(),
+  loadPreferMenubarWeeklyLimitMock: vi.fn(),
   loadPluginSettingsMock: vi.fn(),
   loadResetTimerDisplayModeMock: vi.fn(),
   loadStartOnLoginMock: vi.fn(),
@@ -58,6 +60,7 @@ vi.mock("@/lib/settings", () => ({
   DEFAULT_DISPLAY_MODE: "left",
   DEFAULT_GLOBAL_SHORTCUT: null,
   DEFAULT_MENUBAR_ICON_STYLE: "provider",
+  DEFAULT_PREFER_MENUBAR_WEEKLY_LIMIT: false,
   DEFAULT_RESET_TIMER_DISPLAY_MODE: "relative",
   DEFAULT_START_ON_LOGIN: false,
   DEFAULT_THEME_MODE: "system",
@@ -66,6 +69,7 @@ vi.mock("@/lib/settings", () => ({
   loadDisplayMode: loadDisplayModeMock,
   loadGlobalShortcut: loadGlobalShortcutMock,
   loadMenubarIconStyle: loadMenubarIconStyleMock,
+  loadPreferMenubarWeeklyLimit: loadPreferMenubarWeeklyLimitMock,
   loadPluginSettings: loadPluginSettingsMock,
   loadResetTimerDisplayMode: loadResetTimerDisplayModeMock,
   loadStartOnLogin: loadStartOnLoginMock,
@@ -88,6 +92,7 @@ function createArgs() {
     setGlobalShortcut: vi.fn(),
     setStartOnLogin: vi.fn(),
     setMenubarIconStyle: vi.fn(),
+    setPreferMenubarWeeklyLimit: vi.fn(),
     setLoadingForPlugins: vi.fn(),
     setErrorForPlugins: vi.fn(),
     startBatch: vi.fn().mockResolvedValue(undefined),
@@ -107,6 +112,7 @@ describe("useSettingsBootstrap", () => {
     loadDisplayModeMock.mockReset()
     loadGlobalShortcutMock.mockReset()
     loadMenubarIconStyleMock.mockReset()
+    loadPreferMenubarWeeklyLimitMock.mockReset()
     loadPluginSettingsMock.mockReset()
     loadResetTimerDisplayModeMock.mockReset()
     loadStartOnLoginMock.mockReset()
@@ -136,6 +142,7 @@ describe("useSettingsBootstrap", () => {
     loadResetTimerDisplayModeMock.mockResolvedValue("relative")
     loadGlobalShortcutMock.mockResolvedValue("CommandOrControl+Shift+O")
     loadMenubarIconStyleMock.mockResolvedValue("provider")
+    loadPreferMenubarWeeklyLimitMock.mockResolvedValue(true)
     loadStartOnLoginMock.mockResolvedValue(true)
     migrateLegacyTraySettingsMock.mockResolvedValue(undefined)
     savePluginSettingsMock.mockResolvedValue(undefined)
@@ -166,6 +173,25 @@ describe("useSettingsBootstrap", () => {
         resetModeError
       )
       expect(args.setResetTimerDisplayMode).toHaveBeenCalledWith("relative")
+    })
+
+    errorSpy.mockRestore()
+  })
+
+  it("falls back to default menubar weekly limit preference when loading fails", async () => {
+    const weeklyPreferenceError = new Error("weekly preference unavailable")
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    loadPreferMenubarWeeklyLimitMock.mockRejectedValueOnce(weeklyPreferenceError)
+    const args = createArgs()
+
+    renderHook(() => useSettingsBootstrap(args))
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith(
+        "Failed to load menubar weekly limit preference:",
+        weeklyPreferenceError
+      )
+      expect(args.setPreferMenubarWeeklyLimit).toHaveBeenCalledWith(false)
     })
 
     errorSpy.mockRestore()

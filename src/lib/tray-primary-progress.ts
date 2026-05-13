@@ -23,6 +23,15 @@ function isProgressLine(line: PluginOutput["lines"][number]): line is ProgressLi
   return line.type === "progress"
 }
 
+function isWeeklyOverviewLine(meta: PluginMeta, label: string): boolean {
+  return meta.lines.some((line) =>
+    line.type === "progress" &&
+    line.scope === "overview" &&
+    line.label === label &&
+    /weekly/i.test(label)
+  )
+}
+
 export function getTrayPrimaryBars(args: {
   pluginsMeta: PluginMeta[]
   pluginSettings: PluginSettings | null
@@ -30,6 +39,7 @@ export function getTrayPrimaryBars(args: {
   maxBars?: number
   displayMode?: DisplayMode
   pluginId?: string
+  preferWeeklyLimit?: boolean
 }): TrayPrimaryBar[] {
   const {
     pluginsMeta,
@@ -38,6 +48,7 @@ export function getTrayPrimaryBars(args: {
     maxBars = 4,
     displayMode = DEFAULT_DISPLAY_MODE,
     pluginId,
+    preferWeeklyLimit = false,
   } = args
   if (!pluginSettings) return []
 
@@ -61,8 +72,15 @@ export function getTrayPrimaryBars(args: {
 
     let fraction: number | undefined
     if (data) {
+      const weeklyLabel = preferWeeklyLimit
+        ? data.lines
+            .filter(isProgressLine)
+            .find((line) => isWeeklyOverviewLine(meta, line.label))
+            ?.label
+        : undefined
+
       // Find first candidate that exists in runtime data
-      const primaryLabel = meta.primaryCandidates.find((label) =>
+      const primaryLabel = weeklyLabel ?? meta.primaryCandidates.find((label) =>
         data.lines.some((line) => isProgressLine(line) && line.label === label)
       )
       if (primaryLabel) {
@@ -86,4 +104,3 @@ export function getTrayPrimaryBars(args: {
 
   return out
 }
-

@@ -4,6 +4,7 @@ import {
   DEFAULT_DISPLAY_MODE,
   DEFAULT_GLOBAL_SHORTCUT,
   DEFAULT_MENUBAR_ICON_STYLE,
+  DEFAULT_PREFER_MENUBAR_WEEKLY_LIMIT,
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
   DEFAULT_START_ON_LOGIN,
   DEFAULT_THEME_MODE,
@@ -23,6 +24,7 @@ type AppPreferencesStore = {
   globalShortcut: GlobalShortcut
   startOnLogin: boolean
   menubarIconStyle: MenubarIconStyle
+  preferMenubarWeeklyLimit: boolean
   setAutoUpdateInterval: (value: AutoUpdateIntervalMinutes) => void
   setThemeMode: (value: ThemeMode) => void
   setDisplayMode: (value: DisplayMode) => void
@@ -30,6 +32,7 @@ type AppPreferencesStore = {
   setGlobalShortcut: (value: GlobalShortcut) => void
   setStartOnLogin: (value: boolean) => void
   setMenubarIconStyle: (value: MenubarIconStyle) => void
+  setPreferMenubarWeeklyLimit: (value: boolean) => void
   resetState: () => void
 }
 
@@ -41,6 +44,7 @@ const initialState = {
   globalShortcut: DEFAULT_GLOBAL_SHORTCUT,
   startOnLogin: DEFAULT_START_ON_LOGIN,
   menubarIconStyle: DEFAULT_MENUBAR_ICON_STYLE,
+  preferMenubarWeeklyLimit: DEFAULT_PREFER_MENUBAR_WEEKLY_LIMIT,
 }
 
 export const useAppPreferencesStore = create<AppPreferencesStore>((set) => ({
@@ -52,5 +56,6 @@ export const useAppPreferencesStore = create<AppPreferencesStore>((set) => ({
   setGlobalShortcut: (value) => set({ globalShortcut: value }),
   setStartOnLogin: (value) => set({ startOnLogin: value }),
   setMenubarIconStyle: (value) => set({ menubarIconStyle: value }),
+  setPreferMenubarWeeklyLimit: (value) => set({ preferMenubarWeeklyLimit: value }),
   resetState: () => set(initialState),
 }))
