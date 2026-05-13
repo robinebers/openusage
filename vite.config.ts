@@ -17,6 +17,7 @@ export default defineConfig(async () => ({
   },
 
   test: {
+    pool: "forks",
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}", "plugins/**/*.test.js"],

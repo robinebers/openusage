@@ -133,7 +133,7 @@ describe("crofai plugin", function () {
       expect(call.method).toBe("GET");
       expect(call.url).toBe(USAGE_API_URL);
       expect(call.headers.Authorization).toBe("Bearer test-api-key");
-      expect(call.Accept).toBe("application/json");
+      expect(call.headers.Accept).toBe("application/json");
       expect(call.timeoutMs).toBe(10000);
     });
   });
@@ -284,6 +284,15 @@ describe("crofai plugin", function () {
       var plugin = await loadPlugin();
       expect(function () { plugin.probe(ctx); }).toThrow("Invalid response from Crof.AI");
     });
+
+    it("credits null does not crash, treats as missing", async function () {
+      var ctx = makeCtx();
+      setEnv(ctx, API_KEY_ENV, "k");
+      mockUsageApi(ctx, JSON.stringify({ credits: null, usable_requests: 10 }));
+      var plugin = await loadPlugin();
+      var result = plugin.probe(ctx);
+      expect(result.lines.find(function (l) { return l.label === "Credits"; })).toBeUndefined();
+    });
   });
 
   // ── Response validation: usable_requests field ──
@@ -393,6 +402,28 @@ describe("crofai plugin", function () {
       var plugin = await loadPlugin();
       var result = plugin.probe(ctx);
       expect(result.lines[0]).toMatchObject({ limit: 2500 });
+    });
+  });
+
+  // ── Progress bar: no fake reset time ──
+
+  describe("progress bar - no resetsAt or periodDurationMs", function () {
+    it("does not include resetsAt on progress line", async function () {
+      var ctx = makeCtx();
+      setEnv(ctx, API_KEY_ENV, "k");
+      mockUsageApi(ctx, JSON.stringify({ usable_requests: 100, credits: 10 }));
+      var plugin = await loadPlugin();
+      var result = plugin.probe(ctx);
+      expect(result.lines[0].resetsAt).toBeUndefined();
+    });
+
+    it("does not include periodDurationMs on progress line", async function () {
+      var ctx = makeCtx();
+      setEnv(ctx, API_KEY_ENV, "k");
+      mockUsageApi(ctx, JSON.stringify({ usable_requests: 100, credits: 10 }));
+      var plugin = await loadPlugin();
+      var result = plugin.probe(ctx);
+      expect(result.lines[0].periodDurationMs).toBeUndefined();
     });
   });
 
@@ -831,6 +862,32 @@ describe("crofai plugin", function () {
       expect(result.lines.find(function (l) { return l.label === "Total tokens"; }).value).toBe("1.0K");
     });
 
+    it("skips null model entries without crashing", async function () {
+      var ctx = makeCtx();
+      setEnv(ctx, API_KEY_ENV, "k");
+      setEnv(ctx, SESSION_KEY_ENV, "s");
+      mockAllApis(ctx, {
+        usageDetailBody: JSON.stringify({ a: null, b: { total_tokens: 1000 } }),
+      });
+      var p = await loadPlugin();
+      var result = p.probe(ctx);
+      expect(result.lines.find(function (l) { return l.label === "Total tokens"; }).value).toBe("1.0K");
+      expect(result.lines.find(function (l) { return l.label === "a"; })).toBeUndefined();
+    });
+
+    it("skips array response from user usage API", async function () {
+      var ctx = makeCtx();
+      setEnv(ctx, API_KEY_ENV, "k");
+      setEnv(ctx, SESSION_KEY_ENV, "s");
+      mockAllApis(ctx, {
+        usageDetailBody: JSON.stringify([{ total_tokens: 5000 }, { total_tokens: 3000 }]),
+      });
+      var p = await loadPlugin();
+      var result = p.probe(ctx);
+      expect(result.lines.find(function (l) { return l.label === "Total tokens"; }).value).toBe("0");
+      expect(result.lines.find(function (l) { return l.label === "0"; })).toBeUndefined();
+    });
+
     it("skips models with non-numeric string total_tokens", async function () {
       var ctx = makeCtx();
       setEnv(ctx, API_KEY_ENV, "k");
@@ -854,6 +911,19 @@ describe("crofai plugin", function () {
       var result = p.probe(ctx);
       var modelLine = result.lines.find(function (l) { return l.label === "a"; });
       expect(modelLine.value).toBe("2.0K tokens");
+    });
+
+    it("falls back to totalTokens when total_tokens is null", async function () {
+      var ctx = makeCtx();
+      setEnv(ctx, API_KEY_ENV, "k");
+      setEnv(ctx, SESSION_KEY_ENV, "s");
+      mockAllApis(ctx, {
+        usageDetailBody: JSON.stringify({ a: { total_tokens: null, totalTokens: 3000 } }),
+      });
+      var p = await loadPlugin();
+      var result = p.probe(ctx);
+      var modelLine = result.lines.find(function (l) { return l.label === "a"; });
+      expect(modelLine.value).toBe("3.0K tokens");
     });
 
     it("shows no model lines when usage data is null", async function () {
@@ -940,6 +1010,16 @@ describe("crofai plugin", function () {
       var plugin = await loadPlugin();
       var result = plugin.probe(ctx);
       expect(result.lines.find(function (l) { return l.label === "Total tokens"; }).value).toBe("1.0B");
+    });
+
+    it("formats missing total_tokens as 0 not 'undefined'", async function () {
+      var ctx = makeCtx();
+      setEnv(ctx, API_KEY_ENV, "k");
+      setEnv(ctx, SESSION_KEY_ENV, "s");
+      mockAllApis(ctx, { usageDetailBody: JSON.stringify({ a: {} }) });
+      var plugin = await loadPlugin();
+      var result = plugin.probe(ctx);
+      expect(result.lines.find(function (l) { return l.label === "Total tokens"; }).value).toBe("0");
     });
   });
 

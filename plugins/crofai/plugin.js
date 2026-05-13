@@ -33,7 +33,11 @@
     }
 
     var keyPath = ctx.app.pluginDataDir + "/session-key";
-    if (!ctx.host.fs.exists(keyPath)) {
+    try {
+      if (!ctx.host.fs.exists(keyPath)) {
+        return null;
+      }
+    } catch (e) {
       return null;
     }
     try {
@@ -50,8 +54,7 @@
       resp = ctx.host.http.request({
         method: "GET",
         url: opts.url,
-        headers: opts.headers || {},
-        Accept: "application/json",
+        headers: Object.assign({ Accept: "application/json" }, opts.headers || {}),
         timeoutMs: TIMEOUT_MS,
       });
     } catch (e) {
@@ -66,6 +69,9 @@
       throw "Crof.AI API error (HTTP " + resp.status + "). Try again later.";
     }
 
+    if (resp.bodyText == null || typeof resp.bodyText !== "string") {
+      throw "Invalid response from Crof.AI. Try again later.";
+    }
     var parsed = ctx.util.tryParseJson(resp.bodyText);
     if (parsed === null) {
       throw "Invalid response from Crof.AI. Try again later.";
@@ -80,6 +86,7 @@
   }
 
   function formatTokens(count) {
+    if (typeof count !== "number" || !Number.isFinite(count)) return "0";
     if (count >= 1e9) {
       var b = count / 1e9;
       return (Math.round(b * 10) / 10).toFixed(1) + "B";
@@ -104,7 +111,14 @@
     return sign + "$" + abs.toFixed(2);
   }
 
-  function buildLines(ctx, usageData, requestsCount, creditsValue, planInfo, usagePlanRequests) {
+  function buildLines(
+    ctx,
+    usageData,
+    requestsCount,
+    creditsValue,
+    planInfo,
+    usagePlanRequests,
+  ) {
     var lines = [];
 
     var maxRequests = FALLBACK_MAX_REQUESTS;
@@ -134,27 +148,35 @@
         used: used,
         limit: maxRequests,
         format: { kind: "count", suffix: "requests" },
-      })
+      }),
     );
 
-    if (creditsValue >= 0) {
+    if (creditsValue !== null && creditsValue >= 0) {
       lines.push(
         ctx.line.text({
           label: "Credits",
           value: formatCredits(creditsValue),
-        })
+        }),
       );
     }
 
     var models = [];
     var totalTokens = 0;
 
-    if (usageData && typeof usageData === "object") {
+    if (usageData && typeof usageData === "object" && !Array.isArray(usageData)) {
       for (var key in usageData) {
         if (Object.prototype.hasOwnProperty.call(usageData, key)) {
           var model = usageData[key];
-          var rawTt = model.total_tokens !== undefined ? model.total_tokens : model.totalTokens;
-          if (typeof rawTt === "number" && Number.isFinite(rawTt) && rawTt > 0) {
+          if (!model || typeof model !== "object") continue;
+          var rawTt =
+            model.total_tokens !== undefined && model.total_tokens !== null
+              ? model.total_tokens
+              : model.totalTokens;
+          if (
+            typeof rawTt === "number" &&
+            Number.isFinite(rawTt) &&
+            rawTt > 0
+          ) {
             totalTokens += rawTt;
             models.push({ name: key, tokens: rawTt });
           }
@@ -167,7 +189,7 @@
         label: "Total tokens",
         value: formatTokens(totalTokens),
         subtitle: models.length > 0 ? models.length + " models" : undefined,
-      })
+      }),
     );
 
     models.sort(function (a, b) {
@@ -181,7 +203,7 @@
         ctx.line.text({
           label: m.name,
           value: formatTokens(m.tokens) + " tokens",
-        })
+        }),
       );
     }
 
@@ -198,24 +220,41 @@
       },
     });
 
-    if (!usageResp || typeof usageResp !== "object" || Array.isArray(usageResp)) {
+    if (
+      !usageResp ||
+      typeof usageResp !== "object" ||
+      Array.isArray(usageResp)
+    ) {
       throw "Invalid response from Crof.AI. Try again later.";
     }
 
-    var hasCredits = "credits" in usageResp;
-    var creditsValue = 0;
+    var hasCredits = Object.prototype.hasOwnProperty.call(usageResp, "credits");
+    var creditsValue = null;
     if (hasCredits) {
-      if (typeof usageResp.credits !== "number" || !Number.isFinite(usageResp.credits)) {
+      if (usageResp.credits === null) {
+        creditsValue = null;
+      } else if (
+        typeof usageResp.credits !== "number" ||
+        !Number.isFinite(usageResp.credits)
+      ) {
         throw "Invalid response from Crof.AI. Try again later.";
+      } else {
+        creditsValue = usageResp.credits;
       }
-      creditsValue = usageResp.credits;
+    }
+    // Normalize: missing field → show as $0.00, null → skip entirely
+    if (creditsValue === null && usageResp.credits !== null) {
+      creditsValue = 0;
     }
 
     var requestsCount = null;
-    var hasRequests = "usable_requests" in usageResp;
+    var hasRequests = Object.prototype.hasOwnProperty.call(usageResp, "usable_requests");
     if (hasRequests) {
       if (usageResp.usable_requests !== null) {
-        if (typeof usageResp.usable_requests !== "number" || !Number.isFinite(usageResp.usable_requests)) {
+        if (
+          typeof usageResp.usable_requests !== "number" ||
+          !Number.isFinite(usageResp.usable_requests)
+        ) {
           throw "Invalid response from Crof.AI. Try again later.";
         }
         requestsCount = usageResp.usable_requests;
@@ -223,7 +262,7 @@
     }
 
     var usagePlanRequests = null;
-    if ("requests_plan" in usageResp) {
+    if (Object.prototype.hasOwnProperty.call(usageResp, "requests_plan")) {
       if (
         typeof usageResp.requests_plan === "number" &&
         Number.isFinite(usageResp.requests_plan) &&
@@ -259,7 +298,8 @@
           },
         });
         if (planInfo && planInfo.name) {
-          planName = planFullName(planInfo.name) || ctx.fmt.planLabel(planInfo.name);
+          planName =
+            planFullName(planInfo.name) || ctx.fmt.planLabel(planInfo.name);
         }
       } catch (e) {
         ctx.host.log.warn("Crof.AI pricing fetch failed: " + String(e));
@@ -268,7 +308,14 @@
 
     return {
       plan: planName,
-      lines: buildLines(ctx, userUsageData, requestsCount, creditsValue, planInfo, usagePlanRequests),
+      lines: buildLines(
+        ctx,
+        userUsageData,
+        requestsCount,
+        creditsValue,
+        planInfo,
+        usagePlanRequests,
+      ),
     };
   }
 
