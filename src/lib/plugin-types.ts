@@ -53,4 +53,5 @@ export type PluginDisplayState = {
   loading: boolean
   error: string | null
   lastManualRefreshAt: number | null
+  lastUpdatedAt: number | null
 }

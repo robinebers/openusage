@@ -32,7 +32,7 @@ export function useAppPluginViews({
         const meta = metaById.get(id)
         if (!meta) return null
         const state =
-          pluginStates[id] ?? { data: null, loading: false, error: null, lastManualRefreshAt: null }
+          pluginStates[id] ?? { data: null, loading: false, error: null, lastManualRefreshAt: null, lastUpdatedAt: null }
         return { meta, ...state }
       })
       .filter((plugin): plugin is DisplayPluginState => Boolean(plugin))

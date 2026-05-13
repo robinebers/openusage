@@ -6,6 +6,14 @@
   const REFRESH_URL = "https://auth.openai.com/oauth/token"
   const USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
   const REFRESH_AGE_MS = 8 * 24 * 60 * 60 * 1000
+  const ERR_NOT_LOGGED_IN = "Not logged in. Run `codex` to authenticate."
+  const ERR_SESSION_EXPIRED = "Session expired. Run `codex` to log in again."
+  const ERR_TOKEN_CONFLICT = "Token conflict. Run `codex` to log in again."
+  const ERR_TOKEN_REVOKED = "Token revoked. Run `codex` to log in again."
+  const ERR_TOKEN_EXPIRED = "Token expired. Run `codex` to log in again."
+  const ERR_USAGE_API_KEY = "Usage not available for API key."
+  const ERR_USAGE_CONNECTION = "Usage request failed. Check your connection."
+  const ERR_USAGE_AFTER_REFRESH = "Usage request failed after refresh. Try again."
 
   function joinPath(base, leaf) {
     return base.replace(/[\\/]+$/, "") + "/" + leaf
@@ -85,6 +93,16 @@
     return false
   }
 
+  function isAuthFallbackError(e) {
+    if (typeof e !== "string") return false
+    return (
+      e === ERR_SESSION_EXPIRED ||
+      e === ERR_TOKEN_CONFLICT ||
+      e === ERR_TOKEN_REVOKED ||
+      e === ERR_TOKEN_EXPIRED
+    )
+  }
+
   function loadAuthFromKeychain(ctx) {
     if (!ctx.host.keychain || typeof ctx.host.keychain.readGenericPassword !== "function") {
       return null
@@ -128,10 +146,15 @@
     return false
   }
 
-  function loadAuth(ctx) {
+  function loadFileAuthCandidates(ctx) {
     const authPaths = resolveAuthPaths(ctx)
+    const candidates = []
+    const missingPaths = []
     for (const authPath of authPaths) {
-      if (!ctx.host.fs.exists(authPath)) continue
+      if (!ctx.host.fs.exists(authPath)) {
+        missingPaths.push(authPath)
+        continue
+      }
       try {
         const text = ctx.host.fs.readText(authPath)
         const auth = tryParseAuthJson(ctx, text)
@@ -140,24 +163,13 @@
           continue
         }
         ctx.host.log.info("auth loaded from file: " + authPath)
-        return { auth, authPath, source: "file" }
+        candidates.push({ auth, authPath, source: "file" })
       } catch (e) {
-        ctx.host.log.warn("auth file read failed: " + String(e))
+        ctx.host.log.warn("auth file read failed: " + authPath + ": " + String(e))
       }
     }
 
-    const keychainAuth = loadAuthFromKeychain(ctx)
-    if (keychainAuth) return keychainAuth
-
-    if (authPaths.length > 0) {
-      for (const authPath of authPaths) {
-        if (!ctx.host.fs.exists(authPath)) {
-          ctx.host.log.warn("auth file not found: " + authPath)
-        }
-      }
-    }
-
-    return null
+    return { candidates, missingPaths }
   }
 
   function needsRefresh(ctx, auth, nowMs) {
@@ -195,15 +207,15 @@
         }
         ctx.host.log.error("refresh failed: status=" + resp.status + " code=" + String(code))
         if (code === "refresh_token_expired") {
-          throw "Session expired. Run `codex` to log in again."
+          throw ERR_SESSION_EXPIRED
         }
         if (code === "refresh_token_reused") {
-          throw "Token conflict. Run `codex` to log in again."
+          throw ERR_TOKEN_CONFLICT
         }
         if (code === "refresh_token_invalidated") {
-          throw "Token revoked. Run `codex` to log in again."
+          throw ERR_TOKEN_REVOKED
         }
-        throw "Token expired. Run `codex` to log in again."
+        throw ERR_TOKEN_EXPIRED
       }
       if (resp.status < 200 || resp.status >= 300) {
         ctx.host.log.warn("refresh returned unexpected status: " + resp.status)
@@ -276,7 +288,7 @@
     const rawPlan = typeof planType === "string" ? planType.trim() : ""
     if (!rawPlan) return null
     if (rawPlan.toLowerCase() === "prolite") return "Pro 5x"
-    if (rawPlan.toLowerCase() === "pro") return "Pro 10x"
+    if (rawPlan.toLowerCase() === "pro") return "Pro 20x"
     return ctx.fmt.planLabel(rawPlan) || null
   }
 
@@ -422,12 +434,7 @@
     }))
   }
 
-  function probe(ctx) {
-    const authState = loadAuth(ctx)
-    if (!authState || !authState.auth) {
-      ctx.host.log.error("probe failed: not logged in")
-      throw "Not logged in. Run `codex` to authenticate."
-    }
+  function probeWithAuthState(ctx, authState) {
     const auth = authState.auth
 
     if (auth.tokens && auth.tokens.access_token) {
@@ -455,9 +462,9 @@
             } catch (e) {
               ctx.host.log.error("usage request exception: " + String(e))
               if (didRefresh) {
-                throw "Usage request failed after refresh. Try again."
+                throw ERR_USAGE_AFTER_REFRESH
               }
-              throw "Usage request failed. Check your connection."
+              throw ERR_USAGE_CONNECTION
             }
           },
           refresh: () => {
@@ -469,12 +476,12 @@
       } catch (e) {
         if (typeof e === "string") throw e
         ctx.host.log.error("usage request failed: " + String(e))
-        throw "Usage request failed. Check your connection."
+        throw ERR_USAGE_CONNECTION
       }
 
       if (ctx.util.isAuthStatus(resp.status)) {
         ctx.host.log.error("usage returned auth error after all retries: status=" + resp.status)
-        throw "Token expired. Run `codex` to log in again."
+        throw ERR_TOKEN_EXPIRED
       }
 
       if (resp.status < 200 || resp.status >= 300) {
@@ -676,10 +683,39 @@
     }
 
     if (auth.OPENAI_API_KEY) {
-      throw "Usage not available for API key."
+      throw ERR_USAGE_API_KEY
     }
 
-    throw "Not logged in. Run `codex` to authenticate."
+    throw ERR_NOT_LOGGED_IN
+  }
+
+  function probe(ctx) {
+    const fileAuth = loadFileAuthCandidates(ctx)
+    let lastAuthFallbackError = null
+    for (let i = 0; i < fileAuth.candidates.length; i++) {
+      const authState = fileAuth.candidates[i]
+      try {
+        return probeWithAuthState(ctx, authState)
+      } catch (e) {
+        if (!isAuthFallbackError(e)) {
+          throw e
+        }
+        lastAuthFallbackError = e
+        ctx.host.log.warn("auth failed for file " + authState.authPath + ", trying next auth source: " + String(e))
+      }
+    }
+
+    const keychainAuth = loadAuthFromKeychain(ctx)
+    if (keychainAuth) return probeWithAuthState(ctx, keychainAuth)
+
+    if (lastAuthFallbackError) throw lastAuthFallbackError
+
+    for (const authPath of fileAuth.missingPaths) {
+      ctx.host.log.warn("auth file not found: " + authPath)
+    }
+
+    ctx.host.log.error("probe failed: not logged in")
+    throw ERR_NOT_LOGGED_IN
   }
 
   globalThis.__openusage_plugin = { id: "codex", probe }

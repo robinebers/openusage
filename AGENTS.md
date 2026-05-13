@@ -1,8 +1,4 @@
-# Robin Ebers HQ
-
-This app is a dashboard for Robin Ebers + team.
-
-It's typically used by 2-5 people, an internal team only that does not require major over-engineering.
+# OpenUsage
 
 ## Instructions
 - CRITICAL: Use simple, concise language. Avoid overtechnical jargon.

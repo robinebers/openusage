@@ -20,6 +20,7 @@ describe("ProviderDetailPage", () => {
           loading: false,
           error: null,
           lastManualRefreshAt: null,
+          lastUpdatedAt: null,
         }}
       />
     )
@@ -37,6 +38,7 @@ describe("ProviderDetailPage", () => {
           loading: false,
           error: null,
           lastManualRefreshAt: null,
+          lastUpdatedAt: null,
         }}
       />
     )
@@ -60,6 +62,7 @@ describe("ProviderDetailPage", () => {
           loading: false,
           error: null,
           lastManualRefreshAt: null,
+          lastUpdatedAt: null,
         }}
       />
     )

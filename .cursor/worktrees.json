@@ -1,0 +1,7 @@
+{
+  "setup-worktree": [
+    "bun install",
+    "for d in .agents .claude .codex .cursor; do [ -d \"$ROOT_WORKTREE_PATH/$d\" ] && mkdir -p \"$d\" && rsync -a \"$ROOT_WORKTREE_PATH/$d/.\" \"$d/\"; done",
+    "for f in .env .env.example; do [ -f \"$ROOT_WORKTREE_PATH/$f\" ] && cp \"$ROOT_WORKTREE_PATH/$f\" \"$f\" || true; done"
+  ]
+}

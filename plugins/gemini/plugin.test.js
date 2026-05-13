@@ -843,6 +843,54 @@ describe("gemini plugin", () => {
     expect(result.lines.find((line) => line.label === "Pro")).toBeTruthy()
   })
 
+  it("discovers oauth creds via Homebrew bundle chunks", async () => {
+    const ctx = makeCtx()
+    const nowMs = 1_700_000_000_000
+    vi.spyOn(Date, "now").mockReturnValue(nowMs)
+
+    const bundleDir =
+      "/opt/homebrew/opt/gemini-cli/libexec/lib/node_modules/@google/gemini-cli/bundle"
+
+    ctx.host.fs.writeText(
+      CREDS_PATH,
+      JSON.stringify({
+        access_token: "old-token",
+        refresh_token: "refresh-token",
+        expiry_date: nowMs - 1000,
+      })
+    )
+    ctx.host.fs.writeText(bundleDir + "/chunk-AAAAAAAA.js", "unrelated bundle code")
+    ctx.host.fs.writeText(
+      bundleDir + "/chunk-BBBBBBBB.js",
+      "const OAUTH_CLIENT_ID='brew-id'; const OAUTH_CLIENT_SECRET='brew-secret';"
+    )
+
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url === TOKEN_URL) {
+        expect(opts.bodyText).toContain("brew-id")
+        expect(opts.bodyText).toContain("brew-secret")
+        return { status: 200, bodyText: JSON.stringify({ access_token: "brewed-token", expires_in: 3600 }) }
+      }
+      if (url === LOAD_CODE_ASSIST_URL) return { status: 200, bodyText: JSON.stringify({ tier: "standard-tier" }) }
+      if (url === PROJECTS_URL) return { status: 200, bodyText: JSON.stringify({ projects: [{ projectId: "gen-lang-client-brew" }] }) }
+      if (url === QUOTA_URL) {
+        expect(opts.headers.Authorization).toBe("Bearer brewed-token")
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            quotaBuckets: [{ modelId: "gemini-2.5-pro", remainingFraction: 0.5, resetTime: "2099-01-01T00:00:00Z" }],
+          }),
+        }
+      }
+      throw new Error("unexpected url: " + url)
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Pro")).toBeTruthy()
+  })
+
   it("logs warning when no oauth2.js is found at any path", async () => {
     const ctx = makeCtx()
     const nowMs = 1_700_000_000_000

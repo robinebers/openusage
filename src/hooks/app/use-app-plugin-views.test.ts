@@ -39,6 +39,7 @@ describe("useAppPluginViews", () => {
             loading: true,
             error: null,
             lastManualRefreshAt: null,
+            lastUpdatedAt: null,
           },
         },
       })

@@ -11,17 +11,19 @@ set -euo pipefail
 bun install
 
 # Sync config directories from source tree into the worktree
-for d in .claude .codex .cursor; do
+for d in .agents .claude .codex .cursor; do
   if [ -d "$CODEX_SOURCE_TREE_PATH/$d" ]; then
     mkdir -p "$CODEX_WORKTREE_PATH/$d"
     rsync -a "$CODEX_SOURCE_TREE_PATH/$d/." "$CODEX_WORKTREE_PATH/$d/"
   fi
 done
 
-# Copy env file if it exists in the source tree
-if [ -f "$CODEX_SOURCE_TREE_PATH/.env" ]; then
-  cp "$CODEX_SOURCE_TREE_PATH/.env" "$CODEX_WORKTREE_PATH/.env"
-fi
+# Copy env files if they exist in the source tree
+for f in .env .env.example; do
+  if [ -f "$CODEX_SOURCE_TREE_PATH/$f" ]; then
+    cp "$CODEX_SOURCE_TREE_PATH/$f" "$CODEX_WORKTREE_PATH/$f"
+  fi
+done
 
 '''
 

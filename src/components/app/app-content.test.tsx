@@ -53,6 +53,7 @@ function createProps(): AppContentProps {
       loading: false,
       error: null,
       lastManualRefreshAt: null,
+      lastUpdatedAt: null,
     },
     onRetryPlugin: vi.fn(),
     onReorder: vi.fn(),

@@ -9,7 +9,7 @@ Antigravity is essentially a Google-branded fork of [Windsurf](windsurf.md) — 
 - **Vendor:** Google (internal codename "Jetski")
 - **Protocol:** Connect RPC v1 (JSON over HTTP) on local language server
 - **Service:** `exa.language_server_pb.LanguageServerService`
-- **Auth:** CSRF token from process args, API key from SQLite (fallback)
+- **Auth:** CSRF token from process args; Google OAuth tokens from SQLite (fallback)
 - **Quota:** fraction (0.0–1.0, where 1.0 = 100% remaining)
 - **Quota window:** 5 hours
 - **Timestamps:** ISO 8601
@@ -65,8 +65,6 @@ POST http://127.0.0.1:{port}/exa.language_server_pb.LanguageServerService/GetUse
   }
 }
 ```
-
-The CSRF token alone authenticates. When an API key is available from the local SQLite database, it is included in the metadata.
 
 #### Response
 
@@ -163,38 +161,31 @@ Antigravity stores auth credentials in a VS Code-compatible state database.
 - **Path:** `~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb`
 - **Table:** `ItemTable` (`key` TEXT, `value` TEXT)
 
-### antigravityAuthStatus
+### antigravityUnifiedStateSync.oauthToken (sentinel envelope → protobuf)
 
-```json
-{
-  "apiKey": "ya29.<token>",
-  "email": "user@example.com",
-  "name": "Test User"
-}
-```
+Google OAuth tokens are stored under this key in a double-wrapped base64 envelope.
 
-`apiKey` is a Google OAuth access token (`ya29...`). It's included in LS metadata and used as a last-resort Bearer token for Cloud Code when protobuf OAuth tokens are unavailable. It appears to be a separately-issued copy of the same kind of token stored in the protobuf data below.
+Decoding layers:
 
-### jetskiStateSync.agentManagerInitState (protobuf)
-
-Google OAuth tokens are also stored as a base64-encoded protobuf blob, with the addition of a refresh token and expiry timestamp.
+1. Base64-decode the DB `value` → `outer` bytes.
+2. `outer` field 1 (wire type 2) → `wrapper` bytes.
+3. Inside `wrapper`: field 1 is the sentinel string `"oauthTokenInfoSentinelKey"`; field 2 is `payload` bytes.
+4. Inside `payload`: field 1 (wire type 2) is a **UTF-8 base64 string** (not raw bytes).
+5. Base64-decode that string → final `OAuthTokenInfo` protobuf.
 
 ```protobuf
-message AgentManagerInitState {
-  OAuthTokenInfo oauth_token = 6;       // field 6, wire type 2
-}
 message OAuthTokenInfo {
   string access_token = 1;              // "ya29...." Google OAuth access token
-  string token_type = 2;               // ignored
-  string refresh_token = 3;            // "1//..." Google OAuth refresh token
-  Timestamp expiry = 4;                // field 4, wire type 2
+  string token_type = 2;                // ignored
+  string refresh_token = 3;             // "1//..." Google OAuth refresh token
+  Timestamp expiry = 4;                 // field 4, wire type 2
 }
 message Timestamp {
-  int64 seconds = 1;                   // Unix epoch seconds
+  int64 seconds = 1;                    // Unix epoch seconds
 }
 ```
 
-The plugin decodes this using a minimal protobuf wire-format parser (varint + length-delimited only). The access token is short-lived; the refresh token is used to obtain new access tokens via Google OAuth.
+The plugin decodes this using a minimal protobuf wire-format parser (varint, length-delimited, fixed32, fixed64). The access token is short-lived; the refresh token is used to obtain new access tokens via Google OAuth.
 
 ### Token Refresh
 
@@ -214,7 +205,7 @@ Same client_id/secret is there in the Antigravity app bundle, used for the Googl
 
 ## Cloud Code API (fallback)
 
-When the language server is not running, the plugin falls back to Google's Cloud Code API using a Google OAuth access token (from protobuf data, or apiKey as last resort).
+When the language server is not running, the plugin falls back to Google's Cloud Code API using a Google OAuth access token (from the unified-state protobuf, or a cached refreshed token).
 
 ### fetchAvailableModels
 
@@ -255,17 +246,15 @@ The Cloud Code model set is a superset of the LS model set. The LS returns only 
 
 ## Plugin Strategy
 
-1. Read `antigravityAuthStatus` from SQLite for API key (optional, may fail)
-2. Read `jetskiStateSync.agentManagerInitState` from SQLite, decode protobuf for OAuth tokens (optional, may fail)
-3. **Strategy 1 — LS probe (primary):**
+1. Read `antigravityUnifiedStateSync.oauthToken` from SQLite, unwrap the sentinel envelope, and decode the inner `OAuthTokenInfo` protobuf (optional, may fail).
+2. **Strategy 1 — LS probe (primary):**
    a. Discover LS process via `ctx.host.ls.discover()` (ps + lsof)
    b. Probe ports with `GetUnleashData` to find the Connect-RPC endpoint
-   c. Include `apiKey` in metadata if available
-   d. Call `GetUserStatus` for plan name + per-model quota
-   e. Fall back to `GetCommandModelConfigs` if `GetUserStatus` fails
-4. **Strategy 2 — Cloud Code API (fallback, only if LS fails):**
-   a. Build candidate token list: proto access_token, cached refreshed token (if fresh), apiKey (all deduplicated)
+   c. Call `GetUserStatus` for plan name + per-model quota
+   d. Fall back to `GetCommandModelConfigs` if `GetUserStatus` fails
+3. **Strategy 2 — Cloud Code API (fallback, only if LS fails):**
+   a. Build candidate token list: proto access_token (if unexpired), cached refreshed token (if fresh), deduplicated
    b. Try each token with `fetchAvailableModels`
-   c. If all fail with 401/403 and refresh token available: refresh via Google OAuth, cache result to pluginDataDir, retry once
+   c. If all fail with 401/403 (or the list is empty) and a refresh token is available: refresh via Google OAuth, cache result to pluginDataDir, retry once
    d. Parse model quota: skip `isInternal` models, empty-displayName models, and blacklisted model IDs
-5. If both strategies fail: error "Start Antigravity and try again."
+4. If both strategies fail: error "Start Antigravity and try again."

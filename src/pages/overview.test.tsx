@@ -16,6 +16,7 @@ describe("OverviewPage", () => {
         loading: false,
         error: null,
         lastManualRefreshAt: null,
+        lastUpdatedAt: null,
       },
     ]
     render(<OverviewPage plugins={plugins} displayMode="used" resetTimerDisplayMode="relative" />)
@@ -46,6 +47,7 @@ describe("OverviewPage", () => {
         loading: false,
         error: null,
         lastManualRefreshAt: null,
+        lastUpdatedAt: null,
       },
     ]
     render(<OverviewPage plugins={plugins} displayMode="used" resetTimerDisplayMode="relative" />)
@@ -69,6 +71,7 @@ describe("OverviewPage", () => {
         loading: false,
         error: null,
         lastManualRefreshAt: null,
+        lastUpdatedAt: null,
       },
     ]
 

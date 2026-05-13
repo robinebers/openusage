@@ -1,13 +1,8 @@
 import { act, renderHook, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-const { getEnabledPluginIdsMock, trackMock } = vi.hoisted(() => ({
-  trackMock: vi.fn(),
+const { getEnabledPluginIdsMock } = vi.hoisted(() => ({
   getEnabledPluginIdsMock: vi.fn(),
-}))
-
-vi.mock("@/lib/analytics", () => ({
-  track: trackMock,
 }))
 
 vi.mock("@/lib/settings", () => ({
@@ -19,14 +14,13 @@ import { useProbeRefreshActions } from "@/hooks/app/use-probe-refresh-actions"
 
 describe("useProbeRefreshActions", () => {
   beforeEach(() => {
-    trackMock.mockReset()
     getEnabledPluginIdsMock.mockReset()
     getEnabledPluginIdsMock.mockImplementation((settings: { order: string[]; disabled: string[] }) =>
       settings.order.filter((id) => !settings.disabled.includes(id))
     )
   })
 
-  it("retries one plugin and tracks manual refresh", () => {
+  it("retries one plugin via manual refresh", () => {
     const manualRefreshIdsRef = { current: new Set<string>() }
     const startBatch = vi.fn().mockResolvedValue(undefined)
     const setLoadingForPlugins = vi.fn()
@@ -47,7 +41,6 @@ describe("useProbeRefreshActions", () => {
       result.current.handleRetryPlugin("codex")
     })
 
-    expect(trackMock).toHaveBeenCalledWith("provider_refreshed", { provider_id: "codex" })
     expect(setLoadingForPlugins).toHaveBeenCalledWith(["codex"])
     expect(startBatch).toHaveBeenCalledWith(["codex"])
     expect(manualRefreshIdsRef.current.has("codex")).toBe(true)
@@ -63,9 +56,9 @@ describe("useProbeRefreshActions", () => {
         pluginSettings: { order: ["a", "b", "c"], disabled: [] },
         pluginStatesRef: {
           current: {
-            a: { data: null, loading: true, error: null, lastManualRefreshAt: null },
-            b: { data: null, loading: false, error: null, lastManualRefreshAt: 900_001 },
-            c: { data: null, loading: false, error: null, lastManualRefreshAt: null },
+            a: { data: null, loading: true, error: null, lastManualRefreshAt: null, lastUpdatedAt: null },
+            b: { data: null, loading: false, error: null, lastManualRefreshAt: 900_001, lastUpdatedAt: null },
+            c: { data: null, loading: false, error: null, lastManualRefreshAt: null, lastUpdatedAt: null },
           },
         },
         manualRefreshIdsRef: { current: new Set<string>(["b"]) },
@@ -95,7 +88,7 @@ describe("useProbeRefreshActions", () => {
           pluginSettings: settings,
           pluginStatesRef: {
             current: {
-              codex: { data: null, loading: true, error: null, lastManualRefreshAt: null },
+              codex: { data: null, loading: true, error: null, lastManualRefreshAt: null, lastUpdatedAt: null },
             },
           },
           manualRefreshIdsRef: { current: new Set<string>() },

@@ -36,6 +36,7 @@ export function ProviderDetailPage({
       lines={plugin.data?.lines ?? []}
       skeletonLines={plugin.meta.lines}
       lastManualRefreshAt={plugin.lastManualRefreshAt}
+      lastUpdatedAt={plugin.lastUpdatedAt}
       onRetry={onRetry}
       scopeFilter="all"
       displayMode={displayMode}

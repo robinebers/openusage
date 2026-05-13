@@ -99,6 +99,17 @@ describe("ui components", () => {
     expect(marker).toBeNull()
   })
 
+  it("renders shimmer overlay only when refreshing", () => {
+    const { container, rerender } = render(<Progress value={40} />)
+    expect(container.querySelector('[data-slot="progress-refreshing"]')).toBeNull()
+
+    rerender(<Progress value={40} refreshing />)
+    expect(container.querySelector('[data-slot="progress-refreshing"]')).toBeTruthy()
+
+    rerender(<Progress value={40} refreshing={false} />)
+    expect(container.querySelector('[data-slot="progress-refreshing"]')).toBeNull()
+  })
+
   it("renders separator orientations", () => {
     const { rerender } = render(<Separator />)
     expect(screen.getByRole("separator")).toBeInTheDocument()

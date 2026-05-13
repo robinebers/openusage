@@ -5,4 +5,5 @@ export type PluginState = {
   loading: boolean
   error: string | null
   lastManualRefreshAt: number | null
+  lastUpdatedAt: number | null
 }

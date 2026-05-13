@@ -314,7 +314,7 @@
   }
 
   function fetchUsage(ctx, accessToken) {
-    return ctx.util.request({
+    var resp = ctx.util.request({
       method: "POST",
       url: USAGE_URL,
       headers: {
@@ -326,6 +326,20 @@
       bodyText: JSON.stringify({ useCache: true }),
       timeoutMs: 10000,
     })
+    if (resp.status === 405) {
+      ctx.host.log.info("POST returned 405, retrying with GET")
+      resp = ctx.util.request({
+        method: "GET",
+        url: USAGE_URL,
+        headers: {
+          Authorization: "Bearer " + accessToken,
+          Accept: "application/json",
+          "User-Agent": "OpenUsage",
+        },
+        timeoutMs: 10000,
+      })
+    }
+    return resp
   }
 
   function probe(ctx) {

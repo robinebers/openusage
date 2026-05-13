@@ -9,6 +9,8 @@
   var GOOGLE_OAUTH_URL = "https://oauth2.googleapis.com/token"
   var GOOGLE_CLIENT_ID = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
   var GOOGLE_CLIENT_SECRET = "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"
+  var OAUTH_TOKEN_KEY = "antigravityUnifiedStateSync.oauthToken"
+  var OAUTH_TOKEN_SENTINEL = "oauthTokenInfoSentinelKey"
   var CC_MODEL_BLACKLIST = {
     "MODEL_CHAT_20706": true,
     "MODEL_CHAT_23310": true,
@@ -48,12 +50,19 @@
         if (!val) break
         fields[fieldNum] = { type: 0, value: val.v }
         pos = val.p
+      } else if (wireType === 1) {
+        if (pos + 8 > s.length) break
+        pos += 8
       } else if (wireType === 2) {
         var len = readVarint(s, pos)
         if (!len) break
         pos = len.p
+        if (pos + len.v > s.length) break
         fields[fieldNum] = { type: 2, data: s.substring(pos, pos + len.v) }
         pos += len.v
+      } else if (wireType === 5) {
+        if (pos + 4 > s.length) break
+        pos += 4
       } else {
         break
       }
@@ -63,46 +72,48 @@
 
   // --- SQLite credential reading ---
 
-  function loadApiKey(ctx) {
-    try {
-      var rows = ctx.host.sqlite.query(
-        STATE_DB,
-        "SELECT value FROM ItemTable WHERE key = 'antigravityAuthStatus' LIMIT 1"
-      )
-      var parsed = ctx.util.tryParseJson(rows)
-      if (!parsed || !parsed.length || !parsed[0].value) return null
-      var auth = ctx.util.tryParseJson(parsed[0].value)
-      if (!auth || !auth.apiKey) return null
-      return auth.apiKey
-    } catch (e) {
-      ctx.host.log.warn("failed to read auth from antigravity DB: " + String(e))
-      return null
-    }
+  // Antigravity wraps OAuth state in a double-base64 envelope:
+  //   b64(outer.f1 = wrapper{ f1=sentinel, f2=payload{ f1=b64(inner proto) } }).
+  // The inner base64 layer is the unusual part — it's a UTF-8 string field, not raw bytes.
+  function unwrapOAuthSentinel(ctx, base64Text) {
+    var trimmed = String(base64Text || "").replace(/^\s+|\s+$/g, "")
+    if (!trimmed) return null
+    var outer = ctx.base64.decode(trimmed)
+    var outerFields = readFields(outer)
+    if (!outerFields[1] || outerFields[1].type !== 2) return null
+    var wrapper = readFields(outerFields[1].data)
+    var sentinel = (wrapper[1] && wrapper[1].type === 2) ? wrapper[1].data : null
+    var payload = (wrapper[2] && wrapper[2].type === 2) ? wrapper[2].data : null
+    if (sentinel !== OAUTH_TOKEN_SENTINEL || !payload) return null
+    var payloadFields = readFields(payload)
+    if (!payloadFields[1] || payloadFields[1].type !== 2) return null
+    var innerText = payloadFields[1].data.replace(/^\s+|\s+$/g, "")
+    if (!innerText) return null
+    return ctx.base64.decode(innerText)
   }
 
-  function loadProtoTokens(ctx) {
+  function loadOAuthTokens(ctx) {
     try {
       var rows = ctx.host.sqlite.query(
         STATE_DB,
-        "SELECT value FROM ItemTable WHERE key = 'jetskiStateSync.agentManagerInitState' LIMIT 1"
+        "SELECT value FROM ItemTable WHERE key = '" + OAUTH_TOKEN_KEY + "' LIMIT 1"
       )
       var parsed = ctx.util.tryParseJson(rows)
       if (!parsed || !parsed.length || !parsed[0].value) return null
-      var raw = ctx.base64.decode(parsed[0].value)
-      var outer = readFields(raw)
-      if (!outer[6] || outer[6].type !== 2) return null
-      var inner = readFields(outer[6].data)
-      var accessToken = (inner[1] && inner[1].type === 2) ? inner[1].data : null
-      var refreshToken = (inner[3] && inner[3].type === 2) ? inner[3].data : null
+      var inner = unwrapOAuthSentinel(ctx, parsed[0].value)
+      if (!inner) return null
+      var fields = readFields(inner)
+      var accessToken = (fields[1] && fields[1].type === 2) ? fields[1].data : null
+      var refreshToken = (fields[3] && fields[3].type === 2) ? fields[3].data : null
       var expirySeconds = null
-      if (inner[4] && inner[4].type === 2) {
-        var ts = readFields(inner[4].data)
+      if (fields[4] && fields[4].type === 2) {
+        var ts = readFields(fields[4].data)
         if (ts[1] && ts[1].type === 0) expirySeconds = ts[1].value
       }
-      if (!accessToken) return null
+      if (!accessToken && !refreshToken) return null
       return { accessToken: accessToken, refreshToken: refreshToken, expirySeconds: expirySeconds }
     } catch (e) {
-      ctx.host.log.warn("failed to read proto tokens from antigravity DB: " + String(e))
+      ctx.host.log.warn("failed to read unified oauth token: " + String(e))
       return null
     }
   }
@@ -375,7 +386,7 @@
 
   // --- LS probe ---
 
-  function probeLs(ctx, apiKey) {
+  function probeLs(ctx) {
     var discovery = discoverLs(ctx)
     if (!discovery) return null
 
@@ -390,7 +401,6 @@
       ideVersion: "unknown",
       locale: "en",
     }
-    if (apiKey) metadata.apiKey = apiKey
 
     // Try GetUserStatus first, fall back to GetCommandModelConfigs
     var data = null
@@ -450,35 +460,43 @@
   // --- Probe ---
 
   function probe(ctx) {
-    var apiKey = loadApiKey(ctx)
-    var proto = loadProtoTokens(ctx)
+    var dbTokens = loadOAuthTokens(ctx)
 
-    var lsResult = probeLs(ctx, apiKey)
+    var lsResult = probeLs(ctx)
     if (lsResult) return lsResult
 
     var tokens = []
-    if (proto && proto.accessToken) {
-      if (!proto.expirySeconds || proto.expirySeconds > Math.floor(Date.now() / 1000)) {
-        tokens.push(proto.accessToken)
+    if (dbTokens && dbTokens.accessToken) {
+      if (!dbTokens.expirySeconds || dbTokens.expirySeconds > Math.floor(Date.now() / 1000)) {
+        tokens.push(dbTokens.accessToken)
       }
     }
 
     var cached = loadCachedToken(ctx)
-    if (cached && cached !== (proto && proto.accessToken)) tokens.push(cached)
+    if (cached && tokens.indexOf(cached) === -1) tokens.push(cached)
 
-    if (apiKey && apiKey !== (proto && proto.accessToken) && apiKey !== cached) tokens.push(apiKey)
-
-    if (tokens.length === 0) throw "Start Antigravity and try again."
-
-    var ccData = null
-    for (var i = 0; i < tokens.length; i++) {
-      ccData = probeCloudCode(ctx, tokens[i])
-      if (ccData && !ccData._authFailed) break
-      ccData = null
+    if (tokens.length === 0 && !(dbTokens && dbTokens.refreshToken)) {
+      throw "Start Antigravity and try again."
     }
 
-    if (!ccData && proto && proto.refreshToken) {
-      var refreshed = refreshAccessToken(ctx, proto.refreshToken)
+    var ccData = null
+    var sawAuthFailure = false
+    for (var i = 0; i < tokens.length; i++) {
+      var nextData = probeCloudCode(ctx, tokens[i])
+      if (nextData && !nextData._authFailed) {
+        ccData = nextData
+        break
+      }
+      if (nextData && nextData._authFailed) sawAuthFailure = true
+    }
+
+    // Only refresh on evidence of an auth failure, or when there were no tokens to try.
+    // probeCloudCode returns null for transient failures (5xx/timeouts); without this
+    // guard a Cloud Code incident would trigger a Google OAuth refresh every probe cycle
+    // instead of ~once per token lifetime — risking refresh-token throttling or rotation.
+    if (!ccData && dbTokens && dbTokens.refreshToken &&
+        (sawAuthFailure || tokens.length === 0)) {
+      var refreshed = refreshAccessToken(ctx, dbTokens.refreshToken)
       if (refreshed) ccData = probeCloudCode(ctx, refreshed)
     }
 

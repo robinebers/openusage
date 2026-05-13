@@ -31,10 +31,11 @@ export function useProbeState({ onProbeResult }: UseProbeStateArgs) {
       for (const id of ids) {
         const existing = prev[id]
         next[id] = {
-          data: null,
+          data: existing?.data ?? null,
           loading: true,
           error: null,
           lastManualRefreshAt: existing?.lastManualRefreshAt ?? null,
+          lastUpdatedAt: existing?.lastUpdatedAt ?? null,
         }
       }
       return next
@@ -47,10 +48,11 @@ export function useProbeState({ onProbeResult }: UseProbeStateArgs) {
       for (const id of ids) {
         const existing = prev[id]
         next[id] = {
-          data: null,
+          data: existing?.data ?? null,
           loading: false,
           error,
           lastManualRefreshAt: existing?.lastManualRefreshAt ?? null,
+          lastUpdatedAt: existing?.lastUpdatedAt ?? null,
         }
       }
       return next
@@ -65,17 +67,22 @@ export function useProbeState({ onProbeResult }: UseProbeStateArgs) {
         manualRefreshIdsRef.current.delete(output.providerId)
       }
 
-      setPluginStates((prev) => ({
-        ...prev,
-        [output.providerId]: {
-          data: errorMessage ? null : output,
-          loading: false,
-          error: errorMessage,
-          lastManualRefreshAt: !errorMessage && isManual
-            ? Date.now()
-            : prev[output.providerId]?.lastManualRefreshAt ?? null,
-        },
-      }))
+      const now = Date.now()
+      setPluginStates((prev) => {
+        const existing = prev[output.providerId]
+        return {
+          ...prev,
+          [output.providerId]: {
+            data: errorMessage ? (existing?.data ?? null) : output,
+            loading: false,
+            error: errorMessage,
+            lastManualRefreshAt: !errorMessage && isManual
+              ? now
+              : existing?.lastManualRefreshAt ?? null,
+            lastUpdatedAt: errorMessage ? (existing?.lastUpdatedAt ?? null) : now,
+          },
+        }
+      })
 
       onProbeResult?.()
     },

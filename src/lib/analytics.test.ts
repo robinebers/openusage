@@ -22,7 +22,7 @@ describe("analytics track", () => {
     state.isTauriMock.mockReturnValue(false)
     const { track } = await import("./analytics")
 
-    track("setting_changed", { setting: "theme", value: "dark" })
+    track("test_event", { foo: "bar" })
 
     expect(state.invokeMock).not.toHaveBeenCalled()
   })
@@ -30,8 +30,8 @@ describe("analytics track", () => {
   it("tracks all events when running in tauri", async () => {
     const { track } = await import("./analytics")
 
-    track("setting_changed", { setting: "theme", value: "dark" })
-    track("setting_changed", { setting: "theme", value: "dark" })
+    track("test_event", { foo: "bar" })
+    track("test_event", { foo: "bar" })
 
     expect(state.invokeMock).toHaveBeenCalledTimes(2)
   })
