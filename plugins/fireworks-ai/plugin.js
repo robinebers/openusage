@@ -33,7 +33,7 @@
     return raw ? raw.split("/").filter(Boolean).pop() || null : null
   }
 
-  function lastFinite(values) {
+  function firstFinite(values) {
     for (let i = 0; i < values.length; i += 1) {
       if (Number.isFinite(values[i])) return values[i]
     }
@@ -219,13 +219,13 @@
     return {
       name,
       value: num(raw.value),
-      maxValue: num(raw.maxValue || raw.max_value),
-      usage: lastFinite([
+      maxValue: num(raw.maxValue ?? raw.max_value),
+      usage: firstFinite([
         num(raw.usage),
-        num(raw.currentUsage || raw.current_usage),
-        num(raw.consumedValue || raw.consumed_value),
+        num(raw.currentUsage ?? raw.current_usage),
+        num(raw.consumedValue ?? raw.consumed_value),
       ]),
-      updateTime: ctx.util.toIso(raw.updateTime || raw.update_time),
+      updateTime: ctx.util.toIso(raw.updateTime ?? raw.update_time),
     }
   }
 
@@ -297,9 +297,7 @@
       generatedTokens += num(row.completion_tokens || row.completionTokens) || 0
     }
     const totalTokens = promptTokens + generatedTokens
-    return totalTokens > 0
-      ? { status: "ok", label: window.label, promptTokens, generatedTokens, totalTokens }
-      : { status: "empty" }
+    return { status: "ok", label: window.label, promptTokens, generatedTokens, totalTokens }
   }
 
   function buildOutput(ctx, account, quotas, billingUsage) {
@@ -310,8 +308,11 @@
 
     const promptTotal = billingUsage && billingUsage.status === "ok" ? billingUsage.promptTokens : null
     const generatedTotal = billingUsage && billingUsage.status === "ok" ? billingUsage.generatedTokens : null
-    const totalTokens = (billingUsage && billingUsage.status === "ok" && billingUsage.totalTokens) || tokenAmount(totalTokensQuota) || null
-    if (totalTokens !== null && totalTokens > 0) {
+    const totalTokens =
+      billingUsage && billingUsage.status === "ok"
+        ? billingUsage.totalTokens
+        : tokenAmount(totalTokensQuota)
+    if (totalTokens !== null) {
       lines.push(ctx.line.text({ label: "Serverless usage", value: formatCompactCount(totalTokens) + " tokens", subtitle: billingUsage && billingUsage.status === "ok" ? billingUsage.label : "Tokens reported by Fireworks" }))
     } else if (billingUsage && billingUsage.status !== "ok") {
       const reason =
@@ -323,11 +324,11 @@
       lines.push(ctx.line.text({ label: "Serverless usage", value: "Unavailable", subtitle: reason }))
     }
 
-    if (promptTotal !== null && promptTotal > 0) {
+    if (promptTotal !== null) {
       lines.push(ctx.line.text({ label: "Prompt tokens", value: formatCompactCount(promptTotal) + " tokens", subtitle: billingUsage && billingUsage.status === "ok" ? billingUsage.label : "Tokens reported by Fireworks" }))
     }
 
-    if (generatedTotal !== null && generatedTotal > 0) {
+    if (generatedTotal !== null) {
       lines.push(ctx.line.text({ label: "Generated tokens", value: formatCompactCount(generatedTotal) + " tokens", subtitle: billingUsage && billingUsage.status === "ok" ? billingUsage.label : "Tokens reported by Fireworks" }))
     }
 

@@ -32,6 +32,9 @@ const WHITELISTED_ENV_VARS: [&str; 17] = [
     "FIREWORKS_API_KEY",
 ];
 
+const FIRECTL_TIMEOUT_SECS: u64 = 15;
+const FIRECTL_POLL_INTERVAL_MS: u64 = 50;
+
 fn last_non_empty_trimmed_line(text: &str) -> Option<String> {
     text.lines()
         .map(|line| line.trim())
@@ -258,8 +261,11 @@ fn redact_value(value: &str) -> String {
 
 /// Redact sensitive query parameters in URL
 fn redact_url(url: &str) -> String {
-    let account_path_pattern = regex_lite::Regex::new(r"(?P<prefix>/accounts/)(?P<value>[^/?#]+)")
-        .expect("valid account path regex");
+    static ACCOUNT_PATH_PATTERN: OnceLock<regex_lite::Regex> = OnceLock::new();
+    let account_path_pattern = ACCOUNT_PATH_PATTERN.get_or_init(|| {
+        regex_lite::Regex::new(r"(?P<prefix>/accounts/)(?P<value>[^/?#]+)")
+            .expect("valid account path regex")
+    });
     let sensitive_params = [
         "key",
         "api_key",
@@ -2213,17 +2219,133 @@ fn firectl_runner_candidates() -> [&'static str; 3] {
 }
 
 fn resolve_firectl_runner() -> Option<String> {
-    for candidate in firectl_runner_candidates() {
-        if Command::new(candidate)
-            .arg("--help")
-            .status()
-            .map(|status| status.success())
-            .unwrap_or(false)
-        {
-            return Some(candidate.to_string());
+    static FIRECTL_RUNNER: OnceLock<Option<String>> = OnceLock::new();
+    FIRECTL_RUNNER
+        .get_or_init(|| {
+            for candidate in firectl_runner_candidates() {
+                if Command::new(candidate)
+                    .arg("--help")
+                    .status()
+                    .map(|status| status.success())
+                    .unwrap_or(false)
+                {
+                    return Some(candidate.to_string());
+                }
+            }
+            None
+        })
+        .clone()
+}
+
+fn fireworks_auth_ini_contents(api_key: &str) -> String {
+    format!("[fireworks]\napi_key = {}\n", api_key)
+}
+
+fn write_fireworks_auth_ini(auth_root: &Path, api_key: &str) -> std::io::Result<PathBuf> {
+    let fireworks_dir = auth_root.join(".fireworks");
+    std::fs::create_dir_all(&fireworks_dir)?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&fireworks_dir, std::fs::Permissions::from_mode(0o700))?;
+    }
+
+    let auth_ini_path = fireworks_dir.join("auth.ini");
+    std::fs::write(&auth_ini_path, fireworks_auth_ini_contents(api_key))?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&auth_ini_path, std::fs::Permissions::from_mode(0o600))?;
+    }
+
+    Ok(auth_ini_path)
+}
+
+fn cleanup_fireworks_export_dir(path: &Path) {
+    let _ = std::fs::remove_dir_all(path);
+}
+
+fn run_fireworks_billing_export_timeout(
+    command: &mut Command,
+    plugin_id: &str,
+    timeout: std::time::Duration,
+) -> Result<std::process::Output, &'static str> {
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(err) => {
+            log::warn!(
+                "[plugin:{}] failed to spawn firectl billing export: {}",
+                plugin_id,
+                err
+            );
+            return Err("runner_failed");
+        }
+    };
+
+    let mut stdout_reader = child.stdout.take().map(|mut stdout| {
+        std::thread::spawn(move || {
+            let mut v = Vec::new();
+            let _ = std::io::Read::read_to_end(&mut stdout, &mut v);
+            v
+        })
+    });
+    let mut stderr_reader = child.stderr.take().map(|mut stderr| {
+        std::thread::spawn(move || {
+            let mut v = Vec::new();
+            let _ = std::io::Read::read_to_end(&mut stderr, &mut v);
+            v
+        })
+    });
+
+    let start = std::time::Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let stdout = stdout_reader
+                    .take()
+                    .and_then(|reader| reader.join().ok())
+                    .unwrap_or_default();
+                let stderr = stderr_reader
+                    .take()
+                    .and_then(|reader| reader.join().ok())
+                    .unwrap_or_default();
+                return Ok(std::process::Output {
+                    status,
+                    stdout,
+                    stderr,
+                });
+            }
+            Ok(None) => {
+                if start.elapsed() > timeout {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    let _ = stdout_reader.take().and_then(|reader| reader.join().ok());
+                    let _ = stderr_reader.take().and_then(|reader| reader.join().ok());
+                    log::warn!(
+                        "[plugin:{}] firectl billing export timed out after {}s",
+                        plugin_id,
+                        timeout.as_secs()
+                    );
+                    return Err("timed_out");
+                }
+                std::thread::sleep(std::time::Duration::from_millis(
+                    FIRECTL_POLL_INTERVAL_MS,
+                ));
+            }
+            Err(err) => {
+                log::warn!(
+                    "[plugin:{}] firectl billing export wait failed: {}",
+                    plugin_id,
+                    err
+                );
+                let _ = stdout_reader.take().and_then(|reader| reader.join().ok());
+                let _ = stderr_reader.take().and_then(|reader| reader.join().ok());
+                return Err("runner_failed");
+            }
         }
     }
-    None
 }
 
 fn run_fireworks_billing_export(
@@ -2243,20 +2365,42 @@ fn run_fireworks_billing_export(
         return serde_json::json!({ "status": "no_runner" });
     };
 
-    let file_name = format!(
-        "openusage-fireworks-{}-{}.csv",
+    let workspace_name = format!(
+        "openusage-fireworks-{}-{}",
         std::process::id(),
         iso_now().replace([':', '.'], "-")
     );
-    let temp_dir = std::env::temp_dir();
+    let temp_dir = std::env::temp_dir().join(&workspace_name);
+    if let Err(err) = std::fs::create_dir_all(&temp_dir) {
+        log::warn!(
+            "[plugin:{}] failed to create Fireworks export temp dir: {}",
+            plugin_id,
+            err
+        );
+        return serde_json::json!({ "status": "runner_failed" });
+    }
+
+    if let Err(err) = write_fireworks_auth_ini(&temp_dir, opts.api_key.trim()) {
+        cleanup_fireworks_export_dir(&temp_dir);
+        log::warn!(
+            "[plugin:{}] failed to prepare Fireworks auth config: {}",
+            plugin_id,
+            err
+        );
+        return serde_json::json!({ "status": "runner_failed" });
+    }
+
+    let file_name = format!("{}.csv", workspace_name);
     let output_path = temp_dir.join(&file_name);
-    let result = Command::new(&program)
+    let mut command = Command::new(&program);
+    command
         .current_dir(&temp_dir)
+        .env("HOME", &temp_dir)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
         .args([
             "billing",
             "export-metrics",
-            "--api-key",
-            opts.api_key.trim(),
             "--account-id",
             opts.account_id.trim(),
             "--start-time",
@@ -2265,13 +2409,15 @@ fn run_fireworks_billing_export(
             opts.end_time.trim(),
             "--filename",
             file_name.as_str(),
-        ])
-        .output();
+        ]);
+    let result = run_fireworks_billing_export_timeout(
+        &mut command,
+        plugin_id,
+        std::time::Duration::from_secs(FIRECTL_TIMEOUT_SECS),
+    );
 
     let read_csv = || std::fs::read_to_string(&output_path).ok();
-    let cleanup = || {
-        let _ = std::fs::remove_file(&output_path);
-    };
+    let cleanup = || cleanup_fireworks_export_dir(&temp_dir);
 
     match result {
         Ok(output) if output.status.success() => {
@@ -2300,14 +2446,9 @@ fn run_fireworks_billing_export(
             );
             serde_json::json!({ "status": "runner_failed" })
         }
-        Err(err) => {
+        Err(status) => {
             cleanup();
-            log::warn!(
-                "[plugin:{}] failed to spawn firectl billing export: {}",
-                plugin_id,
-                err
-            );
-            serde_json::json!({ "status": "runner_failed" })
+            serde_json::json!({ "status": status })
         }
     }
 }
@@ -4094,7 +4235,7 @@ wait
             &opts,
             CcusageProvider::Codex,
             "codex",
-            Duration::from_millis(100),
+            Duration::from_millis(500),
         );
 
         assert_eq!(result, CcusageRunnerResult::TimedOut);
@@ -4102,6 +4243,11 @@ wait
             start.elapsed() < Duration::from_secs(3),
             "timeout cleanup should not hang on inherited stdout/stderr pipes"
         );
+
+        let pid_deadline = Instant::now() + Duration::from_secs(2);
+        while !pid_path.exists() && Instant::now() < pid_deadline {
+            std::thread::sleep(Duration::from_millis(20));
+        }
 
         let descendant_pid: i32 = std::fs::read_to_string(&pid_path)
             .expect("read descendant pid")

@@ -16,8 +16,8 @@ OpenUsage uses Fireworks' official account + quota endpoints plus Fireworks' off
 | Metric | Source | Scope | Format | Notes |
 | --- | --- | --- | --- | --- |
 | Serverless usage | billing export or aggregate token counter | overview | text | Main cumulative usage line, shown as a compact token total like `104.85M tokens` |
-| Prompt tokens | billing export or token counter | overview | text | Prompt/input token total for the selected rolling window |
-| Generated tokens | billing export or token counter | overview | text | Generated/output token total for the selected rolling window |
+| Prompt tokens | billing export | overview | text | Prompt/input token total for the selected rolling window |
+| Generated tokens | billing export | overview | text | Generated/output token total for the selected rolling window |
 | Month spend | `monthly-spend-usd.usage` | overview | text | Current calendar-month billable spend |
 | Budget | `monthly-spend-usd.value` / `maxValue` | detail | text | Configured monthly budget plus the tier cap |
 | Status | account `state` / `suspendState` | detail | badge | Only shown when the account is not in a healthy state |
@@ -57,7 +57,7 @@ OpenUsage currently reads:
 
 ### 3) Export billing metrics
 
-Fireworks documents `firectl billing export-metrics` as the official way to export billable usage, and the command accepts `--api-key` and `--account-id`. OpenUsage uses that path when available to compute rolling token totals without relying on a browser session. The working export format is date-only `YYYY-MM-DD` windows.
+Fireworks documents `firectl billing export-metrics` as the official way to export billable usage. OpenUsage uses that path when available to compute rolling token totals without relying on a browser session. The working export format is date-only `YYYY-MM-DD` windows, and OpenUsage writes a temporary `~/.fireworks/auth.ini` for the subprocess instead of passing the API key on the command line.
 
 Observed/expected quota fields:
 

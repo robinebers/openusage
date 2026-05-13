@@ -196,6 +196,11 @@ describe("fireworks-ai plugin", () => {
       value: "Not set",
       subtitle: "Tier cap $50",
     })
+    expect(result.lines.find((line) => line.label === "Month spend")).toMatchObject({
+      type: "text",
+      value: "$0",
+      subtitle: "Calendar month to date",
+    })
   })
 
   it("uses aggregate token quota directly when the API returns a single total-tokens line", async () => {
@@ -246,6 +251,88 @@ describe("fireworks-ai plugin", () => {
       subtitle: "Install firectl for official billing export",
     })
     expect(result.lines.map((line) => line.label)).toEqual(["Serverless usage", "Month spend", "Budget"])
+  })
+
+  it("shows zero token totals when the billing export window is valid but unused", async () => {
+    const ctx = makeCtx()
+    ctx.host.keychain.readGenericPasswordForCurrentUser.mockReturnValue("fw-current-user-key")
+    ctx.host.fireworks.exportBillingMetrics.mockReturnValue({
+      status: "ok",
+      csv: `usage_type,model_name,prompt_tokens,completion_tokens,start_time,end_time
+TEXT_COMPLETION_INFERENCE_USAGE,accounts/fireworks/models/kimi-k2p5,0,0,2026-01-03T00:00:00Z,2026-02-02T00:00:00Z`,
+    })
+    mockApi(ctx, ACCOUNTS, {
+      quotas: [
+        {
+          name: "accounts/acct_primary/quotas/monthly-spend-usd",
+          value: 0,
+          maxValue: 50,
+          usage: 0,
+          updateTime: "2026-02-01T12:00:00.000Z",
+        },
+      ],
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((line) => line.label === "Serverless usage")).toMatchObject({
+      type: "text",
+      value: "0 tokens",
+      subtitle: "Last 30 days",
+    })
+    expect(result.lines.find((line) => line.label === "Prompt tokens")).toMatchObject({
+      type: "text",
+      value: "0 tokens",
+      subtitle: "Last 30 days",
+    })
+    expect(result.lines.find((line) => line.label === "Generated tokens")).toMatchObject({
+      type: "text",
+      value: "0 tokens",
+      subtitle: "Last 30 days",
+    })
+  })
+
+  it("preserves zero-valued quota fields instead of dropping them as null", async () => {
+    const ctx = makeCtx()
+    ctx.host.keychain.readGenericPasswordForCurrentUser.mockReturnValue("fw-current-user-key")
+    ctx.host.fireworks.exportBillingMetrics.mockReturnValue({ status: "runner_failed" })
+    mockApi(ctx, ACCOUNTS, {
+      quotas: [
+        {
+          name: "accounts/acct_primary/quotas/monthly-spend-usd",
+          value: 0,
+          max_value: 50,
+          current_usage: 0,
+          update_time: "2026-02-01T12:00:00.000Z",
+        },
+        {
+          name: "accounts/acct_primary/quotas/serverless-inference-total-tokens",
+          current_usage: 0,
+          update_time: "2026-02-01T12:00:00.000Z",
+        },
+      ],
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Tier 1")
+    expect(result.lines.find((line) => line.label === "Serverless usage")).toMatchObject({
+      type: "text",
+      value: "0 tokens",
+      subtitle: "Tokens reported by Fireworks",
+    })
+    expect(result.lines.find((line) => line.label === "Month spend")).toMatchObject({
+      type: "text",
+      value: "$0",
+      subtitle: "Calendar month to date",
+    })
+    expect(result.lines.find((line) => line.label === "Budget")).toMatchObject({
+      type: "text",
+      value: "Not set",
+      subtitle: "Tier cap $50",
+    })
   })
 
   it("shows account status when the selected account is suspended", async () => {

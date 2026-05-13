@@ -166,6 +166,46 @@ const authPath = codexHome
   : "~/.config/codex/auth.json"
 ```
 
+## Fireworks
+
+```typescript
+host.fireworks.exportBillingMetrics({
+  apiKey: string,
+  accountId: string,
+  startTime: string,  // YYYY-MM-DD
+  endTime: string     // YYYY-MM-DD
+}): {
+  status: "ok" | "empty" | "invalid_opts" | "no_runner" | "runner_failed" | "timed_out",
+  csv?: string
+}
+```
+
+Runs Fireworks' official `firectl billing export-metrics` command and returns the exported CSV when successful.
+
+### Behavior
+
+- Uses a bounded subprocess timeout; hung exports return `timed_out`
+- Writes auth to a temporary `~/.fireworks/auth.ini` for the subprocess instead of putting the API key on argv
+- Returns `no_runner` when `firectl` is not installed
+- Returns `runner_failed` when the command exits non-zero or the CSV cannot be read
+
+### Example
+
+```javascript
+const exportResult = ctx.host.fireworks.exportBillingMetrics({
+  apiKey,
+  accountId: "acct_primary",
+  startTime: "2026-01-01",
+  endTime: "2026-01-31",
+})
+
+if (exportResult.status !== "ok") {
+  ctx.host.log.warn("billing export unavailable: " + exportResult.status)
+} else {
+  const csv = exportResult.csv
+}
+```
+
 ## HTTP
 
 ```typescript
