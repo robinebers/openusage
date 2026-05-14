@@ -366,7 +366,9 @@
     const authToken = session && session.authToken
     if (!authToken) return null
     const restHeaders = makeRestHeaderOverrides(session)
-    const user = fetchJsonOptional(ctx, LOCAL_USER_ENDPOINT, authToken, restHeaders)
+    const user =
+      fetchJsonOptional(ctx, LOCAL_USER_ENDPOINT, authToken, restHeaders) ||
+      fetchJsonOptional(ctx, LOCAL_USER_ENDPOINT + "/", authToken, restHeaders)
     const groups =
       fetchJsonOptional(ctx, REST_GROUPS_ENDPOINT, authToken, restHeaders) ||
       fetchJsonOptional(ctx, REST_GROUPS_ENDPOINT + "/", authToken, restHeaders)
