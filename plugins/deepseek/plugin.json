@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "deepseek",
+  "name": "DeepSeek",
+  "version": "0.0.1",
+  "entry": "plugin.js",
+  "icon": "icon.svg",
+  "brandColor": "#4D6BFE",
+  "lines": [
+    { "type": "progress", "label": "Balance", "scope": "overview", "primaryOrder": 1 }
+  ]
+}
