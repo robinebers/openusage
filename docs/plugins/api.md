@@ -258,6 +258,34 @@ if (ctx.host.fs.exists("~/.myapp/credentials.json")) {
 }
 ```
 
+## User Defaults System (macOS only)
+
+```typescript
+host.defaults.read(domain: string, key: string): string
+```
+
+Reads a value from the macOS user defaults.
+
+### Behavior
+
+- **macOS only**: Throws on other platforms.
+- **Returns raw string**: Returns the value associated with the domain and key as a string.
+- **Throws on failure**: Throws if the domain or key does not exist.
+
+### Example
+
+```javascript
+try {
+  const json = ctx.host.defaults.read("com.example.MyApp", "AIUsageInfo")
+  const data = ctx.util.tryParseJson(json)
+  if (data) {
+    ctx.host.log.info("Warp limit: " + data.limit)
+  }
+} catch (e) {
+  // Handle key not found
+}
+```
+
 ## SQLite
 
 ### Query (Read-Only)
