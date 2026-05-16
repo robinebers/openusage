@@ -1,4 +1,10 @@
 <svg width="100" height="100" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <path d="M50 10c12.43 0 22.5 10.07 22.5 22.5v7.25h1.25c7.6 0 13.75 6.15 13.75 13.75v12.25c0 13.4-10.85 24.25-24.25 24.25h-26.5C23.35 90 12.5 79.15 12.5 65.75V53.5c0-7.6 6.15-13.75 13.75-13.75h1.25V32.5C27.5 20.07 37.57 10 50 10Zm0 10c-6.9 0-12.5 5.6-12.5 12.5v7.25h25V32.5C62.5 25.6 56.9 20 50 20Zm-23.75 29.75A3.75 3.75 0 0 0 22.5 53.5v12.25C22.5 73.62 28.88 80 36.75 80h26.5C71.12 80 77.5 73.62 77.5 65.75V53.5a3.75 3.75 0 0 0-3.75-3.75h-47.5Z" fill="currentColor"/>
-  <path d="M37.5 61.25a6.25 6.25 0 1 0 0-12.5 6.25 6.25 0 0 0 0 12.5Zm25 0a6.25 6.25 0 1 0 0-12.5 6.25 6.25 0 0 0 0 12.5ZM37.5 70h25a5 5 0 0 1 0 10h-25a5 5 0 0 1 0-10Z" fill="currentColor"/>
+  <path d="M28 34C25 19 30 8 38 10C45 12 48 24 47 35" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M72 34C75 19 70 8 62 10C55 12 52 24 53 35" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M20 100C18 93 19 87 23 82C18 76 18 67 23 61C14 56 15 40 30 34C34 32 39 32 43 34C46 29 53 29 57 34C61 32 66 32 70 34C85 40 86 56 77 61C82 67 82 76 77 82C81 87 82 93 80 100" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M39 53H39.01" stroke="currentColor" stroke-width="8" stroke-linecap="round"/>
+  <path d="M61 53H61.01" stroke="currentColor" stroke-width="8" stroke-linecap="round"/>
+  <path d="M50 73C60 73 68 67 68 60C68 53 60 48 50 48C40 48 32 53 32 60C32 67 40 73 50 73Z" stroke="currentColor" stroke-width="7" stroke-linejoin="round"/>
+  <path d="M46 60C48 58 52 58 54 60" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M50 62V68" stroke="currentColor" stroke-width="6" stroke-linecap="round"/>
 </svg>
