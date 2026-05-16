@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "ollama",
+  "name": "Ollama",
+  "version": "0.0.1",
+  "entry": "plugin.js",
+  "icon": "icon.svg",
+  "brandColor": "#000000",
+  "links": [
+    { "label": "Settings", "url": "https://ollama.com/settings" },
+    { "label": "Keys", "url": "https://ollama.com/settings/keys" }
+  ],
+  "lines": [
+    { "type": "progress", "label": "Session", "scope": "overview", "primaryOrder": 1 },
+    { "type": "progress", "label": "Weekly", "scope": "overview", "primaryOrder": 2 },
+    { "type": "text", "label": "Source", "scope": "detail" }
+  ]
+}

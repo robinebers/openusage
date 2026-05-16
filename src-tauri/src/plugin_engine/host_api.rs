@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 
-const WHITELISTED_ENV_VARS: [&str; 16] = [
+const WHITELISTED_ENV_VARS: [&str; 20] = [
     "CODEX_HOME",
     "CLAUDE_CONFIG_DIR",
     "CLAUDE_CODE_OAUTH_TOKEN",
@@ -29,6 +29,10 @@ const WHITELISTED_ENV_VARS: [&str; 16] = [
     "MINIMAX_CN_API_KEY",
     "SYNTHETIC_API_KEY",
     "PI_CODING_AGENT_DIR",
+    "OLLAMA_API_KEY",
+    "OLLAMA_HOST",
+    "OLLAMA_SESSION_COOKIE",
+    "OLLAMA_COOKIE",
 ];
 
 fn last_non_empty_trimmed_line(text: &str) -> Option<String> {
@@ -378,6 +382,17 @@ fn redact_body(body: &str) -> String {
         }
     }
 
+    // Redact email addresses even in HTML/text responses.
+    if let Ok(email_re) =
+        regex_lite::Regex::new(r"[A-Za-z0-9._%+-]+@(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}")
+    {
+        result = email_re
+            .replace_all(&result, |caps: &regex_lite::Captures| {
+                redact_value(&caps[0])
+            })
+            .to_string();
+    }
+
     if let Ok(path_re) =
         regex_lite::Regex::new(r#"(/(?:Users|home|opt|private|var|tmp|Applications)/[^\s"')]+)"#)
     {
@@ -390,6 +405,15 @@ fn redact_body(body: &str) -> String {
 /// Lightweight redaction for log messages.
 pub(crate) fn redact_log_message(msg: &str) -> String {
     let mut result = msg.to_string();
+    if let Ok(email_re) =
+        regex_lite::Regex::new(r"[A-Za-z0-9._%+-]+@(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}")
+    {
+        result = email_re
+            .replace_all(&result, |caps: &regex_lite::Captures| {
+                redact_value(&caps[0])
+            })
+            .to_string();
+    }
     if let Ok(jwt_re) = regex_lite::Regex::new(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+")
     {
         result = jwt_re
@@ -2833,6 +2857,17 @@ mod tests {
                 "{name} must be whitelisted for Claude auth compatibility"
             );
         }
+        for name in [
+            "OLLAMA_API_KEY",
+            "OLLAMA_HOST",
+            "OLLAMA_SESSION_COOKIE",
+            "OLLAMA_COOKIE",
+        ] {
+            assert!(
+                WHITELISTED_ENV_VARS.contains(&name),
+                "{name} must be whitelisted for Ollama auth compatibility"
+            );
+        }
 
         let rt = Runtime::new().expect("runtime");
         let ctx = Context::full(&rt).expect("context");
@@ -3110,6 +3145,18 @@ mod tests {
     }
 
     #[test]
+    fn redact_body_redacts_email_in_html() {
+        let body = r#"<html><body><p>person@example.com</p></body></html>"#;
+        let redacted = redact_body(body);
+        assert!(
+            !redacted.contains("person@example.com"),
+            "email should be redacted from HTML body, got: {}",
+            redacted
+        );
+        assert!(redacted.contains("pers....com"));
+    }
+
+    #[test]
     fn redact_body_redacts_json_password_field() {
         let body = r#"{"password": "supersecretpassword123"}"#;
         let redacted = redact_body(body);
@@ -3232,6 +3279,17 @@ mod tests {
             !redacted.contains("sk-1234567890abcdef"),
             "API key should be redacted"
         );
+    }
+
+    #[test]
+    fn redact_log_message_redacts_email() {
+        let msg = "settings page contained person@example.com";
+        let redacted = redact_log_message(msg);
+        assert!(
+            !redacted.contains("person@example.com"),
+            "email should be redacted"
+        );
+        assert!(redacted.contains("pers....com"));
     }
 
     #[test]
