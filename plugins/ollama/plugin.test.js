@@ -81,6 +81,20 @@ describe("ollama plugin", () => {
     expect(weekly.resetsAt).toBe("2026-05-17T13:00:00Z")
   })
 
+  it("accepts a raw padded session cookie value", async () => {
+    const ctx = makeCtx()
+    mockEnv(ctx, { OLLAMA_SESSION_COOKIE: "YWdlLWVuY3J5cHRpb24ub3JnL3Yx.test==" })
+    ctx.host.http.request.mockImplementation((opts) => {
+      expect(opts.headers.Cookie).toBe("__Secure-session=YWdlLWVuY3J5cHRpb24ub3JnL3Yx.test==")
+      return { status: 200, bodyText: SETTINGS_HTML }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((line) => line.label === "Session").used).toBe(0.6)
+  })
+
   it("accepts a full cookie header from OLLAMA_COOKIE", async () => {
     const ctx = makeCtx()
     mockEnv(ctx, { OLLAMA_COOKIE: "aid=abc; __Secure-session=session-value; other=1" })

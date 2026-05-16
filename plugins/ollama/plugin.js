@@ -60,7 +60,7 @@
         return readString(part.slice(eq + 1))
       }
     }
-    return header.indexOf("=") === -1 ? header : null
+    return header.indexOf(";") === -1 ? header : null
   }
 
   function readKeychain(ctx, service) {
