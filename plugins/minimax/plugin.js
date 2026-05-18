@@ -146,7 +146,9 @@
     return (
       name.includes("minimax-m") ||
       name.includes("text model") ||
-      name.includes("coding")
+      name.includes("coding") ||
+      name.includes("m2.7") ||
+      name.includes("minimax_m")
     )
   }
 
@@ -222,7 +224,7 @@
     return raw.replace(/\s+/g, " ").trim()
   }
 
-  function classifyUsageEntry(item, endpointSelection, index) {
+  function classifyUsageEntry(item, index) {
     const rawName = readUsageRawName(item)
     const name = normalizeUsageNameKey(rawName)
 
@@ -273,7 +275,7 @@
       }
     }
 
-    // Coding Plan resets every 5h. Use that constraint before defaulting.
+    // Use expectedWindowMs constraint before defaulting.
     const maxExpectedMs =
       (expectedWindowMs || CODING_PLAN_WINDOW_MS) + CODING_PLAN_WINDOW_TOLERANCE_MS
     const secondsLooksValid = asSecondsMs <= maxExpectedMs
@@ -391,7 +393,7 @@
   function parseModelRemainEntry(ctx, item, endpointSelection, index) {
     if (!item || typeof item !== "object") return null
 
-    const usageMeta = classifyUsageEntry(item, endpointSelection, index)
+    const usageMeta = classifyUsageEntry(item, index)
     let total = readNumber(item.current_interval_total_count ?? item.currentIntervalTotalCount)
     if (total === null || total <= 0) return null
 
@@ -458,7 +460,7 @@
     }
   }
 
-  function pickGlobalSessionRemainItem(modelRemains) {
+  function pickSessionRemainItem(modelRemains) {
     let fallbackItem = null
 
     for (let i = 0; i < modelRemains.length; i += 1) {
@@ -480,8 +482,7 @@
     if (!Array.isArray(modelRemains) || modelRemains.length === 0) return []
 
     const ordered = []
-    const sessionItem =
-      endpointSelection === "GLOBAL" ? pickGlobalSessionRemainItem(modelRemains) : null
+    const sessionItem = pickSessionRemainItem(modelRemains)
     if (sessionItem) ordered.push(sessionItem)
 
     for (let i = 0; i < modelRemains.length; i += 1) {

@@ -1040,6 +1040,48 @@ describe("minimax plugin", () => {
     expect(result.lines[0].format.suffix).toBe("model-calls")
   })
 
+  it("prefers the CN session entry when a companion bucket appears first", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_CN_API_KEY: "cn-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        base_resp: { status_code: 0 },
+        model_remains: [
+          {
+            model_name: "image-01",
+            current_interval_total_count: 100,
+            current_interval_usage_count: 90,
+          },
+          {
+            model_name: "MiniMax-M2.7",
+            current_interval_total_count: 1500,
+            current_interval_usage_count: 1200,
+          },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Plus-High-Speed (CN)")
+    expect(result.lines).toHaveLength(2)
+    expect(result.lines[0]).toMatchObject({
+      label: "Session",
+      used: 300,
+      limit: 1500,
+      format: { kind: "count", suffix: "model-calls" },
+    })
+    expect(result.lines[1]).toMatchObject({
+      label: "image-01",
+      used: 10,
+      limit: 100,
+      format: { kind: "count", suffix: "images" },
+    })
+  })
+
   it("infers CN Plus-High-Speed from companion image-01 quota", async () => {
     const ctx = makeCtx()
     setEnv(ctx, { MINIMAX_CN_API_KEY: "cn-key" })
