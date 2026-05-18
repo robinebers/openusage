@@ -1659,4 +1659,213 @@ describe("minimax plugin", () => {
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Could not parse usage data")
   })
+
+  it("classifies M2.7-highspeed as session bucket", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        base_resp: { status_code: 0 },
+        model_remains: [
+          {
+            model_name: "MiniMax-M2.7-highspeed",
+            current_interval_total_count: 4500,
+            current_interval_usage_count: 4200,
+          },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines[0].label).toBe("Session")
+    expect(result.lines[0].used).toBe(300)
+    expect(result.lines[0].limit).toBe(4500)
+    expect(result.lines[0].format.suffix).toBe("model-calls")
+  })
+
+  it("classifies M2.7 as session bucket", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        base_resp: { status_code: 0 },
+        model_remains: [
+          {
+            model_name: "MiniMax-M2.7",
+            current_interval_total_count: 15000,
+            current_interval_usage_count: 12000,
+          },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines[0].label).toBe("Session")
+    expect(result.lines[0].used).toBe(3000)
+    expect(result.lines[0].limit).toBe(15000)
+  })
+
+  it("does not classify speech-hd as session bucket", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        base_resp: { status_code: 0 },
+        model_remains: [
+          {
+            model_name: "speech-hd",
+            current_interval_total_count: 11000,
+            current_interval_usage_count: 7200,
+          },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines[0].label).toBe("Text to Speech HD")
+    expect(result.lines[0].format.suffix).toBe("chars")
+    expect(result.lines[0].isSession).toBeUndefined()
+  })
+
+  it("does not classify image-01 as session bucket", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        base_resp: { status_code: 0 },
+        model_remains: [
+          {
+            model_name: "image-01",
+            current_interval_total_count: 100,
+            current_interval_usage_count: 80,
+          },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines[0].label).toBe("image-01")
+    expect(result.lines[0].format.suffix).toBe("images")
+  })
+
+  it("selects session bucket by name pattern, not order (GLOBAL)", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        base_resp: { status_code: 0 },
+        model_remains: [
+          { model_name: "speech-hd", current_interval_total_count: 11000, current_interval_usage_count: 7200 },
+          { model_name: "MiniMax-M2.7", current_interval_total_count: 15000, current_interval_usage_count: 12000 },
+          { model_name: "image-01", current_interval_total_count: 100, current_interval_usage_count: 80 },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines[0].label).toBe("Session")
+    expect(result.lines[0].limit).toBe(15000)
+    expect(result.lines[0].used).toBe(3000)
+    expect(result.lines[1].label).toBe("Text to Speech HD")
+    expect(result.lines[2].label).toBe("image-01")
+  })
+
+  it("selects session bucket by name pattern, not order (CN)", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_CN_API_KEY: "cn-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        base_resp: { status_code: 0 },
+        model_remains: [
+          { model_name: "image-01", current_interval_total_count: 50, current_interval_usage_count: 40 },
+          { model_name: "MiniMax-M2.7-highspeed", current_interval_total_count: 1500, current_interval_usage_count: 1200 },
+          { model_name: "speech-hd", current_interval_total_count: 4000, current_interval_usage_count: 3200 },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines[0].label).toBe("Session")
+    expect(result.lines[0].limit).toBe(1500)
+    expect(result.lines[0].used).toBe(300)
+    expect(result.lines[1].label).toBe("image-01")
+    expect(result.lines[2].label).toBe("Text to Speech HD")
+  })
+
+  it("uses 5h token-plan window for session bucket remains_time inference", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
+    vi.spyOn(Date, "now").mockReturnValue(1700000000000)
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        base_resp: { status_code: 0 },
+        model_remains: [
+          {
+            model_name: "MiniMax-M2.7",
+            current_interval_total_count: 4500,
+            current_interval_usage_count: 4200,
+            remains_time: 18000, // 18k seconds = 5h, matches TOKEN_PLAN_WINDOW_MS
+          },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines[0].resetsAt).toBeDefined()
+    // remains_time=18000 is interpreted as seconds (18k*1000=18M ms), close to 5h window
+    expect(result.lines[0].periodDurationMs).toBeUndefined() // no end_time, so periodDurationMs not set
+  })
+
+  it("uses daily window for non-session companion buckets", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
+    vi.spyOn(Date, "now").mockReturnValue(1700000000000)
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        base_resp: { status_code: 0 },
+        model_remains: [
+          {
+            model_name: "MiniMax-M2.7",
+            current_interval_total_count: 4500,
+            current_interval_usage_count: 4200,
+            remains_time: 18000,
+          },
+          {
+            model_name: "image-01",
+            current_interval_total_count: 100,
+            current_interval_usage_count: 80,
+            remains_time: 86400,
+          },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    // Session bucket has no end_time so periodDurationMs is derived from remains_time
+    expect(result.lines[1].periodDurationMs).toBe(86400000)
+  })
 })

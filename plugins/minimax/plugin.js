@@ -149,7 +149,9 @@
       name.includes("text model") ||
       name.includes("coding") ||
       name.includes("m2.7") ||
-      name.includes("minimax_m")
+      name.includes("minimax_m") ||
+      name.includes("highspeed") ||
+      name.includes("high-speed")
     )
   }
 
