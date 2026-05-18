@@ -1167,6 +1167,45 @@ describe("minimax plugin", () => {
     })
   })
 
+  it("does not classify MiniMax-Music or MiniMax-Multimodal as Session", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        base_resp: { status_code: 0 },
+        model_remains: [
+          {
+            model_name: "MiniMax-M2.7",
+            current_interval_total_count: 4500,
+            current_interval_usage_count: 4200,
+          },
+          {
+            model_name: "MiniMax-Music-2.6",
+            current_interval_total_count: 100,
+            current_interval_usage_count: 100,
+            remains_time: 3600,
+          },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    // First line is the real session (M2.7), as percent
+    expect(result.lines[0].label).toBe("Session")
+    expect(result.lines[0].format.kind).toBe("percent")
+
+    // Music line keeps its raw name and is NOT labelled Session
+    const musicLine = result.lines.find((line) => line.label === "MiniMax-Music-2.6")
+    expect(musicLine).toBeDefined()
+    expect(musicLine.format.kind).toBe("count")
+    // Music quota total (100) must not have polluted the M2.7 session bucket pick
+    expect(result.lines.filter((line) => line.label === "Session")).toHaveLength(1)
+  })
+
   it("does not classify space-separated 'Speech 2.8 Turbo' as HD", async () => {
     const ctx = makeCtx()
     setEnv(ctx, { MINIMAX_CN_API_KEY: "cn-key" })

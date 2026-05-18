@@ -146,12 +146,12 @@
 
   function isSessionUsageName(name) {
     return (
-      name.includes("minimax-m") ||
+      /minimax-m\d/.test(name) ||
       name.includes("text model") ||
       name.includes("coding plan") ||
       name.includes("token plan") ||
       name.includes("m2.7") ||
-      name.includes("minimax_m")
+      /minimax_m\d/.test(name)
     )
   }
 
