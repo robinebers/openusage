@@ -1433,7 +1433,7 @@ describe("minimax plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Could not parse usage data.")
   })
 
-  it("normalizes bare 'MiniMax Coding Plan' to 'Coding Plan'", async () => {
+  it("normalizes bare 'MiniMax Coding Plan' to 'Token Plan'", async () => {
     const ctx = makeCtx()
     setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
     ctx.host.http.request.mockReturnValue({
@@ -1453,7 +1453,7 @@ describe("minimax plugin", () => {
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    expect(result.plan).toBe("Coding Plan (GLOBAL)")
+    expect(result.plan).toBe("Token Plan (GLOBAL)")
   })
 
   it("supports payload.modelRemains and remains-count aliases", async () => {

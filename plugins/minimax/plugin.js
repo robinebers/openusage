@@ -11,8 +11,8 @@
   ]
   const GLOBAL_API_KEY_ENV_VARS = ["MINIMAX_API_KEY", "MINIMAX_API_TOKEN"]
   const CN_API_KEY_ENV_VARS = ["MINIMAX_CN_API_KEY", "MINIMAX_API_KEY", "MINIMAX_API_TOKEN"]
-  const CODING_PLAN_WINDOW_MS = 5 * 60 * 60 * 1000
-  const CODING_PLAN_WINDOW_TOLERANCE_MS = 10 * 60 * 1000
+  const TOKEN_PLAN_WINDOW_MS = 5 * 60 * 60 * 1000
+  const TOKEN_PLAN_WINDOW_TOLERANCE_MS = 10 * 60 * 1000
   const DAILY_WINDOW_MS = 24 * 60 * 60 * 1000
   const GLOBAL_MODEL_CALL_LIMIT_TO_PLAN = {
     1500: "Starter",
@@ -77,7 +77,8 @@
     const compact = raw.replace(/\s+/g, " ").trim()
     const withoutPrefix = compact.replace(/^minimax\s+coding\s+plan\b[:\-]?\s*/i, "").trim()
     const base = withoutPrefix || compact
-    if (/coding\s+plan/i.test(compact) && !withoutPrefix) return "Coding Plan"
+    if (/coding\s+plan/i.test(compact) && !withoutPrefix) return "Token Plan"
+    if (/token\s+plan/i.test(compact) && !withoutPrefix) return "Token Plan"
 
     const canonical = base
       .replace(/\s*-\s*/g, "-")
@@ -277,7 +278,7 @@
 
     // Use expectedWindowMs constraint before defaulting.
     const maxExpectedMs =
-      (expectedWindowMs || CODING_PLAN_WINDOW_MS) + CODING_PLAN_WINDOW_TOLERANCE_MS
+      (expectedWindowMs || TOKEN_PLAN_WINDOW_MS) + TOKEN_PLAN_WINDOW_TOLERANCE_MS
     const secondsLooksValid = asSecondsMs <= maxExpectedMs
     const millisecondsLooksValid = asMillisecondsMs <= maxExpectedMs
 
@@ -435,7 +436,7 @@
     const remainsRaw = readNumber(item.remains_time ?? item.remainsTime)
     const nowMs = Date.now()
     const expectedRemainsWindowMs =
-      !usageMeta.isSession ? DAILY_WINDOW_MS : CODING_PLAN_WINDOW_MS
+      !usageMeta.isSession ? DAILY_WINDOW_MS : TOKEN_PLAN_WINDOW_MS
     const remainsMs = inferRemainsMs(remainsRaw, endMs, nowMs, expectedRemainsWindowMs)
 
     let resetsAt = endMs !== null ? ctx.util.toIso(endMs) : null
