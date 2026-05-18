@@ -149,9 +149,7 @@
       name.includes("text model") ||
       name.includes("coding") ||
       name.includes("m2.7") ||
-      name.includes("minimax_m") ||
-      name.includes("highspeed") ||
-      name.includes("high-speed")
+      name.includes("minimax_m")
     )
   }
 
@@ -460,6 +458,7 @@
       suffix: usageMeta.suffix,
       resetsAt,
       periodDurationMs,
+      isSession: usageMeta.isSession,
     }
   }
 
@@ -599,11 +598,16 @@
     }
 
     const lines = parsed.entries.map((entry) => {
+      const isSessionLine = entry.isSession
+      const usedVal = isSessionLine ? Math.round((entry.used / entry.total) * 100) : Math.round(entry.used)
+      const limitVal = isSessionLine ? 100 : Math.round(entry.total)
       const line = {
         label: entry.label,
-        used: Math.round(entry.used),
-        limit: Math.round(entry.total),
-        format: { kind: "count", suffix: entry.suffix },
+        used: usedVal,
+        limit: limitVal,
+        format: isSessionLine
+          ? { kind: "percent" }
+          : { kind: "count", suffix: entry.suffix },
       }
       if (entry.resetsAt) line.resetsAt = entry.resetsAt
       if (entry.periodDurationMs !== null) line.periodDurationMs = entry.periodDurationMs
