@@ -99,9 +99,9 @@ Expected payload fields:
 - **Plan**: best-effort from API payload (normalized to concise label, with ` (CN)` or ` (GLOBAL)` suffix)
 - **Session** (overview progress line):
   - `label`: `Session`
-  - `format`: count (`model-calls`)
-  - `used`: computed used model-call count from raw remains data
-  - `limit`: raw session limit from the remains payload
+  - `format`: percent
+  - `used`: computed session usage percentage (`0`-`100`) derived from raw remains data
+  - `limit`: `100`
   - `resetsAt`: derived from `end_time` or `remains_time`
 - **Extra resources** (detail progress lines when present in either region):
   - `Text to Speech HD` / `Text to Speech Turbo`: count (`chars`)
