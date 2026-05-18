@@ -77,8 +77,7 @@
     const compact = raw.replace(/\s+/g, " ").trim()
     const withoutPrefix = compact.replace(/^minimax\s+coding\s+plan\b[:\-]?\s*/i, "").trim()
     const base = withoutPrefix || compact
-    if (/coding\s+plan/i.test(compact) && !withoutPrefix) return "Token Plan"
-    if (/token\s+plan/i.test(compact) && !withoutPrefix) return "Token Plan"
+    if (!withoutPrefix && /(?:coding|token)\s+plan/i.test(compact)) return "Token Plan"
 
     const canonical = base
       .replace(/\s*-\s*/g, "-")
@@ -147,7 +146,8 @@
     return (
       name.includes("minimax-m") ||
       name.includes("text model") ||
-      name.includes("coding") ||
+      name.includes("coding plan") ||
+      name.includes("token plan") ||
       name.includes("m2.7") ||
       name.includes("minimax_m")
     )
@@ -395,7 +395,7 @@
     if (!item || typeof item !== "object") return null
 
     const usageMeta = classifyUsageEntry(item, index)
-    let total = readNumber(item.current_interval_total_count ?? item.currentIntervalTotalCount)
+    const total = readNumber(item.current_interval_total_count ?? item.currentIntervalTotalCount)
     if (total === null || total <= 0) return null
 
     const usageFieldCount = readNumber(item.current_interval_usage_count ?? item.currentIntervalUsageCount)

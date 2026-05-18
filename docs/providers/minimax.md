@@ -90,7 +90,7 @@ Expected payload fields:
 - Use `start_time` + `end_time` as `periodDurationMs` when both are valid.
 - Non-session companion resource lines use a daily window when only `remains_time` is present.
 - Prompt-based marketing copy is ignored by the plugin; all inference is based on raw remains quotas and companion resource buckets.
-- Official package tables used for this split, checked on 2026-03-23:
+- Official package tables used for this split, checked on 2026-05-18:
   - Global: <https://platform.minimax.io/docs/token-plan/intro>
   - CN: <https://platform.minimaxi.com/docs/token-plan/intro>
 
