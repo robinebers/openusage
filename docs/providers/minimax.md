@@ -8,7 +8,7 @@
 - **Endpoint:** `GET https://api.minimax.io/v1/api/openplatform/coding_plan/remains`
 - **Auth:** `Authorization: Bearer <api_key>`
 - **Window model:** dynamic rolling 5-hour limit (per MiniMax Coding Plan docs)
-- **Display note:** OpenUsage shows the raw text-session counts from the remains API as `model-calls`, because that matches the observed official usage display.
+- **Display note:** OpenUsage renders the main `Session` line as a percentage (`0`-`100`) so it visually aligns with other providers (claude/codex), and renders companion resource buckets (TTS HD/Turbo, `image-01`, etc.) as raw counts (`chars`/`images`).
 - **CN note:** current CN docs use `https://www.minimaxi.com/v1/api/openplatform/coding_plan/remains`.
 
 ## Authentication
@@ -65,7 +65,7 @@ Expected payload fields:
 ## Usage Mapping
 
 - Treat `current_interval_usage_count` as the remaining raw session/resource count returned by the remains API.
-- For the main text `Session` line, OpenUsage displays the raw remains numbers as `model-calls` rather than converting them to `prompts`.
+- For the main text `Session` line, OpenUsage emits a percentage (`0`-`100`) computed from the raw remains numbers (no prompt conversion). Companion resource buckets keep their raw counts (`chars` / `images`).
 - If only remaining aliases are provided, compute `used = total - remaining`.
 - If explicit used-count fields are provided, prefer them.
 - Plan name is taken from explicit plan/title fields when available, and normalized to a shared six-plan naming scheme:
