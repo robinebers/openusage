@@ -1167,6 +1167,47 @@ describe("minimax plugin", () => {
     })
   })
 
+  it("does not classify space-separated 'Speech 2.8 Turbo' as HD", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_CN_API_KEY: "cn-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        base_resp: { status_code: 0 },
+        model_remains: [
+          {
+            model_name: "MiniMax-M2.7",
+            current_interval_total_count: 1500,
+            current_interval_usage_count: 1400,
+          },
+          {
+            model_name: "Speech 2.8 Turbo",
+            current_interval_total_count: 9000,
+            current_interval_usage_count: 9000,
+          },
+          {
+            model_name: "image-01",
+            current_interval_total_count: 50,
+            current_interval_usage_count: 50,
+          },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    // Turbo entry must be labelled Turbo, not HD
+    const turboLine = result.lines.find((line) => line.label === "Text to Speech Turbo")
+    expect(turboLine).toBeDefined()
+    expect(result.lines.find((line) => line.label === "Text to Speech HD")).toBeUndefined()
+
+    // Turbo quota (9000) must not pollute speech-hd disambiguation;
+    // image-01 50 alone keeps the plan at Plus (CN), not Plus-High-Speed.
+    expect(result.plan).toBe("Plus (CN)")
+  })
+
   it("normalizes CN explicit high-speed plan labels to the shared six-plan naming", async () => {
     const ctx = makeCtx()
     setEnv(ctx, { MINIMAX_CN_API_KEY: "cn-key" })

@@ -124,6 +124,7 @@
   }
 
   function isSpeechHdUsageName(name) {
+    if (name.includes("turbo")) return false
     return (
       name.includes("text to speech hd") ||
       name.includes("speech 2.8") ||
@@ -134,6 +135,7 @@
   function isSpeechTurboUsageName(name) {
     return (
       name.includes("text to speech turbo") ||
+      /\bspeech[\s\-][\d.]+[\s\-]turbo\b/.test(name) ||
       /^speech(?:-[\d.]+)?-turbo$/.test(name)
     )
   }
