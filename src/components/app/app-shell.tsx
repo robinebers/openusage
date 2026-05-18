@@ -67,7 +67,11 @@ export function AppShell({
   const { updateStatus, triggerInstall, checkForUpdates } = useAppUpdate()
 
   return (
-    <div ref={containerRef} className="flex flex-col items-center p-6 pt-1.5 bg-transparent">
+    <div
+      ref={containerRef}
+      tabIndex={-1}
+      className="flex flex-col items-center p-6 pt-1.5 bg-transparent outline-none"
+    >
       <div className="tray-arrow" />
       <div
         className="relative bg-card rounded-xl overflow-hidden select-none w-full border shadow-lg flex flex-col"

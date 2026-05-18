@@ -81,8 +81,8 @@ describe("opencode-go plugin", () => {
       { label: "Docs", url: "https://opencode.ai/docs/go/" },
     ]);
     expect(manifest.lines).toEqual([
-      { type: "progress", label: "5h", scope: "overview", primaryOrder: 1 },
-      { type: "progress", label: "Weekly", scope: "detail" },
+      { type: "progress", label: "Session", scope: "overview", primaryOrder: 1 },
+      { type: "progress", label: "Weekly", scope: "overview" },
       { type: "progress", label: "Monthly", scope: "detail" },
     ]);
   });
@@ -110,7 +110,7 @@ describe("opencode-go plugin", () => {
 
     expect(result.plan).toBe("Go");
     expect(result.lines.map((line) => line.label)).toEqual([
-      "5h",
+      "Session",
       "Weekly",
       "Monthly",
     ]);

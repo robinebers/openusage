@@ -17,6 +17,7 @@ tmpcov-gem
 # Editor directories and files
 .vscode/
 .conductor/
+.claude/settings.local.json
 .idea
 .DS_Store
 *.suo
@@ -31,6 +32,7 @@ tmpcov-gem
 # Agent working files
 docs/choices.md
 docs/breadcrumbs.md
+docs/superpowers/
 docs/specs/*
 plans/*
 package-lock.json

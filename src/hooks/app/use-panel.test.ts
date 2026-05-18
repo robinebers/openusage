@@ -50,6 +50,7 @@ describe("usePanel", () => {
 
     isTauriMock.mockReturnValue(true)
     invokeMock.mockResolvedValue(undefined)
+    listenMock.mockResolvedValue(vi.fn())
     currentMonitorMock.mockResolvedValue(null)
     getCurrentWindowMock.mockReturnValue({ setSize: vi.fn().mockResolvedValue(undefined) })
   })
@@ -149,5 +150,195 @@ describe("usePanel", () => {
     await waitFor(() => {
       expect(unlistenShowAbout).toHaveBeenCalledTimes(1)
     })
+  })
+
+  it("switches views with Cmd+Arrow navigation", () => {
+    const setActiveView = vi.fn()
+
+    const firstHook = renderHook(() =>
+      usePanel({
+        activeView: "home",
+        setActiveView,
+        showAbout: false,
+        setShowAbout: vi.fn(),
+        displayPlugins: [
+          {
+            meta: { id: "a" },
+            data: null,
+            loading: false,
+            error: null,
+            lastManualRefreshAt: null,
+          } as any,
+          {
+            meta: { id: "b" },
+            data: null,
+            loading: false,
+            error: null,
+            lastManualRefreshAt: null,
+          } as any,
+        ],
+      })
+    )
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", metaKey: true }))
+    })
+
+    expect(setActiveView).toHaveBeenCalledWith("a")
+
+    firstHook.unmount()
+    setActiveView.mockClear()
+
+    const secondHook = renderHook(() =>
+      usePanel({
+        activeView: "b",
+        setActiveView,
+        showAbout: false,
+        setShowAbout: vi.fn(),
+        displayPlugins: [
+          {
+            meta: { id: "a" },
+            data: null,
+            loading: false,
+            error: null,
+            lastManualRefreshAt: null,
+          } as any,
+          {
+            meta: { id: "b" },
+            data: null,
+            loading: false,
+            error: null,
+            lastManualRefreshAt: null,
+          } as any,
+        ],
+      })
+    )
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", metaKey: true }))
+    })
+
+    expect(setActiveView).toHaveBeenCalledWith("home")
+    secondHook.unmount()
+  })
+
+  it("ignores Cmd+Arrow navigation from editable targets", () => {
+    const setActiveView = vi.fn()
+    const { result } = renderHook(() =>
+      usePanel({
+        activeView: "a",
+        setActiveView,
+        showAbout: false,
+        setShowAbout: vi.fn(),
+        displayPlugins: [
+          {
+            meta: { id: "a" },
+            data: null,
+            loading: false,
+            error: null,
+            lastManualRefreshAt: null,
+          } as any,
+        ],
+      })
+    )
+
+    const textbox = document.createElement("div")
+    textbox.setAttribute("role", "textbox")
+    document.body.appendChild(textbox)
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", metaKey: true, bubbles: true }))
+    })
+
+    expect(setActiveView).toHaveBeenCalledWith("home")
+
+    setActiveView.mockClear()
+
+    act(() => {
+      textbox.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", metaKey: true, bubbles: true }))
+    })
+
+    expect(setActiveView).not.toHaveBeenCalled()
+    document.body.removeChild(textbox)
+    expect(result.current.containerRef.current).toBeNull()
+  })
+
+  it("skips settings when navigating with Cmd+Arrow", () => {
+    const setActiveView = vi.fn()
+
+    renderHook(() =>
+      usePanel({
+        activeView: "settings",
+        setActiveView,
+        showAbout: false,
+        setShowAbout: vi.fn(),
+        displayPlugins: [
+          {
+            meta: { id: "a" },
+            data: null,
+            loading: false,
+            error: null,
+            lastManualRefreshAt: null,
+          } as any,
+          {
+            meta: { id: "b" },
+            data: null,
+            loading: false,
+            error: null,
+            lastManualRefreshAt: null,
+          } as any,
+        ],
+      })
+    )
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", metaKey: true }))
+    })
+
+    expect(setActiveView).toHaveBeenCalledWith("home")
+
+    setActiveView.mockClear()
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", metaKey: true }))
+    })
+
+    expect(setActiveView).toHaveBeenCalledWith("b")
+  })
+
+  it("focuses the panel container when the window regains focus", () => {
+    const requestAnimationFrameSpy = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback: FrameRequestCallback) => {
+        callback(0)
+        return 0
+      })
+
+    const { result } = renderHook(() =>
+      usePanel({
+        activeView: "home",
+        setActiveView: vi.fn(),
+        showAbout: false,
+        setShowAbout: vi.fn(),
+        displayPlugins: [],
+      })
+    )
+
+    const container = document.createElement("div")
+    container.tabIndex = -1
+    document.body.appendChild(container)
+
+    act(() => {
+      result.current.containerRef.current = container
+    })
+
+    act(() => {
+      window.dispatchEvent(new Event("focus"))
+    })
+
+    expect(container).toHaveFocus()
+
+    document.body.removeChild(container)
+    requestAnimationFrameSpy.mockRestore()
   })
 })

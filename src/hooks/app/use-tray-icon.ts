@@ -6,6 +6,7 @@ import type { DisplayMode, MenubarIconStyle, PluginSettings } from "@/lib/settin
 import { getEnabledPluginIds } from "@/lib/settings"
 import { getTrayIconSizePx, renderTrayBarsIcon } from "@/lib/tray-bars-icon"
 import { getTrayPrimaryBars, type TrayPrimaryBar } from "@/lib/tray-primary-progress"
+import { formatTrayPercentText, formatTrayTooltip } from "@/lib/tray-tooltip"
 import type { PluginState } from "@/hooks/app/types"
 
 type TrayUpdateReason = "probe" | "settings" | "init"
@@ -30,12 +31,6 @@ const EMPTY_TRAY_SETTINGS_PREVIEW: TraySettingsPreview = {
   bars: [],
   providerBars: [],
   providerPercentText: "--%",
-}
-
-function formatTrayPercentText(fraction: number | undefined): string {
-  if (typeof fraction !== "number" || !Number.isFinite(fraction)) return "--%"
-  const clampedFraction = Math.max(0, Math.min(1, fraction))
-  return `${Math.round(clampedFraction * 100)}%`
 }
 
 function isSameTraySettingsPreview(a: TraySettingsPreview, b: TraySettingsPreview): boolean {
@@ -145,6 +140,16 @@ export function useTrayIcon({
         return Promise.resolve()
       }
 
+      const maybeSetTooltip = (tray as TrayIcon & { setTooltip?: (value: string) => Promise<void> }).setTooltip
+      const setTooltipFn =
+        typeof maybeSetTooltip === "function" ? (value: string) => maybeSetTooltip.call(tray, value) : null
+      const setTrayTooltip = (tooltip: string) => {
+        if (setTooltipFn) {
+          return setTooltipFn(tooltip)
+        }
+        return Promise.resolve()
+      }
+
       const restoreGaugeIcon = () => {
         const gaugePath = trayGaugeIconPathRef.current
         if (gaugePath) {
@@ -152,6 +157,7 @@ export function useTrayIcon({
             tray.setIcon(gaugePath),
             tray.setIconAsTemplate(true),
             setTrayTitle(""),
+            setTrayTooltip("OpenUsage"),
           ])
             .catch((e) => {
               console.error("Failed to restore tray gauge icon:", e)
@@ -230,6 +236,16 @@ export function useTrayIcon({
         isSameTraySettingsPreview(prev, nextPreview) ? prev : nextPreview
       )
 
+      const tooltipBars = getTrayPrimaryBars({
+        pluginsMeta: pluginsMetaRef.current,
+        pluginSettings: currentSettings,
+        pluginStates: pluginStatesRef.current,
+        maxBars: 20, // Show more in tooltip
+        displayMode: displayModeRef.current,
+      })
+      const tooltip = formatTrayTooltip(tooltipBars, pluginsMetaRef.current)
+      const updateTooltip = () => setTrayTooltip(tooltip)
+
       if (style === "bars") {
         renderTrayBarsIcon({
           bars: barsForPreview,
@@ -240,6 +256,7 @@ export function useTrayIcon({
             await tray.setIcon(img)
             await tray.setIconAsTemplate(true)
             await setTrayTitle("")
+            await updateTooltip()
           })
           .catch((e) => {
             console.error("Failed to update tray icon:", e)
@@ -267,6 +284,7 @@ export function useTrayIcon({
             await tray.setIcon(img)
             await tray.setIconAsTemplate(true)
             await setTrayTitle("")
+            await updateTooltip()
           })
           .catch((e) => {
             console.error("Failed to update tray icon:", e)
@@ -288,6 +306,7 @@ export function useTrayIcon({
           await tray.setIcon(img)
           await tray.setIconAsTemplate(true)
           await setTrayTitle(providerPercentText)
+          await updateTooltip()
         })
         .catch((e) => {
           console.error("Failed to update tray icon:", e)

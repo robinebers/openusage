@@ -1,17 +1,28 @@
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import crypto from "node:crypto"
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 import { makeCtx } from "../test-helpers.js"
 
-const loadPlugin = async () => {
+// Helpers for keychain hash regression tests.
+const expectedHash = (path) =>
+  crypto.createHash("sha256").update(path).digest("hex").slice(0, 8)
+const TEST_CONFIG_DIR = "/Users/test/.claude"
+const HASHED_CONFIG_SERVICE = "Claude Code-credentials-" + expectedHash(TEST_CONFIG_DIR)
+
+let plugin = null
+
+beforeAll(async () => {
   await import("./plugin.js")
-  return globalThis.__openusage_plugin
-}
+  plugin = globalThis.__openusage_plugin
+})
+
+beforeEach(() => {
+  // Reset module-scope rate-limit state so tests don't bleed into each other
+  plugin?._resetState()
+})
+
+const loadPlugin = async () => plugin
 
 describe("claude plugin", () => {
-  beforeEach(() => {
-    delete globalThis.__openusage_plugin
-    vi.resetModules()
-  })
-
   it("throws when no credentials", async () => {
     const ctx = makeCtx()
     const plugin = await loadPlugin()
@@ -58,6 +69,52 @@ describe("claude plugin", () => {
     expect(ctx.host.log.info).toHaveBeenCalled()
   })
 
+  it("prefers current-user keychain credentials when available", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => false
+    ctx.host.keychain.readGenericPasswordForCurrentUser.mockReturnValue(
+      JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
+    )
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+    // No CLAUDE_CONFIG_DIR → upstream uses the legacy unhashed service name only.
+    expect(ctx.host.keychain.readGenericPasswordForCurrentUser).toHaveBeenCalledWith(
+      "Claude Code-credentials"
+    )
+    expect(ctx.host.keychain.readGenericPassword).not.toHaveBeenCalled()
+  })
+
+  it("falls back to legacy keychain lookup when current-user lookup misses", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => false
+    ctx.host.keychain.readGenericPasswordForCurrentUser.mockImplementation(() => {
+      throw new Error("keychain item not found")
+    })
+    ctx.host.keychain.readGenericPassword.mockReturnValue(
+      JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
+    )
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+    // No CLAUDE_CONFIG_DIR → upstream uses the legacy unhashed service name only.
+    expect(ctx.host.keychain.readGenericPassword).toHaveBeenCalledWith("Claude Code-credentials")
+  })
+
   it("falls back to keychain when credentials file is corrupt", async () => {
     const ctx = makeCtx()
     ctx.host.fs.exists = () => true
@@ -74,6 +131,250 @@ describe("claude plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
     expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+  })
+
+  it("reads credentials from CLAUDE_CONFIG_DIR and passes it to ccusage", async () => {
+    const ctx = makeCtx()
+    const configDir = "/tmp/custom-claude-home"
+    const configCredFile = configDir + "/.credentials.json"
+    const credsJson = JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
+    ctx.host.env.get.mockImplementation((name) => (name === "CLAUDE_CONFIG_DIR" ? configDir : null))
+    ctx.host.fs.exists = vi.fn((path) => path === configCredFile)
+    ctx.host.fs.readText = vi.fn((path) => {
+      if (path !== configCredFile) {
+        throw new Error("unexpected readText path: " + path)
+      }
+      return credsJson
+    })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+      }),
+    })
+    ctx.host.ccusage.query = vi.fn(() => ({ status: "ok", data: { daily: [] } }))
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+    expect(ctx.host.fs.readText).toHaveBeenCalledWith(configCredFile)
+    expect(ctx.host.ccusage.query).toHaveBeenCalledWith(
+      expect.objectContaining({ homePath: configDir })
+    )
+  })
+
+  it("looks up Claude Code-staging-oauth-credentials in keychain", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => false
+    ctx.host.env.get.mockImplementation((name) => {
+      if (name === "USER_TYPE") return "ant"
+      if (name === "USE_STAGING_OAUTH") return "1"
+      return null
+    })
+    ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
+      if (service === "Claude Code-staging-oauth-credentials") {
+        return JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
+      }
+      if (service === "Claude Code-credentials") {
+        return JSON.stringify({ claudeAiOauth: { refreshToken: "fallback-only" } })
+      }
+      return null
+    })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+    expect(ctx.host.keychain.readGenericPassword).toHaveBeenCalledWith(
+      "Claude Code-staging-oauth-credentials"
+    )
+  })
+
+  it("finds the hashed keychain entry when CLAUDE_CONFIG_DIR is set (regression for #423)", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => false
+    ctx.host.env.get.mockImplementation((name) =>
+      name === "CLAUDE_CONFIG_DIR" ? TEST_CONFIG_DIR : null
+    )
+    ctx.host.keychain.readGenericPasswordForCurrentUser.mockImplementation((service) => {
+      if (service === HASHED_CONFIG_SERVICE) {
+        return JSON.stringify({ claudeAiOauth: { accessToken: "tok", subscriptionType: "pro" } })
+      }
+      return null
+    })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+    expect(ctx.host.keychain.readGenericPasswordForCurrentUser).toHaveBeenCalledWith(
+      HASHED_CONFIG_SERVICE
+    )
+  })
+
+  it("falls back to legacy unhashed entry when CLAUDE_CONFIG_DIR is set but no hashed entry exists", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => false
+    ctx.host.env.get.mockImplementation((name) =>
+      name === "CLAUDE_CONFIG_DIR" ? TEST_CONFIG_DIR : null
+    )
+    ctx.host.keychain.readGenericPasswordForCurrentUser.mockImplementation((service) => {
+      if (service === "Claude Code-credentials") {
+        return JSON.stringify({ claudeAiOauth: { accessToken: "tok", subscriptionType: "pro" } })
+      }
+      return null  // hashed lookup misses → legacy candidate is tried next
+    })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+    expect(ctx.host.keychain.readGenericPasswordForCurrentUser).toHaveBeenCalledWith(
+      HASHED_CONFIG_SERVICE
+    )
+    expect(ctx.host.keychain.readGenericPasswordForCurrentUser).toHaveBeenCalledWith(
+      "Claude Code-credentials"
+    )
+  })
+
+  it("does NOT compute a hash when CLAUDE_CONFIG_DIR is unset (matches upstream)", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => false
+    ctx.host.keychain.readGenericPasswordForCurrentUser.mockReturnValue(
+      JSON.stringify({ claudeAiOauth: { accessToken: "tok", subscriptionType: "pro" } })
+    )
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+    // Only the legacy unhashed service is consulted — no hashed candidate.
+    const calls = ctx.host.keychain.readGenericPasswordForCurrentUser.mock.calls.map((c) => c[0])
+    expect(calls).toEqual(["Claude Code-credentials"])
+  })
+
+  it("composes the staging-oauth keychain hash correctly", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => false
+    ctx.host.env.get.mockImplementation((name) => {
+      if (name === "CLAUDE_CONFIG_DIR") return TEST_CONFIG_DIR
+      if (name === "USER_TYPE") return "ant"
+      if (name === "USE_STAGING_OAUTH") return "1"
+      return null
+    })
+    const hashedStagingService =
+      "Claude Code-staging-oauth-credentials-" + expectedHash(TEST_CONFIG_DIR)
+    ctx.host.keychain.readGenericPasswordForCurrentUser.mockImplementation((service) => {
+      if (service === hashedStagingService) {
+        return JSON.stringify({ claudeAiOauth: { accessToken: "tok", subscriptionType: "pro" } })
+      }
+      return null
+    })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+    expect(ctx.host.keychain.readGenericPasswordForCurrentUser).toHaveBeenCalledWith(
+      hashedStagingService
+    )
+  })
+
+  it("hashes CLAUDE_CONFIG_DIR verbatim (no tilde expansion, NFC-normalized)", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => false
+    // Raw, tilde-prefixed value: hashed verbatim. Upstream applies .normalize("NFC"),
+    // which is a no-op for ASCII so the hash matches a plain sha256 of the string.
+    const rawConfigDir = "~/some-custom-claude-home"
+    ctx.host.env.get.mockImplementation((name) =>
+      name === "CLAUDE_CONFIG_DIR" ? rawConfigDir : null
+    )
+    const hashedService = "Claude Code-credentials-" + expectedHash(rawConfigDir)
+    ctx.host.keychain.readGenericPasswordForCurrentUser.mockImplementation((service) => {
+      if (service === hashedService) {
+        return JSON.stringify({ claudeAiOauth: { accessToken: "tok", subscriptionType: "pro" } })
+      }
+      return null
+    })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+    expect(ctx.host.keychain.readGenericPasswordForCurrentUser).toHaveBeenCalledWith(
+      hashedService
+    )
+  })
+
+  it("uses env-injected OAuth tokens without hitting /api/oauth/usage", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => false
+    ctx.host.fs.readText = () => {
+      throw new Error("unexpected file read")
+    }
+    ctx.host.env.get.mockImplementation((name) =>
+      name === "CLAUDE_CODE_OAUTH_TOKEN" ? "env-oauth-token" : null
+    )
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+      }),
+    })
+    ctx.host.ccusage.query = vi.fn(() => ({
+      status: "ok",
+      data: {
+        daily: [
+          {
+            date: "2024-01-01",
+            inputTokens: 100,
+            outputTokens: 50,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            totalTokens: 150,
+            totalCost: 0.25,
+          },
+        ],
+      },
+    }))
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(
+      ctx.host.http.request.mock.calls.some((call) => String(call[0]?.url).includes("/api/oauth/usage"))
+    ).toBe(false)
+    expect(result.lines.find((line) => line.label === "Last 30 Days")?.value).toContain("150 tokens")
   })
 
   it("renders usage lines from response", async () => {
@@ -153,13 +454,67 @@ describe("claude plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Token expired")
   })
 
-  it("throws HTTP status details for non-auth usage failures", async () => {
+  it("shows rate limited badge on 429 without throwing", async () => {
     const ctx = makeCtx()
     ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
     ctx.host.fs.exists = () => true
-    ctx.host.http.request.mockReturnValue({ status: 429, bodyText: "" })
+    ctx.host.http.request.mockReturnValue({ status: 429, bodyText: "", headers: {} })
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Usage request failed (HTTP 429)")
+    const result = plugin.probe(ctx)
+    const statusLine = result.lines.find((line) => line.label === "Status")
+    expect(statusLine).toBeTruthy()
+    expect(statusLine.text).toContain("Rate limited")
+    expect(result.lines.find((line) => line.label === "Note")).toBeTruthy()
+  })
+
+  it("shows Retry-After info on 429 when header is present", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
+    ctx.host.fs.exists = () => true
+    ctx.host.http.request.mockReturnValue({
+      status: 429,
+      bodyText: "",
+      headers: { "Retry-After": "600" }, // 10 minutes
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const statusLine = result.lines.find((line) => line.label === "Status")
+    expect(statusLine).toBeTruthy()
+    expect(statusLine.text).toContain("10m")
+    const noteLine = result.lines.find((line) => line.label === "Note")
+    expect(noteLine).toBeTruthy()
+    expect(noteLine.value).toContain("10m")
+  })
+
+  it("shows generic rate limited message when Retry-After is missing", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
+    ctx.host.fs.exists = () => true
+    ctx.host.http.request.mockReturnValue({ status: 429, bodyText: "", headers: {} })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const statusLine = result.lines.find((line) => line.label === "Status")
+    expect(statusLine).toBeTruthy()
+    expect(statusLine.text).toContain("try again later")
+  })
+
+  it("shows retry-now when Retry-After: 0", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
+    ctx.host.fs.exists = () => true
+    ctx.host.http.request.mockReturnValue({
+      status: 429,
+      bodyText: "",
+      headers: { "Retry-After": "0" },
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const statusLine = result.lines.find((line) => line.label === "Status")
+    expect(statusLine).toBeTruthy()
+    expect(statusLine.text).toContain("~now")
+    const noteLine = result.lines.find((line) => line.label === "Note")
+    expect(noteLine).toBeTruthy()
+    expect(noteLine.value).toContain("~now")
   })
 
   it("uses keychain credentials", async () => {
@@ -179,6 +534,59 @@ describe("claude plugin", () => {
     const result = plugin.probe(ctx)
     expect(result.lines.find((line) => line.label === "Sonnet")).toBeTruthy()
     expect(result.lines.find((line) => line.label === "Extra usage spent")).toBeTruthy()
+  })
+
+  it("renders Claude Design line from seven_day_omelette with normalized resetsAt", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.readText = () =>
+      JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
+    ctx.host.fs.exists = () => true
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        seven_day_omelette: { utilization: 7, resets_at: "2099-01-01 00:00:00 UTC" },
+      }),
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const line = result.lines.find((l) => l.label === "Claude Design")
+    expect(line).toBeTruthy()
+    expect(line.used).toBe(7)
+    expect(line.limit).toBe(100)
+    expect(line.format).toEqual({ kind: "percent" })
+    expect(line.resetsAt).toBe("2099-01-01T00:00:00.000Z")
+  })
+
+  it("omits Claude Design line when seven_day_omelette has no utilization", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.readText = () =>
+      JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
+    ctx.host.fs.exists = () => true
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        seven_day_omelette: {},
+      }),
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((l) => l.label === "Claude Design")).toBeUndefined()
+  })
+
+  it("omits Claude Design line when seven_day_omelette utilization is non-numeric", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.readText = () =>
+      JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "pro" } })
+    ctx.host.fs.exists = () => true
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        seven_day_omelette: { utilization: "5", resets_at: "2099-01-01T00:00:00.000Z" },
+      }),
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((l) => l.label === "Claude Design")).toBeUndefined()
   })
 
   it("omits extra usage line when used credits are zero and no limit exists", async () => {
@@ -403,6 +811,8 @@ describe("claude plugin", () => {
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("HTTP 500")
 
+    // Reset lastUsageFetchMs so the second probe is not throttled by min-interval guard
+    plugin._resetState()
     ctx.host.http.request.mockReturnValueOnce({ status: 200, bodyText: "not-json" })
     expect(() => plugin.probe(ctx)).toThrow("Usage response invalid")
   })
@@ -508,6 +918,42 @@ describe("claude plugin", () => {
     const result = plugin.probe(ctx)
     expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
     expect(ctx.host.fs.writeText).toHaveBeenCalled()
+  })
+
+  it("includes user:file_upload in the OAuth refresh scope", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () =>
+      JSON.stringify({
+        claudeAiOauth: {
+          accessToken: "old-token",
+          refreshToken: "refresh",
+          expiresAt: Date.now() - 1000,
+          subscriptionType: "pro",
+        },
+      })
+
+    let refreshBody = null
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("/v1/oauth/token")) {
+        refreshBody = JSON.parse(opts.bodyText)
+        return {
+          status: 200,
+          bodyText: JSON.stringify({ access_token: "new-token", expires_in: 3600, refresh_token: "refresh2" }),
+        }
+      }
+      return {
+        status: 200,
+        bodyText: JSON.stringify({
+          five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+        }),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    expect(refreshBody.scope).toContain("user:file_upload")
   })
 
   it("refreshes keychain credentials and writes back to keychain", async () => {
@@ -690,6 +1136,69 @@ describe("claude plugin", () => {
     expect(ctx.host.log.error).toHaveBeenCalled()
   })
 
+  it("writes refreshed credentials back to the current-user keychain source", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => false
+    ctx.host.keychain.readGenericPasswordForCurrentUser.mockReturnValue(
+      JSON.stringify({
+        claudeAiOauth: {
+          accessToken: "old-token",
+          refreshToken: "refresh",
+          expiresAt: Date.now() - 1000,
+        },
+      })
+    )
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("/v1/oauth/token")) {
+        return { status: 200, bodyText: JSON.stringify({ access_token: "new-token", expires_in: 3600 }) }
+      }
+      return {
+        status: 200,
+        bodyText: JSON.stringify({
+          five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+        }),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).not.toThrow()
+    expect(ctx.host.keychain.writeGenericPasswordForCurrentUser).toHaveBeenCalled()
+    expect(ctx.host.keychain.writeGenericPassword).not.toHaveBeenCalled()
+  })
+
+  it("writes refreshed credentials back to the legacy keychain source after fallback", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => false
+    ctx.host.keychain.readGenericPasswordForCurrentUser.mockImplementation(() => {
+      throw new Error("keychain item not found")
+    })
+    ctx.host.keychain.readGenericPassword.mockReturnValue(
+      JSON.stringify({
+        claudeAiOauth: {
+          accessToken: "old-token",
+          refreshToken: "refresh",
+          expiresAt: Date.now() - 1000,
+        },
+      })
+    )
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("/v1/oauth/token")) {
+        return { status: 200, bodyText: JSON.stringify({ access_token: "new-token", expires_in: 3600 }) }
+      }
+      return {
+        status: 200,
+        bodyText: JSON.stringify({
+          five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+        }),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).not.toThrow()
+    expect(ctx.host.keychain.writeGenericPassword).toHaveBeenCalled()
+    expect(ctx.host.keychain.writeGenericPasswordForCurrentUser).not.toHaveBeenCalled()
+  })
+
   it("logs when saving credentials file fails", async () => {
     const ctx = makeCtx()
     ctx.host.fs.exists = () => true
@@ -800,8 +1309,6 @@ describe("claude plugin", () => {
         }
       })
 
-      delete globalThis.__openusage_plugin
-      vi.resetModules()
       const plugin = await loadPlugin()
       const result = plugin.probe(ctx)
       expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
@@ -1304,6 +1811,201 @@ describe("claude plugin", () => {
       const last30 = result.lines.find((l) => l.label === "Last 30 Days")
       expect(todayLine.value).toContain("1.5K tokens")
       expect(last30.value).toContain("12K tokens")
+    })
+
+    it("shows rate limited status after all retries exhausted", async () => {
+      const todayKey = localDayKey(new Date())
+      const ctx = makeProbeCtx({
+        ccusageResult: okUsage([
+          { date: todayKey, inputTokens: 100, outputTokens: 50, totalTokens: 150, totalCost: 0.25 },
+        ]),
+      })
+      // All calls return 429
+      ctx.host.http.request.mockReturnValue({
+        status: 429,
+        bodyText: '{"error":"rate limited"}',
+        headers: { "Retry-After": "1200" }, // 20 minutes
+      })
+      const plugin = await loadPlugin()
+      const result = plugin.probe(ctx)
+      expect(result.lines.find((line) => line.label === "Today")).toBeTruthy()
+      const statusLine = result.lines.find((line) => line.label === "Status")
+      expect(statusLine).toBeTruthy()
+      expect(statusLine.text).toContain("20m")
+      const noteLine = result.lines.find((line) => line.label === "Note")
+      expect(noteLine).toBeTruthy()
+      expect(noteLine.value).toContain("20m")
+    })
+  })
+
+  describe("rate limiting (429)", () => {
+    it("parses Retry-After HTTP-date header", async () => {
+      // Freeze time so HTTP-date parsing is deterministic
+      const frozenNow = new Date("2026-04-14T10:00:00.000Z")
+      vi.useFakeTimers()
+      vi.setSystemTime(frozenNow)
+      try {
+        const ctx = makeCtx()
+        ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
+        ctx.host.fs.exists = () => true
+        // 15 minutes after frozenNow → expect "~15m"
+        ctx.host.http.request.mockReturnValue({
+          status: 429,
+          bodyText: "",
+          headers: { "Retry-After": "Mon, 14 Apr 2026 10:15:00 GMT" },
+        })
+        const plugin = await loadPlugin()
+        const result = plugin.probe(ctx)
+        const noteLine = result.lines.find((line) => line.label === "Note")
+        expect(noteLine).toBeTruthy()
+        expect(noteLine.value).toBe("Live usage rate limited — retry in ~15m")
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it("does not call API again while rate-limit window is active", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
+      try {
+        const ctx = makeCtx()
+        ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
+        ctx.host.fs.exists = () => true
+        ctx.host.http.request.mockReturnValue({
+          status: 429,
+          bodyText: "",
+          headers: { "Retry-After": "300" }, // 5 minutes
+        })
+        const plugin = await loadPlugin()
+
+        // First probe — gets 429, stores rateLimitedUntilMs
+        plugin.probe(ctx)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+
+        // Second probe 60 s later — still within window, must NOT call API
+        vi.setSystemTime(new Date("2026-04-14T10:01:00.000Z"))
+        const result2 = plugin.probe(ctx)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(1) // no new request
+        const statusLine = result2.lines.find((l) => l.label === "Status")
+        expect(statusLine).toBeTruthy()
+        expect(statusLine.text).toMatch(/4m/) // ~4 minutes remaining
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it("resumes API calls after rate-limit window expires", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
+      try {
+        const ctx = makeCtx()
+        ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
+        ctx.host.fs.exists = () => true
+        const usageBody = JSON.stringify({ five_hour: { utilization: 50, resets_at: null } })
+        ctx.host.http.request
+          .mockReturnValueOnce({ status: 429, bodyText: "", headers: { "Retry-After": "60" } })
+          .mockReturnValue({ status: 200, bodyText: usageBody, headers: {} })
+        const plugin = await loadPlugin()
+
+        // First probe → 429
+        plugin.probe(ctx)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+
+        // 90 s later — window expired, should attempt API again
+        vi.setSystemTime(new Date("2026-04-14T10:01:30.000Z"))
+        const result2 = plugin.probe(ctx)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(2)
+        // No rate-limited badge after success (amber color = rate-limited)
+        expect(result2.lines.find((l) => l.label === "Status" && l.color === "#f59e0b")).toBeUndefined()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it("skips API call when minimum fetch interval has not elapsed", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
+      try {
+        const ctx = makeCtx()
+        ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
+        ctx.host.fs.exists = () => true
+        ctx.host.http.request.mockReturnValue({ status: 200, bodyText: "{}", headers: {} })
+        const plugin = await loadPlugin()
+
+        // First probe — succeeds
+        plugin.probe(ctx)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+
+        // 30 s later — within MIN_USAGE_FETCH_INTERVAL_MS (5 min), no new request
+        vi.setSystemTime(new Date("2026-04-14T10:00:30.000Z"))
+        plugin.probe(ctx)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+
+        // 5+ minutes later — interval elapsed, should fetch again
+        vi.setSystemTime(new Date("2026-04-14T10:05:01.000Z"))
+        plugin.probe(ctx)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(2)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it("shows cached plan data while rate-limited", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
+      try {
+        const successBody = JSON.stringify({
+          five_hour: { utilization: 42, resets_at: null },
+        })
+        const ctx = makeCtx()
+        ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
+        ctx.host.fs.exists = () => true
+        ctx.host.http.request
+          .mockReturnValueOnce({ status: 200, bodyText: successBody, headers: {} })
+          .mockReturnValue({ status: 429, bodyText: "", headers: { "Retry-After": "300" } })
+        const plugin = await loadPlugin()
+
+        // First probe succeeds → data cached
+        const result1 = plugin.probe(ctx)
+        expect(result1.lines.find((l) => l.label === "Session")).toBeTruthy()
+
+        // Second probe — 429, but cached data is shown alongside rate-limit badge
+        vi.setSystemTime(new Date("2026-04-14T10:05:01.000Z")) // past min interval
+        const result2 = plugin.probe(ctx)
+        expect(result2.lines.find((l) => l.label === "Session")).toBeTruthy()
+        expect(result2.lines.find((l) => l.label === "Status")).toBeTruthy()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it("uses default 5-minute backoff when no Retry-After header on 429", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
+      try {
+        const ctx = makeCtx()
+        ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
+        ctx.host.fs.exists = () => true
+        ctx.host.http.request
+          .mockReturnValueOnce({ status: 429, bodyText: "", headers: {} }) // no Retry-After
+          .mockReturnValue({ status: 200, bodyText: "{}", headers: {} })
+        const plugin = await loadPlugin()
+
+        plugin.probe(ctx)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+
+        // 4 min 59 s later — default 5 min backoff still active
+        vi.setSystemTime(new Date("2026-04-14T10:04:59.000Z"))
+        plugin.probe(ctx)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+
+        // 5 min 1 s later — backoff expired
+        vi.setSystemTime(new Date("2026-04-14T10:05:01.000Z"))
+        plugin.probe(ctx)
+        expect(ctx.host.http.request).toHaveBeenCalledTimes(2)
+      } finally {
+        vi.useRealTimers()
+      }
     })
   })
 })

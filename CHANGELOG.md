@@ -1,5 +1,275 @@
 # Changelog
 
+## v0.6.23
+
+### Bug Fixes
+- fix(claude): remove peak hours indicator integration ([#447](https://github.com/robinebers/openusage/pull/447)) by @validatedev
+- fix(codex): correct usage dashboard URL to ChatGPT Codex settings ([#436](https://github.com/robinebers/openusage/pull/436)) by @devKagan
+
+### Chores
+- chore(analytics): drop UI-side Aptabase events ([#449](https://github.com/robinebers/openusage/pull/449)) by @robinebers
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.6.22...v0.6.23](https://github.com/robinebers/openusage/compare/v0.6.22...v0.6.23)
+
+- [cb365ef](https://github.com/robinebers/openusage/commit/cb365ef) chore(analytics): drop UI-side Aptabase events by @robinebers
+- [7aa655d](https://github.com/robinebers/openusage/commit/7aa655d) fix(claude): remove peak hours indicator integration by @validatedev
+- [7376251](https://github.com/robinebers/openusage/commit/7376251) fix(codex): correct usage dashboard URL to ChatGPT Codex settings by @devKagan
+
+## v0.6.22
+
+### Bug Fixes
+- fix(ccusage): kill timed-out process groups ([#433](https://github.com/robinebers/openusage/pull/433)) by @robinebers
+- fix(claude): support hashed macOS keychain service name (closes #423) ([#424](https://github.com/robinebers/openusage/pull/424)) by @robinebers
+
+### Chores
+- chore(deps): bump tauri from 2.10.3 to 2.11.0 in /src-tauri ([#429](https://github.com/robinebers/openusage/pull/429)) by @dependabot
+- chore(deps): bump reqwest from 0.13.2 to 0.13.3 in /src-tauri ([#428](https://github.com/robinebers/openusage/pull/428)) by @dependabot
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.6.21...v0.6.22](https://github.com/robinebers/openusage/compare/v0.6.21...v0.6.22)
+
+- [2730669](https://github.com/robinebers/openusage/commit/2730669a866cef4d38533466094e2347ae3d1f26) fix(ccusage): kill timed-out process groups (#433) by @robinebers
+- [5651a3a](https://github.com/robinebers/openusage/commit/5651a3ab32cd44c337fad3cb6749633afd62c492) fix(claude): only hash keychain when CLAUDE_CONFIG_DIR is set by @robinebers
+- [1562a07](https://github.com/robinebers/openusage/commit/1562a07e85a27d00c14cd9e919862314d430ca25) fix(claude): support hashed macOS keychain service name (closes #423) by @robinebers
+- [2b5c5db](https://github.com/robinebers/openusage/commit/2b5c5db95d73013c2917bd3540ee54d1ad9fb480) chore(deps): bump tauri from 2.10.3 to 2.11.0 in /src-tauri by @dependabot
+- [ee02c4c](https://github.com/robinebers/openusage/commit/ee02c4c582a9dfc7ba3ece20168919cb8616583c) chore(deps): bump reqwest from 0.13.2 to 0.13.3 in /src-tauri by @dependabot
+
+## v0.6.21
+
+### Bug Fixes
+- fix(codex): lazy-load keychain auth fallback ([#419](https://github.com/robinebers/openusage/pull/419)) by @validatedev
+
+### Chores
+- docs(codex): clarify file-based OAuth credentials description ([#419](https://github.com/robinebers/openusage/pull/419)) by @validatedev
+- docs(agents): replace internal HQ header with OpenUsage title by @robinebers
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.6.20...v0.6.21](https://github.com/robinebers/openusage/compare/v0.6.20...v0.6.21)
+
+- [6f52da5](https://github.com/robinebers/openusage/commit/6f52da586bef10d97b84e0dfadc9b8ced3e9376e) docs(codex): clarify file-based OAuth credentials description by @validatedev
+- [e7b4072](https://github.com/robinebers/openusage/commit/e7b4072d280dd6cf6cd6d4a626b1c2a4e948da1f) fix(codex): lazy-load keychain auth fallback by @validatedev
+- [1395f20](https://github.com/robinebers/openusage/commit/1395f2083d78a0bac224e095a0265b379410daec) docs(agents): replace internal HQ header with OpenUsage title by @robinebers
+
+## v0.6.20
+
+### New Features
+- feat: preserve usage data during refresh (stale-while-revalidate) ([#386](https://github.com/robinebers/openusage/pull/386)) by @DoozyX
+- Add agent worktree setup by @robinebers
+
+### Bug Fixes
+- fix(factory): retry with GET when usage endpoint returns HTTP 405 ([#390](https://github.com/robinebers/openusage/pull/390)) by @allensama0403
+- fix: read OAuth tokens from unified state key ([#392](https://github.com/robinebers/openusage/pull/392)) by @validatedev
+- fix: only refresh Antigravity OAuth on auth failure ([#392](https://github.com/robinebers/openusage/pull/392)) by @validatedev
+- address review feedback on stale-while-revalidate PR ([#386](https://github.com/robinebers/openusage/pull/386)) by @DoozyX
+- address second round of review feedback on stale-while-revalidate PR ([#386](https://github.com/robinebers/openusage/pull/386)) by @DoozyX
+- Prevent shell noise from breaking Z.ai auth headers ([#398](https://github.com/robinebers/openusage/pull/398)) by @KYankee6
+- Prevent empty marker output from becoming a fake env value ([#398](https://github.com/robinebers/openusage/pull/398)) by @KYankee6
+- fix(gemini): refresh OAuth tokens on Homebrew-installed gemini-cli ([#401](https://github.com/robinebers/openusage/pull/401)) by @Rich627
+- fix(codex): map pro to Pro 20x (closes #408) ([#411](https://github.com/robinebers/openusage/pull/411)) by @validatedev
+- Fix Codex auth fallback ([#413](https://github.com/robinebers/openusage/pull/413)) by @robinebers
+
+### Refactor
+- refactor: rename probe()'s `proto` var to `dbTokens` ([#392](https://github.com/robinebers/openusage/pull/392)) by @validatedev
+
+### Chores
+- chore(gemini): clarify OAuth candidate warn message ([#401](https://github.com/robinebers/openusage/pull/401)) by @Rich627
+- chore(deps): bump uuid from 1.23.0 to 1.23.1 in /src-tauri ([#405](https://github.com/robinebers/openusage/pull/405)) by @dependabot[bot]
+- chore(deps): bump tokio from 1.51.1 to 1.52.1 in /src-tauri ([#406](https://github.com/robinebers/openusage/pull/406)) by @dependabot[bot]
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.6.15...v0.6.20](https://github.com/robinebers/openusage/compare/v0.6.15...v0.6.20)
+
+- [722e91b](https://github.com/robinebers/openusage/commit/722e91b5a3a1b2c4db882a5d01e608c8552deea0) fix(factory): retry with GET when usage endpoint returns HTTP 405 by @allensama0403
+- [4625376](https://github.com/robinebers/openusage/commit/4625376c3cc9efb2e97294a3d5d73cff9753a4cb) fix: read OAuth tokens from unified state key by @validatedev
+- [6147b1c](https://github.com/robinebers/openusage/commit/6147b1c834efec96746f4ba0e6d05d2b6340dbd5) refactor: rename probe()'s `proto` var to `dbTokens` by @validatedev
+- [cfa1e69](https://github.com/robinebers/openusage/commit/cfa1e699537aee53a418abdbfe1ad671edc28b88) fix: only refresh Antigravity OAuth on auth failure by @validatedev
+- [0c5185b](https://github.com/robinebers/openusage/commit/0c5185bb1827dc07ca02ebf6f0575b94f3029c63) feat: preserve usage data during refresh (stale-while-revalidate) by @DoozyX
+- [d794535](https://github.com/robinebers/openusage/commit/d79453533e683eb1b6c76405fe970283295f31d5) address review feedback on stale-while-revalidate PR by @DoozyX
+- [7afc4fe](https://github.com/robinebers/openusage/commit/7afc4fe71aa8e7217167614c10c4823bac2328a5) address second round of review feedback on stale-while-revalidate PR by @DoozyX
+- [5a7de06](https://github.com/robinebers/openusage/commit/5a7de06af5e45fbe3daf21f2c7d51115d28b1111) Prevent shell noise from breaking Z.ai auth headers by @KYankee6
+- [7cf7a6f](https://github.com/robinebers/openusage/commit/7cf7a6f68da833893099851a969a458db11100eb) Prevent empty marker output from becoming a fake env value by @KYankee6
+- [96abffb](https://github.com/robinebers/openusage/commit/96abffb517e75b55ed658f53dce25bf5bb894b44) fix(gemini): refresh OAuth tokens on Homebrew-installed gemini-cli by @Rich627
+- [1a91101](https://github.com/robinebers/openusage/commit/1a911019a190bc90180c800a35f94d9caeab34a1) chore(gemini): clarify OAuth candidate warn message by @Rich627
+- [a12292d](https://github.com/robinebers/openusage/commit/a12292d0db436814bad082ddfd12cb28cafc895c) chore(deps): bump uuid from 1.23.0 to 1.23.1 in /src-tauri by @dependabot[bot]
+- [bee03a9](https://github.com/robinebers/openusage/commit/bee03a908fe70f9e6f84b2f20b41115542c7c188) chore(deps): bump tokio from 1.51.1 to 1.52.1 in /src-tauri by @dependabot[bot]
+- [b61116e](https://github.com/robinebers/openusage/commit/b61116e8b18614f8a5b661e8eecec716b84bb5bb) fix(codex): map pro to Pro 20x (closes #408) by @validatedev
+- [951c67b](https://github.com/robinebers/openusage/commit/951c67ba5beb2d47586a2948403e956509adab2d) Merge pull request #411 from robinebers/fix/codex-change-10x-to-20x-for-pro-plan by @validatedev
+- [35b0787](https://github.com/robinebers/openusage/commit/35b0787fc7ad5a5dfb926f9300b4a629324783a5) Merge pull request #405 from robinebers/dependabot/cargo/src-tauri/uuid-1.23.1 by @dependabot[bot]
+- [9a80827](https://github.com/robinebers/openusage/commit/9a80827468eeb3eb3d8db1e58f6516c9eb8b0c01) Merge pull request #406 from robinebers/dependabot/cargo/src-tauri/tokio-1.52.1 by @dependabot[bot]
+- [a6072da](https://github.com/robinebers/openusage/commit/a6072da7f0bb50e72c8223163063d4f8c0494445) Merge pull request #401 from Rich627/fix/gemini-homebrew-bundle-refresh by @Rich627
+- [3970022](https://github.com/robinebers/openusage/commit/3970022b11d098a87533eaada398596e3077f60d) Merge pull request #390 from allensama0403/fix/factory-405-usage-endpoint by @allensama0403
+- [2c03270](https://github.com/robinebers/openusage/commit/2c032702fda2b04d09e5ff7a903d20fba3beea63) Merge pull request #392 from robinebers/fix/antigravity-oauth-local-import-schema-error by @validatedev
+- [a9425ba](https://github.com/robinebers/openusage/commit/a9425ba1a4dbc60f9b3193acd5f53cfeecab07cd) Add agent worktree setup by @robinebers
+- [f894473](https://github.com/robinebers/openusage/commit/f894473c0c80f1ca58223cd3142d63df7e5d4f56) Fix Codex auth fallback by @robinebers
+- [b9e9f30](https://github.com/robinebers/openusage/commit/b9e9f309d86b0f2c01bf6a9e49ad9e2e0d69d36b) Merge pull request #413 from robinebers/cursor/1823929a by @robinebers
+- [de8cf31](https://github.com/robinebers/openusage/commit/de8cf31d0860483309e757d295a84574de193767) Merge pull request #386 from DoozyX/claude/preserve-usage-on-refresh-1pNCN by @DoozyX
+- [77ef460](https://github.com/robinebers/openusage/commit/77ef46033a5ce8a465c74c0eed7b683fb82545a5) Merge pull request #398 from KYankee6/fix/zai-env-header-noise by @KYankee6
+
+## v0.6.15
+
+### New Features
+- feat(claude): add Claude Design weekly detail metric ([#388](https://github.com/robinebers/openusage/pull/388)) by @robinebers
+- Add CLAUDE.md by @robinebers
+- Add Codex environment config by @robinebers
+
+### Bug Fixes
+- fix(codex): map Codex plan labels to Pro 5x and Pro 10x ([#380](https://github.com/robinebers/openusage/pull/380)) by @arrowarcher1
+- fix(claude): graceful 429 rate limit handling with Retry-After support ([#378](https://github.com/robinebers/openusage/pull/378)) by @zergzorg
+- Update AGENTS.md by @robinebers
+- Star history by @robinebers
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.6.14...v0.6.15](https://github.com/robinebers/openusage/compare/v0.6.14...v0.6.15)
+
+- [cb16571](https://github.com/robinebers/openusage/commit/cb16571d969e7b2de44f9595fe09bcd7f1ed111e) feat(claude): add Claude Design weekly detail metric (#388) by @robinebers
+- [87c45b6](https://github.com/robinebers/openusage/commit/87c45b66663b5d4662cdb6fd8bb46ef4c8ae4c5f) Add CLAUDE.md by @robinebers
+- [455c857](https://github.com/robinebers/openusage/commit/455c857d2a4e2e5543a4295348fca9f70b1a3fcc) Update AGENTS.md by @robinebers
+- [510cbe4](https://github.com/robinebers/openusage/commit/510cbe48651d4c9c58b17a16e3b7c0214244c3f0) fix(codex): map Codex plan labels to Pro 5x and Pro 10x (#380) by @arrowarcher1
+- [0ffe3ad](https://github.com/robinebers/openusage/commit/0ffe3ad85a37b42723c56a494af216ee67978976) fix(claude): graceful 429 rate limit handling with Retry-After support (#378) by @zergzorg
+- [06113d6](https://github.com/robinebers/openusage/commit/06113d6b94c6f8306e67aedf51b42f3f03d8b3e5) Add Codex environment config by @robinebers
+- [abf6cff](https://github.com/robinebers/openusage/commit/abf6cffc3bc110abf306a82d45a67972e725b236) Star history by @robinebers
+
+## v0.6.14
+
+### New Features
+- Clickable provider rows + session/weekly labels by @robinebers
+- Integrate PromoClock peak/off-peak status ([#364](https://github.com/robinebers/openusage/pull/364)) by @validatedev
+- Add cmd-arrow tab navigation by @robinebers
+
+### Bug Fixes
+- Session expired ([#363](https://github.com/robinebers/openusage/pull/363)) by @yhunko
+- Prefer userTier.name over legacy planInfo.planName by @n3wr1ch
+- Show panel before tray reposition by @robinebers
+- Correct tray monitor positioning by @robinebers
+- Position panel under tray icon on all entry paths without flicker by @robinebers
+
+### Refactor
+- Apply Copilot review — add typeof/trim guards, remove duplicate assertion by @n3wr1ch
+- Dedupe panel focus helper by @robinebers
+
+### Chores
+- Bump tauri-plugin-updater in /src-tauri by @dependabot[bot]
+- Bump tokio from 1.51.0 to 1.51.1 in /src-tauri by @dependabot[bot]
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.6.13...v0.6.14](https://github.com/robinebers/openusage/compare/v0.6.13...v0.6.14)
+
+- [57cc5bd](https://github.com/robinebers/openusage/commit/57cc5bd36bd1a2c189b1f00f3598f6695e1071d7) fix(settings,opencode): clickable provider rows + session/weekly labels by @robinebers
+- [60cc426](https://github.com/robinebers/openusage/commit/60cc426f31f60c845ecb5fa9ba58703a18609314) fix(gemini): session expired (#363) by @yhunko
+- [83551c1](https://github.com/robinebers/openusage/commit/83551c1cadb95ced4596ae846b07dfa51916de03) feat(claude): integrate PromoClock peak/off-peak status (#364) by @validatedev
+- [cb63b20](https://github.com/robinebers/openusage/commit/cb63b20fa59152a4432220d95942c9a610b4e039) refactor: apply Copilot review — add typeof/trim guards, remove duplicate assertion by @n3wr1ch
+- [996c7fe](https://github.com/robinebers/openusage/commit/996c7fee5aed915f50ffce8b498b92e883d87ebd) chore(deps): bump tauri-plugin-updater in /src-tauri by @dependabot[bot]
+- [9479e34](https://github.com/robinebers/openusage/commit/9479e3476755a4ae08d59261ac341b7efd641de1) chore(deps): bump tokio from 1.51.0 to 1.51.1 in /src-tauri by @dependabot[bot]
+- [d7cb0fc](https://github.com/robinebers/openusage/commit/d7cb0fc59885fcddf910b52d34b0d4d8136b02ab) fix(antigravity): prefer userTier.name over legacy planInfo.planName by @n3wr1ch
+- [995a7fd](https://github.com/robinebers/openusage/commit/995a7fd2fbc05963869f6df6cc0079af7259c366) fix(panel): show before tray reposition by @robinebers
+- [ae43e80](https://github.com/robinebers/openusage/commit/ae43e80e9896b833ce3c41b4341d221e09ead9a6) fix(panel): correct tray monitor positioning by @robinebers
+- [d114de5](https://github.com/robinebers/openusage/commit/d114de5a68752f7f6b9a05452c46651a2d7461ed) fix(panel): position panel under tray icon on all entry paths without flicker by @robinebers
+- [0d6e0ed](https://github.com/robinebers/openusage/commit/0d6e0ed70d776bfa3437872e2c40203f14401d6f) refactor: dedupe panel focus helper by @robinebers
+- [8cfe6a9](https://github.com/robinebers/openusage/commit/8cfe6a919d23f3ec8542aa5e52203fa7da3d8ab8) feat: add cmd-arrow tab navigation by @robinebers
+
+## v0.6.13
+
+### New Features
+- Add Kiro plugin for usage tracking and management by @sayuru-akash
+- add Synthetic provider plugin by @ben-vargas
+- add SOCKS5/HTTP proxy support via ~/.openusage/config.json by @zergzorg
+- Support custom Claude OAuth config and credentials by @robinebers
+
+### Bug Fixes
+- address synthetic plugin review feedback by @ben-vargas
+- scope keychain user lookup by @robinebers
+- address PR 331 review comments by @robinebers
+- use REST fallback for team-inferred accounts missing planUsage.limit by @drewwells
+- skip fallback when percent usage is available by @drewwells
+- prefer enterprise auth and handle missing limits by @drewwells
+- correct proxy redaction output by @robinebers
+- prevent relative config path when home dir is unavailable by @zergzorg
+- load factory auth from droid v2 store ([#298](https://github.com/robinebers/openusage/pull/298)) by @davidarny
+- Harden Windsurf quota parsing for missing and invalid balance data by @prayzey
+- Handle missing Windsurf extra usage balance so quota still loads by @prayzey
+
+### Refactor
+- update release process to push commits and tags before creating GitHub releases by @robinebers
+
+### Chores
+- bump tokio from 1.50.0 to 1.51.0 in /src-tauri by @dependabot[bot]
+- add proxy configuration guide by @robinebers
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.6.12...v0.6.13](https://github.com/robinebers/openusage/compare/v0.6.12...v0.6.13)
+
+- [96eede6](https://github.com/robinebers/openusage/commit/96eede6a77c08494f23ca07247bf4b629304fe78) feat: Add Kiro plugin for usage tracking and management by @sayuru-akash
+- [2a8f550](https://github.com/robinebers/openusage/commit/2a8f5505e66e305cdc0ba7610e2382f02aaad19e) fix: address synthetic plugin review feedback by @ben-vargas
+- [8031849](https://github.com/robinebers/openusage/commit/8031849b557339e3212a614065e6db7b6385a29b) feat: add Synthetic provider plugin by @ben-vargas
+- [110bee6](https://github.com/robinebers/openusage/commit/110bee64868396840d1f44e8c16f2c97d98bbe01) fix(claude): scope keychain user lookup by @robinebers
+- [25b0029](https://github.com/robinebers/openusage/commit/25b00291fc1ff05fbe74b9de90fa49c493e7e464) fix: address PR 331 review comments by @robinebers
+- [fed094a](https://github.com/robinebers/openusage/commit/fed094ae0413d3c4110e213db27fb1733a023efa) Support custom Claude OAuth config and credentials by @robinebers
+- [b821f34](https://github.com/robinebers/openusage/commit/b821f34bd3a1b09153ec7d33a51399953105c1a3) fix(cursor): use REST fallback for team-inferred accounts missing planUsage.limit by @drewwells
+- [6a5145b](https://github.com/robinebers/openusage/commit/6a5145b2c9b4a37df493f6c8a7a57d2200c402ba) fix(cursor): skip fallback when percent usage is available by @drewwells
+- [64c9840](https://github.com/robinebers/openusage/commit/64c9840a01075e47ff1ae46c8cf899fc704ddc74) fix(cursor): prefer enterprise auth and handle missing limits by @drewwells
+- [7dc38fe](https://github.com/robinebers/openusage/commit/7dc38fe961f393189fc79e87d934a2d0760987c6) docs: add proxy configuration guide by @robinebers
+- [29c9ff0](https://github.com/robinebers/openusage/commit/29c9ff0e79d0eb2913f4ef6b50aa170bca6d3177) fix(config): correct proxy redaction output by @robinebers
+- [2c27806](https://github.com/robinebers/openusage/commit/2c278068cdbfbd03937e232428271bc68208d778) fix: prevent relative config path when home dir is unavailable by @zergzorg
+- [1f48faf](https://github.com/robinebers/openusage/commit/1f48fafe8699f0831ed6e387ea4e99f8be31a375) feat: add SOCKS5/HTTP proxy support via ~/.openusage/config.json by @zergzorg
+- [bbbb6cc](https://github.com/robinebers/openusage/commit/bbbb6ccc1b29dec5c32bf1224317ebf41f91f9c4) Harden Windsurf quota parsing for missing and invalid balance data by @prayzey
+- [c9ab800](https://github.com/robinebers/openusage/commit/c9ab800333e49793123456f4e72dd17aba44fb42) Handle missing Windsurf extra usage balance so quota still loads by @prayzey
+- [d6ee9c6](https://github.com/robinebers/openusage/commit/d6ee9c68c13dddc650cfc78b4e26b3572489b35f) chore(deps): bump tokio from 1.50.0 to 1.51.0 in /src-tauri by @dependabot[bot]
+- [857f537](https://github.com/robinebers/openusage/commit/857f537a243483acf98ccd9ea32e20b380c63823) fix: load factory auth from droid v2 store (#298) by @davidarny
+- [625ae4e](https://github.com/robinebers/openusage/commit/625ae4e4b63a2b8597773aea94c3b86c8d45885f) refactor: update release process to push commits and tags before creating GitHub releases by @robinebers
+
+## v0.6.12
+
+### New Features
+- Add local HTTP API for usage data ([#319](https://github.com/robinebers/openusage/pull/319)) by @robinebers
+- Dynamic tray tooltip with usage percentages ([#314](https://github.com/robinebers/openusage/pull/314)) by @hearsilent
+- Add release-tag skill for automated versioning and changelog generation by @robinebers
+
+### Bug Fixes
+- Fix new typescript v6 requirement by @robinebers
+- Add runtime macOS version check for WKPreferences.inactiveSchedulingPolicy ([#322](https://github.com/robinebers/openusage/pull/322)) by @beznazwiska
+
+### Chores
+- Bump lucide-react from 0.577.0 to 1.7.0 ([#324](https://github.com/robinebers/openusage/pull/324)) by @dependabot
+- Bump typescript from 5.9.3 to 6.0.2 ([#325](https://github.com/robinebers/openusage/pull/325)) by @dependabot
+- Bump uuid from 1.22.0 to 1.23.0 in /src-tauri ([#323](https://github.com/robinebers/openusage/pull/323)) by @dependabot
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.6.11...v0.6.12](https://github.com/robinebers/openusage/compare/v0.6.11...v0.6.12)
+
+- [c1e7db8](https://github.com/robinebers/openusage/commit/c1e7db8725ad4d885198aa7c84cc885ae01e4edd) fix new typescript v6 requirement by @robinebers
+- [97dde5b](https://github.com/robinebers/openusage/commit/97dde5bd7189cd95725568a935c3ba98058c2779) feat: add release-tag skill for automated versioning and changelog generation by @robinebers
+- [ff0efa1](https://github.com/robinebers/openusage/commit/ff0efa1086f18f53405771d010fecdd8a8e20ffd) chore(deps): bump lucide-react from 0.577.0 to 1.7.0 by @dependabot
+- [a3f7b7e](https://github.com/robinebers/openusage/commit/a3f7b7e53dbd9995b393ed0fafe36171cd4d876e) chore(deps-dev): bump typescript from 5.9.3 to 6.0.2 by @dependabot
+- [4f7373f](https://github.com/robinebers/openusage/commit/4f7373f368a8d8147299a36c1be87b15873ee5bf) chore(deps): bump uuid from 1.22.0 to 1.23.0 in /src-tauri by @dependabot
+- [4e152f7](https://github.com/robinebers/openusage/commit/4e152f7719f29a0e1936eb058df770138b306338) fix: add runtime macOS version check for WKPreferences.inactiveSchedulingPolicy by @beznazwiska
+- [630e7dd](https://github.com/robinebers/openusage/commit/630e7dd0b3cdfd3d79e922a95286dd3d013d2292) feat: add local HTTP API for usage data by @robinebers
+- [ddf73eb](https://github.com/robinebers/openusage/commit/ddf73eb3d3da8327ff2c22fc57761983039e11c4) feat(tooltip): dynamic tray tooltip with usage percentages by @hearsilent
+
 ## 0.6.11
 
 ### New Features

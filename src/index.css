@@ -213,6 +213,24 @@ body,
   }
 }
 
+/* Shimmer animation for progress bars refreshing with stale data */
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+.animate-shimmer {
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-shimmer {
+    animation: none;
+  }
+}
+
 /* Remove focus rings - this is a menu bar app, not keyboard-navigated */
 *:focus,
 *:focus-visible {

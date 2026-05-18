@@ -2,19 +2,13 @@ import { act, renderHook, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const {
-  trackMock,
   saveDisplayModeMock,
   saveResetTimerDisplayModeMock,
   saveThemeModeMock,
 } = vi.hoisted(() => ({
-  trackMock: vi.fn(),
   saveThemeModeMock: vi.fn(),
   saveDisplayModeMock: vi.fn(),
   saveResetTimerDisplayModeMock: vi.fn(),
-}))
-
-vi.mock("@/lib/analytics", () => ({
-  track: trackMock,
 }))
 
 vi.mock("@/lib/settings", () => ({
@@ -27,7 +21,6 @@ import { useSettingsDisplayActions } from "@/hooks/app/use-settings-display-acti
 
 describe("useSettingsDisplayActions", () => {
   beforeEach(() => {
-    trackMock.mockReset()
     saveThemeModeMock.mockReset()
     saveDisplayModeMock.mockReset()
     saveResetTimerDisplayModeMock.mockReset()
@@ -36,7 +29,7 @@ describe("useSettingsDisplayActions", () => {
     saveResetTimerDisplayModeMock.mockResolvedValue(undefined)
   })
 
-  it("tracks and applies display-related setting changes", () => {
+  it("applies display-related setting changes", () => {
     const setThemeMode = vi.fn()
     const setDisplayMode = vi.fn()
     const setResetTimerDisplayMode = vi.fn()
@@ -56,16 +49,6 @@ describe("useSettingsDisplayActions", () => {
       result.current.handleThemeModeChange("dark")
       result.current.handleDisplayModeChange("used")
       result.current.handleResetTimerDisplayModeChange("absolute")
-    })
-
-    expect(trackMock).toHaveBeenCalledWith("setting_changed", { setting: "theme", value: "dark" })
-    expect(trackMock).toHaveBeenCalledWith("setting_changed", {
-      setting: "display_mode",
-      value: "used",
-    })
-    expect(trackMock).toHaveBeenCalledWith("setting_changed", {
-      setting: "reset_timer_display_mode",
-      value: "absolute",
     })
 
     expect(setThemeMode).toHaveBeenCalledWith("dark")

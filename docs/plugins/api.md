@@ -113,6 +113,34 @@ state.counter++
 ctx.host.fs.writeText(statePath, JSON.stringify(state, null, 2))
 ```
 
+## Crypto
+
+```typescript
+host.crypto.decryptAes256Gcm(envelope: string, keyB64: string): string  // Throws on error
+host.crypto.encryptAes256Gcm(plaintext: string, keyB64: string): string // Throws on error
+```
+
+AES-256-GCM helpers for plugins that need to read or write locally encrypted auth/config blobs.
+
+### Envelope Format
+
+- `iv_b64:tag_b64:ciphertext_b64`
+- `keyB64` must be a base64-encoded 32-byte AES-256 key
+- Both helpers operate on UTF-8 plaintext strings
+
+### Example
+
+```javascript
+const keyB64 = ctx.host.fs.readText("~/.factory/auth.v2.key").trim()
+const encrypted = ctx.host.fs.readText("~/.factory/auth.v2.file")
+const rawJson = ctx.host.crypto.decryptAes256Gcm(encrypted, keyB64)
+const auth = JSON.parse(rawJson)
+
+auth.access_token = "new-token"
+const nextEnvelope = ctx.host.crypto.encryptAes256Gcm(JSON.stringify(auth, null, 2), keyB64)
+ctx.host.fs.writeText("~/.factory/auth.v2.file", nextEnvelope)
+```
+
 ## Environment
 
 ```typescript

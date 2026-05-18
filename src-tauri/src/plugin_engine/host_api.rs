@@ -1,17 +1,34 @@
+use aes_gcm::{
+    AesGcm, Nonce,
+    aead::{Aead, KeyInit, OsRng, generic_array::typenum::U16, rand_core::RngCore},
+    aes::Aes256,
+};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use rquickjs::{Ctx, Exception, Function, Object};
-use std::collections::HashMap;
+use sha2::{Digest, Sha256};
+use std::collections::{HashMap, HashSet};
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 
-const WHITELISTED_ENV_VARS: [&str; 6] = [
+const WHITELISTED_ENV_VARS: [&str; 16] = [
     "CODEX_HOME",
+    "CLAUDE_CONFIG_DIR",
+    "CLAUDE_CODE_OAUTH_TOKEN",
+    "USER_TYPE",
+    "USE_STAGING_OAUTH",
+    "USE_LOCAL_OAUTH",
+    "CLAUDE_CODE_CUSTOM_OAUTH_URL",
+    "CLAUDE_CODE_OAUTH_CLIENT_ID",
+    "CLAUDE_LOCAL_OAUTH_API_BASE",
     "ZAI_API_KEY",
     "GLM_API_KEY",
     "MINIMAX_API_KEY",
     "MINIMAX_API_TOKEN",
     "MINIMAX_CN_API_KEY",
+    "SYNTHETIC_API_KEY",
+    "PI_CODING_AGENT_DIR",
 ];
 
 fn last_non_empty_trimmed_line(text: &str) -> Option<String> {
@@ -22,23 +39,122 @@ fn last_non_empty_trimmed_line(text: &str) -> Option<String> {
         .map(|line| line.to_string())
 }
 
-fn read_env_from_process(name: &str) -> Option<String> {
-    let value = std::env::var(name).ok()?;
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        None
+fn sanitize_env_value(text: &str) -> Option<String> {
+    let mut cleaned = if let Ok(ansi_re) = regex_lite::Regex::new(r"\x1B\[[0-?]*[ -/]*[@-~]") {
+        ansi_re.replace_all(text, "").to_string()
     } else {
-        Some(trimmed.to_string())
-    }
+        text.to_string()
+    };
+    cleaned.retain(|ch| ch == '\n' || ch == '\r' || ch == '\t' || !ch.is_control());
+    last_non_empty_trimmed_line(&cleaned)
 }
 
-fn read_env_value_via_command(program: &str, args: &[&str]) -> Option<String> {
+fn extract_marked_value(text: &str, start_marker: &str, end_marker: &str) -> Option<String> {
+    let start = text.find(start_marker)?;
+    let after_start = &text[start + start_marker.len()..];
+    let end = after_start.find(end_marker)?;
+    sanitize_env_value(&after_start[..end])
+}
+
+fn parse_interactive_shell_env_output(
+    text: &str,
+    start_marker: &str,
+    end_marker: &str,
+) -> Option<String> {
+    if let Some(marked) = extract_marked_value(text, start_marker, end_marker) {
+        return Some(marked);
+    }
+
+    let has_complete_markers = text.contains(start_marker) && text.contains(end_marker);
+    if has_complete_markers {
+        return None;
+    }
+
+    sanitize_env_value(text)
+}
+
+fn read_env_from_process(name: &str) -> Option<String> {
+    let value = std::env::var(name).ok()?;
+    sanitize_env_value(&value)
+}
+
+fn read_command_stdout(program: &str, args: &[&str]) -> Option<String> {
     let output = Command::new(program).args(args).output().ok()?;
     if !output.status.success() {
         return None;
     }
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    last_non_empty_trimmed_line(&stdout)
+    Some(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+fn read_env_value_via_command(program: &str, args: &[&str]) -> Option<String> {
+    let stdout = read_command_stdout(program, args)?;
+    sanitize_env_value(&stdout)
+}
+
+fn current_macos_keychain_account_from_user_env(user_env: Option<String>) -> String {
+    user_env
+        .and_then(|value| {
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        })
+        .or_else(|| read_env_value_via_command("id", &["-un"]))
+        .unwrap_or_else(|| "openusage-user".to_string())
+}
+
+fn current_macos_keychain_account() -> String {
+    current_macos_keychain_account_from_user_env(read_env_from_process("USER"))
+}
+
+fn keychain_find_generic_password_args(service: &str) -> Vec<OsString> {
+    vec![
+        OsString::from("find-generic-password"),
+        OsString::from("-s"),
+        OsString::from(service),
+        OsString::from("-w"),
+    ]
+}
+
+fn keychain_find_generic_password_args_for_account(service: &str, account: &str) -> Vec<OsString> {
+    vec![
+        OsString::from("find-generic-password"),
+        OsString::from("-a"),
+        OsString::from(account),
+        OsString::from("-s"),
+        OsString::from(service),
+        OsString::from("-w"),
+    ]
+}
+
+fn keychain_add_generic_password_args(service: &str, value: &str) -> Vec<OsString> {
+    vec![
+        OsString::from("add-generic-password"),
+        OsString::from("-U"),
+        OsString::from("-s"),
+        OsString::from(service),
+        OsString::from("-w"),
+        OsString::from(value),
+    ]
+}
+
+fn keychain_add_generic_password_args_for_account(
+    service: &str,
+    account: &str,
+    value: &str,
+) -> Vec<OsString> {
+    vec![
+        OsString::from("add-generic-password"),
+        OsString::from("-U"),
+        OsString::from("-a"),
+        OsString::from(account),
+        OsString::from("-s"),
+        OsString::from(service),
+        OsString::from("-w"),
+        OsString::from(value),
+    ]
 }
 
 fn terminal_env_cache() -> &'static Mutex<HashMap<String, Option<String>>> {
@@ -62,8 +178,15 @@ fn shell_from_env() -> Option<String> {
 }
 
 fn read_env_from_interactive_shell(program: &str, name: &str) -> Option<String> {
-    let script = format!("printenv {}", name);
-    read_env_value_via_command(program, &["-ilc", script.as_str()])
+    const START_MARKER: &str = "__OPENUSAGE_ENV_START__";
+    const END_MARKER: &str = "__OPENUSAGE_ENV_END__";
+
+    let script = format!(
+        "printf '{}\\n'; printenv {}; printf '{}\\n'",
+        START_MARKER, name, END_MARKER
+    );
+    let output = read_command_stdout(program, &["-ilc", script.as_str()])?;
+    parse_interactive_shell_env_output(&output, START_MARKER, END_MARKER)
 }
 
 fn read_env_from_interactive_shells(name: &str) -> Option<String> {
@@ -151,6 +274,8 @@ fn redact_url(url: &str) -> String {
         "userid",
         "account_id",
         "accountid",
+        "profilearn",
+        "profile_arn",
         "email",
         "login",
     ];
@@ -230,6 +355,12 @@ fn redact_body(body: &str) -> String {
         "userId",
         "account_id",
         "accountId",
+        "team_id",
+        "teamId",
+        "payment_id",
+        "paymentId",
+        "profile_arn",
+        "profileArn",
         "email",
         "login",
         "analytics_tracking_id",
@@ -247,11 +378,17 @@ fn redact_body(body: &str) -> String {
         }
     }
 
+    if let Ok(path_re) =
+        regex_lite::Regex::new(r#"(/(?:Users|home|opt|private|var|tmp|Applications)/[^\s"')]+)"#)
+    {
+        result = path_re.replace_all(&result, "[PATH]").to_string();
+    }
+
     result
 }
 
-/// Lightweight redaction for plugin log messages (JWT + API key patterns only).
-fn redact_log_message(msg: &str) -> String {
+/// Lightweight redaction for log messages.
+pub(crate) fn redact_log_message(msg: &str) -> String {
     let mut result = msg.to_string();
     if let Ok(jwt_re) = regex_lite::Regex::new(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+")
     {
@@ -268,7 +405,110 @@ fn redact_log_message(msg: &str) -> String {
             })
             .to_string();
     }
+    if let Ok(account_re) = regex_lite::Regex::new(r#"(account=)([^,\s]+)"#) {
+        result = account_re
+            .replace_all(&result, |caps: &regex_lite::Captures| {
+                format!("{}{}", &caps[1], redact_value(&caps[2]))
+            })
+            .to_string();
+    }
+    if let Ok(path_re) =
+        regex_lite::Regex::new(r#"(/(?:Users|home|opt|private|var|tmp|Applications)/[^\s"')]+)"#)
+    {
+        result = path_re.replace_all(&result, "[PATH]").to_string();
+    }
     result
+}
+
+fn decrypt_aes_256_gcm_envelope(envelope: &str, key_b64: &str) -> Result<String, String> {
+    let trimmed_envelope = envelope.trim();
+    let trimmed_key = key_b64.trim();
+    let parts: Vec<&str> = trimmed_envelope.split(':').collect();
+    if parts.len() != 3 {
+        return Err("invalid AES-GCM envelope".to_string());
+    }
+
+    let key = BASE64_STANDARD
+        .decode(trimmed_key)
+        .map_err(|e| format!("invalid base64 key: {}", e))?;
+    if key.len() != 32 {
+        return Err(format!(
+            "invalid AES-256 key length: expected 32 bytes, got {}",
+            key.len()
+        ));
+    }
+
+    let iv = BASE64_STANDARD
+        .decode(parts[0])
+        .map_err(|e| format!("invalid base64 iv: {}", e))?;
+    if iv.len() != 16 {
+        return Err(format!(
+            "invalid AES-GCM iv length: expected 16 bytes, got {}",
+            iv.len()
+        ));
+    }
+
+    let tag = BASE64_STANDARD
+        .decode(parts[1])
+        .map_err(|e| format!("invalid base64 auth tag: {}", e))?;
+    if tag.len() != 16 {
+        return Err(format!(
+            "invalid AES-GCM auth tag length: expected 16 bytes, got {}",
+            tag.len()
+        ));
+    }
+
+    let ciphertext = BASE64_STANDARD
+        .decode(parts[2])
+        .map_err(|e| format!("invalid base64 ciphertext: {}", e))?;
+
+    type Aes256Gcm16 = AesGcm<Aes256, U16>;
+    let cipher =
+        Aes256Gcm16::new_from_slice(&key).map_err(|e| format!("decrypt init failed: {}", e))?;
+    let nonce = Nonce::<U16>::from_slice(&iv);
+
+    let mut ciphertext_and_tag = ciphertext;
+    ciphertext_and_tag.extend_from_slice(&tag);
+    let plaintext = cipher
+        .decrypt(nonce, ciphertext_and_tag.as_ref())
+        .map_err(|_| "decrypt finalize failed".to_string())?;
+
+    String::from_utf8(plaintext).map_err(|e| format!("decrypted payload is not UTF-8: {}", e))
+}
+
+fn encrypt_aes_256_gcm_envelope(plaintext: &str, key_b64: &str) -> Result<String, String> {
+    let trimmed_key = key_b64.trim();
+    let key = BASE64_STANDARD
+        .decode(trimmed_key)
+        .map_err(|e| format!("invalid base64 key: {}", e))?;
+    if key.len() != 32 {
+        return Err(format!(
+            "invalid AES-256 key length: expected 32 bytes, got {}",
+            key.len()
+        ));
+    }
+
+    type Aes256Gcm16 = AesGcm<Aes256, U16>;
+    let cipher =
+        Aes256Gcm16::new_from_slice(&key).map_err(|e| format!("encrypt init failed: {}", e))?;
+    let mut iv = [0_u8; 16];
+    OsRng.fill_bytes(&mut iv);
+    let nonce = Nonce::<U16>::from_slice(&iv);
+    let ciphertext_and_tag = cipher
+        .encrypt(nonce, plaintext.as_bytes())
+        .map_err(|_| "encrypt finalize failed".to_string())?;
+    if ciphertext_and_tag.len() < 16 {
+        return Err("encrypted payload missing auth tag".to_string());
+    }
+    let split_at = ciphertext_and_tag.len() - 16;
+    let (ciphertext, tag) = ciphertext_and_tag.split_at(split_at);
+
+    Ok(format!(
+        "{}:{}:{}",
+        BASE64_STANDARD.encode(iv),
+        BASE64_STANDARD.encode(tag),
+        BASE64_STANDARD.encode(ciphertext)
+    ))
 }
 
 pub fn inject_host_api<'js>(
@@ -303,9 +543,10 @@ pub fn inject_host_api<'js>(
     let host = Object::new(ctx.clone())?;
     inject_log(ctx, &host, plugin_id)?;
     inject_fs(ctx, &host)?;
+    inject_crypto(ctx, &host)?;
     inject_env(ctx, &host, plugin_id)?;
     inject_http(ctx, &host, plugin_id)?;
-    inject_keychain(ctx, &host)?;
+    inject_keychain(ctx, &host, plugin_id)?;
     inject_sqlite(ctx, &host)?;
     inject_ls(ctx, &host, plugin_id)?;
     inject_ccusage(ctx, &host, plugin_id)?;
@@ -413,6 +654,56 @@ fn inject_fs<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
     Ok(())
 }
 
+fn inject_crypto<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
+    let crypto_obj = Object::new(ctx.clone())?;
+
+    crypto_obj.set(
+        "decryptAes256Gcm",
+        Function::new(
+            ctx.clone(),
+            move |ctx_inner: Ctx<'_>,
+                  envelope: String,
+                  key_b64: String|
+                  -> rquickjs::Result<String> {
+                decrypt_aes_256_gcm_envelope(&envelope, &key_b64)
+                    .map_err(|e| Exception::throw_message(&ctx_inner, &e))
+            },
+        )?,
+    )?;
+
+    crypto_obj.set(
+        "encryptAes256Gcm",
+        Function::new(
+            ctx.clone(),
+            move |ctx_inner: Ctx<'_>,
+                  plaintext: String,
+                  key_b64: String|
+                  -> rquickjs::Result<String> {
+                encrypt_aes_256_gcm_envelope(&plaintext, &key_b64)
+                    .map_err(|e| Exception::throw_message(&ctx_inner, &e))
+            },
+        )?,
+    )?;
+
+    crypto_obj.set(
+        "sha256Hex",
+        Function::new(ctx.clone(), move |text: String| -> String {
+            let digest = Sha256::digest(text.as_bytes());
+            // Lowercase hex, matches Node's `crypto.createHash("sha256").update(x).digest("hex")`
+            // and the upstream Claude Code keychain helper.
+            let mut out = String::with_capacity(digest.len() * 2);
+            for byte in digest.iter() {
+                use std::fmt::Write as _;
+                let _ = write!(&mut out, "{:02x}", byte);
+            }
+            out
+        })?,
+    )?;
+
+    host.set("crypto", crypto_obj)?;
+    Ok(())
+}
+
 fn inject_env<'js>(ctx: &Ctx<'js>, host: &Object<'js>, _plugin_id: &str) -> rquickjs::Result<()> {
     let env_obj = Object::new(ctx.clone())?;
     env_obj.set(
@@ -469,7 +760,17 @@ fn inject_http<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rqui
                 let timeout_ms = req.timeout_ms.unwrap_or(10_000);
                 let mut builder = reqwest::blocking::Client::builder()
                     .timeout(std::time::Duration::from_millis(timeout_ms))
+                    .connect_timeout(std::time::Duration::from_millis(timeout_ms))
                     .redirect(reqwest::redirect::Policy::none());
+
+                // Apply pre-resolved proxy (localhost bypass already configured)
+                if let Some(resolved) = crate::config::get_resolved_proxy() {
+                    builder = builder.proxy(resolved.proxy.clone());
+                    log::debug!("[http] proxy active");
+                } else {
+                    log::debug!("[http] proxy not used");
+                }
+
                 if req.dangerously_ignore_tls.unwrap_or(false) {
                     builder = builder.danger_accept_invalid_certs(true);
                 }
@@ -1182,10 +1483,35 @@ struct CcusageQueryOpts {
     claude_path: Option<String>,
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 enum CcusageProvider {
     Claude,
     Codex,
+}
+
+static CCUSAGE_ACTIVE_PROVIDERS: OnceLock<Mutex<HashSet<CcusageProvider>>> = OnceLock::new();
+
+struct CcusageQueryGuard {
+    provider: CcusageProvider,
+}
+
+impl CcusageQueryGuard {
+    fn acquire(provider: CcusageProvider) -> Option<Self> {
+        let active = CCUSAGE_ACTIVE_PROVIDERS.get_or_init(|| Mutex::new(HashSet::new()));
+        let mut active = active.lock().unwrap_or_else(|err| err.into_inner());
+        if !active.insert(provider) {
+            return None;
+        }
+        Some(Self { provider })
+    }
+}
+
+impl Drop for CcusageQueryGuard {
+    fn drop(&mut self) {
+        let active = CCUSAGE_ACTIVE_PROVIDERS.get_or_init(|| Mutex::new(HashSet::new()));
+        let mut active = active.lock().unwrap_or_else(|err| err.into_inner());
+        active.remove(&self.provider);
+    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -1413,6 +1739,12 @@ fn configure_ccusage_command(
     command
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
 }
 
 fn resolve_ccusage_runner_binary(kind: CcusageRunnerKind) -> Option<String> {
@@ -1480,16 +1812,12 @@ fn ccusage_runner_args(
     let package_spec = ccusage_package_spec(provider);
     let mut args: Vec<String> = match kind {
         CcusageRunnerKind::Bunx => vec!["--silent".to_string(), package_spec.clone()],
-        CcusageRunnerKind::PnpmDlx => vec![
-            "-s".to_string(),
-            "dlx".to_string(),
-            package_spec.clone(),
-        ],
-        CcusageRunnerKind::YarnDlx => vec![
-            "dlx".to_string(),
-            "-q".to_string(),
-            package_spec.clone(),
-        ],
+        CcusageRunnerKind::PnpmDlx => {
+            vec!["-s".to_string(), "dlx".to_string(), package_spec.clone()]
+        }
+        CcusageRunnerKind::YarnDlx => {
+            vec!["dlx".to_string(), "-q".to_string(), package_spec.clone()]
+        }
         CcusageRunnerKind::NpmExec => vec![
             "exec".to_string(),
             "--yes".to_string(),
@@ -1550,13 +1878,76 @@ fn normalize_ccusage_output(stdout: &str) -> Option<String> {
     serde_json::to_string(&normalized).ok()
 }
 
+#[derive(Debug, Eq, PartialEq)]
+enum CcusageRunnerResult {
+    Success(String),
+    Failed,
+    TimedOut,
+}
+
+#[cfg(unix)]
+fn kill_ccusage_process_group(child_id: u32) -> std::io::Result<()> {
+    let pgid = i32::try_from(child_id)
+        .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid child pid"))?;
+    let rc = unsafe { libc::kill(-pgid, libc::SIGKILL) };
+    if rc == 0 {
+        return Ok(());
+    }
+
+    let err = std::io::Error::last_os_error();
+    if err.raw_os_error() == Some(libc::ESRCH) {
+        return Ok(());
+    }
+    Err(err)
+}
+
+fn kill_ccusage_on_timeout(child: &mut std::process::Child) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        kill_ccusage_process_group(child.id())
+    }
+
+    #[cfg(not(unix))]
+    {
+        child.kill()
+    }
+}
+
+fn format_ccusage_timeout(timeout: std::time::Duration) -> String {
+    if timeout.subsec_millis() == 0 {
+        return format!("{}s", timeout.as_secs());
+    }
+    if timeout.as_secs() == 0 {
+        return format!("{}ms", timeout.as_millis());
+    }
+    format!("{:.3}s", timeout.as_secs_f64())
+}
+
 fn run_ccusage_with_runner(
     kind: CcusageRunnerKind,
     program: &str,
     opts: &CcusageQueryOpts,
     provider: CcusageProvider,
     plugin_id: &str,
-) -> Option<String> {
+) -> CcusageRunnerResult {
+    run_ccusage_with_runner_timeout(
+        kind,
+        program,
+        opts,
+        provider,
+        plugin_id,
+        std::time::Duration::from_secs(CCUSAGE_TIMEOUT_SECS),
+    )
+}
+
+fn run_ccusage_with_runner_timeout(
+    kind: CcusageRunnerKind,
+    program: &str,
+    opts: &CcusageQueryOpts,
+    provider: CcusageProvider,
+    plugin_id: &str,
+    timeout: std::time::Duration,
+) -> CcusageRunnerResult {
     let args = ccusage_runner_args(kind, opts, provider);
     let enriched_path = ccusage_enriched_path();
     let mut command = std::process::Command::new(program);
@@ -1564,14 +1955,16 @@ fn run_ccusage_with_runner(
 
     if let Some(home_path) = ccusage_home_override(opts, provider) {
         let config = ccusage_provider_config(provider);
-        command.env(config.home_env_var, home_path);
+        command.env(config.home_env_var, expand_path(&home_path));
     }
+
+    let redacted_program = redact_log_message(program);
 
     log::info!(
         "[plugin:{}] ccusage query via {} ({})",
         plugin_id,
         ccusage_runner_label(kind),
-        program
+        redacted_program
     );
 
     let mut child = match command.spawn() {
@@ -1583,7 +1976,7 @@ fn run_ccusage_with_runner(
                 ccusage_runner_label(kind),
                 e
             );
-            return None;
+            return CcusageRunnerResult::Failed;
         }
     };
 
@@ -1604,7 +1997,6 @@ fn run_ccusage_with_runner(
         })
     });
 
-    let timeout = std::time::Duration::from_secs(CCUSAGE_TIMEOUT_SECS);
     let start = std::time::Instant::now();
     loop {
         match child.try_wait() {
@@ -1621,14 +2013,14 @@ fn run_ccusage_with_runner(
                 if status.success() {
                     let out = String::from_utf8_lossy(&stdout);
                     if let Some(normalized_json) = normalize_ccusage_output(&out) {
-                        return Some(normalized_json);
+                        return CcusageRunnerResult::Success(normalized_json);
                     }
                     log::warn!(
                         "[plugin:{}] ccusage output parse failed for {}",
                         plugin_id,
                         ccusage_runner_label(kind)
                     );
-                    return None;
+                    return CcusageRunnerResult::Failed;
                 }
 
                 let err = String::from_utf8_lossy(&stderr);
@@ -1638,21 +2030,29 @@ fn run_ccusage_with_runner(
                     ccusage_runner_label(kind),
                     err.trim()
                 );
-                return None;
+                return CcusageRunnerResult::Failed;
             }
             Ok(None) => {
                 if start.elapsed() > timeout {
-                    let _ = child.kill();
+                    if let Err(e) = kill_ccusage_on_timeout(&mut child) {
+                        log::warn!(
+                            "[plugin:{}] ccusage process group kill failed for {}: {}",
+                            plugin_id,
+                            ccusage_runner_label(kind),
+                            e
+                        );
+                        let _ = child.kill();
+                    }
                     let _ = child.wait();
                     let _ = stdout_reader.take().and_then(|reader| reader.join().ok());
                     let _ = stderr_reader.take().and_then(|reader| reader.join().ok());
                     log::warn!(
-                        "[plugin:{}] ccusage timed out after {}s for {}",
+                        "[plugin:{}] ccusage timed out after {} for {}",
                         plugin_id,
-                        CCUSAGE_TIMEOUT_SECS,
+                        format_ccusage_timeout(timeout),
                         ccusage_runner_label(kind)
                     );
-                    return None;
+                    return CcusageRunnerResult::TimedOut;
                 }
                 std::thread::sleep(std::time::Duration::from_millis(CCUSAGE_POLL_INTERVAL_MS));
             }
@@ -1663,10 +2063,68 @@ fn run_ccusage_with_runner(
                     ccusage_runner_label(kind),
                     e
                 );
-                return None;
+                return CcusageRunnerResult::Failed;
             }
         }
     }
+}
+
+fn run_ccusage_query_with_runners<F>(
+    runners: Vec<(CcusageRunnerKind, String)>,
+    opts: &CcusageQueryOpts,
+    provider: CcusageProvider,
+    plugin_id: &str,
+    mut run: F,
+) -> String
+where
+    F: FnMut(
+        CcusageRunnerKind,
+        &str,
+        &CcusageQueryOpts,
+        CcusageProvider,
+        &str,
+    ) -> CcusageRunnerResult,
+{
+    if runners.is_empty() {
+        log::warn!(
+            "[plugin:{}] no package runner found for ccusage query",
+            plugin_id
+        );
+        return serde_json::json!({ "status": "no_runner" }).to_string();
+    }
+
+    for (kind, program) in runners {
+        match run(kind, &program, opts, provider, plugin_id) {
+            CcusageRunnerResult::Success(result) => {
+                let data: serde_json::Value = match serde_json::from_str(&result) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        log::warn!(
+                            "[plugin:{}] ccusage normalized payload parse failed: {}",
+                            plugin_id,
+                            e
+                        );
+                        continue;
+                    }
+                };
+                return serde_json::json!({ "status": "ok", "data": data }).to_string();
+            }
+            CcusageRunnerResult::Failed => {}
+            CcusageRunnerResult::TimedOut => {
+                log::warn!(
+                    "[plugin:{}] ccusage query timed out; skipping fallback runners",
+                    plugin_id
+                );
+                return serde_json::json!({ "status": "runner_failed" }).to_string();
+            }
+        }
+    }
+
+    log::warn!(
+        "[plugin:{}] ccusage query failed with all available runners",
+        plugin_id
+    );
+    serde_json::json!({ "status": "runner_failed" }).to_string()
 }
 
 fn inject_ccusage<'js>(
@@ -1690,36 +2148,18 @@ fn inject_ccusage<'js>(
                     }
                 };
                 let provider = resolve_ccusage_provider(&opts, &pid);
+                let Some(_active_query) = CcusageQueryGuard::acquire(provider) else {
+                    log::warn!("[plugin:{}] ccusage query already running", pid);
+                    return Ok(serde_json::json!({ "status": "runner_failed" }).to_string());
+                };
                 let runners = collect_ccusage_runners();
-                if runners.is_empty() {
-                    log::warn!("[plugin:{}] no package runner found for ccusage query", pid);
-                    return Ok(serde_json::json!({ "status": "no_runner" }).to_string());
-                }
-
-                for (kind, program) in runners {
-                    if let Some(result) =
-                        run_ccusage_with_runner(kind, &program, &opts, provider, &pid)
-                    {
-                        let data: serde_json::Value = match serde_json::from_str(&result) {
-                            Ok(v) => v,
-                            Err(e) => {
-                                log::warn!(
-                                    "[plugin:{}] ccusage normalized payload parse failed: {}",
-                                    pid,
-                                    e
-                                );
-                                continue;
-                            }
-                        };
-                        return Ok(serde_json::json!({ "status": "ok", "data": data }).to_string());
-                    }
-                }
-
-                log::warn!(
-                    "[plugin:{}] ccusage query failed with all available runners",
-                    pid
-                );
-                Ok(serde_json::json!({ "status": "runner_failed" }).to_string())
+                Ok(run_ccusage_query_with_runners(
+                    runners,
+                    &opts,
+                    provider,
+                    &pid,
+                    run_ccusage_with_runner,
+                ))
             },
         )?,
     )?;
@@ -1749,8 +2189,13 @@ pub fn patch_ccusage_wrapper(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
     )
 }
 
-fn inject_keychain<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
+fn inject_keychain<'js>(
+    ctx: &Ctx<'js>,
+    host: &Object<'js>,
+    plugin_id: &str,
+) -> rquickjs::Result<()> {
     let keychain_obj = Object::new(ctx.clone())?;
+    let pid_read = plugin_id.to_string();
 
     keychain_obj.set(
         "readGenericPassword",
@@ -1763,8 +2208,9 @@ fn inject_keychain<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<
                         "keychain API is only supported on macOS",
                     ));
                 }
+                log::info!("[plugin:{}] keychain read: service={}", pid_read, service);
                 let output = std::process::Command::new("security")
-                    .args(["find-generic-password", "-s", &service, "-w"])
+                    .args(keychain_find_generic_password_args(&service))
                     .output()
                     .map_err(|e| {
                         Exception::throw_message(
@@ -1776,17 +2222,87 @@ fn inject_keychain<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<
                 if !output.status.success() {
                     let stderr = String::from_utf8_lossy(&output.stderr);
                     let first_line = stderr.lines().next().unwrap_or("").trim();
+                    log::warn!(
+                        "[plugin:{}] keychain read miss: service={}, error={}",
+                        pid_read,
+                        service,
+                        first_line
+                    );
                     return Err(Exception::throw_message(
                         &ctx_inner,
                         &format!("keychain item not found: {}", first_line),
                     ));
                 }
 
+                log::info!(
+                    "[plugin:{}] keychain read hit: service={}",
+                    pid_read,
+                    service
+                );
                 Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
             },
         )?,
     )?;
 
+    let pid_read_current_user = plugin_id.to_string();
+    keychain_obj.set(
+        "readGenericPasswordForCurrentUser",
+        Function::new(
+            ctx.clone(),
+            move |ctx_inner: Ctx<'_>, service: String| -> rquickjs::Result<String> {
+                if !cfg!(target_os = "macos") {
+                    return Err(Exception::throw_message(
+                        &ctx_inner,
+                        "keychain API is only supported on macOS",
+                    ));
+                }
+                let account = current_macos_keychain_account();
+                let args = keychain_find_generic_password_args_for_account(&service, &account);
+                let redacted_account = redact_value(&account);
+                log::info!(
+                    "[plugin:{}] keychain read: service={}, account={}",
+                    pid_read_current_user,
+                    service,
+                    redacted_account
+                );
+                let output = std::process::Command::new("security")
+                    .args(&args)
+                    .output()
+                    .map_err(|e| {
+                        Exception::throw_message(
+                            &ctx_inner,
+                            &format!("keychain read failed: {}", e),
+                        )
+                    })?;
+
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    let first_line = stderr.lines().next().unwrap_or("").trim();
+                    log::warn!(
+                        "[plugin:{}] keychain read miss: service={}, account={}, error={}",
+                        pid_read_current_user,
+                        service,
+                        redacted_account,
+                        first_line
+                    );
+                    return Err(Exception::throw_message(
+                        &ctx_inner,
+                        &format!("keychain item not found: {}", first_line),
+                    ));
+                }
+
+                log::info!(
+                    "[plugin:{}] keychain read hit: service={}, account={}",
+                    pid_read_current_user,
+                    service,
+                    redacted_account
+                );
+                Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+            },
+        )?,
+    )?;
+
+    let pid_write = plugin_id.to_string();
     keychain_obj.set(
         "writeGenericPassword",
         Function::new(
@@ -1798,8 +2314,8 @@ fn inject_keychain<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<
                         "keychain API is only supported on macOS",
                     ));
                 }
+                log::info!("[plugin:{}] keychain write: service={}", pid_write, service);
 
-                // First, try to find existing entry and extract its account
                 let mut account_arg: Option<String> = None;
                 let find_output = std::process::Command::new("security")
                     .args(["find-generic-password", "-s", &service])
@@ -1807,7 +2323,6 @@ fn inject_keychain<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<
 
                 if let Ok(output) = find_output {
                     if output.status.success() {
-                        // Parse account from output: "acct"<blob>="value"
                         let stdout = String::from_utf8_lossy(&output.stdout);
                         for line in stdout.lines() {
                             if let Some(start) = line.find("\"acct\"<blob>=\"") {
@@ -1821,23 +2336,15 @@ fn inject_keychain<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<
                     }
                 }
 
-                // Build command with account if found
                 let output = if let Some(ref acct) = account_arg {
                     std::process::Command::new("security")
-                        .args([
-                            "add-generic-password",
-                            "-s",
-                            &service,
-                            "-a",
-                            acct,
-                            "-w",
-                            &value,
-                            "-U",
-                        ])
+                        .args(keychain_add_generic_password_args_for_account(
+                            &service, acct, &value,
+                        ))
                         .output()
                 } else {
                     std::process::Command::new("security")
-                        .args(["add-generic-password", "-s", &service, "-w", &value, "-U"])
+                        .args(keychain_add_generic_password_args(&service, &value))
                         .output()
                 }
                 .map_err(|e| {
@@ -1847,12 +2354,82 @@ fn inject_keychain<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<
                 if !output.status.success() {
                     let stderr = String::from_utf8_lossy(&output.stderr);
                     let first_line = stderr.lines().next().unwrap_or("").trim();
+                    log::warn!(
+                        "[plugin:{}] keychain write failed: service={}, error={}",
+                        pid_write,
+                        service,
+                        first_line
+                    );
                     return Err(Exception::throw_message(
                         &ctx_inner,
                         &format!("keychain write failed: {}", first_line),
                     ));
                 }
 
+                log::info!(
+                    "[plugin:{}] keychain write succeeded: service={}",
+                    pid_write,
+                    service
+                );
+                Ok(())
+            },
+        )?,
+    )?;
+
+    let pid_write_current_user = plugin_id.to_string();
+    keychain_obj.set(
+        "writeGenericPasswordForCurrentUser",
+        Function::new(
+            ctx.clone(),
+            move |ctx_inner: Ctx<'_>, service: String, value: String| -> rquickjs::Result<()> {
+                if !cfg!(target_os = "macos") {
+                    return Err(Exception::throw_message(
+                        &ctx_inner,
+                        "keychain API is only supported on macOS",
+                    ));
+                }
+                let account = current_macos_keychain_account();
+                let args =
+                    keychain_add_generic_password_args_for_account(&service, &account, &value);
+                let redacted_account = redact_value(&account);
+                log::info!(
+                    "[plugin:{}] keychain write: service={}, account={}",
+                    pid_write_current_user,
+                    service,
+                    redacted_account
+                );
+                let output = std::process::Command::new("security")
+                    .args(&args)
+                    .output()
+                    .map_err(|e| {
+                        Exception::throw_message(
+                            &ctx_inner,
+                            &format!("keychain write failed: {}", e),
+                        )
+                    })?;
+
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    let first_line = stderr.lines().next().unwrap_or("").trim();
+                    log::warn!(
+                        "[plugin:{}] keychain write failed: service={}, account={}, error={}",
+                        pid_write_current_user,
+                        service,
+                        redacted_account,
+                        first_line
+                    );
+                    return Err(Exception::throw_message(
+                        &ctx_inner,
+                        &format!("keychain write failed: {}", first_line),
+                    ));
+                }
+
+                log::info!(
+                    "[plugin:{}] keychain write succeeded: service={}, account={}",
+                    pid_write_current_user,
+                    service,
+                    redacted_account
+                );
                 Ok(())
             },
         )?,
@@ -1987,6 +2564,33 @@ mod tests {
     use super::*;
     use rquickjs::{Context, Function, Object, Runtime};
 
+    fn encrypt_aes_256_gcm_envelope_for_test(key: &[u8], plaintext: &str) -> String {
+        let iv = [7_u8; 16];
+        type Aes256Gcm16 = AesGcm<Aes256, U16>;
+        let cipher = Aes256Gcm16::new_from_slice(key).expect("encrypt init");
+        let nonce = Nonce::<U16>::from_slice(&iv);
+        let ciphertext_and_tag = cipher
+            .encrypt(nonce, plaintext.as_bytes())
+            .expect("encrypt finalize");
+        let split_at = ciphertext_and_tag.len() - 16;
+        let (ciphertext, tag) = ciphertext_and_tag.split_at(split_at);
+
+        format!(
+            "{}:{}:{}",
+            BASE64_STANDARD.encode(iv),
+            BASE64_STANDARD.encode(tag),
+            BASE64_STANDARD.encode(ciphertext)
+        )
+    }
+
+    fn node_generated_aes_256_gcm_vector_for_test() -> (&'static str, &'static str, &'static str) {
+        (
+            "CwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCws=",
+            "BwcHBwcHBwcHBwcHBwcHBw==:yFbCs4LOJ0aj9NPNf5pfVA==:7PKjtOdATLClvaWrMw0b0M8Nov4KPhxwQX4hdczqQlcZi9Zhi6DjAoK+WolvMwuhPIk=",
+            r#"{"access_token":"token","refresh_token":"refresh"}"#,
+        )
+    }
+
     #[test]
     fn last_non_empty_trimmed_line_uses_final_value_when_stdout_is_noisy() {
         let stdout = "banner line\nanother message\n  sk-test-key-12345  \n";
@@ -2002,7 +2606,190 @@ mod tests {
     }
 
     #[test]
-    fn keychain_api_exposes_write() {
+    fn decrypt_aes_256_gcm_envelope_round_trips_plaintext() {
+        let key = [11_u8; 32];
+        let key_b64 = BASE64_STANDARD.encode(key);
+        let plaintext = r#"{"access_token":"token","refresh_token":"refresh"}"#;
+        let envelope = encrypt_aes_256_gcm_envelope_for_test(&key, plaintext);
+
+        let decrypted =
+            decrypt_aes_256_gcm_envelope(&envelope, &key_b64).expect("decrypt envelope");
+
+        assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
+    fn encrypt_aes_256_gcm_envelope_round_trips_plaintext() {
+        let key = [21_u8; 32];
+        let key_b64 = BASE64_STANDARD.encode(key);
+        let plaintext = r#"{"access_token":"token-2","refresh_token":"refresh-2"}"#;
+
+        let envelope = encrypt_aes_256_gcm_envelope(plaintext, &key_b64).expect("encrypt envelope");
+        let decrypted =
+            decrypt_aes_256_gcm_envelope(&envelope, &key_b64).expect("decrypt envelope");
+
+        assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
+    fn decrypt_aes_256_gcm_envelope_rejects_invalid_component_lengths() {
+        let key_b64 = BASE64_STANDARD.encode([9_u8; 32]);
+        let short_key_b64 = BASE64_STANDARD.encode([7_u8; 31]);
+        let iv_b64 = BASE64_STANDARD.encode([1_u8; 15]);
+        let tag_b64 = BASE64_STANDARD.encode([2_u8; 16]);
+        let ciphertext_b64 = BASE64_STANDARD.encode([3_u8; 8]);
+
+        let key_err =
+            decrypt_aes_256_gcm_envelope("AQ==:AQ==:AQ==", &short_key_b64).expect_err("key length");
+        assert!(key_err.contains("expected 32 bytes"));
+
+        let iv_err = decrypt_aes_256_gcm_envelope(
+            &format!("{}:{}:{}", iv_b64, tag_b64, ciphertext_b64),
+            &key_b64,
+        )
+        .expect_err("iv length");
+        assert!(iv_err.contains("iv length"));
+
+        let short_tag_b64 = BASE64_STANDARD.encode([2_u8; 15]);
+        let tag_err = decrypt_aes_256_gcm_envelope(
+            &format!(
+                "{}:{}:{}",
+                BASE64_STANDARD.encode([1_u8; 16]),
+                short_tag_b64,
+                ciphertext_b64
+            ),
+            &key_b64,
+        )
+        .expect_err("tag length");
+        assert!(tag_err.contains("auth tag length"));
+    }
+
+    #[test]
+    fn sanitize_env_value_strips_ansi_and_control_sequences() {
+        let raw = "\u{1b}[?1000l\n  sk-test-key-12345\u{1b}[?2004h\r\n";
+        let value = sanitize_env_value(raw);
+        assert_eq!(value.as_deref(), Some("sk-test-key-12345"));
+    }
+
+    #[test]
+    fn extract_marked_value_ignores_noisy_shell_output() {
+        let stdout = concat!(
+            "startup banner\n",
+            "\u{1b}[31mplugin failed\u{1b}[0m\n",
+            "__OPENUSAGE_ENV_START__\n",
+            "  sk-test-key-12345  \n",
+            "__OPENUSAGE_ENV_END__\n",
+            "\u{1b}[32muser@host\u{1b}[0m\n"
+        );
+        let value =
+            extract_marked_value(stdout, "__OPENUSAGE_ENV_START__", "__OPENUSAGE_ENV_END__");
+        assert_eq!(value.as_deref(), Some("sk-test-key-12345"));
+    }
+
+    #[test]
+    fn extract_marked_value_strips_inline_terminal_sequences_from_marked_value() {
+        let stdout = concat!(
+            "__OPENUSAGE_ENV_START__\n",
+            "\u{1b}[?1000l\n",
+            "  sk-test-key-12345\u{1b}[?2004h\r\n",
+            "__OPENUSAGE_ENV_END__\n"
+        );
+        let value =
+            extract_marked_value(stdout, "__OPENUSAGE_ENV_START__", "__OPENUSAGE_ENV_END__");
+        assert_eq!(value.as_deref(), Some("sk-test-key-12345"));
+    }
+
+    #[test]
+    fn extract_marked_value_returns_none_when_marked_value_is_empty() {
+        let stdout = "__OPENUSAGE_ENV_START__\n  \n__OPENUSAGE_ENV_END__\n";
+        let value =
+            extract_marked_value(stdout, "__OPENUSAGE_ENV_START__", "__OPENUSAGE_ENV_END__");
+        assert!(value.is_none());
+    }
+
+    #[test]
+    fn parse_interactive_shell_env_output_does_not_fallback_to_end_marker_for_empty_value() {
+        let stdout = "__OPENUSAGE_ENV_START__\n  \n__OPENUSAGE_ENV_END__\n";
+        let value = parse_interactive_shell_env_output(
+            stdout,
+            "__OPENUSAGE_ENV_START__",
+            "__OPENUSAGE_ENV_END__",
+        );
+        assert!(value.is_none());
+    }
+
+    #[test]
+    fn parse_interactive_shell_env_output_falls_back_without_markers() {
+        let stdout = "\u{1b}[?1000l\n  sk-test-key-12345\u{1b}[?2004h\r\n";
+        let value = parse_interactive_shell_env_output(
+            stdout,
+            "__OPENUSAGE_ENV_START__",
+            "__OPENUSAGE_ENV_END__",
+        );
+        assert_eq!(value.as_deref(), Some("sk-test-key-12345"));
+    }
+
+    #[test]
+    fn crypto_api_exposes_decrypt() {
+        let rt = Runtime::new().expect("runtime");
+        let ctx = Context::full(&rt).expect("context");
+        ctx.with(|ctx| {
+            let app_data = std::env::temp_dir();
+            inject_host_api(&ctx, "test", &app_data, "0.0.0").expect("inject host api");
+            let globals = ctx.globals();
+            let probe_ctx: Object = globals.get("__openusage_ctx").expect("probe ctx");
+            let host: Object = probe_ctx.get("host").expect("host");
+            let crypto: Object = host.get("crypto").expect("crypto");
+            let _decrypt: Function = crypto.get("decryptAes256Gcm").expect("decryptAes256Gcm");
+            let _encrypt: Function = crypto.get("encryptAes256Gcm").expect("encryptAes256Gcm");
+        });
+    }
+
+    #[test]
+    fn crypto_api_decrypts_node_generated_envelope_from_js() {
+        let (key_b64, envelope, expected_plaintext) = node_generated_aes_256_gcm_vector_for_test();
+        let rt = Runtime::new().expect("runtime");
+        let ctx = Context::full(&rt).expect("context");
+        ctx.with(|ctx| {
+            let app_data = std::env::temp_dir();
+            inject_host_api(&ctx, "test", &app_data, "0.0.0").expect("inject host api");
+            let js_expr = format!(
+                r#"__openusage_ctx.host.crypto.decryptAes256Gcm("{}", "{}")"#,
+                envelope, key_b64
+            );
+            let decrypted: String = ctx.eval(js_expr).expect("js decrypt");
+            assert_eq!(decrypted, expected_plaintext);
+        });
+    }
+
+    #[test]
+    fn crypto_api_exposes_sha256_hex() {
+        let rt = Runtime::new().expect("runtime");
+        let ctx = Context::full(&rt).expect("context");
+        ctx.with(|ctx| {
+            let app_data = std::env::temp_dir();
+            inject_host_api(&ctx, "test", &app_data, "0.0.0").expect("inject host api");
+            // Vector: `printf '%s' 'hello' | shasum -a 256`
+            let result: String = ctx
+                .eval(r#"__openusage_ctx.host.crypto.sha256Hex("hello")"#)
+                .expect("js sha256");
+            assert_eq!(
+                result,
+                "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+            );
+
+            let empty: String = ctx
+                .eval(r#"__openusage_ctx.host.crypto.sha256Hex("")"#)
+                .expect("js sha256 empty");
+            assert_eq!(
+                empty,
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            );
+        });
+    }
+
+    #[test]
+    fn keychain_api_exposes_write_variants() {
         let rt = Runtime::new().expect("runtime");
         let ctx = Context::full(&rt).expect("context");
         ctx.with(|ctx| {
@@ -2015,14 +2802,38 @@ mod tests {
             let _read: Function = keychain
                 .get("readGenericPassword")
                 .expect("readGenericPassword");
+            let _read_current_user: Function = keychain
+                .get("readGenericPasswordForCurrentUser")
+                .expect("readGenericPasswordForCurrentUser");
             let _write: Function = keychain
                 .get("writeGenericPassword")
                 .expect("writeGenericPassword");
+            let _write_current_user: Function = keychain
+                .get("writeGenericPasswordForCurrentUser")
+                .expect("writeGenericPasswordForCurrentUser");
         });
     }
 
     #[test]
     fn env_api_respects_allowlist_in_host_and_js() {
+        let claude_env_vars = [
+            "CLAUDE_CONFIG_DIR",
+            "CLAUDE_CODE_OAUTH_TOKEN",
+            "USER_TYPE",
+            "USE_STAGING_OAUTH",
+            "USE_LOCAL_OAUTH",
+            "CLAUDE_CODE_CUSTOM_OAUTH_URL",
+            "CLAUDE_CODE_OAUTH_CLIENT_ID",
+            "CLAUDE_LOCAL_OAUTH_API_BASE",
+        ];
+
+        for name in claude_env_vars {
+            assert!(
+                WHITELISTED_ENV_VARS.contains(&name),
+                "{name} must be whitelisted for Claude auth compatibility"
+            );
+        }
+
         let rt = Runtime::new().expect("runtime");
         let ctx = Context::full(&rt).expect("context");
         ctx.with(|ctx| {
@@ -2121,6 +2932,113 @@ mod tests {
     }
 
     #[test]
+    fn current_macos_keychain_account_prefers_explicit_user_value() {
+        assert_eq!(
+            current_macos_keychain_account_from_user_env(Some("openusage-test-user".to_string())),
+            "openusage-test-user"
+        );
+    }
+
+    #[test]
+    fn expand_path_expands_tilde_prefix() {
+        let home = dirs::home_dir().expect("home dir");
+        let expected = home.join(".claude-custom").to_string_lossy().to_string();
+
+        assert_eq!(expand_path("~/.claude-custom"), expected);
+    }
+
+    #[test]
+    fn keychain_find_generic_password_args_include_service_only_lookup() {
+        let args = keychain_find_generic_password_args("Claude Code-credentials");
+        let rendered: Vec<String> = args
+            .into_iter()
+            .map(|value| value.to_string_lossy().into_owned())
+            .collect();
+
+        assert_eq!(
+            rendered,
+            vec![
+                "find-generic-password",
+                "-s",
+                "Claude Code-credentials",
+                "-w",
+            ]
+        );
+    }
+
+    #[test]
+    fn keychain_find_generic_password_args_for_account_include_account_and_service() {
+        let args = keychain_find_generic_password_args_for_account(
+            "Claude Code-credentials",
+            "openusage-test-user",
+        );
+        let rendered: Vec<String> = args
+            .into_iter()
+            .map(|value| value.to_string_lossy().into_owned())
+            .collect();
+
+        assert_eq!(
+            rendered,
+            vec![
+                "find-generic-password",
+                "-a",
+                "openusage-test-user",
+                "-s",
+                "Claude Code-credentials",
+                "-w",
+            ]
+        );
+    }
+
+    #[test]
+    fn keychain_add_generic_password_args_include_service_only_write() {
+        let args = keychain_add_generic_password_args("Claude Code-credentials", "secret-value");
+        let rendered: Vec<String> = args
+            .into_iter()
+            .map(|value| value.to_string_lossy().into_owned())
+            .collect();
+
+        assert_eq!(
+            rendered,
+            vec![
+                "add-generic-password",
+                "-U",
+                "-s",
+                "Claude Code-credentials",
+                "-w",
+                "secret-value",
+            ]
+        );
+    }
+
+    #[test]
+    fn keychain_add_generic_password_args_for_account_include_update_account_service_and_value() {
+        let args = keychain_add_generic_password_args_for_account(
+            "Claude Code-credentials",
+            "openusage-test-user",
+            "secret-value",
+        );
+        let rendered: Vec<String> = args
+            .into_iter()
+            .map(|value| value.to_string_lossy().into_owned())
+            .collect();
+
+        assert_eq!(
+            rendered,
+            vec![
+                "add-generic-password",
+                "-U",
+                "-a",
+                "openusage-test-user",
+                "-s",
+                "Claude Code-credentials",
+                "-w",
+                "secret-value",
+            ]
+        );
+    }
+
+    #[test]
     fn redact_value_shows_first_and_last_four() {
         assert_eq!(redact_value("sk-1234567890abcdef"), "sk-1...cdef");
         assert_eq!(redact_value("short"), "[REDACTED]");
@@ -2154,6 +3072,22 @@ mod tests {
     fn redact_url_preserves_non_sensitive_params() {
         let url = "https://api.example.com/v1?limit=10&offset=20";
         assert_eq!(redact_url(url), url);
+    }
+
+    #[test]
+    fn redact_url_redacts_profile_arn_query_param() {
+        let url = "https://q.us-east-1.amazonaws.com/getUsageLimits?profileArn=arn:aws:codewhisperer:us-east-1:699475941385:profile/EHGA3GRVQMUK&origin=AI_EDITOR";
+        let redacted = redact_url(url);
+        assert!(
+            !redacted.contains("699475941385"),
+            "profileArn should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            redacted.contains("origin=AI_EDITOR"),
+            "non-sensitive params should remain visible, got: {}",
+            redacted
+        );
     }
 
     #[test]
@@ -2240,6 +3174,53 @@ mod tests {
     }
 
     #[test]
+    fn redact_body_redacts_team_id_payment_id_and_paths() {
+        let body = r#"{"teamId":"cc1ac023-9ff5-4c1f-a5a4-ae2a82df4243","paymentId":"cus_S5m1PGxjLWoc1c","binaryPath":"/opt/homebrew/bin/bunx","homePath":"/Users/rebers/.claude"}"#;
+        let redacted = redact_body(body);
+        assert!(
+            !redacted.contains("cc1ac023-9ff5-4c1f-a5a4-ae2a82df4243"),
+            "teamId should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            !redacted.contains("cus_S5m1PGxjLWoc1c"),
+            "paymentId should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            !redacted.contains("/opt/homebrew/bin/bunx"),
+            "path should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            !redacted.contains("/Users/rebers/.claude"),
+            "path should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            redacted.contains("[PATH]"),
+            "expected path marker, got: {}",
+            redacted
+        );
+    }
+
+    #[test]
+    fn redact_body_redacts_profile_arn_fields() {
+        let body = r#"{"profileArn":"arn:aws:codewhisperer:us-east-1:699475941385:profile/EHGA3GRVQMUK","profile_arn":"arn:aws:codewhisperer:us-east-1:699475941385:profile/EHGA3GRVQMUK"}"#;
+        let redacted = redact_body(body);
+        assert!(
+            !redacted.contains("699475941385"),
+            "profile arn should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            redacted.contains("arn:...QMUK"),
+            "profile arn should use first4...last4 redaction, got: {}",
+            redacted
+        );
+    }
+
+    #[test]
     fn redact_log_message_redacts_jwt_and_api_key() {
         let msg = "token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U key=sk-1234567890abcdef";
         let redacted = redact_log_message(msg);
@@ -2250,6 +3231,37 @@ mod tests {
         assert!(
             !redacted.contains("sk-1234567890abcdef"),
             "API key should be redacted"
+        );
+    }
+
+    #[test]
+    fn redact_log_message_redacts_account_and_paths() {
+        let msg = "keychain read: service=Claude Code-credentials, account=rebers path=/opt/homebrew/bin/bunx home=/Users/rebers/.claude";
+        let redacted = redact_log_message(msg);
+        assert!(
+            !redacted.contains("account=rebers"),
+            "account should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            !redacted.contains("/opt/homebrew/bin/bunx"),
+            "path should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            !redacted.contains("/Users/rebers/.claude"),
+            "path should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            redacted.contains("account=[REDACTED]"),
+            "expected redacted account, got: {}",
+            redacted
+        );
+        assert!(
+            redacted.contains("[PATH]"),
+            "expected redacted path, got: {}",
+            redacted
         );
     }
 
@@ -2719,5 +3731,136 @@ Saved lockfile
     fn collect_ccusage_runners_returns_empty_when_none_available() {
         let runners = collect_ccusage_runners_with(|_| None);
         assert!(runners.is_empty());
+    }
+
+    #[test]
+    fn ccusage_query_guard_blocks_overlapping_provider_query() {
+        let first = CcusageQueryGuard::acquire(CcusageProvider::Codex)
+            .expect("first query should acquire guard");
+        assert!(
+            CcusageQueryGuard::acquire(CcusageProvider::Codex).is_none(),
+            "second query for same provider should be blocked"
+        );
+        assert!(
+            CcusageQueryGuard::acquire(CcusageProvider::Claude).is_some(),
+            "different provider should have its own guard"
+        );
+        drop(first);
+        assert!(
+            CcusageQueryGuard::acquire(CcusageProvider::Codex).is_some(),
+            "guard should release on drop"
+        );
+    }
+
+    #[test]
+    fn ccusage_timeout_stops_runner_fallback() {
+        let opts = CcusageQueryOpts::default();
+        let runners = vec![
+            (CcusageRunnerKind::Bunx, "bunx".to_string()),
+            (CcusageRunnerKind::Npx, "npx".to_string()),
+        ];
+        let mut calls = Vec::new();
+
+        let result = run_ccusage_query_with_runners(
+            runners,
+            &opts,
+            CcusageProvider::Codex,
+            "codex",
+            |kind, _, _, _, _| {
+                calls.push(kind);
+                CcusageRunnerResult::TimedOut
+            },
+        );
+
+        let value: serde_json::Value = serde_json::from_str(&result).expect("valid status json");
+        assert_eq!(value["status"], "runner_failed");
+        assert_eq!(calls, vec![CcusageRunnerKind::Bunx]);
+    }
+
+    #[test]
+    fn ccusage_timeout_log_uses_actual_timeout() {
+        assert_eq!(
+            format_ccusage_timeout(std::time::Duration::from_millis(100)),
+            "100ms"
+        );
+        assert_eq!(
+            format_ccusage_timeout(std::time::Duration::from_secs(CCUSAGE_TIMEOUT_SECS)),
+            "15s"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ccusage_timeout_kills_descendant_and_closes_pipes() {
+        use std::io::Write;
+        use std::os::unix::fs::PermissionsExt;
+        use std::time::{Duration, Instant};
+
+        fn pid_exists(pid: i32) -> bool {
+            unsafe { libc::kill(pid, 0) == 0 }
+        }
+
+        let test_id = format!(
+            "openusage-ccusage-timeout-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time")
+                .as_nanos()
+        );
+        let dir = std::env::temp_dir().join(test_id);
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let script_path = dir.join("fake-ccusage-runner.sh");
+        let pid_path = dir.join("descendant.pid");
+
+        let mut script = std::fs::File::create(&script_path).expect("create script");
+        let script_body = format!(
+            r#"#!/bin/sh
+sh -c 'sleep 30' &
+echo $! > "{}"
+echo "started"
+wait
+"#,
+            pid_path.display()
+        );
+        script
+            .write_all(script_body.as_bytes())
+            .expect("write script");
+        let mut permissions = script.metadata().expect("script metadata").permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&script_path, permissions).expect("make script executable");
+
+        let opts = CcusageQueryOpts::default();
+        let start = Instant::now();
+        let result = run_ccusage_with_runner_timeout(
+            CcusageRunnerKind::Bunx,
+            script_path.to_string_lossy().as_ref(),
+            &opts,
+            CcusageProvider::Codex,
+            "codex",
+            Duration::from_millis(100),
+        );
+
+        assert_eq!(result, CcusageRunnerResult::TimedOut);
+        assert!(
+            start.elapsed() < Duration::from_secs(3),
+            "timeout cleanup should not hang on inherited stdout/stderr pipes"
+        );
+
+        let descendant_pid: i32 = std::fs::read_to_string(&pid_path)
+            .expect("read descendant pid")
+            .trim()
+            .parse()
+            .expect("parse descendant pid");
+
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while pid_exists(descendant_pid) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(
+            !pid_exists(descendant_pid),
+            "descendant process should be killed with ccusage process group"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

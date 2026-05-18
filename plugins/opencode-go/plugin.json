@@ -19,14 +19,14 @@
   "lines": [
     {
       "type": "progress",
-      "label": "5h",
+      "label": "Session",
       "scope": "overview",
       "primaryOrder": 1
     },
     {
       "type": "progress",
       "label": "Weekly",
-      "scope": "detail"
+      "scope": "overview"
     },
     {
       "type": "progress",

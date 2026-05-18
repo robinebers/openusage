@@ -12,6 +12,31 @@ describe("codex plugin", () => {
     vi.resetModules()
   })
 
+  const expectStaleFileAuthFallsBackToKeychain = async (refreshResponse) => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "old-file-token", refresh_token: "old-file-refresh" },
+      last_refresh: "2000-01-01T00:00:00.000Z",
+    }))
+    ctx.host.keychain.readGenericPassword.mockReturnValue(JSON.stringify({
+      tokens: { access_token: "keychain-token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("oauth/token")) return refreshResponse
+      expect(opts.headers.Authorization).toBe("Bearer keychain-token")
+      return {
+        status: 200,
+        headers: { "x-codex-primary-used-percent": "12" },
+        bodyText: JSON.stringify({}),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+  }
+
   it("throws when auth missing", async () => {
     const ctx = makeCtx()
     const plugin = await loadPlugin()
@@ -33,6 +58,30 @@ describe("codex plugin", () => {
     plugin.probe(ctx)
   })
 
+  it("does not read keychain when file auth succeeds", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "file-token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.keychain.readGenericPassword.mockImplementation(() => {
+      throw new Error("keychain should not be read")
+    })
+    ctx.host.http.request.mockImplementation((opts) => {
+      expect(opts.headers.Authorization).toBe("Bearer file-token")
+      return {
+        status: 200,
+        headers: { "x-codex-primary-used-percent": "10" },
+        bodyText: JSON.stringify({}),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+    expect(ctx.host.keychain.readGenericPassword).not.toHaveBeenCalled()
+  })
+
   it("uses CODEX_HOME auth path when env var is set", async () => {
     const ctx = makeCtx()
     ctx.host.env.get.mockImplementation((name) => (name === "CODEX_HOME" ? "/tmp/codex-home" : null))
@@ -51,6 +100,7 @@ describe("codex plugin", () => {
 
     const plugin = await loadPlugin()
     plugin.probe(ctx)
+    expect(ctx.host.keychain.readGenericPassword).not.toHaveBeenCalled()
   })
 
   it("uses ~/.config/codex/auth.json before ~/.codex/auth.json when env is not set", async () => {
@@ -70,6 +120,7 @@ describe("codex plugin", () => {
 
     const plugin = await loadPlugin()
     plugin.probe(ctx)
+    expect(ctx.host.keychain.readGenericPassword).not.toHaveBeenCalled()
   })
 
   it("does not fall back when CODEX_HOME is set but missing auth file", async () => {
@@ -164,7 +215,39 @@ describe("codex plugin", () => {
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    expect(result.plan).toBeTruthy()
+    expect(result.plan).toBe("Pro 20x")
+    expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+    expect(result.lines.find((line) => line.label === "Weekly")).toBeTruthy()
+    const credits = result.lines.find((line) => line.label === "Credits")
+    expect(credits).toBeTruthy()
+    expect(credits.used).toBe(900)
+  })
+
+  it("maps prolite plan to Pro 5x", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {
+        "x-codex-primary-used-percent": "25",
+        "x-codex-secondary-used-percent": "50",
+        "x-codex-credits-balance": "100",
+      },
+      bodyText: JSON.stringify({
+        plan_type: "prolite",
+        rate_limit: {
+          primary_window: { reset_after_seconds: 60, used_percent: 10 },
+          secondary_window: { reset_after_seconds: 120, used_percent: 20 },
+        },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.plan).toBe("Pro 5x")
     expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
     expect(result.lines.find((line) => line.label === "Weekly")).toBeTruthy()
     const credits = result.lines.find((line) => line.label === "Credits")
@@ -563,13 +646,223 @@ describe("codex plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Token conflict")
   })
 
+  it("falls back to keychain when file refresh token was reused", async () => {
+    await expectStaleFileAuthFallsBackToKeychain({
+      status: 400,
+      headers: {},
+      bodyText: JSON.stringify({ error: { code: "refresh_token_reused" } }),
+    })
+  })
+
+  it("falls back to keychain when file refresh token expired", async () => {
+    await expectStaleFileAuthFallsBackToKeychain({
+      status: 400,
+      headers: {},
+      bodyText: JSON.stringify({ error: { code: "refresh_token_expired" } }),
+    })
+  })
+
+  it("falls back to keychain when file refresh token was revoked", async () => {
+    await expectStaleFileAuthFallsBackToKeychain({
+      status: 400,
+      headers: {},
+      bodyText: JSON.stringify({ error: { code: "refresh_token_invalidated" } }),
+    })
+  })
+
+  it("falls back to keychain when file usage auth fails after refresh attempt", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "old-file-token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.keychain.readGenericPassword.mockReturnValue(JSON.stringify({
+      tokens: { access_token: "keychain-token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (opts.headers.Authorization === "Bearer old-file-token") {
+        return { status: 401, headers: {}, bodyText: "" }
+      }
+      expect(opts.headers.Authorization).toBe("Bearer keychain-token")
+      return {
+        status: 200,
+        headers: { "x-codex-primary-used-percent": "9" },
+        bodyText: JSON.stringify({}),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+  })
+
+  it("falls back to keychain when file usage auth still fails after refresh", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "file-token", refresh_token: "file-refresh" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.keychain.readGenericPassword.mockReturnValue(JSON.stringify({
+      tokens: { access_token: "keychain-token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("oauth/token")) {
+        return {
+          status: 200,
+          headers: {},
+          bodyText: JSON.stringify({ access_token: "refreshed-file-token" }),
+        }
+      }
+      if (opts.headers.Authorization === "Bearer file-token") {
+        return { status: 401, headers: {}, bodyText: "" }
+      }
+      if (opts.headers.Authorization === "Bearer refreshed-file-token") {
+        return { status: 401, headers: {}, bodyText: "" }
+      }
+      expect(opts.headers.Authorization).toBe("Bearer keychain-token")
+      return {
+        status: 200,
+        headers: { "x-codex-primary-used-percent": "6" },
+        bodyText: JSON.stringify({}),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+    expect(ctx.host.keychain.readGenericPassword).toHaveBeenCalledWith("Codex Auth")
+  })
+
+  it("surfaces keychain auth error when file and keychain auth both fail", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "file-token", refresh_token: "file-refresh" },
+      last_refresh: "2000-01-01T00:00:00.000Z",
+    }))
+    ctx.host.keychain.readGenericPassword.mockReturnValue(JSON.stringify({
+      tokens: { access_token: "keychain-token", refresh_token: "keychain-refresh" },
+      last_refresh: "2000-01-01T00:00:00.000Z",
+    }))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.bodyText).includes("file-refresh")) {
+        return {
+          status: 400,
+          headers: {},
+          bodyText: JSON.stringify({ error: { code: "refresh_token_reused" } }),
+        }
+      }
+      expect(String(opts.bodyText)).toContain("keychain-refresh")
+      return {
+        status: 400,
+        headers: {},
+        bodyText: JSON.stringify({ error: { code: "refresh_token_expired" } }),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Session expired")
+    expect(ctx.host.keychain.readGenericPassword).toHaveBeenCalledWith("Codex Auth")
+  })
+
+  it("tries next file auth before keychain when earlier file auth is stale", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.config/codex/auth.json", JSON.stringify({
+      tokens: { access_token: "old-config-token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "legacy-token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.keychain.readGenericPassword.mockReturnValue(JSON.stringify({
+      tokens: { access_token: "keychain-token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (opts.headers.Authorization === "Bearer old-config-token") {
+        return { status: 401, headers: {}, bodyText: "" }
+      }
+      expect(opts.headers.Authorization).toBe("Bearer legacy-token")
+      return {
+        status: 200,
+        headers: { "x-codex-primary-used-percent": "7" },
+        bodyText: JSON.stringify({}),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+    expect(ctx.host.keychain.readGenericPassword).not.toHaveBeenCalled()
+  })
+
+  it("does not fall back to keychain when file usage request returns server error", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "file-token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.keychain.readGenericPassword.mockReturnValue(JSON.stringify({
+      tokens: { access_token: "keychain-token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({ status: 500, headers: {}, bodyText: "" })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Usage request failed (HTTP 500)")
+    expect(ctx.host.keychain.readGenericPassword).not.toHaveBeenCalled()
+  })
+
+  it("does not fall back to keychain when file usage response is invalid", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "file-token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.keychain.readGenericPassword.mockReturnValue(JSON.stringify({
+      tokens: { access_token: "keychain-token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({ status: 200, headers: {}, bodyText: "bad" })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Usage response invalid")
+    expect(ctx.host.keychain.readGenericPassword).not.toHaveBeenCalled()
+  })
+
+  it("does not fall back to keychain when file usage request throws", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "file-token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.keychain.readGenericPassword.mockReturnValue(JSON.stringify({
+      tokens: { access_token: "keychain-token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockImplementation(() => {
+      throw new Error("offline")
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Usage request failed. Check your connection.")
+    expect(ctx.host.keychain.readGenericPassword).not.toHaveBeenCalled()
+  })
+
   it("throws for api key auth", async () => {
     const ctx = makeCtx()
     ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
       OPENAI_API_KEY: "key",
     }))
+    ctx.host.keychain.readGenericPassword.mockReturnValue(JSON.stringify({
+      tokens: { access_token: "keychain-token" },
+      last_refresh: new Date().toISOString(),
+    }))
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Usage not available for API key")
+    expect(ctx.host.keychain.readGenericPassword).not.toHaveBeenCalled()
   })
 
   it("falls back to rate_limit data and review window", async () => {

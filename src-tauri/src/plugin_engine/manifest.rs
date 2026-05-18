@@ -1,4 +1,4 @@
-use base64::{engine::general_purpose::STANDARD, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
@@ -128,7 +128,10 @@ fn sanitize_plugin_links(plugin_id: &str, links: Vec<PluginLink>) -> Vec<PluginL
             let url = link.url.trim().to_string();
 
             if label.is_empty() || url.is_empty() {
-                log::warn!("plugin {} has link with empty label/url; skipping", plugin_id);
+                log::warn!(
+                    "plugin {} has link with empty label/url; skipping",
+                    plugin_id
+                );
                 return None;
             }
             if !(url.starts_with("https://") || url.starts_with("http://")) {

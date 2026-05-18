@@ -1,6 +1,6 @@
 {
     "scripts": {
-        "setup": "bun install; for d in .claude .codex .cursor; do [ -d \"$CONDUCTOR_ROOT_PATH/$d\" ] && mkdir -p \"$CONDUCTOR_WORKSPACE_PATH/$d\" && rsync -a \"$CONDUCTOR_ROOT_PATH/$d/.\" \"$CONDUCTOR_WORKSPACE_PATH/$d/\"; done; [ -f \"$CONDUCTOR_ROOT_PATH/.env\" ] && cp \"$CONDUCTOR_ROOT_PATH/.env\" \"$CONDUCTOR_WORKSPACE_PATH/.env\" || true",
+        "setup": "bun install; for d in .agents .claude .codex .cursor; do [ -d \"$CONDUCTOR_ROOT_PATH/$d\" ] && mkdir -p \"$CONDUCTOR_WORKSPACE_PATH/$d\" && rsync -a \"$CONDUCTOR_ROOT_PATH/$d/.\" \"$CONDUCTOR_WORKSPACE_PATH/$d/\"; done; for f in .env .env.example; do [ -f \"$CONDUCTOR_ROOT_PATH/$f\" ] && cp \"$CONDUCTOR_ROOT_PATH/$f\" \"$CONDUCTOR_WORKSPACE_PATH/$f\" || true; done",
         "run": "bun run tauri dev"
     }
 }
