@@ -42,6 +42,16 @@ function makeUserStatusResponse(overrides) {
             quotaInfo: { remainingFraction: 0.8, resetTime: "2026-02-08T09:10:56Z" },
           },
           {
+            label: "Gemini 3.5 Flash (High)",
+            modelOrAlias: { model: "MODEL_PLACEHOLDER_M19" },
+            quotaInfo: { remainingFraction: 0.9, resetTime: "2026-02-08T09:10:56Z" },
+          },
+          {
+            label: "Gemini 3.5 Flash (Medium)",
+            modelOrAlias: { model: "MODEL_PLACEHOLDER_M20" },
+            quotaInfo: { remainingFraction: 0.95, resetTime: "2026-02-08T09:10:56Z" },
+          },
+          {
             label: "Gemini 3 Flash",
             modelOrAlias: { model: "MODEL_PLACEHOLDER_M18" },
             quotaInfo: { remainingFraction: 1.0, resetTime: "2026-02-08T09:10:56Z" },
