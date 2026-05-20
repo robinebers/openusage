@@ -2201,16 +2201,42 @@ fn inject_keychain<'js>(
         "readGenericPassword",
         Function::new(
             ctx.clone(),
-            move |ctx_inner: Ctx<'_>, service: String| -> rquickjs::Result<String> {
+            move |ctx_inner: Ctx<'_>,
+                  service: String,
+                  account: Option<String>|
+                  -> rquickjs::Result<String> {
                 if !cfg!(target_os = "macos") {
                     return Err(Exception::throw_message(
                         &ctx_inner,
                         "keychain API is only supported on macOS",
                     ));
                 }
-                log::info!("[plugin:{}] keychain read: service={}", pid_read, service);
+                let account = account.and_then(|value| {
+                    let trimmed = value.trim();
+                    if trimmed.is_empty() {
+                        None
+                    } else {
+                        Some(trimmed.to_string())
+                    }
+                });
+                let redacted_account = account.as_deref().map(redact_value);
+                if let Some(ref redacted) = redacted_account {
+                    log::info!(
+                        "[plugin:{}] keychain read: service={}, account={}",
+                        pid_read,
+                        service,
+                        redacted
+                    );
+                } else {
+                    log::info!("[plugin:{}] keychain read: service={}", pid_read, service);
+                }
+                let args = if let Some(ref account) = account {
+                    keychain_find_generic_password_args_for_account(&service, account)
+                } else {
+                    keychain_find_generic_password_args(&service)
+                };
                 let output = std::process::Command::new("security")
-                    .args(keychain_find_generic_password_args(&service))
+                    .args(args)
                     .output()
                     .map_err(|e| {
                         Exception::throw_message(
@@ -2222,23 +2248,42 @@ fn inject_keychain<'js>(
                 if !output.status.success() {
                     let stderr = String::from_utf8_lossy(&output.stderr);
                     let first_line = stderr.lines().next().unwrap_or("").trim();
-                    log::warn!(
-                        "[plugin:{}] keychain read miss: service={}, error={}",
-                        pid_read,
-                        service,
-                        first_line
-                    );
+                    if let Some(ref redacted) = redacted_account {
+                        log::warn!(
+                            "[plugin:{}] keychain read miss: service={}, account={}, error={}",
+                            pid_read,
+                            service,
+                            redacted,
+                            first_line
+                        );
+                    } else {
+                        log::warn!(
+                            "[plugin:{}] keychain read miss: service={}, error={}",
+                            pid_read,
+                            service,
+                            first_line
+                        );
+                    }
                     return Err(Exception::throw_message(
                         &ctx_inner,
                         &format!("keychain item not found: {}", first_line),
                     ));
                 }
 
-                log::info!(
-                    "[plugin:{}] keychain read hit: service={}",
-                    pid_read,
-                    service
-                );
+                if let Some(ref redacted) = redacted_account {
+                    log::info!(
+                        "[plugin:{}] keychain read hit: service={}, account={}",
+                        pid_read,
+                        service,
+                        redacted
+                    );
+                } else {
+                    log::info!(
+                        "[plugin:{}] keychain read hit: service={}",
+                        pid_read,
+                        service
+                    );
+                }
                 Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
             },
         )?,
