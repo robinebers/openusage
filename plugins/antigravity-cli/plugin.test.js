@@ -5,6 +5,7 @@ const LOAD_CODE_ASSIST_URL = "https://daily-cloudcode-pa.googleapis.com/v1intern
 const FETCH_MODELS_URL = "https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels"
 const RETRIEVE_QUOTA_URL = "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota"
 const LOGIN_MESSAGE = "Not logged in. Run `agy` and complete Google sign-in first."
+const REQUEST_FAILED_MESSAGE = "Antigravity CLI quota request failed. Check your connection and try again."
 
 const loadPlugin = async () => {
   await import("./plugin.js")
@@ -186,6 +187,28 @@ describe("antigravity-cli plugin", () => {
 
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow(LOGIN_MESSAGE)
+  })
+
+  it("throws a clear request failure on transport errors", async () => {
+    const ctx = makeCtx()
+    setKeychain(ctx, "token")
+    ctx.host.http.request.mockImplementation(() => {
+      throw new Error("network down")
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow(REQUEST_FAILED_MESSAGE)
+  })
+
+  it("throws a clear request failure for malformed HTTP responses", async () => {
+    const ctx = makeCtx()
+    setKeychain(ctx, "token")
+    mockResponses(ctx, {
+      [LOAD_CODE_ASSIST_URL]: () => ({ bodyText: "{}" }),
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow(REQUEST_FAILED_MESSAGE)
   })
 
   it("does not read legacy Gemini OAuth files", async () => {

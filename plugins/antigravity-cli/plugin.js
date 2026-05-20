@@ -4,6 +4,7 @@
   const KEYCHAIN_SERVICE = "gemini"
   const KEYCHAIN_ACCOUNT = "antigravity"
   const LOGIN_MESSAGE = "Not logged in. Run `agy` and complete Google sign-in first."
+  const REQUEST_FAILED_MESSAGE = "Antigravity CLI quota request failed. Check your connection and try again."
 
   const LOAD_CODE_ASSIST_URL = "https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist"
   const FETCH_MODELS_URL = "https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels"
@@ -117,18 +118,26 @@
     var request = ctx.host.http && typeof ctx.host.http.request === "function"
       ? ctx.host.http.request
       : ctx.util.request
-    var resp = request({
-      method: "POST",
-      url: url,
-      headers: {
-        Authorization: "Bearer " + token,
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        "User-Agent": "agy",
-      },
-      bodyText: JSON.stringify(body || {}),
-      timeoutMs: 15000,
-    })
+    var resp
+    try {
+      resp = request({
+        method: "POST",
+        url: url,
+        headers: {
+          Authorization: "Bearer " + token,
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "User-Agent": "agy",
+        },
+        bodyText: JSON.stringify(body || {}),
+        timeoutMs: 15000,
+      })
+    } catch (e) {
+      throw REQUEST_FAILED_MESSAGE
+    }
+    if (!resp || typeof resp.status !== "number" || !Number.isFinite(resp.status)) {
+      throw REQUEST_FAILED_MESSAGE
+    }
     if (ctx.util.isAuthStatus(resp.status)) {
       throw LOGIN_MESSAGE
     }
