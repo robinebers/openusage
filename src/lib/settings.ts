@@ -137,41 +137,8 @@ export function normalizePluginSettings(
   for (const id of knownIds) {
     if (!seen.has(id)) {
       seen.add(id);
-      newlyAdded.push(id);
-    }
-  }
-
-  for (const id of newlyAdded) {
-    const sortedIdx = knownIds.indexOf(id);
-    let inserted = false;
-
-    // Try to find the closest alphabetical predecessor that is already in `order`
-    for (let i = sortedIdx - 1; i >= 0; i--) {
-      const prevId = knownIds[i];
-      const idxInOrder = order.indexOf(prevId);
-      if (idxInOrder !== -1) {
-        order.splice(idxInOrder + 1, 0, id);
-        inserted = true;
-        break;
-      }
-    }
-
-    // If not inserted, try to find the closest successor
-    if (!inserted) {
-      for (let i = sortedIdx + 1; i < knownIds.length; i++) {
-        const nextId = knownIds[i];
-        const idxInOrder = order.indexOf(nextId);
-        if (idxInOrder !== -1) {
-          order.splice(idxInOrder, 0, id);
-          inserted = true;
-          break;
-        }
-      }
-    }
-
-    // Fallback: append to the end
-    if (!inserted) {
       order.push(id);
+      newlyAdded.push(id);
     }
   }
 
