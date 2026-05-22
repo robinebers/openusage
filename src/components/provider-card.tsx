@@ -125,9 +125,11 @@ export function ProviderCard({
   const filteredSkeletonLines = scopeFilter === "all"
     ? skeletonLines
     : skeletonLines.filter(line => line.scope === "overview")
+  // Badge lines are status indicators (e.g. "No usage data", "Rate limited") and must
+  // always be shown regardless of scope so the overview card is never silently blank.
   const filteredLines = scopeFilter === "all"
     ? lines
-    : lines.filter(line => overviewLabels.has(line.label))
+    : lines.filter(line => line.type === "badge" || overviewLabels.has(line.label))
 
   const hasResetCountdown = filteredLines.some(
     (line) => line.type === "progress" && Boolean(line.resetsAt)

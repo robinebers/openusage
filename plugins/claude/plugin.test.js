@@ -828,7 +828,11 @@ describe("claude plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Usage request failed")
   })
 
-  it("shows status badge when no usage data and ccusage is unavailable", async () => {
+  it("shows 'Connected — no quota data' when API returns no recognized fields", async () => {
+    // The usage API connected successfully but returned no fields that the plugin
+    // understands (e.g. Enterprise plans or future plan types).  The badge must
+    // say "Connected — no quota data" to distinguish "reachable but unrecognized"
+    // from "never connected / inference-only token".
     const ctx = makeCtx()
     ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
     ctx.host.fs.exists = () => true
@@ -843,7 +847,26 @@ describe("claude plugin", () => {
     expect(result.lines.find((l) => l.label === "Last 30 Days")).toBeUndefined()
     const statusLine = result.lines.find((l) => l.label === "Status")
     expect(statusLine).toBeTruthy()
+    expect(statusLine.text).toBe("Connected — no quota data")
+  })
+
+  it("shows 'No usage data' for inference-only token with no local ccusage", async () => {
+    // Inference-only tokens (CLAUDE_CODE_OAUTH_TOKEN env var) skip the live usage API
+    // entirely.  When there is also no local ccusage data the badge should say
+    // "No usage data" — not "Connected — no quota data" — because no API call was made.
+    const ctx = makeCtx()
+    ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "stored-token" } })
+    ctx.host.fs.exists = () => true
+    ctx.host.env.get.mockImplementation((name) =>
+      name === "CLAUDE_CODE_OAUTH_TOKEN" ? "env-inference-token" : null
+    )
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const statusLine = result.lines.find((l) => l.label === "Status")
+    expect(statusLine).toBeTruthy()
     expect(statusLine.text).toBe("No usage data")
+    // The live usage API must not be called for inference-only tokens
+    expect(ctx.host.http.request).not.toHaveBeenCalled()
   })
 
   it("passes resetsAt through as ISO when present", async () => {

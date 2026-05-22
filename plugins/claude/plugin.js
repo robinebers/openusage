@@ -860,7 +860,13 @@
         : "Live usage rate limited — data may be stale"
       lines.push(ctx.line.text({ label: "Note", value: noteText }))
     } else if (lines.length === 0) {
-      lines.push(ctx.line.badge({ label: "Status", text: "No usage data", color: "#a3a3a3" }))
+      if (canFetchLiveUsage && data !== null) {
+        // Successfully connected to the usage API but the response contained no
+        // recognized quota fields (e.g. Enterprise plans or unsupported plan types).
+        lines.push(ctx.line.badge({ label: "Status", text: "Connected — no quota data", color: "#a3a3a3" }))
+      } else {
+        lines.push(ctx.line.badge({ label: "Status", text: "No usage data", color: "#a3a3a3" }))
+      }
     }
 
     return { plan: plan, lines: lines }

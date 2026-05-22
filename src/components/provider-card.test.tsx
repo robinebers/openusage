@@ -868,6 +868,29 @@ describe("ProviderCard", () => {
     expect(document.querySelector('[data-slot="progress-refreshing"]')).toBeNull()
   })
 
+  it("always shows badge lines in overview scope even when label is not in skeleton", () => {
+    // Regression test: status badges ("No usage data", "Rate limited") were previously
+    // filtered out in overview mode because their label ("Status") wasn't listed as an
+    // overview-scoped line in plugin.json, causing a silently blank card.
+    render(
+      <ProviderCard
+        name="Claude"
+        displayMode="used"
+        scopeFilter="overview"
+        lastUpdatedAt={Date.now() - 60_000}
+        skeletonLines={[
+          { type: "progress", label: "Session", scope: "overview" },
+          { type: "progress", label: "Weekly", scope: "overview" },
+        ]}
+        lines={[
+          { type: "badge", label: "Status", text: "No usage data" },
+        ]}
+      />
+    )
+    expect(screen.getByText("Status")).toBeInTheDocument()
+    expect(screen.getByText("No usage data")).toBeInTheDocument()
+  })
+
   it("shows inline warning with stale data on refresh error", () => {
     render(
       <ProviderCard
