@@ -850,6 +850,24 @@ describe("claude plugin", () => {
     expect(statusLine.text).toBe("Connected — no quota data")
   })
 
+  it("shows 'Enterprise — org-level billing' badge when API returns 403", async () => {
+    // Enterprise accounts have organisation-level billing.  The personal usage API
+    // returns 403 for these accounts, which previously caused probe() to throw and
+    // left the provider card in a blank/error state on first load.  The fix treats
+    // 403 as "no personal quota data" so a helpful badge is shown instead.
+    const ctx = makeCtx()
+    ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
+    ctx.host.fs.exists = () => true
+    ctx.host.http.request.mockReturnValue({ status: 403, bodyText: "", headers: {} })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const statusLine = result.lines.find((l) => l.label === "Status")
+    expect(statusLine).toBeTruthy()
+    expect(statusLine.text).toBe("Enterprise — org-level billing")
+    // plan detection is independent of the API response
+    expect(result.lines.find((l) => l.label === "Today")).toBeUndefined()
+  })
+
   it("shows 'No usage data' for inference-only token with no local ccusage", async () => {
     // Inference-only tokens (CLAUDE_CODE_OAUTH_TOKEN env var) skip the live usage API
     // entirely.  When there is also no local ccusage data the badge should say
@@ -1079,7 +1097,11 @@ describe("claude plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Session expired")
   })
 
-  it("throws token expired when usage remains unauthorized after refresh", async () => {
+  it("shows org-billing badge when usage returns 403 after token refresh", async () => {
+    // First call returns 401 → refresh → second call returns 403.
+    // 403 from the usage endpoint means the account type has no personal quota access
+    // (e.g. Enterprise org-level billing), even after a successful token refresh.
+    // Showing "Enterprise — org-level billing" is more accurate than "Token expired".
     const ctx = makeCtx()
     ctx.host.fs.exists = () => true
     ctx.host.fs.readText = () =>
@@ -1102,7 +1124,10 @@ describe("claude plugin", () => {
     })
 
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Token expired")
+    const result = plugin.probe(ctx)
+    const statusLine = result.lines.find((l) => l.label === "Status")
+    expect(statusLine).toBeTruthy()
+    expect(statusLine.text).toBe("Enterprise — org-level billing")
   })
 
   it("throws token expired when refresh is unauthorized", async () => {
