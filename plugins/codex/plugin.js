@@ -284,6 +284,17 @@
     return Number.isFinite(n) ? n : null
   }
 
+  function readCreditsRemaining(resp, data) {
+    const credits = data && data.credits && typeof data.credits === "object" ? data.credits : null
+    if (credits) {
+      const bodyBalance = readNumber(credits.balance)
+      if (bodyBalance !== null) return bodyBalance
+      if (credits.has_credits === false) return 0
+    }
+
+    return readNumber(resp.headers["x-codex-credits-balance"])
+  }
+
   function formatCodexPlan(ctx, planType) {
     const rawPlan = typeof planType === "string" ? planType.trim() : ""
     if (!rawPlan) return null
@@ -601,10 +612,7 @@
         }
       }
 
-      const creditsBalance = resp.headers["x-codex-credits-balance"]
-      const creditsHeader = readNumber(creditsBalance)
-      const creditsData = data.credits ? readNumber(data.credits.balance) : null
-      const creditsRemaining = creditsHeader ?? creditsData
+      const creditsRemaining = readCreditsRemaining(resp, data)
       if (creditsRemaining !== null) {
         const remaining = creditsRemaining
         const limit = 1000

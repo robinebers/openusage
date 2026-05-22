@@ -62,7 +62,7 @@ describe("ui components", () => {
     expect(marker).toBeTruthy()
     expect(marker?.style.left).toBe("100%")
     expect(marker?.style.transform).toBe("translateX(-100%)")
-    expect(marker).toHaveClass("bg-muted-foreground", "opacity-50")
+    expect(marker).toHaveClass("bg-muted-foreground", "w-1", "ring-background/50")
 
     rerender(<Progress value={25} markerValue={-10} />)
     marker = container.querySelector<HTMLElement>('[data-slot="progress-marker"]')

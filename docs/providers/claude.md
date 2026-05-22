@@ -63,7 +63,19 @@ All windows are enforced simultaneously — hitting any limit throttles the user
 
 ### Token Location
 
-**Primary:** `~/.claude/.credentials.json`
+On macOS, OpenUsage reads Claude Code credentials from Keychain first. The default service name is:
+
+```text
+Claude Code-credentials
+```
+
+When `CLAUDE_CONFIG_DIR` is set, Claude Code may use a config-specific service name instead. OpenUsage checks this hashed name before the default service:
+
+```text
+Claude Code-credentials-<sha256(CLAUDE_CONFIG_DIR).slice(0, 8)>
+```
+
+Keychain values use the same JSON structure as the legacy credentials file:
 
 ```jsonc
 {
@@ -78,7 +90,7 @@ All windows are enforced simultaneously — hitting any limit throttles the user
 }
 ```
 
-**Fallback:** macOS Keychain, service name `Claude Code-credentials` (same JSON structure).
+**Fallback:** `~/.claude/.credentials.json`. This file can be left behind by older Claude Code versions, so it is treated as a fallback when Keychain does not contain usable credentials.
 
 ### Token Refresh
 
@@ -94,7 +106,7 @@ Content-Type: application/json
   "grant_type": "refresh_token",
   "refresh_token": "<refresh_token>",
   "client_id": "9d1c250a-e61b-44d9-88ed-5944d1962f5e",
-  "scope": "user:profile user:inference user:sessions:claude_code user:mcp_servers"
+  "scope": "user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload"
 }
 ```
 

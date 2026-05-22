@@ -266,9 +266,8 @@
     return null
   }
 
-  function loadStoredCredentials(ctx, suppressMissingWarn) {
+  function loadFileCredentials(ctx) {
     const credFile = getClaudeCredentialsPath(ctx)
-    // Try file first
     if (ctx.host.fs.exists(credFile)) {
       try {
         const text = ctx.host.fs.readText(credFile)
@@ -286,7 +285,11 @@
       }
     }
 
-    // Try keychain fallback — iterate hashed-then-legacy service names.
+    return null
+  }
+
+  function loadKeychainCredentials(ctx) {
+    // Iterate hashed-then-legacy service names.
     for (const service of getClaudeKeychainServiceCandidates(ctx)) {
       const keychainResult = readKeychainCredentialText(ctx, service)
       if (keychainResult && keychainResult.value) {
@@ -302,6 +305,18 @@
         // Continue: a stale legacy entry shouldn't shadow a valid hashed one.
       }
     }
+
+    return null
+  }
+
+  function loadStoredCredentials(ctx, suppressMissingWarn) {
+    // Recent Claude Code versions keep the current macOS session in Keychain and
+    // can leave a stale credentials file behind, so Keychain must win when valid.
+    const keychainCredentials = loadKeychainCredentials(ctx)
+    if (keychainCredentials) return keychainCredentials
+
+    const fileCredentials = loadFileCredentials(ctx)
+    if (fileCredentials) return fileCredentials
 
     if (!suppressMissingWarn) {
       ctx.host.log.warn("no credentials found")

@@ -292,10 +292,16 @@
     return (hasCost || hasValidMeter) ? costSum : null
   }
 
-  function detectPlanLabel(customerInfo) {
-    if (!customerInfo || typeof customerInfo !== "object") return null
-    if (customerInfo.is_max === true || customerInfo.subscription_tier === "max") return "Max"
-    if (customerInfo.is_pro === true) return "Pro"
+  function detectPlanLabel(customerInfo, user) {
+    if (customerInfo && typeof customerInfo === "object") {
+      if (customerInfo.is_max === true || customerInfo.subscription_tier === "max") return "Max"
+      if (customerInfo.is_pro === true) return "Pro"
+    }
+    if (user && typeof user === "object") {
+      const tier = user.subscription_tier
+      if (tier === "max") return "Max"
+      if (tier === "pro") return "Pro"
+    }
     return null
   }
 
@@ -360,21 +366,27 @@
     const authToken = session && session.authToken
     if (!authToken) return null
     const restHeaders = makeRestHeaderOverrides(session)
+    const user =
+      fetchJsonOptional(ctx, LOCAL_USER_ENDPOINT, authToken, restHeaders) ||
+      fetchJsonOptional(ctx, LOCAL_USER_ENDPOINT + "/", authToken, restHeaders)
     const groups =
       fetchJsonOptional(ctx, REST_GROUPS_ENDPOINT, authToken, restHeaders) ||
       fetchJsonOptional(ctx, REST_GROUPS_ENDPOINT + "/", authToken, restHeaders)
     const groupId = pickGroupId(groups)
-    if (!groupId) return null
-    const base = REST_API_BASE + "/groups/" + encodeURIComponent(groupId)
-    const group =
-      fetchJsonOptional(ctx, base, authToken, restHeaders) ||
-      fetchJsonOptional(ctx, base + "/", authToken, restHeaders)
-    const usageUrl = base + "/usage-analytics"
-    const usageAnalytics =
-      fetchJsonOptional(ctx, usageUrl, authToken, restHeaders) ||
-      fetchJsonOptional(ctx, usageUrl + "/", authToken, restHeaders)
+    let group = null
+    let usageAnalytics = null
+    if (groupId) {
+      const base = REST_API_BASE + "/groups/" + encodeURIComponent(groupId)
+      group =
+        fetchJsonOptional(ctx, base, authToken, restHeaders) ||
+        fetchJsonOptional(ctx, base + "/", authToken, restHeaders)
+      const usageUrl = base + "/usage-analytics"
+      usageAnalytics =
+        fetchJsonOptional(ctx, usageUrl, authToken, restHeaders) ||
+        fetchJsonOptional(ctx, usageUrl + "/", authToken, restHeaders)
+    }
     const rateLimits = fetchJsonOptional(ctx, RATE_LIMIT_ENDPOINT, authToken, restHeaders)
-    return { groupId: groupId, group: group, usageAnalytics: usageAnalytics, rateLimits: rateLimits }
+    return { user: user, groupId: groupId, group: group, usageAnalytics: usageAnalytics, rateLimits: rateLimits }
   }
 
   function probe(ctx) {
@@ -383,13 +395,13 @@
     if (session.sourcePath) ctx.host.log.info("using cache db: " + session.sourcePath)
 
     const restState = fetchRestState(ctx, session)
-    if (!restState || !restState.group) throw "Unable to connect. Try again later."
+    if (!restState || (!restState.group && !restState.user && !restState.rateLimits)) throw "Unable to connect. Try again later."
 
     const customerInfo = restState.group && restState.group.customerInfo
-    const plan = detectPlanLabel(customerInfo)
+    const plan = detectPlanLabel(customerInfo, restState.user)
 
     const dollarLines = []
-    const balanceUsd = readBalanceUsd(restState.group)
+    const balanceUsd = restState.group ? readBalanceUsd(restState.group) : null
     if (balanceUsd !== null && balanceUsd > 0) {
       const usedUsd = sumUsageCostUsd(restState.usageAnalytics)
       if (usedUsd !== null) {

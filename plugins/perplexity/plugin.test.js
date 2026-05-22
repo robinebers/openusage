@@ -648,6 +648,54 @@ describe("perplexity plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Rate limits unavailable")
   })
 
+  it("uses user slash fallback and shows rate limits when groups are empty", async () => {
+    const ctx = makeCtx()
+    const token = makeJwtLikeToken()
+    mockCacheSession(ctx, { requestHex: makeRequestHexWithBearer(token) })
+
+    ctx.host.http.request.mockImplementation((req) => {
+      if (req.url === "https://www.perplexity.ai/api/user") {
+        return { status: 404, headers: {}, bodyText: "{}" }
+      }
+      if (req.url === "https://www.perplexity.ai/api/user/") {
+        return {
+          status: 200,
+          headers: {},
+          bodyText: JSON.stringify({ subscription_tier: "pro" }),
+        }
+      }
+      if (req.url === "https://www.perplexity.ai/rest/pplx-api/v2/groups") {
+        return { status: 200, headers: {}, bodyText: JSON.stringify([]) }
+      }
+      if (req.url === "https://www.perplexity.ai/rest/rate-limit/all") {
+        return {
+          status: 200,
+          headers: {},
+          bodyText: JSON.stringify({ remaining_pro: 198, remaining_research: 20 }),
+        }
+      }
+      return { status: 404, headers: {}, bodyText: "{}" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Pro")
+    expect(result.lines.length).toBe(2)
+    expect(result.lines[0].label).toBe("Queries")
+    expect(result.lines[0].value).toBe("198 remaining")
+    expect(result.lines[1].label).toBe("Deep Research")
+    expect(result.lines[1].value).toBe("20 remaining")
+
+    const urls = ctx.host.http.request.mock.calls.map((call) => String(call[0]?.url))
+    expect(urls).toContain("https://www.perplexity.ai/api/user")
+    expect(urls).toContain("https://www.perplexity.ai/api/user/")
+    expect(urls).toContain("https://www.perplexity.ai/rest/pplx-api/v2/groups")
+    expect(urls).toContain("https://www.perplexity.ai/rest/rate-limit/all")
+    expect(urls.some((url) => url.startsWith("https://www.perplexity.ai/rest/pplx-api/v2/groups/"))).toBe(false)
+    expect(urls.some((url) => url.includes("/usage-analytics"))).toBe(false)
+  })
+
   it("shows rate-limit text lines for Pro subscriber with zero balance", async () => {
     const ctx = makeCtx()
     const token = makeJwtLikeToken()

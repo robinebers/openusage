@@ -53,7 +53,7 @@ const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
           <div
             data-slot="progress-marker"
             aria-hidden="true"
-            className="absolute top-0 bottom-0 w-[2px] z-10 pointer-events-none bg-muted-foreground opacity-50"
+            className="absolute top-0 bottom-0 w-1 z-10 pointer-events-none rounded-sm bg-muted-foreground ring-1 ring-background/50"
             style={markerStyle}
           />
         )}
