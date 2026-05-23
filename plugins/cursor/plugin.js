@@ -275,7 +275,7 @@
     }
   }
 
-  function fetchStripeBalance(ctx, accessToken) {
+  function fetchStripe(ctx, accessToken) {
     var session = buildSessionToken(ctx, accessToken)
     if (!session) {
       ctx.host.log.warn("stripe: cannot build session token")
@@ -291,38 +291,27 @@
         timeoutMs: 10000,
       })
       if (resp.status < 200 || resp.status >= 300) {
-        ctx.host.log.warn("stripe balance returned status=" + resp.status)
+        ctx.host.log.warn("stripe request returned status=" + resp.status)
         return null
       }
-      var stripe = ctx.util.tryParseJson(resp.bodyText)
-      if (!stripe) return null
-      var customerBalanceCents = Number(stripe.customerBalance)
-      if (!Number.isFinite(customerBalanceCents)) return null
-      // Stripe stores customer credits as a negative balance.
-      return customerBalanceCents < 0 ? Math.abs(customerBalanceCents) : 0
+      return ctx.util.tryParseJson(resp.bodyText)
     } catch (e) {
-      ctx.host.log.warn("stripe balance fetch failed: " + String(e))
+      ctx.host.log.warn("stripe request failed: " + String(e))
       return null
     }
   }
 
+  function fetchStripeBalance(ctx, accessToken) {
+    var stripe = fetchStripe(ctx, accessToken)
+    if (!stripe) return null
+    var customerBalanceCents = Number(stripe.customerBalance)
+    if (!Number.isFinite(customerBalanceCents)) return null
+    // Stripe stores customer credits as a negative balance.
+    return customerBalanceCents < 0 ? Math.abs(customerBalanceCents) : 0
+  }
+
   function fetchStripeInfo(ctx, accessToken) {
-    var session = buildSessionToken(ctx, accessToken)
-    if (!session) return null
-    try {
-      var resp = ctx.util.request({
-        method: "GET",
-        url: STRIPE_URL,
-        headers: {
-          Cookie: "WorkosCursorSessionToken=" + session.sessionToken,
-        },
-        timeoutMs: 10000,
-      })
-      if (resp.status < 200 || resp.status >= 300) return null
-      return ctx.util.tryParseJson(resp.bodyText)
-    } catch (e) {
-      return null
-    }
+    return fetchStripe(ctx, accessToken)
   }
 
   function buildRequestBasedResult(ctx, accessToken, planName, unavailableMessage) {
@@ -428,7 +417,6 @@
     }
 
     let usageResp
-    let connectApiFailed = false
     let didRefresh = false
     try {
       usageResp = ctx.util.retryOnceOnAuth({
@@ -449,64 +437,11 @@
         },
       })
     } catch (e) {
-      ctx.host.log.warn("Connect API failed, entering REST fallback: " + String(e))
-      connectApiFailed = true
-    }
-
-    if (connectApiFailed) {
-      const stripeInfo = fetchStripeInfo(ctx, accessToken)
-      const requestUsage = fetchRequestBasedUsage(ctx, accessToken)
-      
-      const lines = []
-      let plan = "Free"
-      
-      if (stripeInfo) {
-        const membership = stripeInfo.membershipType || stripeInfo.individualMembershipType || "free"
-        plan = ctx.fmt.planLabel(membership) || "Free"
-        
-        if (stripeInfo.verifiedStudent) {
-          lines.push(ctx.line.text({ label: "Student Plan", value: "Verified" }))
-        }
-      }
-      
-      if (requestUsage) {
-        const gpt4 = requestUsage["gpt-4"]
-        if (gpt4) {
-          const used = gpt4.numRequests || 0
-          const limit = gpt4.maxRequestUsage
-          
-          if (typeof limit === "number" && limit > 0) {
-            var billingPeriodMs = 30 * 24 * 60 * 60 * 1000
-            var cycleStart = requestUsage.startOfMonth
-              ? ctx.util.parseDateMs(requestUsage.startOfMonth)
-              : null
-            var cycleEndMs = cycleStart ? cycleStart + billingPeriodMs : null
-            
-            lines.push(ctx.line.progress({
-              label: "Requests",
-              used: used,
-              limit: limit,
-              format: { kind: "count", suffix: "requests" },
-              resetsAt: ctx.util.toIso(cycleEndMs),
-              periodDurationMs: billingPeriodMs,
-            }))
-          } else {
-            lines.push(ctx.line.text({
-              label: "Requests used",
-              value: String(used)
-            }))
-          }
-        }
-      }
-      
-      if (lines.length === 0) {
-        lines.push(ctx.line.text({
-          label: "Usage",
-          value: "Free tier active"
-        }))
-      }
-      
-      return { plan: plan, lines: lines }
+      if (typeof e === "string") throw e
+      // Non-string (transport/network) errors surface as "Usage request failed"
+      const suffix = didRefresh ? " after refresh" : ""
+      ctx.host.log.warn("usage request failed" + suffix + ": " + String(e))
+      throw "Usage request failed" + suffix + ". Check your connection."
     }
 
     if (ctx.util.isAuthStatus(usageResp.status)) {
