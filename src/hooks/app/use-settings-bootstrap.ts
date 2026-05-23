@@ -15,6 +15,7 @@ import {
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
   DEFAULT_START_ON_LOGIN,
   DEFAULT_THEME_MODE,
+  DEFAULT_TIME_FORMAT_MODE,
   getEnabledPluginIds,
   loadAutoUpdateInterval,
   loadDisplayMode,
@@ -25,6 +26,7 @@ import {
   loadResetTimerDisplayMode,
   loadStartOnLogin,
   loadThemeMode,
+  loadTimeFormatMode,
   normalizePluginSettings,
   savePluginSettings,
   type AutoUpdateIntervalMinutes,
@@ -34,6 +36,7 @@ import {
   type PluginSettings,
   type ResetTimerDisplayMode,
   type ThemeMode,
+  type TimeFormatMode,
 } from "@/lib/settings"
 
 type UseSettingsBootstrapArgs = {
@@ -43,6 +46,7 @@ type UseSettingsBootstrapArgs = {
   setThemeMode: (value: ThemeMode) => void
   setDisplayMode: (value: DisplayMode) => void
   setResetTimerDisplayMode: (value: ResetTimerDisplayMode) => void
+  setTimeFormatMode: (value: TimeFormatMode) => void
   setGlobalShortcut: (value: GlobalShortcut) => void
   setStartOnLogin: (value: boolean) => void
   setMenubarIconStyle: (value: MenubarIconStyle) => void
@@ -58,6 +62,7 @@ export function useSettingsBootstrap({
   setThemeMode,
   setDisplayMode,
   setResetTimerDisplayMode,
+  setTimeFormatMode,
   setGlobalShortcut,
   setStartOnLogin,
   setMenubarIconStyle,
@@ -121,6 +126,13 @@ export function useSettingsBootstrap({
           console.error("Failed to load reset timer display mode:", error)
         }
 
+        let storedTimeFormatMode = DEFAULT_TIME_FORMAT_MODE
+        try {
+          storedTimeFormatMode = await loadTimeFormatMode()
+        } catch (error) {
+          console.error("Failed to load time format mode:", error)
+        }
+
         let storedGlobalShortcut = DEFAULT_GLOBAL_SHORTCUT
         try {
           storedGlobalShortcut = await loadGlobalShortcut()
@@ -159,6 +171,7 @@ export function useSettingsBootstrap({
           setThemeMode(storedThemeMode)
           setDisplayMode(storedDisplayMode)
           setResetTimerDisplayMode(storedResetTimerDisplayMode)
+          setTimeFormatMode(storedTimeFormatMode)
           setGlobalShortcut(storedGlobalShortcut)
           setStartOnLogin(storedStartOnLogin)
           setMenubarIconStyle(storedMenubarIconStyle)
@@ -198,6 +211,7 @@ export function useSettingsBootstrap({
     setResetTimerDisplayMode,
     setStartOnLogin,
     setThemeMode,
+    setTimeFormatMode,
     startBatch,
   ])
 

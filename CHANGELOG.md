@@ -1,5 +1,48 @@
 # Changelog
 
+## v0.6.24
+
+### New Features
+- feat: add Grok usage plugin ([#484](https://github.com/robinebers/openusage/pull/484)) by @robinebers
+- feat: add 12h/24h/auto time format setting ([#427](https://github.com/robinebers/openusage/pull/427)) by @HDash
+
+### Bug Fixes
+- fix(ui): improve pace marker visibility on usage bars ([#485](https://github.com/robinebers/openusage/pull/485)) by @robinebers
+- fix(claude): prefer keychain credentials ([#483](https://github.com/robinebers/openusage/pull/483)) by @robinebers
+- fix(ccusage): add release-age fallback for costs ([#482](https://github.com/robinebers/openusage/pull/482)) by @robinebers
+- fix(codex): trust zero-credit usage response ([#481](https://github.com/robinebers/openusage/pull/481)) by @robinebers
+- fix(ccusage): resolve nvm node bin path from alias/default ([#463](https://github.com/robinebers/openusage/pull/463)) by @devKagan
+- fix(perplexity): handle missing group in API response ([#462](https://github.com/robinebers/openusage/pull/462)) by @malhobayyeb
+
+### Chores
+- chore(grok): move pay-as-you-go badge to detail scope by @robinebers
+- chore(deps): bump tauri from 2.11.0 to 2.11.1 in /src-tauri by @dependabot
+- chore(deps): bump tauri-plugin-store from 2.4.2 to 2.4.3 in /src-tauri by @dependabot
+- chore(deps): bump libc from 0.2.184 to 0.2.186 in /src-tauri by @dependabot
+- chore(deps): bump sha2 from 0.10.9 to 0.11.0 in /src-tauri by @dependabot
+- chore: enforce package release age by @robinebers
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.6.23...v0.6.24](https://github.com/robinebers/openusage/compare/v0.6.23...v0.6.24)
+
+- [6fc6cd0](https://github.com/robinebers/openusage/commit/6fc6cd0d323d9863399f27a8018b87b2b8983ee0) chore(grok): move pay-as-you-go badge to detail scope by @robinebers
+- [38786d0](https://github.com/robinebers/openusage/commit/38786d021b16247e41960b83fd054302b2db93ea) fix(ccusage): add release-age fallback for costs by @robinebers
+- [7c83829](https://github.com/robinebers/openusage/commit/7c83829a6319f9b1b86d76bca388401e5ebca9ff) fix(codex): trust zero-credit usage response by @robinebers
+- [eb7eaf7](https://github.com/robinebers/openusage/commit/eb7eaf7e5136437e79da7cf36c974afa94ea2a07) fix(claude): prefer keychain credentials by @robinebers
+- [2a5605d](https://github.com/robinebers/openusage/commit/2a5605dd41ec6bc2bc545d7d5cab4ec6ddddb0c5) feat: add Grok usage plugin by @robinebers
+- [8d2d51c](https://github.com/robinebers/openusage/commit/8d2d51c799cc27bee580f7be527d49ff2ff62f43) fix(ui): improve pace marker visibility on usage bars by @robinebers
+- [41c2d79](https://github.com/robinebers/openusage/commit/41c2d79ea2fff927d44ca32309c1c6205d990176) fix(ccusage): resolve nvm node bin path from alias/default by @devKagan
+- [f847b24](https://github.com/robinebers/openusage/commit/f847b247472c338be88ead07b37bd98743e22bae) fix(perplexity): handle missing group in API response by @malhobayyeb
+- [88de6bd](https://github.com/robinebers/openusage/commit/88de6bd10ede77f81990bd9c1018d07ccc255225) feat: add 12h/24h/auto time format setting by @HDash
+- [1ce87c1](https://github.com/robinebers/openusage/commit/1ce87c15c82f253da567fb816d070f3d24f255f9) chore(deps): bump tauri from 2.11.0 to 2.11.1 in /src-tauri by @dependabot
+- [59a18e2](https://github.com/robinebers/openusage/commit/59a18e2c2b945a7b4cd5af4a55d546c7d4cf6485) chore(deps): bump sha2 from 0.10.9 to 0.11.0 in /src-tauri by @dependabot
+- [83bc08e](https://github.com/robinebers/openusage/commit/83bc08e9a130eb0db5d20cc25df6eb298d541413) chore(deps): bump tauri-plugin-store from 2.4.2 to 2.4.3 in /src-tauri by @dependabot
+- [047092e](https://github.com/robinebers/openusage/commit/047092edd56b09794d1be81d4080cf6aa4d718db) chore(deps): bump libc from 0.2.184 to 0.2.186 in /src-tauri by @dependabot
+- [de22ad6](https://github.com/robinebers/openusage/commit/de22ad6540d4b23aae0d1f5dac723ed52d44c801) chore: enforce package release age by @robinebers
+
 ## v0.6.23
 
 ### Bug Fixes

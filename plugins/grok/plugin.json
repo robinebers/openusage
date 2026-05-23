@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "grok",
+  "name": "Grok",
+  "version": "0.0.1",
+  "entry": "plugin.js",
+  "icon": "icon.svg",
+  "brandColor": "#000000",
+  "links": [
+    { "label": "Usage", "url": "https://grok.com/?_s=usage" }
+  ],
+  "lines": [
+    { "type": "progress", "label": "Credits used", "scope": "overview", "primaryOrder": 1 },
+    { "type": "badge", "label": "Pay as you go", "scope": "detail" }
+  ]
+}

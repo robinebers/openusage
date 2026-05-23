@@ -115,6 +115,53 @@ describe("claude plugin", () => {
     expect(ctx.host.keychain.readGenericPassword).toHaveBeenCalledWith("Claude Code-credentials")
   })
 
+  it("prefers keychain over a stale credentials file (regression for #444)", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = vi.fn(() =>
+      JSON.stringify({
+        claudeAiOauth: {
+          accessToken: "stale-file-token",
+          refreshToken: "stale-file-refresh",
+          expiresAt: Date.now() - 1000,
+          subscriptionType: "pro",
+        },
+      })
+    )
+    ctx.host.keychain.readGenericPasswordForCurrentUser.mockReturnValue(
+      JSON.stringify({
+        claudeAiOauth: {
+          accessToken: "keychain-token",
+          refreshToken: "keychain-refresh",
+          expiresAt: Date.now() + 60 * 60 * 1000,
+          subscriptionType: "pro",
+        },
+      })
+    )
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("/v1/oauth/token")) {
+        throw new Error("stale file refresh should not be attempted")
+      }
+      return {
+        status: 200,
+        bodyText: JSON.stringify({
+          five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+        }),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+    expect(ctx.host.fs.readText).not.toHaveBeenCalled()
+    expect(ctx.host.http.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer keychain-token" }),
+      })
+    )
+  })
+
   it("falls back to keychain when credentials file is corrupt", async () => {
     const ctx = makeCtx()
     ctx.host.fs.exists = () => true
