@@ -306,6 +306,25 @@
     }
   }
 
+  function fetchStripeInfo(ctx, accessToken) {
+    var session = buildSessionToken(ctx, accessToken)
+    if (!session) return null
+    try {
+      var resp = ctx.util.request({
+        method: "GET",
+        url: STRIPE_URL,
+        headers: {
+          Cookie: "WorkosCursorSessionToken=" + session.sessionToken,
+        },
+        timeoutMs: 10000,
+      })
+      if (resp.status < 200 || resp.status >= 300) return null
+      return ctx.util.tryParseJson(resp.bodyText)
+    } catch (e) {
+      return null
+    }
+  }
+
   function buildRequestBasedResult(ctx, accessToken, planName, unavailableMessage) {
     var requestUsage = fetchRequestBasedUsage(ctx, accessToken)
     var lines = []
@@ -409,6 +428,7 @@
     }
 
     let usageResp
+    let connectApiFailed = false
     let didRefresh = false
     try {
       usageResp = ctx.util.retryOnceOnAuth({
@@ -416,11 +436,8 @@
           try {
             return connectPost(ctx, USAGE_URL, token || accessToken)
           } catch (e) {
-            ctx.host.log.error("usage request exception: " + String(e))
-            if (didRefresh) {
-              throw "Usage request failed after refresh. Try again."
-            }
-            throw "Usage request failed. Check your connection."
+            ctx.host.log.warn("connectPost failed: " + String(e))
+            throw e
           }
         },
         refresh: () => {
@@ -432,9 +449,64 @@
         },
       })
     } catch (e) {
-      if (typeof e === "string") throw e
-      ctx.host.log.error("usage request failed: " + String(e))
-      throw "Usage request failed. Check your connection."
+      ctx.host.log.warn("Connect API failed, entering REST fallback: " + String(e))
+      connectApiFailed = true
+    }
+
+    if (connectApiFailed) {
+      const stripeInfo = fetchStripeInfo(ctx, accessToken)
+      const requestUsage = fetchRequestBasedUsage(ctx, accessToken)
+      
+      const lines = []
+      let plan = "Free"
+      
+      if (stripeInfo) {
+        const membership = stripeInfo.membershipType || stripeInfo.individualMembershipType || "free"
+        plan = ctx.fmt.planLabel(membership) || "Free"
+        
+        if (stripeInfo.verifiedStudent) {
+          lines.push(ctx.line.text({ label: "Student Plan", value: "Verified" }))
+        }
+      }
+      
+      if (requestUsage) {
+        const gpt4 = requestUsage["gpt-4"]
+        if (gpt4) {
+          const used = gpt4.numRequests || 0
+          const limit = gpt4.maxRequestUsage
+          
+          if (typeof limit === "number" && limit > 0) {
+            var billingPeriodMs = 30 * 24 * 60 * 60 * 1000
+            var cycleStart = requestUsage.startOfMonth
+              ? ctx.util.parseDateMs(requestUsage.startOfMonth)
+              : null
+            var cycleEndMs = cycleStart ? cycleStart + billingPeriodMs : null
+            
+            lines.push(ctx.line.progress({
+              label: "Requests",
+              used: used,
+              limit: limit,
+              format: { kind: "count", suffix: "requests" },
+              resetsAt: ctx.util.toIso(cycleEndMs),
+              periodDurationMs: billingPeriodMs,
+            }))
+          } else {
+            lines.push(ctx.line.text({
+              label: "Requests used",
+              value: String(used)
+            }))
+          }
+        }
+      }
+      
+      if (lines.length === 0) {
+        lines.push(ctx.line.text({
+          label: "Usage",
+          value: "Free tier active"
+        }))
+      }
+      
+      return { plan: plan, lines: lines }
     }
 
     if (ctx.util.isAuthStatus(usageResp.status)) {
@@ -595,7 +667,7 @@
     const isTeamAccount = (
       normalizedPlanName === "team" ||
       (su && su.limitType === "team") ||
-      (su && typeof su.pooledLimit === "number")
+      (su && typeof su.pooledLimit === "number" && su.pooledLimit > 0)
     )
 
     if (isTeamAccount) {
