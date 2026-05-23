@@ -8,7 +8,7 @@ mod tray;
 #[cfg(target_os = "macos")]
 mod webkit_config;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -25,6 +25,11 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 const GLOBAL_SHORTCUT_STORE_KEY: &str = "globalShortcut";
 const DAILY_ACTIVE_TRACKED_DAY_KEY: &str = "analytics.daily_active_day";
 const DAILY_ACTIVE_EVENT_NAME: &str = "app_started";
+const MAX_CONCURRENT_PROBES: usize = 4;
+
+fn probe_worker_count(plugin_count: usize) -> usize {
+    plugin_count.min(MAX_CONCURRENT_PROBES)
+}
 
 fn today_utc_ymd() -> String {
     let date = time::OffsetDateTime::now_utc().date();
@@ -282,8 +287,23 @@ async fn start_probe_batch(
         });
     }
 
-    let remaining = Arc::new(AtomicUsize::new(selected_plugins.len()));
-    for plugin in selected_plugins {
+    let selected_count = selected_plugins.len();
+    let worker_count = probe_worker_count(selected_count);
+    if worker_count < selected_count {
+        log::info!(
+            "probe batch {} using {} workers for {} plugins",
+            batch_id,
+            worker_count,
+            selected_count
+        );
+    }
+
+    let remaining = Arc::new(AtomicUsize::new(selected_count));
+    let probe_queue = Arc::new(Mutex::new(
+        selected_plugins.into_iter().collect::<VecDeque<_>>(),
+    ));
+
+    for _ in 0..worker_count {
         let handle = app_handle.clone();
         let completion_handle = app_handle.clone();
         let bid = batch_id.clone();
@@ -291,49 +311,63 @@ async fn start_probe_batch(
         let data_dir = app_data_dir.clone();
         let version = app_version.clone();
         let counter = Arc::clone(&remaining);
+        let queue = Arc::clone(&probe_queue);
 
         tauri::async_runtime::spawn_blocking(move || {
-            let plugin_id = plugin.manifest.id.clone();
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                plugin_engine::runtime::run_probe(&plugin, &data_dir, &version)
-            }));
+            loop {
+                let plugin = {
+                    let mut queue = queue
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    queue.pop_front()
+                };
 
-            match result {
-                Ok(output) => {
-                    let has_error = output.lines.iter().any(|line| {
-                        matches!(line, plugin_engine::runtime::MetricLine::Badge { label, .. } if label == "Error")
-                    });
-                    if has_error {
-                        log::warn!("probe {} completed with error", plugin_id);
-                    } else {
-                        log::info!(
-                            "probe {} completed ok ({} lines)",
-                            plugin_id,
-                            output.lines.len()
+                let Some(plugin) = plugin else {
+                    break;
+                };
+
+                let plugin_id = plugin.manifest.id.clone();
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    plugin_engine::runtime::run_probe(&plugin, &data_dir, &version)
+                }));
+
+                match result {
+                    Ok(output) => {
+                        let has_error = output.lines.iter().any(|line| {
+                            matches!(line, plugin_engine::runtime::MetricLine::Badge { label, .. } if label == "Error")
+                        });
+                        if has_error {
+                            log::warn!("probe {} completed with error", plugin_id);
+                        } else {
+                            log::info!(
+                                "probe {} completed ok ({} lines)",
+                                plugin_id,
+                                output.lines.len()
+                            );
+                            local_http_api::cache_successful_output(&output);
+                        }
+                        let _ = handle.emit(
+                            "probe:result",
+                            ProbeResult {
+                                batch_id: bid.clone(),
+                                output,
+                            },
                         );
-                        local_http_api::cache_successful_output(&output);
                     }
-                    let _ = handle.emit(
-                        "probe:result",
-                        ProbeResult {
-                            batch_id: bid,
-                            output,
+                    Err(_) => {
+                        log::error!("probe {} panicked", plugin_id);
+                    }
+                }
+
+                if counter.fetch_sub(1, Ordering::SeqCst) == 1 {
+                    log::info!("probe batch {} complete", completion_bid);
+                    let _ = completion_handle.emit(
+                        "probe:batch-complete",
+                        ProbeBatchComplete {
+                            batch_id: completion_bid.clone(),
                         },
                     );
                 }
-                Err(_) => {
-                    log::error!("probe {} panicked", plugin_id);
-                }
-            }
-
-            if counter.fetch_sub(1, Ordering::SeqCst) == 1 {
-                log::info!("probe batch {} complete", completion_bid);
-                let _ = completion_handle.emit(
-                    "probe:batch-complete",
-                    ProbeBatchComplete {
-                        batch_id: completion_bid,
-                    },
-                );
             }
         });
     }
@@ -596,7 +630,8 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        DAILY_ACTIVE_TRACKED_DAY_KEY, seconds_until_next_utc_day, should_track_daily_active,
+        DAILY_ACTIVE_TRACKED_DAY_KEY, MAX_CONCURRENT_PROBES, probe_worker_count,
+        seconds_until_next_utc_day, should_track_daily_active,
     };
     use time::{Date, Month, PrimitiveDateTime, Time};
 
@@ -631,5 +666,19 @@ mod tests {
         .assume_utc();
 
         assert_eq!(seconds_until_next_utc_day(now), 10);
+    }
+
+    #[test]
+    fn probe_worker_count_is_bounded() {
+        assert_eq!(probe_worker_count(0), 0);
+        assert_eq!(probe_worker_count(1), 1);
+        assert_eq!(
+            probe_worker_count(MAX_CONCURRENT_PROBES),
+            MAX_CONCURRENT_PROBES
+        );
+        assert_eq!(
+            probe_worker_count(MAX_CONCURRENT_PROBES + 1),
+            MAX_CONCURRENT_PROBES
+        );
     }
 }
