@@ -5,6 +5,7 @@
   const KEYCHAIN_ACCOUNT = "antigravity"
   const LOGIN_MESSAGE = "Not logged in. Run `agy` and complete Google sign-in first."
   const REQUEST_FAILED_MESSAGE = "Antigravity CLI quota request failed. Check your connection and try again."
+  const INVALID_RESPONSE_MESSAGE = "Antigravity CLI quota response was invalid. Try again later."
 
   const LOAD_CODE_ASSIST_URL = "https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist"
   const FETCH_MODELS_URL = "https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels"
@@ -41,13 +42,7 @@
     } catch (e) {
       ctx.host.log.info("antigravity-cli account keychain read failed: " + String(e))
     }
-
-    try {
-      return ctx.host.keychain.readGenericPassword(KEYCHAIN_SERVICE)
-    } catch (e) {
-      ctx.host.log.info("antigravity-cli service keychain read failed: " + String(e))
-      return null
-    }
+    return null
   }
 
   function unwrapKeychainText(ctx, raw) {
@@ -96,6 +91,7 @@
     if (parsed) {
       var token = extractTokenFromObject(parsed)
       if (token) return token
+      return null
     }
 
     if (text.indexOf("Bearer ") === 0) return text.slice("Bearer ".length).trim() || null
@@ -145,7 +141,10 @@
       throw "Antigravity CLI quota request failed (HTTP " + String(resp.status) + "). Try again later."
     }
     var data = ctx.util.tryParseJson(resp.bodyText)
-    return data && typeof data === "object" ? data : null
+    if (!data || typeof data !== "object") {
+      throw INVALID_RESPONSE_MESSAGE
+    }
+    return data
   }
 
   function readFirstStringDeep(value, keys) {

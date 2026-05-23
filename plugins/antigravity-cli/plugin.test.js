@@ -6,6 +6,7 @@ const FETCH_MODELS_URL = "https://daily-cloudcode-pa.googleapis.com/v1internal:f
 const RETRIEVE_QUOTA_URL = "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota"
 const LOGIN_MESSAGE = "Not logged in. Run `agy` and complete Google sign-in first."
 const REQUEST_FAILED_MESSAGE = "Antigravity CLI quota request failed. Check your connection and try again."
+const INVALID_RESPONSE_MESSAGE = "Antigravity CLI quota response was invalid. Try again later."
 
 const loadPlugin = async () => {
   await import("./plugin.js")
@@ -129,6 +130,30 @@ describe("antigravity-cli plugin", () => {
     expect(ctx.host.http.request).not.toHaveBeenCalled()
   })
 
+  it("does not fall back to service-wide Gemini keychain credentials", async () => {
+    const ctx = makeCtx()
+    ctx.host.keychain.readGenericPassword.mockImplementation((service, account) => {
+      if (service === "gemini" && account === "antigravity") return null
+      if (service === "gemini" && account === undefined) return "wrong-gemini-token"
+      return null
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow(LOGIN_MESSAGE)
+    expect(ctx.host.keychain.readGenericPassword).toHaveBeenCalledTimes(1)
+    expect(ctx.host.keychain.readGenericPassword).toHaveBeenCalledWith("gemini", "antigravity")
+    expect(ctx.host.http.request).not.toHaveBeenCalled()
+  })
+
+  it("rejects JSON keychain payloads without an access token", async () => {
+    const ctx = makeCtx()
+    setKeychain(ctx, JSON.stringify({ refresh_token: "refresh-only" }))
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow(LOGIN_MESSAGE)
+    expect(ctx.host.http.request).not.toHaveBeenCalled()
+  })
+
   it("falls back to retrieveUserQuota nested buckets when fetchAvailableModels lacks quota", async () => {
     const ctx = makeCtx()
     setKeychain(ctx, "token")
@@ -209,6 +234,17 @@ describe("antigravity-cli plugin", () => {
 
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow(REQUEST_FAILED_MESSAGE)
+  })
+
+  it("throws a clear invalid response error for non-JSON response bodies", async () => {
+    const ctx = makeCtx()
+    setKeychain(ctx, "token")
+    mockResponses(ctx, {
+      [LOAD_CODE_ASSIST_URL]: () => ({ status: 200, bodyText: "<html>login</html>" }),
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow(INVALID_RESPONSE_MESSAGE)
   })
 
   it("does not read legacy Gemini OAuth files", async () => {

@@ -15,7 +15,7 @@ OpenUsage uses the CLI keychain login. It does not start a browser OAuth flow.
 ## Data Sources
 
 - Non-secret CLI context: `~/.gemini/antigravity-cli/`
-- Auth: macOS keychain service `gemini`, account `antigravity`
+- Auth: the Antigravity CLI OS keyring login. On macOS, current CLI builds store this under keychain service `gemini`, account `antigravity`.
 - Quota APIs:
   - `POST https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist`
   - `POST https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels`
@@ -33,4 +33,4 @@ When multiple buckets map to the same line, OpenUsage shows the lowest remaining
 
 ## Notes
 
-The CLI and IDE appear to share Google platform/model quota. OpenUsage tracks Antigravity CLI separately because the CLI uses different state and auth paths.
+Official Antigravity docs describe a shared agent harness and shared settings between the CLI and Antigravity 2.0. OpenUsage tracks Antigravity CLI separately because the CLI uses different state and auth paths.
