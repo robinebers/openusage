@@ -4092,10 +4092,26 @@ esac
     fn ccusage_timeout_kills_descendant_and_closes_pipes() {
         use std::io::Write;
         use std::os::unix::fs::PermissionsExt;
+        use std::path::Path;
         use std::time::{Duration, Instant};
 
         fn pid_exists(pid: i32) -> bool {
             unsafe { libc::kill(pid, 0) == 0 }
+        }
+
+        fn read_pid_file(path: &Path, deadline: Instant) -> i32 {
+            loop {
+                if let Ok(pid_text) = std::fs::read_to_string(path) {
+                    let pid_text = pid_text.trim();
+                    if !pid_text.is_empty() {
+                        return pid_text.parse().expect("parse descendant pid");
+                    }
+                }
+                if Instant::now() >= deadline {
+                    panic!("descendant pid file was not created at {}", path.display());
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
         }
 
         let test_id = format!(
@@ -4136,7 +4152,7 @@ wait
             CcusageProvider::Codex,
             "codex",
             CcusageCommandFlavor::Current,
-            Duration::from_millis(100),
+            Duration::from_secs(1),
         );
 
         assert_eq!(result, CcusageRunnerResult::TimedOut);
@@ -4145,11 +4161,7 @@ wait
             "timeout cleanup should not hang on inherited stdout/stderr pipes"
         );
 
-        let descendant_pid: i32 = std::fs::read_to_string(&pid_path)
-            .expect("read descendant pid")
-            .trim()
-            .parse()
-            .expect("parse descendant pid");
+        let descendant_pid = read_pid_file(&pid_path, Instant::now() + Duration::from_secs(1));
 
         let deadline = Instant::now() + Duration::from_secs(2);
         while pid_exists(descendant_pid) && Instant::now() < deadline {
