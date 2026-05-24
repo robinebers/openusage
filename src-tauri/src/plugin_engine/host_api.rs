@@ -31,6 +31,7 @@ const WHITELISTED_ENV_VARS: [&str; 16] = [
     "SYNTHETIC_API_KEY",
     "PI_CODING_AGENT_DIR",
 ];
+const MIN_BLOCKING_TIMEOUT: Duration = Duration::from_millis(1);
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ProbeDeadline {
@@ -55,20 +56,27 @@ impl ProbeDeadline {
             .unwrap_or(false)
     }
 
-    fn clamp_duration(self, requested: Duration) -> Duration {
+    fn clamp_duration(self, requested: Duration) -> Option<Duration> {
         let Some(expires_at) = self.expires_at else {
-            return requested;
+            return Some(requested);
         };
         let remaining = expires_at
             .checked_duration_since(Instant::now())
-            .unwrap_or_default();
-        let clamped = requested.min(remaining);
-        if clamped.is_zero() {
-            Duration::from_millis(1)
-        } else {
-            clamped
-        }
+            .filter(|remaining| *remaining >= MIN_BLOCKING_TIMEOUT)?;
+        Some(requested.min(remaining))
     }
+}
+
+fn log_probe_deadline_skip(plugin_id: &str, operation: &str) {
+    log::warn!(
+        "[plugin:{}] {} skipped: probe timed out",
+        plugin_id,
+        operation
+    );
+}
+
+fn probe_timeout_error<'js>(ctx: &Ctx<'js>) -> rquickjs::Error {
+    Exception::throw_message(ctx, "probe timed out")
 }
 
 fn last_non_empty_trimmed_line(text: &str) -> Option<String> {
@@ -824,7 +832,10 @@ fn inject_http<'js>(
                 }
 
                 let timeout_ms = req.timeout_ms.unwrap_or(10_000);
-                let timeout = deadline.clamp_duration(Duration::from_millis(timeout_ms));
+                let Some(timeout) = deadline.clamp_duration(Duration::from_millis(timeout_ms))
+                else {
+                    return Err(probe_timeout_error(&ctx_inner));
+                };
                 let mut builder = reqwest::blocking::Client::builder()
                     .timeout(timeout)
                     .connect_timeout(timeout)
@@ -2070,6 +2081,12 @@ fn run_ccusage_with_runner_deadline(
         return CcusageRunnerResult::TimedOut;
     }
 
+    let Some(current_timeout) = deadline.clamp_duration(Duration::from_secs(CCUSAGE_TIMEOUT_SECS))
+    else {
+        log_probe_deadline_skip(plugin_id, "ccusage");
+        return CcusageRunnerResult::TimedOut;
+    };
+
     let current = run_ccusage_with_runner_timeout(
         kind,
         program,
@@ -2077,19 +2094,27 @@ fn run_ccusage_with_runner_deadline(
         provider,
         plugin_id,
         CcusageCommandFlavor::Current,
-        deadline.clamp_duration(Duration::from_secs(CCUSAGE_TIMEOUT_SECS)),
+        current_timeout,
     );
     match current {
         CcusageRunnerResult::Failed if deadline.has_elapsed() => CcusageRunnerResult::TimedOut,
-        CcusageRunnerResult::Failed => run_ccusage_with_runner_timeout(
-            kind,
-            program,
-            opts,
-            provider,
-            plugin_id,
-            CcusageCommandFlavor::Legacy,
-            deadline.clamp_duration(Duration::from_secs(CCUSAGE_TIMEOUT_SECS)),
-        ),
+        CcusageRunnerResult::Failed => {
+            let Some(legacy_timeout) =
+                deadline.clamp_duration(Duration::from_secs(CCUSAGE_TIMEOUT_SECS))
+            else {
+                log_probe_deadline_skip(plugin_id, "ccusage legacy fallback");
+                return CcusageRunnerResult::TimedOut;
+            };
+            run_ccusage_with_runner_timeout(
+                kind,
+                program,
+                opts,
+                provider,
+                plugin_id,
+                CcusageCommandFlavor::Legacy,
+                legacy_timeout,
+            )
+        }
         other => other,
     }
 }
@@ -4187,7 +4212,9 @@ esac
     #[test]
     fn probe_deadline_clamps_host_timeout_to_remaining_budget() {
         let deadline = ProbeDeadline::at(Instant::now() + Duration::from_millis(25));
-        let clamped = deadline.clamp_duration(Duration::from_secs(10));
+        let clamped = deadline
+            .clamp_duration(Duration::from_secs(10))
+            .expect("remaining budget should produce a host timeout");
 
         assert!(
             clamped <= Duration::from_millis(25),
@@ -4197,6 +4224,13 @@ esac
             clamped >= Duration::from_millis(1),
             "host timeout should stay non-zero for blocking clients"
         );
+    }
+
+    #[test]
+    fn probe_deadline_does_not_extend_elapsed_budget() {
+        let deadline = ProbeDeadline::at(Instant::now());
+
+        assert_eq!(deadline.clamp_duration(Duration::from_secs(10)), None);
     }
 
     #[cfg(unix)]
