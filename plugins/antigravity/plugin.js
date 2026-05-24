@@ -1,6 +1,7 @@
 (function () {
   var LS_SERVICE = "exa.language_server_pb.LanguageServerService"
-  var STATE_DB = "~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb"
+  var STATE_DB_V1 = "~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb"
+  var STATE_DB_V2 = "~/Library/Application Support/Antigravity IDE/User/globalStorage/state.vscdb"
   var CLOUD_CODE_URLS = [
     "https://daily-cloudcode-pa.googleapis.com",
     "https://cloudcode-pa.googleapis.com",
@@ -93,29 +94,36 @@
   }
 
   function loadOAuthTokens(ctx) {
-    try {
-      var rows = ctx.host.sqlite.query(
-        STATE_DB,
-        "SELECT value FROM ItemTable WHERE key = '" + OAUTH_TOKEN_KEY + "' LIMIT 1"
-      )
-      var parsed = ctx.util.tryParseJson(rows)
-      if (!parsed || !parsed.length || !parsed[0].value) return null
-      var inner = unwrapOAuthSentinel(ctx, parsed[0].value)
-      if (!inner) return null
-      var fields = readFields(inner)
-      var accessToken = (fields[1] && fields[1].type === 2) ? fields[1].data : null
-      var refreshToken = (fields[3] && fields[3].type === 2) ? fields[3].data : null
-      var expirySeconds = null
-      if (fields[4] && fields[4].type === 2) {
-        var ts = readFields(fields[4].data)
-        if (ts[1] && ts[1].type === 0) expirySeconds = ts[1].value
+    var dbPaths = [STATE_DB_V2, STATE_DB_V1]
+    for (var i = 0; i < dbPaths.length; i++) {
+      var dbPath = dbPaths[i]
+      try {
+        if (!ctx.host.fs.exists(dbPath)) {
+          continue
+        }
+        var rows = ctx.host.sqlite.query(
+          dbPath,
+          "SELECT value FROM ItemTable WHERE key = '" + OAUTH_TOKEN_KEY + "' LIMIT 1"
+        )
+        var parsed = ctx.util.tryParseJson(rows)
+        if (!parsed || !parsed.length || !parsed[0].value) continue
+        var inner = unwrapOAuthSentinel(ctx, parsed[0].value)
+        if (!inner) continue
+        var fields = readFields(inner)
+        var accessToken = (fields[1] && fields[1].type === 2) ? fields[1].data : null
+        var refreshToken = (fields[3] && fields[3].type === 2) ? fields[3].data : null
+        var expirySeconds = null
+        if (fields[4] && fields[4].type === 2) {
+          var ts = readFields(fields[4].data)
+          if (ts[1] && ts[1].type === 0) expirySeconds = ts[1].value
+        }
+        if (!accessToken && !refreshToken) continue
+        return { accessToken: accessToken, refreshToken: refreshToken, expirySeconds: expirySeconds }
+      } catch (e) {
+        ctx.host.log.warn("failed to read unified oauth token from " + dbPath + ": " + String(e))
       }
-      if (!accessToken && !refreshToken) return null
-      return { accessToken: accessToken, refreshToken: refreshToken, expirySeconds: expirySeconds }
-    } catch (e) {
-      ctx.host.log.warn("failed to read unified oauth token: " + String(e))
-      return null
     }
+    return null
   }
 
   // --- Google OAuth token refresh ---
