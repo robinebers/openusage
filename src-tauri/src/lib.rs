@@ -590,7 +590,12 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|_, _| {});
+        .run(|_, event| match event {
+            tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit => {
+                local_http_api::flush_cache();
+            }
+            _ => {}
+        });
 }
 
 #[cfg(test)]

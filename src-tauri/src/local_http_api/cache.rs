@@ -62,6 +62,11 @@ pub(super) fn cache_state() -> &'static Mutex<CacheState> {
     })
 }
 
+fn cache_write_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
 // ---------------------------------------------------------------------------
 // Cache persistence
 // ---------------------------------------------------------------------------
@@ -122,11 +127,9 @@ fn debounced_cache_flush_worker() {
     loop {
         std::thread::sleep(CACHE_WRITE_DEBOUNCE);
 
-        let Some((app_data_dir, snapshots)) = pending_cache_write() else {
+        if !flush_pending_cache_once() {
             return;
         };
-
-        save_cache(&app_data_dir, &snapshots);
     }
 }
 
@@ -139,6 +142,18 @@ fn pending_cache_write() -> Option<(PathBuf, HashMap<String, CachedPluginSnapsho
 
     state.flushed_generation = state.dirty_generation;
     Some((state.app_data_dir.clone(), state.snapshots.clone()))
+}
+
+fn flush_pending_cache_once() -> bool {
+    let _write_guard = cache_write_lock()
+        .lock()
+        .expect("cache write lock poisoned");
+    let Some((app_data_dir, snapshots)) = pending_cache_write() else {
+        return false;
+    };
+
+    save_cache(&app_data_dir, &snapshots);
+    true
 }
 
 // ---------------------------------------------------------------------------
@@ -173,6 +188,10 @@ pub fn cache_successful_output(output: &PluginOutput) {
     state.snapshots.insert(output.provider_id.clone(), snapshot);
     state.dirty_generation = state.dirty_generation.wrapping_add(1);
     schedule_cache_flush_locked(&mut state);
+}
+
+pub fn flush_cache() {
+    let _ = flush_pending_cache_once();
 }
 
 // ---------------------------------------------------------------------------
@@ -307,6 +326,22 @@ mod tests {
         }
     }
 
+    fn wait_for_cache_writer_idle() {
+        let deadline = Instant::now() + Duration::from_secs(1);
+        loop {
+            let state = cache_state().lock().unwrap();
+            if !state.flush_scheduled && state.dirty_generation == state.flushed_generation {
+                return;
+            }
+            drop(state);
+            assert!(
+                Instant::now() < deadline,
+                "debounced cache writer did not return to idle"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
     #[test]
     fn snapshot_serializes_with_fetched_at() {
         let snap = make_snapshot("claude", "Claude");
@@ -378,19 +413,31 @@ mod tests {
         assert_eq!(loaded["claude"].display_name, "Claude");
         assert_eq!(loaded["codex"].display_name, "Codex");
 
-        let deadline = Instant::now() + Duration::from_secs(1);
-        loop {
-            let state = cache_state().lock().unwrap();
-            if !state.flush_scheduled && state.dirty_generation == state.flushed_generation {
-                break;
-            }
-            drop(state);
-            assert!(
-                Instant::now() < deadline,
-                "debounced cache writer did not return to idle"
-            );
-            std::thread::sleep(Duration::from_millis(5));
-        }
+        wait_for_cache_writer_idle();
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    #[serial]
+    fn flush_cache_persists_pending_write_synchronously() {
+        let dir = temp_dir("flush-cache");
+        std::fs::create_dir_all(&dir).unwrap();
+
+        init(&dir, vec!["claude".to_string()]);
+        cache_successful_output(&make_output("claude", "Claude"));
+        assert!(
+            !dir.join(CACHE_FILE_NAME).exists(),
+            "cache write should be pending before explicit flush"
+        );
+
+        flush_cache();
+
+        let loaded = load_cache(&dir);
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded["claude"].display_name, "Claude");
+
+        wait_for_cache_writer_idle();
 
         let _ = std::fs::remove_dir_all(&dir);
     }
