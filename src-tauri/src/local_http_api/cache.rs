@@ -93,25 +93,22 @@ pub fn load_cache(app_data_dir: &Path) -> HashMap<String, CachedPluginSnapshot> 
     }
 }
 
-fn save_cache(app_data_dir: &Path, snapshots: &HashMap<String, CachedPluginSnapshot>) {
+fn save_cache(
+    app_data_dir: &Path,
+    snapshots: &HashMap<String, CachedPluginSnapshot>,
+) -> Result<(), String> {
     let file = UsageApiCacheFile {
         version: 1,
         snapshots: snapshots.clone(),
     };
     let path = app_data_dir.join(CACHE_FILE_NAME);
     let tmp_path = app_data_dir.join(".usage-api-cache.json.tmp");
-    match serde_json::to_string(&file) {
-        Ok(json) => {
-            if let Err(e) = std::fs::write(&tmp_path, &json) {
-                log::warn!("failed to write temp cache file: {}", e);
-                return;
-            }
-            if let Err(e) = std::fs::rename(&tmp_path, &path) {
-                log::warn!("failed to rename cache file: {}", e);
-            }
-        }
-        Err(e) => log::warn!("failed to serialize usage cache: {}", e),
-    }
+    let json = serde_json::to_string(&file)
+        .map_err(|e| format!("failed to serialize usage cache: {}", e))?;
+    std::fs::write(&tmp_path, &json)
+        .map_err(|e| format!("failed to write temp cache file: {}", e))?;
+    std::fs::rename(&tmp_path, &path).map_err(|e| format!("failed to rename cache file: {}", e))?;
+    Ok(())
 }
 
 fn schedule_cache_flush_locked(state: &mut CacheState) {
@@ -133,26 +130,37 @@ fn debounced_cache_flush_worker() {
     }
 }
 
-fn pending_cache_write() -> Option<(PathBuf, HashMap<String, CachedPluginSnapshot>)> {
+fn pending_cache_write() -> Option<(u64, PathBuf, HashMap<String, CachedPluginSnapshot>)> {
     let mut state = cache_state().lock().expect("cache state poisoned");
     if state.dirty_generation == state.flushed_generation {
         state.flush_scheduled = false;
         return None;
     }
 
-    state.flushed_generation = state.dirty_generation;
-    Some((state.app_data_dir.clone(), state.snapshots.clone()))
+    Some((
+        state.dirty_generation,
+        state.app_data_dir.clone(),
+        state.snapshots.clone(),
+    ))
+}
+
+fn mark_cache_flushed(generation: u64) {
+    let mut state = cache_state().lock().expect("cache state poisoned");
+    state.flushed_generation = generation;
 }
 
 fn flush_pending_cache_once() -> bool {
     let _write_guard = cache_write_lock()
         .lock()
         .expect("cache write lock poisoned");
-    let Some((app_data_dir, snapshots)) = pending_cache_write() else {
+    let Some((generation, app_data_dir, snapshots)) = pending_cache_write() else {
         return false;
     };
 
-    save_cache(&app_data_dir, &snapshots);
+    match save_cache(&app_data_dir, &snapshots) {
+        Ok(()) => mark_cache_flushed(generation),
+        Err(e) => log::warn!("{}", e),
+    }
     true
 }
 
@@ -359,7 +367,7 @@ mod tests {
         let mut snapshots = HashMap::new();
         snapshots.insert("claude".to_string(), make_snapshot("claude", "Claude"));
 
-        save_cache(&dir, &snapshots);
+        save_cache(&dir, &snapshots).unwrap();
         let loaded = load_cache(&dir);
 
         assert_eq!(loaded.len(), 1);
@@ -438,6 +446,48 @@ mod tests {
         assert_eq!(loaded["claude"].display_name, "Claude");
 
         wait_for_cache_writer_idle();
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    #[serial]
+    fn failed_cache_write_stays_pending_for_retry() {
+        let dir = temp_dir("cache-write-retry");
+
+        init(&dir, vec!["claude".to_string()]);
+        {
+            let mut state = cache_state().lock().unwrap();
+            state
+                .snapshots
+                .insert("claude".to_string(), make_snapshot("claude", "Claude"));
+            state.dirty_generation = 1;
+            state.flushed_generation = 0;
+            state.flush_scheduled = true;
+        }
+
+        assert!(flush_pending_cache_once());
+        {
+            let state = cache_state().lock().unwrap();
+            assert_eq!(state.dirty_generation, 1);
+            assert_eq!(state.flushed_generation, 0);
+            assert!(state.flush_scheduled);
+        }
+
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(flush_pending_cache_once());
+
+        let loaded = load_cache(&dir);
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded["claude"].display_name, "Claude");
+
+        assert!(!flush_pending_cache_once());
+        {
+            let state = cache_state().lock().unwrap();
+            assert_eq!(state.dirty_generation, 1);
+            assert_eq!(state.flushed_generation, 1);
+            assert!(!state.flush_scheduled);
+        }
 
         let _ = std::fs::remove_dir_all(&dir);
     }
