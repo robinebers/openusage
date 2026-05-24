@@ -197,7 +197,7 @@
   function discoverLs(ctx) {
     return ctx.host.ls.discover({
       processName: "language_server_macos",
-      markers: ["antigravity"],
+      markers: ["antigravity", "antigravity-ide"],
       csrfFlag: "--csrf_token",
       portFlag: "--extension_server_port",
     })
