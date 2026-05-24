@@ -1153,18 +1153,13 @@ describe("minimax plugin", () => {
 
     expect(result.plan).toBe("Plus (CN)")
     expect(result.lines).toHaveLength(5)
-    expect(result.lines[1]).toMatchObject({
-      label: "Text to Speech HD",
-      format: { kind: "count", suffix: "chars" },
-    })
-    expect(result.lines[3]).toMatchObject({
-      label: "Text to Speech Turbo",
-      format: { kind: "count", suffix: "chars" },
-    })
-    expect(result.lines[4]).toMatchObject({
-      label: "Image Generation",
-      format: { kind: "count", suffix: "images" },
-    })
+    expect(result.lines.map((line) => line.label)).toEqual([
+      "Session",
+      "Text to Speech HD",
+      "image-01",
+      "Text to Speech Turbo",
+      "Image Generation",
+    ])
   })
 
   it("does not classify MiniMax-Music or MiniMax-Multimodal as Session", async () => {
@@ -1853,6 +1848,38 @@ describe("minimax plugin", () => {
     expect(result.lines[0].used).toBe(20)
     expect(result.lines[1].label).toBe("image-01")
     expect(result.lines[2].label).toBe("Text to Speech HD")
+  })
+
+  it("keeps coding-plan-vlm and coding-plan-search directly under Session", async () => {
+    const ctx = makeCtx()
+    setEnv(ctx, { MINIMAX_API_KEY: "mini-key" })
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        base_resp: { status_code: 0 },
+        model_remains: [
+          { model_name: "MiniMax-Music-2.6", current_interval_total_count: 1000, current_interval_usage_count: 500 },
+          { model_name: "image-01", current_interval_total_count: 100, current_interval_usage_count: 80 },
+          { model_name: "coding-plan-search", current_interval_total_count: 200, current_interval_usage_count: 150 },
+          { model_name: "MiniMax-M2.7", current_interval_total_count: 15000, current_interval_usage_count: 12000 },
+          { model_name: "speech-hd", current_interval_total_count: 11000, current_interval_usage_count: 7200 },
+          { model_name: "coding-plan-vlm", current_interval_total_count: 300, current_interval_usage_count: 240 },
+        ],
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.map((line) => line.label)).toEqual([
+      "Session",
+      "coding-plan-vlm",
+      "coding-plan-search",
+      "MiniMax-Music-2.6",
+      "image-01",
+      "Text to Speech HD",
+    ])
   })
 
   it("uses 5h token-plan window for session bucket remains_time inference", async () => {

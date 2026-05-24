@@ -482,6 +482,13 @@
     return fallbackItem
   }
 
+  function getCompanionResourceOrder(item) {
+    const name = normalizeUsageNameKey(readUsageRawName(item))
+    if (name === "coding-plan-vlm" || name === "coding_plan_vlm") return 1
+    if (name === "coding-plan-search" || name === "coding_plan_search") return 2
+    return null
+  }
+
   function orderRemainItemsForDisplay(modelRemains, endpointSelection) {
     if (!Array.isArray(modelRemains) || modelRemains.length === 0) return []
 
@@ -489,14 +496,24 @@
     const sessionItem = pickSessionRemainItem(modelRemains)
     if (sessionItem) ordered.push(sessionItem)
 
+    const companionItems = []
+    const otherItems = []
+
     for (let i = 0; i < modelRemains.length; i += 1) {
       const item = modelRemains[i]
       if (!item || typeof item !== "object") continue
       if (sessionItem && item === sessionItem) continue
-      ordered.push(item)
+
+      const companionOrder = getCompanionResourceOrder(item)
+      if (companionOrder !== null) {
+        companionItems.push({ item, order: companionOrder, index: i })
+      } else {
+        otherItems.push(item)
+      }
     }
 
-    return ordered
+    companionItems.sort((a, b) => a.order - b.order || a.index - b.index)
+    return ordered.concat(companionItems.map((entry) => entry.item), otherItems)
   }
 
   function parsePayloadShape(ctx, payload, endpointSelection) {
