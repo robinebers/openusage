@@ -34,7 +34,7 @@ export function useNowTicker({
     const handleVisibilityChange = () => {
       const visible = isDocumentVisible()
       setDocumentVisible(visible)
-      if (visible) {
+      if (visible && enabled) {
         setNow(Date.now())
       }
     }
@@ -42,7 +42,7 @@ export function useNowTicker({
     handleVisibilityChange()
     document.addEventListener("visibilitychange", handleVisibilityChange)
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange)
-  }, [pauseWhenHidden])
+  }, [enabled, pauseWhenHidden])
 
   useEffect(() => {
     if (!enabled || !documentVisible) return undefined

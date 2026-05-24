@@ -1,13 +1,20 @@
 import { renderHook, act } from "@testing-library/react"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 import { useNowTicker } from "./use-now-ticker"
 
 describe("useNowTicker", () => {
+  let originalDocumentHiddenDescriptor: PropertyDescriptor | undefined
+
+  beforeAll(() => {
+    originalDocumentHiddenDescriptor = Object.getOwnPropertyDescriptor(document, "hidden")
+  })
+
   afterEach(() => {
-    Object.defineProperty(document, "hidden", {
-      configurable: true,
-      value: false,
-    })
+    if (originalDocumentHiddenDescriptor) {
+      Object.defineProperty(document, "hidden", originalDocumentHiddenDescriptor)
+    } else {
+      Reflect.deleteProperty(document, "hidden")
+    }
     vi.useRealTimers()
   })
 
@@ -64,6 +71,29 @@ describe("useNowTicker", () => {
       document.dispatchEvent(new Event("visibilitychange"))
     })
     expect(result.current).toBe(visibleNow)
+  })
+
+  it("does not refresh when disabled and the document becomes visible", () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-02-03T00:00:00.000Z"))
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      value: true,
+    })
+
+    const { result } = renderHook(() => useNowTicker({ enabled: false, intervalMs: 1000 }))
+    expect(result.current).toBe(Date.parse("2026-02-03T00:00:00.000Z"))
+
+    vi.setSystemTime(new Date("2026-02-03T00:00:05.000Z"))
+    act(() => {
+      Object.defineProperty(document, "hidden", {
+        configurable: true,
+        value: false,
+      })
+      document.dispatchEvent(new Event("visibilitychange"))
+    })
+
+    expect(result.current).toBe(Date.parse("2026-02-03T00:00:00.000Z"))
   })
 
   it("stops an active ticker when the document becomes hidden", () => {
