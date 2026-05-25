@@ -343,6 +343,7 @@ describe("App", () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     delete (HTMLElement.prototype as unknown as Record<string, unknown>).scrollHeight
   })
 
@@ -1373,6 +1374,13 @@ describe("App", () => {
     await vi.waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
 
     // Clear the initial batch call count
+    state.probeHandlers?.onResult({
+      providerId: "a",
+      displayName: "Alpha",
+      iconUrl: "icon-a",
+      lines: [{ type: "text", label: "Now", value: "OK" }],
+    })
+    state.probeHandlers?.onBatchComplete()
     const initialCalls = state.startBatchMock.mock.calls.length
 
     // Advance time by 5 minutes to trigger the interval
@@ -1401,6 +1409,13 @@ describe("App", () => {
 
     // Wait for initial batch
     await vi.waitFor(() => expect(state.startBatchMock).toHaveBeenCalled())
+    state.probeHandlers?.onResult({
+      providerId: "a",
+      displayName: "Alpha",
+      iconUrl: "icon-a",
+      lines: [{ type: "text", label: "Now", value: "OK" }],
+    })
+    state.probeHandlers?.onBatchComplete()
 
     // Advance time to trigger the interval (which will fail)
     await vi.advanceTimersByTimeAsync(5 * 60 * 1000)
