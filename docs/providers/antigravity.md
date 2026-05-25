@@ -158,7 +158,9 @@ Interestingly, non-Google models (Claude, GPT-OSS) are proxied through Codeium/W
 
 Antigravity stores auth credentials in a VS Code-compatible state database.
 
-- **Path:** `~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb`
+- **Paths (tried in order):**
+  - `~/Library/Application Support/Antigravity IDE/User/globalStorage/state.vscdb` (v2 - renamed app)
+  - `~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb` (v1 - pre-rename, retained for backwards compatibility)
 - **Table:** `ItemTable` (`key` TEXT, `value` TEXT)
 
 ### antigravityUnifiedStateSync.oauthToken (sentinel envelope → protobuf)
