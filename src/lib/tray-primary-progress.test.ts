@@ -286,6 +286,46 @@ describe("getTrayPrimaryBars", () => {
     expect(bars).toEqual([{ id: "a", fraction: 0.2 }])
   })
 
+  it("falls back to Extra usage spent for Claude $-budget-only accounts", () => {
+    // Regression: Enterprise Claude accounts return only extra_usage (no Session,
+    // no Weekly). The candidate chain Session → Weekly → Extra usage spent must
+    // resolve to the $-budget bar so the tray title shows a percent, not --%.
+    const bars = getTrayPrimaryBars({
+      displayMode: "used",
+      pluginsMeta: [
+        {
+          id: "claude",
+          name: "Claude",
+          iconUrl: "",
+          primaryCandidates: ["Session", "Weekly", "Extra usage spent"],
+          lines: [],
+        },
+      ],
+      pluginSettings: { order: ["claude"], disabled: [] },
+      pluginStates: {
+        claude: {
+          data: {
+            providerId: "claude",
+            displayName: "Claude",
+            iconUrl: "",
+            lines: [
+              {
+                type: "progress",
+                label: "Extra usage spent",
+                used: 5,
+                limit: 100,
+                format: { kind: "dollars" },
+              },
+            ],
+          },
+          loading: false,
+          error: null,
+        },
+      },
+    })
+    expect(bars).toEqual([{ id: "claude", fraction: 0.05 }])
+  })
+
   it("skips plugins with empty primaryCandidates", () => {
     const bars = getTrayPrimaryBars({
       pluginsMeta: [

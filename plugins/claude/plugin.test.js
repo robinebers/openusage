@@ -583,6 +583,31 @@ describe("claude plugin", () => {
     expect(result.lines.find((line) => line.label === "Extra usage spent")).toBeTruthy()
   })
 
+  it("emits Extra usage spent as a progress line with finite used/limit when monthly_limit is set", async () => {
+    // Regression: tray title falls back to this line when Session/Weekly are absent
+    // (e.g. Enterprise accounts). It must be a progress line with limit > 0 for
+    // tray-primary-progress to compute a fraction.
+    const ctx = makeCtx()
+    ctx.host.fs.readText = () =>
+      JSON.stringify({ claudeAiOauth: { accessToken: "token", subscriptionType: "enterprise" } })
+    ctx.host.fs.exists = () => true
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        extra_usage: { is_enabled: true, used_credits: 500, monthly_limit: 10000 },
+      }),
+    })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const line = result.lines.find((l) => l.label === "Extra usage spent")
+    expect(line).toBeTruthy()
+    expect(line.type).toBe("progress")
+    expect(Number.isFinite(line.used)).toBe(true)
+    expect(Number.isFinite(line.limit)).toBe(true)
+    expect(line.limit).toBeGreaterThan(0)
+    expect(line.format).toEqual({ kind: "dollars" })
+  })
+
   it("renders Claude Design line from seven_day_omelette with normalized resetsAt", async () => {
     const ctx = makeCtx()
     ctx.host.fs.readText = () =>
