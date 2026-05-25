@@ -1130,6 +1130,80 @@ describe("claude plugin", () => {
     expect(statusLine.text).toBe("Enterprise — org-level billing")
   })
 
+  it("Enterprise badge persists across min-interval reuse after 403", async () => {
+    // cachedUsageOrgBillingOnly must survive the min-interval reuse path so that
+    // Enterprise accounts don't flip to "No usage data" on the second probe.
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
+    try {
+      const ctx = makeCtx()
+      ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
+      ctx.host.fs.exists = () => true
+      ctx.host.http.request.mockReturnValue({ status: 403, bodyText: "", headers: {} })
+
+      const plugin = await loadPlugin()
+
+      // First probe: API returns 403 → Enterprise badge
+      const result1 = plugin.probe(ctx)
+      expect(result1.lines.find((l) => l.label === "Status")?.text).toBe(
+        "Enterprise — org-level billing"
+      )
+      expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+
+      // Second probe within min-interval: API must NOT be called again (throttled)
+      const result2 = plugin.probe(ctx)
+      expect(ctx.host.http.request).toHaveBeenCalledTimes(1) // no new call
+      // Badge must still reflect org-billing, not fall back to "No usage data"
+      expect(result2.lines.find((l) => l.label === "Status")?.text).toBe(
+        "Enterprise — org-level billing"
+      )
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("clears Enterprise badge after successful 2xx usage response", async () => {
+    // cachedUsageOrgBillingOnly should be reset to false when the API later returns
+    // a successful response (e.g. account type changed, or credentials refreshed).
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
+    try {
+      const ctx = makeCtx()
+      ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
+      ctx.host.fs.exists = () => true
+
+      const plugin = await loadPlugin()
+
+      // First probe: 403 → Enterprise badge
+      ctx.host.http.request.mockReturnValueOnce({ status: 403, bodyText: "", headers: {} })
+      const result1 = plugin.probe(ctx)
+      expect(result1.lines.find((l) => l.label === "Status")?.text).toBe(
+        "Enterprise — org-level billing"
+      )
+
+      // Second probe past min-interval: API now returns successful quota data
+      vi.setSystemTime(new Date("2026-04-14T10:05:01.000Z"))
+      ctx.host.http.request.mockReturnValueOnce({
+        status: 200,
+        bodyText: JSON.stringify({
+          five_hour: { utilization: 30, resets_at: null },
+        }),
+        headers: {},
+      })
+      const result2 = plugin.probe(ctx)
+      // Session progress line must appear and Enterprise badge must be gone
+      expect(result2.lines.find((l) => l.label === "Session")).toBeTruthy()
+      expect(result2.lines.find((l) => l.text === "Enterprise — org-level billing")).toBeUndefined()
+
+      // Third probe within new min-interval: cached result keeps cachedUsageOrgBillingOnly = false
+      const result3 = plugin.probe(ctx)
+      expect(result3.lines.find((l) => l.label === "Session")).toBeTruthy()
+      expect(result3.lines.find((l) => l.text === "Enterprise — org-level billing")).toBeUndefined()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("throws token expired when refresh is unauthorized", async () => {
     const ctx = makeCtx()
     ctx.host.fs.exists = () => true

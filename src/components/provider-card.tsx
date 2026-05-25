@@ -122,14 +122,24 @@ export function ProviderCard({
       .filter(line => line.scope === "overview")
       .map(line => line.label)
   )
+  // All labels declared in the manifest (any scope). Used to distinguish plugin-defined
+  // detail badges from ad-hoc status badges emitted at runtime (e.g. "Status").
+  const skeletonLabels = new Set(skeletonLines.map(line => line.label))
   const filteredSkeletonLines = scopeFilter === "all"
     ? skeletonLines
     : skeletonLines.filter(line => line.scope === "overview")
-  // Badge lines are status indicators (e.g. "No usage data", "Rate limited") and must
-  // always be shown regardless of scope so the overview card is never silently blank.
+  // In overview scope show:
+  //   • lines whose label is explicitly marked overview in the manifest, AND
+  //   • badge lines that are NOT declared in the manifest at all — these are runtime
+  //     status indicators ("No usage data", "Rate limited", etc.) that must always be
+  //     surfaced so the card is never silently blank.
+  // Badges declared as detail-only in the manifest are intentionally excluded.
   const filteredLines = scopeFilter === "all"
     ? lines
-    : lines.filter(line => line.type === "badge" || overviewLabels.has(line.label))
+    : lines.filter(line =>
+        overviewLabels.has(line.label) ||
+        (line.type === "badge" && !skeletonLabels.has(line.label))
+      )
 
   const hasResetCountdown = filteredLines.some(
     (line) => line.type === "progress" && Boolean(line.resetsAt)

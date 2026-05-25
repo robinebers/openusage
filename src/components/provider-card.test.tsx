@@ -891,6 +891,33 @@ describe("ProviderCard", () => {
     expect(screen.getByText("No usage data")).toBeInTheDocument()
   })
 
+  it("does NOT show badge lines that are declared detail-only in the manifest", () => {
+    // Badges whose label appears in skeletonLines as scope=detail must be excluded from
+    // the overview compact view — only truly unmanifested badges (runtime status indicators)
+    // should pass through. This prevents detail-only badges from leaking into overview.
+    render(
+      <ProviderCard
+        name="Claude"
+        displayMode="used"
+        scopeFilter="overview"
+        lastUpdatedAt={Date.now() - 60_000}
+        skeletonLines={[
+          { type: "progress", label: "Session", scope: "overview" },
+          { type: "badge", label: "Plan", scope: "detail" },
+        ]}
+        lines={[
+          { type: "progress", label: "Session", used: 50, limit: 100, format: { kind: "percent" } },
+          { type: "badge", label: "Plan", text: "Pro" },
+        ]}
+      />
+    )
+    // Overview-scoped line is shown
+    expect(screen.getByText("Session")).toBeInTheDocument()
+    // Detail-scoped badge must be hidden in overview
+    expect(screen.queryByText("Plan")).toBeNull()
+    expect(screen.queryByText("Pro")).toBeNull()
+  })
+
   it("shows inline warning with stale data on refresh error", () => {
     render(
       <ProviderCard

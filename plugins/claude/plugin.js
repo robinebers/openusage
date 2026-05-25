@@ -13,9 +13,10 @@
   // Rate-limit state persisted across probe() calls (module scope survives re-invocations).
   const MIN_USAGE_FETCH_INTERVAL_MS = 5 * 60 * 1000  // never poll more than once per 5 min
   const DEFAULT_RATE_LIMIT_BACKOFF_MS = 5 * 60 * 1000 // fallback when no Retry-After header
-  let rateLimitedUntilMs = 0  // epoch ms; 0 = not rate-limited
-  let lastUsageFetchMs = 0    // epoch ms of the most-recent API attempt
-  let cachedUsageData = null  // last successful API response body (parsed JSON)
+  let rateLimitedUntilMs = 0        // epoch ms; 0 = not rate-limited
+  let lastUsageFetchMs = 0          // epoch ms of the most-recent API attempt
+  let cachedUsageData = null        // last successful API response body (parsed JSON)
+  let cachedUsageOrgBillingOnly = false  // true when last real API response was 403 (Enterprise)
 
   function utf8DecodeBytes(bytes) {
     // Prefer native TextDecoder when available (QuickJS may not expose it).
@@ -629,7 +630,9 @@
     let lines = []
     let rateLimited = false
     let retryAfterSeconds = null
-    let orgBillingOnly = false  // true when the API returned 403 (Enterprise org-level billing)
+    // orgBillingOnly is initialised from the module-level cache so the correct badge
+    // is shown even when the API call is skipped (min-interval or rate-limit reuse).
+    let orgBillingOnly = cachedUsageOrgBillingOnly
     if (canFetchLiveUsage) {
       if (nowMs < rateLimitedUntilMs) {
         // Still within a rate-limit window from a previous probe call — skip the
@@ -637,6 +640,7 @@
         rateLimited = true
         retryAfterSeconds = Math.ceil((rateLimitedUntilMs - nowMs) / 1000)
         data = cachedUsageData
+        orgBillingOnly = cachedUsageOrgBillingOnly
         ctx.host.log.info("usage fetch skipped: rate-limited for " + retryAfterSeconds + "s more")
       } else {
         // Rate-limit window has expired (or was never set).  Check whether we were
@@ -648,6 +652,7 @@
         if (!wasRateLimited && nowMs - lastUsageFetchMs < MIN_USAGE_FETCH_INTERVAL_MS) {
           // Polled too recently in normal operation — reuse last cached response.
           data = cachedUsageData
+          orgBillingOnly = cachedUsageOrgBillingOnly
           ctx.host.log.info(
             "usage fetch skipped: last fetch was " +
             Math.round((nowMs - lastUsageFetchMs) / 1000) + "s ago (min interval " +
@@ -700,9 +705,13 @@
           // so the card shows a helpful badge rather than the error state, which leaves
           // it blank on first load.  A 401 (truly expired token) falls through to the
           // isAuthStatus handler below.
+          // Clear cachedUsageData so stale Session/Weekly lines from a previous account
+          // cannot hide the Enterprise badge on subsequent min-interval reuse probes.
           ctx.host.log.info("usage API returned 403 — organisation-level billing; no personal quota data")
           orgBillingOnly = true
-          data = cachedUsageData  // keep previous cache if any, otherwise null
+          cachedUsageOrgBillingOnly = true
+          cachedUsageData = null
+          data = null
         } else if (ctx.util.isAuthStatus(resp.status)) {
           ctx.host.log.error("usage returned auth error after all retries: status=" + resp.status)
           throw "Token expired. Run `claude` to log in again."
@@ -728,6 +737,7 @@
             throw "Usage response invalid. Try again later."
           }
           cachedUsageData = data
+          cachedUsageOrgBillingOnly = false
           rateLimitedUntilMs = 0
         }
         } // end fetch else-branch
@@ -890,6 +900,7 @@
     rateLimitedUntilMs = 0
     lastUsageFetchMs = 0
     cachedUsageData = null
+    cachedUsageOrgBillingOnly = false
   }
 
   globalThis.__openusage_plugin = { id: "claude", probe, _resetState }
