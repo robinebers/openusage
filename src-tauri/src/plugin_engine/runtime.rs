@@ -415,7 +415,7 @@ fn parse_lines(result: &Object) -> Result<Vec<MetricLine>, String> {
                     segments: line
                         .get::<_, Option<u32>>("segments")
                         .unwrap_or(None)
-                        .filter(|&s| s >= 2),
+                        .filter(|&s| s >= 2 && s <= 20),
                 });
             }
             "badge" => {

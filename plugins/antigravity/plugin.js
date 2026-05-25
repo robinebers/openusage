@@ -106,9 +106,9 @@
           "SELECT value FROM ItemTable WHERE key = '" + OAUTH_TOKEN_KEY + "' LIMIT 1"
         )
         var parsed = ctx.util.tryParseJson(rows)
-        if (!parsed || !parsed.length || !parsed[0].value) continue
+        if (!parsed || !parsed.length || !parsed[0].value) return null
         var inner = unwrapOAuthSentinel(ctx, parsed[0].value)
-        if (!inner) continue
+        if (!inner) return null
         var fields = readFields(inner)
         var accessToken = (fields[1] && fields[1].type === 2) ? fields[1].data : null
         var refreshToken = (fields[3] && fields[3].type === 2) ? fields[3].data : null
@@ -117,7 +117,7 @@
           var ts = readFields(fields[4].data)
           if (ts[1] && ts[1].type === 0) expirySeconds = ts[1].value
         }
-        if (!accessToken && !refreshToken) continue
+        if (!accessToken && !refreshToken) return null
         return { accessToken: accessToken, refreshToken: refreshToken, expirySeconds: expirySeconds }
       } catch (e) {
         ctx.host.log.warn("failed to read unified oauth token from " + dbPath + ": " + String(e))
@@ -466,6 +466,83 @@
     return { plan: plan, lines: lines }
   }
 
+  // --- agy CLI LS probe (no CSRF, agy's own language server) ---
+
+  var AGY_LOG_DIR = "~/.gemini/antigravity-cli/log"
+
+  function discoverAgyPorts(ctx) {
+    try {
+      if (!ctx.host.fs.exists(AGY_LOG_DIR)) return null
+      var files = ctx.host.fs.listDir(AGY_LOG_DIR)
+      var logFiles = []
+      for (var i = 0; i < files.length; i++) {
+        if (/^cli-.*\.log$/.test(files[i])) logFiles.push(files[i])
+      }
+      if (logFiles.length === 0) return null
+      logFiles.sort()
+      var content = ctx.host.fs.readText(AGY_LOG_DIR + "/" + logFiles[logFiles.length - 1])
+      if (!content) return null
+      // Use last occurrence in file (handles agy restarts)
+      var httpsPort = null
+      var httpPort = null
+      var re = /listening on random port at (\d+) for (HTTPS|HTTP)/g
+      var m
+      while ((m = re.exec(content)) !== null) {
+        if (m[2] === "HTTPS") httpsPort = parseInt(m[1])
+        else httpPort = parseInt(m[1])
+      }
+      if (httpsPort || httpPort) return { httpsPort: httpsPort, httpPort: httpPort }
+    } catch (e) {
+      ctx.host.log.info("agy log port discovery failed: " + String(e))
+    }
+    return null
+  }
+
+  function probeAgyLs(ctx) {
+    var ports = discoverAgyPorts(ctx)
+    if (!ports) return null
+
+    var candidates = []
+    if (ports.httpsPort) candidates.push({ port: ports.httpsPort, scheme: "https" })
+    if (ports.httpPort) candidates.push({ port: ports.httpPort, scheme: "http" })
+
+    for (var i = 0; i < candidates.length; i++) {
+      var port = candidates[i].port
+      var scheme = candidates[i].scheme
+      try {
+        probePort(ctx, scheme, port, "")
+        var data = callLs(ctx, port, scheme, "", "GetUserStatus", {
+          metadata: { ideName: "antigravity", extensionName: "antigravity", ideVersion: "unknown", locale: "en" }
+        })
+        if (data && data.userStatus) {
+          ctx.host.log.info("found agy LS on port " + port)
+          var configs = (data.userStatus.cascadeModelConfigData || {}).clientModelConfigs || []
+          var filtered = []
+          for (var j = 0; j < configs.length; j++) {
+            var mid = configs[j].modelOrAlias && configs[j].modelOrAlias.model
+            if (mid && CC_MODEL_BLACKLIST[mid]) continue
+            filtered.push(configs[j])
+          }
+          var lines = buildModelLines(ctx, filtered)
+          if (lines.length > 0) {
+            var plan = null
+            var ut = data.userStatus.userTier
+            if (ut && typeof ut.name === "string" && ut.name.trim()) plan = ut.name.trim()
+            else {
+              var ps = data.userStatus.planStatus || {}
+              var pi = ps.planInfo || {}
+              plan = typeof pi.planName === "string" && pi.planName.trim() ? pi.planName.trim() : null
+            }
+            return { plan: plan, lines: lines }
+          }
+        }
+      } catch (e) {
+        ctx.host.log.info("agy port " + port + " probe: " + String(e))
+      }
+    }
+    return null
+  }
+
   // --- Probe ---
 
   function probe(ctx) {
@@ -473,6 +550,10 @@
 
     var lsResult = probeLs(ctx)
     if (lsResult) return lsResult
+
+    // Try agy CLI LS (handles its own auth internally, no DB tokens needed)
+    var agyResult = probeAgyLs(ctx)
+    if (agyResult) return agyResult
 
     var tokens = []
     if (dbTokens && dbTokens.accessToken) {

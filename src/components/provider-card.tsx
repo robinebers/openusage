@@ -506,7 +506,7 @@ function MetricLineRenderer({
           indicatorColor={line.color}
           markerValue={paceMarkerValue}
           refreshing={refreshing}
-          segments={"segments" in line ? (line as any).segments : undefined}
+          segments={line.segments}
         />
         <div className="flex justify-between items-center mt-1.5">
           <span className="text-xs text-muted-foreground tabular-nums">
