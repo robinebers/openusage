@@ -264,7 +264,7 @@ export function ProviderCard({
           {plan && (
             <Badge
               variant="outline"
-              className="truncate min-w-0 max-w-[40%]"
+              className="truncate min-w-0 max-w-[50%]"
               title={plan}
             >
               {plan}

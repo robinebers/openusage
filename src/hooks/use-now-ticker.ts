@@ -4,19 +4,48 @@ type UseNowTickerOptions = {
   enabled?: boolean
   intervalMs?: number
   stopAfterMs?: number | null
+  pauseWhenHidden?: boolean
   resetKey?: unknown
+}
+
+function isDocumentVisible() {
+  if (typeof document === "undefined") return true
+  return !document.hidden
 }
 
 export function useNowTicker({
   enabled = true,
   intervalMs = 1000,
   stopAfterMs = null,
+  pauseWhenHidden = true,
   resetKey,
 }: UseNowTickerOptions = {}) {
   const [now, setNow] = useState(() => Date.now())
+  const [documentVisible, setDocumentVisible] = useState(() =>
+    pauseWhenHidden ? isDocumentVisible() : true
+  )
 
   useEffect(() => {
-    if (!enabled) return undefined
+    if (!pauseWhenHidden || typeof document === "undefined") {
+      setDocumentVisible(true)
+      return undefined
+    }
+
+    const handleVisibilityChange = () => {
+      const visible = isDocumentVisible()
+      setDocumentVisible(visible)
+      if (visible && enabled) {
+        setNow(Date.now())
+      }
+    }
+
+    handleVisibilityChange()
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange)
+  }, [enabled, pauseWhenHidden])
+
+  useEffect(() => {
+    if (!enabled || !documentVisible) return undefined
 
     setNow(Date.now())
     const interval = window.setInterval(() => setNow(Date.now()), intervalMs)
@@ -35,7 +64,7 @@ export function useNowTicker({
       window.clearInterval(interval)
       window.clearTimeout(timeout)
     }
-  }, [enabled, intervalMs, stopAfterMs, resetKey])
+  }, [enabled, intervalMs, stopAfterMs, resetKey, documentVisible])
 
   return now
 }

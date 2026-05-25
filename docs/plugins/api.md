@@ -505,10 +505,10 @@ host.ccusage.query(opts: {
   | { status: "runner_failed" }
 ```
 
-Queries local token usage via provider-specific ccusage CLIs:
+Queries local token usage via provider-focused ccusage commands:
 
-- Claude: [`ccusage`](https://github.com/ryoppippi/ccusage)
-- Codex: [`@ccusage/codex`](https://www.npmjs.com/package/@ccusage/codex)
+- Claude: [`ccusage claude daily`](https://github.com/ryoppippi/ccusage)
+- Codex: [`ccusage codex daily`](https://github.com/ryoppippi/ccusage)
 
 Returns a status envelope:
 
@@ -518,8 +518,10 @@ Returns a status envelope:
 
 ### Behavior
 
-- **Runtime runners**: Executes pinned `ccusage@18.0.10` (Claude) or `@ccusage/codex@18.0.10` (Codex) via fallback chain `bunx -> pnpm dlx -> yarn dlx -> npm exec -> npx`
+- **Runtime runners**: Executes pinned `ccusage@20.0.2` via fallback chain `bunx -> pnpm dlx -> yarn dlx -> npm exec -> npx`
 - **Provider-aware**: Resolves provider from `opts.provider` or plugin id (`claude`/`codex`)
+- **Focused commands**: Uses `ccusage claude daily` or `ccusage codex daily`; it intentionally does not use `ccusage daily` because that aggregates all detected agents
+- **Legacy fallback**: If `ccusage@20.0.2` cannot run through the package manager release-age policy, retries with release-age-safe `ccusage@18.0.11` for Claude or `@ccusage/codex@18.0.11` for Codex
 - **No provider API calls**: Usage is computed from local JSONL session files; the host does not call Claude/Codex (or other provider) APIs, but package runners may contact a package registry to download the `ccusage` CLI if it is not already available locally
 - **Graceful degradation**: returns `no_runner` when no runner exists, `runner_failed` when execution fails
 - **Pricing**: Uses ccusage's built-in LiteLLM pricing data

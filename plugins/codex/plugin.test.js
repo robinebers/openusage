@@ -255,6 +255,51 @@ describe("codex plugin", () => {
     expect(credits.used).toBe(900)
   })
 
+  it("uses zero credits from the response body when the account has no credits", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {
+        "x-codex-credits-balance": "1000",
+      },
+      bodyText: JSON.stringify({
+        plan_type: "plus",
+        rate_limit: {
+          primary_window: { used_percent: 46, limit_window_seconds: 18000, reset_after_seconds: 6699 },
+          secondary_window: { used_percent: 15, limit_window_seconds: 604800, reset_after_seconds: 505326 },
+        },
+        code_review_rate_limit: null,
+        additional_rate_limits: null,
+        credits: {
+          has_credits: false,
+          unlimited: false,
+          overage_limit_reached: false,
+          balance: "0",
+          approx_local_messages: [0, 0],
+          approx_cloud_messages: [0, 0],
+        },
+        spend_control: {
+          reached: false,
+          individual_limit: null,
+        },
+        rate_limit_reached_type: null,
+        promo: null,
+        referral_beacon: null,
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const credits = result.lines.find((line) => line.label === "Credits")
+    expect(credits).toBeTruthy()
+    expect(credits.used).toBe(1000)
+    expect(credits.limit).toBe(1000)
+  })
+
   it("refreshes keychain auth and writes back to keychain", async () => {
     const ctx = makeCtx()
     ctx.host.keychain.readGenericPassword.mockReturnValue(JSON.stringify({
