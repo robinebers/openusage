@@ -13,6 +13,7 @@ const DEFAULT_ENABLED_PLUGINS: &[&str] = &["claude", "codex", "cursor"];
 const CACHE_WRITE_DEBOUNCE: Duration = Duration::from_millis(500);
 #[cfg(test)]
 const CACHE_WRITE_DEBOUNCE: Duration = Duration::from_millis(10);
+const CACHE_WRITE_RETRY_MAX_DELAY: Duration = Duration::from_secs(30);
 
 // ---------------------------------------------------------------------------
 // Types
@@ -42,6 +43,13 @@ pub(super) struct CacheState {
     dirty_generation: u64,
     flushed_generation: u64,
     flush_scheduled: bool,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum CacheFlushResult {
+    Idle,
+    Flushed,
+    Failed(String),
 }
 
 // ---------------------------------------------------------------------------
@@ -121,13 +129,50 @@ fn schedule_cache_flush_locked(state: &mut CacheState) {
 }
 
 fn debounced_cache_flush_worker() {
-    loop {
-        std::thread::sleep(CACHE_WRITE_DEBOUNCE);
+    let mut consecutive_failures = 0_u32;
+    let mut retry_delay = CACHE_WRITE_DEBOUNCE;
 
-        if !flush_pending_cache_once() {
-            return;
-        };
+    loop {
+        std::thread::sleep(retry_delay);
+
+        match flush_pending_cache_once() {
+            CacheFlushResult::Idle => return,
+            CacheFlushResult::Flushed => {
+                if consecutive_failures > 0 {
+                    log::info!(
+                        "usage-api-cache.json write recovered after {} failed attempts",
+                        consecutive_failures
+                    );
+                }
+                consecutive_failures = 0;
+                retry_delay = CACHE_WRITE_DEBOUNCE;
+            }
+            CacheFlushResult::Failed(e) => {
+                consecutive_failures = consecutive_failures.saturating_add(1);
+                retry_delay = cache_write_retry_delay(consecutive_failures);
+                if should_log_cache_write_failure(consecutive_failures) {
+                    log::warn!(
+                        "{}; retrying in {:?} (consecutive failures: {})",
+                        e,
+                        retry_delay,
+                        consecutive_failures
+                    );
+                }
+            }
+        }
     }
+}
+
+fn cache_write_retry_delay(consecutive_failures: u32) -> Duration {
+    let factor = 1_u32 << consecutive_failures.min(16);
+    std::cmp::min(
+        CACHE_WRITE_DEBOUNCE.saturating_mul(factor),
+        CACHE_WRITE_RETRY_MAX_DELAY,
+    )
+}
+
+fn should_log_cache_write_failure(consecutive_failures: u32) -> bool {
+    consecutive_failures == 1 || consecutive_failures.is_power_of_two()
 }
 
 fn pending_cache_write() -> Option<(u64, PathBuf, HashMap<String, CachedPluginSnapshot>)> {
@@ -149,19 +194,21 @@ fn mark_cache_flushed(generation: u64) {
     state.flushed_generation = generation;
 }
 
-fn flush_pending_cache_once() -> bool {
+fn flush_pending_cache_once() -> CacheFlushResult {
     let _write_guard = cache_write_lock()
         .lock()
         .expect("cache write lock poisoned");
     let Some((generation, app_data_dir, snapshots)) = pending_cache_write() else {
-        return false;
+        return CacheFlushResult::Idle;
     };
 
     match save_cache(&app_data_dir, &snapshots) {
-        Ok(()) => mark_cache_flushed(generation),
-        Err(e) => log::warn!("{}", e),
+        Ok(()) => {
+            mark_cache_flushed(generation);
+            CacheFlushResult::Flushed
+        }
+        Err(e) => CacheFlushResult::Failed(e),
     }
-    true
 }
 
 // ---------------------------------------------------------------------------
@@ -199,7 +246,9 @@ pub fn cache_successful_output(output: &PluginOutput) {
 }
 
 pub fn flush_cache() {
-    let _ = flush_pending_cache_once();
+    if let CacheFlushResult::Failed(e) = flush_pending_cache_once() {
+        log::warn!("{}", e);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -351,6 +400,29 @@ mod tests {
     }
 
     #[test]
+    fn cache_write_retry_delay_backs_off_and_caps() {
+        assert_eq!(
+            cache_write_retry_delay(1),
+            CACHE_WRITE_DEBOUNCE.saturating_mul(2)
+        );
+        assert_eq!(
+            cache_write_retry_delay(2),
+            CACHE_WRITE_DEBOUNCE.saturating_mul(4)
+        );
+        assert_eq!(cache_write_retry_delay(20), CACHE_WRITE_RETRY_MAX_DELAY);
+    }
+
+    #[test]
+    fn cache_write_failure_logs_are_throttled() {
+        assert!(should_log_cache_write_failure(1));
+        assert!(should_log_cache_write_failure(2));
+        assert!(!should_log_cache_write_failure(3));
+        assert!(should_log_cache_write_failure(4));
+        assert!(!should_log_cache_write_failure(5));
+        assert!(should_log_cache_write_failure(16));
+    }
+
+    #[test]
     fn snapshot_serializes_with_fetched_at() {
         let snap = make_snapshot("claude", "Claude");
         let json: serde_json::Value = serde_json::to_value(&snap).unwrap();
@@ -466,7 +538,10 @@ mod tests {
             state.flush_scheduled = true;
         }
 
-        assert!(flush_pending_cache_once());
+        assert!(matches!(
+            flush_pending_cache_once(),
+            CacheFlushResult::Failed(_)
+        ));
         {
             let state = cache_state().lock().unwrap();
             assert_eq!(state.dirty_generation, 1);
@@ -475,13 +550,13 @@ mod tests {
         }
 
         std::fs::create_dir_all(&dir).unwrap();
-        assert!(flush_pending_cache_once());
+        assert_eq!(flush_pending_cache_once(), CacheFlushResult::Flushed);
 
         let loaded = load_cache(&dir);
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded["claude"].display_name, "Claude");
 
-        assert!(!flush_pending_cache_once());
+        assert_eq!(flush_pending_cache_once(), CacheFlushResult::Idle);
         {
             let state = cache_state().lock().unwrap();
             assert_eq!(state.dirty_generation, 1);
