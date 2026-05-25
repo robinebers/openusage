@@ -14,6 +14,7 @@ export type MetricLine =
       resetsAt?: string
       periodDurationMs?: number
       color?: string
+      segments?: number
     }
   | { type: "badge"; label: string; text: string; color?: string; subtitle?: string }
 

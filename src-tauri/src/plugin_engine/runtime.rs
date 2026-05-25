@@ -31,6 +31,7 @@ pub enum MetricLine {
         #[serde(rename = "periodDurationMs")]
         period_duration_ms: Option<u64>,
         color: Option<String>,
+        segments: Option<u32>,
     },
     Badge {
         label: String,
@@ -411,6 +412,10 @@ fn parse_lines(result: &Object) -> Result<Vec<MetricLine>, String> {
                     resets_at,
                     period_duration_ms,
                     color,
+                    segments: line
+                        .get::<_, Option<u32>>("segments")
+                        .unwrap_or(None)
+                        .filter(|&s| s >= 2),
                 });
             }
             "badge" => {

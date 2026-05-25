@@ -300,6 +300,7 @@
       format: { kind: "percent" },
       resetsAt: resetTime || undefined,
       periodDurationMs: QUOTA_PERIOD_MS,
+      segments: 5,
     })
   }
 

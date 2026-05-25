@@ -7,10 +7,11 @@ interface ProgressProps extends React.HTMLAttributes<HTMLDivElement> {
   indicatorColor?: string
   markerValue?: number
   refreshing?: boolean
+  segments?: number
 }
 
 const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
-  ({ className, value = 0, indicatorColor, markerValue, refreshing, ...props }, ref) => {
+  ({ className, value = 0, indicatorColor, markerValue, refreshing, segments, ...props }, ref) => {
     const clamped = Math.min(100, Math.max(0, value))
     const clampedMarker =
       typeof markerValue === "number" && Number.isFinite(markerValue)
@@ -35,6 +36,8 @@ const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
         }
       : undefined
 
+    const segmentCount = segments && segments > 1 ? segments : 0
+
     return (
       <div
         ref={ref}
@@ -49,6 +52,16 @@ const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
           className="h-full transition-all bg-primary"
           style={{ width: `${clamped}%`, ...indicatorStyle }}
         />
+        {segmentCount > 0 &&
+          Array.from({ length: segmentCount - 1 }).map((_, i) => (
+            <div
+              key={i}
+              data-slot="progress-segment"
+              aria-hidden="true"
+              className="absolute top-0 bottom-0 w-px z-10 pointer-events-none bg-background/50"
+              style={{ left: `${((i + 1) * 100) / segmentCount}%` }}
+            />
+          ))}
         {showMarker && (
           <div
             data-slot="progress-marker"
