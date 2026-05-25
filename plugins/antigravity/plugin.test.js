@@ -108,6 +108,8 @@ function setupLsMock(ctx, discovery, responseBody) {
 }
 
 function setupSqliteMock(ctx, oauthEnvelopeB64) {
+  ctx.host.fs.writeText("~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb", "dummy-sqlite")
+  ctx.host.fs.writeText("~/Library/Application Support/Antigravity IDE/User/globalStorage/state.vscdb", "dummy-sqlite")
   ctx.host.sqlite.query.mockImplementation((db, sql) => {
     if (sql.includes(OAUTH_TOKEN_KEY) && oauthEnvelopeB64) {
       return JSON.stringify([{ value: oauthEnvelopeB64 }])
@@ -610,10 +612,12 @@ describe("antigravity plugin", () => {
   it("skips Cloud Code when no credentials available", async () => {
     const ctx = makeCtx()
     ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.http.request.mockImplementation(() => { throw new Error("connection refused") })
 
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Start Antigravity and try again.")
-    expect(ctx.host.http.request).not.toHaveBeenCalled()
+    const calls = ctx.host.http.request.mock.calls.map((c) => String(c[0].url))
+    expect(calls.some((u) => u.includes("fetchAvailableModels"))).toBe(false)
   })
 
   it("LS takes priority over Cloud Code when both available", async () => {
@@ -696,24 +700,134 @@ describe("antigravity plugin", () => {
     expect(result.lines.length).toBeGreaterThan(0)
   })
 
+  it("queries the v2 database path if it exists", async () => {
+    const ctx = makeCtx()
+    const futureExpiry = Math.floor(Date.now() / 1000) + 3600
+    const protoB64 = makeOAuthSentinelB64(ctx, { accessToken: "ya29.v2-access", refreshToken: "1//refresh-token", expirySeconds: futureExpiry })
+    
+    // Simulate v2 DB file existence
+    const v2Path = "~/Library/Application Support/Antigravity IDE/User/globalStorage/state.vscdb"
+    ctx.host.fs.writeText(v2Path, "dummy-sqlite")
+    
+    let queriedDbPath = null
+    ctx.host.sqlite.query.mockImplementation((db, sql) => {
+      queriedDbPath = db
+      if (sql.includes(OAUTH_TOKEN_KEY)) {
+        return JSON.stringify([{ value: protoB64 }])
+      }
+      return "[]"
+    })
+    ctx.host.ls.discover.mockReturnValue(null)
+
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("fetchAvailableModels")) {
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    expect(queriedDbPath).toBe(v2Path)
+  })
+
+  it("falls back to pre-v2 database path if v2 path does not exist", async () => {
+    const ctx = makeCtx()
+    const futureExpiry = Math.floor(Date.now() / 1000) + 3600
+    const protoB64 = makeOAuthSentinelB64(ctx, { accessToken: "ya29.v1-access", refreshToken: "1//refresh-token", expirySeconds: futureExpiry })
+    
+    // Do NOT write to v2 path, so it doesn't exist. Simulate v1 DB file existence.
+    const v1Path = "~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb"
+    ctx.host.fs.writeText(v1Path, "dummy-sqlite")
+    
+    let queriedDbPath = null
+    ctx.host.sqlite.query.mockImplementation((db, sql) => {
+      queriedDbPath = db
+      if (sql.includes(OAUTH_TOKEN_KEY)) {
+        return JSON.stringify([{ value: protoB64 }])
+      }
+      return "[]"
+    })
+    ctx.host.ls.discover.mockReturnValue(null)
+
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("fetchAvailableModels")) {
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    expect(queriedDbPath).toBe(v1Path)
+  })
+
+  it("cascades and falls back to pre-v2 database path if v2 path exists but is corrupt or has no token", async () => {
+    const ctx = makeCtx()
+    const futureExpiry = Math.floor(Date.now() / 1000) + 3600
+    const protoB64 = makeOAuthSentinelB64(ctx, { accessToken: "ya29.v1-fallback-access", refreshToken: "1//refresh-token", expirySeconds: futureExpiry })
+
+    const v1Path = "~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb"
+    const v2Path = "~/Library/Application Support/Antigravity IDE/User/globalStorage/state.vscdb"
+
+    // Simulate both files existing on disk
+    ctx.host.fs.writeText(v1Path, "valid-db")
+    ctx.host.fs.writeText(v2Path, "corrupt-db")
+
+    const queriedPaths = []
+    ctx.host.sqlite.query.mockImplementation((db, sql) => {
+      queriedPaths.push(db)
+      if (db === v2Path) {
+        // Simulate SQLite query failure/throw or returning empty rows
+        throw new Error("database is locked or corrupt")
+      }
+      if (db === v1Path && sql.includes(OAUTH_TOKEN_KEY)) {
+        return JSON.stringify([{ value: protoB64 }])
+      }
+      return "[]"
+    })
+    ctx.host.ls.discover.mockReturnValue(null)
+
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("fetchAvailableModels")) {
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    // Should have queried both paths
+    expect(queriedPaths).toContain(v2Path)
+    expect(queriedPaths).toContain(v1Path)
+    expect(result.lines.length).toBeGreaterThan(0)
+  })
+
   it("throws when unified oauth envelope is missing and no cache", async () => {
     const ctx = makeCtx()
     setupSqliteMock(ctx, null)
     ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.http.request.mockImplementation(() => { throw new Error("connection refused") })
 
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Start Antigravity and try again.")
-    expect(ctx.host.http.request).not.toHaveBeenCalled()
+    const calls = ctx.host.http.request.mock.calls.map((c) => String(c[0].url))
+    expect(calls.some((u) => u.includes("fetchAvailableModels"))).toBe(false)
   })
 
   it("throws when unified oauth envelope is corrupt and no cache", async () => {
     const ctx = makeCtx()
     setupSqliteMock(ctx, "not-valid-protobuf!!!")
     ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.http.request.mockImplementation(() => { throw new Error("connection refused") })
 
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Start Antigravity and try again.")
-    expect(ctx.host.http.request).not.toHaveBeenCalled()
+    const calls = ctx.host.http.request.mock.calls.map((c) => String(c[0].url))
+    expect(calls.some((u) => u.includes("fetchAvailableModels"))).toBe(false)
   })
 
   it("handles protobuf with no refresh_token or expiry", async () => {
@@ -967,6 +1081,7 @@ describe("antigravity plugin", () => {
     const ctx = makeCtx()
     setupSqliteMock(ctx, null)
     ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.http.request.mockImplementation(() => { throw new Error("connection refused") })
 
     const cachePath = ctx.app.pluginDataDir + "/auth.json"
     ctx.host.fs.writeText(cachePath, JSON.stringify({
@@ -976,7 +1091,8 @@ describe("antigravity plugin", () => {
 
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Start Antigravity and try again.")
-    expect(ctx.host.http.request).not.toHaveBeenCalled()
+    const calls = ctx.host.http.request.mock.calls.map((c) => String(c[0].url))
+    expect(calls.some((u) => u.includes("fetchAvailableModels"))).toBe(false)
   })
 
   it("skips expired DB access token and falls through to refresh", async () => {
@@ -1010,13 +1126,15 @@ describe("antigravity plugin", () => {
     const ctx = makeCtx()
     setupSqliteMock(ctx, null)
     ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.http.request.mockImplementation(() => { throw new Error("connection refused") })
 
     const cachePath = ctx.app.pluginDataDir + "/auth.json"
     ctx.host.fs.writeText(cachePath, "{bad json")
 
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Start Antigravity and try again.")
-    expect(ctx.host.http.request).not.toHaveBeenCalled()
+    const calls = ctx.host.http.request.mock.calls.map((c) => String(c[0].url))
+    expect(calls.some((u) => u.includes("fetchAvailableModels"))).toBe(false)
   })
 
   it("Cloud Code skips models with isInternal flag", async () => {

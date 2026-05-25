@@ -982,6 +982,7 @@ pub fn inject_utils(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
                     if (opts.resetsAt) line.resetsAt = opts.resetsAt;
                     if (opts.periodDurationMs) line.periodDurationMs = opts.periodDurationMs;
                     if (opts.color) line.color = opts.color;
+                    if (opts.segments) line.segments = opts.segments;
                     return line;
                 },
                 badge: function(opts) {
