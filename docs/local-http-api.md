@@ -92,4 +92,6 @@ Error responses use this shape:
 }
 ```
 
-Possible error codes: `provider_not_found`, `not_found`, `method_not_allowed`.
+Possible error codes: `provider_not_found`, `not_found`, `method_not_allowed`, `server_busy`.
+
+`server_busy` returns **503 Service Unavailable** when the local API is already handling the maximum number of concurrent connections. Clients should back off and retry later.

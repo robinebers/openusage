@@ -9,7 +9,6 @@ const BIND_ADDR: &str = "127.0.0.1:6736";
 const MAX_CONCURRENT_CONNECTIONS: usize = 16;
 const CONNECTION_TIMEOUT: Duration = Duration::from_secs(5);
 
-#[derive(Clone)]
 struct ConnectionLimiter {
     active: Arc<AtomicUsize>,
     max: usize,
