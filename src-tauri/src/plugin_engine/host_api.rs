@@ -6,7 +6,7 @@ use aes_gcm::{
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use rquickjs::{Ctx, Exception, Function, Object};
 use sha2::{Digest, Sha256};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -205,11 +205,6 @@ fn keychain_add_generic_password_args_for_account(
     ]
 }
 
-fn terminal_env_cache() -> &'static Mutex<HashMap<String, Option<String>>> {
-    static CACHE: OnceLock<Mutex<HashMap<String, Option<String>>>> = OnceLock::new();
-    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
 fn shell_from_env() -> Option<String> {
     let shell = std::env::var("SHELL").ok()?;
     let trimmed = shell.trim();
@@ -265,23 +260,25 @@ fn read_env_from_interactive_shells(name: &str) -> Option<String> {
     None
 }
 
-fn resolve_env_value(name: &str) -> Option<String> {
+fn resolve_env_value_with_readers(
+    name: &str,
+    mut read_process: impl FnMut(&str) -> Option<String>,
+    mut read_shells: impl FnMut(&str) -> Option<String>,
+) -> Option<String> {
     // Prefer the current process env (fast + supports launchctl/terminal-launch).
-    if let Some(value) = read_env_from_process(name) {
+    if let Some(value) = read_process(name) {
         return Some(value);
     }
 
-    if let Ok(cache) = terminal_env_cache().lock() {
-        if let Some(cached) = cache.get(name) {
-            return cached.clone();
-        }
-    }
+    read_shells(name)
+}
 
-    let resolved = read_env_from_interactive_shells(name);
-    if let Ok(mut cache) = terminal_env_cache().lock() {
-        cache.insert(name.to_string(), resolved.clone());
-    }
-    resolved
+fn resolve_env_value(name: &str) -> Option<String> {
+    resolve_env_value_with_readers(
+        name,
+        read_env_from_process,
+        read_env_from_interactive_shells,
+    )
 }
 
 /// Redact sensitive value to first4...last4 format (UTF-8 safe)
@@ -3115,6 +3112,24 @@ mod tests {
                 "process env should be preferred from JS"
             );
         });
+    }
+
+    #[test]
+    fn resolve_env_value_rechecks_shell_when_process_env_missing() {
+        let mut shell_calls = 0;
+        let mut read_shells = |name: &str| {
+            assert_eq!(name, "ZAI_API_KEY");
+            shell_calls += 1;
+            Some(format!("sk-shell-env-test-{shell_calls}"))
+        };
+
+        let first = resolve_env_value_with_readers("ZAI_API_KEY", |_| None, &mut read_shells);
+        let second = resolve_env_value_with_readers("ZAI_API_KEY", |_| None, &mut read_shells);
+
+        assert_eq!(first.as_deref(), Some("sk-shell-env-test-1"));
+        assert_eq!(second.as_deref(), Some("sk-shell-env-test-2"));
+        drop(read_shells);
+        assert_eq!(shell_calls, 2);
     }
 
     #[test]
