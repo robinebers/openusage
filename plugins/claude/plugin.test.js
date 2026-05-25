@@ -875,7 +875,11 @@ describe("claude plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Usage request failed")
   })
 
-  it("shows status badge when no usage data and ccusage is unavailable", async () => {
+  it("shows 'Connected — no quota data' when API returns no recognized fields", async () => {
+    // The usage API connected successfully but returned no fields that the plugin
+    // understands (e.g. Enterprise plans or future plan types).  The badge must
+    // say "Connected — no quota data" to distinguish "reachable but unrecognized"
+    // from "never connected / inference-only token".
     const ctx = makeCtx()
     ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
     ctx.host.fs.exists = () => true
@@ -890,7 +894,44 @@ describe("claude plugin", () => {
     expect(result.lines.find((l) => l.label === "Last 30 Days")).toBeUndefined()
     const statusLine = result.lines.find((l) => l.label === "Status")
     expect(statusLine).toBeTruthy()
+    expect(statusLine.text).toBe("Connected — no quota data")
+  })
+
+  it("shows 'Enterprise — org-level billing' badge when API returns 403", async () => {
+    // Enterprise accounts have organisation-level billing.  The personal usage API
+    // returns 403 for these accounts, which previously caused probe() to throw and
+    // left the provider card in a blank/error state on first load.  The fix treats
+    // 403 as "no personal quota data" so a helpful badge is shown instead.
+    const ctx = makeCtx()
+    ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
+    ctx.host.fs.exists = () => true
+    ctx.host.http.request.mockReturnValue({ status: 403, bodyText: "", headers: {} })
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const statusLine = result.lines.find((l) => l.label === "Status")
+    expect(statusLine).toBeTruthy()
+    expect(statusLine.text).toBe("Enterprise — org-level billing")
+    // plan detection is independent of the API response
+    expect(result.lines.find((l) => l.label === "Today")).toBeUndefined()
+  })
+
+  it("shows 'No usage data' for inference-only token with no local ccusage", async () => {
+    // Inference-only tokens (CLAUDE_CODE_OAUTH_TOKEN env var) skip the live usage API
+    // entirely.  When there is also no local ccusage data the badge should say
+    // "No usage data" — not "Connected — no quota data" — because no API call was made.
+    const ctx = makeCtx()
+    ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "stored-token" } })
+    ctx.host.fs.exists = () => true
+    ctx.host.env.get.mockImplementation((name) =>
+      name === "CLAUDE_CODE_OAUTH_TOKEN" ? "env-inference-token" : null
+    )
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    const statusLine = result.lines.find((l) => l.label === "Status")
+    expect(statusLine).toBeTruthy()
     expect(statusLine.text).toBe("No usage data")
+    // The live usage API must not be called for inference-only tokens
+    expect(ctx.host.http.request).not.toHaveBeenCalled()
   })
 
   it("passes resetsAt through as ISO when present", async () => {
@@ -1103,7 +1144,11 @@ describe("claude plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Session expired")
   })
 
-  it("throws token expired when usage remains unauthorized after refresh", async () => {
+  it("shows org-billing badge when usage returns 403 after token refresh", async () => {
+    // First call returns 401 → refresh → second call returns 403.
+    // 403 from the usage endpoint means the account type has no personal quota access
+    // (e.g. Enterprise org-level billing), even after a successful token refresh.
+    // Showing "Enterprise — org-level billing" is more accurate than "Token expired".
     const ctx = makeCtx()
     ctx.host.fs.exists = () => true
     ctx.host.fs.readText = () =>
@@ -1126,7 +1171,84 @@ describe("claude plugin", () => {
     })
 
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Token expired")
+    const result = plugin.probe(ctx)
+    const statusLine = result.lines.find((l) => l.label === "Status")
+    expect(statusLine).toBeTruthy()
+    expect(statusLine.text).toBe("Enterprise — org-level billing")
+  })
+
+  it("Enterprise badge persists across min-interval reuse after 403", async () => {
+    // cachedUsageOrgBillingOnly must survive the min-interval reuse path so that
+    // Enterprise accounts don't flip to "No usage data" on the second probe.
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
+    try {
+      const ctx = makeCtx()
+      ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
+      ctx.host.fs.exists = () => true
+      ctx.host.http.request.mockReturnValue({ status: 403, bodyText: "", headers: {} })
+
+      const plugin = await loadPlugin()
+
+      // First probe: API returns 403 → Enterprise badge
+      const result1 = plugin.probe(ctx)
+      expect(result1.lines.find((l) => l.label === "Status")?.text).toBe(
+        "Enterprise — org-level billing"
+      )
+      expect(ctx.host.http.request).toHaveBeenCalledTimes(1)
+
+      // Second probe within min-interval: API must NOT be called again (throttled)
+      const result2 = plugin.probe(ctx)
+      expect(ctx.host.http.request).toHaveBeenCalledTimes(1) // no new call
+      // Badge must still reflect org-billing, not fall back to "No usage data"
+      expect(result2.lines.find((l) => l.label === "Status")?.text).toBe(
+        "Enterprise — org-level billing"
+      )
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("clears Enterprise badge after successful 2xx usage response", async () => {
+    // cachedUsageOrgBillingOnly should be reset to false when the API later returns
+    // a successful response (e.g. account type changed, or credentials refreshed).
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-04-14T10:00:00.000Z"))
+    try {
+      const ctx = makeCtx()
+      ctx.host.fs.readText = () => JSON.stringify({ claudeAiOauth: { accessToken: "token" } })
+      ctx.host.fs.exists = () => true
+
+      const plugin = await loadPlugin()
+
+      // First probe: 403 → Enterprise badge
+      ctx.host.http.request.mockReturnValueOnce({ status: 403, bodyText: "", headers: {} })
+      const result1 = plugin.probe(ctx)
+      expect(result1.lines.find((l) => l.label === "Status")?.text).toBe(
+        "Enterprise — org-level billing"
+      )
+
+      // Second probe past min-interval: API now returns successful quota data
+      vi.setSystemTime(new Date("2026-04-14T10:05:01.000Z"))
+      ctx.host.http.request.mockReturnValueOnce({
+        status: 200,
+        bodyText: JSON.stringify({
+          five_hour: { utilization: 30, resets_at: null },
+        }),
+        headers: {},
+      })
+      const result2 = plugin.probe(ctx)
+      // Session progress line must appear and Enterprise badge must be gone
+      expect(result2.lines.find((l) => l.label === "Session")).toBeTruthy()
+      expect(result2.lines.find((l) => l.text === "Enterprise — org-level billing")).toBeUndefined()
+
+      // Third probe within new min-interval: cached result keeps cachedUsageOrgBillingOnly = false
+      const result3 = plugin.probe(ctx)
+      expect(result3.lines.find((l) => l.label === "Session")).toBeTruthy()
+      expect(result3.lines.find((l) => l.text === "Enterprise — org-level billing")).toBeUndefined()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("throws token expired when refresh is unauthorized", async () => {

@@ -868,6 +868,56 @@ describe("ProviderCard", () => {
     expect(document.querySelector('[data-slot="progress-refreshing"]')).toBeNull()
   })
 
+  it("always shows badge lines in overview scope even when label is not in skeleton", () => {
+    // Regression test: status badges ("No usage data", "Rate limited") were previously
+    // filtered out in overview mode because their label ("Status") wasn't listed as an
+    // overview-scoped line in plugin.json, causing a silently blank card.
+    render(
+      <ProviderCard
+        name="Claude"
+        displayMode="used"
+        scopeFilter="overview"
+        lastUpdatedAt={Date.now() - 60_000}
+        skeletonLines={[
+          { type: "progress", label: "Session", scope: "overview" },
+          { type: "progress", label: "Weekly", scope: "overview" },
+        ]}
+        lines={[
+          { type: "badge", label: "Status", text: "No usage data" },
+        ]}
+      />
+    )
+    expect(screen.getByText("Status")).toBeInTheDocument()
+    expect(screen.getByText("No usage data")).toBeInTheDocument()
+  })
+
+  it("does NOT show badge lines that are declared detail-only in the manifest", () => {
+    // Badges whose label appears in skeletonLines as scope=detail must be excluded from
+    // the overview compact view — only truly unmanifested badges (runtime status indicators)
+    // should pass through. This prevents detail-only badges from leaking into overview.
+    render(
+      <ProviderCard
+        name="Claude"
+        displayMode="used"
+        scopeFilter="overview"
+        lastUpdatedAt={Date.now() - 60_000}
+        skeletonLines={[
+          { type: "progress", label: "Session", scope: "overview" },
+          { type: "badge", label: "Plan", scope: "detail" },
+        ]}
+        lines={[
+          { type: "progress", label: "Session", used: 50, limit: 100, format: { kind: "percent" } },
+          { type: "badge", label: "Plan", text: "Pro" },
+        ]}
+      />
+    )
+    // Overview-scoped line is shown
+    expect(screen.getByText("Session")).toBeInTheDocument()
+    // Detail-scoped badge must be hidden in overview
+    expect(screen.queryByText("Plan")).toBeNull()
+    expect(screen.queryByText("Pro")).toBeNull()
+  })
+
   it("shows inline warning with stale data on refresh error", () => {
     render(
       <ProviderCard
