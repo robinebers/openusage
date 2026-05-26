@@ -275,7 +275,7 @@
     }
   }
 
-  function fetchStripeBalance(ctx, accessToken) {
+  function fetchStripe(ctx, accessToken) {
     var session = buildSessionToken(ctx, accessToken)
     if (!session) {
       ctx.host.log.warn("stripe: cannot build session token")
@@ -291,19 +291,27 @@
         timeoutMs: 10000,
       })
       if (resp.status < 200 || resp.status >= 300) {
-        ctx.host.log.warn("stripe balance returned status=" + resp.status)
+        ctx.host.log.warn("stripe request returned status=" + resp.status)
         return null
       }
-      var stripe = ctx.util.tryParseJson(resp.bodyText)
-      if (!stripe) return null
-      var customerBalanceCents = Number(stripe.customerBalance)
-      if (!Number.isFinite(customerBalanceCents)) return null
-      // Stripe stores customer credits as a negative balance.
-      return customerBalanceCents < 0 ? Math.abs(customerBalanceCents) : 0
+      return ctx.util.tryParseJson(resp.bodyText)
     } catch (e) {
-      ctx.host.log.warn("stripe balance fetch failed: " + String(e))
+      ctx.host.log.warn("stripe request failed: " + String(e))
       return null
     }
+  }
+
+  function fetchStripeBalance(ctx, accessToken) {
+    var stripe = fetchStripe(ctx, accessToken)
+    if (!stripe) return null
+    var customerBalanceCents = Number(stripe.customerBalance)
+    if (!Number.isFinite(customerBalanceCents)) return null
+    // Stripe stores customer credits as a negative balance.
+    return customerBalanceCents < 0 ? Math.abs(customerBalanceCents) : 0
+  }
+
+  function fetchStripeInfo(ctx, accessToken) {
+    return fetchStripe(ctx, accessToken)
   }
 
   function buildRequestBasedResult(ctx, accessToken, planName, unavailableMessage) {
@@ -416,11 +424,8 @@
           try {
             return connectPost(ctx, USAGE_URL, token || accessToken)
           } catch (e) {
-            ctx.host.log.error("usage request exception: " + String(e))
-            if (didRefresh) {
-              throw "Usage request failed after refresh. Try again."
-            }
-            throw "Usage request failed. Check your connection."
+            ctx.host.log.warn("connectPost failed: " + String(e))
+            throw e
           }
         },
         refresh: () => {
@@ -433,8 +438,10 @@
       })
     } catch (e) {
       if (typeof e === "string") throw e
-      ctx.host.log.error("usage request failed: " + String(e))
-      throw "Usage request failed. Check your connection."
+      // Non-string (transport/network) errors surface as "Usage request failed"
+      const suffix = didRefresh ? " after refresh" : ""
+      ctx.host.log.warn("usage request failed" + suffix + ": " + String(e))
+      throw "Usage request failed" + suffix + ". Check your connection."
     }
 
     if (ctx.util.isAuthStatus(usageResp.status)) {
@@ -595,7 +602,7 @@
     const isTeamAccount = (
       normalizedPlanName === "team" ||
       (su && su.limitType === "team") ||
-      (su && typeof su.pooledLimit === "number")
+      (su && typeof su.pooledLimit === "number" && su.pooledLimit > 0)
     )
 
     if (isTeamAccount) {
