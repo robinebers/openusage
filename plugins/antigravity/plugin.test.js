@@ -1484,4 +1484,286 @@ describe("antigravity plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Start Antigravity and try again.")
     expect(refreshCalls).toBe(0)
   })
+
+  // --- Keychain auth tests ---
+
+  it("uses keychain token from gemini service name when LS and DB unavailable", async () => {
+    const ctx = makeCtx()
+    ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
+      if (service === "gemini") {
+        return JSON.stringify({ accessToken: "ya29.keychain-token", refreshToken: "1//refresh", expiresAt: Date.now() + 3600000 })
+      }
+      return null
+    })
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.sqlite.query.mockReturnValue("[]")
+
+    const capturedAuths = []
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("fetchAvailableModels")) {
+        capturedAuths.push(opts.headers.Authorization)
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(capturedAuths[0]).toBe("Bearer ya29.keychain-token")
+    expect(result.lines.length).toBeGreaterThan(0)
+  })
+
+  it("uses keychain token from gemini-cli-oauth fallback service name", async () => {
+    const ctx = makeCtx()
+    ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
+      if (service === "gemini-cli-oauth") {
+        return JSON.stringify({ accessToken: "ya29.cli-oauth-token", refreshToken: "1//refresh", expiresAt: Date.now() + 3600000 })
+      }
+      return null
+    })
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.sqlite.query.mockReturnValue("[]")
+
+    const capturedAuths = []
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("fetchAvailableModels")) {
+        capturedAuths.push(opts.headers.Authorization)
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(capturedAuths[0]).toBe("Bearer ya29.cli-oauth-token")
+    expect(result.lines.length).toBeGreaterThan(0)
+  })
+
+  it("tries antigravity-cli-oauth when gemini-cli-oauth has no entry", async () => {
+    const ctx = makeCtx()
+    ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
+      if (service === "antigravity-cli-oauth") {
+        return JSON.stringify({ accessToken: "ya29.ag-cli-token", refreshToken: "1//refresh", expiresAt: Date.now() + 3600000 })
+      }
+      return null
+    })
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.sqlite.query.mockReturnValue("[]")
+
+    const capturedAuths = []
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("fetchAvailableModels")) {
+        capturedAuths.push(opts.headers.Authorization)
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(capturedAuths[0]).toBe("Bearer ya29.ag-cli-token")
+    expect(result.lines.length).toBeGreaterThan(0)
+  })
+
+  it("skips expired keychain token and throws", async () => {
+    const ctx = makeCtx()
+    ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
+      if (service === "gemini-cli-oauth") {
+        return JSON.stringify({ accessToken: "ya29.expired-keychain", expiresAt: Date.now() - 1000 })
+      }
+      return null
+    })
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.sqlite.query.mockReturnValue("[]")
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Start Antigravity and try again.")
+    expect(ctx.host.http.request).not.toHaveBeenCalled()
+  })
+
+  it("uses keychain refresh token to call Cloud Code", async () => {
+    const ctx = makeCtx()
+    ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
+      if (service === "gemini-cli-oauth") {
+        return JSON.stringify({ refreshToken: "1//keychain-refresh", expiresAt: Date.now() + 3600000 })
+      }
+      return null
+    })
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.sqlite.query.mockReturnValue("[]")
+
+    let oauthCalled = false
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("oauth2.googleapis.com")) {
+        oauthCalled = true
+        return { status: 200, bodyText: JSON.stringify({ access_token: "ya29.refreshed-from-kc" }) }
+      }
+      if (url.includes("fetchAvailableModels")) {
+        if (opts.headers.Authorization === "Bearer ya29.refreshed-from-kc") {
+          return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+        }
+        return { status: 401, bodyText: "{}" }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(oauthCalled).toBe(true)
+    expect(result.lines.length).toBeGreaterThan(0)
+  })
+
+  it("prefers DB token over keychain token", async () => {
+    const ctx = makeCtx()
+    ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
+      if (service === "gemini-cli-oauth") {
+        return JSON.stringify({ accessToken: "ya29.keychain", refreshToken: "1//refresh", expiresAt: Date.now() + 3600000 })
+      }
+      return null
+    })
+    const futureExpiry = Math.floor(Date.now() / 1000) + 3600
+    setupSqliteMock(ctx, makeOAuthSentinelB64(ctx, { accessToken: "ya29.db-token", refreshToken: "1//db-refresh", expirySeconds: futureExpiry }))
+    ctx.host.ls.discover.mockReturnValue(null)
+
+    const capturedAuths = []
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("fetchAvailableModels")) {
+        capturedAuths.push(opts.headers.Authorization)
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    plugin.probe(ctx)
+
+    // DB token used first (not keychain)
+    expect(capturedAuths[0]).toBe("Bearer ya29.db-token")
+  })
+
+  it("parses keychain token with snake_case fields", async () => {
+    const ctx = makeCtx()
+    ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
+      if (service === "gemini-cli-oauth") {
+        return JSON.stringify({ access_token: "ya29.snake-token", refresh_token: "1//refresh", expires_at: Date.now() + 3600000 })
+      }
+      return null
+    })
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.sqlite.query.mockReturnValue("[]")
+
+    const capturedAuths = []
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("fetchAvailableModels")) {
+        capturedAuths.push(opts.headers.Authorization)
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(capturedAuths[0]).toBe("Bearer ya29.snake-token")
+    expect(result.lines.length).toBeGreaterThan(0)
+  })
+
+  it("parses keychain token with nested tokens.access_token format", async () => {
+    const ctx = makeCtx()
+    ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
+      if (service === "gemini-cli-oauth") {
+        return JSON.stringify({ tokens: { access_token: "ya29.nested-token", refresh_token: "1//nested" }, last_refresh: new Date().toISOString() })
+      }
+      return null
+    })
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.sqlite.query.mockReturnValue("[]")
+
+    const capturedAuths = []
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("fetchAvailableModels")) {
+        capturedAuths.push(opts.headers.Authorization)
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(capturedAuths[0]).toBe("Bearer ya29.nested-token")
+    expect(result.lines.length).toBeGreaterThan(0)
+  })
+
+  it("uses keychain token with expiresAtMs field", async () => {
+    const ctx = makeCtx()
+    ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
+      if (service === "gemini-cli-oauth") {
+        return JSON.stringify({ accessToken: "ya29.ms-token", refreshToken: "1//refresh", expiresAtMs: Date.now() + 3600000 })
+      }
+      return null
+    })
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.sqlite.query.mockReturnValue("[]")
+
+    const capturedAuths = []
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("fetchAvailableModels")) {
+        capturedAuths.push(opts.headers.Authorization)
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(capturedAuths[0]).toBe("Bearer ya29.ms-token")
+    expect(result.lines.length).toBeGreaterThan(0)
+  })
+
+  it("decodes go-keyring base64 envelope (Antigravity CLI format)", async () => {
+    const ctx = makeCtx()
+    // Simulate the go-keyring library format used by the Antigravity CLI (agy)
+    const tokenPayload = {
+      token: {
+        access_token: "ya29.go-keyring-token",
+        refresh_token: "1//go-keyring-refresh",
+        token_type: "Bearer",
+        expiry: "2026-12-31T23:59:59Z",
+      },
+      auth_method: "consumer",
+    }
+    const b64 = ctx.base64.encode(JSON.stringify(tokenPayload))
+    const keychainValue = "go-keyring-base64:" + b64
+
+    ctx.host.keychain.readGenericPassword.mockImplementation((service) => {
+      if (service === "gemini") {
+        return keychainValue
+      }
+      return null
+    })
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.sqlite.query.mockReturnValue("[]")
+
+    const capturedAuths = []
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("fetchAvailableModels")) {
+        capturedAuths.push(opts.headers.Authorization)
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(capturedAuths[0]).toBe("Bearer ya29.go-keyring-token")
+    expect(result.lines.length).toBeGreaterThan(0)
+  })
 })
