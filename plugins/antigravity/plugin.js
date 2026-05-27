@@ -506,13 +506,17 @@
 
     if (expirySeconds === null) {
       if (parsed.expiresAt != null) {
-        expirySeconds = Math.floor(Number(parsed.expiresAt) / 1000)
+        var ea = Number(parsed.expiresAt)
+        if (Number.isFinite(ea)) expirySeconds = Math.floor(ea / 1000)
       } else if (parsed.expiresAtMs != null) {
-        expirySeconds = Math.floor(Number(parsed.expiresAtMs) / 1000)
+        var em = Number(parsed.expiresAtMs)
+        if (Number.isFinite(em)) expirySeconds = Math.floor(em / 1000)
       } else if (parsed.expirySeconds != null) {
-        expirySeconds = Number(parsed.expirySeconds)
+        var es = Number(parsed.expirySeconds)
+        if (Number.isFinite(es)) expirySeconds = es
       } else if (parsed.expiry_seconds != null) {
-        expirySeconds = Number(parsed.expiry_seconds)
+        var es2 = Number(parsed.expiry_seconds)
+        if (Number.isFinite(es2)) expirySeconds = es2
       }
     }
 
