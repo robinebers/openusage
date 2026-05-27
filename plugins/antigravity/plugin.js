@@ -548,7 +548,7 @@
       }
     }
 
-    ctx.host.log.info("no antigravity tokens found in keychain")
+    ctx.host.log.debug("no antigravity tokens found in keychain")
     return null
   }
 
