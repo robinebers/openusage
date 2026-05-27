@@ -1,9 +1,9 @@
 use aes_gcm::{
-    AesGcm, Nonce,
-    aead::{Aead, KeyInit, OsRng, generic_array::typenum::U16, rand_core::RngCore},
+    aead::{generic_array::typenum::U16, rand_core::RngCore, Aead, KeyInit, OsRng},
     aes::Aes256,
+    AesGcm, Nonce,
 };
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use rquickjs::{Ctx, Exception, Function, Object};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
@@ -11,6 +11,7 @@ use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 const WHITELISTED_ENV_VARS: [&str; 16] = [
     "CODEX_HOME",
@@ -30,6 +31,53 @@ const WHITELISTED_ENV_VARS: [&str; 16] = [
     "SYNTHETIC_API_KEY",
     "PI_CODING_AGENT_DIR",
 ];
+const MIN_BLOCKING_TIMEOUT: Duration = Duration::from_millis(1);
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ProbeDeadline {
+    expires_at: Option<Instant>,
+}
+
+impl ProbeDeadline {
+    #[cfg(test)]
+    pub(crate) fn none() -> Self {
+        Self { expires_at: None }
+    }
+
+    pub(crate) fn at(expires_at: Instant) -> Self {
+        Self {
+            expires_at: Some(expires_at),
+        }
+    }
+
+    pub(crate) fn has_elapsed(self) -> bool {
+        self.expires_at
+            .map(|expires_at| Instant::now() >= expires_at)
+            .unwrap_or(false)
+    }
+
+    fn clamp_duration(self, requested: Duration) -> Option<Duration> {
+        let Some(expires_at) = self.expires_at else {
+            return Some(requested);
+        };
+        let remaining = expires_at
+            .checked_duration_since(Instant::now())
+            .filter(|remaining| *remaining >= MIN_BLOCKING_TIMEOUT)?;
+        Some(requested.min(remaining))
+    }
+}
+
+fn log_probe_deadline_skip(plugin_id: &str, operation: &str) {
+    log::warn!(
+        "[plugin:{}] {} skipped: probe timed out",
+        plugin_id,
+        operation
+    );
+}
+
+fn probe_timeout_error<'js>(ctx: &Ctx<'js>) -> rquickjs::Error {
+    Exception::throw_message(ctx, "probe timed out")
+}
 
 fn last_non_empty_trimmed_line(text: &str) -> Option<String> {
     text.lines()
@@ -511,11 +559,28 @@ fn encrypt_aes_256_gcm_envelope(plaintext: &str, key_b64: &str) -> Result<String
     ))
 }
 
-pub fn inject_host_api<'js>(
+#[cfg(test)]
+pub(crate) fn inject_host_api<'js>(
     ctx: &Ctx<'js>,
     plugin_id: &str,
     app_data_dir: &PathBuf,
     app_version: &str,
+) -> rquickjs::Result<()> {
+    inject_host_api_with_deadline(
+        ctx,
+        plugin_id,
+        app_data_dir,
+        app_version,
+        ProbeDeadline::none(),
+    )
+}
+
+pub(crate) fn inject_host_api_with_deadline<'js>(
+    ctx: &Ctx<'js>,
+    plugin_id: &str,
+    app_data_dir: &PathBuf,
+    app_version: &str,
+    deadline: ProbeDeadline,
 ) -> rquickjs::Result<()> {
     let globals = ctx.globals();
     let probe_ctx = Object::new(ctx.clone())?;
@@ -545,11 +610,11 @@ pub fn inject_host_api<'js>(
     inject_fs(ctx, &host)?;
     inject_crypto(ctx, &host)?;
     inject_env(ctx, &host, plugin_id)?;
-    inject_http(ctx, &host, plugin_id)?;
+    inject_http(ctx, &host, plugin_id, deadline)?;
     inject_keychain(ctx, &host, plugin_id)?;
     inject_sqlite(ctx, &host)?;
     inject_ls(ctx, &host, plugin_id)?;
-    inject_ccusage(ctx, &host, plugin_id)?;
+    inject_ccusage(ctx, &host, plugin_id, deadline)?;
 
     probe_ctx.set("host", host)?;
     globals.set("__openusage_ctx", probe_ctx)?;
@@ -720,7 +785,12 @@ fn inject_env<'js>(ctx: &Ctx<'js>, host: &Object<'js>, _plugin_id: &str) -> rqui
     Ok(())
 }
 
-fn inject_http<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquickjs::Result<()> {
+fn inject_http<'js>(
+    ctx: &Ctx<'js>,
+    host: &Object<'js>,
+    plugin_id: &str,
+    deadline: ProbeDeadline,
+) -> rquickjs::Result<()> {
     let http_obj = Object::new(ctx.clone())?;
     let pid = plugin_id.to_string();
 
@@ -732,6 +802,10 @@ fn inject_http<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rqui
                 let req: HttpReqParams = serde_json::from_str(&req_json).map_err(|e| {
                     Exception::throw_message(&ctx_inner, &format!("invalid request: {}", e))
                 })?;
+
+                if deadline.has_elapsed() {
+                    return Err(Exception::throw_message(&ctx_inner, "probe timed out"));
+                }
 
                 let method_str = req.method.as_deref().unwrap_or("GET");
                 let redacted_url = redact_url(&req.url);
@@ -758,9 +832,13 @@ fn inject_http<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rqui
                 }
 
                 let timeout_ms = req.timeout_ms.unwrap_or(10_000);
+                let Some(timeout) = deadline.clamp_duration(Duration::from_millis(timeout_ms))
+                else {
+                    return Err(probe_timeout_error(&ctx_inner));
+                };
                 let mut builder = reqwest::blocking::Client::builder()
-                    .timeout(std::time::Duration::from_millis(timeout_ms))
-                    .connect_timeout(std::time::Duration::from_millis(timeout_ms))
+                    .timeout(timeout)
+                    .connect_timeout(timeout)
                     .redirect(reqwest::redirect::Policy::none());
 
                 // Apply pre-resolved proxy (localhost bypass already configured)
@@ -1972,6 +2050,7 @@ fn format_ccusage_timeout(timeout: std::time::Duration) -> String {
     format!("{:.3}s", timeout.as_secs_f64())
 }
 
+#[cfg(test)]
 fn run_ccusage_with_runner(
     kind: CcusageRunnerKind,
     program: &str,
@@ -1979,6 +2058,35 @@ fn run_ccusage_with_runner(
     provider: CcusageProvider,
     plugin_id: &str,
 ) -> CcusageRunnerResult {
+    run_ccusage_with_runner_deadline(
+        kind,
+        program,
+        opts,
+        provider,
+        plugin_id,
+        ProbeDeadline::none(),
+    )
+}
+
+fn run_ccusage_with_runner_deadline(
+    kind: CcusageRunnerKind,
+    program: &str,
+    opts: &CcusageQueryOpts,
+    provider: CcusageProvider,
+    plugin_id: &str,
+    deadline: ProbeDeadline,
+) -> CcusageRunnerResult {
+    if deadline.has_elapsed() {
+        log::warn!("[plugin:{}] ccusage skipped: probe timed out", plugin_id);
+        return CcusageRunnerResult::TimedOut;
+    }
+
+    let Some(current_timeout) = deadline.clamp_duration(Duration::from_secs(CCUSAGE_TIMEOUT_SECS))
+    else {
+        log_probe_deadline_skip(plugin_id, "ccusage");
+        return CcusageRunnerResult::TimedOut;
+    };
+
     let current = run_ccusage_with_runner_timeout(
         kind,
         program,
@@ -1986,18 +2094,27 @@ fn run_ccusage_with_runner(
         provider,
         plugin_id,
         CcusageCommandFlavor::Current,
-        std::time::Duration::from_secs(CCUSAGE_TIMEOUT_SECS),
+        current_timeout,
     );
     match current {
-        CcusageRunnerResult::Failed => run_ccusage_with_runner_timeout(
-            kind,
-            program,
-            opts,
-            provider,
-            plugin_id,
-            CcusageCommandFlavor::Legacy,
-            std::time::Duration::from_secs(CCUSAGE_TIMEOUT_SECS),
-        ),
+        CcusageRunnerResult::Failed if deadline.has_elapsed() => CcusageRunnerResult::TimedOut,
+        CcusageRunnerResult::Failed => {
+            let Some(legacy_timeout) =
+                deadline.clamp_duration(Duration::from_secs(CCUSAGE_TIMEOUT_SECS))
+            else {
+                log_probe_deadline_skip(plugin_id, "ccusage legacy fallback");
+                return CcusageRunnerResult::TimedOut;
+            };
+            run_ccusage_with_runner_timeout(
+                kind,
+                program,
+                opts,
+                provider,
+                plugin_id,
+                CcusageCommandFlavor::Legacy,
+                legacy_timeout,
+            )
+        }
         other => other,
     }
 }
@@ -2195,6 +2312,7 @@ fn inject_ccusage<'js>(
     ctx: &Ctx<'js>,
     host: &Object<'js>,
     plugin_id: &str,
+    deadline: ProbeDeadline,
 ) -> rquickjs::Result<()> {
     let ccusage_obj = Object::new(ctx.clone())?;
     let pid = plugin_id.to_string();
@@ -2222,7 +2340,11 @@ fn inject_ccusage<'js>(
                     &opts,
                     provider,
                     &pid,
-                    run_ccusage_with_runner,
+                    |kind, program, opts, provider, plugin_id| {
+                        run_ccusage_with_runner_deadline(
+                            kind, program, opts, provider, plugin_id, deadline,
+                        )
+                    },
                 ))
             },
         )?,
@@ -4087,15 +4209,55 @@ esac
         );
     }
 
+    #[test]
+    fn probe_deadline_clamps_host_timeout_to_remaining_budget() {
+        let deadline = ProbeDeadline::at(Instant::now() + Duration::from_millis(25));
+        let clamped = deadline
+            .clamp_duration(Duration::from_secs(10))
+            .expect("remaining budget should produce a host timeout");
+
+        assert!(
+            clamped <= Duration::from_millis(25),
+            "host timeout should not exceed remaining probe budget"
+        );
+        assert!(
+            clamped >= Duration::from_millis(1),
+            "host timeout should stay non-zero for blocking clients"
+        );
+    }
+
+    #[test]
+    fn probe_deadline_does_not_extend_elapsed_budget() {
+        let deadline = ProbeDeadline::at(Instant::now());
+
+        assert_eq!(deadline.clamp_duration(Duration::from_secs(10)), None);
+    }
+
     #[cfg(unix)]
     #[test]
     fn ccusage_timeout_kills_descendant_and_closes_pipes() {
         use std::io::Write;
         use std::os::unix::fs::PermissionsExt;
+        use std::path::Path;
         use std::time::{Duration, Instant};
 
         fn pid_exists(pid: i32) -> bool {
             unsafe { libc::kill(pid, 0) == 0 }
+        }
+
+        fn read_pid_file(path: &Path, deadline: Instant) -> i32 {
+            loop {
+                if let Ok(pid_text) = std::fs::read_to_string(path) {
+                    let pid_text = pid_text.trim();
+                    if !pid_text.is_empty() {
+                        return pid_text.parse().expect("parse descendant pid");
+                    }
+                }
+                if Instant::now() >= deadline {
+                    panic!("descendant pid file was not created at {}", path.display());
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
         }
 
         let test_id = format!(
@@ -4136,7 +4298,7 @@ wait
             CcusageProvider::Codex,
             "codex",
             CcusageCommandFlavor::Current,
-            Duration::from_millis(100),
+            Duration::from_secs(1),
         );
 
         assert_eq!(result, CcusageRunnerResult::TimedOut);
@@ -4145,11 +4307,7 @@ wait
             "timeout cleanup should not hang on inherited stdout/stderr pipes"
         );
 
-        let descendant_pid: i32 = std::fs::read_to_string(&pid_path)
-            .expect("read descendant pid")
-            .trim()
-            .parse()
-            .expect("parse descendant pid");
+        let descendant_pid = read_pid_file(&pid_path, Instant::now() + Duration::from_secs(1));
 
         let deadline = Instant::now() + Duration::from_secs(2);
         while pid_exists(descendant_pid) && Instant::now() < deadline {
