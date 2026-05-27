@@ -46,7 +46,6 @@
       speechHd: { 11000: "Max", 19000: "Max-High-Speed" },
     },
   }
-  const MODEL_CALLS_SUFFIX = "model-calls"
 
   function readString(value) {
     if (typeof value !== "string") return null
@@ -244,10 +243,10 @@
       return { label: "Image Generation", suffix: "images", isSession: false }
     }
     if (isSessionUsageName(name)) {
-      return { label: "Session", suffix: MODEL_CALLS_SUFFIX, isSession: true }
+      return { label: "Session", suffix: "count", isSession: true }
     }
     if (index === 0) {
-      return { label: "Session", suffix: MODEL_CALLS_SUFFIX, isSession: true }
+      return { label: "Session", suffix: "count", isSession: true }
     }
     return {
       label: rawName || "Usage",
@@ -393,7 +392,7 @@
     throw "Could not parse usage data."
   }
 
-  function parseModelRemainEntry(ctx, item, endpointSelection, index) {
+  function parseModelRemainEntry(ctx, item, index) {
     if (!item || typeof item !== "object") return null
 
     const usageMeta = classifyUsageEntry(item, index)
@@ -489,7 +488,7 @@
     return null
   }
 
-  function orderRemainItemsForDisplay(modelRemains, endpointSelection) {
+  function orderRemainItemsForDisplay(modelRemains) {
     if (!Array.isArray(modelRemains) || modelRemains.length === 0) return []
 
     const ordered = []
@@ -550,10 +549,10 @@
 
     const entries = []
     const seenLabels = Object.create(null)
-    const remainsToParse = orderRemainItemsForDisplay(modelRemains, endpointSelection)
+    const remainsToParse = orderRemainItemsForDisplay(modelRemains)
 
     for (let i = 0; i < remainsToParse.length; i += 1) {
-      const entry = parseModelRemainEntry(ctx, remainsToParse[i], endpointSelection, i)
+      const entry = parseModelRemainEntry(ctx, remainsToParse[i], i)
       if (!entry) continue
       if (seenLabels[entry.label]) continue
       seenLabels[entry.label] = true
