@@ -9,11 +9,11 @@ Antigravity is essentially a Google-branded fork of [Windsurf](windsurf.md) — 
 - **Vendor:** Google (internal codename "Jetski")
 - **Protocol:** Connect RPC v1 (JSON over HTTP) on local language server
 - **Service:** `exa.language_server_pb.LanguageServerService`
-- **Auth:** CSRF token from process args; Google OAuth tokens from SQLite (fallback)
+- **Auth:** CSRF token from process args; Google OAuth tokens from SQLite or `agy` keychain (fallbacks)
 - **Quota:** fraction (0.0–1.0, where 1.0 = 100% remaining)
 - **Quota window:** 5 hours
 - **Timestamps:** ISO 8601
-- **Requires:** Antigravity IDE running (language server process), or signed-in credentials in SQLite (Cloud Code fallback)
+- **Requires:** Antigravity IDE or pre-rename Antigravity running, signed-in app credentials from either SQLite path, or an authenticated Antigravity CLI (`agy`)
 
 ## Discovery
 
@@ -21,8 +21,8 @@ The language server listens on a random localhost port. Three values must be dis
 
 ```bash
 # 1. Find process and extract CSRF token
-ps -ax -o pid=,command= | grep 'language_server_macos.*antigravity'
-# Match: --app_data_dir antigravity  OR  path contains /antigravity/
+pgrep -ilf 'language_server.*antigravity|antigravity.*language_server'
+# Match: --app_data_dir antigravity or antigravity-ide, OR matching app path
 # Extract: --csrf_token <token>
 # Extract: --extension_server_port <port>  (HTTP fallback)
 
@@ -158,7 +158,7 @@ Interestingly, non-Google models (Claude, GPT-OSS) are proxied through Codeium/W
 
 Antigravity stores auth credentials in a VS Code-compatible state database.
 
-- **Path:** `~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb`
+- **Paths (tried in order):** `~/Library/Application Support/Antigravity IDE/User/globalStorage/state.vscdb`, then `~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb`
 - **Table:** `ItemTable` (`key` TEXT, `value` TEXT)
 
 ### antigravityUnifiedStateSync.oauthToken (sentinel envelope → protobuf)
@@ -244,17 +244,40 @@ The response includes all models provisioned for the account. The plugin filters
 
 The Cloud Code model set is a superset of the LS model set. The LS returns only cascade-configured chat models, Cloud Code includes all provisioned models. This difference is expected.
 
+## Antigravity CLI (`agy`) fallback
+
+The Antigravity CLI stores its own non-secret state under `~/.gemini/antigravity-cli/` and uses the OS keychain for auth. On macOS, current builds store the token under keychain service `gemini`, account `antigravity`.
+
+OpenUsage treats this as a fallback inside the Antigravity provider, not a separate provider, because the app and CLI share the same account/model quota pools. The keychain value may be a raw bearer token, JSON OAuth-style payload, or `go-keyring-base64:` wrapped JSON payload.
+
+CLI quota uses the same Cloud Code base URL but a different endpoint sequence:
+
+1. `POST /v1internal:loadCodeAssist` with the `agy` OAuth token to read the paid tier and Cloud Code project.
+2. `POST /v1internal:retrieveUserQuota` with `{ "project": "<cloudaicompanionProject>" }` to read quota buckets.
+
+Current CLI quota buckets expose Gemini model pools. If the IDE is running, the language server remains preferred because it returns the full Antigravity model set, including Claude.
+
+## Historical token/cost usage
+
+Antigravity does not currently expose the local token/cost history that Claude and Codex use for `Today`, `Yesterday`, and `Last 30 Days` rows. The quota sources above return remaining fraction and reset time only. Antigravity CLI stores conversation state under `~/.gemini/antigravity-cli/`, but the local transcripts and logs do not include input, output, cache, or reasoning token counts, and the `.pb` conversation files are opaque without Google's private schema. Do not estimate token usage from transcript text or quota deltas; that would make the UI look precise while showing guessed data.
+
+Gemini CLI usage data is separate (`${GEMINI_DATA_DIR:-~/.gemini/tmp}`) and must not be merged into Antigravity just because both tools use Google accounts.
+
 ## Plugin Strategy
 
-1. Read `antigravityUnifiedStateSync.oauthToken` from SQLite, unwrap the sentinel envelope, and decode the inner `OAuthTokenInfo` protobuf (optional, may fail).
-2. **Strategy 1 — LS probe (primary):**
+1. **Strategy 1 — LS probe (primary):**
    a. Discover LS process via `ctx.host.ls.discover()` (ps + lsof)
    b. Probe ports with `GetUnleashData` to find the Connect-RPC endpoint
    c. Call `GetUserStatus` for plan name + per-model quota
    d. Fall back to `GetCommandModelConfigs` if `GetUserStatus` fails
-3. **Strategy 2 — Cloud Code API (fallback, only if LS fails):**
-   a. Build candidate token list: proto access_token (if unexpired), cached refreshed token (if fresh), deduplicated
-   b. Try each token with `fetchAvailableModels`
-   c. If all fail with 401/403 (or the list is empty) and a refresh token is available: refresh via Google OAuth, cache result to pluginDataDir, retry once
-   d. Parse model quota: skip `isInternal` models, empty-displayName models, and blacklisted model IDs
-4. If both strategies fail: error "Start Antigravity and try again."
+2. **Strategy 2 — App Cloud Code API (fallback, only if LS fails):**
+   a. Read `antigravityUnifiedStateSync.oauthToken` from SQLite, unwrap the sentinel envelope, and decode the inner `OAuthTokenInfo` protobuf (optional, may fail)
+   b. Build candidate token list: proto access_token (if unexpired), cached refreshed token (if fresh), deduplicated
+   c. Try each token with `fetchAvailableModels`
+   d. If all fail with 401/403 (or the list is empty) and a refresh token is available: refresh via Google OAuth, cache result to pluginDataDir, retry once
+   e. Parse model quota: skip `isInternal` models, empty-displayName models, and blacklisted model IDs
+3. **Strategy 3 — CLI Cloud Code API (final fallback):**
+   a. Read the `agy` keychain token from service `gemini`, account `antigravity`
+   b. Call `loadCodeAssist` for plan/project context
+   c. Call `retrieveUserQuota` for CLI quota buckets
+4. If all strategies fail: error "Start Antigravity or run `agy` and try again."

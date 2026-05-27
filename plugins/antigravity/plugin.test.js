@@ -97,6 +97,32 @@ function makeCloudCodeResponse(overrides) {
   )
 }
 
+function makeCliLoadResponse(overrides) {
+  return Object.assign(
+    {
+      cloudaicompanionProject: "gold-signer-test",
+      paidTier: { name: "Gemini Code Assist in Google One AI Pro" },
+    },
+    overrides
+  )
+}
+
+function makeCliQuotaResponse(overrides) {
+  return Object.assign(
+    {
+      buckets: [
+        {
+          modelId: "gemini-3-pro-preview",
+          tokenType: "REQUESTS",
+          remainingFraction: 0.25,
+          resetTime: "2026-02-08T12:00:00Z",
+        },
+      ],
+    },
+    overrides
+  )
+}
+
 function setupLsMock(ctx, discovery, responseBody) {
   ctx.host.ls.discover.mockReturnValue(discovery)
   ctx.host.http.request.mockImplementation((opts) => {
@@ -161,7 +187,11 @@ describe("antigravity plugin", () => {
     const ctx = makeCtx()
     ctx.host.ls.discover.mockReturnValue(null)
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Start Antigravity and try again.")
+    expect(() => plugin.probe(ctx)).toThrow("Start Antigravity or run `agy` and try again.")
+    expect(ctx.host.ls.discover).toHaveBeenCalledWith(expect.objectContaining({
+      processName: "language_server",
+      markers: ["antigravity", "antigravity-ide"],
+    }))
   })
 
   it("throws when no working port found and no DB credentials", async () => {
@@ -171,7 +201,7 @@ describe("antigravity plugin", () => {
       throw new Error("connection refused")
     })
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Start Antigravity and try again.")
+    expect(() => plugin.probe(ctx)).toThrow("Start Antigravity or run `agy` and try again.")
   })
 
   it("throws when both GetUserStatus and GetCommandModelConfigs fail", async () => {
@@ -184,7 +214,7 @@ describe("antigravity plugin", () => {
       return { status: 500, bodyText: "" }
     })
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Start Antigravity and try again.")
+    expect(() => plugin.probe(ctx)).toThrow("Start Antigravity or run `agy` and try again.")
   })
 
   it("returns models + plan from GetUserStatus", async () => {
@@ -507,6 +537,9 @@ describe("antigravity plugin", () => {
     const futureExpiry = Math.floor(Date.now() / 1000) + 3600
     setupSqliteMock(ctx, makeOAuthSentinelB64(ctx, { accessToken: "ya29.proto-token", refreshToken: "1//refresh", expirySeconds: futureExpiry }))
     ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.keychain.readGenericPassword.mockImplementation(() => {
+      throw new Error("CLI keychain should not be read when app credentials work")
+    })
 
     let capturedHeaders = null
     ctx.host.http.request.mockImplementation((opts) => {
@@ -524,6 +557,103 @@ describe("antigravity plugin", () => {
     expect(capturedHeaders).toBeTruthy()
     expect(capturedHeaders.Authorization).toBe("Bearer ya29.proto-token")
     expect(capturedHeaders["User-Agent"]).toBe("antigravity")
+    expect(ctx.host.keychain.readGenericPassword).not.toHaveBeenCalled()
+  })
+
+  it("falls back to Antigravity CLI keychain when app credentials are unavailable", async () => {
+    const ctx = makeCtx()
+    setupSqliteMock(ctx, null)
+    ctx.host.ls.discover.mockReturnValue(null)
+    ctx.host.keychain.readGenericPassword.mockImplementation((service, account) => {
+      if (service === "gemini" && account === "antigravity") return "Bearer agy-token"
+      return null
+    })
+
+    let capturedHeaders = null
+    let capturedQuotaBody = null
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("loadCodeAssist")) {
+        capturedHeaders = opts.headers
+        return { status: 200, bodyText: JSON.stringify(makeCliLoadResponse()) }
+      }
+      if (String(opts.url).includes("retrieveUserQuota")) {
+        capturedQuotaBody = JSON.parse(opts.bodyText)
+        return {
+          status: 200,
+          bodyText: JSON.stringify(makeCliQuotaResponse()),
+        }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(ctx.host.keychain.readGenericPassword).toHaveBeenCalledWith("gemini", "antigravity")
+    expect(capturedHeaders.Authorization).toBe("Bearer agy-token")
+    expect(capturedHeaders["User-Agent"]).toBe("agy")
+    expect(capturedQuotaBody).toEqual({ project: "gold-signer-test" })
+    expect(result.plan).toBe("Gemini Code Assist in Google One AI Pro")
+    expect(result.lines.find((l) => l.label === "Gemini Pro").used).toBe(75)
+  })
+
+  it("loads go-keyring-base64 wrapped JSON from Antigravity CLI keychain", async () => {
+    const ctx = makeCtx()
+    setupSqliteMock(ctx, null)
+    ctx.host.ls.discover.mockReturnValue(null)
+    const encoded = ctx.base64.encode(JSON.stringify({ tokens: { access_token: "agy-json-token" } }))
+    ctx.host.keychain.readGenericPassword.mockReturnValue("go-keyring-base64:" + encoded)
+
+    let capturedAuth = null
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("loadCodeAssist")) {
+        return { status: 200, bodyText: JSON.stringify(makeCliLoadResponse()) }
+      }
+      if (String(opts.url).includes("retrieveUserQuota")) {
+        capturedAuth = opts.headers.Authorization
+        return { status: 200, bodyText: JSON.stringify(makeCliQuotaResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(capturedAuth).toBe("Bearer agy-json-token")
+    expect(result.lines.length).toBeGreaterThan(0)
+  })
+
+  it("loads go-keyring-base64 wrapped agy token object from keychain", async () => {
+    const ctx = makeCtx()
+    setupSqliteMock(ctx, null)
+    ctx.host.ls.discover.mockReturnValue(null)
+    const encoded = ctx.base64.encode(JSON.stringify({
+      token: {
+        access_token: "agy-object-token",
+        token_type: "Bearer",
+        refresh_token: "agy-refresh-token",
+      },
+      auth_method: "oauth-personal",
+    }))
+    ctx.host.keychain.readGenericPassword.mockReturnValue("go-keyring-base64:" + encoded)
+
+    let capturedAuth = null
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("loadCodeAssist")) {
+        return { status: 200, bodyText: JSON.stringify(makeCliLoadResponse()) }
+      }
+      if (String(opts.url).includes("retrieveUserQuota")) {
+        capturedAuth = opts.headers.Authorization
+        return { status: 200, bodyText: JSON.stringify(makeCliQuotaResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(capturedAuth).toBe("Bearer agy-object-token")
+    expect(result.lines.length).toBeGreaterThan(0)
   })
 
   it("Cloud Code returns null on 401/403 (invalid token, no refresh)", async () => {
@@ -541,7 +671,7 @@ describe("antigravity plugin", () => {
     })
 
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Start Antigravity and try again.")
+    expect(() => plugin.probe(ctx)).toThrow("Start Antigravity or run `agy` and try again.")
   })
 
   it("Cloud Code tries multiple base URLs", async () => {
@@ -612,7 +742,7 @@ describe("antigravity plugin", () => {
     ctx.host.ls.discover.mockReturnValue(null)
 
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Start Antigravity and try again.")
+    expect(() => plugin.probe(ctx)).toThrow("Start Antigravity or run `agy` and try again.")
     expect(ctx.host.http.request).not.toHaveBeenCalled()
   })
 
@@ -696,13 +826,144 @@ describe("antigravity plugin", () => {
     expect(result.lines.length).toBeGreaterThan(0)
   })
 
+  it("tries the official Antigravity IDE SQLite path before the legacy app path", async () => {
+    const ctx = makeCtx()
+    const futureExpiry = Math.floor(Date.now() / 1000) + 3600
+    const protoB64 = makeOAuthSentinelB64(ctx, { accessToken: "ya29.ide-path", refreshToken: "1//refresh-token", expirySeconds: futureExpiry })
+    ctx.host.sqlite.query.mockImplementation((db) => {
+      if (String(db).includes("Antigravity IDE")) {
+        return JSON.stringify([{ value: protoB64 }])
+      }
+      return "[]"
+    })
+    ctx.host.ls.discover.mockReturnValue(null)
+
+    let capturedAuth = null
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("fetchAvailableModels")) {
+        capturedAuth = opts.headers.Authorization
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    const dbPaths = ctx.host.sqlite.query.mock.calls.map((call) => String(call[0]))
+    expect(dbPaths[0]).toContain("Antigravity IDE/User/globalStorage/state.vscdb")
+    expect(dbPaths[1]).toContain("Antigravity/User/globalStorage/state.vscdb")
+    expect(capturedAuth).toBe("Bearer ya29.ide-path")
+    expect(result.lines.length).toBeGreaterThan(0)
+  })
+
+  it("tries later SQLite DB access tokens when an earlier DB token is rejected", async () => {
+    const ctx = makeCtx()
+    const futureExpiry = Math.floor(Date.now() / 1000) + 3600
+    const ideProtoB64 = makeOAuthSentinelB64(ctx, {
+      accessToken: "ya29.stale-ide-token",
+      refreshToken: null,
+      expirySeconds: futureExpiry,
+    })
+    const appProtoB64 = makeOAuthSentinelB64(ctx, {
+      accessToken: "ya29.valid-app-token",
+      refreshToken: "1//app-refresh",
+      expirySeconds: futureExpiry,
+    })
+    ctx.host.sqlite.query.mockImplementation((db) => {
+      if (String(db).includes("Antigravity IDE/User/globalStorage")) {
+        return JSON.stringify([{ value: ideProtoB64 }])
+      }
+      if (String(db).includes("Antigravity/User/globalStorage")) {
+        return JSON.stringify([{ value: appProtoB64 }])
+      }
+      return "[]"
+    })
+    ctx.host.ls.discover.mockReturnValue(null)
+
+    const capturedAuths = []
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("fetchAvailableModels")) {
+        capturedAuths.push(opts.headers.Authorization)
+        if (opts.headers.Authorization === "Bearer ya29.stale-ide-token") {
+          return { status: 401, bodyText: '{"error":"unauthorized"}' }
+        }
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(capturedAuths).toEqual([
+      "Bearer ya29.stale-ide-token",
+      "Bearer ya29.valid-app-token",
+    ])
+    expect(result.lines.length).toBeGreaterThan(0)
+  })
+
+  it("tries later SQLite DB refresh tokens when an earlier DB refresh fails", async () => {
+    const ctx = makeCtx()
+    const pastExpiry = Math.floor(Date.now() / 1000) - 3600
+    const ideProtoB64 = makeOAuthSentinelB64(ctx, {
+      accessToken: "ya29.expired-ide-token",
+      refreshToken: "1//bad-ide-refresh",
+      expirySeconds: pastExpiry,
+    })
+    const appProtoB64 = makeOAuthSentinelB64(ctx, {
+      accessToken: "ya29.expired-app-token",
+      refreshToken: "1//valid-app-refresh",
+      expirySeconds: pastExpiry,
+    })
+    ctx.host.sqlite.query.mockImplementation((db) => {
+      if (String(db).includes("Antigravity IDE/User/globalStorage")) {
+        return JSON.stringify([{ value: ideProtoB64 }])
+      }
+      if (String(db).includes("Antigravity/User/globalStorage")) {
+        return JSON.stringify([{ value: appProtoB64 }])
+      }
+      return "[]"
+    })
+    ctx.host.ls.discover.mockReturnValue(null)
+
+    const refreshBodies = []
+    const capturedAuths = []
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url.includes("oauth2.googleapis.com")) {
+        refreshBodies.push(opts.bodyText)
+        if (String(opts.bodyText).includes(encodeURIComponent("1//bad-ide-refresh"))) {
+          return { status: 400, bodyText: '{"error":"invalid_grant"}' }
+        }
+        return { status: 200, bodyText: JSON.stringify({ access_token: "ya29.refreshed-app" }) }
+      }
+      if (url.includes("fetchAvailableModels")) {
+        capturedAuths.push(opts.headers.Authorization)
+        return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(refreshBodies.length).toBe(2)
+    expect(refreshBodies[0]).toContain(encodeURIComponent("1//bad-ide-refresh"))
+    expect(refreshBodies[1]).toContain(encodeURIComponent("1//valid-app-refresh"))
+    expect(capturedAuths).toEqual(["Bearer ya29.refreshed-app"])
+    expect(result.lines.length).toBeGreaterThan(0)
+  })
+
   it("throws when unified oauth envelope is missing and no cache", async () => {
     const ctx = makeCtx()
     setupSqliteMock(ctx, null)
     ctx.host.ls.discover.mockReturnValue(null)
 
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Start Antigravity and try again.")
+    expect(() => plugin.probe(ctx)).toThrow("Start Antigravity or run `agy` and try again.")
     expect(ctx.host.http.request).not.toHaveBeenCalled()
   })
 
@@ -712,7 +973,7 @@ describe("antigravity plugin", () => {
     ctx.host.ls.discover.mockReturnValue(null)
 
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Start Antigravity and try again.")
+    expect(() => plugin.probe(ctx)).toThrow("Start Antigravity or run `agy` and try again.")
     expect(ctx.host.http.request).not.toHaveBeenCalled()
   })
 
@@ -791,7 +1052,7 @@ describe("antigravity plugin", () => {
     })
 
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Start Antigravity and try again.")
+    expect(() => plugin.probe(ctx)).toThrow("Start Antigravity or run `agy` and try again.")
   })
 
   it("tries DB token first, then cached on auth failure", async () => {
@@ -975,7 +1236,7 @@ describe("antigravity plugin", () => {
     }))
 
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Start Antigravity and try again.")
+    expect(() => plugin.probe(ctx)).toThrow("Start Antigravity or run `agy` and try again.")
     expect(ctx.host.http.request).not.toHaveBeenCalled()
   })
 
@@ -1015,7 +1276,7 @@ describe("antigravity plugin", () => {
     ctx.host.fs.writeText(cachePath, "{bad json")
 
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Start Antigravity and try again.")
+    expect(() => plugin.probe(ctx)).toThrow("Start Antigravity or run `agy` and try again.")
     expect(ctx.host.http.request).not.toHaveBeenCalled()
   })
 
@@ -1243,7 +1504,7 @@ describe("antigravity plugin", () => {
     })
 
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Start Antigravity and try again.")
+    expect(() => plugin.probe(ctx)).toThrow("Start Antigravity or run `agy` and try again.")
   })
 
   it("handles refresh response missing access_token", async () => {
@@ -1266,7 +1527,7 @@ describe("antigravity plugin", () => {
     })
 
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Start Antigravity and try again.")
+    expect(() => plugin.probe(ctx)).toThrow("Start Antigravity or run `agy` and try again.")
     expect(oauthCalls).toBe(1)
   })
 
@@ -1451,7 +1712,7 @@ describe("antigravity plugin", () => {
     })
 
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Start Antigravity and try again.")
+    expect(() => plugin.probe(ctx)).toThrow("Start Antigravity or run `agy` and try again.")
     expect(refreshCalls).toBe(0)
   })
 
@@ -1481,7 +1742,7 @@ describe("antigravity plugin", () => {
     })
 
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Start Antigravity and try again.")
+    expect(() => plugin.probe(ctx)).toThrow("Start Antigravity or run `agy` and try again.")
     expect(refreshCalls).toBe(0)
   })
 })
