@@ -100,6 +100,9 @@ fn copy_dir_recursive(src: &Path, dst: &Path) {
                     }
                     copy_dir_recursive(&src_path, &dst_path);
                 } else if file_type.is_file() {
+                    if dst_path.exists() {
+                        continue;
+                    }
                     if let Err(err) = std::fs::copy(&src_path, &dst_path) {
                         log::warn!(
                             "failed to copy {} to {}: {}",

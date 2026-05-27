@@ -457,10 +457,110 @@
     return { plan: plan, lines: lines }
   }
 
+  // --- Keychain auth (Antigravity CLI / Gemini CLI) ---
+
+  var KEYCHAIN_SERVICE_NAMES = ["gemini", "gemini-cli-oauth", "antigravity-cli-oauth"]
+
+  var KEYCHAIN_GO_PREFIX = "go-keyring-base64:"
+
+  function decodeGoKeyringValue(raw, ctx) {
+    if (typeof raw !== "string") return null
+    var trimmed = raw.replace(/^\s+|\s+$/g, "")
+    if (trimmed.indexOf(KEYCHAIN_GO_PREFIX) !== 0) return null
+    var b64 = trimmed.substring(KEYCHAIN_GO_PREFIX.length)
+    var decoded = ctx.base64.decode(b64)
+    if (!decoded) return null
+    return ctx.util.tryParseJson(decoded)
+  }
+
+  function extractTokens(parsed) {
+    if (!parsed || typeof parsed !== "object") return null
+
+    var accessToken = null
+    var refreshToken = null
+    var expirySeconds = null
+
+    // Go keyring format: { token: { access_token, refresh_token, expiry }, auth_method }
+    if (parsed.token && typeof parsed.token === "object") {
+      var t = parsed.token
+      accessToken = t.access_token || null
+      refreshToken = t.refresh_token || null
+      if (t.expiry) {
+        var ms = Date.parse(t.expiry)
+        if (!isNaN(ms)) expirySeconds = Math.floor(ms / 1000)
+      }
+    }
+
+    // Direct format: { accessToken, refreshToken } or { access_token, refresh_token }
+    if (!accessToken) accessToken = parsed.accessToken || parsed.access_token || null
+    if (!refreshToken) refreshToken = parsed.refreshToken || parsed.refresh_token || null
+
+    // Nested tokens object (Codex-style format)
+    if (!accessToken && parsed.tokens && typeof parsed.tokens === "object") {
+      var t = parsed.tokens
+      accessToken = t.accessToken || t.access_token || null
+      if (!refreshToken) refreshToken = t.refreshToken || t.refresh_token || null
+    }
+
+    if (!accessToken && !refreshToken) return null
+
+    if (expirySeconds === null) {
+      if (parsed.expiresAt != null) {
+        var ea = Number(parsed.expiresAt)
+        if (Number.isFinite(ea)) expirySeconds = Math.floor(ea / 1000)
+      } else if (parsed.expiresAtMs != null) {
+        var em = Number(parsed.expiresAtMs)
+        if (Number.isFinite(em)) expirySeconds = Math.floor(em / 1000)
+      } else if (parsed.expirySeconds != null) {
+        var es = Number(parsed.expirySeconds)
+        if (Number.isFinite(es)) expirySeconds = es
+      } else if (parsed.expiry_seconds != null) {
+        var es2 = Number(parsed.expiry_seconds)
+        if (Number.isFinite(es2)) expirySeconds = es2
+      }
+    }
+
+    return { accessToken: accessToken, refreshToken: refreshToken, expirySeconds: expirySeconds }
+  }
+
+  function loadKeychainTokens(ctx) {
+    if (!ctx.host.keychain || typeof ctx.host.keychain.readGenericPassword !== "function") {
+      return null
+    }
+
+    for (var i = 0; i < KEYCHAIN_SERVICE_NAMES.length; i++) {
+      try {
+        var value = ctx.host.keychain.readGenericPassword(KEYCHAIN_SERVICE_NAMES[i])
+        if (!value) continue
+
+        var parsed = ctx.util.tryParseJson(value)
+
+        // Try go-keyring base64 envelope (Antigravity CLI / Go keyring format)
+        if (!parsed) {
+          parsed = decodeGoKeyringValue(value, ctx)
+        }
+
+        if (!parsed || typeof parsed !== "object") continue
+
+        var tokens = extractTokens(parsed)
+        if (!tokens) continue
+
+        ctx.host.log.info("tokens loaded from keychain: " + KEYCHAIN_SERVICE_NAMES[i])
+        return tokens
+      } catch (e) {
+        ctx.host.log.warn("keychain read failed (" + KEYCHAIN_SERVICE_NAMES[i] + "): " + String(e))
+      }
+    }
+
+    ctx.host.log.debug("no antigravity tokens found in keychain")
+    return null
+  }
+
   // --- Probe ---
 
   function probe(ctx) {
     var dbTokens = loadOAuthTokens(ctx)
+    var keychainTokens = loadKeychainTokens(ctx)
 
     var lsResult = probeLs(ctx)
     if (lsResult) return lsResult
@@ -475,7 +575,17 @@
     var cached = loadCachedToken(ctx)
     if (cached && tokens.indexOf(cached) === -1) tokens.push(cached)
 
-    if (tokens.length === 0 && !(dbTokens && dbTokens.refreshToken)) {
+    if (keychainTokens && keychainTokens.accessToken) {
+      if (!keychainTokens.expirySeconds || keychainTokens.expirySeconds > Math.floor(Date.now() / 1000)) {
+        if (tokens.indexOf(keychainTokens.accessToken) === -1) tokens.push(keychainTokens.accessToken)
+      }
+    }
+
+    var refreshToken = null
+    if (dbTokens && dbTokens.refreshToken) refreshToken = dbTokens.refreshToken
+    else if (keychainTokens && keychainTokens.refreshToken) refreshToken = keychainTokens.refreshToken
+
+    if (tokens.length === 0 && !refreshToken) {
       throw "Start Antigravity and try again."
     }
 
@@ -494,9 +604,8 @@
     // probeCloudCode returns null for transient failures (5xx/timeouts); without this
     // guard a Cloud Code incident would trigger a Google OAuth refresh every probe cycle
     // instead of ~once per token lifetime — risking refresh-token throttling or rotation.
-    if (!ccData && dbTokens && dbTokens.refreshToken &&
-        (sawAuthFailure || tokens.length === 0)) {
-      var refreshed = refreshAccessToken(ctx, dbTokens.refreshToken)
+    if (!ccData && refreshToken && (sawAuthFailure || tokens.length === 0)) {
+      var refreshed = refreshAccessToken(ctx, refreshToken)
       if (refreshed) ccData = probeCloudCode(ctx, refreshed)
     }
 
