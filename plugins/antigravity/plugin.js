@@ -1,11 +1,19 @@
 (function () {
   var LS_SERVICE = "exa.language_server_pb.LanguageServerService"
-  var STATE_DB = "~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb"
+  var STATE_DBS = [
+    "~/Library/Application Support/Antigravity IDE/User/globalStorage/state.vscdb",
+    "~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb",
+  ]
+  var CLI_KEYCHAIN_SERVICE = "gemini"
+  var CLI_KEYCHAIN_ACCOUNT = "antigravity"
   var CLOUD_CODE_URLS = [
     "https://daily-cloudcode-pa.googleapis.com",
     "https://cloudcode-pa.googleapis.com",
   ]
+  var LOAD_CODE_ASSIST_PATH = "/v1internal:loadCodeAssist"
   var FETCH_MODELS_PATH = "/v1internal:fetchAvailableModels"
+  var RETRIEVE_QUOTA_PATH = "/v1internal:retrieveUserQuota"
+  var LOGIN_MESSAGE = "Start Antigravity or run `agy` and try again."
   var GOOGLE_OAUTH_URL = "https://oauth2.googleapis.com/token"
   var GOOGLE_CLIENT_ID = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
   var GOOGLE_CLIENT_SECRET = "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"
@@ -92,10 +100,10 @@
     return ctx.base64.decode(innerText)
   }
 
-  function loadOAuthTokens(ctx) {
+  function loadOAuthTokensFromDb(ctx, dbPath) {
     try {
       var rows = ctx.host.sqlite.query(
-        STATE_DB,
+        dbPath,
         "SELECT value FROM ItemTable WHERE key = '" + OAUTH_TOKEN_KEY + "' LIMIT 1"
       )
       var parsed = ctx.util.tryParseJson(rows)
@@ -116,6 +124,15 @@
       ctx.host.log.warn("failed to read unified oauth token: " + String(e))
       return null
     }
+  }
+
+  function loadOAuthTokenCandidates(ctx) {
+    var candidates = []
+    for (var i = 0; i < STATE_DBS.length; i++) {
+      var tokens = loadOAuthTokensFromDb(ctx, STATE_DBS[i])
+      if (tokens) candidates.push(tokens)
+    }
+    return candidates
   }
 
   // --- Google OAuth token refresh ---
@@ -184,12 +201,89 @@
     }
   }
 
+  // --- Antigravity CLI keychain token ---
+
+  function trimString(value) {
+    return typeof value === "string" ? value.trim() : ""
+  }
+
+  function decodeBase64(ctx, text) {
+    try {
+      return ctx.base64.decode(text)
+    } catch (e) {
+      return null
+    }
+  }
+
+  function unwrapCliKeychainText(ctx, raw) {
+    var text = trimString(raw)
+    if (!text) return null
+    if (text.indexOf("go-keyring-base64:") === 0) {
+      text = trimString(decodeBase64(ctx, text.slice("go-keyring-base64:".length)))
+    }
+    return text || null
+  }
+
+  function extractTokenFromObject(obj) {
+    if (!obj || typeof obj !== "object") return null
+
+    var directKeys = [
+      "access_token",
+      "accessToken",
+      "token",
+      "id_token",
+      "idToken",
+      "bearerToken",
+      "auth_token",
+      "authToken",
+    ]
+    for (var i = 0; i < directKeys.length; i++) {
+      var value = obj[directKeys[i]]
+      if (typeof value === "string" && value.trim()) return value.trim()
+    }
+
+    var nestedKeys = ["token", "tokens", "oauth", "oauth2", "credentials", "auth"]
+    for (var j = 0; j < nestedKeys.length; j++) {
+      var nested = extractTokenFromObject(obj[nestedKeys[j]])
+      if (nested) return nested
+    }
+
+    return null
+  }
+
+  function extractCliAccessToken(ctx, raw) {
+    var text = unwrapCliKeychainText(ctx, raw)
+    if (!text) return null
+
+    var parsed = ctx.util.tryParseJson(text)
+    if (typeof parsed === "string" && parsed.trim()) return parsed.trim()
+    if (parsed) return extractTokenFromObject(parsed)
+
+    if (text.indexOf("Bearer ") === 0) return text.slice("Bearer ".length).trim() || null
+    return text
+  }
+
+  function loadCliKeychainToken(ctx) {
+    if (!ctx.host.keychain || typeof ctx.host.keychain.readGenericPassword !== "function") {
+      return null
+    }
+    try {
+      return extractCliAccessToken(
+        ctx,
+        ctx.host.keychain.readGenericPassword(CLI_KEYCHAIN_SERVICE, CLI_KEYCHAIN_ACCOUNT)
+      )
+    } catch (e) {
+      ctx.host.log.info("Antigravity CLI keychain read failed: " + String(e))
+      return null
+    }
+  }
+
   // --- LS discovery ---
 
   function discoverLs(ctx) {
     return ctx.host.ls.discover({
-      processName: "language_server_macos",
-      markers: ["antigravity"],
+      processName: "language_server",
+      markers: ["antigravity", "antigravity-ide"],
       csrfFlag: "--csrf_token",
       portFlag: "--extension_server_port",
     })
@@ -335,20 +429,25 @@
 
   // --- Cloud Code API ---
 
-  function probeCloudCode(ctx, token) {
+  function requestCloudCodeJson(ctx, path, token, userAgent, body) {
     for (var i = 0; i < CLOUD_CODE_URLS.length; i++) {
       try {
         var resp = ctx.host.http.request({
           method: "POST",
-          url: CLOUD_CODE_URLS[i] + FETCH_MODELS_PATH,
+          url: CLOUD_CODE_URLS[i] + path,
           headers: {
+            Accept: "application/json",
             "Content-Type": "application/json",
             Authorization: "Bearer " + token,
-            "User-Agent": "antigravity",
+            "User-Agent": userAgent || "antigravity",
           },
-          bodyText: "{}",
+          bodyText: JSON.stringify(body || {}),
           timeoutMs: 15000,
         })
+        if (!resp || typeof resp.status !== "number" || !Number.isFinite(resp.status)) {
+          ctx.host.log.warn("Cloud Code returned invalid response shape (" + CLOUD_CODE_URLS[i] + ")")
+          continue
+        }
         if (ctx.util.isAuthStatus(resp.status)) return { _authFailed: true }
         if (resp.status >= 200 && resp.status < 300) {
           return ctx.util.tryParseJson(resp.bodyText)
@@ -358,6 +457,10 @@
       }
     }
     return null
+  }
+
+  function probeCloudCode(ctx, token, userAgent) {
+    return requestCloudCodeJson(ctx, FETCH_MODELS_PATH, token, userAgent, {})
   }
 
   function parseCloudCodeModels(data) {
@@ -371,7 +474,10 @@
       if (m.isInternal) continue
       var modelId = m.model || keys[i]
       if (CC_MODEL_BLACKLIST[modelId]) continue
-      var displayName = (typeof m.displayName === "string") ? m.displayName.trim() : ""
+      var displayName =
+        (typeof m.displayName === "string" && m.displayName.trim()) ||
+        (typeof m.label === "string" && m.label.trim()) ||
+        ""
       if (!displayName) continue
       var qi = m.quotaInfo
       var frac = (qi && typeof qi.remainingFraction === "number") ? qi.remainingFraction : 0
@@ -382,6 +488,58 @@
       })
     }
     return configs
+  }
+
+  function readCliPlan(loadData) {
+    var paidTier = loadData && loadData.paidTier
+    if (paidTier && typeof paidTier.name === "string" && paidTier.name.trim()) {
+      return paidTier.name.trim()
+    }
+    var currentTier = loadData && loadData.currentTier
+    if (currentTier && typeof currentTier.name === "string" && currentTier.name.trim()) {
+      return currentTier.name.trim()
+    }
+    return null
+  }
+
+  function parseCliQuotaBuckets(data) {
+    var buckets = data && data.buckets
+    if (!Array.isArray(buckets)) return []
+    var configs = []
+    for (var i = 0; i < buckets.length; i++) {
+      var bucket = buckets[i]
+      if (!bucket || typeof bucket !== "object") continue
+      var modelId = (typeof bucket.modelId === "string" && bucket.modelId.trim()) || ""
+      if (!modelId) continue
+      var frac = (typeof bucket.remainingFraction === "number") ? bucket.remainingFraction : 0
+      configs.push({
+        label: modelId,
+        quotaInfo: { remainingFraction: frac, resetTime: bucket.resetTime || undefined },
+      })
+    }
+    return configs
+  }
+
+  function probeCliCloudCode(ctx, token) {
+    var loadData = requestCloudCodeJson(ctx, LOAD_CODE_ASSIST_PATH, token, "agy", {})
+    if (!loadData || loadData._authFailed) return loadData
+
+    var project =
+      typeof loadData.cloudaicompanionProject === "string" && loadData.cloudaicompanionProject.trim()
+        ? loadData.cloudaicompanionProject.trim()
+        : null
+    var quotaData = null
+    if (project) {
+      quotaData = requestCloudCodeJson(ctx, RETRIEVE_QUOTA_PATH, token, "agy", { project: project })
+    }
+    if (!quotaData || quotaData._authFailed) {
+      quotaData = requestCloudCodeJson(ctx, RETRIEVE_QUOTA_PATH, token, "agy", {})
+    }
+    if (!quotaData || quotaData._authFailed) return quotaData
+
+    var lines = buildModelLines(ctx, parseCliQuotaBuckets(quotaData))
+    if (lines.length === 0) return null
+    return { plan: readCliPlan(loadData), lines: lines }
   }
 
   // --- LS probe ---
@@ -460,24 +618,22 @@
   // --- Probe ---
 
   function probe(ctx) {
-    var dbTokens = loadOAuthTokens(ctx)
-
     var lsResult = probeLs(ctx)
     if (lsResult) return lsResult
 
+    var dbTokenCandidates = loadOAuthTokenCandidates(ctx)
+
     var tokens = []
-    if (dbTokens && dbTokens.accessToken) {
-      if (!dbTokens.expirySeconds || dbTokens.expirySeconds > Math.floor(Date.now() / 1000)) {
-        tokens.push(dbTokens.accessToken)
+    var nowSec = Math.floor(Date.now() / 1000)
+    for (var i = 0; i < dbTokenCandidates.length; i++) {
+      var dbTokens = dbTokenCandidates[i]
+      if (dbTokens.accessToken && (!dbTokens.expirySeconds || dbTokens.expirySeconds > nowSec)) {
+        if (tokens.indexOf(dbTokens.accessToken) === -1) tokens.push(dbTokens.accessToken)
       }
     }
 
     var cached = loadCachedToken(ctx)
     if (cached && tokens.indexOf(cached) === -1) tokens.push(cached)
-
-    if (tokens.length === 0 && !(dbTokens && dbTokens.refreshToken)) {
-      throw "Start Antigravity and try again."
-    }
 
     var ccData = null
     var sawAuthFailure = false
@@ -494,10 +650,31 @@
     // probeCloudCode returns null for transient failures (5xx/timeouts); without this
     // guard a Cloud Code incident would trigger a Google OAuth refresh every probe cycle
     // instead of ~once per token lifetime — risking refresh-token throttling or rotation.
-    if (!ccData && dbTokens && dbTokens.refreshToken &&
-        (sawAuthFailure || tokens.length === 0)) {
-      var refreshed = refreshAccessToken(ctx, dbTokens.refreshToken)
-      if (refreshed) ccData = probeCloudCode(ctx, refreshed)
+    if (!ccData && (sawAuthFailure || tokens.length === 0)) {
+      var refreshTokens = []
+      for (var j = 0; j < dbTokenCandidates.length; j++) {
+        var refreshToken = dbTokenCandidates[j].refreshToken
+        if (refreshToken && refreshTokens.indexOf(refreshToken) === -1) refreshTokens.push(refreshToken)
+      }
+      for (var k = 0; k < refreshTokens.length; k++) {
+        var refreshed = refreshAccessToken(ctx, refreshTokens[k])
+        if (!refreshed) continue
+        var refreshedData = probeCloudCode(ctx, refreshed)
+        if (refreshedData && !refreshedData._authFailed) {
+          ccData = refreshedData
+          break
+        }
+        if (refreshedData && refreshedData._authFailed) ccData = refreshedData
+      }
+    }
+
+    if (!ccData || ccData._authFailed) {
+      var cliToken = loadCliKeychainToken(ctx)
+      if (cliToken && tokens.indexOf(cliToken) === -1) {
+        var cliResult = probeCliCloudCode(ctx, cliToken)
+        if (cliResult && !cliResult._authFailed) return cliResult
+        if (cliResult && cliResult._authFailed) ccData = cliResult
+      }
     }
 
     if (ccData && !ccData._authFailed) {
@@ -506,7 +683,7 @@
       if (lines.length > 0) return { plan: null, lines: lines }
     }
 
-    throw "Start Antigravity and try again."
+    throw LOGIN_MESSAGE
   }
 
   globalThis.__openusage_plugin = { id: "antigravity", probe: probe }
