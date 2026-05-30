@@ -612,6 +612,7 @@ pub(crate) fn inject_host_api_with_deadline<'js>(
     inject_env(ctx, &host, plugin_id)?;
     inject_http(ctx, &host, plugin_id, deadline)?;
     inject_keychain(ctx, &host, plugin_id)?;
+    inject_defaults(ctx, &host, plugin_id)?;
     inject_sqlite(ctx, &host)?;
     inject_ls(ctx, &host, plugin_id)?;
     inject_ccusage(ctx, &host, plugin_id, deadline)?;
@@ -2625,6 +2626,64 @@ fn inject_keychain<'js>(
     Ok(())
 }
 
+fn inject_defaults<'js>(
+    ctx: &Ctx<'js>,
+    host: &Object<'js>,
+    plugin_id: &str,
+) -> rquickjs::Result<()> {
+    let defaults_obj = Object::new(ctx.clone())?;
+    let pid = plugin_id.to_string();
+
+    defaults_obj.set(
+        "read",
+        Function::new(
+            ctx.clone(),
+            move |ctx_inner: Ctx<'_>, domain: String, key: String| -> rquickjs::Result<String> {
+                if !cfg!(target_os = "macos") {
+                    return Err(Exception::throw_message(
+                        &ctx_inner,
+                        "User Defaults System is only supported on macOS",
+                    ));
+                }
+
+                log::info!("[plugin:{}] defaults read: domain={}, key={}", pid, domain, key);
+
+                let output = std::process::Command::new("/usr/bin/defaults")
+                    .args(["read", &domain, &key])
+                    .output()
+                    .map_err(|e| {
+                        Exception::throw_message(
+                            &ctx_inner,
+                            &format!("defaults execution failed: {}", e),
+                        )
+                    })?;
+
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    let err_msg = stderr.trim().to_string();
+                    log::warn!(
+                        "[plugin:{}] defaults read failed: domain={}, key={}, error={}",
+                        pid,
+                        domain,
+                        key,
+                        err_msg
+                    );
+                    return Err(Exception::throw_message(
+                        &ctx_inner,
+                        &format!("defaults read failed: {}", err_msg),
+                    ));
+                }
+
+                log::info!("[plugin:{}] defaults read success", pid);
+                Ok(String::from_utf8_lossy(&output.stdout).to_string())
+            },
+        )?,
+    )?;
+
+    host.set("defaults", defaults_obj)?;
+    Ok(())
+}
+
 fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
     let sqlite_obj = Object::new(ctx.clone())?;
 
@@ -4319,5 +4378,20 @@ wait
         );
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn defaults_api_exposes_read() {
+        let rt = Runtime::new().expect("runtime");
+        let ctx = Context::full(&rt).expect("context");
+        ctx.with(|ctx| {
+            let app_data = std::env::temp_dir();
+            inject_host_api(&ctx, "test", &app_data, "0.0.0").expect("inject host api");
+            let globals = ctx.globals();
+            let probe_ctx: Object = globals.get("__openusage_ctx").expect("probe ctx");
+            let host: Object = probe_ctx.get("host").expect("host");
+            let defaults: Object = host.get("defaults").expect("defaults");
+            let _read: Function = defaults.get("read").expect("read");
+        });
     }
 }

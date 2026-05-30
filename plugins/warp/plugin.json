@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "warp",
+  "name": "Warp",
+  "version": "0.0.1",
+  "entry": "plugin.js",
+  "icon": "icon.svg",
+  "brandColor": "#000000",
+  "links": [
+    { "label": "Warp AI", "url": "https://www.warp.dev/warp-ai" }
+  ],
+  "lines": [
+    { "type": "progress", "label": "AI Credits", "scope": "overview", "primaryOrder": 1 }
+  ]
+}
