@@ -1,6 +1,4 @@
 import { useShallow } from "zustand/react/shallow"
-import { isTauri } from "@tauri-apps/api/core"
-import { getCurrentWindow } from "@tauri-apps/api/window"
 import { AppContent, type AppContentActionProps } from "@/components/app/app-content"
 import { PanelFooter } from "@/components/panel-footer"
 import { SideNav, type NavPlugin, type PluginContextAction } from "@/components/side-nav"
@@ -68,15 +66,6 @@ export function AppShell({
   const appVersion = useAppVersion()
   const { updateStatus, triggerInstall, checkForUpdates } = useAppUpdate()
   const isWindows = navigator.userAgent.includes("Windows")
-
-  const handleDragStart = (e: React.MouseEvent) => {
-    // Only trigger drag on left click on the element itself (not its children)
-    if (e.button !== 0 || !isTauri()) return
-    if (e.target !== e.currentTarget) return
-    e.preventDefault()
-    getCurrentWindow().startDragging()
-  }
-
   return (
     <div
       ref={containerRef}

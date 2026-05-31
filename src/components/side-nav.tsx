@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { CircleHelp, Settings, Pin, PinOff, Power } from "lucide-react"
 import { openUrl } from "@tauri-apps/plugin-opener"
-import { invoke, isTauri } from "@tauri-apps/api/core"
-import { getCurrentWindow } from "@tauri-apps/api/window"
+import { invoke } from "@tauri-apps/api/core"
 import { exit } from "@tauri-apps/plugin-process"
 import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu"
 import {
@@ -226,14 +225,6 @@ export function SideNav({
     },
     [isPluginRefreshAvailable, onPluginContextAction]
   )
-
-  const handleNavDragStart = (e: React.MouseEvent) => {
-    if (e.button !== 0 || !isTauri()) return
-    if (e.target !== e.currentTarget) return
-    e.preventDefault()
-    getCurrentWindow().startDragging()
-  }
-
   return (
     <nav
       className="flex flex-col w-12 border-r bg-muted/50 dark:bg-card py-3"
