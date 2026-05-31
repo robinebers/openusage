@@ -2701,47 +2701,52 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                 }
                 let expanded = expand_path(&db_path);
 
-                // Prefer a normal read-only open so WAL contents are visible (common for app state DBs).
-                // Fall back to immutable=1 to bypass WAL/SHM lock issues after macOS sleep.
-                let primary = crate::utils::command_new("sqlite3")
-                    .args(["-readonly", "-json", &expanded, &sql])
-                    .output()
-                    .map_err(|e| {
-                        Exception::throw_message(&ctx_inner, &format!("sqlite3 exec failed: {}", e))
-                    })?;
+                let conn = match rusqlite::Connection::open_with_flags(
+                    &expanded,
+                    rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_URI,
+                ) {
+                    Ok(c) => c,
+                    Err(_) => {
+                        let encoded = expanded
+                            .replace('%', "%25")
+                            .replace(' ', "%20")
+                            .replace('#', "%23")
+                            .replace('?', "%3F");
+                        let uri_path = format!("file:{}?immutable=1", encoded);
+                        rusqlite::Connection::open_with_flags(
+                            &uri_path,
+                            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_URI,
+                        ).map_err(|e| Exception::throw_message(&ctx_inner, &format!("sqlite3 open failed: {}", e)))?
+                    }
+                };
 
-                if primary.status.success() {
-                    return Ok(String::from_utf8_lossy(&primary.stdout).to_string());
+                let mut stmt = conn.prepare(&sql).map_err(|e| Exception::throw_message(&ctx_inner, &format!("sqlite3 prepare failed: {}", e)))?;
+                
+                let column_names: Vec<String> = stmt.column_names().into_iter().map(|s| s.to_string()).collect();
+                let column_count = column_names.len();
+                
+                let mut rows = stmt.query([]).map_err(|e| Exception::throw_message(&ctx_inner, &format!("sqlite3 query failed: {}", e)))?;
+                let mut result_json = Vec::new();
+                
+                while let Some(row) = rows.next().map_err(|e| Exception::throw_message(&ctx_inner, &format!("sqlite3 fetch failed: {}", e)))? {
+                    let mut row_map = serde_json::Map::new();
+                    for i in 0..column_count {
+                        let col_name = column_names[i].clone();
+                        let value: rusqlite::types::Value = row.get(i).map_err(|e| Exception::throw_message(&ctx_inner, &format!("sqlite3 value failed: {}", e)))?;
+                        let json_val = match value {
+                            rusqlite::types::Value::Null => serde_json::Value::Null,
+                            rusqlite::types::Value::Integer(v) => serde_json::Value::Number(v.into()),
+                            rusqlite::types::Value::Real(v) => serde_json::Number::from_f64(v).map(serde_json::Value::Number).unwrap_or(serde_json::Value::Null),
+                            rusqlite::types::Value::Text(v) => serde_json::Value::String(v),
+                            rusqlite::types::Value::Blob(v) => serde_json::Value::String(String::from_utf8_lossy(&v).to_string()),
+                        };
+                        row_map.insert(col_name, json_val);
+                    }
+                    result_json.push(serde_json::Value::Object(row_map));
                 }
-
-                // Percent-encode special chars for valid URI (% must be first!)
-                let encoded = expanded
-                    .replace('%', "%25")
-                    .replace(' ', "%20")
-                    .replace('#', "%23")
-                    .replace('?', "%3F");
-                let uri_path = format!("file:{}?immutable=1", encoded);
-                let fallback = crate::utils::command_new("sqlite3")
-                    .args(["-readonly", "-json", &uri_path, &sql])
-                    .output()
-                    .map_err(|e| {
-                        Exception::throw_message(&ctx_inner, &format!("sqlite3 exec failed: {}", e))
-                    })?;
-
-                if !fallback.status.success() {
-                    let stderr_primary = String::from_utf8_lossy(&primary.stderr);
-                    let stderr_fallback = String::from_utf8_lossy(&fallback.stderr);
-                    return Err(Exception::throw_message(
-                        &ctx_inner,
-                        &format!(
-                            "sqlite3 error: {} (fallback: {})",
-                            stderr_primary.trim(),
-                            stderr_fallback.trim()
-                        ),
-                    ));
-                }
-
-                Ok(String::from_utf8_lossy(&fallback.stdout).to_string())
+                
+                let json_str = serde_json::to_string(&result_json).map_err(|e| Exception::throw_message(&ctx_inner, &format!("sqlite3 serialize failed: {}", e)))?;
+                Ok(json_str)
             },
         )?,
     )?;
@@ -2758,20 +2763,12 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                     ));
                 }
                 let expanded = expand_path(&db_path);
-                let output = crate::utils::command_new("sqlite3")
-                    .args([&expanded, &sql])
-                    .output()
-                    .map_err(|e| {
-                        Exception::throw_message(&ctx_inner, &format!("sqlite3 exec failed: {}", e))
-                    })?;
-
-                if !output.status.success() {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    return Err(Exception::throw_message(
-                        &ctx_inner,
-                        &format!("sqlite3 error: {}", stderr.trim()),
-                    ));
-                }
+                
+                let conn = rusqlite::Connection::open(&expanded)
+                    .map_err(|e| Exception::throw_message(&ctx_inner, &format!("sqlite3 open failed: {}", e)))?;
+                    
+                conn.execute_batch(&sql)
+                    .map_err(|e| Exception::throw_message(&ctx_inner, &format!("sqlite3 exec failed: {}", e)))?;
 
                 Ok(())
             },

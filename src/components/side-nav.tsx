@@ -238,7 +238,6 @@ export function SideNav({
     <nav
       className="flex flex-col w-12 border-r bg-muted/50 dark:bg-card py-3"
       data-tauri-drag-region="true"
-      onMouseDown={handleNavDragStart}
     >
       {/* Home */}
       <NavButton
