@@ -101,6 +101,24 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
           rm certificate.p12
 
+      - name: Handle missing updater key (for forks)
+        shell: bash
+        env:
+          TAURI_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [[ -z "$TAURI_KEY" ]]; then
+            echo "HAS_TAURI_KEY=false" >> $GITHUB_ENV
+            node -e "
+              const fs = require('fs');
+              const conf = JSON.parse(fs.readFileSync('./src-tauri/tauri.conf.json'));
+              if(conf.bundle) conf.bundle.createUpdaterArtifacts = false;
+              if(conf.plugins && conf.plugins.updater) delete conf.plugins.updater;
+              fs.writeFileSync('./src-tauri/tauri.conf.json', JSON.stringify(conf, null, 2));
+            "
+          else
+            echo "HAS_TAURI_KEY=true" >> $GITHUB_ENV
+          fi
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -120,10 +138,11 @@ jobs:
           releaseName: ${{ env.RELEASE_TAG }}
           releaseDraft: false
           prerelease: false
-          includeUpdaterJson: true
+          includeUpdaterJson: ${{ env.HAS_TAURI_KEY == 'true' }}
           args: ${{ matrix.args }}
 
       - name: Verify updater assets uploaded
+        if: env.HAS_TAURI_KEY == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
