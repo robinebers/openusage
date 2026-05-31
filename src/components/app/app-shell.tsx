@@ -1,4 +1,6 @@
 import { useShallow } from "zustand/react/shallow"
+import { isTauri } from "@tauri-apps/api/core"
+import { getCurrentWindow } from "@tauri-apps/api/window"
 import { AppContent, type AppContentActionProps } from "@/components/app/app-content"
 import { PanelFooter } from "@/components/panel-footer"
 import { SideNav, type NavPlugin, type PluginContextAction } from "@/components/side-nav"
@@ -67,6 +69,14 @@ export function AppShell({
   const { updateStatus, triggerInstall, checkForUpdates } = useAppUpdate()
   const isWindows = navigator.userAgent.includes("Windows")
 
+  const handleDragStart = (e: React.MouseEvent) => {
+    // Only trigger drag on left click on the element itself (not its children)
+    if (e.button !== 0 || !isTauri()) return
+    if (e.target !== e.currentTarget) return
+    e.preventDefault()
+    getCurrentWindow().startDragging()
+  }
+
   return (
     <div
       ref={containerRef}
@@ -79,6 +89,7 @@ export function AppShell({
       <div
         className="relative bg-card rounded-xl overflow-hidden select-none w-full border shadow-lg flex flex-col"
         data-tauri-drag-region="true"
+        onMouseDown={handleDragStart}
         style={maxPanelHeightPx ? { maxHeight: `${maxPanelHeightPx - ARROW_OVERHEAD_PX}px` } : undefined}
       >
         <div className="flex flex-1 min-h-0 flex-row">

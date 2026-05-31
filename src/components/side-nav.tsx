@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react"
-import { CircleHelp, Settings, Pin, PinOff } from "lucide-react"
+import { CircleHelp, Settings, Pin, PinOff, Power } from "lucide-react"
 import { openUrl } from "@tauri-apps/plugin-opener"
-import { invoke } from "@tauri-apps/api/core"
+import { invoke, isTauri } from "@tauri-apps/api/core"
+import { getCurrentWindow } from "@tauri-apps/api/window"
+import { exit } from "@tauri-apps/plugin-process"
 import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu"
 import {
   DndContext,
@@ -225,8 +227,19 @@ export function SideNav({
     [isPluginRefreshAvailable, onPluginContextAction]
   )
 
+  const handleNavDragStart = (e: React.MouseEvent) => {
+    if (e.button !== 0 || !isTauri()) return
+    if (e.target !== e.currentTarget) return
+    e.preventDefault()
+    getCurrentWindow().startDragging()
+  }
+
   return (
-    <nav className="flex flex-col w-12 border-r bg-muted/50 dark:bg-card py-3" data-tauri-drag-region="true">
+    <nav
+      className="flex flex-col w-12 border-r bg-muted/50 dark:bg-card py-3"
+      data-tauri-drag-region="true"
+      onMouseDown={handleNavDragStart}
+    >
       {/* Home */}
       <NavButton
         isActive={activeView === "home"}
@@ -290,6 +303,15 @@ export function SideNav({
         aria-label="Settings"
       >
         <Settings className="size-6" />
+      </NavButton>
+
+      {/* Quit */}
+      <NavButton
+        isActive={false}
+        onClick={() => exit(0)}
+        aria-label="Quit OpenUsage"
+      >
+        <Power className="size-6" />
       </NavButton>
     </nav>
   )

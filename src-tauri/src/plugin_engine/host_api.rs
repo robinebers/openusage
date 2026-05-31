@@ -1427,39 +1427,88 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
                     }
                 }
 
-                // Find lsof binary
-                let lsof_path = ["/usr/sbin/lsof", "/usr/bin/lsof"]
-                    .iter()
-                    .find(|p| std::path::Path::new(p).exists())
-                    .copied();
-
-                let ports = if let Some(lsof) = lsof_path {
-                    match crate::utils::command_new(lsof)
-                        .args([
-                            "-nP",
-                            "-iTCP",
-                            "-sTCP:LISTEN",
-                            "-a",
-                            "-p",
-                            &process_pid.to_string(),
-                        ])
+                // Find listening ports for the discovered process
+                #[cfg(windows)]
+                let ports = {
+                    match crate::utils::command_new("netstat")
+                        .args(["-ano", "-p", "TCP"])
                         .output()
                     {
                         Ok(o) if o.status.success() => {
-                            ls_parse_listening_ports(&String::from_utf8_lossy(&o.stdout))
+                            let stdout = String::from_utf8_lossy(&o.stdout);
+                            let pid_str = process_pid.to_string();
+                            let mut found_ports = std::collections::BTreeSet::new();
+                            for line in stdout.lines() {
+                                let line = line.trim();
+                                if !line.contains("LISTENING") {
+                                    continue;
+                                }
+                                // netstat -ano format: TCP  0.0.0.0:PORT  0.0.0.0:0  LISTENING  PID
+                                let tokens: Vec<&str> = line.split_whitespace().collect();
+                                if tokens.len() < 5 {
+                                    continue;
+                                }
+                                let line_pid = tokens[tokens.len() - 1];
+                                if line_pid != pid_str {
+                                    continue;
+                                }
+                                // Extract port from local address (e.g. "0.0.0.0:42010" or "[::]:42010")
+                                if let Some(colon_pos) = tokens[1].rfind(':') {
+                                    if let Ok(port) = tokens[1][colon_pos + 1..].parse::<i32>() {
+                                        if port > 0 && port < 65536 {
+                                            found_ports.insert(port);
+                                        }
+                                    }
+                                }
+                            }
+                            found_ports.into_iter().collect::<Vec<_>>()
                         }
                         Ok(_) => {
-                            log::warn!("[plugin:{}] lsof returned non-zero", pid);
+                            log::warn!("[plugin:{}] netstat returned non-zero", pid);
                             Vec::new()
                         }
                         Err(e) => {
-                            log::warn!("[plugin:{}] lsof failed: {}", pid, e);
+                            log::warn!("[plugin:{}] netstat failed: {}", pid, e);
                             Vec::new()
                         }
                     }
-                } else {
-                    log::warn!("[plugin:{}] lsof not found", pid);
-                    Vec::new()
+                };
+
+                #[cfg(not(windows))]
+                let ports = {
+                    let lsof_path = ["/usr/sbin/lsof", "/usr/bin/lsof"]
+                        .iter()
+                        .find(|p| std::path::Path::new(p).exists())
+                        .copied();
+
+                    if let Some(lsof) = lsof_path {
+                        match crate::utils::command_new(lsof)
+                            .args([
+                                "-nP",
+                                "-iTCP",
+                                "-sTCP:LISTEN",
+                                "-a",
+                                "-p",
+                                &process_pid.to_string(),
+                            ])
+                            .output()
+                        {
+                            Ok(o) if o.status.success() => {
+                                ls_parse_listening_ports(&String::from_utf8_lossy(&o.stdout))
+                            }
+                            Ok(_) => {
+                                log::warn!("[plugin:{}] lsof returned non-zero", pid);
+                                Vec::new()
+                            }
+                            Err(e) => {
+                                log::warn!("[plugin:{}] lsof failed: {}", pid, e);
+                                Vec::new()
+                            }
+                        }
+                    } else {
+                        log::warn!("[plugin:{}] lsof not found", pid);
+                        Vec::new()
+                    }
                 };
 
                 if ports.is_empty() && extension_port.is_none() {
