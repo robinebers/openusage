@@ -11,12 +11,14 @@
     {
       marker: "windsurf",
       ideName: "windsurf",
-      stateDb: "~/Library/Application Support/Windsurf/User/globalStorage/state.vscdb",
+      stateDbWin: "~/AppData/Roaming/Windsurf/User/globalStorage/state.vscdb",
+      stateDbMac: "~/Library/Application Support/Windsurf/User/globalStorage/state.vscdb",
     },
     {
       marker: "windsurf-next",
       ideName: "windsurf-next",
-      stateDb: "~/Library/Application Support/Windsurf - Next/User/globalStorage/state.vscdb",
+      stateDbWin: "~/AppData/Roaming/Windsurf - Next/User/globalStorage/state.vscdb",
+      stateDbMac: "~/Library/Application Support/Windsurf - Next/User/globalStorage/state.vscdb",
     },
   ]
 
@@ -38,8 +40,9 @@
 
   function loadApiKey(ctx, variant) {
     try {
+      var dbPath = ctx.app.platform === "windows" ? variant.stateDbWin : variant.stateDbMac
       var rows = ctx.host.sqlite.query(
-        variant.stateDb,
+        dbPath,
         "SELECT value FROM ItemTable WHERE key = 'windsurfAuthStatus' LIMIT 1"
       )
       var parsed = ctx.util.tryParseJson(rows)

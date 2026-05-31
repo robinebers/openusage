@@ -70,9 +70,10 @@ export function AppShell({
     <div
       ref={containerRef}
       tabIndex={-1}
+      data-tauri-drag-region="true"
       className="flex flex-col items-center p-6 pt-1.5 bg-transparent outline-none"
     >
-      <div className="tray-arrow" />
+      <div className="tray-arrow" data-tauri-drag-region="true" />
       <div
         className="relative bg-card rounded-xl overflow-hidden select-none w-full border shadow-lg flex flex-col"
         style={maxPanelHeightPx ? { maxHeight: `${maxPanelHeightPx - ARROW_OVERHEAD_PX}px` } : undefined}
