@@ -587,10 +587,19 @@ pub fn run() {
             local_http_api::init(&app_data_dir, known_plugin_ids);
             local_http_api::start_server();
 
-            tray::create(app.handle())?;
+            log::info!("Setup: Starting tray creation");
+            if let Err(e) = tray::create(app.handle()) {
+                log::error!("Setup: Tray creation failed: {:?}", e);
+            }
+            log::info!("Setup: Starting panel init");
+            if let Err(e) = panel::init(app.handle()) {
+                log::error!("Setup: Panel init failed: {:?}", e);
+            }
+            log::info!("Setup: Finished");
 
-            app.handle()
-                .plugin(tauri_plugin_updater::Builder::new().build())?;
+            if let Err(e) = app.handle().plugin(tauri_plugin_updater::Builder::new().build()) {
+                log::warn!("Failed to initialize updater plugin: {}", e);
+            }
 
             // Register global shortcut from stored settings
             #[cfg(desktop)]
