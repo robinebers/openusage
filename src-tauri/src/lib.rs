@@ -5,6 +5,7 @@ mod local_http_api;
 mod panel;
 mod plugin_engine;
 mod tray;
+pub mod utils;
 #[cfg(target_os = "macos")]
 mod webkit_config;
 
