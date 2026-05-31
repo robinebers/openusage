@@ -43,6 +43,7 @@ jobs:
       - name: Bundle plugins
         run: bun run bundle:plugins
       - name: Verify bundled plugins
+        shell: bash
         run: |
           COUNT=$(find src-tauri/resources/bundled_plugins -maxdepth 2 -name plugin.json | wc -l | tr -d ' ')
           if [[ "$COUNT" -lt 1 ]]; then
@@ -51,6 +52,7 @@ jobs:
           fi
 
       - name: Validate release tag
+        shell: bash
         run: |
           if [[ -z "$RELEASE_TAG" ]]; then
             echo "Missing RELEASE_TAG (push a v* tag)."
@@ -62,6 +64,7 @@ jobs:
           fi
 
       - name: Validate app version matches tag
+        shell: bash
         run: |
           TAG_VERSION="${RELEASE_TAG#v}"
 
@@ -83,7 +86,7 @@ jobs:
           fi
 
       - name: Import Apple Developer Certificate
-        if: matrix.platform == 'macos-latest'
+        if: matrix.platform == 'macos-latest' && secrets.APPLE_CERTIFICATE != ''
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -121,6 +124,7 @@ jobs:
           args: ${{ matrix.args }}
 
       - name: Verify updater assets uploaded
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
