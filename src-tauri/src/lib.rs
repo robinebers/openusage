@@ -216,6 +216,16 @@ fn open_devtools(#[allow(unused)] app_handle: tauri::AppHandle) {
 }
 
 #[tauri::command]
+fn reposition_panel(app_handle: tauri::AppHandle) {
+    use tauri::Manager;
+    if let Some(tray) = app_handle.tray_by_id("tray") {
+        if let Ok(Some(rect)) = tray.rect() {
+            panel::position_panel_at_tray_icon(&app_handle, rect.position, rect.size);
+        }
+    }
+}
+
+#[tauri::command]
 async fn start_probe_batch(
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, Mutex<AppState>>,
@@ -538,7 +548,8 @@ pub fn run() {
             start_probe_batch,
             list_plugins,
             get_log_path,
-            update_global_shortcut
+            update_global_shortcut,
+            reposition_panel
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]

@@ -1306,10 +1306,21 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
                     opts.markers
                 );
 
-                let ps_output = match crate::utils::command_new("/bin/ps")
+                #[cfg(windows)]
+                let ps_output_res = crate::utils::command_new("powershell")
+                    .args([
+                        "-NoProfile",
+                        "-Command",
+                        "Get-CimInstance Win32_Process | ForEach-Object { \"$($_.ProcessId) $($_.CommandLine)\" }",
+                    ])
+                    .output();
+
+                #[cfg(not(windows))]
+                let ps_output_res = crate::utils::command_new("/bin/ps")
                     .args(["-ax", "-o", "pid=,command="])
-                    .output()
-                {
+                    .output();
+
+                let ps_output = match ps_output_res {
                     Ok(o) => o,
                     Err(e) => {
                         log::warn!("[plugin:{}] ps failed: {}", pid, e);
