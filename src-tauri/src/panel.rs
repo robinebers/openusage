@@ -279,7 +279,7 @@ mod windows {
 
     macro_rules! get_window {
         ($app_handle:expr) => {
-            $app_handle.get_webview_window("main").ok()
+            $app_handle.get_webview_window("main")
         };
     }
 
@@ -374,7 +374,7 @@ mod windows {
             let size = monitor.size();
             if icon_center_x >= pos.x as f64 && icon_center_x <= (pos.x + size.width as i32) as f64
                 && icon_center_y >= pos.y as f64 && icon_center_y <= (pos.y + size.height as i32) as f64 {
-                monitor_bounds = Some((pos, size));
+                monitor_bounds = Some((*pos, *size));
                 break;
             }
         }
