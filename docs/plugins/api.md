@@ -337,7 +337,7 @@ try {
 
 - The app loads
 - The user clicks Refresh (per-provider retry button)
-- The auto-update timer fires (configurable: 5/15/30/60 minutes)
+- The auto-update timer fires (configurable: 1/5/15/30 minutes)
 
 Any token refresh logic (e.g., OAuth refresh) must run inside `probe(ctx)` at those times.
 

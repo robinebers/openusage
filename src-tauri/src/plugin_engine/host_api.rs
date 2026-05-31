@@ -1332,7 +1332,12 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
                 //   1. Exact --ide_name / --app_data_dir flag value (prevents
                 //      "windsurf" matching "windsurf-next")
                 //   2. Path substring (/<marker>/) as fallback when no flags found
-                let mut found: Option<(i32, String)> = None;
+                // Collect every process matching name + marker. Short process
+                // names (e.g. a CLI binary like `agy`) can appear in multiple
+                // command lines, so we gather all candidates and later pick the
+                // first one that actually exposes listening ports rather than
+                // bailing on the first name match.
+                let mut candidates: Vec<(i32, String)> = Vec::new();
 
                 for line in ps_stdout.lines() {
                     let trimmed = line.trim();
@@ -1360,124 +1365,138 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
                     let app_data =
                         ls_extract_flag(command, "--app_data_dir").map(|v| v.to_lowercase());
 
-                    let has_marker = markers_lower.iter().any(|m| {
-                        // Prefer exact flag match; skip path fallback when
-                        // a distinguishing flag exists.
-                        if let Some(ref name) = ide_name {
-                            return *name == *m;
-                        }
-                        if let Some(ref dir) = app_data {
-                            return *dir == *m;
-                        }
-                        // Fallback: path substring
-                        command_lower.contains(&format!("/{}/", m))
-                    });
+                    // Empty markers => no marker filtering. Used by CLI discovery
+                    // where the process carries no distinguishing --ide_name flag.
+                    let has_marker = markers_lower.is_empty()
+                        || markers_lower.iter().any(|m| {
+                            // Prefer exact flag match; skip path fallback when
+                            // a distinguishing flag exists.
+                            if let Some(ref name) = ide_name {
+                                return *name == *m;
+                            }
+                            if let Some(ref dir) = app_data {
+                                return *dir == *m;
+                            }
+                            // Fallback: path substring
+                            command_lower.contains(&format!("/{}/", m))
+                        });
                     if !has_marker {
                         continue;
                     }
 
                     if let Ok(p) = pid_str.parse::<i32>() {
-                        found = Some((p, command.to_string()));
-                        break;
+                        candidates.push((p, command.to_string()));
                     }
                 }
 
-                let (process_pid, command) = match found {
-                    Some(pair) => pair,
-                    None => {
-                        log::info!("[plugin:{}] LS process not found", pid);
-                        return Ok("null".to_string());
-                    }
-                };
-
-                // Extract CSRF token
-                let csrf = match ls_extract_flag(&command, &opts.csrf_flag) {
-                    Some(c) => c,
-                    None => {
-                        log::warn!("[plugin:{}] CSRF token not found in process args", pid);
-                        return Ok("null".to_string());
-                    }
-                };
-
-                // Extract extension port (optional)
-                let extension_port = opts.port_flag.as_ref().and_then(|flag| {
-                    ls_extract_flag(&command, flag).and_then(|v| v.parse::<i32>().ok())
-                });
-
-                // Extract extra flags (optional)
-                let mut extra = std::collections::HashMap::new();
-                if let Some(ref flags) = opts.extra_flags {
-                    for flag in flags {
-                        if let Some(val) = ls_extract_flag(&command, flag) {
-                            // Use flag name without leading dashes as key
-                            let key = flag.trim_start_matches('-').to_string();
-                            extra.insert(key, val);
-                        }
-                    }
+                if candidates.is_empty() {
+                    log::info!("[plugin:{}] LS process not found", pid);
+                    return Ok("null".to_string());
                 }
 
-                // Find lsof binary
+                // Find lsof binary once for all candidates.
                 let lsof_path = ["/usr/sbin/lsof", "/usr/bin/lsof"]
                     .iter()
                     .find(|p| std::path::Path::new(p).exists())
                     .copied();
 
-                let ports = if let Some(lsof) = lsof_path {
-                    match std::process::Command::new(lsof)
-                        .args([
-                            "-nP",
-                            "-iTCP",
-                            "-sTCP:LISTEN",
-                            "-a",
-                            "-p",
-                            &process_pid.to_string(),
-                        ])
-                        .output()
-                    {
-                        Ok(o) if o.status.success() => {
-                            ls_parse_listening_ports(&String::from_utf8_lossy(&o.stdout))
+                for (process_pid, command) in candidates {
+                    // Extract CSRF token. An empty csrf_flag signals that the
+                    // server requires no CSRF (e.g. the Antigravity CLI language
+                    // server) — emit an empty token instead of bailing.
+                    let csrf = if opts.csrf_flag.is_empty() {
+                        String::new()
+                    } else {
+                        match ls_extract_flag(&command, &opts.csrf_flag) {
+                            Some(c) => c,
+                            None => {
+                                log::warn!(
+                                    "[plugin:{}] CSRF token not found in process args (pid {})",
+                                    pid,
+                                    process_pid
+                                );
+                                continue;
+                            }
                         }
-                        Ok(_) => {
-                            log::warn!("[plugin:{}] lsof returned non-zero", pid);
-                            Vec::new()
-                        }
-                        Err(e) => {
-                            log::warn!("[plugin:{}] lsof failed: {}", pid, e);
-                            Vec::new()
+                    };
+
+                    // Extract extension port (optional)
+                    let extension_port = opts.port_flag.as_ref().and_then(|flag| {
+                        ls_extract_flag(&command, flag).and_then(|v| v.parse::<i32>().ok())
+                    });
+
+                    // Extract extra flags (optional)
+                    let mut extra = std::collections::HashMap::new();
+                    if let Some(ref flags) = opts.extra_flags {
+                        for flag in flags {
+                            if let Some(val) = ls_extract_flag(&command, flag) {
+                                // Use flag name without leading dashes as key
+                                let key = flag.trim_start_matches('-').to_string();
+                                extra.insert(key, val);
+                            }
                         }
                     }
-                } else {
-                    log::warn!("[plugin:{}] lsof not found", pid);
-                    Vec::new()
-                };
 
-                if ports.is_empty() && extension_port.is_none() {
-                    log::warn!(
-                        "[plugin:{}] no listening ports found for pid {}",
+                    let ports = if let Some(lsof) = lsof_path {
+                        match std::process::Command::new(lsof)
+                            .args([
+                                "-nP",
+                                "-iTCP",
+                                "-sTCP:LISTEN",
+                                "-a",
+                                "-p",
+                                &process_pid.to_string(),
+                            ])
+                            .output()
+                        {
+                            Ok(o) if o.status.success() => {
+                                ls_parse_listening_ports(&String::from_utf8_lossy(&o.stdout))
+                            }
+                            Ok(_) => {
+                                log::warn!("[plugin:{}] lsof returned non-zero", pid);
+                                Vec::new()
+                            }
+                            Err(e) => {
+                                log::warn!("[plugin:{}] lsof failed: {}", pid, e);
+                                Vec::new()
+                            }
+                        }
+                    } else {
+                        log::warn!("[plugin:{}] lsof not found", pid);
+                        Vec::new()
+                    };
+
+                    if ports.is_empty() && extension_port.is_none() {
+                        log::info!(
+                            "[plugin:{}] candidate pid {} has no listening ports, trying next",
+                            pid,
+                            process_pid
+                        );
+                        continue;
+                    }
+
+                    log::info!(
+                        "[plugin:{}] LS found: pid={}, ports={:?}, csrf=[REDACTED]",
                         pid,
-                        process_pid
+                        process_pid,
+                        ports
                     );
-                    return Ok("null".to_string());
+
+                    let result = LsDiscoverResult {
+                        pid: process_pid,
+                        csrf,
+                        ports,
+                        extra,
+                        extension_port,
+                    };
+
+                    return serde_json::to_string(&result).map_err(|e| {
+                        Exception::throw_message(&ctx_inner, &format!("serialize failed: {}", e))
+                    });
                 }
 
-                log::info!(
-                    "[plugin:{}] LS found: pid={}, ports={:?}, csrf=[REDACTED]",
-                    pid,
-                    process_pid,
-                    ports
-                );
-
-                let result = LsDiscoverResult {
-                    pid: process_pid,
-                    csrf,
-                    ports,
-                    extra,
-                    extension_port,
-                };
-
-                serde_json::to_string(&result).map_err(|e| {
-                    Exception::throw_message(&ctx_inner, &format!("serialize failed: {}", e))
-                })
+                log::info!("[plugin:{}] no LS candidate with listening ports", pid);
+                Ok("null".to_string())
             },
         )?,
     )?;

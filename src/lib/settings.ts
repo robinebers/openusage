@@ -10,7 +10,7 @@ export type PluginSettings = {
   disabled: string[];
 };
 
-export type AutoUpdateIntervalMinutes = 5 | 15 | 30 | 60;
+export type AutoUpdateIntervalMinutes = 1 | 5 | 15 | 30;
 
 export type ThemeMode = "system" | "light" | "dark";
 
@@ -46,7 +46,7 @@ export const DEFAULT_MENUBAR_ICON_STYLE: MenubarIconStyle = "provider";
 export const DEFAULT_GLOBAL_SHORTCUT: GlobalShortcut = null;
 export const DEFAULT_START_ON_LOGIN = false;
 
-const AUTO_UPDATE_INTERVALS: AutoUpdateIntervalMinutes[] = [5, 15, 30, 60];
+const AUTO_UPDATE_INTERVALS: AutoUpdateIntervalMinutes[] = [1, 5, 15, 30];
 const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
 const DISPLAY_MODES: DisplayMode[] = ["used", "left"];
 const RESET_TIMER_DISPLAY_MODES: ResetTimerDisplayMode[] = ["relative", "absolute"];
@@ -62,7 +62,7 @@ export const MENUBAR_ICON_STYLE_OPTIONS: { value: MenubarIconStyle; label: strin
 export const AUTO_UPDATE_OPTIONS: { value: AutoUpdateIntervalMinutes; label: string }[] =
   AUTO_UPDATE_INTERVALS.map((value) => ({
     value,
-    label: value === 60 ? "1 hour" : `${value} min`,
+    label: `${value} min`,
   }));
 
 export const THEME_OPTIONS: { value: ThemeMode; label: string }[] =

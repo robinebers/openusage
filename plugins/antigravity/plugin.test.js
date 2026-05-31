@@ -1485,3 +1485,94 @@ describe("antigravity plugin", () => {
     expect(refreshCalls).toBe(0)
   })
 })
+
+describe("antigravity agy CLI fallback", () => {
+  beforeEach(() => {
+    delete globalThis.__openusage_plugin
+    vi.resetModules()
+  })
+
+  // Route discover() by processName so we can simulate "IDE running",
+  // "CLI running", both, or neither independently.
+  function mockDiscoverByProcess(ctx, map) {
+    ctx.host.ls.discover.mockImplementation((opts) => {
+      if (opts && opts.processName === "agy") return map.agy || null
+      return map.ide || null
+    })
+  }
+
+  function userStatusHttp(ctx, response) {
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("GetUnleashData")) return { status: 200, bodyText: "{}" }
+      if (String(opts.url).includes("GetUserStatus")) {
+        return { status: 200, bodyText: JSON.stringify(response) }
+      }
+      return { status: 500, bodyText: "" }
+    })
+  }
+
+  it("returns models from the agy CLI language server when the IDE is not running", async () => {
+    const ctx = makeCtx()
+    mockDiscoverByProcess(ctx, {
+      ide: null,
+      agy: makeDiscovery({ pid: 56657, csrf: "", ports: [58891, 58892] }),
+    })
+    userStatusHttp(ctx, makeUserStatusResponse())
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Pro")
+    expect(result.lines.map((l) => l.label)).toEqual(["Gemini Pro", "Gemini Flash", "Claude"])
+  })
+
+  it("requests agy CLI discovery with empty markers and no csrf flag", async () => {
+    const ctx = makeCtx()
+    mockDiscoverByProcess(ctx, { ide: null, agy: null })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Start Antigravity and try again.")
+
+    const agyCall = ctx.host.ls.discover.mock.calls
+      .map((c) => c[0])
+      .find((o) => o && o.processName === "agy")
+    expect(agyCall).toBeTruthy()
+    expect(agyCall.markers).toEqual([])
+    expect(agyCall.csrfFlag).toBe("")
+  })
+
+  it("prefers the IDE language server over the agy CLI when both are present", async () => {
+    const ctx = makeCtx()
+    mockDiscoverByProcess(ctx, {
+      ide: makeDiscovery({ csrf: "ide-csrf" }),
+      agy: makeDiscovery({ csrf: "", ports: [58892] }),
+    })
+    // IDE yields only a Flash model; if the CLI path were used we'd see the
+    // full default set instead.
+    userStatusHttp(
+      ctx,
+      makeUserStatusResponse({
+        configs: [
+          {
+            label: "Gemini 3 Flash",
+            modelOrAlias: { model: "M18" },
+            quotaInfo: { remainingFraction: 0.5, resetTime: "2026-02-08T09:10:56Z" },
+          },
+        ],
+      })
+    )
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.map((l) => l.label)).toEqual(["Gemini Flash"])
+  })
+
+  it("throws when neither IDE, CLI, nor tokens are available", async () => {
+    const ctx = makeCtx()
+    mockDiscoverByProcess(ctx, { ide: null, agy: null })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Start Antigravity and try again.")
+  })
+})

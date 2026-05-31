@@ -126,6 +126,16 @@ describe("settings", () => {
     await expect(loadAutoUpdateInterval()).resolves.toBe(30)
   })
 
+  it("loads one-minute auto-update interval", async () => {
+    storeState.set("autoUpdateInterval", 1)
+    await expect(loadAutoUpdateInterval()).resolves.toBe(1)
+  })
+
+  it("falls back to default for removed one-hour auto-update interval", async () => {
+    storeState.set("autoUpdateInterval", 60)
+    await expect(loadAutoUpdateInterval()).resolves.toBe(DEFAULT_AUTO_UPDATE_INTERVAL)
+  })
+
   it("saves auto-update interval", async () => {
     await saveAutoUpdateInterval(5)
     await expect(loadAutoUpdateInterval()).resolves.toBe(5)

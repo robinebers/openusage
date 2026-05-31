@@ -195,6 +195,19 @@
     })
   }
 
+  // The `agy` CLI embeds the same language server but exposes it on a local
+  // port without a CSRF token and without the IDE's --ide_name/--csrf_token
+  // flags. Empty markers + empty csrfFlag tell the host to skip marker
+  // filtering and CSRF extraction; the protocol probe in findWorkingPort is
+  // what ultimately validates the port.
+  function discoverAgyCli(ctx) {
+    return ctx.host.ls.discover({
+      processName: "agy",
+      markers: [],
+      csrfFlag: "",
+    })
+  }
+
   function probePort(ctx, scheme, port, csrf) {
     ctx.host.http.request({
       method: "POST",
@@ -387,7 +400,14 @@
   // --- LS probe ---
 
   function probeLs(ctx) {
-    var discovery = discoverLs(ctx)
+    return probeViaDiscovery(ctx, discoverLs(ctx))
+  }
+
+  function probeAgyCli(ctx) {
+    return probeViaDiscovery(ctx, discoverAgyCli(ctx))
+  }
+
+  function probeViaDiscovery(ctx, discovery) {
     if (!discovery) return null
 
     var found = findWorkingPort(ctx, discovery)
@@ -464,6 +484,11 @@
 
     var lsResult = probeLs(ctx)
     if (lsResult) return lsResult
+
+    // Fall back to the `agy` CLI's embedded language server when the IDE isn't
+    // running. Works whenever the CLI is active and listening locally.
+    var cliResult = probeAgyCli(ctx)
+    if (cliResult) return cliResult
 
     var tokens = []
     if (dbTokens && dbTokens.accessToken) {
