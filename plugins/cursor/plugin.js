@@ -1,6 +1,7 @@
 (function () {
-  const STATE_DB =
-    "~/Library/Application Support/Cursor/User/globalStorage/state.vscdb"
+  const STATE_DB = ctx.app.platform === "windows"
+    ? "~/AppData/Roaming/Cursor/User/globalStorage/state.vscdb"
+    : "~/Library/Application Support/Cursor/User/globalStorage/state.vscdb"
   const KEYCHAIN_ACCESS_TOKEN_SERVICE = "cursor-access-token"
   const KEYCHAIN_REFRESH_TOKEN_SERVICE = "cursor-refresh-token"
   const BASE_URL = "https://api2.cursor.sh"
@@ -12,7 +13,7 @@
   const STRIPE_URL = "https://cursor.com/api/auth/stripe"
   const CLIENT_ID = "KbZUR41cY7W6zRSdpSUJ7I7mLYBKOCmB"
   const REFRESH_BUFFER_MS = 5 * 60 * 1000 // refresh 5 minutes before expiration
-  const LOGIN_HINT = "Sign in via Cursor app or run `agent login`."
+  const LOGIN_HINT = "Sign in via Cursor app."
 
   function readStateValue(ctx, key) {
     try {

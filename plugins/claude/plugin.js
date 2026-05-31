@@ -425,9 +425,9 @@
         if (body) errorCode = body.error || body.error_description
         ctx.host.log.error("refresh failed: status=" + resp.status + " error=" + String(errorCode))
         if (errorCode === "invalid_grant") {
-          throw "Session expired. Run `claude` to log in again."
+          throw "Session expired. Please log in again."
         }
-        throw "Token expired. Run `claude` to log in again."
+        throw "Token expired. Please log in again."
       }
       if (resp.status < 200 || resp.status >= 300) {
         ctx.host.log.warn("refresh returned unexpected status: " + resp.status)
@@ -632,7 +632,7 @@
     const creds = loadCredentials(ctx)
     if (!creds || !creds.oauth || !creds.oauth.accessToken || !creds.oauth.accessToken.trim()) {
       ctx.host.log.error("probe failed: not logged in")
-      throw "Not logged in. Run `claude` to authenticate."
+      throw "Not logged in. Please authenticate with Claude Code."
     }
 
     const nowMs = Date.now()
@@ -709,7 +709,7 @@
 
         if (ctx.util.isAuthStatus(resp.status)) {
           ctx.host.log.error("usage returned auth error after all retries: status=" + resp.status)
-          throw "Token expired. Run `claude` to log in again."
+          throw "Token expired. Please log in again."
         }
 
         if (resp.status === 429) {
