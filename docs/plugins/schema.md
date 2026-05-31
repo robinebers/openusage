@@ -25,7 +25,7 @@ Key points:
 
 - Each probe runs in **isolated QuickJS runtime** (no shared state between plugins or calls)
 - Plugins are **synchronous or Promise-based** (unresolved promises timeout)
-- **Auto-update timer** - runs on app load and on configurable interval (5/15/30/60 min)
+- **Auto-update timer** - runs on app load and on configurable interval (1/5/15/30 min)
 
 ## Plugin Directory Layout
 
