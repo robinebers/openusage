@@ -1,4 +1,6 @@
 use tauri::{AppHandle, Manager, Position, Size};
+
+#[cfg(target_os = "macos")]
 use tauri_nspanel::{
     CollectionBehavior, ManagerExt, PanelLevel, StyleMask, WebviewWindowExt, tauri_panel,
 };
@@ -16,77 +18,6 @@ fn monitor_contains_physical_point(
         && point_y >= origin_y
         && point_y < origin_y + height
 }
-
-unsafe fn set_panel_frame_top_left(panel: &tauri_nspanel::NSPanel, x: f64, y: f64) {
-    let point = tauri_nspanel::NSPoint::new(x, y);
-    let _: () = objc2::msg_send![panel, setFrameTopLeftPoint: point];
-}
-
-fn set_panel_top_left_immediately(
-    window: &tauri::WebviewWindow,
-    app_handle: &AppHandle,
-    panel_x: f64,
-    panel_y: f64,
-    primary_logical_h: f64,
-) {
-    let Ok(panel_handle) = app_handle.get_webview_panel("main") else {
-        return;
-    };
-
-    let target_x = panel_x;
-    let target_y = primary_logical_h - panel_y;
-
-    if objc2_foundation::MainThreadMarker::new().is_some() {
-        unsafe {
-            set_panel_frame_top_left(panel_handle.as_panel(), target_x, target_y);
-        }
-        return;
-    }
-
-    let (tx, rx) = std::sync::mpsc::channel();
-    let panel_handle = panel_handle.clone();
-
-    if let Err(error) = window.run_on_main_thread(move || {
-        unsafe {
-            set_panel_frame_top_left(panel_handle.as_panel(), target_x, target_y);
-        }
-        let _ = tx.send(());
-    }) {
-        log::warn!("Failed to position panel on main thread: {}", error);
-        return;
-    }
-
-    if rx.recv().is_err() {
-        log::warn!("Failed waiting for panel position on main thread");
-    }
-}
-
-/// Macro to get existing panel or initialize it if needed.
-/// Returns Option<Panel> - Some if panel is available, None on error.
-macro_rules! get_or_init_panel {
-    ($app_handle:expr) => {
-        match $app_handle.get_webview_panel("main") {
-            Ok(panel) => Some(panel),
-            Err(_) => {
-                if let Err(err) = crate::panel::init($app_handle) {
-                    log::error!("Failed to init panel: {}", err);
-                    None
-                } else {
-                    match $app_handle.get_webview_panel("main") {
-                        Ok(panel) => Some(panel),
-                        Err(err) => {
-                            log::error!("Panel missing after init: {:?}", err);
-                            None
-                        }
-                    }
-                }
-            }
-        }
-    };
-}
-
-// Export macro for use in other modules
-pub(crate) use get_or_init_panel;
 
 /// Retrieve the tray icon rect and position the panel beneath it.
 /// No-ops gracefully if the tray icon or its rect is unavailable.
@@ -108,92 +39,16 @@ fn position_panel_from_tray(app_handle: &AppHandle) {
     }
 }
 
-/// Show the panel (initializing if needed), positioned under the tray icon.
-pub fn show_panel(app_handle: &AppHandle) {
-    if let Some(panel) = get_or_init_panel!(app_handle) {
-        panel.show_and_make_key();
-        position_panel_from_tray(app_handle);
-    }
-}
-
-/// Toggle panel visibility. If visible, hide it. If hidden, show it.
-/// Used by global shortcut handler.
-pub fn toggle_panel(app_handle: &AppHandle) {
-    let Some(panel) = get_or_init_panel!(app_handle) else {
-        return;
-    };
-
-    if panel.is_visible() {
-        log::debug!("toggle_panel: hiding panel");
-        panel.hide();
-    } else {
-        log::debug!("toggle_panel: showing panel");
-        panel.show_and_make_key();
-        position_panel_from_tray(app_handle);
-    }
-}
-
-// Define our panel class and event handler together
-tauri_panel! {
-    panel!(OpenUsagePanel {
-        config: {
-            can_become_key_window: true,
-            is_floating_panel: true
-        }
-    })
-
-    panel_event!(OpenUsagePanelEventHandler {
-        window_did_resign_key(notification: &NSNotification) -> ()
-    })
-}
-
-pub fn init(app_handle: &tauri::AppHandle) -> tauri::Result<()> {
-    if app_handle.get_webview_panel("main").is_ok() {
-        return Ok(());
-    }
-
-    let window = app_handle.get_webview_window("main").unwrap();
-
-    let panel = window.to_panel::<OpenUsagePanel>()?;
-
-    // Disable native shadow - it causes gray border on transparent windows
-    // Let CSS handle shadow via shadow-xl class
-    panel.set_has_shadow(false);
-    panel.set_opaque(false);
-
-    // Configure panel behavior
-    panel.set_level(PanelLevel::MainMenu.value() + 1);
-
-    panel.set_collection_behavior(
-        CollectionBehavior::new()
-            .move_to_active_space()
-            .full_screen_auxiliary()
-            .value(),
-    );
-
-    panel.set_style_mask(StyleMask::empty().nonactivating_panel().value());
-
-    // Set up event handler to hide panel when it loses focus
-    let event_handler = OpenUsagePanelEventHandler::new();
-
-    let handle = app_handle.clone();
-    event_handler.window_did_resign_key(move |_notification| {
-        if let Ok(panel) = handle.get_webview_panel("main") {
-            panel.hide();
-        }
-    });
-
-    panel.set_event_handler(Some(event_handler.as_ref()));
-
-    Ok(())
-}
-
-pub fn position_panel_at_tray_icon(
-    app_handle: &tauri::AppHandle,
+/// Compute the desired logical top-left of the panel given the tray icon rect.
+/// Returns `(panel_x, panel_y, primary_logical_height)` or `None` if geometry
+/// can't be resolved. The math is platform-independent; only the final apply
+/// step differs per OS (macOS uses flipped/bottom-left coordinates).
+fn compute_panel_top_left(
+    app_handle: &AppHandle,
     icon_position: Position,
     icon_size: Size,
-) {
-    let window = app_handle.get_webview_window("main").unwrap();
+) -> Option<(f64, f64, f64)> {
+    let window = app_handle.get_webview_window("main")?;
 
     let (icon_phys_x, icon_phys_y) = match &icon_position {
         Position::Physical(pos) => (pos.x as f64, pos.y as f64),
@@ -204,7 +59,7 @@ pub fn position_panel_at_tray_icon(
         Size::Logical(s) => (s.width, s.height),
     };
 
-    let monitors = window.available_monitors().expect("failed to get monitors");
+    let monitors = window.available_monitors().ok()?;
     let primary_logical_h = window
         .primary_monitor()
         .ok()
@@ -236,10 +91,7 @@ pub fn position_panel_at_tray_icon(
                 icon_center_x,
                 icon_center_y
             );
-            match window.primary_monitor() {
-                Ok(Some(m)) => m,
-                _ => return,
-            }
+            window.primary_monitor().ok().flatten()?
         }
     };
 
@@ -274,5 +126,246 @@ pub fn position_panel_at_tray_icon(
     let nudge_up: f64 = 6.0;
     let panel_y = icon_logical_y + icon_logical_h - nudge_up;
 
-    set_panel_top_left_immediately(&window, app_handle, panel_x, panel_y, primary_logical_h);
+    Some((panel_x, panel_y, primary_logical_h))
 }
+
+/// Position the panel directly beneath the tray icon (best-effort).
+/// On Wayland the compositor may ignore the requested position; the panel is
+/// still shown, just not pinned to the tray icon.
+pub fn position_panel_at_tray_icon(
+    app_handle: &AppHandle,
+    icon_position: Position,
+    icon_size: Size,
+) {
+    let Some((panel_x, panel_y, primary_logical_h)) =
+        compute_panel_top_left(app_handle, icon_position, icon_size)
+    else {
+        return;
+    };
+    apply_panel_position(app_handle, panel_x, panel_y, primary_logical_h);
+}
+
+// ===========================================================================
+// macOS: floating NSPanel pinned under the menubar tray icon.
+// ===========================================================================
+#[cfg(target_os = "macos")]
+mod platform {
+    use super::*;
+
+    unsafe fn set_panel_frame_top_left(panel: &tauri_nspanel::NSPanel, x: f64, y: f64) {
+        let point = tauri_nspanel::NSPoint::new(x, y);
+        let _: () = objc2::msg_send![panel, setFrameTopLeftPoint: point];
+    }
+
+    pub(super) fn apply_panel_position(
+        app_handle: &AppHandle,
+        panel_x: f64,
+        panel_y: f64,
+        primary_logical_h: f64,
+    ) {
+        let Some(window) = app_handle.get_webview_window("main") else {
+            return;
+        };
+        let Ok(panel_handle) = app_handle.get_webview_panel("main") else {
+            return;
+        };
+
+        // macOS uses a bottom-left origin, so flip the y coordinate.
+        let target_x = panel_x;
+        let target_y = primary_logical_h - panel_y;
+
+        if objc2_foundation::MainThreadMarker::new().is_some() {
+            unsafe {
+                set_panel_frame_top_left(panel_handle.as_panel(), target_x, target_y);
+            }
+            return;
+        }
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        let panel_handle = panel_handle.clone();
+
+        if let Err(error) = window.run_on_main_thread(move || {
+            unsafe {
+                set_panel_frame_top_left(panel_handle.as_panel(), target_x, target_y);
+            }
+            let _ = tx.send(());
+        }) {
+            log::warn!("Failed to position panel on main thread: {}", error);
+            return;
+        }
+
+        if rx.recv().is_err() {
+            log::warn!("Failed waiting for panel position on main thread");
+        }
+    }
+
+    /// Get existing panel or initialize it if needed.
+    macro_rules! get_or_init_panel {
+        ($app_handle:expr) => {
+            match $app_handle.get_webview_panel("main") {
+                Ok(panel) => Some(panel),
+                Err(_) => {
+                    if let Err(err) = init($app_handle) {
+                        log::error!("Failed to init panel: {}", err);
+                        None
+                    } else {
+                        match $app_handle.get_webview_panel("main") {
+                            Ok(panel) => Some(panel),
+                            Err(err) => {
+                                log::error!("Panel missing after init: {:?}", err);
+                                None
+                            }
+                        }
+                    }
+                }
+            }
+        };
+    }
+
+    // Define our panel class and event handler together
+    tauri_panel! {
+        panel!(OpenUsagePanel {
+            config: {
+                can_become_key_window: true,
+                is_floating_panel: true
+            }
+        })
+
+        panel_event!(OpenUsagePanelEventHandler {
+            window_did_resign_key(notification: &NSNotification) -> ()
+        })
+    }
+
+    pub fn init(app_handle: &AppHandle) -> tauri::Result<()> {
+        if app_handle.get_webview_panel("main").is_ok() {
+            return Ok(());
+        }
+
+        let window = app_handle.get_webview_window("main").unwrap();
+
+        let panel = window.to_panel::<OpenUsagePanel>()?;
+
+        // Disable native shadow - it causes gray border on transparent windows
+        // Let CSS handle shadow via shadow-xl class
+        panel.set_has_shadow(false);
+        panel.set_opaque(false);
+
+        // Configure panel behavior
+        panel.set_level(PanelLevel::MainMenu.value() + 1);
+
+        panel.set_collection_behavior(
+            CollectionBehavior::new()
+                .move_to_active_space()
+                .full_screen_auxiliary()
+                .value(),
+        );
+
+        panel.set_style_mask(StyleMask::empty().nonactivating_panel().value());
+
+        // Set up event handler to hide panel when it loses focus
+        let event_handler = OpenUsagePanelEventHandler::new();
+
+        let handle = app_handle.clone();
+        event_handler.window_did_resign_key(move |_notification| {
+            if let Ok(panel) = handle.get_webview_panel("main") {
+                panel.hide();
+            }
+        });
+
+        panel.set_event_handler(Some(event_handler.as_ref()));
+
+        Ok(())
+    }
+
+    /// Show the panel (initializing if needed), positioned under the tray icon.
+    pub fn show_panel(app_handle: &AppHandle) {
+        if let Some(panel) = get_or_init_panel!(app_handle) {
+            panel.show_and_make_key();
+            position_panel_from_tray(app_handle);
+        }
+    }
+
+    /// Toggle panel visibility. If visible, hide it. If hidden, show it.
+    pub fn toggle_panel(app_handle: &AppHandle) {
+        let Some(panel) = get_or_init_panel!(app_handle) else {
+            return;
+        };
+
+        if panel.is_visible() {
+            log::debug!("toggle_panel: hiding panel");
+            panel.hide();
+        } else {
+            log::debug!("toggle_panel: showing panel");
+            panel.show_and_make_key();
+            position_panel_from_tray(app_handle);
+        }
+    }
+
+    pub fn hide_panel(app_handle: &AppHandle) {
+        if let Ok(panel) = app_handle.get_webview_panel("main") {
+            panel.hide();
+        }
+    }
+}
+
+// ===========================================================================
+// Linux / other: plain always-on-top borderless window. Hidden on focus loss
+// (wired up in lib.rs setup). Positioning under the tray is best-effort.
+// ===========================================================================
+#[cfg(not(target_os = "macos"))]
+mod platform {
+    use super::*;
+
+    pub(super) fn apply_panel_position(
+        app_handle: &AppHandle,
+        panel_x: f64,
+        panel_y: f64,
+        _primary_logical_h: f64,
+    ) {
+        let Some(window) = app_handle.get_webview_window("main") else {
+            return;
+        };
+        if let Err(e) = window.set_position(tauri::LogicalPosition::new(panel_x, panel_y)) {
+            log::debug!("apply_panel_position: set_position failed (best-effort): {}", e);
+        }
+    }
+
+    /// No NSPanel on non-macOS; the regular window is configured via tauri.conf.json.
+    pub fn init(_app_handle: &AppHandle) -> tauri::Result<()> {
+        Ok(())
+    }
+
+    /// Show the window as a floating panel, positioned under the tray icon.
+    pub fn show_panel(app_handle: &AppHandle) {
+        let Some(window) = app_handle.get_webview_window("main") else {
+            return;
+        };
+        let _ = window.show();
+        let _ = window.set_always_on_top(true);
+        let _ = window.set_focus();
+        position_panel_from_tray(app_handle);
+    }
+
+    /// Toggle window visibility.
+    pub fn toggle_panel(app_handle: &AppHandle) {
+        let Some(window) = app_handle.get_webview_window("main") else {
+            return;
+        };
+        if window.is_visible().unwrap_or(false) {
+            log::debug!("toggle_panel: hiding window");
+            let _ = window.hide();
+        } else {
+            log::debug!("toggle_panel: showing window");
+            show_panel(app_handle);
+        }
+    }
+
+    pub fn hide_panel(app_handle: &AppHandle) {
+        if let Some(window) = app_handle.get_webview_window("main") {
+            let _ = window.hide();
+        }
+    }
+}
+
+use platform::apply_panel_position;
+pub use platform::{hide_panel, init, show_panel, toggle_panel};

@@ -3,10 +3,9 @@ use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::path::BaseDirectory;
 use tauri::tray::{MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager};
-use tauri_nspanel::ManagerExt;
 use tauri_plugin_store::StoreExt;
 
-use crate::panel::{get_or_init_panel, position_panel_at_tray_icon, show_panel};
+use crate::panel::{show_panel, toggle_panel};
 
 const LOG_LEVEL_STORE_KEY: &str = "logLevel";
 
@@ -182,25 +181,13 @@ pub fn create(app_handle: &AppHandle) -> tauri::Result<()> {
         .on_tray_icon_event(|tray, event| {
             let app_handle = tray.app_handle();
 
-            if let TrayIconEvent::Click {
-                button_state, rect, ..
-            } = event
-            {
+            if let TrayIconEvent::Click { button_state, .. } = event {
                 if button_state == MouseButtonState::Up {
-                    let Some(panel) = get_or_init_panel!(app_handle) else {
-                        return;
-                    };
-
-                    if panel.is_visible() {
-                        log::debug!("tray click: hiding panel");
-                        panel.hide();
-                        return;
-                    }
-                    log::debug!("tray click: showing panel");
-
-                    // macOS quirk: must show window before positioning to another monitor
-                    panel.show_and_make_key();
-                    position_panel_at_tray_icon(app_handle, rect.position, rect.size);
+                    // toggle_panel shows/hides and positions under the tray icon.
+                    // Note: on some Linux desktops (e.g. GNOME without an
+                    // AppIndicator extension) left-click does not emit this
+                    // event — use the "Show Stats" menu item or global shortcut.
+                    toggle_panel(app_handle);
                 }
             }
         })

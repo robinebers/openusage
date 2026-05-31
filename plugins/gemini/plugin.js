@@ -9,7 +9,9 @@
     "~/.bun/install/global/node_modules",
     "~/.npm-global/lib/node_modules",
     "/usr/local/lib/node_modules",
+    "/usr/lib/node_modules",
     "~/Library/pnpm/global/5/node_modules",
+    "~/.local/share/pnpm/global/5/node_modules",
   ]
 
   const STATIC_NESTED_ONLY = [
@@ -20,6 +22,7 @@
   const VERSION_MANAGER_ROOTS = [
     { root: "~/.nvm/versions/node", modulePath: "/lib/node_modules" },
     { root: "~/Library/Application Support/fnm/node-versions", modulePath: "/installation/lib/node_modules" },
+    { root: "~/.local/share/fnm/node-versions", modulePath: "/installation/lib/node_modules" },
   ]
 
   function listDirSafe(ctx, path) {

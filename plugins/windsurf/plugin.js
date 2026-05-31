@@ -11,14 +11,27 @@
     {
       marker: "windsurf",
       ideName: "windsurf",
-      stateDb: "~/Library/Application Support/Windsurf/User/globalStorage/state.vscdb",
+      appDir: "Windsurf",
     },
     {
       marker: "windsurf-next",
       ideName: "windsurf-next",
-      stateDb: "~/Library/Application Support/Windsurf - Next/User/globalStorage/state.vscdb",
+      appDir: "Windsurf - Next",
     },
   ]
+
+  // VS Code-style app data location varies per OS.
+  function stateDbPath(ctx, appDir) {
+    var platform = ctx.app && ctx.app.platform
+    var suffix = "/" + appDir + "/User/globalStorage/state.vscdb"
+    if (platform === "linux") {
+      return "~/.config" + suffix
+    }
+    if (platform === "windows") {
+      return "~/AppData/Roaming" + suffix
+    }
+    return "~/Library/Application Support" + suffix
+  }
 
   function readFiniteNumber(value) {
     if (typeof value === "number") return Number.isFinite(value) ? value : null
@@ -39,7 +52,7 @@
   function loadApiKey(ctx, variant) {
     try {
       var rows = ctx.host.sqlite.query(
-        variant.stateDb,
+        stateDbPath(ctx, variant.appDir),
         "SELECT value FROM ItemTable WHERE key = 'windsurfAuthStatus' LIMIT 1"
       )
       var parsed = ctx.util.tryParseJson(rows)

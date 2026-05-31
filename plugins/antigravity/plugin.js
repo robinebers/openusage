@@ -1,6 +1,13 @@
 (function () {
   var LS_SERVICE = "exa.language_server_pb.LanguageServerService"
-  var STATE_DB = "~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb"
+  // Antigravity's app data location varies per OS (VS Code-style layout).
+  function stateDbPath(ctx) {
+    var platform = ctx.app && ctx.app.platform
+    var suffix = "/Antigravity/User/globalStorage/state.vscdb"
+    if (platform === "linux") return "~/.config" + suffix
+    if (platform === "windows") return "~/AppData/Roaming" + suffix
+    return "~/Library/Application Support" + suffix
+  }
   var CLOUD_CODE_URLS = [
     "https://daily-cloudcode-pa.googleapis.com",
     "https://cloudcode-pa.googleapis.com",
@@ -95,7 +102,7 @@
   function loadOAuthTokens(ctx) {
     try {
       var rows = ctx.host.sqlite.query(
-        STATE_DB,
+        stateDbPath(ctx),
         "SELECT value FROM ItemTable WHERE key = '" + OAUTH_TOKEN_KEY + "' LIMIT 1"
       )
       var parsed = ctx.util.tryParseJson(rows)

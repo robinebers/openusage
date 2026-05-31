@@ -6,9 +6,52 @@ See your usage at a glance from your menu bar. No digging through dashboards.
 
 ## Download
 
-[**Download the latest release**](https://github.com/robinebers/openusage/releases/latest) (macOS, Apple Silicon & Intel)
+[**Download the latest release**](https://github.com/robinebers/openusage/releases/latest) (macOS Apple Silicon & Intel, Linux AppImage/.deb/.rpm)
 
 The app auto-updates. Install once and you're set.
+
+> **Linux notes:** OpenUsage runs in the system tray. On desktops without
+> StatusNotifierItem/AppIndicator support (e.g. GNOME without the AppIndicator
+> extension) a left-click on the tray icon may not open the panel — use the
+> tray menu's **Show Stats** entry or the global shortcut instead. The panel
+> appears under the tray icon where the compositor allows it (best-effort on
+> Wayland). Reading credentials stored in the system keyring requires
+> `secret-tool` (the `libsecret`/`libsecret-tools` package).
+
+## Install on Linux
+
+Grab the asset for your distro from the
+[latest release](https://github.com/robinebers/openusage/releases/latest)
+(replace the version in the examples below if a newer one is out).
+
+**Fedora / RHEL (.rpm)** — `dnf` pulls in the dependencies automatically:
+
+```sh
+sudo dnf install https://github.com/robinebers/openusage/releases/download/v0.6.24/OpenUsage-0.6.24-1.x86_64.rpm
+```
+
+**Debian / Ubuntu (.deb):**
+
+```sh
+curl -LO https://github.com/robinebers/openusage/releases/download/v0.6.24/OpenUsage_0.6.24_amd64.deb
+sudo apt install ./OpenUsage_0.6.24_amd64.deb
+```
+
+**Any distro (AppImage)** — portable, no install:
+
+```sh
+curl -L -o OpenUsage.AppImage https://github.com/robinebers/openusage/releases/download/v0.6.24/OpenUsage_0.6.24_amd64.AppImage
+chmod +x OpenUsage.AppImage
+./OpenUsage.AppImage
+```
+
+After installing via `.rpm`/`.deb`, launch **OpenUsage** from your app menu — it
+starts in the system tray. If your desktop has no tray (e.g. GNOME), install an
+AppIndicator/StatusNotifier extension, or open the panel with the global shortcut.
+
+Runtime dependencies (handled automatically by `.rpm`/`.deb`): `webkit2gtk-4.1`,
+`gtk3`, an AppIndicator library, and — for providers that read the system
+keyring — `secret-tool` (`libsecret-tools` / `libsecret`).
 
 ## What It Does
 
@@ -97,6 +140,20 @@ Inspired by [CodexBar](https://github.com/steipete/CodexBar) by [@steipete](http
 <summary><strong>Build from source</strong></summary>
 
 > **Warning**: The `main` branch may not be stable. It is merged directly without staging, so users are advised to use tagged versions for stable builds. Tagged versions are fully tested while `main` may contain unreleased features.
+
+### Linux build prerequisites
+
+Install the system libraries Tauri needs before building:
+
+```sh
+# Debian/Ubuntu
+sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
+  libayatana-appindicator3-dev librsvg2-dev patchelf libsecret-1-dev build-essential
+
+# Fedora
+sudo dnf install -y webkit2gtk4.1-devel gtk3-devel libappindicator-gtk3-devel \
+  librsvg2-devel libsecret-devel patchelf
+```
 
 ### Stack
 

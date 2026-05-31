@@ -1,10 +1,23 @@
 (function () {
-  const STATE_DB = "~/Library/Application Support/Kiro/User/globalStorage/state.vscdb"
+  // Kiro's app data location varies per OS (VS Code-style layout).
+  function kiroBase(ctx) {
+    const platform = ctx.app && ctx.app.platform
+    if (platform === "linux") return "~/.config/Kiro"
+    if (platform === "windows") return "~/AppData/Roaming/Kiro"
+    return "~/Library/Application Support/Kiro"
+  }
+  function stateDbPath(ctx) {
+    return kiroBase(ctx) + "/User/globalStorage/state.vscdb"
+  }
+  function logsRoot(ctx) {
+    return kiroBase(ctx) + "/logs"
+  }
+  function profilePath(ctx) {
+    return kiroBase(ctx) + "/User/globalStorage/kiro.kiroagent/profile.json"
+  }
   const STATE_KEY = "kiro.kiroAgent"
-  const LOGS_ROOT = "~/Library/Application Support/Kiro/logs"
   const LOG_FILE_NAME = "q-client.log"
   const TOKEN_PATH = "~/.aws/sso/cache/kiro-auth-token.json"
-  const PROFILE_PATH = "~/Library/Application Support/Kiro/User/globalStorage/kiro.kiroagent/profile.json"
   const REFRESH_URL = "https://prod.us-east-1.auth.desktop.kiro.dev/refreshToken"
   const LIVE_STALE_MS = 15 * 60 * 1000
   const REFRESH_BUFFER_MS = 10 * 60 * 1000
@@ -77,7 +90,7 @@
   function loadProfileArn(ctx, authState) {
     const fromToken = authState && authState.token && authState.token.profileArn
     if (typeof fromToken === "string" && fromToken) return fromToken
-    const parsed = readJsonFile(ctx, PROFILE_PATH, "profile")
+    const parsed = readJsonFile(ctx, profilePath(ctx), "profile")
     return parsed && typeof parsed.arn === "string" && parsed.arn.trim() ? parsed.arn.trim() : null
   }
   function regionFromArn(profileArn) {
@@ -87,7 +100,7 @@
   function readStateValue(ctx, key) {
     try {
       const sql = "SELECT value FROM ItemTable WHERE key = '" + String(key).replace(/'/g, "''") + "' LIMIT 1;"
-      const rows = ctx.util.tryParseJson(ctx.host.sqlite.query(STATE_DB, sql))
+      const rows = ctx.util.tryParseJson(ctx.host.sqlite.query(stateDbPath(ctx), sql))
       return Array.isArray(rows) && rows.length && typeof rows[0].value === "string" ? rows[0].value : null
     } catch (e) {
       ctx.host.log.warn("Kiro sqlite read failed: " + String(e))
@@ -186,13 +199,14 @@
   }
   function loadLoggedState(ctx) {
     let sessions = []
+    const logs = logsRoot(ctx)
     try {
-      sessions = ctx.host.fs.listDir(LOGS_ROOT).slice().sort().reverse()
+      sessions = ctx.host.fs.listDir(logs).slice().sort().reverse()
     } catch {
       return null
     }
     for (let i = 0; i < sessions.length && i < 12; i += 1) {
-      const sessionRoot = LOGS_ROOT + "/" + sessions[i]
+      const sessionRoot = logs + "/" + sessions[i]
       let windows = []
       try {
         windows = ctx.host.fs.listDir(sessionRoot).slice().sort().reverse()

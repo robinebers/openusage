@@ -157,6 +157,7 @@ fn current_macos_keychain_account() -> String {
     current_macos_keychain_account_from_user_env(read_env_from_process("USER"))
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn keychain_find_generic_password_args(service: &str) -> Vec<OsString> {
     vec![
         OsString::from("find-generic-password"),
@@ -166,6 +167,7 @@ fn keychain_find_generic_password_args(service: &str) -> Vec<OsString> {
     ]
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn keychain_find_generic_password_args_for_account(service: &str, account: &str) -> Vec<OsString> {
     vec![
         OsString::from("find-generic-password"),
@@ -177,6 +179,7 @@ fn keychain_find_generic_password_args_for_account(service: &str, account: &str)
     ]
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn keychain_add_generic_password_args(service: &str, value: &str) -> Vec<OsString> {
     vec![
         OsString::from("add-generic-password"),
@@ -188,6 +191,7 @@ fn keychain_add_generic_password_args(service: &str, value: &str) -> Vec<OsStrin
     ]
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn keychain_add_generic_password_args_for_account(
     service: &str,
     account: &str,
@@ -1783,10 +1787,13 @@ fn ccusage_path_entries_with(home: Option<&Path>, existing_path: Option<&OsStr>)
             entries.push(nvm_bin);
         }
         entries.push(home.join(".local/bin"));
+        // Common Linux tool locations (asdf shims, cargo, rustup, etc.).
+        entries.push(home.join(".cargo/bin"));
+        entries.push(home.join(".asdf/shims"));
     }
 
     entries.extend(
-        ["/opt/homebrew/bin", "/usr/local/bin"]
+        ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"]
             .into_iter()
             .map(PathBuf::from),
     );
@@ -2375,6 +2382,162 @@ pub fn patch_ccusage_wrapper(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
     )
 }
 
+/// Look up a secret via the freedesktop Secret Service (libsecret `secret-tool`).
+#[cfg(target_os = "linux")]
+fn secret_tool_lookup(attrs: &[(&str, &str)]) -> Result<String, String> {
+    let mut cmd = std::process::Command::new("secret-tool");
+    cmd.arg("lookup");
+    for (key, value) in attrs {
+        cmd.arg(key).arg(value);
+    }
+    let output = cmd
+        .output()
+        .map_err(|e| format!("secret-tool not available (install libsecret): {}", e))?;
+    if !output.status.success() {
+        return Err("keychain item not found".to_string());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .trim_end_matches('\n')
+        .to_string())
+}
+
+/// Store a secret via the freedesktop Secret Service (libsecret `secret-tool`).
+#[cfg(target_os = "linux")]
+fn secret_tool_store(label: &str, value: &str, attrs: &[(&str, &str)]) -> Result<(), String> {
+    use std::io::Write;
+    use std::process::Stdio;
+    let mut cmd = std::process::Command::new("secret-tool");
+    cmd.arg("store").arg("--label").arg(label);
+    for (key, attr_value) in attrs {
+        cmd.arg(key).arg(attr_value);
+    }
+    cmd.stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("secret-tool not available (install libsecret): {}", e))?;
+    child
+        .stdin
+        .take()
+        .ok_or_else(|| "secret-tool stdin unavailable".to_string())?
+        .write_all(value.as_bytes())
+        .map_err(|e| format!("secret-tool write failed: {}", e))?;
+    let output = child
+        .wait_with_output()
+        .map_err(|e| format!("secret-tool store failed: {}", e))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "keychain write failed: {}",
+            stderr.lines().next().unwrap_or("").trim()
+        ));
+    }
+    Ok(())
+}
+
+/// Read a generic password from the platform credential store.
+/// macOS: Keychain via `security`. Linux: Secret Service via `secret-tool`.
+fn keychain_op_read(service: &str, account: Option<&str>) -> Result<String, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let args = match account {
+            Some(a) => keychain_find_generic_password_args_for_account(service, a),
+            None => keychain_find_generic_password_args(service),
+        };
+        let output = std::process::Command::new("security")
+            .args(args)
+            .output()
+            .map_err(|e| format!("keychain read failed: {}", e))?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!(
+                "keychain item not found: {}",
+                stderr.lines().next().unwrap_or("").trim()
+            ));
+        }
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    }
+    #[cfg(target_os = "linux")]
+    {
+        match account {
+            Some(a) => secret_tool_lookup(&[("service", service), ("account", a)]),
+            None => secret_tool_lookup(&[("service", service)]),
+        }
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        let _ = (service, account);
+        Err("keychain API is not supported on this platform".to_string())
+    }
+}
+
+/// Write a generic password to the platform credential store.
+fn keychain_op_write(service: &str, account: Option<&str>, value: &str) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        // When no account is supplied, reuse the existing item's account (if any)
+        // so we update in place rather than create a duplicate entry.
+        let resolved_account = match account {
+            Some(a) => Some(a.to_string()),
+            None => {
+                let mut found: Option<String> = None;
+                if let Ok(output) = std::process::Command::new("security")
+                    .args(["find-generic-password", "-s", service])
+                    .output()
+                {
+                    if output.status.success() {
+                        let stdout = String::from_utf8_lossy(&output.stdout);
+                        for line in stdout.lines() {
+                            if let Some(start) = line.find("\"acct\"<blob>=\"") {
+                                let rest = &line[start + 14..];
+                                if let Some(end) = rest.find('"') {
+                                    found = Some(rest[..end].to_string());
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                found
+            }
+        };
+
+        let output = match resolved_account.as_deref() {
+            Some(acct) => std::process::Command::new("security")
+                .args(keychain_add_generic_password_args_for_account(
+                    service, acct, value,
+                ))
+                .output(),
+            None => std::process::Command::new("security")
+                .args(keychain_add_generic_password_args(service, value))
+                .output(),
+        }
+        .map_err(|e| format!("keychain write failed: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!(
+                "keychain write failed: {}",
+                stderr.lines().next().unwrap_or("").trim()
+            ));
+        }
+        Ok(())
+    }
+    #[cfg(target_os = "linux")]
+    {
+        match account {
+            Some(a) => secret_tool_store(service, value, &[("service", service), ("account", a)]),
+            None => secret_tool_store(service, value, &[("service", service)]),
+        }
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        let _ = (service, account, value);
+        Err("keychain API is not supported on this platform".to_string())
+    }
+}
+
 fn inject_keychain<'js>(
     ctx: &Ctx<'js>,
     host: &Object<'js>,
@@ -2388,44 +2551,22 @@ fn inject_keychain<'js>(
         Function::new(
             ctx.clone(),
             move |ctx_inner: Ctx<'_>, service: String| -> rquickjs::Result<String> {
-                if !cfg!(target_os = "macos") {
-                    return Err(Exception::throw_message(
-                        &ctx_inner,
-                        "keychain API is only supported on macOS",
-                    ));
-                }
                 log::info!("[plugin:{}] keychain read: service={}", pid_read, service);
-                let output = std::process::Command::new("security")
-                    .args(keychain_find_generic_password_args(&service))
-                    .output()
-                    .map_err(|e| {
-                        Exception::throw_message(
-                            &ctx_inner,
-                            &format!("keychain read failed: {}", e),
-                        )
-                    })?;
-
-                if !output.status.success() {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    let first_line = stderr.lines().next().unwrap_or("").trim();
-                    log::warn!(
-                        "[plugin:{}] keychain read miss: service={}, error={}",
-                        pid_read,
-                        service,
-                        first_line
-                    );
-                    return Err(Exception::throw_message(
-                        &ctx_inner,
-                        &format!("keychain item not found: {}", first_line),
-                    ));
+                match keychain_op_read(&service, None) {
+                    Ok(secret) => {
+                        log::info!("[plugin:{}] keychain read hit: service={}", pid_read, service);
+                        Ok(secret)
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "[plugin:{}] keychain read miss: service={}, error={}",
+                            pid_read,
+                            service,
+                            e
+                        );
+                        Err(Exception::throw_message(&ctx_inner, &e))
+                    }
                 }
-
-                log::info!(
-                    "[plugin:{}] keychain read hit: service={}",
-                    pid_read,
-                    service
-                );
-                Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
             },
         )?,
     )?;
@@ -2436,14 +2577,7 @@ fn inject_keychain<'js>(
         Function::new(
             ctx.clone(),
             move |ctx_inner: Ctx<'_>, service: String| -> rquickjs::Result<String> {
-                if !cfg!(target_os = "macos") {
-                    return Err(Exception::throw_message(
-                        &ctx_inner,
-                        "keychain API is only supported on macOS",
-                    ));
-                }
                 let account = current_macos_keychain_account();
-                let args = keychain_find_generic_password_args_for_account(&service, &account);
                 let redacted_account = redact_value(&account);
                 log::info!(
                     "[plugin:{}] keychain read: service={}, account={}",
@@ -2451,39 +2585,27 @@ fn inject_keychain<'js>(
                     service,
                     redacted_account
                 );
-                let output = std::process::Command::new("security")
-                    .args(&args)
-                    .output()
-                    .map_err(|e| {
-                        Exception::throw_message(
-                            &ctx_inner,
-                            &format!("keychain read failed: {}", e),
-                        )
-                    })?;
-
-                if !output.status.success() {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    let first_line = stderr.lines().next().unwrap_or("").trim();
-                    log::warn!(
-                        "[plugin:{}] keychain read miss: service={}, account={}, error={}",
-                        pid_read_current_user,
-                        service,
-                        redacted_account,
-                        first_line
-                    );
-                    return Err(Exception::throw_message(
-                        &ctx_inner,
-                        &format!("keychain item not found: {}", first_line),
-                    ));
+                match keychain_op_read(&service, Some(&account)) {
+                    Ok(secret) => {
+                        log::info!(
+                            "[plugin:{}] keychain read hit: service={}, account={}",
+                            pid_read_current_user,
+                            service,
+                            redacted_account
+                        );
+                        Ok(secret)
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "[plugin:{}] keychain read miss: service={}, account={}, error={}",
+                            pid_read_current_user,
+                            service,
+                            redacted_account,
+                            e
+                        );
+                        Err(Exception::throw_message(&ctx_inner, &e))
+                    }
                 }
-
-                log::info!(
-                    "[plugin:{}] keychain read hit: service={}, account={}",
-                    pid_read_current_user,
-                    service,
-                    redacted_account
-                );
-                Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
             },
         )?,
     )?;
@@ -2494,70 +2616,26 @@ fn inject_keychain<'js>(
         Function::new(
             ctx.clone(),
             move |ctx_inner: Ctx<'_>, service: String, value: String| -> rquickjs::Result<()> {
-                if !cfg!(target_os = "macos") {
-                    return Err(Exception::throw_message(
-                        &ctx_inner,
-                        "keychain API is only supported on macOS",
-                    ));
-                }
                 log::info!("[plugin:{}] keychain write: service={}", pid_write, service);
-
-                let mut account_arg: Option<String> = None;
-                let find_output = std::process::Command::new("security")
-                    .args(["find-generic-password", "-s", &service])
-                    .output();
-
-                if let Ok(output) = find_output {
-                    if output.status.success() {
-                        let stdout = String::from_utf8_lossy(&output.stdout);
-                        for line in stdout.lines() {
-                            if let Some(start) = line.find("\"acct\"<blob>=\"") {
-                                let rest = &line[start + 14..];
-                                if let Some(end) = rest.find('"') {
-                                    account_arg = Some(rest[..end].to_string());
-                                    break;
-                                }
-                            }
-                        }
+                match keychain_op_write(&service, None, &value) {
+                    Ok(()) => {
+                        log::info!(
+                            "[plugin:{}] keychain write succeeded: service={}",
+                            pid_write,
+                            service
+                        );
+                        Ok(())
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "[plugin:{}] keychain write failed: service={}, error={}",
+                            pid_write,
+                            service,
+                            e
+                        );
+                        Err(Exception::throw_message(&ctx_inner, &e))
                     }
                 }
-
-                let output = if let Some(ref acct) = account_arg {
-                    std::process::Command::new("security")
-                        .args(keychain_add_generic_password_args_for_account(
-                            &service, acct, &value,
-                        ))
-                        .output()
-                } else {
-                    std::process::Command::new("security")
-                        .args(keychain_add_generic_password_args(&service, &value))
-                        .output()
-                }
-                .map_err(|e| {
-                    Exception::throw_message(&ctx_inner, &format!("keychain write failed: {}", e))
-                })?;
-
-                if !output.status.success() {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    let first_line = stderr.lines().next().unwrap_or("").trim();
-                    log::warn!(
-                        "[plugin:{}] keychain write failed: service={}, error={}",
-                        pid_write,
-                        service,
-                        first_line
-                    );
-                    return Err(Exception::throw_message(
-                        &ctx_inner,
-                        &format!("keychain write failed: {}", first_line),
-                    ));
-                }
-
-                log::info!(
-                    "[plugin:{}] keychain write succeeded: service={}",
-                    pid_write,
-                    service
-                );
-                Ok(())
             },
         )?,
     )?;
@@ -2568,15 +2646,7 @@ fn inject_keychain<'js>(
         Function::new(
             ctx.clone(),
             move |ctx_inner: Ctx<'_>, service: String, value: String| -> rquickjs::Result<()> {
-                if !cfg!(target_os = "macos") {
-                    return Err(Exception::throw_message(
-                        &ctx_inner,
-                        "keychain API is only supported on macOS",
-                    ));
-                }
                 let account = current_macos_keychain_account();
-                let args =
-                    keychain_add_generic_password_args_for_account(&service, &account, &value);
                 let redacted_account = redact_value(&account);
                 log::info!(
                     "[plugin:{}] keychain write: service={}, account={}",
@@ -2584,39 +2654,27 @@ fn inject_keychain<'js>(
                     service,
                     redacted_account
                 );
-                let output = std::process::Command::new("security")
-                    .args(&args)
-                    .output()
-                    .map_err(|e| {
-                        Exception::throw_message(
-                            &ctx_inner,
-                            &format!("keychain write failed: {}", e),
-                        )
-                    })?;
-
-                if !output.status.success() {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    let first_line = stderr.lines().next().unwrap_or("").trim();
-                    log::warn!(
-                        "[plugin:{}] keychain write failed: service={}, account={}, error={}",
-                        pid_write_current_user,
-                        service,
-                        redacted_account,
-                        first_line
-                    );
-                    return Err(Exception::throw_message(
-                        &ctx_inner,
-                        &format!("keychain write failed: {}", first_line),
-                    ));
+                match keychain_op_write(&service, Some(&account), &value) {
+                    Ok(()) => {
+                        log::info!(
+                            "[plugin:{}] keychain write succeeded: service={}, account={}",
+                            pid_write_current_user,
+                            service,
+                            redacted_account
+                        );
+                        Ok(())
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "[plugin:{}] keychain write failed: service={}, account={}, error={}",
+                            pid_write_current_user,
+                            service,
+                            redacted_account,
+                            e
+                        );
+                        Err(Exception::throw_message(&ctx_inner, &e))
+                    }
                 }
-
-                log::info!(
-                    "[plugin:{}] keychain write succeeded: service={}, account={}",
-                    pid_write_current_user,
-                    service,
-                    redacted_account
-                );
-                Ok(())
             },
         )?,
     )?;
@@ -3809,6 +3867,8 @@ mod tests {
                 home.join(".bun/bin"),
                 home.join(".nvm/current/bin"),
                 home.join(".local/bin"),
+                home.join(".cargo/bin"),
+                home.join(".asdf/shims"),
                 std::path::PathBuf::from("/opt/homebrew/bin"),
                 std::path::PathBuf::from("/usr/local/bin"),
                 std::path::PathBuf::from("/usr/bin"),
@@ -3833,6 +3893,7 @@ mod tests {
             vec![
                 std::path::PathBuf::from("/opt/homebrew/bin"),
                 std::path::PathBuf::from("/usr/local/bin"),
+                std::path::PathBuf::from("/usr/bin"),
                 std::path::PathBuf::from("/custom/bin"),
             ]
         );
@@ -3848,6 +3909,7 @@ mod tests {
             vec![
                 std::path::PathBuf::from("/opt/homebrew/bin"),
                 std::path::PathBuf::from("/usr/local/bin"),
+                std::path::PathBuf::from("/usr/bin"),
             ]
         );
     }
@@ -3872,6 +3934,8 @@ mod tests {
                 home.join(".bun/bin"),
                 home.join(".nvm/current/bin"),
                 home.join(".local/bin"),
+                home.join(".cargo/bin"),
+                home.join(".asdf/shims"),
                 std::path::PathBuf::from("/opt/homebrew/bin"),
                 std::path::PathBuf::from("/usr/local/bin"),
                 std::path::PathBuf::from("/usr/bin"),
@@ -4170,6 +4234,9 @@ esac
         let mut permissions = script.metadata().expect("script metadata").permissions();
         permissions.set_mode(0o755);
         std::fs::set_permissions(&script_path, permissions).expect("make script executable");
+        // Close the file handle before exec: Linux returns ETXTBSY when running
+        // a file that is still open for writing.
+        drop(script);
 
         let opts = CcusageQueryOpts {
             provider: Some("codex".to_string()),
@@ -4288,6 +4355,9 @@ wait
         let mut permissions = script.metadata().expect("script metadata").permissions();
         permissions.set_mode(0o755);
         std::fs::set_permissions(&script_path, permissions).expect("make script executable");
+        // Close the file handle before exec: Linux returns ETXTBSY when running
+        // a file that is still open for writing.
+        drop(script);
 
         let opts = CcusageQueryOpts::default();
         let start = Instant::now();

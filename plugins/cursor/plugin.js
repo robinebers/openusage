@@ -1,6 +1,15 @@
 (function () {
-  const STATE_DB =
-    "~/Library/Application Support/Cursor/User/globalStorage/state.vscdb"
+  // VS Code-style app data location varies per OS.
+  function stateDbPath(ctx) {
+    const platform = ctx.app && ctx.app.platform
+    if (platform === "linux") {
+      return "~/.config/Cursor/User/globalStorage/state.vscdb"
+    }
+    if (platform === "windows") {
+      return "~/AppData/Roaming/Cursor/User/globalStorage/state.vscdb"
+    }
+    return "~/Library/Application Support/Cursor/User/globalStorage/state.vscdb"
+  }
   const KEYCHAIN_ACCESS_TOKEN_SERVICE = "cursor-access-token"
   const KEYCHAIN_REFRESH_TOKEN_SERVICE = "cursor-refresh-token"
   const BASE_URL = "https://api2.cursor.sh"
@@ -18,7 +27,7 @@
     try {
       const sql =
         "SELECT value FROM ItemTable WHERE key = '" + key + "' LIMIT 1;"
-      const json = ctx.host.sqlite.query(STATE_DB, sql)
+      const json = ctx.host.sqlite.query(stateDbPath(ctx), sql)
       const rows = ctx.util.tryParseJson(json)
       if (!Array.isArray(rows)) {
         throw new Error("sqlite returned invalid json")
@@ -42,7 +51,7 @@
         "', '" +
         escaped +
         "');"
-      ctx.host.sqlite.exec(STATE_DB, sql)
+      ctx.host.sqlite.exec(stateDbPath(ctx), sql)
       return true
     } catch (e) {
       ctx.host.log.warn("sqlite write failed for " + key + ": " + String(e))
