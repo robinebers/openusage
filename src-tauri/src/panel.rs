@@ -114,7 +114,9 @@ mod macos {
     pub fn show_panel(app_handle: &AppHandle) {
         if let Some(panel) = get_or_init_panel!(app_handle) {
             panel.show_and_make_key();
-            position_panel_from_tray(app_handle);
+            if !crate::IS_PINNED.load(std::sync::atomic::Ordering::SeqCst) {
+                position_panel_from_tray(app_handle);
+            }
         }
     }
 
@@ -135,7 +137,9 @@ mod macos {
         } else {
             log::debug!("toggle_panel: showing panel");
             panel.show_and_make_key();
-            position_panel_from_tray(app_handle);
+            if !crate::IS_PINNED.load(std::sync::atomic::Ordering::SeqCst) {
+                position_panel_from_tray(app_handle);
+            }
         }
     }
 
@@ -177,8 +181,10 @@ mod macos {
         let event_handler = OpenUsagePanelEventHandler::new();
         let handle = app_handle.clone();
         event_handler.window_did_resign_key(move |_notification| {
-            if let Ok(panel) = handle.get_webview_panel("main") {
-                panel.hide();
+            if !crate::IS_PINNED.load(std::sync::atomic::Ordering::SeqCst) {
+                if let Ok(panel) = handle.get_webview_panel("main") {
+                    panel.hide();
+                }
             }
         });
 
@@ -287,7 +293,9 @@ mod windows {
         if let Some(window) = get_window!(app_handle) {
             let _ = window.show();
             let _ = window.set_focus();
-            position_panel_from_tray(app_handle);
+            if !crate::IS_PINNED.load(std::sync::atomic::Ordering::SeqCst) {
+                position_panel_from_tray(app_handle);
+            }
         }
     }
 
@@ -309,7 +317,9 @@ mod windows {
             log::debug!("toggle_panel: showing window");
             let _ = window.show();
             let _ = window.set_focus();
-            position_panel_from_tray(app_handle);
+            if !crate::IS_PINNED.load(std::sync::atomic::Ordering::SeqCst) {
+                position_panel_from_tray(app_handle);
+            }
         }
     }
 
@@ -323,8 +333,10 @@ mod windows {
             let handle = app_handle.clone();
             window.on_window_event(move |event| {
                 if let tauri::WindowEvent::Focused(false) = event {
-                    if let Some(w) = get_window!(handle) {
-                        let _ = w.hide();
+                    if !crate::IS_PINNED.load(std::sync::atomic::Ordering::SeqCst) {
+                        if let Some(w) = get_window!(handle) {
+                            let _ = w.hide();
+                        }
                     }
                 }
             });

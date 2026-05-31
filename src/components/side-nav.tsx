@@ -1,5 +1,5 @@
-import { useCallback } from "react"
-import { CircleHelp, Settings } from "lucide-react"
+import { useCallback, useEffect, useState } from "react"
+import { CircleHelp, Settings, Pin, PinOff } from "lucide-react"
 import { openUrl } from "@tauri-apps/plugin-opener"
 import { invoke } from "@tauri-apps/api/core"
 import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu"
@@ -148,6 +148,17 @@ export function SideNav({
   onReorder,
 }: SideNavProps) {
   const isDark = useDarkMode()
+  const [isPinned, setIsPinned] = useState(false)
+
+  useEffect(() => {
+    invoke<boolean>("is_pinned").then(setIsPinned).catch(console.error)
+  }, [])
+
+  const togglePin = () => {
+    const next = !isPinned
+    setIsPinned(next)
+    invoke("set_pinned", { pinned: next }).catch(console.error)
+  }
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -215,7 +226,7 @@ export function SideNav({
   )
 
   return (
-    <nav className="flex flex-col w-12 border-r bg-muted/50 dark:bg-card py-3">
+    <nav className="flex flex-col w-12 border-r bg-muted/50 dark:bg-card py-3" data-tauri-drag-region="true">
       {/* Home */}
       <NavButton
         isActive={activeView === "home"}
@@ -250,6 +261,15 @@ export function SideNav({
 
       {/* Spacer */}
       <div className="flex-1" />
+
+      {/* Pin */}
+      <NavButton
+        isActive={isPinned}
+        onClick={togglePin}
+        aria-label={isPinned ? "Unpin window" : "Pin window"}
+      >
+        {isPinned ? <PinOff className="size-6" /> : <Pin className="size-6" />}
+      </NavButton>
 
       {/* Help */}
       <NavButton

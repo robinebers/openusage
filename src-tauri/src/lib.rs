@@ -11,8 +11,10 @@ mod webkit_config;
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
+
+pub static IS_PINNED: AtomicBool = AtomicBool::new(false);
 
 use serde::Serialize;
 use tauri::Emitter;
@@ -218,11 +220,24 @@ fn open_devtools(#[allow(unused)] app_handle: tauri::AppHandle) {
 #[tauri::command]
 fn reposition_panel(app_handle: tauri::AppHandle) {
     use tauri::Manager;
+    if crate::IS_PINNED.load(std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
     if let Some(tray) = app_handle.tray_by_id("tray") {
         if let Ok(Some(rect)) = tray.rect() {
             panel::position_panel_at_tray_icon(&app_handle, rect.position, rect.size);
         }
     }
+}
+
+#[tauri::command]
+fn set_pinned(pinned: bool) {
+    crate::IS_PINNED.store(pinned, std::sync::atomic::Ordering::SeqCst);
+}
+
+#[tauri::command]
+fn is_pinned() -> bool {
+    crate::IS_PINNED.load(std::sync::atomic::Ordering::SeqCst)
 }
 
 #[tauri::command]
@@ -549,7 +564,9 @@ pub fn run() {
             list_plugins,
             get_log_path,
             update_global_shortcut,
-            reposition_panel
+            reposition_panel,
+            set_pinned,
+            is_pinned
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]

@@ -189,7 +189,7 @@
   // --- LS discovery ---
 
   function discoverLs(ctx) {
-    var procName = ctx.app.platform === "windows" ? "language_server_windows.exe" : "language_server_macos"
+    var procName = ctx.app.platform === "windows" ? "language_server.exe" : "language_server_macos"
     return ctx.host.ls.discover({
       processName: procName,
       markers: ["antigravity"],
