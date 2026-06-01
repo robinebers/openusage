@@ -1,5 +1,4 @@
-# OpenUsage for Windows
-> **Note**: This is a Windows-focused fork of the original [OpenUsage](https://github.com/robinebers/openusage) for macOS.
+# Track all your AI coding subscriptions in one place
 
 See your usage at a glance from your menu bar. No digging through dashboards.
 
@@ -7,7 +6,7 @@ See your usage at a glance from your menu bar. No digging through dashboards.
 
 ## Download
 
-[**Download the latest Windows release**](https://github.com/samlehoy/openusage/releases/latest)
+[**Download the latest release**](https://github.com/robinebers/openusage/releases/latest) (macOS, Apple Silicon & Intel)
 
 The app auto-updates. Install once and you're set.
 
@@ -19,8 +18,6 @@ OpenUsage lives in your menu bar and shows you how much of your AI coding subscr
 - **Always up-to-date.** Refreshes automatically on a schedule you pick.
 - **Global shortcut.** Toggle the panel from anywhere with a customizable keyboard shortcut.
 - **Lightweight.** Opens instantly, stays out of your way.
-- **Windows-Optimized.** Features a dedicated pin tool to dock the window anywhere on your screen, smooth borderless dragging, and a sidebar quit button.
-- **Native Detection.** Seamlessly extracts API tokens directly from your Windows Claude CLI and Cursor IDE sessions.
 - **Plugin-based.** New providers get added without updating the whole app.
 - **[Local HTTP API](docs/local-http-api.md).** Other apps can read your usage data from `127.0.0.1:6736`.
 - **[Proxy support](docs/proxy.md).** Route provider HTTP requests through a SOCKS5 or HTTP proxy.
@@ -46,15 +43,7 @@ OpenUsage lives in your menu bar and shows you how much of your AI coding subscr
 
 Community contributions welcome.
 
-Want a provider that's not listed? [Open an issue.](https://github.com/samlehoy/openusage/issues/new)
-
-## Known Issues (Windows)
-
-While the core features work great, this Windows port has a few known quirks that we are still actively ironing out:
-
-- **Window Movement:** Dragging the borderless window can occasionally feel stiff or require clicking specific areas of the sidebar depending on your OS scaling.
-- **Window Resizing:** The application window is currently a fixed size and cannot be freely resized by dragging the edges or corners.
-- **Provider Detection Reliability:** A few AI providers (like Cursor and Claude) may occasionally struggle to detect your active local session if your credentials are saved in a non-standard location.
+Want a provider that's not listed? [Open an issue.](https://github.com/robinebers/openusage/issues/new)
 
 ## Open Source, Community Driven
 
@@ -64,11 +53,11 @@ I maintain the project as a guide and quality gatekeeper, but this is your app a
 
 Plugins are currently bundled as we build our the API, but soon will be made flexible so you can build and load their own.
 
-<a href="https://www.star-history.com/?repos=samlehoy%2Fopenusage&type=date&legend=top-left">
+<a href="https://www.star-history.com/?repos=robinebers%2Fopenusage&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=samlehoy/openusage&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=samlehoy/openusage&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=samlehoy/openusage&type=date&legend=top-left" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=robinebers/openusage&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=robinebers/openusage&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=robinebers/openusage&type=date&legend=top-left" />
  </picture>
 </a>
 
@@ -76,7 +65,7 @@ Plugins are currently bundled as we build our the API, but soon will be made fle
 
 - **Add a provider.** Each one is just a plugin. See the [Plugin API](docs/plugins/api.md).
 - **Fix a bug.** PRs welcome. Provide before/after screenshots.
-- **Request a feature.** [Open an issue](https://github.com/samlehoy/openusage/issues/new) and make your case.
+- **Request a feature.** [Open an issue](https://github.com/robinebers/openusage/issues/new) and make your case.
 
 Keep it simple. No feature creep, no AI-generated commit messages, test your changes.
 
