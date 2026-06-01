@@ -54,6 +54,7 @@ Expected payload fields:
 - `model_remains[].current_interval_total_count`
 - `model_remains[].current_interval_usage_count`
 - optional remaining aliases (`current_interval_remaining_count`, `current_interval_remains_count`)
+- optional remaining percent fields (`current_interval_remaining_percent`)
 - `model_remains[].start_time`
 - `model_remains[].end_time`
 - `model_remains[].remains_time`
@@ -64,6 +65,7 @@ Expected payload fields:
 - Treat `current_interval_usage_count` as remaining prompts (MiniMax remains API behavior).
 - If only remaining aliases are provided, compute `used = total - remaining`.
 - If explicit used-count fields are provided, prefer them.
+- If count totals are unavailable but a remaining percentage is provided, render a percent progress line.
 - Plan name is taken from explicit plan/title fields when available.
 - If plan fields are missing in GLOBAL mode, infer plan tier from known limits (`100/300/1000/2000` prompts or `1500/4500/15000/30000` model-call equivalents).
 - If plan fields are missing in CN mode, infer only exact known CN limits (`600/1500/4500` model-call counts).
@@ -76,9 +78,14 @@ Expected payload fields:
 - **Plan**: best-effort from API payload (normalized to concise label, with ` (CN)` or ` (GLOBAL)` suffix)
 - **Session** (overview progress line):
   - `label`: `Session`
-  - `format`: count (`prompts`)
-  - `used`: computed used prompts
-  - `limit`: total prompt limit for current window
+  - Count format when totals are available:
+    - `format`: count (`prompts`)
+    - `used`: computed used prompts
+    - `limit`: total prompt limit for current window
+  - Percent format when totals are unavailable but remaining percent is present:
+    - `format`: percent
+    - `used`: `100 - current_interval_remaining_percent`
+    - `limit`: `100`
   - `resetsAt`: derived from `end_time` or `remains_time`
 
 ## Errors

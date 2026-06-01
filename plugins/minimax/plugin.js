@@ -244,21 +244,81 @@
 
     if (!modelRemains || modelRemains.length === 0) return null
 
-    let chosen = modelRemains[0]
+    const displayMultiplierForSelection = endpointSelection === "CN" ? 1 / MODEL_CALLS_PER_PROMPT : 1
+    let chosen = null
+    let percentFallbackCandidate = null
+    let generalPercentFallbackCandidate = null
     for (let i = 0; i < modelRemains.length; i += 1) {
       const item = modelRemains[i]
       if (!item || typeof item !== "object") continue
       const total = readNumber(item.current_interval_total_count ?? item.currentIntervalTotalCount)
-      if (total !== null && total > 0) {
+      if (total !== null && total > 0 && Math.round(total * displayMultiplierForSelection) > 0) {
         chosen = item
         break
       }
+      const remainingPercent = readNumber(
+        item.current_interval_remaining_percent ?? item.currentIntervalRemainingPercent
+      )
+      if (remainingPercent !== null && remainingPercent >= 0 && remainingPercent <= 100) {
+        const modelName = readString(item.model_name ?? item.modelName)
+        if (!percentFallbackCandidate) percentFallbackCandidate = item
+        if (!generalPercentFallbackCandidate && modelName === "general") {
+          generalPercentFallbackCandidate = item
+        }
+      }
     }
+    if (!chosen) chosen = generalPercentFallbackCandidate || percentFallbackCandidate
 
     if (!chosen || typeof chosen !== "object") return null
 
     const total = readNumber(chosen.current_interval_total_count ?? chosen.currentIntervalTotalCount)
-    if (total === null || total <= 0) return null
+    const hasDisplayableCount =
+      total !== null && total > 0 && Math.round(total * displayMultiplierForSelection) > 0
+    const startMs = epochToMs(chosen.start_time ?? chosen.startTime)
+    const endMs = epochToMs(chosen.end_time ?? chosen.endTime)
+    const remainsRaw = readNumber(chosen.remains_time ?? chosen.remainsTime)
+    const nowMs = Date.now()
+    const remainsMs = inferRemainsMs(remainsRaw, endMs, nowMs)
+
+    let resetsAt = endMs !== null ? ctx.util.toIso(endMs) : null
+    if (!resetsAt && remainsMs !== null) {
+      resetsAt = ctx.util.toIso(nowMs + remainsMs)
+    }
+
+    let periodDurationMs = null
+    if (startMs !== null && endMs !== null && endMs > startMs) {
+      periodDurationMs = endMs - startMs
+    }
+
+    const explicitPlanName = normalizePlanName(pickFirstString([
+      data.current_subscribe_title,
+      data.plan_name,
+      data.plan,
+      data.current_plan_title,
+      data.combo_title,
+      payload.current_subscribe_title,
+      payload.plan_name,
+      payload.plan,
+    ]))
+    const inferredPlanName = inferPlanNameFromLimit(total, endpointSelection)
+    const planName = explicitPlanName || inferredPlanName
+
+    if (!hasDisplayableCount) {
+      const remainingPercent = readNumber(
+        chosen.current_interval_remaining_percent ?? chosen.currentIntervalRemainingPercent
+      )
+      if (remainingPercent !== null && remainingPercent >= 0 && remainingPercent <= 100) {
+        return {
+          planName: planName || "Coding Plan",
+          used: 100 - remainingPercent,
+          total: 100,
+          resetsAt,
+          periodDurationMs,
+          formatKind: "percent",
+        }
+      }
+      return null
+    }
 
     const usageFieldCount = readNumber(chosen.current_interval_usage_count ?? chosen.currentIntervalUsageCount)
     const remainingCount = readNumber(
@@ -291,35 +351,6 @@
     if (used === null) return null
     if (used < 0) used = 0
     if (used > total) used = total
-
-    const startMs = epochToMs(chosen.start_time ?? chosen.startTime)
-    const endMs = epochToMs(chosen.end_time ?? chosen.endTime)
-    const remainsRaw = readNumber(chosen.remains_time ?? chosen.remainsTime)
-    const nowMs = Date.now()
-    const remainsMs = inferRemainsMs(remainsRaw, endMs, nowMs)
-
-    let resetsAt = endMs !== null ? ctx.util.toIso(endMs) : null
-    if (!resetsAt && remainsMs !== null) {
-      resetsAt = ctx.util.toIso(nowMs + remainsMs)
-    }
-
-    let periodDurationMs = null
-    if (startMs !== null && endMs !== null && endMs > startMs) {
-      periodDurationMs = endMs - startMs
-    }
-
-    const explicitPlanName = normalizePlanName(pickFirstString([
-      data.current_subscribe_title,
-      data.plan_name,
-      data.plan,
-      data.current_plan_title,
-      data.combo_title,
-      payload.current_subscribe_title,
-      payload.plan_name,
-      payload.plan,
-    ]))
-    const inferredPlanName = inferPlanNameFromLimit(total, endpointSelection)
-    const planName = explicitPlanName || inferredPlanName
 
     return {
       planName,
@@ -367,12 +398,20 @@
     const isCnEndpoint = successfulEndpoint === "CN"
     const displayMultiplier = isCnEndpoint ? 1 / MODEL_CALLS_PER_PROMPT : 1
 
-    const line = {
-      label: "Session",
-      used: Math.round(parsed.used * displayMultiplier),
-      limit: Math.round(parsed.total * displayMultiplier),
-      format: { kind: "count", suffix: "prompts" },
-    }
+    const line =
+      parsed.formatKind === "percent"
+        ? {
+            label: "Session",
+            used: Math.round(parsed.used),
+            limit: 100,
+            format: { kind: "percent" },
+          }
+        : {
+            label: "Session",
+            used: Math.round(parsed.used * displayMultiplier),
+            limit: Math.round(parsed.total * displayMultiplier),
+            format: { kind: "count", suffix: "prompts" },
+          }
     if (parsed.resetsAt) line.resetsAt = parsed.resetsAt
     if (parsed.periodDurationMs !== null) line.periodDurationMs = parsed.periodDurationMs
 
