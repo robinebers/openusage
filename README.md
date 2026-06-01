@@ -48,6 +48,14 @@ Community contributions welcome.
 
 Want a provider that's not listed? [Open an issue.](https://github.com/samlehoy/openusage/issues/new)
 
+## Known Issues (Windows)
+
+While the core features work great, this Windows port has a few known quirks that we are still actively ironing out:
+
+- **Window Movement:** Dragging the borderless window can occasionally feel stiff or require clicking specific areas of the sidebar depending on your OS scaling.
+- **Window Resizing:** The application window is currently a fixed size and cannot be freely resized by dragging the edges or corners.
+- **Provider Detection Reliability:** A few AI providers (like Cursor and Claude) may occasionally struggle to detect your active local session if your credentials are saved in a non-standard location.
+
 ## Open Source, Community Driven
 
 OpenUsage is built by its users. Hundreds of people use it daily, and the project grows through community contributions: new providers, bug fixes, and ideas.
