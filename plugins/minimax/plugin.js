@@ -1,30 +1,47 @@
 (function () {
-  const GLOBAL_PRIMARY_USAGE_URL = "https://api.minimax.io/v1/api/openplatform/coding_plan/remains"
+  // token_plan/remains is the officially documented Token Plan usage endpoint.
+  // coding_plan/remains is retained as a legacy fallback for older accounts/regions.
+  const GLOBAL_PRIMARY_USAGE_URL = "https://api.minimax.io/v1/token_plan/remains"
   const GLOBAL_FALLBACK_USAGE_URLS = [
-    "https://api.minimax.io/v1/coding_plan/remains",
-    "https://www.minimax.io/v1/api/openplatform/coding_plan/remains",
+    "https://www.minimax.io/v1/token_plan/remains",
+    "https://api.minimax.io/v1/api/openplatform/coding_plan/remains",
   ]
-  const CN_PRIMARY_USAGE_URL = "https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains"
-  const CN_FALLBACK_USAGE_URLS = ["https://api.minimaxi.com/v1/coding_plan/remains"]
+  const CN_PRIMARY_USAGE_URL = "https://api.minimaxi.com/v1/token_plan/remains"
+  const CN_FALLBACK_USAGE_URLS = [
+    "https://www.minimaxi.com/v1/token_plan/remains",
+    "https://www.minimaxi.com/v1/api/openplatform/coding_plan/remains",
+  ]
   const GLOBAL_API_KEY_ENV_VARS = ["MINIMAX_API_KEY", "MINIMAX_API_TOKEN"]
   const CN_API_KEY_ENV_VARS = ["MINIMAX_CN_API_KEY", "MINIMAX_API_KEY", "MINIMAX_API_TOKEN"]
-  const CODING_PLAN_WINDOW_MS = 5 * 60 * 60 * 1000
-  const CODING_PLAN_WINDOW_TOLERANCE_MS = 10 * 60 * 1000
-  // GLOBAL plan tiers (based on prompt limits)
-  const GLOBAL_PROMPT_LIMIT_TO_PLAN = {
-    100: "Starter",
-    300: "Plus",
-    1000: "Max",
-    2000: "Ultra",
+  // Optional manual tier pin. The credit-based remains API exposes no plan/tier
+  // field, so users can set this to surface their tier (e.g. "Plus"/"Max"/"Ultra").
+  const PLAN_OVERRIDE_ENV_VARS = ["MINIMAX_PLAN", "MINIMAX_CODING_PLAN"]
+  const DEFAULT_PLAN_NAME = "Token Plan"
+  const INTERVAL_WINDOW_MS = 5 * 60 * 60 * 1000
+  const WEEKLY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
+  const WINDOW_TOLERANCE_MS = 10 * 60 * 1000
+
+  // Token Plan tiers are credit/token based; the remains API no longer exposes
+  // per-tier model-call counts (current_interval_total_count is 0). These tables
+  // remain as a best-effort fallback for any account that still reports a tier
+  // quota as a raw model-call total. They will not resolve for credit-based plans.
+  const GLOBAL_MODEL_CALL_LIMIT_TO_PLAN = {
+    1500: "Starter",
+    4500: "Plus",
+    15000: "Max",
+    30000: "Ultra",
   }
-  // CN plan tiers (based on model call counts = prompts × 15)
-  // Starter: 40 prompts = 600, Plus: 100 prompts = 1500, Max: 300 prompts = 4500
-  const CN_PROMPT_LIMIT_TO_PLAN = {
+  const CN_MODEL_CALL_LIMIT_TO_PLAN = {
     600: "Starter",
     1500: "Plus",
     4500: "Max",
+    30000: "Ultra",
   }
-  const MODEL_CALLS_PER_PROMPT = 15
+
+  // model_name -> overview/detail line labels for the 5h interval and weekly windows.
+  const KNOWN_MODEL_LABELS = {
+    general: { interval: "Session", weekly: "Weekly" },
+  }
 
   function readString(value) {
     if (typeof value !== "string") return null
@@ -49,14 +66,46 @@
     return null
   }
 
+  function clampPercent(value) {
+    if (value < 0) return 0
+    if (value > 100) return 100
+    return value
+  }
+
+  function titleCaseModelName(value) {
+    const raw = readString(value)
+    if (!raw) return null
+    return raw
+      .replace(/[_]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/(^|[\s-])([a-z])/g, (_match, boundary, letter) => boundary + letter.toUpperCase())
+  }
+
   function normalizePlanName(value) {
     const raw = readString(value)
     if (!raw) return null
     const compact = raw.replace(/\s+/g, " ").trim()
     const withoutPrefix = compact.replace(/^minimax\s+coding\s+plan\b[:\-]?\s*/i, "").trim()
-    if (withoutPrefix) return withoutPrefix
-    if (/coding\s+plan/i.test(compact)) return "Coding Plan"
-    return compact
+    const base = withoutPrefix || compact
+    if (!withoutPrefix && /(?:coding|token)\s+plan/i.test(compact)) return "Token Plan"
+
+    const canonical = base
+      .replace(/\s*-\s*/g, "-")
+      .replace(/极速版/gi, "High-Speed")
+      .replace(/highspeed/gi, "High-Speed")
+      .replace(/high-speed/gi, "High-Speed")
+      .replace(/\s+/g, " ")
+      .trim()
+
+    if (/^starter$/i.test(canonical)) return "Starter"
+    if (/^plus$/i.test(canonical)) return "Plus"
+    if (/^max$/i.test(canonical)) return "Max"
+    if (/^ultra$/i.test(canonical)) return "Ultra"
+    if (/^plus-?high-speed$/i.test(canonical)) return "Plus-High-Speed"
+    if (/^max-?high-speed$/i.test(canonical)) return "Max-High-Speed"
+    if (/^ultra-?high-speed$/i.test(canonical)) return "Ultra-High-Speed"
+    return canonical
   }
 
   function inferPlanNameFromLimit(totalCount, endpointSelection) {
@@ -65,15 +114,9 @@
 
     const normalized = Math.round(n)
     if (endpointSelection === "CN") {
-      // CN totals are model-call counts; only exact known CN tiers should infer.
-      return CN_PROMPT_LIMIT_TO_PLAN[normalized] || null
+      return CN_MODEL_CALL_LIMIT_TO_PLAN[normalized] || null
     }
-
-    if (GLOBAL_PROMPT_LIMIT_TO_PLAN[normalized]) return GLOBAL_PROMPT_LIMIT_TO_PLAN[normalized]
-
-    if (normalized % MODEL_CALLS_PER_PROMPT !== 0) return null
-    const inferredPromptLimit = normalized / MODEL_CALLS_PER_PROMPT
-    return GLOBAL_PROMPT_LIMIT_TO_PLAN[inferredPromptLimit] || null
+    return GLOBAL_MODEL_CALL_LIMIT_TO_PLAN[normalized] || null
   }
 
   function epochToMs(epoch) {
@@ -82,7 +125,7 @@
     return Math.abs(n) < 1e10 ? n * 1000 : n
   }
 
-  function inferRemainsMs(remainsRaw, endMs, nowMs) {
+  function inferRemainsMs(remainsRaw, endMs, nowMs, expectedWindowMs) {
     if (remainsRaw === null || remainsRaw <= 0) return null
 
     const asSecondsMs = remainsRaw * 1000
@@ -98,8 +141,8 @@
       }
     }
 
-    // Coding Plan resets every 5h. Use that constraint before defaulting.
-    const maxExpectedMs = CODING_PLAN_WINDOW_MS + CODING_PLAN_WINDOW_TOLERANCE_MS
+    // Use expectedWindowMs constraint before defaulting.
+    const maxExpectedMs = (expectedWindowMs || INTERVAL_WINDOW_MS) + WINDOW_TOLERANCE_MS
     const secondsLooksValid = asSecondsMs <= maxExpectedMs
     const millisecondsLooksValid = asMillisecondsMs <= maxExpectedMs
 
@@ -110,6 +153,95 @@
     const secOverflow = Math.abs(asSecondsMs - maxExpectedMs)
     const msOverflow = Math.abs(asMillisecondsMs - maxExpectedMs)
     return secOverflow <= msOverflow ? asSecondsMs : asMillisecondsMs
+  }
+
+  // Each model_remains entry now reports two enforced windows: a rolling 5-hour
+  // interval and a weekly window. Both expose a remaining-percent field directly.
+  const WINDOWS = [
+    {
+      key: "interval",
+      percentField: "current_interval_remaining_percent",
+      totalField: "current_interval_total_count",
+      usageField: "current_interval_usage_count",
+      startField: "start_time",
+      endField: "end_time",
+      remainsField: "remains_time",
+      expectedWindowMs: INTERVAL_WINDOW_MS,
+    },
+    {
+      key: "weekly",
+      percentField: "current_weekly_remaining_percent",
+      totalField: "current_weekly_total_count",
+      usageField: "current_weekly_usage_count",
+      startField: "weekly_start_time",
+      endField: "weekly_end_time",
+      remainsField: "weekly_remains_time",
+      expectedWindowMs: WEEKLY_WINDOW_MS,
+    },
+  ]
+
+  function readModelName(item) {
+    return readString(item.model_name) || readString(item.modelName)
+  }
+
+  function windowLabel(item, windowKey) {
+    const modelName = (readModelName(item) || "").toLowerCase()
+    const known = KNOWN_MODEL_LABELS[modelName]
+    if (known) return known[windowKey]
+
+    const display = titleCaseModelName(readModelName(item)) || "Usage"
+    return windowKey === "weekly" ? display + " (Weekly)" : display
+  }
+
+  // Returns a 0-100 used percentage for the window, or null when the window
+  // carries no usable data. Prefers the API-provided remaining-percent field;
+  // falls back to count math (usage_count is the remaining count) when absent.
+  function computeWindowUsedPercent(item, win) {
+    const remainingPercent = readNumber(item[win.percentField])
+    if (remainingPercent !== null) {
+      return clampPercent(Math.round(100 - remainingPercent))
+    }
+
+    const total = readNumber(item[win.totalField])
+    if (total === null || total <= 0) return null
+    const remaining = readNumber(item[win.usageField])
+    if (remaining === null) return null
+    return clampPercent(Math.round(((total - remaining) / total) * 100))
+  }
+
+  function computeWindowTiming(ctx, item, win, nowMs) {
+    const startMs = epochToMs(item[win.startField])
+    const endMs = epochToMs(item[win.endField])
+    const remainsRaw = readNumber(item[win.remainsField])
+    const remainsMs = inferRemainsMs(remainsRaw, endMs, nowMs, win.expectedWindowMs)
+
+    let resetsAt = endMs !== null ? ctx.util.toIso(endMs) : null
+    if (!resetsAt && remainsMs !== null) resetsAt = ctx.util.toIso(nowMs + remainsMs)
+
+    let periodDurationMs = null
+    if (startMs !== null && endMs !== null && endMs > startMs) periodDurationMs = endMs - startMs
+
+    return { resetsAt, periodDurationMs }
+  }
+
+  function parseModelRemainEntries(ctx, item, nowMs) {
+    if (!item || typeof item !== "object") return []
+
+    const entries = []
+    for (let i = 0; i < WINDOWS.length; i += 1) {
+      const win = WINDOWS[i]
+      const usedPercent = computeWindowUsedPercent(item, win)
+      if (usedPercent === null) continue
+
+      const timing = computeWindowTiming(ctx, item, win, nowMs)
+      entries.push({
+        label: windowLabel(item, win.key),
+        used: usedPercent,
+        resetsAt: timing.resetsAt,
+        periodDurationMs: timing.periodDurationMs,
+      })
+    }
+    return entries
   }
 
   function loadApiKey(ctx, endpointSelection) {
@@ -127,6 +259,21 @@
         ctx.host.log.info("api key loaded from " + name)
         return { value: key, source: name }
       }
+    }
+    return null
+  }
+
+  function readPlanOverride(ctx) {
+    for (let i = 0; i < PLAN_OVERRIDE_ENV_VARS.length; i += 1) {
+      const name = PLAN_OVERRIDE_ENV_VARS[i]
+      let value = null
+      try {
+        value = ctx.host.env.get(name)
+      } catch (e) {
+        ctx.host.log.warn("env read failed for " + name + ": " + String(e))
+      }
+      const plan = readString(value)
+      if (plan) return plan
     }
     return null
   }
@@ -212,6 +359,16 @@
     throw "Could not parse usage data."
   }
 
+  function readGeneralIntervalTotal(modelRemains) {
+    for (let i = 0; i < modelRemains.length; i += 1) {
+      const item = modelRemains[i]
+      if (!item || typeof item !== "object") continue
+      if ((readModelName(item) || "").toLowerCase() !== "general") continue
+      return readNumber(item.current_interval_total_count ?? item.currentIntervalTotalCount)
+    }
+    return null
+  }
+
   function parsePayloadShape(ctx, payload, endpointSelection) {
     if (!payload || typeof payload !== "object") return null
 
@@ -244,69 +401,21 @@
 
     if (!modelRemains || modelRemains.length === 0) return null
 
-    let chosen = modelRemains[0]
+    const nowMs = Date.now()
+    const entries = []
+    const seenLabels = Object.create(null)
+
     for (let i = 0; i < modelRemains.length; i += 1) {
-      const item = modelRemains[i]
-      if (!item || typeof item !== "object") continue
-      const total = readNumber(item.current_interval_total_count ?? item.currentIntervalTotalCount)
-      if (total !== null && total > 0) {
-        chosen = item
-        break
+      const itemEntries = parseModelRemainEntries(ctx, modelRemains[i], nowMs)
+      for (let j = 0; j < itemEntries.length; j += 1) {
+        const entry = itemEntries[j]
+        if (seenLabels[entry.label]) continue
+        seenLabels[entry.label] = true
+        entries.push(entry)
       }
     }
 
-    if (!chosen || typeof chosen !== "object") return null
-
-    const total = readNumber(chosen.current_interval_total_count ?? chosen.currentIntervalTotalCount)
-    if (total === null || total <= 0) return null
-
-    const usageFieldCount = readNumber(chosen.current_interval_usage_count ?? chosen.currentIntervalUsageCount)
-    const remainingCount = readNumber(
-      chosen.current_interval_remaining_count ??
-        chosen.currentIntervalRemainingCount ??
-        chosen.current_interval_remains_count ??
-        chosen.currentIntervalRemainsCount ??
-        chosen.current_interval_remain_count ??
-        chosen.currentIntervalRemainCount ??
-        chosen.remaining_count ??
-        chosen.remainingCount ??
-        chosen.remains_count ??
-        chosen.remainsCount ??
-        chosen.remaining ??
-        chosen.remains ??
-        chosen.left_count ??
-        chosen.leftCount
-    )
-    // MiniMax "coding_plan/remains" commonly returns remaining prompts in current_interval_usage_count.
-    const inferredRemainingCount = remainingCount !== null ? remainingCount : usageFieldCount
-    const explicitUsed = readNumber(
-      chosen.current_interval_used_count ??
-        chosen.currentIntervalUsedCount ??
-        chosen.used_count ??
-        chosen.used
-    )
-    let used = explicitUsed
-
-    if (used === null && inferredRemainingCount !== null) used = total - inferredRemainingCount
-    if (used === null) return null
-    if (used < 0) used = 0
-    if (used > total) used = total
-
-    const startMs = epochToMs(chosen.start_time ?? chosen.startTime)
-    const endMs = epochToMs(chosen.end_time ?? chosen.endTime)
-    const remainsRaw = readNumber(chosen.remains_time ?? chosen.remainsTime)
-    const nowMs = Date.now()
-    const remainsMs = inferRemainsMs(remainsRaw, endMs, nowMs)
-
-    let resetsAt = endMs !== null ? ctx.util.toIso(endMs) : null
-    if (!resetsAt && remainsMs !== null) {
-      resetsAt = ctx.util.toIso(nowMs + remainsMs)
-    }
-
-    let periodDurationMs = null
-    if (startMs !== null && endMs !== null && endMs > startMs) {
-      periodDurationMs = endMs - startMs
-    }
+    if (entries.length === 0) return null
 
     const explicitPlanName = normalizePlanName(pickFirstString([
       data.current_subscribe_title,
@@ -318,15 +427,15 @@
       payload.plan_name,
       payload.plan,
     ]))
-    const inferredPlanName = inferPlanNameFromLimit(total, endpointSelection)
+    const inferredPlanName = inferPlanNameFromLimit(
+      readGeneralIntervalTotal(modelRemains),
+      endpointSelection
+    )
     const planName = explicitPlanName || inferredPlanName
 
     return {
       planName,
-      used,
-      total,
-      resetsAt,
-      periodDurationMs,
+      entries,
     }
   }
 
@@ -362,25 +471,25 @@
       throw "MiniMax API key missing. Set MINIMAX_API_KEY or MINIMAX_CN_API_KEY."
     }
 
-    // CN API returns model call counts (needs division by 15 for prompts)
-    // GLOBAL API returns prompt counts directly
-    const isCnEndpoint = successfulEndpoint === "CN"
-    const displayMultiplier = isCnEndpoint ? 1 / MODEL_CALLS_PER_PROMPT : 1
+    const lines = parsed.entries.map((entry) => {
+      const line = {
+        label: entry.label,
+        used: entry.used,
+        limit: 100,
+        format: { kind: "percent" },
+      }
+      if (entry.resetsAt) line.resetsAt = entry.resetsAt
+      if (entry.periodDurationMs !== null) line.periodDurationMs = entry.periodDurationMs
+      return ctx.line.progress(line)
+    })
 
-    const line = {
-      label: "Session",
-      used: Math.round(parsed.used * displayMultiplier),
-      limit: Math.round(parsed.total * displayMultiplier),
-      format: { kind: "count", suffix: "prompts" },
-    }
-    if (parsed.resetsAt) line.resetsAt = parsed.resetsAt
-    if (parsed.periodDurationMs !== null) line.periodDurationMs = parsed.periodDurationMs
+    // Plan-name priority: explicit API field / count-inference (parsed.planName)
+    // -> manual MINIMAX_PLAN override -> generic baseline so the line is never blank.
+    const planName =
+      parsed.planName || normalizePlanName(readPlanOverride(ctx)) || DEFAULT_PLAN_NAME
+    const regionLabel = successfulEndpoint === "CN" ? " (CN)" : " (GLOBAL)"
 
-    const result = { lines: [ctx.line.progress(line)] }
-    if (parsed.planName) {
-      const regionLabel = successfulEndpoint === "CN" ? " (CN)" : " (GLOBAL)"
-      result.plan = parsed.planName + regionLabel
-    }
+    const result = { lines, plan: planName + regionLabel }
     return result
   }
 
