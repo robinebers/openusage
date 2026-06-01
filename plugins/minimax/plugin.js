@@ -245,7 +245,9 @@
     if (!modelRemains || modelRemains.length === 0) return null
 
     const displayMultiplierForSelection = endpointSelection === "CN" ? 1 / MODEL_CALLS_PER_PROMPT : 1
-    let chosen = modelRemains[0]
+    let chosen = null
+    let percentFallbackCandidate = null
+    let generalPercentFallbackCandidate = null
     for (let i = 0; i < modelRemains.length; i += 1) {
       const item = modelRemains[i]
       if (!item || typeof item !== "object") continue
@@ -254,11 +256,24 @@
         chosen = item
         break
       }
+      const remainingPercent = readNumber(
+        item.current_interval_remaining_percent ?? item.currentIntervalRemainingPercent
+      )
+      if (remainingPercent !== null && remainingPercent >= 0 && remainingPercent <= 100) {
+        const modelName = readString(item.model_name ?? item.modelName)
+        if (!percentFallbackCandidate) percentFallbackCandidate = item
+        if (!generalPercentFallbackCandidate && modelName === "general") {
+          generalPercentFallbackCandidate = item
+        }
+      }
     }
+    if (!chosen) chosen = generalPercentFallbackCandidate || percentFallbackCandidate
 
     if (!chosen || typeof chosen !== "object") return null
 
     const total = readNumber(chosen.current_interval_total_count ?? chosen.currentIntervalTotalCount)
+    const hasDisplayableCount =
+      total !== null && total > 0 && Math.round(total * displayMultiplierForSelection) > 0
     const startMs = epochToMs(chosen.start_time ?? chosen.startTime)
     const endMs = epochToMs(chosen.end_time ?? chosen.endTime)
     const remainsRaw = readNumber(chosen.remains_time ?? chosen.remainsTime)
@@ -288,7 +303,7 @@
     const inferredPlanName = inferPlanNameFromLimit(total, endpointSelection)
     const planName = explicitPlanName || inferredPlanName
 
-    if (total === null || total <= 0) {
+    if (!hasDisplayableCount) {
       const remainingPercent = readNumber(
         chosen.current_interval_remaining_percent ?? chosen.currentIntervalRemainingPercent
       )

@@ -78,9 +78,14 @@ Expected payload fields:
 - **Plan**: best-effort from API payload (normalized to concise label, with ` (CN)` or ` (GLOBAL)` suffix)
 - **Session** (overview progress line):
   - `label`: `Session`
-  - `format`: count (`prompts`)
-  - `used`: computed used prompts
-  - `limit`: total prompt limit for current window
+  - Count format when totals are available:
+    - `format`: count (`prompts`)
+    - `used`: computed used prompts
+    - `limit`: total prompt limit for current window
+  - Percent format when totals are unavailable but remaining percent is present:
+    - `format`: percent
+    - `used`: `100 - current_interval_remaining_percent`
+    - `limit`: `100`
   - `resetsAt`: derived from `end_time` or `remains_time`
 
 ## Errors
