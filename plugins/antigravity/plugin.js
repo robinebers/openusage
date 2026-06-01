@@ -1,6 +1,7 @@
 (function () {
   var LS_SERVICE = "exa.language_server_pb.LanguageServerService"
-  var STATE_DB = "~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb"
+  var STATE_DB_MAC = "~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb"
+  var STATE_DB_WIN = "~/AppData/Roaming/Antigravity/User/globalStorage/state.vscdb"
   var CLOUD_CODE_URLS = [
     "https://daily-cloudcode-pa.googleapis.com",
     "https://cloudcode-pa.googleapis.com",
@@ -94,8 +95,9 @@
 
   function loadOAuthTokens(ctx) {
     try {
+      var dbPath = ctx.app.platform === "windows" ? STATE_DB_WIN : STATE_DB_MAC
       var rows = ctx.host.sqlite.query(
-        STATE_DB,
+        dbPath,
         "SELECT value FROM ItemTable WHERE key = '" + OAUTH_TOKEN_KEY + "' LIMIT 1"
       )
       var parsed = ctx.util.tryParseJson(rows)
@@ -187,8 +189,9 @@
   // --- LS discovery ---
 
   function discoverLs(ctx) {
+    var procName = ctx.app.platform === "windows" ? "language_server.exe" : "language_server_macos"
     return ctx.host.ls.discover({
-      processName: "language_server_macos",
+      processName: procName,
       markers: ["antigravity"],
       csrfFlag: "--csrf_token",
       portFlag: "--extension_server_port",

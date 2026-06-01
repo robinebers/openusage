@@ -15,10 +15,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-latest
-            args: "--target aarch64-apple-darwin"
-          - platform: macos-latest
-            args: "--target x86_64-apple-darwin"
+          - platform: windows-latest
+            args: "--target x86_64-pc-windows-msvc"
     runs-on: ${{ matrix.platform }}
     env:
       RELEASE_TAG: ${{ github.ref_name }}
@@ -29,7 +27,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
+          targets: aarch64-apple-darwin,x86_64-apple-darwin,x86_64-pc-windows-msvc
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: "./src-tauri -> target"
@@ -41,6 +39,7 @@ jobs:
       - name: Bundle plugins
         run: bun run bundle:plugins
       - name: Verify bundled plugins
+        shell: bash
         run: |
           COUNT=$(find src-tauri/resources/bundled_plugins -maxdepth 2 -name plugin.json | wc -l | tr -d ' ')
           if [[ "$COUNT" -lt 1 ]]; then
@@ -49,6 +48,7 @@ jobs:
           fi
 
       - name: Validate release tag
+        shell: bash
         run: |
           if [[ -z "$RELEASE_TAG" ]]; then
             echo "Missing RELEASE_TAG (push a v* tag)."
@@ -60,6 +60,7 @@ jobs:
           fi
 
       - name: Validate app version matches tag
+        shell: bash
         run: |
           TAG_VERSION="${RELEASE_TAG#v}"
 
@@ -81,11 +82,16 @@ jobs:
           fi
 
       - name: Import Apple Developer Certificate
+        if: matrix.platform == 'macos-latest'
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
+          if [[ -z "$APPLE_CERTIFICATE" ]]; then
+            echo "Skipping Apple Certificate import because secret is empty."
+            exit 0
+          fi
           echo "$APPLE_CERTIFICATE" | base64 --decode > certificate.p12
           security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
           security default-keychain -s build.keychain
@@ -94,6 +100,24 @@ jobs:
           security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
           rm certificate.p12
+
+      - name: Handle missing updater key (for forks)
+        shell: bash
+        env:
+          TAURI_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [[ -z "$TAURI_KEY" ]]; then
+            echo "HAS_TAURI_KEY=false" >> $GITHUB_ENV
+            node -e "
+              const fs = require('fs');
+              const conf = JSON.parse(fs.readFileSync('./src-tauri/tauri.conf.json'));
+              if(conf.bundle) conf.bundle.createUpdaterArtifacts = false;
+              if(conf.plugins && conf.plugins.updater) delete conf.plugins.updater;
+              fs.writeFileSync('./src-tauri/tauri.conf.json', JSON.stringify(conf, null, 2));
+            "
+          else
+            echo "HAS_TAURI_KEY=true" >> $GITHUB_ENV
+          fi
 
       - uses: tauri-apps/tauri-action@v0
         env:
@@ -114,10 +138,12 @@ jobs:
           releaseName: ${{ env.RELEASE_TAG }}
           releaseDraft: false
           prerelease: false
-          includeUpdaterJson: true
+          includeUpdaterJson: ${{ env.HAS_TAURI_KEY == 'true' }}
           args: ${{ matrix.args }}
 
       - name: Verify updater assets uploaded
+        if: env.HAS_TAURI_KEY == 'true'
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

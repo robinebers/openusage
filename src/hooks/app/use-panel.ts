@@ -189,8 +189,9 @@ export function usePanel({
       try {
         const currentWindow = getCurrentWindow()
         await currentWindow.setSize(new PhysicalSize(width, height))
+        await invoke("reposition_panel")
       } catch (e) {
-        console.error("Failed to resize window:", e)
+        console.error("Failed to resize or reposition window:", e)
       }
     }
 

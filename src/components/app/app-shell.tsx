@@ -65,16 +65,19 @@ export function AppShell({
 
   const appVersion = useAppVersion()
   const { updateStatus, triggerInstall, checkForUpdates } = useAppUpdate()
-
+  const isWindows = navigator.userAgent.includes("Windows")
   return (
     <div
       ref={containerRef}
       tabIndex={-1}
-      className="flex flex-col items-center p-6 pt-1.5 bg-transparent outline-none"
+      data-tauri-drag-region="true"
+      className="flex flex-col items-center p-6 pt-1.5 outline-none"
+      style={{ backgroundColor: "rgba(0, 0, 0, 0.01)" }}
     >
-      <div className="tray-arrow" />
+      {!isWindows && <div className="tray-arrow" data-tauri-drag-region="true" />}
       <div
         className="relative bg-card rounded-xl overflow-hidden select-none w-full border shadow-lg flex flex-col"
+        data-tauri-drag-region="true"
         style={maxPanelHeightPx ? { maxHeight: `${maxPanelHeightPx - ARROW_OVERHEAD_PX}px` } : undefined}
       >
         <div className="flex flex-1 min-h-0 flex-row">

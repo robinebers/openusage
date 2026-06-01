@@ -127,7 +127,7 @@ fn read_env_from_process(name: &str) -> Option<String> {
 }
 
 fn read_command_stdout(program: &str, args: &[&str]) -> Option<String> {
-    let output = Command::new(program).args(args).output().ok()?;
+    let output = crate::utils::command_new(program).args(args).output().ok()?;
     if !output.status.success() {
         return None;
     }
@@ -1306,10 +1306,21 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
                     opts.markers
                 );
 
-                let ps_output = match std::process::Command::new("/bin/ps")
+                #[cfg(windows)]
+                let ps_output_res = crate::utils::command_new("powershell")
+                    .args([
+                        "-NoProfile",
+                        "-Command",
+                        "Get-CimInstance Win32_Process | ForEach-Object { \"$($_.ProcessId) $($_.CommandLine)\" }",
+                    ])
+                    .output();
+
+                #[cfg(not(windows))]
+                let ps_output_res = crate::utils::command_new("/bin/ps")
                     .args(["-ax", "-o", "pid=,command="])
-                    .output()
-                {
+                    .output();
+
+                let ps_output = match ps_output_res {
                     Ok(o) => o,
                     Err(e) => {
                         log::warn!("[plugin:{}] ps failed: {}", pid, e);
@@ -1416,39 +1427,88 @@ fn inject_ls<'js>(ctx: &Ctx<'js>, host: &Object<'js>, plugin_id: &str) -> rquick
                     }
                 }
 
-                // Find lsof binary
-                let lsof_path = ["/usr/sbin/lsof", "/usr/bin/lsof"]
-                    .iter()
-                    .find(|p| std::path::Path::new(p).exists())
-                    .copied();
-
-                let ports = if let Some(lsof) = lsof_path {
-                    match std::process::Command::new(lsof)
-                        .args([
-                            "-nP",
-                            "-iTCP",
-                            "-sTCP:LISTEN",
-                            "-a",
-                            "-p",
-                            &process_pid.to_string(),
-                        ])
+                // Find listening ports for the discovered process
+                #[cfg(windows)]
+                let ports = {
+                    match crate::utils::command_new("netstat")
+                        .args(["-ano", "-p", "TCP"])
                         .output()
                     {
                         Ok(o) if o.status.success() => {
-                            ls_parse_listening_ports(&String::from_utf8_lossy(&o.stdout))
+                            let stdout = String::from_utf8_lossy(&o.stdout);
+                            let pid_str = process_pid.to_string();
+                            let mut found_ports = std::collections::BTreeSet::new();
+                            for line in stdout.lines() {
+                                let line = line.trim();
+                                if !line.contains("LISTENING") {
+                                    continue;
+                                }
+                                // netstat -ano format: TCP  0.0.0.0:PORT  0.0.0.0:0  LISTENING  PID
+                                let tokens: Vec<&str> = line.split_whitespace().collect();
+                                if tokens.len() < 5 {
+                                    continue;
+                                }
+                                let line_pid = tokens[tokens.len() - 1];
+                                if line_pid != pid_str {
+                                    continue;
+                                }
+                                // Extract port from local address (e.g. "0.0.0.0:42010" or "[::]:42010")
+                                if let Some(colon_pos) = tokens[1].rfind(':') {
+                                    if let Ok(port) = tokens[1][colon_pos + 1..].parse::<i32>() {
+                                        if port > 0 && port < 65536 {
+                                            found_ports.insert(port);
+                                        }
+                                    }
+                                }
+                            }
+                            found_ports.into_iter().collect::<Vec<_>>()
                         }
                         Ok(_) => {
-                            log::warn!("[plugin:{}] lsof returned non-zero", pid);
+                            log::warn!("[plugin:{}] netstat returned non-zero", pid);
                             Vec::new()
                         }
                         Err(e) => {
-                            log::warn!("[plugin:{}] lsof failed: {}", pid, e);
+                            log::warn!("[plugin:{}] netstat failed: {}", pid, e);
                             Vec::new()
                         }
                     }
-                } else {
-                    log::warn!("[plugin:{}] lsof not found", pid);
-                    Vec::new()
+                };
+
+                #[cfg(not(windows))]
+                let ports = {
+                    let lsof_path = ["/usr/sbin/lsof", "/usr/bin/lsof"]
+                        .iter()
+                        .find(|p| std::path::Path::new(p).exists())
+                        .copied();
+
+                    if let Some(lsof) = lsof_path {
+                        match crate::utils::command_new(lsof)
+                            .args([
+                                "-nP",
+                                "-iTCP",
+                                "-sTCP:LISTEN",
+                                "-a",
+                                "-p",
+                                &process_pid.to_string(),
+                            ])
+                            .output()
+                        {
+                            Ok(o) if o.status.success() => {
+                                ls_parse_listening_ports(&String::from_utf8_lossy(&o.stdout))
+                            }
+                            Ok(_) => {
+                                log::warn!("[plugin:{}] lsof returned non-zero", pid);
+                                Vec::new()
+                            }
+                            Err(e) => {
+                                log::warn!("[plugin:{}] lsof failed: {}", pid, e);
+                                Vec::new()
+                            }
+                        }
+                    } else {
+                        log::warn!("[plugin:{}] lsof not found", pid);
+                        Vec::new()
+                    }
                 };
 
                 if ports.is_empty() && extension_port.is_none() {
@@ -1825,7 +1885,7 @@ fn ccusage_enriched_path() -> Option<OsString> {
 }
 
 fn ccusage_runner_available(candidate: &str, enriched_path: Option<&OsStr>) -> bool {
-    let mut command = std::process::Command::new(candidate);
+    let mut command = crate::utils::command_new(candidate);
     command.arg("--version");
     if let Some(path) = enriched_path {
         command.env("PATH", path);
@@ -2130,7 +2190,7 @@ fn run_ccusage_with_runner_timeout(
 ) -> CcusageRunnerResult {
     let args = ccusage_runner_args(kind, opts, provider, flavor);
     let enriched_path = ccusage_enriched_path();
-    let mut command = std::process::Command::new(program);
+    let mut command = crate::utils::command_new(program);
     configure_ccusage_command(&mut command, &args, enriched_path.as_deref());
 
     if let Some(home_path) = ccusage_home_override(opts, provider) {
@@ -2395,7 +2455,7 @@ fn inject_keychain<'js>(
                     ));
                 }
                 log::info!("[plugin:{}] keychain read: service={}", pid_read, service);
-                let output = std::process::Command::new("security")
+                let output = crate::utils::command_new("security")
                     .args(keychain_find_generic_password_args(&service))
                     .output()
                     .map_err(|e| {
@@ -2451,7 +2511,7 @@ fn inject_keychain<'js>(
                     service,
                     redacted_account
                 );
-                let output = std::process::Command::new("security")
+                let output = crate::utils::command_new("security")
                     .args(&args)
                     .output()
                     .map_err(|e| {
@@ -2503,7 +2563,7 @@ fn inject_keychain<'js>(
                 log::info!("[plugin:{}] keychain write: service={}", pid_write, service);
 
                 let mut account_arg: Option<String> = None;
-                let find_output = std::process::Command::new("security")
+                let find_output = crate::utils::command_new("security")
                     .args(["find-generic-password", "-s", &service])
                     .output();
 
@@ -2523,13 +2583,13 @@ fn inject_keychain<'js>(
                 }
 
                 let output = if let Some(ref acct) = account_arg {
-                    std::process::Command::new("security")
+                    crate::utils::command_new("security")
                         .args(keychain_add_generic_password_args_for_account(
                             &service, acct, &value,
                         ))
                         .output()
                 } else {
-                    std::process::Command::new("security")
+                    crate::utils::command_new("security")
                         .args(keychain_add_generic_password_args(&service, &value))
                         .output()
                 }
@@ -2584,7 +2644,7 @@ fn inject_keychain<'js>(
                     service,
                     redacted_account
                 );
-                let output = std::process::Command::new("security")
+                let output = crate::utils::command_new("security")
                     .args(&args)
                     .output()
                     .map_err(|e| {
@@ -2641,47 +2701,52 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                 }
                 let expanded = expand_path(&db_path);
 
-                // Prefer a normal read-only open so WAL contents are visible (common for app state DBs).
-                // Fall back to immutable=1 to bypass WAL/SHM lock issues after macOS sleep.
-                let primary = std::process::Command::new("sqlite3")
-                    .args(["-readonly", "-json", &expanded, &sql])
-                    .output()
-                    .map_err(|e| {
-                        Exception::throw_message(&ctx_inner, &format!("sqlite3 exec failed: {}", e))
-                    })?;
+                let conn = match rusqlite::Connection::open_with_flags(
+                    &expanded,
+                    rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_URI,
+                ) {
+                    Ok(c) => c,
+                    Err(_) => {
+                        let encoded = expanded
+                            .replace('%', "%25")
+                            .replace(' ', "%20")
+                            .replace('#', "%23")
+                            .replace('?', "%3F");
+                        let uri_path = format!("file:{}?immutable=1", encoded);
+                        rusqlite::Connection::open_with_flags(
+                            &uri_path,
+                            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_URI,
+                        ).map_err(|e| Exception::throw_message(&ctx_inner, &format!("sqlite3 open failed: {}", e)))?
+                    }
+                };
 
-                if primary.status.success() {
-                    return Ok(String::from_utf8_lossy(&primary.stdout).to_string());
+                let mut stmt = conn.prepare(&sql).map_err(|e| Exception::throw_message(&ctx_inner, &format!("sqlite3 prepare failed: {}", e)))?;
+                
+                let column_names: Vec<String> = stmt.column_names().into_iter().map(|s| s.to_string()).collect();
+                let column_count = column_names.len();
+                
+                let mut rows = stmt.query([]).map_err(|e| Exception::throw_message(&ctx_inner, &format!("sqlite3 query failed: {}", e)))?;
+                let mut result_json = Vec::new();
+                
+                while let Some(row) = rows.next().map_err(|e| Exception::throw_message(&ctx_inner, &format!("sqlite3 fetch failed: {}", e)))? {
+                    let mut row_map = serde_json::Map::new();
+                    for i in 0..column_count {
+                        let col_name = column_names[i].clone();
+                        let value: rusqlite::types::Value = row.get(i).map_err(|e| Exception::throw_message(&ctx_inner, &format!("sqlite3 value failed: {}", e)))?;
+                        let json_val = match value {
+                            rusqlite::types::Value::Null => serde_json::Value::Null,
+                            rusqlite::types::Value::Integer(v) => serde_json::Value::Number(v.into()),
+                            rusqlite::types::Value::Real(v) => serde_json::Number::from_f64(v).map(serde_json::Value::Number).unwrap_or(serde_json::Value::Null),
+                            rusqlite::types::Value::Text(v) => serde_json::Value::String(v),
+                            rusqlite::types::Value::Blob(v) => serde_json::Value::String(String::from_utf8_lossy(&v).to_string()),
+                        };
+                        row_map.insert(col_name, json_val);
+                    }
+                    result_json.push(serde_json::Value::Object(row_map));
                 }
-
-                // Percent-encode special chars for valid URI (% must be first!)
-                let encoded = expanded
-                    .replace('%', "%25")
-                    .replace(' ', "%20")
-                    .replace('#', "%23")
-                    .replace('?', "%3F");
-                let uri_path = format!("file:{}?immutable=1", encoded);
-                let fallback = std::process::Command::new("sqlite3")
-                    .args(["-readonly", "-json", &uri_path, &sql])
-                    .output()
-                    .map_err(|e| {
-                        Exception::throw_message(&ctx_inner, &format!("sqlite3 exec failed: {}", e))
-                    })?;
-
-                if !fallback.status.success() {
-                    let stderr_primary = String::from_utf8_lossy(&primary.stderr);
-                    let stderr_fallback = String::from_utf8_lossy(&fallback.stderr);
-                    return Err(Exception::throw_message(
-                        &ctx_inner,
-                        &format!(
-                            "sqlite3 error: {} (fallback: {})",
-                            stderr_primary.trim(),
-                            stderr_fallback.trim()
-                        ),
-                    ));
-                }
-
-                Ok(String::from_utf8_lossy(&fallback.stdout).to_string())
+                
+                let json_str = serde_json::to_string(&result_json).map_err(|e| Exception::throw_message(&ctx_inner, &format!("sqlite3 serialize failed: {}", e)))?;
+                Ok(json_str)
             },
         )?,
     )?;
@@ -2698,20 +2763,12 @@ fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
                     ));
                 }
                 let expanded = expand_path(&db_path);
-                let output = std::process::Command::new("sqlite3")
-                    .args([&expanded, &sql])
-                    .output()
-                    .map_err(|e| {
-                        Exception::throw_message(&ctx_inner, &format!("sqlite3 exec failed: {}", e))
-                    })?;
-
-                if !output.status.success() {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    return Err(Exception::throw_message(
-                        &ctx_inner,
-                        &format!("sqlite3 error: {}", stderr.trim()),
-                    ));
-                }
+                
+                let conn = rusqlite::Connection::open(&expanded)
+                    .map_err(|e| Exception::throw_message(&ctx_inner, &format!("sqlite3 open failed: {}", e)))?;
+                    
+                conn.execute_batch(&sql)
+                    .map_err(|e| Exception::throw_message(&ctx_inner, &format!("sqlite3 exec failed: {}", e)))?;
 
                 Ok(())
             },
@@ -3926,7 +3983,7 @@ mod tests {
 
     #[test]
     fn configure_ccusage_command_sets_path_override() {
-        let mut command = std::process::Command::new("echo");
+        let mut command = crate::utils::command_new("echo");
         let args = vec!["daily".to_string(), "--json".to_string()];
         let path = std::env::join_paths([
             std::path::PathBuf::from("/tmp/bin"),
@@ -3951,7 +4008,7 @@ mod tests {
 
     #[test]
     fn configure_ccusage_command_skips_path_override_when_absent() {
-        let mut command = std::process::Command::new("echo");
+        let mut command = crate::utils::command_new("echo");
         let args = vec!["daily".to_string()];
 
         configure_ccusage_command(&mut command, &args, None);
@@ -4321,3 +4378,4 @@ wait
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
+

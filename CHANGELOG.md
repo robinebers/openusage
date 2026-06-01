@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.6.37
+
+### Bug Fixes
+- fix: cursor db path on windows and os-agnostic error messages by @Native Muttaqien
+
+---
+
+### Changelog
+
+**Full Changelog**: [v0.6.36...v0.6.37](https://github.com/samlehoy/openusage/compare/v0.6.36...v0.6.37)
+
+- [3f5ee17](https://github.com/samlehoy/openusage/commit/3f5ee17) fix: cursor db path on windows and os-agnostic error messages by @Native Muttaqien
+
 ## v0.6.24
 
 ### New Features

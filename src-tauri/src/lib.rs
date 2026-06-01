@@ -5,13 +5,16 @@ mod local_http_api;
 mod panel;
 mod plugin_engine;
 mod tray;
+pub mod utils;
 #[cfg(target_os = "macos")]
 mod webkit_config;
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
+
+pub static IS_PINNED: AtomicBool = AtomicBool::new(false);
 
 use serde::Serialize;
 use tauri::Emitter;
@@ -200,10 +203,7 @@ fn init_panel(app_handle: tauri::AppHandle) {
 
 #[tauri::command]
 fn hide_panel(app_handle: tauri::AppHandle) {
-    use tauri_nspanel::ManagerExt;
-    if let Ok(panel) = app_handle.get_webview_panel("main") {
-        panel.hide();
-    }
+    panel::hide_panel(&app_handle);
 }
 
 #[tauri::command]
@@ -215,6 +215,29 @@ fn open_devtools(#[allow(unused)] app_handle: tauri::AppHandle) {
             window.open_devtools();
         }
     }
+}
+
+#[tauri::command]
+fn reposition_panel(app_handle: tauri::AppHandle) {
+    use tauri::Manager;
+    if crate::IS_PINNED.load(std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    if let Some(tray) = app_handle.tray_by_id("tray") {
+        if let Ok(Some(rect)) = tray.rect() {
+            panel::position_panel_at_tray_icon(&app_handle, rect.position, rect.size);
+        }
+    }
+}
+
+#[tauri::command]
+fn set_pinned(pinned: bool) {
+    crate::IS_PINNED.store(pinned, std::sync::atomic::Ordering::SeqCst);
+}
+
+#[tauri::command]
+fn is_pinned() -> bool {
+    crate::IS_PINNED.load(std::sync::atomic::Ordering::SeqCst)
 }
 
 #[tauri::command]
@@ -504,11 +527,18 @@ pub fn run() {
     let runtime = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
     let _guard = runtime.enter();
 
-    tauri::Builder::default()
+    #[allow(unused_mut)]
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_aptabase::Builder::new("A-US-6435241436").build())
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_store::Builder::default().build())
-        .plugin(tauri_nspanel::init())
+        .plugin(tauri_plugin_store::Builder::default().build());
+
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.plugin(tauri_nspanel::init());
+    }
+
+    builder
         .plugin(
             tauri_plugin_log::Builder::new()
                 .targets([
@@ -533,7 +563,10 @@ pub fn run() {
             start_probe_batch,
             list_plugins,
             get_log_path,
-            update_global_shortcut
+            update_global_shortcut,
+            reposition_panel,
+            set_pinned,
+            is_pinned
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]
@@ -583,10 +616,19 @@ pub fn run() {
             local_http_api::init(&app_data_dir, known_plugin_ids);
             local_http_api::start_server();
 
-            tray::create(app.handle())?;
+            log::info!("Setup: Starting tray creation");
+            if let Err(e) = tray::create(app.handle()) {
+                log::error!("Setup: Tray creation failed: {:?}", e);
+            }
+            log::info!("Setup: Starting panel init");
+            if let Err(e) = panel::init(app.handle()) {
+                log::error!("Setup: Panel init failed: {:?}", e);
+            }
+            log::info!("Setup: Finished");
 
-            app.handle()
-                .plugin(tauri_plugin_updater::Builder::new().build())?;
+            if let Err(e) = app.handle().plugin(tauri_plugin_updater::Builder::new().build()) {
+                log::warn!("Failed to initialize updater plugin: {}", e);
+            }
 
             // Register global shortcut from stored settings
             #[cfg(desktop)]
