@@ -9,6 +9,7 @@ Tracks Grok Build credit usage from the local Grok CLI login.
 - **Protocol:** REST (plain JSON)
 - **Base URL:** `https://cli-chat-proxy.grok.com/v1`
 - **Auth:** cached Grok CLI token from `~/.grok/auth.json`
+- **Refresh:** Grok CLI refresh token from the same file
 - **Usage unit:** raw billing units from Grok
 - **Plan source:** `GET /settings` (`subscription_tier_display`)
 - **Reset period:** billing period from the CLI billing response
@@ -23,7 +24,7 @@ grok login
 
 2. Enable the Grok plugin in OpenUsage settings.
 
-OpenUsage reads the same local auth file that the Grok CLI uses. If the token expires, run `grok login` again.
+OpenUsage reads the same local auth file that the Grok CLI uses. Access tokens are refreshed automatically when a `refresh_token` is present. If refresh fails, run `grok login` again.
 
 ## Endpoint
 
@@ -84,8 +85,9 @@ Used fields:
 | Condition | Message |
 |-----------|---------|
 | Missing auth file | "Grok not logged in. Run `grok login`." |
-| Expired token | "Grok auth expired. Run `grok login` again." |
-| 401/403 | "Grok auth expired. Run `grok login` again." |
+| Expired token with no refresh token | "Grok auth expired. Run `grok login` again." |
+| Refresh token rejected | "Grok auth expired. Run `grok login` again." |
+| 401/403 after retry | "Grok auth expired. Run `grok login` again." |
 | HTTP error | "Grok billing request failed (HTTP {status}). Try again later." |
 | Network error | "Grok billing request failed. Check your connection." |
 | Invalid response | "Grok billing response changed." |

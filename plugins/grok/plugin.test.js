@@ -4,6 +4,7 @@ import { makeCtx } from "../test-helpers.js"
 const AUTH_PATH = "~/.grok/auth.json"
 const BILLING_URL = "https://cli-chat-proxy.grok.com/v1/billing"
 const SETTINGS_URL = "https://cli-chat-proxy.grok.com/v1/settings"
+const REFRESH_URL = "https://auth.x.ai/oauth2/token"
 
 const loadPlugin = async () => {
   await import("./plugin.js?test=" + Math.random())
@@ -81,7 +82,7 @@ describe("grok plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow("Grok auth invalid. Run `grok login` again.")
   })
 
-  it("throws when the only token is expired", async () => {
+  it("throws when the only token is expired and no refresh token is available", async () => {
     const ctx = makeCtx()
     writeAuth(ctx, {
       key: "expired-token",
@@ -90,6 +91,109 @@ describe("grok plugin", () => {
     })
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Grok auth expired. Run `grok login` again.")
+  })
+
+  it("refreshes an expired Grok CLI token and persists rotated auth", async () => {
+    const ctx = makeCtx()
+    writeAuth(ctx, {
+      key: "expired-token",
+      refresh_token: "refresh-token",
+      email: "user@example.com",
+      oidc_client_id: "client-id",
+      expires_at: "2026-01-01T00:00:00Z",
+    })
+    ctx.host.http.request.mockImplementation((req) => {
+      if (req.url === REFRESH_URL) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            access_token: "new-token",
+            refresh_token: "new-refresh",
+            expires_in: 3600,
+          }),
+        }
+      }
+      if (req.url === BILLING_URL) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify(billingData()),
+        }
+      }
+      if (req.url === SETTINGS_URL) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({ subscription_tier_display: "SuperGrok Heavy" }),
+        }
+      }
+      return { status: 404, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("SuperGrok Heavy")
+    expect(ctx.host.http.request.mock.calls[0][0].url).toBe(REFRESH_URL)
+    expect(ctx.host.http.request.mock.calls[0][0].bodyText).toContain("client_id=client-id")
+    expect(ctx.host.http.request.mock.calls[0][0].bodyText).toContain("refresh_token=refresh-token")
+    const billingCall = ctx.host.http.request.mock.calls.find((call) => call[0].url === BILLING_URL)[0]
+    expect(billingCall.headers.Authorization).toBe("Bearer new-token")
+
+    const authWrites = ctx.host.fs.writeText.mock.calls.filter((call) => call[0] === AUTH_PATH)
+    const saved = JSON.parse(authWrites[authWrites.length - 1][1])
+    const entry = saved["https://auth.x.ai::client"]
+    expect(entry.key).toBe("new-token")
+    expect(entry.refresh_token).toBe("new-refresh")
+    expect(entry.expires_at).toBe("2026-02-02T01:00:00.000Z")
+  })
+
+  it("refreshes and retries once when billing returns an auth error", async () => {
+    const ctx = makeCtx()
+    writeAuth(ctx, {
+      key: "old-token",
+      refresh_token: "refresh-token",
+      email: "user@example.com",
+      expires_at: "2026-06-01T00:00:00Z",
+    })
+    let billingCalls = 0
+    ctx.host.http.request.mockImplementation((req) => {
+      if (req.url === BILLING_URL) {
+        billingCalls += 1
+        if (billingCalls === 1) return { status: 401, bodyText: "" }
+        return {
+          status: 200,
+          bodyText: JSON.stringify(billingData()),
+        }
+      }
+      if (req.url === REFRESH_URL) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({
+            access_token: "new-token",
+            refresh_token: "new-refresh",
+            expires_in: 3600,
+          }),
+        }
+      }
+      if (req.url === SETTINGS_URL) {
+        return {
+          status: 200,
+          bodyText: JSON.stringify({ subscription_tier_display: "SuperGrok Heavy" }),
+        }
+      }
+      return { status: 404, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("SuperGrok Heavy")
+    const billingAuths = ctx.host.http.request.mock.calls
+      .filter((call) => call[0].url === BILLING_URL)
+      .map((call) => call[0].headers.Authorization)
+    expect(billingAuths).toEqual(["Bearer old-token", "Bearer new-token"])
+    const refreshCall = ctx.host.http.request.mock.calls.find((call) => call[0].url === REFRESH_URL)[0]
+    expect(refreshCall.bodyText).toContain("client_id=client")
+    expect(refreshCall.bodyText).toContain("refresh_token=refresh-token")
   })
 
   it("uses the first non-expired token", async () => {
