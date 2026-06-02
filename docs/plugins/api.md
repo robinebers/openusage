@@ -230,15 +230,16 @@ const resp = ctx.host.http.request({
 ## Keychain (macOS only)
 
 ```typescript
-host.keychain.readGenericPassword(service: string): string
+host.keychain.readGenericPassword(service: string, account?: string): string
 ```
 
-Reads a generic password from the macOS Keychain.
+Reads a generic password from the macOS Keychain. Pass `account` when the service stores multiple accounts and the plugin must avoid a service-wide match.
 
 ### Behavior
 
 - **macOS only**: Throws on other platforms
 - **Throws if not found**: Returns the password string if found, throws otherwise
+- **Optional account scope**: When `account` is set, lookup uses both service and account
 
 ### Example
 

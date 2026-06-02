@@ -9,20 +9,21 @@ Antigravity is essentially a Google-branded fork of [Windsurf](windsurf.md) — 
 - **Vendor:** Google (internal codename "Jetski")
 - **Protocol:** Connect RPC v1 (JSON over HTTP) on local language server
 - **Service:** `exa.language_server_pb.LanguageServerService`
-- **Auth:** CSRF token from process args; Google OAuth tokens from SQLite (fallback)
+- **Auth:** CSRF token from app/IDE process args; Google OAuth tokens from SQLite; `agy` token from macOS Keychain
 - **Quota:** fraction (0.0–1.0, where 1.0 = 100% remaining)
 - **Quota window:** 5 hours
 - **Timestamps:** ISO 8601
-- **Requires:** Antigravity IDE running (language server process), or signed-in credentials in SQLite (Cloud Code fallback)
+- **Requires:** Antigravity app/IDE running, signed-in app/IDE SQLite credentials, or `agy` signed in
 
 ## Discovery
 
-The language server listens on a random localhost port. Three values must be discovered from the running process.
+The Antigravity app/IDE language server listens on a random localhost port. Three values must be discovered from the running process.
 
 ```bash
 # 1. Find process and extract CSRF token
-ps -ax -o pid=,command= | grep 'language_server_macos.*antigravity'
-# Match: --app_data_dir antigravity  OR  path contains /antigravity/
+ps -ax -o pid=,command= | grep -i '[l]anguage_server.*antigravity'
+# Process name: language_server, language_server_macos, or language_server_macos_arm
+# Match: --app_data_dir antigravity / antigravity-ide OR path contains /antigravity/
 # Extract: --csrf_token <token>
 # Extract: --extension_server_port <port>  (HTTP fallback)
 
@@ -33,7 +34,9 @@ lsof -nP -iTCP -sTCP:LISTEN -a -p <pid>
 POST https://127.0.0.1:<port>/.../GetUnleashData  → first 200 OK wins
 ```
 
-Port and CSRF token change on every IDE restart. The LS may use HTTPS with a self-signed cert.
+Port and CSRF token change on every app/IDE restart. The LS may use HTTPS with a self-signed cert.
+
+`agy` can also expose the same local service as an `agy` process. It has listening ports but no CSRF token or Antigravity marker flags, so discovery matches the `agy` executable directly.
 
 ## Headers (all local requests)
 
@@ -156,9 +159,11 @@ Interestingly, non-Google models (Claude, GPT-OSS) are proxied through Codeium/W
 
 ## Local SQLite Database
 
-Antigravity stores auth credentials in a VS Code-compatible state database.
+The Antigravity IDE stores auth credentials in VS Code-compatible state databases.
 
-- **Path:** `~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb`
+- **Paths, tried in order:**
+  - `~/Library/Application Support/Antigravity IDE/User/globalStorage/state.vscdb`
+  - `~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb`
 - **Table:** `ItemTable` (`key` TEXT, `value` TEXT)
 
 ### antigravityUnifiedStateSync.oauthToken (sentinel envelope → protobuf)
@@ -205,7 +210,7 @@ Same client_id/secret is there in the Antigravity app bundle, used for the Googl
 
 ## Cloud Code API (fallback)
 
-When the language server is not running, the plugin falls back to Google's Cloud Code API using a Google OAuth access token (from the unified-state protobuf, or a cached refreshed token).
+When the language server is not running, the plugin falls back to Google's Cloud Code API using a Google OAuth access token from the unified-state protobuf, a cached refreshed token, or the `agy` keychain account.
 
 ### fetchAvailableModels
 
@@ -219,6 +224,15 @@ User-Agent: antigravity
 Base URLs tried in order:
 1. `https://daily-cloudcode-pa.googleapis.com`
 2. `https://cloudcode-pa.googleapis.com`
+
+### agy keychain fallback
+
+`agy` stores its auth in the macOS Keychain under service `gemini`, account `antigravity`. OpenUsage reads that exact account only; it does not use legacy Gemini CLI files.
+
+For `agy`, OpenUsage calls:
+
+1. `POST /v1internal:loadCodeAssist`
+2. `POST /v1internal:retrieveUserQuota`
 
 #### Response
 
@@ -246,15 +260,10 @@ The Cloud Code model set is a superset of the LS model set. The LS returns only 
 
 ## Plugin Strategy
 
-1. Read `antigravityUnifiedStateSync.oauthToken` from SQLite, unwrap the sentinel envelope, and decode the inner `OAuthTokenInfo` protobuf (optional, may fail).
-2. **Strategy 1 — LS probe (primary):**
-   a. Discover LS process via `ctx.host.ls.discover()` (ps + lsof)
-   b. Probe ports with `GetUnleashData` to find the Connect-RPC endpoint
-   c. Call `GetUserStatus` for plan name + per-model quota
-   d. Fall back to `GetCommandModelConfigs` if `GetUserStatus` fails
-3. **Strategy 2 — Cloud Code API (fallback, only if LS fails):**
-   a. Build candidate token list: proto access_token (if unexpired), cached refreshed token (if fresh), deduplicated
-   b. Try each token with `fetchAvailableModels`
-   c. If all fail with 401/403 (or the list is empty) and a refresh token is available: refresh via Google OAuth, cache result to pluginDataDir, retry once
-   d. Parse model quota: skip `isInternal` models, empty-displayName models, and blacklisted model IDs
-4. If both strategies fail: error "Start Antigravity and try again."
+1. Probe the Antigravity app/IDE language server.
+2. Probe the `agy` local language server.
+3. Read SQLite token candidates from both Antigravity state DB paths.
+4. Try unexpired SQLite/cached access tokens with `fetchAvailableModels`.
+5. Refresh SQLite refresh tokens only after auth failure or when no access token exists.
+6. Read `agy` keychain token from service `gemini`, account `antigravity`, then call `loadCodeAssist` and `retrieveUserQuota`.
+7. If all strategies fail: error "Start Antigravity or run `agy` and try again."
