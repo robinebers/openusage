@@ -69,6 +69,10 @@ const defaultProps = {
   onGlobalShortcutChange: vi.fn(),
   startOnLogin: false,
   onStartOnLoginChange: vi.fn(),
+  hideDockIcon: true,
+  onHideDockIconChange: vi.fn(),
+  alwaysOnTop: false,
+  onAlwaysOnTopChange: vi.fn(),
 }
 
 afterEach(() => {
@@ -269,5 +273,50 @@ describe("SettingsPage", () => {
     )
     await userEvent.click(screen.getByText("Start on login"))
     expect(onStartOnLoginChange).toHaveBeenCalledWith(true)
+  })
+
+  it("selects Dock app position", async () => {
+    const onHideDockIconChange = vi.fn()
+    render(
+      <SettingsPage
+        {...defaultProps}
+        hideDockIcon
+        onHideDockIconChange={onHideDockIconChange}
+      />
+    )
+    await userEvent.click(screen.getByRole("radio", { name: "Dock" }))
+    expect(onHideDockIconChange).toHaveBeenCalledWith(false)
+  })
+
+  it("selects Tray app position", async () => {
+    const onHideDockIconChange = vi.fn()
+    render(
+      <SettingsPage
+        {...defaultProps}
+        hideDockIcon={false}
+        onHideDockIconChange={onHideDockIconChange}
+      />
+    )
+    await userEvent.click(screen.getByRole("radio", { name: "Tray" }))
+    expect(onHideDockIconChange).toHaveBeenCalledWith(true)
+  })
+
+  it("hides 'Always keep on top' in Tray mode", () => {
+    render(<SettingsPage {...defaultProps} hideDockIcon />)
+    expect(screen.queryByText("Always keep on top")).not.toBeInTheDocument()
+  })
+
+  it("toggles 'Always keep on top' in Dock mode", async () => {
+    const onAlwaysOnTopChange = vi.fn()
+    render(
+      <SettingsPage
+        {...defaultProps}
+        hideDockIcon={false}
+        alwaysOnTop={false}
+        onAlwaysOnTopChange={onAlwaysOnTopChange}
+      />
+    )
+    await userEvent.click(screen.getByText("Always keep on top"))
+    expect(onAlwaysOnTopChange).toHaveBeenCalledWith(true)
   })
 })

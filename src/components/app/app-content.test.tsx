@@ -65,6 +65,8 @@ function createProps(): AppContentProps {
     onResetTimerDisplayModeToggle: vi.fn(),
     onGlobalShortcutChange: vi.fn(),
     onStartOnLoginChange: vi.fn(),
+    onHideDockIconChange: vi.fn(),
+    onAlwaysOnTopChange: vi.fn(),
   }
 }
 

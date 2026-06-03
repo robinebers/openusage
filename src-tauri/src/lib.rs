@@ -28,6 +28,22 @@ const DAILY_ACTIVE_TRACKED_DAY_KEY: &str = "analytics.daily_active_day";
 const DAILY_ACTIVE_EVENT_NAME: &str = "app_started";
 const MAX_CONCURRENT_PROBES: usize = 4;
 
+// Mirrors the frontend `hideDockIcon` setting and its default. OpenUsage has
+// always run as a menu bar-only app, so the Dock icon stays hidden unless the
+// user opts in. Read natively at startup so the policy is applied before the
+// Dock would otherwise show an icon.
+#[cfg(target_os = "macos")]
+const HIDE_DOCK_ICON_STORE_KEY: &str = "hideDockIcon";
+#[cfg(target_os = "macos")]
+const DEFAULT_HIDE_DOCK_ICON: bool = true;
+
+// Mirrors the frontend `alwaysOnTop` setting. Only meaningful in Dock mode,
+// where it keeps the window floating above other windows. Defaults to off.
+#[cfg(target_os = "macos")]
+const ALWAYS_ON_TOP_STORE_KEY: &str = "alwaysOnTop";
+#[cfg(target_os = "macos")]
+const DEFAULT_ALWAYS_ON_TOP: bool = false;
+
 fn probe_worker_count(plugin_count: usize) -> usize {
     plugin_count.min(MAX_CONCURRENT_PROBES)
 }
@@ -384,6 +400,125 @@ fn get_log_path(app_handle: tauri::AppHandle) -> Result<String, String> {
     log_path::for_app(&app_handle).map(|path| path.to_string_lossy().to_string())
 }
 
+/// Reads the persisted `hideDockIcon` preference from the settings store.
+/// Falls back to the default when the store or key is unavailable so a missing
+/// or unreadable setting never changes the long-standing menu bar-only behavior.
+#[cfg(target_os = "macos")]
+fn get_stored_hide_dock_icon(app_handle: &tauri::AppHandle) -> bool {
+    use tauri_plugin_store::StoreExt;
+
+    let store = match app_handle.store("settings.json") {
+        Ok(store) => store,
+        Err(error) => {
+            log::warn!(
+                "Failed to access settings store for dock icon visibility: {}",
+                error
+            );
+            return DEFAULT_HIDE_DOCK_ICON;
+        }
+    };
+
+    store
+        .get(HIDE_DOCK_ICON_STORE_KEY)
+        .and_then(|value| value.as_bool())
+        .unwrap_or(DEFAULT_HIDE_DOCK_ICON)
+}
+
+/// Reads the persisted `alwaysOnTop` preference from the settings store.
+/// Falls back to the default when the store or key is unavailable.
+#[cfg(target_os = "macos")]
+fn get_stored_always_on_top(app_handle: &tauri::AppHandle) -> bool {
+    use tauri_plugin_store::StoreExt;
+
+    let store = match app_handle.store("settings.json") {
+        Ok(store) => store,
+        Err(error) => {
+            log::warn!("Failed to access settings store for always on top: {}", error);
+            return DEFAULT_ALWAYS_ON_TOP;
+        }
+    };
+
+    store
+        .get(ALWAYS_ON_TOP_STORE_KEY)
+        .and_then(|value| value.as_bool())
+        .unwrap_or(DEFAULT_ALWAYS_ON_TOP)
+}
+
+/// Applies Dock icon visibility by switching the macOS activation policy.
+/// `Accessory` hides the Dock icon (menu bar-only); `Regular` shows it.
+#[cfg(target_os = "macos")]
+fn apply_dock_icon_visibility(app_handle: &tauri::AppHandle, hidden: bool) -> Result<(), String> {
+    let policy = if hidden {
+        tauri::ActivationPolicy::Accessory
+    } else {
+        tauri::ActivationPolicy::Regular
+    };
+    app_handle
+        .set_activation_policy(policy)
+        .map_err(|e| format!("Failed to set activation policy: {}", e))
+}
+
+/// Shows or hides the menu bar (tray) icon. The tray icon and the Dock icon are
+/// mutually exclusive (see `update_dock_icon_visibility`), so the tray is shown
+/// only when the Dock icon is hidden.
+#[cfg(target_os = "macos")]
+fn apply_tray_visibility(app_handle: &tauri::AppHandle, visible: bool) -> Result<(), String> {
+    match app_handle.tray_by_id("tray") {
+        Some(tray) => tray
+            .set_visible(visible)
+            .map_err(|e| format!("Failed to set tray visibility: {}", e)),
+        None => {
+            log::warn!("Tray icon 'tray' not found while updating visibility");
+            Ok(())
+        }
+    }
+}
+
+/// Switches OpenUsage between menu bar-only and Dock-only presentation.
+/// `hidden = true` hides the Dock icon and shows the menu bar (tray) icon;
+/// `hidden = false` shows the Dock icon and hides the menu bar icon. The two are
+/// mutually exclusive so the menu bar never shows a redundant icon. No-op on
+/// other platforms, where there is no Dock concept.
+#[tauri::command]
+fn update_dock_icon_visibility(
+    #[allow(unused)] app_handle: tauri::AppHandle,
+    #[allow(unused)] hidden: bool,
+) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        log::info!("Updating dock icon visibility: hidden={}", hidden);
+        apply_dock_icon_visibility(&app_handle, hidden)?;
+        // Tray is the inverse of the Dock icon: visible only when Dock is hidden.
+        apply_tray_visibility(&app_handle, hidden)?;
+
+        // In Dock-only mode the panel becomes a normal, draggable window centered
+        // on screen; in menu-bar mode it returns to the anchored dropdown.
+        let dock_mode = !hidden;
+        panel::set_dock_mode(dock_mode);
+        panel::apply_panel_presentation(&app_handle);
+        if dock_mode {
+            panel::position_panel_centered(&app_handle);
+        }
+    }
+    Ok(())
+}
+
+/// Toggles whether the Dock-mode window floats above other windows. Only has a
+/// visible effect in Dock mode; the panel level is updated immediately.
+#[tauri::command]
+fn update_always_on_top(
+    #[allow(unused)] app_handle: tauri::AppHandle,
+    #[allow(unused)] enabled: bool,
+) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        log::info!("Updating always on top: enabled={}", enabled);
+        panel::set_always_on_top(enabled);
+        panel::apply_panel_presentation(&app_handle);
+    }
+    Ok(())
+}
+
 /// Update the global shortcut registration.
 /// Pass `null` to disable the shortcut, or a shortcut string like "CommandOrControl+Shift+U".
 #[cfg(desktop)]
@@ -530,11 +665,31 @@ pub fn run() {
             start_probe_batch,
             list_plugins,
             get_log_path,
-            update_global_shortcut
+            update_global_shortcut,
+            update_dock_icon_visibility,
+            update_always_on_top
         ])
         .setup(|app| {
+            // Apply the persisted Dock icon preference before anything else so the
+            // Dock never briefly shows an icon on launch. The app shows EITHER the
+            // menu bar (tray) icon OR the Dock icon, never both, to save menu bar
+            // space. Defaults to hidden Dock (menu bar-only). Tray visibility is
+            // applied below, right after the tray is created.
             #[cfg(target_os = "macos")]
-            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            let hide_dock_icon = get_stored_hide_dock_icon(app.handle());
+            #[cfg(target_os = "macos")]
+            {
+                let policy = if hide_dock_icon {
+                    tauri::ActivationPolicy::Accessory
+                } else {
+                    tauri::ActivationPolicy::Regular
+                };
+                app.set_activation_policy(policy);
+                // Dock-only mode (Dock icon shown) makes the panel a normal,
+                // persistent window; record it so the panel behaves accordingly.
+                panel::set_dock_mode(!hide_dock_icon);
+                panel::set_always_on_top(get_stored_always_on_top(app.handle()));
+            }
 
             #[cfg(target_os = "macos")]
             {
@@ -582,6 +737,13 @@ pub fn run() {
 
             tray::create(app.handle())?;
 
+            // Show the tray icon only when the Dock icon is hidden, so the user
+            // gets the menu bar icon OR the Dock icon, never both.
+            #[cfg(target_os = "macos")]
+            if let Err(error) = apply_tray_visibility(app.handle(), hide_dock_icon) {
+                log::warn!("Failed to set initial tray visibility: {}", error);
+            }
+
             app.handle()
                 .plugin(tauri_plugin_updater::Builder::new().build())?;
 
@@ -621,9 +783,15 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|_, event| match event {
+        .run(|_app_handle, event| match event {
             tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit => {
                 local_http_api::flush_cache();
+            }
+            // In Dock-only mode there is no tray icon to click, so clicking the
+            // Dock icon (which triggers Reopen) is how the user opens the panel.
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Reopen { .. } => {
+                panel::show_panel_dock(_app_handle);
             }
             _ => {}
         });

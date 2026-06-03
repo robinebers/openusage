@@ -1,7 +1,41 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use tauri::{AppHandle, Manager, Position, Size};
 use tauri_nspanel::{
     CollectionBehavior, ManagerExt, PanelLevel, StyleMask, WebviewWindowExt, tauri_panel,
 };
+
+/// True while the app runs as a Dock-only window (no tray icon). In this mode
+/// the panel behaves like a normal window: it does not auto-hide on blur and is
+/// centered instead of anchored under the (absent) tray icon.
+static DOCK_MODE: AtomicBool = AtomicBool::new(false);
+
+/// When in Dock mode, keep the window floating above other windows.
+static ALWAYS_ON_TOP: AtomicBool = AtomicBool::new(false);
+
+/// Tracks whether the Dock-only window has been positioned at least once this
+/// session. We center it once per launch (the first time it shows), then leave
+/// it wherever the user dragged it. Leaving Dock mode resets this.
+static DOCK_POSITIONED: AtomicBool = AtomicBool::new(false);
+
+pub fn set_dock_mode(enabled: bool) {
+    DOCK_MODE.store(enabled, Ordering::SeqCst);
+    if !enabled {
+        DOCK_POSITIONED.store(false, Ordering::SeqCst);
+    }
+}
+
+pub fn set_always_on_top(enabled: bool) {
+    ALWAYS_ON_TOP.store(enabled, Ordering::SeqCst);
+}
+
+fn is_dock_mode() -> bool {
+    DOCK_MODE.load(Ordering::SeqCst)
+}
+
+fn is_dock_positioned() -> bool {
+    DOCK_POSITIONED.load(Ordering::SeqCst)
+}
 
 fn monitor_contains_physical_point(
     origin_x: f64,
@@ -116,6 +150,72 @@ pub fn show_panel(app_handle: &AppHandle) {
     }
 }
 
+/// Show the panel in Dock-only mode, where there is no tray icon to anchor to.
+/// It is centered the first time it shows each launch, then left wherever the
+/// user dragged it for the rest of the session.
+pub fn show_panel_dock(app_handle: &AppHandle) {
+    if let Some(panel) = get_or_init_panel!(app_handle) {
+        panel.show_and_make_key();
+        apply_panel_presentation(app_handle);
+        if !is_dock_positioned() {
+            position_panel_centered(app_handle);
+        }
+    }
+}
+
+/// Set the panel window level for the current mode. Menu-bar mode floats above
+/// everything as a dropdown. Dock mode uses a normal window level, unless
+/// "always on top" is enabled, in which case it floats above other windows.
+pub fn apply_panel_presentation(app_handle: &AppHandle) {
+    let Ok(panel) = app_handle.get_webview_panel("main") else {
+        return;
+    };
+    let level = if is_dock_mode() {
+        if ALWAYS_ON_TOP.load(Ordering::SeqCst) {
+            PanelLevel::Floating.value()
+        } else {
+            PanelLevel::Normal.value()
+        }
+    } else {
+        PanelLevel::MainMenu.value() + 1
+    };
+    panel.set_level(level);
+}
+
+/// Center the window on the primary monitor. Dock mode places the window here
+/// on launch (and when first switching to Dock mode); the user can drag it
+/// afterwards. Marks the window as positioned for the session.
+pub fn position_panel_centered(app_handle: &AppHandle) {
+    let Some(window) = app_handle.get_webview_window("main") else {
+        return;
+    };
+
+    let monitor = match window.primary_monitor() {
+        Ok(Some(monitor)) => monitor,
+        _ => return,
+    };
+
+    let scale = monitor.scale_factor();
+    let mon_logical_x = monitor.position().x as f64 / scale;
+    let mon_logical_y = monitor.position().y as f64 / scale;
+    let mon_logical_w = monitor.size().width as f64 / scale;
+    let mon_logical_h = monitor.size().height as f64 / scale;
+
+    let (panel_w, panel_h) = match (window.outer_size(), window.scale_factor()) {
+        (Ok(size), Ok(win_scale)) => (
+            size.width as f64 / win_scale,
+            size.height as f64 / win_scale,
+        ),
+        _ => (400.0, 500.0),
+    };
+
+    let panel_x = mon_logical_x + (mon_logical_w - panel_w) / 2.0;
+    let panel_y = mon_logical_y + (mon_logical_h - panel_h) / 2.0;
+
+    set_panel_top_left_immediately(&window, app_handle, panel_x, panel_y, mon_logical_h);
+    DOCK_POSITIONED.store(true, Ordering::SeqCst);
+}
+
 /// Toggle panel visibility. If visible, hide it. If hidden, show it.
 /// Used by global shortcut handler.
 pub fn toggle_panel(app_handle: &AppHandle) {
@@ -178,6 +278,11 @@ pub fn init(app_handle: &tauri::AppHandle) -> tauri::Result<()> {
 
     let handle = app_handle.clone();
     event_handler.window_did_resign_key(move |_notification| {
+        // In Dock-only mode the panel is a normal, persistent window, so it
+        // must stay open when it loses focus instead of auto-hiding.
+        if is_dock_mode() {
+            return;
+        }
         if let Ok(panel) = handle.get_webview_panel("main") {
             panel.hide();
         }

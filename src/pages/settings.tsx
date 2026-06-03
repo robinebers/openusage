@@ -47,6 +47,13 @@ interface PluginConfig {
 
 const TRAY_PREVIEW_SIZE_PX = getTrayIconSizePx(1);
 
+// App position is stored as `hideDockIcon`: Tray (menu bar only) hides the Dock
+// icon; Dock shows the Dock icon and hides the tray icon.
+const APP_POSITION_OPTIONS: { label: string; hideDockIcon: boolean }[] = [
+  { label: "Tray", hideDockIcon: true },
+  { label: "Dock", hideDockIcon: false },
+];
+
 const PREVIEW_BAR_TRACK_PX = 20;
 
 function getPreviewBarLayout(fraction: number): { fillPercent: number; remainderPercent: number } {
@@ -280,6 +287,10 @@ interface SettingsPageProps {
   onGlobalShortcutChange: (value: GlobalShortcut) => void;
   startOnLogin: boolean;
   onStartOnLoginChange: (value: boolean) => void;
+  hideDockIcon: boolean;
+  onHideDockIconChange: (value: boolean) => void;
+  alwaysOnTop: boolean;
+  onAlwaysOnTopChange: (value: boolean) => void;
 }
 
 export function SettingsPage({
@@ -303,6 +314,10 @@ export function SettingsPage({
   onGlobalShortcutChange,
   startOnLogin,
   onStartOnLoginChange,
+  hideDockIcon,
+  onHideDockIconChange,
+  alwaysOnTop,
+  onAlwaysOnTopChange,
 }: SettingsPageProps) {
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -529,6 +544,43 @@ export function SettingsPage({
           />
           Start on login
         </label>
+      </section>
+      <section>
+        <h3 className="text-lg font-semibold mb-0">App Position</h3>
+        <p className="text-sm text-muted-foreground mb-2">
+          Where should OpenUsage live?
+        </p>
+        <div className="bg-muted/50 rounded-lg p-1">
+          <div className="flex gap-1" role="radiogroup" aria-label="App position">
+            {APP_POSITION_OPTIONS.map((option) => {
+              const isActive = option.hideDockIcon === hideDockIcon;
+              return (
+                <Button
+                  key={option.label}
+                  type="button"
+                  role="radio"
+                  aria-checked={isActive}
+                  variant={isActive ? "default" : "outline"}
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => onHideDockIconChange(option.hideDockIcon)}
+                >
+                  {option.label}
+                </Button>
+              );
+            })}
+          </div>
+        </div>
+        {!hideDockIcon && (
+          <label className="flex items-center gap-2 text-sm select-none text-foreground mt-2">
+            <Checkbox
+              key={`always-on-top-${alwaysOnTop}`}
+              checked={alwaysOnTop}
+              onCheckedChange={(checked) => onAlwaysOnTopChange(checked === true)}
+            />
+            Always keep on top
+          </label>
+        )}
       </section>
       <section>
         <h3 className="text-lg font-semibold mb-0">Plugins</h3>

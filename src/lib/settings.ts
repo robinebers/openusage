@@ -36,6 +36,8 @@ const LEGACY_TRAY_ICON_STYLE_KEY = "trayIconStyle";
 const LEGACY_TRAY_SHOW_PERCENTAGE_KEY = "trayShowPercentage";
 const GLOBAL_SHORTCUT_KEY = "globalShortcut";
 const START_ON_LOGIN_KEY = "startOnLogin";
+const HIDE_DOCK_ICON_KEY = "hideDockIcon";
+const ALWAYS_ON_TOP_KEY = "alwaysOnTop";
 
 export const DEFAULT_AUTO_UPDATE_INTERVAL: AutoUpdateIntervalMinutes = 15;
 export const DEFAULT_THEME_MODE: ThemeMode = "system";
@@ -45,6 +47,11 @@ export const DEFAULT_TIME_FORMAT_MODE: TimeFormatMode = "auto";
 export const DEFAULT_MENUBAR_ICON_STYLE: MenubarIconStyle = "provider";
 export const DEFAULT_GLOBAL_SHORTCUT: GlobalShortcut = null;
 export const DEFAULT_START_ON_LOGIN = false;
+// Defaults to true because OpenUsage has always run as a menu bar-only app
+// (the native startup applied the accessory activation policy unconditionally).
+export const DEFAULT_HIDE_DOCK_ICON = true;
+// Only applies in Dock mode; defaults to off so the window behaves normally.
+export const DEFAULT_ALWAYS_ON_TOP = false;
 
 const AUTO_UPDATE_INTERVALS: AutoUpdateIntervalMinutes[] = [5, 15, 30, 60];
 const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
@@ -330,5 +337,27 @@ export async function loadStartOnLogin(): Promise<boolean> {
 
 export async function saveStartOnLogin(value: boolean): Promise<void> {
   await store.set(START_ON_LOGIN_KEY, value);
+  await store.save();
+}
+
+export async function loadHideDockIcon(): Promise<boolean> {
+  const stored = await store.get<unknown>(HIDE_DOCK_ICON_KEY);
+  if (typeof stored === "boolean") return stored;
+  return DEFAULT_HIDE_DOCK_ICON;
+}
+
+export async function saveHideDockIcon(value: boolean): Promise<void> {
+  await store.set(HIDE_DOCK_ICON_KEY, value);
+  await store.save();
+}
+
+export async function loadAlwaysOnTop(): Promise<boolean> {
+  const stored = await store.get<unknown>(ALWAYS_ON_TOP_KEY);
+  if (typeof stored === "boolean") return stored;
+  return DEFAULT_ALWAYS_ON_TOP;
+}
+
+export async function saveAlwaysOnTop(value: boolean): Promise<void> {
+  await store.set(ALWAYS_ON_TOP_KEY, value);
   await store.save();
 }

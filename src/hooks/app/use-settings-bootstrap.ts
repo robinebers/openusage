@@ -8,18 +8,22 @@ import {
 import type { PluginMeta } from "@/lib/plugin-types"
 import {
   arePluginSettingsEqual,
+  DEFAULT_ALWAYS_ON_TOP,
   DEFAULT_AUTO_UPDATE_INTERVAL,
   DEFAULT_DISPLAY_MODE,
   DEFAULT_GLOBAL_SHORTCUT,
+  DEFAULT_HIDE_DOCK_ICON,
   DEFAULT_MENUBAR_ICON_STYLE,
   DEFAULT_RESET_TIMER_DISPLAY_MODE,
   DEFAULT_START_ON_LOGIN,
   DEFAULT_THEME_MODE,
   DEFAULT_TIME_FORMAT_MODE,
   getEnabledPluginIds,
+  loadAlwaysOnTop,
   loadAutoUpdateInterval,
   loadDisplayMode,
   loadGlobalShortcut,
+  loadHideDockIcon,
   loadMenubarIconStyle,
   migrateLegacyTraySettings,
   loadPluginSettings,
@@ -49,6 +53,8 @@ type UseSettingsBootstrapArgs = {
   setTimeFormatMode: (value: TimeFormatMode) => void
   setGlobalShortcut: (value: GlobalShortcut) => void
   setStartOnLogin: (value: boolean) => void
+  setHideDockIcon: (value: boolean) => void
+  setAlwaysOnTop: (value: boolean) => void
   setMenubarIconStyle: (value: MenubarIconStyle) => void
   setLoadingForPlugins: (ids: string[]) => void
   setErrorForPlugins: (ids: string[], error: string) => void
@@ -65,6 +71,8 @@ export function useSettingsBootstrap({
   setTimeFormatMode,
   setGlobalShortcut,
   setStartOnLogin,
+  setHideDockIcon,
+  setAlwaysOnTop,
   setMenubarIconStyle,
   setLoadingForPlugins,
   setErrorForPlugins,
@@ -147,6 +155,25 @@ export function useSettingsBootstrap({
           console.error("Failed to load start on login:", error)
         }
 
+        // The native startup path already reads this value and applies the
+        // activation policy, so here we only load it to reflect the current
+        // state in the settings UI.
+        let storedHideDockIcon = DEFAULT_HIDE_DOCK_ICON
+        try {
+          storedHideDockIcon = await loadHideDockIcon()
+        } catch (error) {
+          console.error("Failed to load hide dock icon setting:", error)
+        }
+
+        // Native startup already reads this to set the panel level; loaded here
+        // only to reflect the current state in the settings UI.
+        let storedAlwaysOnTop = DEFAULT_ALWAYS_ON_TOP
+        try {
+          storedAlwaysOnTop = await loadAlwaysOnTop()
+        } catch (error) {
+          console.error("Failed to load always on top setting:", error)
+        }
+
         try {
           await applyStartOnLogin(storedStartOnLogin)
         } catch (error) {
@@ -174,6 +201,8 @@ export function useSettingsBootstrap({
           setTimeFormatMode(storedTimeFormatMode)
           setGlobalShortcut(storedGlobalShortcut)
           setStartOnLogin(storedStartOnLogin)
+          setHideDockIcon(storedHideDockIcon)
+          setAlwaysOnTop(storedAlwaysOnTop)
           setMenubarIconStyle(storedMenubarIconStyle)
 
           const enabledIds = getEnabledPluginIds(normalized)
@@ -204,6 +233,8 @@ export function useSettingsBootstrap({
     setErrorForPlugins,
     setGlobalShortcut,
     setLoadingForPlugins,
+    setHideDockIcon,
+    setAlwaysOnTop,
     setMenubarIconStyle,
     migrateLegacyTraySettings,
     setPluginSettings,

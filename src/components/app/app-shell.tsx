@@ -7,9 +7,12 @@ import type { SettingsPluginState } from "@/hooks/app/use-settings-plugin-list"
 import { useAppVersion } from "@/hooks/app/use-app-version"
 import { usePanel } from "@/hooks/app/use-panel"
 import { useAppUpdate } from "@/hooks/use-app-update"
+import { useAppPreferencesStore } from "@/stores/app-preferences-store"
 import { useAppUiStore } from "@/stores/app-ui-store"
 
 const ARROW_OVERHEAD_PX = 37
+// Dock mode has no tray arrow; only the container's vertical padding eats height.
+const DOCK_OVERHEAD_PX = 30
 
 type AppShellProps = {
   onRefreshAll: () => void
@@ -66,16 +69,19 @@ export function AppShell({
   const appVersion = useAppVersion()
   const { updateStatus, triggerInstall, checkForUpdates } = useAppUpdate()
 
+  const dockMode = useAppPreferencesStore((state) => !state.hideDockIcon)
+  const topOverhead = dockMode ? DOCK_OVERHEAD_PX : ARROW_OVERHEAD_PX
+
   return (
     <div
       ref={containerRef}
       tabIndex={-1}
       className="flex flex-col items-center p-6 pt-1.5 bg-transparent outline-none"
     >
-      <div className="tray-arrow" />
+      {!dockMode && <div className="tray-arrow" />}
       <div
         className="relative bg-card rounded-xl overflow-hidden select-none w-full border shadow-lg flex flex-col"
-        style={maxPanelHeightPx ? { maxHeight: `${maxPanelHeightPx - ARROW_OVERHEAD_PX}px` } : undefined}
+        style={maxPanelHeightPx ? { maxHeight: `${maxPanelHeightPx - topOverhead}px` } : undefined}
       >
         <div className="flex flex-1 min-h-0 flex-row">
           <SideNav
@@ -85,6 +91,7 @@ export function AppShell({
             onPluginContextAction={onPluginContextAction}
             isPluginRefreshAvailable={isPluginRefreshAvailable}
             onReorder={onNavReorder}
+            draggable={dockMode}
           />
           <div className="flex-1 flex flex-col px-3 pt-2 pb-1.5 min-w-0 bg-card dark:bg-muted/50">
             <div className="relative flex-1 min-h-0">

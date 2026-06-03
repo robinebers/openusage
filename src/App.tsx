@@ -58,6 +58,8 @@ function App() {
     setTimeFormatMode,
     setGlobalShortcut,
     setStartOnLogin,
+    setHideDockIcon,
+    setAlwaysOnTop,
   } = useAppPreferencesStore(
     useShallow((state) => ({
       autoUpdateInterval: state.autoUpdateInterval,
@@ -73,6 +75,8 @@ function App() {
       setTimeFormatMode: state.setTimeFormatMode,
       setGlobalShortcut: state.setGlobalShortcut,
       setStartOnLogin: state.setStartOnLogin,
+      setHideDockIcon: state.setHideDockIcon,
+      setAlwaysOnTop: state.setAlwaysOnTop,
     }))
   )
 
@@ -122,6 +126,8 @@ function App() {
     setTimeFormatMode,
     setGlobalShortcut,
     setStartOnLogin,
+    setHideDockIcon,
+    setAlwaysOnTop,
     setLoadingForPlugins,
     setErrorForPlugins,
     startBatch,
@@ -150,12 +156,16 @@ function App() {
     handleAutoUpdateIntervalChange,
     handleGlobalShortcutChange,
     handleStartOnLoginChange,
+    handleHideDockIconChange,
+    handleAlwaysOnTopChange,
   } = useSettingsSystemActions({
     pluginSettings,
     setAutoUpdateInterval,
     setAutoUpdateNextAt,
     setGlobalShortcut,
     setStartOnLogin,
+    setHideDockIcon,
+    setAlwaysOnTop,
     applyStartOnLogin,
   })
 
@@ -254,6 +264,8 @@ function App() {
         traySettingsPreview,
         onGlobalShortcutChange: handleGlobalShortcutChange,
         onStartOnLoginChange: handleStartOnLoginChange,
+        onHideDockIconChange: handleHideDockIconChange,
+        onAlwaysOnTopChange: handleAlwaysOnTopChange,
       }}
     />
   )

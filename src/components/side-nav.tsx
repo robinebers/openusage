@@ -48,6 +48,8 @@ interface SideNavProps {
   onPluginContextAction?: (pluginId: string, action: PluginContextAction) => void
   isPluginRefreshAvailable?: (pluginId: string) => boolean
   onReorder?: (orderedIds: string[]) => void
+  /** In Dock-only mode the sidebar doubles as the window drag handle. */
+  draggable?: boolean
 }
 
 interface NavButtonProps {
@@ -66,7 +68,7 @@ function NavButton({ isActive, onClick, onContextMenu, children, "aria-label": a
       onContextMenu={onContextMenu}
       aria-label={ariaLabel}
       className={cn(
-        "relative flex items-center justify-center w-full p-2.5 transition-colors",
+        "relative flex items-center justify-center w-full p-2.5 transition-colors cursor-pointer",
         "hover:bg-accent",
         isActive
           ? "text-foreground before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-0.5 before:bg-primary dark:before:bg-page-accent before:rounded-full"
@@ -146,6 +148,7 @@ export function SideNav({
   onPluginContextAction,
   isPluginRefreshAvailable,
   onReorder,
+  draggable = false,
 }: SideNavProps) {
   const isDark = useDarkMode()
 
@@ -215,7 +218,13 @@ export function SideNav({
   )
 
   return (
-    <nav className="flex flex-col w-12 border-r bg-muted/50 dark:bg-card py-3">
+    <nav
+      data-tauri-drag-region={draggable ? "deep" : undefined}
+      className={cn(
+        "flex flex-col w-12 border-r bg-muted/50 dark:bg-card py-3",
+        draggable && "cursor-grab active:cursor-grabbing"
+      )}
+    >
       {/* Home */}
       <NavButton
         isActive={activeView === "home"}

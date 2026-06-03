@@ -9,9 +9,11 @@ const {
   invokeMock,
   isAutostartEnabledMock,
   isTauriMock,
+  loadAlwaysOnTopMock,
   loadAutoUpdateIntervalMock,
   loadDisplayModeMock,
   loadGlobalShortcutMock,
+  loadHideDockIconMock,
   loadMenubarIconStyleMock,
   loadPluginSettingsMock,
   loadResetTimerDisplayModeMock,
@@ -29,9 +31,11 @@ const {
   disableAutostartMock: vi.fn(),
   arePluginSettingsEqualMock: vi.fn(),
   getEnabledPluginIdsMock: vi.fn(),
+  loadAlwaysOnTopMock: vi.fn(),
   loadAutoUpdateIntervalMock: vi.fn(),
   loadDisplayModeMock: vi.fn(),
   loadGlobalShortcutMock: vi.fn(),
+  loadHideDockIconMock: vi.fn(),
   loadMenubarIconStyleMock: vi.fn(),
   loadPluginSettingsMock: vi.fn(),
   loadResetTimerDisplayModeMock: vi.fn(),
@@ -56,18 +60,22 @@ vi.mock("@tauri-apps/plugin-autostart", () => ({
 
 vi.mock("@/lib/settings", () => ({
   arePluginSettingsEqual: arePluginSettingsEqualMock,
+  DEFAULT_ALWAYS_ON_TOP: false,
   DEFAULT_AUTO_UPDATE_INTERVAL: 15,
   DEFAULT_DISPLAY_MODE: "left",
   DEFAULT_GLOBAL_SHORTCUT: null,
+  DEFAULT_HIDE_DOCK_ICON: true,
   DEFAULT_MENUBAR_ICON_STYLE: "provider",
   DEFAULT_RESET_TIMER_DISPLAY_MODE: "relative",
   DEFAULT_START_ON_LOGIN: false,
   DEFAULT_THEME_MODE: "system",
   DEFAULT_TIME_FORMAT_MODE: "auto",
   getEnabledPluginIds: getEnabledPluginIdsMock,
+  loadAlwaysOnTop: loadAlwaysOnTopMock,
   loadAutoUpdateInterval: loadAutoUpdateIntervalMock,
   loadDisplayMode: loadDisplayModeMock,
   loadGlobalShortcut: loadGlobalShortcutMock,
+  loadHideDockIcon: loadHideDockIconMock,
   loadMenubarIconStyle: loadMenubarIconStyleMock,
   loadPluginSettings: loadPluginSettingsMock,
   loadResetTimerDisplayMode: loadResetTimerDisplayModeMock,
@@ -92,6 +100,8 @@ function createArgs() {
     setTimeFormatMode: vi.fn(),
     setGlobalShortcut: vi.fn(),
     setStartOnLogin: vi.fn(),
+    setHideDockIcon: vi.fn(),
+    setAlwaysOnTop: vi.fn(),
     setMenubarIconStyle: vi.fn(),
     setLoadingForPlugins: vi.fn(),
     setErrorForPlugins: vi.fn(),
@@ -108,9 +118,11 @@ describe("useSettingsBootstrap", () => {
     disableAutostartMock.mockReset()
     arePluginSettingsEqualMock.mockReset()
     getEnabledPluginIdsMock.mockReset()
+    loadAlwaysOnTopMock.mockReset()
     loadAutoUpdateIntervalMock.mockReset()
     loadDisplayModeMock.mockReset()
     loadGlobalShortcutMock.mockReset()
+    loadHideDockIconMock.mockReset()
     loadMenubarIconStyleMock.mockReset()
     loadPluginSettingsMock.mockReset()
     loadResetTimerDisplayModeMock.mockReset()
@@ -142,6 +154,8 @@ describe("useSettingsBootstrap", () => {
     loadResetTimerDisplayModeMock.mockResolvedValue("relative")
     loadTimeFormatModeMock.mockResolvedValue("auto")
     loadGlobalShortcutMock.mockResolvedValue("CommandOrControl+Shift+O")
+    loadHideDockIconMock.mockResolvedValue(true)
+    loadAlwaysOnTopMock.mockResolvedValue(false)
     loadMenubarIconStyleMock.mockResolvedValue("provider")
     loadStartOnLoginMock.mockResolvedValue(true)
     migrateLegacyTraySettingsMock.mockResolvedValue(undefined)

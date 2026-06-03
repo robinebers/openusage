@@ -37,6 +37,8 @@ export type AppContentActionProps = {
   traySettingsPreview: TraySettingsPreview
   onGlobalShortcutChange: (value: GlobalShortcut) => void
   onStartOnLoginChange: (value: boolean) => void
+  onHideDockIconChange: (value: boolean) => void
+  onAlwaysOnTopChange: (value: boolean) => void
 }
 
 export type AppContentProps = AppContentDerivedProps & AppContentActionProps
@@ -58,6 +60,8 @@ export function AppContent({
   traySettingsPreview,
   onGlobalShortcutChange,
   onStartOnLoginChange,
+  onHideDockIconChange,
+  onAlwaysOnTopChange,
 }: AppContentProps) {
   const { activeView } = useAppUiStore(
     useShallow((state) => ({
@@ -74,6 +78,8 @@ export function AppContent({
     globalShortcut,
     themeMode,
     startOnLogin,
+    hideDockIcon,
+    alwaysOnTop,
   } = useAppPreferencesStore(
     useShallow((state) => ({
       displayMode: state.displayMode,
@@ -84,6 +90,8 @@ export function AppContent({
       globalShortcut: state.globalShortcut,
       themeMode: state.themeMode,
       startOnLogin: state.startOnLogin,
+      hideDockIcon: state.hideDockIcon,
+      alwaysOnTop: state.alwaysOnTop,
     }))
   )
 
@@ -123,6 +131,10 @@ export function AppContent({
         onGlobalShortcutChange={onGlobalShortcutChange}
         startOnLogin={startOnLogin}
         onStartOnLoginChange={onStartOnLoginChange}
+        hideDockIcon={hideDockIcon}
+        onHideDockIconChange={onHideDockIconChange}
+        alwaysOnTop={alwaysOnTop}
+        onAlwaysOnTopChange={onAlwaysOnTopChange}
       />
     )
   }
