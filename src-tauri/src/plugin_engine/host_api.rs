@@ -4,7 +4,7 @@ use aes_gcm::{
     aes::Aes256,
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
-use rquickjs::{Ctx, Exception, Function, Object};
+use rquickjs::{function::Rest, Ctx, Exception, Function, Object};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::ffi::{OsStr, OsString};
@@ -2469,7 +2469,7 @@ fn inject_keychain<'js>(
             ctx.clone(),
             move |ctx_inner: Ctx<'_>,
                   service: String,
-                  account: Option<String>|
+                  account_args: Rest<Option<String>>|
                   -> rquickjs::Result<String> {
                 if !cfg!(target_os = "macos") {
                     return Err(Exception::throw_message(
@@ -2477,14 +2477,19 @@ fn inject_keychain<'js>(
                         "keychain API is only supported on macOS",
                     ));
                 }
-                let account = account.and_then(|value| {
-                    let trimmed = value.trim();
-                    if trimmed.is_empty() {
-                        None
-                    } else {
-                        Some(trimmed.to_string())
-                    }
-                });
+                let account = account_args
+                    .0
+                    .into_iter()
+                    .next()
+                    .flatten()
+                    .and_then(|value| {
+                        let trimmed = value.trim();
+                        if trimmed.is_empty() {
+                            None
+                        } else {
+                            Some(trimmed.to_string())
+                        }
+                    });
                 let redacted_account = account.as_ref().map(|value| redact_value(value));
                 if let Some(ref redacted) = redacted_account {
                     log::info!(
@@ -3122,6 +3127,35 @@ mod tests {
             let _write_current_user: Function = keychain
                 .get("writeGenericPasswordForCurrentUser")
                 .expect("writeGenericPasswordForCurrentUser");
+        });
+    }
+
+    #[test]
+    fn keychain_read_generic_password_accepts_optional_account_arg_from_js() {
+        let rt = Runtime::new().expect("runtime");
+        let ctx = Context::full(&rt).expect("context");
+        ctx.with(|ctx| {
+            let app_data = std::env::temp_dir();
+            inject_host_api(&ctx, "test", &app_data, "0.0.0").expect("inject host api");
+
+            let message: String = ctx
+                .eval(
+                    r#"
+                    try {
+                        __openusage_ctx.host.keychain.readGenericPassword("__openusage_missing_service__");
+                        "ok";
+                    } catch (e) {
+                        String(e);
+                    }
+                    "#,
+                )
+                .expect("js eval");
+
+            assert!(
+                !message.contains("2 where expected"),
+                "single-arg call should reach the keychain implementation, got: {}",
+                message
+            );
         });
     }
 
