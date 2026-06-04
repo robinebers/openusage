@@ -101,4 +101,34 @@ describe("ProviderDetailPage", () => {
     expect(screen.getByRole("button", { name: /ai usage/i })).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /status/i })).toBeNull()
   })
+
+  it("uses an empty runtime quick links array instead of falling back to plugin meta", () => {
+    render(
+      <ProviderDetailPage
+        displayMode="used"
+        resetTimerDisplayMode="relative"
+        plugin={{
+          meta: {
+            id: "a",
+            name: "Alpha",
+            iconUrl: "",
+            lines: [],
+            links: [{ label: "Status", url: "https://status.example.com" }],
+          },
+          data: {
+            providerId: "a",
+            displayName: "Alpha",
+            iconUrl: "",
+            lines: [],
+            links: [],
+          },
+          loading: false,
+          error: null,
+          lastManualRefreshAt: null,
+          lastUpdatedAt: null,
+        }}
+      />
+    )
+    expect(screen.queryByRole("button", { name: /status/i })).toBeNull()
+  })
 })
