@@ -85,7 +85,8 @@ Validation rules:
 
 Plugins can also return `links` from `probe(ctx)` when a quick link depends on the
 signed-in account or API response. Runtime links use the same shape and override
-manifest links on the detail page.
+manifest links on the detail page. Omit `links` to keep manifest links; return
+`links: []` to intentionally show no quick links.
 
 ## Output Shape Declaration
 

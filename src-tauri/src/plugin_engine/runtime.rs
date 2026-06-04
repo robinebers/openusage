@@ -67,7 +67,8 @@ pub struct PluginOutput {
     pub plan: Option<String>,
     pub lines: Vec<MetricLine>,
     pub icon_url: String,
-    pub links: Vec<PluginOutputLink>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub links: Option<Vec<PluginOutputLink>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -250,10 +251,10 @@ fn run_probe_with_timeout(
 
 const MAX_OUTPUT_LINKS: usize = 8;
 
-fn parse_links(result: &Object) -> Vec<PluginOutputLink> {
+fn parse_links(result: &Object) -> Option<Vec<PluginOutputLink>> {
     let links: Array = match result.get("links") {
         Ok(links) => links,
-        Err(_) => return Vec::new(),
+        Err(_) => return None,
     };
 
     let len = links.len().min(MAX_OUTPUT_LINKS);
@@ -288,7 +289,7 @@ fn parse_links(result: &Object) -> Vec<PluginOutputLink> {
 
         out.push(PluginOutputLink { label, url });
     }
-    out
+    Some(out)
 }
 
 fn parse_lines(result: &Object) -> Result<Vec<MetricLine>, String> {
@@ -738,7 +739,7 @@ fn error_output(plugin: &LoadedPlugin, message: String) -> PluginOutput {
         plan: None,
         lines: vec![error_line(message)],
         icon_url: plugin.icon_data_url.clone(),
-        links: vec![],
+        links: None,
     }
 }
 
@@ -938,12 +939,54 @@ mod tests {
         );
 
         let output = run_probe(&plugin, &temp_app_dir("links"), "0.0.0");
-        assert_eq!(output.links.len(), 1);
-        assert_eq!(output.links[0].label, "AI Usage");
+        let links = output.links.expect("runtime links");
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0].label, "AI Usage");
         assert_eq!(
-            output.links[0].url,
+            links[0].url,
             "https://dashboard.zed.dev/test-organization/billing/usage"
         );
+    }
+
+    #[test]
+    fn run_probe_omits_runtime_links_when_probe_omits_field() {
+        let plugin = test_plugin(
+            r#"
+            globalThis.__openusage_plugin = {
+                probe(ctx) {
+                    return {
+                        lines: [ctx.line.text({ label: "Usage", value: "ok" })]
+                    };
+                }
+            };
+            "#,
+        );
+
+        let output = run_probe(&plugin, &temp_app_dir("links-omitted"), "0.0.0");
+        assert!(output.links.is_none());
+        let json: JsonValue = serde_json::to_value(&output).expect("serialize");
+        assert!(json.get("links").is_none());
+    }
+
+    #[test]
+    fn run_probe_preserves_empty_runtime_links_array() {
+        let plugin = test_plugin(
+            r#"
+            globalThis.__openusage_plugin = {
+                probe(ctx) {
+                    return {
+                        lines: [ctx.line.text({ label: "Usage", value: "ok" })],
+                        links: []
+                    };
+                }
+            };
+            "#,
+        );
+
+        let output = run_probe(&plugin, &temp_app_dir("links-empty"), "0.0.0");
+        let json: JsonValue = serde_json::to_value(&output).expect("serialize");
+        assert!(output.links.expect("explicit runtime links").is_empty());
+        assert!(json["links"].as_array().expect("serialized links").is_empty());
     }
 
     #[test]
