@@ -231,15 +231,19 @@ const resp = ctx.host.http.request({
 
 ```typescript
 host.keychain.readGenericPassword(service: string, account?: string): string
+host.keychain.readInternetPassword(server: string, account?: string): { account: string; password: string }
 ```
 
-Reads a generic password from the macOS Keychain. Pass `account` when the service stores multiple accounts and the plugin must avoid a service-wide match.
+Reads passwords from the macOS Keychain. Pass `account` when the service/server stores multiple accounts and the plugin must avoid a broad match.
+
+`readInternetPassword` reads an Internet Password item by server, such as credentials stored for `https://zed.dev`. It returns both the resolved account and password because some apps use the account as part of the API authorization header.
 
 ### Behavior
 
 - **macOS only**: Throws on other platforms
 - **Throws if not found**: Returns the password string if found, throws otherwise
 - **Optional account scope**: When `account` is set, lookup uses both service and account
+- **Internet Password account**: When `account` is omitted for `readInternetPassword`, OpenUsage reads the matching keychain item's account attribute and returns it with the password
 
 ### Example
 
@@ -256,6 +260,15 @@ if (ctx.host.fs.exists("~/.myapp/credentials.json")) {
   } catch {
     throw "Login required. Sign in to continue."
   }
+}
+```
+
+```javascript
+try {
+  const item = ctx.host.keychain.readInternetPassword("https://zed.dev")
+  const authorization = item.account + " " + item.password
+} catch {
+  throw "Login required. Sign in to continue."
 }
 ```
 

@@ -68,4 +68,37 @@ describe("ProviderDetailPage", () => {
     )
     expect(screen.getByRole("button", { name: /status/i })).toBeInTheDocument()
   })
+
+  it("prefers runtime quick links when plugin data provides them", () => {
+    render(
+      <ProviderDetailPage
+        displayMode="used"
+        resetTimerDisplayMode="relative"
+        plugin={{
+          meta: {
+            id: "a",
+            name: "Alpha",
+            iconUrl: "",
+            lines: [],
+            links: [{ label: "Status", url: "https://status.example.com" }],
+          },
+          data: {
+            providerId: "a",
+            displayName: "Alpha",
+            iconUrl: "",
+            lines: [],
+            links: [
+              { label: "AI Usage", url: "https://dashboard.example.com/test-organization/billing/usage" },
+            ],
+          },
+          loading: false,
+          error: null,
+          lastManualRefreshAt: null,
+          lastUpdatedAt: null,
+        }}
+      />
+    )
+    expect(screen.getByRole("button", { name: /ai usage/i })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /status/i })).toBeNull()
+  })
 })

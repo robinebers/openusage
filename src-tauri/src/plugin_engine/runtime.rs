@@ -67,6 +67,14 @@ pub struct PluginOutput {
     pub plan: Option<String>,
     pub lines: Vec<MetricLine>,
     pub icon_url: String,
+    pub links: Vec<PluginOutputLink>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginOutputLink {
+    pub label: String,
+    pub url: String,
 }
 
 pub fn run_probe(plugin: &LoadedPlugin, app_data_dir: &PathBuf, app_version: &str) -> PluginOutput {
@@ -128,6 +136,12 @@ fn run_probe_with_timeout(
                 return error_output(plugin, timeout_message.clone());
             }
             return error_output(plugin, "http wrapper patch failed".to_string());
+        }
+        if host_api::patch_keychain_wrapper(&ctx).is_err() {
+            if deadline.has_elapsed() {
+                return error_output(plugin, timeout_message.clone());
+            }
+            return error_output(plugin, "keychain wrapper patch failed".to_string());
         }
         if host_api::patch_ls_wrapper(&ctx).is_err() {
             if deadline.has_elapsed() {
@@ -221,6 +235,7 @@ fn run_probe_with_timeout(
             Ok(_) => vec![error_line("no lines returned".to_string())],
             Err(msg) => vec![error_line(msg)],
         };
+        let links = parse_links(&result);
 
         PluginOutput {
             provider_id: plugin_id,
@@ -228,8 +243,52 @@ fn run_probe_with_timeout(
             plan,
             lines,
             icon_url,
+            links,
         }
     })
+}
+
+const MAX_OUTPUT_LINKS: usize = 8;
+
+fn parse_links(result: &Object) -> Vec<PluginOutputLink> {
+    let links: Array = match result.get("links") {
+        Ok(links) => links,
+        Err(_) => return Vec::new(),
+    };
+
+    let len = links.len().min(MAX_OUTPUT_LINKS);
+    let mut out = Vec::new();
+    for idx in 0..len {
+        let link: Object = match links.get(idx) {
+            Ok(link) => link,
+            Err(_) => {
+                log::warn!("invalid link at index {}, skipping", idx);
+                continue;
+            }
+        };
+        let label = link
+            .get::<_, String>("label")
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        let url = link
+            .get::<_, String>("url")
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+
+        if label.is_empty() || url.is_empty() {
+            log::warn!("link at index {} has empty label/url, skipping", idx);
+            continue;
+        }
+        if !(url.starts_with("https://") || url.starts_with("http://")) {
+            log::warn!("link '{}' has non-http(s) url '{}', skipping", label, url);
+            continue;
+        }
+
+        out.push(PluginOutputLink { label, url });
+    }
+    out
 }
 
 fn parse_lines(result: &Object) -> Result<Vec<MetricLine>, String> {
@@ -679,6 +738,7 @@ fn error_output(plugin: &LoadedPlugin, message: String) -> PluginOutput {
         plan: None,
         lines: vec![error_line(message)],
         icon_url: plugin.icon_data_url.clone(),
+        links: vec![],
     }
 }
 
@@ -857,6 +917,33 @@ mod tests {
         assert_eq!(json["label"], "Usage Trend");
         assert_eq!(json["points"][0]["valueLabel"], "42 tokens");
         assert_eq!(json["note"], "Estimated from local logs");
+    }
+
+    #[test]
+    fn run_probe_returns_runtime_links() {
+        let plugin = test_plugin(
+            r#"
+            globalThis.__openusage_plugin = {
+                probe(ctx) {
+                    return {
+                        lines: [ctx.line.text({ label: "Usage", value: "ok" })],
+                        links: [
+                            { label: " AI Usage ", url: " https://dashboard.zed.dev/test-organization/billing/usage " },
+                            { label: "Bad", url: "ftp://example.com" }
+                        ]
+                    };
+                }
+            };
+            "#,
+        );
+
+        let output = run_probe(&plugin, &temp_app_dir("links"), "0.0.0");
+        assert_eq!(output.links.len(), 1);
+        assert_eq!(output.links[0].label, "AI Usage");
+        assert_eq!(
+            output.links[0].url,
+            "https://dashboard.zed.dev/test-organization/billing/usage"
+        );
     }
 
     #[test]

@@ -14,7 +14,7 @@ For each enabled plugin:
   -> Inject host APIs (`ctx.host.*`)
   -> Evaluate plugin.js
   -> Call `probe(ctx)`
-  -> Parse returned `{ lines: MetricLine[] }`
+  -> Parse returned `{ lines: MetricLine[], links?: PluginLink[] }`
        |
 Return `PluginOutput[]` to frontend
        |
@@ -82,6 +82,10 @@ Validation rules:
 |---------|--------|----------|-------------|
 | `label` | string | Yes      | Link text shown in the provider detail quick-actions row |
 | `url`   | string | Yes      | External destination opened in the browser (`http/https` only) |
+
+Plugins can also return `links` from `probe(ctx)` when a quick link depends on the
+signed-in account or API response. Runtime links use the same shape and override
+manifest links on the detail page.
 
 ## Output Shape Declaration
 

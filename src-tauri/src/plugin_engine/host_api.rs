@@ -13,7 +13,7 @@ use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-const WHITELISTED_ENV_VARS: [&str; 16] = [
+const WHITELISTED_ENV_VARS: [&str; 18] = [
     "CODEX_HOME",
     "CLAUDE_CONFIG_DIR",
     "CLAUDE_CODE_OAUTH_TOKEN",
@@ -25,6 +25,8 @@ const WHITELISTED_ENV_VARS: [&str; 16] = [
     "CLAUDE_LOCAL_OAUTH_API_BASE",
     "ZAI_API_KEY",
     "GLM_API_KEY",
+    "ZED_USER_ID",
+    "ZED_ACCESS_TOKEN",
     "MINIMAX_API_KEY",
     "MINIMAX_API_TOKEN",
     "MINIMAX_CN_API_KEY",
@@ -175,6 +177,47 @@ fn keychain_find_generic_password_args_for_account(service: &str, account: &str)
         OsString::from(service),
         OsString::from("-w"),
     ]
+}
+
+fn keychain_find_internet_password_args(
+    server: &str,
+    account: Option<&str>,
+    password_only: bool,
+) -> Vec<OsString> {
+    let mut args = vec![OsString::from("find-internet-password")];
+    if let Some(account) = account {
+        args.push(OsString::from("-a"));
+        args.push(OsString::from(account));
+    }
+    args.push(OsString::from("-s"));
+    args.push(OsString::from(server));
+    if password_only {
+        args.push(OsString::from("-w"));
+    }
+    args
+}
+
+fn parse_keychain_account_from_text(text: &str) -> Option<String> {
+    const MARKER: &str = "\"acct\"<blob>=\"";
+    for line in text.lines() {
+        let Some(start) = line.find(MARKER) else {
+            continue;
+        };
+        let rest = &line[start + MARKER.len()..];
+        let Some(end) = rest.find('"') else {
+            continue;
+        };
+        let account = rest[..end].trim();
+        if !account.is_empty() {
+            return Some(account.to_string());
+        }
+    }
+    None
+}
+
+fn parse_keychain_account_from_output(stdout: &[u8], stderr: &[u8]) -> Option<String> {
+    parse_keychain_account_from_text(&String::from_utf8_lossy(stdout))
+        .or_else(|| parse_keychain_account_from_text(&String::from_utf8_lossy(stderr)))
 }
 
 fn keychain_add_generic_password_args(service: &str, value: &str) -> Vec<OsString> {
@@ -2555,6 +2598,125 @@ fn inject_keychain<'js>(
         )?,
     )?;
 
+    let pid_read_internet = plugin_id.to_string();
+    keychain_obj.set(
+        "_readInternetPasswordRaw",
+        Function::new(
+            ctx.clone(),
+            move |ctx_inner: Ctx<'_>,
+                  server: String,
+                  account: Option<String>|
+                  -> rquickjs::Result<String> {
+                if !cfg!(target_os = "macos") {
+                    return Err(Exception::throw_message(
+                        &ctx_inner,
+                        "keychain API is only supported on macOS",
+                    ));
+                }
+                let server = server.trim().to_string();
+                if server.is_empty() {
+                    return Err(Exception::throw_message(
+                        &ctx_inner,
+                        "keychain server must not be empty",
+                    ));
+                }
+                let account = account.and_then(|value| {
+                    let trimmed = value.trim();
+                    if trimmed.is_empty() {
+                        None
+                    } else {
+                        Some(trimmed.to_string())
+                    }
+                });
+                let redacted_account = account.as_ref().map(|value| redact_value(value));
+                if let Some(ref redacted) = redacted_account {
+                    log::info!(
+                        "[plugin:{}] keychain internet read: server={}, account={}",
+                        pid_read_internet,
+                        server,
+                        redacted
+                    );
+                } else {
+                    log::info!(
+                        "[plugin:{}] keychain internet read: server={}",
+                        pid_read_internet,
+                        server
+                    );
+                }
+
+                let resolved_account = if let Some(account) = account {
+                    account
+                } else {
+                    let attrs_args = keychain_find_internet_password_args(&server, None, false);
+                    let attrs_output = std::process::Command::new("security")
+                        .args(attrs_args)
+                        .output()
+                        .map_err(|e| {
+                            Exception::throw_message(
+                                &ctx_inner,
+                                &format!("keychain internet account lookup failed: {}", e),
+                            )
+                        })?;
+                    if !attrs_output.status.success() {
+                        let stderr = String::from_utf8_lossy(&attrs_output.stderr);
+                        let first_line = stderr.lines().next().unwrap_or("").trim();
+                        return Err(Exception::throw_message(
+                            &ctx_inner,
+                            &format!("keychain internet account not found: {}", first_line),
+                        ));
+                    }
+                    parse_keychain_account_from_output(&attrs_output.stdout, &attrs_output.stderr)
+                        .ok_or_else(|| {
+                            Exception::throw_message(
+                                &ctx_inner,
+                                "keychain internet account not found",
+                            )
+                        })?
+                };
+
+                let password_args =
+                    keychain_find_internet_password_args(&server, Some(&resolved_account), true);
+                let password_output = std::process::Command::new("security")
+                    .args(password_args)
+                    .output()
+                    .map_err(|e| {
+                        Exception::throw_message(
+                            &ctx_inner,
+                            &format!("keychain internet read failed: {}", e),
+                        )
+                    })?;
+
+                if !password_output.status.success() {
+                    let stderr = String::from_utf8_lossy(&password_output.stderr);
+                    let first_line = stderr.lines().next().unwrap_or("").trim();
+                    log::warn!(
+                        "[plugin:{}] keychain internet read miss: server={}, account={}, error={}",
+                        pid_read_internet,
+                        server,
+                        redact_value(&resolved_account),
+                        first_line
+                    );
+                    return Err(Exception::throw_message(
+                        &ctx_inner,
+                        &format!("keychain internet item not found: {}", first_line),
+                    ));
+                }
+
+                log::info!(
+                    "[plugin:{}] keychain internet read hit: server={}, account={}",
+                    pid_read_internet,
+                    server,
+                    redact_value(&resolved_account)
+                );
+                serde_json::to_string(&serde_json::json!({
+                    "account": resolved_account,
+                    "password": String::from_utf8_lossy(&password_output.stdout).trim().to_string(),
+                }))
+                .map_err(|e| Exception::throw_message(&ctx_inner, &e.to_string()))
+            },
+        )?,
+    )?;
+
     let pid_read_current_user = plugin_id.to_string();
     keychain_obj.set(
         "readGenericPasswordForCurrentUser",
@@ -2634,16 +2796,8 @@ fn inject_keychain<'js>(
 
                 if let Ok(output) = find_output {
                     if output.status.success() {
-                        let stdout = String::from_utf8_lossy(&output.stdout);
-                        for line in stdout.lines() {
-                            if let Some(start) = line.find("\"acct\"<blob>=\"") {
-                                let rest = &line[start + 14..];
-                                if let Some(end) = rest.find('"') {
-                                    account_arg = Some(rest[..end].to_string());
-                                    break;
-                                }
-                            }
-                        }
+                        account_arg =
+                            parse_keychain_account_from_output(&output.stdout, &output.stderr);
                     }
                 }
 
@@ -2748,6 +2902,25 @@ fn inject_keychain<'js>(
 
     host.set("keychain", keychain_obj)?;
     Ok(())
+}
+
+pub fn patch_keychain_wrapper(ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
+    ctx.eval::<(), _>(
+        r#"
+        (function() {
+            var keychain = __openusage_ctx.host.keychain;
+            var rawInternetFn = keychain._readInternetPasswordRaw;
+            keychain.readInternetPassword = function(server, account) {
+                var result = rawInternetFn(
+                    String(server || ""),
+                    account === undefined || account === null ? null : String(account)
+                );
+                return JSON.parse(result);
+            };
+        })();
+        "#
+        .as_bytes(),
+    )
 }
 
 fn inject_sqlite<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()> {
@@ -3106,6 +3279,7 @@ mod tests {
         ctx.with(|ctx| {
             let app_data = std::env::temp_dir();
             inject_host_api(&ctx, "test", &app_data, "0.0.0").expect("inject host api");
+            patch_keychain_wrapper(&ctx).expect("patch keychain wrapper");
             let globals = ctx.globals();
             let probe_ctx: Object = globals.get("__openusage_ctx").expect("probe ctx");
             let host: Object = probe_ctx.get("host").expect("host");
@@ -3113,6 +3287,9 @@ mod tests {
             let _read: Function = keychain
                 .get("readGenericPassword")
                 .expect("readGenericPassword");
+            let _read_internet: Function = keychain
+                .get("readInternetPassword")
+                .expect("readInternetPassword");
             let _read_current_user: Function = keychain
                 .get("readGenericPasswordForCurrentUser")
                 .expect("readGenericPasswordForCurrentUser");
@@ -3198,6 +3375,12 @@ mod tests {
             assert!(
                 WHITELISTED_ENV_VARS.contains(&name),
                 "{name} must be whitelisted for Claude auth compatibility"
+            );
+        }
+        for name in ["ZED_USER_ID", "ZED_ACCESS_TOKEN"] {
+            assert!(
+                WHITELISTED_ENV_VARS.contains(&name),
+                "{name} must be whitelisted for Zed auth compatibility"
             );
         }
 
@@ -3354,6 +3537,70 @@ mod tests {
                 "Claude Code-credentials",
                 "-w",
             ]
+        );
+    }
+
+    #[test]
+    fn keychain_find_internet_password_args_include_server_only_lookup() {
+        let args = keychain_find_internet_password_args("https://zed.dev", None, true);
+        let rendered: Vec<String> = args
+            .into_iter()
+            .map(|value| value.to_string_lossy().into_owned())
+            .collect();
+
+        assert_eq!(
+            rendered,
+            vec!["find-internet-password", "-s", "https://zed.dev", "-w"]
+        );
+    }
+
+    #[test]
+    fn keychain_find_internet_password_args_include_account_and_server() {
+        let args = keychain_find_internet_password_args("https://zed.dev", Some("123456"), true);
+        let rendered: Vec<String> = args
+            .into_iter()
+            .map(|value| value.to_string_lossy().into_owned())
+            .collect();
+
+        assert_eq!(
+            rendered,
+            vec![
+                "find-internet-password",
+                "-a",
+                "123456",
+                "-s",
+                "https://zed.dev",
+                "-w",
+            ]
+        );
+    }
+
+    #[test]
+    fn keychain_find_internet_password_args_can_request_attributes() {
+        let args = keychain_find_internet_password_args("https://zed.dev", None, false);
+        let rendered: Vec<String> = args
+            .into_iter()
+            .map(|value| value.to_string_lossy().into_owned())
+            .collect();
+
+        assert_eq!(
+            rendered,
+            vec!["find-internet-password", "-s", "https://zed.dev"]
+        );
+    }
+
+    #[test]
+    fn parse_keychain_account_from_output_reads_acct_attribute() {
+        let stderr = br#"keychain: "/Users/me/Library/Keychains/login.keychain-db"
+class: "inet"
+attributes:
+    "srvr"<blob>="https://zed.dev"
+    "acct"<blob>="8675309"
+"#;
+
+        assert_eq!(
+            parse_keychain_account_from_output(&[], stderr).as_deref(),
+            Some("8675309")
         );
     }
 

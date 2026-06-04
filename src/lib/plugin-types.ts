@@ -41,6 +41,7 @@ export type PluginOutput = {
   plan?: string
   lines: MetricLine[]
   iconUrl: string
+  links?: PluginLink[]
 }
 
 export type PluginMeta = {

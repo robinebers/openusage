@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "zed",
+  "name": "Zed AI",
+  "version": "0.0.1",
+  "entry": "plugin.js",
+  "icon": "icon.svg",
+  "brandColor": "#1348DC",
+  "lines": [
+    { "type": "progress", "label": "Token Spend", "scope": "overview", "primaryOrder": 1 },
+    { "type": "progress", "label": "Edit Predictions", "scope": "overview", "primaryOrder": 2 },
+    { "type": "barChart", "label": "Daily Spend", "scope": "detail" },
+    { "type": "text", "label": "Updated", "scope": "detail" },
+    { "type": "badge", "label": "Status", "scope": "detail" }
+  ]
+}
