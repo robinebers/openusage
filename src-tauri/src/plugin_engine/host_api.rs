@@ -460,6 +460,10 @@ fn redact_body(body: &str) -> String {
         "teamId",
         "org_id",
         "orgId",
+        "organization_id",
+        "organizationId",
+        "default_organization_id",
+        "defaultOrganizationId",
         "account_display_name",
         "accountDisplayName",
         "payment_id",
@@ -468,6 +472,8 @@ fn redact_body(body: &str) -> String {
         "profileArn",
         "email",
         "login",
+        "github_login",
+        "githubLogin",
         "analytics_tracking_id",
     ];
     for key in sensitive_keys {
@@ -3971,6 +3977,36 @@ attributes:
         assert!(
             redacted.contains("c9df...a6cf"),
             "analytics_tracking_id should show first4...last4, got: {}",
+            redacted
+        );
+    }
+
+    #[test]
+    fn redact_body_redacts_zed_user_and_organization_fields() {
+        let body = concat!(
+            r#"{"github_login":"zed-user","#,
+            r#""default_organization_id":"example-organization-for-redaction","#,
+            r#""organizations":[{"organization_id":"org_abcdefghijklmnopqrstuvwxyz"}]}"#
+        );
+        let redacted = redact_body(body);
+        assert!(
+            !redacted.contains("zed-user"),
+            "github_login should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            !redacted.contains("example-organization-for-redaction"),
+            "default_organization_id should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            !redacted.contains("org_abcdefghijklmnopqrstuvwxyz"),
+            "organization_id should be redacted, got: {}",
+            redacted
+        );
+        assert!(
+            redacted.contains("\"github_login\": \"[REDACTED]\""),
+            "github_login should use short-value redaction, got: {}",
             redacted
         );
     }
