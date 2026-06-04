@@ -10,6 +10,12 @@
 - **Authorization header:** `<user_id> <access_token>`
 - **Usage:** hosted model token spend and edit predictions
 
+## Scope
+
+This provider tracks Zed-hosted model usage, including Agent Panel and Inline Assistant usage when the selected model provider is Zed-hosted.
+
+It does not track usage for bring-your-own-key model providers or external agents launched from Zed. Those requests are billed by the configured provider/agent directly and are not included in Zed's hosted-model billing response.
+
 ## Endpoints
 
 ### GET /frontend/billing/usage
