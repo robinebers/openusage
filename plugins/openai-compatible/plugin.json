@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "openai-compatible",
+  "name": "OpenAI Compatible API",
+  "version": "0.0.1",
+  "entry": "plugin.js",
+  "icon": "icon.svg",
+  "brandColor": "#74AA9C",
+  "links": [
+    { "label": "Setup", "url": "https://github.com/robinebers/openusage/blob/main/docs/providers/openai-compatible.md" }
+  ],
+  "lines": [
+    { "type": "text", "label": "Today", "scope": "overview", "primaryOrder": 1 },
+    { "type": "text", "label": "This Month", "scope": "overview" },
+    { "type": "text", "label": "Total", "scope": "detail" },
+    { "type": "badge", "label": "Unpriced Models", "scope": "detail" },
+    { "type": "badge", "label": "Unmetered", "scope": "detail" },
+    { "type": "barChart", "label": "Daily Spend", "scope": "detail" }
+  ]
+}

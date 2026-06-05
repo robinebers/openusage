@@ -16,6 +16,7 @@ import {
   loadGlobalShortcut,
   loadMenubarIconStyle,
   loadPluginSettings,
+  loadOpenAICompatibleSettings,
   loadResetTimerDisplayMode,
   loadStartOnLogin,
   loadTimeFormatMode,
@@ -27,6 +28,7 @@ import {
   saveDisplayMode,
   saveGlobalShortcut,
   saveMenubarIconStyle,
+  saveOpenAICompatibleSettings,
   savePluginSettings,
   saveResetTimerDisplayMode,
   saveStartOnLogin,
@@ -164,6 +166,46 @@ describe("settings", () => {
 
   it("returns enabled plugin ids", () => {
     expect(getEnabledPluginIds({ order: ["a", "b"], disabled: ["b"] })).toEqual(["a"])
+  })
+
+  it("loads default OpenAI-compatible settings when missing", async () => {
+    await expect(loadOpenAICompatibleSettings()).resolves.toEqual({
+      enabled: false,
+      endpoint: "",
+      prices: [],
+    })
+  })
+
+  it("sanitizes OpenAI-compatible settings", async () => {
+    storeState.set("openaiCompatible", {
+      enabled: true,
+      endpoint: " https://api.example.com/v1 ",
+      prices: [
+        { modelName: " gpt-test ", inputUsdPer1M: 0.1, outputUsdPer1M: 0.2 },
+        { modelName: "", inputUsdPer1M: 9, outputUsdPer1M: 9 },
+        { modelName: "bad", inputUsdPer1M: -1, outputUsdPer1M: 0.2 },
+      ],
+    })
+
+    await expect(loadOpenAICompatibleSettings()).resolves.toEqual({
+      enabled: true,
+      endpoint: "https://api.example.com/v1",
+      prices: [
+        { modelName: "gpt-test", inputUsdPer1M: 0.1, outputUsdPer1M: 0.2 },
+      ],
+    })
+  })
+
+  it("saves OpenAI-compatible settings", async () => {
+    const settings = {
+      enabled: true,
+      endpoint: "https://api.example.com/v1",
+      prices: [{ modelName: "gpt-test", inputUsdPer1M: 1, outputUsdPer1M: 2 }],
+    }
+
+    await saveOpenAICompatibleSettings(settings)
+
+    await expect(loadOpenAICompatibleSettings()).resolves.toEqual(settings)
   })
 
   it("loads default auto-update interval when missing", async () => {

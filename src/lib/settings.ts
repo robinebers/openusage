@@ -24,6 +24,18 @@ export type MenubarIconStyle = "provider" | "bars" | "donut";
 
 export type GlobalShortcut = string | null;
 
+export type OpenAICompatibleModelPrice = {
+  modelName: string;
+  inputUsdPer1M: number;
+  outputUsdPer1M: number;
+};
+
+export type OpenAICompatibleSettings = {
+  enabled: boolean;
+  endpoint: string;
+  prices: OpenAICompatibleModelPrice[];
+};
+
 const SETTINGS_STORE_PATH = "settings.json";
 const PLUGIN_SETTINGS_KEY = "plugins";
 const AUTO_UPDATE_SETTINGS_KEY = "autoUpdateInterval";
@@ -36,6 +48,7 @@ const LEGACY_TRAY_ICON_STYLE_KEY = "trayIconStyle";
 const LEGACY_TRAY_SHOW_PERCENTAGE_KEY = "trayShowPercentage";
 const GLOBAL_SHORTCUT_KEY = "globalShortcut";
 const START_ON_LOGIN_KEY = "startOnLogin";
+const OPENAI_COMPATIBLE_KEY = "openaiCompatible";
 
 export const DEFAULT_AUTO_UPDATE_INTERVAL: AutoUpdateIntervalMinutes = 15;
 export const DEFAULT_THEME_MODE: ThemeMode = "system";
@@ -45,6 +58,11 @@ export const DEFAULT_TIME_FORMAT_MODE: TimeFormatMode = "auto";
 export const DEFAULT_MENUBAR_ICON_STYLE: MenubarIconStyle = "provider";
 export const DEFAULT_GLOBAL_SHORTCUT: GlobalShortcut = null;
 export const DEFAULT_START_ON_LOGIN = false;
+export const DEFAULT_OPENAI_COMPATIBLE_SETTINGS: OpenAICompatibleSettings = {
+  enabled: false,
+  endpoint: "",
+  prices: [],
+};
 
 const AUTO_UPDATE_INTERVALS: AutoUpdateIntervalMinutes[] = [5, 15, 30, 60];
 const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
@@ -107,6 +125,61 @@ export async function loadPluginSettings(): Promise<PluginSettings> {
 
 export async function savePluginSettings(settings: PluginSettings): Promise<void> {
   await store.set(PLUGIN_SETTINGS_KEY, settings);
+  await store.save();
+}
+
+function isNonNegativeFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
+export function normalizeOpenAICompatibleSettings(
+  value: unknown
+): OpenAICompatibleSettings {
+  if (!value || typeof value !== "object") {
+    return { ...DEFAULT_OPENAI_COMPATIBLE_SETTINGS };
+  }
+
+  const raw = value as Partial<OpenAICompatibleSettings>;
+  const prices = Array.isArray(raw.prices)
+    ? raw.prices
+        .map((price) => {
+          if (!price || typeof price !== "object") return null;
+          const rawPrice = price as Partial<OpenAICompatibleModelPrice>;
+          const modelName = typeof rawPrice.modelName === "string"
+            ? rawPrice.modelName.trim()
+            : "";
+          if (!modelName) return null;
+          if (
+            !isNonNegativeFiniteNumber(rawPrice.inputUsdPer1M) ||
+            !isNonNegativeFiniteNumber(rawPrice.outputUsdPer1M)
+          ) {
+            return null;
+          }
+          return {
+            modelName,
+            inputUsdPer1M: rawPrice.inputUsdPer1M,
+            outputUsdPer1M: rawPrice.outputUsdPer1M,
+          };
+        })
+        .filter((price): price is OpenAICompatibleModelPrice => Boolean(price))
+    : [];
+
+  return {
+    enabled: raw.enabled === true,
+    endpoint: typeof raw.endpoint === "string" ? raw.endpoint.trim() : "",
+    prices,
+  };
+}
+
+export async function loadOpenAICompatibleSettings(): Promise<OpenAICompatibleSettings> {
+  const stored = await store.get<unknown>(OPENAI_COMPATIBLE_KEY);
+  return normalizeOpenAICompatibleSettings(stored);
+}
+
+export async function saveOpenAICompatibleSettings(
+  settings: OpenAICompatibleSettings
+): Promise<void> {
+  await store.set(OPENAI_COMPATIBLE_KEY, normalizeOpenAICompatibleSettings(settings));
   await store.save();
 }
 

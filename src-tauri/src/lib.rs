@@ -3,6 +3,7 @@ mod app_nap;
 mod config;
 mod local_http_api;
 mod log_path;
+mod openai_proxy;
 mod panel;
 mod plugin_engine;
 mod tray;
@@ -530,7 +531,11 @@ pub fn run() {
             start_probe_batch,
             list_plugins,
             get_log_path,
-            update_global_shortcut
+            update_global_shortcut,
+            openai_proxy::get_openai_proxy_secret_status,
+            openai_proxy::save_openai_proxy_upstream_key,
+            openai_proxy::get_openai_proxy_local_token,
+            openai_proxy::regenerate_openai_proxy_local_token
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]
@@ -579,6 +584,7 @@ pub fn run() {
 
             local_http_api::init(&app_data_dir, known_plugin_ids);
             local_http_api::start_server();
+            openai_proxy::start_server(app_data_dir.clone());
 
             tray::create(app.handle())?;
 

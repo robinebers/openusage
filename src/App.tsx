@@ -10,6 +10,7 @@ import { useSettingsPluginList } from "@/hooks/app/use-settings-plugin-list"
 import { useSettingsSystemActions } from "@/hooks/app/use-settings-system-actions"
 import { useSettingsTheme } from "@/hooks/app/use-settings-theme"
 import { useTrayIcon } from "@/hooks/app/use-tray-icon"
+import { useOpenAICompatibleSettings } from "@/hooks/app/use-openai-compatible-settings"
 import { REFRESH_COOLDOWN_MS, savePluginSettings } from "@/lib/settings"
 import { type PluginContextAction } from "@/components/side-nav"
 import { useAppPluginStore } from "@/stores/app-plugin-store"
@@ -104,6 +105,17 @@ function App() {
     menubarIconStyle,
     activeView,
   })
+
+  const {
+    openAICompatibleSettings,
+    openAIProxySecretStatus,
+    openAIProxyLocalToken,
+    handleOpenAICompatibleSettingsChange,
+    handleOpenAIProxyUpstreamKeySave,
+    handleOpenAIProxyLocalTokenReveal,
+    handleOpenAIProxyLocalTokenCopy,
+    handleOpenAIProxyLocalTokenRegenerate,
+  } = useOpenAICompatibleSettings()
 
   useEffect(() => {
     scheduleProbeTrayUpdateRef.current = () => {
@@ -254,6 +266,14 @@ function App() {
         traySettingsPreview,
         onGlobalShortcutChange: handleGlobalShortcutChange,
         onStartOnLoginChange: handleStartOnLoginChange,
+        openAICompatibleSettings,
+        openAIProxySecretStatus,
+        openAIProxyLocalToken,
+        onOpenAICompatibleSettingsChange: handleOpenAICompatibleSettingsChange,
+        onOpenAIProxyUpstreamKeySave: handleOpenAIProxyUpstreamKeySave,
+        onOpenAIProxyLocalTokenReveal: handleOpenAIProxyLocalTokenReveal,
+        onOpenAIProxyLocalTokenCopy: handleOpenAIProxyLocalTokenCopy,
+        onOpenAIProxyLocalTokenRegenerate: handleOpenAIProxyLocalTokenRegenerate,
       }}
     />
   )

@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import type { ReactNode } from "react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -69,6 +69,21 @@ const defaultProps = {
   onGlobalShortcutChange: vi.fn(),
   startOnLogin: false,
   onStartOnLoginChange: vi.fn(),
+  openAICompatibleSettings: {
+    enabled: false,
+    endpoint: "",
+    prices: [],
+  },
+  openAIProxySecretStatus: {
+    hasUpstreamKey: false,
+    hasLocalToken: false,
+  },
+  openAIProxyLocalToken: null,
+  onOpenAICompatibleSettingsChange: vi.fn(),
+  onOpenAIProxyUpstreamKeySave: vi.fn(),
+  onOpenAIProxyLocalTokenReveal: vi.fn(),
+  onOpenAIProxyLocalTokenCopy: vi.fn(),
+  onOpenAIProxyLocalTokenRegenerate: vi.fn(),
 }
 
 afterEach(() => {
@@ -269,5 +284,67 @@ describe("SettingsPage", () => {
     )
     await userEvent.click(screen.getByText("Start on login"))
     expect(onStartOnLoginChange).toHaveBeenCalledWith(true)
+  })
+
+  it("edits OpenAI-compatible endpoint and model prices", async () => {
+    const onOpenAICompatibleSettingsChange = vi.fn()
+    render(
+      <SettingsPage
+        {...defaultProps}
+        openAICompatibleSettings={{
+          enabled: true,
+          endpoint: "https://api.example.com/v1",
+          prices: [{ modelName: "gpt-test", inputUsdPer1M: 1, outputUsdPer1M: 2 }],
+        }}
+        onOpenAICompatibleSettingsChange={onOpenAICompatibleSettingsChange}
+      />
+    )
+
+    fireEvent.change(screen.getByLabelText("Endpoint"), {
+      target: { value: "https://proxy.example/v1" },
+    })
+    expect(onOpenAICompatibleSettingsChange).toHaveBeenLastCalledWith({
+      enabled: true,
+      endpoint: "https://proxy.example/v1",
+      prices: [{ modelName: "gpt-test", inputUsdPer1M: 1, outputUsdPer1M: 2 }],
+    })
+
+    fireEvent.change(screen.getByLabelText("Input price for gpt-test"), {
+      target: { value: "3" },
+    })
+    expect(onOpenAICompatibleSettingsChange).toHaveBeenLastCalledWith({
+      enabled: true,
+      endpoint: "https://api.example.com/v1",
+      prices: [{ modelName: "gpt-test", inputUsdPer1M: 3, outputUsdPer1M: 2 }],
+    })
+  })
+
+  it("handles OpenAI-compatible key and token actions", async () => {
+    const onOpenAIProxyUpstreamKeySave = vi.fn()
+    const onOpenAIProxyLocalTokenReveal = vi.fn()
+    const onOpenAIProxyLocalTokenCopy = vi.fn()
+    const onOpenAIProxyLocalTokenRegenerate = vi.fn()
+    render(
+      <SettingsPage
+        {...defaultProps}
+        openAIProxySecretStatus={{ hasUpstreamKey: true, hasLocalToken: false }}
+        openAIProxyLocalToken="ou_test"
+        onOpenAIProxyUpstreamKeySave={onOpenAIProxyUpstreamKeySave}
+        onOpenAIProxyLocalTokenReveal={onOpenAIProxyLocalTokenReveal}
+        onOpenAIProxyLocalTokenCopy={onOpenAIProxyLocalTokenCopy}
+        onOpenAIProxyLocalTokenRegenerate={onOpenAIProxyLocalTokenRegenerate}
+      />
+    )
+
+    await userEvent.type(screen.getByLabelText("Upstream API key"), "sk-test")
+    await userEvent.click(screen.getByRole("button", { name: "Save key" }))
+    expect(onOpenAIProxyUpstreamKeySave).toHaveBeenCalledWith("sk-test")
+
+    await userEvent.click(screen.getByRole("button", { name: "Show token" }))
+    expect(onOpenAIProxyLocalTokenReveal).toHaveBeenCalled()
+    await userEvent.click(screen.getByRole("button", { name: "Copy token" }))
+    expect(onOpenAIProxyLocalTokenCopy).toHaveBeenCalled()
+    await userEvent.click(screen.getByRole("button", { name: "Regenerate token" }))
+    expect(onOpenAIProxyLocalTokenRegenerate).toHaveBeenCalled()
   })
 })

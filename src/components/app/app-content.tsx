@@ -5,6 +5,7 @@ import { SettingsPage } from "@/pages/settings"
 import type { DisplayPluginState } from "@/hooks/app/use-app-plugin-views"
 import type { SettingsPluginState } from "@/hooks/app/use-settings-plugin-list"
 import type { TraySettingsPreview } from "@/hooks/app/use-tray-icon"
+import type { OpenAIProxySecretStatus } from "@/hooks/app/use-openai-compatible-settings"
 import { useAppPreferencesStore } from "@/stores/app-preferences-store"
 import { useAppUiStore } from "@/stores/app-ui-store"
 import type {
@@ -12,6 +13,7 @@ import type {
   DisplayMode,
   GlobalShortcut,
   MenubarIconStyle,
+  OpenAICompatibleSettings,
   ResetTimerDisplayMode,
   ThemeMode,
   TimeFormatMode,
@@ -37,6 +39,14 @@ export type AppContentActionProps = {
   traySettingsPreview: TraySettingsPreview
   onGlobalShortcutChange: (value: GlobalShortcut) => void
   onStartOnLoginChange: (value: boolean) => void
+  openAICompatibleSettings: OpenAICompatibleSettings
+  openAIProxySecretStatus: OpenAIProxySecretStatus
+  openAIProxyLocalToken: string | null
+  onOpenAICompatibleSettingsChange: (value: OpenAICompatibleSettings) => void
+  onOpenAIProxyUpstreamKeySave: (value: string) => void
+  onOpenAIProxyLocalTokenReveal: () => void
+  onOpenAIProxyLocalTokenCopy: () => void
+  onOpenAIProxyLocalTokenRegenerate: () => void
 }
 
 export type AppContentProps = AppContentDerivedProps & AppContentActionProps
@@ -58,6 +68,14 @@ export function AppContent({
   traySettingsPreview,
   onGlobalShortcutChange,
   onStartOnLoginChange,
+  openAICompatibleSettings,
+  openAIProxySecretStatus,
+  openAIProxyLocalToken,
+  onOpenAICompatibleSettingsChange,
+  onOpenAIProxyUpstreamKeySave,
+  onOpenAIProxyLocalTokenReveal,
+  onOpenAIProxyLocalTokenCopy,
+  onOpenAIProxyLocalTokenRegenerate,
 }: AppContentProps) {
   const { activeView } = useAppUiStore(
     useShallow((state) => ({
@@ -123,6 +141,14 @@ export function AppContent({
         onGlobalShortcutChange={onGlobalShortcutChange}
         startOnLogin={startOnLogin}
         onStartOnLoginChange={onStartOnLoginChange}
+        openAICompatibleSettings={openAICompatibleSettings}
+        openAIProxySecretStatus={openAIProxySecretStatus}
+        openAIProxyLocalToken={openAIProxyLocalToken}
+        onOpenAICompatibleSettingsChange={onOpenAICompatibleSettingsChange}
+        onOpenAIProxyUpstreamKeySave={onOpenAIProxyUpstreamKeySave}
+        onOpenAIProxyLocalTokenReveal={onOpenAIProxyLocalTokenReveal}
+        onOpenAIProxyLocalTokenCopy={onOpenAIProxyLocalTokenCopy}
+        onOpenAIProxyLocalTokenRegenerate={onOpenAIProxyLocalTokenRegenerate}
       />
     )
   }
