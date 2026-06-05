@@ -65,9 +65,61 @@ Returns token usage for the current billing period.
 }
 ```
 
+### GET /api/billing/limits
+
+Returns current Factory/Droid quota windows shown in the web app.
+
+#### Headers
+
+| Header | Required | Value |
+|---|---|---|
+| Authorization | yes | `Bearer <access_token>` |
+| Accept | no | `application/json` |
+
+#### Response
+
+```jsonc
+{
+  "limits": {
+    "standard": {
+      "fiveHour": { "usedPercent": 0.12, "windowEnd": 1770626926000, "secondsRemaining": 1200 },
+      "weekly": { "usedPercent": 0.34, "windowEnd": 1771228126000, "secondsRemaining": 604800 },
+      "monthly": { "usedPercent": 0.56, "windowEnd": 1772956800000, "secondsRemaining": 2333474 }
+    },
+    "core": {
+      "enabled": true
+    }
+  },
+  "extraUsageBalanceCents": 1200,
+  "usesTokenRateLimitsBilling": true
+}
+```
+
+### GET /api/organization/compute-usage
+
+Returns Droid Core / managed computer usage for the current period.
+
+#### Headers
+
+| Header | Required | Value |
+|---|---|---|
+| Authorization | yes | `Bearer <access_token>` |
+| Accept | no | `application/json` |
+
+#### Response
+
+```jsonc
+{
+  "orgUsageMs": 3600000,
+  "limitMs": 7200000,
+  "periodStart": 1770623326000,
+  "periodEnd": 1772956800000
+}
+```
+
 ### Plan Detection
 
-Plan is inferred from `standard.totalAllowance`:
+Plan is inferred from `standard.totalAllowance` and Droid Core fields:
 
 | Allowance | Plan |
 |---|---|
@@ -76,6 +128,7 @@ Plan is inferred from `standard.totalAllowance`:
 | >0 | Basic |
 
 Premium tokens (`premium.totalAllowance > 0`) are only available on Max/Enterprise plans.
+Droid Core/managed computer usage adds `+ Droid Core` when enabled.
 
 ## Authentication
 

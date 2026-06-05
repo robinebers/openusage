@@ -7,7 +7,13 @@
   "icon": "icon.svg",
   "brandColor": "#020202",
   "lines": [
-    { "type": "progress", "label": "Standard", "scope": "overview", "primaryOrder": 1 },
+    { "type": "text", "label": "Extra Usage", "scope": "overview" },
+    { "type": "progress", "label": "5-hour usage", "scope": "overview", "primaryOrder": 1 },
+    { "type": "progress", "label": "Weekly usage", "scope": "detail" },
+    { "type": "progress", "label": "Monthly usage", "scope": "detail" },
+    { "type": "badge", "label": "Droid Core", "scope": "detail" },
+    { "type": "progress", "label": "Managed Computers", "scope": "detail" },
+    { "type": "progress", "label": "Standard", "scope": "overview", "primaryOrder": 2 },
     { "type": "progress", "label": "Premium", "scope": "detail" }
   ]
 }

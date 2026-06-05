@@ -30,7 +30,7 @@ OpenUsage lives in your menu bar and shows you how much of your AI coding subscr
 - [**Codex**](docs/providers/codex.md) / session, weekly, reviews, credits
 - [**Copilot**](docs/providers/copilot.md) / premium, chat, completions
 - [**Cursor**](docs/providers/cursor.md) / credits, total usage, auto usage, API usage, on-demand, CLI auth
-- [**Factory / Droid**](docs/providers/factory.md) / standard, premium tokens
+- [**Factory / Droid**](docs/providers/factory.md) / 5h, weekly, monthly, extra usage, Droid Core, managed computers
 - [**Grok**](docs/providers/grok.md) / credits used, plan, pay-as-you-go cap
 - [**JetBrains AI Assistant**](docs/providers/jetbrains-ai-assistant.md) / quota, remaining
 - [**Kiro**](docs/providers/kiro.md) / credits, bonus credits, overages

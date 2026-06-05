@@ -8,9 +8,12 @@ const loadPlugin = async () => {
 }
 
 // Helper to create a valid JWT with configurable expiry
-function makeJwt(expSeconds) {
+function makeJwt(expSecondsOrClaims) {
   const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }))
-  const payload = btoa(JSON.stringify({ exp: expSeconds, org_id: "org_123", email: "test@example.com" }))
+  const claims = typeof expSecondsOrClaims === "object"
+    ? { org_id: "org_123", email: "test@example.com", ...expSecondsOrClaims }
+    : { exp: expSecondsOrClaims, org_id: "org_123", email: "test@example.com" }
+  const payload = btoa(JSON.stringify(claims))
   const sig = "signature"
   return `${header}.${payload}.${sig}`
 }
@@ -500,6 +503,253 @@ describe("factory plugin", () => {
     expect(standardLine).toBeTruthy()
     expect(standardLine.used).toBe(5000000)
     expect(standardLine.limit).toBe(20000000)
+  })
+
+  it("formats Factory usage-limit, extra usage, Droid Core, and managed compute metrics", async () => {
+    const ctx = makeCtx()
+    const futureExp = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
+    ctx.host.fs.writeText("~/.factory/auth.json", JSON.stringify({
+      access_token: makeJwt(futureExp),
+      refresh_token: "refresh",
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        usage: {
+          plan: "Standard",
+          extraUsage: {
+            remainingUsd: 0,
+          },
+          standardUsage: {
+            fiveHour: {
+              usedPercent: 2,
+              startDate: 1770623326000,
+              endDate: 1770641326000,
+            },
+            weekly: {
+              usedRatio: 0.01,
+              startDate: 1770623326000,
+              endDate: 1771228126000,
+            },
+            monthly: {
+              usedPercent: 1,
+              startDate: 1770623326000,
+              endDate: 1773128926000,
+            },
+          },
+          droidCore: {
+            enabled: true,
+          },
+          managedComputers: {
+            usedHours: 0,
+            includedHours: 10,
+            startDate: 1770623326000,
+            endDate: 1772178526000,
+          },
+        },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Standard + Droid Core")
+    expect(result.lines.find((line) => line.label === "Extra Usage")).toMatchObject({
+      type: "text",
+      value: "$0.00 remaining",
+    })
+    expect(result.lines.find((line) => line.label === "5-hour usage")).toMatchObject({
+      type: "progress",
+      used: 2,
+      limit: 100,
+      format: { kind: "percent" },
+    })
+    expect(result.lines.find((line) => line.label === "Weekly usage")).toMatchObject({
+      type: "progress",
+      used: 1,
+      limit: 100,
+      format: { kind: "percent" },
+    })
+    expect(result.lines.find((line) => line.label === "Monthly usage")).toMatchObject({
+      type: "progress",
+      used: 1,
+      limit: 100,
+      format: { kind: "percent" },
+    })
+    expect(result.lines.find((line) => line.label === "Droid Core")).toMatchObject({
+      type: "badge",
+      text: "Enabled",
+    })
+    expect(result.lines.find((line) => line.label === "Managed Computers")).toMatchObject({
+      type: "progress",
+      used: 0,
+      limit: 10,
+      format: { kind: "count", suffix: "h" },
+    })
+  })
+
+  it("fetches billing limits and compute usage when subscription usage is legacy-only", async () => {
+    const ctx = makeCtx()
+    const futureExp = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
+    const accessToken = makeJwt({ exp: futureExp, sub: "user_abc123" })
+    ctx.host.fs.writeText("~/.factory/auth.json", JSON.stringify({
+      access_token: accessToken,
+      refresh_token: "refresh",
+    }))
+
+    ctx.host.http.request.mockImplementation((opts) => {
+      const url = String(opts.url)
+      if (url === "https://api.factory.ai/api/organization/subscription/usage") {
+        return {
+          status: 200,
+          headers: {},
+          bodyText: JSON.stringify({
+            usage: {
+              startDate: 1770623326000,
+              endDate: 1772956800000,
+              standard: {
+                orgTotalTokensUsed: 5000000,
+                totalAllowance: 230000000,
+              },
+              premium: {
+                orgTotalTokensUsed: 0,
+                totalAllowance: 0,
+              },
+            },
+            globalLimit: null,
+            userLimits: [],
+          }),
+        }
+      }
+
+      if (url === "https://api.factory.ai/api/billing/limits") {
+        return {
+          status: 200,
+          headers: {},
+          bodyText: JSON.stringify({
+            usesTokenRateLimitsBilling: true,
+            limits: {
+              standard: {
+                fiveHour: { usedPercent: 44, windowEnd: "2026-05-26T13:25:52.000Z", secondsRemaining: 14200 },
+                weekly: { usedPercent: 12, windowEnd: "2026-06-01T13:25:52.000Z", secondsRemaining: 470000 },
+                monthly: { usedPercent: 9, windowEnd: "2026-06-25T13:25:52.000Z", secondsRemaining: 2580000 },
+              },
+              core: {
+                fiveHour: { usedPercent: 0, windowEnd: null, secondsRemaining: null },
+              },
+            },
+            extraUsageBalanceCents: 0,
+          }),
+        }
+      }
+
+      if (url === "https://api.factory.ai/api/organization/compute-usage") {
+        return {
+          status: 200,
+          headers: {},
+          bodyText: JSON.stringify({
+            orgUsageMs: 0,
+            limitMs: 36000000,
+            periodStart: "2026-05-25T13:25:19.000Z",
+            periodEnd: "2026-06-13T13:25:19.000Z",
+          }),
+        }
+      }
+
+      throw new Error(`unexpected URL: ${url}`)
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("Max + Droid Core")
+    expect(result.lines.find((line) => line.label === "Extra Usage")).toMatchObject({
+      type: "text",
+      value: "$0.00 remaining",
+    })
+    expect(result.lines.find((line) => line.label === "5-hour usage")).toMatchObject({
+      type: "progress",
+      used: 44,
+      limit: 100,
+      format: { kind: "percent" },
+    })
+    expect(result.lines.find((line) => line.label === "Weekly usage")).toMatchObject({
+      type: "progress",
+      used: 12,
+      limit: 100,
+      format: { kind: "percent" },
+    })
+    expect(result.lines.find((line) => line.label === "Monthly usage")).toMatchObject({
+      type: "progress",
+      used: 9,
+      limit: 100,
+      format: { kind: "percent" },
+    })
+    expect(result.lines.find((line) => line.label === "Droid Core")).toMatchObject({
+      type: "badge",
+      text: "Enabled",
+    })
+    expect(result.lines.find((line) => line.label === "Managed Computers")).toMatchObject({
+      type: "progress",
+      used: 0,
+      limit: 10,
+      format: { kind: "count", suffix: "h" },
+    })
+    expect(result.lines.find((line) => line.label === "Standard")).toMatchObject({
+      type: "progress",
+      used: 5000000,
+      limit: 230000000,
+    })
+  })
+
+  it("sends browser-like headers and userId when available", async () => {
+    const ctx = makeCtx()
+    const futureExp = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
+    const accessToken = makeJwt({ exp: futureExp, sub: "user_abc123" })
+    ctx.host.fs.writeText("~/.factory/auth.json", JSON.stringify({
+      access_token: accessToken,
+      refresh_token: "refresh",
+    }))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("billing/limits") || String(opts.url).includes("compute-usage")) {
+        return { status: 404, headers: {}, bodyText: "{}" }
+      }
+
+      expect(opts.method).toBe("POST")
+      expect(opts.url).toBe("https://api.factory.ai/api/organization/subscription/usage")
+      expect(opts.headers.Authorization).toBe("Bearer " + accessToken)
+      expect(opts.headers.Accept).toBe("application/json")
+      expect(opts.headers.Origin).toBe("https://app.factory.ai")
+      expect(opts.headers.Referer).toBe("https://app.factory.ai/")
+      expect(opts.headers["x-factory-client"]).toBe("web-app")
+      expect(JSON.parse(opts.bodyText)).toEqual({
+        useCache: true,
+        userId: "user_abc123",
+      })
+      return {
+        status: 200,
+        headers: {},
+        bodyText: JSON.stringify({
+          usage: {
+            startDate: 1770623326000,
+            endDate: 1772956800000,
+            standard: {
+              orgTotalTokensUsed: 5000000,
+              totalAllowance: 20000000,
+            },
+            premium: {
+              orgTotalTokensUsed: 0,
+              totalAllowance: 0,
+            },
+          },
+        }),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Standard")).toBeTruthy()
   })
 
   it("shows premium line when premium allowance > 0", async () => {
