@@ -566,20 +566,29 @@
     }))
   }
 
-  function probeWithAuthState(ctx, authState) {
+  function probeWithAuthState(ctx, authState, opts) {
     const auth = authState.auth
 
     if (auth.tokens && auth.tokens.access_token) {
       const nowMs = Date.now()
       let accessToken = auth.tokens.access_token
       const accountId = auth.tokens.account_id
+      let proactiveRefreshAuthError = null
 
       if (needsRefresh(ctx, auth, nowMs)) {
         ctx.host.log.info("token needs refresh (age > " + (REFRESH_AGE_MS / 1000 / 60 / 60 / 24) + " days)")
-        const refreshed = refreshToken(ctx, authState)
+        let refreshed = null
+        try {
+          refreshed = refreshToken(ctx, authState)
+        } catch (e) {
+          if (!isAuthFallbackError(e)) throw e
+          if (!opts || !opts.tryExistingTokenAfterProactiveAuthError) throw e
+          proactiveRefreshAuthError = e
+          ctx.host.log.warn("proactive refresh failed, trying existing token: " + String(e))
+        }
         if (refreshed) {
           accessToken = refreshed
-        } else {
+        } else if (!proactiveRefreshAuthError) {
           ctx.host.log.warn("proactive refresh failed, trying with existing token")
         }
       }
@@ -600,6 +609,7 @@
             }
           },
           refresh: () => {
+            if (proactiveRefreshAuthError) throw proactiveRefreshAuthError
             ctx.host.log.info("usage returned 401, attempting refresh")
             didRefresh = true
             return refreshToken(ctx, authState)
@@ -824,6 +834,7 @@
   function probe(ctx) {
     const fileAuth = loadFileAuthCandidates(ctx)
     let lastAuthFallbackError = null
+    let tokenConflictAuthState = null
     for (let i = 0; i < fileAuth.candidates.length; i++) {
       const authState = fileAuth.candidates[i]
       try {
@@ -833,12 +844,29 @@
           throw e
         }
         lastAuthFallbackError = e
+        if (e === ERR_TOKEN_CONFLICT && !tokenConflictAuthState) {
+          tokenConflictAuthState = authState
+        }
         ctx.host.log.warn("auth failed for file " + authState.authPath + ", trying next auth source: " + String(e))
       }
     }
 
     const keychainAuth = loadAuthFromKeychain(ctx)
-    if (keychainAuth) return probeWithAuthState(ctx, keychainAuth)
+    if (keychainAuth) {
+      try {
+        return probeWithAuthState(ctx, keychainAuth)
+      } catch (e) {
+        if (!isAuthFallbackError(e)) throw e
+        lastAuthFallbackError = e
+        ctx.host.log.warn("keychain auth failed, trying final auth fallback: " + String(e))
+      }
+    }
+
+    if (tokenConflictAuthState) {
+      return probeWithAuthState(ctx, tokenConflictAuthState, {
+        tryExistingTokenAfterProactiveAuthError: true,
+      })
+    }
 
     if (lastAuthFallbackError) throw lastAuthFallbackError
 

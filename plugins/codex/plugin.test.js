@@ -682,13 +682,146 @@ describe("codex plugin", () => {
       tokens: { access_token: "old", refresh_token: "refresh" },
       last_refresh: "2000-01-01T00:00:00.000Z",
     }))
-    ctx.host.http.request.mockReturnValue({
-      status: 400,
-      headers: {},
-      bodyText: JSON.stringify({ error: { code: "refresh_token_reused" } }),
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("oauth/token")) {
+        return {
+          status: 400,
+          headers: {},
+          bodyText: JSON.stringify({ error: { code: "refresh_token_reused" } }),
+        }
+      }
+      return { status: 401, headers: {}, bodyText: "" }
     })
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Token conflict")
+  })
+
+  it("uses existing access token when proactive refresh token was reused", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "still-valid", refresh_token: "used-refresh" },
+      last_refresh: "2000-01-01T00:00:00.000Z",
+    }))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("oauth/token")) {
+        return {
+          status: 401,
+          headers: {},
+          bodyText: JSON.stringify({ error: { code: "refresh_token_reused" } }),
+        }
+      }
+      expect(opts.headers.Authorization).toBe("Bearer still-valid")
+      return {
+        status: 200,
+        headers: { "x-codex-primary-used-percent": "14" },
+        bodyText: JSON.stringify({}),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+    expect(ctx.host.keychain.readGenericPassword).toHaveBeenCalledWith("Codex Auth")
+  })
+
+  it("retries the first reusable file token after later auth candidates fail", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.config/codex/auth.json", JSON.stringify({
+      tokens: { access_token: "still-valid", refresh_token: "used-refresh" },
+      last_refresh: "2000-01-01T00:00:00.000Z",
+    }))
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "expired", refresh_token: "expired-refresh" },
+      last_refresh: "2000-01-01T00:00:00.000Z",
+    }))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.bodyText).includes("used-refresh")) {
+        return {
+          status: 401,
+          headers: {},
+          bodyText: JSON.stringify({ error: { code: "refresh_token_reused" } }),
+        }
+      }
+      if (String(opts.bodyText).includes("expired-refresh")) {
+        return {
+          status: 401,
+          headers: {},
+          bodyText: JSON.stringify({ error: { code: "refresh_token_expired" } }),
+        }
+      }
+      expect(opts.headers.Authorization).toBe("Bearer still-valid")
+      return {
+        status: 200,
+        headers: { "x-codex-primary-used-percent": "15" },
+        bodyText: JSON.stringify({}),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+  })
+
+  it("uses existing file token after keychain auth is exhausted", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "still-valid", refresh_token: "used-refresh" },
+      last_refresh: "2000-01-01T00:00:00.000Z",
+    }))
+    ctx.host.keychain.readGenericPassword.mockReturnValue(JSON.stringify({
+      tokens: { access_token: "keychain-token", refresh_token: "expired-refresh" },
+      last_refresh: "2000-01-01T00:00:00.000Z",
+    }))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.bodyText).includes("used-refresh")) {
+        return {
+          status: 401,
+          headers: {},
+          bodyText: JSON.stringify({ error: { code: "refresh_token_reused" } }),
+        }
+      }
+      if (String(opts.bodyText).includes("expired-refresh")) {
+        return {
+          status: 401,
+          headers: {},
+          bodyText: JSON.stringify({ error: { code: "refresh_token_expired" } }),
+        }
+      }
+      expect(opts.headers.Authorization).toBe("Bearer still-valid")
+      return {
+        status: 200,
+        headers: { "x-codex-primary-used-percent": "16" },
+        bodyText: JSON.stringify({}),
+      }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+  })
+
+  it("preserves usage server errors when retrying an existing access token", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "still-valid", refresh_token: "used-refresh" },
+      last_refresh: "2000-01-01T00:00:00.000Z",
+    }))
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (String(opts.url).includes("oauth/token")) {
+        return {
+          status: 401,
+          headers: {},
+          bodyText: JSON.stringify({ error: { code: "refresh_token_reused" } }),
+        }
+      }
+      return { status: 500, headers: {}, bodyText: "" }
+    })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Usage request failed (HTTP 500)")
   })
 
   it("falls back to keychain when file refresh token was reused", async () => {
@@ -780,7 +913,7 @@ describe("codex plugin", () => {
     expect(ctx.host.keychain.readGenericPassword).toHaveBeenCalledWith("Codex Auth")
   })
 
-  it("surfaces keychain auth error when file and keychain auth both fail", async () => {
+  it("surfaces original token conflict when file and keychain auth both fail", async () => {
     const ctx = makeCtx()
     ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
       tokens: { access_token: "file-token", refresh_token: "file-refresh" },
@@ -798,16 +931,19 @@ describe("codex plugin", () => {
           bodyText: JSON.stringify({ error: { code: "refresh_token_reused" } }),
         }
       }
-      expect(String(opts.bodyText)).toContain("keychain-refresh")
-      return {
-        status: 400,
-        headers: {},
-        bodyText: JSON.stringify({ error: { code: "refresh_token_expired" } }),
+      if (String(opts.bodyText).includes("keychain-refresh")) {
+        return {
+          status: 400,
+          headers: {},
+          bodyText: JSON.stringify({ error: { code: "refresh_token_expired" } }),
+        }
       }
+      expect(opts.headers.Authorization).toBe("Bearer file-token")
+      return { status: 401, headers: {}, bodyText: "" }
     })
 
     const plugin = await loadPlugin()
-    expect(() => plugin.probe(ctx)).toThrow("Session expired")
+    expect(() => plugin.probe(ctx)).toThrow("Token conflict")
     expect(ctx.host.keychain.readGenericPassword).toHaveBeenCalledWith("Codex Auth")
   })
 
