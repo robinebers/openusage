@@ -7,6 +7,17 @@ enum PopoverScreen: Hashable, Sendable {
     case dashboard
     case customize
     case settings
+
+    /// Left-to-right order for the popover's horizontal screen-switch slide: the dashboard is home on
+    /// the left, with Customize and Settings to its right. The slide reads its direction from these
+    /// ranks — a higher-ranked target enters from the trailing edge, a lower one from the leading edge.
+    var slideRank: Int {
+        switch self {
+        case .dashboard: 0
+        case .customize: 1
+        case .settings: 2
+        }
+    }
 }
 
 /// Mutable layout: which widgets are enabled, provider order, and each provider's metric order.
@@ -17,7 +28,20 @@ final class LayoutStore {
     var placed: [PlacedWidget]
     /// Which in-popover screen is showing. Lives here (not per-view state) so the footer buttons,
     /// the Esc handler, and the popover-closed reset all drive the same mode.
-    var screen = PopoverScreen.dashboard
+    var screen = PopoverScreen.dashboard {
+        didSet {
+            guard screen != oldValue else { return }
+            // Recorded synchronously with the change — not via SwiftUI's `onChange`, which fires a
+            // frame later and would let the popover paint the destination before the slide begins.
+            // DashboardView reads these on its very next render to slide in from the screen being left.
+            screenSlideFrom = oldValue
+            screenSlideID &+= 1
+        }
+    }
+    /// Supports DashboardView's horizontal screen-switch slide: the screen being left, plus a counter
+    /// that ticks on every switch so the view can detect and animate each transition. UI-only; not persisted.
+    private(set) var screenSlideFrom = PopoverScreen.dashboard
+    private(set) var screenSlideID = 0
     /// Whether the Customize screen (per-provider metric toggles + reorder) is showing — a bridge
     /// over `screen` for the many call sites that think in terms of edit mode.
     var isEditing: Bool {

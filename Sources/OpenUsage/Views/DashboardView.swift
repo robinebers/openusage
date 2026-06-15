@@ -23,6 +23,13 @@ struct DashboardView: View {
     @State private var hasMeasuredCustomizeContent = false
     @State private var hasMeasuredSettingsContent = false
     @State private var reorderLift: ReorderLift?
+    /// Horizontal screen-switch slide: 0 shows the outgoing screen, 1 the incoming one. Drives both the
+    /// page offset and the interpolated popover height, so the slide and the resize share one spring.
+    @State private var slideProgress: CGFloat = 1
+    /// The `layout.screenSlideID` whose slide has begun animating. Until it catches up to the store's
+    /// id, a freshly-started transition pins to the outgoing screen so the first frame never flashes
+    /// the destination.
+    @State private var animatedSlideID = 0
     /// Reset to the top whenever the popover closes, so it never reopens mid-scroll.
     @State private var dashboardScrollPosition = ScrollPosition(edge: .top)
     /// Drives the footer's "Next update in Nm" so it reflects the chosen cadence and updates live
@@ -85,14 +92,29 @@ struct DashboardView: View {
         return min(contentHeight, maxScrollHeight)
     }
 
-    private var popoverHeight: CGFloat {
-        let scrollHeight: CGFloat
-        switch layout.screen {
-        case .dashboard: scrollHeight = dashboardScrollHeight
-        case .customize: scrollHeight = customizeScrollHeight
-        case .settings: scrollHeight = settingsScrollHeight
+    private func scrollHeight(for screen: PopoverScreen) -> CGFloat {
+        switch screen {
+        case .dashboard: dashboardScrollHeight
+        case .customize: customizeScrollHeight
+        case .settings: settingsScrollHeight
         }
-        return scrollHeight + chromeHeight
+    }
+
+    private var popoverHeight: CGFloat {
+        scrollHeight(for: layout.screen) + chromeHeight
+    }
+
+    /// The popover height to apply while a screen-switch slide is playing: it interpolates from the
+    /// outgoing screen's height to the incoming one's on `slideProgress` — the *same* value that drives
+    /// the horizontal offset — so the box resizing and the screens sliding read as one coordinated
+    /// motion instead of two animations on separate clocks. At rest it's simply the current screen's
+    /// height; before the slide actually starts it sits at the outgoing screen's height to match the
+    /// pinned offset, so nothing jumps ahead of the slide.
+    private var animatedPopoverHeight: CGFloat {
+        guard isSliding else { return popoverHeight }
+        let fromHeight = scrollHeight(for: layout.screenSlideFrom) + chromeHeight
+        guard animatedSlideID == layout.screenSlideID else { return fromHeight }
+        return fromHeight + slideProgress * (popoverHeight - fromHeight)
     }
 
     /// Cold-start estimate for Customize content. Without this, the first click into Customize starts from an
@@ -131,7 +153,7 @@ struct DashboardView: View {
         modeBody
             .frame(width: Self.popoverWidth)
             .safeAreaBar(edge: .bottom, spacing: 0) { footerBar }
-            .frame(height: popoverHeight, alignment: .top)
+            .frame(height: animatedPopoverHeight, alignment: .top)
             .overlay(alignment: .topLeading) {
                 if let reorderLift {
                     ReorderLiftPreview(lift: reorderLift)
@@ -153,13 +175,25 @@ struct DashboardView: View {
                     if !visible { resetTransientState() }
                 }
             )
-            .animation(Motion.modeSwitch, value: layout.screen)
             // A screen switch can tear the list down mid-drag, in which case the gesture's
             // `onEnded` never fires — clear the lift here or its overlay survives onto the new
             // screen.
             .onChange(of: layout.screen) {
                 reorderLift = nil
                 layout.cancelDrag()
+            }
+            // Each screen switch: pin to the outgoing screen for one render (`slideProgress = 0`),
+            // then spring to the incoming one on the next runloop tick. Deferring the animation one
+            // tick is what makes it animate — setting 0 then 1 in the same closure collapses to a
+            // no-op (SwiftUI animates from the last *committed* value). `slideProgress` drives the
+            // page offset and the interpolated height together, so the slide and the resize are one motion.
+            .onChange(of: layout.screenSlideID) { _, id in
+                guard id != 0 else { return }
+                slideProgress = 0
+                animatedSlideID = id
+                Task { @MainActor in
+                    withAnimation(Motion.spring) { slideProgress = 1 }
+                }
             }
             .onChange(of: layout.customizeGroups.map { group in
                 "\(group.provider.id):\(group.metrics.map(\.id).joined(separator: ","))"
@@ -180,9 +214,66 @@ struct DashboardView: View {
         dashboardScrollPosition.scrollTo(edge: .top)
     }
 
-    @ViewBuilder
+    /// The popover's screens as a horizontal pager. At rest only the current screen is mounted (one
+    /// page at offset 0), so drag-reorder's coordinate math and the footer's scroll-edge underlap are
+    /// exactly what they'd be with the screen rendered alone. During a switch the outgoing and incoming
+    /// screens are both mounted, ordered left-to-right by `slideRank`, and slid by a pure offset.
+    ///
+    /// Why an offset and not a SwiftUI `.transition`: the cards' fill is translucent `.quaternary`
+    /// glass. Any transition carrying `.opacity` composites a screen into a transparency layer where
+    /// that material has no vibrant backdrop to sample and resolves to its opaque near-white base — a
+    /// white flash across the grey cards (the regression this removes; it has no clean SwiftUI fix).
+    /// A pure offset never touches opacity, so the glass keeps sampling the live popover backdrop. The
+    /// pages are a `ForEach` keyed by screen, so the incoming page keeps its identity (and scroll
+    /// position) when the slide collapses back to one page. `.animation(nil, value:)` stops the
+    /// one-frame structural re-layout at the start of a switch from inheriting the footer buttons'
+    /// mode-switch animation — only `slideProgress` animates the offset (and, in step, the height).
     private var modeBody: some View {
-        switch layout.screen {
+        let pages = slidePages
+        return HStack(alignment: .top, spacing: 0) {
+            ForEach(pages, id: \.self) { screen in
+                screenView(screen)
+                    .frame(width: Self.popoverWidth)
+                    .frame(maxHeight: .infinity, alignment: .top)
+            }
+        }
+        .frame(width: Self.popoverWidth, alignment: .leading)
+        .offset(x: slideOffset(pages))
+        .animation(nil, value: layout.screenSlideID)
+    }
+
+    /// True from the moment `layout.screen` changes until the slide reaches the incoming screen.
+    private var isSliding: Bool {
+        layout.screenSlideID != 0
+            && (layout.screenSlideID != animatedSlideID || slideProgress < 1)
+    }
+
+    /// One page at rest (the current screen); the two involved screens in left-to-right rank order
+    /// while a switch animates.
+    private var slidePages: [PopoverScreen] {
+        guard isSliding else { return [layout.screen] }
+        let from = layout.screenSlideFrom
+        let to = layout.screen
+        return from.slideRank < to.slideRank ? [from, to] : [to, from]
+    }
+
+    /// Horizontal offset that places the outgoing screen at `slideProgress == 0` and the incoming one
+    /// at `1`. Pinned to the outgoing screen until this transition's animation has actually started, so
+    /// the first frame after a switch shows the screen being left — never a flash of the destination.
+    private func slideOffset(_ pages: [PopoverScreen]) -> CGFloat {
+        guard isSliding, pages.count > 1 else { return 0 }
+        let fromOffset = -CGFloat(pages.firstIndex(of: layout.screenSlideFrom) ?? 0) * Self.popoverWidth
+        let toOffset = -CGFloat(pages.firstIndex(of: layout.screen) ?? 0) * Self.popoverWidth
+        let progress = animatedSlideID == layout.screenSlideID ? slideProgress : 0
+        return fromOffset + progress * (toOffset - fromOffset)
+    }
+
+    /// Builds one screen. Kept identity-stable across the slide via the `ForEach` key in `modeBody`.
+    @ViewBuilder
+    private func screenView(_ screen: PopoverScreen) -> some View {
+        switch screen {
+        case .dashboard:
+            scrollingDashboard
         case .customize:
             CustomizeView(
                 contentHeight: $customizeContentHeight,
@@ -190,16 +281,11 @@ struct DashboardView: View {
                 reorderSpaceName: Self.reorderSpace,
                 reorderLift: $reorderLift
             )
-            .transition(.move(edge: .trailing).combined(with: .opacity))
         case .settings:
             SettingsScreen(
                 contentHeight: $settingsContentHeight,
                 hasMeasuredContent: $hasMeasuredSettingsContent
             )
-            .transition(.move(edge: .trailing).combined(with: .opacity))
-        case .dashboard:
-            scrollingDashboard
-                .transition(.move(edge: .leading).combined(with: .opacity))
         }
     }
 
