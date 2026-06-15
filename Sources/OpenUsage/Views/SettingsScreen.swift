@@ -129,8 +129,8 @@ struct SettingsScreen: View {
                     providerRow(provider)
                 }
             }
-            // Visible whenever the updater is active (release + preview builds ship a feed; only a bare
-            // `swift run` with no bundle hides this).
+            // Visible whenever the updater is active (only the signed release build ships a feed; the
+            // dev build and a bare `swift run`, with no feed, hide this).
             if updater.isActive {
                 section("Updates") {
                     row("Update Automatically") {

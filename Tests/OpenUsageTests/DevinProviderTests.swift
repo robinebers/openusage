@@ -69,13 +69,16 @@ final class DevinUsageMapperTests: XCTestCase {
         var planInfo = planStatus["planInfo"] as! [String: Any]
         planInfo["hideDailyQuota"] = true
         planStatus["planInfo"] = planInfo
+        planStatus["dailyQuotaRemainingPercent"] = 30
         planStatus.removeValue(forKey: "weeklyQuotaRemainingPercent")
         userStatus["planStatus"] = planStatus
 
         let mapped = try DevinUsageMapper.mapUserStatus(userStatus)
 
         XCTAssertNil(progress(mapped.lines, "Daily quota"))
-        XCTAssertEqual(progress(mapped.lines, "Weekly quota")?.used, 100)
+        // The hidden daily quota fills the missing Weekly row and is still flipped from "remaining"
+        // to "used": 30% remaining -> 70% used (not passed through raw as 30).
+        XCTAssertEqual(progress(mapped.lines, "Weekly quota")?.used, 70)
         XCTAssertEqual(text(mapped.lines, "Extra usage balance"), "$964.22")
     }
 

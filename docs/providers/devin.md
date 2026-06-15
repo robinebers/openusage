@@ -6,8 +6,8 @@ Tracks your Devin quota using the login from the Devin CLI or the Devin app.
 
 | Metric | Meaning |
 |---|---|
-| Weekly | Weekly quota used |
-| Daily | Daily quota used (falls back to the weekly figure when Devin hides the daily one) |
+| Weekly | Weekly quota used (falls back to the daily figure when Devin reports no weekly quota) |
+| Daily | Daily quota used (hidden when Devin hides the daily quota) |
 | Extra Balance | Overage/extra-usage balance in dollars |
 | Plan | Your plan name (optional widget) |
 
@@ -23,7 +23,7 @@ If the CLI credentials fail but the app is signed in with a different account, t
 ## Troubleshooting
 
 - **"Not logged in"** — run `devin auth login`, or sign into the Devin app, then refresh.
-- **Daily shows the same as Weekly** — Devin sometimes doesn't expose a separate daily quota; the weekly figure is shown so the row stays meaningful.
+- **Weekly shows the daily figure** — when Devin reports no separate weekly quota, the daily quota is shown in the Weekly row so it stays meaningful.
 
 ## Under the hood
 

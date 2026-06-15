@@ -244,9 +244,3 @@ final class CursorProvider: ProviderRuntime {
         )
     }
 }
-
-private extension String {
-    var nilIfEmpty: String? {
-        isEmpty ? nil : self
-    }
-}

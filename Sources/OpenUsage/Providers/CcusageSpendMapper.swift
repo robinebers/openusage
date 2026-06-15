@@ -11,8 +11,8 @@ enum CcusageSpendMapper {
         let todayEntry = usage.daily.first { dayKey(fromUsageDate: $0.date) == today }
         let yesterdayEntry = usage.daily.first { dayKey(fromUsageDate: $0.date) == yesterday }
 
-        lines.append(dayUsageLine(label: "Today", entry: todayEntry, includeZeroTokens: true))
-        lines.append(dayUsageLine(label: "Yesterday", entry: yesterdayEntry, includeZeroTokens: true))
+        lines.append(dayUsageLine(label: "Today", entry: todayEntry))
+        lines.append(dayUsageLine(label: "Yesterday", entry: yesterdayEntry))
 
         let totalTokens = usage.daily.reduce(0) { $0 + $1.totalTokens }
         let costValues = usage.daily.compactMap(\.costUSD)
@@ -25,12 +25,12 @@ enum CcusageSpendMapper {
         }
     }
 
-    static func dayKey(from date: Date) -> String {
+    private static func dayKey(from date: Date) -> String {
         let components = Calendar.current.dateComponents([.year, .month, .day], from: date)
         return String(format: "%04d-%02d-%02d", components.year ?? 0, components.month ?? 0, components.day ?? 0)
     }
 
-    static func dayKey(fromUsageDate rawDate: String) -> String? {
+    private static func dayKey(fromUsageDate rawDate: String) -> String? {
         let value = rawDate.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { return nil }
 
@@ -57,16 +57,11 @@ enum CcusageSpendMapper {
         return nil
     }
 
-    static func dayUsageLine(label: String, entry: CcusageDay?, includeZeroTokens: Bool) -> MetricLine {
-        let tokens = entry?.totalTokens ?? 0
-        let cost = entry?.costUSD
-        if tokens > 0 || includeZeroTokens {
-            return .text(label: label, value: costAndTokensLabel(tokens: tokens, costUSD: cost))
-        }
-        return .text(label: label, value: "")
+    private static func dayUsageLine(label: String, entry: CcusageDay?) -> MetricLine {
+        .text(label: label, value: costAndTokensLabel(tokens: entry?.totalTokens ?? 0, costUSD: entry?.costUSD))
     }
 
-    static func costAndTokensLabel(tokens: Int, costUSD: Double?) -> String {
+    private static func costAndTokensLabel(tokens: Int, costUSD: Double?) -> String {
         var parts: [String] = []
         if let costUSD {
             parts.append(Formatters.currency(costUSD))
@@ -75,7 +70,7 @@ enum CcusageSpendMapper {
         return parts.joined(separator: " · ")
     }
 
-    static func formatTokens(_ tokens: Int) -> String {
+    private static func formatTokens(_ tokens: Int) -> String {
         let absValue = abs(tokens)
         let sign = tokens < 0 ? "-" : ""
         let units: [(threshold: Double, divisor: Double, suffix: String)] = [

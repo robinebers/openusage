@@ -89,6 +89,11 @@ extension String {
         addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? self
     }
 
+    /// `nil` when the string is empty, otherwise the string itself — for treating "" as "missing".
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
+    }
+
     /// Drop any trailing slashes, for joining base URLs and paths.
     var trimmingTrailingSlashes: String {
         var copy = self

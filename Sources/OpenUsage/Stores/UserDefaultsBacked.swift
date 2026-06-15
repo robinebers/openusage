@@ -16,7 +16,7 @@ extension UserDefaults {
 /// instance-scoped key use `UserDefaults.enumValue(forKey:default:)` directly instead.
 protocol UserDefaultsBacked: RawRepresentable where RawValue == String {
     /// The `UserDefaults.standard` key this setting persists under.
-    static var defaultsKey: String { get }
+    static var key: String { get }
     /// The value used when the key is unset or holds an unrecognized raw value.
     static var fallback: Self { get }
 }
@@ -24,6 +24,6 @@ protocol UserDefaultsBacked: RawRepresentable where RawValue == String {
 extension UserDefaultsBacked {
     /// The stored choice, read live from `UserDefaults.standard` (falls back to `fallback`).
     static var current: Self {
-        UserDefaults.standard.enumValue(forKey: defaultsKey, default: fallback)
+        UserDefaults.standard.enumValue(forKey: key, default: fallback)
     }
 }

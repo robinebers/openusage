@@ -12,7 +12,6 @@ enum AppearanceSetting: String, Hashable, Sendable, CaseIterable, UserDefaultsBa
     case dark
 
     static let key = "appearance"
-    static var defaultsKey: String { key }
     static var fallback: AppearanceSetting { .system }
 
     /// Posted by `applyCurrent()` after the app-level appearance is set, so the popover owner can

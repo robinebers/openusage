@@ -132,3 +132,43 @@ final class CcusageRunnerTests: XCTestCase {
         XCTAssertEqual(usage?.daily.first?.costUSD, 0.75)
     }
 }
+
+@MainActor
+final class CodexProviderTests: XCTestCase {
+    func testNoUsageDataBadgeIsDroppedWhenCcusageHasSpend() async {
+        let now = OpenUsageISO8601.date(from: "2026-02-20T16:00:00.000Z")!
+        // The live usage API returns nothing mappable (empty body -> no metric lines)...
+        let httpClient = FakeHTTPClient(response: HTTPResponse(statusCode: 200, headers: [:], body: Data("{}".utf8)))
+        let provider = CodexProvider(
+            authStore: CodexAuthStore(
+                environment: FakeEnvironment(["CODEX_HOME": "/tmp/codex-home"]),
+                files: FakeFiles(["/tmp/codex-home/auth.json": #"{"tokens":{"access_token":"token"}}"#]),
+                keychain: FakeKeychain()
+            ),
+            usageClient: CodexUsageClient(http: httpClient),
+            ccusageRunner: CcusageRunner(
+                processRunner: FakeProcessRunner(),
+                homeDirectory: { URL(fileURLWithPath: "/Users/test") }
+            ),
+            now: { now }
+        )
+
+        let snapshot = await provider.refresh()
+
+        // ...but local ccusage spend exists, so the snapshot shows the spend lines and NOT the
+        // "No usage data" badge. Regression: the mapper used to append the badge *before* the ccusage
+        // lines, leaving a contradictory badge-plus-spend snapshot.
+        XCTAssertEqual(text(snapshot.lines, "Today"), "$0.25 · 150 tokens")
+        XCTAssertFalse(snapshot.lines.contains { line in
+            if case .badge(_, let value, _, _) = line { return value == "No usage data" }
+            return false
+        })
+    }
+
+    private func text(_ lines: [MetricLine], _ label: String) -> String? {
+        guard case .text(_, let value, _, _) = lines.first(where: { $0.label == label }) else {
+            return nil
+        }
+        return value
+    }
+}

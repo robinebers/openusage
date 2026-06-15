@@ -17,7 +17,7 @@ enum CodexUsageMapper {
             if response.statusCode == 401 || response.statusCode == 403 {
                 throw CodexAuthError.tokenExpired
             }
-            throw CodexUsageError.requestFailed(statusCode: response.statusCode)
+            throw CodexUsageError.requestFailed(response.statusCode)
         }
 
         guard let body = ProviderParse.jsonObject(response.body) else {
@@ -76,8 +76,8 @@ enum CodexUsageMapper {
             lines.append(.text(label: "Credits", value: creditsLabel(remaining: remaining)))
         }
 
-        MetricLine.appendNoDataIfNeeded(&lines)
-
+        // The "no usage data" badge is appended by `CodexProvider.probe` *after* the ccusage spend
+        // lines, so an empty live response never yields a badge that coexists with Today/Yesterday.
         return CodexMappedUsage(plan: formatCodexPlan(body["plan_type"]), lines: lines)
     }
 
@@ -204,18 +204,18 @@ enum CodexUsageMapper {
 }
 
 enum CodexUsageError: Error, LocalizedError, Equatable {
-    case requestFailed(statusCode: Int)
+    case requestFailed(Int)
     case invalidResponse
     case connectionFailed
 
     var errorDescription: String? {
         switch self {
         case .requestFailed(let statusCode):
-            return "Usage request failed (HTTP \(statusCode)). Try again later."
+            return ProviderUsageErrorText.requestFailed(statusCode: statusCode)
         case .invalidResponse:
-            return "Usage response invalid. Try again later."
+            return ProviderUsageErrorText.invalidResponse
         case .connectionFailed:
-            return "Usage request failed. Check your connection."
+            return ProviderUsageErrorText.connectionFailed
         }
     }
 }

@@ -86,7 +86,7 @@ enum MenuBarStripRenderer {
         return CGRect(x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1)
     }
 
-    /// The compact Bars glyph (≤4 percentage bars), or `nil` when no pinned metric is a percentage.
+    /// The compact Bars glyph (≤4 bounded-metric bars), or `nil` when no pinned metric has a fill.
     static func barsImage(for content: MenuBarContent) -> NSImage? {
         let fractions = content.bars.map(\.fraction)
         guard !fractions.isEmpty else { return nil }

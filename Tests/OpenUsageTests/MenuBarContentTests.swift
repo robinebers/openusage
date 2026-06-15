@@ -2,7 +2,7 @@ import XCTest
 @testable import OpenUsage
 
 /// Covers `MenuBarContentBuilder`: it resolves pinned provider groups into Text groups (order, labels,
-/// and values preserved) and Bars entries (percentages only, first four in order), and reports empty
+/// and values preserved) and Bars entries (bounded metrics only, first four in order), and reports empty
 /// when nothing is pinned.
 @MainActor
 final class MenuBarContentTests: XCTestCase {

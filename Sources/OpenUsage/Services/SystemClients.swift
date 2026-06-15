@@ -184,9 +184,3 @@ func expandHome(_ path: String) -> String {
     return home + String(path.dropFirst())
 }
 
-private extension String {
-    var nilIfEmpty: String? {
-        isEmpty ? nil : self
-    }
-}
-

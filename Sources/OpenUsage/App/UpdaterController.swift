@@ -7,10 +7,10 @@ import Sparkle
 
 /// Wraps Sparkle's standard updater so the rest of the app stays Sparkle-agnostic.
 ///
-/// The updater starts whenever the app runs from a packaged bundle that declares a `SUFeedURL`. Both
-/// the release build and the preview build ship one (the preview keeps automatic checks off), so the
-/// Settings "Updates" section is visible in both. Only a bare `swift run` — no bundle, no feed — leaves
-/// the updater dormant and hides the section. See `docs/updates.md` for the user-facing behavior.
+/// The updater starts whenever the app runs from a packaged bundle that declares a `SUFeedURL`. Only the
+/// signed release build bakes one in, so the Settings "Updates" section appears there alone. A bare
+/// `swift run` and the in-place dev build ship no feed, leaving the updater dormant and the section
+/// hidden. See `docs/updates.md` for the user-facing behavior.
 @MainActor
 @Observable
 final class UpdaterController {
@@ -60,7 +60,7 @@ final class UpdaterController {
     func start() {
         guard controller == nil else { return }
         guard Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") != nil else {
-            Self.logger.notice("Updater disabled: no SUFeedURL (unbundled or preview build)")
+            Self.logger.notice("Updater disabled: no SUFeedURL (unbundled or dev build)")
             return
         }
         let controller = SPUStandardUpdaterController(

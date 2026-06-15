@@ -86,6 +86,7 @@ final class CodexProvider: ProviderRuntime {
             CcusageSpendMapper.appendTokenUsage(usage, to: &mapped.lines, now: now())
         }
 
+        MetricLine.appendNoDataIfNeeded(&mapped.lines)
         return ProviderSnapshot(
             providerID: provider.id,
             displayName: provider.displayName,

@@ -50,9 +50,11 @@ enum DevinUsageMapper {
             ))
         } else if hideDailyQuota,
                   let dailyRemaining {
-            lines.append(usedQuotaLine(
+            // No weekly quota in the response: surface the (hidden) daily quota in the Weekly row so
+            // the tile stays meaningful. Still flipped from remaining→used, just like every quota row.
+            lines.append(quotaLine(
                 label: "Weekly quota",
-                used: dailyRemaining,
+                remaining: dailyRemaining,
                 resetsAt: weeklyReset,
                 periodDurationMs: weekPeriodMs
             ))
@@ -69,19 +71,12 @@ enum DevinUsageMapper {
         return DevinMappedUsage(plan: plan, lines: lines)
     }
 
+    /// Devin reports quota as percent *remaining*; the tile shows percent *used*, so every quota row
+    /// flips `100 - remaining` (clamped) — including the weekly-from-daily fallback above.
     private static func quotaLine(label: String, remaining: Double, resetsAt: Date?, periodDurationMs: Int) -> MetricLine {
-        usedQuotaLine(
-            label: label,
-            used: 100 - remaining,
-            resetsAt: resetsAt,
-            periodDurationMs: periodDurationMs
-        )
-    }
-
-    private static func usedQuotaLine(label: String, used: Double, resetsAt: Date?, periodDurationMs: Int) -> MetricLine {
         .progress(
             label: label,
-            used: ProviderParse.clampPercent(used),
+            used: ProviderParse.clampPercent(100 - remaining),
             limit: 100,
             format: .percent,
             resetsAt: resetsAt,

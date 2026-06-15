@@ -1,9 +1,9 @@
 import Foundation
 
 /// Resolved, ordered, capped data for the menu-bar strip, built from the pinned metrics and their live
-/// values. The renderers consume this: `groups` drives the Text style (up to three provider groups, each
-/// with its 1–2 pinned metrics), `bars` drives the Bars style (the first four percentage metrics in
-/// order). `isEmpty` means render the plain app icon.
+/// values. The renderers consume this: `groups` drives the Text style (one segment per pinned provider,
+/// each with its 1–2 pinned metrics), `bars` drives the Bars style (the first four bounded metrics — any
+/// with a fill, not just percentages — in order). `isEmpty` means render the plain app icon.
 struct MenuBarContent: Equatable {
     /// One resolved pinned metric.
     struct Metric: Equatable {
@@ -30,8 +30,6 @@ struct MenuBarContent: Equatable {
     let groups: [Group]
     /// Bounded metrics (those with a fill) for the Bars style, flattened in order and capped to four.
     let bars: [Metric]
-
-    static let empty = MenuBarContent(groups: [], bars: [])
 
     /// Nothing is pinned, every pinned provider is disabled, or no pinned metric has data yet — the
     /// menu bar falls back to the app icon.

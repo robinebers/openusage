@@ -17,11 +17,11 @@ enum CursorUsageError: Error, LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .connectionFailed:
-            return "Usage request failed. Check your connection."
+            return ProviderUsageErrorText.connectionFailed
         case .invalidResponse:
-            return "Usage response invalid. Try again later."
+            return ProviderUsageErrorText.invalidResponse
         case .requestFailed(let statusCode):
-            return "Usage request failed (HTTP \(statusCode)). Try again later."
+            return ProviderUsageErrorText.requestFailed(statusCode: statusCode)
         case .usageAfterRefreshFailed:
             return "Usage request failed after refresh. Try again."
         case .requestBasedUnavailable(let message):

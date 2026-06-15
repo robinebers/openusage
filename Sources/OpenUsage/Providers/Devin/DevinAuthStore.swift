@@ -1,9 +1,9 @@
 import Foundation
 
 struct DevinAuth: Hashable, Sendable {
-    enum Source: String, Hashable, Sendable {
-        case credentialsFile = "credentials.toml"
-        case appState = "Devin app"
+    enum Source: Hashable, Sendable {
+        case credentialsFile
+        case appState
     }
 
     var apiKey: String

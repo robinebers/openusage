@@ -12,18 +12,6 @@ struct WidgetDescriptor: Identifiable, Hashable {
     /// The one display name for this widget (tile + gallery).
     var title: String { sample.title }
 
-    init(
-        id: String,
-        providerID: String,
-        metricLabel: String,
-        sample: WidgetData
-    ) {
-        self.id = id
-        self.providerID = providerID
-        self.metricLabel = metricLabel
-        self.sample = sample
-    }
-
     static func == (lhs: WidgetDescriptor, rhs: WidgetDescriptor) -> Bool { lhs.id == rhs.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
 }

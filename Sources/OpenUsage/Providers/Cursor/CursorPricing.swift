@@ -2,26 +2,18 @@ import Foundation
 
 /// Per-model token pricing entry. Rates are USD per million tokens.
 struct CursorPricingEntry: Sendable {
-    let displayName: String
-    let provider: String
-    let familyID: String
     let familyDisplayName: String
     let inputPerMillion: Double
     let cacheWritePerMillion: Double
     let cacheReadPerMillion: Double
     let outputPerMillion: Double
-    let applyMaxModeUplift: Bool
 
     init(manifestEntry: CursorModelManifestPricingEntry) {
-        self.displayName = manifestEntry.displayName
-        self.provider = manifestEntry.provider
-        self.familyID = manifestEntry.familyID
         self.familyDisplayName = manifestEntry.familyDisplayName
         self.inputPerMillion = manifestEntry.inputPerMillion
         self.cacheWritePerMillion = manifestEntry.cacheWritePerMillion
         self.cacheReadPerMillion = manifestEntry.cacheReadPerMillion
         self.outputPerMillion = manifestEntry.outputPerMillion
-        self.applyMaxModeUplift = manifestEntry.applyMaxModeUplift
     }
 }
 
