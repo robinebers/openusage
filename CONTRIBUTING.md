@@ -43,8 +43,6 @@ Each provider is a small Swift module under `Sources/OpenUsage/Providers/<Name>/
 6. Test it locally with `./script/build_and_run.sh`
 7. Open a PR with screenshots showing it working
 
-If the provider already exists in the [original OpenUsage](https://github.com/robinebers/openusage) as a JS plugin, treat that plugin's behavior as the reference when porting.
-
 You can also [open an issue](https://github.com/robinebers/openusage/issues/new?template=new_provider.yml) to request a provider without building it yourself.
 
 ### Fix a bug

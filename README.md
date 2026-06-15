@@ -4,15 +4,6 @@ Track your AI coding subscriptions from the macOS menu bar — native Swift edit
 
 OpenUsage shows how much of your AI coding plans you've used: session and weekly limits, credits, and spend, all in one popover. Pin your most important metrics straight into the menu bar.
 
-## Screenshots
-
-<!-- TODO(maintainer): replace these placeholders with real captures before publishing.
-     Drop the images into assets/screenshots/ using these exact filenames. See assets/screenshots/README.md. -->
-
-| Dashboard popover | Menu bar pins |
-| --- | --- |
-| ![OpenUsage dashboard popover](assets/screenshots/popover.png) | ![OpenUsage menu bar pins](assets/screenshots/menu-bar.png) |
-
 ## Supported Providers
 
 - [**Claude**](docs/providers/claude.md) — session, weekly, Sonnet, extra usage, local daily spend (ccusage)

@@ -50,11 +50,7 @@ silently.
    from, the endpoints it calls, and what its error states mean.
 7. **Run it.** Build and launch with `./script/build_and_run.sh` and confirm the provider shows up.
 
-If the provider already exists in the [original OpenUsage](https://github.com/robinebers/openusage) as a
-JavaScript plugin, treat that plugin's behavior as the reference when porting.
-
 ## Conventions
 
-- Keep files under ~500 lines; split the client/mapper/auth store rather than letting one grow.
 - Validate only at the boundary (the API response); trust the app's internal types.
 - Match the metric labels and units the provider's own dashboard uses, so numbers are recognizable.
