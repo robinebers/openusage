@@ -36,6 +36,11 @@ struct DashboardView: View {
     @State private var dashboardScrollPosition = ScrollPosition(edge: .top)
     /// Row rhythm and the Customize height seed track the global density setting live.
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
+    /// Readability control. The app toggle is OR'd with macOS's own Reduce Transparency setting
+    /// (`accessibilityReduceTransparency`) into one `effectiveReduceTransparency` flag, pushed down
+    /// the tree so every surface renders in its solid form together.
+    @AppStorage(ReduceTransparencySetting.key) private var reduceTransparency = false
+    @Environment(\.accessibilityReduceTransparency) private var systemReduceTransparency
 
     private static let outerPadding: CGFloat = 14
     /// Breathing room between the bottom of the scrolling content and the pinned footer. Kept small
@@ -135,12 +140,12 @@ struct DashboardView: View {
 
     /// Cold-start estimate for Settings content, same role as the Customize estimate above. The
     /// constants mirror `SettingsScreen`: five sections (a caption header over a card) holding
-    /// eleven fixed control rows (Startup 2, Appearance 4, Usage Display 2, Advanced 3) plus one
+    /// twelve fixed control rows (Startup 2, Appearance 5, Usage Display 2, Advanced 3) plus one
     /// row per registered provider.
     private var estimatedSettingsContentHeight: CGFloat {
         let sectionCount: CGFloat = 5
         let sectionHeaderHeight: CGFloat = 16
-        let fixedRowCount: CGFloat = 11
+        let fixedRowCount: CGFloat = 12
         let rowCount = fixedRowCount + CGFloat(container.registry.providers.count)
         let verticalPadding: CGFloat = 24
         return verticalPadding
@@ -149,11 +154,25 @@ struct DashboardView: View {
             + (sectionCount - 1) * density.sectionSpacing
     }
 
+    /// The app's Reduce Transparency toggle OR macOS's own accessibility setting: either one drops
+    /// the popover to its solid, non-glass form. Resolved once here and injected so the surface,
+    /// controls, and meter tints all read the same answer.
+    private var effectiveReduceTransparency: Bool {
+        reduceTransparency || systemReduceTransparency
+    }
+
     var body: some View {
         modeBody
             .frame(width: Self.popoverWidth)
             .pinnedFooter(spacing: 0) { footerBar }
             .frame(height: animatedPopoverHeight, alignment: .top)
+            // Paint the surface behind the content (and footer) and tell every descendant whether
+            // glass is on, so the fallbacks and the meter tints render in step. Both go on the
+            // outermost level of the chain so the footer, header buttons, and scroll content inherit.
+            .background(
+                PopoverSurface(reduce: effectiveReduceTransparency)
+            )
+            .environment(\.reduceTransparencyEffective, effectiveReduceTransparency)
             .overlay(alignment: .topLeading) {
                 if let reorderLift {
                     ReorderLiftPreview(lift: reorderLift)
@@ -431,5 +450,26 @@ struct DashboardView: View {
             return "Next update in \(minutes)m"
         }
         return "Next update in \(totalSeconds)s"
+    }
+}
+
+/// The popover's backdrop: clear by default (so the system Liquid Glass shows through), an opaque
+/// window-colored fill when Reduce Transparency is on. With the default (glass on) it's
+/// `Color.clear` — the stock look, untouched. Never hit-tests so it can't steal clicks from the
+/// content above it.
+private struct PopoverSurface: View {
+    let reduce: Bool
+
+    var body: some View {
+        Group {
+            if reduce {
+                // Solid mode: the standard window background, so the popover reads like a normal
+                // opaque panel instead of sampling the desktop behind it.
+                Color(nsColor: .windowBackgroundColor)
+            } else {
+                Color.clear
+            }
+        }
+        .allowsHitTesting(false)
     }
 }
