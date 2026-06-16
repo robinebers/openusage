@@ -148,21 +148,27 @@ private struct MenuBarTextStrip: View {
         }
     }
 
+    /// Side length of the glyph box. Sized to fill the strip's height so the mark reads at the same
+    /// scale as the dual-line metric block beside it (the single number is shorter), instead of
+    /// floating small in the middle. `ProviderIconShape` already normalizes every mark to its true
+    /// bounding box, so a near-zero `inset` here makes each provider fill this box uniformly.
+    private static let glyphSide: CGFloat = 16
+
     @ViewBuilder
     private func glyph(_ icon: IconSource) -> some View {
         switch icon {
         case .providerMark(let id):
             if let mark = ProviderMarks.mark(for: id) {
-                ProviderIconShape(pathData: mark.path)
+                ProviderIconShape(pathData: mark.path, inset: 0.04)
                     .fill(Color.black)
-                    .frame(width: 14, height: 14)
+                    .frame(width: Self.glyphSide, height: Self.glyphSide)
             } else {
-                Circle().fill(Color.black).frame(width: 13, height: 13)
+                Circle().fill(Color.black).frame(width: Self.glyphSide - 1, height: Self.glyphSide - 1)
             }
         case .symbol(let name):
             Image(systemName: name)
-                .font(.system(size: 12, weight: .semibold))
-                .frame(width: 14, height: 14)
+                .font(.system(size: 14, weight: .semibold))
+                .frame(width: Self.glyphSide, height: Self.glyphSide)
         }
     }
 }
