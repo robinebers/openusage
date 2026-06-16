@@ -37,15 +37,27 @@ enum Theme {
     /// the system orange softened for glass like the meter fills.
     static let notice = glassTint(Color(nsColor: .systemOrange))
 
-    /// Card surface for the metric groups: a semantic quaternary fill over the system popover glass
-    /// (the Control Center module look). Semantic — not a hand-tuned solid — so the cards track
-    /// light/dark, Increase Contrast, Reduce Transparency, and the OS Liquid Glass transparency
-    /// setting automatically.
+    /// Card surface in the default (glass) state — toggle off: a barely-there semantic quaternary
+    /// tint, so cards read as light translucent panels over the live popover glass (the Control
+    /// Center module look). Semantic, so it tracks light/dark and accessibility settings.
     static let cardFill = AnyShapeStyle(.quaternary)
+
+    /// Card surface when Reduce Transparency is on — toggle on: a frosted material instead of the
+    /// barely-there tint, so each card reads as a distinct raised panel over the now-opaque popover.
+    /// `.thinMaterial` is the lightest frost that separates the card from the solid background; bump
+    /// to `.regularMaterial` here if cards need to read more solid.
+    static let frostedCardFill = AnyShapeStyle(Material.thin)
 
     /// Backing for lifted drag previews: material, so the floating card stays legible over the rows
     /// it passes instead of letting them bleed through a translucent fill.
     static let liftedCardFill = AnyShapeStyle(Material.regular)
+
+    /// Hairline outline on every live card. The frosted fill alone separates cards well in light
+    /// mode but barely at all in dark mode (a material lightens little over a dark background, so
+    /// card and popover end up nearly the same tone). A defined edge fixes that deterministically in
+    /// both modes — the same way macOS grouped boxes (System Settings, Control Center) read in dark
+    /// mode. `.separator` is the semantic hairline, so it tracks light/dark and Increase Contrast.
+    static let cardBorder = AnyShapeStyle(.separator)
 
     /// The single corner radius for every metric/settings card surface and its lifted twin, so the
     /// floating drag preview always matches the live card's shape.
@@ -58,12 +70,16 @@ enum Theme {
 }
 
 extension View {
-    /// The grouped-card surface used for provider/settings cards: the semantic quaternary fill in
-    /// the shared rounded shape. Pass `lifted: true` for the floating drag preview, which swaps the
-    /// fill for the legible material so the card reads over (not through) the rows it passes.
-    /// Routing every card site through this keeps the live card and its lifted twin one shape.
+    /// The grouped-card surface used for provider/settings cards: the card fill in the shared
+    /// rounded shape, with a hairline border on live cards so they stay distinct from the popover in
+    /// dark mode (see `Theme.cardBorder`). The live fill follows the Reduce Transparency setting —
+    /// translucent quaternary with glass on, frosted material with it off — via `CardSurfaceModifier`
+    /// (a modifier, not a plain func, so it can read the environment flag). Pass `lifted: true` for
+    /// the floating drag preview, which swaps the fill for the heavier lifted material and skips the
+    /// border (its shadow/`liftedRowSurface` hairline already detaches it). Routing every card site
+    /// through this keeps the live card and its lifted twin one shape.
     func cardSurface(lifted: Bool = false) -> some View {
-        background(lifted ? Theme.liftedCardFill : Theme.cardFill, in: Theme.cardShape)
+        modifier(CardSurfaceModifier(lifted: lifted))
     }
 
     /// A single-row lifted preview surface: the card fill plus the thin separator hairline that
@@ -94,8 +110,49 @@ private struct GlassTint: ShapeStyle {
     var strength: Double
 
     func resolve(in environment: EnvironmentValues) -> Color {
-        guard environment.colorSchemeContrast != .increased else { return color }
+        // Increase Contrast and Reduce Transparency both want the full-strength color: the first by
+        // Apple's rule (every custom color on glass needs a high-contrast variant), the second
+        // because in solid mode there's no glass to temper against, so the softened fade would just
+        // read as a washed-out bar.
+        guard environment.colorSchemeContrast != .increased,
+              !environment.reduceTransparencyEffective
+        else { return color }
         let neutral = environment.colorScheme == .dark ? Color(white: 0.16) : Color(white: 0.94)
         return color.mix(with: neutral, by: 1 - strength)
+    }
+}
+
+/// Backs `cardSurface`: live cards take the frosted fill when Reduce Transparency is on and the
+/// translucent quaternary fill when it's off, plus the hairline border; the lifted drag preview
+/// always uses its own legible material and no border. A `ViewModifier` rather than a plain `View`
+/// func so it can read the environment flag.
+private struct CardSurfaceModifier: ViewModifier {
+    @Environment(\.reduceTransparencyEffective) private var reduceTransparency
+    let lifted: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if lifted {
+            content.background(Theme.liftedCardFill, in: Theme.cardShape)
+        } else {
+            content
+                .background(reduceTransparency ? Theme.frostedCardFill : Theme.cardFill, in: Theme.cardShape)
+                .overlay { Theme.cardShape.strokeBorder(Theme.cardBorder, lineWidth: 0.5) }
+        }
+    }
+}
+
+/// Whether the popover is rendering in its solid, non-glass form — the app's Reduce Transparency
+/// toggle OR'd with macOS's own accessibility setting, resolved once in `DashboardView` and pushed
+/// down so every surface (cards, buttons, meter tints) reads the same answer. Defaults to `false`
+/// (full Liquid Glass) so nothing changes unless the flag is injected.
+private struct ReduceTransparencyEffectiveKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var reduceTransparencyEffective: Bool {
+        get { self[ReduceTransparencyEffectiveKey.self] }
+        set { self[ReduceTransparencyEffectiveKey.self] = newValue }
     }
 }

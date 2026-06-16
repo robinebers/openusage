@@ -10,6 +10,12 @@ import SwiftUI
 /// distinction, the scroll view still scrolls. Nothing here hides a runtime error — each branch is a
 /// compile-time `#available` check, which is the intended way to back-deploy newer-SDK APIs.
 ///
+/// These gate purely on OS version — the Reduce Transparency setting deliberately does *not* drop
+/// the glass controls (that downgraded the macOS 26 look to the macOS 15 one). Reduce Transparency
+/// instead makes the *surface* opaque (`PopoverSurface`) and frosts the cards (`Theme.cardSurface`),
+/// so the glass buttons stay glass — just rendered over a solid backing, which is the normal
+/// in-window look.
+///
 /// Keeping every `#available(macOS 26, *)` check in this one file means the views (`HeaderView`,
 /// `SettingsScreen`, `DashboardView`) stay free of inline availability branches.
 extension View {
