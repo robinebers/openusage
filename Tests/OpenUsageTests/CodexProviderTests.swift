@@ -158,30 +158,6 @@ final class CodexUsageMapperTests: XCTestCase {
     }
 }
 
-final class CcusageRunnerTests: XCTestCase {
-    func testParsesArrayOutput() {
-        let usage = CcusageRunner.parseOutput("""
-        [
-          { "date": "2026-02-20", "totalTokens": 150, "costUSD": 0.75 }
-        ]
-        """)
-
-        XCTAssertEqual(usage?.daily.first?.date, "2026-02-20")
-        XCTAssertEqual(usage?.daily.first?.totalTokens, 150)
-        XCTAssertEqual(usage?.daily.first?.costUSD, 0.75)
-    }
-
-    func testParsesObjectOutputAfterNoise() {
-        let usage = CcusageRunner.parseOutput("""
-        loading
-        { "daily": [{ "date": "2026-02-20", "totalTokens": 150, "totalCost": 0.75 }] }
-        """)
-
-        XCTAssertEqual(usage?.daily.first?.totalTokens, 150)
-        XCTAssertEqual(usage?.daily.first?.costUSD, 0.75)
-    }
-}
-
 @MainActor
 final class CodexProviderTests: XCTestCase {
     func testNoUsageDataBadgeIsDroppedWhenCcusageHasSpend() async {

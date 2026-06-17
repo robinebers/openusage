@@ -5,6 +5,27 @@ enum CcusageProvider: String, Sendable {
     case codex
 }
 
+/// Package runners we can use to execute `ccusage`, in fallback priority order.
+/// Mirrors the Tauri host (`src-tauri/src/plugin_engine/host_api.rs`) so both
+/// editions resolve runners identically.
+enum CcusageRunnerKind: CaseIterable, Sendable {
+    case bunx
+    case pnpmDlx
+    case yarnDlx
+    case npmExec
+    case npx
+
+    var label: String {
+        switch self {
+        case .bunx: return "bunx"
+        case .pnpmDlx: return "pnpm dlx"
+        case .yarnDlx: return "yarn dlx"
+        case .npmExec: return "npm exec"
+        case .npx: return "npx"
+        }
+    }
+}
+
 struct CcusageDay: Hashable, Sendable {
     var date: String
     var totalTokens: Int
@@ -24,7 +45,7 @@ enum CcusageRunnerError: Error, LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .noRunner:
-            return "No package runner found for ccusage."
+            return "No package runner found for ccusage. Install Bun, or ensure npm/npx is on your PATH."
         case .failed(let message):
             return message.isEmpty ? "ccusage failed." : message
         case .timedOut:
@@ -37,17 +58,22 @@ enum CcusageRunnerError: Error, LocalizedError, Equatable {
 
 struct CcusageRunner {
     private static let packageSpec = "ccusage@20.0.2"
+    private static let binName = "ccusage"
     private static let timeout: TimeInterval = 15
+    private static let probeTimeout: TimeInterval = 2
 
     var processRunner: ProcessRunning
     var homeDirectory: @Sendable () -> URL
+    var isExecutable: @Sendable (String) -> Bool
 
     init(
         processRunner: ProcessRunning = SystemProcessRunner(),
-        homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser }
+        homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser },
+        isExecutable: @escaping @Sendable (String) -> Bool = { FileManager.default.isExecutableFile(atPath: $0) }
     ) {
         self.processRunner = processRunner
         self.homeDirectory = homeDirectory
+        self.isExecutable = isExecutable
     }
 
     /// The `--since` argument ccusage expects: `yyyyMMdd`, `daysBack` days before `date`.
@@ -58,73 +84,120 @@ struct CcusageRunner {
     }
 
     func query(provider: CcusageProvider, since: String, homePath: String? = nil) async -> Result<CcusageDailyUsage, CcusageRunnerError> {
-        guard let bunx = resolveBunx() else {
+        let runners = collectRunners()
+        guard !runners.isEmpty else {
             AppLog.warn(LogTag.plugin("ccusage"), "no package runner found")
+            // Debug-only: the tried runner kinds plus the enriched PATH (which carries the user's
+            // home), routed through `redactLogMessage` so the username never lands in the log.
+            let tried = CcusageRunnerKind.allCases.map(\.label).joined(separator: ", ")
+            AppLog.debug(LogTag.plugin("ccusage"), "tried [\(tried)]; PATH \(LogRedaction.redactLogMessage(enrichedPath()))")
             return .failure(.noRunner)
         }
-        // The args are secret-free; the resolved bunx path may carry the user's home, so Debug-only
-        // and routed through `redactLogMessage`.
-        AppLog.info(LogTag.plugin("ccusage"), "launch bunx \(provider.rawValue) daily")
-        AppLog.debug(LogTag.plugin("ccusage"), "resolved bunx \(LogRedaction.redactLogMessage(bunx))")
-
-        let args = [
-            "--silent",
-            Self.packageSpec,
-            provider.rawValue,
-            "daily",
-            "--json",
-            "--order",
-            "desc",
-            "--since",
-            since
-        ]
 
         let environment = ccusageEnvironment(provider: provider, homePath: homePath)
-        do {
-            let result = try processRunner.run(
-                executable: bunx,
-                arguments: args,
-                environment: environment,
-                timeout: Self.timeout
-            )
-            guard result.succeeded else {
-                let stderr = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
-                AppLog.warn(LogTag.plugin("ccusage"), "failed: \(LogRedaction.redactLogMessage(stderr))")
-                return .failure(.failed(stderr))
+        var lastError: CcusageRunnerError = .noRunner
+
+        for (kind, program) in runners {
+            // The args are secret-free; the resolved program path may carry the user's home, so the
+            // path itself is Debug-only and routed through `redactLogMessage`.
+            AppLog.info(LogTag.plugin("ccusage"), "launch \(kind.label) \(provider.rawValue) daily")
+            AppLog.debug(LogTag.plugin("ccusage"), "resolved \(kind.label) \(LogRedaction.redactLogMessage(program))")
+
+            let args = Self.runnerArgs(kind: kind, provider: provider, since: since)
+            do {
+                let result = try processRunner.run(
+                    executable: program,
+                    arguments: args,
+                    environment: environment,
+                    timeout: Self.timeout
+                )
+                guard result.succeeded else {
+                    let stderr = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+                    AppLog.warn(LogTag.plugin("ccusage"), "\(kind.label) failed: \(LogRedaction.redactLogMessage(stderr))")
+                    lastError = .failed(stderr)
+                    continue
+                }
+                guard let usage = Self.parseOutput(result.stdout) else {
+                    AppLog.warn(LogTag.plugin("ccusage"), "\(kind.label) invalid output")
+                    lastError = .invalidOutput
+                    continue
+                }
+                return .success(usage)
+            } catch ProcessRunnerError.timedOut {
+                // A timeout is unlikely to be runner-specific (slow package download/exec rather than
+                // the wrong runner), so don't burn the remaining runners — surface it. Mirrors the
+                // Tauri host's "skip fallback runners on timeout" behavior.
+                AppLog.warn(LogTag.plugin("ccusage"), "\(kind.label) timed out")
+                return .failure(.timedOut)
+            } catch {
+                AppLog.warn(LogTag.plugin("ccusage"), "\(kind.label) failed: \(LogRedaction.redactLogMessage(error.localizedDescription))")
+                lastError = .failed(error.localizedDescription)
+                continue
             }
-            guard let usage = Self.parseOutput(result.stdout) else {
-                AppLog.warn(LogTag.plugin("ccusage"), "invalid output")
-                return .failure(.invalidOutput)
-            }
-            return .success(usage)
-        } catch ProcessRunnerError.timedOut {
-            AppLog.warn(LogTag.plugin("ccusage"), "timed out")
-            return .failure(.timedOut)
-        } catch {
-            AppLog.warn(LogTag.plugin("ccusage"), "failed: \(LogRedaction.redactLogMessage(error.localizedDescription))")
-            return .failure(.failed(error.localizedDescription))
+        }
+
+        AppLog.warn(LogTag.plugin("ccusage"), "all package runners failed")
+        return .failure(lastError)
+    }
+
+    // MARK: - Runner resolution
+
+    /// Every available runner, in fallback priority order, paired with the resolved program path.
+    func collectRunners() -> [(kind: CcusageRunnerKind, program: String)] {
+        CcusageRunnerKind.allCases.compactMap { kind in
+            resolveRunner(kind).map { (kind, $0) }
         }
     }
 
-    func resolveBunx() -> String? {
-        let home = homeDirectory()
-        let candidates = [
-            home.appendingPathComponent(".bun/bin/bunx").path,
-            "/opt/homebrew/bin/bunx",
-            "/usr/local/bin/bunx",
-            "bunx"
-        ]
-
-        for candidate in candidates {
+    /// First working program for `kind`: absolute candidates are checked on disk; a bare command
+    /// name is probed with `--version` so PATH resolution (incl. version managers) applies.
+    func resolveRunner(_ kind: CcusageRunnerKind) -> String? {
+        for candidate in Self.runnerCandidates(kind, home: homeDirectory()) {
             if candidate.hasPrefix("/") {
-                guard FileManager.default.isExecutableFile(atPath: candidate) else { continue }
-                return candidate
-            }
-            if commandExists(candidate) {
+                if isExecutable(candidate) { return candidate }
+            } else if commandExists(candidate) {
                 return candidate
             }
         }
         return nil
+    }
+
+    static func runnerCandidates(_ kind: CcusageRunnerKind, home: URL) -> [String] {
+        switch kind {
+        case .bunx:
+            return [
+                home.appendingPathComponent(".bun/bin/bunx").path,
+                "/opt/homebrew/bin/bunx",
+                "/usr/local/bin/bunx",
+                "bunx"
+            ]
+        case .pnpmDlx:
+            return ["/opt/homebrew/bin/pnpm", "/usr/local/bin/pnpm", "pnpm"]
+        case .yarnDlx:
+            return ["/opt/homebrew/bin/yarn", "/usr/local/bin/yarn", "yarn"]
+        case .npmExec:
+            return ["/opt/homebrew/bin/npm", "/usr/local/bin/npm", "npm"]
+        case .npx:
+            return ["/opt/homebrew/bin/npx", "/usr/local/bin/npx", "npx"]
+        }
+    }
+
+    /// Argument vector for `kind`, ending in the shared `ccusage <provider> daily …` invocation.
+    static func runnerArgs(kind: CcusageRunnerKind, provider: CcusageProvider, since: String) -> [String] {
+        let leading: [String]
+        switch kind {
+        case .bunx:
+            leading = ["--silent", packageSpec]
+        case .pnpmDlx:
+            leading = ["-s", "dlx", packageSpec]
+        case .yarnDlx:
+            leading = ["dlx", "-q", packageSpec]
+        case .npmExec:
+            leading = ["exec", "--yes", "--package=\(packageSpec)", "--", binName]
+        case .npx:
+            leading = ["--yes", packageSpec]
+        }
+        return leading + [provider.rawValue, "daily", "--json", "--order", "desc", "--since", since]
     }
 
     private func commandExists(_ command: String) -> Bool {
@@ -133,13 +206,15 @@ struct CcusageRunner {
                 executable: command,
                 arguments: ["--version"],
                 environment: enrichedPathEnvironment(),
-                timeout: 2
+                timeout: Self.probeTimeout
             )
             return result.succeeded
         } catch {
             return false
         }
     }
+
+    // MARK: - Environment
 
     private func ccusageEnvironment(provider: CcusageProvider, homePath: String?) -> [String: String] {
         var env = enrichedPathEnvironment()
@@ -153,15 +228,64 @@ struct CcusageRunner {
     }
 
     private func enrichedPathEnvironment() -> [String: String] {
-        let home = homeDirectory()
-        let existing = ProcessInfo.processInfo.environment["PATH"] ?? ""
-        let entries = [
+        ["PATH": enrichedPath()]
+    }
+
+    private func enrichedPath() -> String {
+        Self.pathEntries(home: homeDirectory(), existingPath: ProcessInfo.processInfo.environment["PATH"])
+            .joined(separator: ":")
+    }
+
+    /// PATH entries to prepend before probing/launching runners: Bun, nvm (current + default
+    /// alias), `~/.local/bin`, Homebrew, then the inherited PATH. A GUI menu-bar app inherits a
+    /// stripped PATH, so version-manager bins must be added explicitly. Mirrors the Tauri host.
+    static func pathEntries(home: URL, existingPath: String?) -> [String] {
+        var entries: [String] = [
             home.appendingPathComponent(".bun/bin").path,
-            "/opt/homebrew/bin",
-            "/usr/local/bin",
-            existing
-        ].filter { !$0.isEmpty }
-        return ["PATH": entries.joined(separator: ":")]
+            home.appendingPathComponent(".nvm/current/bin").path
+        ]
+        if let nvmDefault = nvmDefaultBinPath(home: home) {
+            entries.append(nvmDefault)
+        }
+        entries.append(home.appendingPathComponent(".local/bin").path)
+        entries.append(contentsOf: ["/opt/homebrew/bin", "/usr/local/bin"])
+        if let existingPath, !existingPath.isEmpty {
+            entries.append(contentsOf: existingPath.split(separator: ":").map(String.init))
+        }
+
+        var seen = Set<String>()
+        return entries.filter { !$0.isEmpty && seen.insert($0).inserted }
+    }
+
+    /// Resolves nvm's default alias (`~/.nvm/alias/default`, e.g. `22.16.0`) to its node `bin`
+    /// directory (`~/.nvm/versions/node/v22.16.0/bin`). The alias may name a concrete version or
+    /// point at another alias (`node`, `stable`, a custom name), which we follow one level. Returns
+    /// nil if it's absent/empty or an unresolvable meta-alias (e.g. `lts/*`).
+    static func nvmDefaultBinPath(home: URL) -> String? {
+        let aliasDir = home.appendingPathComponent(".nvm/alias")
+        guard let version = resolveNvmAlias("default", aliasDir: aliasDir) else { return nil }
+        let normalized = version.hasPrefix("v") ? version : "v\(version)"
+        return home.appendingPathComponent(".nvm/versions/node/\(normalized)/bin").path
+    }
+
+    /// Reads `<aliasDir>/<name>` and returns a concrete version string, following one level of
+    /// alias indirection. nil if the file is missing/empty or doesn't resolve to a version.
+    private static func resolveNvmAlias(_ name: String, aliasDir: URL) -> String? {
+        func read(_ alias: String) -> String? {
+            guard let raw = try? String(contentsOfFile: aliasDir.appendingPathComponent(alias).path, encoding: .utf8)
+            else { return nil }
+            let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            return value.isEmpty ? nil : value
+        }
+        func isVersion(_ value: String) -> Bool {
+            value.hasPrefix("v") || (value.first?.isNumber ?? false)
+        }
+
+        guard let value = read(name) else { return nil }
+        if isVersion(value) { return value }
+        // `value` is another alias (e.g. `default` -> `node`): follow it one level.
+        guard let nested = read(value), isVersion(nested) else { return nil }
+        return nested
     }
 
     static func parseOutput(_ stdout: String) -> CcusageDailyUsage? {
@@ -207,7 +331,7 @@ struct CcusageRunner {
         for index in scalars.indices.reversed() {
             guard scalars[index] == "{" || scalars[index] == "[" else { continue }
             let candidate = String(scalars[index...])
-            if (try? JSONSerialization.jsonObject(with: Data(candidate.utf8))) != nil {
+            if (try? JSONSerialization.jsonObject(with: Data(candidate.utf8)) ) != nil {
                 return candidate
             }
         }
@@ -222,4 +346,3 @@ struct CcusageRunner {
         ProviderParse.number(value)
     }
 }
-

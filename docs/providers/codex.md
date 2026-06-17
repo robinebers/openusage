@@ -19,13 +19,13 @@ Sign in once with the Codex CLI (`codex`); OpenUsage reads the same auth files (
 
 ## The spend tiles
 
-Today / Yesterday / Last 30 Days are computed **locally** from your Codex logs by running `ccusage` (requires [Bun](https://bun.sh)). The dollars are estimated from token counts — that's the ⓘ on those rows. No log data leaves your Mac.
+Today / Yesterday / Last 30 Days are computed **locally** from your Codex logs by running `ccusage` through whichever JavaScript package runner you already have — [Bun](https://bun.sh) (`bunx`) is preferred, otherwise `pnpm dlx`, `yarn dlx`, `npm exec`, or `npx`. The dollars are estimated from token counts — that's the ⓘ on those rows. No log data leaves your Mac.
 
 ## Troubleshooting
 
 - **"Not logged in"** — run `codex` and sign in, then refresh.
 - **API-key-only setups** can't read subscription usage — sign in with your ChatGPT account instead.
-- **Spend tiles show "No data"** — install Bun so `bunx ccusage` can run.
+- **Spend tiles show "No data"** — OpenUsage needs a package runner on its `PATH` to run `ccusage`. Install [Bun](https://bun.sh), or make sure `npx`/`npm` is available (any Node.js install). If you use a version manager (nvm, fnm, volta), OpenUsage looks in the common locations, but a global Bun or Node install is the most reliable.
 
 ## Under the hood
 
