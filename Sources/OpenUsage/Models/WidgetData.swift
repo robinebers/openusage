@@ -73,12 +73,16 @@ struct WidgetData: Hashable {
         /// "0" at the headline's precision ("0% left", "$0.00", "0 credits"). Red, flame + "Limit
         /// reached". Outranks the pace verdict — a visibly empty bar is never a calmer color.
         case spent
-        /// Projected to run out before the reset. Red, flame + the bare run-out time. `eta` is
-        /// `nil` only at the float edge where the run-out lands essentially at the reset, so the
-        /// flame shows alone rather than a misleading "0s".
+        /// Projected to run out before the reset, or to land right at the limit with no cushion to
+        /// speak of. Red, flame + the bare run-out time. `eta` is `nil` at the float edge where the
+        /// run-out lands essentially at the reset, and whenever the projected cushion rounds to 0%
+        /// (≤ limit, so there's no run-out time) — in both cases the flame shows alone rather than a
+        /// misleading "0s" or a "~0% spare" amber bar.
         case runningOut(eta: String?)
-        /// Projected to land inside the last 10% — cutting it close. Amber, a "~N% spare" note and
-        /// a tick fencing the spare-width sliver off at the fill's edge (`tick`, already
+        /// Projected to land inside the last 10% — cutting it close — but still with a cushion of at
+        /// least 1%. (A cushion that rounds to 0% promotes to `runningOut` instead, so amber never
+        /// shows "~0% spare".) Amber, a "~N% spare" note and a tick fencing the spare-width sliver
+        /// off at the fill's edge (`tick`, already
         /// Used/Left-aware: used + spare in Used view, so the sliver sits just outside the fill;
         /// remaining − spare in Left view, so it's the last slice of the fill — see
         /// `WidgetRowView.meter`).
@@ -248,9 +252,11 @@ extension WidgetData {
     ///    headline's precision (a visibly empty bar always reads spent, pace aside).
     /// 3. **Live pace verdict** (a reset window with ≥5% elapsed): blue `healthy` while ≥10% is
     ///    projected to spare, amber `closeToLimit` (with the spare copy + tick) when projected
-    ///    inside the last 10%, red `runningOut` (with the run-out time) when projected to blow
-    ///    past the limit before reset. So a half-full bar burning twice the sustainable rate is
-    ///    already red, and a nearly-drained bar coasting to the reset stays blue.
+    ///    inside the last 10% *with a cushion of at least 1%*, red `runningOut` when projected to
+    ///    blow past the limit before reset (with the run-out time) or to land right at it (cushion
+    ///    rounds to 0% → flame alone, no time). So a half-full bar burning twice the sustainable
+    ///    rate is already red, a bar projected to finish with nothing to spare is red rather than a
+    ///    misleading "~0% spare" amber, and a nearly-drained bar coasting to the reset stays blue.
     /// 4. **Absolute level bands** (no window to project against): yellow once 80% of the limit is
     ///    used, red once 10% or less is left, rounded to the whole percent the headline shows.
     ///
@@ -269,10 +275,16 @@ extension WidgetData {
                 return .healthy
             case .onTrack:
                 let projected = result.projectedUsage / ctx.limit
+                let spare = Int(((1 - projected) * 100).rounded())
+                // Projected to land essentially at the limit: the cushion rounds to nothing, so an
+                // amber "~0% spare" note + a zero-width tick would contradict the headline's
+                // remaining %. Promote to the red run-out state instead — there's no
+                // run-out-before-reset time (projection ≤ limit), so the flame stands alone with the
+                // "Will reach limit" verdict, exactly `runningOut`'s documented float-edge meaning.
+                guard spare >= 1 else { return .runningOut(eta: nil) }
                 let usedShare = used / ctx.limit
                 let tick = displayMode == .remaining ? projected - usedShare
                                                      : usedShare + (1 - projected)
-                let spare = Int(((1 - projected) * 100).rounded())
                 return .closeToLimit(spare: "~\(spare)% spare", tick: tick)
             case .behind:
                 let eta = Pace.secondsToRunOut(used: used, limit: ctx.limit, resetsAt: ctx.resetsAt,
