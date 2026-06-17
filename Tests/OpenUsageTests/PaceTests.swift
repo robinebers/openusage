@@ -141,6 +141,33 @@ final class PaceTests: XCTestCase {
         XCTAssertNil(spare(data))
     }
 
+    func testProjectedToLandAtTheLimitPromotesToRed() {
+        // #632: projected ~99.6% (used 49.8, half the window gone) leaves a cushion that rounds to
+        // 0%. Rather than an amber "~0% spare" bar contradicting the headline's remaining %, the
+        // meter promotes to the red run-out state with the flame alone — there's no run-out time
+        // because the projection doesn't cross the limit before the reset.
+        let data = weeklyData(used: 49.8)
+        XCTAssertEqual(data.meterState(now: now), .runningOut(eta: nil))
+        XCTAssertNil(tick(data))                                          // no amber tick on a red bar
+        XCTAssertNil(spare(data))                                         // no "~0% spare" copy
+        XCTAssertEqual(data.meterState(now: now).tooltip, "Will reach limit")
+    }
+
+    func testProjectedExactlyAtLimitIsRedNotAmber() {
+        // The amber/red boundary: the burn-rate classification still calls projected-exactly-100%
+        // `onTrack` (Pace layer unchanged), but its cushion is 0%, so the meter shows red.
+        let reset = resetsAt(elapsed: 0.5, period: week)
+        XCTAssertEqual(Pace.status(used: 50, limit: 100, resetsAt: reset, periodDuration: week, now: now), .onTrack)
+        XCTAssertEqual(weeklyData(used: 50).meterState(now: now), .runningOut(eta: nil))
+    }
+
+    func testSmallButRealCushionStaysAmber() {
+        // Just below the promotion threshold: projected 98% (used 49) is a real, visible 2% cushion,
+        // so it stays amber with matching copy + tick. The amber/red cut is between spare 1% and 0%.
+        XCTAssertEqual(spare(weeklyData(used: 49)), "~2% spare")
+        XCTAssertNotNil(tick(weeklyData(used: 49)))
+    }
+
     func testRunningOutCarriesAnEtaBeforeReset() {
         // Behind, with the projected run-out landing before the reset → `runningOut` with a time.
         guard case .runningOut(let eta) = weeklyData(used: 60).meterState(now: now) else {
