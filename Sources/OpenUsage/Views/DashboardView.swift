@@ -52,16 +52,11 @@ struct DashboardView: View {
     /// One width across both densities — switching density shouldn't move the popover's left edge.
     private static let popoverWidth: CGFloat = 320
 
-    /// Never grow taller than 85% of the *hosting* screen's usable height; scroll beyond that.
+    /// Never grow taller than 85% of the *hosting* screen's usable height; scroll beyond that. All
+    /// three screens (dashboard, Customize, Settings) share this one cap so they feel consistent —
+    /// each fits its content exactly until it would exceed the cap, then scrolls.
     private var maxHeight: CGFloat {
         floor(usableHeight * 0.85)
-    }
-
-    /// Customize is a management surface, not the data view: cap it at half the screen so it reads
-    /// as a compact editor and clearly scrolls, instead of towering like the dashboard. (Settings
-    /// instead tracks the dashboard's own height — see `settingsScrollHeight`.)
-    private var maxCustomizeHeight: CGFloat {
-        floor(usableHeight * 0.5)
     }
 
     /// The pinned footer lives outside the scroll region, so the scroll area's cap is the popover cap
@@ -74,10 +69,6 @@ struct DashboardView: View {
         max(120, maxHeight - chromeHeight)
     }
 
-    private var maxCustomizeScrollHeight: CGFloat {
-        max(120, maxCustomizeHeight - chromeHeight)
-    }
-
     /// The scroll area fits its content exactly until it would exceed the cap, then it scrolls.
     private var dashboardScrollHeight: CGFloat {
         min(listContentHeight, maxScrollHeight)
@@ -85,7 +76,7 @@ struct DashboardView: View {
 
     private var customizeScrollHeight: CGFloat {
         let contentHeight = hasMeasuredCustomizeContent ? customizeContentHeight : estimatedCustomizeContentHeight
-        return min(contentHeight, maxCustomizeScrollHeight)
+        return min(contentHeight, maxScrollHeight)
     }
 
     /// Settings fits its content exactly, like the dashboard and Customize, up to the global cap.

@@ -28,6 +28,10 @@ This Swift edition is replacing the original Tauri app. Until the cutover, both 
 - Providers implement the small `ProviderRuntime` protocol: an auth store reads credentials already on the user's machine, a usage client calls the provider's API, and a mapper normalizes the response into `MetricLine` values. The UI renders those normalized values.
 - See `docs/` for behavior docs and the developer docs (architecture overview, adding a provider).
 
+## Running / Testing Changes
+
+- There is no hot reload. The app is a long-lived menu-bar process, so **every code change requires a full rebuild and restart of the running app** to take effect — kill the running instance, rebuild, and relaunch before testing.
+
 ## Documentation
 
 - Logic changes must update any docs in `docs/` that describe the affected behavior.
