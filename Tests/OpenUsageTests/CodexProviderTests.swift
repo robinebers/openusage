@@ -94,8 +94,8 @@ final class CodexUsageMapperTests: XCTestCase {
     func testCreditValuesRenderGroupedThousands() {
         var data = WidgetData(title: "Extra Usage", icon: .providerMark("codex"), kind: .dollars, used: 0, limit: nil)
         data.values = CodexUsageMapper.creditValues(remaining: 30000)
-        // The row abbreviates ("$1.20K · 30K credits"); the hover tooltip keeps every digit.
-        XCTAssertEqual(data.unboundedDetail, "$1.20K · 30K credits")
+        // The row abbreviates ("$1.2K · 30K credits"); the hover tooltip keeps every digit.
+        XCTAssertEqual(data.unboundedDetail, "$1.2K · 30K credits")
         XCTAssertEqual(data.unboundedTooltip, "$1,200.00 · 30,000 credits")
     }
 

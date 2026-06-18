@@ -35,10 +35,10 @@ enum MetricFormatter {
                 }
                 return "$" + value.formatted(.number.precision(.fractionLength(0)).locale(locale))
             case .row:
-                // Abbreviate four figures and up ("$2.06K") so the row can't carry "$2,059.07" beside a
-                // token count, but keep two decimals so it still reads as money; full cents below $1k.
+                // Abbreviate four figures and up ("$2.1K") so the row can't carry "$2,059.07" beside a
+                // token count — one decimal, matching the token counts next to it; full cents below $1k.
                 if abs(value) >= 1000 {
-                    return "$" + value.formatted(.number.notation(.compactName).precision(.fractionLength(2)).locale(locale))
+                    return "$" + value.formatted(.number.notation(.compactName).precision(.fractionLength(0...1)).locale(locale))
                 }
                 return Formatters.currency(value, fractionDigits: 2)
             case .full:

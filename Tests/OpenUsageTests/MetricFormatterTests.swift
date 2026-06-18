@@ -9,9 +9,9 @@ final class MetricFormatterTests: XCTestCase {
         // Tray: whole dollars under $1k, abbreviated above.
         XCTAssertEqual(MetricFormatter.number(42, kind: .dollars, style: .tray), "$42")
         XCTAssertEqual(MetricFormatter.number(2059.07, kind: .dollars, style: .tray), "$2.1K")
-        // Row: full cents under $1k, abbreviated with two decimals above.
+        // Row: full cents under $1k, abbreviated with one decimal above (matching token counts).
         XCTAssertEqual(MetricFormatter.number(40.76, kind: .dollars, style: .row), "$40.76")
-        XCTAssertEqual(MetricFormatter.number(2059.07, kind: .dollars, style: .row), "$2.06K")
+        XCTAssertEqual(MetricFormatter.number(2059.07, kind: .dollars, style: .row), "$2.1K")
         // Full: every digit, grouped.
         XCTAssertEqual(MetricFormatter.number(2059.07, kind: .dollars, style: .full), "$2,059.07")
     }
