@@ -17,7 +17,11 @@ struct ProviderSnapshotCache {
 
     init(
         userDefaults: UserDefaults = .standard,
-        storageKey: String = "openusage.providerSnapshots.v2",
+        // v3: spend / Codex credits / rate-limit-resets rows moved from `.text` (a parsed display string)
+        // to `.values` (raw numbers). Bumping the key drops pre-upgrade caches so the new `.values`-based
+        // widgets never try to resolve a stale `.text` line — which would misread the fused string
+        // (tokens tile showing the dollar amount, combined dropping tokens) until the first refresh.
+        storageKey: String = "openusage.providerSnapshots.v3",
         ttl: TimeInterval = RefreshSetting.interval,
         now: @escaping () -> Date = Date.init
     ) {
