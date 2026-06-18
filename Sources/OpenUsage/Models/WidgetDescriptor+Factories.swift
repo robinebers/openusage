@@ -69,28 +69,6 @@ extension WidgetDescriptor {
         return make(id: id, provider: provider, metricLabel: metricLabel ?? title, sample: sample)
     }
 
-    /// Cost-only spend tile reading "$12.34 spent" — the dollars of a `.values` spend row.
-    static func spend(
-        id: String,
-        provider: Provider,
-        title: String,
-        metricLabel: String? = nil
-    ) -> WidgetDescriptor {
-        values(id: id, provider: provider, title: title, metricLabel: metricLabel,
-               selection: .kind(.dollars), valueWord: "spent")
-    }
-
-    /// Tokens-only tile reading "1.2M tokens" — the count of a `.values` spend row. No trailing word
-    /// (the value carries its own "tokens" unit) and no ⓘ (token counts are measured, not estimated).
-    static func tokenSpend(
-        id: String,
-        provider: Provider,
-        title: String,
-        metricLabel: String? = nil
-    ) -> WidgetDescriptor {
-        values(id: id, provider: provider, title: title, metricLabel: metricLabel, selection: .kind(.count))
-    }
-
     /// Combined tile reading "$4.08 · 1.2M tokens" (spend) or "$32.84 · 821 credits" (Codex credits) —
     /// every value of a `.values` row, joined.
     static func combined(
@@ -100,6 +78,17 @@ extension WidgetDescriptor {
         metricLabel: String? = nil
     ) -> WidgetDescriptor {
         values(id: id, provider: provider, title: title, metricLabel: metricLabel, selection: .all)
+    }
+
+    /// The three local-spend tiles every spend-tracking provider exposes — Today / Yesterday / Last 30
+    /// Days — each a combined "cost · tokens" row, backed by `SpendTileMapper`. Ids are
+    /// `<provider>.today|yesterday|last30`, so the set is identical across Claude / Codex / Cursor / Grok.
+    static func spendTiles(provider: Provider) -> [WidgetDescriptor] {
+        [
+            .combined(id: "\(provider.id).today", provider: provider, title: "Today"),
+            .combined(id: "\(provider.id).yesterday", provider: provider, title: "Yesterday"),
+            .combined(id: "\(provider.id).last30", provider: provider, title: "Last 30 Days")
+        ]
     }
 
     /// Unbounded dollar balance with a custom trailing word (e.g. "$1,503.00 left").

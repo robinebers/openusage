@@ -12,7 +12,7 @@ Tracks your Cursor plan usage using the login from the Cursor app.
 | Auto Limits | Auto-model usage percent |
 | API Usage | API usage percent |
 | Extra Usage | On-demand spend vs. its limit |
-| Today / Yesterday / Last 30 Days | Per-day spend from Cursor's own usage export |
+| Today / Yesterday / Last 30 Days | Per-day cost and tokens from Cursor's own usage export |
 | Plan | Your plan name (optional widget) |
 
 ## Where credentials come from
@@ -21,7 +21,7 @@ Just be signed into the Cursor app. OpenUsage reads Cursor's local state databas
 
 ## The spend tiles
 
-Unlike Claude/Codex, Cursor's Today / Yesterday / Last 30 Days come from Cursor's **server-side usage export** (priced per model with a bundled price list), not a local estimate — so no ⓘ. If the export can't be fetched, the tiles show "No data" while everything else keeps working.
+Each period is one tile showing cost and tokens together (`$4.08 · 1.2M`), the same as Claude/Codex/Grok. The difference is the source: Cursor's Today / Yesterday / Last 30 Days come from Cursor's **server-side usage export** (priced per model with a bundled price list), not a local estimate — so the dollars carry no ⓘ. If the export can't be fetched, the tiles show "No data" while everything else keeps working.
 
 ## Troubleshooting
 

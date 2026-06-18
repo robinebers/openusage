@@ -73,7 +73,7 @@ final class CodexUsageMapperTests: XCTestCase {
             CcusageDay(date: "2026-02-01", totalTokens: 300, costUSD: 1.0)
         ])
 
-        CcusageSpendMapper.appendTokenUsage(
+        SpendTileMapper.appendTokenUsage(
             usage,
             to: &lines,
             now: makeDate("2026-02-20T16:00:00.000Z")

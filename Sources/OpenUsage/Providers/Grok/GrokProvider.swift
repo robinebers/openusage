@@ -6,15 +6,18 @@ final class GrokProvider: ProviderRuntime {
 
     let authStore: GrokAuthStore
     let usageClient: GrokUsageClient
+    let logUsageScanner: GrokLogUsageScanner
     let now: @Sendable () -> Date
 
     init(
         authStore: GrokAuthStore = GrokAuthStore(),
         usageClient: GrokUsageClient = GrokUsageClient(),
+        logUsageScanner: GrokLogUsageScanner = GrokLogUsageScanner(),
         now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.authStore = authStore
         self.usageClient = usageClient
+        self.logUsageScanner = logUsageScanner
         self.now = now
     }
 
@@ -22,7 +25,8 @@ final class GrokProvider: ProviderRuntime {
         [
             .percent(id: "grok.creditsUsed", provider: provider, title: "Monthly", metricLabel: "Credits used"),
             .badge(id: "grok.payAsYouGo", provider: provider, title: "Extra Usage", metricLabel: "Pay as you go")
-        ]
+            // Local spend tiles, estimated from the Grok CLI log (see GrokLogUsageScanner).
+        ] + WidgetDescriptor.spendTiles(provider: provider)
     }
 
     func refresh() async -> ProviderSnapshot {
@@ -58,8 +62,13 @@ final class GrokProvider: ProviderRuntime {
 
     private func probe(state: inout GrokAuthState, accessToken: String) async throws -> ProviderSnapshot {
         let billingResponse = try await fetchBillingWithRetry(accessToken: accessToken, state: &state)
-        let mapped = try GrokUsageMapper.mapBillingResponse(billingResponse)
+        var mapped = try GrokUsageMapper.mapBillingResponse(billingResponse)
         let plan = await fetchPlanName(accessToken: state.token)
+
+        // Local ccusage-style spend tiles, read natively from the Grok CLI log (no package runner).
+        if let tokenUsage = logUsageScanner.scan(daysBack: 30, now: now()) {
+            SpendTileMapper.appendTokenUsage(tokenUsage, to: &mapped.lines, now: now())
+        }
 
         return ProviderSnapshot(
             providerID: provider.id,

@@ -26,11 +26,8 @@ final class CursorProvider: ProviderRuntime {
                           suffix: "requests", periodDurationMs: CursorUsageMapper.billingPeriodMs),
             .percent(id: "cursor.auto", provider: provider, title: "Auto Limits", metricLabel: "Auto usage"),
             .percent(id: "cursor.api", provider: provider, title: "API Usage", metricLabel: "API usage"),
-            .boundedDollars(id: "cursor.onDemand", provider: provider, title: "Extra Usage", metricLabel: "On-demand", limit: 100),
-            .spend(id: "cursor.today", provider: provider, title: "Today"),
-            .spend(id: "cursor.yesterday", provider: provider, title: "Yesterday"),
-            .spend(id: "cursor.last30", provider: provider, title: "Last 30 Days")
-        ]
+            .boundedDollars(id: "cursor.onDemand", provider: provider, title: "Extra Usage", metricLabel: "On-demand", limit: 100)
+        ] + WidgetDescriptor.spendTiles(provider: provider)
     }
 
     func refresh() async -> ProviderSnapshot {

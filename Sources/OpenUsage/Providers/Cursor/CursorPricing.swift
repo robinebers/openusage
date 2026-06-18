@@ -23,6 +23,9 @@ struct CursorTokenUsage: Sendable, Equatable {
     let inputNoCacheWrite: Int
     let cacheRead: Int
     let output: Int
+
+    /// All buckets summed — the measured token total shown alongside the cost on a spend tile.
+    var total: Int { inputCacheWrite + inputNoCacheWrite + cacheRead + output }
 }
 
 enum CursorPricing {

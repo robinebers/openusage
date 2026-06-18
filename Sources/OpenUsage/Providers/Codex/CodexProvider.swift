@@ -26,19 +26,8 @@ final class CodexProvider: ProviderRuntime {
             .percent(id: "codex.session", provider: provider, title: "Session"),
             .percent(id: "codex.weekly", provider: provider, title: "Weekly"),
             .values(id: "codex.rateLimitResets", provider: provider, title: "Rate Limit Resets", metricLabel: "Rate Limit Resets"),
-            .combined(id: "codex.credits", provider: provider, title: "Extra Usage", metricLabel: "Credits"),
-            // Existing spend tiles now render the full row (cost + tokens); cost-only and tokens-only
-            // splits are opt-in (off by default).
-            .combined(id: "codex.today", provider: provider, title: "Today"),
-            .combined(id: "codex.yesterday", provider: provider, title: "Yesterday"),
-            .combined(id: "codex.last30", provider: provider, title: "Last 30 Days"),
-            .spend(id: "codex.today.cost", provider: provider, title: "Today Cost", metricLabel: "Today"),
-            .spend(id: "codex.yesterday.cost", provider: provider, title: "Yesterday Cost", metricLabel: "Yesterday"),
-            .spend(id: "codex.last30.cost", provider: provider, title: "Last 30 Days Cost", metricLabel: "Last 30 Days"),
-            .tokenSpend(id: "codex.today.tokens", provider: provider, title: "Today Tokens", metricLabel: "Today"),
-            .tokenSpend(id: "codex.yesterday.tokens", provider: provider, title: "Yesterday Tokens", metricLabel: "Yesterday"),
-            .tokenSpend(id: "codex.last30.tokens", provider: provider, title: "Last 30 Days Tokens", metricLabel: "Last 30 Days")
-        ]
+            .combined(id: "codex.credits", provider: provider, title: "Extra Usage", metricLabel: "Credits")
+        ] + WidgetDescriptor.spendTiles(provider: provider)
     }
 
     func refresh() async -> ProviderSnapshot {
@@ -92,7 +81,7 @@ final class CodexProvider: ProviderRuntime {
         let since = CcusageRunner.sinceString(daysBack: 30, from: now())
         let tokenUsage = await ccusageRunner.query(provider: .codex, since: since, homePath: authStore.codexHome())
         if case .success(let usage) = tokenUsage {
-            CcusageSpendMapper.appendTokenUsage(usage, to: &mapped.lines, now: now())
+            SpendTileMapper.appendTokenUsage(usage, to: &mapped.lines, now: now())
         }
 
         MetricLine.appendNoDataIfNeeded(&mapped.lines)

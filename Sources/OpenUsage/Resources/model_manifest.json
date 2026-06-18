@@ -629,6 +629,8 @@
     { "pattern": "^grok-4\\.3(?:-thinking)?$", "canonical": "grok-4.3" },
     { "pattern": "^grok-build-0\\.1$", "canonical": "grok-build-0.1" },
     { "pattern": "^grok-code-fast-1$", "canonical": "grok-build-0.1" },
+    { "pattern": "^grok-build$", "canonical": "grok-build-0.1" },
+    { "pattern": "^grok-composer-2\\.5-fast$", "canonical": "composer-2.5-fast" },
     { "pattern": "^gpt-5\\.1-codex-max(?:-(?:low|medium|high|xhigh))?-fast$", "canonical": "gpt-5.1-codex-max-fast" },
     { "pattern": "^gpt-5\\.1-codex-max(?:-(?:low|medium|high|xhigh))?$", "canonical": "gpt-5.1-codex-max" },
     { "pattern": "^gpt-5\\.1-codex-mini(?:-(?:low|medium|high|xhigh))?$", "canonical": "gpt-5.1-codex-mini" },

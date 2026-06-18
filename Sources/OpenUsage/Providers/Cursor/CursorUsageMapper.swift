@@ -203,42 +203,32 @@ enum CursorUsageMapper {
         return (false, "")
     }
 
-    /// Append Today / Yesterday / Last 30 Days spend as unbounded `.values` dollar lines, aggregated over
-    /// local-calendar day boundaries. Always appends all three (including a genuine $0.00) so a zero day
-    /// reads truthfully; callers only invoke this when the CSV fetched and parsed, so failures append
-    /// nothing and the tiles fall back to "No data".
+    /// Append the shared Today / Yesterday / Last 30 Days spend tiles from Cursor's CSV rows. The rows
+    /// are aggregated into one local-calendar-day `CcusageDailyUsage` and handed to `SpendTileMapper`
+    /// — the same builder the Claude/Codex/Grok tiles use — so the output is identical apart from the
+    /// `estimated: false` flag (Cursor spend is server-priced, so its dollars carry no ⓘ). Callers only
+    /// invoke this when the CSV fetched and parsed, so a failure appends nothing and the tiles read
+    /// "No data".
     static func appendSpendLines(rows: [CursorUsageCSVRow], now: Date, to lines: inout [MetricLine]) {
         let calendar = Calendar.current
-        let startOfToday = calendar.startOfDay(for: now)
-        let startOfYesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday) ?? startOfToday
-        let startOfLast30Days = calendar.date(byAdding: .day, value: -29, to: startOfToday) ?? startOfToday
-
-        var today = 0.0
-        var yesterday = 0.0
-        var last30Days = 0.0
+        var costCentsByDay: [String: Int] = [:]
+        var tokensByDay: [String: Int] = [:]
         for row in rows {
-            let cost = row.imputedCostDollars
-            if row.date >= startOfToday {
-                today += cost
-            }
-            if row.date >= startOfYesterday, row.date < startOfToday {
-                yesterday += cost
-            }
-            if row.date >= startOfLast30Days {
-                last30Days += cost
-            }
+            let day = dayKey(from: row.date, calendar: calendar)
+            // Snap each row to integer cents before summing, avoiding per-row float drift.
+            costCentsByDay[day, default: 0] += CursorPricing.toCents(row.imputedCostDollars)
+            tokensByDay[day, default: 0] += row.tokens.total
         }
 
-        lines.append(spendLine(label: "Today", dollars: today))
-        lines.append(spendLine(label: "Yesterday", dollars: yesterday))
-        lines.append(spendLine(label: "Last 30 Days", dollars: last30Days))
+        let daily = tokensByDay.keys.sorted(by: >).map { day in
+            CcusageDay(date: day, totalTokens: tokensByDay[day] ?? 0, costUSD: Double(costCentsByDay[day] ?? 0) / 100)
+        }
+        SpendTileMapper.appendTokenUsage(CcusageDailyUsage(daily: daily), to: &lines, now: now, estimated: false)
     }
 
-    /// One Cursor spend day as a single dollar value, snapped to integer cents once (avoiding per-row
-    /// rounding loss and float drift) before being carried raw. No `estimated` flag — Cursor spend is
-    /// server-priced, so these tiles stay clean (no ⓘ), unlike the ccusage-derived ones.
-    private static func spendLine(label: String, dollars: Double) -> MetricLine {
-        .values(label: label, values: [MetricValue(number: Double(CursorPricing.toCents(dollars)) / 100, kind: .dollars)])
+    private static func dayKey(from date: Date, calendar: Calendar) -> String {
+        let components = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", components.year ?? 0, components.month ?? 0, components.day ?? 0)
     }
 
     static func stripeBalanceCents(from response: HTTPResponse?) -> Double {

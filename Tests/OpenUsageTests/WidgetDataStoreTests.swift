@@ -255,12 +255,14 @@ final class WidgetDataStoreTests: XCTestCase {
         // One `.values` spend row backs three tiles: cost-only (dollars + ⓘ), tokens-only (the
         // measured count, no ⓘ), and combined (both, ⓘ because a shown value is estimated).
         let provider = Provider(id: "test", displayName: "Test", icon: .providerMark("codex"))
-        let cost = WidgetDescriptor.spend(id: "test.last30", provider: provider, title: "Last 30 Days")
-        let tokens = WidgetDescriptor.tokenSpend(id: "test.last30.tokens", provider: provider,
-                                                 title: "Tokens", metricLabel: "Last 30 Days")
+        let cost = WidgetDescriptor.values(id: "test.last30", provider: provider, title: "Last 30 Days",
+                                           selection: .kind(.dollars), valueWord: "spent")
+        let tokens = WidgetDescriptor.values(id: "test.last30.tokens", provider: provider,
+                                             title: "Tokens", metricLabel: "Last 30 Days", selection: .kind(.count))
         let combined = WidgetDescriptor.combined(id: "test.last30.combined", provider: provider,
                                                  title: "Combined", metricLabel: "Last 30 Days")
-        let todayCost = WidgetDescriptor.spend(id: "test.today", provider: provider, title: "Today")
+        let todayCost = WidgetDescriptor.values(id: "test.today", provider: provider, title: "Today",
+                                                selection: .kind(.dollars), valueWord: "spent")
         let descriptors = [cost, tokens, combined, todayCost]
         let runtime = TestProviderRuntime(
             provider: provider,

@@ -26,19 +26,8 @@ final class ClaudeProvider: ProviderRuntime {
             .percent(id: "claude.session", provider: provider, title: "Session"),
             .percent(id: "claude.weekly", provider: provider, title: "Weekly"),
             .percent(id: "claude.sonnet", provider: provider, title: "Sonnet"),
-            .boundedDollars(id: "claude.extra", provider: provider, title: "Extra Usage", metricLabel: "Extra usage spent", limit: 100),
-            // Existing spend tiles now render the full row (cost + tokens) — the token half used to be
-            // computed and then dropped. Cost-only and tokens-only splits are opt-in (off by default).
-            .combined(id: "claude.today", provider: provider, title: "Today"),
-            .combined(id: "claude.yesterday", provider: provider, title: "Yesterday"),
-            .combined(id: "claude.last30", provider: provider, title: "Last 30 Days"),
-            .spend(id: "claude.today.cost", provider: provider, title: "Today Cost", metricLabel: "Today"),
-            .spend(id: "claude.yesterday.cost", provider: provider, title: "Yesterday Cost", metricLabel: "Yesterday"),
-            .spend(id: "claude.last30.cost", provider: provider, title: "Last 30 Days Cost", metricLabel: "Last 30 Days"),
-            .tokenSpend(id: "claude.today.tokens", provider: provider, title: "Today Tokens", metricLabel: "Today"),
-            .tokenSpend(id: "claude.yesterday.tokens", provider: provider, title: "Yesterday Tokens", metricLabel: "Yesterday"),
-            .tokenSpend(id: "claude.last30.tokens", provider: provider, title: "Last 30 Days Tokens", metricLabel: "Last 30 Days")
-        ]
+            .boundedDollars(id: "claude.extra", provider: provider, title: "Extra Usage", metricLabel: "Extra usage spent", limit: 100)
+        ] + WidgetDescriptor.spendTiles(provider: provider)
     }
 
     func refresh() async -> ProviderSnapshot {
@@ -77,7 +66,7 @@ final class ClaudeProvider: ProviderRuntime {
         let since = CcusageRunner.sinceString(daysBack: 30, from: now())
         let tokenUsage = await ccusageRunner.query(provider: .claude, since: since, homePath: authStore.claudeHomeOverride())
         if case .success(let usage) = tokenUsage {
-            CcusageSpendMapper.appendTokenUsage(usage, to: &mapped.lines, now: now())
+            SpendTileMapper.appendTokenUsage(usage, to: &mapped.lines, now: now())
         }
 
         MetricLine.appendNoDataIfNeeded(&mapped.lines)

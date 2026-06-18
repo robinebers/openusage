@@ -107,38 +107,46 @@ final class CursorSpendRangeTests: XCTestCase {
         let startOfLast30 = cal.date(byAdding: .day, value: -29, to: startOfToday)!
 
         let rows = [
-            makeRow(date: now, cost: 1.00),                                              // today
-            makeRow(date: cal.date(byAdding: .day, value: -1, to: now)!, cost: 2.00),    // yesterday
-            makeRow(date: startOfLast30, cost: 0.50),                                    // -29d edge: in last30 only
-            makeRow(date: cal.date(byAdding: .day, value: -30, to: now)!, cost: 0.25),   // just outside last30
-            makeRow(date: cal.date(byAdding: .day, value: -40, to: now)!, cost: 5.00)    // old
+            makeRow(date: now, cost: 1.00, tokens: 100),                                              // today
+            makeRow(date: cal.date(byAdding: .day, value: -1, to: now)!, cost: 2.00, tokens: 200),    // yesterday
+            makeRow(date: startOfLast30, cost: 0.50, tokens: 50),                                     // -29d edge: last30 only
+            makeRow(date: cal.date(byAdding: .day, value: -40, to: now)!, cost: 5.00, tokens: 999)    // old (provider scopes the fetch)
         ]
 
         var lines: [MetricLine] = []
         CursorUsageMapper.appendSpendLines(rows: rows, now: now, to: &lines)
 
-        XCTAssertEqual(textValue(lines, "Today"), "$1.00")
-        XCTAssertEqual(textValue(lines, "Yesterday"), "$2.00")
-        XCTAssertEqual(textValue(lines, "Last 30 Days"), "$3.50")
+        // Combined cost + tokens, server-priced so no ⓘ (estimated: false).
+        XCTAssertEqual(values(lines, "Today"), [MetricValue(number: 1.00, kind: .dollars), MetricValue(number: 100, kind: .count)])
+        XCTAssertEqual(values(lines, "Yesterday"), [MetricValue(number: 2.00, kind: .dollars), MetricValue(number: 200, kind: .count)])
+        // Last 30 Days sums every fetched day (the provider scopes the CSV to a 30-day window).
+        XCTAssertEqual(values(lines, "Last 30 Days"), [MetricValue(number: 8.50, kind: .dollars), MetricValue(number: 1349, kind: .count)])
     }
 
-    func testZeroSpendStillAppendsTruthfulZeroLines() {
+    func testZeroActivityLeavesTodayYesterdayAtZeroTokensAndDropsLast30() {
         var lines: [MetricLine] = []
         CursorUsageMapper.appendSpendLines(rows: [], now: Date(), to: &lines)
 
-        XCTAssertEqual(textValue(lines, "Today"), "$0.00")
-        XCTAssertEqual(textValue(lines, "Yesterday"), "$0.00")
-        XCTAssertEqual(textValue(lines, "Last 30 Days"), "$0.00")
+        // No rows: Today/Yesterday read as a measured zero (count only), matching the shared mapper;
+        // Last 30 Days is dropped entirely (no tokens) and falls back to "No data".
+        XCTAssertEqual(values(lines, "Today"), [MetricValue(number: 0, kind: .count)])
+        XCTAssertEqual(values(lines, "Yesterday"), [MetricValue(number: 0, kind: .count)])
+        XCTAssertNil(values(lines, "Last 30 Days"))
     }
 
-    private func makeRow(date: Date, cost: Double) -> CursorUsageCSVRow {
+    private func makeRow(date: Date, cost: Double, tokens: Int) -> CursorUsageCSVRow {
         CursorUsageCSVRow(
             date: date,
             model: "composer-1",
             maxMode: false,
-            tokens: CursorTokenUsage(inputCacheWrite: 0, inputNoCacheWrite: 0, cacheRead: 0, output: 0),
+            tokens: CursorTokenUsage(inputCacheWrite: 0, inputNoCacheWrite: tokens, cacheRead: 0, output: 0),
             imputedCostDollars: cost
         )
+    }
+
+    private func values(_ lines: [MetricLine], _ label: String) -> [MetricValue]? {
+        guard case .values(_, let values, _) = lines.first(where: { $0.label == label }) else { return nil }
+        return values
     }
 }
 
@@ -205,18 +213,25 @@ final class CursorSpendProviderTests: XCTestCase {
         XCTAssertEqual(data.valueText, WidgetData.noDataHeadline)
     }
 
-    func testSpendTileRendersSpentAndIsMeterInvariant() async {
+    func testSpendTileRendersCombinedCostAndTokensWithNoEstimateIcon() async {
         let cursor = CursorProvider()
         let descriptor = try! XCTUnwrap(cursor.widgetDescriptors.first { $0.id == "cursor.today" })
 
-        for (dollars, expectedValue, expectedDetail) in [(12.34, "$12.34", "$12.34 spent"), (0.0, "$0.00", "$0.00 spent")] {
+        let cases: [(Double, Int, String, String)] = [
+            (12.34, 891_000, "$12.34", "$12.34 · 891K"),
+            (0.0, 0, "$0.00", "$0.00 · 0")
+        ]
+        for (dollars, tokens, expectedValue, expectedDetail) in cases {
             let runtime = TestProviderRuntime(
                 provider: cursor.provider,
                 descriptors: [descriptor],
                 snapshot: ProviderSnapshot(
                     providerID: cursor.provider.id,
                     displayName: cursor.provider.displayName,
-                    lines: [.values(label: "Today", values: [MetricValue(number: dollars, kind: .dollars)])]
+                    lines: [.values(label: "Today", values: [
+                        MetricValue(number: dollars, kind: .dollars),
+                        MetricValue(number: Double(tokens), kind: .count)
+                    ])]
                 )
             )
             let defaults = isolatedDefaults("render-\(expectedValue)")
@@ -236,9 +251,8 @@ final class CursorSpendProviderTests: XCTestCase {
             XCTAssertTrue(remaining.hasData)
             XCTAssertEqual(remaining.valueText, expectedValue)
             XCTAssertEqual(remaining.unboundedDetail, expectedDetail)
-            // Cursor spend comes from the server CSV export, so it reads as a bare "$X spent" line:
-            // no subtitle and no estimate ⓘ (that's reserved for ccusage tiles).
-            XCTAssertNil(remaining.unboundedSubtitle)
+            // Cursor spend is server-priced, so the combined tile carries no estimate ⓘ (that's reserved
+            // for the ccusage/Grok tiles whose dollars are locally estimated).
             XCTAssertNil(remaining.infoNote)
             // Unbounded: identical under both meter styles.
             XCTAssertEqual(used.valueText, remaining.valueText)

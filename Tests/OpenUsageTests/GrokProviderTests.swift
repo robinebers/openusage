@@ -53,6 +53,119 @@ final class GrokUsageMapperTests: XCTestCase {
     }
 }
 
+final class GrokLogUsageScannerTests: XCTestCase {
+    private let since = OpenUsageISO8601.date(from: "2026-06-01T00:00:00.000Z")!
+
+    func testAttributesTokensToPerProcessModelAndPrices() {
+        // pid 100 is on grok-build, pid 200 on grok-composer-2.5-fast; each token row prices against
+        // its own process's current model.
+        let log = """
+        {"ts":"2026-06-10T09:00:00.000Z","pid":100,"msg":"model catalog: notifying clients","ctx":{"current_model_id":"grok-build"}}
+        {"ts":"2026-06-10T09:00:00.000Z","pid":200,"msg":"model changed","ctx":{"model":"grok-composer-2.5-fast"}}
+        {"ts":"2026-06-10T10:00:00.000Z","pid":100,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":1000000,"cached_prompt_tokens":0,"completion_tokens":1000000,"reasoning_tokens":0}}
+        {"ts":"2026-06-10T11:00:00.000Z","pid":200,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":1000000,"cached_prompt_tokens":0,"completion_tokens":1000000,"reasoning_tokens":0}}
+        """
+
+        let usage = GrokLogUsageScanner.parse(log, since: since)
+
+        let day = usage.daily.first { $0.date == "2026-06-10" }
+        XCTAssertEqual(day?.totalTokens, 4_000_000)
+        // grok-build: 1M input @ $1 + 1M output @ $2 = $3. composer-2.5-fast: 1M @ $3 + 1M @ $15 = $18.
+        XCTAssertEqual(day?.costUSD ?? 0, 21.0, accuracy: 0.0001)
+    }
+
+    func testTracksMidProcessModelSwitch() {
+        let log = """
+        {"ts":"2026-06-12T08:00:00.000Z","pid":7,"msg":"model changed","ctx":{"model":"grok-build"}}
+        {"ts":"2026-06-12T09:00:00.000Z","pid":7,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":1000000,"cached_prompt_tokens":0,"completion_tokens":0,"reasoning_tokens":0}}
+        {"ts":"2026-06-12T10:00:00.000Z","pid":7,"msg":"model changed","ctx":{"model":"grok-composer-2.5-fast"}}
+        {"ts":"2026-06-12T11:00:00.000Z","pid":7,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":1000000,"cached_prompt_tokens":0,"completion_tokens":0,"reasoning_tokens":0}}
+        """
+
+        let usage = GrokLogUsageScanner.parse(log, since: since)
+
+        // First row priced as grok-build ($1/M input), second after the switch as composer-2.5-fast ($3/M).
+        XCTAssertEqual(usage.daily.first?.costUSD ?? 0, 4.0, accuracy: 0.0001)
+    }
+
+    func testUsesCachedReadRateForCachedPromptTokens() {
+        // 800k of the 1M prompt tokens are cache reads (grok-build: $0.2/M read vs $1/M input).
+        let log = """
+        {"ts":"2026-06-12T08:00:00.000Z","pid":1,"msg":"model changed","ctx":{"model":"grok-build"}}
+        {"ts":"2026-06-12T09:00:00.000Z","pid":1,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":1000000,"cached_prompt_tokens":800000,"completion_tokens":0,"reasoning_tokens":0}}
+        """
+
+        let usage = GrokLogUsageScanner.parse(log, since: since)
+
+        // 200k input @ $1/M ($0.2) + 800k cache read @ $0.2/M ($0.16) = $0.36.
+        XCTAssertEqual(usage.daily.first?.costUSD ?? 0, 0.36, accuracy: 0.0001)
+    }
+
+    func testSkipsRowsWithoutTokenFieldsAndOutsideWindow() {
+        let log = """
+        {"ts":"2026-06-10T09:00:00.000Z","pid":1,"msg":"model changed","ctx":{"model":"grok-build"}}
+        {"ts":"2026-05-30T09:00:00.000Z","pid":1,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":1000000,"completion_tokens":0,"reasoning_tokens":0}}
+        {"ts":"2026-06-10T10:00:00.000Z","pid":1,"msg":"shell.turn.inference_done","ctx":{"loop_index":3,"model_elapsed_ms":10}}
+        {"ts":"2026-06-10T11:00:00.000Z","pid":1,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":500000,"completion_tokens":0,"reasoning_tokens":0}}
+        """
+
+        let usage = GrokLogUsageScanner.parse(log, since: since)
+
+        // Only the in-window, token-bearing row counts (the pre-window row and the token-less row drop).
+        XCTAssertEqual(usage.daily.count, 1)
+        XCTAssertEqual(usage.daily.first?.totalTokens, 500_000)
+    }
+
+    func testUnpricedModelLeavesCostNil() {
+        let log = """
+        {"ts":"2026-06-10T09:00:00.000Z","pid":1,"msg":"model changed","ctx":{"model":"grok-unknown-model"}}
+        {"ts":"2026-06-10T10:00:00.000Z","pid":1,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":1000000,"completion_tokens":0,"reasoning_tokens":0}}
+        """
+
+        let usage = GrokLogUsageScanner.parse(log, since: since)
+
+        XCTAssertEqual(usage.daily.first?.totalTokens, 1_000_000)
+        XCTAssertNil(usage.daily.first?.costUSD)
+    }
+
+    func testScanReadsGrokHomeOverride() {
+        let files = FakeFiles([
+            "/custom/grok/logs/unified.jsonl": """
+            {"ts":"2026-06-10T09:00:00.000Z","pid":1,"msg":"model changed","ctx":{"model":"grok-build"}}
+            {"ts":"2026-06-10T10:00:00.000Z","pid":1,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":1000000,"completion_tokens":0,"reasoning_tokens":0}}
+            """
+        ])
+        let scanner = GrokLogUsageScanner(
+            files: files,
+            environment: FakeEnvironment(["GROK_HOME": "/custom/grok"]),
+            homeDirectory: { URL(fileURLWithPath: "/home/ignored") }
+        )
+
+        let usage = scanner.scan(daysBack: 30, now: OpenUsageISO8601.date(from: "2026-06-18T00:00:00.000Z")!)
+
+        XCTAssertEqual(usage?.daily.first?.totalTokens, 1_000_000)
+    }
+
+    func testScanReturnsNilWhenLogMissing() {
+        let scanner = GrokLogUsageScanner(
+            files: FakeFiles(),
+            environment: FakeEnvironment(),
+            homeDirectory: { URL(fileURLWithPath: "/home/ignored") }
+        )
+
+        XCTAssertNil(scanner.scan())
+    }
+}
+
+final class GrokPricingAliasTests: XCTestCase {
+    func testGrokCLIModelIDsResolveToManifestEntries() {
+        XCTAssertEqual(CursorPricing.canonicalModel(for: "grok-build"), "grok-build-0.1")
+        XCTAssertEqual(CursorPricing.canonicalModel(for: "grok-composer-2.5-fast"), "composer-2.5-fast")
+        XCTAssertNotNil(CursorPricing.pricingEntry(for: "grok-build"))
+        XCTAssertNotNil(CursorPricing.pricingEntry(for: "grok-composer-2.5-fast"))
+    }
+}
+
 @MainActor
 final class GrokProviderTests: XCTestCase {
     func testRefreshesExpiredTokenPersistsAuthAndFetchesUsage() async {
@@ -94,6 +207,7 @@ final class GrokProviderTests: XCTestCase {
         let provider = GrokProvider(
             authStore: GrokAuthStore(files: files, now: { now }),
             usageClient: GrokUsageClient(httpClient: httpClient),
+            logUsageScanner: noLogScanner(),
             now: { now }
         )
 
@@ -150,6 +264,7 @@ final class GrokProviderTests: XCTestCase {
         let provider = GrokProvider(
             authStore: GrokAuthStore(files: files, now: { now }),
             usageClient: GrokUsageClient(httpClient: httpClient),
+            logUsageScanner: noLogScanner(),
             now: { now }
         )
 
@@ -160,6 +275,60 @@ final class GrokProviderTests: XCTestCase {
             .filter { $0.url == GrokUsageClient.billingURL }
             .map { $0.headers["Authorization"] }
         XCTAssertEqual(billingAuths, ["Bearer old-token", "Bearer new-token"])
+    }
+
+    func testRefreshAppendsLocalSpendTilesFromLog() async {
+        let now = OpenUsageISO8601.date(from: "2026-06-18T12:00:00.000Z")!
+        let files = FakeFiles([
+            GrokAuthStore.authPath: #"{"https://auth.x.ai::client":{"key":"token","refresh_token":"refresh","expires_at":"2026-07-01T00:00:00.000Z"}}"#
+        ])
+        let httpClient = RecordingHTTPClient { request in
+            if request.url == GrokUsageClient.billingURL {
+                return HTTPResponse(statusCode: 200, headers: [:], body: billingBody(used: 2500, monthlyLimit: 10000, onDemandCap: 0))
+            }
+            if request.url == GrokUsageClient.settingsURL {
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"subscription_tier_display":"SuperGrok Heavy"}"#.utf8))
+            }
+            return HTTPResponse(statusCode: 404, headers: [:], body: Data())
+        }
+        // grok-build: 1M input @ $1 = $1.00 today; composer-2.5-fast: 1M output @ $15 = $15.00 yesterday.
+        let log = """
+        {"ts":"2026-06-18T09:00:00.000Z","pid":1,"msg":"model changed","ctx":{"model":"grok-build"}}
+        {"ts":"2026-06-18T10:00:00.000Z","pid":1,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":1000000,"cached_prompt_tokens":0,"completion_tokens":0,"reasoning_tokens":0}}
+        {"ts":"2026-06-17T09:00:00.000Z","pid":2,"msg":"model changed","ctx":{"model":"grok-composer-2.5-fast"}}
+        {"ts":"2026-06-17T10:00:00.000Z","pid":2,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":0,"cached_prompt_tokens":0,"completion_tokens":1000000,"reasoning_tokens":0}}
+        """
+        let scanner = GrokLogUsageScanner(
+            files: FakeFiles(["/home/test/.grok/logs/unified.jsonl": log]),
+            environment: FakeEnvironment(),
+            homeDirectory: { URL(fileURLWithPath: "/home/test") }
+        )
+        let provider = GrokProvider(
+            authStore: GrokAuthStore(files: files, now: { now }),
+            usageClient: GrokUsageClient(httpClient: httpClient),
+            logUsageScanner: scanner,
+            now: { now }
+        )
+
+        let snapshot = await provider.refresh()
+
+        // Existing credit lines stay; the three spend tiles are appended from the local log.
+        XCTAssertEqual(progress(snapshot.lines, "Credits used")?.used, 25)
+        XCTAssertEqual(values(snapshot.lines, "Today"),
+                       [MetricValue(number: 1.0, kind: .dollars, estimated: true), MetricValue(number: 1_000_000, kind: .count)])
+        XCTAssertEqual(values(snapshot.lines, "Yesterday"),
+                       [MetricValue(number: 15.0, kind: .dollars, estimated: true), MetricValue(number: 1_000_000, kind: .count)])
+        XCTAssertEqual(values(snapshot.lines, "Last 30 Days"),
+                       [MetricValue(number: 16.0, kind: .dollars, estimated: true), MetricValue(number: 2_000_000, kind: .count)])
+    }
+
+    private func noLogScanner() -> GrokLogUsageScanner {
+        GrokLogUsageScanner(files: FakeFiles(), environment: FakeEnvironment(), homeDirectory: { URL(fileURLWithPath: "/home/none") })
+    }
+
+    private func values(_ lines: [MetricLine], _ label: String) -> [MetricValue]? {
+        guard case .values(_, let values, _) = lines.first(where: { $0.label == label }) else { return nil }
+        return values
     }
 }
 
