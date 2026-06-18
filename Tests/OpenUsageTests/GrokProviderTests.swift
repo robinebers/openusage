@@ -128,7 +128,7 @@ final class GrokLogUsageScannerTests: XCTestCase {
         XCTAssertNil(usage.daily.first?.costUSD)
     }
 
-    func testScanReadsGrokHomeOverride() {
+    func testScanReadsGrokHomeOverride() async {
         let files = FakeFiles([
             "/custom/grok/logs/unified.jsonl": """
             {"ts":"2026-06-10T09:00:00.000Z","pid":1,"msg":"model changed","ctx":{"model":"grok-build"}}
@@ -141,19 +141,20 @@ final class GrokLogUsageScannerTests: XCTestCase {
             homeDirectory: { URL(fileURLWithPath: "/home/ignored") }
         )
 
-        let usage = scanner.scan(daysBack: 30, now: OpenUsageISO8601.date(from: "2026-06-18T00:00:00.000Z")!)
+        let usage = await scanner.scan(daysBack: 30, now: OpenUsageISO8601.date(from: "2026-06-18T00:00:00.000Z")!)
 
         XCTAssertEqual(usage?.daily.first?.totalTokens, 1_000_000)
     }
 
-    func testScanReturnsNilWhenLogMissing() {
+    func testScanReturnsNilWhenLogMissing() async {
         let scanner = GrokLogUsageScanner(
             files: FakeFiles(),
             environment: FakeEnvironment(),
             homeDirectory: { URL(fileURLWithPath: "/home/ignored") }
         )
 
-        XCTAssertNil(scanner.scan())
+        let usage = await scanner.scan()
+        XCTAssertNil(usage)
     }
 }
 

@@ -35,7 +35,11 @@ struct GrokLogUsageScanner: Sendable {
     /// Scan the last `daysBack` days of the log. Returns `nil` when the log is missing/unreadable (the
     /// spend tiles then render "No data"); returns an empty `daily` when the log exists but has no
     /// usable token rows in the window.
-    func scan(daysBack: Int = 30, now: Date = Date()) -> CcusageDailyUsage? {
+    ///
+    /// `async` and nonisolated (this is a plain `Sendable` struct, not `@MainActor`), so the whole-file
+    /// read + parse runs off the main actor when a `@MainActor` provider `await`s it — the same way
+    /// `CcusageRunner.query` keeps Claude/Codex's log work off the UI thread.
+    func scan(daysBack: Int = 30, now: Date = Date()) async -> CcusageDailyUsage? {
         let path = logPath
         guard files.exists(path), let text = try? files.readText(path) else {
             return nil

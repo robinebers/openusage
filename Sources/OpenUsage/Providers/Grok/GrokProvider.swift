@@ -66,7 +66,8 @@ final class GrokProvider: ProviderRuntime {
         let plan = await fetchPlanName(accessToken: state.token)
 
         // Local ccusage-style spend tiles, read natively from the Grok CLI log (no package runner).
-        if let tokenUsage = logUsageScanner.scan(daysBack: 30, now: now()) {
+        // `scan` is awaited so its whole-file read + parse runs off the main actor.
+        if let tokenUsage = await logUsageScanner.scan(daysBack: 30, now: now()) {
             SpendTileMapper.appendTokenUsage(tokenUsage, to: &mapped.lines, now: now())
         }
 

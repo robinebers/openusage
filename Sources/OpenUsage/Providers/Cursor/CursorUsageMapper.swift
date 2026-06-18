@@ -211,17 +211,22 @@ enum CursorUsageMapper {
     /// "No data".
     static func appendSpendLines(rows: [CursorUsageCSVRow], now: Date, to lines: inout [MetricLine]) {
         let calendar = Calendar.current
-        var costCentsByDay: [String: Int] = [:]
+        var costByDay: [String: Double] = [:]
         var tokensByDay: [String: Int] = [:]
         for row in rows {
             let day = dayKey(from: row.date, calendar: calendar)
-            // Snap each row to integer cents before summing, avoiding per-row float drift.
-            costCentsByDay[day, default: 0] += CursorPricing.toCents(row.imputedCostDollars)
+            costByDay[day, default: 0] += row.imputedCostDollars
             tokensByDay[day, default: 0] += row.tokens.total
         }
 
+        // Sum raw dollars per day, then snap to whole cents once — rounding per row would accumulate
+        // sub-cent drift across a busy day.
         let daily = tokensByDay.keys.sorted(by: >).map { day in
-            CcusageDay(date: day, totalTokens: tokensByDay[day] ?? 0, costUSD: Double(costCentsByDay[day] ?? 0) / 100)
+            CcusageDay(
+                date: day,
+                totalTokens: tokensByDay[day] ?? 0,
+                costUSD: Double(CursorPricing.toCents(costByDay[day] ?? 0)) / 100
+            )
         }
         SpendTileMapper.appendTokenUsage(CcusageDailyUsage(daily: daily), to: &lines, now: now, estimated: false)
     }
