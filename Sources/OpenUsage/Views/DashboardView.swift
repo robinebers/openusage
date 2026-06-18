@@ -173,12 +173,23 @@ struct DashboardView: View {
             .background(ScreenHeightReader(usableHeight: $usableHeight))
             .background(
                 // Esc backs out of Customize / Settings first; only from the dashboard does it
-                // close the popover.
-                EscapeToCloseReader(onEscape: {
-                    guard layout.screen != .dashboard else { return false }
-                    withAnimation(Motion.modeSwitch) { layout.screen = .dashboard }
-                    return true
-                })
+                // close the popover. Return toggles Customize (opens it from the dashboard/Settings,
+                // closes it from Customize) — the affordance the standalone Customize button carried
+                // before it folded into the More menu — and is always consumed so a bare Return never
+                // falls through to dismiss the popover.
+                PopoverKeyReader(
+                    onEscape: {
+                        guard layout.screen != .dashboard else { return false }
+                        withAnimation(Motion.modeSwitch) { layout.screen = .dashboard }
+                        return true
+                    },
+                    onReturn: {
+                        withAnimation(Motion.modeSwitch) {
+                            layout.screen = layout.screen == .customize ? .dashboard : .customize
+                        }
+                        return true
+                    }
+                )
             )
             .background(
                 PopoverVisibilityReader { visible in

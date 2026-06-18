@@ -24,6 +24,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     /// own, but holding the token follows the documented removal pattern (and the other observers
     /// in this codebase) should the controller ever stop living for the app's whole life.
     private var appearanceObserver: NSObjectProtocol?
+    /// Re-asserts popover key focus when the app finally becomes active — the backstop for the
+    /// macOS 26+ case where `NSApp.activate` lands past `makePopoverKey`'s retry window. See
+    /// `makePopoverKey`.
+    private var activationObserver: NSObjectProtocol?
 
     init(container: AppContainer, updater: UpdaterController) {
         self.container = container
@@ -46,6 +50,16 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.popover.appearance = AppearanceSetting.current.nsAppearance
+            }
+        }
+        activationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.popover.isShown else { return }
+                self.makePopoverKey(attempts: Self.makeKeyAttempts)
             }
         }
         let host = NSHostingController(
@@ -127,13 +141,35 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             AppLog.error(.statusItem, "Cannot show popover: status item has no button")
             return
         }
-        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-        // An inactive accessory app receives no text input; without activation the popover looks
-        // focused but clicks and the shortcut recorder are dead.
+        // An inactive accessory app receives no keyboard input — without activation the popover looks
+        // focused but Esc/Return navigation and the shortcut recorder are dead.
         NSApp.activate(ignoringOtherApps: true)
-        popover.contentViewController?.view.window?.makeKey()
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         button.highlight(true)
         startOutsideClickMonitors()
+        makePopoverKey(attempts: Self.makeKeyAttempts)
+    }
+
+    /// Drives the popover window to key so it actually receives keystrokes. Activating an accessory
+    /// app via `NSApp.activate` is asynchronous and, on macOS 26+, can lag several runloop ticks or be
+    /// denied outright — and a window can't be key while its app is inactive, so a single `makeKey()`
+    /// after `show` often leaves the popover non-key (its Esc/Return navigation and the shortcut
+    /// recorder dead until a second click). So retry across a few ticks until the window is key; the
+    /// `didBecomeActiveNotification` observer in `init` is the backstop for activation that lands later
+    /// still. (Pattern verified via GitHits across several menu-bar apps — e.g. SpacePill, Stats.)
+    private static let makeKeyAttempts = 12
+    private func makePopoverKey(attempts: Int) {
+        guard popover.isShown,
+              let window = popover.contentViewController?.view.window else { return }
+        window.makeKey()
+        if !window.isKeyWindow {
+            window.makeKeyAndOrderFront(nil)
+        }
+        if window.isKeyWindow { return }
+        guard attempts > 1 else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.015) { [weak self] in
+            self?.makePopoverKey(attempts: attempts - 1)
+        }
     }
 
     /// While the popover is up, `animates` must stay off: with it on, every SwiftUI-driven
