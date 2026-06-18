@@ -77,6 +77,18 @@ struct EscapeToCloseReader: NSViewRepresentable {
         (nsView as? MonitorView)?.onEscape = onEscape
     }
 
+    /// Whether an Esc keyDown belongs to the popover. The popover is normally the key window, so the
+    /// event carries its id. But on macOS 26+ an accessory app can briefly fail to take key focus
+    /// when the popover opens (the same activation race the Settings shortcut recorder re-asserts
+    /// focus to dodge), and the keyDown then arrives with no key window (`eventWindowID == nil`).
+    /// Treat that as the popover's too — while the Esc monitor is installed the popover is the only
+    /// window in play — so Esc still closes it reliably. A *different* non-nil window (e.g. an open
+    /// NSMenu that owns the keyDown) is not the popover's and is left alone.
+    static func escapeTargetsPopover(eventWindowID: ObjectIdentifier?, popoverWindowID: ObjectIdentifier) -> Bool {
+        guard let eventWindowID else { return true }
+        return eventWindowID == popoverWindowID
+    }
+
     final class MonitorView: NSView {
         var onEscape: (@MainActor () -> Bool)?
         private var monitor: Any?
@@ -93,8 +105,12 @@ struct EscapeToCloseReader: NSViewRepresentable {
                 guard event.keyCode == MonitorView.escapeKeyCode else { return event }
                 let eventWindowID = event.window.map(ObjectIdentifier.init)
                 let consumed = MainActor.assumeIsolated { () -> Bool in
-                    guard let self, let window = self.window,
-                          eventWindowID == ObjectIdentifier(window) else { return false }
+                    guard let self, let window = self.window else { return false }
+                    // Esc must target the popover (see `escapeTargetsPopover` for the key-window race).
+                    guard EscapeToCloseReader.escapeTargetsPopover(
+                        eventWindowID: eventWindowID,
+                        popoverWindowID: ObjectIdentifier(window)
+                    ) else { return false }
                     // A text control is editing, or the Settings shortcut recorder is capturing a
                     // combo: Esc belongs to it (cancel the capture), not to popover navigation.
                     if window.firstResponder is NSText || ShortcutRecorderField.isRecordingActive {

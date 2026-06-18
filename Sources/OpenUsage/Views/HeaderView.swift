@@ -49,7 +49,23 @@ struct HeaderView: View {
             }
             // The anchor view fills the button's frame so the menu drops from directly under it.
             .background(PopUpMenuAnchorView(anchor: moreMenuAnchor))
+            // ⏎ still jumps straight into Customize, as it did before the standalone Customize
+            // button became this "More" menu. A key-only button restores that affordance without
+            // hijacking the visible control's menu action.
+            .background(enterCustomizeReturnKey)
         }
+    }
+
+    /// A zero-size, key-only button mapping plain ⏎ to entering Customize. Mounted only on the
+    /// non-Customize screens — the Customize "Done" button binds ⏎ there — so Return enters
+    /// Customize from the dashboard (or Settings) and exits it from Customize, the way the
+    /// standalone Customize button behaved before it folded into the More menu. The popover has no
+    /// text fields, so a plain-Return key equivalent can't steal Return from an editing control.
+    private var enterCustomizeReturnKey: some View {
+        Button { toggle(.customize) } label: { Color.clear.frame(width: 0, height: 0) }
+            .buttonStyle(.plain)
+            .keyboardShortcut(.return, modifiers: [])
+            .accessibilityHidden(true)
     }
 
     /// Builds and pops the "More" pull-down as a native `NSMenu`, so the trigger stays the exact glass
