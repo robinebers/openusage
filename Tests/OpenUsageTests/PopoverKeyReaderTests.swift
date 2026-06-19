@@ -2,17 +2,18 @@ import XCTest
 @testable import OpenUsage
 
 /// `PopoverKeyReader.keyTargetsPopover` decides whether a bare Esc/Return keyDown should drive the
-/// menu-bar popover. The nil-window case guards the macOS 26+ regression where the popover is
-/// visible but not key, so the keyDown carries no window and a strict identity check would have
-/// silently dropped it ("sometimes Esc doesn't close").
+/// menu-bar popover: only when the event's key window IS the panel. The panel (a non-activating key
+/// window) reliably takes key focus on show, so a foreign key window — a tracking menu, the About
+/// panel — or no key window at all is left alone rather than hijacked.
 final class PopoverKeyReaderTests: XCTestCase {
     /// Distinct instances stand in for windows; `ObjectIdentifier` gives each a stable identity.
     private final class WindowStub {}
 
-    func testNilKeyWindowTargetsPopover() {
-        // No key window (the accessory-app activation race): the key still belongs to the popover.
+    func testNilKeyWindowIsNotPopover() {
+        // No key window is NOT the popover's: with the panel reliably key on show, a bare key with no
+        // key window belongs to nothing we should act on (so an open menu / About panel keeps its key).
         let popover = WindowStub()
-        XCTAssertTrue(
+        XCTAssertFalse(
             PopoverKeyReader.keyTargetsPopover(
                 eventWindowID: nil,
                 popoverWindowID: ObjectIdentifier(popover)

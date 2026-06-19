@@ -6,9 +6,9 @@ A high-level map of how OpenUsage is put together, for people working on the cod
 ## The shape of the app
 
 OpenUsage is a single SwiftPM executable — there is no Xcode project. It's a menu-bar app: a SwiftUI
-interface hosted inside an AppKit status item and popover. The code is grouped by role:
+interface hosted inside an AppKit status item and panel. The code is grouped by role:
 
-- `App/` — startup and the AppKit bridge (status item, popover, the app entry point).
+- `App/` — startup and the AppKit bridge (status item, panel, the app entry point).
 - `Models/` — the small value types the rest of the app speaks in (`MetricLine`, `WidgetData`, descriptors).
 - `Providers/` — one folder per provider (Claude, Codex, Cursor, Devin, Grok).
 - `Stores/` — the mutable state the UI observes.

@@ -92,16 +92,14 @@ struct PopoverKeyReader: NSViewRepresentable {
         view.onReturn = onReturn
     }
 
-    /// Whether a bare-key keyDown belongs to the popover. The popover is normally the key window, so
-    /// the event carries its id. But on macOS 26+ an accessory app can briefly fail to take key focus
-    /// when the popover opens (the same activation race the Settings shortcut recorder re-asserts
-    /// focus to dodge), and the keyDown then arrives with no key window (`eventWindowID == nil`).
-    /// Treat that as the popover's too — while this monitor is installed the popover is the only
-    /// window in play — so the key still lands. A *different* non-nil window (e.g. an open NSMenu
-    /// that owns the keyDown) is not the popover's and is left alone.
+    /// Whether a bare-key keyDown belongs to the popover: its key window must *be* the panel. The
+    /// panel is a non-activating key window that takes focus the instant it opens, so a foreign key
+    /// window (an open About panel, a tracking `NSMenu` from the More menu or a Settings picker) — or
+    /// no key window at all — is correctly *not* the popover's, and Esc/Return leave it alone instead
+    /// of hijacking it. (An earlier build also claimed a nil key window, to paper over `NSPopover`'s
+    /// activation race; the `NSPanel` removed that race, so the strict match is correct and safer.)
     static func keyTargetsPopover(eventWindowID: ObjectIdentifier?, popoverWindowID: ObjectIdentifier) -> Bool {
-        guard let eventWindowID else { return true }
-        return eventWindowID == popoverWindowID
+        eventWindowID == popoverWindowID
     }
 
     final class MonitorView: NSView {
@@ -134,7 +132,8 @@ struct PopoverKeyReader: NSViewRepresentable {
                     // Only act while the popover is on-screen; the SwiftUI tree (and this monitor) can
                     // outlive a close, and `isVisible` stands in for `NSPopover.isShown`.
                     guard let self, let window = self.window, window.isVisible else { return false }
-                    // The key must target the popover (see `keyTargetsPopover` for the key-window race).
+                    // The key must target the popover — its key window must be the panel, so a key
+                    // pressed while a menu / About panel owns focus is left alone (see `keyTargetsPopover`).
                     guard PopoverKeyReader.keyTargetsPopover(
                         eventWindowID: eventWindowID,
                         popoverWindowID: ObjectIdentifier(window)
