@@ -126,13 +126,23 @@ private final class TooltipPresenter {
     private var pendingID: UUID?
     private var revealTask: Task<Void, Never>?
 
-    /// Mirrors the native tooltip: a real wait on the first hover, then near-instant reshows for a
-    /// short grace window after one was last shown ("quick mode").
-    private let initialDelay: Duration = .milliseconds(350)
-    private let quickDelay: Duration = .milliseconds(60)
-    private let quickWindow: Duration = .milliseconds(1500)
-    private let clock = ContinuousClock()
-    private var lastHideAt: ContinuousClock.Instant?
+    /// One consistent dwell before any new tooltip target shows. There's no fast-reshow "quick mode":
+    /// sweeping the cursor across adjacent labels would otherwise flash a burst of tooltips, since once
+    /// one is up every sibling it passes over would reveal near-instantly.
+    ///
+    /// 400ms is a deliberate value, not a guess. It's the overlap of the hover-intent windows in the
+    /// research (Nielsen Norman Group puts reliable intent at 300-500ms of cursor stillness, the
+    /// Müller-Tomfelde dwell study at 350-600ms) and sits on the Doherty threshold (~400ms), the line
+    /// between feeling responsive and feeling slow. The longer 500-700ms defaults in Radix (700),
+    /// Base UI (600), and Windows (500) are tempting for a dense list of targets like these rows, but
+    /// every one of them pairs its long first-reveal delay with an instant reshow for neighbours, and
+    /// that reshow grouping is precisely the quick mode we removed because it caused the sweep cascade.
+    /// Without reshow, every hover (including a deliberate row-by-row read) pays this delay in full, so
+    /// the value belongs at the responsive end of the intent window, not the long end. 300ms sits at the
+    /// floor of that window and fires a little too readily on a slow drag across rows. If deliberate
+    /// neighbour-to-neighbour reading ever feels laggy, raise this to 500ms before reintroducing any
+    /// reshow shortcut, since a tuned reshow risks reopening the original complaint.
+    private let revealDelay: Duration = .milliseconds(400)
 
     /// Space above the cursor; the panel's bottom edge sits this far above the pointer.
     private let cursorGap: CGFloat = 10
@@ -198,19 +208,29 @@ private final class TooltipPresenter {
             }
             return
         }
-        if shownID != nil {                         // a tooltip is up for another target — switch now
+        // A hovered descendant outranks the parent already on screen: hand off immediately, since the
+        // dwell was already earned on the parent (e.g. the clear button inside the Settings shortcut
+        // field). Reading `active[shownID]` ties this to the shown target still being hovered, so
+        // "deeper" means a genuine parent→child handoff, not a stale depth comparison.
+        if let shownID, let shown = active[shownID], top.value.depth > shown.depth {
             present(top.value)
-            shownID = top.key
+            self.shownID = top.key
             shownText = top.value.text
             cancelPending()
             return
+        }
+        // Any other switch (a same-depth sibling or a shallower target) hides the current bubble and
+        // makes the new target re-earn the full dwell, so sweeping across sibling labels while one is
+        // up doesn't retarget the tooltip on every pass.
+        if shownID != nil {
+            hide()
         }
         if pendingID == top.key { return }          // already scheduled for this target
         cancelPending()
         pendingID = top.key
         let target = top.value
         let id = top.key
-        let delay = isInQuickMode ? quickDelay : initialDelay
+        let delay = revealDelay
         revealTask = Task { [weak self] in
             try? await Task.sleep(for: delay)
             guard !Task.isCancelled, let self else { return }
@@ -222,11 +242,6 @@ private final class TooltipPresenter {
         }
     }
 
-    private var isInQuickMode: Bool {
-        guard let lastHideAt else { return false }
-        return clock.now - lastHideAt < quickWindow
-    }
-
     private func cancelPending() {
         revealTask?.cancel()
         revealTask = nil
@@ -234,7 +249,6 @@ private final class TooltipPresenter {
     }
 
     private func hide() {
-        if shownID != nil { lastHideAt = clock.now }   // open the quick-mode window only after a real show
         shownID = nil
         shownText = nil
         if panel.isVisible { panel.orderOut(nil) }
