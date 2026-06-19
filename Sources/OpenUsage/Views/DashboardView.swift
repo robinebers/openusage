@@ -157,6 +157,10 @@ struct DashboardView: View {
             .frame(width: Self.popoverWidth)
             .pinnedFooter(spacing: 0) { footerBar }
             .frame(height: animatedPopoverHeight, alignment: .top)
+            // Draws every `.hoverTooltip(_:)` bubble at the popover root, above the content and footer
+            // but escaping each screen's scroll-view clipping. Sits inside the reduce-transparency
+            // environment below so the bubble matches the popover's glass/solid form.
+            .hoverTooltipContainer()
             // Paint the surface behind the content (and footer) and tell every descendant whether
             // glass is on, so the fallbacks and the meter tints render in step. Both go on the
             // outermost level of the chain so the footer, header buttons, and scroll content inherit.
@@ -424,7 +428,7 @@ struct DashboardView: View {
         }
         .buttonStyle(.plain)
         .keyboardShortcut("r", modifiers: .command)
-        .help("Refresh now (⌘R)")
+        .hoverTooltip("Refresh now (⌘R)")
         .disabled(isUpdating)
     }
 

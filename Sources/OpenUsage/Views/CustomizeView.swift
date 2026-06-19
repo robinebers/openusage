@@ -163,7 +163,7 @@ struct CustomizeView: View {
         .foregroundStyle(pinned ? Color.accentColor : Color.secondary)
         .opacity(visible ? (blocked ? 0.35 : 1) : 0)
         .allowsHitTesting(visible)
-        .help(pinHelp(metric))
+        .hoverTooltip(pinHelp(metric))
         .animation(Motion.spring, value: visible)
         .animation(Motion.spring, value: pinned)
     }

@@ -139,7 +139,7 @@ struct WidgetRowView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
-                .help(state.tooltip ?? "")
+                .hoverTooltip(state.tooltip)
         case .noData, .healthy, .level:
             EmptyView()
         }
@@ -166,7 +166,7 @@ struct WidgetRowView: View {
             }
         }
         .foregroundStyle(.secondary)
-        .help(state.tooltip ?? "")
+        .hoverTooltip(state.tooltip)
         .accessibilityLabel(accessibility)
 
         if let action {
@@ -207,7 +207,7 @@ struct WidgetRowView: View {
                     .contentTransition(.numericText())
             }
             .buttonStyle(.plain)
-            .help(data.meterStyleTooltip ?? "")
+            .hoverTooltip(data.meterStyleTooltip)
         } else {
             Text(data.headline)
                 .foregroundStyle(.primary)
@@ -226,7 +226,7 @@ struct WidgetRowView: View {
                     Text(text).foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
-                .help(data.resetTooltip ?? "")
+                .hoverTooltip(data.resetTooltip)
             } else {
                 Text(text).foregroundStyle(.secondary)
             }
@@ -259,7 +259,7 @@ struct WidgetRowView: View {
         }
         // Hovering the row reveals the exact figures the compact value shortens ("$2,059.07 ·
         // 1,506,025,363"); empty string when nothing's abbreviated, so no redundant tooltip appears.
-        .help(data.unboundedTooltip ?? "")
+        .hoverTooltip(data.unboundedTooltip)
     }
 
     /// Small ⓘ next to the label; on hover it explains the row's `infoNote` (e.g. that a ccusage dollar
@@ -271,7 +271,7 @@ struct WidgetRowView: View {
             Image(systemName: "info.circle")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
-                .help(note)
+                .hoverTooltip(note)
                 .accessibilityLabel(note)
         }
     }
@@ -329,7 +329,7 @@ struct WidgetRowView: View {
         .frame(height: density.meterHeight)
         .animation(Motion.spring, value: data.fraction)
         .accessibilityHidden(true)
-        .help(state.tooltip ?? "")
+        .hoverTooltip(state.tooltip)
     }
 
     private static let paceTickWidth: CGFloat = 2
