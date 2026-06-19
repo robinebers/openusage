@@ -293,12 +293,15 @@ struct WidgetRowView: View {
     }
 
     /// The hover text for an unbounded row, shared by the row itself and its ⓘ: the exact figures when
-    /// there's usage to reveal, or a "no usage" note on a zero-usage period so an empty row
+    /// there's usage to reveal, or a "no usage" note on a zero spend period so an empty row
     /// ("$0.00 · 0 tokens") still pops something (and carries an ⓘ). `nil` for a small, already-full,
     /// non-zero row, which has nothing to add.
     private var unboundedHoverText: String? {
         if let figures = data.unboundedTooltip { return figures }
-        return data.isZeroUsage ? "No usage in this period" : nil
+        // The "no usage" note only fits a spend period (Today / Yesterday / Last 30 Days), where a zero
+        // genuinely means nothing was used. A balance row that reads 0 (Codex Rate Limit Resets, an
+        // exhausted Extra Usage credit) is depleted, not idle, so it gets no note and no ⓘ.
+        return data.isZeroUsage && data.isUsagePeriod ? "No usage in this period" : nil
     }
 
     /// Full-width capsule meter — the Tahoe-era level-indicator form (capsule, full-height

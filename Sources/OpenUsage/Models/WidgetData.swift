@@ -47,6 +47,12 @@ struct WidgetData: Hashable {
     /// Which of `values` this widget renders — cost-only, tokens-only, or the combined `.all`. Set by
     /// the descriptor factory, so one provider row can back several tiles and the mapper stays oblivious.
     var selection: ValueSelection = .all
+    /// True only for the Today / Yesterday / Last 30 Days spend tiles, where the row's values accumulate
+    /// over a time window so an all-zero reading means "nothing was used." Balance/availability rows
+    /// (Codex Rate Limit Resets, an exhausted Extra Usage credit) read zero when *depleted*, not idle, so
+    /// they leave this false and never get the "No usage in this period" note. Set by the spend-tile
+    /// factory; rides the descriptor sample through `WidgetDataStore.resolve`.
+    var isUsagePeriod: Bool = false
 
     var isBounded: Bool { limit != nil }
 
