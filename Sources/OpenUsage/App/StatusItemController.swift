@@ -344,13 +344,15 @@ final class StatusItemController: NSObject {
             outsideClickMonitors.append(local)
         }
         if let global = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: { [weak self] _ in
+            // Capture the click location NOW: `mouseLocation` read later (inside the Task) could be
+            // stale if the pointer moved before the hop, mis-deciding the status-button / in-panel
+            // checks. `NSPoint` is Sendable, so the captured value crosses into the Task safely.
+            let screenPoint = NSEvent.mouseLocation
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 // Clicking the status item must NOT dismiss here — its own action toggles the panel.
                 // Dismissing on this click's mouse-down would close the panel, then the button action
-                // would reopen it on mouse-up (the close-then-reopen flicker). `NSEvent.mouseLocation`
-                // gives reliable screen coordinates for the status-button / in-panel checks.
-                let screenPoint = NSEvent.mouseLocation
+                // would reopen it on mouse-up (the close-then-reopen flicker).
                 guard !self.isOnStatusButton(screenPoint: screenPoint),
                       !self.panel.frame.contains(screenPoint) else { return }
                 self.hidePanel()
