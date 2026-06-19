@@ -13,18 +13,37 @@ import SwiftUI
 /// own geometry, places the bubble just below the target (flipping above when it would overflow the
 /// bottom), and clamps it inside the popover.
 
-/// The active tooltip's text plus an anchor on the hovered view's frame. Only one element is hovered
-/// at a time, so at most one request is live.
+/// The active tooltip's text, an anchor on the hovered view's frame, and its nesting depth. A hover
+/// over a nested control sits inside both the child and its container, so both publish a request after
+/// the delay; the depth lets the more specific (deeper) one win.
 private struct TooltipRequest {
     let text: String
     let anchor: Anchor<CGRect>
+    let depth: Int
 }
 
 private struct TooltipRequestKey: PreferenceKey {
     static let defaultValue: TooltipRequest? = nil
     static func reduce(value: inout TooltipRequest?, nextValue: () -> TooltipRequest?) {
-        // Last non-nil wins; targets that aren't showing contribute nil, so the live one survives.
-        if let next = nextValue() { value = next }
+        // Keep the deepest live request so a nested control's tooltip beats its container's (the ⓘ note
+        // over the row figures, or "Clear Shortcut" over the shortcut field) regardless of preference
+        // traversal order. Targets that aren't showing contribute nil and drop out.
+        guard let next = nextValue() else { return }
+        guard let current = value else { value = next; return }
+        if next.depth > current.depth { value = next }
+    }
+}
+
+/// Nesting depth of a `.hoverTooltip` target. Each target bumps it for its descendants, so a child's
+/// request outranks its container's in `TooltipRequestKey.reduce`.
+private struct TooltipDepthKey: EnvironmentKey {
+    static let defaultValue = 0
+}
+
+private extension EnvironmentValues {
+    var tooltipDepth: Int {
+        get { self[TooltipDepthKey.self] }
+        set { self[TooltipDepthKey.self] = newValue }
     }
 }
 
@@ -54,6 +73,7 @@ extension View {
 
 private struct HoverTooltipModifier: ViewModifier {
     let text: String?
+    @Environment(\.tooltipDepth) private var depth
     @State private var isShowing = false
     @State private var revealTask: Task<Void, Never>?
 
@@ -70,6 +90,9 @@ private struct HoverTooltipModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
+            // Descendants nest one level deeper, so a child target outranks this one when a hover sits
+            // inside both.
+            .environment(\.tooltipDepth, depth + 1)
             .accessibilityHint(resolved ?? "")
             .onHover { inside in
                 guard resolved != nil else { return }
@@ -78,7 +101,7 @@ private struct HoverTooltipModifier: ViewModifier {
             .onDisappear { cancelReveal() }
             .anchorPreference(key: TooltipRequestKey.self, value: .bounds) { anchor in
                 guard isShowing, let resolved else { return nil }
-                return TooltipRequest(text: resolved, anchor: anchor)
+                return TooltipRequest(text: resolved, anchor: anchor, depth: depth)
             }
     }
 
