@@ -52,8 +52,13 @@ snapshot has actually expired.
 
 ## The AppKit bridge
 
-macOS menu-bar apps live in an `NSStatusItem` and show their content in an `NSPopover`. `App/` owns that
-AppKit layer and hosts the SwiftUI views inside it, so the bulk of the UI can stay plain SwiftUI.
+macOS menu-bar apps live in an `NSStatusItem`. OpenUsage shows its content in a custom, key-capable
+`NSPanel` rather than an `NSPopover`: a popover's window is only key while the whole app is active, and
+activating a menu-bar (accessory) app is asynchronous and unreliable on recent macOS, so a popover
+ends up unable to receive keystrokes until a second click. A non-activating `NSPanel` whose
+`canBecomeKey` is `true` takes key focus the instant it opens, so keyboard navigation and the Settings
+shortcut recorder just work. `App/` owns that AppKit layer and hosts the SwiftUI views inside it, so
+the bulk of the UI can stay plain SwiftUI.
 
 ## Platform support
 

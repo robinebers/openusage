@@ -12,6 +12,13 @@ enum ReduceTransparencySetting {
     /// The `UserDefaults.standard` key this setting persists under.
     static let key = "reduceTransparency"
 
+    /// Posted when the in-app toggle flips, so the panel's AppKit glass backdrop
+    /// (`StatusItemController`) can swap to a solid surface live — `@AppStorage` reactivity only
+    /// re-renders the in-window content, not the window's own backdrop. Mirrors
+    /// `AppearanceSetting.didChangeNotification`. (macOS's *own* Reduce Transparency setting is
+    /// observed separately, via `NSWorkspace`.)
+    static let didChangeNotification = Notification.Name("ReduceTransparencySettingDidChange")
+
     /// The stored choice, read live from `UserDefaults.standard` (defaults to `false` when unset —
     /// a missing bool key reads as `false`, which is exactly the "glass on" default we want).
     static var current: Bool {

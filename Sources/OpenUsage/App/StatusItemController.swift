@@ -2,84 +2,115 @@ import AppKit
 import KeyboardShortcuts
 import SwiftUI
 
-/// Owns the menu-bar status item and the popover that shows the dashboard.
+/// The dashboard's host window: a borderless, **non-activating** panel that can still become key.
 ///
-/// This deliberately does not use SwiftUI's `MenuBarExtra`: its `.window` panel never becomes a
-/// proper key window for text input (the Settings shortcut recorder silently ignored key presses)
-/// and there is no public API to present it programmatically — the MenuBarExtraAccess bridge
-/// drives a simulated status-item click that became a silent no-op on macOS 26+. A plain
-/// `NSStatusItem` + `NSPopover` gives a real key window and a real `show()`/`performClose()` pair
-/// the global shortcut can call directly.
+/// This is the fix for `NSPopover`'s fundamental limitation in a menu-bar accessory app. A popover's
+/// window is only key while the whole app is active, and activating an `LSUIElement` app is
+/// asynchronous — on macOS 26+ it lands several runloop ticks later or is denied — so the popover is
+/// on-screen but not key, the keystroke goes to the focused status-item button instead (Enter
+/// re-toggles it shut; Esc is lost), and you need a second click/keypress. A `.nonactivatingPanel`
+/// whose `canBecomeKey` is `true` becomes key the instant it's ordered front, *without* activating the
+/// app, so keyboard input (Esc/Return navigation, the Settings shortcut recorder) works on the first
+/// try. (The pattern keyboard-first menu-bar apps use; cross-checked via GitHits.)
+final class MenuBarPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+}
+
+/// Owns the menu-bar status item and the panel that shows the dashboard.
+///
+/// Deliberately not SwiftUI's `MenuBarExtra`: its `.window` panel never became a proper key window for
+/// text input (the Settings shortcut recorder silently ignored key presses) and there is no public API
+/// to present it programmatically. A plain `NSStatusItem` + a key-capable `NSPanel` gives a real key
+/// window and a real show/hide pair the global shortcut can call directly.
 @MainActor
-final class StatusItemController: NSObject, NSPopoverDelegate {
+final class StatusItemController: NSObject {
     private let container: AppContainer
     private let updater: UpdaterController
     private let statusItem: NSStatusItem
-    private let popover: NSPopover
-    /// Closes the popover on clicks outside it. `.transient` popover behavior is unreliable for
-    /// accessory apps (the popover can swallow the first outside click or refuse to close), so the
-    /// popover is `.applicationDefined` and this monitor implements "click away closes" itself.
+    private let panel: MenuBarPanel
+    private let hostingController: NSHostingController<AnyView>
+    /// Tracks the SwiftUI content's ideal size so the panel resizes to it (the dashboard animates its
+    /// own height on mode switches). Replaces the `NSPopover` `preferredContentSize` auto-tracking.
+    private var contentSizeObservation: NSKeyValueObservation?
+    /// Closes the panel on clicks outside it (the panel is non-activating and dismissal is ours to
+    /// implement, the same model the old `.applicationDefined` popover used).
     private var outsideClickMonitors: [Any] = []
-    /// Token for the appearance-change observer. The center keeps block observers alive on its
-    /// own, but holding the token follows the documented removal pattern (and the other observers
-    /// in this codebase) should the controller ever stop living for the app's whole life.
+    /// Token for the appearance-change observer; held to follow the documented removal pattern.
     private var appearanceObserver: NSObjectProtocol?
-    /// Re-asserts popover key focus when the app finally becomes active — the backstop for the
-    /// macOS 26+ case where `NSApp.activate` lands past `makePopoverKey`'s retry window. See
-    /// `makePopoverKey`.
-    private var activationObserver: NSObjectProtocol?
+    /// Observers that re-evaluate Reduce Transparency: the in-app toggle and macOS's own setting.
+    private var reduceTransparencyObserver: NSObjectProtocol?
+    private var systemReduceObserver: NSObjectProtocol?
+    /// The two interchangeable backdrops behind the dashboard: Liquid Glass, or a solid surface when
+    /// Reduce Transparency is on. Exactly one is visible (see `applyReduceTransparency`).
+    private var glassBackdrop: NSVisualEffectView?
+    private var solidBackdrop: NSBox?
+    /// Panel top-left in screen coords, captured on show. The panel grows downward from here as the
+    /// content animates its height, so the top edge stays pinned just under the status-item button.
+    private var anchorTopLeft: NSPoint?
+
+    /// One width across both densities (matches `DashboardView.popoverWidth`).
+    private static let panelWidth: CGFloat = 320
+    /// Gap between the menu bar and the panel's top edge.
+    private static let topGap: CGFloat = 4
+    /// Corner radius of the panel surface; tuned to read like a system menu-bar popover.
+    private static let cornerRadius: CGFloat = 13
 
     init(container: AppContainer, updater: UpdaterController) {
         self.container = container
         self.updater = updater
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        self.popover = NSPopover()
+
+        let hosting = NSHostingController(
+            rootView: AnyView(
+                DashboardView()
+                    .environment(container)
+                    .environment(container.layout)
+                    .environment(container.dataStore)
+                    .environment(updater)
+            )
+        )
+        // The panel tracks SwiftUI's preferred size, so the dashboard's animated height changes
+        // (mode switches, content growth) resize the panel instead of clipping.
+        hosting.sizingOptions = .preferredContentSize
+        self.hostingController = hosting
+
+        self.panel = MenuBarPanel(
+            contentRect: NSRect(x: 0, y: 0, width: Self.panelWidth, height: 400),
+            styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+
         super.init()
 
-        popover.behavior = .applicationDefined
-        popover.animates = true
-        popover.delegate = self
-        // The popover inherits its appearance from the positioning view — the status-bar button —
-        // so the menu bar's appearance, not `NSApp.appearance`, would win. Pin the theme override
-        // here (nil for System) and track the Settings picker live.
-        popover.appearance = AppearanceSetting.current.nsAppearance
+        configurePanel()
+        configureStatusItem()
+        updateButtonImage()
+
         appearanceObserver = NotificationCenter.default.addObserver(
             forName: AppearanceSetting.didChangeNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.popover.appearance = AppearanceSetting.current.nsAppearance
+                self?.panel.appearance = AppearanceSetting.current.nsAppearance
             }
         }
-        activationObserver = NotificationCenter.default.addObserver(
-            forName: NSApplication.didBecomeActiveNotification,
+        reduceTransparencyObserver = NotificationCenter.default.addObserver(
+            forName: ReduceTransparencySetting.didChangeNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self, self.popover.isShown else { return }
-                self.makePopoverKey(attempts: Self.makeKeyAttempts)
-            }
+            MainActor.assumeIsolated { self?.applyReduceTransparency() }
         }
-        let host = NSHostingController(
-            rootView: DashboardView()
-                .environment(container)
-                .environment(container.layout)
-                .environment(container.dataStore)
-                .environment(updater)
-        )
-        // The popover tracks SwiftUI's preferred size, so the dashboard's animated height changes
-        // (mode switches, content growth) resize the popover instead of clipping.
-        host.sizingOptions = .preferredContentSize
-        popover.contentViewController = host
-
-        if let button = statusItem.button {
-            button.target = self
-            button.action = #selector(statusButtonClicked)
+        systemReduceObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.applyReduceTransparency() }
         }
-
-        updateButtonImage()
 
         // Registered once here; the controller lives for the app's whole life.
         KeyboardShortcuts.onKeyUp(for: .togglePopover) { [weak self] in
@@ -87,13 +118,115 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             self?.togglePopover()
         }
 
-        // Esc on the dashboard (and the footer's close affordances) dismiss through the same
-        // code path as a status-item click.
+        // Esc on the dashboard (and the footer's close affordances) dismiss through the same code
+        // path as a status-item click.
         MenuBarPopover.dismissHandler = { [weak self] in
-            self?.closePopover()
+            self?.hidePanel()
         }
 
         AppLog.info(.statusItem, "Status item ready (button: \(self.statusItem.button != nil), shortcut: \(KeyboardShortcuts.getShortcut(for: .togglePopover)?.description ?? "none"))")
+    }
+
+    // MARK: - Panel configuration
+
+    private func configurePanel() {
+        panel.level = .popUpMenu
+        panel.hidesOnDeactivate = false
+        panel.hasShadow = true
+        panel.isMovable = false
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.animationBehavior = .none
+        panel.isReleasedWhenClosed = false
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        // Pin the theme override (nil for System) so the menu bar's appearance doesn't win; tracked
+        // live by `appearanceObserver`.
+        panel.appearance = AppearanceSetting.current.nsAppearance
+
+        let container = NSView()
+
+        // Glass backdrop: the popover material sampling the desktop behind the window — the same
+        // Liquid Glass `NSPopover` rendered for free. Rounded via a resizable mask (a plain layer
+        // corner-radius leaves the window-server-composited blur square at the edges).
+        let glass = NSVisualEffectView()
+        glass.material = .popover
+        glass.blendingMode = .behindWindow
+        glass.state = .active
+        glass.maskImage = Self.roundedMaskImage(radius: Self.cornerRadius)
+        glass.autoresizingMask = [.width, .height]
+        glass.frame = container.bounds
+
+        // Solid backdrop for Reduce Transparency: shown instead of the glass. It fills the whole
+        // window, so a screen-switch resize can't briefly reveal glass beneath the content-sized
+        // SwiftUI surface (the bug this fixes). `NSBox.fillColor` tracks light/dark automatically.
+        let solid = NSBox()
+        solid.boxType = .custom
+        solid.titlePosition = .noTitle
+        solid.borderWidth = 0
+        solid.cornerRadius = Self.cornerRadius
+        solid.contentViewMargins = .zero
+        solid.fillColor = .windowBackgroundColor
+        solid.isHidden = true
+        solid.autoresizingMask = [.width, .height]
+        solid.frame = container.bounds
+
+        let host = hostingController.view
+        host.frame = container.bounds
+        host.autoresizingMask = [.width, .height]
+        host.wantsLayer = true
+        host.layer?.cornerRadius = Self.cornerRadius
+        host.layer?.cornerCurve = .continuous
+        host.layer?.masksToBounds = true
+
+        container.addSubview(glass)
+        container.addSubview(solid, positioned: .above, relativeTo: glass)
+        container.addSubview(host, positioned: .above, relativeTo: solid)
+        glassBackdrop = glass
+        solidBackdrop = solid
+
+        // A plain container VC owns the backdrop; the hosting controller is its child so SwiftUI gets
+        // a proper view-controller hierarchy. The panel itself is sized by `resizePanelToContent`.
+        let rootVC = NSViewController()
+        rootVC.view = container
+        rootVC.addChild(hostingController)
+        panel.contentViewController = rootVC
+
+        contentSizeObservation = hostingController.observe(\.preferredContentSize, options: [.new]) { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.resizePanelToContent() }
+        }
+
+        applyReduceTransparency()
+    }
+
+    /// Reduce Transparency — the in-app toggle OR macOS's own accessibility setting — swaps the glass
+    /// backdrop for the solid one. The solid view fills the whole window, so it covers any strip the
+    /// content-sized SwiftUI surface hasn't caught up to during a screen-switch resize (which would
+    /// otherwise flash the glass). Both backdrops round identically, so the swap is invisible at rest.
+    private func applyReduceTransparency() {
+        let reduce = ReduceTransparencySetting.current
+            || NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
+        glassBackdrop?.isHidden = reduce
+        solidBackdrop?.isHidden = !reduce
+    }
+
+    private func configureStatusItem() {
+        guard let button = statusItem.button else { return }
+        button.target = self
+        button.action = #selector(statusButtonClicked)
+    }
+
+    /// A resizable rounded-rectangle mask so the `behindWindow` glass gets clean rounded corners
+    /// (a plain layer corner-radius leaves the window-server-composited blur square at the edges).
+    private static func roundedMaskImage(radius: CGFloat) -> NSImage {
+        let side = radius * 2 + 1
+        let image = NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in
+            NSColor.black.setFill()
+            NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
+            return true
+        }
+        image.capInsets = NSEdgeInsets(top: radius, left: radius, bottom: radius, right: radius)
+        image.resizingMode = .stretch
+        return image
     }
 
     // MARK: - Status item image
@@ -122,73 +255,70 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             ?? MenuBarStripRenderer.fallbackIcon
     }
 
-    // MARK: - Popover
+    // MARK: - Show / hide
 
     @objc private func statusButtonClicked() {
         togglePopover()
     }
 
     func togglePopover() {
-        if popover.isShown {
-            closePopover()
+        if panel.isVisible {
+            hidePanel()
         } else {
-            showPopover()
+            showPanel()
         }
     }
 
-    private func showPopover() {
-        guard let button = statusItem.button else {
-            AppLog.error(.statusItem, "Cannot show popover: status item has no button")
+    private func showPanel() {
+        guard let button = statusItem.button, let buttonWindow = button.window else {
+            AppLog.error(.statusItem, "Cannot show panel: status item has no button")
             return
         }
-        // An inactive accessory app receives no keyboard input — without activation the popover looks
-        // focused but Esc/Return navigation and the shortcut recorder are dead.
-        NSApp.activate(ignoringOtherApps: true)
-        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        // Lay the content out first so the panel opens at the right size (no first-frame flash).
+        hostingController.view.layoutSubtreeIfNeeded()
+
+        let buttonRectOnScreen = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
+        anchorTopLeft = clampedTopLeft(below: buttonRectOnScreen, width: Self.panelWidth)
+        resizePanelToContent()
+
+        // `canBecomeKey` + `.nonactivatingPanel` makes this key without activating the app — no
+        // activation race, so the dashboard receives keys on the first try.
+        panel.makeKeyAndOrderFront(nil)
         button.highlight(true)
         startOutsideClickMonitors()
-        makePopoverKey(attempts: Self.makeKeyAttempts)
     }
 
-    /// Drives the popover window to key so it actually receives keystrokes. Activating an accessory
-    /// app via `NSApp.activate` is asynchronous and, on macOS 26+, can lag several runloop ticks or be
-    /// denied outright — and a window can't be key while its app is inactive, so a single `makeKey()`
-    /// after `show` often leaves the popover non-key (its Esc/Return navigation and the shortcut
-    /// recorder dead until a second click). So retry across a few ticks until the window is key; the
-    /// `didBecomeActiveNotification` observer in `init` is the backstop for activation that lands later
-    /// still. (Pattern verified via GitHits across several menu-bar apps — e.g. SpacePill, Stats.)
-    private static let makeKeyAttempts = 12
-    private func makePopoverKey(attempts: Int) {
-        guard popover.isShown,
-              let window = popover.contentViewController?.view.window else { return }
-        window.makeKey()
-        if !window.isKeyWindow {
-            window.makeKeyAndOrderFront(nil)
-        }
-        if window.isKeyWindow { return }
-        guard attempts > 1 else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.015) { [weak self] in
-            self?.makePopoverKey(attempts: attempts - 1)
-        }
-    }
-
-    /// While the popover is up, `animates` must stay off: with it on, every SwiftUI-driven
-    /// `preferredContentSize` update (the dashboard animates its height frame-by-frame on mode
-    /// switches) starts a fresh implicit popover resize animation, and the window lags and
-    /// rubber-bands behind the content. Off, the window tracks SwiftUI's animation exactly.
-    /// Show/close keep the system fade by flipping `animates` back on around them.
-    func popoverDidShow(_ notification: Notification) {
-        popover.animates = false
-    }
-
-    private func closePopover() {
-        popover.animates = true
-        popover.performClose(nil)
-    }
-
-    func popoverWillClose(_ notification: Notification) {
+    private func hidePanel() {
+        panel.orderOut(nil)
         stopOutsideClickMonitors()
         statusItem.button?.highlight(false)
+        anchorTopLeft = nil
+    }
+
+    /// Resizes the panel to the SwiftUI content's ideal size, keeping the top edge pinned under the
+    /// status-item button (macOS window origins are bottom-left, so the origin drops as height grows).
+    private func resizePanelToContent() {
+        let size = hostingController.preferredContentSize
+        guard size.width > 0, size.height > 0 else { return }
+        let origin: NSPoint
+        if let anchorTopLeft {
+            origin = NSPoint(x: anchorTopLeft.x, y: anchorTopLeft.y - size.height)
+        } else {
+            origin = panel.frame.origin
+        }
+        panel.setFrame(NSRect(origin: origin, size: size), display: true)
+        panel.invalidateShadow()
+    }
+
+    /// Places the panel's top-left just below the button, clamped to the button's screen.
+    private func clampedTopLeft(below buttonRect: NSRect, width: CGFloat) -> NSPoint {
+        var x = buttonRect.minX
+        let topY = buttonRect.minY - Self.topGap
+        let screen = NSScreen.screens.first { $0.frame.intersects(buttonRect) } ?? NSScreen.main
+        if let visible = screen?.visibleFrame {
+            x = min(max(x, visible.minX + 8), visible.maxX - width - 8)
+        }
+        return NSPoint(x: x, y: topY)
     }
 
     // MARK: - Outside-click dismissal
@@ -197,27 +327,33 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         stopOutsideClickMonitors()
         let mask: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
         if let local = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { [weak self] event in
-            // NSEvent is not Sendable: pull the window identity and location out before hopping
-            // to the actor. With no window, the location is already in screen coordinates.
+            // NSEvent is not Sendable: pull the window identity out before hopping to the actor.
             let windowID = event.window.map(ObjectIdentifier.init)
             let windowTypeName = event.window.map { String(describing: type(of: $0)) }
-            let screenPoint = event.window?.convertPoint(toScreen: event.locationInWindow) ?? event.locationInWindow
             MainActor.assumeIsolated {
-                guard let self,
-                      !self.shouldKeepPopoverOpen(windowID: windowID, windowTypeName: windowTypeName, screenPoint: screenPoint)
+                guard let self else { return }
+                // `NSEvent.mouseLocation` is the dependable screen-coordinate read (`locationInWindow`
+                // is unreliable for windowless / global events), so the status-button match is correct.
+                let screenPoint = NSEvent.mouseLocation
+                guard !self.shouldKeepPanelOpen(windowID: windowID, windowTypeName: windowTypeName, screenPoint: screenPoint)
                 else { return }
-                self.closePopover()
+                self.hidePanel()
             }
             return event
         }) {
             outsideClickMonitors.append(local)
         }
-        if let global = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: { [weak self] event in
-            // Global monitor events carry no window; the location is in screen coordinates.
-            let screenPoint = event.locationInWindow
+        if let global = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: { [weak self] _ in
             Task { @MainActor [weak self] in
-                guard let self, !self.isOnStatusButton(screenPoint: screenPoint) else { return }
-                self.closePopover()
+                guard let self else { return }
+                // Clicking the status item must NOT dismiss here — its own action toggles the panel.
+                // Dismissing on this click's mouse-down would close the panel, then the button action
+                // would reopen it on mouse-up (the close-then-reopen flicker). `NSEvent.mouseLocation`
+                // gives reliable screen coordinates for the status-button / in-panel checks.
+                let screenPoint = NSEvent.mouseLocation
+                guard !self.isOnStatusButton(screenPoint: screenPoint),
+                      !self.panel.frame.contains(screenPoint) else { return }
+                self.hidePanel()
             }
         }) {
             outsideClickMonitors.append(global)
@@ -231,18 +367,16 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         outsideClickMonitors = []
     }
 
-    /// In-app clicks that must not dismiss: anything inside the popover itself, the status-item
-    /// button (its own handler toggles — closing here too would cancel it out and reopen), and
-    /// menu windows (the Settings pickers' popup menus render in separate `NSMenu`-backed
-    /// windows). Status-item clicks can arrive with no window (the menu bar is composited by the
-    /// Window Server), so the button is also matched by screen position.
-    private func shouldKeepPopoverOpen(windowID: ObjectIdentifier?, windowTypeName: String?, screenPoint: NSPoint) -> Bool {
+    /// In-app clicks that must not dismiss: anything inside the panel itself, the status-item button
+    /// (its own handler toggles — closing here too would cancel it out and reopen), and menu windows
+    /// (the Settings pickers' popup menus and the footer's More menu render in separate `NSMenu`-backed
+    /// windows). Status-item clicks can arrive with no window (the menu bar is composited by the Window
+    /// Server), so the button is also matched by screen position.
+    private func shouldKeepPanelOpen(windowID: ObjectIdentifier?, windowTypeName: String?, screenPoint: NSPoint) -> Bool {
         if isOnStatusButton(screenPoint: screenPoint) { return true }
+        if panel.frame.contains(screenPoint) { return true }
         guard let windowID, let windowTypeName else { return false }
-        if let popoverWindow = popover.contentViewController?.view.window,
-           windowID == ObjectIdentifier(popoverWindow) {
-            return true
-        }
+        if windowID == ObjectIdentifier(panel) { return true }
         if let buttonWindow = statusItem.button?.window, windowID == ObjectIdentifier(buttonWindow) {
             return true
         }

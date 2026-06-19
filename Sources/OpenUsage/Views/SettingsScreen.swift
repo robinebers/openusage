@@ -108,12 +108,16 @@ struct SettingsScreen: View {
                 row("Time Format") {
                     picker($timeFormat, options: TimeFormatSetting.allCases, label: \.label)
                 }
-                // Off keeps the stock Liquid Glass look; @AppStorage reactivity re-renders the
-                // popover live, so no onChange is needed.
+                // Off keeps the stock Liquid Glass look. `@AppStorage` re-renders the in-window content
+                // live, but the panel's backdrop is AppKit, so notify `StatusItemController` to swap
+                // its glass for a solid surface (otherwise the glass shows through during animations).
                 row("Reduce Transparency") {
                     Toggle("", isOn: $reduceTransparency)
                         .settingsSwitchStyle()
                         .help("Use a solid background instead of Liquid Glass for better readability")
+                        .onChange(of: reduceTransparency) {
+                            NotificationCenter.default.post(name: ReduceTransparencySetting.didChangeNotification, object: nil)
+                        }
                 }
             }
             section("Usage Display") {
