@@ -65,6 +65,19 @@ final class ProviderEnablementStoreTests: XCTestCase {
         wait(for: [notPosted], timeout: 0.2)
     }
 
+    func testOnProviderEnabledFiresOnEnableOnly() {
+        // Wired to clear the failure backoff; must fire on a real enable, never on disable or a no-op.
+        let store = ProviderEnablementStore(defaults: makeDefaults("on-enable"))
+        var enabledIDs: [String] = []
+        store.onProviderEnabled = { enabledIDs.append($0) }
+
+        store.setEnabled(false, for: "codex")   // disable: must NOT fire
+        store.setEnabled(true, for: "codex")    // enable: fires with "codex"
+        store.setEnabled(true, for: "codex")    // already enabled (no-op): must NOT fire
+
+        XCTAssertEqual(enabledIDs, ["codex"])
+    }
+
     private func makeDefaults(_ name: String) -> UserDefaults {
         let suiteName = "OpenUsageTests.Enablement.\(name).\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!

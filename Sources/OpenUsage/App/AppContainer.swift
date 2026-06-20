@@ -38,6 +38,9 @@ final class AppContainer {
             isProviderEnabled: { [enablement] in enablement.isEnabled($0) },
             orderedDescriptors: { [layout] in layout.visiblePlaced.compactMap { layout.descriptor(for: $0) } }
         )
+        // Re-enabling a provider should fetch it promptly, so clear any leftover failure backoff before
+        // the enablement wake refreshes. `weak` breaks the cycle (dataStore already captures enablement).
+        enablement.onProviderEnabled = { [weak dataStore] id in dataStore?.clearFailureBackoff(for: id) }
         self.registry = registry
         self.enablement = enablement
         self.layout = layout

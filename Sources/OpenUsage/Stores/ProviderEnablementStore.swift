@@ -21,6 +21,12 @@ final class ProviderEnablementStore {
     /// (it's an immutable, `Sendable` constant — like Foundation's own notification names).
     nonisolated static let didChangeNotification = Notification.Name("ProviderEnablementDidChange")
 
+    /// Called with a provider's id the moment the user turns it ON (not on disable, not on a no-op
+    /// re-set). `AppContainer` wires this to clear that provider's failure backoff, so the enablement
+    /// wake's refresh actually probes it instead of being suppressed by a backoff left over from a
+    /// failure just before it was turned off.
+    var onProviderEnabled: (@MainActor (String) -> Void)?
+
     private(set) var disabledIDs: Set<String>
     private let defaults: UserDefaults
 
@@ -41,6 +47,9 @@ final class ProviderEnablementStore {
         // A no-op toggle (re-setting the same value) shouldn't persist or wake the refresh loop.
         guard disabledIDs != before else { return }
         defaults.set(Array(disabledIDs), forKey: Self.storageKey)
+        // Clear the backoff BEFORE the wake notification, so the refresh it triggers actually probes the
+        // just-enabled provider instead of skipping it as recently-failed.
+        if enabled { onProviderEnabled?(id) }
         NotificationCenter.default.post(name: Self.didChangeNotification, object: nil)
     }
 }

@@ -172,6 +172,14 @@ final class WidgetDataStore {
         return .refreshed
     }
 
+    /// Clears a provider's failure backoff so the next pass probes it immediately. Called when the user
+    /// re-enables a provider: the enablement wake exists to fetch promptly, so a stale backoff from a
+    /// failure just before it was turned off must not suppress that fetch (the loop wouldn't otherwise
+    /// retry until the 5-minute heartbeat). The periodic loop never calls this — only the user action does.
+    func clearFailureBackoff(for providerID: String) {
+        failureRetryAfter[providerID] = nil
+    }
+
     /// The provider's latest refresh error, or `nil` when its last refresh succeeded.
     func errorMessage(for providerID: String) -> String? {
         providerErrors[providerID]
