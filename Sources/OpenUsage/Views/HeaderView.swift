@@ -113,6 +113,6 @@ struct HeaderView: View {
             .buttonBorderShape(.circle)
             // The footer's only button: a larger control costs nothing and gives a bigger target.
             .controlSize(.large)
-            .help(title)
+            .hoverTooltip(title)
     }
 }

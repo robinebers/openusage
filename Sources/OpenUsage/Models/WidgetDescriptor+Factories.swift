@@ -58,7 +58,8 @@ extension WidgetDescriptor {
         title: String,
         metricLabel: String? = nil,
         selection: ValueSelection = .all,
-        valueWord: String? = nil
+        valueWord: String? = nil,
+        isUsagePeriod: Bool = false
     ) -> WidgetDescriptor {
         // `kind` is unused for `.values` rendering (each value carries its own), but a count-only tile
         // reads tidier seeded as `.count`; everything else defaults to `.dollars`.
@@ -66,6 +67,7 @@ extension WidgetDescriptor {
         var sample = WidgetData(title: title, icon: provider.icon, kind: kind, used: 0, limit: nil,
                                 unboundedValueWord: valueWord)
         sample.selection = selection
+        sample.isUsagePeriod = isUsagePeriod
         return make(id: id, provider: provider, metricLabel: metricLabel ?? title, sample: sample)
     }
 
@@ -75,9 +77,11 @@ extension WidgetDescriptor {
         id: String,
         provider: Provider,
         title: String,
-        metricLabel: String? = nil
+        metricLabel: String? = nil,
+        isUsagePeriod: Bool = false
     ) -> WidgetDescriptor {
-        values(id: id, provider: provider, title: title, metricLabel: metricLabel, selection: .all)
+        values(id: id, provider: provider, title: title, metricLabel: metricLabel, selection: .all,
+               isUsagePeriod: isUsagePeriod)
     }
 
     /// The three local-spend tiles every spend-tracking provider exposes — Today / Yesterday / Last 30
@@ -85,9 +89,9 @@ extension WidgetDescriptor {
     /// `<provider>.today|yesterday|last30`, so the set is identical across Claude / Codex / Cursor / Grok.
     static func spendTiles(provider: Provider) -> [WidgetDescriptor] {
         [
-            .combined(id: "\(provider.id).today", provider: provider, title: "Today"),
-            .combined(id: "\(provider.id).yesterday", provider: provider, title: "Yesterday"),
-            .combined(id: "\(provider.id).last30", provider: provider, title: "Last 30 Days")
+            .combined(id: "\(provider.id).today", provider: provider, title: "Today", isUsagePeriod: true),
+            .combined(id: "\(provider.id).yesterday", provider: provider, title: "Yesterday", isUsagePeriod: true),
+            .combined(id: "\(provider.id).last30", provider: provider, title: "Last 30 Days", isUsagePeriod: true)
         ]
     }
 

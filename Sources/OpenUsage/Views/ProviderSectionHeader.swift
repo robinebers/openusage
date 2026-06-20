@@ -47,7 +47,7 @@ struct ProviderSectionHeader<Trailing: View>: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(Theme.notice)
-                    .help(warning)
+                    .hoverTooltip(warning)
                     .accessibilityLabel(warning)
             }
             Spacer(minLength: 8)

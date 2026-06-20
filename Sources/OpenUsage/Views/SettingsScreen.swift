@@ -88,7 +88,7 @@ struct SettingsScreen: View {
                 // Click-to-record field; its ⓧ clears the combo and disables the shortcut.
                 row("Global Shortcut") {
                     ShortcutRecorderField(name: .togglePopover)
-                        .help("Open OpenUsage from anywhere")
+                        .hoverTooltip("Open OpenUsage from anywhere")
                 }
             }
             section("Appearance") {
@@ -114,7 +114,7 @@ struct SettingsScreen: View {
                 row("Reduce Transparency") {
                     Toggle("", isOn: $reduceTransparency)
                         .settingsSwitchStyle()
-                        .help("Use a solid background instead of Liquid Glass for better readability")
+                        .hoverTooltip("Use a solid background instead of Liquid Glass for better readability")
                         .onChange(of: reduceTransparency) {
                             NotificationCenter.default.post(name: ReduceTransparencySetting.didChangeNotification, object: nil)
                         }
@@ -145,7 +145,7 @@ struct SettingsScreen: View {
                     row("Beta Updates") {
                         Toggle("", isOn: $updater.betaChannelEnabled)
                             .settingsSwitchStyle()
-                            .help("Receive pre-release builds before they ship to everyone")
+                            .hoverTooltip("Receive pre-release builds before they ship to everyone")
                     }
                     // No version label here — the footer already shows it. The frame goes on the label so
                     // the glass background stretches the full row width instead of hugging the text.

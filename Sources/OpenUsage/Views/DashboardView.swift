@@ -229,6 +229,9 @@ struct DashboardView: View {
     }
 
     private func resetTransientState() {
+        // Backstop for any popover-close path the status-item controller's hide doesn't cover: clear a
+        // tooltip the cursor was resting on, since the closed popover fires no hover-exit.
+        HoverTooltips.dismissAll()
         if layout.screen != .dashboard { layout.screen = .dashboard }
         reorderLift = nil
         layout.cancelDrag()
@@ -424,7 +427,7 @@ struct DashboardView: View {
         }
         .buttonStyle(.plain)
         .keyboardShortcut("r", modifiers: .command)
-        .help("Refresh now (⌘R)")
+        .hoverTooltip("Refresh now (⌘R)")
         .disabled(isUpdating)
     }
 

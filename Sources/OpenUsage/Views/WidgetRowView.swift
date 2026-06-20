@@ -111,7 +111,7 @@ struct WidgetRowView: View {
                 .font(labelFont)
                 .foregroundStyle(.primary)
                 .lineLimit(1)
-            infoIcon
+            infoIcon(data.infoNote)
             warning(state)
         }
     }
@@ -139,7 +139,7 @@ struct WidgetRowView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
-                .help(state.tooltip ?? "")
+                .hoverTooltip(state.tooltip)
         case .noData, .healthy, .level:
             EmptyView()
         }
@@ -166,7 +166,7 @@ struct WidgetRowView: View {
             }
         }
         .foregroundStyle(.secondary)
-        .help(state.tooltip ?? "")
+        .hoverTooltip(state.tooltip)
         .accessibilityLabel(accessibility)
 
         if let action {
@@ -207,7 +207,7 @@ struct WidgetRowView: View {
                     .contentTransition(.numericText())
             }
             .buttonStyle(.plain)
-            .help(data.meterStyleTooltip ?? "")
+            .hoverTooltip(data.meterStyleTooltip)
         } else {
             Text(data.headline)
                 .foregroundStyle(.primary)
@@ -226,7 +226,7 @@ struct WidgetRowView: View {
                     Text(text).foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
-                .help(data.resetTooltip ?? "")
+                .hoverTooltip(data.resetTooltip)
             } else {
                 Text(text).foregroundStyle(.secondary)
             }
@@ -246,6 +246,11 @@ struct WidgetRowView: View {
                     .contentTransition(.numericText())
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
+                    // Hover target is the value text itself (and the ⓘ), not the whole row — the same
+                    // per-element pattern the bounded row uses for "x left" and "Resets in …". Reveals
+                    // the exact figures the compact value shortens, or "No usage in this period" on a
+                    // zero row; nil (no tooltip) on a small, already-full, non-zero row.
+                    .hoverTooltip(unboundedHoverText)
                 if let subtitle = data.unboundedSubtitle {
                     // Secondary, not tertiary: the subtitle is informational ("on-device estimate"),
                     // and tertiary is reserved for inactive content on glass.
@@ -257,22 +262,20 @@ struct WidgetRowView: View {
             }
             .multilineTextAlignment(.trailing)
         }
-        // Hovering the row reveals the exact figures the compact value shortens ("$2,059.07 ·
-        // 1,506,025,363"); empty string when nothing's abbreviated, so no redundant tooltip appears.
-        .help(data.unboundedTooltip ?? "")
     }
 
-    /// Small ⓘ next to the label; on hover it explains the row's `infoNote` (e.g. that a ccusage dollar
-    /// figure is an estimated API cost). Renders nothing when the metric has no note.
+    /// Small ⓘ next to the label; on hover it shows the supplied detail (a bounded row's `infoNote`,
+    /// or an unbounded row's exact figures). Renders nothing when there's no detail, so an icon only
+    /// appears where there's something to reveal.
     @ViewBuilder
-    private var infoIcon: some View {
-        if let note = data.infoNote {
+    private func infoIcon(_ tooltip: String?) -> some View {
+        if let tooltip, !tooltip.isEmpty {
             // Secondary so the affordance stays discoverable on glass; tertiary is for inactive content.
             Image(systemName: "info.circle")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
-                .help(note)
-                .accessibilityLabel(note)
+                .hoverTooltip(tooltip)
+                .accessibilityLabel(tooltip)
         }
     }
 
@@ -285,8 +288,20 @@ struct WidgetRowView: View {
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
-            infoIcon
+            infoIcon(unboundedHoverText)
         }
+    }
+
+    /// The hover text for an unbounded row, shared by the row itself and its ⓘ: the exact figures when
+    /// there's usage to reveal, or a "no usage" note on a zero spend period so an empty row
+    /// ("$0.00 · 0 tokens") still pops something (and carries an ⓘ). `nil` for a small, already-full,
+    /// non-zero row, which has nothing to add.
+    private var unboundedHoverText: String? {
+        if let figures = data.unboundedTooltip { return figures }
+        // The "no usage" note only fits a spend period (Today / Yesterday / Last 30 Days), where a zero
+        // genuinely means nothing was used. A balance row that reads 0 (Codex Rate Limit Resets, an
+        // exhausted Extra Usage credit) is depleted, not idle, so it gets no note and no ⓘ.
+        return data.isZeroUsage && data.isUsagePeriod ? "No usage in this period" : nil
     }
 
     /// Full-width capsule meter — the Tahoe-era level-indicator form (capsule, full-height
@@ -329,7 +344,7 @@ struct WidgetRowView: View {
         .frame(height: density.meterHeight)
         .animation(Motion.spring, value: data.fraction)
         .accessibilityHidden(true)
-        .help(state.tooltip ?? "")
+        .hoverTooltip(state.tooltip)
     }
 
     private static let paceTickWidth: CGFloat = 2

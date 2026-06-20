@@ -289,6 +289,9 @@ final class StatusItemController: NSObject {
     }
 
     private func hidePanel() {
+        // The popover's SwiftUI tree survives `orderOut`, so a tooltip the cursor was resting on gets
+        // no hover-exit and would orphan on screen — clear it here, the one chokepoint every close hits.
+        HoverTooltips.dismissAll()
         panel.orderOut(nil)
         stopOutsideClickMonitors()
         statusItem.button?.highlight(false)
