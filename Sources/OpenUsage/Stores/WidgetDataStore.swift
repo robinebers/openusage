@@ -14,9 +14,19 @@ final class WidgetDataStore {
     /// The user's widget order (already enablement-filtered) that drives the menu-bar value. Injected
     /// so the store reads `LayoutStore.visiblePlaced` without owning it; defaults to registry order.
     private let orderedDescriptors: @MainActor () -> [WidgetDescriptor]
+    /// Clock for the failure-backoff window. Injected so tests can advance time deterministically.
+    private let now: () -> Date
 
     private static let meterStyleKey = "meterStyle"
     private static let resetDisplayModeKey = "resetDisplayMode"
+    /// How long a provider that just failed is skipped before the loop will probe it again. A failed
+    /// refresh isn't cached, so — unlike a success, which the snapshot cache gates for an interval —
+    /// nothing else stops the loop from re-probing a broken provider (logged-out Devin/Grok especially)
+    /// on every wake, spawning subprocesses and network calls in a tight loop. This negative-cache caps a
+    /// failing provider to one probe per window. Shorter than the refresh interval, so the normal
+    /// 5-minute heartbeat always retries; it only suppresses the sub-interval re-probes a wake burst
+    /// would cause. The manual `force` refresh (⌘R) always bypasses it.
+    private static let failureRetryBackoff: TimeInterval = 60
 
     var snapshots: [String: ProviderSnapshot] = [:]
     var refreshingProviderIDs: Set<String> = []
@@ -29,6 +39,10 @@ final class WidgetDataStore {
     /// renders it as a warning indicator beside the provider name; the last good snapshot keeps
     /// displaying (stale-while-revalidate) instead of being replaced by dead "No data" rows.
     var providerErrors: [String: String] = [:]
+
+    /// Per-provider earliest next-probe time after a failure (see `failureRetryBackoff`). Not part of
+    /// observable UI state, so it's excluded from `@Observable` tracking.
+    @ObservationIgnored private var failureRetryAfter: [String: Date] = [:]
 
     /// Global meter style: whether every bounded tile (and the menu-bar value) renders as "used" or
     /// "left/remaining". Persisted so the choice survives relaunch; defaults to `.remaining`.
@@ -48,7 +62,8 @@ final class WidgetDataStore {
         cache: ProviderSnapshotCache = ProviderSnapshotCache(),
         defaults: UserDefaults = .standard,
         isProviderEnabled: @escaping @MainActor (String) -> Bool = { _ in true },
-        orderedDescriptors: (@MainActor () -> [WidgetDescriptor])? = nil
+        orderedDescriptors: (@MainActor () -> [WidgetDescriptor])? = nil,
+        now: @escaping () -> Date = Date.init
     ) {
         self.registry = registry
         self.providersByID = Dictionary(uniqueKeysWithValues: providers.map { ($0.provider.id, $0) })
@@ -56,6 +71,7 @@ final class WidgetDataStore {
         self.defaults = defaults
         self.isProviderEnabled = isProviderEnabled
         self.orderedDescriptors = orderedDescriptors ?? { registry.descriptors }
+        self.now = now
         self.meterStyle = defaults.enumValue(forKey: Self.meterStyleKey, default: .remaining)
         self.resetDisplayMode = defaults.enumValue(forKey: Self.resetDisplayModeKey, default: .relative)
         // Stale-while-revalidate: load whatever was cached (expired included) so the menu bar and
@@ -93,12 +109,15 @@ final class WidgetDataStore {
         let refreshed = outcomes.filter { $0 == .refreshed }.count
         let failed = outcomes.filter { $0 == .failed }.count
         let cached = outcomes.filter { $0 == .cacheHit }.count
-        AppLog.info(.refresh, "batch end (\(durationMs)ms, \(refreshed) ok / \(failed) failed / \(cached) cached)")
+        let backedOff = outcomes.filter { $0 == .backedOff }.count
+        AppLog.info(.refresh, "batch end (\(durationMs)ms, \(refreshed) ok / \(failed) failed / \(cached) cached / \(backedOff) backed off)")
     }
 
     /// What a single provider's refresh actually did this pass, so `refreshAll` can summarize the batch
-    /// from real outcomes rather than cumulative error state.
-    enum RefreshOutcome: Sendable { case refreshed, failed, cacheHit, skipped }
+    /// from real outcomes rather than cumulative error state. `.backedOff` is a probe deliberately skipped
+    /// because the provider failed within the last `failureRetryBackoff` — distinct from `.skipped`
+    /// (disabled / unknown / already in flight) so a wake-burst's suppression is visible in the logs.
+    enum RefreshOutcome: Sendable { case refreshed, failed, cacheHit, skipped, backedOff }
 
     @discardableResult
     func refresh(providerID: String, force: Bool = false) async -> RefreshOutcome {
@@ -113,6 +132,13 @@ final class WidgetDataStore {
             return .cacheHit
         }
         if !force { AppLog.debug(.refresh, "cache miss \(providerID)") }
+
+        // A provider that just failed isn't cached, so nothing else stops the loop from re-probing it on
+        // every wake. Hold off until its backoff expires; the manual `force` refresh ignores the backoff.
+        if !force, let retryAfter = failureRetryAfter[providerID], now() < retryAfter {
+            AppLog.debug(.refresh, "backoff skip \(providerID) (failed <\(Int(Self.failureRetryBackoff))s ago)")
+            return .backedOff
+        }
 
         guard let provider = providersByID[providerID] else { return .skipped }
         // Skip if an in-flight refresh already owns this provider (e.g. the background timer racing the
@@ -130,12 +156,16 @@ final class WidgetDataStore {
             // Failed refresh: surface the error but keep the last good snapshot on screen rather than
             // collapsing every row to "No data". The provider error string is already user-safe.
             providerErrors[providerID] = message
+            // Negative-cache the failure so a wake burst can't re-probe this provider in a tight loop.
+            failureRetryAfter[providerID] = now().addingTimeInterval(Self.failureRetryBackoff)
             AppLog.warn(.refresh, "\(providerID) failed: \(message)")
             return .failed
         }
         if providerErrors[providerID] != nil {
             providerErrors[providerID] = nil
         }
+        // Recovered: drop any backoff so the provider resumes the normal cadence immediately.
+        failureRetryAfter[providerID] = nil
         snapshots[providerID] = snapshot
         cache.store(snapshot)
         AppLog.info(.refresh, "\(providerID) ok (\(durationMs)ms)")

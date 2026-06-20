@@ -68,9 +68,15 @@ final class AppContainer {
         }
     }
 
-    /// Sleep for the refresh interval, but wake early on any `UserDefaults` change so a settings change
-    /// (e.g. enabling a provider) is reflected on the next pass instead of waiting out the full interval.
-    /// Each pass still honors the cache, so an early wake only hits the network once a snapshot expired.
+    /// Sleep for the refresh interval, but wake early when the user enables/disables a provider so a
+    /// newly-enabled provider is fetched promptly instead of waiting out the full interval. Each pass still
+    /// honors the cache (and the per-provider failure backoff), so an early wake only hits the network for
+    /// a provider whose snapshot has actually expired.
+    ///
+    /// Deliberately scoped to `ProviderEnablementStore.didChangeNotification` — NOT the firehose
+    /// `UserDefaults.didChangeNotification`, which fires for the app's own snapshot-cache writes, Sparkle's
+    /// update bookkeeping, and unrelated global-domain changes from other processes. Waking on that, with
+    /// no minimum interval before re-refreshing, collapsed the fixed 5-minute cadence into a refresh storm.
     private static func waitForNextRefresh() async {
         let interval = RefreshSetting.interval
         await withTaskGroup(of: Void.self) { group in
@@ -78,7 +84,7 @@ final class AppContainer {
                 try? await Task.sleep(for: .seconds(interval))
             }
             group.addTask {
-                for await _ in NotificationCenter.default.notifications(named: UserDefaults.didChangeNotification) {
+                for await _ in NotificationCenter.default.notifications(named: ProviderEnablementStore.didChangeNotification) {
                     break
                 }
             }

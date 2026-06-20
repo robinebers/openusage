@@ -43,6 +43,28 @@ final class ProviderEnablementStoreTests: XCTestCase {
         XCTAssertTrue(reloaded.isEnabled("grok"))
     }
 
+    // MARK: - Early-refresh signal
+
+    func testRealChangePostsDidChangeNotification() {
+        let store = ProviderEnablementStore(defaults: makeDefaults("notify-change"))
+        let posted = XCTNSNotificationExpectation(name: ProviderEnablementStore.didChangeNotification)
+
+        store.setEnabled(false, for: "codex")   // enabled -> disabled: a real change
+
+        wait(for: [posted], timeout: 1)
+    }
+
+    func testNoOpToggleDoesNotPostDidChangeNotification() {
+        // The refresh loop wakes on this notification; a redundant toggle must not wake it (and re-probe).
+        let store = ProviderEnablementStore(defaults: makeDefaults("notify-noop"))
+        let notPosted = XCTNSNotificationExpectation(name: ProviderEnablementStore.didChangeNotification)
+        notPosted.isInverted = true
+
+        store.setEnabled(true, for: "codex")    // already enabled (empty suite): a no-op
+
+        wait(for: [notPosted], timeout: 0.2)
+    }
+
     private func makeDefaults(_ name: String) -> UserDefaults {
         let suiteName = "OpenUsageTests.Enablement.\(name).\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
