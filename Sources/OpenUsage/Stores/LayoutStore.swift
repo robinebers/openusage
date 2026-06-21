@@ -101,8 +101,7 @@ final class LayoutStore {
         self.isProviderEnabled = isProviderEnabled
 
         let initialPlaced: [PlacedWidget]
-        if let data = defaults.data(forKey: storageKey),
-           let saved = try? JSONDecoder().decode([PlacedWidget].self, from: data) {
+        if let saved = Self.decodeStored([PlacedWidget].self, from: defaults, forKey: storageKey) {
             initialPlaced = saved.filter { registry.descriptor(id: $0.descriptorID) != nil }
         } else {
             initialPlaced = DefaultLayout.metricIDs
@@ -112,8 +111,7 @@ final class LayoutStore {
         placed = initialPlaced
 
         let initialProviderOrder: [String]
-        if let data = defaults.data(forKey: providerOrderKey),
-           let saved = try? JSONDecoder().decode([String].self, from: data) {
+        if let saved = Self.decodeStored([String].self, from: defaults, forKey: providerOrderKey) {
             initialProviderOrder = saved
         } else {
             initialProviderOrder = registry.providers.map(\.id)
@@ -121,8 +119,7 @@ final class LayoutStore {
         providerOrder = initialProviderOrder
 
         let initialMetricOrder: [String: [String]]
-        if let data = defaults.data(forKey: metricOrderKey),
-           let saved = try? JSONDecoder().decode([String: [String]].self, from: data) {
+        if let saved = Self.decodeStored([String: [String]].self, from: defaults, forKey: metricOrderKey) {
             initialMetricOrder = Self.normalizedMetricOrder(saved, registry: registry, placed: initialPlaced)
         } else {
             initialMetricOrder = Self.defaultMetricOrder(registry: registry, placed: initialPlaced)
@@ -385,20 +382,37 @@ final class LayoutStore {
     }
 
     private func persist() {
-        if let data = try? JSONEncoder().encode(placed) {
-            defaults.set(data, forKey: storageKey)
-        }
+        persistEncodable(placed, forKey: storageKey)
     }
 
     private func persistProviderOrder() {
-        if let data = try? JSONEncoder().encode(providerOrder) {
-            defaults.set(data, forKey: providerOrderKey)
-        }
+        persistEncodable(providerOrder, forKey: providerOrderKey)
     }
 
     private func persistMetricOrder() {
-        if let data = try? JSONEncoder().encode(metricOrderByProvider) {
-            defaults.set(data, forKey: metricOrderKey)
+        persistEncodable(metricOrderByProvider, forKey: metricOrderKey)
+    }
+
+    /// Fail loudly: a swallowed encode would silently fail to persist a layout change with zero signal,
+    /// contradicting the project's loud-fail rule (and `ProviderSnapshotCache.save` one store over).
+    private func persistEncodable<T: Encodable>(_ value: T, forKey key: String) {
+        do {
+            defaults.set(try JSONEncoder().encode(value), forKey: key)
+        } catch {
+            AppLog.warn(.config, "failed to persist layout '\(key)': \(error.localizedDescription)")
+        }
+    }
+
+    /// Decode a persisted value, distinguishing "no data" (first launch — silent nil) from "present but
+    /// undecodable" (schema drift / corruption — warn loudly, then nil so init reseeds the default).
+    /// A silent reseed of the user's customized layout is exactly the invisible state loss the rule forbids.
+    private static func decodeStored<T: Decodable>(_ type: T.Type, from defaults: UserDefaults, forKey key: String) -> T? {
+        guard let data = defaults.data(forKey: key) else { return nil }
+        do {
+            return try JSONDecoder().decode(type, from: data)
+        } catch {
+            AppLog.warn(.config, "saved layout '\(key)' failed to decode; reseeding default: \(error.localizedDescription)")
+            return nil
         }
     }
 

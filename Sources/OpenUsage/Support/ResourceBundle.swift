@@ -21,12 +21,25 @@ extension Bundle {
             Bundle(for: ResourceBundleToken.self).bundleURL
         ]
         for case let base? in searchBases {
-            if let bundle = Bundle(url: base.appendingPathComponent(bundleName)) {
+            guard let bundle = Bundle(url: base.appendingPathComponent(bundleName)) else { continue }
+            if isValidOpenUsageResourceBundle(bundle) {
                 return bundle
             }
+            // `Bundle(url:)` succeeds for ANY directory at the path, not only a real resources bundle.
+            // A stale/empty same-named directory left by an earlier build would otherwise shadow the
+            // real one and make every resource URL nil (SF-Symbol icon fallbacks + a thrown Cursor
+            // manifest). Skip it loudly and keep searching the remaining bases.
+            AppLog.warn(.config, "ignoring resource bundle at \(base.lastPathComponent): missing expected resources")
         }
         return .module
     }()
+}
+
+/// Sentinel check: a valid OpenUsage resource bundle carries the bundled Cursor model manifest at its
+/// root (`.copy("Resources/model_manifest.json")`). Uses the same lookup the manifest loader relies on,
+/// so it can never reject the real shipped bundle.
+private func isValidOpenUsageResourceBundle(_ bundle: Bundle) -> Bool {
+    bundle.url(forResource: "model_manifest", withExtension: "json") != nil
 }
 
 private final class ResourceBundleToken {}

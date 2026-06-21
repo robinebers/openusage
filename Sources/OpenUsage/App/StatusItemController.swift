@@ -231,17 +231,34 @@ final class StatusItemController: NSObject {
 
     // MARK: - Status item image
 
+    /// Coalesces re-render requests: a burst of snapshot writes (a multi-provider refresh pass) must
+    /// produce ~one re-render, not O(writes) MainActor Task hops + ImageRenderer passes. `nil` when idle.
+    private var pendingRenderTask: Task<Void, Never>?
+
     /// Re-renders the menu-bar strip whenever anything it reads changes (pins, live data, meter
-    /// style, menu-bar style). `withObservationTracking` re-arms itself after every change.
+    /// style, menu-bar style). `withObservationTracking`'s `onChange` is one-shot, so each render
+    /// re-arms it. The re-arm is debounced (see `scheduleButtonImageUpdate`).
     private func updateButtonImage() {
         let image = withObservationTracking {
             renderButtonImage()
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
-                self?.updateButtonImage()
+                self?.scheduleButtonImageUpdate()
             }
         }
         statusItem.button?.image = image
+    }
+
+    /// Debounce the re-render so a refresh-storm burst of snapshot writes collapses into a single
+    /// render once the burst settles, instead of one render per write — the feedback loop that can
+    /// starve the MainActor and drop the status item (the "menu bar disappears" failure mode).
+    private func scheduleButtonImageUpdate() {
+        pendingRenderTask?.cancel()
+        pendingRenderTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(50))
+            guard !Task.isCancelled else { return }
+            self?.updateButtonImage()
+        }
     }
 
     /// The pinned-metrics strip in the chosen style, or the app icon when nothing is pinned.
