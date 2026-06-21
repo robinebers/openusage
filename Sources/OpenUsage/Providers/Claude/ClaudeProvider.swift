@@ -122,7 +122,10 @@ final class ClaudeProvider: ProviderRuntime {
                 AppLog.warn(LogTag.auth("claude"), "session expired (invalid_grant)")
                 throw ClaudeAuthError.sessionExpired
             }
-            throw ClaudeAuthError.tokenExpired
+            // A 400/401 without a recognized OAuth error code isn't necessarily an expired token — it
+            // can be an HTML proxy/WAF page or a gateway error. Surface the HTTP status rather than
+            // telling the user to re-login (which can't fix a transport/infra failure).
+            throw ClaudeUsageError.requestFailed(response.statusCode)
         }
         guard (200..<300).contains(response.statusCode) else {
             throw ClaudeUsageError.requestFailed(response.statusCode)

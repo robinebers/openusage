@@ -48,12 +48,19 @@ struct CodexUsageClient: Sendable {
             case "refresh_token_invalidated":
                 throw CodexAuthError.tokenRevoked
             default:
-                throw CodexAuthError.tokenExpired
+                // No recognized OAuth error code (often a non-JSON proxy/WAF page) — report the HTTP
+                // status rather than asserting token expiry the user can't fix by re-logging in.
+                throw CodexUsageError.requestFailed(response.statusCode)
             }
         }
 
-        guard (200..<300).contains(response.statusCode),
-              let body = ProviderParse.jsonObject(response.body),
+        // A non-2xx that isn't a 400/401 (a 5xx, a gateway error) is a request failure, not an expired
+        // token — surface the status. A 2xx whose body carries no usable access token is treated as a
+        // dead session (re-login is the right remedy).
+        guard (200..<300).contains(response.statusCode) else {
+            throw CodexUsageError.requestFailed(response.statusCode)
+        }
+        guard let body = ProviderParse.jsonObject(response.body),
               let accessToken = body["access_token"] as? String,
               !accessToken.isEmpty
         else {

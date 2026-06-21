@@ -288,6 +288,41 @@ final class ClaudeProviderTests: XCTestCase {
         XCTAssertEqual(badge(snapshot.lines, "Status")?.hasPrefix("Rate limited"), true)
     }
 
+    func testRefreshSurfacesRequestFailureForNonOAuthRefreshErrorBody() async {
+        // The usage call 401s (forcing a refresh); the refresh endpoint then returns a non-OAuth 400
+        // (an HTML proxy/WAF page). The snapshot must report a request failure, NOT "token expired" —
+        // a transport/infra error the user can't fix by re-logging in.
+        let now = OpenUsageISO8601.date(from: "2026-02-20T16:00:00.000Z")!
+        let files = FakeFiles([
+            "/tmp/claude/.credentials.json": #"{"claudeAiOauth":{"accessToken":"stale-token","refreshToken":"refresh-1","expiresAt":4102444800000,"subscriptionType":"pro","scopes":["user:profile"]}}"#
+        ])
+        let httpClient = RoutingHTTPClient { request in
+            if request.url.absoluteString.hasSuffix("/api/oauth/usage") {
+                return HTTPResponse(statusCode: 401, headers: [:], body: Data())
+            }
+            return HTTPResponse(statusCode: 400, headers: [:], body: Data("<html>Bad Gateway</html>".utf8))
+        }
+        let provider = ClaudeProvider(
+            authStore: ClaudeAuthStore(
+                environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": "/tmp/claude"]),
+                files: files,
+                keychain: FakeKeychain(),
+                now: { now }
+            ),
+            usageClient: ClaudeUsageClient(httpClient: httpClient),
+            ccusageRunner: CcusageRunner(
+                processRunner: FakeProcessRunner(),
+                homeDirectory: { URL(fileURLWithPath: "/Users/test") }
+            ),
+            now: { now }
+        )
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(badge(snapshot.lines, "Error"), ProviderUsageErrorText.requestFailed(statusCode: 400))
+        XCTAssertNotEqual(badge(snapshot.lines, "Error"), ClaudeAuthError.tokenExpired.localizedDescription)
+    }
+
     private func badge(_ lines: [MetricLine], _ label: String) -> String? {
         guard case .badge(_, let value, _, _) = lines.first(where: { $0.label == label }) else {
             return nil
