@@ -8,7 +8,7 @@ Tracks your ChatGPT/Codex subscription limits using the login from the Codex CLI
 |---|---|
 | Session | 5-hour rolling window usage |
 | Weekly | 7-day window usage |
-| Rate Limit Resets | On-demand rate-limit reset credits, shown as a count (e.g. `2`) |
+| Rate Limit Resets | On-demand rate-limit reset credits, shown as a count (e.g. `2 available`); hover for each credit's expiry, with a warning triangle when one is about to expire |
 | Extra Usage | Flex credits, shown verbatim as dollars + credits (e.g. `$31.84 · 796 credits`) |
 | Today / Yesterday / Last 30 Days | Local spend, as cost, tokens, or both (see below) |
 | Plan | Your plan name (optional widget) |
@@ -31,4 +31,4 @@ Today / Yesterday / Last 30 Days are computed **locally** from your Codex logs b
 
 `GET https://chatgpt.com/backend-api/wham/usage` with the Codex OAuth token; refresh via `auth.openai.com`. A 401/403 triggers one token refresh and retry.
 
-When the response includes `rate_limit_reset_credits.available_count`, OpenUsage shows that count as the "Rate Limit Resets" row (e.g. `2`), placed before Credits.
+The "Rate Limit Resets" row (placed before Credits) shows the on-demand reset-credit count, e.g. `2 available`. OpenUsage also makes a best-effort `GET https://chatgpt.com/backend-api/wham/rate-limit-reset-credits` call — the dedicated endpoint that lists each credit's expiry — and surfaces those on hover (`Reset expires in 12d 18h`, or a numbered `Resets expire in:` list for several), following the global relative/absolute time setting. A warning triangle appears beside the count when the soonest credit is within 24 hours of expiring. If that call fails, the row falls back to the count embedded in the usage body (`rate_limit_reset_credits.available_count`) with no expiry tooltip. An empty balance reads `0 available`.

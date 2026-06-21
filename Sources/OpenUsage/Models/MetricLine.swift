@@ -67,7 +67,12 @@ enum MetricLine: Hashable, Sendable, Codable {
     /// numeric rows. The number is the source of truth; formatting and which value(s) to show happen at
     /// the display edge, so the menu bar never has to re-parse a finished string. `.text` stays only for
     /// genuinely string-y rows and a few descriptor-bounded dollar rows.
-    case values(label: String, values: [MetricValue], colorHex: String? = nil)
+    ///
+    /// `expiriesAt` carries zero or more future expiry instants the row surfaces in its hover tooltip —
+    /// used for the Codex rate-limit-reset-credits row ("2 available", with each credit's expiry listed
+    /// on hover). Carried as raw `Date`s (not baked strings) so they count down on the popover's clock
+    /// tick and honor the global relative/absolute reset mode, like a bounded row's reset countdown.
+    case values(label: String, values: [MetricValue], colorHex: String? = nil, expiriesAt: [Date] = [])
     case progress(
         label: String,
         used: Double,
@@ -83,7 +88,7 @@ enum MetricLine: Hashable, Sendable, Codable {
         switch self {
         case .text(let label, _, _, _),
              .progress(let label, _, _, _, _, _, _),
-             .values(let label, _, _),
+             .values(let label, _, _, _),
              .badge(let label, _, _, _):
             return label
         }
@@ -121,6 +126,7 @@ enum MetricLine: Hashable, Sendable, Codable {
         case limit
         case format
         case resetsAt
+        case expiriesAt
         case periodDurationMs
         case colorHex
         case subtitle
@@ -149,7 +155,8 @@ enum MetricLine: Hashable, Sendable, Codable {
             self = .values(
                 label: label,
                 values: try container.decode([MetricValue].self, forKey: .values),
-                colorHex: try container.decodeIfPresent(String.self, forKey: .colorHex)
+                colorHex: try container.decodeIfPresent(String.self, forKey: .colorHex),
+                expiriesAt: try container.decodeIfPresent([Date].self, forKey: .expiriesAt) ?? []
             )
         case .progress:
             self = .progress(
@@ -180,11 +187,12 @@ enum MetricLine: Hashable, Sendable, Codable {
             try container.encode(value, forKey: .value)
             try container.encodeIfPresent(colorHex, forKey: .colorHex)
             try container.encodeIfPresent(subtitle, forKey: .subtitle)
-        case .values(let label, let values, let colorHex):
+        case .values(let label, let values, let colorHex, let expiriesAt):
             try container.encode(LineType.values, forKey: .type)
             try container.encode(label, forKey: .label)
             try container.encode(values, forKey: .values)
             try container.encodeIfPresent(colorHex, forKey: .colorHex)
+            if !expiriesAt.isEmpty { try container.encode(expiriesAt, forKey: .expiriesAt) }
         case .progress(let label, let used, let limit, let format, let resetsAt, let periodDurationMs, let colorHex):
             try container.encode(LineType.progress, forKey: .type)
             try container.encode(label, forKey: .label)

@@ -76,7 +76,13 @@ final class CodexProvider: ProviderRuntime {
         }
 
         let response = try await fetchUsageWithRetry(accessToken: accessToken, authState: &authState)
-        var mapped = try CodexUsageMapper.mapUsageResponse(response, now: now())
+        // The access token may have rotated during the usage fetch's refresh-and-retry; read the live one.
+        let currentToken = authState.auth.tokens?.accessToken ?? accessToken
+        let resetCredits = await fetchResetCreditsBestEffort(
+            accessToken: currentToken,
+            accountID: authState.auth.tokens?.accountID
+        )
+        var mapped = try CodexUsageMapper.mapUsageResponse(response, resetCredits: resetCredits, now: now())
 
         let since = CcusageRunner.sinceString(daysBack: 30, from: now())
         let tokenUsage = await ccusageRunner.query(provider: .codex, since: since, homePath: authStore.codexHome())
@@ -92,6 +98,19 @@ final class CodexProvider: ProviderRuntime {
             lines: mapped.lines,
             refreshedAt: now()
         )
+    }
+
+    /// Fetches the on-demand reset-credit balance (and per-credit expiry) without ever failing the
+    /// refresh: this is supplementary to the usage metrics, so a network error, timeout, or non-2xx just
+    /// yields `nil` and the mapper falls back to the count embedded in the usage body. Logged, not thrown —
+    /// the user still gets Session/Weekly/Credits even if this endpoint is down.
+    private func fetchResetCreditsBestEffort(accessToken: String, accountID: String?) async -> HTTPResponse? {
+        do {
+            return try await usageClient.fetchResetCredits(accessToken: accessToken, accountID: accountID)
+        } catch {
+            AppLog.warn(LogTag.plugin("codex"), "reset-credit fetch failed; using usage-body count: \(error.localizedDescription)")
+            return nil
+        }
     }
 
     private func fetchUsageWithRetry(accessToken: String, authState: inout CodexAuthState) async throws -> HTTPResponse {

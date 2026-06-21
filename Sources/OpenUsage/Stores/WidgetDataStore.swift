@@ -263,11 +263,14 @@ final class WidgetDataStore {
             )
         case .text(_, let value, _, _):
             return resolveText(value, descriptor: descriptor)
-        case .values(_, let values, _):
+        case .values(_, let values, _, let expiriesAt):
             // The number is carried raw — no regex re-parse. Presentation (title, icon, selection,
             // trailing word) comes from the descriptor's sample; the live numbers come from the line.
             var data = descriptor.sample
             data.values = values
+            // Optional expiry instants (Codex rate-limit-reset credits): surfaced in the row's hover
+            // tooltip (see `expiryTooltip`), with the row re-rendering on the clock tick so they stay live.
+            data.expiriesAt = expiriesAt
             // A tile whose selection finds no value (e.g. a cost-only tile on a day ccusage couldn't
             // price) has nothing real to show — render "No data" rather than a misleading $0.00 / 0.
             data.hasData = !data.selectedValues.isEmpty

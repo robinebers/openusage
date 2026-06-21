@@ -24,6 +24,10 @@ struct WidgetData: Hashable {
     /// Global relative/absolute reset display, stamped by `WidgetDataStore` (like `displayMode`).
     var resetDisplayMode: ResetDisplayMode = .relative
     var resetsAt: Date?
+    /// Zero or more future expiry instants surfaced in the row's hover tooltip (Codex rate-limit-reset
+    /// credits — one entry per still-available credit). Empty for every other row. Kept as raw `Date`s so
+    /// the tooltip formats live and follows the global relative/absolute mode (see `expiryTooltip`).
+    var expiriesAt: [Date] = []
     var periodDurationMs: Int?
     var valueTextOverride: String?
     var subtitleOverride: String?
@@ -260,7 +264,7 @@ struct WidgetData: Hashable {
         if !selected.isEmpty {
             // One value: a lone dollar amount takes the widget's trailing word ("$4.08 spent",
             // "$1,503 left"); any other single value carries its own unit label ("1.2M tokens",
-            // "1 available"). Several values join into the combined reading ("$4.08 · 1.2M tokens").
+            // "2 available"). Several values join into the combined reading ("$4.08 · 1.2M tokens").
             if selected.count == 1 {
                 let value = selected[0]
                 if value.kind == .dollars, let word = unboundedValueWord {
@@ -276,6 +280,40 @@ struct WidgetData: Hashable {
             return "\(valueText) \(countSuffix) \(word)"
         }
         return "\(valueText) \(word)"
+    }
+
+    /// A soonest-expiry inside this window flips the row to a warning state (the ⚠ triangle next to the
+    /// count) — a reset credit you're about to lose if you don't use it.
+    static let expiryWarningWindow: TimeInterval = 24 * 60 * 60
+
+    /// True when the soonest still-available reset credit expires within `expiryWarningWindow` (a past-due
+    /// one counts too). Drives the row's warning triangle; recomputes on the popover's 30s tick because
+    /// the row keeps ticking while it carries expiries.
+    var hasImminentExpiry: Bool {
+        guard hasData, let soonest = expiriesAt.min() else { return false }
+        return soonest.timeIntervalSince(Date()) <= Self.expiryWarningWindow
+    }
+
+    /// Hover tooltip for a row carrying expiry instants (the Codex reset-credit row, "2 available"):
+    /// when each credit's reset will expire, following the global relative/absolute mode. One credit →
+    /// "Reset expires in 12d 18h" (relative) / "Reset expires Feb 15 at 3:45 PM" (absolute); several →
+    /// a numbered list under a "Resets expire in:" / "Resets expire:" header. `nil` when the row carries
+    /// no expiries, so non-reset rows fall through to their figures tooltip.
+    var expiryTooltip: String? {
+        guard hasData, !expiriesAt.isEmpty else { return nil }
+        let now = Date()
+        let sorted = expiriesAt.sorted()
+        if sorted.count == 1 {
+            return Formatters.deadlineLabel("Reset expires", at: sorted[0], mode: resetDisplayMode, now: now)
+        }
+        let entries = sorted.enumerated().compactMap { index, date -> String? in
+            Formatters.whenLabel(at: date, mode: resetDisplayMode, now: now).map { "\(index + 1). \($0)" }
+        }
+        guard !entries.isEmpty else { return nil }
+        // The header carries the verb; "in" only fits the relative durations beneath it (absolute
+        // entries already read "Feb 15 at 3:45 PM").
+        let header = resetDisplayMode == .relative ? "Resets expire in:" : "Resets expire:"
+        return ([header] + entries).joined(separator: "\n")
     }
 
     /// Secondary line under an unbounded row's detail (e.g. "on-device estimate"); nil with no real data.

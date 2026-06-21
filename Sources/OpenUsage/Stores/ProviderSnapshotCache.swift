@@ -21,7 +21,11 @@ struct ProviderSnapshotCache {
         // to `.values` (raw numbers). Bumping the key drops pre-upgrade caches so the new `.values`-based
         // widgets never try to resolve a stale `.text` line — which would misread the fused string
         // (tokens tile showing the dollar amount, combined dropping tokens) until the first refresh.
-        storageKey: String = "openusage.providerSnapshots.v3",
+        // v4/v5: `.values` rows gained Codex reset-credit expiry data — v4 carried a single `resetsAt`,
+        // v5 replaced it with an `expiriesAt` list (one per available credit, shown in the row's
+        // tooltip). Old payloads decode cleanly (the absent key → empty list), but the bump refetches
+        // once so the expiries show immediately on upgrade instead of after the cached snapshot expires.
+        storageKey: String = "openusage.providerSnapshots.v5",
         ttl: TimeInterval = RefreshSetting.interval,
         now: @escaping () -> Date = Date.init
     ) {

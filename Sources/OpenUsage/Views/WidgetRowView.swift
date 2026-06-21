@@ -45,7 +45,7 @@ struct WidgetRowView: View {
         // original app uses — instead of waiting for the next data refresh. TimelineView only schedules
         // ticks while the popover is actually visible. Rows without a reset date are static.
         Group {
-            if data.resetsAt != nil {
+            if data.resetsAt != nil || !data.expiriesAt.isEmpty {
                 TimelineView(.periodic(from: .now, by: 30)) { _ in
                     rowContent
                 }
@@ -240,17 +240,20 @@ struct WidgetRowView: View {
             labelColumn
             Spacer(minLength: 12)
             VStack(alignment: .trailing, spacing: 2) {
-                Text(data.unboundedDetail)
-                    .font(supportingFont)
-                    .foregroundStyle(.primary) // the value is the row's payload — match the bounded headline
-                    .contentTransition(.numericText())
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-                    // Hover target is the value text itself (and the ⓘ), not the whole row — the same
-                    // per-element pattern the bounded row uses for "x left" and "Resets in …". Reveals
-                    // the exact figures the compact value shortens, or "No usage in this period" on a
-                    // zero row; nil (no tooltip) on a small, already-full, non-zero row.
-                    .hoverTooltip(unboundedHoverText)
+                HStack(spacing: 4) {
+                    expiryWarningIcon
+                    Text(data.unboundedDetail)
+                        .font(supportingFont)
+                        .foregroundStyle(.primary) // the value is the row's payload — match the bounded headline
+                        .contentTransition(.numericText())
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                        // Hover target is the value text itself (and the ⓘ), not the whole row — the same
+                        // per-element pattern the bounded row uses for "x left" and "Resets in …". Reveals
+                        // the exact figures the compact value shortens, or "No usage in this period" on a
+                        // zero row; nil (no tooltip) on a small, already-full, non-zero row.
+                        .hoverTooltip(unboundedHoverText)
+                }
                 if let subtitle = data.unboundedSubtitle {
                     // Secondary, not tertiary: the subtitle is informational ("on-device estimate"),
                     // and tertiary is reserved for inactive content on glass.
@@ -261,6 +264,20 @@ struct WidgetRowView: View {
                 }
             }
             .multilineTextAlignment(.trailing)
+        }
+    }
+
+    /// Amber warning triangle shown just before the value when a reset credit is about to expire
+    /// (`hasImminentExpiry`). Carries the same expiry tooltip as the value, so hovering it reveals which
+    /// credits are expiring and when. Renders nothing otherwise.
+    @ViewBuilder
+    private var expiryWarningIcon: some View {
+        if data.hasImminentExpiry {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: density.supportingPointSize - 1))
+                .foregroundStyle(severityColor(.warning))
+                .hoverTooltip(unboundedHoverText)
+                .accessibilityLabel("A reset credit is expiring soon")
         }
     }
 
@@ -297,6 +314,9 @@ struct WidgetRowView: View {
     /// ("$0.00 · 0 tokens") still pops something (and carries an ⓘ). `nil` for a small, already-full,
     /// non-zero row, which has nothing to add.
     private var unboundedHoverText: String? {
+        // The reset-credit row's per-credit expiry breakdown takes precedence (it's the whole point of
+        // the ⓘ on "2 available"); its tiny count never has a figures tooltip anyway.
+        if let expiry = data.expiryTooltip { return expiry }
         if let figures = data.unboundedTooltip { return figures }
         // The "no usage" note only fits a spend period (Today / Yesterday / Last 30 Days), where a zero
         // genuinely means nothing was used. A balance row that reads 0 (Codex Rate Limit Resets, an

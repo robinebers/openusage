@@ -409,7 +409,7 @@ final class GrokProviderTests: XCTestCase {
     }
 
     private func values(_ lines: [MetricLine], _ label: String) -> [MetricValue]? {
-        guard case .values(_, let values, _) = lines.first(where: { $0.label == label }) else { return nil }
+        guard case .values(_, let values, _, _) = lines.first(where: { $0.label == label }) else { return nil }
         return values
     }
 }

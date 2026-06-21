@@ -10,6 +10,7 @@ struct CodexUsageClient: Sendable {
     static let clientID = "app_EMoamEEZ73f0CkXaXp7hrann"
     static let refreshURL = URL(string: "https://auth.openai.com/oauth/token")!
     static let usageURL = URL(string: "https://chatgpt.com/backend-api/wham/usage")!
+    static let resetCreditsURL = URL(string: "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits")!
 
     var http: any HTTPClient
 
@@ -87,6 +88,30 @@ struct CodexUsageClient: Sendable {
         return try await http.send(HTTPRequest(
             method: "GET",
             url: Self.usageURL,
+            headers: headers,
+            timeout: 10
+        ))
+    }
+
+    /// On-demand rate-limit reset credits, including each credit's expiry — a separate endpoint from
+    /// `usage` (the usage body's `rate_limit_reset_credits` carries only the count, no expiry list). The
+    /// extra headers mirror the Codex desktop client, which the endpoint expects. Best-effort: the
+    /// provider tolerates a failure here and falls back to the usage body's count.
+    func fetchResetCredits(accessToken: String, accountID: String?) async throws -> HTTPResponse {
+        var headers = [
+            "Authorization": "Bearer \(accessToken)",
+            "Accept": "application/json",
+            "User-Agent": "OpenUsage",
+            "OpenAI-Beta": "codex-1",
+            "originator": "Codex Desktop"
+        ]
+        if let accountID, !accountID.isEmpty {
+            headers["ChatGPT-Account-Id"] = accountID
+        }
+
+        return try await http.send(HTTPRequest(
+            method: "GET",
+            url: Self.resetCreditsURL,
             headers: headers,
             timeout: 10
         ))
