@@ -230,8 +230,10 @@ struct DashboardView: View {
 
     private func resetTransientState() {
         // Backstop for any popover-close path the status-item controller's hide doesn't cover: clear a
-        // tooltip the cursor was resting on, since the closed popover fires no hover-exit.
+        // tooltip the cursor was resting on, since the closed popover fires no hover-exit. The Usage
+        // Trend hover popover rides the same backstop.
         HoverTooltips.dismissAll()
+        TrendHoverState.dismissAll()
         if layout.screen != .dashboard { layout.screen = .dashboard }
         reorderLift = nil
         layout.cancelDrag()

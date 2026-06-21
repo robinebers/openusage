@@ -122,13 +122,15 @@ struct WidgetGroupedListView: View {
     /// the global reset-format flip, and a per-provider refresh — without a trip into Customize.
     @ViewBuilder
     private func rowMenu(_ descriptor: WidgetDescriptor, providerID: String) -> some View {
-        Button(layout.isPinned(descriptor.id) ? "Unpin" : "Pin to menu bar") {
-            if layout.isPinned(descriptor.id) {
-                layout.setPinned(false, for: descriptor.id)
-            } else if layout.canPin(descriptor.id) {
-                layout.setPinned(true, for: descriptor.id)
-            } else {
-                layout.notePinDenied(descriptor.id)
+        if descriptor.pinnable {
+            Button(layout.isPinned(descriptor.id) ? "Unpin" : "Pin to menu bar") {
+                if layout.isPinned(descriptor.id) {
+                    layout.setPinned(false, for: descriptor.id)
+                } else if layout.canPin(descriptor.id) {
+                    layout.setPinned(true, for: descriptor.id)
+                } else {
+                    layout.notePinDenied(descriptor.id)
+                }
             }
         }
         Button("Hide") {

@@ -27,7 +27,7 @@ final class ClaudeProvider: ProviderRuntime {
             .percent(id: "claude.weekly", provider: provider, title: "Weekly"),
             .percent(id: "claude.sonnet", provider: provider, title: "Sonnet"),
             .boundedDollars(id: "claude.extra", provider: provider, title: "Extra Usage", metricLabel: "Extra usage spent", limit: 100)
-        ] + WidgetDescriptor.spendTiles(provider: provider)
+        ] + WidgetDescriptor.spendTiles(provider: provider) + [.usageTrend(provider: provider)]
     }
 
     func refresh() async -> ProviderSnapshot {
@@ -67,6 +67,8 @@ final class ClaudeProvider: ProviderRuntime {
         let tokenUsage = await ccusageRunner.query(provider: .claude, since: since, homePath: authStore.claudeHomeOverride())
         if case .success(let usage) = tokenUsage {
             SpendTileMapper.appendTokenUsage(usage, to: &mapped.lines, now: now())
+            SpendTileMapper.appendUsageTrend(usage, to: &mapped.lines,
+                                             note: "Estimated from local Claude logs at API rates.")
         }
 
         MetricLine.appendNoDataIfNeeded(&mapped.lines)

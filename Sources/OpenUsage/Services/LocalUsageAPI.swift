@@ -84,7 +84,7 @@ enum LocalUsageAPI {
         init(_ line: MetricLine) { self.line = line }
 
         enum CodingKeys: String, CodingKey {
-            case type, label, value, used, limit, format, resetsAt, periodDurationMs, color, subtitle, text
+            case type, label, value, used, limit, format, resetsAt, periodDurationMs, color, subtitle, text, points, note
         }
 
         func encode(to encoder: Encoder) throws {
@@ -120,6 +120,14 @@ enum LocalUsageAPI {
                 try container.encode(text, forKey: .text)
                 try container.encode(color, forKey: .color)
                 try container.encode(subtitle, forKey: .subtitle)
+            case .chart(let label, let points, let note):
+                // The original app's `barChart` line shape: per-day {label, value, valueLabel} points
+                // plus an optional source note, so existing local-API integrations read the trend too.
+                try container.encode("barChart", forKey: .type)
+                try container.encode(label, forKey: .label)
+                try container.encode(points, forKey: .points)
+                try container.encodeIfPresent(note, forKey: .note)
+                try container.encodeNil(forKey: .color)
             }
         }
 

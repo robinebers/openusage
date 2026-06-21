@@ -8,6 +8,9 @@ struct WidgetDescriptor: Identifiable, Hashable {
     let providerID: String
     let metricLabel: String
     let sample: WidgetData
+    /// Whether this widget can be pinned to the menu-bar strip. False for tiles the tray can't render as
+    /// a value — the Usage Trend chart — so the pin affordance never offers a pin that would read "0".
+    var pinnable: Bool = true
 
     /// The one display name for this widget (tile + gallery).
     var title: String { sample.title }

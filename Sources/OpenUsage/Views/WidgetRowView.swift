@@ -75,7 +75,11 @@ struct WidgetRowView: View {
 
     @ViewBuilder
     private var rowContent: some View {
-        if data.isBounded {
+        if data.isChart, data.hasData {
+            // The sparkline owns its own label + bars; a chart with no real points falls through to the
+            // unbounded "No data" row below (and so the descriptor's gallery sample never leaks here).
+            UsageSparkline(data: data)
+        } else if data.isBounded {
             boundedRow
         } else {
             unboundedRow

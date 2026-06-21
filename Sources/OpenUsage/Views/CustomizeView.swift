@@ -142,30 +142,34 @@ struct CustomizeView: View {
     /// instead of silently doing nothing.
     @ViewBuilder
     private func pinButton(_ metric: WidgetDescriptor) -> some View {
-        let pinned = layout.isPinned(metric.id)
-        let blocked = !layout.canPin(metric.id)   // false when pinned, so unpin always works
-        let visible = pinned || hoveredMetricID == metric.id
-        // No app haptic here: the physical click already plays its own press/release haptics, and an
-        // added pulse at mouse-up stacks against the release click and reads as a double vibration.
-        Button {
-            if blocked {
-                layout.notePinDenied(metric.id)
-            } else {
-                layout.togglePin(metric.id)
+        // A non-pinnable widget (the Usage Trend chart) shows no pin affordance at all — the tray can't
+        // render it, so offering a pin would only ever be denied.
+        if metric.pinnable {
+            let pinned = layout.isPinned(metric.id)
+            let blocked = !layout.canPin(metric.id)   // false when pinned, so unpin always works
+            let visible = pinned || hoveredMetricID == metric.id
+            // No app haptic here: the physical click already plays its own press/release haptics, and an
+            // added pulse at mouse-up stacks against the release click and reads as a double vibration.
+            Button {
+                if blocked {
+                    layout.notePinDenied(metric.id)
+                } else {
+                    layout.togglePin(metric.id)
+                }
+            } label: {
+                Image(systemName: pinned ? "pin.fill" : "pin")
+                    .font(.system(size: 11, weight: .semibold))
+                    .frame(width: 18, height: 18)
+                    .contentShape(Rectangle())
             }
-        } label: {
-            Image(systemName: pinned ? "pin.fill" : "pin")
-                .font(.system(size: 11, weight: .semibold))
-                .frame(width: 18, height: 18)
-                .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .foregroundStyle(pinned ? Color.accentColor : Color.secondary)
+            .opacity(visible ? (blocked ? 0.35 : 1) : 0)
+            .allowsHitTesting(visible)
+            .hoverTooltip(pinHelp(metric))
+            .animation(Motion.spring, value: visible)
+            .animation(Motion.spring, value: pinned)
         }
-        .buttonStyle(.plain)
-        .foregroundStyle(pinned ? Color.accentColor : Color.secondary)
-        .opacity(visible ? (blocked ? 0.35 : 1) : 0)
-        .allowsHitTesting(visible)
-        .hoverTooltip(pinHelp(metric))
-        .animation(Motion.spring, value: visible)
-        .animation(Motion.spring, value: pinned)
     }
 
     private func pinHelp(_ metric: WidgetDescriptor) -> String {

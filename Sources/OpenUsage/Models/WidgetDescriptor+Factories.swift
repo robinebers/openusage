@@ -121,17 +121,36 @@ extension WidgetDescriptor {
                                 kind: .count, used: 0, limit: nil))
     }
 
+    /// The Usage Trend row: a day-by-day token sparkline backed by a provider `.chart` line. Not
+    /// pinnable — the tray can't draw a chart — but otherwise a normal Customize widget (toggle,
+    /// reorder, hide). The sample carries a few bars so it reads as a chart in the gallery.
+    static func usageTrend(provider: Provider) -> WidgetDescriptor {
+        var sample = WidgetData(title: "Usage Trend", icon: provider.icon, kind: .count, used: 0, limit: nil)
+        sample.isChart = true
+        sample.chartPoints = sampleTrendPoints
+        return make(id: "\(provider.id).trend", provider: provider, metricLabel: "Usage Trend",
+                    sample: sample, pinnable: false)
+    }
+
+    /// A gentle wave of sample bars so the gallery preview reads as a trend chart, never confused for
+    /// real usage (the dashboard renders real points or "No data", never this sample).
+    private static let sampleTrendPoints: [MetricChartPoint] = [
+        9, 14, 11, 22, 13, 18, 25, 16, 12, 28, 20, 15, 31, 19, 24
+    ].enumerated().map { MetricChartPoint(value: Double($0.element), label: "\($0.offset)") }
+
     private static func make(
         id: String,
         provider: Provider,
         metricLabel: String,
-        sample: WidgetData
+        sample: WidgetData,
+        pinnable: Bool = true
     ) -> WidgetDescriptor {
         WidgetDescriptor(
             id: id,
             providerID: provider.id,
             metricLabel: metricLabel,
-            sample: sample
+            sample: sample,
+            pinnable: pinnable
         )
     }
 }

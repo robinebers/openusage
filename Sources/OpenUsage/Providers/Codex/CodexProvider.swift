@@ -27,7 +27,7 @@ final class CodexProvider: ProviderRuntime {
             .percent(id: "codex.weekly", provider: provider, title: "Weekly"),
             .values(id: "codex.rateLimitResets", provider: provider, title: "Rate Limit Resets", metricLabel: "Rate Limit Resets"),
             .combined(id: "codex.credits", provider: provider, title: "Extra Usage", metricLabel: "Credits")
-        ] + WidgetDescriptor.spendTiles(provider: provider)
+        ] + WidgetDescriptor.spendTiles(provider: provider) + [.usageTrend(provider: provider)]
     }
 
     func refresh() async -> ProviderSnapshot {
@@ -82,6 +82,8 @@ final class CodexProvider: ProviderRuntime {
         let tokenUsage = await ccusageRunner.query(provider: .codex, since: since, homePath: authStore.codexHome())
         if case .success(let usage) = tokenUsage {
             SpendTileMapper.appendTokenUsage(usage, to: &mapped.lines, now: now())
+            SpendTileMapper.appendUsageTrend(usage, to: &mapped.lines,
+                                             note: "Estimated from local Codex logs at API rates.")
         }
 
         MetricLine.appendNoDataIfNeeded(&mapped.lines)

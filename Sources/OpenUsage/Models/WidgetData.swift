@@ -53,6 +53,12 @@ struct WidgetData: Hashable {
     /// they leave this false and never get the "No usage in this period" note. Set by the spend-tile
     /// factory; rides the descriptor sample through `WidgetDataStore.resolve`.
     var isUsagePeriod: Bool = false
+    /// Per-day points for a Usage Trend row (empty for every other tile). Set true `isChart` flags the
+    /// row so the view draws the sparkline instead of the value layout; `chartNote` is the source line
+    /// shown on hover (e.g. "Estimated from local Claude logs at API rates.").
+    var isChart: Bool = false
+    var chartPoints: [MetricChartPoint] = []
+    var chartNote: String?
 
     var isBounded: Bool { limit != nil }
 

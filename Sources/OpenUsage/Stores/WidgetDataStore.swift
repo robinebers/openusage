@@ -239,7 +239,9 @@ final class WidgetDataStore {
             .filter { isProviderEnabled($0.providerID) }
             .lazy
             .map { self.data(for: $0) }
-            .first { $0.hasData }
+            // A chart tile has data but no scalar value, so it would read "0" here — skip it, the same
+            // way the tray bars skip it (it's non-pinnable).
+            .first { $0.hasData && !$0.isChart }
 
         guard let primary else { return WidgetData.noDataHeadline }
         return primary.valueText
@@ -281,6 +283,16 @@ final class WidgetDataStore {
             var data = descriptor.sample
             data.valueTextOverride = text
             data.subtitleOverride = subtitle
+            return data
+        case .chart(_, let points, let note):
+            // Presentation (title, icon) from the sample; the live per-day points from the line. No
+            // points means the source was read but had no usable day — render "No data", not an empty
+            // axis (and so the sample's gallery bars never leak onto the dashboard).
+            var data = descriptor.sample
+            data.isChart = true
+            data.chartPoints = points
+            data.chartNote = note
+            data.hasData = !points.isEmpty
             return data
         }
     }

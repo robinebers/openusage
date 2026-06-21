@@ -282,8 +282,8 @@ final class LayoutStore {
     /// `true`, so the toggle stays active for unpinning.
     func canPin(_ descriptorID: String) -> Bool {
         if pinnedMetricIDs.contains(descriptorID) { return true }
-        guard let providerID = registry.descriptor(id: descriptorID)?.providerID else { return false }
-        if pinnedCount(forProvider: providerID) >= Self.maxPinsPerProvider { return false }
+        guard let descriptor = registry.descriptor(id: descriptorID), descriptor.pinnable else { return false }
+        if pinnedCount(forProvider: descriptor.providerID) >= Self.maxPinsPerProvider { return false }
         return true
     }
 

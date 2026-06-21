@@ -52,6 +52,10 @@ enum DensitySetting: String, Hashable, Sendable, CaseIterable {
     /// chunky slab next to them). Default's bar is one step taller to match its airier rhythm.
     var meterHeight: CGFloat { self == .compact ? 4 : 5 }
 
+    /// Usage Trend sparkline height. Steps down in Compact so the chart row tightens with the rest of
+    /// the card instead of standing taller than its neighbors.
+    var trendChartHeight: CGFloat { self == .compact ? 14 : 18 }
+
     /// Vertical padding on a text-only row.
     var textRowPadding: CGFloat { self == .compact ? 4 : 6 }
 

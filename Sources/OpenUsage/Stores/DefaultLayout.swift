@@ -7,8 +7,8 @@ import Foundation
 /// reconciles to plain registry order in `LayoutStore`.
 enum DefaultLayout {
     static let metricIDs: [String] = [
-        "claude.session", "claude.weekly",
-        "codex.session", "codex.weekly",
+        "claude.session", "claude.weekly", "claude.trend",
+        "codex.session", "codex.weekly", "codex.trend",
         "devin.weekly", "devin.daily",
         "grok.creditsUsed",
         "cursor.usage", "cursor.auto", "cursor.api"

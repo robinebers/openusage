@@ -16,6 +16,8 @@ The popover that opens from the menu bar icon. Providers are sections; each sect
 
 **Metrics without a limit** (daily spend, balances) show as a single line like `$4.08 spent` or `1.2M tokens`. The daily spend rows (Today / Yesterday / Last 30 Days) come in three flavors you can add from Customize — cost (`$4.08 spent`), tokens (`1.2M tokens`), or both (`$4.08 · 1.2M tokens`). A day with no usage is a real zero, so it reads `$0.00 · 0 tokens` (not "No data" — that's only when the data can't be loaded at all). Big numbers are abbreviated to keep rows tidy (`$2.06K`, `1.5B`) — **hover the row** to see the exact figures. A small ⓘ next to the name means a dollar figure is estimated locally rather than billed — hover it for details; token counts are measured, so they carry no ⓘ.
 
+**Usage Trend** (Claude and Codex) is a small bar chart of the last 30 days of token usage — one bar per day, drawn from the same local logs as the spend rows. **Hover it** for the peak day, the date range, and the source. It's on by default; turn it off or reorder it from Customize like any other metric. It can't be pinned to the menu bar — the strip shows single values, not a chart.
+
 Rows with a reset date tick every 30 seconds, so countdowns and pace stay live between refreshes.
 
 ## Right-click menus

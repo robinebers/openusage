@@ -33,6 +33,45 @@ enum SpendTileMapper {
         lines.append(.values(label: "Last 30 Days", values: spendValues(tokens: totalTokens, costUSD: totalCost, estimated: estimated)))
     }
 
+    /// Append the Usage Trend chart line: one bar per day over the window, value = tokens used that day.
+    /// Tokens are always measured (no estimate flag), so the chart needs only the per-day counts plus a
+    /// source note. Appends nothing when there's no usable day, so a source we couldn't read leaves no
+    /// chart rather than an empty axis.
+    static func appendUsageTrend(_ usage: CcusageDailyUsage, to lines: inout [MetricLine], note: String) {
+        let points = trendPoints(usage)
+        guard !points.isEmpty else { return }
+        lines.append(.chart(label: "Usage Trend", points: points, note: note))
+    }
+
+    /// Per-day token points, chronological, capped to the most recent 31 (today + 30 days, matching the
+    /// query window). Tokens are summed per calendar day, so two source rows that normalize to the same
+    /// date (mixed formats) become one bar carrying their total rather than two bars splitting it. Days
+    /// without a usable token count are dropped, not zero-filled, so a gap reads as a gap. Each point
+    /// carries a "5/22" axis label (unique per day) and a pre-formatted "222M tokens" readout.
+    private static func trendPoints(_ usage: CcusageDailyUsage) -> [MetricChartPoint] {
+        var tokensByDay: [String: Double] = [:]
+        for day in usage.daily {
+            let tokens = Double(day.totalTokens)
+            guard tokens.isFinite, tokens >= 0, let key = dayKey(fromUsageDate: day.date) else { continue }
+            tokensByDay[key, default: 0] += tokens
+        }
+        return tokensByDay.keys.sorted().suffix(31).map { key in
+            let tokens = tokensByDay[key] ?? 0
+            return MetricChartPoint(
+                value: tokens,
+                label: monthDayLabel(fromDayKey: key),
+                valueLabel: MetricFormatter.number(tokens, kind: .count, style: .row) + " tokens"
+            )
+        }
+    }
+
+    /// "yyyy-MM-dd" → "M/d" (no leading zeros), the compact axis label the trend chart shows.
+    private static func monthDayLabel(fromDayKey key: String) -> String {
+        let parts = key.split(separator: "-")
+        guard parts.count == 3, let month = Int(parts[1]), let day = Int(parts[2]) else { return key }
+        return "\(month)/\(day)"
+    }
+
     private static func dayKey(from date: Date) -> String {
         let components = Calendar.current.dateComponents([.year, .month, .day], from: date)
         return String(format: "%04d-%02d-%02d", components.year ?? 0, components.month ?? 0, components.day ?? 0)

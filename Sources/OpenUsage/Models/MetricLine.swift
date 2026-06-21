@@ -61,8 +61,26 @@ enum ProgressFormat: Hashable, Sendable, Codable {
     }
 }
 
+/// One column of a `.chart` line: a day's value, its axis label ("5/22"), and the pre-formatted
+/// readout shown on hover ("222M tokens"). The producer formats `valueLabel` so the chart stays a dumb
+/// renderer of already-priced numbers, the same split the spend tiles use.
+struct MetricChartPoint: Hashable, Sendable, Codable {
+    var value: Double
+    var label: String
+    var valueLabel: String?
+
+    /// The hover readout for this day: the producer's pre-formatted label, or a compact token count as a
+    /// fallback. One definition so the inline sparkline and the detail popover never format it differently.
+    var readout: String {
+        valueLabel ?? (MetricFormatter.number(value, kind: .count, style: .row) + " tokens")
+    }
+}
+
 enum MetricLine: Hashable, Sendable, Codable {
     case text(label: String, value: String, colorHex: String? = nil, subtitle: String? = nil)
+    /// A small day-by-day bar chart (the Usage Trend row). Carries the raw per-day points plus an
+    /// optional source note; the view formats and draws them. Unbounded, never pinned to the menu bar.
+    case chart(label: String, points: [MetricChartPoint], note: String? = nil)
     /// An unbounded row carrying one or more raw numbers (see `MetricValue`) — the preferred shape for
     /// numeric rows. The number is the source of truth; formatting and which value(s) to show happen at
     /// the display edge, so the menu bar never has to re-parse a finished string. `.text` stays only for
@@ -84,7 +102,8 @@ enum MetricLine: Hashable, Sendable, Codable {
         case .text(let label, _, _, _),
              .progress(let label, _, _, _, _, _, _),
              .values(let label, _, _),
-             .badge(let label, _, _, _):
+             .badge(let label, _, _, _),
+             .chart(let label, _, _):
             return label
         }
     }
@@ -125,6 +144,8 @@ enum MetricLine: Hashable, Sendable, Codable {
         case colorHex
         case subtitle
         case text
+        case points
+        case note
     }
 
     private enum LineType: String, Codable {
@@ -132,6 +153,7 @@ enum MetricLine: Hashable, Sendable, Codable {
         case values
         case progress
         case badge
+        case chart
     }
 
     init(from decoder: Decoder) throws {
@@ -168,6 +190,12 @@ enum MetricLine: Hashable, Sendable, Codable {
                 colorHex: try container.decodeIfPresent(String.self, forKey: .colorHex),
                 subtitle: try container.decodeIfPresent(String.self, forKey: .subtitle)
             )
+        case .chart:
+            self = .chart(
+                label: label,
+                points: try container.decode([MetricChartPoint].self, forKey: .points),
+                note: try container.decodeIfPresent(String.self, forKey: .note)
+            )
         }
     }
 
@@ -200,6 +228,11 @@ enum MetricLine: Hashable, Sendable, Codable {
             try container.encode(text, forKey: .text)
             try container.encodeIfPresent(colorHex, forKey: .colorHex)
             try container.encodeIfPresent(subtitle, forKey: .subtitle)
+        case .chart(let label, let points, let note):
+            try container.encode(LineType.chart, forKey: .type)
+            try container.encode(label, forKey: .label)
+            try container.encode(points, forKey: .points)
+            try container.encodeIfPresent(note, forKey: .note)
         }
     }
 }
