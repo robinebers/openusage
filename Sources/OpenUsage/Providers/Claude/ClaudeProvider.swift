@@ -136,7 +136,15 @@ final class ClaudeProvider: ProviderRuntime {
         if let expiresIn = decoded.expiresIn {
             state.oauth.expiresAt = now().timeIntervalSince1970 * 1000 + expiresIn * 1000
         }
-        try? authStore.save(state)
+        // Fail loudly: a swallowed save leaves the OLD refresh token on disk after a rotation, so the
+        // next launch refreshes with a server-invalidated token and the user sees a misleading
+        // "session expired". The refreshed token still works for this session, so we log and continue
+        // rather than fail the live fetch.
+        do {
+            try authStore.save(state)
+        } catch {
+            AppLog.error(LogTag.auth("claude"), "failed to persist rotated credentials; using the refreshed token for this session only: \(error.localizedDescription)")
+        }
         AppLog.info(LogTag.auth("claude"), "token refresh ok (rotated)")
         return decoded.accessToken
     }

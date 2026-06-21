@@ -175,7 +175,15 @@ final class CursorProvider: ProviderRuntime {
         guard let accessToken = (body["access_token"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty else {
             return nil
         }
-        try? authStore.saveAccessToken(accessToken, source: authState.source)
+        // Fail loudly, but do NOT interpolate the error: the Cursor token is persisted via a SQL
+        // statement that embeds the token, and a sqlite3 failure surfaces as stderr that could echo a
+        // fragment of that statement (JWTs aren't covered by log redaction). A generic error line keeps
+        // it loud without risking a token leak. The refreshed token still works for this session.
+        do {
+            try authStore.saveAccessToken(accessToken, source: authState.source)
+        } catch {
+            AppLog.error(LogTag.auth("cursor"), "failed to persist rotated access token to the Cursor state DB; using it for this session only")
+        }
         return accessToken
     }
 

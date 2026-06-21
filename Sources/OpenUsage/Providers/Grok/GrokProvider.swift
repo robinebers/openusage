@@ -131,7 +131,14 @@ final class GrokProvider: ProviderRuntime {
 
         let expiresAt = refreshExpiryDate(response: decoded, accessToken: accessToken)
         state.entry.expiresAt = OpenUsageISO8601.string(from: expiresAt)
-        try? authStore.save(state)
+        // Fail loudly: a swallowed save strands the rotated token on disk (next launch re-refreshes /
+        // can surface a false "auth expired"). The refreshed token works for this session, so log and
+        // continue rather than fail the live fetch.
+        do {
+            try authStore.save(state)
+        } catch {
+            AppLog.error(LogTag.auth("grok"), "failed to persist rotated credentials; using the refreshed token for this session only: \(error.localizedDescription)")
+        }
         return accessToken
     }
 

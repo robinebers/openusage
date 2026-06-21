@@ -127,7 +127,15 @@ final class CodexProvider: ProviderRuntime {
             authState.auth.tokens?.idToken = idToken
         }
         authState.auth.lastRefresh = OpenUsageISO8601.string(from: now())
-        try? authStore.save(authState)
+        // Fail loudly: a swallowed save strands the rotated token on disk (next launch re-refreshes /
+        // can surface a false "token expired"). The refreshed token works for this session, so log and
+        // continue. This is also the only call site of authStore.save, so a genuinely undecodable
+        // payload (CodexAuthError.invalidAuthPayload) now surfaces in the log instead of vanishing.
+        do {
+            try authStore.save(authState)
+        } catch {
+            AppLog.error(LogTag.auth("codex"), "failed to persist rotated credentials; using the refreshed token for this session only: \(error.localizedDescription)")
+        }
         return response.accessToken
     }
 }
