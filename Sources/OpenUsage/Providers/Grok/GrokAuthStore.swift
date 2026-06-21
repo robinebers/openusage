@@ -80,7 +80,20 @@ struct GrokAuthStore: Sendable {
     }
 
     func save(_ state: GrokAuthState) throws {
-        var authObject = (try? files.readText(Self.authPath)).flatMap(Self.parseJSONObject) ?? Self.jsonObject(from: state.auth)
+        // Refuse to overwrite a present-but-unreadable/corrupt auth.json by rebuilding it from
+        // in-memory state — that would silently drop OTHER accounts' entries. A genuinely absent file
+        // (first write) is seeded from in-memory state instead.
+        var authObject: [String: Any]
+        if files.exists(Self.authPath) {
+            guard let existingText = try? files.readText(Self.authPath),
+                  let parsed = Self.parseJSONObject(existingText)
+            else {
+                throw GrokAuthError.invalidAuth
+            }
+            authObject = parsed
+        } else {
+            authObject = try Self.jsonObject(from: state.auth)
+        }
         var entryObject = authObject[state.entryKey] as? [String: Any] ?? [:]
         entryObject["key"] = state.entry.key
         if let refreshToken = state.entry.refreshToken {
@@ -164,12 +177,12 @@ struct GrokAuthStore: Sendable {
         expiresAt.timeIntervalSince(now()) <= Self.refreshBuffer
     }
 
-    private static func jsonObject(from auth: [String: GrokAuthEntry]) -> [String: Any] {
-        guard let data = try? JSONEncoder().encode(auth),
-              let rawObject = try? JSONSerialization.jsonObject(with: data),
-              let object = rawObject as? [String: Any]
-        else {
-            return [:]
+    private static func jsonObject(from auth: [String: GrokAuthEntry]) throws -> [String: Any] {
+        // Throw rather than returning `[:]` on failure: an empty base would make save() write a file
+        // containing only the current entry, destroying every other account's credentials.
+        let data = try JSONEncoder().encode(auth)
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw GrokAuthError.invalidAuth
         }
         return object
     }

@@ -109,13 +109,23 @@ final class GrokProvider: ProviderRuntime {
                 clientID: authStore.clientID(entryKey: state.entryKey, entry: state.entry)
             )
         } catch {
+            // Log the real cause: a transport failure here is currently surfaced to the user as
+            // "auth expired" (loadAndProbe / the retry closure both map a nil refresh to .expired), so
+            // without this line the actual reason (network/DNS/timeout) is lost. (Refining the
+            // user-facing message to a request-failure is deferred — it needs a careful rework of the
+            // candidate-loop + retry-closure semantics.)
+            AppLog.warn(LogTag.auth("grok"), "token refresh request failed (transport): \(error.localizedDescription)")
             return nil
         }
 
-        guard (200..<300).contains(response.statusCode),
-              let decoded = usageClient.decodeRefreshResponse(response),
+        guard (200..<300).contains(response.statusCode) else {
+            AppLog.warn(LogTag.auth("grok"), "token refresh failed (HTTP \(response.statusCode))")
+            return nil
+        }
+        guard let decoded = usageClient.decodeRefreshResponse(response),
               !decoded.accessToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else {
+            AppLog.warn(LogTag.auth("grok"), "token refresh returned an undecodable or empty access token")
             return nil
         }
 
