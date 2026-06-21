@@ -104,7 +104,7 @@ enum LocalUsageAPI {
                 try container.encode(label, forKey: .label)
                 try container.encode(Self.legacyValueString(values), forKey: .value)
                 try container.encode(color, forKey: .color)
-                try container.encode(String?.none, forKey: .subtitle)
+                try container.encodeNil(forKey: .subtitle)
             case .progress(let label, let used, let limit, let format, let resetsAt, let periodDurationMs, let color):
                 try container.encode("progress", forKey: .type)
                 try container.encode(label, forKey: .label)

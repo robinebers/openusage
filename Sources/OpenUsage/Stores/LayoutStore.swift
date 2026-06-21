@@ -35,7 +35,7 @@ final class LayoutStore {
             // frame later and would let the popover paint the destination before the slide begins.
             // DashboardView reads these on its very next render to slide in from the screen being left.
             screenSlideFrom = oldValue
-            screenSlideID &+= 1
+            screenSlideID += 1
         }
     }
     /// Supports DashboardView's horizontal screen-switch slide: the screen being left, plus a counter

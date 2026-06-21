@@ -89,9 +89,14 @@ enum MetricLine: Hashable, Sendable, Codable {
         }
     }
 
+    /// The badge label that marks a provider-level error line (produced by `ProviderSnapshot.error`).
+    /// Shared so the producer and `isError`'s detection are compile-time coupled and can't drift apart —
+    /// a silent drift would let a failed provider's error render as a normal pill and cache stale data.
+    static let errorBadgeLabel = "Error"
+
     var isError: Bool {
         if case .badge(let label, _, _, _) = self {
-            return label == "Error"
+            return label == Self.errorBadgeLabel
         }
         return false
     }

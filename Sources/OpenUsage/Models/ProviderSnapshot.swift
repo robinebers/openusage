@@ -30,7 +30,7 @@ struct ProviderSnapshot: Hashable, Sendable, Codable {
         ProviderSnapshot(
             providerID: provider.id,
             displayName: provider.displayName,
-            lines: [.badge(label: "Error", text: message, colorHex: "#EF4444")]
+            lines: [.badge(label: MetricLine.errorBadgeLabel, text: message, colorHex: "#EF4444")]
         )
     }
 }
