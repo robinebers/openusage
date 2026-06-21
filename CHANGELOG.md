@@ -1,5 +1,37 @@
 # Changelog
 
+## v0.7.0-beta.11
+
+### New Features
+- feat(codex): show rate-limit reset credits with per-credit expiry ([#675](https://github.com/robinebers/openusage/pull/675)) by @robinebers
+- feat(menubar): add right-click context menu with Settings and Quit ([#671](https://github.com/robinebers/openusage/pull/671)) by @davidarny
+
+### Bug Fixes
+- fix(popover): clear stray focus ring on open, click-away, and close ([#674](https://github.com/robinebers/openusage/pull/674)) by @davidarny
+- fix(dev): fall back to the prebuilt icon when actool fails in build_and_run.sh ([#673](https://github.com/robinebers/openusage/pull/673)) by @davidarny
+- fix(dashboard): flag stale snapshots with an "Updated X ago" hint ([#668](https://github.com/robinebers/openusage/pull/668)) by @davidarny
+- fix(refresh): stop runaway refresh storm that drops the menu-bar item ([#665](https://github.com/robinebers/openusage/pull/665)) by @robinebers
+- hardening: fix local-API crash + MainActor freeze; replace silent fallbacks with loud failures ([#667](https://github.com/robinebers/openusage/pull/667)) by @robinebers
+
+### Chores
+- perf(refresh): cache ccusage runner resolution and snapshot blob ([#672](https://github.com/robinebers/openusage/pull/672)) by @davidarny
+
+---
+
+### Changelog
+**Full Changelog**: [v0.7.0-beta.10...v0.7.0-beta.11](https://github.com/robinebers/openusage/compare/v0.7.0-beta.10...v0.7.0-beta.11)
+
+- [2082b39](https://github.com/robinebers/openusage/commit/2082b39111dc94af77bdd7eaaadd56b857bc5f88) feat(codex): show rate-limit reset credits with per-credit expiry (#675) by @robinebers
+- [bf66276](https://github.com/robinebers/openusage/commit/bf66276b6460491b691ab82f115f05f6dcc9a672) perf(refresh): cache ccusage runner resolution and snapshot blob (#672) by @davidarny
+- [64e2d13](https://github.com/robinebers/openusage/commit/64e2d130c96d7e9f3457ca11c211e156f9c7f728) fix(popover): clear stray focus ring on open, click-away, and close (#674) by @davidarny
+- [b4d828a](https://github.com/robinebers/openusage/commit/b4d828a21ed40fdba84ed621873a3c9d99769103) fix(dev): fall back to the prebuilt icon when actool fails in build_and_run.sh (#673) by @davidarny
+- [03782a7](https://github.com/robinebers/openusage/commit/03782a7b3dc27db062eae041a9d0167921541fd9) feat(menubar): add right-click context menu with Settings and Quit (#671) by @davidarny
+- [7769bfc](https://github.com/robinebers/openusage/commit/7769bfc96c27ff993bf6a5778a376391cfea56c2) fix(dashboard): flag stale snapshots with an "Updated X ago" hint (#582) (#668) by @davidarny
+- [b05f794](https://github.com/robinebers/openusage/commit/b05f794e7de98fa723d987a4df434ab31a6e3909) fix(refresh): stop runaway refresh storm that drops the menu-bar item (#665) by @robinebers
+- [f1afaa8](https://github.com/robinebers/openusage/commit/f1afaa846ce1d3e290c159bd50c2b6ba834dfa04) hardening: fix local-API crash + MainActor freeze; replace silent fallbacks with loud failures (#667) by @robinebers
+
+---
+
 ## v0.7.0-beta.10
 
 ### New Features
