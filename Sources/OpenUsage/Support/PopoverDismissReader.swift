@@ -98,7 +98,10 @@ struct PopoverKeyReader: NSViewRepresentable {
     /// no key window at all — is correctly *not* the popover's, and Esc/Return leave it alone instead
     /// of hijacking it. (An earlier build also claimed a nil key window, to paper over `NSPopover`'s
     /// activation race; the `NSPanel` removed that race, so the strict match is correct and safer.)
-    static func keyTargetsPopover(eventWindowID: ObjectIdentifier?, popoverWindowID: ObjectIdentifier) -> Bool {
+    // `nonisolated`: a pure comparison of two Sendable `ObjectIdentifier`s. The enclosing struct is
+    // implicitly @MainActor (it stores @MainActor closures), which would otherwise wall this helper off
+    // from non-MainActor callers — including its own tests (3 verified [#ActorIsolatedCall] warnings).
+    nonisolated static func keyTargetsPopover(eventWindowID: ObjectIdentifier?, popoverWindowID: ObjectIdentifier) -> Bool {
         eventWindowID == popoverWindowID
     }
 

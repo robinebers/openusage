@@ -31,7 +31,7 @@ final class ClaudeProvider: ProviderRuntime {
     }
 
     func refresh() async -> ProviderSnapshot {
-        guard let state = authStore.loadCredentials(),
+        guard let state = await loadOffMainActor({ [authStore] in authStore.loadCredentials() }),
               state.oauth.accessToken?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
         else {
             AppLog.info(LogTag.auth("claude"), "no access token, not logged in")

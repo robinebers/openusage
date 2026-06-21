@@ -45,7 +45,7 @@ final class CodexProvider: ProviderRuntime {
             }
         }
 
-        if let keychainCandidate = authStore.loadKeychainAuth() {
+        if let keychainCandidate = await loadOffMainActor({ [authStore] in authStore.loadKeychainAuth() }) {
             do {
                 return try await probe(authState: keychainCandidate)
             } catch {

@@ -24,3 +24,15 @@ protocol ProviderRuntime: AnyObject {
     func refresh() async -> ProviderSnapshot
 }
 
+/// Run a blocking, `Sendable` credential load off the MainActor.
+///
+/// Auth stores read credentials via the `security` (keychain) and `sqlite3` CLIs, whose `ProcessRunner`
+/// waits block the calling thread for up to ~5s each. Those loads run at the top of a provider's
+/// `@MainActor refresh()`, so calling them inline freezes the popover and the periodic-refresh loop for
+/// the whole subprocess window (Cursor issues several reads per refresh — up to ~25s). Offloading to a
+/// detached task moves the wait onto a background executor; the `Sendable` result crosses back cleanly.
+/// It is awaited immediately, so it reads like a normal call while no longer blocking the actor.
+func loadOffMainActor<T: Sendable>(_ load: @escaping @Sendable () -> T) async -> T {
+    await Task.detached(priority: .utility, operation: load).value
+}
+

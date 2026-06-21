@@ -43,7 +43,8 @@ final class DevinProvider: ProviderRuntime {
             }
         }
 
-        if let appAuth = authStore.loadAppAuth(),
+        let appAuth = await loadOffMainActor({ [authStore] in authStore.loadAppAuth() })
+        if let appAuth,
            credentials == nil || shouldAttemptAppAuth(appAuth, after: credentials) {
             sawAPIKey = true
             switch await attempt(auth: appAuth) {
