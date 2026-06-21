@@ -51,6 +51,28 @@ final class GrokUsageMapperTests: XCTestCase {
         XCTAssertEqual(badge(mapped.lines, "Pay as you go")?.text, "Disabled")
         XCTAssertEqual(badge(mapped.lines, "Pay as you go")?.colorHex, "#a3a3a3")
     }
+
+    func testMapsMissingOnDemandCapAsDisabled() throws {
+        // A SuperGrok account with no pay-as-you-go omits `onDemandCap` entirely. Previously the
+        // all-or-nothing guard threw `invalidResponse` ("Grok billing response changed."); it must
+        // now render the Disabled badge instead, like a present cap of 0.
+        let body: [String: Any] = [
+            "config": [
+                "used": ["val": 2500],
+                "monthlyLimit": ["val": 10000],
+                "billingPeriodEnd": "2026-06-01T00:00:00+00:00"
+            ]
+        ]
+        let mapped = try GrokUsageMapper.mapBillingResponse(HTTPResponse(
+            statusCode: 200,
+            headers: [:],
+            body: try JSONSerialization.data(withJSONObject: body)
+        ))
+
+        XCTAssertEqual(progress(mapped.lines, "Credits used")?.used, 25)
+        XCTAssertEqual(badge(mapped.lines, "Pay as you go")?.text, "Disabled")
+        XCTAssertEqual(badge(mapped.lines, "Pay as you go")?.colorHex, "#a3a3a3")
+    }
 }
 
 final class GrokLogUsageScannerTests: XCTestCase {

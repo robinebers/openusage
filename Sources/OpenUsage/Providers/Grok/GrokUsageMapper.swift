@@ -16,11 +16,18 @@ enum GrokUsageMapper {
               let usedUnits = unitsValue(config["used"]),
               let limitUnits = unitsValue(config["monthlyLimit"]),
               limitUnits > 0,
-              let onDemandCapUnits = unitsValue(config["onDemandCap"]),
               let resetsAt = resetDate(config["billingPeriodEnd"])
         else {
             throw GrokUsageError.invalidResponse
         }
+
+        // A SuperGrok account with no pay-as-you-go has no `onDemandCap` field at all. Treat a
+        // missing/non-numeric cap as 0 → the "Disabled" badge below, instead of failing the whole
+        // guard and surfacing a misleading "Grok billing response changed." A present cap of 0
+        // already mapped to Disabled and still does.
+        // NOTE: free-tier accounts (monthlyLimit == 0) still throw `invalidResponse` here — that
+        // payload shape is unconfirmed; revisit with a real sample before relaxing `limitUnits > 0`.
+        let onDemandCapUnits = unitsValue(config["onDemandCap"]) ?? 0
 
         let usedPercent = ProviderParse.clampPercent((usedUnits / limitUnits) * 100)
         return GrokMappedUsage(lines: [

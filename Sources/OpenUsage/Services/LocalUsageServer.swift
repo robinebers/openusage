@@ -86,13 +86,25 @@ final class LocalUsageServer {
     }
 
     private func route(head: String) -> LocalUsageAPI.Response {
-        let requestLine = head.split(separator: "\r\n", maxSplits: 1)[0]
-        let parts = requestLine.split(separator: " ")
-        let method = parts.indices.contains(0) ? String(parts[0]) : ""
-        let path = parts.indices.contains(1) ? String(parts[1]) : "/"
+        let (method, path) = Self.parseRequestLine(head)
         // Path is secret-free (the loopback API serves only normalized usage); Debug-only.
         AppLog.debug(.localAPI, "\(method) \(path)")
         return LocalUsageAPI.respond(method: method, path: path, state: state())
+    }
+
+    /// Parse the HTTP request line into `(method, path)`. Tolerates an empty/malformed head: a
+    /// request that begins with `\r\n\r\n`, or carries invalid UTF-8 (decoded to `""` at the call
+    /// site), yields no request line — which must route to a normal `404` rather than trap. The
+    /// previous `head.split(...)[0]` force-index crashed the whole `@MainActor` menu-bar process on
+    /// any such loopback payload. `nonisolated` + pure so it's unit-testable without the listener.
+    nonisolated static func parseRequestLine(_ head: String) -> (method: String, path: String) {
+        guard let requestLine = head.split(separator: "\r\n", maxSplits: 1).first else {
+            return ("", "/")
+        }
+        let parts = requestLine.split(separator: " ")
+        let method = parts.indices.contains(0) ? String(parts[0]) : ""
+        let path = parts.indices.contains(1) ? String(parts[1]) : "/"
+        return (method, path)
     }
 
     private func finish(_ connection: NWConnection, with response: LocalUsageAPI.Response?) {

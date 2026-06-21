@@ -107,3 +107,26 @@ final class LocalUsageAPITests: XCTestCase {
         XCTAssertEqual((try json(unknownRoute.body) as? [String: Any])?["error"] as? String, "not_found")
     }
 }
+
+final class LocalUsageServerRequestLineTests: XCTestCase {
+    func testParsesWellFormedRequestLine() {
+        let (method, path) = LocalUsageServer.parseRequestLine("GET /v1/usage HTTP/1.1\r\nHost: localhost\r\n")
+        XCTAssertEqual(method, "GET")
+        XCTAssertEqual(path, "/v1/usage")
+    }
+
+    func testEmptyHeadDegradesToDefaultsInsteadOfCrashing() {
+        // A request that begins with the CRLFCRLF terminator (or carries invalid UTF-8, decoded to "")
+        // yields an empty head. The previous `head.split(...)[0]` force-index trapped here, crashing
+        // the whole menu-bar process; it must now degrade to ("", "/") so the router returns a 404.
+        let (method, path) = LocalUsageServer.parseRequestLine("")
+        XCTAssertEqual(method, "")
+        XCTAssertEqual(path, "/")
+    }
+
+    func testRequestLineWithoutPathDefaultsPath() {
+        let (method, path) = LocalUsageServer.parseRequestLine("GET\r\n")
+        XCTAssertEqual(method, "GET")
+        XCTAssertEqual(path, "/")
+    }
+}

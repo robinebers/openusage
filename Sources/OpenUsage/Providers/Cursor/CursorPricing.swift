@@ -31,7 +31,15 @@ struct CursorTokenUsage: Sendable, Equatable {
 enum CursorPricing {
     private static let manifestSource: CursorModelManifestSource = CursorBundledModelManifestSource()
     private static let modelManifest: CursorModelManifest = {
-        (try? manifestSource.loadManifest()) ?? .empty
+        do {
+            return try manifestSource.loadManifest()
+        } catch {
+            // Loud-fail: an empty manifest silently prices every Cursor spend tile at $0 (every model
+            // becomes "unknown"). Surface the packaging/resource failure instead of masquerading
+            // damaged data as free usage.
+            AppLog.error(LogTag.plugin("cursor"), "pricing manifest load failed; Cursor spend will price at $0: \(error.localizedDescription)")
+            return .empty
+        }
     }()
 
     static let manifest: [String: CursorPricingEntry] = modelManifest.pricing.mapValues(CursorPricingEntry.init(manifestEntry:))
