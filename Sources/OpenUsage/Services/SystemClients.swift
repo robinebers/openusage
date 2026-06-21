@@ -112,26 +112,35 @@ struct SecurityKeychainAccessor: KeychainAccessing {
         self.processRunner = processRunner
     }
 
+    // `security find-generic-password` exits 44 (errSecItemNotFound) when no item matches — the
+    // legitimate "no credential stored" case. Any OTHER non-zero exit means a real failure (keychain
+    // locked or access denied, a cancelled unlock prompt) that must not be silently rendered as
+    // "not signed in".
+    private static let itemNotFoundExitCode: Int32 = 44
+
     func readGenericPassword(service: String) throws -> String? {
-        let result = try processRunner.run(
-            executable: "/usr/bin/security",
-            arguments: ["find-generic-password", "-s", service, "-w"],
-            environment: [:],
-            timeout: 5
-        )
-        guard result.succeeded else { return nil }
-        let value = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-        return value.isEmpty ? nil : value
+        try readPassword(["find-generic-password", "-s", service, "-w"], service: service)
     }
 
     func readGenericPasswordForCurrentUser(service: String) throws -> String? {
+        try readPassword(["find-generic-password", "-a", currentUserAccount(), "-s", service, "-w"], service: service)
+    }
+
+    private func readPassword(_ arguments: [String], service: String) throws -> String? {
         let result = try processRunner.run(
             executable: "/usr/bin/security",
-            arguments: ["find-generic-password", "-a", currentUserAccount(), "-s", service, "-w"],
+            arguments: arguments,
             environment: [:],
             timeout: 5
         )
-        guard result.succeeded else { return nil }
+        guard result.succeeded else {
+            if result.exitCode == Self.itemNotFoundExitCode { return nil }
+            // Log loudly here so a locked/denied keychain is diagnosable even though current callers
+            // `try?` this back to nil ("not signed in"). Surfacing a distinct user-facing "keychain
+            // locked" message needs the auth-load chains to propagate the throw (folded into H1).
+            AppLog.warn(.keychain, "read failed for service '\(service)' (exit \(result.exitCode))")
+            throw KeychainError.readFailed(result.stderr)
+        }
         let value = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
         return value.isEmpty ? nil : value
     }
@@ -168,11 +177,14 @@ struct SecurityKeychainAccessor: KeychainAccessing {
 
 enum KeychainError: Error, LocalizedError {
     case writeFailed(String)
+    case readFailed(String)
 
     var errorDescription: String? {
         switch self {
         case .writeFailed(let message):
             return message.isEmpty ? "Keychain write failed." : message
+        case .readFailed(let message):
+            return message.isEmpty ? "Keychain read failed." : message
         }
     }
 }
