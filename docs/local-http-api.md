@@ -57,13 +57,23 @@ Methods other than `GET`/`OPTIONS` return **405**; unknown routes return **404**
       "text": "2500 cap",
       "color": "#22c55e",
       "subtitle": null
+    },
+    {
+      "type": "barChart",
+      "label": "Usage Trend",
+      "points": [
+        { "label": "3/25", "value": 1200000.0, "valueLabel": "1.2M tokens" },
+        { "label": "3/26", "value": 2400000.0, "valueLabel": "2.4M tokens" }
+      ],
+      "note": "Estimated from local Claude logs at API rates.",
+      "color": null
     }
   ],
   "fetchedAt": "2026-03-26T11:16:29.000Z"
 }
 ```
 
-Line types are `progress`, `text`, and `badge`. `fetchedAt` is when the snapshot was last fetched successfully (ISO 8601).
+Line types are `progress`, `text`, `badge`, and `barChart`. A `barChart` line carries a `points` array — one `{ label, value, valueLabel? }` per day, oldest first — plus an optional `note`; `value` is the day's token count and `valueLabel` its pre-formatted readout. `fetchedAt` is when the snapshot was last fetched successfully (ISO 8601).
 
 ## Errors
 
