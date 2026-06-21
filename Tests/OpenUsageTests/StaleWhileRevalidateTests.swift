@@ -184,6 +184,20 @@ final class StaleWhileRevalidateTests: XCTestCase {
         )
     }
 
+    func testCorruptCacheBlobRecoversToEmptyInsteadOfDroppingSilently() {
+        // A non-decodable blob under the cache key (post-upgrade schema drift, a half-written
+        // write, a manual `defaults` edit) must recover to an empty cache rather than crash — and,
+        // per the loud-fail rule, leave a warn. Previously `try?` dropped ALL providers' snapshots
+        // silently, which is the load-side feeder of the refresh storm.
+        let defaults = makeUserDefaults("corrupt-cache")
+        defaults.set(Data("not a valid snapshot payload".utf8), forKey: "snapshots")
+        let cache = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() })
+
+        let loaded = cache.loadSnapshots(providerIDs: ["test.alpha"])
+
+        XCTAssertTrue(loaded.isEmpty)
+    }
+
     private func makeUserDefaults(_ name: String) -> UserDefaults {
         let suiteName = "OpenUsageTests.StaleWhileRevalidate.\(name).\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!

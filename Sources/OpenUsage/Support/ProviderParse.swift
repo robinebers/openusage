@@ -3,9 +3,19 @@ import Foundation
 /// Shared, behavior-free parsing chores used by more than one provider. Consolidated here so a new
 /// provider reuses the same JSON/number/percent handling instead of copying it.
 enum ProviderParse {
-    /// Decode a top-level JSON object from raw response data.
+    /// Decode a top-level JSON object from raw response data. An empty body is a silent `nil` (the
+    /// common no-content case callers tolerate); a non-empty body that fails to parse is logged at
+    /// the boundary so a malformed external-API response (HTML error page, truncated/garbled JSON)
+    /// leaves a diagnostic instead of vanishing into an indistinguishable `nil`. A valid-but-non-object
+    /// payload (e.g. a JSON array) returns `nil` without a log — it parsed fine, it just isn't an object.
     static func jsonObject(_ data: Data) -> [String: Any]? {
-        (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        guard !data.isEmpty else { return nil }
+        do {
+            return try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        } catch {
+            AppLog.warn(.http, "response body is not valid JSON (\(data.count) bytes): \(error.localizedDescription)")
+            return nil
+        }
     }
 
     /// Permissive numeric read: accepts JSON numbers and numeric strings, rejecting non-finite values.

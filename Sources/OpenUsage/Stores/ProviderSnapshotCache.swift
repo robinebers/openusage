@@ -72,12 +72,20 @@ struct ProviderSnapshotCache {
     }
 
     private func loadPayload() -> Payload {
-        guard let data = userDefaults.data(forKey: storageKey),
-              let payload = try? decoder.decode(Payload.self, from: data)
-        else {
+        // No stored data is the legitimate first-launch / cleared-cache case — recover to empty
+        // silently. Data present but undecodable is a real problem (post-upgrade schema drift, a
+        // half-written blob, a manual `defaults` edit): fail loudly, then recover to empty. A silent
+        // drop here empties ALL providers' caches at once and feeds the refresh storm. Mirrors the
+        // loud `save` path above.
+        guard let data = userDefaults.data(forKey: storageKey) else {
             return Payload(snapshots: [:])
         }
-        return payload
+        do {
+            return try decoder.decode(Payload.self, from: data)
+        } catch {
+            AppLog.warn(.cache, "cache decode failed, dropping stored snapshots: \(error.localizedDescription)")
+            return Payload(snapshots: [:])
+        }
     }
 
     private func save(_ payload: Payload) {
