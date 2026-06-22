@@ -5,7 +5,7 @@ import XCTest
 /// chart `MetricLine`, and how it flows through the descriptor / data store (non-pinnable, no-data safe).
 @MainActor
 final class UsageTrendTests: XCTestCase {
-    func testAppendUsageTrendBuildsChronologicalTokenPoints() {
+    func testAppendUsageTrendZeroFillsTheCalendarWindow() {
         var lines: [MetricLine] = []
         SpendTileMapper.appendUsageTrend(
             CcusageDailyUsage(daily: [
@@ -14,6 +14,7 @@ final class UsageTrendTests: XCTestCase {
                 CcusageDay(date: "2026-06-20", totalTokens: 1_500_000, costUSD: nil)
             ]),
             to: &lines,
+            now: date(2026, 6, 21),
             note: "Estimated from local Claude logs at API rates."
         )
 
@@ -22,26 +23,68 @@ final class UsageTrendTests: XCTestCase {
         }
         XCTAssertEqual(label, "Usage Trend")
         XCTAssertEqual(note, "Estimated from local Claude logs at API rates.")
-        // Sorted ascending by date, regardless of input order.
-        XCTAssertEqual(points.map(\.label), ["6/19", "6/20", "6/21"])
-        XCTAssertEqual(points.map(\.value), [500, 1_500_000, 222_000_000])
+        // One bar per calendar day across the 31-day window (today + 30 back), oldest first.
+        XCTAssertEqual(points.count, 31)
+        XCTAssertEqual(points.first?.label, "5/22", "window starts 30 days before today")
+        XCTAssertEqual(points.last?.label, "6/21", "window ends today")
+        // The three active days carry their tokens; every other day is a zero bar, not a dropped gap.
+        XCTAssertEqual(points[28].value, 500)          // 6/19
+        XCTAssertEqual(points[29].value, 1_500_000)    // 6/20
+        XCTAssertEqual(points[30].value, 222_000_000)  // 6/21
+        XCTAssertEqual(points[0].value, 0, "an idle day is a zero bar")
         // Pre-formatted readouts: compact counts with a "tokens" unit.
-        XCTAssertEqual(points.map(\.valueLabel), ["500 tokens", "1.5M tokens", "222M tokens"])
+        XCTAssertEqual(points[28...30].map(\.valueLabel), ["500 tokens", "1.5M tokens", "222M tokens"])
+        XCTAssertEqual(points[0].valueLabel, "0 tokens")
     }
 
-    func testAppendUsageTrendKeepsTheMostRecent31Days() {
-        // 40 distinct days (May 1–31, then June 1–9). The chart keeps the most recent 31, dropping the
-        // oldest nine — so it starts at 5/10, not 5/1.
+    func testTrendZeroFillsGapsBetweenActiveDays() {
+        // Usage on 6/19 and 6/21 but none on 6/20: the gap stays in place as a zero bar rather than
+        // collapsing the two active days into neighbors.
+        var lines: [MetricLine] = []
+        SpendTileMapper.appendUsageTrend(
+            CcusageDailyUsage(daily: [
+                CcusageDay(date: "2026-06-19", totalTokens: 500, costUSD: nil),
+                CcusageDay(date: "2026-06-21", totalTokens: 222_000_000, costUSD: nil)
+            ]),
+            to: &lines, now: date(2026, 6, 21), note: "n"
+        )
+
+        guard case .chart(_, let points, _) = lines.first else { return XCTFail("expected a chart line") }
+        XCTAssertEqual(points[28].label, "6/19")
+        XCTAssertEqual(points[29].label, "6/20")
+        XCTAssertEqual(points[29].value, 0, "the gap day is a zero bar, not removed")
+        XCTAssertEqual(points[30].label, "6/21")
+    }
+
+    func testTrendWindowEndsAtTodayEvenWhenUsageIsOlder() {
+        // Last activity was 6/19 but today is 6/21: the window still ends today, so the two trailing
+        // idle days are zero bars rather than the chart stopping at the last active day.
+        var lines: [MetricLine] = []
+        SpendTileMapper.appendUsageTrend(
+            CcusageDailyUsage(daily: [CcusageDay(date: "2026-06-19", totalTokens: 500, costUSD: nil)]),
+            to: &lines, now: date(2026, 6, 21), note: "n"
+        )
+
+        guard case .chart(_, let points, _) = lines.first else { return XCTFail("expected a chart line") }
+        XCTAssertEqual(points.last?.label, "6/21")
+        XCTAssertEqual(points[28].value, 500, "the one active day keeps its tokens")
+        XCTAssertEqual(points[29].value, 0)
+        XCTAssertEqual(points[30].value, 0)
+    }
+
+    func testTrendDropsDaysOlderThanTheWindow() {
+        // 40 distinct days (May 1–31, then June 1–9) with today = 6/9. The window is the 31 days ending
+        // today (5/10 … 6/9), so May 1–9 fall outside it and are dropped.
         var daily = (1...31).map { CcusageDay(date: String(format: "2026-05-%02d", $0), totalTokens: $0 * 1000, costUSD: nil) }
         daily += (1...9).map { CcusageDay(date: String(format: "2026-06-%02d", $0), totalTokens: $0 * 1000, costUSD: nil) }
 
         var lines: [MetricLine] = []
-        SpendTileMapper.appendUsageTrend(CcusageDailyUsage(daily: daily), to: &lines, note: "n")
+        SpendTileMapper.appendUsageTrend(CcusageDailyUsage(daily: daily), to: &lines, now: date(2026, 6, 9), note: "n")
 
         guard case .chart(_, let points, _) = lines.first else { return XCTFail("expected a chart line") }
         XCTAssertEqual(points.count, 31)
-        XCTAssertEqual(points.first?.label, "5/10", "oldest nine days are dropped")
-        XCTAssertEqual(points.last?.label, "6/9", "most recent day is kept")
+        XCTAssertEqual(points.first?.label, "5/10", "days older than 30 back are outside the window")
+        XCTAssertEqual(points.last?.label, "6/9", "window ends today")
     }
 
     func testTrendAggregatesDuplicateDaysAndParsesCompactDates() {
@@ -53,19 +96,26 @@ final class UsageTrendTests: XCTestCase {
                 CcusageDay(date: "20260620", totalTokens: 1000, costUSD: nil),
                 CcusageDay(date: "2026-06-20", totalTokens: 500, costUSD: nil)
             ]),
-            to: &lines, note: "n"
+            to: &lines, now: date(2026, 6, 20), note: "n"
         )
 
         guard case .chart(_, let points, _) = lines.first else { return XCTFail("expected a chart line") }
-        XCTAssertEqual(points.count, 1, "same calendar day collapses to one bar")
-        XCTAssertEqual(points.first?.label, "6/20")
-        XCTAssertEqual(points.first?.value, 1500, "the day's tokens are summed, not split across bars")
+        XCTAssertEqual(points.last?.label, "6/20")
+        XCTAssertEqual(points.last?.value, 1500, "the day's tokens are summed, not split across bars")
     }
 
-    func testAppendUsageTrendSkippedWhenNoUsableDays() {
-        var lines: [MetricLine] = []
-        SpendTileMapper.appendUsageTrend(CcusageDailyUsage(daily: []), to: &lines, note: "n")
-        XCTAssertTrue(lines.isEmpty, "no days means no chart, not an empty axis")
+    func testAppendUsageTrendSkippedWhenWindowHasNoUsage() {
+        // No rows at all, and rows that are all zero, both leave "No data" rather than a flat zero chart.
+        var empty: [MetricLine] = []
+        SpendTileMapper.appendUsageTrend(CcusageDailyUsage(daily: []), to: &empty, now: date(2026, 6, 21), note: "n")
+        XCTAssertTrue(empty.isEmpty, "no rows means no chart")
+
+        var allZero: [MetricLine] = []
+        SpendTileMapper.appendUsageTrend(
+            CcusageDailyUsage(daily: [CcusageDay(date: "2026-06-20", totalTokens: 0, costUSD: nil)]),
+            to: &allZero, now: date(2026, 6, 21), note: "n"
+        )
+        XCTAssertTrue(allZero.isEmpty, "a fully idle window has no trend to draw")
     }
 
     func testChartLineCodableRoundTrips() throws {
@@ -164,6 +214,12 @@ final class UsageTrendTests: XCTestCase {
     }
 
     // MARK: - Helpers
+
+    /// A fixed `now` at midday in the current calendar, so `startOfDay` math is stable regardless of the
+    /// machine's clock and the day-key strings line up with the hyphenated input dates.
+    private func date(_ year: Int, _ month: Int, _ day: Int) -> Date {
+        Calendar.current.date(from: DateComponents(year: year, month: month, day: day, hour: 12))!
+    }
 
     private func makeDataStore(provider: Provider, descriptor: WidgetDescriptor) -> WidgetDataStore {
         let runtime = TestProviderRuntime(
