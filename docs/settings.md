@@ -1,6 +1,6 @@
 # Settings
 
-Settings lives inside the popover — there is no separate window. Open it with the gear button in the popover footer, or ⌘, while the popover is showing. The dashboard slides over to the Settings screen; the gear becomes a checkmark while you're there. Go back with the checkmark, the ⌘, shortcut, or Esc (Esc always backs out to the dashboard first — pressing it again closes the popover).
+Settings lives inside the popover — there is no separate window. Open it with the gear button in the popover footer, ⌘, while the popover is showing, or by right-clicking the menu bar icon and choosing Settings. The dashboard slides over to the Settings screen; the gear becomes a checkmark while you're there. Go back with the checkmark, the ⌘, shortcut, or Esc (Esc always backs out to the dashboard first — pressing it again closes the popover).
 
 ## Startup
 

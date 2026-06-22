@@ -2,6 +2,10 @@
 
 Pin your most important metrics straight into the menu bar strip.
 
+## Right-clicking the icon
+
+Right-click (or control-click) the menu bar icon for a quick menu with **Settings** and **Quit**. Left-click opens the popover as usual.
+
 ## Pinning
 
 Pin from any row's right-click menu, or from the pin that appears when hovering rows in Customize.

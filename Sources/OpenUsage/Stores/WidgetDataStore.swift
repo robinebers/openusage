@@ -1,6 +1,14 @@
 import Foundation
 import Observation
 
+/// A compact staleness hint for a provider's on-screen snapshot. `label` is a short, fixed word
+/// ("Outdated") that stays narrow next to long plan names like "Super Grok Heavy", while the precise
+/// age lives in `tooltip` ("Last updated 3h 12m ago"), revealed on hover.
+struct StalenessHint: Equatable {
+    let label: String
+    let tooltip: String
+}
+
 @MainActor
 @Observable
 final class WidgetDataStore {
@@ -230,6 +238,29 @@ final class WidgetDataStore {
         snapshots[providerID]?.plan
     }
 
+    /// How long a displayed snapshot may age before the header calls it out. A healthy provider's
+    /// snapshot resets to ~0 on every successful pass and only brushes one interval just before the next
+    /// one, so the threshold sits at two intervals: it fires only when a refresh has actually been missed
+    /// — a refresh loop that keeps failing, or a long-suspended background timer — never on the normal
+    /// per-cycle aging, which would flicker a hint on healthy providers.
+    static let stalenessThreshold = RefreshSetting.interval * 2
+
+    /// A compact "Outdated" hint for the provider's on-screen snapshot, surfaced only once that snapshot
+    /// has aged past `stalenessThreshold`; `nil` while the data is still current (the common case), so the
+    /// header stays clean until staleness is real. The label is short on purpose — a long plan name plus a
+    /// full "Updated 3h ago" string would overflow the header — so the precise age rides in the tooltip.
+    /// This is the visible counterpart to the silent fossilized-cache problem (#582): a failing-refresh
+    /// loop keeps the last good plan/limits on screen, and without this nothing told the user that data was
+    /// stale. Reads the store's injected clock, which tests pin to a fixed value.
+    func stalenessHint(for providerID: String) -> StalenessHint? {
+        guard let refreshedAt = snapshots[providerID]?.refreshedAt else { return nil }
+        let age = now().timeIntervalSince(refreshedAt)
+        guard age >= Self.stalenessThreshold, let duration = Formatters.compactDuration(age) else {
+            return nil
+        }
+        return StalenessHint(label: "Outdated", tooltip: "Last updated \(duration) ago")
+    }
+
     var menuBarPrimaryText: String {
         // The tray mirrors the user's widget order: the first placed, enabled tile that has real data
         // drives it, skipping any no-data tile so it never shows a missing metric's placeholder. When
@@ -265,11 +296,14 @@ final class WidgetDataStore {
             )
         case .text(_, let value, _, _):
             return resolveText(value, descriptor: descriptor)
-        case .values(_, let values, _):
+        case .values(_, let values, _, let expiriesAt):
             // The number is carried raw — no regex re-parse. Presentation (title, icon, selection,
             // trailing word) comes from the descriptor's sample; the live numbers come from the line.
             var data = descriptor.sample
             data.values = values
+            // Optional expiry instants (Codex rate-limit-reset credits): surfaced in the row's hover
+            // tooltip (see `expiryTooltip`), with the row re-rendering on the clock tick so they stay live.
+            data.expiriesAt = expiriesAt
             // A tile whose selection finds no value (e.g. a cost-only tile on a day ccusage couldn't
             // price) has nothing real to show — render "No data" rather than a misleading $0.00 / 0.
             data.hasData = !data.selectedValues.isEmpty

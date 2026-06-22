@@ -213,6 +213,9 @@ final class StatusItemController: NSObject {
         guard let button = statusItem.button else { return }
         button.target = self
         button.action = #selector(statusButtonClicked)
+        // Left-click toggles the popover; right-click (or control-click) drops the context menu.
+        // Both arrive through `statusButtonClicked`, which branches on the triggering event.
+        button.sendAction(on: [.leftMouseUp, .rightMouseUp])
     }
 
     /// A resizable rounded-rectangle mask so the `behindWindow` glass gets clean rounded corners
@@ -275,7 +278,47 @@ final class StatusItemController: NSObject {
     // MARK: - Show / hide
 
     @objc private func statusButtonClicked() {
-        togglePopover()
+        let event = NSApp.currentEvent
+        let isContextClick = event?.type == .rightMouseUp
+            || event?.modifierFlags.contains(.control) == true
+        if isContextClick {
+            showContextMenu()
+        } else {
+            togglePopover()
+        }
+    }
+
+    /// Right-click / control-click on the status item: a native menu mirroring the popover footer's
+    /// "More" items for Settings and Quit (same titles, symbols, and ⌘ shortcuts). Assigning
+    /// `statusItem.menu` for the span of one `performClick` shows the menu anchored under the item and
+    /// highlights the button, then clearing it restores the left-click toggle behavior.
+    private func showContextMenu() {
+        // The context menu is a distinct gesture from the left-click popover: close an open panel
+        // first so the menu opens over a clean state (no leftover button highlight, no live
+        // outside-click monitors racing the menu's own modal tracking).
+        if panel.isVisible { hidePanel() }
+
+        let menu = NSMenu()
+        menu.addItem(ClosureMenuItem(title: "Settings", systemSymbol: "gearshape", keyEquivalent: ",") { [weak self] in
+            self?.openSettings()
+        })
+        menu.addItem(.separator())
+        menu.addItem(ClosureMenuItem(title: "Quit OpenUsage", systemSymbol: "power", keyEquivalent: "q") {
+            NSApplication.shared.terminate(nil)
+        })
+
+        statusItem.menu = menu
+        statusItem.button?.performClick(nil)
+        statusItem.menu = nil
+    }
+
+    /// Opens the dashboard popover on the Settings screen — Settings is an in-popover screen, not a
+    /// separate window. The screen is set before showing the panel so it opens already sized to Settings.
+    private func openSettings() {
+        container.layout.screen = .settings
+        if !panel.isVisible {
+            showPanel()
+        }
     }
 
     func togglePopover() {
@@ -301,6 +344,11 @@ final class StatusItemController: NSObject {
         // `canBecomeKey` + `.nonactivatingPanel` makes this key without activating the app — no
         // activation race, so the dashboard receives keys on the first try.
         panel.makeKeyAndOrderFront(nil)
+        // Becoming key, AppKit auto-focuses the first control in the key-view loop (the first row's
+        // Used/Left toggle) when system Keyboard Navigation is on — so the popover would open with a
+        // stray focus ring nobody asked for. Drop it; keyboard nav still works (it rides a local key
+        // monitor, not first responder), and Tab from here focuses the first control as expected.
+        clearStrayFocus()
         button.highlight(true)
         startOutsideClickMonitors()
     }
@@ -311,10 +359,25 @@ final class StatusItemController: NSObject {
         // The Usage Trend hover popover is on the same survives-orderOut footing, so dismiss it too.
         HoverTooltips.dismissAll()
         TrendHoverState.dismissAll()
+        // Same survival problem for keyboard focus: a clicked plain-styled control (a row's Used/Left
+        // or reset toggle) stays first responder, so its focus ring would reopen with the popover as a
+        // stray blue outline. Drop it on close so every reopen starts unfocused.
+        clearStrayFocus()
         panel.orderOut(nil)
         stopOutsideClickMonitors()
         statusItem.button?.highlight(false)
         anchorTopLeft = nil
+    }
+
+    /// Drops keyboard focus inside the panel so a clicked plain-styled control (a metric row's
+    /// Used/Left + reset toggles) doesn't keep the system focus ring lingering as a stray outline:
+    /// AppKit leaves the control first responder until focus moves, which a click on empty space or a
+    /// close otherwise never does. Skips a live text field / shortcut recorder, whose focus is the
+    /// user's intent — mirrors the `NSText` guard `PopoverKeyReader` uses for the same reason.
+    private func clearStrayFocus() {
+        guard !ShortcutRecorderField.isRecordingActive,
+              !(panel.firstResponder is NSText) else { return }
+        panel.makeFirstResponder(nil)
     }
 
     /// Resizes the panel to the SwiftUI content's ideal size, keeping the top edge pinned under the
@@ -358,7 +421,14 @@ final class StatusItemController: NSObject {
                 // is unreliable for windowless / global events), so the status-button match is correct.
                 let screenPoint = NSEvent.mouseLocation
                 guard !self.shouldKeepPanelOpen(windowID: windowID, windowTypeName: windowTypeName, screenPoint: screenPoint)
-                else { return }
+                else {
+                    // Click landed inside the panel: drop any stray focus ring a previously-clicked
+                    // toggle left behind, the way clicking empty space in a normal window does. The
+                    // monitor fires before the event reaches the view, so a click that lands on
+                    // another control just moves focus there next; empty space leaves it cleared.
+                    if self.panel.frame.contains(screenPoint) { self.clearStrayFocus() }
+                    return
+                }
                 self.hidePanel()
             }
             return event

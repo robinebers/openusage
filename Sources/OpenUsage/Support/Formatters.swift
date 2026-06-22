@@ -27,14 +27,31 @@ enum Formatters {
         now: Date = Date(),
         calendar: Calendar = .current
     ) -> String? {
+        guard let when = whenLabel(at: date, mode: mode, now: now, calendar: calendar) else { return nil }
+        if when == imminent { return "\(prefix) \(when)" }
+        switch mode {
+        case .relative: return "\(prefix) in \(when)"
+        case .absolute: return "\(prefix) \(when)"
+        }
+    }
+
+    /// The verb-less "when" phrase shared by `deadlineLabel` (which prefixes a verb) and the
+    /// reset-credit tooltip (which lists bare entries): `.relative` → "2d 6h" / `imminent`;
+    /// `.absolute` → "today at 5:30 PM" / "tomorrow at 9:00 AM" / "Feb 15 at 3:45 PM" / `imminent`
+    /// (past-due or ≤5 min out). `nil` only when the duration is non-finite.
+    static func whenLabel(
+        at date: Date,
+        mode: ResetDisplayMode,
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> String? {
         switch mode {
         case .relative:
             let seconds = date.timeIntervalSince(now)
-            if seconds <= 5 * 60 { return "\(prefix) soon" }
-            guard let duration = compactDuration(seconds) else { return nil }
-            return "\(prefix) in \(duration)"
+            if seconds <= 5 * 60 { return imminent }
+            return compactDuration(seconds)
         case .absolute:
-            guard date.timeIntervalSince(now) > 0 else { return "\(prefix) soon" }
+            guard date.timeIntervalSince(now) > 0 else { return imminent }
             let dayDiff = calendar.dateComponents(
                 [.day],
                 from: calendar.startOfDay(for: now),
@@ -42,12 +59,16 @@ enum Formatters {
             ).day ?? 0
             // The wall-clock part honors the user's Auto/12h/24h time-format setting.
             let time = TimeFormatSetting.current.shortTime(date)
-            if dayDiff <= 0 { return "\(prefix) today at \(time)" }
-            if dayDiff == 1 { return "\(prefix) tomorrow at \(time)" }
+            if dayDiff <= 0 { return "today at \(time)" }
+            if dayDiff == 1 { return "tomorrow at \(time)" }
             let day = date.formatted(.dateTime.month(.abbreviated).day())
-            return "\(prefix) \(day) at \(time)"
+            return "\(day) at \(time)"
         }
     }
+
+    /// The collapsed phrase for a deadline that's past-due or within ~5 minutes — too close to print a
+    /// useful countdown. Shared so `deadlineLabel` and any bare-`whenLabel` caller agree on the wording.
+    static let imminent = "soon"
 
     static func resetRelativeLabel(until resetsAt: Date, now: Date = Date()) -> String? {
         deadlineLabel("Resets", at: resetsAt, mode: .relative, now: now)

@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 enum CcusageProvider: String, Sendable {
     case claude
@@ -66,6 +67,14 @@ struct CcusageRunner {
     var homeDirectory: @Sendable () -> URL
     var isExecutable: @Sendable (String) -> Bool
 
+    /// The runner that last ran `ccusage` successfully, memoized for the session. The periodic
+    /// refresh loop calls `query` on a fixed cadence (Claude + Codex, every interval), and runner
+    /// resolution never changes mid-session in practice — so caching the winner skips the per-query
+    /// `--version` probe spawns that resolution would otherwise repeat on every pass. Lock-backed so
+    /// the value-type runner memoizes across calls (and the @MainActor → background hops `query`
+    /// makes); cleared on failure so a runner that breaks (toolchain change) is re-resolved next query.
+    private let resolved = OSAllocatedUnfairLock<(kind: CcusageRunnerKind, program: String)?>(initialState: nil)
+
     init(
         processRunner: ProcessRunning = SystemProcessRunner(),
         homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser },
@@ -83,50 +92,63 @@ struct CcusageRunner {
         return String(format: "%04d%02d%02d", components.year ?? 0, components.month ?? 0, components.day ?? 0)
     }
 
-    func query(provider: CcusageProvider, since: String, homePath: String? = nil) async -> Result<CcusageDailyUsage, CcusageRunnerError> {
-        let runners = collectRunners()
-        guard !runners.isEmpty else {
-            AppLog.warn(LogTag.plugin("ccusage"), "no package runner found")
-            // Debug-only: the tried runner kinds plus the enriched PATH (which carries the user's
-            // home), routed through `redactLogMessage` so the username never lands in the log.
-            let tried = CcusageRunnerKind.allCases.map(\.label).joined(separator: ", ")
-            AppLog.debug(LogTag.plugin("ccusage"), "tried [\(tried)]; PATH \(LogRedaction.redactLogMessage(enrichedPath()))")
-            return .failure(.noRunner)
-        }
+    /// Outcome of running `ccusage` through one resolved runner: success, or a fall-through failure
+    /// whose reason becomes the batch's `lastError`. A timeout is thrown (not returned) so the caller
+    /// stops trying fallbacks — matching the Tauri host's "skip fallbacks on timeout".
+    private enum Attempt {
+        case success(CcusageDailyUsage)
+        case failed(CcusageRunnerError)
+    }
 
+    func query(provider: CcusageProvider, since: String, homePath: String? = nil) async -> Result<CcusageDailyUsage, CcusageRunnerError> {
         let environment = ccusageEnvironment(provider: provider, homePath: homePath)
         var lastError: CcusageRunnerError = .noRunner
+        // The cached runner kind already tried (and failed) this pass, so the fallback loop skips it
+        // instead of resolving and re-spawning the same just-failed `ccusage` a second time.
+        var alreadyTried: CcusageRunnerKind?
 
-        for (kind, program) in runners {
-            // The args are secret-free; the resolved program path may carry the user's home, so the
-            // path itself is Debug-only and routed through `redactLogMessage`.
-            AppLog.info(LogTag.plugin("ccusage"), "launch \(kind.label) \(provider.rawValue) daily")
-            AppLog.debug(LogTag.plugin("ccusage"), "resolved \(kind.label) \(LogRedaction.redactLogMessage(program))")
-
-            let args = Self.runnerArgs(kind: kind, provider: provider, since: since)
+        // Fast path: re-use the runner that worked last time, skipping resolution (and its
+        // `--version` probe spawns) entirely. On a non-timeout failure, drop the memo and fall back to
+        // a full lazy resolution below (excluding this kind); a timeout short-circuits like the loop.
+        if let cached = resolved.withLock({ $0 }) {
             do {
-                let result = try processRunner.run(
-                    executable: program,
-                    arguments: args,
-                    environment: environment,
-                    timeout: Self.timeout
-                )
-                guard result.succeeded else {
-                    let stderr = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
-                    AppLog.warn(LogTag.plugin("ccusage"), "\(kind.label) failed: \(LogRedaction.redactLogMessage(stderr))")
-                    lastError = .failed(stderr)
-                    continue
+                switch try attempt(kind: cached.kind, program: cached.program, provider: provider, since: since, environment: environment) {
+                case .success(let usage):
+                    return .success(usage)
+                case .failed(let error):
+                    lastError = error
+                    resolved.withLock { $0 = nil }
+                    alreadyTried = cached.kind
                 }
-                guard let usage = Self.parseOutput(result.stdout) else {
-                    AppLog.warn(LogTag.plugin("ccusage"), "\(kind.label) invalid output")
-                    lastError = .invalidOutput
-                    continue
-                }
-                return .success(usage)
             } catch ProcessRunnerError.timedOut {
-                // A timeout is unlikely to be runner-specific (slow package download/exec rather than
-                // the wrong runner), so don't burn the remaining runners — surface it. Mirrors the
-                // Tauri host's "skip fallback runners on timeout" behavior.
+                AppLog.warn(LogTag.plugin("ccusage"), "\(cached.kind.label) timed out")
+                return .failure(.timedOut)
+            } catch {
+                AppLog.warn(LogTag.plugin("ccusage"), "\(cached.kind.label) failed: \(LogRedaction.redactLogMessage(error.localizedDescription))")
+                lastError = .failed(error.localizedDescription)
+                resolved.withLock { $0 = nil }
+                alreadyTried = cached.kind
+            }
+        }
+
+        // Lazy resolution: resolve runners in priority order and stop at the first that actually runs
+        // `ccusage`. Earlier this resolved ALL runner kinds up front (probing each absent one with a
+        // `--version` spawn) and used only the first — so the lower-priority probes were pure waste.
+        var resolvedAny = alreadyTried != nil
+
+        for kind in CcusageRunnerKind.allCases where kind != alreadyTried {
+            guard let program = resolveRunner(kind) else { continue }
+            resolvedAny = true
+            do {
+                switch try attempt(kind: kind, program: program, provider: provider, since: since, environment: environment) {
+                case .success(let usage):
+                    resolved.withLock { $0 = (kind, program) }
+                    return .success(usage)
+                case .failed(let error):
+                    lastError = error
+                    continue
+                }
+            } catch ProcessRunnerError.timedOut {
                 AppLog.warn(LogTag.plugin("ccusage"), "\(kind.label) timed out")
                 return .failure(.timedOut)
             } catch {
@@ -136,8 +158,50 @@ struct CcusageRunner {
             }
         }
 
+        guard resolvedAny else {
+            AppLog.warn(LogTag.plugin("ccusage"), "no package runner found")
+            // Debug-only: the tried runner kinds plus the enriched PATH (which carries the user's
+            // home), routed through `redactLogMessage` so the username never lands in the log.
+            let tried = CcusageRunnerKind.allCases.map(\.label).joined(separator: ", ")
+            AppLog.debug(LogTag.plugin("ccusage"), "tried [\(tried)]; PATH \(LogRedaction.redactLogMessage(enrichedPath()))")
+            return .failure(.noRunner)
+        }
+
         AppLog.warn(LogTag.plugin("ccusage"), "all package runners failed")
         return .failure(lastError)
+    }
+
+    /// Run `ccusage … daily` through one resolved runner. Returns `.success` with the parsed usage or
+    /// `.failed` to fall through to the next runner; rethrows `ProcessRunnerError.timedOut` so the
+    /// caller can stop trying fallbacks.
+    private func attempt(
+        kind: CcusageRunnerKind,
+        program: String,
+        provider: CcusageProvider,
+        since: String,
+        environment: [String: String]
+    ) throws -> Attempt {
+        // The args are secret-free; the resolved program path may carry the user's home, so the
+        // path itself is Debug-only and routed through `redactLogMessage`.
+        AppLog.info(LogTag.plugin("ccusage"), "launch \(kind.label) \(provider.rawValue) daily")
+        AppLog.debug(LogTag.plugin("ccusage"), "resolved \(kind.label) \(LogRedaction.redactLogMessage(program))")
+
+        let result = try processRunner.run(
+            executable: program,
+            arguments: Self.runnerArgs(kind: kind, provider: provider, since: since),
+            environment: environment,
+            timeout: Self.timeout
+        )
+        guard result.succeeded else {
+            let stderr = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            AppLog.warn(LogTag.plugin("ccusage"), "\(kind.label) failed: \(LogRedaction.redactLogMessage(stderr))")
+            return .failed(.failed(stderr))
+        }
+        guard let usage = Self.parseOutput(result.stdout) else {
+            AppLog.warn(LogTag.plugin("ccusage"), "\(kind.label) invalid output")
+            return .failed(.invalidOutput)
+        }
+        return .success(usage)
     }
 
     // MARK: - Runner resolution

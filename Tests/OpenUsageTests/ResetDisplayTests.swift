@@ -49,6 +49,72 @@ final class ResetDisplayTests: XCTestCase {
         XCTAssertEqual(data.resetTooltip?.hasPrefix("Resets in "), true)      // opposite = relative
     }
 
+    func testExpiryTooltipSingleCreditFollowsTimeSetting() {
+        // One reset credit: the row reads "1 available" and the hover tooltip is a single line. Relative
+        // → "Reset expires in 12d 18h"; absolute → a wall-clock phrase ("Reset expires … at …").
+        var data = WidgetData(title: "Rate Limit Resets", icon: .symbol("clock"),
+                              kind: .count, used: 0, limit: nil)
+        data.values = [MetricValue(number: 1, kind: .count, label: "available")]
+        data.expiriesAt = [Date().addingTimeInterval(12 * 24 * 3600 + 18 * 3600)] // ~12d18h out
+
+        XCTAssertEqual(data.unboundedDetail, "1 available")
+
+        data.resetDisplayMode = .relative
+        XCTAssertEqual(data.expiryTooltip, "Reset expires in 12d 18h")
+
+        data.resetDisplayMode = .absolute
+        XCTAssertEqual(data.expiryTooltip?.hasPrefix("Reset expires "), true)
+        XCTAssertEqual(data.expiryTooltip?.contains(" at "), true)        // wall-clock, not "in"
+    }
+
+    func testExpiryTooltipMultipleCreditsIsNumberedList() {
+        // Several credits: the tooltip is a numbered list under a header, sorted soonest-first, each
+        // entry following the global mode. The row itself still reads just the count.
+        var data = WidgetData(title: "Rate Limit Resets", icon: .symbol("clock"),
+                              kind: .count, used: 0, limit: nil)
+        data.values = [MetricValue(number: 2, kind: .count, label: "available")]
+        data.expiriesAt = [
+            Date().addingTimeInterval(12 * 24 * 3600 + 18 * 3600), // ~12d18h
+            Date().addingTimeInterval(22 * 24 * 3600 + 12 * 3600)  // ~22d12h
+        ]
+        data.resetDisplayMode = .relative
+
+        XCTAssertEqual(data.unboundedDetail, "2 available")
+        XCTAssertEqual(data.expiryTooltip, "Resets expire in:\n1. 12d 18h\n2. 22d 12h")
+    }
+
+    func testHasImminentExpiryTracksWarningWindow() {
+        // The warning triangle fires when the soonest credit expires within `expiryWarningWindow`.
+        // Anchored to the constant so it survives the eventual 21d→24h revert.
+        var data = WidgetData(title: "Rate Limit Resets", icon: .symbol("clock"),
+                              kind: .count, used: 0, limit: nil)
+        data.values = [MetricValue(number: 2, kind: .count, label: "available")]
+
+        // Soonest just inside the window → warning (even though a later credit is well outside it).
+        data.expiriesAt = [
+            Date().addingTimeInterval(WidgetData.expiryWarningWindow - 3600),
+            Date().addingTimeInterval(WidgetData.expiryWarningWindow + 10 * 24 * 3600)
+        ]
+        XCTAssertTrue(data.hasImminentExpiry)
+
+        // Every credit comfortably outside the window → no warning.
+        data.expiriesAt = [Date().addingTimeInterval(WidgetData.expiryWarningWindow + 24 * 3600)]
+        XCTAssertFalse(data.hasImminentExpiry)
+
+        // No expiries at all → no warning.
+        data.expiriesAt = []
+        XCTAssertFalse(data.hasImminentExpiry)
+    }
+
+    func testNoExpiryTooltipWhenNoExpiries() {
+        // The empty state — "0 available" — and any row without expiries carry no expiry tooltip.
+        var data = WidgetData(title: "Rate Limit Resets", icon: .symbol("clock"),
+                              kind: .count, used: 0, limit: nil)
+        data.values = [MetricValue(number: 0, kind: .count, label: "available")]
+        XCTAssertEqual(data.unboundedDetail, "0 available")
+        XCTAssertNil(data.expiryTooltip)
+    }
+
     func testDeadlineLabelSharesFormatAcrossPrefixesAndModes() {
         let calendar = utcCalendar()
         let now = calendar.date(from: DateComponents(year: 2024, month: 6, day: 1, hour: 12))!

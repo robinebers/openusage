@@ -146,7 +146,7 @@ final class CursorSpendRangeTests: XCTestCase {
     }
 
     private func values(_ lines: [MetricLine], _ label: String) -> [MetricValue]? {
-        guard case .values(_, let values, _) = lines.first(where: { $0.label == label }) else { return nil }
+        guard case .values(_, let values, _, _) = lines.first(where: { $0.label == label }) else { return nil }
         return values
     }
 }
@@ -311,7 +311,7 @@ private func textValue(_ lines: [MetricLine], _ label: String) -> String? {
     guard let line = lines.first(where: { $0.label == label }) else { return nil }
     if case .text(_, let value, _, _) = line { return value }
     // Cursor spend is now a `.values` row carrying a single dollar value; render it in full.
-    if case .values(_, let values, _) = line, let dollars = values.first(where: { $0.kind == .dollars }) {
+    if case .values(_, let values, _, _) = line, let dollars = values.first(where: { $0.kind == .dollars }) {
         return MetricFormatter.number(dollars.number, kind: .dollars, style: .full)
     }
     return nil

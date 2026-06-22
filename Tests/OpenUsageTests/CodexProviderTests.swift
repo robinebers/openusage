@@ -147,7 +147,8 @@ final class CodexUsageMapperTests: XCTestCase {
             now: Date(timeIntervalSince1970: 1_800_000_000)
         )
 
-        XCTAssertEqual(values(mapped.lines, "Rate Limit Resets"), [MetricValue(number: 1, kind: .count)])
+        XCTAssertEqual(values(mapped.lines, "Rate Limit Resets"),
+                       [MetricValue(number: 1, kind: .count, label: "available")])
 
         let resetIndex = mapped.lines.firstIndex { $0.label == "Rate Limit Resets" }
         let creditsIndex = mapped.lines.firstIndex { $0.label == "Credits" }
@@ -167,7 +168,128 @@ final class CodexUsageMapperTests: XCTestCase {
             now: Date(timeIntervalSince1970: 1_800_000_000)
         )
 
-        XCTAssertEqual(values(mapped.lines, "Rate Limit Resets"), [MetricValue(number: 0, kind: .count)])
+        XCTAssertEqual(values(mapped.lines, "Rate Limit Resets"),
+                       [MetricValue(number: 0, kind: .count, label: "available")])
+    }
+
+    func testDedicatedEndpointSuppliesCountAndSortedExpiries() throws {
+        // The dedicated endpoint carries the per-credit expiry list the usage body lacks, so the count
+        // comes from it and `expiriesAt` holds every still-available credit's expiry, sorted soonest
+        // first. A non-"available" credit (the "consumed" one here) is excluded entirely.
+        let usage = HTTPResponse(statusCode: 200, headers: [:], body: Data("{}".utf8))
+        let resetCredits = HTTPResponse(statusCode: 200, headers: [:], body: Data("""
+        {
+          "available_count": 2,
+          "credits": [
+            { "status": "available", "expires_at": "2026-02-20T19:00:00.000Z" },
+            { "status": "available", "expires_at": "2026-02-20T17:30:00.000Z" },
+            { "status": "consumed", "expires_at": "2026-02-20T16:10:00.000Z" }
+          ]
+        }
+        """.utf8))
+
+        let mapped = try CodexUsageMapper.mapUsageResponse(
+            usage,
+            resetCredits: resetCredits,
+            now: OpenUsageISO8601.date(from: "2026-02-20T16:00:00.000Z")!
+        )
+
+        guard case .values(_, let vals, _, let expiriesAt) = mapped.lines.first(where: { $0.label == "Rate Limit Resets" }) else {
+            return XCTFail("expected a Rate Limit Resets values line")
+        }
+        XCTAssertEqual(vals, [MetricValue(number: 2, kind: .count, label: "available")])
+        XCTAssertEqual(expiriesAt, [
+            OpenUsageISO8601.date(from: "2026-02-20T17:30:00.000Z")!,
+            OpenUsageISO8601.date(from: "2026-02-20T19:00:00.000Z")!
+        ])
+    }
+
+    func testExpiriesPreservedWhenStatusOmitted() throws {
+        // `status` is optional upstream — a credit with `expires_at` but no `status` must still count
+        // toward the expiry list (otherwise the tooltip and the 24h warning vanish for that response
+        // shape). An explicitly non-available credit is still dropped. (Regression for the Codex-flagged
+        // "preserve expiries when status is omitted".)
+        let usage = HTTPResponse(statusCode: 200, headers: [:], body: Data("{}".utf8))
+        let resetCredits = HTTPResponse(statusCode: 200, headers: [:], body: Data("""
+        {
+          "available_count": 2,
+          "credits": [
+            { "expires_at": "2026-02-20T19:00:00.000Z" },
+            { "expires_at": "2026-02-20T17:30:00.000Z" },
+            { "status": "consumed", "expires_at": "2026-02-20T16:10:00.000Z" }
+          ]
+        }
+        """.utf8))
+
+        let mapped = try CodexUsageMapper.mapUsageResponse(
+            usage,
+            resetCredits: resetCredits,
+            now: OpenUsageISO8601.date(from: "2026-02-20T16:00:00.000Z")!
+        )
+
+        guard case .values(_, _, _, let expiriesAt) = mapped.lines.first(where: { $0.label == "Rate Limit Resets" }) else {
+            return XCTFail("expected a Rate Limit Resets values line")
+        }
+        // The two status-less credits are kept (sorted); the "consumed" one is dropped.
+        XCTAssertEqual(expiriesAt, [
+            OpenUsageISO8601.date(from: "2026-02-20T17:30:00.000Z")!,
+            OpenUsageISO8601.date(from: "2026-02-20T19:00:00.000Z")!
+        ])
+    }
+
+    func testFallsBackToUsageBodyCountWhenDedicatedFetchUnavailable() throws {
+        // No dedicated response (the fetch failed): the count falls back to the usage body's embedded
+        // object, and with no expiry list `expiriesAt` is empty.
+        let usage = HTTPResponse(statusCode: 200, headers: [:],
+                                 body: Data(#"{ "rate_limit_reset_credits": { "available_count": 3 } }"#.utf8))
+
+        let mapped = try CodexUsageMapper.mapUsageResponse(
+            usage,
+            resetCredits: nil,
+            now: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+
+        guard case .values(_, let vals, _, let expiriesAt) = mapped.lines.first(where: { $0.label == "Rate Limit Resets" }) else {
+            return XCTFail("expected a Rate Limit Resets values line")
+        }
+        XCTAssertEqual(vals, [MetricValue(number: 3, kind: .count, label: "available")])
+        XCTAssertTrue(expiriesAt.isEmpty)
+    }
+
+    func testDedicatedNullCountFallsBackToUsageBodyCount() throws {
+        // A 2xx dedicated payload whose `available_count` is JSON null (NSNull, which is non-nil) must NOT
+        // be selected as the source — doing so would drop the whole row. It falls back to the usage body's
+        // valid embedded count instead. (Regression for the bot-flagged NSNull nil-check.)
+        let usage = HTTPResponse(statusCode: 200, headers: [:],
+                                 body: Data(#"{ "rate_limit_reset_credits": { "available_count": 2 } }"#.utf8))
+        let resetCredits = HTTPResponse(statusCode: 200, headers: [:],
+                                        body: Data(#"{ "available_count": null }"#.utf8))
+
+        let mapped = try CodexUsageMapper.mapUsageResponse(
+            usage,
+            resetCredits: resetCredits,
+            now: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+
+        XCTAssertEqual(values(mapped.lines, "Rate Limit Resets"),
+                       [MetricValue(number: 2, kind: .count, label: "available")])
+    }
+
+    func testDedicatedNon2xxFallsBackToUsageBodyCount() throws {
+        // A non-2xx dedicated response is ignored (treated as unavailable), so the count falls back to
+        // the usage body — never a dropped row just because the extra endpoint erred.
+        let usage = HTTPResponse(statusCode: 200, headers: [:],
+                                 body: Data(#"{ "rate_limit_reset_credits": { "available_count": 1 } }"#.utf8))
+        let resetCredits = HTTPResponse(statusCode: 500, headers: [:], body: Data("<html>oops</html>".utf8))
+
+        let mapped = try CodexUsageMapper.mapUsageResponse(
+            usage,
+            resetCredits: resetCredits,
+            now: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+
+        XCTAssertEqual(values(mapped.lines, "Rate Limit Resets"),
+                       [MetricValue(number: 1, kind: .count, label: "available")])
     }
 
     func testOmitsRateLimitResetsWhenCountMalformed() throws {
@@ -190,7 +312,7 @@ final class CodexUsageMapperTests: XCTestCase {
     }
 
     private func values(_ lines: [MetricLine], _ label: String) -> [MetricValue]? {
-        guard case .values(_, let values, _) = lines.first(where: { $0.label == label }) else {
+        guard case .values(_, let values, _, _) = lines.first(where: { $0.label == label }) else {
             return nil
         }
         return values
@@ -236,7 +358,7 @@ final class CodexProviderTests: XCTestCase {
     }
 
     private func values(_ lines: [MetricLine], _ label: String) -> [MetricValue]? {
-        guard case .values(_, let values, _) = lines.first(where: { $0.label == label }) else {
+        guard case .values(_, let values, _, _) = lines.first(where: { $0.label == label }) else {
             return nil
         }
         return values

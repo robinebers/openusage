@@ -69,7 +69,8 @@ shopt -u nullglob
 # fallback is relevant there (the release build supplies one); this dev build only
 # stages the Assets.car and runs on the maintainer's current OS.
 echo "==> compiling app icon (actool)"
-xcrun actool "$ROOT_DIR/assets/AppIcon.icon" --compile "$APP_RESOURCES" \
+PREBUILT_ICON_DIR="$ROOT_DIR/assets/AppIcon.prebuilt"
+if xcrun actool "$ROOT_DIR/assets/AppIcon.icon" --compile "$APP_RESOURCES" \
   --app-icon AppIcon \
   --enable-on-demand-resources NO \
   --development-region en \
@@ -77,7 +78,18 @@ xcrun actool "$ROOT_DIR/assets/AppIcon.icon" --compile "$APP_RESOURCES" \
   --platform macosx \
   --minimum-deployment-target "$MIN_SYSTEM_VERSION" \
   --output-partial-info-plist /dev/null \
-  --output-format human-readable-text --errors --warnings
+  --output-format human-readable-text --errors --warnings; then
+  : # compiled the icon fresh
+elif [ -f "$PREBUILT_ICON_DIR/Assets.car" ]; then
+  # actool is broken on some toolchains; commit 08863d7 ships a prebuilt icon so release CI bypasses
+  # it. Reuse the same prebuilt here, so a failed actool doesn't abort the dev build under set -e and
+  # the app still gets its real icon.
+  echo "==> actool failed; using prebuilt icon (assets/AppIcon.prebuilt)"
+  cp "$PREBUILT_ICON_DIR/Assets.car" "$APP_RESOURCES/Assets.car"
+  [ -f "$PREBUILT_ICON_DIR/AppIcon.icns" ] && cp "$PREBUILT_ICON_DIR/AppIcon.icns" "$APP_RESOURCES/AppIcon.icns"
+else
+  echo "WARNING: actool failed and no prebuilt icon found; continuing without an icon" >&2
+fi
 
 cat >"$INFO_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

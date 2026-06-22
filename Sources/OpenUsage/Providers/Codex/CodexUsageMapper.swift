@@ -12,7 +12,11 @@ enum CodexUsageMapper {
     /// (mirrors the JS plugin's `CREDIT_USD_RATE`).
     static let creditUSDRate = 0.04
 
-    static func mapUsageResponse(_ response: HTTPResponse, now: Date = Date()) throws -> CodexMappedUsage {
+    static func mapUsageResponse(
+        _ response: HTTPResponse,
+        resetCredits: HTTPResponse? = nil,
+        now: Date = Date()
+    ) throws -> CodexMappedUsage {
         try ProviderAuthRetry.requireSuccess(
             response,
             authExpired: CodexAuthError.tokenExpired,
@@ -72,12 +76,15 @@ enum CodexUsageMapper {
         appendReviewLimit(from: body, to: &lines, now: now)
 
         // On-demand rate-limit reset credits, shown before Credits — mirrors the JS plugin (PR #577).
-        // A `.values` row carries the raw count (no unit label — the row just reads "2"), so the popover
-        // and the menu-bar tile show that same number — no string to re-parse, no tray-reads-0 bug.
-        if let resets = readResetCredits(body), resets >= 0 {
-            let count = Int(resets.rounded(.down))
-            lines.append(.values(label: "Rate Limit Resets",
-                                 values: [MetricValue(number: Double(count), kind: .count)]))
+        // The row reads "2 available" (the count is carried raw, so the menu-bar tile reads the same
+        // number); each still-available credit's expiry rides along in `expiriesAt` and surfaces in the
+        // row's hover tooltip ("Resets expire in: …").
+        if let resets = readResetCredits(body: body, resetCredits: resetCredits) {
+            lines.append(.values(
+                label: "Rate Limit Resets",
+                values: [MetricValue(number: Double(resets.count), kind: .count, label: "available")],
+                expiriesAt: resets.expiries
+            ))
         }
 
         if let remaining = readCreditsRemaining(response: response, body: body) {
@@ -187,11 +194,67 @@ enum CodexUsageMapper {
         ]
     }
 
-    /// On-demand reset credits from `rate_limit_reset_credits.available_count`. `ProviderParse.number`
-    /// returns nil for missing/null/non-numeric values, so malformed counts are skipped (matches JS).
-    private static func readResetCredits(_ body: [String: Any]) -> Double? {
-        guard let resets = body["rate_limit_reset_credits"] as? [String: Any] else { return nil }
-        return ProviderParse.number(resets["available_count"])
+    /// On-demand reset credits: the floored available count plus each still-available credit's expiry
+    /// (sorted soonest-first, for the row's hover tooltip).
+    ///
+    /// Prefers the dedicated `/rate-limit-reset-credits` payload (the only source that carries the
+    /// per-credit expiry list); falls back to the usage body's embedded `rate_limit_reset_credits`
+    /// object (count only) when that fetch was unavailable — mirroring the JS plugin. `ProviderParse.number`
+    /// returns nil for missing/null/non-numeric counts, so a malformed count skips the row entirely.
+    static func readResetCredits(
+        body: [String: Any],
+        resetCredits: HTTPResponse?
+    ) -> (count: Int, expiries: [Date])? {
+        guard let source = resetCreditsSource(body: body, resetCredits: resetCredits),
+              let count = ProviderParse.number(source["available_count"]), count >= 0
+        else {
+            return nil
+        }
+        return (Int(count.rounded(.down)), availableExpiries(in: source["credits"]))
+    }
+
+    /// The dictionary the count and expiry list are read from: the dedicated endpoint's body when it
+    /// returned a usable payload (2xx, parseable, carrying a *numeric* `available_count`), otherwise the
+    /// usage body's embedded object. The count is validated with `ProviderParse.number` rather than a bare
+    /// nil-check: a JSON `null` decodes to `NSNull` (non-nil), so a bare check would select a dedicated
+    /// body whose count is unusable and drop the row instead of falling back to the usage-body count.
+    private static func resetCreditsSource(
+        body: [String: Any],
+        resetCredits: HTTPResponse?
+    ) -> [String: Any]? {
+        if let resetCredits, (200..<300).contains(resetCredits.statusCode),
+           let dedicated = ProviderParse.jsonObject(resetCredits.body),
+           ProviderParse.number(dedicated["available_count"]) != nil {
+            return dedicated
+        }
+        return body["rate_limit_reset_credits"] as? [String: Any]
+    }
+
+    /// Every still-available credit's `expires_at`, sorted soonest-first. `status` is optional upstream,
+    /// so a credit is kept when it's explicitly "available" *or* carries no status at all — only an
+    /// explicitly non-available state (e.g. "consumed"/"expired") is dropped. Filtering hard on
+    /// `== "available"` would otherwise blank the whole expiry list (tooltip + 24h warning) for responses
+    /// that omit status, even though `available_count` reported credits. `expires_at` is parsed as an
+    /// ISO-8601 string or an epoch number.
+    private static func availableExpiries(in value: Any?) -> [Date] {
+        guard let credits = value as? [[String: Any]] else { return [] }
+        return credits
+            .filter { credit in
+                guard let status = credit["status"] as? String else { return true }
+                return status == "available"
+            }
+            .compactMap { parseExpiry($0["expires_at"]) }
+            .sorted()
+    }
+
+    private static func parseExpiry(_ value: Any?) -> Date? {
+        if let string = value as? String, let date = OpenUsageISO8601.date(from: string) {
+            return date
+        }
+        if let seconds = ProviderParse.number(value) {
+            return Date(timeIntervalSince1970: seconds)
+        }
+        return nil
     }
 
     private static func readCreditsRemaining(response: HTTPResponse, body: [String: Any]) -> Double? {

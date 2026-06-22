@@ -266,6 +266,81 @@ final class CcusageRunnerTests: XCTestCase {
         XCTAssertEqual(queryRunners, ["bunx"])
     }
 
+    // MARK: - Lazy resolution & session cache (no wasted spawns)
+
+    func testQueryIssuesNoWastedProbeSpawns() async {
+        // bunx resolves via its absolute path (no `--version` probe); lazy resolution stops there and
+        // runs ccusage. The old eager `collectRunners()` also probed pnpm/yarn/npm/npx — those wasted
+        // probe spawns are gone, so the only spawn is the ccusage query itself.
+        let scripted = ScriptedProcessRunner.versionsAvailable(["bunx"], queryStdout: okJSON)
+        let runner = CcusageRunner(
+            processRunner: scripted,
+            homeDirectory: { URL(fileURLWithPath: "/Users/test") },
+            isExecutable: { $0 == "/opt/homebrew/bin/bunx" }
+        )
+
+        _ = await runner.query(provider: .claude, since: "20260101")
+
+        XCTAssertEqual(scripted.calls.count, 1)
+        XCTAssertFalse(scripted.calls.contains { $0.arguments == ["--version"] })
+    }
+
+    func testRepeatedQueriesReuseResolvedRunnerWithoutReprobing() async {
+        // bunx only on PATH (resolved via a bare-name `--version` probe), so the first query probes
+        // once then runs ccusage. The second query reuses the cached runner and only runs ccusage —
+        // no fresh probe — which is what keeps the 5-minute refresh loop from re-probing every pass.
+        let scripted = ScriptedProcessRunner.versionsAvailable(["bunx"], queryStdout: okJSON)
+        let runner = CcusageRunner(
+            processRunner: scripted,
+            homeDirectory: { URL(fileURLWithPath: "/Users/test") },
+            isExecutable: { _ in false }
+        )
+
+        _ = await runner.query(provider: .claude, since: "20260101")
+        let afterFirst = scripted.calls.count
+        _ = await runner.query(provider: .codex, since: "20260101")
+
+        XCTAssertEqual(afterFirst, 2)                                      // probe + run
+        XCTAssertEqual(scripted.calls.count, 3)                           // + cached run only
+        XCTAssertEqual(scripted.calls.filter { $0.arguments == ["--version"] }.count, 1)
+    }
+
+    func testCachedRunnerFailureFallsBackWithoutRerunningIt() async throws {
+        let okJSON = self.okJSON
+        // bunx + npx both resolvable. Warm the cache with a bunx success, then make bunx fail: the
+        // next query must fall back to npx WITHOUT re-running the just-failed bunx a second time in the
+        // same pass (the double-run the fast path would otherwise cause).
+        final class Flag: @unchecked Sendable { var bunxFails = false }
+        let flag = Flag()
+        let scripted = ScriptedProcessRunner { executable, arguments in
+            let name = (executable as NSString).lastPathComponent
+            if arguments == ["--version"] {
+                let ok = name == "bunx" || name == "npx"
+                return ProcessResult(exitCode: ok ? 0 : 127, stdout: ok ? "1.0.0" : "", stderr: "")
+            }
+            if name == "bunx", flag.bunxFails {
+                return ProcessResult(exitCode: 1, stdout: "", stderr: "bunx boom")
+            }
+            return ProcessResult(exitCode: 0, stdout: okJSON, stderr: "")
+        }
+        let runner = CcusageRunner(
+            processRunner: scripted,
+            homeDirectory: { URL(fileURLWithPath: "/Users/test") },
+            isExecutable: { _ in false }
+        )
+
+        _ = try await runner.query(provider: .claude, since: "20260101").get()  // caches bunx
+        flag.bunxFails = true
+        scripted.calls.removeAll()
+        let usage = try await runner.query(provider: .codex, since: "20260101").get()
+
+        XCTAssertEqual(usage.daily.first?.totalTokens, 150)                 // recovered via npx
+        let bunxRuns = scripted.calls.filter {
+            ($0.executable as NSString).lastPathComponent == "bunx" && $0.arguments != ["--version"]
+        }
+        XCTAssertEqual(bunxRuns.count, 1, "the just-failed cached runner must not be re-run this pass")
+    }
+
     // MARK: - Helpers
 
     private func makeTempHome() throws -> URL {
