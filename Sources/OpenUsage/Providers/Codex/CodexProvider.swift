@@ -89,7 +89,7 @@ final class CodexProvider: ProviderRuntime {
         if case .success(let usage) = tokenUsage {
             SpendTileMapper.appendTokenUsage(usage, to: &mapped.lines, now: now())
             SpendTileMapper.appendUsageTrend(usage, to: &mapped.lines, now: now(),
-                                             note: "Estimated from local Codex logs at API rates.")
+                                             note: "Estimated from local logs at API rates")
         }
 
         MetricLine.appendNoDataIfNeeded(&mapped.lines)

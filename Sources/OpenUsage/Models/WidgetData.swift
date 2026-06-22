@@ -59,7 +59,7 @@ struct WidgetData: Hashable {
     var isUsagePeriod: Bool = false
     /// Per-day points for a Usage Trend row (empty for every other tile). Set true `isChart` flags the
     /// row so the view draws the sparkline instead of the value layout; `chartNote` is the source line
-    /// shown on hover (e.g. "Estimated from local Claude logs at API rates.").
+    /// shown on hover (e.g. "Estimated from local logs at API rates").
     var isChart: Bool = false
     var chartPoints: [MetricChartPoint] = []
     var chartNote: String?
