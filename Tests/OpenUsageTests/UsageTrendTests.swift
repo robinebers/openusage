@@ -25,8 +25,10 @@ final class UsageTrendTests: XCTestCase {
         XCTAssertEqual(note, "Estimated from local Claude logs at API rates.")
         // One bar per calendar day across the 31-day window (today + 30 back), oldest first.
         XCTAssertEqual(points.count, 31)
-        XCTAssertEqual(points.first?.label, "5/22", "window starts 30 days before today")
-        XCTAssertEqual(points.last?.label, "6/21", "window ends today")
+        XCTAssertEqual(points.first?.label, dayLabel(2026, 5, 22), "window starts 30 days before today")
+        XCTAssertEqual(points.last?.label, dayLabel(2026, 6, 21), "window ends today")
+        // Labels use the app's localized month/day style, e.g. "Jun 21", not "6/21".
+        XCTAssertEqual(points.last?.label, date(2026, 6, 21).formatted(.dateTime.month(.abbreviated).day()))
         // The three active days carry their tokens; every other day is a zero bar, not a dropped gap.
         XCTAssertEqual(points[28].value, 500)          // 6/19
         XCTAssertEqual(points[29].value, 1_500_000)    // 6/20
@@ -50,10 +52,10 @@ final class UsageTrendTests: XCTestCase {
         )
 
         guard case .chart(_, let points, _) = lines.first else { return XCTFail("expected a chart line") }
-        XCTAssertEqual(points[28].label, "6/19")
-        XCTAssertEqual(points[29].label, "6/20")
+        XCTAssertEqual(points[28].label, dayLabel(2026, 6, 19))
+        XCTAssertEqual(points[29].label, dayLabel(2026, 6, 20))
         XCTAssertEqual(points[29].value, 0, "the gap day is a zero bar, not removed")
-        XCTAssertEqual(points[30].label, "6/21")
+        XCTAssertEqual(points[30].label, dayLabel(2026, 6, 21))
     }
 
     func testTrendWindowEndsAtTodayEvenWhenUsageIsOlder() {
@@ -66,7 +68,7 @@ final class UsageTrendTests: XCTestCase {
         )
 
         guard case .chart(_, let points, _) = lines.first else { return XCTFail("expected a chart line") }
-        XCTAssertEqual(points.last?.label, "6/21")
+        XCTAssertEqual(points.last?.label, dayLabel(2026, 6, 21))
         XCTAssertEqual(points[28].value, 500, "the one active day keeps its tokens")
         XCTAssertEqual(points[29].value, 0)
         XCTAssertEqual(points[30].value, 0)
@@ -83,8 +85,8 @@ final class UsageTrendTests: XCTestCase {
 
         guard case .chart(_, let points, _) = lines.first else { return XCTFail("expected a chart line") }
         XCTAssertEqual(points.count, 31)
-        XCTAssertEqual(points.first?.label, "5/10", "days older than 30 back are outside the window")
-        XCTAssertEqual(points.last?.label, "6/9", "window ends today")
+        XCTAssertEqual(points.first?.label, dayLabel(2026, 5, 10), "days older than 30 back are outside the window")
+        XCTAssertEqual(points.last?.label, dayLabel(2026, 6, 9), "window ends today")
     }
 
     func testTrendAggregatesDuplicateDaysAndParsesCompactDates() {
@@ -100,7 +102,7 @@ final class UsageTrendTests: XCTestCase {
         )
 
         guard case .chart(_, let points, _) = lines.first else { return XCTFail("expected a chart line") }
-        XCTAssertEqual(points.last?.label, "6/20")
+        XCTAssertEqual(points.last?.label, dayLabel(2026, 6, 20))
         XCTAssertEqual(points.last?.value, 1500, "the day's tokens are summed, not split across bars")
     }
 
@@ -219,6 +221,12 @@ final class UsageTrendTests: XCTestCase {
     /// machine's clock and the day-key strings line up with the hyphenated input dates.
     private func date(_ year: Int, _ month: Int, _ day: Int) -> Date {
         Calendar.current.date(from: DateComponents(year: year, month: month, day: day, hour: 12))!
+    }
+
+    /// The expected axis label for a day, in the app's localized month/day style — computed the same way
+    /// the producer does, so the assertion holds in any test-machine locale.
+    private func dayLabel(_ year: Int, _ month: Int, _ day: Int) -> String {
+        date(year, month, day).formatted(.dateTime.month(.abbreviated).day())
     }
 
     private func makeDataStore(provider: Provider, descriptor: WidgetDescriptor) -> WidgetDataStore {

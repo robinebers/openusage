@@ -71,17 +71,12 @@ enum SpendTileMapper {
             let tokens = tokensByDay[key] ?? 0
             return MetricChartPoint(
                 value: tokens,
-                label: monthDayLabel(fromDayKey: key),
+                // "Jun 21", localized — the same compact month/day the rest of the app uses for dates
+                // (see Formatters.deadlineLabel), not a hardcoded "6/21".
+                label: day.formatted(.dateTime.month(.abbreviated).day()),
                 valueLabel: MetricFormatter.number(tokens, kind: .count, style: .row) + " tokens"
             )
         }
-    }
-
-    /// "yyyy-MM-dd" → "M/d" (no leading zeros), the compact axis label the trend chart shows.
-    private static func monthDayLabel(fromDayKey key: String) -> String {
-        let parts = key.split(separator: "-")
-        guard parts.count == 3, let month = Int(parts[1]), let day = Int(parts[2]) else { return key }
-        return "\(month)/\(day)"
     }
 
     private static func dayKey(from date: Date) -> String {

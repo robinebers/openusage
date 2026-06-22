@@ -62,8 +62,8 @@ Methods other than `GET`/`OPTIONS` return **405**; unknown routes return **404**
       "type": "barChart",
       "label": "Usage Trend",
       "points": [
-        { "label": "3/25", "value": 1200000.0, "valueLabel": "1.2M tokens" },
-        { "label": "3/26", "value": 2400000.0, "valueLabel": "2.4M tokens" }
+        { "label": "Mar 25", "value": 1200000.0, "valueLabel": "1.2M tokens" },
+        { "label": "Mar 26", "value": 2400000.0, "valueLabel": "2.4M tokens" }
       ],
       "note": "Estimated from local Claude logs at API rates.",
       "color": null
@@ -73,7 +73,7 @@ Methods other than `GET`/`OPTIONS` return **405**; unknown routes return **404**
 }
 ```
 
-Line types are `progress`, `text`, `badge`, and `barChart`. A `barChart` line carries a `points` array — one `{ label, value, valueLabel? }` per day, oldest first — plus an optional `note`; `value` is the day's token count and `valueLabel` its pre-formatted readout. `fetchedAt` is when the snapshot was last fetched successfully (ISO 8601).
+Line types are `progress`, `text`, `badge`, and `barChart`. A `barChart` line carries a `points` array — one `{ label, value, valueLabel? }` per day, oldest first — plus an optional `note`; `value` is the day's token count, `valueLabel` its pre-formatted readout, and `label` a localized month/day (e.g. "Mar 25"). `fetchedAt` is when the snapshot was last fetched successfully (ISO 8601).
 
 ## Errors
 
