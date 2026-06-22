@@ -5,7 +5,7 @@ import XCTest
 /// chart `MetricLine`, and how it flows through the descriptor / data store (non-pinnable, no-data safe).
 @MainActor
 final class UsageTrendTests: XCTestCase {
-    func testAppendUsageTrendZeroFillsTheCalendarWindow() {
+    func testAppendUsageTrendZeroFillsTheCalendarWindow() throws {
         var lines: [MetricLine] = []
         SpendTileMapper.appendUsageTrend(
             CcusageDailyUsage(daily: [
@@ -27,8 +27,12 @@ final class UsageTrendTests: XCTestCase {
         XCTAssertEqual(points.count, 31)
         XCTAssertEqual(points.first?.label, dayLabel(2026, 5, 22), "window starts 30 days before today")
         XCTAssertEqual(points.last?.label, dayLabel(2026, 6, 21), "window ends today")
-        // Labels use the app's localized month/day style, e.g. "Jun 21", not "6/21".
-        XCTAssertEqual(points.last?.label, date(2026, 6, 21).formatted(.dateTime.month(.abbreviated).day()))
+        XCTAssertEqual(Set(points.map(\.label)).count, 31, "every day in the window is a distinct bar")
+        // Labels are the app's month/day style ("Jun 21"), not the old hardcoded "6/21" — pinned without
+        // a locale-specific literal: no slash, and a month name rather than a bare number.
+        let lastLabel = try XCTUnwrap(points.last?.label)
+        XCTAssertFalse(lastLabel.contains("/"), "not the old numeric M/d format")
+        XCTAssertTrue(lastLabel.contains(where: \.isLetter), "carries a localized month name")
         // The three active days carry their tokens; every other day is a zero bar, not a dropped gap.
         XCTAssertEqual(points[28].value, 500)          // 6/19
         XCTAssertEqual(points[29].value, 1_500_000)    // 6/20
@@ -223,10 +227,10 @@ final class UsageTrendTests: XCTestCase {
         Calendar.current.date(from: DateComponents(year: year, month: month, day: day, hour: 12))!
     }
 
-    /// The expected axis label for a day, in the app's localized month/day style — computed the same way
-    /// the producer does, so the assertion holds in any test-machine locale.
+    /// The expected axis label for a day, in the app's localized month/day style — via the same shared
+    /// formatter the producer uses, so the slot-mapping assertions hold in any test-machine locale.
     private func dayLabel(_ year: Int, _ month: Int, _ day: Int) -> String {
-        date(year, month, day).formatted(.dateTime.month(.abbreviated).day())
+        Formatters.monthDayLabel(date(year, month, day))
     }
 
     private func makeDataStore(provider: Provider, descriptor: WidgetDescriptor) -> WidgetDataStore {

@@ -53,7 +53,7 @@ enum SpendTileMapper {
     /// zero-filled, not dropped, so the sparkline stays calendar-true: a gap shows as a short bar in
     /// place instead of collapsing two non-adjacent days into neighbors, and the cap is calendar days,
     /// not active ones. Returns empty when nothing was used in the window — there's no trend to draw.
-    /// Each point carries a "5/22" axis label and a pre-formatted "222M tokens" readout.
+    /// Each point carries a "Jun 21" axis label and a pre-formatted "222M tokens" readout.
     private static func trendPoints(_ usage: CcusageDailyUsage, now: Date) -> [MetricChartPoint] {
         var tokensByDay: [String: Double] = [:]
         for day in usage.daily {
@@ -71,9 +71,8 @@ enum SpendTileMapper {
             let tokens = tokensByDay[key] ?? 0
             return MetricChartPoint(
                 value: tokens,
-                // "Jun 21", localized — the same compact month/day the rest of the app uses for dates
-                // (see Formatters.deadlineLabel), not a hardcoded "6/21".
-                label: day.formatted(.dateTime.month(.abbreviated).day()),
+                // The app's localized "Jun 21" month/day, not a hardcoded "6/21".
+                label: Formatters.monthDayLabel(day),
                 valueLabel: MetricFormatter.number(tokens, kind: .count, style: .row) + " tokens"
             )
         }

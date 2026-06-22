@@ -61,7 +61,7 @@ enum ProgressFormat: Hashable, Sendable, Codable {
     }
 }
 
-/// One column of a `.chart` line: a day's value, its axis label ("5/22"), and the pre-formatted
+/// One column of a `.chart` line: a day's value, its axis label ("Jun 21"), and the pre-formatted
 /// readout shown on hover ("222M tokens"). The producer formats `valueLabel` so the chart stays a dumb
 /// renderer of already-priced numbers, the same split the spend tiles use.
 struct MetricChartPoint: Hashable, Sendable, Codable {

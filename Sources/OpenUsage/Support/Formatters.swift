@@ -15,6 +15,12 @@ enum Formatters {
         return f.string(from: amount as NSNumber) ?? "$\(String(format: "%.\(fractionDigits)f", amount))"
     }
 
+    /// The app's compact month/day, e.g. "Jun 21" — localized, no year. Shared so every short calendar
+    /// date (reset deadlines, the Usage Trend axis) reads the same and changes in one place.
+    static func monthDayLabel(_ date: Date) -> String {
+        date.formatted(.dateTime.month(.abbreviated).day())
+    }
+
     /// The one mode-aware deadline phrase, shared by every "<verb> + when" label (reset countdowns,
     /// run-out projections): `.relative` → "<prefix> in 2d 6h", `.absolute` → "<prefix> today at
     /// 5:30 PM" / "<prefix> tomorrow at 9:00 AM" / "<prefix> Feb 15 at 3:45 PM" (ported from the
@@ -61,8 +67,7 @@ enum Formatters {
             let time = TimeFormatSetting.current.shortTime(date)
             if dayDiff <= 0 { return "today at \(time)" }
             if dayDiff == 1 { return "tomorrow at \(time)" }
-            let day = date.formatted(.dateTime.month(.abbreviated).day())
-            return "\(day) at \(time)"
+            return "\(monthDayLabel(date)) at \(time)"
         }
     }
 
