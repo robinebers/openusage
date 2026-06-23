@@ -130,10 +130,10 @@ struct WidgetData: Hashable {
         case closeToLimit(spare: String, tick: Double, projectedFraction: Double)
         /// On course to finish with ≥10% to spare. Blue. By default it carries no decoration; when
         /// "always show pacing" is on it surfaces the projection copy ("~N% left at reset") and
-        /// `evenPaceTick` is set — the even-pace line, anchored to the side the fill leaves open (out
-        /// in the gray ahead of the fill in Left view, inside the fill in Used view), so the row reads
-        /// "you're ahead of pace" at a glance. `nil` when the setting is off. `projectedFraction` backs
-        /// the tooltip's "% left at reset" cushion copy.
+        /// `evenPaceTick` is set — the even-pace line, framed like the fill (in the gray ahead of the
+        /// fill in Used view, inside the fill in Left view), so the gap to the fill edge shows how far
+        /// ahead of pace you are. `nil` when the setting is off. `projectedFraction` backs the tooltip's
+        /// "% left at reset" cushion copy.
         case healthy(projectedFraction: Double, evenPaceTick: Double?)
         /// No pace signal to project (no reset window, or <5% of it elapsed): color from the
         /// absolute level bands on the share used, no copy.
@@ -464,17 +464,17 @@ extension WidgetData {
         if let ctx = paceContext,
            let result = Pace.evaluate(used: used, limit: ctx.limit, resetsAt: ctx.resetsAt,
                                       periodDuration: ctx.period, now: now) {
-            // The even-pace line: where a perfectly steady user would sit right now — the elapsed
-            // fraction of the period, recovered as used ÷ projected-usage (projected = used ÷ elapsed,
-            // so the dates cancel). Placed to read as "ahead" against the bar's framing: in Left
-            // (remaining) view — the common one — it sits out in the gray ahead of the fill; in Used
-            // view it sits inside the fill. (These are mirror positions; we anchor to whichever side
-            // the fill leaves open so a healthy bar's tick never buries itself in the fill in Left
-            // view.) Only surfaced when "always show pacing" is on; otherwise `nil` leaves every row as it was.
+            // The even-pace notch: where a steady user would sit right now — the elapsed fraction of the
+            // window (used ÷ projected-usage, since projected = used ÷ elapsed, so the dates cancel).
+            // Framed like the fill, so it mirrors by mode: Used view plots the used share → `elapsed`
+            // (out in the gray ahead of the fill); Left view plots the remaining share → `1 - elapsed`
+            // (inside the fill). Same point either way, always on the bar — when you're ahead the lead
+            // shows as the gap between the notch and the fill edge. Surfaced only when "always show
+            // pacing" is on; otherwise `nil` leaves every row unchanged.
             let evenPaceTick: Double? = {
                 guard alwaysShowPacing, result.projectedUsage > 0 else { return nil }
                 let elapsed = min(max(used / result.projectedUsage, 0), 1)
-                return displayMode == .remaining ? elapsed : 1 - elapsed
+                return displayMode == .remaining ? 1 - elapsed : elapsed
             }()
             switch result.status {
             case .ahead:

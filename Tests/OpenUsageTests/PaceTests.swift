@@ -223,14 +223,26 @@ final class PaceTests: XCTestCase {
     }
 
     func testAlwaysShowPacingAddsEvenPaceTickToHealthyBar() {
-        // On: the blue bar gains the even-pace line (elapsed fraction = used ÷ projected = 30/75 = 0.4).
-        // It's anchored to the side the fill leaves open: Left/remaining view puts it ahead in the gray
-        // at the elapsed fraction (0.4); Used view mirrors it to 1 − 0.4 = 0.6, inside the fill.
+        // On: the blue bar gains the even-pace line — a steady user's fill edge (elapsed fraction =
+        // used ÷ projected = 30/75 = 0.4). It's plotted in the bar's own coordinates (position from the
+        // left = shown value ÷ limit), so it tracks the fill's framing. Used view plots the used share,
+        // so the line is the elapsed fraction (0.4), landing in the gray just ahead of the small fill
+        // (0.30) → "ahead". Left view plots the remaining share, so it mirrors to 1 − 0.4 = 0.6, landing
+        // inside the large fill (0.70) just short of its edge → also "ahead".
+        XCTAssertEqual(healthyTick(pacedData(used: 30, elapsed: 0.4, alwaysShowPacing: true)) ?? -1,
+                       0.4, accuracy: 0.001)
         XCTAssertEqual(healthyTick(pacedData(used: 30, elapsed: 0.4, displayMode: .remaining,
                                              alwaysShowPacing: true)) ?? -1,
-                       0.4, accuracy: 0.001)
-        XCTAssertEqual(healthyTick(pacedData(used: 30, elapsed: 0.4, alwaysShowPacing: true)) ?? -1,
                        0.6, accuracy: 0.001)
+    }
+
+    func testEvenPaceNotchInLeftViewSitsInsideTheFill() {
+        // Devin Weekly regression: a near-full Left bar early in its window. used 2 with ~30% of the
+        // week gone → even-pace = 1 − 0.30 = 0.70, which sits inside the blue (the fill edge is 0.98);
+        // the 0.70→0.98 gap is how far ahead you are. Always on the bar — no overshoot, no clamp.
+        XCTAssertEqual(healthyTick(pacedData(used: 2, elapsed: 0.30, displayMode: .remaining,
+                                             alwaysShowPacing: true)) ?? -1,
+                       0.70, accuracy: 0.001)
     }
 
     func testAlwaysShowPacingSwitchesAmberTickToTheEvenPaceLine() {
@@ -241,6 +253,19 @@ final class PaceTests: XCTestCase {
         XCTAssertEqual(tick(pacedData(used: 46, elapsed: 0.5, alwaysShowPacing: true)) ?? -1,
                        0.5, accuracy: 0.001)
         XCTAssertEqual(spare(pacedData(used: 46, elapsed: 0.5, alwaysShowPacing: true)), "~8% spare")
+    }
+
+    func testAlwaysShowPacingAmberEvenPaceTickTracksTheFillFraming() {
+        // Asymmetric elapsed so the even-pace line isn't its own mirror (which 0.5 is, hiding a swap).
+        // used 76 with 80% of the window gone → projected 95 (onTrack, 5% spare); even-pace line =
+        // used ÷ projected = 0.8. Used view plots used, so the tick is the elapsed fraction 0.8 (just
+        // inside the slack edge at 0.76 + 0.05 = 0.81); Left view plots remaining, so it mirrors to
+        // 1 − 0.8 = 0.2 (just inside the fill edge at 0.24).
+        XCTAssertEqual(tick(pacedData(used: 76, elapsed: 0.8, alwaysShowPacing: true)) ?? -1,
+                       0.8, accuracy: 0.001)
+        XCTAssertEqual(tick(pacedData(used: 76, elapsed: 0.8, displayMode: .remaining,
+                                      alwaysShowPacing: true)) ?? -1,
+                       0.2, accuracy: 0.001)
     }
 
     func testAlwaysShowPacingNeverPutsATickOnARedBar() {
