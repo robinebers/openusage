@@ -42,13 +42,6 @@ struct SettingsScreen: View {
         }) {
             content
         }
-        .onAppear {
-            // The menu-bar panel never activates the app on its own, and an inactive accessory
-            // app receives no text input — the shortcut recorder field would silently ignore
-            // clicks. Activating on entry gives the screen's only text control a working focus
-            // path; the panel itself is already the key window.
-            NSApp.activate()
-        }
     }
 
     private var content: some View {
