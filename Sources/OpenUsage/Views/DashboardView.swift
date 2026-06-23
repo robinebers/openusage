@@ -254,6 +254,13 @@ struct DashboardView: View {
         if layout.screen != .dashboard { layout.screen = .dashboard }
         reorderLift = nil
         layout.cancelDrag()
+        // If the popover closes mid-resize (e.g. the global hotkey fires while dragging), the grip's
+        // `onEnded` never runs — settle it here so the flag can't stay stuck (which would make the next
+        // drag jump from a stale start height), and the dragged height is still persisted.
+        if resizingPanel {
+            resizingPanel = false
+            MenuBarPopover.endResize?()
+        }
         dashboardScrollPosition.scrollTo(edge: .top)
     }
 
