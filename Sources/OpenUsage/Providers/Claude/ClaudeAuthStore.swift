@@ -32,6 +32,7 @@ enum ClaudeAuthError: Error, LocalizedError, Equatable {
     case notLoggedIn
     case sessionExpired
     case tokenExpired
+    case invalidOAuthURL(String)
 
     var errorDescription: String? {
         switch self {
@@ -41,6 +42,8 @@ enum ClaudeAuthError: Error, LocalizedError, Equatable {
             return "Session expired. Run `claude` to log in again."
         case .tokenExpired:
             return "Token expired. Run `claude` to log in again."
+        case .invalidOAuthURL(let value):
+            return "Invalid Claude OAuth URL: \(value). Check CLAUDE_CODE_CUSTOM_OAUTH_URL / CLAUDE_LOCAL_OAUTH_API_BASE."
         }
     }
 }
@@ -139,7 +142,17 @@ struct ClaudeAuthStore: Sendable {
         envText("CLAUDE_CONFIG_DIR")
     }
 
-    func oauthConfig() -> ClaudeOAuthConfig {
+    // Resolved OAuth endpoint strings before URL validation. The suffix is derived from the same
+    // env-var branching as the URLs but never depends on URL validity, so the (non-throwing) keychain
+    // candidate path can read it without risking a throw.
+    private struct ResolvedOAuthEndpoints {
+        var baseAPI: String
+        var refreshURL: String
+        var clientID: String
+        var suffix: String
+    }
+
+    private func resolveOAuthEndpoints() -> ResolvedOAuthEndpoints {
         var baseAPI = Self.prodBaseAPIURL
         var refreshURL = Self.prodRefreshURL
         var clientID = Self.prodClientID
@@ -169,16 +182,34 @@ struct ClaudeAuthStore: Sendable {
             clientID = override
         }
 
+        return ResolvedOAuthEndpoints(baseAPI: baseAPI, refreshURL: refreshURL, clientID: clientID, suffix: suffix)
+    }
+
+    // baseAPI/refreshURL can derive from user-set env vars (CLAUDE_CODE_CUSTOM_OAUTH_URL,
+    // CLAUDE_LOCAL_OAUTH_API_BASE). A malformed value is a system-boundary input that must fail
+    // loudly — never force-unwrap (crashes the app) and never silently fall back to prod (that hides
+    // the misconfiguration and would send the user's token to production).
+    func oauthConfig() throws -> ClaudeOAuthConfig {
+        let endpoints = resolveOAuthEndpoints()
+        let usageURLString = "\(endpoints.baseAPI)/api/oauth/usage"
+        guard let usageURL = URL(string: usageURLString) else {
+            throw ClaudeAuthError.invalidOAuthURL(usageURLString)
+        }
+        guard let refreshURL = URL(string: endpoints.refreshURL) else {
+            throw ClaudeAuthError.invalidOAuthURL(endpoints.refreshURL)
+        }
         return ClaudeOAuthConfig(
-            usageURL: URL(string: "\(baseAPI)/api/oauth/usage")!,
-            refreshURL: URL(string: refreshURL)!,
-            clientID: clientID,
-            oauthFileSuffix: suffix
+            usageURL: usageURL,
+            refreshURL: refreshURL,
+            clientID: endpoints.clientID,
+            oauthFileSuffix: endpoints.suffix
         )
     }
 
     func keychainServiceCandidates() -> [String] {
-        let base = "\(Self.keychainServicePrefix)\(oauthConfig().oauthFileSuffix)-credentials"
+        // Only needs the file suffix, which never fails — keep this off the throwing URL path so
+        // credential loading stays forgiving even when a custom OAuth URL is malformed.
+        let base = "\(Self.keychainServicePrefix)\(resolveOAuthEndpoints().suffix)-credentials"
         if let configDir = claudeHomeOverride() {
             return ["\(base)-\(hashSuffix(configDir))", base]
         }

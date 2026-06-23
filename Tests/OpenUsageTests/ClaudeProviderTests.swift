@@ -44,6 +44,26 @@ final class ClaudeAuthStoreTests: XCTestCase {
         XCTAssertEqual(credentials?.oauth.accessToken, "env-token")
         XCTAssertFalse(store.canFetchLiveUsage(credentials!))
     }
+
+    func testMalformedCustomOAuthURLThrowsInsteadOfCrashing() {
+        // A malformed custom OAuth URL is system-boundary input: oauthConfig() must fail loudly
+        // rather than force-unwrap a nil URL (which crashes) or silently fall back to prod.
+        let store = ClaudeAuthStore(
+            environment: FakeEnvironment(["CLAUDE_CODE_CUSTOM_OAUTH_URL": "http://exa mple.com"]),
+            files: FakeFiles(),
+            keychain: FakeKeychain()
+        )
+
+        XCTAssertThrowsError(try store.oauthConfig()) { error in
+            guard case ClaudeAuthError.invalidOAuthURL = error else {
+                return XCTFail("expected ClaudeAuthError.invalidOAuthURL, got \(error)")
+            }
+        }
+
+        // The forgiving credential-load path only needs the file suffix, so a malformed URL must not
+        // break keychain candidate resolution.
+        XCTAssertEqual(store.keychainServiceCandidates(), ["Claude Code-custom-oauth-credentials"])
+    }
 }
 
 final class ClaudeUsageMapperTests: XCTestCase {
