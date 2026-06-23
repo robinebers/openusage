@@ -50,8 +50,8 @@ struct ProviderSectionHeader<Trailing: View>: View {
                 DragHandleGrip()
                     .padding(.trailing, 4)
             }
-            // Baseline-aligned pair: the plan badge is smaller type, so centering it against
-            // the name leaves it floating high — text sits together only on a shared baseline.
+            // Baseline-aligned pair: the plan badge (and stale tag) are smaller type and sit on the
+            // name's text baseline, so the words line up along the bottom rather than floating centered.
             HStack(alignment: .firstTextBaseline, spacing: 5) {
                 // Name + plan keep their width and stay on one line; under width pressure (a long plan
                 // name like "Super Grok Heavy") the lower-priority stale tag truncates first instead of

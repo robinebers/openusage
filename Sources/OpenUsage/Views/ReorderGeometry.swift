@@ -96,10 +96,8 @@ struct ReorderLiftPreview: View {
         // Same anatomy as the live Customize block (`CustomizeView.providerBlock`): header over the
         // card of metric rows, at the density's header→card spacing.
         VStack(alignment: .leading, spacing: density.headerToCardSpacing) {
-            ProviderSectionHeader(provider: provider) {
-                ReorderGrip()
-            }
-            .padding(.horizontal, 8)
+            ProviderSectionHeader(provider: provider, showsDragHandle: true)
+                .padding(.horizontal, 8)
 
             VStack(spacing: 0) {
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, title in

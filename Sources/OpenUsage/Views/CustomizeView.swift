@@ -78,12 +78,13 @@ struct CustomizeView: View {
     }
 
     private func providerHeader(_ group: ProviderMetrics) -> some View {
-        ProviderSectionHeader(provider: group.provider) {
-            ReorderGrip()
-        }
+        // The exact same header as the dashboard (`WidgetGroupedListView.header`): the leading
+        // dot-grid drag handle marks the line as draggable, the provider mark sits trailing. Customize
+        // just omits the plan, warning, and "Outdated" staleness tag — the only things that differ here.
+        ProviderSectionHeader(provider: group.provider, showsDragHandle: true)
         // Align the header with the metric card's rows: rows are inset 12pt inside the card and the
-        // header carries 4pt internally, so +8 lines the provider name up with the row grip (and the
-        // header grip with the toggles) — the same inset on both edges.
+        // header carries its own internal inset, so +8 lines the provider name up with the row grip —
+        // the same inset on both edges.
         .padding(.horizontal, 8)
         .highPriorityGesture(providerDragGesture(for: group))
     }

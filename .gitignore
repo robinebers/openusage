@@ -4,6 +4,7 @@ dist/
 node_modules/
 *.log
 .agents/worktrees/
+.agents/scheduled_tasks.lock
 
 # Local environment files
 .env
