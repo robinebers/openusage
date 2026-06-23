@@ -99,8 +99,8 @@ struct WidgetRowView: View {
         }
     }
 
-    /// Label with the optional ⓘ note icon beside it, and the pace warning right-aligned on the
-    /// same line — one slot, escalating with the `MeterState`. Spent: a flame + "Limit reached",
+    /// Label with the pace warning right-aligned on the same line — one slot, escalating with the
+    /// `MeterState`. Spent: a flame + "Limit reached",
     /// the terminal state that outranks any pace projection. Running out: a flame + projected
     /// run-out time, read as "Limit in 3h 45m" ⟷ "Limit today at 11:49 PM" (following the global
     /// countdown/exact mode) — clicking the time flips the global mode like the reset label. Close
@@ -115,7 +115,6 @@ struct WidgetRowView: View {
                 .font(labelFont)
                 .foregroundStyle(.primary)
                 .lineLimit(1)
-            infoIcon(data.infoNote)
             warning(state)
         }
     }
@@ -266,7 +265,7 @@ struct WidgetRowView: View {
                         .contentTransition(.numericText())
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
-                        // Hover target is the value text itself (and the ⓘ), not the whole row — the same
+                        // Hover target is the value text itself, not the whole row — the same
                         // per-element pattern the bounded row uses for "x left" and "Resets in …". Reveals
                         // the exact figures the compact value shortens, or "No usage in this period" on a
                         // zero row; nil (no tooltip) on a small, already-full, non-zero row.
@@ -299,21 +298,6 @@ struct WidgetRowView: View {
         }
     }
 
-    /// Small ⓘ next to the label; on hover it shows the supplied detail (a bounded row's `infoNote`,
-    /// or an unbounded row's exact figures). Renders nothing when there's no detail, so an icon only
-    /// appears where there's something to reveal.
-    @ViewBuilder
-    private func infoIcon(_ tooltip: String?) -> some View {
-        if let tooltip, !tooltip.isEmpty {
-            // Secondary so the affordance stays discoverable on glass; tertiary is for inactive content.
-            Image(systemName: "info.circle")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .hoverTooltip(tooltip)
-                .accessibilityLabel(tooltip)
-        }
-    }
-
     private var labelColumn: some View {
         HStack(spacing: 4) {
             Text(data.title)
@@ -323,9 +307,6 @@ struct WidgetRowView: View {
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
-            // The label ⓘ explains the row (the estimate disclaimer for locally-imputed spend), while the
-            // value on the right keeps the full-figures/expiry hover — see `unboundedLabelTooltip`.
-            infoIcon(data.unboundedLabelTooltip)
         }
     }
 

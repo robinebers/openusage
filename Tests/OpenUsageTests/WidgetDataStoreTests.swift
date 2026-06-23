@@ -328,13 +328,13 @@ final class WidgetDataStoreTests: XCTestCase {
         let store = WidgetDataStore(registry: registry, providers: [runtime], cache: cache)
         await store.refreshAll()
 
-        // Cost-only: the dollars, with the ⓘ (locally estimated).
+        // Cost-only: the dollars, locally estimated.
         let costData = store.data(for: cost)
         XCTAssertEqual(costData.valueText, "$478.00")
         XCTAssertEqual(costData.unboundedDetail, "$478.00 spent")
         XCTAssertEqual(costData.infoNote, WidgetData.ccusageEstimateNote)
 
-        // Tokens-only: the measured count with its "tokens" unit, no ⓘ; the tooltip has every digit.
+        // Tokens-only: the measured count with its "tokens" unit; the tooltip has every digit.
         let tokenData = store.data(for: tokens)
         XCTAssertEqual(tokenData.unboundedDetail, "891K tokens")
         XCTAssertEqual(tokenData.menuBarValue, "891K tokens")
@@ -348,20 +348,48 @@ final class WidgetDataStoreTests: XCTestCase {
         XCTAssertEqual(combinedData.unboundedTooltip, "$478.00 · 891,000 tokens")
         XCTAssertEqual(combinedData.infoNote, WidgetData.ccusageEstimateNote)
 
-        // The label ⓘ carries the estimate disclaimer (regression: #683), while the value on the right
-        // keeps the full figures — the two tooltips must not be the same string.
-        XCTAssertEqual(combinedData.unboundedLabelTooltip, WidgetData.ccusageEstimateNote)
-        XCTAssertEqual(combinedData.unboundedValueTooltip, "$478.00 · 891,000 tokens")
-        XCTAssertEqual(costData.unboundedLabelTooltip, WidgetData.ccusageEstimateNote)
-        // The measured tokens tile has no estimate, so its label ⓘ falls back to the figures hover.
+        // Labels are inert. The value hover carries exact figures plus the source note.
+        XCTAssertNil(combinedData.unboundedLabelTooltip)
+        XCTAssertEqual(combinedData.unboundedValueTooltip, "$478.00 · 891,000 tokens\n\(WidgetData.ccusageEstimateNote)")
+        XCTAssertNil(costData.unboundedLabelTooltip)
+        XCTAssertEqual(costData.unboundedValueTooltip, "$478.00\n\(WidgetData.ccusageEstimateNote)")
+        // The measured tokens tile has no source note, so it has only the exact-number value hover.
         XCTAssertNil(tokenData.infoNote)
-        XCTAssertEqual(tokenData.unboundedLabelTooltip, "891,000 tokens")
+        XCTAssertNil(tokenData.unboundedLabelTooltip)
+        XCTAssertEqual(tokenData.unboundedValueTooltip, "891,000 tokens")
 
         // An unpriced day (real tokens, no dollar): the cost-only tile finds no dollar value, so it reads
         // "No data" rather than a fabricated $0.00.
         let todayData = store.data(for: todayCost)
         XCTAssertFalse(todayData.hasData)
         XCTAssertEqual(todayData.valueText, WidgetData.noDataHeadline)
+    }
+
+    func testCursorSpendValueTooltipUsesUsageHistorySourceNote() async {
+        let provider = Provider(id: "cursor", displayName: "Cursor", icon: .providerMark("cursor"))
+        let combined = WidgetDescriptor.spendTiles(provider: provider).first { $0.id == "cursor.last30" }!
+        let runtime = TestProviderRuntime(
+            provider: provider,
+            descriptors: [combined],
+            snapshot: ProviderSnapshot(
+                providerID: provider.id,
+                displayName: provider.displayName,
+                lines: [
+                    .values(label: "Last 30 Days", values: [
+                        MetricValue(number: 15.80, kind: .dollars),
+                        MetricValue(number: 8_100_000_000, kind: .count, label: "tokens")
+                    ])
+                ]
+            )
+        )
+        let store = WidgetDataStore(registry: WidgetRegistry(providers: [provider], descriptors: [combined]), providers: [runtime])
+        await store.refreshAll()
+
+        let data = store.data(for: combined)
+        XCTAssertEqual(data.unboundedDetail, "$15.80 · 8.1B tokens")
+        XCTAssertNil(data.infoNote)
+        XCTAssertNil(data.unboundedLabelTooltip)
+        XCTAssertEqual(data.unboundedValueTooltip, "$15.80 · 8,100,000,000 tokens\n\(WidgetData.cursorUsageHistoryNote)")
     }
 
     /// `resolveText` builds the resolved row from the descriptor's sample but must reset the fields a

@@ -1,7 +1,7 @@
 import XCTest
 @testable import OpenUsage
 
-/// The "No usage in this period" note (and its ⓘ) is scoped to spend-period rows — Today / Yesterday /
+/// The "No usage in this period" note is scoped to spend-period rows — Today / Yesterday /
 /// Last 30 Days — through `WidgetData.isUsagePeriod`. A balance/availability row that happens to read
 /// zero (Codex "Rate Limit Resets" with none available, an exhausted "Extra Usage" credit) is depleted,
 /// not idle, so it stays off the note even though every selected value is zero.
@@ -52,5 +52,18 @@ final class WidgetUsagePeriodTests: XCTestCase {
         row.isUsagePeriod = true
         XCTAssertTrue(row.isZeroUsage)
         XCTAssertTrue(row.isZeroUsage && row.isUsagePeriod)
+    }
+
+    func testZeroSpendPeriodWithSourceNoteKeepsTheNoUsageTooltip() {
+        var row = WidgetData(title: "Last 30 Days", icon: .providerMark("cursor"), kind: .dollars, used: 0,
+                             limit: nil,
+                             values: [MetricValue(number: 0, kind: .dollars),
+                                      MetricValue(number: 0, kind: .count, label: "tokens")])
+        row.isUsagePeriod = true
+        row.valueTooltipNote = WidgetData.cursorUsageHistoryNote
+
+        XCTAssertEqual(row.unboundedDetail, "$0.00 · 0 tokens")
+        XCTAssertNil(row.unboundedLabelTooltip)
+        XCTAssertEqual(row.unboundedValueTooltip, "No usage in this period\n\(WidgetData.cursorUsageHistoryNote)")
     }
 }

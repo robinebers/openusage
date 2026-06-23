@@ -116,7 +116,7 @@ final class CursorSpendRangeTests: XCTestCase {
         var lines: [MetricLine] = []
         CursorUsageMapper.appendSpendLines(rows: rows, now: now, to: &lines)
 
-        // Combined cost + tokens, server-priced so no ⓘ (estimated: false).
+        // Combined cost + tokens, server-priced so the dollar value is not marked estimated.
         XCTAssertEqual(values(lines, "Today"), [MetricValue(number: 1.00, kind: .dollars), MetricValue(number: 100, kind: .count, label: "tokens")])
         XCTAssertEqual(values(lines, "Yesterday"), [MetricValue(number: 2.00, kind: .dollars), MetricValue(number: 200, kind: .count, label: "tokens")])
         // Last 30 Days sums every fetched day (the provider scopes the CSV to a 30-day window).
@@ -244,7 +244,7 @@ final class CursorSpendProviderTests: XCTestCase {
         XCTAssertEqual(data.valueText, WidgetData.noDataHeadline)
     }
 
-    func testSpendTileRendersCombinedCostAndTokensWithNoEstimateIcon() async {
+    func testSpendTileRendersCombinedCostAndTokensWithValueTooltip() async {
         let cursor = CursorProvider()
         let descriptor = try! XCTUnwrap(cursor.widgetDescriptors.first { $0.id == "cursor.today" })
 
@@ -284,8 +284,7 @@ final class CursorSpendProviderTests: XCTestCase {
             XCTAssertTrue(remaining.hasData)
             XCTAssertEqual(remaining.valueText, expectedValue)
             XCTAssertEqual(remaining.unboundedDetail, expectedDetail)
-            // Cursor spend is server-priced, so the combined tile carries no estimate ⓘ (that's reserved
-            // for the ccusage/Grok tiles whose dollars are locally estimated).
+            // Cursor spend is server-priced, so the combined tile carries no local-estimate note.
             XCTAssertNil(remaining.infoNote)
             // Unbounded: identical under both meter styles.
             XCTAssertEqual(used.valueText, remaining.valueText)

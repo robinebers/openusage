@@ -204,7 +204,7 @@ enum CursorUsageMapper {
     /// Append the shared Today / Yesterday / Last 30 Days spend tiles from Cursor's CSV rows. The rows
     /// are aggregated into one local-calendar-day `DailyUsageSeries` and handed to `SpendTileMapper`
     /// — the same builder the Claude/Codex/Grok tiles use — so the output is identical apart from the
-    /// `estimated: false` flag (Cursor spend is server-priced, so its dollars carry no ⓘ). Callers only
+    /// `estimated: false` flag (Cursor spend is server-priced, so its dollars are not marked estimated). Callers only
     /// invoke this when the CSV fetched and parsed, so a failure appends nothing and the tiles read
     /// "No data".
     static func appendSpendLines(rows: [CursorUsageCSVRow], now: Date, to lines: inout [MetricLine]) {
@@ -230,7 +230,7 @@ enum CursorUsageMapper {
         SpendTileMapper.appendTokenUsage(series, to: &lines, now: now, estimated: false)
         // Cursor's tokens come from the server-priced usage CSV, not a local CLI log, so the trend
         // note names that source rather than the "estimated from local logs" line the ccusage/Grok
-        // providers use. Tokens are measured either way, so there's no ⓘ.
+        // providers use. Tokens are measured either way.
         SpendTileMapper.appendUsageTrend(series, to: &lines, now: now, note: "From your Cursor usage history")
     }
 

@@ -5,9 +5,12 @@ import Foundation
 /// A metric with a `limit` has a beginning and an end, so it renders as a capsule meter row.
 /// Without a `limit` it's an unbounded amount → a single right-aligned text line.
 struct WidgetData: Hashable {
-    /// Hover note for the ⓘ shown next to the label on ccusage-based spend tiles (Codex/Claude Today /
-    /// Yesterday / Last 30 Days), whose dollars are imputed locally from token counts rather than billed.
-    static let ccusageEstimateNote = "Estimated locally, so it may be off."
+    /// Hover note for locally-estimated spend tiles (Codex/Claude/Grok Today / Yesterday / Last 30
+    /// Days), whose dollars are imputed from token counts rather than billed.
+    static let localEstimateNote = "Estimated locally, so it may be off"
+    static let ccusageEstimateNote = localEstimateNote
+    /// Hover note for Cursor spend tiles, whose spend comes from Cursor's usage-history export.
+    static let cursorUsageHistoryNote = "From your Cursor usage history."
     /// Headline shown on a placed tile with no real backing metric (em dash, U+2014).
     static let noDataHeadline = "—"
     /// Subtitle shown on a placed tile with no real backing metric. Copy is intentionally exact.
@@ -41,9 +44,11 @@ struct WidgetData: Hashable {
     /// Fixed trailing word for an unbounded row, e.g. "left" for an extra balance or "spent" for a
     /// spend estimate. When set it replaces the global left/used mode word.
     var unboundedValueWord: String?
-    /// Optional disclaimer shown as a small trailing ⓘ (with a hover tooltip) right after the value, used
-    /// for locally-estimated tiles instead of a separate subtitle line.
+    /// Optional source/disclaimer note for locally-estimated tiles. Rendered on the value-side hover,
+    /// not beside the left label, so labels stay inert.
     var infoNote: String?
+    /// Optional source note for non-estimated value rows such as Cursor spend history.
+    var valueTooltipNote: String?
     /// Descriptor opt-in: render the provider's `.text` line verbatim as the row's right-aligned detail
     /// (e.g. Codex Credits "$32.84 · 821 credits") instead of reformatting it as "<value> <word>". The
     /// numeric part is still parsed into `used` so the menu bar keeps its compact value.
@@ -358,38 +363,41 @@ struct WidgetData: Hashable {
     }
 
     /// Full, un-abbreviated values for the row's hover tooltip — the exact numbers the compact row
-    /// shortens (e.g. "$2,059.07 · 1,506,025,363"). `nil` when nothing is abbreviated (every value is
-    /// already shown in full), so a row like "2" or "$30.88 · 772 credits" gets no redundant tooltip.
+    /// shortens (e.g. "$2,059.07 · 1,506,025,363"). `nil` when nothing is abbreviated and there is no
+    /// source note, so a row like "2" or "$30.88 · 772 credits" gets no redundant tooltip.
     var unboundedTooltip: String? {
         guard hasData else { return nil }
         let selected = selectedValues
-        guard selected.contains(where: { abs($0.number) >= 1000 }) else { return nil }
+        guard selected.contains(where: { abs($0.number) >= 1000 }) || unboundedTooltipNote != nil else { return nil }
         return selected.map { MetricFormatter.string(for: $0, style: .full) }.joined(separator: " · ")
     }
 
     /// Hover text for an unbounded row's **value** (and the expiry-warning icon): the per-credit expiry
-    /// breakdown on a reset-credit row, else the exact figures the compact value shortens, else a "no
-    /// usage" note on a zero spend period (so an empty "$0.00 · 0 tokens" row still reveals something).
-    /// `nil` for a small, already-full, non-zero row, which has nothing to add. This is deliberately the
-    /// figures/expiry hover — `infoNote` (the estimate disclaimer) never displaces it on the value.
+    /// breakdown on a reset-credit row, else the exact figures the compact value shortens plus any
+    /// source note. `nil` for a small, already-full, non-zero row with no note.
     var unboundedValueTooltip: String? {
         // The reset-credit row's per-credit expiry breakdown takes precedence (it's the whole point of
-        // the ⓘ on "2 available"); its tiny count never has a figures tooltip anyway.
+        // hovering "2 available"); its tiny count never has a figures tooltip anyway.
         if let expiry = expiryTooltip { return expiry }
-        if let figures = unboundedTooltip { return figures }
+        if isZeroUsage && isUsagePeriod {
+            return (["No usage in this period"] + [unboundedTooltipNote].compactMap { $0 }).joined(separator: "\n")
+        }
+        if let figures = unboundedTooltip {
+            return ([figures] + [unboundedTooltipNote].compactMap { $0 }).joined(separator: "\n")
+        }
         // The "no usage" note only fits a spend period (Today / Yesterday / Last 30 Days), where a zero
         // genuinely means nothing was used. A balance row that reads 0 (Codex Rate Limit Resets, an
-        // exhausted Extra Usage credit) is depleted, not idle, so it gets no note and no ⓘ.
-        return isZeroUsage && isUsagePeriod ? "No usage in this period" : nil
+        // exhausted Extra Usage credit) is depleted, not idle, so it gets no note.
+        return nil
     }
 
-    /// Hover text for an unbounded row's **label ⓘ**: the estimate disclaimer (`infoNote`) takes
-    /// precedence for locally-imputed spend rows ("Estimated locally, so it may be off."), falling back
-    /// to the figures/expiry hover so reset-credit rows still surface their per-credit expiry list and
-    /// non-estimated rows keep their figures. Separated from `unboundedValueTooltip` so the value on the
-    /// right always reveals the full numbers regardless of what the label ⓘ explains.
+    /// Labels do not carry hover affordances; tests pin that behavior.
     var unboundedLabelTooltip: String? {
-        infoNote ?? unboundedValueTooltip
+        nil
+    }
+
+    private var unboundedTooltipNote: String? {
+        infoNote ?? valueTooltipNote
     }
 
     /// True for a zero-usage period — has data, but every selected value is zero (a row reading

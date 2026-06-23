@@ -21,7 +21,7 @@ Just be signed into the Cursor app. OpenUsage reads Cursor's local state databas
 
 ## The spend tiles
 
-Each period is one tile showing cost and tokens together (`$4.08 · 1.2M tokens`), the same as Claude/Codex/Grok; a day with no usage is a real zero and reads `$0.00 · 0 tokens`. The difference is the source: Cursor's Today / Yesterday / Last 30 Days come from Cursor's **server-side usage export** (priced per model with a bundled price list), not a local estimate — so the dollars carry no ⓘ. If the export can't be fetched, the tiles show "No data" while everything else keeps working.
+Each period is one tile showing cost and tokens together (`$4.08 · 1.2M tokens`), the same as Claude/Codex/Grok; a day with no usage is a real zero and reads `$0.00 · 0 tokens`. The difference is the source: Cursor's Today / Yesterday / Last 30 Days come from Cursor's **server-side usage export** (priced per model with a bundled price list), not a local estimate. Hover the value to see the exact figures and source note. If the export can't be fetched, the tiles show "No data" while everything else keeps working.
 
 ## Troubleshooting
 
