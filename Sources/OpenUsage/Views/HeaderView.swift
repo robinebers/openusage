@@ -20,9 +20,9 @@ struct HeaderView: View {
     }
 
     /// On the dashboard this is the "More" button, opening the pull-down whose "Customize" and "Settings"
-    /// items are the ways into those screens. On any other screen it morphs into the prominent "Done"
-    /// button that returns to the dashboard (clicking it, or pressing ⏎/Esc, which `PopoverKeyReader`
-    /// routes for the whole popover).
+    /// items are the ways into those screens. The Customize and Settings screens carry their own
+    /// top-leading back button (`DashboardView.navBar`) to return home — the macOS-native place for it —
+    /// so the footer control simply drops away there rather than morphing into a trailing "Done".
     @ViewBuilder
     private var leadingControl: some View {
         if layout.screen == .dashboard {
@@ -31,10 +31,6 @@ struct HeaderView: View {
             }
             // The anchor view fills the button's frame so the menu drops from directly under it.
             .background(PopUpMenuAnchorView(anchor: moreMenuAnchor))
-        } else {
-            roundButton("Done", systemImage: "checkmark", prominent: true) {
-                withAnimation(Motion.modeSwitch) { layout.screen = .dashboard }
-            }
         }
     }
 
@@ -112,7 +108,8 @@ struct HeaderView: View {
             .glassButtonStyle(prominent: prominent)
             .buttonBorderShape(.circle)
             // The footer's only button: a larger control costs nothing and gives a bigger target.
+            // No hover tooltip — the ellipsis reads as a standard "More" affordance on its own; the
+            // `Label` title still carries the accessible name for VoiceOver.
             .controlSize(.large)
-            .hoverTooltip(title)
     }
 }

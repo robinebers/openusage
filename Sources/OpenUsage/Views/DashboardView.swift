@@ -51,6 +51,9 @@ struct DashboardView: View {
     private static let reorderSpace = "popoverReorderSpace"
     /// One width across both densities — switching density shouldn't move the popover's left edge.
     private static let popoverWidth: CGFloat = 320
+    /// Fixed height of the Customize / Settings back nav bar. A constant (not measured) so the popover
+    /// height math stays deterministic — the bar pins itself to exactly this height.
+    private static let topBarHeight: CGFloat = 44
 
     /// Never grow taller than 85% of the *hosting* screen's usable height; scroll beyond that. All
     /// three screens (dashboard, Customize, Settings) share this one cap so they feel consistent —
@@ -59,24 +62,25 @@ struct DashboardView: View {
         floor(usableHeight * 0.85)
     }
 
-    /// The pinned footer lives outside the scroll region, so the scroll area's cap is the popover cap
-    /// minus that fixed chrome.
-    private var chromeHeight: CGFloat {
-        footerHeight
+    /// The pinned chrome that lives outside the scroll region, so the scroll area's cap is the popover
+    /// cap minus that fixed chrome. The footer is on every screen; Customize and Settings add the
+    /// pinned back nav bar on top, so their chrome is taller by exactly that bar.
+    private func chromeHeight(for screen: PopoverScreen) -> CGFloat {
+        footerHeight + (screen == .dashboard ? 0 : Self.topBarHeight)
     }
 
-    private var maxScrollHeight: CGFloat {
-        max(120, maxHeight - chromeHeight)
+    private func maxScrollHeight(for screen: PopoverScreen) -> CGFloat {
+        max(120, maxHeight - chromeHeight(for: screen))
     }
 
     /// The scroll area fits its content exactly until it would exceed the cap, then it scrolls.
     private var dashboardScrollHeight: CGFloat {
-        min(listContentHeight, maxScrollHeight)
+        min(listContentHeight, maxScrollHeight(for: .dashboard))
     }
 
     private var customizeScrollHeight: CGFloat {
         let contentHeight = hasMeasuredCustomizeContent ? customizeContentHeight : estimatedCustomizeContentHeight
-        return min(contentHeight, maxScrollHeight)
+        return min(contentHeight, maxScrollHeight(for: .customize))
     }
 
     /// Settings fits its content exactly, like the dashboard and Customize, up to the global cap.
@@ -84,7 +88,7 @@ struct DashboardView: View {
     /// real measurement only fine-tunes it.
     private var settingsScrollHeight: CGFloat {
         let contentHeight = hasMeasuredSettingsContent ? settingsContentHeight : estimatedSettingsContentHeight
-        return min(contentHeight, maxScrollHeight)
+        return min(contentHeight, maxScrollHeight(for: .settings))
     }
 
     private func scrollHeight(for screen: PopoverScreen) -> CGFloat {
@@ -95,8 +99,13 @@ struct DashboardView: View {
         }
     }
 
+    /// A screen's full popover height: its scroll content plus that screen's pinned chrome.
+    private func screenHeight(for screen: PopoverScreen) -> CGFloat {
+        scrollHeight(for: screen) + chromeHeight(for: screen)
+    }
+
     private var popoverHeight: CGFloat {
-        scrollHeight(for: layout.screen) + chromeHeight
+        screenHeight(for: layout.screen)
     }
 
     /// The popover height to apply while a screen-switch slide is playing: it interpolates from the
@@ -107,7 +116,7 @@ struct DashboardView: View {
     /// pinned offset, so nothing jumps ahead of the slide.
     private var animatedPopoverHeight: CGFloat {
         guard isSliding else { return popoverHeight }
-        let fromHeight = scrollHeight(for: layout.screenSlideFrom) + chromeHeight
+        let fromHeight = screenHeight(for: layout.screenSlideFrom)
         guard animatedSlideID == layout.screenSlideID else { return fromHeight }
         return fromHeight + slideProgress * (popoverHeight - fromHeight)
     }
@@ -156,6 +165,7 @@ struct DashboardView: View {
         modeBody
             .frame(width: Self.popoverWidth)
             .pinnedFooter(spacing: 0) { footerBar }
+            .pinnedTopBar(spacing: 0) { topBar }
             .frame(height: animatedPopoverHeight, alignment: .top)
             // Paint the surface behind the content (and footer) and tell every descendant whether
             // glass is on, so the fallbacks and the meter tints render in step. Both go on the
@@ -350,6 +360,53 @@ struct DashboardView: View {
                 reorderLift: $reorderLift
             )
         }
+    }
+
+    // MARK: - Pinned top nav bar
+
+    /// The back nav bar pinned above Customize and Settings — the macOS-native place for a back
+    /// affordance (top-leading), replacing the old trailing footer "Done" button. Empty on the
+    /// dashboard (which has nowhere to go back to), so it contributes no chrome there. Like the footer
+    /// it pins via `pinnedTopBar`, so content scrolls under it with the native scroll-edge blur.
+    @ViewBuilder
+    private var topBar: some View {
+        if layout.screen != .dashboard {
+            HStack(spacing: 10) {
+                backButton
+                Text(screenTitle)
+                    .font(.headline)
+                Spacer(minLength: 8)
+            }
+            .padding(.horizontal, Self.footerHorizontalPadding)
+            .frame(height: Self.topBarHeight)
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    /// Title for the current non-dashboard screen, shown beside the back button.
+    private var screenTitle: String {
+        switch layout.screen {
+        case .customize: "Customize"
+        case .settings: "Settings"
+        case .dashboard: ""
+        }
+    }
+
+    /// The round glass back button (chevron leading), matching the footer's glass control idiom. Esc
+    /// and the system shortcuts back out too; this is the visible, expected affordance.
+    private var backButton: some View {
+        Button {
+            withAnimation(Motion.modeSwitch) { layout.screen = .dashboard }
+        } label: {
+            Label("Back", systemImage: "chevron.backward")
+                .labelStyle(.iconOnly)
+                .frame(width: 16, height: 16)
+        }
+        .glassButtonStyle()
+        .buttonBorderShape(.circle)
+        .controlSize(.large)
+        .hoverTooltip("Back")
+        .accessibilityLabel("Back")
     }
 
     // MARK: - Pinned footer

@@ -65,6 +65,18 @@ extension View {
         }
     }
 
+    /// Pins a bar above scrolling content (the Customize / Settings back nav bar). On macOS 26 this
+    /// uses `safeAreaBar`, which also feeds the native scroll-edge blur as content passes under it; on
+    /// macOS 15 it uses `safeAreaInset` (macOS 12+), which pins the bar identically but without the blur.
+    @ViewBuilder
+    func pinnedTopBar<Bar: View>(spacing: CGFloat, @ViewBuilder content: () -> Bar) -> some View {
+        if #available(macOS 26, *) {
+            safeAreaBar(edge: .top, spacing: spacing, content: content)
+        } else {
+            safeAreaInset(edge: .top, spacing: spacing, content: content)
+        }
+    }
+
     /// Applies the soft top scroll-edge effect on macOS 26. On macOS 15 there is no equivalent, so
     /// this is a no-op — the scroll view still scrolls and clips correctly, it just loses the blur.
     @ViewBuilder
