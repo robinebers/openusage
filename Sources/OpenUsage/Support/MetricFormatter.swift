@@ -25,7 +25,11 @@ enum MetricFormatter {
     static func number(_ value: Double, kind: MetricKind, style: Style) -> String {
         switch kind {
         case .percent:
-            return "\(Int(value.rounded()))%"
+            // Percent is a bounded 0...100 domain, so clamp defensively: a bad sample (a provider
+            // reporting a negative or >100 utilization) can never print "-5%" or "105%" on any
+            // surface that formats through here. Over-limit is conveyed by the meter's spent state
+            // and color (see `WidgetData.meterState`), not by an out-of-range headline number.
+            return "\(Int(ProviderParse.clampPercent(value).rounded()))%"
         case .dollars:
             // Tray and row abbreviate four figures and up ("$1.2M", "$2.1K") so neither carries
             // "$2,059.07"; the full form (tooltips/headlines) always keeps grouped cents.

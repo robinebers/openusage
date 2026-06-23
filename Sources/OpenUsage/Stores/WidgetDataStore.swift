@@ -281,11 +281,19 @@ final class WidgetDataStore {
     private func resolve(_ line: MetricLine, descriptor: WidgetDescriptor) -> WidgetData? {
         switch line {
         case .progress(_, let used, let limit, let format, let resetsAt, let periodDurationMs, _):
+            // A percent meter is a bounded 0...100 domain; sanitize an out-of-range sample (a provider
+            // reporting a negative or >100 utilization) here, at the single construction choke point
+            // every provider funnels through, so no surface — headline, flip tooltip, menu bar — can
+            // render "-5%" or "105%". For percent the limit is always 100, so clamping `used` also
+            // keeps the meter's spent verdict intact (>=100 still reads "Limit reached"). Non-percent
+            // meters keep their raw `used`: a dollar/count overage (used > limit) is real and is
+            // conveyed by the meter's spent state rather than hidden.
+            let normalizedUsed = format == .percent ? ProviderParse.clampPercent(used) : used
             return WidgetData(
                 title: descriptor.sample.title,
                 icon: descriptor.sample.icon,
                 kind: format.metricKind,
-                used: used,
+                used: normalizedUsed,
                 limit: limit,
                 countSuffix: format.countSuffix,
                 valuePrefix: descriptor.sample.valuePrefix,
@@ -356,8 +364,10 @@ final class WidgetDataStore {
         case .percent:
             guard let percent = Self.firstNumber(in: value) else { return sample }
             // Percent rows are always 0–100, so a missing sample limit defaults to a full 100 scale,
-            // and they carry no `unboundedValueWord` (they're never an unbounded balance).
-            return textData(sample, kind: .percent, used: percent, limit: sample.limit ?? 100)
+            // and they carry no `unboundedValueWord` (they're never an unbounded balance). `firstNumber`
+            // accepts a leading sign, so clamp the parsed value to the same 0...100 domain the
+            // `.progress` percent path guarantees, keeping a stray "-5%" out of every surface.
+            return textData(sample, kind: .percent, used: ProviderParse.clampPercent(percent), limit: sample.limit ?? 100)
         }
     }
 

@@ -195,7 +195,11 @@ struct WidgetData: Hashable {
     var menuBarValue: String {
         guard hasData else { return valueText }
         if let limit, limit > 0 {
-            let percent = max(0, Int((displayedValue / limit * 100).rounded()))
+            // The tray glance is always 0...100%: clamp both ends so neither a negative sample nor an
+            // over-limit one (e.g. a dollar meter past its cap, rendered here as a percentage) ever
+            // reads "-5%" or "105%" beside the icon. Over-limit is shown by the meter's color/spent
+            // state in the popover, not by the tray number.
+            let percent = min(100, max(0, Int((displayedValue / limit * 100).rounded())))
             return "\(percent)%"
         }
         if let first = selectedValues.first {

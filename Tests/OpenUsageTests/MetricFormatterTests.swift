@@ -30,6 +30,15 @@ final class MetricFormatterTests: XCTestCase {
         XCTAssertEqual(MetricFormatter.number(95.4, kind: .percent, style: .tray), "95%")
     }
 
+    func testPercentClampsOutOfRangeSamples() {
+        // Percent is a bounded 0...100 domain: a bad sample (a provider reporting a negative or >100
+        // utilization) must never print "-5%" or "130%" — it clamps to the nearest bound. (#703)
+        XCTAssertEqual(MetricFormatter.number(-5, kind: .percent, style: .full), "0%")
+        XCTAssertEqual(MetricFormatter.number(-5, kind: .percent, style: .tray), "0%")
+        XCTAssertEqual(MetricFormatter.number(130, kind: .percent, style: .full), "100%")
+        XCTAssertEqual(MetricFormatter.number(100.6, kind: .percent, style: .row), "100%")
+    }
+
     func testValueStringAppendsUnitLabelWhenPresent() {
         let credits = MetricValue(number: 772, kind: .count, label: "credits")
         XCTAssertEqual(MetricFormatter.string(for: credits, style: .row), "772 credits")
