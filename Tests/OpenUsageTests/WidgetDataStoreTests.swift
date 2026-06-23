@@ -228,6 +228,43 @@ final class WidgetDataStoreTests: XCTestCase {
         XCTAssertEqual(data.menuBarValue, "1")      // tray — the real count, never "0"
     }
 
+    func testUncappedExtraUsageRendersCompactAndUnbounded() async {
+        // Regression (#658): Claude's `claude.extra` is a `boundedDollars` descriptor (a meter when the
+        // provider reports a monthly cap), but an uncapped spend arrives as a `.values` line. It must
+        // resolve to an unbounded tile — the sample's placeholder limit dropped — and read in the same
+        // compact shorthand as the spend tiles ("$1.2K spent"), not full currency, in both row and tray.
+        let provider = Provider(id: "claude", displayName: "Claude", icon: .providerMark("claude"))
+        let descriptor = WidgetDescriptor.boundedDollars(
+            id: "claude.extra", provider: provider, title: "Extra Usage",
+            metricLabel: "Extra usage spent", limit: 100, valueWord: "spent"
+        )
+        let runtime = TestProviderRuntime(
+            provider: provider,
+            descriptors: [descriptor],
+            snapshot: ProviderSnapshot(
+                providerID: provider.id,
+                displayName: provider.displayName,
+                lines: [.values(label: "Extra usage spent",
+                                values: [MetricValue(number: 1234.56, kind: .dollars)])]
+            )
+        )
+        let defaults = makeUserDefaults("claude-extra")
+        let store = WidgetDataStore(
+            registry: WidgetRegistry(providers: [provider], descriptors: [descriptor]),
+            providers: [runtime],
+            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() }),
+            defaults: defaults
+        )
+        await store.refreshAll()
+
+        let data = store.data(for: descriptor)
+        XCTAssertTrue(data.hasData)
+        XCTAssertFalse(data.isBounded)                          // sample's limit: 100 dropped for a .values row
+        XCTAssertEqual(data.unboundedDetail, "$1.2K spent")     // popover row — compact, not "$1,234.56"
+        XCTAssertEqual(data.menuBarValue, "$1.2K")              // tray — same shorthand
+        XCTAssertEqual(data.unboundedTooltip, "$1,234.56")      // hover still reveals the exact figure
+    }
+
     func testCreditValuesFloorAndClampBalance() {
         var data = WidgetData(title: "Extra Usage", icon: .providerMark("codex"), kind: .dollars, used: 0, limit: nil)
         data.values = CodexUsageMapper.creditValues(remaining: 820.9)

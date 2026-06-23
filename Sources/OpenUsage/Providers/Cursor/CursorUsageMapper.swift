@@ -87,9 +87,6 @@ enum CursorUsageMapper {
                 resetsAt: cycle.resetsAt,
                 periodDurationMs: cycle.periodDurationMs
             ))
-            if let bonusSpendCents = ProviderParse.number(planUsage["bonusSpend"]), bonusSpendCents > 0 {
-                lines.append(.text(label: "Bonus spend", value: Formatters.currency(ProviderParse.centsToDollars(bonusSpendCents))))
-            }
         } else {
             lines.append(.progress(
                 label: "Total usage",

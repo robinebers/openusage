@@ -28,7 +28,7 @@ enum DevinUsageMapper {
         let weeklyRemaining = ProviderParse.number(planStatus["weeklyQuotaRemainingPercent"])
         let dailyReset = hideDailyQuota ? nil : unixSecondsToDate(planStatus["dailyQuotaResetAtUnix"])
         let weeklyReset = unixSecondsToDate(planStatus["weeklyQuotaResetAtUnix"])
-        let extraUsageBalance = formatDollarsFromMicros(planStatus["overageBalanceMicros"])
+        let extraUsageBalance = dollarsFromMicros(planStatus["overageBalanceMicros"])
 
         var lines: [MetricLine] = []
         if !hideDailyQuota,
@@ -61,7 +61,9 @@ enum DevinUsageMapper {
         }
 
         if let extraUsageBalance {
-            lines.append(.text(label: "Extra usage balance", value: extraUsageBalance))
+            // Carried raw (not a baked currency string) so it formats through `MetricFormatter` and picks
+            // up the same compact "$1.2K left" shorthand as the spend tiles.
+            lines.append(.values(label: "Extra usage balance", values: [MetricValue(number: extraUsageBalance, kind: .dollars)]))
         }
 
         guard !lines.isEmpty else {
@@ -89,12 +91,11 @@ enum DevinUsageMapper {
         return Date(timeIntervalSince1970: seconds)
     }
 
-    /// An overage balance as a currency string; `nil` only when the field is missing or non-numeric
-    /// (truly no data). A present balance of zero renders "$0.00" — a real, measured zero — not "No data".
-    private static func formatDollarsFromMicros(_ value: Any?) -> String? {
-        guard var micros = ProviderParse.number(value) else { return nil }
-        micros = max(0, micros)
-        return Formatters.currency(micros / 1_000_000)
+    /// An overage balance in dollars; `nil` only when the field is missing or non-numeric (truly no
+    /// data). A present balance of zero stays a real, measured zero (renders "$0.00") — not "No data".
+    private static func dollarsFromMicros(_ value: Any?) -> Double? {
+        guard let micros = ProviderParse.number(value) else { return nil }
+        return max(0, micros) / 1_000_000
     }
 
     private static func readTrimmedString(_ value: Any?) -> String? {

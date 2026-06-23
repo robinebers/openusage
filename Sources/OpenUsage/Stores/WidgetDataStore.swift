@@ -301,6 +301,11 @@ final class WidgetDataStore {
             // trailing word) comes from the descriptor's sample; the live numbers come from the line.
             var data = descriptor.sample
             data.values = values
+            // A `.values` line is unbounded by definition (see `MetricLine`), so it never renders as a
+            // meter even when the descriptor's gallery sample carries a placeholder limit — e.g. Claude's
+            // `claude.extra` is `boundedDollars` for its capped `.progress` case but feeds an uncapped
+            // `.values` row when there's no monthly cap.
+            data.limit = nil
             // Optional expiry instants (Codex rate-limit-reset credits): surfaced in the row's hover
             // tooltip (see `expiryTooltip`), with the row re-rendering on the clock tick so they stay live.
             data.expiriesAt = expiriesAt

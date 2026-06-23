@@ -17,7 +17,7 @@ struct WidgetData: Hashable {
     let icon: IconSource
     let kind: MetricKind
     let used: Double
-    let limit: Double?         // nil => unbounded (number tile)
+    var limit: Double?         // nil => unbounded (number tile); cleared when a .values line resolves
     var countSuffix: String?   // e.g. "credits", "requests"
     var valuePrefix: String?   // e.g. "~" for forecasts
     var displayMode: WidgetDisplayMode = .used

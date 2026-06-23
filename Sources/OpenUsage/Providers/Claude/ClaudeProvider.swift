@@ -26,7 +26,7 @@ final class ClaudeProvider: ProviderRuntime {
             .percent(id: "claude.session", provider: provider, title: "Session"),
             .percent(id: "claude.weekly", provider: provider, title: "Weekly"),
             .percent(id: "claude.sonnet", provider: provider, title: "Sonnet"),
-            .boundedDollars(id: "claude.extra", provider: provider, title: "Extra Usage", metricLabel: "Extra usage spent", limit: 100)
+            .boundedDollars(id: "claude.extra", provider: provider, title: "Extra Usage", metricLabel: "Extra usage spent", limit: 100, valueWord: "spent")
         ] + WidgetDescriptor.spendTiles(provider: provider) + [.usageTrend(provider: provider)]
     }
 

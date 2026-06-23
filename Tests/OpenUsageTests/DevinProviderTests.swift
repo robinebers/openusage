@@ -59,7 +59,7 @@ final class DevinUsageMapperTests: XCTestCase {
         XCTAssertEqual(progress(mapped.lines, "Daily quota")?.periodDurationMs, DevinUsageMapper.dayPeriodMs)
         XCTAssertEqual(progress(mapped.lines, "Weekly quota")?.used, 60)
         XCTAssertEqual(progress(mapped.lines, "Weekly quota")?.periodDurationMs, DevinUsageMapper.weekPeriodMs)
-        XCTAssertEqual(text(mapped.lines, "Extra usage balance"), "$964.22")
+        XCTAssertEqual(try XCTUnwrap(dollars(mapped.lines, "Extra usage balance")), 964.22, accuracy: 0.0001)
         XCTAssertNotNil(progress(mapped.lines, "Weekly quota")?.resetsAt)
     }
 
@@ -71,9 +71,9 @@ final class DevinUsageMapperTests: XCTestCase {
 
         let mapped = try DevinUsageMapper.mapUserStatus(userStatus)
 
-        // A present balance of zero is a real, measured value → "$0.00", not "No data" (that's reserved
+        // A present balance of zero is a real, measured value → 0, not "No data" (that's reserved
         // for the field being absent entirely).
-        XCTAssertEqual(text(mapped.lines, "Extra usage balance"), "$0.00")
+        XCTAssertEqual(dollars(mapped.lines, "Extra usage balance"), 0)
     }
 
     func testUsesHiddenDailyQuotaAsWeeklyUsageWhenWeeklyIsAbsent() throws {
@@ -92,7 +92,7 @@ final class DevinUsageMapperTests: XCTestCase {
         // The hidden daily quota fills the missing Weekly row and is still flipped from "remaining"
         // to "used": 30% remaining -> 70% used (not passed through raw as 30).
         XCTAssertEqual(progress(mapped.lines, "Weekly quota")?.used, 70)
-        XCTAssertEqual(text(mapped.lines, "Extra usage balance"), "$964.22")
+        XCTAssertEqual(try XCTUnwrap(dollars(mapped.lines, "Extra usage balance")), 964.22, accuracy: 0.0001)
     }
 
     func testThrowsQuotaUnavailableWhenNoDisplayableFieldsExist() {
@@ -114,11 +114,12 @@ final class DevinUsageMapperTests: XCTestCase {
         return (used, limit, resetsAt, periodDurationMs)
     }
 
-    private func text(_ lines: [MetricLine], _ label: String) -> String? {
-        guard case .text(_, let value, _, _) = lines.first(where: { $0.label == label }) else {
+    /// The first dollar value's raw number on a `.values` line (the shape extra-usage balance now uses).
+    private func dollars(_ lines: [MetricLine], _ label: String) -> Double? {
+        guard case .values(_, let values, _, _) = lines.first(where: { $0.label == label }) else {
             return nil
         }
-        return value
+        return values.first(where: { $0.kind == .dollars })?.number
     }
 }
 

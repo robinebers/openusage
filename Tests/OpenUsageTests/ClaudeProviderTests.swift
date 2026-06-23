@@ -74,6 +74,29 @@ final class ClaudeUsageMapperTests: XCTestCase {
         XCTAssertEqual(progress(mapped.lines, "Extra usage spent")?.limit, 10)
     }
 
+    func testUncappedExtraUsageIsAnUnboundedValuesRow() throws {
+        // No `monthly_limit`: the spend has no cap, so it's an unbounded `.values` row (which formats
+        // through `MetricFormatter`, matching the spend tiles) rather than a baked full-currency `.text`.
+        let response = HTTPResponse(
+            statusCode: 200,
+            headers: [:],
+            body: Data(#"{"extra_usage":{"is_enabled":true,"used_credits":123456}}"#.utf8)
+        )
+
+        let mapped = try ClaudeUsageMapper.mapUsageResponse(
+            response,
+            credentials: ClaudeOAuth(subscriptionType: "max")
+        )
+
+        guard case .values(_, let values, _, _)? = mapped.lines.first(where: { $0.label == "Extra usage spent" }) else {
+            return XCTFail("Expected an Extra usage spent .values line")
+        }
+        XCTAssertEqual(values.count, 1)
+        XCTAssertEqual(values.first?.kind, .dollars)
+        XCTAssertEqual(try XCTUnwrap(values.first?.number), 1234.56, accuracy: 0.0001)
+        XCTAssertNil(progress(mapped.lines, "Extra usage spent"))
+    }
+
     func testMapsResetsAtFromMicrosecondTimestampWithoutTimezone() throws {
         let response = HTTPResponse(
             statusCode: 200,

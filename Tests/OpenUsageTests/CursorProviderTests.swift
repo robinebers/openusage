@@ -89,6 +89,33 @@ final class CursorUsageMapperTests: XCTestCase {
         XCTAssertEqual(progress(mapped.lines, "Requests")?.limit, 500)
         XCTAssertEqual(progress(mapped.lines, "Requests")?.periodDurationMs, CursorUsageMapper.billingPeriodMs)
     }
+
+    func testTeamAccountEmitsDollarTotalUsageAndNoOrphanedBonusSpendLine() throws {
+        // Team accounts report Total usage as a dollar meter and may carry a `bonusSpend` field. No
+        // widget descriptor matches a "Bonus spend" label, so emitting one produced a line that could
+        // never render. Regression: the mapper must not emit that orphaned line even when bonusSpend > 0.
+        let mapped = try CursorUsageMapper.mapUsage(
+            usage: [
+                "enabled": true,
+                "billingCycleStart": 1_770_000_000_000,
+                "billingCycleEnd": 1_772_592_000_000,
+                "planUsage": [
+                    "limit": 40_000,
+                    "totalSpend": 10_000,
+                    "bonusSpend": 2_500
+                ]
+            ],
+            planName: "Team",
+            creditGrants: nil,
+            stripeBalanceCents: 0
+        )
+
+        XCTAssertEqual(mapped.plan, "Team")
+        let total = try XCTUnwrap(progress(mapped.lines, "Total usage"))
+        XCTAssertEqual(total.used, 100, accuracy: 0.001)    // $100.00 spent (totalSpend, cents → dollars)
+        XCTAssertEqual(total.limit, 400, accuracy: 0.001)   // of a $400.00 limit
+        XCTAssertFalse(mapped.lines.contains { $0.label == "Bonus spend" })
+    }
 }
 
 @MainActor

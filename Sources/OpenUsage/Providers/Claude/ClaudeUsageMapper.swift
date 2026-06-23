@@ -109,7 +109,9 @@ enum ClaudeUsageMapper {
                 format: .dollars
             ))
         } else if used > 0 {
-            lines.append(.text(label: "Extra usage spent", value: Formatters.currency(used)))
+            // No monthly cap: an unbounded spend, carried raw so it formats through `MetricFormatter`
+            // (compact like the spend tiles, e.g. "$1.2K spent") instead of a baked full-currency string.
+            lines.append(.values(label: "Extra usage spent", values: [MetricValue(number: used, kind: .dollars)]))
         }
     }
 
