@@ -165,7 +165,6 @@ struct DashboardView: View {
         modeBody
             .frame(width: Self.popoverWidth)
             .pinnedFooter(spacing: 0) { footerBar }
-            .pinnedTopBar(spacing: 0) { topBar }
             .frame(height: animatedPopoverHeight, alignment: .top)
             // Paint the surface behind the content (and footer) and tell every descendant whether
             // glass is on, so the fallbacks and the meter tints render in step. Both go on the
@@ -317,11 +316,13 @@ struct DashboardView: View {
                 reorderSpaceName: Self.reorderSpace,
                 reorderLift: $reorderLift
             )
+            .pinnedTopBar(spacing: 0) { navBar(title: "Customize") }
         case .settings:
             SettingsScreen(
                 contentHeight: $settingsContentHeight,
                 hasMeasuredContent: $hasMeasuredSettingsContent
             )
+            .pinnedTopBar(spacing: 0) { navBar(title: "Settings") }
         }
     }
 
@@ -365,31 +366,24 @@ struct DashboardView: View {
     // MARK: - Pinned top nav bar
 
     /// The back nav bar pinned above Customize and Settings — the macOS-native place for a back
-    /// affordance (top-leading), replacing the old trailing footer "Done" button. Empty on the
-    /// dashboard (which has nowhere to go back to), so it contributes no chrome there. Like the footer
-    /// it pins via `pinnedTopBar`, so content scrolls under it with the native scroll-edge blur.
-    @ViewBuilder
-    private var topBar: some View {
-        if layout.screen != .dashboard {
-            HStack(spacing: 10) {
-                backButton
-                Text(screenTitle)
-                    .font(.headline)
-                Spacer(minLength: 8)
-            }
-            .padding(.horizontal, Self.footerHorizontalPadding)
-            .frame(height: Self.topBarHeight)
-            .frame(maxWidth: .infinity)
+    /// affordance (top-leading), replacing the old trailing footer "Done" button. It pins *inside each
+    /// screen's page* (via `pinnedTopBar` in `screenView`) rather than over the whole popover, so it
+    /// slides in and out with its own page during a screen switch and always carries that page's own
+    /// title. Keying it off the shared `layout.screen` instead desynced it from the height: the screen
+    /// flips instantly at slide start while `animatedPopoverHeight` still uses the outgoing screen's
+    /// chrome, so the bar could appear before its 44pt was reserved (or linger after), and
+    /// Settings↔Customize flashed the wrong title mid-slide. Its fixed height is still reserved
+    /// per-screen in `chromeHeight(for:)`. Content scrolls under it with the native scroll-edge blur.
+    private func navBar(title: String) -> some View {
+        HStack(spacing: 10) {
+            backButton
+            Text(title)
+                .font(.headline)
+            Spacer(minLength: 8)
         }
-    }
-
-    /// Title for the current non-dashboard screen, shown beside the back button.
-    private var screenTitle: String {
-        switch layout.screen {
-        case .customize: "Customize"
-        case .settings: "Settings"
-        case .dashboard: ""
-        }
+        .padding(.horizontal, Self.footerHorizontalPadding)
+        .frame(height: Self.topBarHeight)
+        .frame(maxWidth: .infinity)
     }
 
     /// The round glass back button (chevron leading), matching the footer's glass control idiom. Esc
