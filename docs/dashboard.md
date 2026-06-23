@@ -29,6 +29,8 @@ Provider headers: **Refresh \<provider\> · Customize…**
 
 The More button's **Customize Metrics** item (or pressing **Return**) opens Customize: toggle metrics on/off, add ones that aren't placed yet, pin metrics for the menu bar, and drag to reorder. Drag-reorder also works directly on the dashboard — drag a row within its provider, or drag a provider header to reorder sections. On a Force Touch trackpad you'll feel a light tap each time the dragged item snaps into a new slot.
 
+When OpenUsage ships a new default metric, existing layouts get it once. If you turn it off, it stays off. The **Reset** button in Customize restores the default metrics, order, and menu-bar pins, but leaves provider settings and other preferences unchanged.
+
 ## Keyboard
 
 | Key | Action |

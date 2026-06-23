@@ -81,14 +81,21 @@ final class LayoutStore {
     private let storageKey: String
     private let providerOrderKey: String
     private let metricOrderKey: String
+    private let seededDefaultsKey: String
     private let pinsKey: String
     private let menuBarStyleKey: String
+    private let defaultMetricIDs: [String]
+    private let migrationBaselineMetricIDs: [String]
+    private let defaultPinnedMetricIDs: [String]
     private let isProviderEnabled: @MainActor (String) -> Bool
 
     init(
         registry: WidgetRegistry,
         defaults: UserDefaults = .standard,
         storageKey: String = "openusage.layout.v1",
+        defaultMetricIDs: [String] = DefaultLayout.metricIDs,
+        migrationBaselineMetricIDs: [String] = DefaultLayout.migrationBaselineMetricIDs,
+        defaultPinnedMetricIDs: [String] = DefaultLayout.pinnedMetricIDs,
         isProviderEnabled: @escaping @MainActor (String) -> Bool = { _ in true }
     ) {
         self.registry = registry
@@ -96,18 +103,33 @@ final class LayoutStore {
         self.storageKey = storageKey
         self.providerOrderKey = "\(storageKey).providerOrder"
         self.metricOrderKey = "\(storageKey).metricOrderByProvider"
+        self.seededDefaultsKey = "\(storageKey).seededDefaults"
         self.pinsKey = "\(storageKey).menuBarPins"
         self.menuBarStyleKey = "\(storageKey).menuBarStyle"
+        self.defaultMetricIDs = defaultMetricIDs
+        self.migrationBaselineMetricIDs = migrationBaselineMetricIDs
+        self.defaultPinnedMetricIDs = defaultPinnedMetricIDs
         self.isProviderEnabled = isProviderEnabled
 
-        let initialPlaced: [PlacedWidget]
+        let hasStoredLayout = defaults.data(forKey: storageKey) != nil
+        var initialPlaced: [PlacedWidget]
         if let saved = Self.decodeStored([PlacedWidget].self, from: defaults, forKey: storageKey) {
             initialPlaced = saved.filter { registry.descriptor(id: $0.descriptorID) != nil }
         } else {
-            initialPlaced = DefaultLayout.metricIDs
+            initialPlaced = defaultMetricIDs
                 .filter { registry.descriptor(id: $0) != nil }
                 .map { PlacedWidget(descriptorID: $0) }
         }
+        let seededResult = Self.seedNewDefaultMetrics(
+            into: initialPlaced,
+            defaults: defaults,
+            key: seededDefaultsKey,
+            hasStoredLayout: hasStoredLayout,
+            registry: registry,
+            defaultMetricIDs: defaultMetricIDs,
+            migrationBaselineMetricIDs: migrationBaselineMetricIDs
+        )
+        initialPlaced = seededResult.placed
         placed = initialPlaced
 
         let initialProviderOrder: [String]
@@ -120,9 +142,9 @@ final class LayoutStore {
 
         let initialMetricOrder: [String: [String]]
         if let saved = Self.decodeStored([String: [String]].self, from: defaults, forKey: metricOrderKey) {
-            initialMetricOrder = Self.normalizedMetricOrder(saved, registry: registry, placed: initialPlaced)
+            initialMetricOrder = Self.normalizedMetricOrder(saved, registry: registry)
         } else {
-            initialMetricOrder = Self.defaultMetricOrder(registry: registry, placed: initialPlaced)
+            initialMetricOrder = Self.defaultMetricOrder(registry: registry)
         }
         metricOrderByProvider = initialMetricOrder
 
@@ -131,11 +153,14 @@ final class LayoutStore {
         if let savedPins = defaults.stringArray(forKey: pinsKey) {
             pinnedMetricIDs = Set(savedPins.filter { registry.descriptor(id: $0) != nil })
         } else {
-            pinnedMetricIDs = Set(DefaultLayout.pinnedMetricIDs.filter { registry.descriptor(id: $0) != nil })
+            pinnedMetricIDs = Set(defaultPinnedMetricIDs.filter { registry.descriptor(id: $0) != nil })
         }
         menuBarStyle = defaults.enumValue(forKey: menuBarStyleKey, default: .text)
 
-        syncPlacedOrder(persistChanges: false)
+        if seededResult.shouldPersistSeededDefaults {
+            persistSeededDefaults(seededResult.seededDefaults)
+        }
+        syncPlacedOrder(persistChanges: seededResult.shouldPersistPlaced)
     }
 
     func provider(id: String) -> Provider? { registry.provider(id: id) }
@@ -367,13 +392,16 @@ final class LayoutStore {
 
     func resetToDefault() {
         cancelDrag()
-        placed = DefaultLayout.metricIDs
+        placed = defaultMetricIDs
             .filter { registry.descriptor(id: $0) != nil }
             .map { PlacedWidget(descriptorID: $0) }
-        metricOrderByProvider = Self.defaultMetricOrder(registry: registry, placed: placed)
+        providerOrder = registry.providers.map(\.id)
+        persistProviderOrder()
+        metricOrderByProvider = Self.defaultMetricOrder(registry: registry)
         persistMetricOrder()
-        pinnedMetricIDs = Set(DefaultLayout.pinnedMetricIDs.filter { registry.descriptor(id: $0) != nil })
+        pinnedMetricIDs = Set(defaultPinnedMetricIDs.filter { registry.descriptor(id: $0) != nil })
         persistPins()
+        persistSeededDefaults(Set(Self.knownMetricIDs(defaultMetricIDs, registry: registry)))
         persist()
     }
 
@@ -391,6 +419,10 @@ final class LayoutStore {
 
     private func persistMetricOrder() {
         persistEncodable(metricOrderByProvider, forKey: metricOrderKey)
+    }
+
+    private func persistSeededDefaults(_ ids: Set<String>) {
+        persistEncodable(Array(ids).sorted(), forKey: seededDefaultsKey)
     }
 
     /// Fail loudly: a swallowed encode would silently fail to persist a layout change with zero signal,
@@ -416,6 +448,64 @@ final class LayoutStore {
         }
     }
 
+    private struct SeededDefaultsResult {
+        let placed: [PlacedWidget]
+        let seededDefaults: Set<String>
+        let shouldPersistPlaced: Bool
+        let shouldPersistSeededDefaults: Bool
+    }
+
+    private static func seedNewDefaultMetrics(
+        into placed: [PlacedWidget],
+        defaults: UserDefaults,
+        key: String,
+        hasStoredLayout: Bool,
+        registry: WidgetRegistry,
+        defaultMetricIDs: [String],
+        migrationBaselineMetricIDs: [String]
+    ) -> SeededDefaultsResult {
+        let knownDefaults = knownMetricIDs(defaultMetricIDs, registry: registry)
+        let knownDefaultSet = Set(knownDefaults)
+        let hasStoredSeededDefaults = defaults.data(forKey: key) != nil
+
+        let seededDefaults: Set<String>
+        var shouldPersistSeededDefaults = false
+        if let saved = decodeStored([String].self, from: defaults, forKey: key) {
+            seededDefaults = Set(knownMetricIDs(saved, registry: registry))
+            shouldPersistSeededDefaults = seededDefaults != Set(saved)
+        } else if hasStoredLayout {
+            seededDefaults = Set(knownMetricIDs(migrationBaselineMetricIDs, registry: registry))
+            shouldPersistSeededDefaults = true
+        } else {
+            seededDefaults = knownDefaultSet
+            shouldPersistSeededDefaults = true
+        }
+
+        let placedIDs = Set(placed.map(\.descriptorID))
+        let toAdd = knownDefaults.filter { !seededDefaults.contains($0) && !placedIDs.contains($0) }
+        let nextPlaced = placed + toAdd.map { PlacedWidget(descriptorID: $0) }
+        let nextSeededDefaults = seededDefaults.union(knownDefaultSet)
+        shouldPersistSeededDefaults = shouldPersistSeededDefaults
+            || !hasStoredSeededDefaults
+            || nextSeededDefaults != seededDefaults
+
+        return SeededDefaultsResult(
+            placed: nextPlaced,
+            seededDefaults: nextSeededDefaults,
+            shouldPersistPlaced: !toAdd.isEmpty,
+            shouldPersistSeededDefaults: shouldPersistSeededDefaults
+        )
+    }
+
+    private static func knownMetricIDs(_ ids: [String], registry: WidgetRegistry) -> [String] {
+        var seen = Set<String>()
+        return ids.filter { id in
+            guard registry.descriptor(id: id) != nil, !seen.contains(id) else { return false }
+            seen.insert(id)
+            return true
+        }
+    }
+
     private func metricOrder(for providerID: String) -> [String] {
         let valid = registry.descriptors(for: providerID).map(\.id)
         let saved = metricOrderByProvider[providerID] ?? []
@@ -437,26 +527,20 @@ final class LayoutStore {
         if persistChanges { persist() }
     }
 
-    private static func defaultMetricOrder(registry: WidgetRegistry, placed: [PlacedWidget]) -> [String: [String]] {
+    private static func defaultMetricOrder(registry: WidgetRegistry) -> [String: [String]] {
         var result: [String: [String]] = [:]
         for provider in registry.providers {
             let valid = registry.descriptors(for: provider.id).map(\.id)
-            let placedForProvider = placed.compactMap { widget -> String? in
-                guard let descriptor = registry.descriptor(id: widget.descriptorID),
-                      descriptor.providerID == provider.id else { return nil }
-                return descriptor.id
-            }
-            result[provider.id] = normalizedMetricIDs(placedForProvider, validIDs: valid)
+            result[provider.id] = valid
         }
         return result
     }
 
     private static func normalizedMetricOrder(
         _ saved: [String: [String]],
-        registry: WidgetRegistry,
-        placed: [PlacedWidget]
+        registry: WidgetRegistry
     ) -> [String: [String]] {
-        var fallback = defaultMetricOrder(registry: registry, placed: placed)
+        var fallback = defaultMetricOrder(registry: registry)
         for provider in registry.providers {
             let valid = registry.descriptors(for: provider.id).map(\.id)
             if let savedIDs = saved[provider.id] {

@@ -32,6 +32,88 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertTrue(reloaded.placed.isEmpty)
     }
 
+    func testExistingLayoutAutoSeedsOnlyDefaultsAddedAfterBaseline() {
+        let defaults = makeDefaults("SeedNewDefault")
+        saveStored([PlacedWidget(descriptorID: "claude.session")], forKey: "layout", in: defaults)
+
+        let store = LayoutStore(
+            registry: .mock,
+            defaults: defaults,
+            storageKey: "layout",
+            defaultMetricIDs: ["claude.session", "claude.weekly", "claude.today"],
+            migrationBaselineMetricIDs: ["claude.session", "claude.weekly"]
+        )
+
+        XCTAssertEqual(store.placed.map(\.descriptorID), ["claude.session", "claude.today"])
+        XCTAssertFalse(store.isMetricEnabled("claude.weekly"), "baseline defaults the user already removed stay off")
+    }
+
+    func testDisablingAutoSeededDefaultDoesNotReAddOnReload() {
+        let defaults = makeDefaults("SeedOnce")
+        saveStored([PlacedWidget(descriptorID: "claude.session")], forKey: "layout", in: defaults)
+        let store = LayoutStore(
+            registry: .mock,
+            defaults: defaults,
+            storageKey: "layout",
+            defaultMetricIDs: ["claude.session", "claude.today"],
+            migrationBaselineMetricIDs: ["claude.session"]
+        )
+        guard let seeded = store.placed.first(where: { $0.descriptorID == "claude.today" }) else {
+            return XCTFail("new default was not seeded")
+        }
+
+        store.remove(seeded.id)
+
+        let reloaded = LayoutStore(
+            registry: .mock,
+            defaults: defaults,
+            storageKey: "layout",
+            defaultMetricIDs: ["claude.session", "claude.today"],
+            migrationBaselineMetricIDs: ["claude.session"]
+        )
+        XCTAssertEqual(reloaded.placed.map(\.descriptorID), ["claude.session"])
+    }
+
+    func testFreshLayoutTreatsCurrentDefaultsAsAlreadySeeded() {
+        let defaults = makeDefaults("FreshSeeded")
+        let store = LayoutStore(
+            registry: .mock,
+            defaults: defaults,
+            storageKey: "layout",
+            defaultMetricIDs: ["claude.session", "claude.today"],
+            migrationBaselineMetricIDs: []
+        )
+        guard let today = store.placed.first(where: { $0.descriptorID == "claude.today" }) else {
+            return XCTFail("fresh store did not include all current defaults")
+        }
+
+        store.remove(today.id)
+
+        let reloaded = LayoutStore(
+            registry: .mock,
+            defaults: defaults,
+            storageKey: "layout",
+            defaultMetricIDs: ["claude.session", "claude.today"],
+            migrationBaselineMetricIDs: []
+        )
+        XCTAssertEqual(reloaded.placed.map(\.descriptorID), ["claude.session"])
+    }
+
+    func testAutoSeedingIgnoresUnknownDefaultIDs() {
+        let defaults = makeDefaults("UnknownSeed")
+        saveStored([PlacedWidget](), forKey: "layout", in: defaults)
+
+        let store = LayoutStore(
+            registry: .mock,
+            defaults: defaults,
+            storageKey: "layout",
+            defaultMetricIDs: ["missing.metric", "claude.session"],
+            migrationBaselineMetricIDs: []
+        )
+
+        XCTAssertEqual(store.placed.map(\.descriptorID), ["claude.session"])
+    }
+
     func testAddAndResetCancelDragState() {
         let store = makeStore("CancelDrag")
         let first = store.placed[0]
@@ -78,6 +160,37 @@ final class LayoutStoreTests: XCTestCase {
 
         store.setMetricEnabled("claude.extra", false)
         XCTAssertEqual(store.orderedSupportedMetrics(for: "claude").map(\.id), before)
+    }
+
+    func testFreshCustomizeOrderFollowsProviderDeclarations() {
+        let registry = WidgetRegistry.from([
+            ClaudeProvider(),
+            CodexProvider(),
+            DevinProvider(),
+            GrokProvider(),
+            CursorProvider()
+        ])
+        let store = LayoutStore(registry: registry, defaults: makeDefaults("FreshCustomizeOrder"), storageKey: "layout")
+
+        XCTAssertEqual(store.orderedSupportedMetrics(for: "claude").map(\.id), [
+            "claude.session", "claude.weekly", "claude.sonnet", "claude.extra",
+            "claude.trend", "claude.today", "claude.yesterday", "claude.last30"
+        ])
+        XCTAssertEqual(store.orderedSupportedMetrics(for: "codex").map(\.id), [
+            "codex.session", "codex.weekly", "codex.credits", "codex.rateLimitResets",
+            "codex.trend", "codex.today", "codex.yesterday", "codex.last30"
+        ])
+        XCTAssertEqual(store.orderedSupportedMetrics(for: "devin").map(\.id), [
+            "devin.daily", "devin.weekly", "devin.extra"
+        ])
+        XCTAssertEqual(store.orderedSupportedMetrics(for: "grok").map(\.id), [
+            "grok.creditsUsed", "grok.payAsYouGo",
+            "grok.trend", "grok.today", "grok.yesterday", "grok.last30"
+        ])
+        XCTAssertEqual(store.orderedSupportedMetrics(for: "cursor").map(\.id), [
+            "cursor.usage", "cursor.auto", "cursor.api", "cursor.onDemand", "cursor.requests",
+            "cursor.credits", "cursor.trend", "cursor.today", "cursor.yesterday", "cursor.last30"
+        ])
     }
 
     func testMetricOrderPersistsWhileMetricIsDisabled() {
@@ -130,6 +243,35 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertEqual(store.pinnedMetricIDs, expected)
     }
 
+    func testResetToDefaultRestoresProviderOrderAndMarksDefaultsSeeded() {
+        let defaults = makeDefaults("ResetSeeded")
+        let store = LayoutStore(
+            registry: .mock,
+            defaults: defaults,
+            storageKey: "layout",
+            defaultMetricIDs: ["claude.session", "claude.today"],
+            migrationBaselineMetricIDs: []
+        )
+        XCTAssertTrue(store.reorderProvider(dragged: "cursor", target: "claude"))
+
+        store.resetToDefault()
+        XCTAssertEqual(store.customizeGroups.map(\.provider.id), MockData.providers.map(\.id))
+        guard let today = store.placed.first(where: { $0.descriptorID == "claude.today" }) else {
+            return XCTFail("reset did not restore current defaults")
+        }
+
+        store.remove(today.id)
+
+        let reloaded = LayoutStore(
+            registry: .mock,
+            defaults: defaults,
+            storageKey: "layout",
+            defaultMetricIDs: ["claude.session", "claude.today"],
+            migrationBaselineMetricIDs: []
+        )
+        XCTAssertEqual(reloaded.placed.map(\.descriptorID), ["claude.session"])
+    }
+
     private func makeStore(_ name: String) -> LayoutStore {
         LayoutStore(registry: .mock, defaults: makeDefaults(name), storageKey: "layout")
     }
@@ -139,5 +281,9 @@ final class LayoutStoreTests: XCTestCase {
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
         return defaults
+    }
+
+    private func saveStored<T: Encodable>(_ value: T, forKey key: String, in defaults: UserDefaults) {
+        defaults.set(try! JSONEncoder().encode(value), forKey: key)
     }
 }

@@ -20,14 +20,15 @@ final class CursorProvider: ProviderRuntime {
 
     var widgetDescriptors: [WidgetDescriptor] {
         [
-            .boundedDollars(id: "cursor.credits", provider: provider, title: "Credits", limit: 100),
             .percent(id: "cursor.usage", provider: provider, title: "Total Usage", metricLabel: "Total usage"),
+            .percent(id: "cursor.auto", provider: provider, title: "Auto Usage", metricLabel: "Auto usage"),
+            .percent(id: "cursor.api", provider: provider, title: "API Usage", metricLabel: "API usage"),
+            .boundedDollars(id: "cursor.onDemand", provider: provider, title: "Extra Usage", metricLabel: "On-demand", limit: 100),
             .boundedCount(id: "cursor.requests", provider: provider, title: "Requests", limit: 500,
                           suffix: "requests", periodDurationMs: CursorUsageMapper.billingPeriodMs),
-            .percent(id: "cursor.auto", provider: provider, title: "Auto Limits", metricLabel: "Auto usage"),
-            .percent(id: "cursor.api", provider: provider, title: "API Usage", metricLabel: "API usage"),
-            .boundedDollars(id: "cursor.onDemand", provider: provider, title: "Extra Usage", metricLabel: "On-demand", limit: 100)
-        ] + WidgetDescriptor.spendTiles(provider: provider) + [.usageTrend(provider: provider)]
+            .boundedDollars(id: "cursor.credits", provider: provider, title: "Credits", limit: 100),
+            .usageTrend(provider: provider)
+        ] + WidgetDescriptor.spendTiles(provider: provider)
     }
 
     func refresh() async -> ProviderSnapshot {

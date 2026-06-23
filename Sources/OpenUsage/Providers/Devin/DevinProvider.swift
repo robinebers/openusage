@@ -20,8 +20,8 @@ final class DevinProvider: ProviderRuntime {
 
     var widgetDescriptors: [WidgetDescriptor] {
         [
-            .percent(id: "devin.weekly", provider: provider, title: "Weekly", metricLabel: "Weekly quota"),
             .percent(id: "devin.daily", provider: provider, title: "Daily", metricLabel: "Daily quota"),
+            .percent(id: "devin.weekly", provider: provider, title: "Weekly", metricLabel: "Weekly quota"),
             .dollarBalance(id: "devin.extra", provider: provider, title: "Extra Balance", metricLabel: "Extra usage balance", valueWord: "left")
         ]
     }

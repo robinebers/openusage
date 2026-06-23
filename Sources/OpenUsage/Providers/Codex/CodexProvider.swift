@@ -25,9 +25,10 @@ final class CodexProvider: ProviderRuntime {
         [
             .percent(id: "codex.session", provider: provider, title: "Session"),
             .percent(id: "codex.weekly", provider: provider, title: "Weekly"),
+            .combined(id: "codex.credits", provider: provider, title: "Extra Usage", metricLabel: "Credits"),
             .values(id: "codex.rateLimitResets", provider: provider, title: "Rate Limit Resets", metricLabel: "Rate Limit Resets"),
-            .combined(id: "codex.credits", provider: provider, title: "Extra Usage", metricLabel: "Credits")
-        ] + WidgetDescriptor.spendTiles(provider: provider) + [.usageTrend(provider: provider)]
+            .usageTrend(provider: provider)
+        ] + WidgetDescriptor.spendTiles(provider: provider)
     }
 
     func refresh() async -> ProviderSnapshot {

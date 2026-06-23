@@ -25,6 +25,7 @@ struct DashboardView: View {
     @State private var hasMeasuredCustomizeContent = false
     @State private var hasMeasuredSettingsContent = false
     @State private var reorderLift: ReorderLift?
+    @State private var showingResetCustomizationConfirmation = false
     /// Horizontal screen-switch slide: 0 shows the outgoing screen, 1 the incoming one. Drives both the
     /// page offset and the interpolated popover height, so the slide and the resize share one spring.
     @State private var slideProgress: CGFloat = 1
@@ -316,7 +317,7 @@ struct DashboardView: View {
                 reorderSpaceName: Self.reorderSpace,
                 reorderLift: $reorderLift
             )
-            .pinnedTopBar(spacing: 0) { navBar(title: "Customize") }
+            .pinnedTopBar(spacing: 0) { navBar(title: "Customize", showsReset: true) }
         case .settings:
             SettingsScreen(
                 contentHeight: $settingsContentHeight,
@@ -374,16 +375,31 @@ struct DashboardView: View {
     /// chrome, so the bar could appear before its 44pt was reserved (or linger after), and
     /// Settings↔Customize flashed the wrong title mid-slide. Its fixed height is still reserved
     /// per-screen in `chromeHeight(for:)`. Content scrolls under it with the native scroll-edge blur.
-    private func navBar(title: String) -> some View {
+    private func navBar(title: String, showsReset: Bool = false) -> some View {
         HStack(spacing: 10) {
             backButton
             Text(title)
                 .font(.headline)
             Spacer(minLength: 8)
+            if showsReset {
+                resetCustomizationButton
+            }
         }
         .padding(.horizontal, Self.footerHorizontalPadding)
         .frame(height: Self.topBarHeight)
         .frame(maxWidth: .infinity)
+        .confirmationDialog(
+            "Reset Customization?",
+            isPresented: $showingResetCustomizationConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Reset", role: .destructive) {
+                layout.resetToDefault()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This restores the default metrics, order, and menu-bar pins. Provider settings are unchanged.")
+        }
     }
 
     /// The round glass back button (chevron leading), matching the footer's glass control idiom. Esc
@@ -401,6 +417,19 @@ struct DashboardView: View {
         .controlSize(.large)
         .hoverTooltip("Back")
         .accessibilityLabel("Back")
+    }
+
+    private var resetCustomizationButton: some View {
+        Button {
+            showingResetCustomizationConfirmation = true
+        } label: {
+            Label("Reset", systemImage: "arrow.counterclockwise")
+                .labelStyle(.titleAndIcon)
+        }
+        .glassButtonStyle()
+        .controlSize(.small)
+        .hoverTooltip("Reset Customization")
+        .accessibilityLabel("Reset Customization")
     }
 
     // MARK: - Pinned footer

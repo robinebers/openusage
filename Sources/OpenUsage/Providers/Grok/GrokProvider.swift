@@ -24,9 +24,10 @@ final class GrokProvider: ProviderRuntime {
     var widgetDescriptors: [WidgetDescriptor] {
         [
             .percent(id: "grok.creditsUsed", provider: provider, title: "Monthly", metricLabel: "Credits used"),
-            .badge(id: "grok.payAsYouGo", provider: provider, title: "Extra Usage", metricLabel: "Pay as you go")
+            .badge(id: "grok.payAsYouGo", provider: provider, title: "Extra Usage", metricLabel: "Pay as you go"),
+            .usageTrend(provider: provider)
             // Local spend tiles, estimated from the Grok CLI log (see GrokLogUsageScanner).
-        ] + WidgetDescriptor.spendTiles(provider: provider) + [.usageTrend(provider: provider)]
+        ] + WidgetDescriptor.spendTiles(provider: provider)
     }
 
     func refresh() async -> ProviderSnapshot {
