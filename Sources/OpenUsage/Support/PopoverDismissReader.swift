@@ -168,6 +168,14 @@ enum MenuBarPopover {
     /// path as a status-item click.
     static var dismissHandler: (() -> Void)?
 
+    /// Resize bridge: the in-page resize grip (`ResizeGrip`) drives the host panel's height through
+    /// these, so the AppKit panel owner stays the single place that does `setFrame` (synchronously, so
+    /// the content never lags the frame). `beginResize` snapshots the start height; `resizeBy` is the
+    /// cumulative drag distance (down = taller); `endResize` persists.
+    static var beginResize: (() -> Void)?
+    static var resizeBy: ((CGFloat) -> Void)?
+    static var endResize: (() -> Void)?
+
     /// Closes the popover. Falls back to ordering the given window out if no owner has installed
     /// a handler (which would be a wiring bug, so it's logged loudly by the caller's absence of
     /// effect rather than silently swallowed here).

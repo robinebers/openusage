@@ -14,6 +14,10 @@ import SwiftUI
 struct HeaderView: View {
     @Environment(LayoutStore.self) private var layout
     @Environment(UpdaterController.self) private var updater
+    /// The screen this footer belongs to. Footers are per-page now (they slide with their page), so the
+    /// "More" button keys off the page it's drawn in — not the global current screen, which flips at the
+    /// start of a slide and would otherwise pop the button off the outgoing page mid-transition.
+    let screen: PopoverScreen
 
     var body: some View {
         leadingControl
@@ -27,7 +31,7 @@ struct HeaderView: View {
     /// on the footer's Liquid Glass (bordered on macOS 15).
     @ViewBuilder
     private var leadingControl: some View {
-        if layout.screen == .dashboard {
+        if screen == .dashboard {
             Menu {
                 moreMenuItems
             } label: {

@@ -26,6 +26,8 @@ struct DashboardView: View {
     @State private var hasMeasuredSettingsContent = false
     @State private var reorderLift: ReorderLift?
     @State private var showingResetCustomizationConfirmation = false
+    /// True while the user is dragging the resize grip, so the first drag event begins the resize once.
+    @State private var resizingPanel = false
     /// Horizontal screen-switch slide: 0 shows the outgoing screen, 1 the incoming one. Drives both the
     /// page offset and the interpolated popover height, so the slide and the resize share one spring.
     @State private var slideProgress: CGFloat = 1
@@ -165,8 +167,13 @@ struct DashboardView: View {
     var body: some View {
         modeBody
             .frame(width: Self.popoverWidth)
-            .pinnedFooter(spacing: 0) { footerBar }
-            .frame(height: animatedPopoverHeight, alignment: .top)
+            // Fill the panel (the host window is the user-set, screen-clamped size); the scroll views
+            // inside handle overflow. The panel no longer sizes to content, so switching screens never
+            // resizes the window — the slide plays over a static frame, with no resize stutter.
+            .frame(maxHeight: .infinity, alignment: .top)
+            // The resize dragger is a persistent bar at the very bottom — on every screen, including
+            // Settings — separate from the footer above it. It never slides; the pages slide above it.
+            .safeAreaInset(edge: .bottom, spacing: 0) { resizeDragger }
             // Paint the surface behind the content (and footer) and tell every descendant whether
             // glass is on, so the fallbacks and the meter tints render in step. Both go on the
             // outermost level of the chain so the footer, header buttons, and scroll content inherit.
@@ -247,6 +254,13 @@ struct DashboardView: View {
         if layout.screen != .dashboard { layout.screen = .dashboard }
         reorderLift = nil
         layout.cancelDrag()
+        // If the popover closes mid-resize (e.g. the global hotkey fires while dragging), the grip's
+        // `onEnded` never runs — settle it here so the flag can't stay stuck (which would make the next
+        // drag jump from a stale start height), and the dragged height is still persisted.
+        if resizingPanel {
+            resizingPanel = false
+            MenuBarPopover.endResize?()
+        }
         dashboardScrollPosition.scrollTo(edge: .top)
     }
 
@@ -310,6 +324,7 @@ struct DashboardView: View {
         switch screen {
         case .dashboard:
             scrollingDashboard
+                .pinnedFooter(spacing: 0) { footerBar(for: .dashboard) }
         case .customize:
             CustomizeView(
                 contentHeight: $customizeContentHeight,
@@ -318,13 +333,53 @@ struct DashboardView: View {
                 reorderLift: $reorderLift
             )
             .pinnedTopBar(spacing: 0) { navBar(title: "Customize", showsReset: true) }
+            .pinnedFooter(spacing: 0) { footerBar(for: .customize) }
         case .settings:
+            // No footer — Settings shows only its content (with the top nav bar) above the persistent
+            // dragger. The dragger lives at the root, so it's still there.
             SettingsScreen(
                 contentHeight: $settingsContentHeight,
                 hasMeasuredContent: $hasMeasuredSettingsContent
             )
             .pinnedTopBar(spacing: 0) { navBar(title: "Settings") }
         }
+    }
+
+    /// The resize dragger: a persistent grabber at the very bottom of the popover, present on every
+    /// screen and separate from the footer above it (it never slides). The drag is measured in `.global`
+    /// space — pinned to the panel's fixed top edge — so the bar moving as the panel grows doesn't feed
+    /// back into the gesture; it drives the host panel through `MenuBarPopover`, which resizes
+    /// synchronously so the content can't lag the frame. The pointer style gives the standard resize cursor.
+    private var resizeDragger: some View {
+        Capsule()
+            .fill(.tertiary)
+            .frame(width: 36, height: 4)
+            .frame(maxWidth: .infinity)
+            .frame(height: 10)
+            .contentShape(Rectangle())
+            // Settings has no footer above the dragger, so the grabber would float on bare glass and be
+            // hard to spot — give it a faint bar of its own there. The other screens have the footer right
+            // above it for context, so it stays backgroundless.
+            .background {
+                if layout.screen == .settings {
+                    Rectangle().fill(.bar)
+                }
+            }
+            .pointerStyle(.frameResize(position: .bottom))
+            .gesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .global)
+                    .onChanged { value in
+                        if !resizingPanel {
+                            resizingPanel = true
+                            MenuBarPopover.beginResize?()
+                        }
+                        MenuBarPopover.resizeBy?(value.translation.height)
+                    }
+                    .onEnded { _ in
+                        resizingPanel = false
+                        MenuBarPopover.endResize?()
+                    }
+            )
     }
 
     /// The widget list as a scroll view that fills the region the footer leaves. The content scrolls
@@ -439,19 +494,38 @@ struct DashboardView: View {
     /// trailing edge. Pinned via `pinnedFooter` so the content scrolls under it with the native scroll
     /// edge effect (`safeAreaBar` on macOS 26; `safeAreaInset` on macOS 15, where the footer still
     /// pins but the scroll-edge blur is absent).
-    private var footerBar: some View {
-        HStack(alignment: .center, spacing: 8) {
-            footerIdentity
-            Spacer(minLength: 8)
-            HeaderView()
+    @ViewBuilder
+    private func footerBar(for screen: PopoverScreen) -> some View {
+        Group {
+            if screen == .customize {
+                // Customize summarizes the layout — active (enabled) metrics and how many are pinned —
+                // centered, using the same middot the metric rows use.
+                Text(layout.pinLimitNotice ?? "\(activeMetricCount) active · \(layout.pinnedCount) pinned")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(layout.pinLimitNotice == nil ? AnyShapeStyle(.secondary) : Theme.notice)
+                    .denyShake(trigger: layout.pinNoticeShakeTrigger)
+                    .frame(maxWidth: .infinity)
+                    .animation(Motion.spring, value: layout.pinLimitNotice)
+            } else {
+                HStack(alignment: .center, spacing: 8) {
+                    footerIdentity
+                    Spacer(minLength: 8)
+                    HeaderView(screen: screen)
+                }
+            }
         }
         .padding(.horizontal, Self.footerHorizontalPadding)
-        // Balanced vertical padding so the footer content sits evenly between the bar's edges. The
-        // scroll edge blur spans the bar's full height regardless, so the transition stays smooth.
-        .padding(.vertical, 12)
+        .padding(.top, 12)
+        // Tight to the resize dragger just below, so the footer and handle read as one bottom cluster.
+        .padding(.bottom, 4)
         .frame(maxWidth: .infinity)
-        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { newValue in
-            if newValue > 0 { footerHeight = newValue }
+    }
+
+    /// Count of enabled ("active") metrics across providers — the "N active" half of the Customize footer
+    /// summary. Pinned metrics are a subset of these.
+    private var activeMetricCount: Int {
+        layout.customizeGroups.reduce(0) { count, group in
+            count + group.metrics.filter { layout.isMetricEnabled($0.id) }.count
         }
     }
 
@@ -462,29 +536,21 @@ struct DashboardView: View {
     /// deny shake — the wrong-password idiom — on every blocked click.
     @ViewBuilder
     private var footerIdentity: some View {
-        if layout.isEditing {
-            Text(layout.pinLimitNotice ?? "\(layout.pinnedCount) pinned")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(layout.pinLimitNotice == nil ? AnyShapeStyle(.secondary) : Theme.notice)
-                .denyShake(trigger: layout.pinNoticeShakeTrigger)
-                .animation(Motion.spring, value: layout.pinLimitNotice)
-        } else {
-            // Both lines share the same font and muted style so the footer reads as one block.
-            VStack(alignment: .leading, spacing: 0) {
-                Text("OpenUsage \(AppInfo.version)")
-                if let notice = layout.pinLimitNotice {
-                    Text(notice)
-                        .foregroundStyle(Theme.notice)
-                        // This label is inserted by the denial itself, so it must shake on mount.
-                        .denyShake(trigger: layout.pinNoticeShakeTrigger, shakeOnAppear: true)
-                } else {
-                    nextUpdateButton
-                }
+        // Both lines share the same font and muted style so the footer reads as one block.
+        VStack(alignment: .leading, spacing: 0) {
+            Text("OpenUsage \(AppInfo.version)")
+            if let notice = layout.pinLimitNotice {
+                Text(notice)
+                    .foregroundStyle(Theme.notice)
+                    // This label is inserted by the denial itself, so it must shake on mount.
+                    .denyShake(trigger: layout.pinNoticeShakeTrigger, shakeOnAppear: true)
+            } else {
+                nextUpdateButton
             }
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-            .animation(Motion.spring, value: layout.pinLimitNotice)
         }
+        .font(.caption2)
+        .foregroundStyle(.secondary)
+        .animation(Motion.spring, value: layout.pinLimitNotice)
     }
 
     /// Ticks once a second so the "Next update in …" copy counts down live, and doubles as the manual

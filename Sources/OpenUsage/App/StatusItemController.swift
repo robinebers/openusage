@@ -30,9 +30,9 @@ final class StatusItemController: NSObject {
     private let statusItem: NSStatusItem
     private let panel: MenuBarPanel
     private let hostingController: NSHostingController<AnyView>
-    /// Tracks the SwiftUI content's ideal size so the panel resizes to it (the dashboard animates its
-    /// own height on mode switches). Replaces the `NSPopover` `preferredContentSize` auto-tracking.
-    private var contentSizeObservation: NSKeyValueObservation?
+    /// The screen the status-item button is on, captured on show — used to clamp the saved panel size
+    /// to whatever display the panel is currently opening on.
+    private var anchorScreen: NSScreen?
     /// Closes the panel on clicks outside it (the panel is non-activating and dismissal is ours to
     /// implement, the same model the old `.applicationDefined` popover used).
     private var outsideClickMonitors: [Any] = []
@@ -45,16 +45,23 @@ final class StatusItemController: NSObject {
     /// Reduce Transparency is on. Exactly one is visible (see `applyReduceTransparency`).
     private var glassBackdrop: NSVisualEffectView?
     private var solidBackdrop: NSBox?
-    /// Panel top-left in screen coords, captured on show. The panel grows downward from here as the
-    /// content animates its height, so the top edge stays pinned just under the status-item button.
+    /// Panel top-left in screen coords, captured on show. The panel grows downward from here, so the
+    /// top edge stays pinned just under the status-item button as the user resizes it.
     private var anchorTopLeft: NSPoint?
 
-    /// One width across both densities (matches `DashboardView.popoverWidth`).
+    /// One width across both densities (matches `DashboardView.popoverWidth`). The panel is a single
+    /// column of metrics, so width is fixed; only height is user-resizable.
     private static let panelWidth: CGFloat = 320
     /// Gap between the menu bar and the panel's top edge.
     private static let topGap: CGFloat = 4
     /// Corner radius of the panel surface; tuned to read like a system menu-bar popover.
     private static let cornerRadius: CGFloat = 13
+    /// Smallest the panel can be dragged — room for the footer plus a couple of rows.
+    private static let minPanelHeight: CGFloat = 240
+    /// Opening height before the user has ever resized the panel.
+    private static let defaultPanelHeight: CGFloat = 800
+    /// Panel height at the moment a grip drag began; the live height is this plus the drag distance.
+    private var gripStartHeight: CGFloat = 0
 
     init(container: AppContainer, updater: UpdaterController) {
         self.container = container
@@ -70,13 +77,13 @@ final class StatusItemController: NSObject {
                     .environment(updater)
             )
         )
-        // The panel tracks SwiftUI's preferred size, so the dashboard's animated height changes
-        // (mode switches, content growth) resize the panel instead of clipping.
-        hosting.sizingOptions = .preferredContentSize
+        // The panel is a fixed, user-resizable size — NOT content-sized. The host view fills the
+        // window (its autoresizing mask) and the content scrolls, so switching screens never resizes
+        // the window. That's what removes the resize stutter: the only resize is the user's own drag.
         self.hostingController = hosting
 
         self.panel = MenuBarPanel(
-            contentRect: NSRect(x: 0, y: 0, width: Self.panelWidth, height: 400),
+            contentRect: NSRect(x: 0, y: 0, width: Self.panelWidth, height: Self.defaultPanelHeight),
             styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -123,6 +130,12 @@ final class StatusItemController: NSObject {
         MenuBarPopover.dismissHandler = { [weak self] in
             self?.hidePanel()
         }
+
+        // The in-page resize grip drives the panel height through these (the panel stays the single
+        // owner of `setFrame`, resizing synchronously so the content never lags the frame).
+        MenuBarPopover.beginResize = { [weak self] in self?.beginGripResize() }
+        MenuBarPopover.resizeBy = { [weak self] distance in self?.updateGripResize(by: distance) }
+        MenuBarPopover.endResize = { [weak self] in self?.endGripResize() }
 
         AppLog.info(.statusItem, "Status item ready (button: \(self.statusItem.button != nil), shortcut: \(KeyboardShortcuts.getShortcut(for: .togglePopover)?.description ?? "none"))")
     }
@@ -174,6 +187,10 @@ final class StatusItemController: NSObject {
         host.frame = container.bounds
         host.autoresizingMask = [.width, .height]
         host.wantsLayer = true
+        // Redraw the SwiftUI content on every step of a live resize instead of stretching the layer's
+        // cached contents (the default `.onSetNeedsDisplay`), which is what made the cards jitter while
+        // dragging the bottom edge.
+        host.layerContentsRedrawPolicy = .duringViewResize
         host.layer?.cornerRadius = Self.cornerRadius
         host.layer?.cornerCurve = .continuous
         host.layer?.masksToBounds = true
@@ -185,15 +202,11 @@ final class StatusItemController: NSObject {
         solidBackdrop = solid
 
         // A plain container VC owns the backdrop; the hosting controller is its child so SwiftUI gets
-        // a proper view-controller hierarchy. The panel itself is sized by `resizePanelToContent`.
+        // a proper view-controller hierarchy. The panel itself is sized by `applyPanelSize`.
         let rootVC = NSViewController()
         rootVC.view = container
         rootVC.addChild(hostingController)
         panel.contentViewController = rootVC
-
-        contentSizeObservation = hostingController.observe(\.preferredContentSize, options: [.new]) { [weak self] _, _ in
-            MainActor.assumeIsolated { self?.resizePanelToContent() }
-        }
 
         applyReduceTransparency()
     }
@@ -338,8 +351,9 @@ final class StatusItemController: NSObject {
         hostingController.view.layoutSubtreeIfNeeded()
 
         let buttonRectOnScreen = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
+        anchorScreen = NSScreen.screens.first { $0.frame.intersects(buttonRectOnScreen) } ?? NSScreen.main
         anchorTopLeft = clampedTopLeft(below: buttonRectOnScreen, width: Self.panelWidth)
-        resizePanelToContent()
+        applyPanelSize()
 
         // `canBecomeKey` + `.nonactivatingPanel` makes this key without activating the app — no
         // activation race, so the dashboard receives keys on the first try.
@@ -367,6 +381,7 @@ final class StatusItemController: NSObject {
         stopOutsideClickMonitors()
         statusItem.button?.highlight(false)
         anchorTopLeft = nil
+        anchorScreen = nil
     }
 
     /// Drops keyboard focus inside the panel so a clicked plain-styled control (a metric row's
@@ -380,19 +395,59 @@ final class StatusItemController: NSObject {
         panel.makeFirstResponder(nil)
     }
 
-    /// Resizes the panel to the SwiftUI content's ideal size, keeping the top edge pinned under the
-    /// status-item button (macOS window origins are bottom-left, so the origin drops as height grows).
-    private func resizePanelToContent() {
-        let size = hostingController.preferredContentSize
-        guard size.width > 0, size.height > 0 else { return }
-        let origin: NSPoint
-        if let anchorTopLeft {
-            origin = NSPoint(x: anchorTopLeft.x, y: anchorTopLeft.y - size.height)
-        } else {
-            origin = panel.frame.origin
-        }
-        panel.setFrame(NSRect(origin: origin, size: size), display: true)
+    /// Sizes the panel on show: the user's saved height (or a default), **clamped to fit the current
+    /// screen**, with the top-left pinned under the status item. Width is fixed (single-column list).
+    ///
+    /// This is the whole cross-display story: we store ONE height. If it doesn't fit the screen the
+    /// panel is opening on (e.g. saved big on a Studio Display, opened on a laptop), we shrink it to fit
+    /// *for this open only* — the saved value is untouched, so it returns to full size back on the big
+    /// screen. The clamp runs before the panel is visible, so it's instant. There's no content-driven
+    /// resize, so switching screens never moves the window — only the user's drag does.
+    private func applyPanelSize() {
+        guard let anchorTopLeft else { return }
+        let saved = PanelHeightStore.load() ?? Self.defaultPanelHeight
+        let height = min(max(saved, Self.minPanelHeight), maxPanelHeight())
+        let origin = NSPoint(x: anchorTopLeft.x, y: anchorTopLeft.y - height)
+        panel.setFrame(NSRect(origin: origin, size: NSSize(width: Self.panelWidth, height: height)), display: false)
         panel.invalidateShadow()
+    }
+
+    // MARK: - Grip resize
+
+    private func beginGripResize() {
+        gripStartHeight = panel.frame.height
+    }
+
+    /// Live grip drag. `distance` is how far the pointer has moved down from where the drag began (down =
+    /// grow). We set the frame and then lay the content out **synchronously** before it's drawn, so the
+    /// SwiftUI content never lags the window frame — which was the wobble.
+    private func updateGripResize(by distance: CGFloat) {
+        guard let anchorTopLeft else { return }
+        let height = min(max(gripStartHeight + distance, Self.minPanelHeight), maxPanelHeight())
+        let origin = NSPoint(x: anchorTopLeft.x, y: anchorTopLeft.y - height)
+        panel.setFrame(NSRect(origin: origin, size: NSSize(width: Self.panelWidth, height: height)), display: false)
+        panel.contentView?.layoutSubtreeIfNeeded()
+        panel.displayIfNeeded()
+        panel.invalidateShadow()
+    }
+
+    private func endGripResize() {
+        PanelHeightStore.save(panel.frame.height)
+    }
+
+    /// The tallest the panel may be on the current screen: the room below its pinned top edge, capped at
+    /// 85% of the screen's usable height so it never dominates a large display.
+    private func maxPanelHeight() -> CGFloat {
+        guard let anchorTopLeft, let visible = (anchorScreen ?? NSScreen.main)?.visibleFrame else {
+            return Self.defaultPanelHeight
+        }
+        let roomBelowAnchor = anchorTopLeft.y - visible.minY - 8
+        let aestheticCap = floor(visible.height * 0.85)
+        // The ceiling is the room below the pinned top edge (capped at 85% for aesthetics). It is NOT
+        // floored at `minPanelHeight`: on a screen too short for the minimum, fitting on-screen wins —
+        // the panel becomes smaller than the min rather than running off the bottom edge. `max(1, …)`
+        // only guards a degenerate non-positive frame.
+        return max(1, min(roomBelowAnchor, aestheticCap))
     }
 
     /// Places the panel's top-left just below the button, clamped to the button's screen.
@@ -481,5 +536,20 @@ final class StatusItemController: NSObject {
         guard let button = statusItem.button, let buttonWindow = button.window else { return false }
         let buttonFrame = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
         return buttonFrame.contains(screenPoint)
+    }
+}
+
+/// Persists the user's chosen panel height across launches. Width is fixed (single-column list), so
+/// only height is stored; it's clamped to the current screen on each open (see `applyPanelSize`).
+private enum PanelHeightStore {
+    private static let key = "openusage.panel.height"
+
+    static func load() -> CGFloat? {
+        let value = UserDefaults.standard.double(forKey: key)
+        return value > 0 ? CGFloat(value) : nil
+    }
+
+    static func save(_ height: CGFloat) {
+        UserDefaults.standard.set(Double(height), forKey: key)
     }
 }
