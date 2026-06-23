@@ -7,13 +7,15 @@ import SwiftUI
 ///
 /// It's drawn in its own borderless, non-activating, click-through `NSPanel` — not a SwiftUI overlay.
 /// A SwiftUI overlay lives inside the popover's window and is clipped to it (and to the dashboard's
-/// scroll view), so it can't float freely the way a tooltip must. The panel sits at `.popUpMenu` — the
-/// same level as the status-item popover — so it shows over the popover by being ordered in front, not
-/// by a higher level. It never becomes key and never activates the app (shown via
-/// `orderFrontRegardless()`), which is the documented carve-out that keeps it from dismissing the
-/// transient popover; `ignoresMouseEvents` makes it click-through so it can't steal the hover that
-/// spawned it. The popover closing doesn't move the cursor or tear down the (surviving) SwiftUI tree,
-/// so `HoverTooltips.dismissAll()` clears any live tooltip from the status-item controller's hide path.
+/// scroll view), so it can't float freely the way a tooltip must. The panel sits one level above the
+/// status-item popover (which is `.popUpMenu`): `orderFrontRegardless()` only orders the panel to the
+/// front of its own level, so at the same level a later click that re-fronts the popover would bury the
+/// tooltip behind it (issue #696) — a strictly higher level keeps it above regardless of front-ordering.
+/// It never becomes key and never activates the app (shown via `orderFrontRegardless()`), which is the
+/// documented carve-out that keeps it from dismissing the transient popover; `ignoresMouseEvents` makes
+/// it click-through so it can't steal the hover that spawned it. The popover closing doesn't move the
+/// cursor or tear down the (surviving) SwiftUI tree, so `HoverTooltips.dismissAll()` clears any live
+/// tooltip from the status-item controller's hide path.
 ///
 /// Usage: `.hoverTooltip(_:)` on any hover target. No root container is needed — the panel is a
 /// separate window owned by `TooltipPresenter`.
@@ -147,6 +149,10 @@ private final class TooltipPresenter {
     /// Space above the cursor; the panel's bottom edge sits this far above the pointer.
     private let cursorGap: CGFloat = 10
 
+    /// Bubble width past which a tooltip wraps onto multiple lines instead of stretching ever wider
+    /// (#696). Sits comfortably under the 320pt popover so a wrapped tooltip never reads as a second panel.
+    private let maxTooltipWidth: CGFloat = 280
+
     private let host = NSHostingView(rootView: AnyView(EmptyView()))
     private let panel = NonKeyPanel(
         contentRect: .zero,
@@ -158,10 +164,15 @@ private final class TooltipPresenter {
     private init() {
         // Configure the panel up front (not lazily) so the hosting view is in a window from the start
         // and `fittingSize` measures correctly on the first show. Default sizing options stay on so the
-        // host has an intrinsic size to report; the bubble is `.fixedSize()`, so that equals the size we
-        // set and the host can't grow the panel out from under us.
+        // host has an intrinsic size to report; the bubble reports a determinate size (`.fixedSize()`, or
+        // a fixed width plus `fixedSize(vertical:)` once wrapped), so that equals the size we set and the
+        // host can't grow the panel out from under us.
         panel.isFloatingPanel = true
-        panel.level = .popUpMenu                          // same level as the status-item popover; wins by being ordered front
+        // One level above the status-item popover (also `.popUpMenu`): `orderFrontRegardless` only fronts
+        // within a level, so matching it let a popover click bury the tooltip behind it (#696). A strictly
+        // higher level keeps it above. Still click-through + non-activating, and cleared on popover-close,
+        // so it can't steal the hover, dismiss the transient popover, or orphan above a closed one.
+        panel.level = NSWindow.Level(rawValue: NSWindow.Level.popUpMenu.rawValue + 1)
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.ignoresMouseEvents = true                   // click-through; never intercepts the hover
@@ -255,12 +266,26 @@ private final class TooltipPresenter {
     }
 
     private func present(_ target: Target) {
-        host.rootView = AnyView(TooltipBubble(text: target.text, reduceTransparency: target.reduceTransparency))
-        host.layoutSubtreeIfNeeded()
-        let size = host.fittingSize
+        let size = measuredSize(for: target)
         panel.setContentSize(size)
         panel.setFrameOrigin(origin(for: size, cursor: NSEvent.mouseLocation))
         panel.orderFrontRegardless()                   // show without activating the app or taking key
+    }
+
+    /// Lays the bubble out at its natural single-line size, then — only when that would run wider than
+    /// `maxTooltipWidth` — re-lays it wrapped to that width, so a long tooltip breaks onto multiple lines
+    /// instead of stretching off-screen (#696) while short ones keep their snug single-line size. Leaves
+    /// `host.rootView` holding whichever bubble it settled on, which is the one shown.
+    private func measuredSize(for target: Target) -> CGSize {
+        func fit(maxTextWidth: CGFloat?) -> CGSize {
+            host.rootView = AnyView(TooltipBubble(text: target.text, maxTextWidth: maxTextWidth,
+                                                  reduceTransparency: target.reduceTransparency))
+            host.layoutSubtreeIfNeeded()
+            return host.fittingSize
+        }
+        let natural = fit(maxTextWidth: nil)
+        guard natural.width > maxTooltipWidth else { return natural }
+        return fit(maxTextWidth: maxTooltipWidth - 2 * TooltipBubble.horizontalPadding)
     }
 
     /// Above the cursor and centered on it, clamped to the cursor's screen; flips below the cursor when
@@ -303,15 +328,18 @@ private final class NonKeyPanel: NSPanel {
 /// the panel's window shadow supplies the drop shadow.
 private struct TooltipBubble: View {
     let text: String
+    /// When set, the text wraps to this width (long tooltips); `nil` keeps it a snug single line.
+    let maxTextWidth: CGFloat?
     let reduceTransparency: Bool
+
+    /// Inner horizontal padding around the text. `TooltipPresenter` subtracts it when deriving the
+    /// text wrap width from the bubble's max width.
+    static let horizontalPadding: CGFloat = 8
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 6, style: .continuous)
-        Text(text)
-            .font(.system(size: 12))
-            .foregroundStyle(.primary)
-            .fixedSize()
-            .padding(.horizontal, 8)
+        label
+            .padding(.horizontal, Self.horizontalPadding)
             .padding(.vertical, 5)
             .background {
                 if reduceTransparency {
@@ -321,5 +349,21 @@ private struct TooltipBubble: View {
                 }
             }
             .overlay { shape.strokeBorder(.separator, lineWidth: 0.5) }
+    }
+
+    @ViewBuilder
+    private var label: some View {
+        let content = Text(text)
+            .font(.system(size: 12))
+            .foregroundStyle(.primary)
+            .multilineTextAlignment(.leading)
+        if let maxTextWidth {
+            // A fixed width (not `maxWidth`) so the wrapped height measures deterministically via
+            // `fittingSize`; `fixedSize(vertical:)` pins the bubble to that ideal wrapped height.
+            content.frame(width: maxTextWidth, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+        } else {
+            content.fixedSize()
+        }
     }
 }
