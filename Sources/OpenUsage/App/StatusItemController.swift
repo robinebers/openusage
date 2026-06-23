@@ -443,7 +443,11 @@ final class StatusItemController: NSObject {
         }
         let roomBelowAnchor = anchorTopLeft.y - visible.minY - 8
         let aestheticCap = floor(visible.height * 0.85)
-        return max(Self.minPanelHeight, min(roomBelowAnchor, aestheticCap))
+        // The ceiling is the room below the pinned top edge (capped at 85% for aesthetics). It is NOT
+        // floored at `minPanelHeight`: on a screen too short for the minimum, fitting on-screen wins —
+        // the panel becomes smaller than the min rather than running off the bottom edge. `max(1, …)`
+        // only guards a degenerate non-positive frame.
+        return max(1, min(roomBelowAnchor, aestheticCap))
     }
 
     /// Places the panel's top-left just below the button, clamped to the button's screen.
