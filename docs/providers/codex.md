@@ -29,6 +29,6 @@ Today / Yesterday / Last 30 Days are computed **locally** from your Codex logs b
 
 ## Under the hood
 
-`GET https://chatgpt.com/backend-api/wham/usage` with the Codex OAuth token; refresh via `auth.openai.com`. A 401/403 triggers one token refresh and retry.
+`GET https://chatgpt.com/backend-api/wham/usage` with the Codex OAuth token; refresh via `auth.openai.com`. A 401/403 triggers one token refresh and retry. Session and Weekly are read from the usage window in that response, with the response headers used only when the window fields are missing.
 
 The "Rate Limit Resets" row (placed before Credits) shows the on-demand reset-credit count, e.g. `2 available`. OpenUsage also makes a best-effort `GET https://chatgpt.com/backend-api/wham/rate-limit-reset-credits` call — the dedicated endpoint that lists each credit's expiry — and surfaces those on hover (`Reset expires in 12d 18h`, or a numbered `Resets expire in:` list for several), following the global relative/absolute time setting. A warning triangle appears beside the count when the soonest credit is within 24 hours of expiring. If that call fails, the row falls back to the count embedded in the usage body (`rate_limit_reset_credits.available_count`) with no expiry tooltip. An empty balance reads `0 available`.

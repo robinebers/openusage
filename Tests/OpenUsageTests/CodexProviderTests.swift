@@ -30,7 +30,7 @@ final class CodexAuthStoreTests: XCTestCase {
 }
 
 final class CodexUsageMapperTests: XCTestCase {
-    func testMapsHeadersCreditsAndPlan() throws {
+    func testMapsWindowsCreditsAndPlan() throws {
         let body = Data("""
         {
           "plan_type": "prolite",
@@ -56,14 +56,65 @@ final class CodexUsageMapperTests: XCTestCase {
         )
 
         XCTAssertEqual(mapped.plan, "Pro 5x")
-        XCTAssertEqual(progress(mapped.lines, "Session")?.used, 25)
-        XCTAssertEqual(progress(mapped.lines, "Weekly")?.used, 50)
+        XCTAssertEqual(progress(mapped.lines, "Session")?.used, 10)
+        XCTAssertEqual(progress(mapped.lines, "Weekly")?.used, 20)
         // Credits lead with the dollar value (4¢/credit), then the raw count — no inverted fake cap.
         XCTAssertNil(progress(mapped.lines, "Credits"))
         XCTAssertEqual(values(mapped.lines, "Credits"),
                        [MetricValue(number: 4.0, kind: .dollars), MetricValue(number: 100, kind: .count, label: "credits")])
         XCTAssertNotNil(progress(mapped.lines, "Session")?.resetsAt)
         XCTAssertEqual(progress(mapped.lines, "Session")?.periodDurationMs, CodexUsageMapper.sessionPeriodMs)
+    }
+
+    func testHeadersFillMissingWindows() throws {
+        let body = Data("""
+        {
+          "rate_limit": {}
+        }
+        """.utf8)
+        let response = HTTPResponse(
+            statusCode: 200,
+            headers: [
+                "x-codex-primary-used-percent": "25",
+                "x-codex-secondary-used-percent": "50"
+            ],
+            body: body
+        )
+
+        let mapped = try CodexUsageMapper.mapUsageResponse(
+            response,
+            now: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+
+        XCTAssertEqual(progress(mapped.lines, "Session")?.used, 25)
+        XCTAssertEqual(progress(mapped.lines, "Weekly")?.used, 50)
+    }
+
+    func testSessionWindowBeatsStaleHeader() throws {
+        let body = Data("""
+        {
+          "rate_limit": {
+            "primary_window": { "reset_after_seconds": 60, "used_percent": 0 },
+            "secondary_window": { "reset_after_seconds": 120, "used_percent": 7 }
+          }
+        }
+        """.utf8)
+        let response = HTTPResponse(
+            statusCode: 200,
+            headers: [
+                "x-codex-primary-used-percent": "99",
+                "x-codex-secondary-used-percent": "99"
+            ],
+            body: body
+        )
+
+        let mapped = try CodexUsageMapper.mapUsageResponse(
+            response,
+            now: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+
+        XCTAssertEqual(progress(mapped.lines, "Session")?.used, 0)
+        XCTAssertEqual(progress(mapped.lines, "Weekly")?.used, 7)
     }
 
     func testAppendsTokenUsageLines() {

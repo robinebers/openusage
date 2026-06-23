@@ -32,19 +32,19 @@ enum CodexUsageMapper {
         let primaryWindow = rateLimit?["primary_window"] as? [String: Any]
         let secondaryWindow = rateLimit?["secondary_window"] as? [String: Any]
 
-        if let headerPrimary = ProviderParse.number(response.header("x-codex-primary-used-percent")) {
+        if let used = ProviderParse.number(primaryWindow?["used_percent"]) {
             lines.append(progress(
                 label: "Session",
-                used: headerPrimary,
+                used: used,
                 resetWindow: primaryWindow,
                 now: now,
                 periodDurationMs: sessionPeriodMs
             ))
         }
-        if let headerSecondary = ProviderParse.number(response.header("x-codex-secondary-used-percent")) {
+        if let used = ProviderParse.number(secondaryWindow?["used_percent"]) {
             lines.append(progress(
                 label: "Weekly",
-                used: headerSecondary,
+                used: used,
                 resetWindow: secondaryWindow,
                 now: now,
                 periodDurationMs: weeklyPeriodMs
@@ -52,7 +52,7 @@ enum CodexUsageMapper {
         }
 
         if !lines.contains(where: { $0.label == "Session" }),
-           let used = ProviderParse.number(primaryWindow?["used_percent"]) {
+           let used = ProviderParse.number(response.header("x-codex-primary-used-percent")) {
             lines.append(progress(
                 label: "Session",
                 used: used,
@@ -62,7 +62,7 @@ enum CodexUsageMapper {
             ))
         }
         if !lines.contains(where: { $0.label == "Weekly" }),
-           let used = ProviderParse.number(secondaryWindow?["used_percent"]) {
+           let used = ProviderParse.number(response.header("x-codex-secondary-used-percent")) {
             lines.append(progress(
                 label: "Weekly",
                 used: used,
@@ -303,4 +303,3 @@ enum CodexUsageError: Error, LocalizedError, Equatable {
         }
     }
 }
-
