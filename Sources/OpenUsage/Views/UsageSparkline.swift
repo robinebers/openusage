@@ -34,6 +34,11 @@ struct UsageSparkline: View {
             // Anchor the popover to the bar strip (not the whole row), so its arrow points straight up
             // at the chart rather than at the row's center, off to the left of the bars.
             bars
+                // Only the bar strip is hoverable — hovering the title must not reveal the detail.
+                .contentShape(Rectangle())
+                .onContinuousHover { phase in
+                    if case .active = phase { hover.inlineHover(true) } else { hover.inlineHover(false) }
+                }
                 .popover(isPresented: Binding(get: { hover.isPresented }, set: { hover.isPresented = $0 }),
                          arrowEdge: .top) {
                     UsageTrendDetail(title: data.title, points: points, note: data.chartNote) { inside in
@@ -41,12 +46,8 @@ struct UsageSparkline: View {
                     }
                 }
         }
-        .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
-        .onContinuousHover { phase in
-            if case .active = phase { hover.inlineHover(true) } else { hover.inlineHover(false) }
-        }
         .onDisappear { hover.dismiss() }
     }
 
