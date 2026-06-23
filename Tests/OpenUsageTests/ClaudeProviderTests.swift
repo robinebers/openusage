@@ -32,6 +32,28 @@ final class ClaudeAuthStoreTests: XCTestCase {
         XCTAssertEqual(credentials?.oauth.subscriptionType, "max")
     }
 
+    func testPrefersFresherFileTokenOverStaleKeychain() {
+        // #687: keychain is the historical default source, but when the file holds a token with a later
+        // expiry (a more recent external `claude` login), it must be tried first so a stale keychain
+        // entry can no longer shadow the fresh login. Ordering still keeps both candidates available.
+        let files = FakeFiles([
+            "/tmp/claude/.credentials.json": #"{"claudeAiOauth":{"accessToken":"file-token","expiresAt":4102444800000,"subscriptionType":"pro"}}"#
+        ])
+        let keychain = ServiceKeychain()
+        let store = ClaudeAuthStore(
+            environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": "/tmp/claude"]),
+            files: files,
+            keychain: keychain
+        )
+        let hashedService = store.keychainServiceCandidates().first!
+        keychain.currentUserValues[hashedService] = #"{"claudeAiOauth":{"accessToken":"keychain-token","expiresAt":4070908800000,"subscriptionType":"max"}}"#
+
+        let candidates = store.loadCredentialCandidates()
+
+        XCTAssertEqual(candidates.map(\.oauth.accessToken), ["file-token", "keychain-token"])
+        XCTAssertEqual(store.loadCredentials()?.oauth.accessToken, "file-token")
+    }
+
     func testEnvironmentTokenIsInferenceOnly() {
         let store = ClaudeAuthStore(
             environment: FakeEnvironment(["CLAUDE_CODE_OAUTH_TOKEN": "env-token"]),
@@ -256,6 +278,101 @@ final class ClaudeProviderTests: XCTestCase {
         let saved = files.files["/tmp/claude/.credentials.json"] ?? ""
         XCTAssertTrue(saved.contains("fresh-token"))
         XCTAssertTrue(saved.contains("refresh-2"))
+    }
+
+    func testFallsBackToFileWhenKeychainTokenIsLockedOut() async {
+        // #687: a stale/locked-out token sits in the keychain (its refresh token is server-revoked →
+        // invalid_grant → "session expired") while a fresh external `claude` re-login wrote a working
+        // token to the file. The refresh must fall through to the file source and recover instead of
+        // surfacing the stale keychain error until the app is restarted.
+        let now = OpenUsageISO8601.date(from: "2026-02-20T16:00:00.000Z")!
+        let files = FakeFiles([
+            "/tmp/claude/.credentials.json": #"{"claudeAiOauth":{"accessToken":"fresh-access","refreshToken":"fresh-refresh","expiresAt":4070908800000,"subscriptionType":"pro","scopes":["user:profile"]}}"#
+        ])
+        let keychain = ServiceKeychain()
+        let authStore = ClaudeAuthStore(
+            environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": "/tmp/claude"]),
+            files: files,
+            keychain: keychain,
+            now: { now }
+        )
+        // The stale keychain token even has a *later* expiry than the file token, so freshest-first
+        // ordering still probes it first — proving the recovery comes from the auth-failure fallback,
+        // not just from reordering.
+        let hashedService = authStore.keychainServiceCandidates().first!
+        keychain.currentUserValues[hashedService] = #"{"claudeAiOauth":{"accessToken":"stale-access","refreshToken":"stale-refresh","expiresAt":4102444800000,"subscriptionType":"max","scopes":["user:profile"]}}"#
+
+        let httpClient = RoutingHTTPClient { request in
+            if request.url.absoluteString.hasSuffix("/api/oauth/usage") {
+                let authorization = request.headers["Authorization"] ?? ""
+                guard authorization.contains("fresh-access") else {
+                    return HTTPResponse(statusCode: 401, headers: [:], body: Data())
+                }
+                return HTTPResponse(
+                    statusCode: 200,
+                    headers: [:],
+                    body: Data(#"{"five_hour":{"utilization":42,"resets_at":"2099-01-01T00:00:00.000Z"}}"#.utf8)
+                )
+            }
+            // Refresh endpoint: only the stale candidate reaches here, and its refresh token is revoked.
+            return HTTPResponse(statusCode: 400, headers: [:], body: Data(#"{"error":"invalid_grant"}"#.utf8))
+        }
+        let provider = ClaudeProvider(
+            authStore: authStore,
+            usageClient: ClaudeUsageClient(httpClient: httpClient),
+            ccusageRunner: CcusageRunner(
+                processRunner: FakeProcessRunner(),
+                homeDirectory: { URL(fileURLWithPath: "/Users/test") }
+            ),
+            now: { now }
+        )
+
+        let snapshot = await provider.refresh()
+
+        // Recovered from the file source: plan + usage reflect the fresh token, with no error badge.
+        XCTAssertEqual(snapshot.plan, "Pro")
+        XCTAssertEqual(Self.progress(snapshot.lines, "Session")?.used, 42)
+        XCTAssertNil(badge(snapshot.lines, "Error"))
+    }
+
+    func testSurfacesAuthErrorWhenAllCredentialSourcesAreExpired() async {
+        // The fallback must not mask a genuine all-sources-expired state: when both keychain and file
+        // tokens are revoked, the refresh fails loudly with the auth error rather than silently
+        // recovering or dropping it.
+        let now = OpenUsageISO8601.date(from: "2026-02-20T16:00:00.000Z")!
+        let files = FakeFiles([
+            "/tmp/claude/.credentials.json": #"{"claudeAiOauth":{"accessToken":"file-stale","refreshToken":"file-refresh","expiresAt":4070908800000,"subscriptionType":"pro","scopes":["user:profile"]}}"#
+        ])
+        let keychain = ServiceKeychain()
+        let authStore = ClaudeAuthStore(
+            environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": "/tmp/claude"]),
+            files: files,
+            keychain: keychain,
+            now: { now }
+        )
+        let hashedService = authStore.keychainServiceCandidates().first!
+        keychain.currentUserValues[hashedService] = #"{"claudeAiOauth":{"accessToken":"keychain-stale","refreshToken":"keychain-refresh","expiresAt":4102444800000,"subscriptionType":"max","scopes":["user:profile"]}}"#
+
+        // Every usage call 401s and every refresh is revoked → both sources are dead.
+        let httpClient = RoutingHTTPClient { request in
+            if request.url.absoluteString.hasSuffix("/api/oauth/usage") {
+                return HTTPResponse(statusCode: 401, headers: [:], body: Data())
+            }
+            return HTTPResponse(statusCode: 400, headers: [:], body: Data(#"{"error":"invalid_grant"}"#.utf8))
+        }
+        let provider = ClaudeProvider(
+            authStore: authStore,
+            usageClient: ClaudeUsageClient(httpClient: httpClient),
+            ccusageRunner: CcusageRunner(
+                processRunner: FakeProcessRunner(),
+                homeDirectory: { URL(fileURLWithPath: "/Users/test") }
+            ),
+            now: { now }
+        )
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(badge(snapshot.lines, "Error"), ClaudeAuthError.sessionExpired.localizedDescription)
     }
 
     func testRateLimitedResponseMapsToRetryBadgeNotError() async {

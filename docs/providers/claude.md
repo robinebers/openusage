@@ -15,13 +15,13 @@ Tracks your Claude subscription limits using the login you already have from Cla
 
 ## Where credentials come from
 
-Sign in once with Claude Code; OpenUsage reads the same credentials, in this order:
+Sign in once with Claude Code; OpenUsage reads the same credentials. It checks every place Claude Code can store them and prefers the most recent login:
 
 1. `CLAUDE_CODE_OAUTH_TOKEN` environment variable
-2. `~/.claude/.credentials.json` (or `$CLAUDE_CONFIG_DIR/.credentials.json`)
-3. The macOS keychain entries Claude Code maintains
+2. The macOS keychain entry Claude Code maintains
+3. `~/.claude/.credentials.json` (or `$CLAUDE_CONFIG_DIR/.credentials.json`)
 
-Tokens are refreshed automatically; rotated tokens are written back where they came from.
+If one source holds an expired or "locked out" token, OpenUsage falls back to the others — so signing in again with `claude` outside the app is picked up on the next refresh, without restarting OpenUsage. Tokens are refreshed automatically; rotated tokens are written back where they came from.
 
 ## The spend tiles
 
@@ -35,4 +35,4 @@ Today / Yesterday / Last 30 Days are computed **locally** from your Claude Code 
 
 ## Under the hood
 
-`GET https://api.anthropic.com/api/oauth/usage` with the Claude Code OAuth token; refresh via `platform.claude.com/v1/oauth/token`. A 401/403 triggers one token refresh and retry.
+`GET https://api.anthropic.com/api/oauth/usage` with the Claude Code OAuth token; refresh via `platform.claude.com/v1/oauth/token`. A 401/403 triggers one token refresh and retry. If that still fails because the token is expired or revoked, OpenUsage retries with the next credential source before reporting an error.

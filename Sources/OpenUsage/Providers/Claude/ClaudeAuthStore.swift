@@ -43,6 +43,21 @@ enum ClaudeAuthError: Error, LocalizedError, Equatable {
             return "Token expired. Run `claude` to log in again."
         }
     }
+
+    /// Whether a failure on one credential source should fall through to the next one rather than
+    /// failing the whole refresh. An expired/revoked token in the preferred source (a stale keychain
+    /// entry from a prior login that later "locked out") must not shadow a fresh token an external
+    /// `claude` re-login wrote to a different source — so the token-is-bad cases allow a fallback,
+    /// while "no credentials at all" does not (there is nothing better to try). Mirrors
+    /// `CodexAuthError.allowsAuthFallback`.
+    var allowsAuthFallback: Bool {
+        switch self {
+        case .sessionExpired, .tokenExpired:
+            return true
+        case .notLoggedIn:
+            return false
+        }
+    }
 }
 
 struct ClaudeOAuthConfig: Hashable, Sendable {
@@ -78,21 +93,31 @@ struct ClaudeAuthStore: Sendable {
         self.now = now
     }
 
-    func loadCredentials() -> ClaudeCredentialState? {
-        let envAccessToken = envText("CLAUDE_CODE_OAUTH_TOKEN")
-        let stored = loadStoredCredentials()
-        guard let envAccessToken else {
-            return stored
+    /// All credential sources currently on disk/keychain, freshest first, for the refresh loop to try in
+    /// order. The provider probes each and — on an auth-expiry error (`ClaudeAuthError.allowsAuthFallback`)
+    /// — falls through to the next, so an external `claude` re-login is picked up no matter which source
+    /// it lands in, even when a stale/locked-out token still sits in another. Re-read on every refresh;
+    /// nothing is cached in memory.
+    func loadCredentialCandidates() -> [ClaudeCredentialState] {
+        // An explicit env token overrides everything and is inference-only (no live usage call), so there
+        // is no auth failure to fall back from — return the single env-wrapped candidate.
+        if let envAccessToken = envText("CLAUDE_CODE_OAUTH_TOKEN") {
+            let stored = orderedStoredCandidates().first
+            var oauth = stored?.oauth ?? ClaudeOAuth()
+            oauth.accessToken = envAccessToken
+            return [ClaudeCredentialState(
+                oauth: oauth,
+                source: stored?.source ?? .environment,
+                fullData: stored?.fullData,
+                inferenceOnly: true
+            )]
         }
+        return orderedStoredCandidates()
+    }
 
-        var oauth = stored?.oauth ?? ClaudeOAuth()
-        oauth.accessToken = envAccessToken
-        return ClaudeCredentialState(
-            oauth: oauth,
-            source: stored?.source ?? .environment,
-            fullData: stored?.fullData,
-            inferenceOnly: true
-        )
+    /// The first (freshest) credential candidate. Kept for callers that only need a single source.
+    func loadCredentials() -> ClaudeCredentialState? {
+        loadCredentialCandidates().first
     }
 
     func needsRefresh(_ oauth: ClaudeOAuth) -> Bool {
@@ -189,10 +214,30 @@ struct ClaudeAuthStore: Sendable {
         ProviderParse.decodeJSONWithHexFallback(text, as: ClaudeCredentialsFile.self)
     }
 
-    private func loadStoredCredentials() -> ClaudeCredentialState? {
-        if let keychain = loadKeychainCredentials() { return keychain }
-        if let file = loadFileCredentials() { return file }
-        return nil
+    /// Keychain and file credentials, ordered freshest-first by access-token expiry. A later expiry means
+    /// a more recent login, so a fresh external re-login is preferred over a stale token still sitting in
+    /// another source. The sort is stable, so when expiries tie — or are both absent — keychain stays
+    /// ahead of file, preserving the historical precedence. The source kind (never the token) is logged
+    /// so a "locked out" report can be diagnosed from which source was chosen.
+    private func orderedStoredCandidates() -> [ClaudeCredentialState] {
+        var candidates: [ClaudeCredentialState] = []
+        if let keychain = loadKeychainCredentials() { candidates.append(keychain) }
+        if let file = loadFileCredentials() { candidates.append(file) }
+
+        let ordered = candidates.enumerated().sorted { lhs, rhs in
+            let lhsExpiry = lhs.element.oauth.expiresAt ?? -.greatestFiniteMagnitude
+            let rhsExpiry = rhs.element.oauth.expiresAt ?? -.greatestFiniteMagnitude
+            if lhsExpiry == rhsExpiry { return lhs.offset < rhs.offset }
+            return lhsExpiry > rhsExpiry
+        }.map(\.element)
+
+        if ordered.count > 1 {
+            let labels = ordered.map { sourceLabel($0.source) }.joined(separator: ", ")
+            AppLog.debug(LogTag.auth("claude"), "credential candidates (freshest first): \(labels)")
+        } else if let only = ordered.first {
+            AppLog.debug(LogTag.auth("claude"), "credential source: \(sourceLabel(only.source))")
+        }
+        return ordered
     }
 
     private func loadFileCredentials() -> ClaudeCredentialState? {

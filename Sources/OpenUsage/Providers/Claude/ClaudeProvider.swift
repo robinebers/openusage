@@ -31,22 +31,37 @@ final class ClaudeProvider: ProviderRuntime {
     }
 
     func refresh() async -> ProviderSnapshot {
-        guard let state = await loadOffMainActor({ [authStore] in authStore.loadCredentials() }),
-              state.oauth.accessToken?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-        else {
+        let candidates = await loadOffMainActor { [authStore] in authStore.loadCredentialCandidates() }
+            .filter { $0.oauth.accessToken?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
+        guard !candidates.isEmpty else {
             AppLog.info(LogTag.auth("claude"), "no access token, not logged in")
             return ProviderSnapshot.error(provider: provider, message: ClaudeAuthError.notLoggedIn.localizedDescription)
         }
 
-        AppLog.info(LogTag.plugin("claude"), "refresh start")
+        AppLog.info(LogTag.plugin("claude"), "refresh start (\(candidates.count) credential source\(candidates.count == 1 ? "" : "s"))")
         let start = Date()
-        do {
-            let snapshot = try await probe(state: state)
-            AppLog.info(LogTag.plugin("claude"), "refresh end (\(Int(Date().timeIntervalSince(start) * 1000))ms)")
-            return snapshot
-        } catch {
-            return ProviderSnapshot.error(provider: provider, message: error.localizedDescription)
+        // Probe each credential source in freshest-first order. An auth-expiry failure on one source (a
+        // stale/locked-out token that an external `claude` re-login replaced in another source) falls
+        // through to the next rather than failing the whole refresh; any non-auth error (rate limit,
+        // request/transport failure) surfaces immediately so a real outage is never masked as a retry.
+        var lastFallbackError: Error?
+        for state in candidates {
+            do {
+                let snapshot = try await probe(state: state)
+                AppLog.info(LogTag.plugin("claude"), "refresh end (\(Int(Date().timeIntervalSince(start) * 1000))ms)")
+                return snapshot
+            } catch let error as ClaudeAuthError where error.allowsAuthFallback {
+                AppLog.warn(LogTag.auth("claude"), "credential source failed (\(error)); falling back to next source if any")
+                lastFallbackError = error
+                continue
+            } catch {
+                return ProviderSnapshot.error(provider: provider, message: error.localizedDescription)
+            }
         }
+        return ProviderSnapshot.error(
+            provider: provider,
+            message: (lastFallbackError ?? ClaudeAuthError.notLoggedIn).localizedDescription
+        )
     }
 
     private func probe(state initialState: ClaudeCredentialState) async throws -> ProviderSnapshot {
