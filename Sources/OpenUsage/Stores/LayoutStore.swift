@@ -101,6 +101,7 @@ final class LayoutStore {
     private let migrationBaselineMetricIDs: [String]
     private let defaultPinnedMetricIDs: [String]
     private let defaultExpandedMetricIDs: [String]
+    private var defaultExpandedOnEnableIDs: Set<String>
     private let isProviderEnabled: @MainActor (String) -> Bool
 
     init(
@@ -176,16 +177,25 @@ final class LayoutStore {
 
         // Seed default expanded membership only on a genuinely fresh launch. An existing layout with no
         // saved value predates this feature, so its metrics stay always-shown — never silently tuck a
-        // metric the user already lived with behind a new caret.
+        // metric the user already lived with behind a new caret. Default-expanded metrics that were off
+        // at migration time still enter below the caret the first time the user enables them.
         var shouldPersistExpanded = false
+        let initialDefaultExpandedOnEnableIDs: Set<String>
         if let savedExpanded = defaults.stringArray(forKey: expandedMetricsKey) {
             expandedMetricIDs = Set(savedExpanded.filter { registry.descriptor(id: $0) != nil })
+            initialDefaultExpandedOnEnableIDs = []
         } else if hasStoredLayout {
             expandedMetricIDs = []
+            let placedIDs = Set(initialPlaced.map(\.descriptorID))
+            initialDefaultExpandedOnEnableIDs = Set(defaultExpandedMetricIDs.filter {
+                registry.descriptor(id: $0) != nil && !placedIDs.contains($0)
+            })
         } else {
             expandedMetricIDs = Set(defaultExpandedMetricIDs.filter { registry.descriptor(id: $0) != nil })
+            initialDefaultExpandedOnEnableIDs = []
             shouldPersistExpanded = true
         }
+        defaultExpandedOnEnableIDs = initialDefaultExpandedOnEnableIDs
         menuBarStyle = defaults.enumValue(forKey: menuBarStyleKey, default: .text)
 
         if let savedExpandedProviders = defaults.stringArray(forKey: expandedProvidersKey) {
@@ -320,6 +330,10 @@ final class LayoutStore {
     /// switches drive, so on/off goes through the same add/remove path the rest of the app uses.
     func setMetricEnabled(_ descriptorID: String, _ enabled: Bool) {
         if enabled {
+            if defaultExpandedOnEnableIDs.remove(descriptorID) != nil {
+                expandedMetricIDs.insert(descriptorID)
+                persistExpanded()
+            }
             add(descriptorID)
         } else if let widget = placed.first(where: { $0.descriptorID == descriptorID }) {
             remove(widget.id)
@@ -390,6 +404,7 @@ final class LayoutStore {
     func setMetricExpanded(_ descriptorID: String, _ expanded: Bool) -> Bool {
         guard let providerID = registry.descriptor(id: descriptorID)?.providerID else { return false }
         guard expandedMetricIDs.contains(descriptorID) != expanded else { return false }
+        defaultExpandedOnEnableIDs.remove(descriptorID)
 
         let ordered = metricOrder(for: providerID)
         guard ordered.contains(descriptorID) else { return false }
@@ -451,6 +466,7 @@ final class LayoutStore {
         let providerExpanded = Set(expanded)
         let providerIDs = Set(validIDs)
         let nextExpanded = expandedMetricIDs.subtracting(providerIDs).union(providerExpanded)
+        defaultExpandedOnEnableIDs.subtract(providerIDs)
         guard metricOrderByProvider[providerID] != nextOrder || expandedMetricIDs != nextExpanded else {
             return false
         }
@@ -640,6 +656,7 @@ final class LayoutStore {
         pinnedMetricIDs = Set(defaultPinnedMetricIDs.filter { registry.descriptor(id: $0) != nil })
         persistPins()
         expandedMetricIDs = Set(defaultExpandedMetricIDs.filter { registry.descriptor(id: $0) != nil })
+        defaultExpandedOnEnableIDs = []
         persistExpanded()
         expandedProviderIDs = []
         persistExpandedProviders()

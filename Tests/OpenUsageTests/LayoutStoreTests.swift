@@ -114,6 +114,53 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertEqual(store.placed.map(\.descriptorID), ["claude.session"])
     }
 
+    func testExistingLayoutEnablesDefaultExpandedOptionalBelowCaret() {
+        let defaults = makeDefaults("LegacyEnableExpanded")
+        saveStored([PlacedWidget(descriptorID: "cursor.usage")], forKey: "layout", in: defaults)
+        let store = LayoutStore(
+            registry: .mock,
+            defaults: defaults,
+            storageKey: "layout",
+            defaultMetricIDs: ["cursor.usage"],
+            migrationBaselineMetricIDs: ["cursor.usage"],
+            defaultExpandedMetricIDs: ["cursor.requests"]
+        )
+
+        XCTAssertFalse(store.isMetricEnabled("cursor.requests"))
+        XCTAssertFalse(store.isMetricExpanded("cursor.requests"))
+
+        store.setMetricEnabled("cursor.requests", true)
+
+        XCTAssertTrue(store.isMetricEnabled("cursor.requests"))
+        XCTAssertTrue(store.isMetricExpanded("cursor.requests"))
+    }
+
+    func testExplicitDividerMoveOverridesDefaultExpandedOnEnable() {
+        let defaults = makeDefaults("LegacyEnableExpandedOverride")
+        saveStored([PlacedWidget(descriptorID: "cursor.usage")], forKey: "layout", in: defaults)
+        let store = LayoutStore(
+            registry: .mock,
+            defaults: defaults,
+            storageKey: "layout",
+            defaultMetricIDs: ["cursor.usage"],
+            migrationBaselineMetricIDs: ["cursor.usage"],
+            defaultExpandedMetricIDs: ["cursor.requests"]
+        )
+        let divider = "cursor::expanded-divider"
+
+        XCTAssertTrue(store.applyMetricDividerOrder([
+            "cursor.usage",
+            "cursor.requests",
+            divider,
+            "cursor.credits",
+            "cursor.today"
+        ], dividerID: divider, in: "cursor"))
+        store.setMetricEnabled("cursor.requests", true)
+
+        XCTAssertTrue(store.isMetricEnabled("cursor.requests"))
+        XCTAssertFalse(store.isMetricExpanded("cursor.requests"))
+    }
+
     func testAddAndResetCancelDragState() {
         let store = makeStore("CancelDrag")
         let first = store.placed[0]
