@@ -39,6 +39,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // above already resolves the race deterministically (lowest PID survives) even if both fire;
         // this just avoids the wasted second launch.
         NSApp.disableRelaunchOnLogin()
+        // Beta policy: a version change since the last run wipes all settings (no migrations during
+        // beta), so every beta starts from a clean slate. MUST run before any store reads UserDefaults
+        // — including AppearanceSetting just below and the AppContainer stores — so the wipe is clean
+        // and they re-seed their fresh-install defaults.
+        BetaSettingsReset.resetIfVersionChanged()
         // App-wide theme override (NSApp.appearance): the popover ignores SwiftUI's
         // preferredColorScheme, so the override is applied at the AppKit level once at launch;
         // the Theme picker on the Settings screen re-applies it on change.

@@ -43,3 +43,5 @@ See [Logging](logging.md) for the full behavior: subsystem tags, the file size c
 ## Version
 
 The app version shows in the popover footer.
+
+While OpenUsage is in beta (Early Access), updating to a new beta version resets all settings — layout, pins, preferences, and the menu-bar shortcut — back to their defaults. This is deliberate: betas ship no settings migrations, so each one starts from a clean slate.
