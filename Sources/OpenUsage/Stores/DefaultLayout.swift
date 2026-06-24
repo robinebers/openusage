@@ -34,4 +34,12 @@ enum DefaultLayout {
         "codex.session", "codex.weekly",
         "cursor.auto", "cursor.api"
     ]
+
+    /// Metrics tucked below the per-provider "Shown on expand" divider on a fresh install. The Usage
+    /// Trend charts are the natural secondary content — each provider card leads with its meters and
+    /// keeps the chart one tap away behind the caret. Filtered to the active registry by `LayoutStore`,
+    /// and only seeded on a genuinely fresh launch (existing layouts keep everything always-shown).
+    static let expandedMetricIDs: [String] = [
+        "claude.trend", "codex.trend", "grok.trend", "cursor.trend"
+    ]
 }

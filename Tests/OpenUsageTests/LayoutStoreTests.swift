@@ -272,6 +272,219 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertEqual(reloaded.placed.map(\.descriptorID), ["claude.session"])
     }
 
+    // MARK: - Expanded ("Shown on expand") membership
+
+    func testSetMetricExpandedMovesMetricBelowDividerAndPersists() {
+        let defaults = makeDefaults("ExpandMove")
+        let store = LayoutStore(registry: .mock, defaults: defaults, storageKey: "layout")
+        guard let first = store.orderedSupportedMetrics(for: "claude").map(\.id).first else {
+            return XCTFail("missing Claude metrics")
+        }
+        XCTAssertFalse(store.isMetricExpanded(first))
+
+        XCTAssertTrue(store.setMetricExpanded(first, true))
+        XCTAssertTrue(store.isMetricExpanded(first))
+
+        let group = store.customizeGroups.first { $0.provider.id == "claude" }
+        XCTAssertEqual(group?.expandedMetrics.map(\.id).first, first)
+        XCTAssertFalse(group?.alwaysShownMetrics.map(\.id).contains(first) ?? true)
+
+        let reloaded = LayoutStore(registry: .mock, defaults: defaults, storageKey: "layout")
+        XCTAssertTrue(reloaded.isMetricExpanded(first))
+    }
+
+    func testSetMetricExpandedIsNoOpWhenAlreadyInSection() {
+        let store = LayoutStore(registry: .mock, defaults: makeDefaults("ExpandNoOp"), storageKey: "layout")
+        guard let id = store.orderedSupportedMetrics(for: "claude").map(\.id).first else {
+            return XCTFail("missing Claude metrics")
+        }
+        XCTAssertFalse(store.setMetricExpanded(id, false), "already always-shown")
+        XCTAssertTrue(store.setMetricExpanded(id, true))
+        XCTAssertFalse(store.setMetricExpanded(id, true), "already expanded")
+    }
+
+    func testDraggingMetricOntoExpandedRowTucksItAway() {
+        let store = LayoutStore(registry: .mock, defaults: makeDefaults("DragAcross"), storageKey: "layout")
+        let ids = store.orderedSupportedMetrics(for: "cursor").map(\.id)
+        guard ids.count >= 2, let dragged = ids.first, let target = ids.last else {
+            return XCTFail("need at least two Cursor metrics")
+        }
+        XCTAssertTrue(store.setMetricExpanded(target, true))
+        XCTAssertFalse(store.isMetricExpanded(dragged))
+
+        XCTAssertTrue(store.reorderMetric(dragged: dragged, target: target, in: "cursor"))
+
+        XCTAssertTrue(store.isMetricExpanded(dragged), "dropping onto an expanded row moves the dragged row across")
+        let expanded = store.customizeGroups.first { $0.provider.id == "cursor" }?.expandedMetrics.map(\.id) ?? []
+        XCTAssertTrue(expanded.contains(dragged) && expanded.contains(target))
+    }
+
+    func testDraggingExpandedMetricOntoAlwaysShownRowBringsItBack() {
+        let store = LayoutStore(registry: .mock, defaults: makeDefaults("DragBack"), storageKey: "layout")
+        let ids = store.orderedSupportedMetrics(for: "cursor").map(\.id)
+        guard ids.count >= 2, let target = ids.first, let dragged = ids.last else {
+            return XCTFail("need at least two Cursor metrics")
+        }
+        XCTAssertTrue(store.setMetricExpanded(dragged, true))
+
+        XCTAssertTrue(store.reorderMetric(dragged: dragged, target: target, in: "cursor"))
+        XCTAssertFalse(store.isMetricExpanded(dragged), "dropping onto an always-shown row brings the dragged row back")
+    }
+
+    func testApplyingDividerOrderMovesMetricBelowFold() {
+        let store = LayoutStore(registry: .mock, defaults: makeDefaults("DividerDown"), storageKey: "layout")
+        let divider = "cursor::expanded-divider"
+
+        XCTAssertTrue(store.applyMetricDividerOrder([
+            "cursor.usage",
+            divider,
+            "cursor.requests",
+            "cursor.credits",
+            "cursor.today"
+        ], dividerID: divider, in: "cursor"))
+
+        XCTAssertFalse(store.isMetricExpanded("cursor.usage"))
+        XCTAssertTrue(store.isMetricExpanded("cursor.requests"))
+    }
+
+    func testApplyingDividerOrderMovesMetricAboveFold() {
+        let store = LayoutStore(registry: .mock, defaults: makeDefaults("DividerUp"), storageKey: "layout")
+        let divider = "cursor::expanded-divider"
+        XCTAssertTrue(store.setMetricExpanded("cursor.requests", true))
+
+        XCTAssertTrue(store.applyMetricDividerOrder([
+            "cursor.usage",
+            "cursor.requests",
+            divider,
+            "cursor.credits",
+            "cursor.today"
+        ], dividerID: divider, in: "cursor"))
+
+        XCTAssertFalse(store.isMetricExpanded("cursor.requests"))
+    }
+
+    func testDisabledMetricKeepsExpandedMembership() {
+        let defaults = makeDefaults("DisabledExpanded")
+        let store = LayoutStore(registry: .mock, defaults: defaults, storageKey: "layout")
+        XCTAssertFalse(store.isMetricEnabled("claude.extra"))
+
+        XCTAssertTrue(store.setMetricExpanded("claude.extra", true))
+        XCTAssertTrue(store.isMetricExpanded("claude.extra"))
+        XCTAssertFalse(store.isMetricEnabled("claude.extra"))
+
+        let reloaded = LayoutStore(registry: .mock, defaults: defaults, storageKey: "layout")
+        XCTAssertTrue(reloaded.isMetricExpanded("claude.extra"))
+    }
+
+    func testFreshLayoutSeedsDefaultExpanded() {
+        let store = LayoutStore(
+            registry: .mock,
+            defaults: makeDefaults("FreshExpanded"),
+            storageKey: "layout",
+            defaultExpandedMetricIDs: ["claude.weekly"]
+        )
+        XCTAssertTrue(store.isMetricExpanded("claude.weekly"))
+    }
+
+    func testExistingLayoutDoesNotSeedExpanded() {
+        let defaults = makeDefaults("ExistingNoExpand")
+        saveStored([PlacedWidget(descriptorID: "claude.session")], forKey: "layout", in: defaults)
+        let store = LayoutStore(
+            registry: .mock,
+            defaults: defaults,
+            storageKey: "layout",
+            defaultExpandedMetricIDs: ["claude.weekly"]
+        )
+        XCTAssertFalse(store.isMetricExpanded("claude.weekly"), "an existing layout keeps every metric always-shown")
+    }
+
+    func testResetRestoresDefaultExpanded() {
+        let store = LayoutStore(
+            registry: .mock,
+            defaults: makeDefaults("ResetExpand"),
+            storageKey: "layout",
+            defaultExpandedMetricIDs: ["claude.weekly"]
+        )
+        XCTAssertTrue(store.setMetricExpanded("claude.weekly", false))
+        XCTAssertFalse(store.isMetricExpanded("claude.weekly"))
+
+        store.resetToDefault()
+        XCTAssertTrue(store.isMetricExpanded("claude.weekly"))
+    }
+
+    func testInvalidPersistedExpandedIDsAreDropped() {
+        let defaults = makeDefaults("InvalidExpand")
+        saveStored([PlacedWidget(descriptorID: "claude.session")], forKey: "layout", in: defaults)
+        defaults.set(["claude.session", "missing.metric"], forKey: "layout.expandedMetrics")
+
+        let store = LayoutStore(registry: .mock, defaults: defaults, storageKey: "layout")
+        XCTAssertTrue(store.isMetricExpanded("claude.session"))
+        XCTAssertFalse(store.isMetricExpanded("missing.metric"))
+    }
+
+    func testDisplayGroupsPartitionEnabledMetrics() {
+        let store = LayoutStore(registry: .mock, defaults: makeDefaults("DisplayPartition"), storageKey: "layout")
+        XCTAssertTrue(store.isMetricEnabled("claude.session"))
+        XCTAssertTrue(store.isMetricEnabled("claude.weekly"))
+
+        XCTAssertTrue(store.setMetricExpanded("claude.weekly", true))
+
+        let group = store.displayGroups.first { $0.provider.id == "claude" }
+        XCTAssertEqual(group?.alwaysShownWidgets.compactMap { store.descriptor(for: $0)?.id }, ["claude.session"])
+        XCTAssertEqual(group?.expandedWidgets.compactMap { store.descriptor(for: $0)?.id }, ["claude.weekly"])
+        XCTAssertEqual(group?.hasExpandedMetrics, true)
+    }
+
+    func testProviderWithOnlyExpandedMetricsStillShowsRows() {
+        let store = LayoutStore(registry: .mock, defaults: makeDefaults("AllExpanded"), storageKey: "layout")
+        XCTAssertTrue(store.setMetricExpanded("claude.session", true))
+        XCTAssertTrue(store.setMetricExpanded("claude.weekly", true))
+
+        let group = store.displayGroups.first { $0.provider.id == "claude" }
+        XCTAssertNotNil(group)
+        XCTAssertFalse(group?.alwaysShownWidgets.isEmpty ?? true, "all-expanded metrics are promoted so the card is never empty")
+        XCTAssertTrue(group?.expandedWidgets.isEmpty ?? false)
+    }
+
+    func testProviderExpandedStatePersistsAcrossReload() {
+        let defaults = makeDefaults("ProviderExpanded")
+        let store = LayoutStore(registry: .mock, defaults: defaults, storageKey: "layout")
+
+        XCTAssertTrue(store.setProviderExpanded(true, for: "codex"))
+        XCTAssertTrue(store.isProviderExpanded("codex"))
+
+        let reloaded = LayoutStore(registry: .mock, defaults: defaults, storageKey: "layout")
+        XCTAssertTrue(reloaded.isProviderExpanded("codex"))
+    }
+
+    func testProviderExpandedStateCanCollapseAndPersists() {
+        let defaults = makeDefaults("ProviderCollapsed")
+        let store = LayoutStore(registry: .mock, defaults: defaults, storageKey: "layout")
+        XCTAssertTrue(store.setProviderExpanded(true, for: "codex"))
+        XCTAssertTrue(store.setProviderExpanded(false, for: "codex"))
+
+        let reloaded = LayoutStore(registry: .mock, defaults: defaults, storageKey: "layout")
+        XCTAssertFalse(reloaded.isProviderExpanded("codex"))
+    }
+
+    func testInvalidPersistedExpandedProviderIDsAreDropped() {
+        let defaults = makeDefaults("InvalidProviderExpanded")
+        defaults.set(["codex", "missing"], forKey: "layout.expandedProviders")
+
+        let store = LayoutStore(registry: .mock, defaults: defaults, storageKey: "layout")
+        XCTAssertTrue(store.isProviderExpanded("codex"))
+        XCTAssertFalse(store.isProviderExpanded("missing"))
+    }
+
+    func testResetClearsProviderExpandedState() {
+        let store = LayoutStore(registry: .mock, defaults: makeDefaults("ResetProviderExpanded"), storageKey: "layout")
+        XCTAssertTrue(store.setProviderExpanded(true, for: "codex"))
+
+        store.resetToDefault()
+
+        XCTAssertFalse(store.isProviderExpanded("codex"))
+    }
+
     private func makeStore(_ name: String) -> LayoutStore {
         LayoutStore(registry: .mock, defaults: makeDefaults(name), storageKey: "layout")
     }

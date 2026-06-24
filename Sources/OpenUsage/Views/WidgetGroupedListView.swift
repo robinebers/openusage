@@ -86,18 +86,55 @@ struct WidgetGroupedListView: View {
         // Resolve each row's descriptor + data exactly once per render, then reuse it for both the
         // neighbor-aware condensing rule and the row itself — `dataStore.data(for:)` used to be
         // recomputed several times per row (twice per adjacent pair plus once in `row`).
-        let rows = group.widgets.compactMap { widget -> ResolvedRow? in
+        let providerID = group.provider.id
+        let isExpanded = layout.isProviderExpanded(providerID)
+        let alwaysRows = resolvedRows(group.alwaysShownWidgets)
+        let expandedRows = resolvedRows(group.expandedWidgets)
+        // The condensing rule only sees rows currently on screen, so a hidden expanded row never pulls a
+        // visible one up.
+        let condensedIDs = condensedTextRowIDs(isExpanded ? alwaysRows + expandedRows : alwaysRows)
+        // Same card builder the lifted preview uses, so the floating chip can't drift from the live card.
+        return DashboardMetricCard {
+            ForEach(alwaysRows) { entry in
+                row(entry.descriptor, data: entry.data, in: providerID,
+                    condensedTop: condensedIDs.contains(entry.descriptor.id))
+            }
+            if isExpanded {
+                ForEach(expandedRows) { entry in
+                    row(entry.descriptor, data: entry.data, in: providerID,
+                        condensedTop: condensedIDs.contains(entry.descriptor.id))
+                }
+            }
+            if group.hasExpandedMetrics {
+                expandToggle(providerID: providerID, isExpanded: isExpanded)
+            }
+        }
+    }
+
+    private func resolvedRows(_ widgets: [PlacedWidget]) -> [ResolvedRow] {
+        widgets.compactMap { widget -> ResolvedRow? in
             guard let descriptor = layout.descriptor(for: widget) else { return nil }
             return ResolvedRow(widget: widget, descriptor: descriptor, data: dataStore.data(for: descriptor))
         }
-        let condensedIDs = condensedTextRowIDs(rows)
-        // Same card builder the lifted preview uses, so the floating chip can't drift from the live card.
-        return DashboardMetricCard {
-            ForEach(rows) { entry in
-                row(entry.descriptor, data: entry.data, in: group.provider.id,
-                    condensedTop: condensedIDs.contains(entry.descriptor.id))
+    }
+
+    /// The centered caret at the bottom of a provider card that reveals or hides its "Shown on expand"
+    /// metrics. Only rendered for providers that actually have expanded metrics.
+    private func expandToggle(providerID: String, isExpanded: Bool) -> some View {
+        Button {
+            withAnimation(Motion.spring) {
+                _ = layout.setProviderExpanded(!isExpanded, for: providerID)
             }
+        } label: {
+            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 3)
+                .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isExpanded ? "Show less" : "Show more")
     }
 
     /// Neighbor-aware rule: IDs of text-only rows sitting directly under another text-only row.
@@ -189,7 +226,10 @@ struct WidgetGroupedListView: View {
     }
 
     private func makeProviderLift(for group: ProviderGroup, value: DragGesture.Value) -> ReorderLift? {
-        let rows = group.widgets.compactMap { widget -> WidgetData? in
+        // The floating preview should match what the card shows: only the always-shown rows unless this
+        // provider's caret is currently open.
+        let visibleWidgets = layout.isProviderExpanded(group.provider.id) ? group.widgets : group.alwaysShownWidgets
+        let rows = visibleWidgets.compactMap { widget -> WidgetData? in
             guard let descriptor = layout.descriptor(for: widget) else { return nil }
             return dataStore.data(for: descriptor)
         }
