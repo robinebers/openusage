@@ -39,25 +39,14 @@ extension View {
         }
     }
 
-    /// Groups adjacent glass buttons in a `GlassEffectContainer` on macOS 26 so the system samples
-    /// their glass coherently. On macOS 15 there is no glass to coordinate, so the container is
-    /// dropped and the content is returned unchanged.
-    @ViewBuilder
-    func glassButtonGroup(spacing: CGFloat) -> some View {
-        if #available(macOS 26, *) {
-            GlassEffectContainer(spacing: spacing) { self }
-        } else {
-            self
-        }
-    }
-
-    /// A custom interactive Liquid Glass surface (in the given shape) for a *control label* — the
-    /// footer "More" pull-down passes `Circle()`. Apply it to a `Menu`/`Button` label together with
-    /// `.buttonStyle(.plain)`: the system `.buttonStyle(.glass)` does **not** render glass on a `Menu` —
-    /// the menu's own button chrome wins and falls back to a flat bordered look (the "looks like macOS
-    /// 15" bug) — so we draw the glass ourselves on the label instead. `.interactive()` adds the
-    /// hover/press shimmer + scale that reads as Liquid Glass even on a static opaque surface. macOS 15
-    /// gets a frosted material shape with a hairline border (no glass to draw there).
+    /// A single interactive Liquid Glass surface (in the given shape) drawn behind a *whole control* —
+    /// the footer's split button wraps its `HStack` (Customize + divider + chevron) in one
+    /// `interactiveGlass(in: Capsule())` so the two plain-styled tap targets sit on one continuous
+    /// capsule rather than two separate pills. Apply it to the container, never to each segment, and
+    /// keep the segments `.buttonStyle(.plain)` so this glass is the only surface — the system
+    /// `.buttonStyle(.glass)` renders flat on a `Menu` (its own button chrome wins), and per-segment
+    /// glass would split the capsule. `.interactive()` adds the hover/press shimmer + scale that reads
+    /// as Liquid Glass. macOS 15 gets a frosted material shape with a hairline border (no glass there).
     @ViewBuilder
     func interactiveGlass(in shape: some InsettableShape) -> some View {
         if #available(macOS 26, *) {

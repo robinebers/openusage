@@ -175,8 +175,8 @@ struct DashboardView: View {
             .background(ScreenHeightReader(usableHeight: $usableHeight))
             .background(
                 // Esc backs out of Customize / Settings first; only from the dashboard does it close
-                // the popover. Return opens Customize from the dashboard (the affordance the standalone
-                // Customize button carried before it folded into the More menu) and returns to the
+                // the popover. Return opens Customize from the dashboard (the same affordance the
+                // footer's Customize button carries) and returns to the
                 // dashboard from Customize or Settings — matching Esc and the prominent "Done" control,
                 // never jumping Settings → Customize. Always consumed, so a bare Return can't fall
                 // through and dismiss the popover.

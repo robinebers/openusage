@@ -68,8 +68,8 @@ struct PopoverVisibilityReader: NSViewRepresentable {
 ///   popover is dismissed through `MenuBarPopover.dismiss`, the same path a status-item click takes
 ///   — so it stays in sync, reopens in one click, and trips the visibility reset (cancelling edit
 ///   mode + the jiggle).
-/// - **Return**: `onReturn` opens/closes Customize (the affordance the standalone Customize button
-///   carried before it folded into the More menu). Consuming the key here is also what stops a bare
+/// - **Return**: `onReturn` opens/closes Customize (the same affordance the footer's Customize
+///   button carries). Consuming the key here is also what stops a bare
 ///   Return from falling through and dismissing the popover.
 struct PopoverKeyReader: NSViewRepresentable {
     /// Called first on Esc. Return `true` when the press was handled in-popover (Esc then does

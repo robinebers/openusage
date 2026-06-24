@@ -26,9 +26,13 @@ Rows with a reset date tick every 30 seconds, so countdowns and pace stay live b
 Every row: **Hide · Pin to menu bar / Unpin · Refresh \<provider\> · Customize…**
 Provider headers: **Hide \<provider\> · Refresh \<provider\> · Customize…** (Hide turns the whole provider off; turn it back on under Settings ▸ Providers.)
 
+## Footer
+
+The bar pinned to the bottom of the popover. On the left: the app version, and a live "Next update in …" countdown you can click (or press **⌘R**) to refresh right away. On the right: a **Customize** button paired with a **⌄** menu. The menu holds the app-level actions — **Settings**, **Check for Updates…**, **About OpenUsage**, and **Quit OpenUsage**.
+
 ## Customize
 
-The More button's **Customize Metrics** item (or pressing **Return**) opens Customize: toggle metrics on/off, add ones that aren't placed yet, pin metrics for the menu bar, and drag to reorder. Drag-reorder also works directly on the dashboard — drag a row within its provider, or drag a provider header to reorder sections. On a Force Touch trackpad you'll feel a light tap each time the dragged item snaps into a new slot.
+The footer's **Customize** button (or pressing **Return**) opens Customize: toggle metrics on/off, add ones that aren't placed yet, pin metrics for the menu bar, and drag to reorder. Drag-reorder also works directly on the dashboard — drag a row within its provider, or drag a provider header to reorder sections. On a Force Touch trackpad you'll feel a light tap each time the dragged item snaps into a new slot.
 
 When OpenUsage ships a new default metric, existing layouts get it once. If you turn it off, it stays off. The **Reset** button in Customize restores the default metrics, order, and menu-bar pins, but leaves provider settings and other preferences unchanged.
 
