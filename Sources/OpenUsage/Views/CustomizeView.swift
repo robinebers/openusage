@@ -115,12 +115,13 @@ struct CustomizeView: View {
     /// The single dashed boundary between always-shown rows and rows revealed by the dashboard caret.
     /// Kept visually simple so it reads as one drop target instead of several moving controls.
     private func expandedDivider(providerID: String) -> some View {
-        dashedRule
+        let yOutset = max(0, (density.estimatedMetricRowHeight - density.customizeDividerRowHeight) / 2)
+        return dashedRule
         .padding(.horizontal, 12)
-        .frame(height: density.estimatedMetricRowHeight)
-        // The divider is a full-height target row for drag math, even though it only draws a dashed line.
-        // That lets it use the exact same threshold behavior as metric rows without becoming draggable.
-        .reorderFrame(id: expandedDividerID(for: providerID), in: .named(reorderSpaceName))
+        .frame(height: density.customizeDividerRowHeight)
+        // The visible divider is compact, but its measured reorder frame remains row-sized. That keeps
+        // the same threshold behavior as metric rows without making the Customize card look gappy.
+        .reorderFrame(id: expandedDividerID(for: providerID), in: .named(reorderSpaceName), yOutset: yOutset)
         .accessibilityLabel("Shown on expand divider")
     }
 

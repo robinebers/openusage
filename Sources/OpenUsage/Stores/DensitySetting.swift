@@ -87,4 +87,8 @@ enum DensitySetting: String, Hashable, Sendable, CaseIterable {
     /// Estimated Customize control-row height for the pre-measurement height seed
     /// (row content ≈ 24pt + `controlRowPadding` × 2).
     var estimatedMetricRowHeight: CGFloat { self == .compact ? 36 : 42 }
+
+    /// The Customize "Shown on Expand" divider draws smaller than a metric row, while its invisible
+    /// reorder frame stays row-sized so the drag threshold keeps matching normal rows.
+    var customizeDividerRowHeight: CGFloat { self == .compact ? 24 : 28 }
 }

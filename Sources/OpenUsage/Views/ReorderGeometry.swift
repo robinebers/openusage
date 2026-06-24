@@ -133,12 +133,12 @@ struct ReorderFramePreferenceKey: PreferenceKey {
 }
 
 extension View {
-    func reorderFrame(id: String, in coordinateSpace: CoordinateSpace) -> some View {
+    func reorderFrame(id: String, in coordinateSpace: CoordinateSpace, yOutset: CGFloat = 0) -> some View {
         background(
             GeometryReader { proxy in
                 Color.clear.preference(
                     key: ReorderFramePreferenceKey.self,
-                    value: [id: proxy.frame(in: coordinateSpace)]
+                    value: [id: proxy.frame(in: coordinateSpace).insetBy(dx: 0, dy: -yOutset)]
                 )
             }
         )
