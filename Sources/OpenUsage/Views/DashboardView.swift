@@ -128,10 +128,16 @@ struct DashboardView: View {
         let providerHeaderHeight: CGFloat = density == .compact ? 26 : 30
         let providerHeaderToCardSpacing: CGFloat = density.headerToCardSpacing + 2
         let metricRowHeight = density.estimatedMetricRowHeight
+        let dividerRowHeight = density.customizeDividerRowHeight
         let providerSpacing = density.sectionSpacing
         let verticalPadding: CGFloat = 24
+        // Each provider card carries one "Shown on expand" divider row in addition to its metric rows.
         let blocks = groups.reduce(CGFloat.zero) { total, group in
-            total + providerHeaderHeight + providerHeaderToCardSpacing + CGFloat(group.metrics.count) * metricRowHeight
+            total
+                + providerHeaderHeight
+                + providerHeaderToCardSpacing
+                + CGFloat(group.metrics.count) * metricRowHeight
+                + dividerRowHeight
         }
         return verticalPadding + blocks + CGFloat(max(0, groups.count - 1)) * providerSpacing
     }

@@ -90,15 +90,53 @@ struct CustomizeView: View {
     }
 
     private func metricCard(_ group: ProviderMetrics) -> some View {
-        VStack(spacing: 0) {
-            ForEach(group.metrics) { metric in
-                metricRow(metric, in: group.provider.id, metricIDs: group.metrics.map(\.id))
+        return VStack(spacing: 0) {
+            // One stable `ForEach` prevents SwiftUI from tearing down the active dragged row when it
+            // crosses the divider. With separate always-shown/expanded loops the source view can be
+            // removed mid-gesture, leaving the lift overlay stuck until another state change.
+            ForEach(metricCardRows(for: group)) { row in
+                switch row {
+                case .metric(let metric):
+                    metricRow(metric, in: group.provider.id)
+                case .divider:
+                    expandedDivider(providerID: group.provider.id)
+                }
             }
         }
         .cardSurface()
     }
 
-    private func metricRow(_ metric: WidgetDescriptor, in providerID: String, metricIDs: [String]) -> some View {
+    private func metricCardRows(for group: ProviderMetrics) -> [CustomizeMetricCardRow] {
+        group.alwaysShownMetrics.map(CustomizeMetricCardRow.metric)
+            + [.divider]
+            + group.expandedMetrics.map(CustomizeMetricCardRow.metric)
+    }
+
+    /// The single dashed boundary between always-shown rows and rows revealed by the dashboard caret.
+    /// Kept visually simple so it reads as one drop target instead of several moving controls.
+    private func expandedDivider(providerID: String) -> some View {
+        let yOutset = max(0, (density.estimatedMetricRowHeight - density.customizeDividerRowHeight) / 2)
+        return dashedRule
+        .padding(.horizontal, 12)
+        .frame(height: density.customizeDividerRowHeight)
+        // The visible divider is compact, but its measured reorder frame remains row-sized. That keeps
+        // the same threshold behavior as metric rows without making the Customize card look gappy.
+        .reorderFrame(id: expandedDividerID(for: providerID), in: .named(reorderSpaceName), yOutset: yOutset)
+        .accessibilityLabel("Shown on expand divider")
+    }
+
+    private var dashedRule: some View {
+        Rectangle()
+            .fill(.clear)
+            .frame(height: 1)
+            .overlay(
+                Line()
+                    .stroke(style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                    .foregroundStyle(.tertiary)
+            )
+    }
+
+    private func metricRow(_ metric: WidgetDescriptor, in providerID: String) -> some View {
         let isActive = activeMetricID == metric.id
         // Same row builder the lifted preview uses, so the floating chip can't drift from the live row.
         return CustomizeMetricRow(
@@ -111,7 +149,6 @@ struct CustomizeView: View {
                         metricDragGesture(
                             for: metric.id,
                             providerID: providerID,
-                            metricIDs: metricIDs,
                             title: metric.title
                         )
                     )
@@ -191,7 +228,7 @@ struct CustomizeView: View {
         )
     }
 
-    private func metricDragGesture(for metricID: String, providerID: String, metricIDs: [String], title: String) -> some Gesture {
+    private func metricDragGesture(for metricID: String, providerID: String, title: String) -> some Gesture {
         reorderDragGesture(
             id: metricID,
             coordinateSpaceName: reorderSpaceName,
@@ -199,9 +236,23 @@ struct CustomizeView: View {
             active: $activeMetricID,
             lift: $reorderLift,
             makeLift: { makeMetricLift(metricID: metricID, title: title, value: $0) },
-            orderedIDs: { metricIDs },
-            reorder: { layout.reorderMetric(dragged: metricID, target: $0, in: providerID) }
+            orderedIDs: { reorderTargetIDs(for: providerID) },
+            reorder: { target in
+                let current = reorderTargetIDs(for: providerID)
+                guard let next = LayoutStore.reordered(current, dragged: metricID, target: target) else {
+                    return false
+                }
+                return layout.applyMetricDividerOrder(next, dividerID: expandedDividerID(for: providerID), in: providerID)
+            }
         )
+    }
+
+    private func reorderTargetIDs(for providerID: String) -> [String] {
+        layout.metricOrderWithDivider(for: providerID, dividerID: expandedDividerID(for: providerID))
+    }
+
+    private func expandedDividerID(for providerID: String) -> String {
+        "\(providerID)::expanded-divider"
     }
 
     private func makeProviderLift(for group: ProviderMetrics, value: DragGesture.Value) -> ReorderLift? {
@@ -217,11 +268,36 @@ struct CustomizeView: View {
     }
 
     private func makeMetricLift(metricID: String, title: String, value: DragGesture.Value) -> ReorderLift? {
-        ReorderLift.make(
+        return ReorderLift.make(
             id: metricID,
             payload: .customizeMetric(title: title),
             value: value,
             frames: rowFrames
         )
+    }
+}
+
+/// A single horizontal line, used as the dashed "Shown on expand" rule. A plain `Divider` can't carry
+/// a dash pattern, so the separator strokes this shape instead.
+private struct Line: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.midY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+        return path
+    }
+}
+
+private enum CustomizeMetricCardRow: Identifiable {
+    case metric(WidgetDescriptor)
+    case divider
+
+    var id: String {
+        switch self {
+        case .metric(let metric):
+            "metric:\(metric.id)"
+        case .divider:
+            "expanded-divider"
+        }
     }
 }

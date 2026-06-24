@@ -24,4 +24,4 @@ Settings → Appearance → Menu Style:
 
 ## What the strip shows
 
-The strip only renders real data. A pinned metric with nothing fetched yet is skipped; a provider whose pins all lack data disappears entirely (icon included). When nothing has data, the strip falls back to the app icon. Pins follow your Customize order.
+The strip only renders real data. A pinned metric with nothing fetched yet is skipped; a provider whose pins all lack data disappears entirely (icon included). When nothing has data, the strip falls back to the app icon. Pins follow your Customize order — always-shown metrics first, then ones behind the expand caret. A metric can be pinned whether it's always shown or tucked behind the caret.

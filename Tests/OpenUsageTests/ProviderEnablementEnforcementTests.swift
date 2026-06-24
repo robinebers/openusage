@@ -95,20 +95,20 @@ final class ProviderEnablementEnforcementTests: XCTestCase {
 
         // All enabled => visiblePlaced is byte-for-byte the full placed list.
         XCTAssertEqual(layout.visiblePlaced, layout.placed)
-        XCTAssertTrue(layout.availableToAdd.contains { $0.providerID == "codex" })
+        XCTAssertTrue(layout.availableToAdd.contains { $0.providerID == "cursor" })
 
-        enablement.setEnabled(false, for: "codex")
+        enablement.setEnabled(false, for: "cursor")
 
-        XCTAssertFalse(layout.visiblePlaced.contains { $0.descriptorID.hasPrefix("codex.") })
+        XCTAssertFalse(layout.visiblePlaced.contains { $0.descriptorID.hasPrefix("cursor.") })
         XCTAssertTrue(layout.visiblePlaced.contains { $0.descriptorID.hasPrefix("claude.") })
-        // Disabling hides but does not delete: the codex tiles are still parked in `placed`.
-        XCTAssertTrue(layout.placed.contains { $0.descriptorID.hasPrefix("codex.") })
-        XCTAssertFalse(layout.availableToAdd.contains { $0.providerID == "codex" })
+        // Disabling hides but does not delete: the Cursor tiles are still parked in `placed`.
+        XCTAssertTrue(layout.placed.contains { $0.descriptorID.hasPrefix("cursor.") })
+        XCTAssertFalse(layout.availableToAdd.contains { $0.providerID == "cursor" })
 
-        enablement.setEnabled(true, for: "codex")
+        enablement.setEnabled(true, for: "cursor")
 
         XCTAssertEqual(layout.visiblePlaced, layout.placed)
-        XCTAssertTrue(layout.availableToAdd.contains { $0.providerID == "codex" })
+        XCTAssertTrue(layout.availableToAdd.contains { $0.providerID == "cursor" })
     }
 
     // MARK: - Helpers

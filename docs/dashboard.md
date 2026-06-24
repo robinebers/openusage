@@ -2,6 +2,8 @@
 
 The popover that opens from the menu bar icon. Providers are sections; each section shows the metrics you've enabled.
 
+Each provider card leads with its **always-shown** metrics. Any metrics you've moved below the **Shown on Expand** line are tucked away behind the in-card caret — click it to reveal them below the caret, click again to collapse. Open cards stay open across popover closes and app restarts. A provider with nothing tucked away shows no caret.
+
 ## Rows
 
 **Metrics with a limit** (session, weekly, credits with a cap) show a progress bar with:
@@ -32,9 +34,13 @@ The bar pinned to the bottom of the popover. On the left: the app version, and a
 
 ## Customize
 
-The footer's **Customize** button (or pressing **Return**) opens Customize: toggle metrics on/off, add ones that aren't placed yet, pin metrics for the menu bar, and drag to reorder. Drag-reorder also works directly on the dashboard — drag a row within its provider, or drag a provider header to reorder sections. On a Force Touch trackpad you'll feel a light tap each time the dragged item snaps into a new slot.
+The footer's **Customize** button (or pressing **Return**) opens Customize: toggle metrics on/off, add ones that aren't placed yet, pin metrics for the menu bar, and drag to reorder. Drag-reorder also works directly on the dashboard — drag a row within its provider, drag it across the caret boundary while the card is open, or drag a provider header to reorder sections. On a Force Touch trackpad you'll feel a light tap each time the dragged item snaps into a new slot.
 
-When OpenUsage ships a new default metric, existing layouts get it once. If you turn it off, it stays off. The **Reset** button in Customize restores the default metrics, order, and menu-bar pins, but leaves provider settings and other preferences unchanged.
+Each provider card has a dashed **Shown on Expand** line. Metrics above it are always shown; metrics below it hide behind the dashboard caret. Drag a metric onto the dashed line to move it across the fold, or drag it onto a row on the other side — drop a metric under an expanded one and it becomes expanded too. Pinning, hiding, and order all work the same on either side.
+
+The default reset layout keeps each provider's core quota meters and Usage Trend always shown, then tucks balances, reset details, and spend-history rows behind the caret. Optional detail rows like Claude Sonnet and Cursor Requests/Credits stay off by default, but start below the divider if you enable them.
+
+When OpenUsage ships a new default metric, existing layouts get it once. If you turn it off, it stays off. The **Reset** button in Customize restores the default metrics, order, menu-bar pins, and which metrics start behind the expand caret, but leaves provider settings and other preferences unchanged.
 
 ## Keyboard
 
@@ -49,4 +55,4 @@ A global shortcut (recorded in Settings) toggles the popover from anywhere.
 
 ## Closing
 
-Closing the popover resets it: scroll position returns to the top and Customize / Settings close, so it always reopens in a clean state.
+Closing the popover resets navigation state: scroll position returns to the top and Customize / Settings close. Provider cards remember whether their expand caret was open.

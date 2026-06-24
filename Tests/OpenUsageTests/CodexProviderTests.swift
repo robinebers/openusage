@@ -49,6 +49,28 @@ final class CodexUsageMapperTests: XCTestCase {
         XCTAssertEqual(progress(mapped.lines, "Session")?.used, 0)
     }
 
+    func testFreshSessionWindowUsesDefaultPeriodWhenLimitWindowIsMissing() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let resetAfterSeconds = CodexUsageMapper.sessionPeriodMs / 1000
+        let body = Data("""
+        {
+          "rate_limit": {
+            "primary_window": {
+              "used_percent": 1,
+              "reset_after_seconds": \(resetAfterSeconds),
+              "reset_at": \(Int(now.timeIntervalSince1970) + resetAfterSeconds)
+            }
+          }
+        }
+        """.utf8)
+        let response = HTTPResponse(statusCode: 200, headers: [:], body: body)
+
+        let mapped = try CodexUsageMapper.mapUsageResponse(response, now: now)
+
+        XCTAssertEqual(progress(mapped.lines, "Session")?.used, 0)
+        XCTAssertEqual(progress(mapped.lines, "Session")?.periodDurationMs, CodexUsageMapper.sessionPeriodMs)
+    }
+
     func testMapsLimitWindowSecondsFromAPI() throws {
         let body = Data("""
         {

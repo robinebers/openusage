@@ -133,12 +133,12 @@ struct ReorderFramePreferenceKey: PreferenceKey {
 }
 
 extension View {
-    func reorderFrame(id: String, in coordinateSpace: CoordinateSpace) -> some View {
+    func reorderFrame(id: String, in coordinateSpace: CoordinateSpace, yOutset: CGFloat = 0) -> some View {
         background(
             GeometryReader { proxy in
                 Color.clear.preference(
                     key: ReorderFramePreferenceKey.self,
-                    value: [id: proxy.frame(in: coordinateSpace)]
+                    value: [id: proxy.frame(in: coordinateSpace).insetBy(dx: 0, dy: -yOutset)]
                 )
             }
         )
@@ -196,9 +196,10 @@ func reorderTarget(
 
     for id in orderedIDs where id != draggedID {
         guard let to = orderedIDs.firstIndex(of: id),
-              let frame = frames[id],
-              frame.insetBy(dx: 0, dy: -2).contains(location)
+              let frame = frames[id]
         else { continue }
+
+        guard frame.insetBy(dx: 0, dy: -2).contains(location) else { continue }
 
         // Reorder only after crossing partway into the target row. This avoids the jumpy feel where a row moves
         // as soon as the pointer barely enters a neighbor, while still feeling less delayed than the midpoint.
