@@ -62,13 +62,37 @@ final class CursorUsageMapperTests: XCTestCase {
         )
 
         XCTAssertEqual(mapped.plan, "Pro Plan")
-        let credits = try XCTUnwrap(progress(mapped.lines, "Credits"))
-        XCTAssertEqual(credits.used, 2647.29, accuracy: 0.001)
-        XCTAssertEqual(credits.limit, 19915.44, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(dollarValue(mapped.lines, "Credits")), 17268.15, accuracy: 0.001)
         XCTAssertEqual(progress(mapped.lines, "Total usage")?.used, 20)
         XCTAssertEqual(progress(mapped.lines, "Auto usage")?.used, 12.5)
         XCTAssertEqual(progress(mapped.lines, "API usage")?.used, 7.5)
         XCTAssertEqual(progress(mapped.lines, "On-demand")?.used, 40)
+    }
+
+    func testMapsSpendOnlyOnDemandAsUnboundedUsage() throws {
+        let mapped = try CursorUsageMapper.mapUsage(
+            usage: [
+                "enabled": true,
+                "billingCycleStart": 1_781_438_541_000,
+                "billingCycleEnd": 1_784_030_541_000,
+                "planUsage": [
+                    "limit": 40_000,
+                    "totalPercentUsed": 26.346,
+                    "totalSpend": 52_692
+                ],
+                "spendLimitUsage": [
+                    "individualUsed": 16_474,
+                    "limitType": "user",
+                    "totalSpend": 16_474
+                ]
+            ],
+            planName: "Ultra",
+            creditGrants: nil,
+            stripeBalanceCents: 790_964
+        )
+
+        XCTAssertNil(progress(mapped.lines, "On-demand"))
+        XCTAssertEqual(try XCTUnwrap(dollarValue(mapped.lines, "On-demand")), 164.74, accuracy: 0.001)
     }
 
     func testMapsRequestBasedFallback() throws {
@@ -167,7 +191,7 @@ final class CursorProviderTests: XCTestCase {
         let snapshot = await provider.refresh()
 
         XCTAssertEqual(snapshot.plan, "Pro Plan")
-        XCTAssertEqual(progress(snapshot.lines, "Credits")?.limit, 500)
+        XCTAssertEqual(dollarValue(snapshot.lines, "Credits") ?? -1, 500)
         XCTAssertEqual(progress(snapshot.lines, "Total usage")?.used, 20)
         XCTAssertEqual(progress(snapshot.lines, "Auto usage")?.used, 12.5)
         XCTAssertEqual(progress(snapshot.lines, "API usage")?.used, 7.5)
@@ -180,6 +204,13 @@ private func progress(_ lines: [MetricLine], _ label: String) -> (used: Double, 
         return nil
     }
     return (used, limit, resetsAt, periodDurationMs)
+}
+
+private func dollarValue(_ lines: [MetricLine], _ label: String) -> Double? {
+    guard case .values(_, let values, _, _) = lines.first(where: { $0.label == label }) else {
+        return nil
+    }
+    return values.first { $0.kind == .dollars }?.number
 }
 
 private func makeCursorJWT(sub: String = "google-oauth2|user", exp: Double = 9_999_999_999) -> String {

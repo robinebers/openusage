@@ -230,10 +230,10 @@ final class WidgetDataStoreTests: XCTestCase {
     }
 
     func testBoundedDollarAndCountTrayValuesHonorMeterStyleWithoutPercentConversion() async {
-        let provider = Provider(id: "cursor", displayName: "Cursor", icon: .providerMark("cursor"))
-        let credits = WidgetDescriptor.boundedDollars(id: "cursor.credits", provider: provider, title: "Credits", limit: 100)
+        let provider = Provider(id: "example", displayName: "Example", icon: .providerMark("cursor"))
+        let budget = WidgetDescriptor.boundedDollars(id: "example.budget", provider: provider, title: "Budget", limit: 100)
         let requests = WidgetDescriptor.boundedCount(
-            id: "cursor.requests",
+            id: "example.requests",
             provider: provider,
             title: "Requests",
             limit: 500,
@@ -242,19 +242,19 @@ final class WidgetDataStoreTests: XCTestCase {
         )
         let runtime = TestProviderRuntime(
             provider: provider,
-            descriptors: [credits, requests],
+            descriptors: [budget, requests],
             snapshot: ProviderSnapshot(
                 providerID: provider.id,
                 displayName: provider.displayName,
                 lines: [
-                    .progress(label: "Credits", used: 12.48, limit: 20, format: .dollars),
+                    .progress(label: "Budget", used: 12.48, limit: 20, format: .dollars),
                     .progress(label: "Requests", used: 412, limit: 500, format: .count(suffix: "requests"))
                 ]
             )
         )
         let defaults = makeUserDefaults("cursor-tray-units")
         let store = WidgetDataStore(
-            registry: WidgetRegistry(providers: [provider], descriptors: [credits, requests]),
+            registry: WidgetRegistry(providers: [provider], descriptors: [budget, requests]),
             providers: [runtime],
             cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() }),
             defaults: defaults
@@ -262,12 +262,50 @@ final class WidgetDataStoreTests: XCTestCase {
         await store.refreshAll()
 
         store.meterStyle = .used
-        XCTAssertEqual(store.data(for: credits).menuBarValue, "$12")
+        XCTAssertEqual(store.data(for: budget).menuBarValue, "$12")
         XCTAssertEqual(store.data(for: requests).menuBarValue, "412")
 
         store.meterStyle = .remaining
-        XCTAssertEqual(store.data(for: credits).menuBarValue, "$8")
+        XCTAssertEqual(store.data(for: budget).menuBarValue, "$8")
         XCTAssertEqual(store.data(for: requests).menuBarValue, "88")
+    }
+
+    func testCursorCreditsRenderAsUnboundedBalance() async {
+        let provider = Provider(id: "cursor", displayName: "Cursor", icon: .providerMark("cursor"))
+        let descriptor = WidgetDescriptor.dollarBalance(
+            id: "cursor.credits",
+            provider: provider,
+            title: "Credits",
+            valueWord: "left"
+        )
+        let runtime = TestProviderRuntime(
+            provider: provider,
+            descriptors: [descriptor],
+            snapshot: ProviderSnapshot(
+                providerID: provider.id,
+                displayName: provider.displayName,
+                lines: [.values(label: "Credits", values: [MetricValue(number: 7_909.64, kind: .dollars)])]
+            )
+        )
+        let defaults = makeUserDefaults("cursor-credits-balance")
+        let store = WidgetDataStore(
+            registry: WidgetRegistry(providers: [provider], descriptors: [descriptor]),
+            providers: [runtime],
+            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() }),
+            defaults: defaults
+        )
+        await store.refreshAll()
+
+        store.meterStyle = .remaining
+        let remaining = store.data(for: descriptor)
+        XCTAssertFalse(remaining.isBounded)
+        XCTAssertEqual(remaining.unboundedDetail, "$7.9K left")
+        XCTAssertEqual(remaining.menuBarValue, "$7.9K")
+
+        store.meterStyle = .used
+        let used = store.data(for: descriptor)
+        XCTAssertEqual(used.unboundedDetail, remaining.unboundedDetail)
+        XCTAssertEqual(used.menuBarValue, remaining.menuBarValue)
     }
 
     func testUncappedExtraUsageRendersCompactAndUnbounded() async {

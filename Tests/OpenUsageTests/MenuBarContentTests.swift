@@ -26,8 +26,8 @@ final class MenuBarContentTests: XCTestCase {
     }
 
     func testBarsIncludeBoundedMetricsAndDropUnbounded() {
-        // A bounded dollar metric (Cursor "Credits": used/limit) has a fill, so it belongs in Bars.
-        // An unbounded value (raw spend, no limit) has no fill and is dropped.
+        // A bounded dollar metric has a fill, so it belongs in Bars. An unbounded value (raw spend,
+        // no limit) has no fill and is dropped.
         let content = MenuBarContentBuilder.build(
             groups: [group("a",
                 percent("a.pct", "Pct", 40),

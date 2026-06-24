@@ -6,12 +6,12 @@ Tracks your Cursor plan usage using the login from the Cursor app.
 
 | Metric | Meaning |
 |---|---|
-| Credits | Credit balance used vs. your grant + prepaid balance |
+| Credits | Credit balance left from grants and prepaid account balance |
 | Total Usage | Plan usage for the billing cycle (percent; dollars on team plans) |
 | Requests | Request count vs. cap (team/enterprise accounts) |
 | Auto Usage | Auto-model usage percent |
 | API Usage | API usage percent |
-| Extra Usage | On-demand spend vs. its limit |
+| Extra Usage | On-demand spend; shown as a meter only when Cursor returns a limit |
 | Today / Yesterday / Last 30 Days | Per-day cost and tokens from Cursor's own usage export |
 | Plan | Your plan name (optional widget) |
 

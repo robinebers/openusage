@@ -69,9 +69,8 @@ enum MenuBarContentBuilder {
                 metrics: metrics
             )
         }
-        // Bars show any *bounded* metric (it has a fill), not just percentages — e.g. Cursor "Credits"
-        // is bounded dollars (used/limit) and belongs here. Unbounded values (raw spend/credits, no
-        // limit) have no fill and are dropped.
+        // Bars show any *bounded* metric (it has a fill), not just percentages. Unbounded values (raw
+        // spend/credits, no limit) have no fill and are dropped.
         let bars = resolvedGroups
             .flatMap(\.metrics)
             .filter(\.isBounded)

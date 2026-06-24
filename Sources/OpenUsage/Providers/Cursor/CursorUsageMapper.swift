@@ -123,12 +123,20 @@ enum CursorUsageMapper {
         if let spendLimitUsage {
             let limit = ProviderParse.number(spendLimitUsage["individualLimit"]) ?? ProviderParse.number(spendLimitUsage["pooledLimit"]) ?? 0
             let remaining = ProviderParse.number(spendLimitUsage["individualRemaining"]) ?? ProviderParse.number(spendLimitUsage["pooledRemaining"]) ?? 0
+            let spent = ProviderParse.number(spendLimitUsage["individualUsed"])
+                ?? ProviderParse.number(spendLimitUsage["pooledUsed"])
+                ?? ProviderParse.number(spendLimitUsage["totalSpend"])
             if limit > 0 {
                 lines.append(.progress(
                     label: "On-demand",
-                    used: ProviderParse.centsToDollars(limit - remaining),
+                    used: ProviderParse.centsToDollars(spent ?? (limit - remaining)),
                     limit: ProviderParse.centsToDollars(limit),
                     format: .dollars
+                ))
+            } else if let spent, spent > 0 {
+                lines.append(.values(
+                    label: "On-demand",
+                    values: [MetricValue(number: ProviderParse.centsToDollars(spent), kind: .dollars)]
                 ))
             }
         }
@@ -257,13 +265,12 @@ enum CursorUsageMapper {
         let grantUsedCents = hasCreditGrants ? ProviderParse.number(creditGrants?["usedCents"]) ?? 0 : 0
         let hasValidGrantData = hasCreditGrants && grantTotalCents > 0
         let combinedTotalCents = (hasValidGrantData ? grantTotalCents : 0) + stripeBalanceCents
+        let remainingCents = max(0, combinedTotalCents - (hasValidGrantData ? grantUsedCents : 0))
 
         guard combinedTotalCents > 0 else { return }
-        lines.append(.progress(
+        lines.append(.values(
             label: "Credits",
-            used: ProviderParse.centsToDollars(hasValidGrantData ? grantUsedCents : 0),
-            limit: ProviderParse.centsToDollars(combinedTotalCents),
-            format: .dollars
+            values: [MetricValue(number: ProviderParse.centsToDollars(remainingCents), kind: .dollars)]
         ))
     }
 
