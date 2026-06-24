@@ -286,6 +286,13 @@ final class LayoutStore {
         metricOrder(for: providerID).compactMap { registry.descriptor(id: $0) }
     }
 
+    func metricOrderWithDivider(for providerID: String, dividerID: String) -> [String] {
+        let ordered = orderedSupportedMetrics(for: providerID).map(\.id)
+        return ordered.filter { !expandedMetricIDs.contains($0) }
+            + [dividerID]
+            + ordered.filter { expandedMetricIDs.contains($0) }
+    }
+
     func isMetricExpanded(_ descriptorID: String) -> Bool {
         expandedMetricIDs.contains(descriptorID)
     }

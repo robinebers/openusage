@@ -248,12 +248,7 @@ struct CustomizeView: View {
     }
 
     private func reorderTargetIDs(for providerID: String) -> [String] {
-        guard let group = layout.customizeGroups.first(where: { $0.provider.id == providerID }) else {
-            return []
-        }
-        return group.alwaysShownMetrics.map(\.id)
-            + [expandedDividerID(for: providerID)]
-            + group.expandedMetrics.map(\.id)
+        layout.metricOrderWithDivider(for: providerID, dividerID: expandedDividerID(for: providerID))
     }
 
     private func expandedDividerID(for providerID: String) -> String {
