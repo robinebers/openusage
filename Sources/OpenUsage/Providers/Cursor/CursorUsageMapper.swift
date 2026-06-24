@@ -123,17 +123,15 @@ enum CursorUsageMapper {
         if let spendLimitUsage {
             let limit = ProviderParse.number(spendLimitUsage["individualLimit"]) ?? ProviderParse.number(spendLimitUsage["pooledLimit"]) ?? 0
             let remaining = ProviderParse.number(spendLimitUsage["individualRemaining"]) ?? ProviderParse.number(spendLimitUsage["pooledRemaining"]) ?? 0
-            let spent = ProviderParse.number(spendLimitUsage["individualUsed"])
-                ?? ProviderParse.number(spendLimitUsage["pooledUsed"])
-                ?? ProviderParse.number(spendLimitUsage["totalSpend"])
+            let spent = onDemandSpendCents(from: spendLimitUsage, limit: limit, remaining: remaining)
             if limit > 0 {
                 lines.append(.progress(
                     label: "On-demand",
-                    used: ProviderParse.centsToDollars(spent ?? (limit - remaining)),
+                    used: ProviderParse.centsToDollars(spent),
                     limit: ProviderParse.centsToDollars(limit),
                     format: .dollars
                 ))
-            } else if let spent, spent > 0 {
+            } else if spent > 0 {
                 lines.append(.values(
                     label: "On-demand",
                     values: [MetricValue(number: ProviderParse.centsToDollars(spent), kind: .dollars)]
@@ -142,6 +140,19 @@ enum CursorUsageMapper {
         }
 
         return CursorMappedUsage(plan: planLabel(planName), lines: lines)
+    }
+
+    private static func onDemandSpendCents(from spendLimitUsage: [String: Any], limit: Double, remaining: Double) -> Double {
+        let reported = [
+            ProviderParse.number(spendLimitUsage["individualUsed"]),
+            ProviderParse.number(spendLimitUsage["pooledUsed"]),
+            ProviderParse.number(spendLimitUsage["totalSpend"])
+        ].compactMap { $0 }
+        if let positive = reported.first(where: { $0 > 0 }) {
+            return positive
+        }
+        let inferred = max(0, limit - remaining)
+        return inferred > 0 ? inferred : (reported.first ?? 0)
     }
 
     static func mapRequestBasedUsage(
