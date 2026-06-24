@@ -108,9 +108,8 @@ struct SettingsScreen: View {
                 row("Reset Times") {
                     picker($store.resetDisplayMode, options: ResetDisplayMode.allCases, label: \.label)
                 }
-                // Off (default) leaves every row as it is — pacing shows only when a metric is close to
-                // or over its limit. On surfaces it everywhere it can: on-track rows gain their pace
-                // projection and an even-pace tick. Rows with no reset window have no pace to show.
+                // Off (default) leaves pacing on yellow and red only. On also surfaces projection
+                // and the even-pace tick on blue rows.
                 row("Always Show Pacing") {
                     Toggle("", isOn: $store.alwaysShowPacing)
                         .settingsSwitchStyle()

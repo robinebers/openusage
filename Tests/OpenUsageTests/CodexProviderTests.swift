@@ -30,6 +30,45 @@ final class CodexAuthStoreTests: XCTestCase {
 }
 
 final class CodexUsageMapperTests: XCTestCase {
+    func testFreshSessionWindowNormalizesOnePercentToUnused() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let body = Data("""
+        {
+          "rate_limit": {
+            "primary_window": {
+              "used_percent": 1,
+              "limit_window_seconds": 18000,
+              "reset_after_seconds": 18000,
+              "reset_at": \(Int(now.timeIntervalSince1970) + 18000)
+            }
+          }
+        }
+        """.utf8)
+        let response = HTTPResponse(statusCode: 200, headers: [:], body: body)
+        let mapped = try CodexUsageMapper.mapUsageResponse(response, now: now)
+        XCTAssertEqual(progress(mapped.lines, "Session")?.used, 0)
+    }
+
+    func testMapsLimitWindowSecondsFromAPI() throws {
+        let body = Data("""
+        {
+          "rate_limit": {
+            "primary_window": {
+              "reset_after_seconds": 60,
+              "used_percent": 1,
+              "limit_window_seconds": 18000
+            }
+          }
+        }
+        """.utf8)
+        let response = HTTPResponse(statusCode: 200, headers: [:], body: body)
+        let mapped = try CodexUsageMapper.mapUsageResponse(
+            response,
+            now: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+        XCTAssertEqual(progress(mapped.lines, "Session")?.periodDurationMs, 18_000_000)
+    }
+
     func testMapsWindowsCreditsAndPlan() throws {
         let body = Data("""
         {

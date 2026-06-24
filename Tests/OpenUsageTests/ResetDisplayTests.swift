@@ -38,15 +38,38 @@ final class ResetDisplayTests: XCTestCase {
                               kind: .percent, used: 50, limit: 100)
         data.resetsAt = Date().addingTimeInterval(4 * 24 * 3600 + 17 * 3600) // ~4d17h out
         data.periodDurationMs = 7 * 24 * 60 * 60 * 1000
-        XCTAssertTrue(data.hasResetLabel)
+        XCTAssertTrue(data.hasResetLabel())
 
         data.resetDisplayMode = .relative
-        XCTAssertEqual(data.boundedTrailingText?.hasPrefix("Resets in "), true)
-        XCTAssertEqual(data.resetTooltip?.hasPrefix("Resets "), true)         // opposite = absolute
+        XCTAssertEqual(data.boundedTrailingText()?.hasPrefix("Resets in "), true)
+        XCTAssertEqual(data.resetTooltip()?.hasPrefix("Resets "), true)         // opposite = absolute
 
         data.resetDisplayMode = .absolute
-        XCTAssertEqual(data.boundedTrailingText?.hasPrefix("Resets "), true)
-        XCTAssertEqual(data.resetTooltip?.hasPrefix("Resets in "), true)      // opposite = relative
+        XCTAssertEqual(data.boundedTrailingText()?.hasPrefix("Resets "), true)
+        XCTAssertEqual(data.resetTooltip()?.hasPrefix("Resets in "), true)      // opposite = relative
+    }
+
+    func testFreshSessionWindowShowsNotStartedForCodexAndClaude() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let period: TimeInterval = 5 * 3600
+        for id in ["codex.session", "claude.session"] {
+            var data = WidgetData(title: "Session", icon: .symbol("clock"), kind: .percent, used: 0, limit: 100)
+            data.widgetID = id
+            data.periodDurationMs = Int(period * 1000)
+            // Half the window has elapsed on the clock, so pace would otherwise project — but usage is
+            // still zero, which is what "Not started" keys off (see `isFreshSessionWindow`).
+            data.resetsAt = now.addingTimeInterval(period / 2)
+            XCTAssertEqual(data.boundedTrailingText(now: now), "Not started", id)
+            XCTAssertFalse(data.hasResetLabel(now: now), id)
+            XCTAssertEqual(data.resetTooltip(now: now), WidgetData.freshSessionTooltip, id)
+            // The bar and its hover must not contradict "Not started": a calm level state, no pace
+            // projection and no tick — even with pacing forced on and the window well past minimumElapsed.
+            data.alwaysShowPacing = true
+            let state = data.meterState(now: now)
+            XCTAssertEqual(state, .level(.normal), id)
+            XCTAssertNil(state.tooltip, id)
+            XCTAssertNil(data.paceTick(for: state, now: now), id)
+        }
     }
 
     func testExpiryTooltipSingleCreditFollowsTimeSetting() {
@@ -164,8 +187,8 @@ final class ResetDisplayTests: XCTestCase {
         var data = WidgetData(title: "Credits", icon: .symbol("creditcard"),
                               kind: .dollars, used: 12, limit: 20)
         data.resetDisplayMode = .absolute
-        XCTAssertFalse(data.hasResetLabel)          // no resetsAt → not a clickable reset
-        XCTAssertNil(data.resetTooltip)
-        XCTAssertEqual(data.boundedTrailingText, "$20 limit") // falls back to limit context, unflipped
+        XCTAssertFalse(data.hasResetLabel())        // no resetsAt → not a clickable reset
+        XCTAssertNil(data.resetTooltip())
+        XCTAssertEqual(data.boundedTrailingText(), "$20 limit") // falls back to limit context, unflipped
     }
 }

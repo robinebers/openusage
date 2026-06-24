@@ -104,8 +104,8 @@ struct WidgetRowView: View {
     /// the terminal state that outranks any pace projection. Running out: a flame + projected
     /// run-out time, read as "Limit in 3h 45m" ⟷ "Limit today at 11:49 PM" (following the global
     /// countdown/exact mode) — clicking the time flips the global mode like the reset label. Close
-    /// to limit: a quiet "~3% spare" — the cushion
-    /// projected at reset, matching the meter's tick. Healthy / level / no-data: nothing. Only the
+    /// to limit: a quiet "~3% spare" — the cushion projected at reset. Healthy / level / no-data:
+    /// nothing unless "always show pacing" surfaces projection on blue. Only the flame carries
     /// flame carries the severity color — tint on glass is reserved for the symbol while copy
     /// stays secondary like the row's other supporting text; the bar below carries the color.
     /// Hovering shows the pace projection at reset. The warning gets the space; the title truncates.
@@ -136,7 +136,7 @@ struct WidgetRowView: View {
             flameWarning(text: eta, state: state,
                          accessibility: eta ?? "Will reach limit",
                          action: eta == nil ? nil : onToggleResetDisplay)
-        case .closeToLimit(let spare, _, _):
+        case .closeToLimit(let spare, _):
             Spacer(minLength: 8)
             Text(spare)
                 .font(supportingFont)
@@ -237,15 +237,16 @@ struct WidgetRowView: View {
     /// tooltip), mirroring the original. Otherwise it's plain text.
     @ViewBuilder
     private var trailingContext: some View {
-        if let text = data.boundedTrailingText {
-            if data.hasResetLabel, let onToggleResetDisplay {
+        if let text = data.boundedTrailingText() {
+            if data.hasResetLabel(), let onToggleResetDisplay {
                 Button(action: onToggleResetDisplay) {
                     Text(text).foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
-                .hoverTooltip(data.resetTooltip)
+                .hoverTooltip(data.resetTooltip())
             } else {
                 Text(text).foregroundStyle(.secondary)
+                    .hoverTooltip(data.resetTooltip())
             }
         }
     }
@@ -317,19 +318,13 @@ struct WidgetRowView: View {
     /// projected to land inside the last 10%, red = projected to run out; `Theme.meterFill` /
     /// `MeterState.severity`) at full strength on the opaque popover surface; the earlier
     /// provider-brand gradient was removed deliberately so the bar's color always reads as state.
-    /// Empty + colorless without data. By default a thin tick appears only in the `closeToLimit`
-    /// (amber) state, fencing the spare-width sliver off **at the fill's edge** — a glanceable "this
-    /// sliver is all the slack you've got", pinned to current usage rather than to either end of the
-    /// track: in Used view the sliver is the empty slice between the fill's edge and the tick (used +
-    /// spare); in Left view it's the last slice of the fill, between the tick and the edge (remaining −
-    /// spare). With "always show pacing" on, the tick instead marks the **even-pace line** (where a
-    /// steady user would be right now) and also appears on the blue `healthy` bar. The red run-out
-    /// states carry no tick — the flame + run-out time is the message there. The tick rides in an
-    /// overlay (see below) so it pokes out top and bottom without changing the bar's height. Hovering
-    /// shows the pace projection (`MeterState.tooltip`). Hidden from accessibility — the headline text
-    /// carries the exact value, and the label line's warning copy carries the amber and red cases.
+    /// Empty + colorless without data. A thin tick marks the even-pace line — where usage would sit
+    /// if it burned evenly across the reset window — on yellow and red bars always, and on blue when
+    /// "always show pacing" is on. The tick rides in an overlay so it pokes out top and bottom without
+    /// changing the bar's height. Hovering shows the pace projection (`MeterState.tooltip`).
     private func meter(_ state: WidgetData.MeterState) -> some View {
-        GeometryReader { proxy in
+        let tick = data.paceTick(for: state)
+        return GeometryReader { proxy in
             // Track + fill define the bar's height; the tick rides in an `.overlay` so its taller frame
             // pokes out top and bottom without stretching the capsules. (As a ZStack sibling it grew the
             // stack and the flexible capsules stretched with it, so a tick'd bar read as a thicker bar.)
@@ -342,7 +337,7 @@ struct WidgetRowView: View {
                     .frame(width: fillWidth(track: proxy.size.width))
             }
             .overlay(alignment: .leading) {
-                if let tick = state.tick {
+                if let tick {
                     RoundedRectangle(cornerRadius: 1)
                         .fill(Color.primary.opacity(0.55))
                         .frame(width: Self.paceTickWidth, height: density.meterHeight + Self.paceTickOverhang)

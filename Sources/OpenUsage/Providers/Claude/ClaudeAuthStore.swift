@@ -57,7 +57,7 @@ enum ClaudeAuthError: Error, LocalizedError, Equatable {
         switch self {
         case .sessionExpired, .tokenExpired:
             return true
-        case .notLoggedIn:
+        case .notLoggedIn, .invalidOAuthURL:
             return false
         }
     }

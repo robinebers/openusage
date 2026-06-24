@@ -68,10 +68,10 @@ final class MeterSeverityTests: XCTestCase {
         XCTAssertEqual(dollars.meterState(now: now), .spent)
     }
 
-    func testTooEarlyToProjectFallsBackToAbsoluteBands() {
-        // <5% of the window elapsed → no pace signal → the absolute bands decide.
-        XCTAssertEqual(severity(pacedData(used: 50, elapsed: 0.02)), .normal)
-        XCTAssertEqual(severity(pacedData(used: 85, elapsed: 0.02)), .warning)
+    func testEarlyInWindowUsesPaceVerdictNotAbsoluteBands() {
+        // Early in the window still projects pace — heavy usage at 2% elapsed is already behind.
+        XCTAssertEqual(severity(pacedData(used: 50, elapsed: 0.02)), .critical)
+        XCTAssertEqual(severity(pacedData(used: 85, elapsed: 0.02)), .critical)
     }
 
     // MARK: Absolute fallback (no reset window to project against)

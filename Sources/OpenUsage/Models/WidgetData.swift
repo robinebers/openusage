@@ -27,11 +27,11 @@ struct WidgetData: Hashable {
     /// Global relative/absolute reset display, stamped by `WidgetDataStore` (like `displayMode`).
     var resetDisplayMode: ResetDisplayMode = .relative
     /// Global "always show pacing" opt-in, stamped by `WidgetDataStore` (like `displayMode`). When on,
-    /// `meterState(now:)` surfaces pacing on the otherwise-silent on-track rows: the blue/healthy row
-    /// gains its projection copy + an even-pace tick, and the amber tick switches from the slack edge to
-    /// the same even-pace line. Off (default) leaves every row exactly as it was. The red run-out states
-    /// never gain a tick either way — the flame + run-out time already carry the message there.
+    /// the blue/healthy row also shows the even-pace tick and its projection copy. Yellow and red rows
+    /// always show the tick when a reset window exists; this toggle only adds it on blue.
     var alwaysShowPacing: Bool = false
+    /// Widget descriptor id when this tile is backed by live data (`codex.session`, `claude.session`, …).
+    var widgetID: String?
     var resetsAt: Date?
     /// Zero or more future expiry instants surfaced in the row's hover tooltip (Codex rate-limit-reset
     /// credits — one entry per still-available credit). Empty for every other row. Kept as raw `Date`s so
@@ -98,12 +98,8 @@ struct WidgetData: Hashable {
     }
 
     /// The meter's full visual state, derived once (`meterState(now:)`) so the bar color, the
-    /// tick, and the label-line warning copy can never contradict each other. Precedence,
-    /// highest first: no data → spent → live pace verdict → absolute level bands. Each case owns
-    /// exactly the data its rendering needs, so impossible combinations (a tick on a red bar, a
-    /// run-out time with no flame) can't be expressed. A tick lives only on the on-track cases
-    /// (`closeToLimit` always; `healthy` only when "always show pacing" is on) — the red run-out
-    /// states carry the flame instead, so a tick never sits on a red bar.
+    /// tick (`paceTick(for:)`), and the label-line warning copy can never contradict each other.
+    /// Precedence, highest first: no data → spent → live pace verdict → absolute level bands.
     enum MeterState: Hashable {
         /// No real metric backs the tile — gray, empty track, no copy.
         case noData
@@ -117,26 +113,18 @@ struct WidgetData: Hashable {
         /// rounds to 0%
         /// (≤ limit, so there's no run-out time) — in both cases the flame shows alone rather than a
         /// misleading "0s" or a "~0% spare" amber bar. `projectedFraction` (projected end-of-period
-        /// usage ÷ limit) backs the tooltip's overage / "lands at the limit" copy. Carries no tick —
-        /// a behind bar is the flame's job, never a notch.
+        /// usage ÷ limit) backs the tooltip's overage / "lands at the limit" copy.
         case runningOut(eta: String?, projectedFraction: Double)
         /// Projected to land inside the last 10% — cutting it close — but still with a cushion of at
         /// least 1%. (A cushion that rounds to 0% promotes to `runningOut` instead, so amber never
-        /// shows "~0% spare".) Amber, a "~N% spare" note and a tick fencing the spare-width sliver
-        /// off at the fill's edge (`tick`, already
-        /// Used/Left-aware: used + spare in Used view, so the sliver sits just outside the fill;
-        /// remaining − spare in Left view, so it's the last slice of the fill — see
-        /// `WidgetRowView.meter`). `projectedFraction` backs the tooltip's "% used at reset" copy.
-        case closeToLimit(spare: String, tick: Double, projectedFraction: Double)
+        /// shows "~0% spare".) Amber, a "~N% spare" note. `projectedFraction` backs the tooltip's
+        /// "% used at reset" copy.
+        case closeToLimit(spare: String, projectedFraction: Double)
         /// On course to finish with ≥10% to spare. Blue. By default it carries no decoration; when
-        /// "always show pacing" is on it surfaces the projection copy ("~N% left at reset") and
-        /// `evenPaceTick` is set — the even-pace line, framed like the fill (in the gray ahead of the
-        /// fill in Used view, inside the fill in Left view), so the gap to the fill edge shows how far
-        /// ahead of pace you are. `nil` when the setting is off. `projectedFraction` backs the tooltip's
-        /// "% left at reset" cushion copy.
-        case healthy(projectedFraction: Double, evenPaceTick: Double?)
-        /// No pace signal to project (no reset window, or <5% of it elapsed): color from the
-        /// absolute level bands on the share used, no copy.
+        /// "always show pacing" is on it surfaces the projection copy ("~N% left at reset").
+        /// `projectedFraction` backs the tooltip's "% left at reset" cushion copy.
+        case healthy(projectedFraction: Double)
+        /// No reset window to pace against: color from absolute level bands on the share used, no copy.
         case level(MeterSeverity)
 
         /// Bar fill severity, or `nil` for `noData` (the track stays gray).
@@ -161,10 +149,10 @@ struct WidgetData: Hashable {
             switch self {
             case .noData, .level: return nil
             case .spent: return "Limit reached"
-            case .healthy(let projectedFraction, _):
+            case .healthy(let projectedFraction):
                 let left = Int(((1 - projectedFraction) * 100).rounded())
                 return "~\(left)% left at reset"
-            case .closeToLimit(_, _, let projectedFraction):
+            case .closeToLimit(_, let projectedFraction):
                 let used = Int((projectedFraction * 100).rounded())
                 return "~\(used)% used at reset"
             case .runningOut(_, let projectedFraction):
@@ -175,17 +163,6 @@ struct WidgetData: Hashable {
             }
         }
 
-        /// The tick position on the bar (0...1), or `nil` when the bar carries no tick. Lives on the
-        /// on-track cases only — `closeToLimit` always, `healthy` when "always show pacing" set its
-        /// `evenPaceTick`. The red run-out states and the plain level/no-data states never have one, so
-        /// a tick can never appear on a red bar.
-        var tick: Double? {
-            switch self {
-            case .closeToLimit(_, let tick, _): return tick
-            case .healthy(_, let evenPaceTick): return evenPaceTick
-            case .noData, .spent, .runningOut, .level: return nil
-            }
-        }
     }
 
     /// `displayedValue` rounded the same way `format(_:)` rounds it for the headline text.
@@ -444,59 +421,41 @@ extension WidgetData {
     /// 1. **No data** → gray, empty.
     /// 2. **Spent** → red + "Limit reached", whenever the remainder rounds to zero at the
     ///    headline's precision (a visibly empty bar always reads spent, pace aside).
-    /// 3. **Live pace verdict** (a reset window with ≥5% elapsed): blue `healthy` while ≥10% is
-    ///    projected to spare, amber `closeToLimit` (with the spare copy + tick) when projected
-    ///    inside the last 10% *with a cushion of at least 1%*, red `runningOut` when projected to
-    ///    blow past the limit before reset (with the run-out time) or to land right at it (cushion
-    ///    rounds to 0% → flame alone, no time). So a half-full bar burning twice the sustainable
-    ///    rate is already red, a bar projected to finish with nothing to spare is red rather than a
-    ///    misleading "~0% spare" amber, and a nearly-drained bar coasting to the reset stays blue.
+    /// 3. **Live pace verdict** (a reset window): blue `healthy` while ≥10% is projected to spare,
+    ///    amber `closeToLimit` (with the spare copy) when projected inside the last 10% *with a
+    ///    cushion of at least 1%*, red `runningOut` when projected to blow past the limit before reset
+    ///    (with the run-out time) or to land right at it (cushion rounds to 0% → flame alone, no time).
     /// 4. **Absolute level bands** (no window to project against): yellow once 80% of the limit is
     ///    used, red once 10% or less is left, rounded to the whole percent the headline shows.
     ///
     /// Every band keys off the share *used*, never the displayed fraction, so the color and copy
-    /// don't flip with the Used/Left toggle. Only the amber tick adjusts with the toggle, keeping
-    /// the spare-width sliver it splits off attached to the fill in both views.
+    /// don't flip with the Used/Left toggle. The even-pace tick (`paceTick(for:)`) is independent:
+    /// yellow and red always show it when a reset window exists; blue only with "always show pacing".
     func meterState(now: Date = Date()) -> MeterState {
         guard hasData, let limit, limit > 0 else { return hasData ? .level(.normal) : .noData }
         if roundedAtDisplayPrecision(limit - used) <= 0 { return .spent }
+        // A "Not started" session has nothing to pace yet — present a calm bar with no projection
+        // copy or tick, so the bar and its hover never contradict the trailing "Not started" label.
+        if isFreshSessionWindow(now: now) { return absoluteLevelState(used: used, limit: limit) }
 
         if let ctx = paceContext,
            let result = Pace.evaluate(used: used, limit: ctx.limit, resetsAt: ctx.resetsAt,
                                       periodDuration: ctx.period, now: now) {
-            // The even-pace notch: where a steady user would sit right now — the elapsed fraction of the
-            // window (used ÷ projected-usage, since projected = used ÷ elapsed, so the dates cancel).
-            // Framed like the fill, so it mirrors by mode: Used view plots the used share → `elapsed`
-            // (out in the gray ahead of the fill); Left view plots the remaining share → `1 - elapsed`
-            // (inside the fill). Same point either way, always on the bar — when you're ahead the lead
-            // shows as the gap between the notch and the fill edge. Surfaced only when "always show
-            // pacing" is on; otherwise `nil` leaves every row unchanged.
-            let evenPaceTick: Double? = {
-                guard alwaysShowPacing, result.projectedUsage > 0 else { return nil }
-                let elapsed = min(max(used / result.projectedUsage, 0), 1)
-                return displayMode == .remaining ? 1 - elapsed : elapsed
-            }()
             switch result.status {
             case .ahead:
-                return .healthy(projectedFraction: result.projectedUsage / ctx.limit,
-                                evenPaceTick: evenPaceTick)
+                return .healthy(projectedFraction: result.projectedUsage / ctx.limit)
             case .onTrack:
                 let projected = result.projectedUsage / ctx.limit
                 let spare = Int(((1 - projected) * 100).rounded())
-                // Projected to land essentially at the limit: the cushion rounds to nothing, so an
-                // amber "~0% spare" note + a zero-width tick would contradict the headline's
-                // remaining %. Promote to the red run-out state instead — there's no
-                // run-out-before-reset time (projection ≤ limit), so the flame stands alone and the
-                // tooltip reads "~100% used at reset", exactly `runningOut`'s documented float-edge meaning.
                 guard spare >= 1 else { return .runningOut(eta: nil, projectedFraction: projected) }
-                let usedShare = used / ctx.limit
-                // Default: the slack-edge tick (used + spare). When "always show pacing" is on, switch
-                // to the even-pace line so the tick means the same thing on every on-track bar.
-                let slackTick = displayMode == .remaining ? projected - usedShare
-                                                          : usedShare + (1 - projected)
-                let tick = evenPaceTick ?? slackTick
-                return .closeToLimit(spare: "~\(spare)% spare", tick: tick, projectedFraction: projected)
+                return .closeToLimit(spare: "~\(spare)% spare", projectedFraction: projected)
             case .behind:
+                // Coarse meters (Codex session `used_percent` is whole points) can read 1% used at
+                // a fresh window; linear extrapolation then projects a bogus blow-out while the
+                // headline still shows ~99% left. When >95% of the quota clearly remains (used below
+                // 5%), distrust the projection entirely and use the absolute level bands instead — a
+                // calm bar with no projection copy, never a fabricated "~N% left at reset" cushion.
+                guard used / ctx.limit >= 0.05 else { return absoluteLevelState(used: used, limit: limit) }
                 let eta = Pace.secondsToRunOut(used: used, limit: ctx.limit, resetsAt: ctx.resetsAt,
                                                periodDuration: ctx.period, now: now)
                     .flatMap { Formatters.deadlineLabel("Limit", at: now.addingTimeInterval($0),
@@ -505,36 +464,88 @@ extension WidgetData {
             }
         }
 
+        return absoluteLevelState(used: used, limit: limit)
+    }
+
+    /// Color from the share used when there's no trustworthy pace projection (no reset window, or a
+    /// projection deliberately distrusted near-empty): yellow at 80% used, red at 90%, blue below.
+    /// Carries no projection copy or tick — a plain level reading.
+    private func absoluteLevelState(used: Double, limit: Double) -> MeterState {
         let percentUsed = (min(max(used / limit, 0), 1) * 100).rounded()
         if percentUsed >= 90 { return .level(.critical) }
         if percentUsed >= 80 { return .level(.warning) }
         return .level(.normal)
     }
 
+    /// Even-pace tick position on the bar (0...1), or `nil` when hidden. Always the elapsed fraction
+    /// of the reset window, framed like the fill (Used view → share used at an even burn; Left view →
+    /// share remaining). Yellow and red pace states always show it; blue `healthy` only when
+    /// `alwaysShowPacing` is on. Spent, no-data, and rows without a reset window never show a tick.
+    func paceTick(for state: MeterState, now: Date = Date()) -> Double? {
+        switch state {
+        case .spent, .noData, .level: return nil
+        case .healthy: guard alwaysShowPacing else { return nil }
+        case .closeToLimit, .runningOut: break
+        }
+        guard let ctx = paceContext else { return nil }
+        let windowStart = ctx.resetsAt.addingTimeInterval(-ctx.period)
+        let elapsed = now.timeIntervalSince(windowStart)
+        guard elapsed >= Pace.minimumElapsed(periodDuration: ctx.period), now < ctx.resetsAt else { return nil }
+        let elapsedFraction = min(max(elapsed / ctx.period, 0), 1)
+        return displayMode == .remaining ? 1 - elapsedFraction : elapsedFraction
+    }
+
     /// Trailing text on the bounded primary row, reset-display-mode aware. Priority mirrors
     /// `boundedSubtitle`, but a concrete reset honors `resetDisplayMode` (relative ⟷ absolute).
-    var boundedTrailingText: String? {
+    /// Codex and Claude session rows show "Not started" while the rolling window has not begun.
+    func boundedTrailingText(now: Date = Date()) -> String? {
         guard hasData else { return Self.noDataSubtitle }
         if let subtitleOverride { return subtitleOverride }
+        if isFreshSessionWindow(now: now) { return "Not started" }
         if let resetsAt {
             return resetDisplayMode == .absolute
-                ? Formatters.resetAbsoluteLabel(at: resetsAt)
-                : Formatters.resetRelativeLabel(until: resetsAt)
+                ? Formatters.resetAbsoluteLabel(at: resetsAt, now: now)
+                : Formatters.resetRelativeLabel(until: resetsAt, now: now)
         }
         return boundedSubtitle // period cadence / dollar limit / count suffix — nothing to flip
     }
 
+    /// Codex and Claude session meters only: a "Not started" state for the current window when nothing
+    /// has been spent in it yet. Driven by frozen usage (`used == 0`), not a window-timing read — the
+    /// `resetsAt - now ≈ full period` test is only valid the instant the snapshot is captured, then
+    /// drifts every second until the next refresh, which split the headline from the label (headline
+    /// "100% left" while the label fell back to "Resets in 5h"). Usage is the stable, snapshot-consistent
+    /// signal: Codex's whole-percent floor is normalized to 0 at a fresh window in its mapper, and Claude
+    /// reports 0 utilization directly, so zero means the same for both — the current window is unused.
+    /// Still gated on `now < resetsAt`: once the reset has passed the snapshot is stale, so we drop the
+    /// "Not started" claim and let the row fall back to the normal "Resets soon"/countdown formatting.
+    func isFreshSessionWindow(now: Date = Date()) -> Bool {
+        guard let id = widgetID, Self.sessionWindowWidgetIDs.contains(id),
+              hasData, limit != nil, let resetsAt, used <= 0 else { return false }
+        return now < resetsAt
+    }
+
+    private static let sessionWindowWidgetIDs: Set<String> = ["codex.session", "claude.session"]
+
     /// True when the bounded primary row's trailing text is a concrete reset countdown (so the row makes
-    /// it the clickable toggle). False for limit/suffix context with no real reset date.
-    var hasResetLabel: Bool { hasData && subtitleOverride == nil && resetsAt != nil }
+    /// it the clickable toggle). False for limit/suffix context, fresh session windows, or no reset date.
+    func hasResetLabel(now: Date = Date()) -> Bool {
+        hasData && subtitleOverride == nil && resetsAt != nil && !isFreshSessionWindow(now: now)
+    }
+
+    /// Hover copy explaining the "Not started" trailing label: the rolling session window only begins
+    /// once you send your first message, so there's no live countdown to show yet.
+    static let freshSessionTooltip = "Sessions start after you send your first message."
 
     /// Hover tooltip for the reset label: the *opposite* format from what's shown, mirroring the
-    /// original's `formatResetTooltipText`. `nil` when there's no concrete reset.
-    var resetTooltip: String? {
-        guard hasResetLabel, let resetsAt else { return nil }
+    /// original's `formatResetTooltipText`. A fresh ("Not started") session explains itself instead of
+    /// showing a reset time, since the window hasn't begun counting down.
+    func resetTooltip(now: Date = Date()) -> String? {
+        if isFreshSessionWindow(now: now) { return Self.freshSessionTooltip }
+        guard hasResetLabel(now: now), let resetsAt else { return nil }
         return resetDisplayMode == .absolute
-            ? Formatters.resetRelativeLabel(until: resetsAt)
-            : Formatters.resetAbsoluteLabel(at: resetsAt)
+            ? Formatters.resetRelativeLabel(until: resetsAt, now: now)
+            : Formatters.resetAbsoluteLabel(at: resetsAt, now: now)
     }
 
     /// True when the bounded headline is a flippable Used/Left reading (so the row makes it the

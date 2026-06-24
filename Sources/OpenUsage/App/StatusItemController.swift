@@ -50,7 +50,7 @@ final class StatusItemController: NSObject {
     /// Corner radius of the panel surface; tuned to read like a system menu-bar popover.
     private static let cornerRadius: CGFloat = 13
     /// Smallest the panel can be dragged — room for the footer plus a couple of rows.
-    private static let minPanelHeight: CGFloat = 240
+    private static let minPanelHeight: CGFloat = 480
     /// Opening height before the user has ever resized the panel.
     private static let defaultPanelHeight: CGFloat = 800
     /// Panel height at the moment a grip drag began; the live height is this plus the drag distance.

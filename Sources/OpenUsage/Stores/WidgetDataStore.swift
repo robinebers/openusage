@@ -239,6 +239,7 @@ final class WidgetDataStore {
         result.displayMode = meterStyle
         result.resetDisplayMode = resetDisplayMode
         result.alwaysShowPacing = alwaysShowPacing
+        result.widgetID = descriptor.id
         return result
     }
 
@@ -307,6 +308,7 @@ final class WidgetDataStore {
                 limit: limit,
                 countSuffix: format.countSuffix,
                 valuePrefix: descriptor.sample.valuePrefix,
+                widgetID: descriptor.id,
                 resetsAt: resetsAt,
                 periodDurationMs: periodDurationMs,
                 limitNoun: descriptor.sample.limitNoun,

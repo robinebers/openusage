@@ -21,22 +21,33 @@ enum Pace {
         let projectedUsage: Double
     }
 
-    /// ~5% of the window must elapse before a projection is meaningful; below that, no projection.
-    private static let minElapsedFraction = 0.05
+    /// Minimum time into the reset window before burn-rate projection is meaningful — avoids
+    /// dividing by a few seconds of elapsed time on a coarse whole-percent meter.
+    static func minimumElapsed(periodDuration: TimeInterval) -> TimeInterval {
+        max(60, periodDuration * 0.01)
+    }
 
-    /// Full pace evaluation, or `nil` when there's no signal (window already reset, nothing elapsed, or
-    /// too early to predict and not yet at the limit). Mirrors `calculatePaceStatus`.
+    /// A rolling usage window whose reset is still a full period away has not started yet — elapsed
+    /// time in the window is zero (or still in the future by clock skew). Reliable when `resetsAt`
+    /// and `periodDuration` come from the provider (Codex `reset_at` + `limit_window_seconds`,
+    /// Claude `resets_at` + the known five-hour session length).
+    static func isFreshUsageWindow(resetsAt: Date, periodDuration: TimeInterval, now: Date = Date()) -> Bool {
+        guard periodDuration > 0, now < resetsAt else { return false }
+        return resetsAt.timeIntervalSince(now) >= periodDuration - 1
+    }
+
+    /// Full pace evaluation, or `nil` when there's no signal (window not started yet, already reset,
+    /// or too early in the window for a stable projection). Mirrors `calculatePaceStatus`.
     static func evaluate(used: Double, limit: Double, resetsAt: Date, periodDuration: TimeInterval,
                          now: Date = Date()) -> Result? {
         guard limit > 0, periodDuration > 0 else { return nil }
         let elapsed = now.timeIntervalSince(resetsAt.addingTimeInterval(-periodDuration))
-        guard elapsed > 0, now < resetsAt else { return nil }
+        guard elapsed >= minimumElapsed(periodDuration: periodDuration), now < resetsAt else { return nil }
 
         if used <= 0 { return Result(status: .ahead, projectedUsage: 0) }   // nothing spent → ahead
         let projected = used / elapsed * periodDuration
         if used >= limit { return Result(status: .behind, projectedUsage: projected) } // maxed → behind
 
-        guard elapsed / periodDuration >= minElapsedFraction else { return nil }        // too early
         let status: Status
         if projected <= limit * 0.9 { status = .ahead }      // ≥10% projected to spare
         else if projected <= limit { status = .onTrack }     // lands inside the last 10%
