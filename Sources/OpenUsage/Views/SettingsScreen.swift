@@ -40,7 +40,7 @@ struct SettingsScreen: View {
         @Bindable var updater = updater
         // Same section rhythm as the dashboard and Customize (all read the density setting).
         return VStack(alignment: .leading, spacing: density.sectionSpacing) {
-            section("Startup") {
+            section("General") {
                 row("Launch at Login") {
                     Toggle("", isOn: $launchAtLogin)
                         .settingsSwitchStyle()
@@ -75,7 +75,7 @@ struct SettingsScreen: View {
                 }
             }
             section("Appearance") {
-                row("Menu Style") {
+                row("Icon Style") {
                     picker($layout.menuBarStyle, options: MenuBarStyle.allCases, label: \.label)
                 }
                 row("Theme") {
@@ -174,7 +174,7 @@ struct SettingsScreen: View {
                 logActionError = nil
             }
             if let logActionError {
-                // Same orange inline-notice idiom as the Startup section's error line.
+                // Same orange inline-notice idiom as the General section's error line.
                 Text(logActionError)
                     .font(.caption)
                     .foregroundStyle(Theme.notice)
