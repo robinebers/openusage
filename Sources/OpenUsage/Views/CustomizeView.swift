@@ -9,8 +9,6 @@ import SwiftUI
 /// of relying on SwiftUI's pasteboard-backed drag/drop session, which does not engage reliably here.
 struct CustomizeView: View {
     @Environment(LayoutStore.self) private var layout
-    @Binding var contentHeight: CGFloat
-    @Binding var hasMeasuredContent: Bool
     let reorderSpaceName: String
     @Binding var reorderLift: ReorderLift?
 
@@ -27,16 +25,9 @@ struct CustomizeView: View {
         .frame(maxWidth: .infinity)
     }
 
-    /// Fills the region the dashboard's pinned footer leaves; reports its content height up so
-    /// `DashboardView` can clamp the popover. A mid-drag measurement is ignored (`!isReordering`) so
-    /// the lifted row's transient layout never reseeds the popover height.
+    /// Fills the region the dashboard's pinned footer leaves.
     private var scrollContent: some View {
-        MeasuredScrollScreen(onMeasure: { newValue in
-            if newValue > 0, !isReordering {
-                contentHeight = newValue
-                hasMeasuredContent = true
-            }
-        }) {
+        PopoverScrollView {
             content
         }
         .onPreferenceChange(ReorderFramePreferenceKey.self) { rowFrames = $0 }

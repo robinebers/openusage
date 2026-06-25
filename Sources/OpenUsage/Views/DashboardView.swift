@@ -11,25 +11,19 @@ import AppKit
 /// content underlaps the footer with the native soft scroll-edge fade (`softBottomScrollEdge` →
 /// `.scrollEdgeEffectStyle(.soft)`, macOS 26+) — Apple's blurred boundary, not a custom gradient or a
 /// material bar. On macOS 15 the footer/top bar still pin via `safeAreaInset`, just without the blur
-/// (content scrolls flush). The popover height is clamped to a share of the hosting screen so it never
-/// overflows when many widgets are added.
+/// (content scrolls flush). The panel is a fixed, user-resizable size (the host window, sized by
+/// `StatusItemController`), so the scroll views inside handle any overflow rather than the popover
+/// growing to fit its content.
 struct DashboardView: View {
-    @Environment(AppContainer.self) private var container
     @Environment(LayoutStore.self) private var layout
     @Environment(WidgetDataStore.self) private var dataStore
-    @State private var listContentHeight: CGFloat = 300
-    @State private var customizeContentHeight: CGFloat = 220
-    @State private var settingsContentHeight: CGFloat = 480
-    @State private var usableHeight: CGFloat = ScreenHeightReader.smallestUsableHeight()
     @State private var didInitialRefresh = false
-    @State private var hasMeasuredCustomizeContent = false
-    @State private var hasMeasuredSettingsContent = false
     @State private var reorderLift: ReorderLift?
     @State private var showingResetCustomizationConfirmation = false
     /// True while the user is dragging the resize grip, so the first drag event begins the resize once.
     @State private var resizingPanel = false
-    /// Horizontal screen-switch slide: 0 shows the outgoing screen, 1 the incoming one. Drives both the
-    /// page offset and the interpolated popover height, so the slide and the resize share one spring.
+    /// Horizontal screen-switch slide: 0 shows the outgoing screen, 1 the incoming one. Drives the
+    /// page offset so the screens slide between modes on one spring.
     @State private var slideProgress: CGFloat = 1
     /// The `layout.screenSlideID` whose slide has begun animating. Until it catches up to the store's
     /// id, a freshly-started transition pins to the outgoing screen so the first frame never flashes
@@ -37,7 +31,7 @@ struct DashboardView: View {
     @State private var animatedSlideID = 0
     /// Reset to the top whenever the popover closes, so it never reopens mid-scroll.
     @State private var dashboardScrollPosition = ScrollPosition(edge: .top)
-    /// Row rhythm and the Customize height seed track the global density setting live.
+    /// Row rhythm tracks the global density setting live.
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
 
     private static let outerPadding: CGFloat = 14
@@ -49,119 +43,8 @@ struct DashboardView: View {
     private static let reorderSpace = "popoverReorderSpace"
     /// One width across both densities — switching density shouldn't move the popover's left edge.
     private static let popoverWidth: CGFloat = 320
-    /// Fixed height of the Customize / Settings back nav bar. A constant (not measured) so the popover
-    /// height math stays deterministic — the bar pins itself to exactly this height.
+    /// Fixed height of the Customize / Settings back nav bar — the bar pins itself to exactly this height.
     private static let topBarHeight: CGFloat = 44
-    /// Combined height of the bottom chrome — the footer row (identity / pin summary + glass buttons)
-    /// plus the resize handle folded directly beneath it into one pinned unit. A constant (not
-    /// measured), like `topBarHeight`, so the popover height math stays deterministic; tuned to the
-    /// rendered footer-row + handle height.
-    private static let footerHeight: CGFloat = 68
-
-    /// Never grow taller than 85% of the *hosting* screen's usable height; scroll beyond that. All
-    /// three screens (dashboard, Customize, Settings) share this one cap so they feel consistent —
-    /// each fits its content exactly until it would exceed the cap, then scrolls.
-    private var maxHeight: CGFloat {
-        floor(usableHeight * 0.85)
-    }
-
-    /// The pinned chrome that lives outside the scroll region, so the scroll area's cap is the popover
-    /// cap minus that fixed chrome. The footer is on every screen; Customize and Settings add the
-    /// pinned back nav bar on top, so their chrome is taller by exactly that bar.
-    private func chromeHeight(for screen: PopoverScreen) -> CGFloat {
-        Self.footerHeight + (screen == .dashboard ? 0 : Self.topBarHeight)
-    }
-
-    private func maxScrollHeight(for screen: PopoverScreen) -> CGFloat {
-        max(120, maxHeight - chromeHeight(for: screen))
-    }
-
-    /// The scroll area fits its content exactly until it would exceed the cap, then it scrolls.
-    private var dashboardScrollHeight: CGFloat {
-        min(listContentHeight, maxScrollHeight(for: .dashboard))
-    }
-
-    private var customizeScrollHeight: CGFloat {
-        let contentHeight = hasMeasuredCustomizeContent ? customizeContentHeight : estimatedCustomizeContentHeight
-        return min(contentHeight, maxScrollHeight(for: .customize))
-    }
-
-    /// Settings fits its content exactly, like the dashboard and Customize, up to the global cap.
-    /// Before the first measurement an estimate seeds the height so the flip lands close and the
-    /// real measurement only fine-tunes it.
-    private var settingsScrollHeight: CGFloat {
-        let contentHeight = hasMeasuredSettingsContent ? settingsContentHeight : estimatedSettingsContentHeight
-        return min(contentHeight, maxScrollHeight(for: .settings))
-    }
-
-    private func scrollHeight(for screen: PopoverScreen) -> CGFloat {
-        switch screen {
-        case .dashboard: dashboardScrollHeight
-        case .customize: customizeScrollHeight
-        case .settings: settingsScrollHeight
-        }
-    }
-
-    /// A screen's full popover height: its scroll content plus that screen's pinned chrome.
-    private func screenHeight(for screen: PopoverScreen) -> CGFloat {
-        scrollHeight(for: screen) + chromeHeight(for: screen)
-    }
-
-    private var popoverHeight: CGFloat {
-        screenHeight(for: layout.screen)
-    }
-
-    /// The popover height to apply while a screen-switch slide is playing: it interpolates from the
-    /// outgoing screen's height to the incoming one's on `slideProgress` — the *same* value that drives
-    /// the horizontal offset — so the box resizing and the screens sliding read as one coordinated
-    /// motion instead of two animations on separate clocks. At rest it's simply the current screen's
-    /// height; before the slide actually starts it sits at the outgoing screen's height to match the
-    /// pinned offset, so nothing jumps ahead of the slide.
-    private var animatedPopoverHeight: CGFloat {
-        guard isSliding else { return popoverHeight }
-        let fromHeight = screenHeight(for: layout.screenSlideFrom)
-        guard animatedSlideID == layout.screenSlideID else { return fromHeight }
-        return fromHeight + slideProgress * (popoverHeight - fromHeight)
-    }
-
-    /// Cold-start estimate for Customize content. Without this, the first click into Customize starts from an
-    /// arbitrary seed height, then jumps when the real `ScrollView` measurement arrives. The constants mirror
-    /// `CustomizeView`'s row/block spacing closely enough to choose the same clamped height before first layout.
-    private var estimatedCustomizeContentHeight: CGFloat {
-        let groups = layout.customizeGroups
-        guard !groups.isEmpty else { return 104 }
-        let providerHeaderHeight: CGFloat = density == .compact ? 26 : 30
-        let providerHeaderToCardSpacing: CGFloat = density.headerToCardSpacing + 2
-        let metricRowHeight = density.estimatedMetricRowHeight
-        let dividerRowHeight = density.customizeDividerRowHeight
-        let providerSpacing = density.sectionSpacing
-        let verticalPadding: CGFloat = 24
-        // Each provider card carries one "Shown on expand" divider row in addition to its metric rows.
-        let blocks = groups.reduce(CGFloat.zero) { total, group in
-            total
-                + providerHeaderHeight
-                + providerHeaderToCardSpacing
-                + CGFloat(group.metrics.count) * metricRowHeight
-                + dividerRowHeight
-        }
-        return verticalPadding + blocks + CGFloat(max(0, groups.count - 1)) * providerSpacing
-    }
-
-    /// Cold-start estimate for Settings content, same role as the Customize estimate above. The
-    /// constants mirror `SettingsScreen`: five sections (a caption header over a card) holding
-    /// twelve fixed control rows (Startup 2, Appearance 5, Usage Display 2, Advanced 3) plus one
-    /// row per registered provider.
-    private var estimatedSettingsContentHeight: CGFloat {
-        let sectionCount: CGFloat = 5
-        let sectionHeaderHeight: CGFloat = 16
-        let fixedRowCount: CGFloat = 12
-        let rowCount = fixedRowCount + CGFloat(container.registry.providers.count)
-        let verticalPadding: CGFloat = 24
-        return verticalPadding
-            + sectionCount * (sectionHeaderHeight + density.headerToCardSpacing)
-            + rowCount * density.estimatedMetricRowHeight
-            + (sectionCount - 1) * density.sectionSpacing
-    }
 
     var body: some View {
         modeBody
@@ -182,7 +65,6 @@ struct DashboardView: View {
                 }
             }
             .coordinateSpace(name: Self.reorderSpace)
-            .background(ScreenHeightReader(usableHeight: $usableHeight))
             .background(
                 // Esc backs out of Customize / Settings first; only from the dashboard does it close
                 // the popover. Return opens Customize from the dashboard (the same affordance the
@@ -231,7 +113,7 @@ struct DashboardView: View {
             // then spring to the incoming one on the next runloop tick. Deferring the animation one
             // tick is what makes it animate — setting 0 then 1 in the same closure collapses to a
             // no-op (SwiftUI animates from the last *committed* value). `slideProgress` drives the
-            // page offset and the interpolated height together, so the slide and the resize are one motion.
+            // page offset so the screens slide between modes on one spring.
             .onChange(of: layout.screenSlideID) { _, id in
                 guard id != 0 else { return }
                 slideProgress = 0
@@ -239,11 +121,6 @@ struct DashboardView: View {
                 Task { @MainActor in
                     withAnimation(Motion.spring) { slideProgress = 1 }
                 }
-            }
-            .onChange(of: layout.customizeGroups.map { group in
-                "\(group.provider.id):\(group.metrics.map(\.id).joined(separator: ","))"
-            }) {
-                hasMeasuredCustomizeContent = false
             }
             .task {
                 guard !didInitialRefresh else { return }
@@ -286,7 +163,7 @@ struct DashboardView: View {
     /// pages are a `ForEach` keyed by screen, so the incoming page keeps its identity (and scroll
     /// position) when the slide collapses back to one page. `.animation(nil, value:)` stops the
     /// one-frame structural re-layout at the start of a switch from inheriting the footer buttons'
-    /// mode-switch animation — only `slideProgress` animates the offset (and, in step, the height).
+    /// mode-switch animation — only `slideProgress` animates the offset.
     private var modeBody: some View {
         let pages = slidePages
         return HStack(alignment: .top, spacing: 0) {
@@ -332,7 +209,7 @@ struct DashboardView: View {
     /// per-page `screen`, so during a switch both mounted pages render identical chrome pinned to the
     /// same edges. The chrome therefore stays put while only the content offsets beneath it (the
     /// "one fixed footer / top bar doesn't slide" behaviour). The soft scroll-edge styles and the
-    /// pinned bars attach to each page's scroll view (`MeasuredScrollScreen`), the documented place for
+    /// pinned bars attach to each page's scroll view (`PopoverScrollView`), the documented place for
     /// them. Identity stays stable across the slide via the `ForEach` key in `modeBody`.
     @ViewBuilder
     private func screenView(_ screen: PopoverScreen) -> some View {
@@ -352,22 +229,17 @@ struct DashboardView: View {
             scrollingDashboard
         case .customize:
             CustomizeView(
-                contentHeight: $customizeContentHeight,
-                hasMeasuredContent: $hasMeasuredCustomizeContent,
                 reorderSpaceName: Self.reorderSpace,
                 reorderLift: $reorderLift
             )
         case .settings:
-            SettingsScreen(
-                contentHeight: $settingsContentHeight,
-                hasMeasuredContent: $hasMeasuredSettingsContent
-            )
+            SettingsScreen()
         }
     }
 
     /// The fixed top back/title bar, keyed off `layout.screen` so it's identical on both slide pages
-    /// (no horizontal travel): the back nav bar on Customize/Settings, nothing on the dashboard. Its
-    /// `topBarHeight` is reserved per screen in `chromeHeight(for:)`; the dashboard reserves none.
+    /// (no horizontal travel): the back nav bar on Customize/Settings, nothing on the dashboard. The
+    /// bar pins itself to `topBarHeight`; the dashboard shows nothing here.
     @ViewBuilder
     private var fixedTopBar: some View {
         switch layout.screen {
@@ -420,9 +292,7 @@ struct DashboardView: View {
     /// are applied uniformly in `screenView`). Unlike Customize/Settings it tracks the dashboard's own
     /// scroll position, so that modifier stays here on the scroll view.
     private var scrollingDashboard: some View {
-        MeasuredScrollScreen(onMeasure: { newValue in
-            if newValue > 0 { listContentHeight = newValue }
-        }) {
+        PopoverScrollView {
             widgetContent
                 .padding(.horizontal, Self.outerPadding)
                 .padding(.top, density.contentTopPadding)

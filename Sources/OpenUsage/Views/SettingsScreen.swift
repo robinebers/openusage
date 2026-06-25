@@ -12,9 +12,6 @@ import SwiftUI
 struct SettingsScreen: View {
     @Environment(AppContainer.self) private var container
     @Environment(UpdaterController.self) private var updater
-    /// Reported up so `DashboardView` can fit the popover to the settings content (clamped there).
-    @Binding var contentHeight: CGFloat
-    @Binding var hasMeasuredContent: Bool
 
     /// Launch at login goes through the system login-item registry (`SMAppService`), which is the
     /// source of truth — no shadow preference key. Registration can fail (e.g. unbundled `swift run`),
@@ -29,16 +26,10 @@ struct SettingsScreen: View {
     /// Surfaced under the Advanced rows when copying the path or revealing the file fails.
     @State private var logActionError: String?
 
-    /// Fills the region the dashboard's pinned footer leaves; reports its content height up so
-    /// `DashboardView` can fit the popover to it (`settingsScrollHeight`). Same scroller treatment
-    /// as Customize: the overlay scroller stays (the scroll edge effect needs it) but is invisible.
+    /// Fills the region the dashboard's pinned footer leaves. Same scroller treatment as Customize:
+    /// the overlay scroller stays (the scroll edge effect needs it) but is invisible.
     var body: some View {
-        MeasuredScrollScreen(onMeasure: { newValue in
-            if newValue > 0 {
-                contentHeight = newValue
-                hasMeasuredContent = true
-            }
-        }) {
+        PopoverScrollView {
             content
         }
     }
