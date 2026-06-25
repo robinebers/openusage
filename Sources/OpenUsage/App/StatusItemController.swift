@@ -305,6 +305,9 @@ final class StatusItemController: NSObject {
             AppLog.error(.statusItem, "Cannot show panel: status item has no button")
             return
         }
+        // Drop any morph heights still queued from a previous session so a quick reopen during an old
+        // spring can't apply a stale height to this fresh open.
+        PanelHeightBridge.invalidate()
         // Lay the content out first so the panel opens at the right size (no first-frame flash).
         hostingController.view.layoutSubtreeIfNeeded()
 
@@ -348,9 +351,12 @@ final class StatusItemController: NSObject {
         statusItem.button?.highlight(false)
         anchorTopLeft = nil
         anchorScreen = nil
-        // Settle any in-flight morph so a reopen doesn't inherit a stale flag.
+        // Settle any in-flight morph so a reopen doesn't inherit a stale flag, and invalidate heights
+        // already queued through PanelHeightBridge so a spring morph caught mid-flight by the close
+        // can't resize the panel after orderOut (or after a quick reopen).
         morphSettleTask?.cancel()
         isMorphing = false
+        PanelHeightBridge.invalidate()
     }
 
     /// Drops keyboard focus inside the panel so a clicked plain-styled control (a metric row's

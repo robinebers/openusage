@@ -1,4 +1,5 @@
 import SwiftUI
+import os
 
 /// Drives the host panel's height on SwiftUI's animation clock. This is the "single clock" that fixes
 /// the old stutter and the diagonal jank: instead of AppKit running its own `setFrame` animation
@@ -41,9 +42,23 @@ struct PanelHeightModifier: GeometryEffect {
 /// lands it just after the pass unwinds, still within the same display interval. SwiftUI interpolates
 /// on the main thread, so `assumeIsolated` is the right bridge to the `@MainActor` closure.
 enum PanelHeightBridge {
+    /// Bumped on every panel open and close. A queued height is applied only if the generation is
+    /// unchanged between when it was scheduled and when it runs — so a spring morph in flight when the
+    /// panel closes can never resize a hidden, or a freshly reopened, panel with a stale height (the
+    /// async hops are otherwise un-cancellable). `OSAllocatedUnfairLock` so the nonisolated `push` and
+    /// the main-actor `invalidate` can touch it safely.
+    private static let generation = OSAllocatedUnfairLock(initialState: 0)
+
+    /// Invalidate every in-flight height. Call on panel open and close.
+    nonisolated static func invalidate() {
+        generation.withLock { $0 += 1 }
+    }
+
     nonisolated static func push(_ height: CGFloat) {
         guard height > 0 else { return }
+        let scheduled = generation.withLock { $0 }
         DispatchQueue.main.async {
+            guard generation.withLock({ $0 }) == scheduled else { return }
             MainActor.assumeIsolated {
                 MenuBarPopover.applyHeight?(height)
             }
