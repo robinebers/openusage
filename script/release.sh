@@ -47,6 +47,10 @@ APP_MACOS="$APP_CONTENTS/MacOS"
 APP_RESOURCES="$APP_CONTENTS/Resources"
 APP_BINARY="$APP_MACOS/$APP_NAME"
 DMG_PATH="$DIST_DIR/$DMG_NAME"
+# dSYMs for crash symbolication (uploaded to PostHog by release.yml). A folder, since posthog-cli's
+# `dsym upload --directory` and Sparkle both want a directory of bundles, not a single path.
+DSYM_DIR="$DIST_DIR/dSYMs"
+APP_DSYM="$DSYM_DIR/$APP_NAME.app.dSYM"
 
 # Decide notarization up front. CI always supplies the notarization login; a local dry run can
 # opt out with ALLOW_UNNOTARIZED=1 (the build will then be Gatekeeper-blocked on other Macs). Missing
@@ -71,8 +75,11 @@ echo "==> building $APP_NAME $VERSION ($BUILD) — universal (arm64 + x86_64)"
 # Build both arch slices and let SwiftPM lipo-merge them into one universal binary. With multiple
 # --arch, --show-bin-path resolves to the merged products dir (.build/apple/Products/Release), which
 # also holds the *.bundle resources, so the staging loop below is unchanged.
-swift build -c release --arch arm64 --arch x86_64
-BUILD_DIR="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)"
+# `-Xswiftc -g` emits DWARF so `dsymutil` can build a real (line-level) dSYM for crash symbolication.
+# This does NOT grow the shipped binary: Mach-O keeps DWARF in the .o files (referenced by the binary's
+# debug map) and dsymutil extracts it into the .dSYM — the executable only carries the symbol table.
+swift build -c release --arch arm64 --arch x86_64 -Xswiftc -g
+BUILD_DIR="$(swift build -c release --arch arm64 --arch x86_64 -Xswiftc -g --show-bin-path)"
 BUILD_BINARY="$BUILD_DIR/$APP_NAME"
 [ -x "$BUILD_BINARY" ] || { echo "missing built binary: $BUILD_BINARY" >&2; exit 1; }
 
@@ -100,6 +107,24 @@ if vtool -show-build "$APP_BINARY" | grep -q "sdk 15.0"; then
   echo "SDK restamp failed: $APP_BINARY still reports sdk 15.0" >&2
   exit 1
 fi
+
+# Generate the dSYM for crash symbolication AFTER the vtool restamp, from the exact binary we ship, so
+# the dSYM's Mach-O UUID matches the shipped one. (Verified: `vtool -set-build-version` rewrites only
+# the build-version load command and preserves LC_UUID, so the restamp does not break symbol upload.)
+# dsymutil follows the binary's debug map to the .build/*.o files (still present in this same build) to
+# pull DWARF; signing happens later and never touches the UUID, so dSYM↔binary stay matched.
+echo "==> generating dSYM (crash symbolication)"
+rm -rf "$DSYM_DIR"
+mkdir -p "$DSYM_DIR"
+dsymutil "$APP_BINARY" -o "$APP_DSYM"
+# Guard the symbolication contract: every arch UUID in the shipped binary must be present in the dSYM,
+# else uploaded symbols would never match a crash report (a silent miss that looks like "no symbols").
+for uuid in $(dwarfdump --uuid "$APP_BINARY" | awk '{print $2}'); do
+  dwarfdump --uuid "$APP_DSYM" | grep -q "$uuid" \
+    || { echo "dSYM UUID mismatch: $uuid (binary) absent from $APP_DSYM — symbolication would fail." >&2; exit 1; }
+done
+echo "    dSYM: $APP_DSYM"
+
 shopt -s nullglob
 for bundle in "$BUILD_DIR"/*.bundle; do
   cp -R "$bundle" "$APP_RESOURCES/$(basename "$bundle")"
@@ -187,5 +212,6 @@ if [ "$NOTARIZE" = "1" ]; then
 fi
 
 echo "==> done"
-echo "    DMG: $DMG_PATH"
+echo "    DMG:  $DMG_PATH"
+echo "    dSYM: $APP_DSYM (uploaded to PostHog for crash symbolication by release.yml)."
 echo "    The appcast is generated from this DMG by generate_appcast (see release.yml)."

@@ -42,6 +42,12 @@ protocol TelemetrySink: AnyObject {
 /// sink is inert (the app still builds and the toggle still works), so dev builds never phone home.
 @MainActor
 final class PostHogTelemetrySink: TelemetrySink {
+    /// Crash / uncaught-exception autocapture is gated on the SAME opt-out as usage telemetry, decided
+    /// here so the opt-out contract is unit-testable without touching the `PostHogSDK.shared` singleton.
+    /// Gating *install* (not just sending) on the opt-out means an opted-out launch installs no signal/
+    /// exception handler and writes no crash report to disk — honoring privacy.md's "nothing while off".
+    nonisolated static func errorAutocaptureEnabled(telemetryEnabled: Bool) -> Bool { telemetryEnabled }
+
     private let configured: Bool
 
     init(enabled: Bool, token: String = TelemetryConfig.token, host: String = TelemetryConfig.host) {
@@ -61,9 +67,20 @@ final class PostHogTelemetrySink: TelemetrySink {
         config.captureScreenViews = false
         // Start in the user's chosen state before any event can fire.
         config.optOut = !enabled
-        // NOTE: errorTrackingConfig.autoCapture is left at its default (off) — the app already catches
-        // provider errors and reports them as coarse counts. Never reference sessionReplay / surveys /
-        // captureElementInteractions / tracingHeaders here: they do not exist on a macOS target.
+        // Crash / uncaught-exception autocapture, gated on the SAME opt-out (anonymous `$exception`
+        // events, sent on the NEXT launch after a crash). It captures Mach exceptions, POSIX signals,
+        // and uncaught NSExceptions; Swift traps may surface as a bare `SIGTRAP` without the message —
+        // the symbolicated stack (dSYMs uploaded from release.yml) is what makes them actionable.
+        // Gating install on `enabled` (not relying on `optOut` alone) means an opted-out launch wires
+        // up no handler and writes nothing to disk. A runtime opt-IN therefore activates crash capture
+        // from the next launch; `optOut` (mirrored by `setEnabled`) still hard-stops sending in-session.
+        // NOTE: this local flag is necessary but NOT sufficient — posthog-ios also gates the integration
+        // on a SERVER-side switch (remote config `errorTracking.autocaptureExceptions`). "Exception
+        // autocapture" must be enabled in the PostHog project settings, and because the SDK reads it from
+        // cache at init, capture arms on the *second* launch after enabling (first launch fetches+caches).
+        // Never reference sessionReplay / surveys / captureElementInteractions / tracingHeaders here:
+        // they do not exist on a macOS target.
+        config.errorTrackingConfig.autoCapture = Self.errorAutocaptureEnabled(telemetryEnabled: enabled)
         PostHogSDK.shared.setup(config)
 
         // Super properties ride on every subsequent event (anonymous, non-PII).

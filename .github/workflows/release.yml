@@ -115,6 +115,29 @@ jobs:
           OPENUSAGE_VERSION: ${{ steps.meta.outputs.version }}
         run: ./script/release.sh
 
+      # Upload the dSYM produced by release.sh so PostHog can symbolicate crash reports (the in-app
+      # crash autocapture is anonymous and honors the Share-Anonymous-Usage opt-out; see docs/privacy.md).
+      # posthog-cli is a CI-only build tool (npm), never shipped in the app bundle. Skips with a loud
+      # warning when POSTHOG_CLI_API_KEY is unset (e.g. forks), so a missing key never blocks a release;
+      # when the key IS set, an upload failure fails the step so we never silently ship unsymbolicated.
+      - name: Upload dSYMs to PostHog
+        env:
+          POSTHOG_CLI_API_KEY: ${{ secrets.POSTHOG_CLI_API_KEY }}
+          POSTHOG_CLI_PROJECT_ID: ${{ secrets.POSTHOG_CLI_PROJECT_ID }}
+          # US region, matching TelemetryConfig.host in the app.
+          POSTHOG_CLI_HOST: https://us.i.posthog.com
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          if [ -z "${POSTHOG_CLI_API_KEY}" ]; then
+            echo "::warning::POSTHOG_CLI_API_KEY not set — skipping dSYM upload; crashes for $VERSION will NOT symbolicate."
+            exit 0
+          fi
+          [ -d dist/dSYMs ] || { echo "dist/dSYMs missing — release.sh did not produce a dSYM." >&2; exit 1; }
+          npm install -g @posthog/cli
+          # Symbolication matches a crash report to its symbols by the binary's Mach-O UUID (carried in
+          # the dSYM), so `--directory` is all that's required — no per-release flags to keep in sync.
+          posthog-cli dsym upload --directory dist/dSYMs
+
       - name: Publish DMG to GitHub Releases
         uses: softprops/action-gh-release@v3
         with:
