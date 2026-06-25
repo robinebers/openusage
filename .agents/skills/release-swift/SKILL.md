@@ -1,19 +1,19 @@
 ---
 name: release-swift
-description: Cut a release of the native Swift edition of OpenUsage (swift branch + Sparkle): generate a categorized changelog, update CHANGELOG.md, tag, and publish the GitHub Release with notes. Use to ship a Swift build, an Early Access beta, or the public flip. Pairs with release-tauri.
+description: Cut a release of the native Swift edition of OpenUsage (main branch + Sparkle): generate a categorized changelog, update CHANGELOG.md, tag, and publish the GitHub Release with notes. Use to ship a Swift build, an Early Access beta, or the public flip. Pairs with the frozen Tauri release history.
 ---
 
 # Release Swift
 
-Push a version tag on `swift`; `.github/workflows/release.yml` builds, signs, notarizes, attaches `OpenUsage-<version>.dmg`, and updates the Sparkle `appcast.xml` on `gh-pages`. CI creates the GitHub Release but with an EMPTY body, so this skill also generates a categorized changelog, records it in `CHANGELOG.md`, and publishes those notes onto the release.
+Push a version tag on `main`; `.github/workflows/release.yml` builds, signs, notarizes, attaches `OpenUsage-<version>.dmg`, and updates the Sparkle `appcast.xml` on `gh-pages`. CI creates the GitHub Release but with an EMPTY body, so this skill also generates a categorized changelog, records it in `CHANGELOG.md`, and publishes those notes onto the release.
 
 A tag with a pre-release suffix (e.g. `v0.7.0-beta.1`) publishes to the Early Access channel; a plain tag (`v0.7.0`) publishes to everyone.
 
 ## Guardrails (transition period)
 
 - Swift owns version lane `0.7.x` and up. Never use a `0.6.x` number (Tauri's lane).
-- Keep every Swift release a GitHub pre-release until the owner approves the public flip: push only `-beta.N` tags; `release.yml` marks any suffixed tag pre-release. Do NOT push a plain `vX.Y.Z` Swift tag during the transition (it becomes GitHub "Latest" and breaks the Tauri updater).
-- Cut tags from a `swift` commit so `release.yml` (not Tauri's `publish.yml`) runs.
+- Keep every Swift release a GitHub pre-release until the owner approves the public flip: push only `-beta.N` tags; `release.yml` marks any suffixed tag pre-release. Do NOT push a plain `vX.Y.Z` Swift tag during the transition because it intentionally becomes GitHub "Latest".
+- Cut tags from a `main` commit so `release.yml` runs. The frozen Tauri edition remains on `tauri-legacy`.
 - The version IS the tag: `vX.Y.Z` -> `CFBundleShortVersionString`; `CFBundleVersion` is the git commit count. There are NO version files to bump (unlike the Tauri skill).
 
 ## Cutting a release
@@ -46,12 +46,12 @@ Output the changelog in a code block (template at the bottom) for review.
 
 Wait for explicit approval of the changelog before changing any files. Accept edits if offered.
 
-### 4. Record it in CHANGELOG.md (swift branch)
+### 4. Record it in CHANGELOG.md (main branch)
 
-Prepend the approved section right after the `# Changelog` header. The `swift` branch has no `CHANGELOG.md` yet, so create it with that header on first use. Do NOT edit version files. Commit on `swift`:
+Prepend the approved section right after the `# Changelog` header. Create `CHANGELOG.md` with that header on first use. Do NOT edit version files. Commit on `main`:
 
 ```sh
-git switch swift && git pull
+git switch main && git pull
 git add CHANGELOG.md && git commit -m "docs: changelog for v{version}"
 ```
 
@@ -59,7 +59,7 @@ git add CHANGELOG.md && git commit -m "docs: changelog for v{version}"
 
 ```sh
 git tag -a v{version} -m "v{version}"
-git push origin swift
+git push origin main
 git push origin v{version}
 ```
 
@@ -98,9 +98,17 @@ fi
 
 ## The public flip (owner-approved only)
 
-1. Confirm the final Tauri goodbye release (release-tauri) already shipped and reached users.
+1. Confirm the final Tauri goodbye release `v0.6.28` already shipped and points users to the Swift download.
 2. `git tag -a v0.7.0 -m "v0.7.0" && git push origin v0.7.0` - `release.yml` marks a plain tag non-prerelease, so it becomes GitHub "Latest".
-3. Attach its notes (step 6) and update openusage.ai + README to point at the Swift app.
+3. Attach its notes (step 6).
+4. Carry forward the final Tauri updater manifest onto the stable Swift GitHub Release. Older Tauri builds still fetch `releases/latest/download/latest.json`; once the Swift release becomes GitHub "Latest", this extra asset keeps those installs able to update to the `v0.6.28` migration-banner build:
+   ```sh
+   tmpdir="$(mktemp -d)"
+   gh release download v0.6.28 --pattern latest.json --dir "$tmpdir"
+   gh release upload v0.7.0 "$tmpdir/latest.json" --clobber
+   ```
+5. Verify the stable Swift release has its DMG, release notes, appcast entry, and the carried-forward `latest.json` asset.
+6. Update openusage.ai + README to point at the Swift app.
 
 ## Changelog template
 

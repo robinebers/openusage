@@ -8,22 +8,22 @@ This file documents the engineering conventions for the project. Read it before 
 
 AGENTS.md is the source of truth for agent instructions in this repository. CLAUDE.md files may only point to the nearest AGENTS.md file with `@AGENTS.md`; do not add guidance, duplicate instructions, or project rules to CLAUDE.md.
 
-> **Repository note:** This is the native Swift edition of OpenUsage. Active development happens on the `swift` branch.
+> **Repository note:** This is the native Swift edition of OpenUsage. Active development happens on the `main` branch.
 
 ## Rollout: Tauri to Swift (read first)
 
-This Swift edition is replacing the original Tauri app. Until the cutover, both editions ship from the same GitHub repo and must stay independent.
-- This (`swift`) branch is the active development line; it ships the Swift edition via `.github/workflows/release.yml` (Sparkle appcast on `gh-pages`).
-- The Tauri edition still ships from `main` via `publish.yml` and auto-updates from GitHub's "Latest" release.
+This Swift edition replaces the original Tauri app. Both editions stay in the same GitHub repo and remain independent.
+- The `main` branch is the active Swift development line; it ships the Swift edition via `.github/workflows/release.yml` (Sparkle appcast on `gh-pages`).
+- The Tauri edition is preserved on `tauri-legacy`. Its final release is `v0.6.28`, which shows the migration banner.
 
 ### Guardrails (do not break)
 - Version lanes: Swift owns `0.7.x` and up; Tauri stays on `0.6.x`. Never use a `0.6.x` number here.
-- Keep every Swift release marked as a GitHub pre-release until the owner explicitly approves the public flip. For now cut only `-beta.N` tags (Early Access) - `release.yml` marks those pre-release automatically. A plain stable Swift tag becomes GitHub "Latest" and breaks the Tauri updater. See the release-swift skill.
+- Keep every Swift release marked as a GitHub pre-release until the owner explicitly approves the public flip. For now cut only `-beta.N` tags (Early Access) - `release.yml` marks those pre-release automatically. A plain stable Swift tag becomes GitHub "Latest"; when doing that public flip, carry forward the final Tauri `latest.json` so older Tauri installs can still update to `v0.6.28`. See the release-swift skill.
 - Never leave a release in Draft, and never ship blank notes: the release-swift skill generates the changelog and verifies the published release after every cut.
-- To cut the one final Tauri "goodbye" release, switch to `main` and follow its release-tauri skill. The Tauri edition is frozen and stays in the repo forever.
+- The Tauri edition is frozen and stays in the repo forever. Do not cut another Tauri release unless there is an emergency.
 
 ### Phases
-(1) private Swift testing via Early Access, (2) final Tauri goodbye release from `main`, (3) flip Swift public (owner-approved; drops pre-release), (4) make `swift` the default branch and freeze the old Tauri `main` as `tauri-legacy`.
+(1) private Swift testing via Early Access, (2) final Tauri goodbye release `v0.6.28`, (3) make Swift the default `main` branch and preserve old Tauri as `tauri-legacy`, (4) flip Swift public when owner-approved by cutting a non-prerelease Swift tag.
 
 ## Architecture
 

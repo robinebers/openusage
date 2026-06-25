@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.7.0-beta.15
+
+### New Features
+- feat(popover): coordinated-morph auto-resize for the menu-bar panel ([#730](https://github.com/robinebers/openusage/pull/730)) by @robinebers
+- feat(popover): System Settings grouped surface + Settings-primary footer ([#726](https://github.com/robinebers/openusage/pull/726)) by @robinebers
+
+### Bug Fixes
+- Centered Customize/Settings header + per-provider reset menu ([#734](https://github.com/robinebers/openusage/pull/734)) by @robinebers
+- fix(settings): rename Startup→General, Menu Style→Icon Style ([#733](https://github.com/robinebers/openusage/pull/733)) by @robinebers
+
+---
+
+### Changelog
+**Full Changelog**: [v0.7.0-beta.14...v0.7.0-beta.15](https://github.com/robinebers/openusage/compare/v0.7.0-beta.14...v0.7.0-beta.15)
+
+- [bb8876a](https://github.com/robinebers/openusage/commit/bb8876aeae698bd696ee67bdc31d0a6ce967f96e) Centered Customize/Settings header + per-provider reset menu (#729) (#734) by @robinebers
+- [b41f139](https://github.com/robinebers/openusage/commit/b41f1396a1976856831b6d59fb13e0ac311442ec) fix(settings): rename Startup→General, Menu Style→Icon Style (#733) by @robinebers
+- [0ad7edc](https://github.com/robinebers/openusage/commit/0ad7edcdea4f81d9ef47c5357ccda70b30922a41) feat(popover): coordinated-morph auto-resize for the menu-bar panel (#730) by @robinebers
+- [098777b](https://github.com/robinebers/openusage/commit/098777be0fc83bb14ebe1265a266542b5995b31d) feat(popover): System Settings grouped surface + Settings-primary footer (#726) by @robinebers
+
+---
+
 ## v0.7.0-beta.14
 
 ### New Features

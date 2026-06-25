@@ -1,13 +1,11 @@
 name: CI
 
 on:
-  # The Swift edition ships from `swift`; `main` is the Tauri edition with its own workflows, so the
-  # Swift CI only triggers on `swift` pushes. PRs targeting either branch run it (swift -> main is the
-  # eventual cutover).
+  # The Swift edition ships from `main`. The frozen Tauri edition is preserved on `tauri-legacy`.
   push:
-    branches: [swift]
+    branches: [main]
   pull_request:
-    branches: [main, swift]
+    branches: [main]
 
 permissions:
   contents: read

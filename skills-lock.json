@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "skills": {
+    "macos-appkit-interop": {
+      "source": "robinebers/skills",
+      "sourceType": "github",
+      "skillPath": "skills/macos-appkit-interop/SKILL.md",
+      "computedHash": "ac1c61274dfdde0dabf6b8010de32220393b29e8a071b4dd208ad05f7021897e"
+    },
+    "macos-build-run-debug": {
+      "source": "robinebers/skills",
+      "sourceType": "github",
+      "skillPath": "skills/macos-build-run-debug/SKILL.md",
+      "computedHash": "f8a9e6955092e02d10c3b7f4af7188a8467609193ea8af93e54a1fad39a7f505"
+    },
+    "macos-liquid-glass": {
+      "source": "robinebers/skills",
+      "sourceType": "github",
+      "skillPath": "skills/macos-liquid-glass/SKILL.md",
+      "computedHash": "c89fb665283edbbcce384b328ea9d5012bba6031d3957289c516fb08c2d10054"
+    },
+    "macos-packaging-notarization": {
+      "source": "robinebers/skills",
+      "sourceType": "github",
+      "skillPath": "skills/macos-packaging-notarization/SKILL.md",
+      "computedHash": "17df79441143c265fbd2211aebb0ca01aa86f46e1b937049423526f7f944bc91"
+    },
+    "macos-signing-entitlements": {
+      "source": "robinebers/skills",
+      "sourceType": "github",
+      "skillPath": "skills/macos-signing-entitlements/SKILL.md",
+      "computedHash": "42efce483ad05292c5d094959fd9488c7dc0a47bd0a7297bb3f85443f1a0041e"
+    },
+    "macos-swiftpm": {
+      "source": "robinebers/skills",
+      "sourceType": "github",
+      "skillPath": "skills/macos-swiftpm/SKILL.md",
+      "computedHash": "be2a714e7560ebe0a9100445fe89524edcbf52e45565d0bd0121f8972b56f586"
+    },
+    "macos-swiftui-patterns": {
+      "source": "robinebers/skills",
+      "sourceType": "github",
+      "skillPath": "skills/macos-swiftui-patterns/SKILL.md",
+      "computedHash": "ac0883c7769908f7c93cebfb12bf2e4d5c62bba1d1993800c7256a4aef45791a"
+    },
+    "macos-telemetry": {
+      "source": "robinebers/skills",
+      "sourceType": "github",
+      "skillPath": "skills/macos-telemetry/SKILL.md",
+      "computedHash": "ecdadcf331bccfe49d742f9358420d011de7c42b54d0c7d4568c797631e1ff0f"
+    },
+    "macos-test-triage": {
+      "source": "robinebers/skills",
+      "sourceType": "github",
+      "skillPath": "skills/macos-test-triage/SKILL.md",
+      "computedHash": "208a12db2b690e55caea1031bef9f603462be451d4e0752b88125cdfddbcbed1"
+    },
+    "macos-view-refactor": {
+      "source": "robinebers/skills",
+      "sourceType": "github",
+      "skillPath": "skills/macos-view-refactor/SKILL.md",
+      "computedHash": "75503e6fbafcb6bc735837bef63efa0ae158227e4f405c611eafa7f50c343b82"
+    },
+    "macos-window-management": {
+      "source": "robinebers/skills",
+      "sourceType": "github",
+      "skillPath": "skills/macos-window-management/SKILL.md",
+      "computedHash": "c13f779e65716681a8590dc05adb3d91d0efe0937c5e8a567a58d7e61c843504"
+    }
+  }
+}
