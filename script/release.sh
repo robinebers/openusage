@@ -85,6 +85,21 @@ chmod +x "$APP_BINARY"
 # fat binary is the whole point, and generate_appcast derives Sparkle's hardwareRequirements from it.
 lipo -archs "$APP_BINARY" | grep -q "x86_64" && lipo -archs "$APP_BINARY" | grep -q "arm64" \
   || { echo "Expected a universal (arm64 + x86_64) binary, got: $(lipo -archs "$APP_BINARY")" >&2; exit 1; }
+
+# SwiftPM stamps LC_BUILD_VERSION's `sdk` field with the deployment target (macOS 15), not the real
+# SDK it compiled against. macOS gates the modern Liquid Glass control appearance (pop-up buttons,
+# pickers, etc.) on the linked SDK — a "15.0" stamp makes AppKit fall back to legacy Aqua controls.
+# Restamp the sdk to 26.0 (Tahoe) while keeping minos at MIN_SYSTEM_VERSION so the app still runs on
+# macOS 15 but gets the modern controls. Stamps every slice of the universal binary; re-signed below.
+echo "==> stamping linked SDK 26.0 for Liquid Glass controls (minos stays $MIN_SYSTEM_VERSION)"
+vtool -set-build-version macos "$MIN_SYSTEM_VERSION" 26.0 -replace -output "$APP_BINARY.tmp" "$APP_BINARY"
+mv "$APP_BINARY.tmp" "$APP_BINARY"
+chmod +x "$APP_BINARY"
+# Fail loudly if any slice still reports the old SDK (a silent vtool no-op would ship legacy controls).
+if vtool -show-build "$APP_BINARY" | grep -q "sdk 15.0"; then
+  echo "SDK restamp failed: $APP_BINARY still reports sdk 15.0" >&2
+  exit 1
+fi
 shopt -s nullglob
 for bundle in "$BUILD_DIR"/*.bundle; do
   cp -R "$bundle" "$APP_RESOURCES/$(basename "$bundle")"
