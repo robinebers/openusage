@@ -700,6 +700,60 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertFalse(store.isProviderExpanded("codex"))
     }
 
+    func testResetProviderRestoresOneProviderAndLeavesOthersAndOrderUntouched() {
+        let defaults = makeDefaults("ResetOneProvider")
+        let store = LayoutStore(
+            registry: .mock,
+            defaults: defaults,
+            storageKey: "layout",
+            defaultMetricIDs: ["claude.session", "codex.session"],
+            migrationBaselineMetricIDs: [],
+            defaultPinnedMetricIDs: ["claude.session", "codex.session"],
+            defaultExpandedMetricIDs: []
+        )
+
+        // Reorder providers first, so we can prove a per-provider reset leaves provider order alone.
+        store.reorderProvider(dragged: "cursor", target: "claude")
+        let orderBefore = store.customizeGroups.map(\.provider.id)
+
+        // Diverge Claude from its defaults in every dimension a reset should restore.
+        store.setMetricEnabled("claude.weekly", true)
+        store.setPinned(true, for: "claude.weekly")
+        store.setProviderExpanded(true, for: "claude")
+        store.reorderMetric(dragged: "claude.extra", target: "claude.session", in: "claude")
+
+        // Diverge Codex too — a Claude reset must not touch it.
+        store.setMetricEnabled("codex.weekly", true)
+        store.setPinned(true, for: "codex.weekly")
+
+        store.resetProvider("claude")
+
+        // Claude restored: enabled set, metric order, pins, and expanded state back to default.
+        XCTAssertTrue(store.isMetricEnabled("claude.session"))
+        XCTAssertFalse(store.isMetricEnabled("claude.weekly"))
+        XCTAssertTrue(store.isPinned("claude.session"))
+        XCTAssertFalse(store.isPinned("claude.weekly"))
+        XCTAssertFalse(store.isProviderExpanded("claude"))
+        XCTAssertEqual(
+            store.orderedSupportedMetrics(for: "claude").map(\.id),
+            MockData.descriptors(for: "claude").map(\.id)
+        )
+
+        // Codex untouched by a Claude-only reset.
+        XCTAssertTrue(store.isMetricEnabled("codex.weekly"))
+        XCTAssertTrue(store.isPinned("codex.weekly"))
+
+        // Provider order untouched — contents-only reset.
+        XCTAssertEqual(store.customizeGroups.map(\.provider.id), orderBefore)
+    }
+
+    func testResetProviderIsNoOpForUnknownProvider() {
+        let store = makeStore("ResetUnknownProvider")
+        let before = store.placed.map(\.descriptorID)
+        store.resetProvider("nope")
+        XCTAssertEqual(store.placed.map(\.descriptorID), before)
+    }
+
     private func makeStore(_ name: String) -> LayoutStore {
         LayoutStore(registry: .mock, defaults: makeDefaults(name), storageKey: "layout")
     }

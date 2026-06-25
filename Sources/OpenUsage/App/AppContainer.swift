@@ -18,12 +18,15 @@ final class AppContainer {
     private let refreshTask: Task<Void, Never>
 
     init() {
+        // Alphabetical by display name — this registry order is the default provider order
+        // (`LayoutStore.orderedProviderIDs` falls back to it, and `resetToDefault` seeds it), so the
+        // dashboard, Customize sections, and the per-provider reset menu all read alphabetically.
         let providers: [ProviderRuntime] = [
             ClaudeProvider(),
             CodexProvider(),
+            CursorProvider(),
             DevinProvider(),
-            GrokProvider(),
-            CursorProvider()
+            GrokProvider()
         ]
         let registry = WidgetRegistry.from(providers)
         let enablement = ProviderEnablementStore()

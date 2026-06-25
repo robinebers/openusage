@@ -13,13 +13,13 @@ enum DefaultLayout {
         "codex.session", "codex.weekly", "codex.trend",
         "codex.credits", "codex.rateLimitResets", "codex.today", "codex.yesterday", "codex.last30",
 
+        "cursor.usage", "cursor.auto", "cursor.api", "cursor.trend",
+        "cursor.onDemand", "cursor.today", "cursor.yesterday", "cursor.last30",
+
         "devin.daily", "devin.weekly", "devin.extra",
 
         "grok.creditsUsed", "grok.trend",
-        "grok.payAsYouGo", "grok.today", "grok.yesterday", "grok.last30",
-
-        "cursor.usage", "cursor.auto", "cursor.api", "cursor.trend",
-        "cursor.onDemand", "cursor.today", "cursor.yesterday", "cursor.last30"
+        "grok.payAsYouGo", "grok.today", "grok.yesterday", "grok.last30"
     ]
 
     /// Frozen snapshot of the default-on metrics from the release that introduced default seeding.
@@ -59,9 +59,9 @@ enum DefaultLayout {
     static let expandedMetricIDs: [String] = [
         "claude.sonnet", "claude.extra", "claude.today", "claude.yesterday", "claude.last30",
         "codex.credits", "codex.rateLimitResets", "codex.today", "codex.yesterday", "codex.last30",
-        "devin.extra",
-        "grok.payAsYouGo", "grok.today", "grok.yesterday", "grok.last30",
         "cursor.onDemand", "cursor.requests", "cursor.credits",
-        "cursor.today", "cursor.yesterday", "cursor.last30"
+        "cursor.today", "cursor.yesterday", "cursor.last30",
+        "devin.extra",
+        "grok.payAsYouGo", "grok.today", "grok.yesterday", "grok.last30"
     ]
 }

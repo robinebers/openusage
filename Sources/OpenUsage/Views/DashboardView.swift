@@ -20,7 +20,6 @@ struct DashboardView: View {
     @Environment(WidgetDataStore.self) private var dataStore
     @State private var didInitialRefresh = false
     @State private var reorderLift: ReorderLift?
-    @State private var showingResetCustomizationConfirmation = false
     /// The panel height SwiftUI drives — the single animation clock. `PanelHeightModifier` follows it
     /// frame-by-frame onto the AppKit panel, so the window resize rides the same spring as the screen
     /// slide (no second AppKit animation to fight). 0 means "not established yet": the panel keeps the
@@ -387,13 +386,23 @@ struct DashboardView: View {
     /// `barGlass()` (Liquid Glass) background lenses the content scrolling under it — the same
     /// content-aware glass as the footer.
     private func navBar(title: String, showsReset: Bool = false) -> some View {
-        HStack(spacing: 10) {
-            backButton
+        // Centered title with the back control floating leading and the reset menu trailing — the macOS
+        // toolbar convention (leading navigation · centered title · trailing actions). The title is
+        // centered against the *full* bar width (a ZStack layer, not an HStack slot) so it stays
+        // optically centered regardless of the leading/trailing control widths, and both flanks are
+        // matching circular glass controls.
+        ZStack {
             Text(title)
                 .font(.headline)
-            Spacer(minLength: 8)
-            if showsReset {
-                resetCustomizationButton
+                .lineLimit(1)
+                .frame(maxWidth: .infinity)
+
+            HStack(spacing: 0) {
+                backButton
+                Spacer(minLength: 8)
+                if showsReset {
+                    resetMenu
+                }
             }
         }
         .padding(.horizontal, Self.footerHorizontalPadding)
@@ -401,18 +410,6 @@ struct DashboardView: View {
         .frame(maxWidth: .infinity)
         // Same content-aware Liquid Glass as the footer (`barGlass`) — the matching top/bottom chrome.
         .barGlass()
-        .confirmationDialog(
-            "Reset Customization?",
-            isPresented: $showingResetCustomizationConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Reset", role: .destructive) {
-                layout.resetToDefault()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This restores the default metrics, order, and menu-bar pins. Provider settings are unchanged.")
-        }
     }
 
     /// The round glass back button (chevron leading), matching the footer's glass control idiom. Esc
@@ -432,17 +429,48 @@ struct DashboardView: View {
         .accessibilityLabel("Back")
     }
 
-    private var resetCustomizationButton: some View {
-        Button {
-            showingResetCustomizationConfirmation = true
+    /// The trailing "More" pull-down on the Customize header: a circular glass control mirroring the
+    /// leading back chevron, holding a per-provider reset for each provider plus "Reset all providers".
+    /// Resets are secondary, occasional actions — the macOS toolbar convention routes those into a More
+    /// menu rather than giving each a prominent bar button. Glass goes on the container via
+    /// `interactiveGlass(in: Circle())` with a `.plain`/`.menuStyle(.button)` menu: the system
+    /// `.buttonStyle(.glass)` renders flat on a `Menu` (its own chrome wins), so this matches the
+    /// footer's split-button idiom (`HeaderView`).
+    private var resetMenu: some View {
+        Menu {
+            resetMenuItems
         } label: {
-            Label("Reset", systemImage: "arrow.counterclockwise")
-                .labelStyle(.titleAndIcon)
+            Image(systemName: "ellipsis")
+                .font(.system(size: 13, weight: .semibold))
+                .frame(width: 28, height: 28)
+                .contentShape(Rectangle())
         }
-        .glassButtonStyle()
-        .controlSize(.small)
-        .hoverTooltip("Reset Customization")
-        .accessibilityLabel("Reset Customization")
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .interactiveGlass(in: Circle())
+        .accessibilityLabel("Reset")
+    }
+
+    /// One "Reset <Provider>" per provider currently shown in Customize (so the list tracks the enabled
+    /// providers and stays in the alphabetical registry order), then "Reset all providers" below a
+    /// divider. Per-provider items reset that provider's contents only; "Reset all" (destructive) is the
+    /// full `resetToDefault`, including provider order. No confirmation — a menu pick isn't a misfire,
+    /// and the destructive role flags the all-providers item.
+    @ViewBuilder
+    private var resetMenuItems: some View {
+        ForEach(layout.customizeGroups, id: \.provider.id) { group in
+            Button("Reset \(group.provider.displayName)") {
+                withAnimation(Motion.spring) { layout.resetProvider(group.provider.id) }
+            }
+        }
+
+        Divider()
+
+        Button("Reset all providers", role: .destructive) {
+            withAnimation(Motion.spring) { layout.resetToDefault() }
+        }
     }
 
     // MARK: - Pinned footer

@@ -666,6 +666,50 @@ final class LayoutStore {
         persist()
     }
 
+    /// Reset a single provider's customization to default — its enabled metrics, metric order, pins,
+    /// and expanded (caret) membership — while leaving every other provider, and the overall provider
+    /// order, untouched. The per-provider counterpart to `resetToDefault` ("Reset all providers"): same
+    /// per-provider effect, scoped to one `providerID` instead of the whole layout. No-op for an
+    /// unknown provider.
+    func resetProvider(_ providerID: String) {
+        guard registry.provider(id: providerID) != nil else { return }
+        cancelDrag()
+
+        // This provider's descriptor universe — the membership sets below are all scoped to it.
+        let owned = Set(registry.descriptors(for: providerID).map(\.id))
+        func defaults(_ ids: [String]) -> [String] {
+            ids.filter { owned.contains($0) && registry.descriptor(id: $0) != nil }
+        }
+
+        // Enabled metrics: drop this provider's placed widgets, re-seed its default-on set. Other
+        // providers' widgets keep their identity and position; `syncPlacedOrder` re-sorts the whole
+        // list by provider + metric order at the end.
+        placed = placed.filter { !owned.contains($0.descriptorID) }
+            + defaults(defaultMetricIDs).map { PlacedWidget(descriptorID: $0) }
+
+        // Metric order back to registry order for this provider only.
+        metricOrderByProvider[providerID] = registry.descriptors(for: providerID).map(\.id)
+        persistMetricOrder()
+
+        // Pins, expanded membership, and the default-expanded-on-enable carry: swap this provider's
+        // entries for its defaults, leaving the rest of each set intact.
+        pinnedMetricIDs.subtract(owned)
+        pinnedMetricIDs.formUnion(defaults(defaultPinnedMetricIDs))
+        persistPins()
+
+        expandedMetricIDs.subtract(owned)
+        expandedMetricIDs.formUnion(defaults(defaultExpandedMetricIDs))
+        defaultExpandedOnEnableIDs.subtract(owned)
+        persistExpanded()
+
+        // Default is a collapsed card.
+        if expandedProviderIDs.remove(providerID) != nil {
+            persistExpandedProviders()
+        }
+
+        syncPlacedOrder() // persists `placed`
+    }
+
     func cancelDrag() {
         draggingID = nil
     }
