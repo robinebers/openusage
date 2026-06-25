@@ -60,11 +60,18 @@ final class AppContainer {
             sink: PostHogTelemetrySink(enabled: telemetryStore.enabled),
             store: telemetryStore,
             snapshot: { [registry, enablement, layout] in
-                TelemetryConfigSnapshot(
+                // Report the *active* configuration: a metric whose provider is turned off is hidden
+                // from the dashboard and menu bar, so exclude it here too — keeping the metric arrays
+                // consistent with `enabledProviders` (which is also enablement-filtered).
+                let providerOn: (String) -> Bool = { metricID in
+                    guard let providerID = registry.descriptor(id: metricID)?.providerID else { return false }
+                    return enablement.isEnabled(providerID)
+                }
+                return TelemetryConfigSnapshot(
                     enabledProviders: registry.providers.map(\.id).filter { enablement.isEnabled($0) },
-                    enabledMetricIDs: layout.placed.map(\.descriptorID),
-                    pinnedMetricIDs: Array(layout.pinnedMetricIDs),
-                    expandedMetricIDs: Array(layout.expandedMetricIDs),
+                    enabledMetricIDs: layout.placed.map(\.descriptorID).filter(providerOn),
+                    pinnedMetricIDs: layout.pinnedMetricIDs.filter(providerOn),
+                    expandedMetricIDs: layout.expandedMetricIDs.filter(providerOn),
                     menuBarStyle: layout.menuBarStyle.rawValue
                 )
             }
