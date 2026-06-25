@@ -96,15 +96,16 @@ struct HeaderView: View {
 
     /// The chevron's overflow items, mirroring their in-popover entry points. `autoenablesItems` has no
     /// SwiftUI equivalent, so the Check for Updates item disables itself when Sparkle can't currently
-    /// check — e.g. dev builds with no feed, or while a check is already in flight. Customize also rides
-    /// ⏎ (and right-clicking the dashboard); the always-on `PopoverKeyReader` monitor handles ⏎ while
-    /// the menu is closed (and consumes it), so it's not registered on this item — the menu entry is the
-    /// discoverable label, the drag/right-click affordances are the everyday path.
+    /// check — e.g. dev builds with no feed, or while a check is already in flight. Customize carries its
+    /// bare-⏎ key equivalent so the menu shows the shortcut: when the menu is open the item handles ⏎;
+    /// when it's closed the `PopoverDismissReader` monitor handles (and consumes) ⏎ first, so the item's
+    /// equivalent can't double-fire. Same split as the old Settings ⌘, item / the Quit ⌘Q item below.
     @ViewBuilder
     private var moreMenuItems: some View {
         Button { toggle(.customize) } label: {
             Label("Customize", systemImage: "slider.horizontal.3")
         }
+        .keyboardShortcut(.return, modifiers: [])
         Button { updater.checkForUpdates() } label: {
             Label("Check for Updates…", systemImage: "arrow.triangle.2.circlepath")
         }
