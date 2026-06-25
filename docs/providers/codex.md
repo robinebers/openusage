@@ -17,6 +17,10 @@ Tracks your ChatGPT/Codex subscription limits using the login from the Codex CLI
 
 Sign in once with the Codex CLI (`codex`); OpenUsage reads the same auth files (`$CODEX_HOME` respected) with a keychain fallback. Tokens refresh automatically and rotate back into the auth file.
 
+## Refresh cadence
+
+Codex refreshes about every minute. If requests fail, OpenUsage backs off automatically and returns to the one-minute cadence after the next successful refresh.
+
 ## The spend tiles
 
 Today / Yesterday / Last 30 Days are computed **locally** from your Codex logs by running `ccusage` through whichever JavaScript package runner you already have — [Bun](https://bun.sh) (`bunx`) is preferred, otherwise `pnpm dlx`, `yarn dlx`, `npm exec`, or `npx`. Each period is one tile showing cost and tokens together (`$4.08 · 1.2M tokens`); a day with no usage is a real zero and reads `$0.00 · 0 tokens`. The dollars are estimated from token counts (that's the ⓘ); the token counts themselves are measured. No log data leaves your Mac.

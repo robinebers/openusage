@@ -503,15 +503,16 @@ struct DashboardView: View {
         !dataStore.refreshingProviderIDs.isEmpty
     }
 
-    /// "Updating…" during an in-flight refresh, otherwise a live countdown to the next scheduled pass
-    /// (last completed pass + the refresh interval). Falls back to a full interval before the first pass.
+    /// "Updating…" during an in-flight refresh, otherwise a live countdown to the soonest provider whose
+    /// scheduled probe is due. Falls back to now before the first pass so launch reads as imminent.
     private func updateStatusText(now: Date) -> String {
         if isUpdating {
             return "Updating…"
         }
-        let interval = RefreshSetting.interval
-        let base = dataStore.lastRefreshAt ?? now
-        let remaining = max(0, base.addingTimeInterval(interval).timeIntervalSince(now))
+        guard let nextRefreshAt = dataStore.nextScheduledRefreshDate(at: now) else {
+            return "No providers enabled"
+        }
+        let remaining = max(0, nextRefreshAt.timeIntervalSince(now))
         let totalSeconds = Int(remaining.rounded(.up))
         if totalSeconds >= 60 {
             let minutes = Int((Double(totalSeconds) / 60).rounded(.up))

@@ -28,20 +28,16 @@ final class WidgetDataStore {
     private static let meterStyleKey = "meterStyle"
     private static let resetDisplayModeKey = "resetDisplayMode"
     private static let alwaysShowPacingKey = "alwaysShowPacing"
-    /// How long a provider that just failed is skipped before the loop will probe it again. A failed
-    /// refresh isn't cached, so — unlike a success, which the snapshot cache gates for an interval —
-    /// nothing else stops the loop from re-probing a broken provider (logged-out Devin/Grok especially)
-    /// on every wake, spawning subprocesses and network calls in a tight loop. This negative-cache caps a
-    /// failing provider to one probe per window. Shorter than the refresh interval, so the normal
-    /// 5-minute heartbeat always retries; it only suppresses the sub-interval re-probes a wake burst
-    /// would cause. The manual `force` refresh (⌘R) always bypasses it.
-    private static let failureRetryBackoff: TimeInterval = 60
+    /// Providers are considered stale only after a couple of effective refresh windows, so a provider
+    /// that is intentionally backed off after failures does not look stale merely because the app is
+    /// respecting that backoff.
+    private static let stalenessCycleCount: TimeInterval = 2
 
     var snapshots: [String: ProviderSnapshot] = [:]
     var refreshingProviderIDs: Set<String> = []
-    /// Wall-clock time the most recent full refresh pass finished. Together with the chosen refresh
-    /// cadence it drives the dashboard footer's live "Next update in …" countdown, so the footer reflects
-    /// the real schedule instead of a hardcoded value. `nil` until the first pass completes.
+    /// Wall-clock time the most recent refresh batch finished. Kept for logs/tests and older callers; the
+    /// visible countdown now reads `nextScheduledRefreshDate()` because providers can have different
+    /// cadences and failure backoffs.
     var lastRefreshAt: Date?
     /// Latest refresh error per provider (e.g. "Not logged in. Run `codex` to authenticate."). Set when
     /// a refresh comes back as an error snapshot, cleared on the next successful one. The dashboard
@@ -49,9 +45,16 @@ final class WidgetDataStore {
     /// displaying (stale-while-revalidate) instead of being replaced by dead "No data" rows.
     var providerErrors: [String: String] = [:]
 
-    /// Per-provider earliest next-probe time after a failure (see `failureRetryBackoff`). Not part of
-    /// observable UI state, so it's excluded from `@Observable` tracking.
-    @ObservationIgnored private var failureRetryAfter: [String: Date] = [:]
+    /// Earliest next live probe per provider. A missing value means "due now", which gives launch and
+    /// re-enable paths their immediate first fetch.
+    var nextProbeAtByProvider: [String: Date] = [:]
+
+    /// Consecutive failed/rate-limited live probes per provider. A success clears the count.
+    @ObservationIgnored private var consecutiveFailures: [String: Int] = [:]
+
+    /// The latest effective scheduling interval per provider: base cadence on success, current backoff
+    /// after failures. Staleness uses this so intentional backoff does not create a misleading hint.
+    @ObservationIgnored private var effectiveRefreshIntervals: [String: TimeInterval] = [:]
 
     /// Global meter style: whether every bounded tile (and the menu-bar value) renders as "used" or
     /// "left/remaining". Persisted so the choice survives relaunch; defaults to `.remaining`.
@@ -100,12 +103,24 @@ final class WidgetDataStore {
     /// Refresh every enabled provider, concurrently — one slow provider never delays the rest.
     /// Everything stays MainActor-isolated; the overlap happens at the network awaits inside each
     /// provider, and the per-provider in-flight guard in `refresh` still prevents duplicate fetches.
-    /// `force` bypasses the snapshot cache (the manual "refresh now" path); the periodic loop keeps
-    /// honoring it.
+    /// `force` bypasses the snapshot cache and backoff (the manual "refresh now" path).
     func refreshAll(force: Bool = false) async {
+        await refreshBatch(
+            providerIDs: registry.providers.map(\.id).filter { isProviderEnabled($0) },
+            force: force
+        )
+    }
+
+    /// Refresh only providers whose scheduled live probe is due. The background loop uses this so Codex
+    /// can update every minute without dragging more conservative providers along for the ride.
+    func refreshDueProviders() async {
+        await refreshBatch(providerIDs: dueProviderIDs(at: now()), force: false)
+    }
+
+    private func refreshBatch(providerIDs: [String], force: Bool) async {
+        guard !providerIDs.isEmpty else { return }
         // `Task {}` from MainActor context inherits the isolation (a task-group child can't capture
         // the non-Sendable store), so: fire one task per provider, then await them all.
-        let providerIDs = registry.providers.map(\.id).filter { isProviderEnabled($0) }
         let start = Date()
         AppLog.info(.refresh, "batch start (\(providerIDs.count) providers, force=\(force))")
         let tasks = providerIDs.map { providerID in
@@ -130,32 +145,53 @@ final class WidgetDataStore {
         AppLog.info(.refresh, "batch end (\(durationMs)ms, \(refreshed) ok / \(failed) failed / \(cached) cached / \(backedOff) backed off)")
     }
 
+    func dueProviderIDs(at date: Date) -> [String] {
+        registry.providers.map(\.id).filter { providerID in
+            guard isProviderEnabled(providerID) else { return false }
+            guard !refreshingProviderIDs.contains(providerID) else { return false }
+            return (nextProbeAtByProvider[providerID] ?? date) <= date
+        }
+    }
+
+    func nextScheduledRefreshDate(at date: Date? = nil) -> Date? {
+        let reference = date ?? now()
+        return registry.providers.map(\.id)
+            .filter { isProviderEnabled($0) }
+            .map { nextProbeAtByProvider[$0] ?? reference }
+            .min()
+    }
+
     /// What a single provider's refresh actually did this pass, so `refreshAll` can summarize the batch
     /// from real outcomes rather than cumulative error state. `.backedOff` is a probe deliberately skipped
-    /// because the provider failed within the last `failureRetryBackoff` — distinct from `.skipped`
-    /// (disabled / unknown / already in flight) so a wake-burst's suppression is visible in the logs.
+    /// because the provider is waiting out its failure backoff — distinct from `.skipped` (disabled /
+    /// unknown / already in flight) so a wake-burst's suppression is visible in the logs.
     enum RefreshOutcome: Sendable { case refreshed, failed, cacheHit, skipped, backedOff }
 
     @discardableResult
     func refresh(providerID: String, force: Bool = false) async -> RefreshOutcome {
         guard isProviderEnabled(providerID) else { return .skipped }
-        if !force, let cached = cache.snapshot(providerID: providerID) {
+        let baseInterval = ProviderRefreshPolicy.baseInterval(for: providerID)
+        // A provider that just failed or was rate-limited isn't cached as a healthy success, so hold off
+        // until its scheduled retry. The manual `force` refresh ignores this deadline.
+        if !force,
+           consecutiveFailures[providerID, default: 0] > 0,
+           let retryAfter = nextProbeAtByProvider[providerID],
+           now() < retryAfter {
+            let remaining = Int(ceil(retryAfter.timeIntervalSince(now())))
+            AppLog.debug(.refresh, "backoff skip \(providerID) (\(remaining)s remaining)")
+            return .backedOff
+        }
+        if !force, let cached = cache.snapshot(providerID: providerID, ttl: baseInterval) {
             // Skip the no-op write: `@Observable` doesn't compare values, so unconditionally
             // re-assigning an unchanged snapshot would re-render the menu-bar label every pass.
             AppLog.debug(.refresh, "cache hit \(providerID)")
             if snapshots[providerID] != cached {
                 snapshots[providerID] = cached
             }
+            scheduleSuccess(for: providerID, from: cached.refreshedAt)
             return .cacheHit
         }
         if !force { AppLog.debug(.refresh, "cache miss \(providerID)") }
-
-        // A provider that just failed isn't cached, so nothing else stops the loop from re-probing it on
-        // every wake. Hold off until its backoff expires; the manual `force` refresh ignores the backoff.
-        if !force, let retryAfter = failureRetryAfter[providerID], now() < retryAfter {
-            AppLog.debug(.refresh, "backoff skip \(providerID) (failed <\(Int(Self.failureRetryBackoff))s ago)")
-            return .backedOff
-        }
 
         guard let provider = providersByID[providerID] else { return .skipped }
         // Skip if an in-flight refresh already owns this provider (e.g. the background timer racing the
@@ -173,16 +209,21 @@ final class WidgetDataStore {
             // Failed refresh: surface the error but keep the last good snapshot on screen rather than
             // collapsing every row to "No data". The provider error string is already user-safe.
             providerErrors[providerID] = message
-            // Negative-cache the failure so a wake burst can't re-probe this provider in a tight loop.
-            failureRetryAfter[providerID] = now().addingTimeInterval(Self.failureRetryBackoff)
+            scheduleFailure(for: providerID, retryAfter: snapshot.retryAfter)
             AppLog.warn(.refresh, "\(providerID) failed: \(message)")
+            return .failed
+        }
+        if let retryAfter = snapshot.retryAfter {
+            providerErrors[providerID] = nil
+            scheduleFailure(for: providerID, retryAfter: retryAfter)
+            snapshots[providerID] = snapshot
+            AppLog.warn(.refresh, "\(providerID) asked to retry later")
             return .failed
         }
         if providerErrors[providerID] != nil {
             providerErrors[providerID] = nil
         }
-        // Recovered: drop any backoff so the provider resumes the normal cadence immediately.
-        failureRetryAfter[providerID] = nil
+        scheduleSuccess(for: providerID, from: now())
         snapshots[providerID] = snapshot
         cache.store(snapshot)
         AppLog.info(.refresh, "\(providerID) ok (\(durationMs)ms)")
@@ -194,7 +235,32 @@ final class WidgetDataStore {
     /// failure just before it was turned off must not suppress that fetch (the loop wouldn't otherwise
     /// retry until the 5-minute heartbeat). The periodic loop never calls this — only the user action does.
     func clearFailureBackoff(for providerID: String) {
-        failureRetryAfter[providerID] = nil
+        consecutiveFailures[providerID] = nil
+        effectiveRefreshIntervals[providerID] = ProviderRefreshPolicy.baseInterval(for: providerID)
+        nextProbeAtByProvider[providerID] = nil
+    }
+
+    private func scheduleSuccess(for providerID: String, from date: Date) {
+        let interval = ProviderRefreshPolicy.baseInterval(for: providerID)
+        consecutiveFailures[providerID] = nil
+        effectiveRefreshIntervals[providerID] = interval
+        nextProbeAtByProvider[providerID] = date.addingTimeInterval(interval)
+    }
+
+    private func scheduleFailure(for providerID: String, retryAfter: Date?) {
+        let failureCount = consecutiveFailures[providerID, default: 0] + 1
+        consecutiveFailures[providerID] = failureCount
+
+        let baseInterval = ProviderRefreshPolicy.baseInterval(for: providerID)
+        var delay = ProviderRefreshPolicy.failureBackoff(
+            consecutiveFailures: failureCount,
+            baseInterval: baseInterval
+        )
+        if let retryAfter {
+            delay = max(delay, retryAfter.timeIntervalSince(now()))
+        }
+        effectiveRefreshIntervals[providerID] = delay
+        nextProbeAtByProvider[providerID] = now().addingTimeInterval(delay)
     }
 
     /// The provider's latest refresh error, or `nil` when its last refresh succeeded.
@@ -254,7 +320,13 @@ final class WidgetDataStore {
     /// one, so the threshold sits at two intervals: it fires only when a refresh has actually been missed
     /// — a refresh loop that keeps failing, or a long-suspended background timer — never on the normal
     /// per-cycle aging, which would flicker a hint on healthy providers.
-    static let stalenessThreshold = RefreshSetting.interval * 2
+    static let stalenessThreshold = ProviderRefreshPolicy.defaultBaseInterval * stalenessCycleCount
+
+    func stalenessThreshold(for providerID: String) -> TimeInterval {
+        let effectiveInterval = effectiveRefreshIntervals[providerID]
+            ?? ProviderRefreshPolicy.baseInterval(for: providerID)
+        return ProviderRefreshPolicy.stalenessThreshold(effectiveInterval: effectiveInterval)
+    }
 
     /// A compact "Outdated" hint for the provider's on-screen snapshot, surfaced only once that snapshot
     /// has aged past `stalenessThreshold`; `nil` while the data is still current (the common case), so the
@@ -266,7 +338,8 @@ final class WidgetDataStore {
     func stalenessHint(for providerID: String) -> StalenessHint? {
         guard let refreshedAt = snapshots[providerID]?.refreshedAt else { return nil }
         let age = now().timeIntervalSince(refreshedAt)
-        guard age >= Self.stalenessThreshold, let duration = Formatters.compactDuration(age) else {
+        guard age >= stalenessThreshold(for: providerID),
+              let duration = Formatters.compactDuration(age) else {
             return nil
         }
         return StalenessHint(label: "Outdated", tooltip: "Last updated \(duration) ago")
@@ -428,4 +501,3 @@ final class WidgetDataStore {
         return Double(value[match].replacingOccurrences(of: ",", with: ""))
     }
 }
-

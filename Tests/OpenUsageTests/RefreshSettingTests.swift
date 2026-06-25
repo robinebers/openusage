@@ -1,17 +1,32 @@
 import XCTest
 @testable import OpenUsage
 
-/// Covers the refresh cadence as the single source of truth: `RefreshSetting`'s fixed interval, and the
-/// snapshot cache's session-scoped freshness — a snapshot is fresh for one interval only *within the
-/// session that fetched it*, so a relaunch always refetches on the first pass (it still paints the cached
-/// value instantly) while a within-session pass is served from cache until the interval elapses. See #697.
+/// Covers refresh policy and the snapshot cache's session-scoped freshness — a snapshot is fresh for one
+/// provider interval only *within the session that fetched it*, so a relaunch always refetches on the
+/// first pass while a within-session pass is served from cache until that provider's interval elapses.
 @MainActor
 final class RefreshSettingTests: XCTestCase {
-    // MARK: - Fixed cadence
+    // MARK: - Provider cadence
 
-    func testCadenceIsFixedAtFiveMinutes() {
-        XCTAssertEqual(RefreshSetting.defaultMinutes, 5)
-        XCTAssertEqual(RefreshSetting.interval, 300)
+    func testProviderBaseCadences() {
+        XCTAssertEqual(ProviderRefreshPolicy.baseInterval(for: "codex"), 60)
+        XCTAssertEqual(ProviderRefreshPolicy.baseInterval(for: "claude"), 180)
+        XCTAssertEqual(ProviderRefreshPolicy.baseInterval(for: "cursor"), 300)
+        XCTAssertEqual(ProviderRefreshPolicy.baseInterval(for: "grok"), 300)
+        XCTAssertEqual(ProviderRefreshPolicy.baseInterval(for: "devin"), 300)
+    }
+
+    func testFailureBackoffCapsAtFifteenMinutes() {
+        XCTAssertEqual(ProviderRefreshPolicy.failureBackoff(consecutiveFailures: 1, baseInterval: 60), 120)
+        XCTAssertEqual(ProviderRefreshPolicy.failureBackoff(consecutiveFailures: 2, baseInterval: 60), 300)
+        XCTAssertEqual(ProviderRefreshPolicy.failureBackoff(consecutiveFailures: 3, baseInterval: 60), 600)
+        XCTAssertEqual(ProviderRefreshPolicy.failureBackoff(consecutiveFailures: 4, baseInterval: 60), 900)
+        XCTAssertEqual(ProviderRefreshPolicy.failureBackoff(consecutiveFailures: 20, baseInterval: 60), 900)
+    }
+
+    func testFailureBackoffRespectsProviderBase() {
+        XCTAssertEqual(ProviderRefreshPolicy.failureBackoff(consecutiveFailures: 1, baseInterval: 180), 180)
+        XCTAssertEqual(ProviderRefreshPolicy.failureBackoff(consecutiveFailures: 1, baseInterval: 300), 300)
     }
 
     // MARK: - Session-scoped freshness

@@ -23,6 +23,10 @@ Sign in once with Claude Code; OpenUsage reads the same credentials. It checks e
 
 If one source holds an expired or "locked out" token, OpenUsage falls back to the others — so signing in again with `claude` outside the app is picked up on the next refresh, without restarting OpenUsage. Tokens are refreshed automatically; rotated tokens are written back where they came from.
 
+## Refresh cadence
+
+Claude refreshes about every 3 minutes. If Claude rate-limits the usage API, OpenUsage shows the rate-limit notice, respects the provider's retry timing when available, and backs off before trying again.
+
 ## The spend tiles
 
 Today / Yesterday / Last 30 Days are computed **locally** from your Claude Code logs by running `ccusage` through whichever JavaScript package runner you already have — [Bun](https://bun.sh) (`bunx`) is preferred, otherwise `pnpm dlx`, `yarn dlx`, `npm exec`, or `npx`. Each period is one tile showing cost and tokens together (`$4.08 · 1.2M tokens`); a day with no usage is a real zero and reads `$0.00 · 0 tokens`. The dollars are estimated from token counts (that's the ⓘ); the token counts themselves are measured. No log data leaves your Mac.

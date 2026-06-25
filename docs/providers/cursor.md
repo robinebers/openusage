@@ -19,6 +19,10 @@ Tracks your Cursor plan usage using the login from the Cursor app.
 
 Just be signed into the Cursor app. OpenUsage reads Cursor's local state database (and its keychain entries) for the session tokens; refreshed tokens are persisted back. Nothing extra to install or configure.
 
+## Refresh cadence
+
+Cursor refreshes about every 5 minutes. If requests fail, OpenUsage backs off automatically before retrying.
+
 ## The spend tiles
 
 Each period is one tile showing cost and tokens together (`$4.08 · 1.2M tokens`), the same as Claude/Codex/Grok; a day with no usage is a real zero and reads `$0.00 · 0 tokens`. The difference is the source: Cursor's Today / Yesterday / Last 30 Days come from Cursor's **server-side usage export** (priced per model with a bundled price list), not a local estimate. Hover the value to see the exact figures and source note. If the export can't be fetched, the tiles show "No data" while everything else keeps working.

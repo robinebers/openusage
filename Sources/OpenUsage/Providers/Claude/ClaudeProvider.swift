@@ -85,7 +85,13 @@ final class ClaudeProvider: ProviderRuntime {
         )
 
         MetricLine.appendNoDataIfNeeded(&mapped.lines)
-        return ProviderSnapshot.make(provider: provider, plan: mapped.plan, lines: mapped.lines, refreshedAt: now())
+        return ProviderSnapshot.make(
+            provider: provider,
+            plan: mapped.plan,
+            lines: mapped.lines,
+            refreshedAt: now(),
+            retryAfter: mapped.retryAfter
+        )
     }
 
     private func fetchLiveUsage(state: inout ClaudeCredentialState) async throws -> ClaudeMappedUsage {
@@ -115,7 +121,8 @@ final class ClaudeProvider: ProviderRuntime {
             AppLog.info(LogTag.plugin("claude"), "rate-limited")
             return ClaudeUsageMapper.rateLimitedUsage(
                 credentials: working.oauth,
-                retryAfterSeconds: ClaudeUsageMapper.parseRetryAfterSeconds(response, now: now())
+                retryAfterSeconds: ClaudeUsageMapper.parseRetryAfterSeconds(response, now: now()),
+                now: now()
             )
         }
         return try ClaudeUsageMapper.mapUsageResponse(response, credentials: working.oauth, now: now())

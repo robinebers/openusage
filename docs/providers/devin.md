@@ -20,6 +20,10 @@ Checked in this order — whichever works first wins:
 
 If the CLI credentials fail but the app is signed in with a different account, the app's auth is used instead.
 
+## Refresh cadence
+
+Devin refreshes about every 5 minutes. If requests fail, OpenUsage backs off automatically before retrying.
+
 ## Troubleshooting
 
 - **"Not logged in"** — run `devin auth login`, or sign into the Devin app, then refresh.

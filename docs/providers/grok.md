@@ -15,6 +15,10 @@ Tracks Grok Build credit usage using the login from the Grok CLI.
 
 Sign in once with the Grok CLI (`grok login`); OpenUsage reads the same `~/.grok/auth.json`. Access tokens refresh automatically before expiry, and rotated tokens are written back to the file.
 
+## Refresh cadence
+
+Grok refreshes about every 5 minutes. If requests fail, OpenUsage backs off automatically before retrying.
+
 ## The spend tiles
 
 Today / Yesterday / Last 30 Days are computed **locally** from the Grok CLI's log (`~/.grok/logs/unified.jsonl`, or `$GROK_HOME/logs/unified.jsonl`). Each period is one tile showing cost and tokens together (`$4.08 · 1.2M tokens`), the same as Claude/Codex/Cursor. Unlike Claude/Codex this needs no package runner — OpenUsage reads the log directly. The dollars are estimated from token counts at public API rates (that's the ⓘ); the token counts themselves are measured, and these estimates are separate from the monthly credits the billing API reports. No log data leaves your Mac. A period with no recorded usage is a real zero and reads `$0.00 · 0 tokens`; "No data" appears only when the log is missing or unreadable.

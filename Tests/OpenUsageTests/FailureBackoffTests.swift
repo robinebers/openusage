@@ -1,10 +1,9 @@
 import XCTest
 @testable import OpenUsage
 
-/// Covers the per-provider failure backoff: a refresh that fails is negatively cached for a short
-/// window, so an over-eager refresh loop (e.g. a wake burst) can't re-probe a broken provider — the
-/// logged-out Devin/Grok case — in a tight subprocess/network loop. The normal heartbeat and the manual
-/// `force` refresh still retry as expected.
+/// Covers the per-provider failure backoff: a refresh that fails is negatively cached until its next
+/// scheduled retry, so an over-eager wake burst can't re-probe a broken provider in a tight loop. Manual
+/// `force` refresh still retries immediately.
 @MainActor
 final class FailureBackoffTests: XCTestCase {
     func testFailedProviderIsNotReprobedWithinBackoffWindow() async {
@@ -24,8 +23,8 @@ final class FailureBackoffTests: XCTestCase {
         await store.refreshAll()
         XCTAssertEqual(runtime.refreshCount, 1)
 
-        // Once the window elapses, the normal cadence retries.
-        clock = clock.addingTimeInterval(60)
+        // Once Devin's first failure window elapses, the normal cadence retries.
+        clock = clock.addingTimeInterval(300)
         await store.refreshAll()
         XCTAssertEqual(runtime.refreshCount, 2)
     }
@@ -65,7 +64,7 @@ final class FailureBackoffTests: XCTestCase {
         )
         let store = makeStore(provider: provider, descriptor: descriptor, runtime: runtime, clock: { clock })
 
-        await store.refreshAll()                       // pass 1: fails → backoff until +60s
+        await store.refreshAll()                       // pass 1: fails -> backoff until +5m
         XCTAssertEqual(runtime.refreshCount, 1)
 
         clock = clock.addingTimeInterval(1)
@@ -73,7 +72,7 @@ final class FailureBackoffTests: XCTestCase {
         XCTAssertEqual(runtime.refreshCount, 2)
         XCTAssertNil(store.errorMessage(for: provider.id))
 
-        // Pass 3 is still inside the original 60s window: had the success NOT cleared the backoff, this
+        // Pass 3 is still inside the original 5-minute window: had the success NOT cleared the backoff, this
         // would be suppressed (count stays 2). It probes, proving the backoff was cleared on recovery.
         clock = clock.addingTimeInterval(1)
         await store.refreshAll()
@@ -99,12 +98,79 @@ final class FailureBackoffTests: XCTestCase {
         XCTAssertEqual(runtime.refreshCount, 2)
     }
 
+    func testSuccessfulRefreshSchedulesProviderBaseCadence() async {
+        let clock = Date(timeIntervalSince1970: 1_800_000_000)
+        let codex = makeRuntime(providerID: "codex", displayName: "Codex", used: 12, clock: clock)
+        let claude = makeRuntime(providerID: "claude", displayName: "Claude", used: 34, clock: clock)
+        let store = makeStore(runtimes: [codex, claude], clock: { clock })
+
+        await store.refreshAll()
+
+        XCTAssertEqual(store.nextProbeAtByProvider["codex"], clock.addingTimeInterval(60))
+        XCTAssertEqual(store.nextProbeAtByProvider["claude"], clock.addingTimeInterval(180))
+        XCTAssertEqual(store.nextScheduledRefreshDate(at: clock), clock.addingTimeInterval(60))
+    }
+
+    func testCodexFailureBackoffSequenceCapsAtFifteenMinutes() async {
+        var clock = Date(timeIntervalSince1970: 1_800_000_000)
+        let runtime = makeFailingRuntime(providerID: "codex", displayName: "Codex")
+        let store = makeStore(runtime: runtime, clock: { clock })
+
+        await store.refreshAll()
+        XCTAssertEqual(store.nextScheduledRefreshDate(at: clock), clock.addingTimeInterval(120))
+
+        clock = clock.addingTimeInterval(120)
+        await store.refreshAll()
+        XCTAssertEqual(store.nextScheduledRefreshDate(at: clock), clock.addingTimeInterval(300))
+
+        clock = clock.addingTimeInterval(300)
+        await store.refreshAll()
+        XCTAssertEqual(store.nextScheduledRefreshDate(at: clock), clock.addingTimeInterval(600))
+
+        clock = clock.addingTimeInterval(600)
+        await store.refreshAll()
+        XCTAssertEqual(store.nextScheduledRefreshDate(at: clock), clock.addingTimeInterval(900))
+
+        clock = clock.addingTimeInterval(900)
+        await store.refreshAll()
+        XCTAssertEqual(store.nextScheduledRefreshDate(at: clock), clock.addingTimeInterval(900))
+    }
+
+    func testRetryAfterCanExtendFailureBackoff() async {
+        let clock = Date(timeIntervalSince1970: 1_800_000_000)
+        let provider = Provider(id: "claude", displayName: "Claude", icon: .providerMark("claude"))
+        let descriptor = WidgetDescriptor(
+            id: "claude.session", providerID: provider.id, metricLabel: "Session",
+            sample: WidgetData(title: "Session", icon: provider.icon, kind: .percent, used: 0, limit: 100)
+        )
+        let retryAfter = clock.addingTimeInterval(10 * 60)
+        let runtime = CountingProviderRuntime(
+            provider: provider,
+            descriptors: [descriptor],
+            snapshot: ProviderSnapshot(
+                providerID: provider.id,
+                displayName: provider.displayName,
+                lines: [.badge(label: "Status", text: "Rate limited, retry in ~10m")],
+                refreshedAt: clock,
+                retryAfter: retryAfter
+            )
+        )
+        let store = makeStore(provider: provider, descriptor: descriptor, runtime: runtime, clock: { clock })
+
+        await store.refreshAll()
+
+        XCTAssertEqual(store.nextScheduledRefreshDate(at: clock), retryAfter)
+    }
+
     // MARK: - Helpers
 
-    private func makeFailingRuntime() -> CountingProviderRuntime {
-        let provider = Provider(id: "devin", displayName: "Devin", icon: .providerMark("devin"))
+    private func makeFailingRuntime(
+        providerID: String = "devin",
+        displayName: String = "Devin"
+    ) -> CountingProviderRuntime {
+        let provider = Provider(id: providerID, displayName: displayName, icon: .providerMark(providerID))
         let descriptor = WidgetDescriptor(
-            id: "devin.weekly", providerID: provider.id, metricLabel: "Weekly quota",
+            id: "\(providerID).weekly", providerID: provider.id, metricLabel: "Weekly quota",
             sample: WidgetData(title: "Weekly", icon: provider.icon, kind: .percent, used: 0, limit: 100)
         )
         return CountingProviderRuntime(
@@ -134,6 +200,46 @@ final class FailureBackoffTests: XCTestCase {
             cache: ProviderSnapshotCache(userDefaults: suite, storageKey: "snapshots", ttl: 600, now: clock),
             defaults: suite,
             now: clock
+        )
+    }
+
+    private func makeStore(
+        runtimes: [CountingProviderRuntime],
+        clock: @escaping () -> Date
+    ) -> WidgetDataStore {
+        let suite = makeUserDefaults("schedule")
+        return WidgetDataStore(
+            registry: WidgetRegistry(
+                providers: runtimes.map(\.provider),
+                descriptors: runtimes.flatMap(\.widgetDescriptors)
+            ),
+            providers: runtimes.map { $0 as ProviderRuntime },
+            cache: ProviderSnapshotCache(userDefaults: suite, storageKey: "snapshots", ttl: 600, now: clock),
+            defaults: suite,
+            now: clock
+        )
+    }
+
+    private func makeRuntime(
+        providerID: String,
+        displayName: String,
+        used: Double,
+        clock: Date
+    ) -> CountingProviderRuntime {
+        let provider = Provider(id: providerID, displayName: displayName, icon: .providerMark(providerID))
+        let descriptor = WidgetDescriptor(
+            id: "\(providerID).session", providerID: provider.id, metricLabel: "Session",
+            sample: WidgetData(title: "Session", icon: provider.icon, kind: .percent, used: 0, limit: 100)
+        )
+        return CountingProviderRuntime(
+            provider: provider,
+            descriptors: [descriptor],
+            snapshot: ProviderSnapshot(
+                providerID: provider.id,
+                displayName: provider.displayName,
+                lines: [.progress(label: "Session", used: used, limit: 100, format: .percent)],
+                refreshedAt: clock
+            )
         )
     }
 

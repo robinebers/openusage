@@ -20,8 +20,20 @@ final class StalenessLabelTests: XCTestCase {
         // One refresh interval old is normal right before the next pass — must not flicker a hint on
         // healthy providers, so the threshold sits above a single interval.
         let store = makeStore()
-        store.snapshots["devin"] = snapshot(refreshedAt: now.addingTimeInterval(-RefreshSetting.interval))
+        store.snapshots["devin"] = snapshot(refreshedAt: now.addingTimeInterval(-ProviderRefreshPolicy.defaultBaseInterval))
         XCTAssertNil(store.stalenessHint(for: "devin"))
+    }
+
+    func testCodexUsesShorterStalenessWindow() {
+        let store = makeStore(providerID: "codex", displayName: "Codex")
+        store.snapshots["codex"] = ProviderSnapshot(
+            providerID: "codex", displayName: "Codex", plan: "Plus",
+            lines: [.progress(label: "Session", used: 40, limit: 100, format: .percent)],
+            refreshedAt: now.addingTimeInterval(-2 * 60)
+        )
+
+        XCTAssertEqual(store.stalenessHint(for: "codex"),
+                       StalenessHint(label: "Outdated", tooltip: "Last updated 2m ago"))
     }
 
     func testStaleSnapshotSurfacesOutdatedHint() {
@@ -106,13 +118,24 @@ final class StalenessLabelTests: XCTestCase {
     }
 
     private func makeStore() -> WidgetDataStore {
-        let provider = Provider(id: "devin", displayName: "Devin", icon: .providerMark("devin"))
+        makeStore(providerID: "devin", displayName: "Devin")
+    }
+
+    private func makeStore(providerID: String, displayName: String) -> WidgetDataStore {
+        let provider = Provider(id: providerID, displayName: displayName, icon: .providerMark(providerID))
         let descriptor = WidgetDescriptor(
-            id: "devin.weekly", providerID: provider.id, metricLabel: "Weekly quota",
+            id: "\(providerID).weekly", providerID: provider.id, metricLabel: "Weekly quota",
             sample: WidgetData(title: "Weekly", icon: provider.icon, kind: .percent, used: 0, limit: 100)
         )
-        let runtime = TestProviderRuntime(provider: provider, descriptors: [descriptor],
-                                          snapshot: snapshot(refreshedAt: now))
+        let runtime = TestProviderRuntime(
+            provider: provider,
+            descriptors: [descriptor],
+            snapshot: ProviderSnapshot(
+                providerID: provider.id, displayName: provider.displayName, plan: "Team 5x",
+                lines: [.progress(label: "Weekly quota", used: 40, limit: 100, format: .percent)],
+                refreshedAt: now
+            )
+        )
         return makeStore(provider: provider, descriptor: descriptor, runtime: runtime)
     }
 

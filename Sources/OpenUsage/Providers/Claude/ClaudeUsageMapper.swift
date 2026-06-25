@@ -3,6 +3,7 @@ import Foundation
 struct ClaudeMappedUsage: Equatable, Sendable {
     var plan: String?
     var lines: [MetricLine]
+    var retryAfter: Date?
 }
 
 enum ClaudeUsageMapper {
@@ -28,11 +29,16 @@ enum ClaudeUsageMapper {
 
         return ClaudeMappedUsage(
             plan: formatPlan(subscriptionType: credentials.subscriptionType, rateLimitTier: credentials.rateLimitTier),
-            lines: lines
+            lines: lines,
+            retryAfter: nil
         )
     }
 
-    static func rateLimitedUsage(credentials: ClaudeOAuth, retryAfterSeconds: Int?) -> ClaudeMappedUsage {
+    static func rateLimitedUsage(
+        credentials: ClaudeOAuth,
+        retryAfterSeconds: Int?,
+        now: Date = Date()
+    ) -> ClaudeMappedUsage {
         let retryText = retryAfterSeconds.map(formatRateLimitMinutes)
         let waitText = retryText.map { "Rate limited, retry in ~\($0)" } ?? "Rate limited, try again later"
         let noteText = retryText.map { "Live usage rate limited - retry in ~\($0)" } ?? "Live usage rate limited - data may be stale"
@@ -41,7 +47,8 @@ enum ClaudeUsageMapper {
             lines: [
                 .badge(label: "Status", text: waitText, colorHex: "#F59E0B"),
                 .text(label: "Note", value: noteText)
-            ]
+            ],
+            retryAfter: retryAfterSeconds.map { now.addingTimeInterval(Double($0)) }
         )
     }
 
@@ -144,4 +151,3 @@ private enum HTTPDateFormatter {
         return formatter.date(from: value)
     }
 }
-

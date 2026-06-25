@@ -70,7 +70,7 @@ struct ProviderSnapshotCache {
         return loaded
     }
 
-    func snapshot(providerID: String) -> ProviderSnapshot? {
+    func snapshot(providerID: String, ttl overrideTTL: TimeInterval? = nil) -> ProviderSnapshot? {
         let snapshot = loadPayload().snapshots[providerID]
         guard let snapshot else { return nil }
         // Freshness has two requirements, and disk age alone is not enough: the snapshot must have been
@@ -79,6 +79,7 @@ struct ProviderSnapshotCache {
         // promptly instead of waiting out the previous session's remaining interval (#697).
         let writtenThisSession = sessionWrites.withLock { $0.contains(providerID) }
         let age = now().timeIntervalSince(snapshot.refreshedAt)
+        let ttl = overrideTTL ?? self.ttl
         let fresh = writtenThisSession && age < ttl
         let reason = !writtenThisSession ? "stale (not written this session)"
             : fresh ? "fresh" : "stale"
@@ -94,7 +95,7 @@ struct ProviderSnapshotCache {
         AppLog.debug(.cache, "write \(snapshot.providerID)")
         // Mark this provider as written *this session* so its snapshot now satisfies the freshness gate
         // (a launch-loaded snapshot never does — see `sessionWrites`).
-        sessionWrites.withLock { $0.insert(snapshot.providerID) }
+        _ = sessionWrites.withLock { $0.insert(snapshot.providerID) }
         var payload = loadPayload()
         payload.snapshots[snapshot.providerID] = snapshot
         save(payload)

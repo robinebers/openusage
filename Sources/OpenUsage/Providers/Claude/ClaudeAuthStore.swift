@@ -348,4 +348,3 @@ struct ClaudeAuthStore: Sendable {
     }
 }
 
-

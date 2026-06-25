@@ -57,33 +57,34 @@ final class AppContainer {
 
     deinit { refreshTask.cancel() }
 
-    /// Drives live updates: refresh on launch, then again every refresh interval. Each pass honors the
-    /// cache, so it only hits the network once a snapshot has actually expired. `@Observable` propagates
-    /// the resulting snapshot changes to the menu-bar label and any open widgets, so the UI refreshes on
-    /// its own instead of only when the popover opens.
+    /// Drives live updates: refresh due providers on launch, then wake for the soonest provider-specific
+    /// probe. Each pass honors the cache/backoff, so Codex can be fresh every minute without forcing
+    /// Claude/Grok/Cursor/Devin to poll at the same pace.
     private static func startPeriodicRefresh(dataStore: WidgetDataStore) -> Task<Void, Never> {
         Task {
             while !Task.isCancelled {
-                await dataStore.refreshAll()
-                await waitForNextRefresh()
+                await dataStore.refreshDueProviders()
+                await waitForNextRefresh(dataStore: dataStore)
             }
         }
     }
 
-    /// Sleep for the refresh interval, but wake early when the user enables/disables a provider so a
-    /// newly-enabled provider is fetched promptly instead of waiting out the full interval. Each pass still
-    /// honors the cache (and the per-provider failure backoff), so an early wake only hits the network for
-    /// a provider whose snapshot has actually expired.
+    /// Sleep until the soonest provider is due, but wake early when the user enables/disables a provider
+    /// so a newly-enabled provider is fetched promptly instead of waiting out another provider's cadence.
+    /// Each pass still honors the cache and per-provider backoff.
     ///
     /// Deliberately scoped to `ProviderEnablementStore.didChangeNotification` — NOT the firehose
     /// `UserDefaults.didChangeNotification`, which fires for the app's own snapshot-cache writes, Sparkle's
     /// update bookkeeping, and unrelated global-domain changes from other processes. Waking on that, with
     /// no minimum interval before re-refreshing, collapsed the fixed 5-minute cadence into a refresh storm.
-    private static func waitForNextRefresh() async {
-        let interval = RefreshSetting.interval
+    private static func waitForNextRefresh(dataStore: WidgetDataStore) async {
+        let nextRefreshAt = dataStore.nextScheduledRefreshDate()
         await withTaskGroup(of: Void.self) { group in
-            group.addTask {
-                try? await Task.sleep(for: .seconds(interval))
+            if let nextRefreshAt {
+                group.addTask {
+                    let delay = max(0.25, nextRefreshAt.timeIntervalSinceNow)
+                    try? await Task.sleep(for: .seconds(delay))
+                }
             }
             group.addTask {
                 for await _ in NotificationCenter.default.notifications(named: ProviderEnablementStore.didChangeNotification) {

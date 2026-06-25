@@ -47,8 +47,8 @@ The UI reads from a few observable stores:
   menu bar.
 - `ProviderEnablementStore` — which providers the user has turned on or off.
 
-Refresh runs on a timer in `AppContainer`; each pass respects the cache, so the network is only hit once a
-snapshot has actually expired.
+Refresh runs on a provider-aware timer in `AppContainer`; each pass respects the cache and any failure
+backoff, so the network is only hit when that provider is actually due.
 
 ## The AppKit bridge
 
