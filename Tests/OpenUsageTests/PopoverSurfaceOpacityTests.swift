@@ -14,9 +14,9 @@ final class PopoverSurfaceOpacityTests: XCTestCase {
         assertOpaque(Theme.trayNSColor, label: "tray")
     }
 
-    func testCardSurfaceIsFullyOpaqueInBothAppearances() {
-        assertOpaque(Theme.cardNSColor, label: "card")
-    }
+    // The grouped card is the opaque tray with a translucent `.fill.quaternary` composited on top (see
+    // `Theme.cardSurface`), so the card surface is opaque by construction as long as the tray is — which
+    // the test above guards. There's no longer a standalone card `NSColor` to assert.
 
     /// Resolves the dynamic (light/dark) color in each appearance and asserts it is fully opaque.
     private func assertOpaque(_ color: NSColor, label: String,

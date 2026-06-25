@@ -2,9 +2,11 @@ import AppKit
 import SwiftUI
 
 /// The dashboard footer's trailing control: a **split button** in Liquid Glass — one capsule with
-/// "Customize" on the left and a chevron segment on the right, divided by a hairline (the Export ▾
-/// idiom system apps use). Clicking "Customize" opens the Customize screen; clicking the chevron opens
-/// the overflow menu (Settings / Check for Updates / About / Quit).
+/// "Settings" on the left and a chevron segment on the right, divided by a hairline (the Export ▾
+/// idiom system apps use). Clicking "Settings" opens the Settings screen; clicking the chevron opens
+/// the overflow menu (Customize / Check for Updates / About / Quit). Settings leads because everyday
+/// layout edits (reorder, hide, pin) are already reachable by dragging and right-clicking on the
+/// dashboard itself, so Settings is the more frequent deliberate destination.
 ///
 /// The joined-capsule look comes from one glass surface behind the *whole* control: an `HStack` of two
 /// `.buttonStyle(.plain)` tap targets (a `Button` and a chevron `Menu`) split by a `Divider`, with a
@@ -19,7 +21,7 @@ import SwiftUI
 /// button (`DashboardView.navBar`) to return home — the macOS-native place for it — so the footer
 /// control simply drops away there.
 ///
-/// Shortcuts survive: ⏎ (Customize), ⌘, (Settings) and Esc are handled by the always-on
+/// Shortcuts survive: ⌘, (Settings), ⏎ (Customize) and Esc are handled by the always-on
 /// `PopoverKeyReader` monitor, so they fire from every screen (including Settings, whose footer shows
 /// only the identity line — no buttons). The menu items only carry their ⌘ key-equivalents as labels
 /// and fire while the menu is open, so the monitor and the items never double-fire. ⌘Q (Quit) is
@@ -44,7 +46,7 @@ struct HeaderView: View {
     private var leadingControl: some View {
         if screen == .dashboard {
             HStack(spacing: 0) {
-                customizeHalf
+                settingsHalf
                 Divider()
                     .frame(height: 16)
                 chevronHalf
@@ -54,13 +56,13 @@ struct HeaderView: View {
         }
     }
 
-    /// Left half: opens Customize. `.buttonStyle(.plain)` strips the system chrome so the shared glass
-    /// is the only surface; `contentShape` makes the whole padded half clickable. ⏎ opens Customize
+    /// Left half: opens Settings. `.buttonStyle(.plain)` strips the system chrome so the shared glass
+    /// is the only surface; `contentShape` makes the whole padded half clickable. ⌘, opens Settings
     /// from anywhere via `PopoverKeyReader`, so the shortcut isn't registered here (which would also
     /// flag the button as the window's default and draw a pulsing ring) — the tooltip surfaces it.
-    private var customizeHalf: some View {
-        Button { toggle(.customize) } label: {
-            Text("Customize")
+    private var settingsHalf: some View {
+        Button { toggle(.settings) } label: {
+            Text("Settings")
                 .font(.system(size: 13, weight: .semibold))
                 .padding(.leading, 14)
                 .padding(.trailing, 11)
@@ -68,7 +70,7 @@ struct HeaderView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .hoverTooltip("Customize (⏎)")
+        .hoverTooltip("Settings (⌘,)")
     }
 
     /// Right half: the chevron pull-down. `.menuStyle(.button)` + `.buttonStyle(.plain)` strip the menu
@@ -94,16 +96,15 @@ struct HeaderView: View {
 
     /// The chevron's overflow items, mirroring their in-popover entry points. `autoenablesItems` has no
     /// SwiftUI equivalent, so the Check for Updates item disables itself when Sparkle can't currently
-    /// check — e.g. dev builds with no feed, or while a check is already in flight. Settings carries ⌘,
-    /// only as a label; the always-on `PopoverKeyReader` monitor actually handles that key while the
-    /// menu is closed (and consumes it, so there's no second registration to fight), and the item fires
-    /// only while the menu is open — so the two never double-toggle.
+    /// check — e.g. dev builds with no feed, or while a check is already in flight. Customize also rides
+    /// ⏎ (and right-clicking the dashboard); the always-on `PopoverKeyReader` monitor handles ⏎ while
+    /// the menu is closed (and consumes it), so it's not registered on this item — the menu entry is the
+    /// discoverable label, the drag/right-click affordances are the everyday path.
     @ViewBuilder
     private var moreMenuItems: some View {
-        Button { toggle(.settings) } label: {
-            Label("Settings", systemImage: "gearshape")
+        Button { toggle(.customize) } label: {
+            Label("Customize", systemImage: "slider.horizontal.3")
         }
-        .keyboardShortcut(",", modifiers: .command)
         Button { updater.checkForUpdates() } label: {
             Label("Check for Updates…", systemImage: "arrow.triangle.2.circlepath")
         }
