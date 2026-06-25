@@ -57,9 +57,6 @@ final class StatusItemController: NSObject {
     /// its duration so the panel growing/shrinking under a stationary cursor can't be misread as an
     /// outside click. Cleared by `scheduleMorphSettle` shortly after the per-frame height stream stops.
     private var isMorphing = false
-    /// The last height SwiftUI asked for. A re-render that didn't change the height must not churn the
-    /// main queue with a redundant async `setFrame`, so we drop unchanged requests before the hop.
-    private var lastRequestedHeight: CGFloat = 0
     /// Fires once the per-frame height stream goes quiet: clears `isMorphing` and persists the settled
     /// per-screen height (the next open's flash-free starting guess).
     private var morphSettleTask: Task<Void, Never>?
@@ -346,7 +343,6 @@ final class StatusItemController: NSObject {
         // Settle any in-flight morph so a reopen doesn't inherit a stale flag or a half-applied height.
         morphSettleTask?.cancel()
         isMorphing = false
-        lastRequestedHeight = 0
     }
 
     /// Drops keyboard focus inside the panel so a clicked plain-styled control (a metric row's
@@ -388,15 +384,15 @@ final class StatusItemController: NSObject {
     /// Single clock: only `setFrame(display:false)`, never `animate:true` / `panel.animator()`, so AppKit
     /// adds no second animation to fight SwiftUI's spring.
     private func applyMorphHeight(_ rawHeight: CGFloat) {
-        // Drop unchanged requests so a re-render that didn't move the height doesn't re-`setFrame`.
-        guard rawHeight > 1, abs(rawHeight - lastRequestedHeight) > 0.5 else { return }
-        lastRequestedHeight = rawHeight
+        guard rawHeight > 1 else { return }   // 0 = "not established yet"; ignore the sentinel.
         guard let anchorTopLeft else {
             AppLog.error(.statusItem, "Morph height with no anchor; frame not applied")
             return
         }
         let height = min(max(rawHeight, Self.minPanelHeight), maxPanelHeight())
-        // Break any frame→relayout→frame churn and skip sub-point no-ops.
+        // The live frame is the ground truth: apply only when it would actually move (>1pt). This both
+        // dedupes redundant per-render pushes and guarantees the frame never stops short of the driven
+        // height — there's no separate "last requested" tracking that a skipped apply could desync.
         guard abs(panel.frame.height - height) > 1 else { return }
         let origin = NSPoint(x: anchorTopLeft.x, y: anchorTopLeft.y - height)
         panel.setFrame(NSRect(origin: origin, size: NSSize(width: Self.panelWidth, height: height)), display: false)
