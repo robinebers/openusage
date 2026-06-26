@@ -57,11 +57,14 @@ struct AntigravityAuthStore: Sendable {
     }
 
     func loadCachedToken() -> String? {
+        // Require at least `refreshBuffer` of life left, matching `isUsable(expiry:)` for the keychain
+        // token — a near-expiry cached token would otherwise yield a near-certain 401 and a wasteful
+        // extra refresh.
         guard files.exists(Self.cachePath),
               let text = try? files.readText(Self.cachePath),
               let data = text.data(using: .utf8),
               let cached = try? JSONDecoder().decode(CachedToken.self, from: data),
-              cached.expiresAtMs > now().timeIntervalSince1970 * 1000
+              cached.expiresAtMs > (now().timeIntervalSince1970 + Self.refreshBuffer) * 1000
         else {
             return nil
         }

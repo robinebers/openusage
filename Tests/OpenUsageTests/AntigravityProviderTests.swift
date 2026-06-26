@@ -236,6 +236,18 @@ final class AntigravityProviderTests: XCTestCase {
         XCTAssertEqual(AntigravityAuthStore.extractToken(fromKeychainRaw: "rawtoken")?.accessToken, "rawtoken")
     }
 
+    func testLoadCachedTokenAppliesRefreshBuffer() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        func store(expiresInSeconds: Double) -> AntigravityAuthStore {
+            let ms = (now.timeIntervalSince1970 + expiresInSeconds) * 1000
+            let files = FakeFiles([AntigravityAuthStore.cachePath: #"{"accessToken":"ya29.cached","expiresAtMs":\#(ms)}"#])
+            return AntigravityAuthStore(keychain: FakeKeychain(nil), files: files, now: { now })
+        }
+        // Within the 60s refresh buffer -> treated as expired (avoids a near-certain 401 + extra refresh).
+        XCTAssertNil(store(expiresInSeconds: 30).loadCachedToken())
+        XCTAssertEqual(store(expiresInSeconds: 7200).loadCachedToken(), "ya29.cached")
+    }
+
     func testLoadKeychainTokenThroughStore() {
         let inner = #"{"token":{"access_token":"ya29.kc","refresh_token":"1//r"}}"#
         let wrapped = "go-keyring-base64:" + Data(inner.utf8).base64EncodedString()
