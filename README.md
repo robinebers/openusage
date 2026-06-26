@@ -11,7 +11,7 @@ OpenUsage shows how much of your AI coding plans you've used: session and weekly
 ## Supported Providers
 
 - [**Antigravity**](docs/providers/antigravity.md) — Gemini Pro/Flash and Claude model quotas
-- [**Claude**](docs/providers/claude.md) — session, weekly, Sonnet, extra usage, local daily spend (ccusage)
+- [**Claude**](docs/providers/claude.md) — session, weekly, extra usage, local daily spend (ccusage)
 - [**Codex**](docs/providers/codex.md) — session, weekly, credits, local daily spend (ccusage)
 - [**Cursor**](docs/providers/cursor.md) — credits, total/auto/API usage, requests, on-demand, per-day spend
 - [**Devin**](docs/providers/devin.md) — weekly and daily quota, extra usage balance
