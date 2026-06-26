@@ -7,6 +7,8 @@ import Foundation
 /// here: an empty saved order reconciles to plain registry order in `LayoutStore`.
 enum DefaultLayout {
     static let metricIDs: [String] = [
+        "antigravity.geminiPro", "antigravity.geminiFlash", "antigravity.claude",
+
         "claude.session", "claude.weekly", "claude.trend",
         "claude.extra", "claude.today", "claude.yesterday", "claude.last30",
 
@@ -46,6 +48,7 @@ enum DefaultLayout {
     /// (`LayoutStore.maxPinsPerProvider`). Filtered to the active
     /// registry by `LayoutStore`, like `metricIDs`.
     static let pinnedMetricIDs: [String] = [
+        "antigravity.geminiPro",
         "claude.session", "claude.weekly",
         "codex.session", "codex.weekly",
         "cursor.auto", "cursor.api"
@@ -57,6 +60,13 @@ enum DefaultLayout {
     /// Filtered to the active registry by `LayoutStore`, and only seeded on a genuinely fresh launch
     /// (existing layouts keep everything always-shown unless they reset customization).
     static let expandedMetricIDs: [String] = [
+        // Antigravity: Gemini Pro + Flash stay above the fold; only the non-Gemini (Claude) pool is secondary.
+        "antigravity.claude",
+        // Claude is de-emphasized: only its Session meter stays above the fold; everything else sits below
+        // the caret. The dashboard always keeps ≥1 primary row per provider (it promotes metrics when all
+        // are marked secondary), so leaving Session primary is what makes the caret appear at all.
+        // See AGENTS.md "## Providers".
+        "claude.weekly", "claude.trend",
         "claude.sonnet", "claude.extra", "claude.today", "claude.yesterday", "claude.last30",
         "codex.credits", "codex.rateLimitResets", "codex.today", "codex.yesterday", "codex.last30",
         "cursor.onDemand", "cursor.requests", "cursor.credits",

@@ -29,6 +29,12 @@ protocol HTTPClient: Sendable {
 // first (which strips JWTs, api keys, and sensitive JSON values exactly like the Tauri host API did).
 
 struct URLSessionHTTPClient: HTTPClient {
+    /// When true, requests use a loopback session that accepts a self-signed TLS cert for `127.0.0.1`
+    /// only (see `LoopbackTLSDelegate`). The local language server serves HTTPS with a self-signed cert
+    /// on a random localhost port; nothing else needs this. Off by default so remote calls keep full
+    /// certificate validation.
+    var allowsInsecureLoopback: Bool = false
+
     /// One session for every provider request, built once with the optional `~/.openusage/config.json`
     /// proxy applied (see `ProxyConfig`). Default configuration — same cookie/cache semantics as
     /// `URLSession.shared` — when no valid proxy is configured.
@@ -43,6 +49,12 @@ struct URLSessionHTTPClient: HTTPClient {
         return URLSession(configuration: configuration)
     }()
 
+    /// Loopback-only session: ephemeral (no shared cookie/cache state), no proxy (localhost), and a
+    /// delegate that trusts a self-signed cert exclusively for `127.0.0.1`. Built once.
+    private static let loopbackSession: URLSession = {
+        URLSession(configuration: .ephemeral, delegate: LoopbackTLSDelegate(), delegateQueue: nil)
+    }()
+
     func send(_ request: HTTPRequest) async throws -> HTTPResponse {
         var urlRequest = URLRequest(url: request.url, timeoutInterval: request.timeout)
         urlRequest.httpMethod = request.method
@@ -51,7 +63,8 @@ struct URLSessionHTTPClient: HTTPClient {
             urlRequest.setValue(value, forHTTPHeaderField: key)
         }
 
-        let (data, response) = try await Self.session.data(for: urlRequest)
+        let session = allowsInsecureLoopback ? Self.loopbackSession : Self.session
+        let (data, response) = try await session.data(for: urlRequest)
         guard let http = response as? HTTPURLResponse else {
             throw HTTPClientError.invalidResponse
         }
@@ -76,6 +89,26 @@ enum HTTPClientError: Error, LocalizedError {
 
     var errorDescription: String? {
         "Invalid HTTP response."
+    }
+}
+
+/// Accepts a self-signed server cert ONLY for loopback (`127.0.0.1`). Every other host — and every
+/// non-server-trust challenge — falls through to default validation, so this never weakens trust for a
+/// real remote endpoint. Holds no mutable state, so it is safe to share across the loopback session.
+private final class LoopbackTLSDelegate: NSObject, URLSessionDelegate, @unchecked Sendable {
+    func urlSession(
+        _ session: URLSession,
+        didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+              challenge.protectionSpace.host == "127.0.0.1",
+              let trust = challenge.protectionSpace.serverTrust
+        else {
+            completionHandler(.performDefaultHandling, nil)
+            return
+        }
+        completionHandler(.useCredential, URLCredential(trust: trust))
     }
 }
 

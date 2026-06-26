@@ -93,6 +93,10 @@ protocol KeychainAccessing: Sendable {
     func writeGenericPassword(service: String, value: String) throws
     func readGenericPasswordForCurrentUser(service: String) throws -> String?
     func writeGenericPasswordForCurrentUser(service: String, value: String) throws
+    /// Read a generic password scoped to an explicit account (`-a`). Used when another app stored the
+    /// item under a known account name (e.g. Antigravity's `agy` token under service `gemini`,
+    /// account `antigravity`) rather than the current user.
+    func readGenericPassword(service: String, account: String) throws -> String?
 }
 
 extension KeychainAccessing {
@@ -102,6 +106,12 @@ extension KeychainAccessing {
 
     func writeGenericPasswordForCurrentUser(service: String, value: String) throws {
         try writeGenericPassword(service: service, value: value)
+    }
+
+    /// Default for mocks that don't model accounts: fall back to the service-only lookup. The real
+    /// `SecurityKeychainAccessor` overrides this to pass `-a <account>`.
+    func readGenericPassword(service: String, account: String) throws -> String? {
+        try readGenericPassword(service: service)
     }
 }
 
@@ -124,6 +134,10 @@ struct SecurityKeychainAccessor: KeychainAccessing {
 
     func readGenericPasswordForCurrentUser(service: String) throws -> String? {
         try readPassword(["find-generic-password", "-a", currentUserAccount(), "-s", service, "-w"], service: service)
+    }
+
+    func readGenericPassword(service: String, account: String) throws -> String? {
+        try readPassword(["find-generic-password", "-a", account, "-s", service, "-w"], service: service)
     }
 
     private func readPassword(_ arguments: [String], service: String) throws -> String? {
