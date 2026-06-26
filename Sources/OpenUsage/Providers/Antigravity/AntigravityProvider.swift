@@ -141,14 +141,19 @@ final class AntigravityProvider: ProviderRuntime {
         // Only refresh on evidence of an auth failure (or no token to try) — a transient Cloud Code
         // outage must not trigger a Google OAuth refresh every cycle.
         if sawAuthFailure || tokens.isEmpty, let refreshToken = keychainToken?.refreshToken {
-            if let refreshed = await usageClient.refreshGoogleToken(refreshToken) {
-                authStore.cacheToken(refreshed.accessToken, expiresIn: refreshed.expiresIn)
-                switch await fetchCloudCode(token: refreshed.accessToken) {
+            switch await usageClient.refreshGoogleToken(refreshToken) {
+            case .refreshed(let accessToken, let expiresIn):
+                authStore.cacheToken(accessToken, expiresIn: expiresIn)
+                switch await fetchCloudCode(token: accessToken) {
                 case .success(let result): return result
                 case .authFailed: throw AntigravityError.authExpired
                 // The refreshed token is valid, so a non-2xx here is a transient outage, not bad auth.
                 case .unavailable: throw AntigravityError.unavailable
                 }
+            // The refresh token itself is dead (revoked / expired) — that's expired auth, not an outage.
+            case .authFailed: throw AntigravityError.authExpired
+            // Transient refresh failure — fall through to the outcome decision below.
+            case .unavailable: break
             }
         }
 

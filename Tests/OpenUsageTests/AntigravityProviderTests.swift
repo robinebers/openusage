@@ -73,6 +73,9 @@ final class AntigravityProviderTests: XCTestCase {
         XCTAssertEqual(AntigravityUsageMapper.poolLabel("Gemini 3.1 Flash Lite"), "Gemini Flash")
         XCTAssertEqual(AntigravityUsageMapper.poolLabel("Claude Opus 4.6"), "Claude")
         XCTAssertEqual(AntigravityUsageMapper.poolLabel("GPT-OSS 120B"), "Claude")
+        // A Gemini model that is neither Pro nor Flash must stay in a Gemini pool, never Claude.
+        XCTAssertEqual(AntigravityUsageMapper.poolLabel("Gemini Ultra"), "Gemini Pro")
+        XCTAssertEqual(AntigravityUsageMapper.poolLabel("gemini-3"), "Gemini Pro")
     }
 
     func testNormalizeLabelStripsTrailingParenthetical() {
@@ -311,6 +314,27 @@ final class AntigravityProviderTests: XCTestCase {
         let snapshot = await provider.refresh()
         XCTAssertTrue(snapshot.lines.contains { $0.isError })
         XCTAssertEqual(snapshot.errorCategory, .network)
+    }
+
+    @MainActor
+    func testDeadRefreshTokenReportsAuthExpired() async {
+        // Access token already expired (skipped); refresh returns 400 invalid_grant. A dead refresh
+        // token is expired auth (.authExpired), not a transient outage.
+        let routing = RoutingHTTPClient { request in
+            if request.url.host == "oauth2.googleapis.com" {
+                return HTTPResponse(statusCode: 400, headers: [:], body: Data(#"{"error":"invalid_grant"}"#.utf8))
+            }
+            return HTTPResponse(statusCode: 503, headers: [:], body: Data())
+        }
+        let inner = #"{"token":{"access_token":"ya29.old","refresh_token":"1//dead","expiry":"2000-01-01T00:00:00Z"}}"#
+        let wrapped = "go-keyring-base64:" + Data(inner.utf8).base64EncodedString()
+        let provider = AntigravityProvider(
+            authStore: AntigravityAuthStore(keychain: FakeKeychain(wrapped), files: FakeFiles()),
+            usageClient: AntigravityUsageClient(lsHTTP: routing, http: routing),
+            discovery: LanguageServerDiscovery(processRunner: EmptyProcessRunner())
+        )
+        let snapshot = await provider.refresh()
+        XCTAssertEqual(snapshot.errorCategory, .authExpired)
     }
 
     @MainActor

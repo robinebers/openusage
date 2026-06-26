@@ -8,6 +8,14 @@ enum CloudCodeOutcome: Sendable {
     case unavailable
 }
 
+/// Result of a Google OAuth token refresh, split so a dead refresh token reads as expired auth while a
+/// 5xx/network failure reads as a transient outage.
+enum TokenRefreshOutcome: Sendable {
+    case refreshed(accessToken: String, expiresIn: Double)
+    case authFailed
+    case unavailable
+}
+
 /// All network I/O for Antigravity: the local language-server RPC (loopback HTTPS, self-signed), the
 /// Google Cloud Code endpoints, and the Google OAuth token refresh.
 struct AntigravityUsageClient: Sendable {
@@ -81,9 +89,11 @@ struct AntigravityUsageClient: Sendable {
         return .unavailable
     }
 
-    /// Exchange a Google refresh token for a fresh access token. Returns nil on any failure.
-    func refreshGoogleToken(_ refreshToken: String) async -> (accessToken: String, expiresIn: Double)? {
-        guard let url = URL(string: Self.googleOAuthURL) else { return nil }
+    /// Exchange a Google refresh token for a fresh access token. Distinguishes a dead refresh token
+    /// (4xx, e.g. `invalid_grant`) from a transient failure (5xx / network / undecodable) so the caller
+    /// can report "sign-in expired" vs "temporarily unavailable" correctly.
+    func refreshGoogleToken(_ refreshToken: String) async -> TokenRefreshOutcome {
+        guard let url = URL(string: Self.googleOAuthURL) else { return .unavailable }
         let form = [
             "client_id=\(Self.formEncoded(Self.googleClientID))",
             "client_secret=\(Self.formEncoded(Self.googleClientSecret))",
@@ -97,14 +107,15 @@ struct AntigravityUsageClient: Sendable {
             body: Data(form.utf8),
             timeout: 15
         )
-        guard let response = try? await http.send(request),
-              (200..<300).contains(response.statusCode),
+        guard let response = try? await http.send(request) else { return .unavailable }
+        if (400..<500).contains(response.statusCode) { return .authFailed } // invalid_grant -> token revoked/expired
+        guard (200..<300).contains(response.statusCode),
               let decoded = try? JSONDecoder().decode(GoogleTokenResponse.self, from: response.body),
               let access = decoded.accessToken?.nilIfEmpty
         else {
-            return nil
+            return .unavailable
         }
-        return (access, decoded.expiresIn ?? 3600)
+        return .refreshed(accessToken: access, expiresIn: decoded.expiresIn ?? 3600)
     }
 
     private static func formEncoded(_ value: String) -> String {

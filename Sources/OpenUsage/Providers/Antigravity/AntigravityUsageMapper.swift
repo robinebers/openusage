@@ -147,9 +147,12 @@ enum AntigravityUsageMapper {
 
     static func poolLabel(_ normalizedLabel: String) -> String {
         let lower = normalizedLabel.lowercased()
-        if lower.contains("gemini"), lower.contains("pro") { return "Gemini Pro" }
-        if lower.contains("gemini"), lower.contains("flash") { return "Gemini Flash" }
-        // Claude, GPT-OSS, and anything else share one non-Gemini pool.
+        // Any Gemini model maps to a Gemini pool — Flash variants to "Gemini Flash", everything else
+        // (Pro, Ultra, bare names) to "Gemini Pro" — so a Gemini model never leaks into the Claude pool.
+        if lower.contains("gemini") {
+            return lower.contains("flash") ? "Gemini Flash" : "Gemini Pro"
+        }
+        // Claude, GPT-OSS, and any other non-Gemini model share one pool.
         return "Claude"
     }
 
