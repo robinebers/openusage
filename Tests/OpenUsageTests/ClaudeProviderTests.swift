@@ -97,6 +97,7 @@ final class ClaudeUsageMapperTests: XCTestCase {
             {
               "five_hour": { "utilization": 10, "resets_at": "2099-01-01T00:00:00.000Z" },
               "seven_day": { "utilization": 20, "resets_at": "2099-01-01T00:00:00.000Z" },
+              "seven_day_sonnet": { "utilization": 5, "resets_at": "2099-01-01T00:00:00.000Z" },
               "extra_usage": { "is_enabled": true, "used_credits": 500, "monthly_limit": 1000 }
             }
             """.utf8)
@@ -110,6 +111,7 @@ final class ClaudeUsageMapperTests: XCTestCase {
         XCTAssertEqual(mapped.plan, "Max 20x")
         XCTAssertEqual(progress(mapped.lines, "Session")?.used, 10)
         XCTAssertEqual(progress(mapped.lines, "Weekly")?.periodDurationMs, ClaudeUsageMapper.weeklyPeriodMs)
+        XCTAssertEqual(progress(mapped.lines, "Sonnet")?.used, 5)
         XCTAssertEqual(progress(mapped.lines, "Extra usage spent")?.used, 5)
         XCTAssertEqual(progress(mapped.lines, "Extra usage spent")?.limit, 10)
     }
@@ -258,7 +260,7 @@ final class ClaudeProviderTests: XCTestCase {
         print("LIVE response reset headers:", resetHeaders)
 
         let body = try XCTUnwrap(JSONSerialization.jsonObject(with: response.body) as? [String: Any])
-        for key in ["five_hour", "seven_day"] {
+        for key in ["five_hour", "seven_day", "seven_day_sonnet"] {
             guard let window = body[key] as? [String: Any] else { continue }
             print("LIVE \(key)=", window)
         }
@@ -267,7 +269,7 @@ final class ClaudeProviderTests: XCTestCase {
             response,
             credentials: state.oauth
         )
-        for label in ["Session", "Weekly"] {
+        for label in ["Session", "Weekly", "Sonnet"] {
             let resetsAt = Self.progress(mapped.lines, label)?.resetsAt
             print("LIVE mapped \(label) resetsAt=", resetsAt as Any)
         }

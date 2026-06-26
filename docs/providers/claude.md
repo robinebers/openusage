@@ -8,6 +8,7 @@ Tracks your Claude subscription limits using the login you already have from Cla
 |---|---|
 | Session | 5-hour rolling window usage |
 | Weekly | 7-day window usage |
+| Sonnet | Separate weekly Sonnet limit (plan-dependent) |
 | Extra Usage | Extra-usage credits spent against your monthly cap |
 | Today / Yesterday / Last 30 Days | Local spend, as cost, tokens, or both (see below) |
 | Plan | Your plan name (optional widget) |

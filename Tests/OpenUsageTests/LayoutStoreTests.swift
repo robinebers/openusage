@@ -257,7 +257,7 @@ final class LayoutStoreTests: XCTestCase {
         let store = LayoutStore(registry: registry, defaults: makeDefaults("FreshCustomizeOrder"), storageKey: "layout")
 
         XCTAssertEqual(store.orderedSupportedMetrics(for: "claude").map(\.id), [
-            "claude.session", "claude.weekly", "claude.extra",
+            "claude.session", "claude.weekly", "claude.sonnet", "claude.extra",
             "claude.trend", "claude.today", "claude.yesterday", "claude.last30"
         ])
         XCTAssertEqual(store.orderedSupportedMetrics(for: "codex").map(\.id), [
@@ -298,6 +298,7 @@ final class LayoutStoreTests: XCTestCase {
             "cursor.usage", "cursor.auto", "cursor.api", "cursor.trend",
             "cursor.onDemand", "cursor.today", "cursor.yesterday", "cursor.last30"
         ]))
+        XCTAssertFalse(store.isMetricEnabled("claude.sonnet"))
         XCTAssertFalse(store.isMetricEnabled("cursor.requests"))
         XCTAssertFalse(store.isMetricEnabled("cursor.credits"))
 
@@ -312,7 +313,7 @@ final class LayoutStoreTests: XCTestCase {
         // always keeps ≥1 primary row) — see AGENTS.md "## Providers".
         XCTAssertEqual(primaryByProvider["claude"], ["claude.session"])
         XCTAssertEqual(expandedByProvider["claude"], [
-            "claude.weekly", "claude.extra", "claude.trend",
+            "claude.weekly", "claude.sonnet", "claude.extra", "claude.trend",
             "claude.today", "claude.yesterday", "claude.last30"
         ])
         XCTAssertEqual(primaryByProvider["codex"], ["codex.session", "codex.weekly", "codex.trend"])

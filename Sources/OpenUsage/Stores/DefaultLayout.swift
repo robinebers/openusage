@@ -55,7 +55,7 @@ enum DefaultLayout {
     ]
 
     /// Metrics tucked below the per-provider "Shown on expand" divider on a fresh install. This is
-    /// membership, not enablement: optional disabled rows like Cursor Requests/Credits are
+    /// membership, not enablement: optional disabled rows like Sonnet or Cursor Requests/Credits are
     /// listed here so if the user enables them later they appear below the caret by default.
     /// Filtered to the active registry by `LayoutStore`, and only seeded on a genuinely fresh launch
     /// (existing layouts keep everything always-shown unless they reset customization).
@@ -67,7 +67,7 @@ enum DefaultLayout {
         // are marked secondary), so leaving Session primary is what makes the caret appear at all.
         // See AGENTS.md "## Providers".
         "claude.weekly", "claude.trend",
-        "claude.extra", "claude.today", "claude.yesterday", "claude.last30",
+        "claude.sonnet", "claude.extra", "claude.today", "claude.yesterday", "claude.last30",
         "codex.credits", "codex.rateLimitResets", "codex.today", "codex.yesterday", "codex.last30",
         "cursor.onDemand", "cursor.requests", "cursor.credits",
         "cursor.today", "cursor.yesterday", "cursor.last30",

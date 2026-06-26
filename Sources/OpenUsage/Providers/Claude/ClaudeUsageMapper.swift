@@ -23,6 +23,7 @@ enum ClaudeUsageMapper {
         var lines: [MetricLine] = []
         appendUsageWindow(body["five_hour"], label: "Session", periodDurationMs: sessionPeriodMs, to: &lines)
         appendUsageWindow(body["seven_day"], label: "Weekly", periodDurationMs: weeklyPeriodMs, to: &lines)
+        appendUsageWindow(body["seven_day_sonnet"], label: "Sonnet", periodDurationMs: weeklyPeriodMs, to: &lines)
         appendExtraUsage(body["extra_usage"], to: &lines)
 
         return ClaudeMappedUsage(
