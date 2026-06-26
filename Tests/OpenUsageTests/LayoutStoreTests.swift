@@ -309,10 +309,11 @@ final class LayoutStoreTests: XCTestCase {
             ($0.provider.id, $0.expandedMetrics.map(\.id))
         })
 
-        // Claude defaults to fully secondary (below the caret) — see AGENTS.md "## Providers".
-        XCTAssertEqual(primaryByProvider["claude"], [])
+        // Claude is de-emphasized: only Session stays primary, the rest go below the caret (a provider
+        // always keeps ≥1 primary row) — see AGENTS.md "## Providers".
+        XCTAssertEqual(primaryByProvider["claude"], ["claude.session"])
         XCTAssertEqual(expandedByProvider["claude"], [
-            "claude.session", "claude.weekly", "claude.sonnet", "claude.extra", "claude.trend",
+            "claude.weekly", "claude.sonnet", "claude.extra", "claude.trend",
             "claude.today", "claude.yesterday", "claude.last30"
         ])
         XCTAssertEqual(primaryByProvider["codex"], ["codex.session", "codex.weekly", "codex.trend"])

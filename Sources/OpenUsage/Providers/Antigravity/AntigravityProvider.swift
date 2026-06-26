@@ -125,6 +125,10 @@ final class AntigravityProvider: ProviderRuntime {
             tokens.append(cached)
         }
 
+        // We have something to authenticate with if any token was tried or a refresh token exists. Used
+        // to tell a transient outage ("temporarily unavailable") apart from a genuine "not signed in".
+        let hasCredentials = !tokens.isEmpty || (keychainToken?.refreshToken?.isEmpty == false)
+
         var sawAuthFailure = false
         for token in tokens {
             switch await fetchCloudCode(token: token) {
@@ -142,12 +146,15 @@ final class AntigravityProvider: ProviderRuntime {
                 switch await fetchCloudCode(token: refreshed.accessToken) {
                 case .success(let result): return result
                 case .authFailed: throw AntigravityError.authExpired
-                case .unavailable: break
+                // The refreshed token is valid, so a non-2xx here is a transient outage, not bad auth.
+                case .unavailable: throw AntigravityError.unavailable
                 }
             }
         }
 
         if sawAuthFailure { throw AntigravityError.authExpired }
+        // Signed in but every endpoint was unreachable — report a transient failure, not "not signed in".
+        if hasCredentials { throw AntigravityError.unavailable }
         throw AntigravityError.notSignedIn
     }
 

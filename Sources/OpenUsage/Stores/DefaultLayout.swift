@@ -62,8 +62,11 @@ enum DefaultLayout {
     static let expandedMetricIDs: [String] = [
         // Antigravity: Gemini Pro + Flash stay above the fold; only the non-Gemini (Claude) pool is secondary.
         "antigravity.claude",
-        // Claude defaults to secondary (below the caret) — see AGENTS.md "## Providers".
-        "claude.session", "claude.weekly", "claude.trend",
+        // Claude is de-emphasized: only its Session meter stays above the fold; everything else sits below
+        // the caret. The dashboard always keeps ≥1 primary row per provider (it promotes metrics when all
+        // are marked secondary), so leaving Session primary is what makes the caret appear at all.
+        // See AGENTS.md "## Providers".
+        "claude.weekly", "claude.trend",
         "claude.sonnet", "claude.extra", "claude.today", "claude.yesterday", "claude.last30",
         "codex.credits", "codex.rateLimitResets", "codex.today", "codex.yesterday", "codex.last30",
         "cursor.onDemand", "cursor.requests", "cursor.credits",

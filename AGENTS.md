@@ -40,7 +40,7 @@ Conventions for the per-provider modules under `Sources/OpenUsage/Providers/<Nam
 - **Default order:** Claude, Codex, Cursor first (the established providers, in that order), then every other provider alphabetically by display name (Antigravity, Devin, Grok, …). The order is the array order in `AppContainer`, which seeds `LayoutStore`'s default provider order (and `resetToDefault`). A new provider slots into the alphabetical tail.
 - **Metric placement defaults:** when adding or changing a metric, confirm its four defaults with the owner before choosing — never pick silently:
   1. enabled on/off (`DefaultLayout.metricIDs`),
-  2. primary vs. secondary — above the fold vs. below the per-provider "Shown on expand" caret (`DefaultLayout.expandedMetricIDs`),
+  2. primary vs. secondary — above the fold vs. below the per-provider "Shown on expand" caret (`DefaultLayout.expandedMetricIDs`). Note: a provider always keeps at least one primary row — the dashboard promotes all metrics to primary when every one is marked secondary, so a fully-secondary provider isn't possible; leave one metric primary for the caret to appear,
   3. pinned to the menu bar (`DefaultLayout.pinnedMetricIDs`),
   4. order (within a provider, the `widgetDescriptors` declaration order).
 

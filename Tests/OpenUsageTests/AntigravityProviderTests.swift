@@ -293,6 +293,50 @@ final class AntigravityProviderTests: XCTestCase {
         )
         let snapshot = await provider.refresh()
         XCTAssertTrue(snapshot.lines.contains { $0.isError })
+        XCTAssertEqual(snapshot.errorCategory, .notLoggedIn)
+    }
+
+    @MainActor
+    func testRefreshReportsUnavailableWhenSignedInButCloudCodeDown() async {
+        // Valid keychain token, but every Cloud Code endpoint is down. A signed-in user should see a
+        // transient failure (.network), not "not signed in" (.notLoggedIn).
+        let routing = RoutingHTTPClient { _ in HTTPResponse(statusCode: 503, headers: [:], body: Data()) }
+        let inner = #"{"token":{"access_token":"ya29.kc","refresh_token":"1//r","expiry":"2099-01-01T00:00:00Z"}}"#
+        let wrapped = "go-keyring-base64:" + Data(inner.utf8).base64EncodedString()
+        let provider = AntigravityProvider(
+            authStore: AntigravityAuthStore(keychain: FakeKeychain(wrapped), files: FakeFiles()),
+            usageClient: AntigravityUsageClient(lsHTTP: routing, http: routing),
+            discovery: LanguageServerDiscovery(processRunner: EmptyProcessRunner())
+        )
+        let snapshot = await provider.refresh()
+        XCTAssertTrue(snapshot.lines.contains { $0.isError })
+        XCTAssertEqual(snapshot.errorCategory, .network)
+    }
+
+    @MainActor
+    func testRefreshAfterSuccessfulRefreshTreatsOutageAsUnavailable() async {
+        // First fetch 401 -> OAuth refresh succeeds -> retry fetch 503. The refreshed token is valid, so
+        // this is a transient outage (.network), not authExpired.
+        let fetchCount = Counter()
+        let routing = RoutingHTTPClient { request in
+            if request.url.host == "oauth2.googleapis.com" {
+                return HTTPResponse(statusCode: 200, headers: [:],
+                                    body: Data(#"{"access_token":"ya29.new","expires_in":3600}"#.utf8))
+            }
+            if request.url.path.contains("fetchAvailableModels") {
+                return HTTPResponse(statusCode: fetchCount.next() == 0 ? 401 : 503, headers: [:], body: Data())
+            }
+            return HTTPResponse(statusCode: 503, headers: [:], body: Data())
+        }
+        let inner = #"{"token":{"access_token":"ya29.kc","refresh_token":"1//r","expiry":"2099-01-01T00:00:00Z"}}"#
+        let wrapped = "go-keyring-base64:" + Data(inner.utf8).base64EncodedString()
+        let provider = AntigravityProvider(
+            authStore: AntigravityAuthStore(keychain: FakeKeychain(wrapped), files: FakeFiles()),
+            usageClient: AntigravityUsageClient(lsHTTP: routing, http: routing),
+            discovery: LanguageServerDiscovery(processRunner: EmptyProcessRunner())
+        )
+        let snapshot = await provider.refresh()
+        XCTAssertEqual(snapshot.errorCategory, .network)
     }
 }
 
@@ -301,5 +345,16 @@ final class AntigravityProviderTests: XCTestCase {
 private struct EmptyProcessRunner: ProcessRunning {
     func run(executable: String, arguments: [String], environment: [String: String], timeout: TimeInterval) throws -> ProcessResult {
         ProcessResult(exitCode: 0, stdout: "", stderr: "")
+    }
+}
+
+/// Serial call counter for routing handlers that must vary their response across requests.
+private final class Counter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = 0
+    func next() -> Int {
+        lock.lock(); defer { lock.unlock() }
+        defer { value += 1 }
+        return value
     }
 }

@@ -161,6 +161,7 @@ extension AntigravityError: CategorizedError {
         switch self {
         case .notSignedIn: .notLoggedIn
         case .authExpired: .authExpired
+        case .unavailable: .network
         }
     }
 }
