@@ -65,36 +65,36 @@ final class CcusageRunnerTests: XCTestCase {
 
     func testRunnerArgsBunx() {
         XCTAssertEqual(
-            CcusageRunner.runnerArgs(kind: .bunx, provider: .claude, since: "20260101"),
-            ["--silent", "ccusage@20.0.2", "claude", "daily", "--json", "--order", "desc", "--since", "20260101"]
+            CcusageRunner.runnerArgs(kind: .bunx, provider: .claude, since: "20260101", timezone: "America/New_York"),
+            ["--silent", "ccusage@20.0.14", "claude", "daily", "--json", "--order", "desc", "--since", "20260101", "--timezone", "America/New_York"]
         )
     }
 
     func testRunnerArgsPnpmDlx() {
         XCTAssertEqual(
-            CcusageRunner.runnerArgs(kind: .pnpmDlx, provider: .claude, since: "20260101"),
-            ["-s", "dlx", "ccusage@20.0.2", "claude", "daily", "--json", "--order", "desc", "--since", "20260101"]
+            CcusageRunner.runnerArgs(kind: .pnpmDlx, provider: .claude, since: "20260101", timezone: "America/New_York"),
+            ["-s", "dlx", "ccusage@20.0.14", "claude", "daily", "--json", "--order", "desc", "--since", "20260101", "--timezone", "America/New_York"]
         )
     }
 
     func testRunnerArgsYarnDlx() {
         XCTAssertEqual(
-            CcusageRunner.runnerArgs(kind: .yarnDlx, provider: .codex, since: "20260101"),
-            ["dlx", "-q", "ccusage@20.0.2", "codex", "daily", "--json", "--order", "desc", "--since", "20260101"]
+            CcusageRunner.runnerArgs(kind: .yarnDlx, provider: .codex, since: "20260101", timezone: "America/New_York"),
+            ["dlx", "-q", "ccusage@20.0.14", "codex", "daily", "--json", "--order", "desc", "--since", "20260101", "--timezone", "America/New_York"]
         )
     }
 
     func testRunnerArgsNpmExec() {
         XCTAssertEqual(
-            CcusageRunner.runnerArgs(kind: .npmExec, provider: .claude, since: "20260101"),
-            ["exec", "--yes", "--package=ccusage@20.0.2", "--", "ccusage", "claude", "daily", "--json", "--order", "desc", "--since", "20260101"]
+            CcusageRunner.runnerArgs(kind: .npmExec, provider: .claude, since: "20260101", timezone: "America/New_York"),
+            ["exec", "--yes", "--package=ccusage@20.0.14", "--", "ccusage", "claude", "daily", "--json", "--order", "desc", "--since", "20260101", "--timezone", "America/New_York"]
         )
     }
 
     func testRunnerArgsNpx() {
         XCTAssertEqual(
-            CcusageRunner.runnerArgs(kind: .npx, provider: .codex, since: "20260101"),
-            ["--yes", "ccusage@20.0.2", "codex", "daily", "--json", "--order", "desc", "--since", "20260101"]
+            CcusageRunner.runnerArgs(kind: .npx, provider: .codex, since: "20260101", timezone: "America/New_York"),
+            ["--yes", "ccusage@20.0.14", "codex", "daily", "--json", "--order", "desc", "--since", "20260101", "--timezone", "America/New_York"]
         )
     }
 

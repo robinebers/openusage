@@ -48,7 +48,7 @@ enum CcusageRunnerError: Error, LocalizedError, Equatable {
 }
 
 struct CcusageRunner {
-    private static let packageSpec = "ccusage@20.0.2"
+    private static let packageSpec = "ccusage@20.0.14"
     private static let binName = "ccusage"
     private static let timeout: TimeInterval = 15
     private static let probeTimeout: TimeInterval = 2
@@ -56,6 +56,10 @@ struct CcusageRunner {
     var processRunner: ProcessRunning
     var homeDirectory: @Sendable () -> URL
     var isExecutable: @Sendable (String) -> Bool
+    /// The IANA zone passed to `ccusage --timezone` so it buckets days the same way the app computes
+    /// "today"/"yesterday" (local). Without it ccusage defaults to UTC, so a non-UTC user's most recent
+    /// usage lands in a day bucket the local Today/Yesterday lookup misses and reads as a false `$0.00`.
+    var timeZoneIdentifier: @Sendable () -> String
 
     /// The runner that last ran `ccusage` successfully, memoized for the session. The periodic
     /// refresh loop calls `query` on a fixed cadence (Claude + Codex, every interval), and runner
@@ -68,11 +72,13 @@ struct CcusageRunner {
     init(
         processRunner: ProcessRunning = SystemProcessRunner(),
         homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser },
-        isExecutable: @escaping @Sendable (String) -> Bool = { FileManager.default.isExecutableFile(atPath: $0) }
+        isExecutable: @escaping @Sendable (String) -> Bool = { FileManager.default.isExecutableFile(atPath: $0) },
+        timeZoneIdentifier: @escaping @Sendable () -> String = { TimeZone.current.identifier }
     ) {
         self.processRunner = processRunner
         self.homeDirectory = homeDirectory
         self.isExecutable = isExecutable
+        self.timeZoneIdentifier = timeZoneIdentifier
     }
 
     /// The `--since` argument ccusage expects: `yyyyMMdd`, `daysBack` days before `date`.
@@ -178,7 +184,7 @@ struct CcusageRunner {
 
         let result = try processRunner.run(
             executable: program,
-            arguments: Self.runnerArgs(kind: kind, provider: provider, since: since),
+            arguments: Self.runnerArgs(kind: kind, provider: provider, since: since, timezone: timeZoneIdentifier()),
             environment: environment,
             timeout: Self.timeout
         )
@@ -237,7 +243,10 @@ struct CcusageRunner {
     }
 
     /// Argument vector for `kind`, ending in the shared `ccusage <provider> daily …` invocation.
-    static func runnerArgs(kind: CcusageRunnerKind, provider: CcusageProvider, since: String) -> [String] {
+    /// `timezone` is an IANA id (e.g. `America/Los_Angeles`) passed to `--timezone` so ccusage groups
+    /// days in the same zone the app uses for Today/Yesterday — otherwise ccusage defaults to UTC and
+    /// the day buckets drift off the local lookup at the boundary.
+    static func runnerArgs(kind: CcusageRunnerKind, provider: CcusageProvider, since: String, timezone: String) -> [String] {
         let leading: [String]
         switch kind {
         case .bunx:
@@ -251,7 +260,7 @@ struct CcusageRunner {
         case .npx:
             leading = ["--yes", packageSpec]
         }
-        return leading + [provider.rawValue, "daily", "--json", "--order", "desc", "--since", since]
+        return leading + [provider.rawValue, "daily", "--json", "--order", "desc", "--since", since, "--timezone", timezone]
     }
 
     private func commandExists(_ command: String) -> Bool {

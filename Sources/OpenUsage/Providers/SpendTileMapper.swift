@@ -16,7 +16,8 @@ enum SpendTileMapper {
         _ usage: DailyUsageSeries,
         to lines: inout [MetricLine],
         now: Date = Date(),
-        estimated: Bool = true
+        estimated: Bool = true,
+        missingRecentDaysUnknown: Bool = false
     ) {
         let today = dayKey(from: now)
         let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: now).map(dayKey(from:))
@@ -24,8 +25,18 @@ enum SpendTileMapper {
         let todayEntry = usage.daily.first { dayKey(fromUsageDate: $0.date) == today }
         let yesterdayEntry = usage.daily.first { dayKey(fromUsageDate: $0.date) == yesterday }
 
-        lines.append(dayUsageLine(label: "Today", entry: todayEntry, estimated: estimated))
-        lines.append(dayUsageLine(label: "Yesterday", entry: yesterdayEntry, estimated: estimated))
+        // The most recent day the source actually reported. Sources that omit idle days (ccusage, the
+        // Grok log) make a recent *absent* day ambiguous — a genuine zero, or simply not captured yet
+        // (e.g. ccusage lagging a Codex CLI format change). With `missingRecentDaysUnknown`, a Today /
+        // Yesterday newer than this last reported day is treated as unknown: the tile is left unbacked so
+        // it reads "No data" rather than a fabricated "$0.00 · 0 tokens" that contradicts a live session.
+        // An absent day still *within* the reported range stays a real measured zero ($0.00).
+        let latestReportedDay = usage.daily.compactMap { dayKey(fromUsageDate: $0.date) }.max()
+
+        appendDayUsage(label: "Today", dayKey: today, entry: todayEntry, latestReportedDay: latestReportedDay,
+                       missingRecentDaysUnknown: missingRecentDaysUnknown, estimated: estimated, to: &lines)
+        appendDayUsage(label: "Yesterday", dayKey: yesterday, entry: yesterdayEntry, latestReportedDay: latestReportedDay,
+                       missingRecentDaysUnknown: missingRecentDaysUnknown, estimated: estimated, to: &lines)
 
         let totalTokens = usage.daily.reduce(0) { $0 + $1.totalTokens }
         let costSamples = usage.daily.compactMap(\.costUSD)
@@ -61,7 +72,9 @@ enum SpendTileMapper {
         guard case .success(let usage) = await runner.query(provider: provider, since: since, homePath: homePath) else {
             return
         }
-        appendTokenUsage(usage, to: &lines, now: now)
+        // ccusage omits idle days and can lag a Codex/Claude CLI format change, so a today/yesterday it
+        // doesn't report is "unknown", not a measured zero — render "No data" there instead of "$0.00".
+        appendTokenUsage(usage, to: &lines, now: now, missingRecentDaysUnknown: true)
         appendUsageTrend(usage, to: &lines, now: now, note: "Estimated from local logs at API rates")
     }
 
@@ -126,6 +139,25 @@ enum SpendTileMapper {
             return dayKey(from: date)
         }
         return nil
+    }
+
+    /// Append one day's spend tile — or nothing, when the day is newer than the source's last reported
+    /// day and `missingRecentDaysUnknown` is set. An unbacked tile renders "No data" (see `WidgetData`),
+    /// which is the honest read for a day the source hasn't accounted for, versus a measured `$0.00`.
+    private static func appendDayUsage(
+        label: String,
+        dayKey: String?,
+        entry: DailyUsageEntry?,
+        latestReportedDay: String?,
+        missingRecentDaysUnknown: Bool,
+        estimated: Bool,
+        to lines: inout [MetricLine]
+    ) {
+        // Day keys are zero-padded `yyyy-MM-dd`, so lexical `>` is chronological.
+        if entry == nil, missingRecentDaysUnknown, let latestReportedDay, let dayKey, dayKey > latestReportedDay {
+            return
+        }
+        lines.append(dayUsageLine(label: label, entry: entry, estimated: estimated))
     }
 
     private static func dayUsageLine(label: String, entry: DailyUsageEntry?, estimated: Bool) -> MetricLine {
