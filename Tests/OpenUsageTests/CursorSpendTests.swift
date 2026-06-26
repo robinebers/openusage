@@ -211,6 +211,15 @@ final class CursorSpendProviderTests: XCTestCase {
         XCTAssertEqual(textValue(snapshot.lines, "Today"), "$10.00")
         XCTAssertEqual(textValue(snapshot.lines, "Yesterday"), "$20.00")
         XCTAssertEqual(textValue(snapshot.lines, "Last 30 Days"), "$30.00")
+
+        // The Models leaderboard is produced from the same CSV: composer-1 collapses to the "Composer 1"
+        // family with the window's summed tokens (1M today + 2M yesterday).
+        guard let modelsLine = snapshot.lines.first(where: { $0.label == "Models" }),
+              case .modelBreakdown(_, let models, _) = modelsLine else {
+            return XCTFail("expected a Models leaderboard line")
+        }
+        XCTAssertEqual(models.map(\.name), ["Composer 1"])
+        XCTAssertEqual(models.first?.tokens, 3_000_000)
     }
 
     func testCSVFailureLeavesSpendTilesAsNoData() async {
@@ -242,6 +251,14 @@ final class CursorSpendProviderTests: XCTestCase {
         let data = store.data(for: descriptor)
         XCTAssertFalse(data.hasData)
         XCTAssertEqual(data.valueText, WidgetData.noDataHeadline)
+
+        // The Models leaderboard has no backing line when the CSV fails, so it resolves to "No data"
+        // too. (hasData is the render gate — the sample still carries its gallery placeholder models,
+        // but hasData=false stops the row from ever drawing them.)
+        let modelsDescriptor = try! XCTUnwrap(provider.widgetDescriptors.first { $0.id == "cursor.models" })
+        let modelsData = store.data(for: modelsDescriptor)
+        XCTAssertFalse(modelsData.hasData)
+        XCTAssertEqual(modelsData.valueText, WidgetData.noDataHeadline)
     }
 
     func testSpendTileRendersCombinedCostAndTokensWithValueTooltip() async {

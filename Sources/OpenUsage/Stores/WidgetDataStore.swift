@@ -289,9 +289,9 @@ final class WidgetDataStore {
             .filter { isProviderEnabled($0.providerID) }
             .lazy
             .map { self.data(for: $0) }
-            // A chart tile has data but no scalar value, so it would read "0" here — skip it, the same
-            // way the tray bars skip it (it's non-pinnable).
-            .first { $0.hasData && !$0.isChart }
+            // A chart or model-list tile has data but no scalar value, so it would read "0" here — skip
+            // both, the same way the tray bars do (both are non-pinnable).
+            .first { $0.hasData && !$0.isChart && !$0.isModelList }
 
         guard let primary else { return WidgetData.noDataHeadline }
         return primary.valueText
@@ -360,6 +360,16 @@ final class WidgetDataStore {
             data.chartPoints = points
             data.chartNote = note
             data.hasData = !points.isEmpty
+            return data
+        case .modelBreakdown(_, let models, let note):
+            // Same shape as `.chart`: presentation from the sample, live entries from the line. An empty
+            // list means the source was read but priced nothing usable — render "No data", so the
+            // sample's gallery models never leak onto the dashboard.
+            var data = descriptor.sample
+            data.isModelList = true
+            data.modelEntries = models
+            data.modelNote = note
+            data.hasData = !models.isEmpty
             return data
         }
     }

@@ -21,6 +21,8 @@ Each provider card leads with its **always-shown** metrics. Any metrics you've m
 
 **Usage Trend** (Claude, Codex, Cursor, and Grok) is a small bar chart of the last 30 days of token usage — one bar per day, drawn from the same source as that provider's spend rows (local logs for Claude / Codex / Grok, your usage history for Cursor). **Hover it** for the peak day, the date range, and the source. It's on by default; turn it off or reorder it from Customize like any other metric. It can't be pinned to the menu bar — the strip shows single values, not a chart.
 
+**Models** (Cursor) ranks the models you've used over the last 30 days by spend. The row stays compact — just the top three model names, numbered by rank — as an at-a-glance read of what you're leaning on. **Hover it** to reveal the full list with each model's spend and token count. Models are grouped by family, so a model's faster and reasoning variants count as one. Anything under 3% of your spend is rolled into a single "Other" row to keep the list readable; models Cursor hasn't priced are kept on their own, marked with a small warning. It's off by default — add it from Customize — and, like Usage Trend, it can't be pinned to the menu bar.
+
 Rows with a reset date tick every 30 seconds, so countdowns and pace stay live between refreshes.
 
 ## Right-click menus
@@ -38,7 +40,7 @@ Open Customize from the **⌄** menu next to the footer's Settings button (or pr
 
 Each provider card has a dashed **Shown on Expand** line. Metrics above it are always shown; metrics below it hide behind the dashboard caret. Drag a metric onto the dashed line to move it across the fold, or drag it onto a row on the other side — drop a metric under an expanded one and it becomes expanded too. Pinning, hiding, and order all work the same on either side.
 
-The default reset layout keeps each provider's core quota meters and Usage Trend always shown, then tucks balances, reset details, and spend-history rows behind the caret. Optional detail rows like Claude Sonnet and Cursor Requests/Credits stay off by default, but start below the divider if you enable them.
+The default reset layout keeps each provider's core quota meters and Usage Trend always shown, then tucks balances, reset details, and spend-history rows behind the caret. Optional detail rows like Claude Sonnet, Cursor Requests/Credits, and the Cursor Models leaderboard stay off by default, but start below the divider if you enable them.
 
 When OpenUsage ships a new default metric, existing layouts get it once. If you turn it off, it stays off. The **Reset** button in Customize restores the default metrics, order, menu-bar pins, and which metrics start behind the expand caret, but leaves provider settings and other preferences unchanged.
 

@@ -2,6 +2,7 @@ import Foundation
 
 /// Per-model token pricing entry. Rates are USD per million tokens.
 struct CursorPricingEntry: Sendable {
+    let familyID: String
     let familyDisplayName: String
     let inputPerMillion: Double
     let cacheWritePerMillion: Double
@@ -9,6 +10,7 @@ struct CursorPricingEntry: Sendable {
     let outputPerMillion: Double
 
     init(manifestEntry: CursorModelManifestPricingEntry) {
+        self.familyID = manifestEntry.familyID
         self.familyDisplayName = manifestEntry.familyDisplayName
         self.inputPerMillion = manifestEntry.inputPerMillion
         self.cacheWritePerMillion = manifestEntry.cacheWritePerMillion
@@ -67,6 +69,19 @@ enum CursorPricing {
     static func pricingEntry(for model: String) -> CursorPricingEntry? {
         guard let canonical = canonicalModel(for: model) else { return nil }
         return manifest[canonical]
+    }
+
+    /// A model's family — the group the model leaderboard buckets by, so pricing variants of one
+    /// model (e.g. `gpt-5.5` and `gpt-5.5-fast`, which share a `family_id`) collapse into a single
+    /// "GPT-5.5" row. `nil` for an unknown/unpriced model, which the caller then keys by its raw id.
+    struct ModelFamily: Sendable {
+        let id: String
+        let displayName: String
+    }
+
+    static func family(for model: String) -> ModelFamily? {
+        guard let entry = pricingEntry(for: model) else { return nil }
+        return ModelFamily(id: entry.familyID, displayName: entry.familyDisplayName)
     }
 
     /// Estimate the USD cost (dollars, not cents) for one dashboard CSV row.

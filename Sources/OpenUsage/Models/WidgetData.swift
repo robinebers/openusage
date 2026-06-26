@@ -74,6 +74,13 @@ struct WidgetData: Hashable {
     var isChart: Bool = false
     var chartPoints: [MetricChartPoint] = []
     var chartNote: String?
+    /// Per-model leaderboard entries for a Models row (empty for every other tile), sorted by spend
+    /// descending. `isModelList` flags the row so the view draws the leaderboard (top-N inline names +
+    /// hover-all popover) instead of the value layout; `modelNote` is the source line shown in the
+    /// popover footer. Mirrors the `isChart`/`chartPoints`/`chartNote` trio.
+    var isModelList: Bool = false
+    var modelEntries: [ModelUsageEntry] = []
+    var modelNote: String?
 
     var isBounded: Bool { limit != nil }
 

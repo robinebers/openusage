@@ -13,6 +13,7 @@ Tracks your Cursor plan usage using the login from the Cursor app.
 | API Usage | API usage percent |
 | Extra Usage | On-demand spend; shown as a meter only when Cursor returns a limit |
 | Today / Yesterday / Last 30 Days | Per-day cost and tokens from Cursor's own usage export |
+| Models | Per-model usage leaderboard for the last 30 days (optional widget) |
 | Plan | Your plan name (optional widget) |
 
 ## Where credentials come from
@@ -22,6 +23,10 @@ Just be signed into the Cursor app. OpenUsage reads Cursor's local state databas
 ## The spend tiles
 
 Each period is one tile showing cost and tokens together (`$4.08 · 1.2M tokens`), the same as Claude/Codex/Grok; a day with no usage is a real zero and reads `$0.00 · 0 tokens`. The difference is the source: Cursor's Today / Yesterday / Last 30 Days come from Cursor's **server-side usage export** (priced per model with a bundled price list), not a local estimate. Hover the value to see the exact figures and source note. If the export can't be fetched, the tiles show "No data" while everything else keeps working.
+
+## The models leaderboard
+
+The optional **Models** widget ranks the models you've used over the last 30 days by spend, from the same usage export the spend tiles use. The row stays compact — the top three model names, numbered by rank — and hovering reveals the full list with each model's spend and token count. Models are grouped by family (a model's faster and reasoning variants count as one). Anything under 3% of your spend is grouped into a single "Other" row; a model Cursor hasn't priced is kept on its own, shown with a dash for cost and a small warning marker. Like the spend tiles, the per-model dollars are imputed from token counts at base rates, so they're an estimate.
 
 ## Troubleshooting
 

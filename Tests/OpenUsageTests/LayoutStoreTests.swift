@@ -273,7 +273,7 @@ final class LayoutStoreTests: XCTestCase {
         ])
         XCTAssertEqual(store.orderedSupportedMetrics(for: "cursor").map(\.id), [
             "cursor.usage", "cursor.auto", "cursor.api", "cursor.onDemand", "cursor.requests",
-            "cursor.credits", "cursor.trend", "cursor.today", "cursor.yesterday", "cursor.last30"
+            "cursor.credits", "cursor.trend", "cursor.models", "cursor.today", "cursor.yesterday", "cursor.last30"
         ])
     }
 
@@ -328,7 +328,7 @@ final class LayoutStoreTests: XCTestCase {
         ])
         XCTAssertEqual(primaryByProvider["cursor"], ["cursor.usage", "cursor.auto", "cursor.api", "cursor.trend"])
         XCTAssertEqual(expandedByProvider["cursor"], [
-            "cursor.onDemand", "cursor.requests", "cursor.credits",
+            "cursor.onDemand", "cursor.requests", "cursor.credits", "cursor.models",
             "cursor.today", "cursor.yesterday", "cursor.last30"
         ])
     }

@@ -76,11 +76,51 @@ struct MetricChartPoint: Hashable, Sendable, Codable {
     }
 }
 
+/// One row within a model's hover breakdown: a raw model id ("gpt-5.5-fast") and its imputed dollars,
+/// or — for the "Other" bucket — a folded family name and its summed dollars. `costDollars` is already
+/// cent-snapped by the producer. Mirrors cursorcat's per-variant tooltip.
+struct ModelVariantUsage: Hashable, Sendable, Codable {
+    var name: String
+    var costDollars: Double
+    var isUnpriced: Bool
+
+    init(name: String, costDollars: Double, isUnpriced: Bool = false) {
+        self.name = name
+        self.costDollars = costDollars
+        self.isUnpriced = isUnpriced
+    }
+}
+
+/// One model's slice of a `.modelBreakdown` line: a family display name ("GPT-5.5", "Claude 4.8 Opus")
+/// with its window-total imputed dollars and measured token count. `costDollars` is already snapped to
+/// whole cents by the producer; the view formats it. `isUnpriced` marks a model with no pricing entry —
+/// its cost is unknown (not zero), so the view shows an em dash rather than "$0.00". `variants` is the
+/// per-raw-model (or, for the "Other" bucket, per-folded-family) breakdown shown on hover.
+struct ModelUsageEntry: Hashable, Sendable, Codable {
+    var name: String
+    var costDollars: Double
+    var tokens: Int
+    var isUnpriced: Bool
+    var variants: [ModelVariantUsage]
+
+    init(name: String, costDollars: Double, tokens: Int, isUnpriced: Bool = false, variants: [ModelVariantUsage] = []) {
+        self.name = name
+        self.costDollars = costDollars
+        self.tokens = tokens
+        self.isUnpriced = isUnpriced
+        self.variants = variants
+    }
+}
+
 enum MetricLine: Hashable, Sendable, Codable {
     case text(label: String, value: String, colorHex: String? = nil, subtitle: String? = nil)
     /// A small day-by-day bar chart (the Usage Trend row). Carries the raw per-day points plus an
     /// optional source note; the view formats and draws them. Unbounded, never pinned to the menu bar.
     case chart(label: String, points: [MetricChartPoint], note: String? = nil)
+    /// A per-model usage leaderboard (the Models row). Carries every model's window-total spend and
+    /// tokens, already sorted by spend descending; the inline row renders the top few names and a hover
+    /// popover shows them all. Like `.chart`, it has no single scalar — unbounded, never pinned.
+    case modelBreakdown(label: String, models: [ModelUsageEntry], note: String? = nil)
     /// An unbounded row carrying one or more raw numbers (see `MetricValue`) — the preferred shape for
     /// numeric rows. The number is the source of truth; formatting and which value(s) to show happen at
     /// the display edge, so the menu bar never has to re-parse a finished string. `.text` stays only for
@@ -108,7 +148,8 @@ enum MetricLine: Hashable, Sendable, Codable {
              .progress(let label, _, _, _, _, _, _),
              .values(let label, _, _, _),
              .badge(let label, _, _, _),
-             .chart(let label, _, _):
+             .chart(let label, _, _),
+             .modelBreakdown(let label, _, _):
             return label
         }
     }
@@ -152,6 +193,7 @@ enum MetricLine: Hashable, Sendable, Codable {
         case text
         case points
         case note
+        case models
     }
 
     private enum LineType: String, Codable {
@@ -160,6 +202,7 @@ enum MetricLine: Hashable, Sendable, Codable {
         case progress
         case badge
         case chart
+        case modelBreakdown
     }
 
     init(from decoder: Decoder) throws {
@@ -203,6 +246,12 @@ enum MetricLine: Hashable, Sendable, Codable {
                 points: try container.decode([MetricChartPoint].self, forKey: .points),
                 note: try container.decodeIfPresent(String.self, forKey: .note)
             )
+        case .modelBreakdown:
+            self = .modelBreakdown(
+                label: label,
+                models: try container.decode([ModelUsageEntry].self, forKey: .models),
+                note: try container.decodeIfPresent(String.self, forKey: .note)
+            )
         }
     }
 
@@ -240,6 +289,11 @@ enum MetricLine: Hashable, Sendable, Codable {
             try container.encode(LineType.chart, forKey: .type)
             try container.encode(label, forKey: .label)
             try container.encode(points, forKey: .points)
+            try container.encodeIfPresent(note, forKey: .note)
+        case .modelBreakdown(let label, let models, let note):
+            try container.encode(LineType.modelBreakdown, forKey: .type)
+            try container.encode(label, forKey: .label)
+            try container.encode(models, forKey: .models)
             try container.encodeIfPresent(note, forKey: .note)
         }
     }

@@ -75,7 +75,11 @@ struct WidgetRowView: View {
 
     @ViewBuilder
     private var rowContent: some View {
-        if data.isChart, data.hasData {
+        if data.isModelList, data.hasData {
+            // The leaderboard owns its own label + ranked names; an empty list falls through to the
+            // unbounded "No data" row below (so the descriptor's gallery sample never leaks here).
+            ModelLeaderboardRow(data: data)
+        } else if data.isChart, data.hasData {
             // The sparkline owns its own label + bars; a chart with no real points falls through to the
             // unbounded "No data" row below (and so the descriptor's gallery sample never leaks here).
             UsageSparkline(data: data)

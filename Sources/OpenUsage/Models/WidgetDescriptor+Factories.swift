@@ -155,6 +155,26 @@ extension WidgetDescriptor {
         9, 14, 11, 22, 13, 18, 25, 16, 12, 28, 20, 15, 31, 19, 24
     ].enumerated().map { MetricChartPoint(value: Double($0.element), label: "\($0.offset)") }
 
+    /// The Models row: a per-model usage leaderboard backed by a provider `.modelBreakdown` line. The
+    /// inline row shows the top few model names (rank-numbered, right-aligned); hovering reveals every
+    /// model with its spend and tokens. Not pinnable — the tray can't render a list — but otherwise a
+    /// normal Customize widget. The sample carries a few models so it reads as a leaderboard in the gallery.
+    static func modelBreakdown(provider: Provider) -> WidgetDescriptor {
+        var sample = WidgetData(title: "Models", icon: provider.icon, kind: .count, used: 0, limit: nil)
+        sample.isModelList = true
+        sample.modelEntries = sampleModelEntries
+        return make(id: "\(provider.id).models", provider: provider, metricLabel: "Models",
+                    sample: sample, pinnable: false)
+    }
+
+    /// Placeholder models so the gallery preview reads as a leaderboard, never confused for real usage
+    /// (the dashboard renders real entries or "No data", never this sample).
+    private static let sampleModelEntries: [ModelUsageEntry] = [
+        ModelUsageEntry(name: "GPT-5.5", costDollars: 66, tokens: 27_600_000),
+        ModelUsageEntry(name: "Claude 4.8 Opus", costDollars: 62.46, tokens: 45_800_000),
+        ModelUsageEntry(name: "Composer 2.5", costDollars: 15.34, tokens: 17_100_000)
+    ]
+
     private static func make(
         id: String,
         provider: Provider,

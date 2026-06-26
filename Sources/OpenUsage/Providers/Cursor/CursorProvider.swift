@@ -27,7 +27,8 @@ final class CursorProvider: ProviderRuntime {
             .boundedCount(id: "cursor.requests", provider: provider, title: "Requests", limit: 500,
                           suffix: "requests", periodDurationMs: CursorUsageMapper.billingPeriodMs),
             .dollarBalance(id: "cursor.credits", provider: provider, title: "Credits", valueWord: "left"),
-            .usageTrend(provider: provider)
+            .usageTrend(provider: provider),
+            .modelBreakdown(provider: provider)
         ] + WidgetDescriptor.spendTiles(provider: provider)
     }
 
@@ -133,6 +134,7 @@ final class CursorProvider: ProviderRuntime {
         }
         let rows = CursorUsageCSV.parse(csv: csv)
         CursorUsageMapper.appendSpendLines(rows: rows, now: end, to: &lines)
+        CursorUsageMapper.appendModelLeaderboard(rows: rows, to: &lines)
     }
 
     private func fetchUsageWithRetry(accessToken: String, authState: inout CursorAuthState) async throws -> HTTPResponse {

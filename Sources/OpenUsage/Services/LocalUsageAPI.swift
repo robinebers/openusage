@@ -84,7 +84,16 @@ enum LocalUsageAPI {
         init(_ line: MetricLine) { self.line = line }
 
         enum CodingKeys: String, CodingKey {
-            case type, label, value, used, limit, format, resetsAt, periodDurationMs, color, subtitle, text, points, note
+            case type, label, value, used, limit, format, resetsAt, periodDurationMs, color, subtitle, text, points, note, models
+        }
+
+        /// One model's slice on the wire: family name, window-total dollars, tokens, and an unpriced flag
+        /// (cost is unknown, not zero, when a model has no pricing). Additive — older consumers ignore it.
+        private struct WireModel: Encodable {
+            let name: String
+            let costUSD: Double
+            let tokens: Int
+            let unpriced: Bool
         }
 
         func encode(to encoder: Encoder) throws {
@@ -129,6 +138,17 @@ enum LocalUsageAPI {
                 try container.encode("barChart", forKey: .type)
                 try container.encode(label, forKey: .label)
                 try container.encode(points, forKey: .points)
+                try container.encodeIfPresent(note, forKey: .note)
+                try container.encodeNil(forKey: .color)
+            case .modelBreakdown(let label, let models, let note):
+                // A `models` line: the per-model leaderboard as an array of {name, costUSD, tokens,
+                // unpriced}, spend-sorted. A new line type, so older consumers simply skip it.
+                try container.encode("models", forKey: .type)
+                try container.encode(label, forKey: .label)
+                try container.encode(
+                    models.map { WireModel(name: $0.name, costUSD: $0.costDollars, tokens: $0.tokens, unpriced: $0.isUnpriced) },
+                    forKey: .models
+                )
                 try container.encodeIfPresent(note, forKey: .note)
                 try container.encodeNil(forKey: .color)
             }

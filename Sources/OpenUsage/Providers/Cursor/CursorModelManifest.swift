@@ -17,11 +17,14 @@ struct CursorModelManifest: Decodable, Sendable {
     static let empty = CursorModelManifest(retrievedAt: "", pricing: [:], aliasRules: [])
 }
 
-/// Only the fields the spend imputation actually uses are decoded. `JSONDecoder` ignores the
-/// manifest's other keys (display name, provider/family ids, max-mode uplift, long-context
-/// multipliers) — the cost model deliberately bills at the base model rate and cannot apply
-/// max-mode or long-context adjustments from row totals (see `CursorPricing.estimatedCostDollars`).
+/// Only the fields the spend imputation and the per-model leaderboard actually use are decoded.
+/// `JSONDecoder` ignores the manifest's other keys (display name, provider id, max-mode uplift,
+/// long-context multipliers) — the cost model deliberately bills at the base model rate and cannot
+/// apply max-mode or long-context adjustments from row totals (see `CursorPricing.estimatedCostDollars`).
+/// `family_id` groups pricing variants (e.g. `gpt-5.5` and `gpt-5.5-fast`) under one family so the
+/// model leaderboard collapses them into a single "GPT-5.5" row (see `CursorPricing.family`).
 struct CursorModelManifestPricingEntry: Decodable, Sendable {
+    let familyID: String
     let familyDisplayName: String
     let inputPerMillion: Double
     let cacheWritePerMillion: Double
@@ -29,6 +32,7 @@ struct CursorModelManifestPricingEntry: Decodable, Sendable {
     let outputPerMillion: Double
 
     enum CodingKeys: String, CodingKey {
+        case familyID = "family_id"
         case familyDisplayName = "family_display_name"
         case inputPerMillion = "input_per_million"
         case cacheWritePerMillion = "cache_write_per_million"

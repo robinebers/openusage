@@ -69,7 +69,7 @@ enum DefaultLayout {
         "claude.weekly", "claude.trend",
         "claude.sonnet", "claude.extra", "claude.today", "claude.yesterday", "claude.last30",
         "codex.credits", "codex.rateLimitResets", "codex.today", "codex.yesterday", "codex.last30",
-        "cursor.onDemand", "cursor.requests", "cursor.credits",
+        "cursor.onDemand", "cursor.requests", "cursor.credits", "cursor.models",
         "cursor.today", "cursor.yesterday", "cursor.last30",
         "devin.extra",
         "grok.payAsYouGo", "grok.today", "grok.yesterday", "grok.last30"

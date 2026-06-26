@@ -42,7 +42,11 @@ struct ProviderSnapshotCache {
         // v5 replaced it with an `expiriesAt` list (one per available credit, shown in the row's
         // tooltip). Old payloads decode cleanly (the absent key → empty list), but the bump refetches
         // once so the expiries show immediately on upgrade instead of after the cached snapshot expires.
-        storageKey: String = "openusage.providerSnapshots.v5",
+        // v6: added the `.modelBreakdown` line (the Cursor Models leaderboard). Old payloads lack the
+        // case so they decode fine, but the bump refetches once so the new row populates on upgrade.
+        // v7: each model entry gained a `variants` breakdown (hover detail). The new required key would
+        // fail to decode against v6 payloads, so bump to drop them cleanly and refetch once.
+        storageKey: String = "openusage.providerSnapshots.v7",
         ttl: TimeInterval = RefreshSetting.interval,
         now: @escaping () -> Date = Date.init
     ) {

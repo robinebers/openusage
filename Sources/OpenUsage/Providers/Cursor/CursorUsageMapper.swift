@@ -253,6 +253,19 @@ enum CursorUsageMapper {
         SpendTileMapper.appendUsageTrend(series, to: &lines, now: now, note: "From your Cursor usage history")
     }
 
+    /// Append the per-model leaderboard line (the Models row) from the same CSV rows the spend tiles use.
+    /// Rows are grouped by model family and sorted by spend; the inline row shows the top few names and a
+    /// hover popover shows them all. Callers only invoke this when the CSV fetched and parsed, so an empty
+    /// set appends nothing and the widget reads "No data". The note names Cursor's usage history as the
+    /// source, matching the spend tiles.
+    static func appendModelLeaderboard(rows: [CursorUsageCSVRow], to lines: inout [MetricLine]) {
+        let entries = CursorModelBreakdown.aggregate(rows: rows)
+        guard !entries.isEmpty else { return }
+        // Same source note as the Usage Trend popover (its sibling hover surface), so both Cursor
+        // popovers read identically.
+        lines.append(.modelBreakdown(label: "Models", models: entries, note: "From your Cursor usage history"))
+    }
+
     private static func dayKey(from date: Date, calendar: Calendar) -> String {
         let components = calendar.dateComponents([.year, .month, .day], from: date)
         return String(format: "%04d-%02d-%02d", components.year ?? 0, components.month ?? 0, components.day ?? 0)
