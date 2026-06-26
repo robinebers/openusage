@@ -54,7 +54,7 @@ final class ClaudeProvider: ProviderRuntime {
         let sources = candidates.map { $0.diagnosticsLabel(now: now()) }.joined(separator: ", ")
         AppLog.info(LogTag.plugin("claude"), "refresh start (\(candidates.count) source\(candidates.count == 1 ? "" : "s"): \(sources))")
         let start = Date()
-        // Probe each credential source in freshest-first order. An auth-expiry failure on one source (a
+        // Probe each credential source in keychain-before-file order. An auth-expiry failure on one source (a
         // stale/locked-out token that an external `claude` re-login replaced in another source) falls
         // through to the next rather than failing the whole refresh; any non-auth error (rate limit,
         // request/transport failure) surfaces immediately so a real outage is never masked as a retry.
