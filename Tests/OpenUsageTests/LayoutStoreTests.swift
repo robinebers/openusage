@@ -257,7 +257,7 @@ final class LayoutStoreTests: XCTestCase {
         let store = LayoutStore(registry: registry, defaults: makeDefaults("FreshCustomizeOrder"), storageKey: "layout")
 
         XCTAssertEqual(store.orderedSupportedMetrics(for: "claude").map(\.id), [
-            "claude.session", "claude.weekly", "claude.sonnet", "claude.extra",
+            "claude.session", "claude.weekly", "claude.extra",
             "claude.trend", "claude.today", "claude.yesterday", "claude.last30"
         ])
         XCTAssertEqual(store.orderedSupportedMetrics(for: "codex").map(\.id), [
@@ -298,7 +298,6 @@ final class LayoutStoreTests: XCTestCase {
             "cursor.usage", "cursor.auto", "cursor.api", "cursor.trend",
             "cursor.onDemand", "cursor.today", "cursor.yesterday", "cursor.last30"
         ]))
-        XCTAssertFalse(store.isMetricEnabled("claude.sonnet"))
         XCTAssertFalse(store.isMetricEnabled("cursor.requests"))
         XCTAssertFalse(store.isMetricEnabled("cursor.credits"))
 
@@ -309,9 +308,12 @@ final class LayoutStoreTests: XCTestCase {
             ($0.provider.id, $0.expandedMetrics.map(\.id))
         })
 
-        XCTAssertEqual(primaryByProvider["claude"], ["claude.session", "claude.weekly", "claude.trend"])
+        // Claude is de-emphasized: only Session stays primary, the rest go below the caret (a provider
+        // always keeps ≥1 primary row) — see AGENTS.md "## Providers".
+        XCTAssertEqual(primaryByProvider["claude"], ["claude.session"])
         XCTAssertEqual(expandedByProvider["claude"], [
-            "claude.sonnet", "claude.extra", "claude.today", "claude.yesterday", "claude.last30"
+            "claude.weekly", "claude.extra", "claude.trend",
+            "claude.today", "claude.yesterday", "claude.last30"
         ])
         XCTAssertEqual(primaryByProvider["codex"], ["codex.session", "codex.weekly", "codex.trend"])
         XCTAssertEqual(expandedByProvider["codex"], [
@@ -425,7 +427,8 @@ final class LayoutStoreTests: XCTestCase {
 
     func testSetMetricExpandedMovesMetricBelowDividerAndPersists() {
         let defaults = makeDefaults("ExpandMove")
-        let store = LayoutStore(registry: .mock, defaults: defaults, storageKey: "layout")
+        // Hermetic: start with nothing below the caret (independent of DefaultLayout's seeding).
+        let store = LayoutStore(registry: .mock, defaults: defaults, storageKey: "layout", defaultExpandedMetricIDs: [])
         guard let first = store.orderedSupportedMetrics(for: "claude").map(\.id).first else {
             return XCTFail("missing Claude metrics")
         }
@@ -443,7 +446,7 @@ final class LayoutStoreTests: XCTestCase {
     }
 
     func testSetMetricExpandedIsNoOpWhenAlreadyInSection() {
-        let store = LayoutStore(registry: .mock, defaults: makeDefaults("ExpandNoOp"), storageKey: "layout")
+        let store = LayoutStore(registry: .mock, defaults: makeDefaults("ExpandNoOp"), storageKey: "layout", defaultExpandedMetricIDs: [])
         guard let id = store.orderedSupportedMetrics(for: "claude").map(\.id).first else {
             return XCTFail("missing Claude metrics")
         }
@@ -651,7 +654,15 @@ final class LayoutStoreTests: XCTestCase {
     }
 
     func testProviderWithOnlyExpandedMetricsStillShowsRows() {
-        let store = LayoutStore(registry: .mock, defaults: makeDefaults("AllExpanded"), storageKey: "layout")
+        // Only session + weekly enabled, both primary to start, so expanding both makes the whole
+        // provider expanded — independent of DefaultLayout's seeding.
+        let store = LayoutStore(
+            registry: .mock,
+            defaults: makeDefaults("AllExpanded"),
+            storageKey: "layout",
+            defaultMetricIDs: ["claude.session", "claude.weekly"],
+            defaultExpandedMetricIDs: []
+        )
         XCTAssertTrue(store.setMetricExpanded("claude.session", true))
         XCTAssertTrue(store.setMetricExpanded("claude.weekly", true))
 
