@@ -32,17 +32,26 @@ enum ClaudeUsageMapper {
         )
     }
 
+    /// Snapshot shown when the usage endpoint rate-limits us and there is no last-good usage to fall back
+    /// on (e.g. the first fetch after launch): a status badge plus the staleness note, no live bars.
     static func rateLimitedUsage(credentials: ClaudeOAuth, retryAfterSeconds: Int?) -> ClaudeMappedUsage {
         let retryText = retryAfterSeconds.map(formatRateLimitMinutes)
         let waitText = retryText.map { "Rate limited, retry in ~\($0)" } ?? "Rate limited, try again later"
-        let noteText = retryText.map { "Live usage rate limited - retry in ~\($0)" } ?? "Live usage rate limited - data may be stale"
         return ClaudeMappedUsage(
             plan: formatPlan(subscriptionType: credentials.subscriptionType, rateLimitTier: credentials.rateLimitTier),
             lines: [
                 .badge(label: "Status", text: waitText, colorHex: "#F59E0B"),
-                .text(label: "Note", value: noteText)
+                rateLimitedNote(retryAfterSeconds: retryAfterSeconds)
             ]
         )
+    }
+
+    /// The "live usage is rate limited" note appended to a last-good snapshot so the still-shown bars are
+    /// flagged as possibly stale. Shared with `rateLimitedUsage` so the wording stays in one place.
+    static func rateLimitedNote(retryAfterSeconds: Int?) -> MetricLine {
+        let retryText = retryAfterSeconds.map(formatRateLimitMinutes)
+        let noteText = retryText.map { "Live usage rate limited - retry in ~\($0)" } ?? "Live usage rate limited - data may be stale"
+        return .text(label: "Note", value: noteText)
     }
 
     static func parseRetryAfterSeconds(_ response: HTTPResponse, now: Date = Date()) -> Int? {
