@@ -36,8 +36,9 @@ of the number, not by the provider:
   a fillable number.
 
 Set the snapshot's `plan` when the provider exposes a plan name. On failure, return
-`ProviderSnapshot.error(provider:message:)` with a friendly message — never return stale or empty data
-silently.
+`ProviderSnapshot.error(provider:error:)` with a typed provider error when possible, so telemetry can group
+the failure by a stable, non-private reason such as "not logged in" or "network". Use the message-only
+factory only when there is no typed error, and never return stale or empty data silently.
 
 ## Steps
 
