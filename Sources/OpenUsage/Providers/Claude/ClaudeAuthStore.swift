@@ -186,6 +186,24 @@ struct ClaudeAuthStore: Sendable {
         envText("CLAUDE_CONFIG_DIR")
     }
 
+    /// The resolved `~/.claude/.credentials.json` path (honoring `CLAUDE_CONFIG_DIR`). Exposed so the
+    /// delegated-refresh layer can fingerprint the file's mtime/size; the keychain source has no path.
+    func credentialsFilePath() -> String {
+        credentialsPath()
+    }
+
+    /// A token-free fingerprint of the credential currently in the preferred source (keychain, else
+    /// file), used to detect whether an external `claude` re-login rotated the stored token. Re-reads
+    /// the candidates fresh (nothing cached), so it reflects the live on-disk state.
+    func currentFingerprint() -> ClaudeCredentialFingerprint {
+        let oauth = orderedStoredCandidates().first?.oauth
+        return ClaudeCredentialFingerprint.make(
+            oauth: oauth,
+            credentialsPath: credentialsPath(),
+            files: files
+        )
+    }
+
     // Resolved OAuth endpoint strings before URL validation. The suffix is derived from the same
     // env-var branching as the URLs but never depends on URL validity, so the (non-throwing) keychain
     // candidate path can read it without risking a throw.

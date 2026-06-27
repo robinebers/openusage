@@ -7,6 +7,8 @@ final class ClaudeProvider: ProviderRuntime {
     let authStore: ClaudeAuthStore
     let usageClient: ClaudeUsageClient
     let ccusageRunner: CcusageRunner
+    let coordinator: ClaudeDelegatedRefreshCoordinator
+    let failureGate: ClaudeRefreshFailureGate
     let now: @Sendable () -> Date
 
     /// Last successful live-usage result and a rate-limit cooldown, carried across refreshes (the provider
@@ -22,11 +24,23 @@ final class ClaudeProvider: ProviderRuntime {
         authStore: ClaudeAuthStore = ClaudeAuthStore(),
         usageClient: ClaudeUsageClient = ClaudeUsageClient(),
         ccusageRunner: CcusageRunner = CcusageRunner(),
+        coordinator: ClaudeDelegatedRefreshCoordinator? = nil,
+        failureGate: ClaudeRefreshFailureGate? = nil,
         now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.authStore = authStore
         self.usageClient = usageClient
         self.ccusageRunner = ccusageRunner
+        // The delegated-refresh coordinator and failure gate both need a live, token-free fingerprint of
+        // the stored credential. Default-construct them around the injected auth store (so they observe
+        // the same credential source); tests substitute fakes.
+        let fingerprint: @Sendable () -> ClaudeCredentialFingerprint = { authStore.currentFingerprint() }
+        self.coordinator = coordinator ?? ClaudeDelegatedRefreshCoordinator(
+            claudeConfigDir: { authStore.claudeHomeOverride() },
+            currentFingerprint: fingerprint,
+            now: now
+        )
+        self.failureGate = failureGate ?? ClaudeRefreshFailureGate(currentFingerprint: fingerprint)
         self.now = now
     }
 
@@ -53,6 +67,16 @@ final class ClaudeProvider: ProviderRuntime {
         // e.g. all sources showing `refresh=no` explains why an expiry can never self-heal (issue #738).
         let sources = candidates.map { $0.diagnosticsLabel(now: now()) }.joined(separator: ", ")
         AppLog.info(LogTag.plugin("claude"), "refresh start (\(candidates.count) source\(candidates.count == 1 ? "" : "s"): \(sources))")
+
+        // If a prior refresh left a TERMINAL block (the stored refresh chain is dead) and the credential
+        // hasn't changed since, skip the network entirely — only an external `claude` re-login (which
+        // changes the fingerprint and clears the gate via `shouldAttempt`) can recover. Checked once here,
+        // before the candidate loop, so a fresh re-login is still tried the moment creds change.
+        if case .terminal? = failureGate.currentBlockStatus(now: now()), !failureGate.shouldAttempt(now: now()) {
+            AppLog.info(LogTag.auth("claude"), "refresh blocked (terminal, credentials unchanged); not calling API")
+            return ProviderSnapshot.error(provider: provider, error: ClaudeAuthError.tokenExpired)
+        }
+
         let start = Date()
         // Probe each credential source in keychain-before-file order. An auth-expiry failure on one source (a
         // stale/locked-out token that an external `claude` re-login replaced in another source) falls
@@ -89,7 +113,25 @@ final class ClaudeProvider: ProviderRuntime {
         )
 
         if authStore.canFetchLiveUsage(state) {
-            mapped = try await fetchLiveUsage(state: &state)
+            do {
+                mapped = try await fetchLiveUsage(state: &state)
+            } catch let error as ClaudeAuthError where error == .sessionExpired || error == .tokenExpired {
+                // The in-process refresh hit a dead end (revoked refresh token, or none at all). Mark the
+                // gate terminal, then ask the `claude` CLI to refresh; if it rotates the credential,
+                // re-read and retry the live fetch ONCE before falling back to the next source.
+                failureGate.recordTerminalAuthFailure(reason: "\(error)", now: now())
+                if let recovered = try await delegatedRefreshIfPossible(currentSource: state.source) {
+                    state = recovered
+                    mapped = try await fetchLiveUsage(state: &state)
+                } else {
+                    throw error
+                }
+            } catch let error as ClaudeUsageError {
+                // A transport/infra failure during refresh or fetch (connection failed / 5xx) is transient:
+                // the credential may be fine. Back the gate off exponentially rather than marking it dead.
+                if case .connectionFailed = error { failureGate.recordTransientFailure(now: now()) }
+                throw error
+            }
         }
 
         await SpendTileMapper.appendCcusageUsage(
@@ -107,6 +149,18 @@ final class ClaudeProvider: ProviderRuntime {
         if let until = rateLimitedUntil, now() < until {
             AppLog.info(LogTag.plugin("claude"), "rate-limited (cooldown active, serving \(lastGoodUsage == nil ? "badge" : "last-good usage"))")
             return rateLimitedSnapshot(credentials: state.oauth, retryAfterSeconds: Int(until.timeIntervalSince(now()).rounded(.up)))
+        }
+
+        // The #738/#753 dead-end: the token needs refreshing but the source OpenUsage reads has no usable
+        // refresh token, so an in-process refresh is impossible. Go straight to the delegated-CLI path
+        // (gate + coordinator) and, if it rotates the credential, re-read and continue with fresh creds.
+        let hasUsableRefreshToken = (state.oauth.refreshToken?.isEmpty == false)
+        if authStore.needsRefresh(state.oauth), !hasUsableRefreshToken {
+            if let refreshed = try await delegatedRefreshIfPossible(currentSource: state.source) {
+                state = refreshed
+            }
+            // If the delegated refresh didn't yield a usable token, fall through: the fetch below will
+            // 401 and surface a clean auth error (recorded as terminal by the catch in probe()).
         }
 
         if authStore.needsRefresh(state.oauth),
@@ -142,7 +196,39 @@ final class ClaudeProvider: ProviderRuntime {
         let mapped = try ClaudeUsageMapper.mapUsageResponse(response, credentials: working.oauth, now: now())
         lastGoodUsage = mapped
         rateLimitedUntil = nil
+        failureGate.recordSuccess()
         return mapped
+    }
+
+    /// Delegate a refresh to the `claude` CLI when an in-process refresh isn't possible (no usable
+    /// refresh token in the source OpenUsage reads). Gated so a dead credential doesn't launch the CLI on
+    /// every refresh: only attempts when the failure gate allows it, and only treats success as a real
+    /// rotation (verified by the coordinator's fingerprint check). On success, re-reads the credential
+    /// candidates and returns the one matching the source we were probing (else the preferred one).
+    private func delegatedRefreshIfPossible(currentSource: ClaudeCredentialState.Source) async throws -> ClaudeCredentialState? {
+        guard failureGate.shouldAttempt(now: now()) else { return nil }
+
+        let outcome = await coordinator.attempt(now: now())
+        switch outcome {
+        case .attemptedSucceeded:
+            failureGate.recordSuccess()
+            let candidates = await loadOffMainActor { [authStore] in authStore.loadCredentialCandidates() }
+            // Prefer the same source we were probing; otherwise the first (preferred) candidate.
+            let recovered = candidates.first(where: { $0.source == currentSource }) ?? candidates.first
+            if recovered != nil {
+                AppLog.info(LogTag.auth("claude"), "delegated refresh recovered credentials; retrying live fetch")
+            }
+            return recovered
+        case .cliUnavailable:
+            AppLog.info(LogTag.auth("claude"), "delegated refresh unavailable (no claude CLI on PATH)")
+            return nil
+        case .skippedByCooldown:
+            AppLog.info(LogTag.auth("claude"), "delegated refresh skipped (cooldown)")
+            return nil
+        case .attemptedFailed(let reason):
+            AppLog.info(LogTag.auth("claude"), "delegated refresh did not rotate credentials (\(reason))")
+            return nil
+        }
     }
 
     /// Last-good usage with an appended staleness note when we have it; otherwise the plain rate-limited

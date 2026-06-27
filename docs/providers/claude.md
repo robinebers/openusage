@@ -23,6 +23,17 @@ Sign in once with Claude Code; OpenUsage reads the same credentials. It checks e
 
 If one source holds an expired or "locked out" token, OpenUsage falls back to the others — so signing in again with `claude` outside the app is picked up on the next refresh, without restarting OpenUsage. Tokens are refreshed automatically; rotated tokens are written back where they came from.
 
+### When OpenUsage can't refresh on its own
+
+Sometimes the credentials OpenUsage can read don't include everything needed to refresh an expired token — Claude Code keeps that part to itself. When that happens, OpenUsage asks the `claude` command-line tool to refresh for you in the background (it already has what it needs), then re-reads the credentials and carries on. You don't have to do anything, and nothing about your tokens leaves your Mac.
+
+To avoid bothering the `claude` tool too often, this is rate-limited:
+
+- If a refresh genuinely can't succeed (your login has been revoked), OpenUsage stops retrying and shows the "log in again" message — it only tries once more after you actually sign in again with `claude`.
+- If a refresh fails because of a temporary hiccup (no network, a server blip), OpenUsage waits a bit and tries again later, backing off further each time so it never hammers anything.
+
+If the `claude` tool isn't installed where OpenUsage looks, it simply skips this step and shows the usual "log in again" message. You can point OpenUsage at a specific `claude` binary with the `CLAUDE_CLI_PATH` environment variable.
+
 ## The spend tiles
 
 Today / Yesterday / Last 30 Days are computed **locally** from your Claude Code logs by running `ccusage` through whichever JavaScript package runner you already have — [Bun](https://bun.sh) (`bunx`) is preferred, otherwise `pnpm dlx`, `yarn dlx`, `npm exec`, or `npx`. Days are grouped in your Mac's local time zone, so they line up with your own calendar. Each period is one tile showing cost and tokens together (`$4.08 · 1.2M tokens`); a day with no usage is a real zero and reads `$0.00 · 0 tokens`. If `ccusage` hasn't reported a recent day yet — it can briefly lag a Claude Code update — Today / Yesterday read **No data** instead of a misleading `$0.00`; the live Session and Weekly meters are unaffected. The dollars are estimated from token counts (that's the ⓘ); the token counts themselves are measured. No log data leaves your Mac.
@@ -35,6 +46,6 @@ Today / Yesterday / Last 30 Days are computed **locally** from your Claude Code 
 
 ## Under the hood
 
-`GET https://api.anthropic.com/api/oauth/usage` with the Claude Code OAuth token; refresh via `platform.claude.com/v1/oauth/token`. A 401/403 triggers one token refresh and retry. If that still fails because the token is expired or revoked, OpenUsage retries with the next credential source before reporting an error.
+`GET https://api.anthropic.com/api/oauth/usage` with the Claude Code OAuth token; refresh via `platform.claude.com/v1/oauth/token`. A 401/403 triggers one token refresh and retry. If that still fails because the token is expired or revoked, OpenUsage retries with the next credential source before reporting an error. When no source can refresh on its own, OpenUsage delegates the refresh to the `claude` CLI (described above), confirming success only when the stored credential actually changes — gated by a short cooldown and a back-off so a dead login isn't retried in a loop.
 
 When the five-hour session window has no usage yet, the Session row shows **Not started** on the trailing label; hover explains that the session begins after your first message.

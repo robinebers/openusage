@@ -241,6 +241,21 @@ final class ClaudeUsageMapperTests: XCTestCase {
 
 @MainActor
 final class ClaudeProviderTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        // Default-constructed providers wire a failure gate + delegated-refresh coordinator backed by
+        // `UserDefaults.standard`. Tests that exercise auth-failure paths would otherwise persist a
+        // terminal block / cooldown into the shared standard domain and poison later tests, so clear
+        // those keys before each test for a clean slate.
+        for key in [
+            "claude.refreshGate.state.v1",
+            "claude.delegatedRefresh.lastAttemptAt.v1",
+            "claude.delegatedRefresh.cooldownSeconds.v1"
+        ] {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+    }
+
     func testRefreshFetchesLiveUsageAndPassesConfigDirToCcusage() async {
         let now = OpenUsageISO8601.date(from: "2026-02-20T16:00:00.000Z")!
         let httpClient = FakeHTTPClient(response: HTTPResponse(
@@ -571,6 +586,154 @@ final class ClaudeProviderTests: XCTestCase {
         XCTAssertNotEqual(badge(snapshot.lines, "Error"), ClaudeAuthError.tokenExpired.localizedDescription)
     }
 
+    // MARK: - Delegated CLI refresh (#753 / #738)
+
+    func testDelegatedRefreshRecoversWhenNoUsableRefreshTokenAndCLISucceeds() async {
+        // #753/#738 regression: the only credential source has an expired access token and NO usable
+        // refresh token, so an in-process refresh is impossible. Delegating to the `claude` CLI rotates
+        // the stored credential (the mock rewrites the file on touch); OpenUsage re-reads it and fetches
+        // live usage instead of dead-ending on "token expired".
+        let now = OpenUsageISO8601.date(from: "2026-02-20T16:00:00.000Z")!
+        let path = "/tmp/claude/.credentials.json"
+        let files = FakeFiles([
+            path: #"{"claudeAiOauth":{"accessToken":"expired","expiresAt":1,"subscriptionType":"pro","scopes":["user:profile"]}}"#
+        ])
+        let httpClient = RoutingHTTPClient { request in
+            if request.url.absoluteString.hasSuffix("/api/oauth/usage") {
+                let authorization = request.headers["Authorization"] ?? ""
+                guard authorization.contains("cli-rotated") else {
+                    return HTTPResponse(statusCode: 401, headers: [:], body: Data())
+                }
+                return HTTPResponse(
+                    statusCode: 200, headers: [:],
+                    body: Data(#"{"five_hour":{"utilization":33,"resets_at":"2099-01-01T00:00:00.000Z"}}"#.utf8)
+                )
+            }
+            return HTTPResponse(statusCode: 200, headers: [:], body: Data())
+        }
+        let authStore = ClaudeAuthStore(
+            environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": "/tmp/claude"]),
+            files: files, keychain: FakeKeychain(), now: { now }
+        )
+        // The CLI "touch" rewrites the credentials file with a fresh, unexpired token.
+        let runner = FingerprintRotatingRunner {
+            files.files[path] = #"{"claudeAiOauth":{"accessToken":"cli-rotated","expiresAt":4102444800000,"subscriptionType":"pro","scopes":["user:profile"]}}"#
+        }
+        let provider = ClaudeProvider(
+            authStore: authStore,
+            usageClient: ClaudeUsageClient(httpClient: httpClient),
+            ccusageRunner: CcusageRunner(processRunner: FakeProcessRunner(), homeDirectory: { URL(fileURLWithPath: "/Users/test") }),
+            coordinator: ClaudeDelegatedRefreshCoordinator(
+                processRunner: runner,
+                environment: FakeEnvironment(["CLAUDE_CLI_PATH": "/fake/claude"]),
+                currentFingerprint: { authStore.currentFingerprint() },
+                now: { now },
+                sleep: { _ in },
+                isExecutable: { $0 == "/fake/claude" },
+                defaults: Self.isolatedDefaults()
+            ),
+            failureGate: ClaudeRefreshFailureGate(
+                defaults: Self.isolatedDefaults(),
+                storageKey: "gate",
+                currentFingerprint: { authStore.currentFingerprint() }
+            ),
+            now: { now }
+        )
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(Self.progress(snapshot.lines, "Session")?.used, 33)
+        XCTAssertNil(badge(snapshot.lines, "Error"))
+    }
+
+    func testDelegatedRefreshFailsWhenCLIUnavailableThenTokenExpired() async {
+        // No usable refresh token AND no `claude` CLI to delegate to → the snapshot reports the friendly
+        // token-expired error rather than silently recovering.
+        let now = OpenUsageISO8601.date(from: "2026-02-20T16:00:00.000Z")!
+        let files = FakeFiles([
+            "/tmp/claude/.credentials.json": #"{"claudeAiOauth":{"accessToken":"expired","expiresAt":1,"subscriptionType":"pro","scopes":["user:profile"]}}"#
+        ])
+        let httpClient = RoutingHTTPClient { request in
+            if request.url.absoluteString.hasSuffix("/api/oauth/usage") {
+                return HTTPResponse(statusCode: 401, headers: [:], body: Data())
+            }
+            return HTTPResponse(statusCode: 200, headers: [:], body: Data())
+        }
+        let authStore = ClaudeAuthStore(
+            environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": "/tmp/claude"]),
+            files: files, keychain: FakeKeychain(), now: { now }
+        )
+        let provider = ClaudeProvider(
+            authStore: authStore,
+            usageClient: ClaudeUsageClient(httpClient: httpClient),
+            ccusageRunner: CcusageRunner(processRunner: FakeProcessRunner(), homeDirectory: { URL(fileURLWithPath: "/Users/test") }),
+            coordinator: ClaudeDelegatedRefreshCoordinator(
+                processRunner: FingerprintRotatingRunner {},
+                environment: FakeEnvironment([:]),
+                currentFingerprint: { authStore.currentFingerprint() },
+                now: { now },
+                sleep: { _ in },
+                isExecutable: { _ in false }, // no CLI resolves
+                defaults: Self.isolatedDefaults()
+            ),
+            failureGate: ClaudeRefreshFailureGate(
+                defaults: Self.isolatedDefaults(), storageKey: "gate",
+                currentFingerprint: { authStore.currentFingerprint() }
+            ),
+            now: { now }
+        )
+
+        let snapshot = await provider.refresh()
+        XCTAssertEqual(badge(snapshot.lines, "Error"), ClaudeAuthError.tokenExpired.localizedDescription)
+    }
+
+    func testTerminalBlockWithUnchangedCredsSkipsNetwork() async {
+        // After a terminal failure, while the credential is unchanged the provider must not hit the usage
+        // API at all — it short-circuits to token-expired. Exercised by priming the gate as terminal.
+        let now = OpenUsageISO8601.date(from: "2026-02-20T16:00:00.000Z")!
+        let files = FakeFiles([
+            "/tmp/claude/.credentials.json": #"{"claudeAiOauth":{"accessToken":"expired","expiresAt":1,"subscriptionType":"pro","scopes":["user:profile"]}}"#
+        ])
+        let httpClient = FakeHTTPClient(response: HTTPResponse(statusCode: 200, headers: [:], body: Data()))
+        let authStore = ClaudeAuthStore(
+            environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": "/tmp/claude"]),
+            files: files, keychain: FakeKeychain(), now: { now }
+        )
+        let gateDefaults = Self.isolatedDefaults()
+        let gate = ClaudeRefreshFailureGate(
+            defaults: gateDefaults, storageKey: "gate",
+            currentFingerprint: { authStore.currentFingerprint() }
+        )
+        // Prime a terminal block (as if a prior refresh hit invalid_grant) more than 15s in the past so
+        // the gate's recheck isn't throttled — it rechecks, finds creds unchanged, and stays blocked.
+        gate.recordTerminalAuthFailure(reason: "invalid_grant", now: now.addingTimeInterval(-60))
+
+        let provider = ClaudeProvider(
+            authStore: authStore,
+            usageClient: ClaudeUsageClient(httpClient: httpClient),
+            ccusageRunner: CcusageRunner(processRunner: FakeProcessRunner(), homeDirectory: { URL(fileURLWithPath: "/Users/test") }),
+            coordinator: ClaudeDelegatedRefreshCoordinator(
+                processRunner: FingerprintRotatingRunner {},
+                environment: FakeEnvironment([:]),
+                currentFingerprint: { authStore.currentFingerprint() },
+                now: { now }, sleep: { _ in }, isExecutable: { _ in false },
+                defaults: Self.isolatedDefaults()
+            ),
+            failureGate: gate,
+            now: { now }
+        )
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(badge(snapshot.lines, "Error"), ClaudeAuthError.tokenExpired.localizedDescription)
+        // The key assertion: no usage API call was made while terminally blocked with unchanged creds.
+        XCTAssertTrue(httpClient.requests.isEmpty, "terminal-blocked refresh must not call the usage API")
+    }
+
+    private static func isolatedDefaults() -> UserDefaults {
+        UserDefaults(suiteName: "claude.provider.test.\(UUID().uuidString)")!
+    }
+
     private func badge(_ lines: [MetricLine], _ label: String) -> String? {
         guard case .badge(_, let value, _, _) = lines.first(where: { $0.label == label }) else {
             return nil
@@ -597,6 +760,28 @@ final class ClaudeProviderTests: XCTestCase {
             return nil
         }
         return (used, limit, resetsAt, periodDurationMs)
+    }
+}
+
+/// A process runner for the delegated-refresh coordinator: every `--version` touch invokes `onTouch`
+/// (a test hook that can rewrite the credentials file to simulate the CLI rotating the token) and
+/// returns success. A bare-command probe (no leading `/`) returns failure so CLI resolution falls to
+/// the `isExecutable` override the test injects.
+private final class FingerprintRotatingRunner: ProcessRunning, @unchecked Sendable {
+    private let onTouch: @Sendable () -> Void
+    init(_ onTouch: @escaping @Sendable () -> Void) { self.onTouch = onTouch }
+
+    func run(
+        executable: String,
+        arguments: [String],
+        environment: [String: String],
+        timeout: TimeInterval
+    ) throws -> ProcessResult {
+        guard executable.hasPrefix("/") else {
+            return ProcessResult(exitCode: 127, stdout: "", stderr: "not found")
+        }
+        onTouch()
+        return ProcessResult(exitCode: 0, stdout: "1.2.3\n", stderr: "")
     }
 }
 
