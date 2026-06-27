@@ -82,6 +82,10 @@ final class LayoutStore {
     private(set) var pinNoticeShakeTrigger = 0
     private var pinNoticeClearTask: Task<Void, Never>?
 
+    /// Bounded undo stack for metric removals done in Customize. UI-only state (not persisted): undo is a
+    /// within-session affordance, so a relaunch starts fresh. Removals only — reordering isn't tracked.
+    private var removedMetricHistory = RemovedMetricHistory()
+
     /// Menu-bar display style (Text strip vs. compact Bars). Persisted; defaults to `.text`.
     var menuBarStyle: MenuBarStyle {
         didSet { defaults.set(menuBarStyle.rawValue, forKey: menuBarStyleKey) }
@@ -336,8 +340,76 @@ final class LayoutStore {
             }
             add(descriptorID)
         } else if let widget = placed.first(where: { $0.descriptorID == descriptorID }) {
+            recordRemoval(of: descriptorID)
             remove(widget.id)
         }
+    }
+
+    // MARK: - Undo removal (#603)
+
+    /// Whether the most recent Customize removal can be restored. Drives the Undo affordance's
+    /// presence (and the ⌘Z handler's no-op guard).
+    var canUndoRemove: Bool { removedMetricHistory.canUndo }
+
+    /// Capture a removal's position before it's dropped, so undo can put the metric back where it sat.
+    /// The provider's stored metric order keeps a disabled metric in place, so re-enabling alone usually
+    /// restores the slot; recording the index lets undo repair the order if it shifted while off.
+    private func recordRemoval(of descriptorID: String) {
+        guard let providerID = registry.descriptor(id: descriptorID)?.providerID else { return }
+        let order = metricOrder(for: providerID)
+        guard let index = order.firstIndex(of: descriptorID) else { return }
+        removedMetricHistory.record(
+            RemovedMetric(
+                descriptorID: descriptorID,
+                providerID: providerID,
+                indexInProvider: index,
+                wasExpanded: expandedMetricIDs.contains(descriptorID)
+            )
+        )
+    }
+
+    /// Restore the most recently removed metric to its prior position and re-enable it. A no-op when
+    /// there's nothing to undo, or when the metric's provider/descriptor no longer exists. Returns
+    /// whether anything was restored — callers key haptics / feedback off it.
+    @discardableResult
+    func undoLastRemove() -> Bool {
+        guard let removal = removedMetricHistory.popLast() else { return false }
+        guard registry.descriptor(id: removal.descriptorID) != nil,
+              registry.provider(id: removal.providerID) != nil else {
+            // The descriptor or provider went away (e.g. a provider was turned off) — drop the stale
+            // entry (already popped) and try the next one down so ⌘Z still does something useful.
+            return undoLastRemove()
+        }
+
+        // Repair the metric's slot in its provider's order if it drifted while the metric was off (a
+        // reorder of the surviving rows). Re-enabling then lands it back in this position because
+        // `syncPlacedOrder` sorts `placed` by the provider's metric order.
+        restorePosition(of: removal)
+
+        // Re-enable through the normal seam so add + sync run exactly as a manual re-toggle would —
+        // but record nothing, since this *is* the undo.
+        if !isMetricEnabled(removal.descriptorID) {
+            add(removal.descriptorID)
+        }
+        return true
+    }
+
+    /// Move `removal.descriptorID` back to its recorded index within its provider's metric order and
+    /// restore its expanded (below-the-caret) membership, leaving every other metric in place.
+    private func restorePosition(of removal: RemovedMetric) {
+        let providerID = removal.providerID
+        if removal.wasExpanded {
+            expandedMetricIDs.insert(removal.descriptorID)
+        } else {
+            expandedMetricIDs.remove(removal.descriptorID)
+        }
+
+        var order = metricOrder(for: providerID).filter { $0 != removal.descriptorID }
+        let target = min(max(removal.indexInProvider, 0), order.count)
+        order.insert(removal.descriptorID, at: target)
+        metricOrderByProvider[providerID] = order
+        persistMetricOrder()
+        persistExpanded()
     }
 
     /// Reorder whole providers when `dragged`'s header is dropped onto `target`'s. Works on the currently
@@ -648,6 +720,9 @@ final class LayoutStore {
 
     func resetToDefault() {
         cancelDrag()
+        // The recorded prior positions describe the pre-reset layout; after a reset they'd restore a
+        // stale arrangement, so the undo stack is dropped wholesale.
+        removedMetricHistory.clear()
         placed = defaultMetricIDs
             .filter { registry.descriptor(id: $0) != nil }
             .map { PlacedWidget(descriptorID: $0) }
@@ -674,6 +749,9 @@ final class LayoutStore {
     func resetProvider(_ providerID: String) {
         guard registry.provider(id: providerID) != nil else { return }
         cancelDrag()
+        // This provider's recorded removals describe its pre-reset order; drop them so undo can't
+        // restore into the just-reset arrangement. Other providers' history stays intact.
+        removedMetricHistory.removeAll(forProvider: providerID)
 
         // This provider's descriptor universe — the membership sets below are all scoped to it.
         let owned = Set(registry.descriptors(for: providerID).map(\.id))

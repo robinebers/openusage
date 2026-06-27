@@ -111,6 +111,14 @@ struct DashboardView: View {
                             layout.screen = layout.screen == .settings ? .dashboard : .settings
                         }
                         return true
+                    },
+                    // ⌘Z restores the last metric removed in Customize. Scoped to that screen (undo is a
+                    // Customize affordance) and gated on a non-empty history, so on the dashboard or with
+                    // nothing to undo it falls through untouched and never swallows a system ⌘Z.
+                    onUndo: {
+                        guard layout.screen == .customize, layout.canUndoRemove else { return false }
+                        withAnimation(Motion.spring) { _ = layout.undoLastRemove() }
+                        return true
                     }
                 )
             )
@@ -491,13 +499,24 @@ struct DashboardView: View {
         Group {
             if screen == .customize {
                 // Customize summarizes the layout — active (enabled) metrics and how many are pinned —
-                // centered, using the same middot the metric rows use.
-                Text(layout.pinLimitNotice ?? "\(activeMetricCount) active · \(layout.pinnedCount) pinned")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(layout.pinLimitNotice == nil ? AnyShapeStyle(.secondary) : Theme.notice)
-                    .denyShake(trigger: layout.pinNoticeShakeTrigger)
-                    .frame(maxWidth: .infinity)
-                    .animation(Motion.spring, value: layout.pinLimitNotice)
+                // centered, using the same middot the metric rows use. After a removal an Undo button
+                // appears trailing (⌘Z does the same), so the action is discoverable without the key.
+                ZStack {
+                    Text(layout.pinLimitNotice ?? "\(activeMetricCount) active · \(layout.pinnedCount) pinned")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(layout.pinLimitNotice == nil ? AnyShapeStyle(.secondary) : Theme.notice)
+                        .denyShake(trigger: layout.pinNoticeShakeTrigger)
+                        .frame(maxWidth: .infinity)
+                        .animation(Motion.spring, value: layout.pinLimitNotice)
+
+                    if layout.canUndoRemove {
+                        HStack {
+                            Spacer(minLength: 0)
+                            undoButton
+                        }
+                    }
+                }
+                .animation(Motion.spring, value: layout.canUndoRemove)
             } else {
                 HStack(alignment: .center, spacing: 8) {
                     footerIdentity
@@ -520,6 +539,23 @@ struct DashboardView: View {
             measuredFooter[screen] = height
             recomposeIdeal(for: screen)
         }
+    }
+
+    /// The Customize footer's Undo control: appears after a removal and restores the last metric to its
+    /// prior position (the visible twin of the ⌘Z handler). A `.glass` pill matching the footer's idiom.
+    private var undoButton: some View {
+        Button {
+            withAnimation(Motion.spring) { _ = layout.undoLastRemove() }
+        } label: {
+            Label("Undo", systemImage: "arrow.uturn.backward")
+                .font(.caption.weight(.semibold))
+                .labelStyle(.titleAndIcon)
+        }
+        .glassButtonStyle()
+        .controlSize(.small)
+        // ⌘Z is handled by the popover's always-on key monitor (`PopoverKeyReader.onUndo`), not a SwiftUI
+        // shortcut here — pairing both would risk a double-undo when the panel is the key window.
+        .accessibilityLabel("Undo Remove")
     }
 
     /// Count of enabled ("active") metrics across providers — the "N active" half of the Customize footer

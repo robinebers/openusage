@@ -20,6 +20,132 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertTrue(store.placed.isEmpty)
     }
 
+    // MARK: - Undo removal (#603)
+
+    func testUndoRestoresRemovedMetricToSamePosition() {
+        let store = makeStore("UndoRestoresPosition")
+        // Enable Claude's full set so the order is well-defined and the removed metric has neighbours.
+        for id in ["claude.session", "claude.weekly", "claude.extra", "claude.today"] {
+            store.setMetricEnabled(id, true)
+        }
+        let orderBefore = store.orderedSupportedMetrics(for: "claude").map(\.id)
+        let enabledBefore = store.placed.filter { $0.descriptorID.hasPrefix("claude.") }.map(\.descriptorID)
+
+        XCTAssertFalse(store.canUndoRemove)
+
+        // Remove a middle metric, then undo it.
+        store.setMetricEnabled("claude.weekly", false)
+        XCTAssertFalse(store.isMetricEnabled("claude.weekly"))
+        XCTAssertTrue(store.canUndoRemove)
+
+        XCTAssertTrue(store.undoLastRemove())
+
+        // Re-enabled and back in its exact slot, with the enabled placed order unchanged.
+        XCTAssertTrue(store.isMetricEnabled("claude.weekly"))
+        XCTAssertEqual(store.orderedSupportedMetrics(for: "claude").map(\.id), orderBefore)
+        XCTAssertEqual(
+            store.placed.filter { $0.descriptorID.hasPrefix("claude.") }.map(\.descriptorID),
+            enabledBefore
+        )
+    }
+
+    func testUndoRestoresPositionAfterInterveningReorder() {
+        let store = makeStore("UndoAfterReorder")
+        for id in ["claude.session", "claude.weekly", "claude.extra", "claude.today"] {
+            store.setMetricEnabled(id, true)
+        }
+        // Remove the first metric, then reorder the survivors, then undo. The metric should return to
+        // its recorded index even though the order shifted while it was gone.
+        store.setMetricEnabled("claude.session", false)
+        store.reorderMetric(dragged: "claude.today", target: "claude.weekly", in: "claude")
+
+        XCTAssertTrue(store.undoLastRemove())
+        XCTAssertTrue(store.isMetricEnabled("claude.session"))
+        XCTAssertEqual(store.orderedSupportedMetrics(for: "claude").map(\.id).first, "claude.session")
+    }
+
+    func testUndoIsLIFOAcrossMultipleRemovals() {
+        let store = makeStore("UndoLIFO")
+        for id in ["claude.session", "claude.weekly", "claude.today"] {
+            store.setMetricEnabled(id, true)
+        }
+        store.setMetricEnabled("claude.weekly", false)
+        store.setMetricEnabled("claude.today", false)
+
+        // Most recent removal undoes first.
+        XCTAssertTrue(store.undoLastRemove())
+        XCTAssertTrue(store.isMetricEnabled("claude.today"))
+        XCTAssertFalse(store.isMetricEnabled("claude.weekly"))
+
+        XCTAssertTrue(store.undoLastRemove())
+        XCTAssertTrue(store.isMetricEnabled("claude.weekly"))
+        XCTAssertFalse(store.canUndoRemove)
+    }
+
+    func testUndoRestoresExpandedMembership() {
+        let store = makeStore("UndoExpanded")
+        store.setMetricEnabled("claude.weekly", true)
+        store.setMetricExpanded("claude.weekly", true)
+        XCTAssertTrue(store.isMetricExpanded("claude.weekly"))
+
+        store.setMetricEnabled("claude.weekly", false)
+        XCTAssertTrue(store.undoLastRemove())
+
+        XCTAssertTrue(store.isMetricEnabled("claude.weekly"))
+        XCTAssertTrue(store.isMetricExpanded("claude.weekly"), "undo restores below-the-caret membership")
+    }
+
+    func testUndoWithEmptyHistoryIsNoOp() {
+        let store = makeStore("UndoEmpty")
+        let before = store.placed.map(\.descriptorID)
+
+        XCTAssertFalse(store.canUndoRemove)
+        XCTAssertFalse(store.undoLastRemove())
+        XCTAssertEqual(store.placed.map(\.descriptorID), before)
+    }
+
+    func testResetToDefaultClearsUndoHistory() {
+        let store = makeStore("UndoResetAllClears")
+        store.setMetricEnabled("claude.weekly", true)
+        store.setMetricEnabled("claude.weekly", false)
+        XCTAssertTrue(store.canUndoRemove)
+
+        store.resetToDefault()
+
+        XCTAssertFalse(store.canUndoRemove)
+        XCTAssertFalse(store.undoLastRemove())
+    }
+
+    func testResetProviderClearsOnlyThatProvidersUndoHistory() {
+        let store = makeStore("UndoResetProviderClears")
+        store.setMetricEnabled("claude.weekly", true)
+        store.setMetricEnabled("codex.weekly", true)
+        store.setMetricEnabled("claude.weekly", false)
+        store.setMetricEnabled("codex.weekly", false)
+
+        store.resetProvider("claude")
+
+        // Claude's removal is forgotten; Codex's is still undoable, and undo targets it.
+        XCTAssertTrue(store.canUndoRemove)
+        XCTAssertTrue(store.undoLastRemove())
+        XCTAssertTrue(store.isMetricEnabled("codex.weekly"))
+        XCTAssertFalse(store.canUndoRemove)
+    }
+
+    func testDirectRemoveDoesNotRecordUndo() {
+        // The low-level `remove(_:)` (used by drag teardown and tests) is not the Customize seam, so it
+        // doesn't feed the undo stack — only `setMetricEnabled(_, false)` does.
+        let store = makeStore("UndoDirectRemove")
+        store.setMetricEnabled("claude.weekly", true)
+        guard let widget = store.placed.first(where: { $0.descriptorID == "claude.weekly" }) else {
+            return XCTFail("metric was not enabled")
+        }
+
+        store.remove(widget.id)
+
+        XCTAssertFalse(store.canUndoRemove)
+    }
+
     func testSavedEmptyLayoutDoesNotRestoreDefaults() {
         let defaults = makeDefaults("EmptyLayout")
         let store = LayoutStore(registry: .mock, defaults: defaults, storageKey: "layout")
