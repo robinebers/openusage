@@ -365,7 +365,6 @@ final class LayoutStore {
             metricOrderByProvider: metricOrderByProvider,
             pinnedMetricIDs: pinnedMetricIDs,
             expandedMetricIDs: expandedMetricIDs,
-            expandedProviderIDs: expandedProviderIDs,
             defaultExpandedOnEnableIDs: defaultExpandedOnEnableIDs
         )
     }
@@ -402,6 +401,8 @@ final class LayoutStore {
     }
 
     /// Restore every undoable field from a snapshot and persist the result. Called by `undo()`.
+    /// Provider card expand/collapse (`expandedProviderIDs`) is deliberately excluded: it's transient
+    /// view state, not a layout edit, so undo must not rewind caret toggles done between steps.
     private func restore(_ snapshot: LayoutSnapshot) {
         cancelDrag()
         placed = snapshot.placed
@@ -409,14 +410,12 @@ final class LayoutStore {
         metricOrderByProvider = snapshot.metricOrderByProvider
         pinnedMetricIDs = snapshot.pinnedMetricIDs
         expandedMetricIDs = snapshot.expandedMetricIDs
-        expandedProviderIDs = snapshot.expandedProviderIDs
         defaultExpandedOnEnableIDs = snapshot.defaultExpandedOnEnableIDs
         persist()
         persistProviderOrder()
         persistMetricOrder()
         persistPins()
         persistExpanded()
-        persistExpandedProviders()
     }
 
     /// Reorder whole providers when `dragged`'s header is dropped onto `target`'s. Works on the currently

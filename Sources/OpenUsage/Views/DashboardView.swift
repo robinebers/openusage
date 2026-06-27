@@ -504,14 +504,12 @@ struct DashboardView: View {
                 // Customize summarizes the layout — active (enabled) metrics and how many are pinned —
                 // centered, using the same middot the metric rows use. ⌘Z (handled app-wide by the
                 // popover's key monitor) is the sole undo affordance; the footer stays a plain summary.
-                ZStack {
-                    Text(layout.pinLimitNotice ?? "\(activeMetricCount) active · \(layout.pinnedCount) pinned")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(layout.pinLimitNotice == nil ? AnyShapeStyle(.secondary) : Theme.notice)
-                        .denyShake(trigger: layout.pinNoticeShakeTrigger)
-                        .frame(maxWidth: .infinity)
-                        .animation(Motion.spring, value: layout.pinLimitNotice)
-                }
+                Text(layout.pinLimitNotice ?? "\(activeMetricCount) active · \(layout.pinnedCount) pinned")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(layout.pinLimitNotice == nil ? AnyShapeStyle(.secondary) : Theme.notice)
+                    .denyShake(trigger: layout.pinNoticeShakeTrigger)
+                    .frame(maxWidth: .infinity)
+                    .animation(Motion.spring, value: layout.pinLimitNotice)
             } else {
                 HStack(alignment: .center, spacing: 8) {
                     footerIdentity

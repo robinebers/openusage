@@ -119,6 +119,29 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertFalse(store.isMetricExpanded("claude.session"), "undo moves the metric back above the caret")
     }
 
+    func testUndoDoesNotRestoreProviderCardCaretState() {
+        // Provider card expand/collapse is transient view state, not a layout edit, so undo must leave
+        // the caret where the user last put it — not rewind it to whatever was open when the undone
+        // step was recorded. Regression test for the snapshot wrongly capturing expandedProviderIDs.
+        let store = makeStore("UndoLeavesProviderCaret")
+        XCTAssertFalse(store.isProviderExpanded("codex"))
+
+        // Open Codex's card, then make an undoable layout edit. The pre-edit snapshot must not capture
+        // the open caret.
+        XCTAssertTrue(store.setProviderExpanded(true, for: "codex"))
+        XCTAssertTrue(store.isProviderExpanded("codex"))
+        store.setMetricEnabled("cursor.credits", true)
+        XCTAssertTrue(store.canUndo)
+
+        // Collapse the card after the step was recorded, then undo the enable.
+        XCTAssertTrue(store.setProviderExpanded(false, for: "codex"))
+        XCTAssertFalse(store.isProviderExpanded("codex"))
+
+        XCTAssertTrue(store.undo())
+        XCTAssertFalse(store.isMetricEnabled("cursor.credits"))
+        XCTAssertFalse(store.isProviderExpanded("codex"), "undo must not restore provider card caret state")
+    }
+
     func testUndoWalksBackMultipleMixedSteps() {
         let store = makeStore("UndoMultiStep")
         // Distinct, real changes: enable an off metric, pin an unpinned one, remove an on metric.
