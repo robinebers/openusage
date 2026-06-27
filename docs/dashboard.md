@@ -4,6 +4,10 @@ The popover that opens from the menu bar icon. Providers are sections; each sect
 
 Each provider card leads with its **always-shown** metrics. Any metrics you've moved below the **Shown on Expand** line are tucked away behind the in-card caret — click it to reveal them below the caret, click again to collapse. Open cards stay open across popover closes and app restarts. A provider with nothing tucked away shows no caret.
 
+When you expand a card, the tucked-away metrics open below the caret as a single-column list, so each detail row keeps the full card width.
+
+A provider card can also show **quick-link buttons** pinned at the bottom of its expanded section — Status, Console, Dashboard, and the like — that open the provider's own pages in your default browser. They're part of the expander, so collapsing the caret hides them along with the tucked-away metrics. Buttons lay out up to three across, wrapping to a second row when there are more.
+
 ## Rows
 
 **Metrics with a limit** (session, weekly, credits with a cap) show a progress bar with:
@@ -26,7 +30,13 @@ Rows with a reset date tick every 30 seconds, so countdowns and pace stay live b
 ## Right-click menus
 
 Every row: **Hide · Pin to menu bar / Unpin · Refresh \<provider\> · Customize…**
-Provider headers: **Hide \<provider\> · Refresh \<provider\> · Customize…** (Hide turns the whole provider off; turn it back on under Settings ▸ Providers.)
+Provider headers: **Hide \<provider\> · Refresh \<provider\> · Customize…** (Hide turns the whole provider off; turn it back on under Settings ▸ Providers.) plus **Copy as Image** (see below).
+
+## Share
+
+Right-click a provider header and choose **Copy as Image** to copy a clean, branded PNG of that provider's usage to your clipboard, ready to paste into a chat, a tweet, or a doc.
+
+The image is a flexible-height PNG using the app's look — the provider's mark and name up top, the metric rows you currently see for that provider, and a small OpenUsage mark centered at the bottom. It follows your Light/Dark appearance and shows everything on the card as-is (nothing is hidden or blurred).
 
 ## Footer
 
@@ -40,6 +50,8 @@ Each provider card has a dashed **Shown on Expand** line. Metrics above it are a
 
 The default reset layout keeps each provider's core quota meters and Usage Trend always shown, then tucks balances, reset details, and spend-history rows behind the caret. Optional detail rows like Claude Sonnet and Cursor Requests/Credits stay off by default, but start below the divider if you enable them.
 
+Made a change you didn't mean to? Press **⌘Z** to undo — it works anywhere in the popover (the main dashboard and Customize alike) and steps back through your recent customization changes one at a time: hiding or showing a metric, reordering metrics or whole providers, pinning or unpinning, and moving a metric across the expand caret all undo. Each step restores the exact previous arrangement. Undo is per-session (it starts fresh after a relaunch), and resetting clears it.
+
 When OpenUsage ships a new default metric, existing layouts get it once. If you turn it off, it stays off. The **Reset** button in Customize restores the default metrics, order, menu-bar pins, and which metrics start behind the expand caret, but leaves provider settings and other preferences unchanged.
 
 ## Keyboard
@@ -48,6 +60,7 @@ When OpenUsage ships a new default metric, existing layouts get it once. If you 
 |---|---|
 | Return | Open / close Customize |
 | Esc | Back out of Customize or Settings; from the dashboard, close the popover |
+| ⌘Z | Undo the last customization change (app-wide; repeat to step back) |
 | ⌘R | Refresh now (skips the cache) |
 | ⌘, | Open / close Settings (in the popover) |
 

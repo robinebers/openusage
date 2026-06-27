@@ -21,7 +21,7 @@ jobs:
     # it cannot build this package. Runtime verification on Sequoia is a manual smoke pass.
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 

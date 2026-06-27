@@ -2,7 +2,15 @@ import Foundation
 
 @MainActor
 final class CursorProvider: ProviderRuntime {
-    let provider = Provider(id: "cursor", displayName: "Cursor", icon: .providerMark("cursor"))
+    let provider = Provider(
+        id: "cursor",
+        displayName: "Cursor",
+        icon: .providerMark("cursor"),
+        links: [
+            .init(label: "Status", url: "https://status.cursor.com/"),
+            .init(label: "Dashboard", url: "https://www.cursor.com/dashboard")
+        ]
+    )
 
     let authStore: CursorAuthStore
     let usageClient: CursorUsageClient
