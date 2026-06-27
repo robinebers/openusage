@@ -169,6 +169,35 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertTrue(reloaded.isMetricExpanded("claude.today"))
     }
 
+    func testMigrationPersistKeepsLegacyOptionalMetricExpandOnEnableAfterReload() {
+        let defaults = makeDefaults("SeedExpandedKeepsFallback")
+        // Legacy layout: predates the expanded feature (no saved expanded set).
+        saveStored([PlacedWidget(descriptorID: "cursor.usage")], forKey: "layout", in: defaults)
+
+        let args: (UserDefaults) -> LayoutStore = { d in
+            LayoutStore(
+                registry: .mock,
+                defaults: d,
+                storageKey: "layout",
+                defaultMetricIDs: ["cursor.usage", "claude.today"],
+                migrationBaselineMetricIDs: ["cursor.usage"],
+                // claude.today is a brand-new default (auto-enabled + tucked, persisting an expanded set);
+                // cursor.requests is an optional default-expanded metric the user hasn't enabled yet.
+                defaultExpandedMetricIDs: ["claude.today", "cursor.requests"]
+            )
+        }
+
+        // First launch performs the migration and persists the expanded set.
+        _ = args(defaults)
+
+        // Second launch now sees a saved expanded set — the legacy optional metric must still enter below
+        // the caret when first enabled (regression: persisting the migration zeroed the on-enable queue).
+        let reloaded = args(defaults)
+        XCTAssertFalse(reloaded.isMetricExpanded("cursor.requests"))
+        reloaded.setMetricEnabled("cursor.requests", true)
+        XCTAssertTrue(reloaded.isMetricExpanded("cursor.requests"))
+    }
+
     func testExplicitDividerMoveOverridesDefaultExpandedOnEnable() {
         let defaults = makeDefaults("LegacyEnableExpandedOverride")
         saveStored([PlacedWidget(descriptorID: "cursor.usage")], forKey: "layout", in: defaults)

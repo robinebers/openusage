@@ -177,25 +177,19 @@ final class LayoutStore {
 
         // Seed default expanded membership only on a genuinely fresh launch. An existing layout with no
         // saved value predates this feature, so its metrics stay always-shown — never silently tuck a
-        // metric the user already lived with behind a new caret. Default-expanded metrics that were off
-        // at migration time still enter below the caret the first time the user enables them.
+        // metric the user already lived with behind a new caret.
         var shouldPersistExpanded = false
-        let initialDefaultExpandedOnEnableIDs: Set<String>
         if let savedExpanded = defaults.stringArray(forKey: expandedMetricsKey) {
             expandedMetricIDs = Set(savedExpanded.filter { registry.descriptor(id: $0) != nil })
-            initialDefaultExpandedOnEnableIDs = []
         } else if hasStoredLayout {
             expandedMetricIDs = []
-            let placedIDs = Set(initialPlaced.map(\.descriptorID))
-            initialDefaultExpandedOnEnableIDs = Set(defaultExpandedMetricIDs.filter {
-                registry.descriptor(id: $0) != nil && !placedIDs.contains($0)
-            })
         } else {
             expandedMetricIDs = Set(defaultExpandedMetricIDs.filter { registry.descriptor(id: $0) != nil })
-            initialDefaultExpandedOnEnableIDs = []
             shouldPersistExpanded = true
         }
-        defaultExpandedOnEnableIDs = initialDefaultExpandedOnEnableIDs
+        // Finalized below once `expandedMetricIDs` is settled; seeded here so every stored property is
+        // initialized before the reads that compute the real value.
+        defaultExpandedOnEnableIDs = []
         menuBarStyle = defaults.enumValue(forKey: menuBarStyleKey, default: .text)
 
         if let savedExpandedProviders = defaults.stringArray(forKey: expandedProvidersKey) {
@@ -215,6 +209,15 @@ final class LayoutStore {
             expandedMetricIDs.formUnion(newlyExpanded)
             shouldPersistExpanded = true
         }
+
+        // A default-expanded metric that is neither already an expanded member nor placed enters below the
+        // caret the first time the user enables it. Derived from the *final* expanded set — not from
+        // "was an expanded set saved?" — so persisting the migration above (which creates a saved set)
+        // can't strand a legacy optional metric (e.g. `cursor.requests`) above the fold on the next launch.
+        let placedIDs = Set(placed.map(\.descriptorID))
+        defaultExpandedOnEnableIDs = Set(defaultExpandedMetricIDs.filter {
+            registry.descriptor(id: $0) != nil && !expandedMetricIDs.contains($0) && !placedIDs.contains($0)
+        })
 
         if shouldPersistExpanded { persistExpanded() }
 
