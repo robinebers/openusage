@@ -50,12 +50,15 @@ struct OpenRouterAuthStore: Sendable {
         self.environment = environment
     }
 
+    /// Config file first, environment second — the order the provider docs document. The config file is
+    /// the path a user edits to rotate or replace the key, so it must win over a stale `OPENROUTER_API_KEY`
+    /// that an old `launchctl setenv` may have left in the app's environment.
     func loadAPIKey() -> OpenRouterAuth? {
-        if let key = keyFromEnvironment() {
-            return OpenRouterAuth(apiKey: key, source: .environment)
-        }
         if let key = keyFromConfigFile() {
             return OpenRouterAuth(apiKey: key, source: .configFile)
+        }
+        if let key = keyFromEnvironment() {
+            return OpenRouterAuth(apiKey: key, source: .environment)
         }
         return nil
     }

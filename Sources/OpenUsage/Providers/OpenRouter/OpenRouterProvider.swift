@@ -40,19 +40,67 @@ final class OpenRouterProvider: ProviderRuntime {
             return ProviderSnapshot.error(provider: provider, error: OpenRouterAuthError.missingKey)
         }
 
-        do {
-            let credits = try await usageClient.fetchCredits(apiKey: auth.apiKey)
-            // `/key` is best-effort enrichment (tier, period spend, per-key cap); a transport failure
-            // here must not sink the snapshot, so swallow it and map from `/credits` alone.
-            let keyResponse = try? await usageClient.fetchKey(apiKey: auth.apiKey)
-            let mapped = try OpenRouterUsageMapper.map(creditsResponse: credits, keyResponse: keyResponse)
-            return ProviderSnapshot.make(provider: provider, plan: mapped.plan, lines: mapped.lines, refreshedAt: now())
-        } catch let error as OpenRouterAuthError {
-            return ProviderSnapshot.error(provider: provider, error: error)
-        } catch let error as OpenRouterUsageError {
-            return ProviderSnapshot.error(provider: provider, error: error)
-        } catch {
-            return ProviderSnapshot.error(provider: provider, error: OpenRouterUsageError.connectionFailed)
+        // Both endpoints are fetched independently and mapped from whatever succeeds. `/credits` carries
+        // the balance and `/key` the tier + period spend; OpenRouter gates some endpoints to specific key
+        // types, so one returning 403 must not blank out the data the other returned.
+        let credits = await load { try await usageClient.fetchCredits(apiKey: auth.apiKey) }
+        let key = await load { try await usageClient.fetchKey(apiKey: auth.apiKey) }
+
+        var lines: [MetricLine] = []
+        var plan: String?
+        if case .success(let data) = credits {
+            lines += OpenRouterUsageMapper.creditsLines(from: data)
         }
+        if case .success(let data) = key {
+            let mapped = OpenRouterUsageMapper.keyMetrics(from: data)
+            plan = mapped.plan
+            lines += mapped.lines
+        }
+
+        if !lines.isEmpty {
+            return ProviderSnapshot.make(provider: provider, plan: plan, lines: lines, refreshedAt: now())
+        }
+
+        // Nothing usable came back — surface the most informative failure. A rejected key (401/403 on
+        // either call) reports as invalid; otherwise the credits failure reason (it's the primary call).
+        if credits.isAuthFailure || key.isAuthFailure {
+            return ProviderSnapshot.error(provider: provider, error: OpenRouterAuthError.invalidKey)
+        }
+        let error = credits.failureError ?? key.failureError ?? OpenRouterUsageError.invalidResponse
+        return ProviderSnapshot.error(provider: provider, error: error)
+    }
+
+    /// Run one endpoint call and classify the outcome: a parsed data object on 2xx, an auth failure on
+    /// 401/403, or a typed failure for any other non-2xx, transport error, or unparsable body.
+    private func load(_ call: () async throws -> HTTPResponse) async -> EndpointResult {
+        do {
+            let response = try await call()
+            if response.statusCode == 401 || response.statusCode == 403 { return .authFailure }
+            guard (200..<300).contains(response.statusCode) else {
+                return .failed(.requestFailed(response.statusCode))
+            }
+            guard let data = OpenRouterUsageMapper.dataObject(response.body) else {
+                return .failed(.invalidResponse)
+            }
+            return .success(data)
+        } catch {
+            return .failed(.connectionFailed)
+        }
+    }
+}
+
+private enum EndpointResult {
+    case success([String: Any])
+    case authFailure
+    case failed(OpenRouterUsageError)
+
+    var isAuthFailure: Bool {
+        if case .authFailure = self { return true }
+        return false
+    }
+
+    var failureError: OpenRouterUsageError? {
+        if case .failed(let error) = self { return error }
+        return nil
     }
 }

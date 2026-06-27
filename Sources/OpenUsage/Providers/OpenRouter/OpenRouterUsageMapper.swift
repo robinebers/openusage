@@ -1,92 +1,61 @@
 import Foundation
 
-struct OpenRouterMappedUsage: Equatable, Sendable {
-    var plan: String?
-    var lines: [MetricLine]
-}
-
-/// Normalizes the OpenRouter `/credits` and `/key` payloads into the app's metric vocabulary.
-///
-/// `/credits` is required (it carries the account balance); `/key` is best-effort enrichment — its
-/// tier, daily/weekly/monthly spend, and optional per-key cap are added when present, but a failed
-/// `/key` call still leaves a usable balance snapshot.
+/// Builds metric lines from the OpenRouter `/credits` and `/key` payloads. Each endpoint maps
+/// independently so the provider can show whatever came back: `/credits` carries the balance, `/key`
+/// the tier and period spend, and either one failing still leaves the other's rows usable.
 enum OpenRouterUsageMapper {
-    static func map(creditsResponse: HTTPResponse, keyResponse: HTTPResponse?) throws -> OpenRouterMappedUsage {
-        try ProviderAuthRetry.requireSuccess(
-            creditsResponse,
-            authExpired: OpenRouterAuthError.invalidKey,
-            requestFailed: { OpenRouterUsageError.requestFailed($0) }
-        )
+    /// OpenRouter wraps every payload in `{ "data": { ... } }`.
+    static func dataObject(_ body: Data) -> [String: Any]? {
+        ProviderParse.jsonObject(body)?["data"] as? [String: Any]
+    }
 
-        guard let creditsData = dataObject(creditsResponse.body),
-              let totalUsage = ProviderParse.number(creditsData["total_usage"])
-        else {
-            throw OpenRouterUsageError.invalidResponse
-        }
+    /// Credits meter + Balance from `/credits`. Empty when the payload carries no usable total.
+    static func creditsLines(from data: [String: Any]) -> [MetricLine] {
+        guard let totalUsage = ProviderParse.number(data["total_usage"]) else { return [] }
 
         let used = max(0, totalUsage)
         // `total_credits` is the lifetime amount added to the account; balance is what's left of it.
-        let totalCredits = max(0, ProviderParse.number(creditsData["total_credits"]) ?? 0)
+        let totalCredits = max(0, ProviderParse.number(data["total_credits"]) ?? 0)
 
         var lines: [MetricLine] = []
-
         // Credits meter: spend against the credits purchased. Only a positive ceiling makes a meter
         // meaningful (a free/never-topped-up account reports 0 here) — those accounts still get Balance.
         if totalCredits > 0 {
-            lines.append(.progress(
-                label: "Credits",
-                used: used,
-                limit: totalCredits,
-                format: .dollars
-            ))
+            lines.append(.progress(label: "Credits", used: used, limit: totalCredits, format: .dollars))
         }
-
         // Balance: prepaid credits remaining. A real zero is shown ("$0.00 left"), never "No data".
         lines.append(.values(
             label: "Balance",
             values: [MetricValue(number: max(0, totalCredits - used), kind: .dollars)]
         ))
-
-        let plan = appendKeyMetrics(keyResponse, into: &lines)
-
-        return OpenRouterMappedUsage(plan: plan, lines: lines)
+        return lines
     }
 
-    /// Adds the `/key`-derived rows when that best-effort call succeeded, returning the plan name (tier).
-    private static func appendKeyMetrics(_ response: HTTPResponse?, into lines: inout [MetricLine]) -> String? {
-        guard let response,
-              (200..<300).contains(response.statusCode),
-              let keyData = dataObject(response.body)
-        else {
-            return nil
-        }
+    /// Period spend + optional per-key cap from `/key`, plus the tier surfaced as the plan name.
+    static func keyMetrics(from data: [String: Any]) -> (plan: String?, lines: [MetricLine]) {
+        var lines: [MetricLine] = []
 
         // Period spend straight from the API (not a local log scan), so a real zero is a measured zero.
-        appendSpend(keyData["usage_daily"], label: "Today", into: &lines)
-        appendSpend(keyData["usage_weekly"], label: "This Week", into: &lines)
-        appendSpend(keyData["usage_monthly"], label: "This Month", into: &lines)
+        appendSpend(data["usage_daily"], label: "Today", into: &lines)
+        appendSpend(data["usage_weekly"], label: "This Week", into: &lines)
+        appendSpend(data["usage_monthly"], label: "This Month", into: &lines)
 
         // Per-key spend cap, when this key is configured with one.
-        if let limit = ProviderParse.number(keyData["limit"]), limit > 0 {
+        if let limit = ProviderParse.number(data["limit"]), limit > 0 {
             lines.append(.progress(
                 label: "Key Limit",
-                used: max(0, ProviderParse.number(keyData["usage"]) ?? 0),
+                used: max(0, ProviderParse.number(data["usage"]) ?? 0),
                 limit: limit,
                 format: .dollars
             ))
         }
 
-        guard let isFreeTier = keyData["is_free_tier"] as? Bool else { return nil }
-        return isFreeTier ? "Free tier" : "Pay as you go"
+        let plan = (data["is_free_tier"] as? Bool).map { $0 ? "Free tier" : "Pay as you go" }
+        return (plan, lines)
     }
 
     private static func appendSpend(_ value: Any?, label: String, into lines: inout [MetricLine]) {
         guard let amount = ProviderParse.number(value) else { return }
         lines.append(.values(label: label, values: [MetricValue(number: max(0, amount), kind: .dollars)]))
-    }
-
-    /// OpenRouter wraps every payload in `{ "data": { ... } }`.
-    private static func dataObject(_ body: Data) -> [String: Any]? {
-        ProviderParse.jsonObject(body)?["data"] as? [String: Any]
     }
 }

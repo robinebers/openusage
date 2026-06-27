@@ -2,9 +2,22 @@ import XCTest
 @testable import OpenUsage
 
 final class OpenRouterAuthStoreTests: XCTestCase {
-    func testPrefersEnvironmentKeyOverConfigFile() {
+    func testPrefersConfigFileOverEnvironment() {
+        // Config file wins so editing it to rotate the key isn't shadowed by a stale env value.
         let store = OpenRouterAuthStore(
             files: FakeFiles([OpenRouterAuthStore.configPaths[0]: #"{"apiKey":"sk-or-file"}"#]),
+            environment: FakeEnvironment(["OPENROUTER_API_KEY": "sk-or-env"])
+        )
+
+        let auth = store.loadAPIKey()
+
+        XCTAssertEqual(auth?.apiKey, "sk-or-file")
+        XCTAssertEqual(auth?.source, .configFile)
+    }
+
+    func testFallsBackToEnvironmentWhenNoConfigFile() {
+        let store = OpenRouterAuthStore(
+            files: FakeFiles(),
             environment: FakeEnvironment(["OPENROUTER_API_KEY": "sk-or-env"])
         )
 
@@ -40,88 +53,63 @@ final class OpenRouterAuthStoreTests: XCTestCase {
         XCTAssertNil(store.loadAPIKey())
     }
 
-    func testIgnoresBlankEnvironmentValue() {
+    func testIgnoresBlankConfigAndUsesEnvironment() {
         let store = OpenRouterAuthStore(
-            files: FakeFiles([OpenRouterAuthStore.configPaths[0]: #"{"key":"sk-or-file"}"#]),
-            environment: FakeEnvironment(["OPENROUTER_API_KEY": "   "])
+            files: FakeFiles([OpenRouterAuthStore.configPaths[0]: "   "]),
+            environment: FakeEnvironment(["OPENROUTER_API_KEY": "sk-or-env"])
         )
 
-        XCTAssertEqual(store.loadAPIKey()?.apiKey, "sk-or-file")
+        XCTAssertEqual(store.loadAPIKey()?.apiKey, "sk-or-env")
     }
 }
 
 final class OpenRouterUsageMapperTests: XCTestCase {
-    func testMapsCreditsBalanceAndPeriodSpend() throws {
-        let mapped = try OpenRouterUsageMapper.map(
-            creditsResponse: jsonResponse(["data": ["total_credits": 277.47, "total_usage": 178.20]]),
-            keyResponse: jsonResponse(["data": [
-                "is_free_tier": false,
-                "usage_daily": 0,
-                "usage_weekly": 1.25,
-                "usage_monthly": 4.5,
-                "limit": NSNull()
-            ]])
-        )
+    func testCreditsLinesGiveMeterAndBalance() throws {
+        let lines = OpenRouterUsageMapper.creditsLines(from: ["total_credits": 277.47, "total_usage": 178.20])
 
-        XCTAssertEqual(mapped.plan, "Pay as you go")
-        let credits = try XCTUnwrap(progress(mapped.lines, "Credits"))
+        let credits = try XCTUnwrap(progress(lines, "Credits"))
         XCTAssertEqual(credits.used, 178.20, accuracy: 0.001)
         XCTAssertEqual(credits.limit, 277.47, accuracy: 0.001)
-        XCTAssertEqual(try XCTUnwrap(dollars(mapped.lines, "Balance")), 99.27, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(dollars(lines, "Balance")), 99.27, accuracy: 0.001)
+    }
+
+    func testCreditsLinesEmptyWithoutUsableTotal() {
+        XCTAssertTrue(OpenRouterUsageMapper.creditsLines(from: ["foo": "bar"]).isEmpty)
+    }
+
+    func testNoCreditsMeterWhenNothingPurchased() {
+        let lines = OpenRouterUsageMapper.creditsLines(from: ["total_credits": 0, "total_usage": 0])
+
+        XCTAssertNil(progress(lines, "Credits"))
+        // Balance is still shown as a real, measured zero — not "No data".
+        XCTAssertEqual(dollars(lines, "Balance"), 0)
+    }
+
+    func testKeyMetricsGivePlanPeriodSpendAndCap() throws {
+        let mapped = OpenRouterUsageMapper.keyMetrics(from: [
+            "is_free_tier": false,
+            "usage_daily": 0,
+            "usage_weekly": 1.25,
+            "usage_monthly": 4.5,
+            "usage": 2,
+            "limit": 5
+        ])
+
+        XCTAssertEqual(mapped.plan, "Pay as you go")
         // A real, measured zero is shown — not collapsed to "No data".
         XCTAssertEqual(dollars(mapped.lines, "Today"), 0)
         XCTAssertEqual(dollars(mapped.lines, "This Week"), 1.25)
         XCTAssertEqual(dollars(mapped.lines, "This Month"), 4.5)
-        // No per-key cap configured -> no Key Limit meter.
-        XCTAssertNil(progress(mapped.lines, "Key Limit"))
-    }
-
-    func testMapsKeyLimitMeterAndFreeTierWhenPresent() throws {
-        let mapped = try OpenRouterUsageMapper.map(
-            creditsResponse: jsonResponse(["data": ["total_credits": 10, "total_usage": 3]]),
-            keyResponse: jsonResponse(["data": [
-                "is_free_tier": true,
-                "usage": 2,
-                "limit": 5
-            ]])
-        )
-
-        XCTAssertEqual(mapped.plan, "Free tier")
         let keyLimit = try XCTUnwrap(progress(mapped.lines, "Key Limit"))
         XCTAssertEqual(keyLimit.used, 2)
         XCTAssertEqual(keyLimit.limit, 5)
     }
 
-    func testStillMapsBalanceWhenKeyCallMissing() throws {
-        let mapped = try OpenRouterUsageMapper.map(
-            creditsResponse: jsonResponse(["data": ["total_credits": 20, "total_usage": 7.5]]),
-            keyResponse: nil
-        )
+    func testKeyMetricsOmitCapWhenUnset() {
+        let mapped = OpenRouterUsageMapper.keyMetrics(from: ["is_free_tier": true, "limit": NSNull()])
 
-        XCTAssertNil(mapped.plan)
-        XCTAssertEqual(try XCTUnwrap(dollars(mapped.lines, "Balance")), 12.5, accuracy: 0.001)
-        XCTAssertNil(progress(mapped.lines, "Today"))
-    }
-
-    func testNoCreditsMeterWhenNothingPurchased() throws {
-        let mapped = try OpenRouterUsageMapper.map(
-            creditsResponse: jsonResponse(["data": ["total_credits": 0, "total_usage": 0]]),
-            keyResponse: nil
-        )
-
-        XCTAssertNil(progress(mapped.lines, "Credits"))
-        XCTAssertEqual(dollars(mapped.lines, "Balance"), 0)
-    }
-
-    func testAuthFailureThrowsInvalidKey() {
-        XCTAssertThrowsError(
-            try OpenRouterUsageMapper.map(
-                creditsResponse: HTTPResponse(statusCode: 401, headers: [:], body: Data("{}".utf8)),
-                keyResponse: nil
-            )
-        ) { error in
-            XCTAssertEqual(error as? OpenRouterAuthError, .invalidKey)
-        }
+        XCTAssertEqual(mapped.plan, "Free tier")
+        XCTAssertNil(progress(mapped.lines, "Key Limit"))
     }
 
     private func progress(_ lines: [MetricLine], _ label: String) -> (used: Double, limit: Double)? {
@@ -143,10 +131,7 @@ final class OpenRouterUsageMapperTests: XCTestCase {
 final class OpenRouterProviderTests: XCTestCase {
     func testRefreshMapsBothEndpoints() async throws {
         let provider = OpenRouterProvider(
-            authStore: OpenRouterAuthStore(
-                files: FakeFiles(),
-                environment: FakeEnvironment(["OPENROUTER_API_KEY": "sk-or-test"])
-            ),
+            authStore: makeAuthStore(key: "sk-or-test"),
             usageClient: OpenRouterUsageClient(http: RoutingHTTPClient { request in
                 if request.url.absoluteString == OpenRouterUsageClient.creditsURL {
                     XCTAssertEqual(request.headers["Authorization"], "Bearer sk-or-test")
@@ -168,10 +153,7 @@ final class OpenRouterProviderTests: XCTestCase {
 
     func testRefreshSurvivesKeyEndpointFailure() async {
         let provider = OpenRouterProvider(
-            authStore: OpenRouterAuthStore(
-                files: FakeFiles(),
-                environment: FakeEnvironment(["OPENROUTER_API_KEY": "sk-or-test"])
-            ),
+            authStore: makeAuthStore(key: "sk-or-test"),
             usageClient: OpenRouterUsageClient(http: RoutingHTTPClient { request in
                 if request.url.absoluteString == OpenRouterUsageClient.creditsURL {
                     return jsonResponse(["data": ["total_credits": 100, "total_usage": 40]])
@@ -184,6 +166,26 @@ final class OpenRouterProviderTests: XCTestCase {
 
         XCTAssertFalse(snapshot.lines.contains { $0.isError })
         XCTAssertNotNil(snapshot.line(label: "Balance"))
+    }
+
+    func testRefreshShowsKeyDataWhenCreditsForbidden() async {
+        // If `/credits` is gated (403) but `/key` succeeds, still show the spend rows rather than erroring.
+        let provider = OpenRouterProvider(
+            authStore: makeAuthStore(key: "sk-or-test"),
+            usageClient: OpenRouterUsageClient(http: RoutingHTTPClient { request in
+                if request.url.absoluteString == OpenRouterUsageClient.creditsURL {
+                    return HTTPResponse(statusCode: 403, headers: [:], body: Data("{}".utf8))
+                }
+                return jsonResponse(["data": ["is_free_tier": false, "usage_daily": 0.5, "usage_weekly": 2]])
+            })
+        )
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertNil(snapshot.errorCategory)
+        XCTAssertFalse(snapshot.lines.contains { $0.isError })
+        XCTAssertNotNil(snapshot.line(label: "Today"))
+        XCTAssertNil(snapshot.line(label: "Balance"))
     }
 
     func testRefreshWithoutKeyReportsNotLoggedIn() async {
@@ -202,11 +204,9 @@ final class OpenRouterProviderTests: XCTestCase {
     }
 
     func testRefreshOnAuthFailureReportsInvalidKey() async {
+        // Both endpoints reject the key — nothing usable comes back, so it's a hard auth failure.
         let provider = OpenRouterProvider(
-            authStore: OpenRouterAuthStore(
-                files: FakeFiles(),
-                environment: FakeEnvironment(["OPENROUTER_API_KEY": "sk-or-bad"])
-            ),
+            authStore: makeAuthStore(key: "sk-or-bad"),
             usageClient: OpenRouterUsageClient(http: RoutingHTTPClient { _ in
                 HTTPResponse(statusCode: 401, headers: [:], body: Data("{}".utf8))
             })
@@ -215,6 +215,10 @@ final class OpenRouterProviderTests: XCTestCase {
         let snapshot = await provider.refresh()
 
         XCTAssertEqual(snapshot.errorCategory, .authInvalid)
+    }
+
+    private func makeAuthStore(key: String) -> OpenRouterAuthStore {
+        OpenRouterAuthStore(files: FakeFiles(), environment: FakeEnvironment(["OPENROUTER_API_KEY": key]))
     }
 }
 
