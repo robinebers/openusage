@@ -497,7 +497,8 @@ extension WidgetData {
 
     /// Trailing text on the bounded primary row, reset-display-mode aware. Priority mirrors
     /// `boundedSubtitle`, but a concrete reset honors `resetDisplayMode` (relative ⟷ absolute).
-    /// Codex and Claude session rows show "Not started" while the rolling window has not begun.
+    /// Codex, Claude, and Antigravity session rows show "Not started" while the rolling window has
+    /// not begun.
     func boundedTrailingText(now: Date = Date()) -> String? {
         guard hasData else { return Self.noDataSubtitle }
         if let subtitleOverride { return subtitleOverride }
@@ -510,13 +511,13 @@ extension WidgetData {
         return boundedSubtitle // period cadence / dollar limit / count suffix — nothing to flip
     }
 
-    /// Codex and Claude session meters only: a "Not started" state for the current window when nothing
-    /// has been spent in it yet. Driven by frozen usage (`used == 0`), not a window-timing read — the
-    /// `resetsAt - now ≈ full period` test is only valid the instant the snapshot is captured, then
-    /// drifts every second until the next refresh, which split the headline from the label (headline
+    /// Codex, Claude, and Antigravity session meters only: a "Not started" state for the current window
+    /// when nothing has been spent in it yet. Driven by frozen usage (`used == 0`), not a window-timing
+    /// read — the `resetsAt - now ≈ full period` test is only valid the instant the snapshot is captured,
+    /// then drifts every second until the next refresh, which split the headline from the label (headline
     /// "100% left" while the label fell back to "Resets in 5h"). Usage is the stable, snapshot-consistent
-    /// signal: Codex's whole-percent floor is normalized to 0 at a fresh window in its mapper, and Claude
-    /// reports 0 utilization directly, so zero means the same for both — the current window is unused.
+    /// signal: Codex's whole-percent floor is normalized to 0 at a fresh window in its mapper, while Claude
+    /// and Antigravity report 0 utilization directly, so zero means the same for all — the window is unused.
     /// Still gated on `now < resetsAt`: once the reset has passed the snapshot is stale, so we drop the
     /// "Not started" claim and let the row fall back to the normal "Resets soon"/countdown formatting.
     func isFreshSessionWindow(now: Date = Date()) -> Bool {
@@ -525,7 +526,12 @@ extension WidgetData {
         return now < resetsAt
     }
 
-    private static let sessionWindowWidgetIDs: Set<String> = ["codex.session", "claude.session"]
+    private static let sessionWindowWidgetIDs: Set<String> = [
+        "codex.session", "claude.session",
+        // Antigravity's three quota pools are rolling 5-hour windows too: an unused pool reports
+        // `used == 0` with a reset a full period out, so it gets the same "Not started" treatment.
+        "antigravity.geminiPro", "antigravity.geminiFlash", "antigravity.claude"
+    ]
 
     /// True when the bounded primary row's trailing text is a concrete reset countdown (so the row makes
     /// it the clickable toggle). False for limit/suffix context, fresh session windows, or no reset date.

@@ -15,6 +15,8 @@ Antigravity exposes a separate quota for each model, which OpenUsage groups into
 
 Each meter shows how much of the rolling 5-hour window you've used, and when it resets. Quotas are reported as a fraction (full = 0% used), so there are no token or dollar spend tiles. The model lineup is read live from Antigravity, so new models appear on their own.
 
+While a pool's rolling 5-hour window has no usage yet, that meter reads **Not started** on the trailing label instead of a reset countdown; hover explains that the window begins after your first message to that model.
+
 ## Where credentials come from
 
 OpenUsage never asks for a token — it reads what Antigravity already has:
