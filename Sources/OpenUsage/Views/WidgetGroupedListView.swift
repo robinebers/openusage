@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// The dashboard display: one inset group per provider (System Settings style). A provider's icon + name
@@ -69,7 +70,22 @@ struct WidgetGroupedListView: View {
             Button("Customize…") {
                 withAnimation(Motion.modeSwitch) { layout.isEditing = true }
             }
+            Divider()
+            Button("Copy as Image") { shareCard(group) }
         }
+    }
+
+    /// Renders the provider's branded share card and copies the PNG to the clipboard. The effective
+    /// light/dark appearance is resolved from `NSApp` so the card matches what the user sees (the
+    /// popover follows the menu bar, which follows the app/OS appearance).
+    private func shareCard(_ group: ProviderGroup) {
+        let isDark = NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        ShareCardRenderer.share(
+            group: group,
+            dataStore: dataStore,
+            layout: layout,
+            appearance: isDark ? .dark : .light
+        )
     }
 
     /// A row's placed widget paired with its resolved descriptor + data, so each `dataStore.data(for:)`
