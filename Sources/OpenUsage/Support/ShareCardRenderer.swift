@@ -92,6 +92,7 @@ enum ShareCardRenderer {
         }
         guard let image = image(for: view) else {
             AppLog.error(.lifecycle, "share card: ImageRenderer produced no image for \(group.provider.id)")
+            NSSound.beep()
             return
         }
         copyToPasteboard(image)
