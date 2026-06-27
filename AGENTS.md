@@ -44,6 +44,17 @@ Conventions for the per-provider modules under `Sources/OpenUsage/Providers/<Nam
 
 - There is no hot reload. The app is a long-lived menu-bar process, so **every code change requires a full rebuild and restart of the running app** to take effect — kill the running instance, rebuild, and relaunch before testing.
 
+## Pull Requests
+
+Every PR description must follow this structure so reviewers can skim it quickly:
+
+- **TL;DR** — open with a one- or two-sentence plain-English summary of the change.
+- **What was happening** — plain-English bullet points describing the prior behavior, bug, or gap that motivated the change.
+- **What this changes** — bullet points describing what the PR actually changes.
+- **Heads-up** (optional) — noteworthy things a reviewer or future maintainer should consider (risks, follow-ups, trade-offs).
+- **Tests** (optional) — how the change was verified.
+- **Screenshots** (optional in general, but **required for any PR that makes a visual change**) — images of the affected UI after the change.
+
 ## Documentation
 
 - Logic changes must update any docs in `docs/` that describe the affected behavior.
