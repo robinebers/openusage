@@ -135,6 +135,40 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertTrue(store.isMetricExpanded("cursor.requests"))
     }
 
+    func testNewlySeededDefaultExpandedMetricEntersBelowCaretForExistingLayout() {
+        let defaults = makeDefaults("SeedNewExpanded")
+        // An existing layout from before the new metric shipped, with a saved expanded set that can't
+        // know about it yet.
+        saveStored([PlacedWidget(descriptorID: "claude.session")], forKey: "layout", in: defaults)
+        defaults.set(["claude.weekly"], forKey: "layout.expandedMetrics")
+
+        let store = LayoutStore(
+            registry: .mock,
+            defaults: defaults,
+            storageKey: "layout",
+            defaultMetricIDs: ["claude.session", "claude.today"],
+            migrationBaselineMetricIDs: ["claude.session"],
+            defaultExpandedMetricIDs: ["claude.today"]
+        )
+
+        // The new default is auto-enabled by migration AND tucked below the caret, not surfaced primary.
+        XCTAssertTrue(store.isMetricEnabled("claude.today"))
+        XCTAssertTrue(store.isMetricExpanded("claude.today"))
+        // A metric the user already lived with stays always-shown.
+        XCTAssertFalse(store.isMetricExpanded("claude.session"))
+
+        // The new expanded membership persists across reloads.
+        let reloaded = LayoutStore(
+            registry: .mock,
+            defaults: defaults,
+            storageKey: "layout",
+            defaultMetricIDs: ["claude.session", "claude.today"],
+            migrationBaselineMetricIDs: ["claude.session"],
+            defaultExpandedMetricIDs: ["claude.today"]
+        )
+        XCTAssertTrue(reloaded.isMetricExpanded("claude.today"))
+    }
+
     func testExplicitDividerMoveOverridesDefaultExpandedOnEnable() {
         let defaults = makeDefaults("LegacyEnableExpandedOverride")
         saveStored([PlacedWidget(descriptorID: "cursor.usage")], forKey: "layout", in: defaults)

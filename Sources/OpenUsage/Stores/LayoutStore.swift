@@ -203,6 +203,19 @@ final class LayoutStore {
         } else {
             expandedProviderIDs = []
         }
+        // A metric added to the defaults since the user's last layout (auto-enabled above by
+        // `seedNewDefaultMetrics`) is brand new to them — so when it's a default-expanded metric, tuck it
+        // below the caret now instead of surfacing it above the fold. Without this, an existing layout's
+        // saved (or empty) expanded set never learns about the new metric and it lands always-shown. Only
+        // newly-placed ids qualify, so a metric the user already lived with is never silently hidden.
+        let newlyExpanded = Set(seededResult.newlyPlaced)
+            .intersection(defaultExpandedMetricIDs)
+            .filter { registry.descriptor(id: $0) != nil }
+        if !newlyExpanded.isSubset(of: expandedMetricIDs) {
+            expandedMetricIDs.formUnion(newlyExpanded)
+            shouldPersistExpanded = true
+        }
+
         if shouldPersistExpanded { persistExpanded() }
 
         if seededResult.shouldPersistSeededDefaults {
@@ -758,6 +771,10 @@ final class LayoutStore {
         let seededDefaults: Set<String>
         let shouldPersistPlaced: Bool
         let shouldPersistSeededDefaults: Bool
+        /// Metric ids newly auto-enabled this launch (a default added since the user's last layout).
+        /// Brand-new metrics the user never lived with, so a default-expanded one among them can be
+        /// tucked below the caret without the "don't silently hide a metric they already saw" concern.
+        let newlyPlaced: [String]
     }
 
     private static func seedNewDefaultMetrics(
@@ -798,7 +815,8 @@ final class LayoutStore {
             placed: nextPlaced,
             seededDefaults: nextSeededDefaults,
             shouldPersistPlaced: !toAdd.isEmpty,
-            shouldPersistSeededDefaults: shouldPersistSeededDefaults
+            shouldPersistSeededDefaults: shouldPersistSeededDefaults,
+            newlyPlaced: toAdd
         )
     }
 
