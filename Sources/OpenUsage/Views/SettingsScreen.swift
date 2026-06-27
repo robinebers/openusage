@@ -46,6 +46,7 @@ struct SettingsScreen: View {
         @Bindable var store = container.dataStore
         @Bindable var layout = container.layout
         @Bindable var updater = updater
+        @Bindable var transparency = container.transparency
         @Bindable var notifications = container.notificationSettings
         // Same section rhythm as the dashboard and Customize (all read the density setting).
         return VStack(alignment: .leading, spacing: density.sectionSpacing) {
@@ -99,6 +100,28 @@ struct SettingsScreen: View {
                 }
                 row("Time Format") {
                     picker($timeFormat, options: TimeFormatSetting.allCases, label: \.label)
+                }
+                // Translucent popover the proper way (behind-window vibrancy, text stays legible). It
+                // yields to the system accessibility settings — see the paused notice below.
+                row("Increase Transparency") {
+                    Toggle("", isOn: $transparency.increaseTransparency)
+                        .settingsSwitchStyle()
+                }
+                if transparency.isPaused {
+                    // Same orange inline-notice idiom as the General section's error line.
+                    Text("macOS Reduce Transparency or Increase Contrast is on, so this stays paused.")
+                        .font(.caption)
+                        .foregroundStyle(Theme.notice)
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                // Surfaces only after the secret code has been entered — pushes the ghost even further.
+                if transparency.secretCodeActive {
+                    row("Even More") {
+                        Toggle("", isOn: $transparency.evenMore)
+                            .settingsSwitchStyle()
+                    }
                 }
             }
             section("Usage Display") {

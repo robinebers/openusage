@@ -22,6 +22,10 @@ final class AppContainer {
     /// Anonymous, opt-out usage telemetry (daily rollups). Exposed so Settings can toggle it and the
     /// app-termination hook can flush any queued events.
     let telemetry: TelemetryRecorder
+    /// Source of truth for the popover's transparency: the persisted Increase Transparency toggle, the
+    /// ephemeral secret-code easter-egg state, and the system accessibility flags it yields to. Read by both
+    /// the SwiftUI surface and the AppKit panel (`StatusItemController`).
+    let transparency: PopoverTransparencyStore
     /// Read-only usage API on 127.0.0.1:6736 for other local apps (silently off when the port is taken).
     private let localAPI: LocalUsageServer
     // A `let` of a `Sendable` `Task` is implicitly nonisolated, so the nonisolated `deinit` can cancel it.
@@ -103,6 +107,7 @@ final class AppContainer {
             telemetry?.record(providerID: providerID, outcome: outcome, category: category, manual: manual)
         }
         self.telemetry = telemetry
+        self.transparency = PopoverTransparencyStore()
         self.localAPI = LocalUsageServer(state: { [layout, enablement, dataStore] in
             LocalUsageAPI.State(
                 enabledOrderedIDs: layout.providerOrder.filter { enablement.isEnabled($0) },

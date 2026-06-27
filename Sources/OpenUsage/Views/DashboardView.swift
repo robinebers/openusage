@@ -18,6 +18,7 @@ import AppKit
 struct DashboardView: View {
     @Environment(LayoutStore.self) private var layout
     @Environment(WidgetDataStore.self) private var dataStore
+    @Environment(PopoverTransparencyStore.self) private var transparency
     @State private var didInitialRefresh = false
     @State private var reorderLift: ReorderLift?
     /// The panel height SwiftUI drives — the single animation clock. `PanelHeightModifier` follows it
@@ -213,6 +214,17 @@ struct DashboardView: View {
                 didInitialRefresh = true
                 await dataStore.refreshAll()
             }
+            // Watches for the secret transparency code while the panel is key and toggles the egg. A
+            // sibling of `PopoverKeyReader` that only observes (never consumes), so it can't disturb
+            // navigation or typing.
+            .background(TooMuchTransparencyKeyReader { transparency.toggleSecretCode() })
+            // Reaches `modeBody`, the `PopoverSurface` background, and every card: drives whether surfaces
+            // paint their opaque base or clear to the behind-window vibrancy backdrop.
+            .environment(\.popoverSurfaceTreatment, transparency.surfaceTreatment)
+            // The ghost easter egg's animated pink-glass chaos, layered over the whole popover. No-op for
+            // the normal/increased styles. Controls stay clickable (overlays don't hit-test), so the
+            // Settings "Even More" toggle is still reachable while it's running.
+            .tooMuchTransparency(transparency.effectiveStyle)
     }
 
     private func resetTransientState() {
@@ -664,8 +676,18 @@ struct DashboardView: View {
 /// glass bar on top of this (in-window), so glass stays chrome over solid content. Never hit-tests,
 /// so it can't steal clicks from the content above it.
 private struct PopoverSurface: View {
+    @Environment(\.popoverSurfaceTreatment) private var treatment
+
     var body: some View {
-        Theme.traySurface
-            .allowsHitTesting(false)
+        Group {
+            switch treatment {
+            case .opaque:
+                Theme.traySurface
+            case .translucent:
+                // Clear so the panel's behind-window vibrancy backdrop (the desktop) shows through.
+                Color.clear
+            }
+        }
+        .allowsHitTesting(false)
     }
 }

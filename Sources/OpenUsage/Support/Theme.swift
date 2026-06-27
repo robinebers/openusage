@@ -97,14 +97,24 @@ extension View {
 /// grouped box in both light and dark. The opaque base means a lifted drag preview stays solid while
 /// it floats; the page base under a live card is the same color as the tray behind it, so it's
 /// invisible there. `lifted` is unused — both paths share the one surface.
+///
+/// Under the translucent surface treatment (Increase Transparency / the ghost egg) the opaque page base
+/// is dropped so the behind-window vibrancy backdrop shows through, while the system grouped fill stays
+/// so cards still read as grouped boxes over the desktop.
 private struct CardSurfaceModifier: ViewModifier {
     let lifted: Bool
+    @Environment(\.popoverSurfaceTreatment) private var treatment
 
     func body(content: Content) -> some View {
         content.background {
-            Theme.cardShape
-                .fill(Theme.traySurface)
-                .overlay { Theme.cardShape.fill(Theme.cardFill) }
+            switch treatment {
+            case .opaque:
+                Theme.cardShape
+                    .fill(Theme.traySurface)
+                    .overlay { Theme.cardShape.fill(Theme.cardFill) }
+            case .translucent:
+                Theme.cardShape.fill(Theme.cardFill)
+            }
         }
     }
 }

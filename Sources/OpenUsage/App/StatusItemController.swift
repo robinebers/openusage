@@ -30,6 +30,9 @@ final class StatusItemController: NSObject {
     private let statusItem: NSStatusItem
     private let panel: MenuBarPanel
     private let hostingController: NSHostingController<AnyView>
+    /// The panel's backdrop: an opaque tray by default, swapped to a behind-window vibrancy view when
+    /// the transparency style is non-opaque. Built once and toggled, so it can't race the style observer.
+    private let backdrop = PopoverBackdropView(cornerRadius: StatusItemController.cornerRadius)
     /// The screen the status-item button is on, captured on show — used to clamp the saved panel size
     /// to whatever display the panel is currently opening on.
     private var anchorScreen: NSScreen?
@@ -74,6 +77,7 @@ final class StatusItemController: NSObject {
                     .environment(container)
                     .environment(container.layout)
                     .environment(container.dataStore)
+                    .environment(container.transparency)
                     .environment(updater)
             )
         )
@@ -94,6 +98,7 @@ final class StatusItemController: NSObject {
         configurePanel()
         configureStatusItem()
         updateButtonImage()
+        applyTransparency()
 
         appearanceObserver = NotificationCenter.default.addObserver(
             forName: AppearanceSetting.didChangeNotification,
@@ -146,24 +151,14 @@ final class StatusItemController: NSObject {
 
         let container = NSView()
 
-        // Opaque backdrop: the popover is a solid panel — the data region never shows the desktop
-        // through it. Liquid Glass is reserved for the footer chrome (its frosted bar + controls),
-        // rendered in-window over this opaque backing, never behind the data. The box fills the whole
-        // window, so a screen-switch resize can't briefly reveal a transparent strip beneath the
-        // content-sized SwiftUI surface, and any region SwiftUI leaves unpainted shows this opaque
-        // tray, not a hole to the desktop. `Theme.trayNSColor` tracks light/dark (and the forced
-        // appearance override) and matches the SwiftUI tray (`DashboardView.PopoverSurface`); rounded
-        // via `cornerRadius` so it follows the panel's shape. `panel.appearance` (tracked by
-        // `appearanceObserver`) pins the light/dark mode.
-        let backdrop = NSBox()
-        backdrop.boxType = .custom
-        backdrop.titlePosition = .noTitle
-        backdrop.borderWidth = 0
-        backdrop.cornerRadius = Self.cornerRadius
-        backdrop.contentViewMargins = .zero
-        backdrop.fillColor = Theme.trayNSColor
-        backdrop.translatesAutoresizingMaskIntoConstraints = false
-
+        // Backdrop: by default an opaque tray so the data region never shows the desktop through it
+        // (Liquid Glass stays reserved for the footer chrome, rendered in-window over this backing). The
+        // `PopoverBackdropView` also holds a behind-window vibrancy layer that the transparency style
+        // swaps in for Increase Transparency / the ghost egg. It fills the whole window, so a
+        // screen-switch resize can't reveal a transparent strip, and any region SwiftUI leaves unpainted
+        // shows the backdrop, not a raw hole. Its opaque tray is `Theme.trayNSColor` (tracks light/dark
+        // and the forced appearance override) matching the SwiftUI tray (`DashboardView.PopoverSurface`),
+        // rounded via `cornerRadius`. `panel.appearance` (tracked by `appearanceObserver`) pins the mode.
         let host = hostingController.view
         host.translatesAutoresizingMaskIntoConstraints = false
         host.wantsLayer = true
@@ -246,6 +241,27 @@ final class StatusItemController: NSObject {
         return MenuBarStripRenderer.image(for: content, style: container.layout.menuBarStyle)
             ?? MenuBarIcon.image
             ?? MenuBarStripRenderer.fallbackIcon
+    }
+
+    // MARK: - Transparency
+
+    /// Applies the resolved transparency style to the panel and re-arms on the next change. Mirrors
+    /// `updateButtonImage`'s `withObservationTracking` re-arm (its `onChange` is one-shot). Reads the
+    /// store's `effectiveStyle`, which folds in the persisted toggle, the egg state, and the system
+    /// accessibility flags — so this fires whenever any of them changes. Backdrop already exists (it's a
+    /// stored property), so the first call from `init` safely sets the initial look.
+    private func applyTransparency() {
+        let style = withObservationTracking {
+            container.transparency.effectiveStyle
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.applyTransparency()
+            }
+        }
+        backdrop.mode = style.surfaceTreatment == .opaque ? .opaque : .translucent
+        panel.alphaValue = style.windowAlpha
+        panel.hasShadow = style.wantsShadow
+        panel.invalidateShadow()
     }
 
     // MARK: - Show / hide
