@@ -59,4 +59,18 @@ final class ShareCardRendererTests: XCTestCase {
                            "row \(i) condensing should match the neighbor-aware text-only rule")
         }
     }
+
+    func testCondensedTextRowIndicesRespectExpandBoundary() {
+        let rows = MockData.descriptors(for: MockData.claude.id).map { $0.sample }
+        XCTAssertGreaterThan(rows.count, 1, "sample fixture should have multiple rows")
+        let boundary = rows.count / 2
+        let condensed = ShareCardView.condensedTextRowIndices(rows, boundary: boundary)
+        XCTAssertFalse(condensed.contains(boundary), "the first expanded row (at the boundary) is never condensed")
+        for i in 1..<rows.count {
+            let sameSide = (i < boundary) == (i - 1 < boundary)
+            let expected = sameSide && !rows[i - 1].isBounded && !rows[i].isBounded
+            XCTAssertEqual(condensed.contains(i), expected,
+                           "row \(i) condensing should not bridge the expand caret boundary")
+        }
+    }
 }

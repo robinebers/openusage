@@ -31,22 +31,27 @@ enum ShareCardRenderer {
         return rep.representation(using: .png, properties: [:])
     }
 
-    /// Writes the card's PNG onto the general pasteboard (replacing its contents). No-op if the PNG
-    /// can't be encoded.
+    /// Writes the card's PNG onto the general pasteboard (replacing its contents). Beeps and logs if the
+    /// PNG can't be encoded or the pasteboard rejects it, so a failed copy isn't silently swallowed.
     static func copyToPasteboard(_ image: NSImage) {
         guard let png = pngData(from: image) else {
             AppLog.error(.lifecycle, "share card: failed to encode PNG for clipboard")
+            NSSound.beep()
             return
         }
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.setData(png, forType: .png)
+        guard pasteboard.setData(png, forType: .png) else {
+            AppLog.error(.lifecycle, "share card: pasteboard rejected the PNG")
+            NSSound.beep()
+            return
+        }
     }
 
-    /// Orchestrates a Copy as Image action end to end: resolve the provider's visible rows from the data store,
-    /// build the card with the effective appearance, render it, and copy the PNG to the clipboard. The
-    /// rows mirror what the dashboard shows — always-shown plus expanded only when the provider's caret
-    /// is open — so the export matches what the user sees.
+    /// Orchestrates a Copy as Image action end to end: resolve the provider's visible rows from the data
+    /// store, build the card with the effective appearance, render it, and copy the PNG to the clipboard.
+    /// The rows mirror what the dashboard shows — always-shown plus expanded only when the provider's
+    /// caret is open — so the export matches what the user sees.
     ///
     /// The render is pinned to the regular density regardless of the user's popover density slider: the
     /// rows read density via `@AppStorage`, so the saved value is swapped to `.regular` for the duration
@@ -58,16 +63,22 @@ enum ShareCardRenderer {
         layout: LayoutStore,
         appearance: ColorScheme
     ) {
-        let visibleWidgets = layout.isProviderExpanded(group.provider.id) ? group.widgets : group.alwaysShownWidgets
-        let rows = visibleWidgets.compactMap { widget -> WidgetData? in
+        let isExpanded = layout.isProviderExpanded(group.provider.id)
+        let alwaysRows = group.alwaysShownWidgets.compactMap { widget -> WidgetData? in
             guard let descriptor = layout.descriptor(for: widget) else { return nil }
             return dataStore.data(for: descriptor)
         }
+        let expandedRows = group.expandedWidgets.compactMap { widget -> WidgetData? in
+            guard let descriptor = layout.descriptor(for: widget) else { return nil }
+            return dataStore.data(for: descriptor)
+        }
+        let rows = isExpanded ? alwaysRows + expandedRows : alwaysRows
         let view = ShareCardView(
             provider: group.provider,
             plan: dataStore.plan(for: group.provider.id),
             rows: rows,
-            appearance: appearance
+            appearance: appearance,
+            expandBoundaryIndex: isExpanded ? alwaysRows.count : nil
         )
         let densityKey = DensitySetting.key
         let savedDensity = UserDefaults.standard.string(forKey: densityKey)

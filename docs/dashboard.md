@@ -32,7 +32,7 @@ Provider headers: **Hide \<provider\> · Refresh \<provider\> · Customize…** 
 
 Right-click a provider header and choose **Copy as Image** to copy a clean, branded PNG of that provider's usage to your clipboard, ready to paste into a chat, a tweet, or a doc.
 
-The image is a flexible-height PNG using the app's look — the provider's mark and name up top, the metric rows you currently see for that provider, and a small OpenUsage mark in the corner. It follows your Light/Dark appearance and shows everything on the card as-is (nothing is hidden or blurred).
+The image is a flexible-height PNG using the app's look — the provider's mark and name up top, the metric rows you currently see for that provider, and a small OpenUsage mark centered at the bottom. It follows your Light/Dark appearance and shows everything on the card as-is (nothing is hidden or blurred).
 
 ## Footer
 

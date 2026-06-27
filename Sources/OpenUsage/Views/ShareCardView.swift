@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// An off-screen, branded PNG of one provider's usage, rendered for the right-click "Share" action.
-/// It is a static snapshot — no drag grips, spinners, staleness tags, or refresh warnings — that mirrors
-/// what the provider's card currently shows in the popover (respecting whether the caret is expanded),
-/// drawn at the popover's own scale and rasterized at ×4 for a crisp, large share image.
+/// An off-screen, branded PNG of one provider's usage, rendered for the right-click "Copy as Image"
+/// action. It is a static snapshot — no drag grips, spinners, staleness tags, or refresh warnings — that
+/// mirrors what the provider's card currently shows in the popover (respecting whether the caret is
+/// expanded), drawn at the popover's own scale and rasterized at ×4 for a crisp, large share image.
 ///
 /// The layout is intentionally not a fixed canvas: the card height grows with its rows, so a collapsed
 /// provider exports a short card and an expanded one a tall one, with little wasted whitespace. The view
@@ -16,6 +16,10 @@ struct ShareCardView: View {
     var plan: String?
     let rows: [WidgetData]
     let appearance: ColorScheme
+    /// Index in `rows` where the "shown on expand" rows begin (the always-shown count), so the
+    /// neighbor-aware condensing treats the expand caret as a hard boundary the way the live dashboard
+    /// does. `nil` when the provider is collapsed (no expanded section).
+    var expandBoundaryIndex: Int? = nil
 
     /// Authored card width in points. The renderer multiplies this by `ShareCardRenderer.scale` for the
     /// PNG's pixel width; the height is whatever the rows add up to (flexible).
@@ -76,7 +80,7 @@ struct ShareCardView: View {
             }
         } else {
             DashboardMetricCard {
-                let condensed = Self.condensedTextRowIndices(rows)
+                let condensed = Self.condensedTextRowIndices(rows, boundary: expandBoundaryIndex)
                 ForEach(Array(rows.enumerated()), id: \.offset) { index, data in
                     WidgetRowView(data: data, condensedTop: condensed.contains(index))
                 }
@@ -86,16 +90,23 @@ struct ShareCardView: View {
 
     /// Indices of text-only rows that sit directly under another text-only row — the neighbor-aware
     /// condensing rule the live dashboard applies, so a run of one-liners (Today / Yesterday /
-    /// Last 30 Days) pulls into one cluster in the export the same way it does in the popover.
-    static func condensedTextRowIndices(_ rows: [WidgetData]) -> Set<Int> {
+    /// Last 30 Days) pulls into one cluster in the export the same way it does in the popover. The
+    /// expand caret is a hard boundary: condensing runs within the always-shown rows and within the
+    /// expanded rows separately, never across, so the export's spacing matches the popover.
+    static func condensedTextRowIndices(_ rows: [WidgetData], boundary: Int? = nil) -> Set<Int> {
         var indices = Set<Int>()
-        for i in 1..<rows.count where !rows[i - 1].isBounded && !rows[i].isBounded {
-            indices.insert(i)
+        let end = rows.count
+        let edges = boundary.map { [0, $0, end] } ?? [0, end]
+        for (lower, upper) in zip(edges, edges.dropFirst()) {
+            for i in (lower + 1)..<upper where !rows[i - 1].isBounded && !rows[i].isBounded {
+                indices.insert(i)
+            }
         }
         return indices
     }
 
     // MARK: - Footer
+
     /// The brand mark + tagline, centered at the bottom of the card. Quiet (secondary) so it reads as
     /// a watermark, not a headline.
     private var footer: some View {
