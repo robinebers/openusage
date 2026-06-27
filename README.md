@@ -16,6 +16,7 @@ OpenUsage shows how much of your AI coding plans you've used: session and weekly
 - [**Cursor**](docs/providers/cursor.md) — credits, total/auto/API usage, requests, on-demand, per-day spend
 - [**Devin**](docs/providers/devin.md) — weekly and daily quota, extra usage balance
 - [**Grok**](docs/providers/grok.md) — credits used, pay-as-you-go
+- [**OpenRouter**](docs/providers/openrouter.md) — credit balance, daily/weekly/monthly spend (API key)
 
 Each provider reads the credentials already on your machine (keychain, auth files, app state) — no extra login, and nothing leaves your Mac except the same API calls the vendor's own tools make.
 

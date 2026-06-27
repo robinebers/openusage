@@ -21,7 +21,10 @@ enum DefaultLayout {
         "devin.daily", "devin.weekly", "devin.extra",
 
         "grok.creditsUsed", "grok.trend",
-        "grok.payAsYouGo", "grok.today", "grok.yesterday", "grok.last30"
+        "grok.payAsYouGo", "grok.today", "grok.yesterday", "grok.last30",
+
+        "openrouter.credits", "openrouter.balance",
+        "openrouter.today", "openrouter.week", "openrouter.month", "openrouter.keyLimit"
     ]
 
     /// Frozen snapshot of the default-on metrics from the release that introduced default seeding.
@@ -51,7 +54,8 @@ enum DefaultLayout {
         "antigravity.geminiPro",
         "claude.session", "claude.weekly",
         "codex.session", "codex.weekly",
-        "cursor.auto", "cursor.api"
+        "cursor.auto", "cursor.api",
+        "openrouter.credits"
     ]
 
     /// Metrics tucked below the per-provider "Shown on expand" divider on a fresh install. This is
@@ -72,6 +76,9 @@ enum DefaultLayout {
         "cursor.onDemand", "cursor.requests", "cursor.credits",
         "cursor.today", "cursor.yesterday", "cursor.last30",
         "devin.extra",
-        "grok.payAsYouGo", "grok.today", "grok.yesterday", "grok.last30"
+        "grok.payAsYouGo", "grok.today", "grok.yesterday", "grok.last30",
+        // OpenRouter: Credits meter + Balance stay above the fold; period spend and the per-key cap
+        // sit below the caret.
+        "openrouter.today", "openrouter.week", "openrouter.month", "openrouter.keyLimit"
     ]
 }

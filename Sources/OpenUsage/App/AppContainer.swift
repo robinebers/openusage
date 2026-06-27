@@ -32,7 +32,8 @@ final class AppContainer {
             CursorProvider(),
             AntigravityProvider(),
             DevinProvider(),
-            GrokProvider()
+            GrokProvider(),
+            OpenRouterProvider()
         ]
         let registry = WidgetRegistry.from(providers)
         let enablement = ProviderEnablementStore()
