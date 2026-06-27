@@ -104,6 +104,7 @@ final class LayoutStore {
     private let seededDefaultsKey: String
     private let pinsKey: String
     private let expandedMetricsKey: String
+    private let expandOnEnableKey: String
     private let expandedProvidersKey: String
     private let menuBarStyleKey: String
     private let defaultMetricIDs: [String]
@@ -131,6 +132,7 @@ final class LayoutStore {
         self.seededDefaultsKey = "\(storageKey).seededDefaults"
         self.pinsKey = "\(storageKey).menuBarPins"
         self.expandedMetricsKey = "\(storageKey).expandedMetrics"
+        self.expandOnEnableKey = "\(storageKey).expandOnEnable"
         self.expandedProvidersKey = "\(storageKey).expandedProviders"
         self.menuBarStyleKey = "\(storageKey).menuBarStyle"
         self.defaultMetricIDs = defaultMetricIDs
@@ -219,14 +221,24 @@ final class LayoutStore {
             shouldPersistExpanded = true
         }
 
-        // A default-expanded metric that is neither already an expanded member nor placed enters below the
-        // caret the first time the user enables it. Derived from the *final* expanded set — not from
-        // "was an expanded set saved?" — so persisting the migration above (which creates a saved set)
-        // can't strand a legacy optional metric (e.g. `cursor.requests`) above the fold on the next launch.
+        // A default-expanded metric that is neither already an expanded member nor placed enters below
+        // the caret the first time the user enables it. This queue is *persisted*, not recomputed each
+        // launch: a saved set is loaded as-is (only re-filtered for metrics that have since been placed
+        // or expanded), so a metric the user explicitly moved above the fold while disabled — which
+        // consumes its queue entry — stays above the fold after a relaunch instead of being resurrected.
+        // It's seeded once (no saved value yet) from the default-expanded metrics not already shown, which
+        // is what carries a legacy layout's optional metrics (e.g. `cursor.requests`) below the caret.
         let placedIDs = Set(placed.map(\.descriptorID))
-        defaultExpandedOnEnableIDs = Set(defaultExpandedMetricIDs.filter {
-            registry.descriptor(id: $0) != nil && !expandedMetricIDs.contains($0) && !placedIDs.contains($0)
-        })
+        let expandedNow = expandedMetricIDs
+        let isExpandOnEnableCandidate: (String) -> Bool = { [registry] id in
+            registry.descriptor(id: id) != nil && !expandedNow.contains(id) && !placedIDs.contains(id)
+        }
+        if let savedOnEnable = defaults.stringArray(forKey: expandOnEnableKey) {
+            defaultExpandedOnEnableIDs = Set(savedOnEnable.filter(isExpandOnEnableCandidate))
+        } else {
+            defaultExpandedOnEnableIDs = Set(defaultExpandedMetricIDs.filter(isExpandOnEnableCandidate))
+            persistExpandOnEnable()
+        }
 
         if shouldPersistExpanded { persistExpanded() }
 
@@ -359,6 +371,7 @@ final class LayoutStore {
                 if defaultExpandedOnEnableIDs.remove(descriptorID) != nil {
                     expandedMetricIDs.insert(descriptorID)
                     persistExpanded()
+                    persistExpandOnEnable()
                 }
                 add(descriptorID)
             } else if let widget = placed.first(where: { $0.descriptorID == descriptorID }) {
@@ -432,6 +445,7 @@ final class LayoutStore {
         persistMetricOrder()
         persistPins()
         persistExpanded()
+        persistExpandOnEnable()
     }
 
     /// Reorder whole providers when `dragged`'s header is dropped onto `target`'s. Works on the currently
@@ -476,15 +490,22 @@ final class LayoutStore {
             expanded.remove(dragged)
         }
 
+        // Landing a metric in the always-shown section is an explicit placement, so it consumes its
+        // expand-on-enable default — otherwise enabling it later would tuck it back below the caret,
+        // overriding this drag.
+        let consumedExpandOnEnable = !expanded.contains(dragged)
+            && defaultExpandedOnEnableIDs.remove(dragged) != nil
+
         // Lay the provider out the way it renders — always-shown rows, then expanded rows — keeping each
         // section in its current order, then drop `dragged` next to `target` within that combined sequence.
         let partitioned = ordered.filter { !expanded.contains($0) } + ordered.filter { expanded.contains($0) }
         guard let next = Self.reordered(partitioned, dragged: dragged, target: target) else {
-            guard membershipChanged else { return false }
+            guard membershipChanged || consumedExpandOnEnable else { return false }
             metricOrderByProvider[providerID] = partitioned
             expandedMetricIDs = expanded
             persistMetricOrder()
             persistExpanded()
+            if consumedExpandOnEnable { persistExpandOnEnable() }
             syncPlacedOrder()
             return true
         }
@@ -492,6 +513,7 @@ final class LayoutStore {
         expandedMetricIDs = expanded
         persistMetricOrder()
         if membershipChanged { persistExpanded() }
+        if consumedExpandOnEnable { persistExpandOnEnable() }
         syncPlacedOrder()
         return true
     }
@@ -508,7 +530,7 @@ final class LayoutStore {
     private func setMetricExpandedImpl(_ descriptorID: String, _ expanded: Bool) -> Bool {
         guard let providerID = registry.descriptor(id: descriptorID)?.providerID else { return false }
         guard expandedMetricIDs.contains(descriptorID) != expanded else { return false }
-        defaultExpandedOnEnableIDs.remove(descriptorID)
+        if defaultExpandedOnEnableIDs.remove(descriptorID) != nil { persistExpandOnEnable() }
 
         let ordered = metricOrder(for: providerID)
         guard ordered.contains(descriptorID) else { return false }
@@ -587,6 +609,7 @@ final class LayoutStore {
         defaultExpandedOnEnableIDs = nextDefaultExpandedOnEnableIDs
         persistMetricOrder()
         persistExpanded()
+        if fallbackChanged { persistExpandOnEnable() }
         syncPlacedOrder()
         return true
     }
@@ -738,6 +761,10 @@ final class LayoutStore {
         defaults.set(Array(expandedMetricIDs), forKey: expandedMetricsKey)
     }
 
+    private func persistExpandOnEnable() {
+        defaults.set(Array(defaultExpandedOnEnableIDs), forKey: expandOnEnableKey)
+    }
+
     private func persistExpandedProviders() {
         defaults.set(Array(expandedProviderIDs), forKey: expandedProvidersKey)
     }
@@ -776,6 +803,7 @@ final class LayoutStore {
         expandedMetricIDs = Set(defaultExpandedMetricIDs.filter { registry.descriptor(id: $0) != nil })
         defaultExpandedOnEnableIDs = []
         persistExpanded()
+        persistExpandOnEnable()
         expandedProviderIDs = []
         persistExpandedProviders()
         persistSeededDefaults(Set(Self.knownMetricIDs(defaultMetricIDs, registry: registry)))
@@ -820,6 +848,7 @@ final class LayoutStore {
         expandedMetricIDs.formUnion(defaults(defaultExpandedMetricIDs))
         defaultExpandedOnEnableIDs.subtract(owned)
         persistExpanded()
+        persistExpandOnEnable()
 
         // Default is a collapsed card.
         if expandedProviderIDs.remove(providerID) != nil {

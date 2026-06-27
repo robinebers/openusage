@@ -428,6 +428,35 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertTrue(reloaded.isMetricExpanded("cursor.requests"))
     }
 
+    func testConsumedExpandOnEnableStaysConsumedAcrossRelaunch() {
+        let defaults = makeDefaults("ExpandOnEnablePersists")
+        saveStored([PlacedWidget(descriptorID: "cursor.usage")], forKey: "layout", in: defaults)
+
+        let args: (UserDefaults) -> LayoutStore = { d in
+            LayoutStore(
+                registry: .mock,
+                defaults: d,
+                storageKey: "layout",
+                defaultMetricIDs: ["cursor.usage"],
+                migrationBaselineMetricIDs: ["cursor.usage"],
+                defaultExpandedMetricIDs: ["cursor.requests"]
+            )
+        }
+
+        // The user drags the still-disabled optional metric above the divider — an explicit placement
+        // that consumes its expand-on-enable default.
+        let store = args(defaults)
+        XCTAssertTrue(store.reorderMetric(dragged: "cursor.requests", target: "cursor.usage", in: "cursor"))
+        XCTAssertFalse(store.isMetricExpanded("cursor.requests"))
+
+        // After a relaunch the consumed default must stay consumed — enabling it leaves it above the fold
+        // (regression: the queue was recomputed each launch and resurrected the consumed entry).
+        let reloaded = args(defaults)
+        reloaded.setMetricEnabled("cursor.requests", true)
+        XCTAssertTrue(reloaded.isMetricEnabled("cursor.requests"))
+        XCTAssertFalse(reloaded.isMetricExpanded("cursor.requests"))
+    }
+
     func testExplicitDividerMoveOverridesDefaultExpandedOnEnable() {
         let defaults = makeDefaults("LegacyEnableExpandedOverride")
         saveStored([PlacedWidget(descriptorID: "cursor.usage")], forKey: "layout", in: defaults)
