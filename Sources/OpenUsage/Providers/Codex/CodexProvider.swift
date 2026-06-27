@@ -69,6 +69,17 @@ final class CodexProvider: ProviderRuntime {
             throw CodexAuthError.notLoggedIn
         }
 
+        if authStore.needsRefresh(authState.auth) {
+            // The `codex` CLI may have rotated the token on disk since we loaded it. Re-read the live
+            // credential first and adopt its (newer) access token — refreshing our stale copy would send
+            // an already-rotated refresh_token and trip `refresh_token_reused` (issue #516).
+            if let live = reloadLiveAuth(source: authState.source),
+               let liveToken = live.auth.tokens?.accessToken, !liveToken.isEmpty {
+                authState = live
+                accessToken = liveToken
+            }
+        }
+
         if authStore.needsRefresh(authState.auth),
            let refreshToken = authState.auth.tokens?.refreshToken,
            !refreshToken.isEmpty {
@@ -128,6 +139,21 @@ final class CodexProvider: ProviderRuntime {
             connectionFailed: CodexUsageError.connectionFailed,
             authExpired: CodexAuthError.tokenExpired
         )
+    }
+
+    /// Re-reads the credential from its original source (the same on-disk file or keychain entry) so a
+    /// token the `codex` CLI rotated out-of-band is picked up before we attempt our own refresh.
+    private func reloadLiveAuth(source: CodexAuthState.Source) -> CodexAuthState? {
+        switch source {
+        case .file(let path):
+            let (candidates, _) = authStore.loadAuthCandidates()
+            return candidates.first { state in
+                if case .file(let candidatePath) = state.source { return candidatePath == path }
+                return false
+            }
+        case .keychain:
+            return authStore.loadKeychainAuth()
+        }
     }
 
     private func refreshAccessToken(authState: inout CodexAuthState, refreshToken: String) async throws -> String {
