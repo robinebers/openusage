@@ -114,10 +114,12 @@ struct DashboardView: View {
                     },
                     // ⌘Z walks back the last customization step (remove/add, reorder, pin/unpin, caret
                     // move) — app-wide, since Hide and Pin happen via the dashboard's context menus too,
-                    // not only in Customize. Gated on a non-empty history so with nothing to undo it
-                    // falls through untouched and never swallows a system ⌘Z.
+                    // not only in Customize. Always consumed here: by the time the monitor calls this it
+                    // has already confirmed the panel owns the keystroke and no text field is editing
+                    // (those keep their own ⌘Z), so returning false would only let AppKit beep on an empty
+                    // undo. With nothing to undo we swallow it silently instead.
                     onUndo: {
-                        guard layout.canUndo else { return false }
+                        guard layout.canUndo else { return true }
                         withAnimation(Motion.spring) { _ = layout.undo() }
                         return true
                     }
@@ -500,8 +502,8 @@ struct DashboardView: View {
         Group {
             if screen == .customize {
                 // Customize summarizes the layout — active (enabled) metrics and how many are pinned —
-                // centered, using the same middot the metric rows use. After any undoable edit an Undo
-                // button appears trailing (⌘Z does the same), so the action is discoverable without the key.
+                // centered, using the same middot the metric rows use. ⌘Z (handled app-wide by the
+                // popover's key monitor) is the sole undo affordance; the footer stays a plain summary.
                 ZStack {
                     Text(layout.pinLimitNotice ?? "\(activeMetricCount) active · \(layout.pinnedCount) pinned")
                         .font(.caption.weight(.semibold))
@@ -509,15 +511,7 @@ struct DashboardView: View {
                         .denyShake(trigger: layout.pinNoticeShakeTrigger)
                         .frame(maxWidth: .infinity)
                         .animation(Motion.spring, value: layout.pinLimitNotice)
-
-                    if layout.canUndo {
-                        HStack {
-                            Spacer(minLength: 0)
-                            undoButton
-                        }
-                    }
                 }
-                .animation(Motion.spring, value: layout.canUndo)
             } else {
                 HStack(alignment: .center, spacing: 8) {
                     footerIdentity
@@ -540,24 +534,6 @@ struct DashboardView: View {
             measuredFooter[screen] = height
             recomposeIdeal(for: screen)
         }
-    }
-
-    /// The Customize footer's Undo control: appears after any undoable edit and walks back the last
-    /// customization step (the visible twin of the app-wide ⌘Z handler). A `.glass` pill matching the
-    /// footer's idiom.
-    private var undoButton: some View {
-        Button {
-            withAnimation(Motion.spring) { _ = layout.undo() }
-        } label: {
-            Label("Undo", systemImage: "arrow.uturn.backward")
-                .font(.caption.weight(.semibold))
-                .labelStyle(.titleAndIcon)
-        }
-        .glassButtonStyle()
-        .controlSize(.small)
-        // ⌘Z is handled by the popover's always-on key monitor (`PopoverKeyReader.onUndo`), not a SwiftUI
-        // shortcut here — pairing both would risk a double-undo when the panel is the key window.
-        .accessibilityLabel("Undo")
     }
 
     /// Count of enabled ("active") metrics across providers — the "N active" half of the Customize footer

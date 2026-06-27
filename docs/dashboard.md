@@ -40,7 +40,7 @@ Each provider card has a dashed **Shown on Expand** line. Metrics above it are a
 
 The default reset layout keeps each provider's core quota meters and Usage Trend always shown, then tucks balances, reset details, and spend-history rows behind the caret. Optional detail rows like Claude Sonnet and Cursor Requests/Credits stay off by default, but start below the divider if you enable them.
 
-Made a change you didn't mean to? Press **⌘Z** to undo — it works anywhere in the popover (the main dashboard and Customize alike) and steps back through your recent customization changes one at a time: hiding or showing a metric, reordering metrics or whole providers, pinning or unpinning, and moving a metric across the expand caret all undo. An **Undo** button also appears in the Customize footer whenever there's something to undo. Each step restores the exact previous arrangement. Undo is per-session (it starts fresh after a relaunch), and resetting clears it.
+Made a change you didn't mean to? Press **⌘Z** to undo — it works anywhere in the popover (the main dashboard and Customize alike) and steps back through your recent customization changes one at a time: hiding or showing a metric, reordering metrics or whole providers, pinning or unpinning, and moving a metric across the expand caret all undo. Each step restores the exact previous arrangement. Undo is per-session (it starts fresh after a relaunch), and resetting clears it.
 
 When OpenUsage ships a new default metric, existing layouts get it once. If you turn it off, it stays off. The **Reset** button in Customize restores the default metrics, order, menu-bar pins, and which metrics start behind the expand caret, but leaves provider settings and other preferences unchanged.
 

@@ -84,9 +84,10 @@ struct PopoverKeyReader: NSViewRepresentable {
     /// it, while it's closed this monitor does, so they never both fire.
     var onSettings: @MainActor () -> Bool = { false }
     /// Called on plain ⌘Z (undo). Rides this monitor — same reasons as Esc/Return: a hidden SwiftUI
-    /// shortcut only fires when the popover is the key window, which the panel isn't always for. Return
-    /// `true` to consume it (an undo happened); `false` lets it fall through (nothing to undo / wrong
-    /// screen), so it never swallows a system undo in a focused text field.
+    /// shortcut only fires when the popover is the key window, which the panel isn't always for. By the
+    /// time this runs the monitor has already confirmed the panel owns the keystroke and no text field is
+    /// editing (those keep their own ⌘Z), so callers should return `true` and consume it whether or not an
+    /// undo happened — returning `false` only lets AppKit beep on an empty undo.
     var onUndo: @MainActor () -> Bool = { false }
 
     func makeNSView(context: Context) -> NSView {
