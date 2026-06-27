@@ -39,6 +39,7 @@ final class TelemetryRecorderTests: XCTestCase {
         recorder.record(providerID: "claude", outcome: .refreshed, category: nil, manual: true)
         recorder.record(providerID: "claude", outcome: .failed, category: .network, manual: false)
         recorder.record(providerID: "claude", outcome: .failed, category: .notLoggedIn, manual: false)
+        recorder.record(providerID: "claude", outcome: .failed, category: .notAvailable, manual: false)
         recorder.record(providerID: "claude", outcome: .cacheHit, category: nil, manual: false)
         recorder.record(providerID: "claude", outcome: .skipped, category: nil, manual: false)
         recorder.record(providerID: "claude", outcome: .backedOff, category: nil, manual: false)
@@ -55,9 +56,18 @@ final class TelemetryRecorderTests: XCTestCase {
         let props = rollups[0]
         XCTAssertEqual(props["provider_id"] as? String, "claude")
         XCTAssertEqual(props["success_count"] as? Int, 2)
-        XCTAssertEqual(props["failure_count"] as? Int, 2)
+        XCTAssertEqual(props["failure_count"] as? Int, 3)
         XCTAssertEqual(props["manual_refresh_count"] as? Int, 1)
-        XCTAssertEqual(props["error_categories"] as? [String: Int], ["network": 1, "not_logged_in": 1])
+        XCTAssertEqual(
+            props["error_categories"] as? [String: Int],
+            ["network": 1, "not_available": 1, "not_logged_in": 1]
+        )
+        XCTAssertEqual(props["network_failure_count"] as? Int, 1)
+        XCTAssertEqual(props["not_logged_in_failure_count"] as? Int, 1)
+        XCTAssertEqual(props["not_available_failure_count"] as? Int, 1)
+        XCTAssertEqual(props["auth_expired_failure_count"] as? Int, 0)
+        XCTAssertEqual(props["expected_failure_count"] as? Int, 2)
+        XCTAssertEqual(props["unexpected_failure_count"] as? Int, 1)
     }
 
     func testTickEmitsDailyActiveOncePerDayWithConfigSnapshot() {

@@ -11,11 +11,10 @@ struct ProviderDailyCounter: Codable, Sendable, Equatable {
     var errors: [String: Int] = [:]
 }
 
-/// Telemetry bookkeeping that MUST outlive `BetaSettingsReset` — which wipes the app's *standard*
-/// `UserDefaults` domain on every beta version bump. This store lives in a dedicated suite domain
-/// (`<bundle id>.telemetry`), a separate plist that the standard-domain wipe does not touch, so the
-/// anonymous install id, the user's opt-out choice, and the daily-dedup state are NOT reset on each
-/// beta update (which would otherwise re-enable telemetry the user turned off and inflate DAU /
+/// Telemetry bookkeeping kept in its own `UserDefaults` suite domain (`<bundle id>.telemetry`), separate
+/// from the app's standard settings domain. That isolation keeps the anonymous install id, the user's
+/// opt-out choice, and the daily-dedup state independent of app settings — so a settings change can
+/// never re-enable telemetry the user turned off or mint a new install id (which would inflate DAU /
 /// new-install counts).
 @MainActor
 final class TelemetryStore {

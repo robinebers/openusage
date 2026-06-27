@@ -15,7 +15,7 @@ Tracks your Claude subscription limits using the login you already have from Cla
 
 ## Where credentials come from
 
-Sign in once with Claude Code; OpenUsage reads the same credentials. It checks every place Claude Code can store them and prefers the most recent login:
+Sign in once with Claude Code; OpenUsage reads the same credentials. It checks every place Claude Code can store them, in priority order — the keychain is Claude Code's source of truth on macOS, so it wins over a leftover credentials file:
 
 1. `CLAUDE_CODE_OAUTH_TOKEN` environment variable
 2. The macOS keychain entry Claude Code maintains

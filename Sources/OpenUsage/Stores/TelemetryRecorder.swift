@@ -123,14 +123,29 @@ final class TelemetryRecorder {
     }
 
     private func emitProviderRollup(providerID: String, counter: ProviderDailyCounter) {
-        sink.capture("provider_refresh_daily", [
+        sink.capture("provider_refresh_daily", Self.providerRollupProperties(providerID: providerID, counter: counter))
+        sink.flush()
+    }
+
+    private static func providerRollupProperties(providerID: String, counter: ProviderDailyCounter) -> [String: Any] {
+        var properties: [String: Any] = [
             "provider_id": providerID,
             "success_count": counter.success,
             "failure_count": counter.failure,
             "error_categories": counter.errors,
             "manual_refresh_count": counter.manual
-        ])
-        sink.flush()
+        ]
+
+        for category in ErrorCategory.allCases {
+            properties["\(category.rawValue)_failure_count"] = counter.errors[category.rawValue] ?? 0
+        }
+
+        let expectedFailureCount = [ErrorCategory.notLoggedIn, .notAvailable].reduce(0) { total, category in
+            total + (counter.errors[category.rawValue] ?? 0)
+        }
+        properties["expected_failure_count"] = expectedFailureCount
+        properties["unexpected_failure_count"] = max(0, counter.failure - expectedFailureCount)
+        return properties
     }
 
     /// Local-calendar `yyyy-MM-dd`. Local (not UTC) so "every day" matches the user's perception; the

@@ -55,9 +55,9 @@ final class AppContainer {
         self.dataStore = dataStore
 
         // Anonymous, opt-out usage telemetry (two daily-rollup events). Its state lives in a dedicated
-        // UserDefaults suite so the user's opt-out choice and the install id survive BetaSettingsReset's
-        // standard-domain wipe on every beta bump. The snapshot closure reads the live layout/enablement
-        // so `app_daily_active` always reflects the current configuration.
+        // UserDefaults suite, kept separate from app settings so the user's opt-out choice and the
+        // install id stay independent of any settings change. The snapshot closure reads the live
+        // layout/enablement so `app_daily_active` always reflects the current configuration.
         let telemetryStore = TelemetryStore()
         let telemetry = TelemetryRecorder(
             sink: PostHogTelemetrySink(enabled: telemetryStore.enabled),

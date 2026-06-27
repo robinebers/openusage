@@ -9,6 +9,15 @@ final class ClaudeProvider: ProviderRuntime {
     let ccusageRunner: CcusageRunner
     let now: @Sendable () -> Date
 
+    /// Last successful live-usage result and a rate-limit cooldown, carried across refreshes (the provider
+    /// is a long-lived singleton). `/api/oauth/usage` rate-limits aggressively, so on a 429 we serve the
+    /// last-good bars with a staleness note instead of blanking the dashboard, and skip the live call
+    /// entirely until the cooldown expires so we don't keep hammering an endpoint that's already limiting
+    /// us. Mirrors the legacy plugin's `cachedUsageData` + `rateLimitedUntilMs`.
+    private var lastGoodUsage: ClaudeMappedUsage?
+    private var rateLimitedUntil: Date?
+    private static let rateLimitCooldown: TimeInterval = 5 * 60
+
     init(
         authStore: ClaudeAuthStore = ClaudeAuthStore(),
         usageClient: ClaudeUsageClient = ClaudeUsageClient(),
@@ -39,9 +48,13 @@ final class ClaudeProvider: ProviderRuntime {
             return ProviderSnapshot.error(provider: provider, error: ClaudeAuthError.notLoggedIn)
         }
 
-        AppLog.info(LogTag.plugin("claude"), "refresh start (\(candidates.count) credential source\(candidates.count == 1 ? "" : "s"))")
+        // Per-source diagnostics at info level (token-free: source kind + refresh-token-present + expired
+        // booleans) so a "token expired" report is diagnosable from a default log without a debug build —
+        // e.g. all sources showing `refresh=no` explains why an expiry can never self-heal (issue #738).
+        let sources = candidates.map { $0.diagnosticsLabel(now: now()) }.joined(separator: ", ")
+        AppLog.info(LogTag.plugin("claude"), "refresh start (\(candidates.count) source\(candidates.count == 1 ? "" : "s"): \(sources))")
         let start = Date()
-        // Probe each credential source in freshest-first order. An auth-expiry failure on one source (a
+        // Probe each credential source in keychain-before-file order. An auth-expiry failure on one source (a
         // stale/locked-out token that an external `claude` re-login replaced in another source) falls
         // through to the next rather than failing the whole refresh; any non-auth error (rate limit,
         // request/transport failure) surfaces immediately so a real outage is never masked as a retry.
@@ -52,7 +65,7 @@ final class ClaudeProvider: ProviderRuntime {
                 AppLog.info(LogTag.plugin("claude"), "refresh end (\(Int(Date().timeIntervalSince(start) * 1000))ms)")
                 return snapshot
             } catch let error as ClaudeAuthError where error.allowsAuthFallback {
-                AppLog.warn(LogTag.auth("claude"), "credential source failed (\(error)); falling back to next source if any")
+                AppLog.warn(LogTag.auth("claude"), "\(state.source.label) failed (\(error)); falling back to next source if any")
                 lastFallbackError = error
                 continue
             } catch {
@@ -89,6 +102,13 @@ final class ClaudeProvider: ProviderRuntime {
     }
 
     private func fetchLiveUsage(state: inout ClaudeCredentialState) async throws -> ClaudeMappedUsage {
+        // Inside an active rate-limit cooldown, skip the live call and serve the last-good usage so a
+        // constantly-limited endpoint doesn't blank the dashboard (and we don't pile on more 429s).
+        if let until = rateLimitedUntil, now() < until {
+            AppLog.info(LogTag.plugin("claude"), "rate-limited (cooldown active, serving \(lastGoodUsage == nil ? "badge" : "last-good usage"))")
+            return rateLimitedSnapshot(credentials: state.oauth, retryAfterSeconds: Int(until.timeIntervalSince(now()).rounded(.up)))
+        }
+
         if authStore.needsRefresh(state.oauth),
            let refreshToken = state.oauth.refreshToken,
            !refreshToken.isEmpty {
@@ -110,15 +130,31 @@ final class ClaudeProvider: ProviderRuntime {
             authExpired: ClaudeAuthError.tokenExpired
         )
 
-        // 429 can come back from either attempt; the helper hands both through unchanged.
+        // 429 can come back from either attempt; the helper hands both through unchanged. Start a cooldown
+        // (respecting Retry-After) and serve the last-good usage rather than a bare badge.
         if response.statusCode == 429 {
-            AppLog.info(LogTag.plugin("claude"), "rate-limited")
-            return ClaudeUsageMapper.rateLimitedUsage(
-                credentials: working.oauth,
-                retryAfterSeconds: ClaudeUsageMapper.parseRetryAfterSeconds(response, now: now())
-            )
+            let retryAfterSeconds = ClaudeUsageMapper.parseRetryAfterSeconds(response, now: now())
+            rateLimitedUntil = now().addingTimeInterval(TimeInterval(retryAfterSeconds ?? Int(Self.rateLimitCooldown)))
+            AppLog.info(LogTag.plugin("claude"), "rate-limited (serving \(lastGoodUsage == nil ? "badge" : "last-good usage"))")
+            return rateLimitedSnapshot(credentials: working.oauth, retryAfterSeconds: retryAfterSeconds)
         }
-        return try ClaudeUsageMapper.mapUsageResponse(response, credentials: working.oauth, now: now())
+
+        let mapped = try ClaudeUsageMapper.mapUsageResponse(response, credentials: working.oauth, now: now())
+        lastGoodUsage = mapped
+        rateLimitedUntil = nil
+        return mapped
+    }
+
+    /// Last-good usage with an appended staleness note when we have it; otherwise the plain rate-limited
+    /// badge (no successful fetch yet this run). `lastGoodUsage` only ever holds a clean `mapUsageResponse`
+    /// result (never a rate-limited snapshot), so the note is never duplicated and no stale ccusage tiles
+    /// ride along — `probe` appends those fresh after this returns.
+    private func rateLimitedSnapshot(credentials: ClaudeOAuth, retryAfterSeconds: Int?) -> ClaudeMappedUsage {
+        guard var mapped = lastGoodUsage else {
+            return ClaudeUsageMapper.rateLimitedUsage(credentials: credentials, retryAfterSeconds: retryAfterSeconds)
+        }
+        mapped.lines.append(ClaudeUsageMapper.rateLimitedNote(retryAfterSeconds: retryAfterSeconds))
+        return mapped
     }
 
     private func refreshAccessToken(state: inout ClaudeCredentialState, refreshToken: String) async throws -> String {

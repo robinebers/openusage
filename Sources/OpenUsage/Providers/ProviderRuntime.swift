@@ -14,8 +14,9 @@ import Foundation
 /// - `.badge` — a short status pill (e.g. "Disabled", or a pay-as-you-go cap). Use for state, not a number
 ///   to fill a bar with.
 ///
-/// On failure, return `ProviderSnapshot.error(provider:message:)` so the error surfaces loudly in the UI
-/// rather than showing stale or empty data.
+/// On failure, return `ProviderSnapshot.error(provider:error:)` with a typed provider error so the error
+/// surfaces loudly in the UI and telemetry can report a stable, non-PII category. Use the message-only
+/// factory only when no typed error exists.
 @MainActor
 protocol ProviderRuntime: AnyObject {
     var provider: Provider { get }
@@ -35,4 +36,3 @@ protocol ProviderRuntime: AnyObject {
 func loadOffMainActor<T: Sendable>(_ load: @escaping @Sendable () -> T) async -> T {
     await Task.detached(priority: .utility, operation: load).value
 }
-

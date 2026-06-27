@@ -34,16 +34,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.terminate(nil)
             return
         }
+        // Versioned settings migration — replaces the old beta-era "wipe all settings on every update".
+        // MUST run before anything reads or writes UserDefaults (AppKit below, AppearanceSetting, and the
+        // AppContainer stores), so migrated values are in place when the stores load and a genuine fresh
+        // install still presents an empty domain — how the migrator tells a first launch from an upgrade.
+        // Nothing is wiped now; settings carry across updates. See `SettingsMigrator`.
+        SettingsMigrator.migrate()
         // Let only the `SMAppService` login item drive startup: opt out of AppKit's reopen-on-login
         // so a reboot doesn't also restore us and race the login item in the first place. The guard
         // above already resolves the race deterministically (lowest PID survives) even if both fire;
         // this just avoids the wasted second launch.
         NSApp.disableRelaunchOnLogin()
-        // Beta policy: a version change since the last run wipes all settings (no migrations during
-        // beta), so every beta starts from a clean slate. MUST run before any store reads UserDefaults
-        // — including AppearanceSetting just below and the AppContainer stores — so the wipe is clean
-        // and they re-seed their fresh-install defaults.
-        BetaSettingsReset.resetIfVersionChanged()
         // App-wide theme override (NSApp.appearance): the popover ignores SwiftUI's
         // preferredColorScheme, so the override is applied at the AppKit level once at launch;
         // the Theme picker on the Settings screen re-applies it on change.
