@@ -271,9 +271,11 @@ final class LayoutStoreTests: XCTestCase {
             "grok.creditsUsed", "grok.payAsYouGo",
             "grok.trend", "grok.today", "grok.yesterday", "grok.last30"
         ])
+        // Cursor's spend tiles + usage trend are disabled (issue #758), so the registry exposes no
+        // cursor.today/yesterday/last30/trend descriptors and they drop out of the supported metrics.
         XCTAssertEqual(store.orderedSupportedMetrics(for: "cursor").map(\.id), [
             "cursor.usage", "cursor.auto", "cursor.api", "cursor.onDemand", "cursor.requests",
-            "cursor.credits", "cursor.trend", "cursor.today", "cursor.yesterday", "cursor.last30"
+            "cursor.credits"
         ])
     }
 
@@ -295,8 +297,8 @@ final class LayoutStoreTests: XCTestCase {
             "devin.daily", "devin.weekly", "devin.extra",
             "grok.creditsUsed", "grok.trend",
             "grok.payAsYouGo", "grok.today", "grok.yesterday", "grok.last30",
-            "cursor.usage", "cursor.auto", "cursor.api", "cursor.trend",
-            "cursor.onDemand", "cursor.today", "cursor.yesterday", "cursor.last30"
+            // Cursor spend tiles + usage trend are disabled (issue #758) — only its live meters remain.
+            "cursor.usage", "cursor.auto", "cursor.api", "cursor.onDemand"
         ]))
         XCTAssertFalse(store.isMetricEnabled("claude.sonnet"))
         XCTAssertFalse(store.isMetricEnabled("cursor.requests"))
@@ -326,10 +328,11 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertEqual(expandedByProvider["grok"], [
             "grok.payAsYouGo", "grok.today", "grok.yesterday", "grok.last30"
         ])
-        XCTAssertEqual(primaryByProvider["cursor"], ["cursor.usage", "cursor.auto", "cursor.api", "cursor.trend"])
+        // Cursor spend tiles + usage trend are disabled (issue #758): no trend primary row, and the
+        // today/yesterday/last30 rows no longer sit below the caret.
+        XCTAssertEqual(primaryByProvider["cursor"], ["cursor.usage", "cursor.auto", "cursor.api"])
         XCTAssertEqual(expandedByProvider["cursor"], [
-            "cursor.onDemand", "cursor.requests", "cursor.credits",
-            "cursor.today", "cursor.yesterday", "cursor.last30"
+            "cursor.onDemand", "cursor.requests", "cursor.credits"
         ])
     }
 

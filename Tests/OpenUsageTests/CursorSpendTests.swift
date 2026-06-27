@@ -185,68 +185,63 @@ final class CursorSpendRangeTests: XCTestCase {
 
 @MainActor
 final class CursorSpendProviderTests: XCTestCase {
-    func testRefreshAppendsSpendTilesViaCookieSession() async {
-        let accessToken = makeCursorJWT(sub: "google-oauth2|user_abc123")
-        let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let iso = ISO8601DateFormatter()
-        let todayStr = iso.string(from: now)
-        let yesterdayStr = iso.string(from: Calendar.current.date(byAdding: .day, value: -1, to: now)!)
-        let csv = """
-        Date,Model,Max Mode,Input (w/ Cache Write),Input (w/o Cache Write),Cache Read,Output Tokens,Cost
-        \(todayStr),composer-1,No,0,0,0,1000000,Included
-        \(yesterdayStr),composer-1,No,0,0,0,2000000,Included
-        """
+    func testSpendTrackingDisabledRemovesSpendTilesTrendAndCSVDownload() async {
+        // Cursor's CSV export now lags ~12h+, so spend tracking is disabled (issue #758): the provider
+        // must not download the usage CSV, must expose no spend-tile / trend descriptors, and must emit no
+        // Today / Yesterday / Last 30 Days / Usage Trend lines — while the live quota meters stay intact.
+        XCTAssertFalse(CursorProvider.spendTrackingEnabled, "this regression guards the disabled state")
 
+        let accessToken = makeCursorJWT(sub: "google-oauth2|user_abc123")
+        let http = RoutingHTTPClient { request in
+            let url = request.url.absoluteString
+            if url.contains("export-usage-events-csv") {
+                XCTFail("spend tracking is disabled — Cursor must not download the usage CSV")
+                return HTTPResponse(statusCode: 500, headers: [:], body: Data())
+            }
+            if url.contains("GetCurrentPeriodUsage") {
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data("""
+                {
+                  "enabled": true,
+                  "billingCycleEnd": 1772592000000,
+                  "planUsage": { "limit": 40000, "remaining": 32000, "totalPercentUsed": 20 }
+                }
+                """.utf8))
+            }
+            if url.contains("GetPlanInfo") {
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"planInfo":{"planName":"pro plan"}}"#.utf8))
+            }
+            if url.contains("GetCreditGrantsBalance") {
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"hasCreditGrants":false}"#.utf8))
+            }
+            return HTTPResponse(statusCode: 404, headers: [:], body: Data())
+        }
         let provider = CursorProvider(
             authStore: CursorAuthStore(
                 sqlite: FakeSQLite(values: [CursorAuthStore.accessTokenKey: accessToken]),
                 keychain: FakeKeychain()
             ),
-            usageClient: CursorUsageClient(http: spendRouter(accessToken: accessToken, csv: csv, csvStatus: 200)),
-            now: { now }
-        )
-
-        let snapshot = await provider.refresh()
-
-        XCTAssertEqual(textValue(snapshot.lines, "Today"), "$10.00")
-        XCTAssertEqual(textValue(snapshot.lines, "Yesterday"), "$20.00")
-        XCTAssertEqual(textValue(snapshot.lines, "Last 30 Days"), "$30.00")
-    }
-
-    func testCSVFailureLeavesSpendTilesAsNoData() async {
-        let accessToken = makeCursorJWT(sub: "google-oauth2|user_abc123")
-        let provider = CursorProvider(
-            authStore: CursorAuthStore(
-                sqlite: FakeSQLite(values: [CursorAuthStore.accessTokenKey: accessToken]),
-                keychain: FakeKeychain()
-            ),
-            usageClient: CursorUsageClient(http: spendRouter(accessToken: accessToken, csv: "", csvStatus: 401)),
+            usageClient: CursorUsageClient(http: http),
             now: { Date(timeIntervalSince1970: 1_800_000_000) }
         )
 
         let snapshot = await provider.refresh()
-        XCTAssertNil(textValue(snapshot.lines, "Today"))
-        XCTAssertNil(textValue(snapshot.lines, "Yesterday"))
-        XCTAssertNil(textValue(snapshot.lines, "Last 30 Days"))
 
-        let descriptor = try! XCTUnwrap(provider.widgetDescriptors.first { $0.id == "cursor.today" })
-        let defaults = isolatedDefaults("nodata")
-        let store = WidgetDataStore(
-            registry: WidgetRegistry(providers: [provider.provider], descriptors: provider.widgetDescriptors),
-            providers: [provider],
-            cache: isolatedCache(defaults),
-            defaults: defaults
-        )
-        await store.refreshAll()
-
-        let data = store.data(for: descriptor)
-        XCTAssertFalse(data.hasData)
-        XCTAssertEqual(data.valueText, WidgetData.noDataHeadline)
+        // Live quota meter survives; spend tiles + trend are gone.
+        XCTAssertTrue(snapshot.lines.contains { $0.label == "Total usage" })
+        for label in ["Today", "Yesterday", "Last 30 Days", "Usage Trend"] {
+            XCTAssertNil(snapshot.lines.first { $0.label == label }, "\(label) line must be absent")
+        }
+        let ids = Set(provider.widgetDescriptors.map(\.id))
+        for id in ["cursor.today", "cursor.yesterday", "cursor.last30", "cursor.trend"] {
+            XCTAssertFalse(ids.contains(id), "\(id) descriptor must be absent")
+        }
     }
 
     func testSpendTileRendersCombinedCostAndTokensWithValueTooltip() async {
         let cursor = CursorProvider()
-        let descriptor = try! XCTUnwrap(cursor.widgetDescriptors.first { $0.id == "cursor.today" })
+        // Spend tiles are gated off the live provider (issue #758), so source the descriptor from the
+        // shared factory — this keeps the combined "cost · tokens" render shape covered for re-enable.
+        let descriptor = try! XCTUnwrap(WidgetDescriptor.spendTiles(provider: cursor.provider).first { $0.id == "cursor.today" })
 
         // The combined tile joins the dollar and the labeled token count. A no-usage day is a real zero,
         // so it reads "$0.00 · 0 tokens" (not "No data" — that's only for a failed export).
@@ -295,33 +290,6 @@ final class CursorSpendProviderTests: XCTestCase {
 
     // MARK: helpers
 
-    private func spendRouter(accessToken: String, csv: String, csvStatus: Int) -> RoutingHTTPClient {
-        RoutingHTTPClient { request in
-            let url = request.url.absoluteString
-            if url.contains("export-usage-events-csv") {
-                XCTAssertEqual(request.headers["Cookie"], "WorkosCursorSessionToken=user_abc123%3A%3A\(accessToken)")
-                XCTAssertEqual(request.headers["Accept"], "text/csv")
-                return HTTPResponse(statusCode: csvStatus, headers: [:], body: Data(csv.utf8))
-            }
-            if url.contains("GetCurrentPeriodUsage") {
-                return HTTPResponse(statusCode: 200, headers: [:], body: Data("""
-                {
-                  "enabled": true,
-                  "billingCycleEnd": 1772592000000,
-                  "planUsage": { "limit": 40000, "remaining": 32000, "totalPercentUsed": 20 }
-                }
-                """.utf8))
-            }
-            if url.contains("GetPlanInfo") {
-                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"planInfo":{"planName":"pro plan"}}"#.utf8))
-            }
-            if url.contains("GetCreditGrantsBalance") {
-                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"hasCreditGrants":false}"#.utf8))
-            }
-            return HTTPResponse(statusCode: 404, headers: [:], body: Data())
-        }
-    }
-
     private func isolatedDefaults(_ name: String) -> UserDefaults {
         let suiteName = "OpenUsageTests.CursorSpend.\(name).\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
@@ -335,16 +303,6 @@ final class CursorSpendProviderTests: XCTestCase {
 }
 
 // MARK: - Shared test helpers (file-private; mirror CursorProviderTests)
-
-private func textValue(_ lines: [MetricLine], _ label: String) -> String? {
-    guard let line = lines.first(where: { $0.label == label }) else { return nil }
-    if case .text(_, let value, _, _) = line { return value }
-    // Cursor spend is now a `.values` row carrying a single dollar value; render it in full.
-    if case .values(_, let values, _, _) = line, let dollars = values.first(where: { $0.kind == .dollars }) {
-        return MetricFormatter.number(dollars.number, kind: .dollars, style: .full)
-    }
-    return nil
-}
 
 private func makeCursorJWT(sub: String = "google-oauth2|user", exp: Double = 9_999_999_999) -> String {
     let payload = #"{"sub":"\#(sub)","exp":\#(exp)}"#
