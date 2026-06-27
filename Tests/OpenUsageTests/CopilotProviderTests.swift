@@ -63,6 +63,33 @@ final class CopilotAuthStoreTests: XCTestCase {
         XCTAssertNil(store.loadToken())
     }
 
+    func testEditorConfigIgnoresNonGithubDotComHost() {
+        // An Enterprise-only editor config must not yield a token for api.github.com; the chain should
+        // fall through to the gh keychain (which here holds the real github.com token).
+        let store = CopilotAuthStore(
+            files: FakeFiles([
+                CopilotAuthStore.editorAppsPath: #"{ "ghe.corp.example:Iv1.x": { "oauth_token": "gho_enterprise" } }"#
+            ]),
+            keychain: FakeKeychain("go-keyring-base64:" + Data("gho_dotcom".utf8).base64EncodedString())
+        )
+
+        let token = store.loadToken()
+
+        XCTAssertEqual(token?.value, "gho_dotcom")
+        XCTAssertEqual(token?.source, .ghKeychain)
+    }
+
+    func testEditorConfigPicksGithubDotComAmongHosts() {
+        let store = CopilotAuthStore(
+            files: FakeFiles([
+                CopilotAuthStore.editorAppsPath: #"{ "ghe.corp.example:Iv1.x": { "oauth_token": "gho_ent" }, "github.com:Iv1.y": { "oauth_token": "gho_dotcom" } }"#
+            ]),
+            keychain: FakeKeychain()
+        )
+
+        XCTAssertEqual(store.loadToken()?.value, "gho_dotcom")
+    }
+
     func testYamlValueIgnoresNestedUsersMap() {
         let hosts = """
         github.com:

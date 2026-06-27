@@ -113,9 +113,11 @@ struct CopilotAuthStore: Sendable {
 
     // MARK: - Parsing (pure)
 
-    /// Pull an `oauth_token` from the Copilot editor config. The file is a JSON object keyed by host —
-    /// `"github.com"` (older `hosts.json`) or `"github.com:<appId>"` (newer `apps.json`) — each value an
-    /// object carrying `oauth_token`. Prefer a github.com entry; fall back to any entry with a token.
+    /// Pull a github.com `oauth_token` from the Copilot editor config. The file is a JSON object keyed by
+    /// host — `"github.com"` (older `hosts.json`) or `"github.com:<appId>"` (newer `apps.json`) — each
+    /// value an object carrying `oauth_token`. Only github.com entries are used: another host's token
+    /// (e.g. GitHub Enterprise) must not be sent to api.github.com, and returning `nil` lets the chain
+    /// fall through to gh config / keychain, which may hold a valid github.com token.
     static func oauthToken(fromEditorJSON text: String) -> String? {
         guard let data = text.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -134,9 +136,6 @@ struct CopilotAuthStore: Sendable {
         }
 
         for (key, value) in object where key == "github.com" || key.hasPrefix("github.com:") {
-            if let token = token(in: value) { return token }
-        }
-        for (_, value) in object {
             if let token = token(in: value) { return token }
         }
         return nil
