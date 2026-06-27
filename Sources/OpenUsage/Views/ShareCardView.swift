@@ -76,15 +76,26 @@ struct ShareCardView: View {
             }
         } else {
             DashboardMetricCard {
-                ForEach(Array(rows.enumerated()), id: \.offset) { _, data in
-                    WidgetRowView(data: data)
+                let condensed = Self.condensedTextRowIndices(rows)
+                ForEach(Array(rows.enumerated()), id: \.offset) { index, data in
+                    WidgetRowView(data: data, condensedTop: condensed.contains(index))
                 }
             }
         }
     }
 
-    // MARK: - Footer
+    /// Indices of text-only rows that sit directly under another text-only row — the neighbor-aware
+    /// condensing rule the live dashboard applies, so a run of one-liners (Today / Yesterday /
+    /// Last 30 Days) pulls into one cluster in the export the same way it does in the popover.
+    static func condensedTextRowIndices(_ rows: [WidgetData]) -> Set<Int> {
+        var indices = Set<Int>()
+        for i in 1..<rows.count where !rows[i - 1].isBounded && !rows[i].isBounded {
+            indices.insert(i)
+        }
+        return indices
+    }
 
+    // MARK: - Footer
     /// The brand mark + tagline, centered at the bottom of the card. Quiet (secondary) so it reads as
     /// a watermark, not a headline.
     private var footer: some View {

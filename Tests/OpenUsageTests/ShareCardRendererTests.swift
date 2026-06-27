@@ -47,4 +47,16 @@ final class ShareCardRendererTests: XCTestCase {
         XCTAssertEqual(rep.pixelsWide % Int(ShareCardView.width), 0)
         XCTAssertGreaterThan(rep.pixelsHigh, 0)
     }
+
+    func testCondensedTextRowIndicesFollowsNeighborRule() {
+        let rows = MockData.descriptors(for: MockData.claude.id).map { $0.sample }
+        XCTAssertGreaterThan(rows.count, 1, "sample fixture should have multiple rows")
+        let condensed = ShareCardView.condensedTextRowIndices(rows)
+        XCTAssertFalse(condensed.contains(0), "the first row is never condensed")
+        for i in 1..<rows.count {
+            let expected = !rows[i - 1].isBounded && !rows[i].isBounded
+            XCTAssertEqual(condensed.contains(i), expected,
+                           "row \(i) condensing should match the neighbor-aware text-only rule")
+        }
+    }
 }
