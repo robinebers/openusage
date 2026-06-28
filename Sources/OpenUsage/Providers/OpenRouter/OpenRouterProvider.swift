@@ -89,6 +89,17 @@ final class OpenRouterProvider: ProviderRuntime {
     }
 }
 
+extension OpenRouterProvider: APIKeyManaging {
+    var apiKeyStatus: APIKeyStatus { authStore.keyStatus() }
+    func currentAPIKey() -> String? { authStore.currentAPIKey() }
+    func saveAPIKey(_ key: String) throws { try authStore.saveAPIKey(key) }
+    func deleteAPIKey() throws { try authStore.deleteAPIKey() }
+    /// Where the in-app editor writes — the primary config file the auth store reads first.
+    var apiKeyStorageDescription: String { OpenRouterAuthStore.configPaths[0] }
+    /// The env var shown in the "Using OPENROUTER_API_KEY from your environment" line.
+    var apiKeyEnvironmentName: String { OpenRouterAuthStore.environmentNames[0] }
+}
+
 private enum EndpointResult {
     case success([String: Any])
     case authFailure

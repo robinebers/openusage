@@ -12,6 +12,10 @@ final class AppContainer {
     /// Single source of truth for which providers the user has turned off. Both stores consult it (via
     /// injected closures) and the Providers settings tab drives it.
     let enablement: ProviderEnablementStore
+    /// Providers that need a user-supplied API key (OpenRouter today), conforming to `APIKeyManaging`.
+    /// Settings ▸ API Keys lists these and writes key changes through the capability. Empty when no
+    /// installed provider needs a user key, in which case the section hides itself.
+    let apiKeyProviders: [any APIKeyManaging]
     /// Anonymous, opt-out usage telemetry (daily rollups). Exposed so Settings can toggle it and the
     /// app-termination hook can flush any queued events.
     let telemetry: TelemetryRecorder
@@ -37,6 +41,7 @@ final class AppContainer {
             OpenRouterProvider()
         ]
         let registry = WidgetRegistry.from(providers)
+        let apiKeyProviders = providers.compactMap { $0 as? any APIKeyManaging }
         let enablement = ProviderEnablementStore()
         let layout = LayoutStore(
             registry: registry,
@@ -53,6 +58,7 @@ final class AppContainer {
         enablement.onProviderEnabled = { [weak dataStore] id in dataStore?.clearFailureBackoff(for: id) }
         self.registry = registry
         self.enablement = enablement
+        self.apiKeyProviders = apiKeyProviders
         self.layout = layout
         self.dataStore = dataStore
 

@@ -13,6 +13,8 @@ struct OpenRouterAuth: Hashable, Sendable {
 enum OpenRouterAuthError: Error, LocalizedError, Equatable {
     case missingKey
     case invalidKey
+    case saveFailed
+    case deleteFailed
 
     var errorDescription: String? {
         switch self {
@@ -20,6 +22,10 @@ enum OpenRouterAuthError: Error, LocalizedError, Equatable {
             return "No OpenRouter API key. Set OPENROUTER_API_KEY or add it to ~/.config/openusage/openrouter.json."
         case .invalidKey:
             return "OpenRouter API key invalid. Check your key at openrouter.ai/keys."
+        case .saveFailed:
+            return "Couldn't save the OpenRouter API key."
+        case .deleteFailed:
+            return "Couldn't remove the saved OpenRouter API key."
         }
     }
 }
@@ -61,6 +67,54 @@ struct OpenRouterAuthStore: Sendable {
             return OpenRouterAuth(apiKey: key, source: .environment)
         }
         return nil
+    }
+
+    /// The effective key currently in use (config > env), surfaced for the Settings ▸ API Keys
+    /// reveal toggle. `nil` when no key is present.
+    func currentAPIKey() -> String? {
+        loadAPIKey()?.apiKey
+    }
+
+    /// Which combination of sources currently holds a key — drives the four-state API Keys card.
+    /// A saved key plus an env key is `overrideActive` because config wins, so the saved one overrides.
+    func keyStatus() -> APIKeyStatus {
+        let hasConfig = keyFromConfigFile() != nil
+        let hasEnv = keyFromEnvironment() != nil
+        switch (hasConfig, hasEnv) {
+        case (true, true): return .overrideActive
+        case (true, false): return .saved
+        case (false, true): return .fromEnvironment
+        default: return .notSet
+        }
+    }
+
+    /// Persist `key` to the primary config file the auth store already reads, as JSON
+    /// `{"apiKey":"…"}`. A saved key automatically wins over a stale env var (config is checked
+    /// first), so this is also the "override" path. Empty input is rejected as `missingKey`.
+    func saveAPIKey(_ key: String) throws {
+        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw OpenRouterAuthError.missingKey }
+        let data = try JSONSerialization.data(withJSONObject: ["apiKey": trimmed], options: [.sortedKeys])
+        guard let text = String(data: data, encoding: .utf8) else { throw OpenRouterAuthError.saveFailed }
+        do {
+            try files.writeText(Self.configPaths[0], text)
+        } catch {
+            AppLog.error(.auth, "save API key to \(Self.configPaths[0]) failed: \(error.localizedDescription)")
+            throw OpenRouterAuthError.saveFailed
+        }
+    }
+
+    /// Remove the saved key from the primary config file. A missing file is a no-op — the caller
+    /// wants the key gone, and it already is. If an env key is present, `keyStatus()` then reports
+    /// `fromEnvironment` (the dashboard falls back to it on the next refresh).
+    func deleteAPIKey() throws {
+        guard files.exists(Self.configPaths[0]) else { return }
+        do {
+            try files.remove(Self.configPaths[0])
+        } catch {
+            AppLog.error(.auth, "delete API key at \(Self.configPaths[0]) failed: \(error.localizedDescription)")
+            throw OpenRouterAuthError.deleteFailed
+        }
     }
 
     private func keyFromEnvironment() -> String? {

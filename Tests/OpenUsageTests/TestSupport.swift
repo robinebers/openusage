@@ -32,6 +32,10 @@ final class FakeFiles: TextFileAccessing, @unchecked Sendable {
     func writeText(_ path: String, _ text: String) throws {
         files[path] = text
     }
+
+    func remove(_ path: String) throws {
+        files.removeValue(forKey: path)
+    }
 }
 
 final class FakeKeychain: KeychainAccessing, @unchecked Sendable {

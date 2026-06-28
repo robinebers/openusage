@@ -112,6 +112,12 @@ struct SettingsScreen: View {
                     providerRow(provider)
                 }
             }
+            // Key management for providers that need a user-supplied key (OpenRouter today). Sits in its
+            // own card so Providers stays pure enable toggles — the Option 2 split from the API-key UX
+            // canvas. Hidden when no installed provider needs a key.
+            if !container.apiKeyProviders.isEmpty {
+                APIKeysSection(providers: container.apiKeyProviders)
+            }
             section("Privacy") {
                 row("Share Anonymous Usage") {
                     Toggle("", isOn: Binding(

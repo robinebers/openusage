@@ -14,6 +14,9 @@ protocol TextFileAccessing: Sendable {
     func exists(_ path: String) -> Bool
     func readText(_ path: String) throws -> String
     func writeText(_ path: String, _ text: String) throws
+    /// Remove the file at `path`. A missing file is not an error — the caller wants the key gone, and
+    /// it already is. Used by the in-app API-key editor's Remove / Clear-override actions.
+    func remove(_ path: String) throws
 }
 
 struct LocalTextFileAccessor: TextFileAccessing {
@@ -30,6 +33,12 @@ struct LocalTextFileAccessor: TextFileAccessing {
         let parent = URL(fileURLWithPath: expanded).deletingLastPathComponent()
         try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
         try text.write(toFile: expanded, atomically: true, encoding: .utf8)
+    }
+
+    func remove(_ path: String) throws {
+        let expanded = expandHome(path)
+        guard FileManager.default.fileExists(atPath: expanded) else { return }
+        try FileManager.default.removeItem(atPath: expanded)
     }
 }
 

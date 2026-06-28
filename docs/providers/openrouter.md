@@ -17,10 +17,13 @@ Tracks your [OpenRouter](https://openrouter.ai) credit balance and spend from yo
 ## Where credentials come from
 
 Unlike the other providers, OpenRouter has no companion app or CLI that leaves a credential on your
-machine, so you supply an API key. Create one at [openrouter.ai/keys](https://openrouter.ai/keys), then
-provide it one of two ways (checked in this order, first match wins):
+machine, so you supply an API key. Create one at [openrouter.ai/keys](https://openrouter.ai/keys),
+then add it in **Settings → API Keys** (recommended): expand OpenRouter, paste the key, and Save.
+The key is stored at `~/.config/openusage/openrouter.json` and picked up on the next refresh.
 
-1. **Config file (recommended):** create `~/.config/openusage/openrouter.json`:
+You can also provide the key directly (checked in this order, first match wins):
+
+1. **Config file:** `~/.config/openusage/openrouter.json` — the file the Settings card writes:
 
    ```json
    { "apiKey": "sk-or-v1-..." }
@@ -30,11 +33,15 @@ provide it one of two ways (checked in this order, first match wins):
 
 2. **Environment variable:** set `OPENROUTER_API_KEY`. Because the macOS app does not inherit your
    shell environment, this only reaches the app when it's launched from a shell or seeded with
-   `launchctl setenv OPENROUTER_API_KEY sk-or-v1-...`. The config file is the reliable path.
+   `launchctl setenv OPENROUTER_API_KEY sk-or-v1-...`. When a key is found here, the API Keys card
+   shows it as read-only ("From environment") with a checkbox to override it with a saved key.
+
+A key saved through the app overrides an environment key (the config file is checked first); removing
+the saved key falls back to the environment key, or to none.
 
 ## Troubleshooting
 
-- **"No OpenRouter API key"** — add the key via the config file above (or the environment variable), then refresh.
+- **"No OpenRouter API key"** — add the key in Settings → API Keys (or the config file / env var), then refresh.
 - **"API key invalid"** — the key was rejected (401/403). Check or recreate it at openrouter.ai/keys.
 
 ## Under the hood

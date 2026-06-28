@@ -173,6 +173,7 @@ extension OpenRouterAuthError: CategorizedError {
         switch self {
         case .missingKey: .notLoggedIn
         case .invalidKey: .authInvalid
+        case .saveFailed, .deleteFailed: .other
         }
     }
 }

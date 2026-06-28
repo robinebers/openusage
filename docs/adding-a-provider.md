@@ -61,3 +61,21 @@ factory only when there is no typed error, and never return stale or empty data 
 - Validate only at the boundary (the API response); trust the app's internal types.
 - Match the metric labels and units the provider's own dashboard uses, so numbers are recognizable.
 - Declare the provider's **quick links** on its `Provider` value (`links:`). Each link is a `ProviderLink(label:url:)` rendered as a button in the card's expanded area that opens the URL in the default browser. Ship the provider's own Status / Console / Dashboard pages where they exist; leave `links` off (it defaults to empty) for providers without any. Only `http(s)` URLs with a non-empty label render.
+
+## User-supplied API keys
+
+Most providers read credentials already on the machine (a companion CLI/app's session, the keychain).
+A provider with nothing local to read — OpenRouter is the first — conforms to `APIKeyManaging` so the
+in-app **Settings → API Keys** card manages its key with no per-provider UI work:
+
+- The auth store exposes a four-state `keyStatus()` (`notSet` / `fromEnvironment` / `saved` /
+  `overrideActive`), a `currentAPIKey()` for the reveal toggle, and `saveAPIKey(_:)` / `deleteAPIKey()`
+  that write to a config file the auth store already reads. Config-file precedence over the env var is
+  what makes a saved key an override for free.
+- The provider conforms by delegating those to its auth store, and reports its storage path and env
+  name for the card's copy.
+- `AppContainer` collects every `APIKeyManaging` provider into `apiKeyProviders`, which the card
+  lists. Add the provider to the registry as usual and the card picks it up.
+
+Persist the key to a file the auth store already checks (don't introduce a parallel store), so the
+file remains the source of truth and a user can still edit it by hand.
