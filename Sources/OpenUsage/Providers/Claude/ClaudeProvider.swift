@@ -249,17 +249,19 @@ final class ClaudeProvider: ProviderRuntime {
 
     private func delegatedRefreshIfPossible(currentSource: ClaudeCredentialState.Source) async throws -> ClaudeCredentialState? {
         // Allow the attempt when the gate says "go" (no block, transient expired, or fingerprint
-        // changed) OR when a TERMINAL block is active but the coordinator could attempt now (CLI
-        // available and not in cooldown). The terminal-escape hatch lets the CLI retry after the
-        // block was recorded — e.g. the user installed the CLI or the coordinator cooldown expired
-        // — without it, the terminal block would block the delegated attempt forever (bugbot
-        // #bc1ed54a). The coordinator's own cooldown still rate-limits the actual CLI touch.
+        // changed) OR when the coordinator could attempt now (CLI available and not in cooldown),
+        // regardless of the gate's block type. The CLI is the recovery path for auth failures
+        // (sessionExpired/tokenExpired) and for the no-usable-refresh-token path; the gate's
+        // transient block (from a 5xx/connection failure on the usage API) is orthogonal — it backs
+        // off the usage API, not the CLI — so blocking the CLI during a transient block would skip
+        // recovery when the credential is actually dead (bugbot #737e65d5). The terminal-block
+        // escape hatch (bugbot #bc1ed54a) is subsumed by this: any block + canAttempt → try the CLI.
+        // The coordinator's own cooldown still rate-limits the actual CLI touch. `shouldAttempt` is
+        // still called (for its fingerprint-recheck side effect — clears the gate on external
+        // re-login — and to allow when there's no block).
         let gateAllows = failureGate.shouldAttempt(now: now())
-        let terminalEscape: Bool = {
-            guard case .terminal? = failureGate.currentBlockStatus(now: now()) else { return false }
-            return coordinator.canAttempt(now: now())
-        }()
-        guard gateAllows || terminalEscape else { return nil }
+        let escapeHatch = coordinator.canAttempt(now: now())
+        guard gateAllows || escapeHatch else { return nil }
 
         let outcome = await coordinator.attempt(now: now())
         switch outcome {

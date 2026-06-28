@@ -1249,6 +1249,71 @@ final class ClaudeProviderTests: XCTestCase {
         XCTAssertNil(badge(snapshot.lines, "Error"))
     }
 
+    func testTransientBlockDoesNotBlockCLIRecoveryForAuthFailure() async {
+        // Bugbot #737e65d5: while a transient block was active (e.g. after a recent 503), auth
+        // failures skipped the CLI entirely and fell through to recording a terminal failure — even
+        // though the CLI is the intended recovery path when in-process refresh is impossible. The
+        // transient block (from a 5xx on the usage API) is orthogonal to the auth failure; it should
+        // not block the CLI for auth recovery. Fix: delegatedRefreshIfPossible tries the CLI
+        // whenever the coordinator can attempt, regardless of the gate's block type.
+        let now = OpenUsageISO8601.date(from: "2026-02-20T16:00:00.000Z")!
+        let path = "/tmp/claude/.credentials.json"
+        let files = FakeFiles([
+            // Expired access token, no refresh token — the #738/#753 dead-end shape.
+            path: #"{"claudeAiOauth":{"accessToken":"expired","expiresAt":1,"subscriptionType":"pro","scopes":["user:profile"]}}"#
+        ])
+        let httpClient = RoutingHTTPClient { request in
+            if request.url.absoluteString.hasSuffix("/api/oauth/usage") {
+                let authorization = request.headers["Authorization"] ?? ""
+                guard authorization.contains("cli-rotated") else {
+                    return HTTPResponse(statusCode: 401, headers: [:], body: Data())
+                }
+                return HTTPResponse(
+                    statusCode: 200, headers: [:],
+                    body: Data(#"{"five_hour":{"utilization":66,"resets_at":"2099-01-01T00:00:00.000Z"}}"#.utf8)
+                )
+            }
+            return HTTPResponse(statusCode: 200, headers: [:], body: Data())
+        }
+        let authStore = ClaudeAuthStore(
+            environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": "/tmp/claude"]),
+            files: files, keychain: FakeKeychain(), now: { now }
+        )
+        let runner = FingerprintRotatingRunner {
+            files.files[path] = #"{"claudeAiOauth":{"accessToken":"cli-rotated","expiresAt":4102444800000,"subscriptionType":"pro","scopes":["user:profile"]}}"#
+        }
+        let gate = ClaudeRefreshFailureGate(
+            defaults: Self.isolatedDefaults(), storageKey: "gate",
+            currentFingerprint: { authStore.currentFingerprint() }
+        )
+        // Prime a TRANSIENT block (as if a prior refresh hit a 503 on the usage API). The block is
+        // active for 5 minutes, so shouldAttempt returns false during that window.
+        gate.recordTransientFailure(now: now.addingTimeInterval(-60))
+
+        let provider = ClaudeProvider(
+            authStore: authStore,
+            usageClient: ClaudeUsageClient(httpClient: httpClient),
+            ccusageRunner: CcusageRunner(processRunner: FakeProcessRunner(), homeDirectory: { URL(fileURLWithPath: "/Users/test") }),
+            coordinator: ClaudeDelegatedRefreshCoordinator(
+                processRunner: runner,
+                environment: FakeEnvironment(["CLAUDE_CLI_PATH": "/fake/claude"]),
+                currentFingerprint: { authStore.currentFingerprint() },
+                now: { now }, sleep: { _ in }, isExecutable: { $0 == "/fake/claude" },
+                defaults: Self.isolatedDefaults()
+            ),
+            failureGate: gate,
+            now: { now }
+        )
+
+        let snapshot = await provider.refresh()
+
+        // The transient block is active, but the CLI is the recovery path for the auth failure. The
+        // coordinator can attempt (CLI available, not in cooldown), so the CLI is tried, rotates the
+        // credential, and the live fetch succeeds.
+        XCTAssertEqual(Self.progress(snapshot.lines, "Session")?.used, 66)
+        XCTAssertNil(badge(snapshot.lines, "Error"))
+    }
+
     private static func isolatedDefaults() -> UserDefaults {
         UserDefaults(suiteName: "claude.provider.test.\(UUID().uuidString)")!
     }
