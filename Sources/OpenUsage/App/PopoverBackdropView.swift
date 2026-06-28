@@ -8,14 +8,17 @@ import AppKit
 /// `glassEffect`/`Material` only sample in-app content, so they can't show the desktop).
 ///
 /// Both children are permanent and pinned to the full frame: rebuilding on toggle would race the
-/// observer that drives `mode`, and a partial frame could reveal a transparent strip during the panel's
-/// height morph. The vibrancy view carries a stretchable rounded `maskImage` because behind-window blur
-/// is composited by the window server and doesn't reliably honor a parent layer's corner masking.
+/// observer that drives the mode, and a partial frame could reveal a transparent strip during the
+/// panel's height morph. The mode switch is an **alpha crossfade** (both layers stay mounted, one fades
+/// out as the other fades in) so enabling/disabling the egg eases rather than snaps. The vibrancy view
+/// carries a stretchable rounded `maskImage` because behind-window blur is composited by the window
+/// server and doesn't reliably honor a parent layer's corner masking.
 final class PopoverBackdropView: NSView {
     enum Mode { case opaque, translucent }
 
     private let opaqueBox = NSBox()
     private let vibrancy = NSVisualEffectView()
+    private var currentMode: Mode = .opaque
 
     init(cornerRadius: CGFloat) {
         super.init(frame: .zero)
@@ -27,13 +30,15 @@ final class PopoverBackdropView: NSView {
         opaqueBox.cornerRadius = cornerRadius
         opaqueBox.contentViewMargins = .zero
         opaqueBox.fillColor = Theme.trayNSColor
+        opaqueBox.wantsLayer = true                 // layer-backed so alphaValue animates
         opaqueBox.translatesAutoresizingMaskIntoConstraints = false
 
         vibrancy.material = .popover
         vibrancy.blendingMode = .behindWindow
         vibrancy.state = .active
         vibrancy.maskImage = Self.roundedMaskImage(cornerRadius: cornerRadius)
-        vibrancy.isHidden = true
+        vibrancy.wantsLayer = true
+        vibrancy.alphaValue = 0                      // starts hidden; opaque tray is the default look
         vibrancy.translatesAutoresizingMaskIntoConstraints = false
 
         // The opaque box sits above the vibrancy view so the default look fully covers it; only one is
@@ -55,12 +60,21 @@ final class PopoverBackdropView: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    /// Which backdrop layer is showing. Driven by `StatusItemController` from the transparency style.
-    var mode: Mode = .opaque {
-        didSet {
-            guard mode != oldValue else { return }
-            opaqueBox.isHidden = (mode != .opaque)
-            vibrancy.isHidden = (mode == .opaque)
+    /// Crossfades to the given backdrop layer. Driven by `StatusItemController` from the transparency
+    /// style; pass `animated: false` for the initial state so launch doesn't fade in. When `animated`,
+    /// the caller wraps this in the same `NSAnimationContext` group as the window-alpha change so they
+    /// ease together.
+    func setMode(_ mode: Mode, animated: Bool) {
+        guard mode != currentMode else { return }
+        currentMode = mode
+        let opaqueAlpha: CGFloat = mode == .opaque ? 1 : 0
+        let vibrancyAlpha: CGFloat = mode == .opaque ? 0 : 1
+        if animated {
+            opaqueBox.animator().alphaValue = opaqueAlpha
+            vibrancy.animator().alphaValue = vibrancyAlpha
+        } else {
+            opaqueBox.alphaValue = opaqueAlpha
+            vibrancy.alphaValue = vibrancyAlpha
         }
     }
 

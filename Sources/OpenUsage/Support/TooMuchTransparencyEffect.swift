@@ -1,25 +1,18 @@
 import SwiftUI
 
 extension View {
-    /// The "too much transparency" easter-egg treatment.
+    /// The "too much transparency" easter-egg treatment, applied as one stable modifier so enabling and
+    /// disabling **crossfade** (a ~0.55s ease) instead of snapping.
     ///
     /// - `.disco`: the secret code's main state — a loud but **readable** party. A vivid churning
     ///   gradient fills the popover behind the content and a glowing rim rotates around the edge, while
-    ///   the content stays crisp on frosted cards (no blur over text, the window stays solid). Meter bars
-    ///   and provider marks join in via the `popoverPartyMode` environment flag.
-    /// - `.ghost`: the "Even More" extreme — the deliberately barely-readable pink-glass chaos, where the
-    ///   abuse is layered *over* the content (blur, pink wash, sway) and the window goes see-through.
-    /// A no-op for the normal and increased styles.
-    @ViewBuilder
+    ///   the content stays crisp on frosted cards (no blur over text). Meter bars and provider marks join
+    ///   in via the `popoverPartyMode` environment flag.
+    /// - `.ghost`: the "Even More" extreme — the deliberately barely-readable pink-glass chaos, layered
+    ///   *over* the content (blur, pink wash, sway) with the window going see-through.
+    /// - `.opaque` / `.increased`: nothing — just the normal look.
     func tooMuchTransparency(_ style: PopoverTransparencyStyle) -> some View {
-        switch style {
-        case .disco:
-            modifier(DiscoModifier())
-        case .ghost:
-            modifier(GhostModifier())
-        case .opaque, .increased:
-            self
-        }
+        modifier(TooMuchTransparencyModifier(style: style))
     }
 }
 
@@ -32,19 +25,33 @@ private let discoColors: [Color] = [
     Color(red: 1.00, green: 0.32, blue: 0.74),
 ]
 
-// MARK: - Disco (loud but readable)
+/// One stable modifier whose layers come and go by `style`. The `.animation(value:)` plus per-layer
+/// `.transition(.opacity)` is what makes toggling the egg fade in and out (the AppKit window alpha and
+/// backdrop crossfade on the same ~0.55s ease, driven by `StatusItemController`).
+private struct TooMuchTransparencyModifier: ViewModifier {
+    let style: PopoverTransparencyStyle
 
-private struct DiscoModifier: ViewModifier {
+    private var isDisco: Bool { style == .disco }
+    private var isGhost: Bool { style == .ghost }
+
     func body(content: Content) -> some View {
         content
-            // Leaf views (meters, provider marks) read this to join the party.
-            .environment(\.popoverPartyMode, true)
-            // The gradient lives BEHIND the content (which sits on frosted scrim cards), so text never
-            // gets washed or blurred — that's what keeps it readable.
-            .background { DiscoBackdrop() }
-            .overlay { DiscoRim().allowsHitTesting(false) }
+            .modifier(GhostDistortion(active: isGhost))
+            .background {
+                if isDisco { DiscoBackdrop().transition(.opacity) }
+            }
+            .overlay {
+                if isDisco { DiscoRim().transition(.opacity).allowsHitTesting(false) }
+            }
+            .overlay {
+                if isGhost { GhostOverlays().transition(.opacity).allowsHitTesting(false) }
+            }
+            .environment(\.popoverPartyMode, isDisco)
+            .animation(.easeInOut(duration: 0.55), value: style)
     }
 }
+
+// MARK: - Disco (loud but readable)
 
 /// A vivid, slowly churning gradient that fills the popover behind the (frosted, readable) content.
 private struct DiscoBackdrop: View {
@@ -82,33 +89,50 @@ private struct DiscoRim: View {
 
 // MARK: - Ghost (the unreadable "Even More" extreme)
 
-/// The deliberately barely-readable chaos: pink iridescence and a clear-glass lens layered *over* the
-/// content, which is blurred, hue-wobbled, and gently swaying. The joke leans into abusing Liquid Glass.
-private struct GhostModifier: ViewModifier {
+/// Blurs, hue-wobbles, and gently sways the content — the unreadable part. Identity when inactive (no
+/// `TimelineView` mounted), so it costs nothing outside the egg.
+private struct GhostDistortion: ViewModifier {
+    let active: Bool
+
+    @ViewBuilder
     func body(content: Content) -> some View {
+        if active {
+            TimelineView(.animation) { timeline in
+                let t = timeline.date.timeIntervalSinceReferenceDate
+                content
+                    .saturation(1.55)
+                    .blur(radius: 3.6)
+                    .hueRotation(.degrees(sin(t * 1.1) * 16))
+                    .scaleEffect(1.05 * (1 + sin(t * 1.2) * 0.018))   // over-scale hides sway gaps
+                    .rotationEffect(.degrees(sin(t * 1.5) * 1.1))
+            }
+        } else {
+            content
+        }
+    }
+}
+
+/// The pink-glass chaos layered over the content: a clear-glass lens (the deliberate Liquid Glass
+/// abuse), a pink wash, and a drifting specular shimmer.
+private struct GhostOverlays: View {
+    var body: some View {
         TimelineView(.animation) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
-            let spin = t * 26
-            let hueWobble = sin(t * 1.1) * 16
-            let sway = sin(t * 1.5) * 1.1
-            let breathe = 1 + sin(t * 1.2) * 0.018
-            let driftX = cos(t * 0.8) * 0.32
-            let driftY = sin(t * 0.9) * 0.32
-
-            content
-                .saturation(1.55)
-                .blur(radius: 3.6)
-                .hueRotation(.degrees(hueWobble))
-                .scaleEffect(1.05 * breathe)        // over-scale hides sway gaps at the rounded corners
-                .rotationEffect(.degrees(sway))
-                .overlay { glassLens().allowsHitTesting(false) }
-                .overlay { pinkWash(angle: spin).allowsHitTesting(false) }
-                .overlay { shimmer(driftX: driftX, driftY: driftY).allowsHitTesting(false) }
+            ZStack {
+                glassLens()
+                AngularGradient(colors: discoColors, center: .center, angle: .degrees(t * 26))
+                    .opacity(0.5)
+                RadialGradient(
+                    colors: [Color.white.opacity(0.55), .clear],
+                    center: UnitPoint(x: 0.5 + cos(t * 0.8) * 0.32, y: 0.5 + sin(t * 0.9) * 0.32),
+                    startRadius: 0,
+                    endRadius: 130
+                )
+                .blendMode(.plusLighter)
+            }
         }
     }
 
-    /// The deliberate Liquid Glass abuse: a full-cover clear-glass lens (macOS 26) or frosted material
-    /// (macOS 15) that refracts the whole popover.
     @ViewBuilder
     private func glassLens() -> some View {
         if #available(macOS 26, *) {
@@ -116,23 +140,5 @@ private struct GhostModifier: ViewModifier {
         } else {
             Rectangle().fill(.ultraThinMaterial)
         }
-    }
-
-    /// Rotating pink iridescence, blended so it tints and washes the content rather than hiding it flat.
-    private func pinkWash(angle: Double) -> some View {
-        AngularGradient(colors: discoColors, center: .center, angle: .degrees(angle))
-            .blendMode(.overlay)
-            .opacity(0.95)
-    }
-
-    /// A soft white specular highlight that drifts around — the "liquid" shimmer of the glass.
-    private func shimmer(driftX: Double, driftY: Double) -> some View {
-        RadialGradient(
-            colors: [Color.white.opacity(0.55), .clear],
-            center: UnitPoint(x: 0.5 + driftX, y: 0.5 + driftY),
-            startRadius: 0,
-            endRadius: 130
-        )
-        .blendMode(.plusLighter)
     }
 }

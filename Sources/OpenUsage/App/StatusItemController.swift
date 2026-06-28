@@ -245,11 +245,19 @@ final class StatusItemController: NSObject {
 
     // MARK: - Transparency
 
+    /// True once the launch application has run, so subsequent style changes animate (the first one
+    /// shouldn't fade in from nothing).
+    private var hasAppliedTransparency = false
+
     /// Applies the resolved transparency style to the panel and re-arms on the next change. Mirrors
     /// `updateButtonImage`'s `withObservationTracking` re-arm (its `onChange` is one-shot). Reads the
     /// store's `effectiveStyle`, which folds in the persisted toggle, the egg state, and the system
     /// accessibility flags — so this fires whenever any of them changes. Backdrop already exists (it's a
     /// stored property), so the first call from `init` safely sets the initial look.
+    ///
+    /// On every change after launch the window alpha and the backdrop crossfade ease together in one
+    /// ~0.55s group, matching the SwiftUI side (`tooMuchTransparency`'s `.animation`), so toggling the
+    /// egg or Increase Transparency fades in and out instead of snapping.
     private func applyTransparency() {
         let style = withObservationTracking {
             container.transparency.effectiveStyle
@@ -258,8 +266,20 @@ final class StatusItemController: NSObject {
                 self?.applyTransparency()
             }
         }
-        backdrop.mode = style.surfaceTreatment == .opaque ? .opaque : .translucent
-        panel.alphaValue = style.windowAlpha
+        let mode: PopoverBackdropView.Mode = style.surfaceTreatment == .opaque ? .opaque : .translucent
+        if hasAppliedTransparency {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.55
+                context.allowsImplicitAnimation = true
+                panel.animator().alphaValue = style.windowAlpha
+                backdrop.setMode(mode, animated: true)
+            }
+        } else {
+            hasAppliedTransparency = true
+            panel.alphaValue = style.windowAlpha
+            backdrop.setMode(mode, animated: false)
+        }
+        // Shadow isn't animatable; set it directly (the crossfade masks the change).
         panel.hasShadow = style.wantsShadow
         panel.invalidateShadow()
     }
