@@ -142,15 +142,13 @@ final class CodexProvider: ProviderRuntime {
     }
 
     /// Re-reads the credential from its original source (the same on-disk file or keychain entry) so a
-    /// token the `codex` CLI rotated out-of-band is picked up before we attempt our own refresh.
+    /// token the `codex` CLI rotated out-of-band is picked up before we attempt our own refresh. Reads
+    /// only that one source — matching how `codex` reads the single `auth.json` from `CODEX_HOME` —
+    /// rather than re-scanning every candidate path.
     private func reloadLiveAuth(source: CodexAuthState.Source) -> CodexAuthState? {
         switch source {
         case .file(let path):
-            let (candidates, _) = authStore.loadAuthCandidates()
-            return candidates.first { state in
-                if case .file(let candidatePath) = state.source { return candidatePath == path }
-                return false
-            }
+            return authStore.loadAuth(at: path)
         case .keychain:
             return authStore.loadKeychainAuth()
         }

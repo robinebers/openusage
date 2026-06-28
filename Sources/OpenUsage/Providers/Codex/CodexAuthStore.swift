@@ -104,20 +104,29 @@ struct CodexAuthStore: Sendable {
         var missing: [String] = []
 
         for path in authPaths() {
-            guard files.exists(path) else {
+            if let state = loadAuth(at: path) {
+                candidates.append(state)
+            } else if !files.exists(path) {
                 missing.append(path)
-                continue
             }
-            guard let text = try? files.readText(path),
-                  let auth = Self.parseAuth(text),
-                  Self.hasTokenLikeAuth(auth)
-            else {
-                continue
-            }
-            candidates.append(CodexAuthState(auth: auth, source: .file(path: path)))
         }
 
         return (candidates, missing)
+    }
+
+    /// Reads the credential from a single on-disk auth file — the targeted counterpart to
+    /// `loadKeychainAuth()`, used when reloading the exact source we already loaded from so we don't
+    /// re-scan every candidate path. Returns `nil` when the file is missing, unreadable, or doesn't
+    /// carry token-like auth.
+    func loadAuth(at path: String) -> CodexAuthState? {
+        guard files.exists(path),
+              let text = try? files.readText(path),
+              let auth = Self.parseAuth(text),
+              Self.hasTokenLikeAuth(auth)
+        else {
+            return nil
+        }
+        return CodexAuthState(auth: auth, source: .file(path: path))
     }
 
     func loadKeychainAuth() -> CodexAuthState? {
