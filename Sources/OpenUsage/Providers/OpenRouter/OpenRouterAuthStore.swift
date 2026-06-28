@@ -32,9 +32,10 @@ enum OpenRouterAuthError: Error, LocalizedError, Equatable {
 
 /// Reads an OpenRouter API key the user has already placed on the machine. Unlike the CLI-backed
 /// providers, OpenRouter has no companion app that stashes a credential in a known spot, so the key
-/// comes from an environment variable or a small config file. The GUI app does not inherit the shell
-/// environment, so the config file is the reliable path; the env var works when the app is launched
-/// from a shell (e.g. during development) or seeded via `launchctl setenv`.
+/// comes from an environment variable or a small config file. A GUI app launched from Finder/Dock
+/// doesn't inherit the interactive shell environment, so `ProcessEnvironmentReader` captures the
+/// login shell's environment at launch (see `LoginShellEnvironment`) — meaning an env var exported in
+/// a shell profile is honored even in a packaged build; the config file remains the explicit path.
 struct OpenRouterAuthStore: Sendable {
     /// Config files checked in order; first readable key wins. JSON (`apiKey` / `api_key` / `key`) or a
     /// plain-text file containing only the key.

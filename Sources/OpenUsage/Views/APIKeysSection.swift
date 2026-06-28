@@ -97,10 +97,7 @@ struct APIKeysSection: View {
             if status == .notSet {
                 // No key anywhere: the field is editable from the start.
                 keyField(provider, editable: true)
-                HStack(spacing: 8) {
-                    primaryButton("Save", disabled: !hasInput) { save(provider) }
-                    storageCaption(provider)
-                }
+                primaryButton("Save", disabled: !hasInput) { save(provider) }
             } else if status == .fromEnvironment {
                 // Env key, no custom key yet: read-only until "Override" is checked, then editable.
                 keyField(provider, editable: overrideChecked)
@@ -180,13 +177,6 @@ struct APIKeysSection: View {
         case .overrideActive: "Custom Key"
         case .notSet: ""
         }
-    }
-
-    private func storageCaption(_ provider: any APIKeyManaging) -> some View {
-        Text("Stored in \(provider.apiKeyStorageDescription)")
-            .font(.caption2)
-            .foregroundStyle(.tertiary)
-            .lineLimit(1)
     }
 
     private var hasInput: Bool {

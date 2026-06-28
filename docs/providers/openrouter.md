@@ -31,10 +31,11 @@ You can also provide the key directly (checked in this order, first match wins):
 
    A plain-text file containing just the key, or `~/.config/openrouter/key.json`, also work.
 
-2. **Environment variable:** set `OPENROUTER_API_KEY`. Because the macOS app does not inherit your
-   shell environment, this only reaches the app when it's launched from a shell or seeded with
-   `launchctl setenv OPENROUTER_API_KEY sk-or-v1-...`. When a key is found here, the API Keys card
-   shows it as read-only ("From environment") with a checkbox to override it with a saved key.
+2. **Environment variable:** set `OPENROUTER_API_KEY` in your shell profile (e.g. `~/.zshrc` or
+   `~/.zprofile`). On launch the app reads your login shell's environment, so a key exported there is
+   picked up even when the app is started from Finder or the Dock — not just when run from a terminal.
+   When a key is found here, the API Keys card shows it as read-only ("From environment") with a
+   checkbox to override it with a saved key.
 
 A key saved through the app overrides an environment key (the config file is checked first); removing
 the saved key falls back to the environment key, or to none.

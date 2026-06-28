@@ -1,0 +1,97 @@
+import Foundation
+
+/// A macOS GUI app launched from Finder, the Dock, or `open` inherits only the launchd session
+/// environment — not the variables a user exports in their interactive login shell
+/// (`~/.zshrc`, `~/.zprofile`, `~/.bash_profile`). Provider keys like `OPENROUTER_API_KEY` live
+/// there, so without this they are invisible to a packaged build; they only resolved when the
+/// binary was run straight from a terminal during development (which is why "it worked in dev"
+/// but not in the shipped beta).
+///
+/// This captures the login shell environment once, by running the user's `$SHELL` as a login +
+/// interactive shell and reading its `env`, then caches the result. `ProcessEnvironmentReader`
+/// consults it as a fallback after the process environment, so env-var keys resolve in the
+/// bundled app the same way they do from a terminal.
+final class LoginShellEnvironment: @unchecked Sendable {
+    static let shared = LoginShellEnvironment()
+
+    /// Sentinel tokens that bracket our `env` output, so a login shell's banner/MOTD (printed before
+    /// our command runs) is discarded instead of mis-parsed as variables.
+    private static let beginMarker = "__OPENUSAGE_ENV_BEGIN__"
+    private static let endMarker = "__OPENUSAGE_ENV_END__"
+    /// Cap the shell spawn so a slow or hanging profile can't stall a provider refresh forever.
+    private static let captureTimeout: TimeInterval = 5
+
+    private let runner: ProcessRunning
+    private let lock = NSLock()
+    private var cached: [String: String]?
+
+    init(runner: ProcessRunning = SystemProcessRunner()) {
+        self.runner = runner
+    }
+
+    /// The captured login-shell value for `name`, or `nil` if absent or empty.
+    func value(for name: String) -> String? {
+        environment()[name]?.nilIfEmpty
+    }
+
+    /// Capture the environment once and cache it. The lock is held across the (one-time) spawn so
+    /// concurrent callers wait for the single capture instead of each spawning their own shell.
+    func environment() -> [String: String] {
+        lock.lock()
+        defer { lock.unlock() }
+        if let cached { return cached }
+        let captured = capture()
+        cached = captured
+        return captured
+    }
+
+    /// Spawn the capture eagerly off the main thread so the first provider refresh (and any UI read)
+    /// finds the cache already warm and never blocks on the subprocess. Safe to call more than once.
+    func prewarm() {
+        Task.detached(priority: .utility) { [weak self] in
+            _ = self?.environment()
+        }
+    }
+
+    private func capture() -> [String: String] {
+        let shell = ProcessInfo.processInfo.environment["SHELL"]?.nilIfEmpty ?? "/bin/zsh"
+        // `-i -l -c`: interactive + login so both rc files (.zshrc/.bashrc) and profile files
+        // (.zprofile/.bash_profile) are sourced; `env -0` emits NUL-separated `KEY=VALUE`, robust
+        // against values that contain newlines.
+        let command = "printf '%s\\0' \(Self.beginMarker); /usr/bin/env -0; printf '%s\\0' \(Self.endMarker)"
+        do {
+            let result = try runner.run(
+                executable: shell,
+                arguments: ["-ilc", command],
+                environment: [:],
+                timeout: Self.captureTimeout
+            )
+            guard result.succeeded else {
+                AppLog.warn(.subprocess, "login-shell env capture exited \(result.exitCode)")
+                return [:]
+            }
+            return Self.parse(result.stdout)
+        } catch {
+            AppLog.warn(.subprocess, "login-shell env capture failed: \(error.localizedDescription)")
+            return [:]
+        }
+    }
+
+    /// Parse the NUL-separated `env -0` output, keeping only the `KEY=VALUE` tokens between the begin
+    /// and end markers and ignoring any shell banner printed outside them.
+    static func parse(_ output: String) -> [String: String] {
+        let tokens = output.components(separatedBy: "\0")
+        guard let begin = tokens.firstIndex(of: beginMarker) else { return [:] }
+        let end = tokens.firstIndex(of: endMarker) ?? tokens.count
+        guard begin < end else { return [:] }
+
+        var environment: [String: String] = [:]
+        for token in tokens[(begin + 1)..<end] {
+            guard let separator = token.firstIndex(of: "=") else { continue }
+            let key = String(token[..<separator])
+            guard !key.isEmpty else { continue }
+            environment[key] = String(token[token.index(after: separator)...])
+        }
+        return environment
+    }
+}

@@ -28,6 +28,11 @@ final class AppContainer {
     private let refreshTask: Task<Void, Never>
 
     init() {
+        // Capture the user's login-shell environment off-main so provider keys exported in a shell
+        // profile (e.g. OPENROUTER_API_KEY) resolve in a Finder/Dock-launched build, not only when
+        // run from a terminal. Warmed here so the first refresh finds the cache ready.
+        LoginShellEnvironment.shared.prewarm()
+
         // Default provider order (see AGENTS.md "## Providers"): the three established providers first —
         // Claude, Codex, Cursor — then every other provider alphabetically by display name. This registry
         // order is the default provider order (`LayoutStore.orderedProviderIDs` falls back to it, and

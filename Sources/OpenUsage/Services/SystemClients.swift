@@ -6,7 +6,13 @@ protocol EnvironmentReading: Sendable {
 
 struct ProcessEnvironmentReader: EnvironmentReading {
     func value(for name: String) -> String? {
-        ProcessInfo.processInfo.environment[name]
+        // The process environment first (set by launchd, `launchctl setenv`, or a terminal launch),
+        // then the captured login-shell environment — so keys a user exports in their shell profile
+        // still resolve in a packaged app launched from Finder/Dock. See `LoginShellEnvironment`.
+        if let value = ProcessInfo.processInfo.environment[name]?.nilIfEmpty {
+            return value
+        }
+        return LoginShellEnvironment.shared.value(for: name)
     }
 }
 
