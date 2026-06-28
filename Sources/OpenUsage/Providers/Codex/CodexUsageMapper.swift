@@ -76,9 +76,6 @@ enum CodexUsageMapper {
             ))
         }
 
-        appendAdditionalRateLimits(from: body, to: &lines, now: now)
-        appendReviewLimit(from: body, to: &lines, now: now)
-
         // On-demand rate-limit reset credits, shown before Credits — mirrors the JS plugin (PR #577).
         // The row reads "2 available" (the count is carried raw, so the menu-bar tile reads the same
         // number); each still-available credit's expiry rides along in `expiriesAt` and surfaces in the
@@ -98,60 +95,6 @@ enum CodexUsageMapper {
         // The "no usage data" badge is appended by `CodexProvider.probe` *after* the ccusage spend
         // lines, so an empty live response never yields a badge that coexists with Today/Yesterday.
         return CodexMappedUsage(plan: formatCodexPlan(body["plan_type"]), lines: lines)
-    }
-
-    private static func appendAdditionalRateLimits(from body: [String: Any], to lines: inout [MetricLine], now: Date) {
-        guard let entries = body["additional_rate_limits"] as? [[String: Any]] else { return }
-        for entry in entries {
-            guard let rateLimit = entry["rate_limit"] as? [String: Any] else { continue }
-            let rawName = (entry["limit_name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let shortName = rawName.replacingOccurrences(
-                of: #"^GPT-[\d.]+-Codex-"#,
-                with: "",
-                options: .regularExpression
-            )
-            let label = shortName.isEmpty ? (rawName.isEmpty ? "Model" : rawName) : shortName
-
-            if let primary = rateLimit["primary_window"] as? [String: Any],
-               let used = ProviderParse.number(primary["used_percent"]) {
-                let periodDurationMs = readPeriodMs(primary) ?? sessionPeriodMs
-                lines.append(progress(
-                    label: label,
-                    used: normalizedUsedPercent(used, resetWindow: primary, now: now, periodDurationMs: periodDurationMs),
-                    resetWindow: primary,
-                    now: now,
-                    periodDurationMs: periodDurationMs
-                ))
-            }
-            if let secondary = rateLimit["secondary_window"] as? [String: Any],
-               let used = ProviderParse.number(secondary["used_percent"]) {
-                let periodDurationMs = readPeriodMs(secondary) ?? weeklyPeriodMs
-                lines.append(progress(
-                    label: "\(label) Weekly",
-                    used: normalizedUsedPercent(used, resetWindow: secondary, now: now, periodDurationMs: periodDurationMs),
-                    resetWindow: secondary,
-                    now: now,
-                    periodDurationMs: periodDurationMs
-                ))
-            }
-        }
-    }
-
-    private static func appendReviewLimit(from body: [String: Any], to lines: inout [MetricLine], now: Date) {
-        guard let review = body["code_review_rate_limit"] as? [String: Any],
-              let window = review["primary_window"] as? [String: Any],
-              let used = ProviderParse.number(window["used_percent"])
-        else {
-            return
-        }
-        let periodDurationMs = readPeriodMs(window) ?? weeklyPeriodMs
-        lines.append(progress(
-            label: "Reviews",
-            used: normalizedUsedPercent(used, resetWindow: window, now: now, periodDurationMs: periodDurationMs),
-            resetWindow: window,
-            now: now,
-            periodDurationMs: periodDurationMs
-        ))
     }
 
     private static func progress(
