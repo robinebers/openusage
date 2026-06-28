@@ -113,9 +113,18 @@ private struct CardSurfaceModifier: ViewModifier {
                     .fill(Theme.traySurface)
                     .overlay { Theme.cardShape.fill(Theme.cardFill) }
             case .translucent:
-                Theme.cardShape.fill(Theme.cardFill)
+                // Increase Transparency (and drunk): the card carries its own frosted `.regularMaterial`
+                // so metric text stays legible over whatever desktop shows through the behind-window
+                // backdrop, with `.fill.quaternary` on top preserving the grouped-card hierarchy. HIG
+                // names the regular material as the choice for text-dense popovers; a bare low-opacity
+                // fill over the desktop is the "washed out" anti-pattern. Glass stays out of the content
+                // layer — this is a standard material, not `glassEffect`.
+                Theme.cardShape
+                    .fill(.regularMaterial)
+                    .overlay { Theme.cardShape.fill(Theme.cardFill) }
             case .scrim:
-                // Frosted material over the animated party backdrop so the metric text stays readable.
+                // Same frosted recipe as `.translucent`, kept a distinct case for the party backdrop
+                // (it sits over the animated gradient rather than the desktop) in case the two diverge.
                 Theme.cardShape
                     .fill(.regularMaterial)
                     .overlay { Theme.cardShape.fill(Theme.cardFill) }
