@@ -2,8 +2,8 @@ import Foundation
 import Observation
 
 /// User preferences for quota pace notifications: the three per-milestone triggers (no master switch —
-/// turn all three off to silence). All default ON (owner decision) — a fresh install starts alerting,
-/// and the app requests notification authorization on first launch because of that.
+/// turn all three off to silence). All default OFF; the app requests notification authorization the
+/// first time a trigger is turned on, so a fresh install stays quiet until the user opts in.
 ///
 /// Persisted in `UserDefaults` (each key independently, so an unset key reads its `true` default and a
 /// future-added trigger defaults on without migration). `@Observable` so the Settings toggles and the
@@ -34,9 +34,9 @@ final class NotificationSettingsStore {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        self.underTenPercent = defaults.boolWithDefault(Self.underTenKey, default: true)
-        self.healthyToClose = defaults.boolWithDefault(Self.healthyToCloseKey, default: true)
-        self.closeToRunningOut = defaults.boolWithDefault(Self.closeToRunningOutKey, default: true)
+        self.underTenPercent = defaults.boolWithDefault(Self.underTenKey, default: false)
+        self.healthyToClose = defaults.boolWithDefault(Self.healthyToCloseKey, default: false)
+        self.closeToRunningOut = defaults.boolWithDefault(Self.closeToRunningOutKey, default: false)
     }
 
     /// The per-milestone toggles as the pure logic consumes them.
@@ -48,8 +48,9 @@ final class NotificationSettingsStore {
         )
     }
 
-    /// True when at least one trigger is on — used to decide whether to request authorization at launch
-    /// and whether the Settings permission notice should show. Turning all three off silences everything.
+    /// True when at least one trigger is on — used to decide whether to request authorization (when the
+    /// first trigger is turned on) and whether the Settings permission notice should show. Turning all
+    /// three off silences everything.
     var anyEnabled: Bool { underTenPercent || healthyToClose || closeToRunningOut }
 }
 

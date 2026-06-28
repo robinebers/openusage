@@ -100,12 +100,9 @@ final class AppContainer {
         self.refreshTask = Self.startPeriodicRefresh(dataStore: dataStore, telemetry: telemetry)
         localAPI.start()
         // Become the notification-center delegate so banners show while frontmost — a menu-bar accessory
-        // effectively always is. Request authorization at launch only when at least one trigger is on
-        // (all default on, so a fresh install prompts); there's no master toggle anymore. No-op under tests.
+        // effectively always is. Notification authorization is requested the first time a trigger is
+        // turned on (from Settings), not at launch — triggers default off. No-op under tests.
         AppNotifications.shared.registerAsDelegate()
-        if notificationSettings.anyEnabled {
-            AppNotifications.shared.requestAuthorization()
-        }
     }
 
     deinit { refreshTask.cancel() }

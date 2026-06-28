@@ -183,7 +183,7 @@ struct SettingsScreen: View {
     /// Quota pace notifications: three per-trigger toggles (no master switch — turn all three off to
     /// silence), each with an (i) tooltip. A warning glyph on the section header and an action row under
     /// the toggles appear when macOS permission isn't authorized and at least one trigger is on. Defaults
-    /// are all-on (owner decision); the app requests authorization at first launch.
+    /// are all off; the app requests authorization the first time a trigger is turned on.
     private var notificationsSection: some View {
         @Bindable var notifications = container.notificationSettings
         let needsAttention = notificationsAuth != .authorized && anyToggleOn
@@ -210,7 +210,13 @@ struct SettingsScreen: View {
             .cardSurface()
         }
         .onChange(of: anyToggleOn) { _, on in
-            if on { Task { await refreshNotificationsAuth() } }
+            if on {
+                // The first time a trigger is turned on, ask macOS for permission (memoized — it only
+                // prompts while authorization is still not determined). Then refresh so the
+                // warning/action row reflects the new status.
+                AppNotifications.shared.requestAuthorization()
+                Task { await refreshNotificationsAuth() }
+            }
         }
     }
 

@@ -20,7 +20,7 @@ CONFIG="${CONFIG:-release}"
 
 TARGET_NAME="OpenUsage"                 # SwiftPM target / binary name
 APP_DISPLAY="OpenUsage"                 # user-facing app name
-BUNDLE_ID="com.robinebers.openusage.dev"
+BUNDLE_ID="${BUNDLE_ID:-com.robinebers.openusage.dev}"
 MIN_SYSTEM_VERSION="15.0"
 APP_VERSION="0.7.0"
 APP_BUILD="0.7.0"
