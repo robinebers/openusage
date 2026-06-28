@@ -120,6 +120,86 @@ final class ClaudeAuthStoreTests: XCTestCase {
         // break keychain candidate resolution.
         XCTAssertEqual(store.keychainServiceCandidates(), ["Claude Code-custom-oauth-credentials"])
     }
+
+    // MARK: - Fingerprint (bugbot #7c1c8948)
+
+    func testCurrentFingerprintExcludesFileMetadataWhenKeychainPreferred() throws {
+        // Bugbot-found: when the keychain is the preferred source, the fingerprint must NOT include
+        // file metadata — otherwise a touch that only rewrites the file (e.g. `claude --version`
+        // updating the file's mtime without rotating the keychain token OpenUsage actually reads)
+        // would change the fingerprint and yield a false "rotated" signal, masking the still-expired
+        // keychain token and triggering a 5-min CLI cooldown that blocks real recovery.
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("claude-fingerprint-test-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let credPath = dir.appendingPathComponent(".credentials.json").path
+        try #"{"claudeAiOauth":{"accessToken":"file-token","expiresAt":4102444800000,"subscriptionType":"pro"}}"#
+            .write(toFile: credPath, atomically: true, encoding: .utf8)
+
+        let keychain = ServiceKeychain()
+        let store = ClaudeAuthStore(
+            environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": dir.path]),
+            files: LocalTextFileAccessor(),
+            keychain: keychain,
+            now: { Date(timeIntervalSince1970: 1_000_000) }
+        )
+        let hashedService = store.keychainServiceCandidates().first!
+        keychain.currentUserValues[hashedService] = #"{"claudeAiOauth":{"accessToken":"keychain-token","expiresAt":4070908800000,"subscriptionType":"max"}}"#
+
+        // Keychain is preferred.
+        XCTAssertEqual(store.loadCredentials()?.oauth.accessToken, "keychain-token")
+
+        let before = store.currentFingerprint()
+
+        // Change the file's mtime without touching the keychain.
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSince1970: 2_000_000)],
+            ofItemAtPath: credPath
+        )
+
+        let after = store.currentFingerprint()
+
+        // The fingerprint must NOT change when only the non-preferred file's metadata changed.
+        XCTAssertEqual(before, after,
+            "fingerprint must not change when only the non-preferred file source's metadata changes")
+    }
+
+    func testCurrentFingerprintIncludesFileMetadataWhenFilePreferred() throws {
+        // Complement to the above: when the file IS the preferred source (no keychain), the file
+        // metadata IS part of the fingerprint — it's the cheap secondary signal the PR author intended
+        // for detecting a file rewrite that the token hash alone might miss.
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("claude-fingerprint-test-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let credPath = dir.appendingPathComponent(".credentials.json").path
+        try #"{"claudeAiOauth":{"accessToken":"file-token","expiresAt":4102444800000,"subscriptionType":"pro"}}"#
+            .write(toFile: credPath, atomically: true, encoding: .utf8)
+
+        let store = ClaudeAuthStore(
+            environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": dir.path]),
+            files: LocalTextFileAccessor(),
+            keychain: FakeKeychain(),  // no keychain → file is preferred
+            now: { Date(timeIntervalSince1970: 1_000_000) }
+        )
+
+        XCTAssertEqual(store.loadCredentials()?.oauth.accessToken, "file-token")
+
+        let before = store.currentFingerprint()
+
+        // Change the file's mtime without changing its content (so the token hash stays the same).
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSince1970: 2_000_000)],
+            ofItemAtPath: credPath
+        )
+
+        let after = store.currentFingerprint()
+
+        // The fingerprint MUST change when the preferred file's mtime changed.
+        XCTAssertNotEqual(before, after,
+            "fingerprint must change when the preferred file source's metadata changes")
+    }
 }
 
 final class ClaudeUsageMapperTests: XCTestCase {
@@ -794,6 +874,87 @@ final class ClaudeProviderTests: XCTestCase {
         XCTAssertEqual(badge(snapshot.lines, "Error"), ClaudeAuthError.tokenExpired.localizedDescription)
         // The key assertion: no usage API call was made while terminally blocked with unchanged creds.
         XCTAssertTrue(httpClient.requests.isEmpty, "terminal-blocked refresh must not call the usage API")
+    }
+
+    // MARK: - 5xx transient failure (bugbot #5afd6cf3)
+
+    func test5xxResponseRecordsTransientFailure() async {
+        // Bugbot-found: a 5xx on the usage API should record a transient failure so the
+        // delegated-refresh gate backs off (the credential is probably fine, the server is briefly
+        // unavailable). The original catch block only recorded transient for `.connectionFailed`, so
+        // 5xx (`requestFailed(503)`) skipped the gate entirely.
+        let now = OpenUsageISO8601.date(from: "2026-02-20T16:00:00.000Z")!
+        let files = FakeFiles([
+            "/tmp/claude/.credentials.json": #"{"claudeAiOauth":{"accessToken":"token","refreshToken":"refresh","expiresAt":4102444800000,"subscriptionType":"pro","scopes":["user:profile"]}}"#
+        ])
+        let httpClient = FakeHTTPClient(response: HTTPResponse(statusCode: 503, headers: [:], body: Data()))
+        let authStore = ClaudeAuthStore(
+            environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": "/tmp/claude"]),
+            files: files, keychain: FakeKeychain(), now: { now }
+        )
+        let gate = ClaudeRefreshFailureGate(
+            defaults: Self.isolatedDefaults(), storageKey: "gate",
+            currentFingerprint: { authStore.currentFingerprint() }
+        )
+        let provider = ClaudeProvider(
+            authStore: authStore,
+            usageClient: ClaudeUsageClient(httpClient: httpClient),
+            ccusageRunner: CcusageRunner(processRunner: FakeProcessRunner(), homeDirectory: { URL(fileURLWithPath: "/Users/test") }),
+            coordinator: ClaudeDelegatedRefreshCoordinator(
+                processRunner: FingerprintRotatingRunner {},
+                environment: FakeEnvironment([:]),
+                currentFingerprint: { authStore.currentFingerprint() },
+                now: { now }, sleep: { _ in }, isExecutable: { _ in false },
+                defaults: Self.isolatedDefaults()
+            ),
+            failureGate: gate,
+            now: { now }
+        )
+
+        _ = await provider.refresh()
+
+        guard case .transient? = gate.currentBlockStatus(now: now) else {
+            return XCTFail("expected transient block after 503, got \(String(describing: gate.currentBlockStatus(now: now)))")
+        }
+    }
+
+    func test4xxNonAuthResponseDoesNotRecordTransientFailure() async {
+        // A 4xx that isn't an auth failure (e.g. 404) is NOT transient — it's a real problem that
+        // re-trying won't fix. The gate should not record a transient block. (401/403 are treated as
+        // auth failures by `ProviderAuthRetry.isAuthFailure` and surface as `tokenExpired`, so they
+        // never reach the `ClaudeUsageError` catch block.)
+        let now = OpenUsageISO8601.date(from: "2026-02-20T16:00:00.000Z")!
+        let files = FakeFiles([
+            "/tmp/claude/.credentials.json": #"{"claudeAiOauth":{"accessToken":"token","refreshToken":"refresh","expiresAt":4102444800000,"subscriptionType":"pro","scopes":["user:profile"]}}"#
+        ])
+        let httpClient = FakeHTTPClient(response: HTTPResponse(statusCode: 404, headers: [:], body: Data()))
+        let authStore = ClaudeAuthStore(
+            environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": "/tmp/claude"]),
+            files: files, keychain: FakeKeychain(), now: { now }
+        )
+        let gate = ClaudeRefreshFailureGate(
+            defaults: Self.isolatedDefaults(), storageKey: "gate",
+            currentFingerprint: { authStore.currentFingerprint() }
+        )
+        let provider = ClaudeProvider(
+            authStore: authStore,
+            usageClient: ClaudeUsageClient(httpClient: httpClient),
+            ccusageRunner: CcusageRunner(processRunner: FakeProcessRunner(), homeDirectory: { URL(fileURLWithPath: "/Users/test") }),
+            coordinator: ClaudeDelegatedRefreshCoordinator(
+                processRunner: FingerprintRotatingRunner {},
+                environment: FakeEnvironment([:]),
+                currentFingerprint: { authStore.currentFingerprint() },
+                now: { now }, sleep: { _ in }, isExecutable: { _ in false },
+                defaults: Self.isolatedDefaults()
+            ),
+            failureGate: gate,
+            now: { now }
+        )
+
+        _ = await provider.refresh()
+
+        XCTAssertNil(gate.currentBlockStatus(now: now),
+            "4xx non-auth (404) must not record a transient block")
     }
 
     private static func isolatedDefaults() -> UserDefaults {

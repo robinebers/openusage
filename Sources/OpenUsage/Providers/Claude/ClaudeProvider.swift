@@ -133,7 +133,14 @@ final class ClaudeProvider: ProviderRuntime {
             } catch let error as ClaudeUsageError {
                 // A transport/infra failure during refresh or fetch (connection failed / 5xx) is transient:
                 // the credential may be fine. Back the gate off exponentially rather than marking it dead.
-                if case .connectionFailed = error { failureGate.recordTransientFailure(now: now()) }
+                // 5xx (server unavailable / bad gateway / etc.) is transient too — the server is briefly
+                // broken, not the credential. 4xx other than 401 (e.g. 403, 404) is NOT transient: it
+                // points at a real permission/config problem that re-trying won't fix.
+                if case .connectionFailed = error {
+                    failureGate.recordTransientFailure(now: now())
+                } else if case .requestFailed(let statusCode) = error, (500..<600).contains(statusCode) {
+                    failureGate.recordTransientFailure(now: now())
+                }
                 throw error
             }
         }

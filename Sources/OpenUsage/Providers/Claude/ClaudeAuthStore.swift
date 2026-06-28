@@ -195,11 +195,19 @@ struct ClaudeAuthStore: Sendable {
     /// A token-free fingerprint of the credential currently in the preferred source (keychain, else
     /// file), used to detect whether an external `claude` re-login rotated the stored token. Re-reads
     /// the candidates fresh (nothing cached), so it reflects the live on-disk state.
+    ///
+    /// File metadata (mtime/size) is included ONLY when the file is the preferred source. When the
+    /// keychain is preferred, the fingerprint is just the keychain token hash — otherwise a touch that
+    /// only rewrites the file (e.g. `claude --version` updating the file's mtime without rotating the
+    /// keychain token OpenUsage actually reads) would change the fingerprint and yield a false
+    /// "rotated" signal, masking the still-expired keychain token and triggering a 5-min CLI cooldown
+    /// that blocks real recovery.
     func currentFingerprint() -> ClaudeCredentialFingerprint {
-        let oauth = orderedStoredCandidates().first?.oauth
+        let preferred = orderedStoredCandidates().first
+        let filePath = (preferred?.source == .file) ? credentialsPath() : nil
         return ClaudeCredentialFingerprint.make(
-            oauth: oauth,
-            credentialsPath: credentialsPath(),
+            oauth: preferred?.oauth,
+            credentialsPath: filePath,
             files: files
         )
     }
