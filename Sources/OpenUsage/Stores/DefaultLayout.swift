@@ -18,6 +18,8 @@ enum DefaultLayout {
         "cursor.usage", "cursor.auto", "cursor.api", "cursor.trend",
         "cursor.onDemand", "cursor.today", "cursor.yesterday", "cursor.last30",
 
+        "copilot.premium", "copilot.chat", "copilot.completions",
+
         "devin.daily", "devin.weekly", "devin.extra",
 
         "grok.creditsUsed", "grok.trend",
@@ -51,7 +53,8 @@ enum DefaultLayout {
         "antigravity.geminiPro",
         "claude.session", "claude.weekly",
         "codex.session", "codex.weekly",
-        "cursor.auto", "cursor.api"
+        "cursor.auto", "cursor.api",
+        "copilot.premium"
     ]
 
     /// Metrics tucked below the per-provider "Shown on expand" divider on a fresh install. This is
@@ -71,6 +74,9 @@ enum DefaultLayout {
         "codex.credits", "codex.rateLimitResets", "codex.today", "codex.yesterday", "codex.last30",
         "cursor.onDemand", "cursor.requests", "cursor.credits",
         "cursor.today", "cursor.yesterday", "cursor.last30",
+        // Copilot: only Premium (premium-request quota) stays above the fold; Chat + Completions sit
+        // below the caret. Completions has data on free tier only, so it's commonly "No data" for paid.
+        "copilot.chat", "copilot.completions",
         "devin.extra",
         "grok.payAsYouGo", "grok.today", "grok.yesterday", "grok.last30"
     ]

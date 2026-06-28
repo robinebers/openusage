@@ -148,6 +148,26 @@ extension DevinUsageError: CategorizedError {
     }
 }
 
+extension CopilotAuthError: CategorizedError {
+    var errorCategory: ErrorCategory {
+        switch self {
+        case .notLoggedIn: .notLoggedIn
+        case .tokenInvalid: .authExpired
+        }
+    }
+}
+
+extension CopilotUsageError: CategorizedError {
+    var errorCategory: ErrorCategory {
+        switch self {
+        case .connectionFailed: .network
+        case .invalidResponse: .decoding
+        case .requestFailed(let status): ErrorCategory.http(status)
+        case .quotaUnavailable: .notAvailable
+        }
+    }
+}
+
 extension HTTPClientError: CategorizedError {
     var errorCategory: ErrorCategory {
         switch self {

@@ -111,6 +111,17 @@ struct DashboardView: View {
                             layout.screen = layout.screen == .settings ? .dashboard : .settings
                         }
                         return true
+                    },
+                    // ⌘Z walks back the last customization step (remove/add, reorder, pin/unpin, caret
+                    // move) — app-wide, since Hide and Pin happen via the dashboard's context menus too,
+                    // not only in Customize. Always consumed here: by the time the monitor calls this it
+                    // has already confirmed the panel owns the keystroke and no text field is editing
+                    // (those keep their own ⌘Z), so returning false would only let AppKit beep on an empty
+                    // undo. With nothing to undo we swallow it silently instead.
+                    onUndo: {
+                        guard layout.canUndo else { return true }
+                        withAnimation(Motion.spring) { _ = layout.undo() }
+                        return true
                     }
                 )
             )
@@ -201,6 +212,9 @@ struct DashboardView: View {
         if layout.screen != .dashboard { layout.screen = .dashboard }
         reorderLift = nil
         layout.cancelDrag()
+        // A "Copied to clipboard" pill mid-countdown would otherwise reappear stale on the next open,
+        // since the layout store survives the popover and only the timer clears it.
+        layout.clearShareConfirmation()
         // Drop the driven height so the next open re-establishes it (un-animated) from the reopened
         // screen's measurement instead of springing from this session's last value. Until then the
         // 0 sentinel keeps `PanelHeightModifier` from pushing, so the controller's opening guess stands.
@@ -491,7 +505,8 @@ struct DashboardView: View {
         Group {
             if screen == .customize {
                 // Customize summarizes the layout — active (enabled) metrics and how many are pinned —
-                // centered, using the same middot the metric rows use.
+                // centered, using the same middot the metric rows use. ⌘Z (handled app-wide by the
+                // popover's key monitor) is the sole undo affordance; the footer stays a plain summary.
                 Text(layout.pinLimitNotice ?? "\(activeMetricCount) active · \(layout.pinnedCount) pinned")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(layout.pinLimitNotice == nil ? AnyShapeStyle(.secondary) : Theme.notice)
@@ -520,6 +535,41 @@ struct DashboardView: View {
             measuredFooter[screen] = height
             recomposeIdeal(for: screen)
         }
+        // A successful "Share Screenshot" springs a small "Copied ✓" pill up just above the footer —
+        // a floating success toast that's more glanceable than the in-footer text line, and separate
+        // from it. Dashboard-only (share is a dashboard action). The pill re-identifies on the trigger
+        // so back-to-back copies of the same provider each replay the pop-in.
+        .overlay(alignment: .top) {
+            if screen == .dashboard, layout.shareConfirmation {
+                shareCopiedPill
+                    // Float just above the footer's top edge with a small gap (the pill is ~28pt, so -34
+                    // leaves ~6pt of clear space) — a toast over the bottom content, not covering the
+                    // footer's own identity row / Settings button.
+                    .offset(y: -34)
+            }
+        }
+        .animation(Motion.spring, value: layout.shareConfirmation)
+        .animation(Motion.spring, value: layout.shareConfirmationTrigger)
+    }
+
+    /// The floating "Copied to clipboard" pill that springs up just above the footer when a provider
+    /// screenshot is copied — a small frosted capsule that reads as a transient success toast. `.id` on
+    /// the trigger so a repeat copy of the same provider re-pops instead of sitting motionless.
+    private var shareCopiedPill: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 11, weight: .semibold))
+            Text("Copied to clipboard")
+                .font(.system(size: 12, weight: .semibold))
+        }
+        .foregroundStyle(Theme.positive)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(.regularMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(.separator, lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
+        .id(layout.shareConfirmationTrigger)
+        .transition(.scale(scale: 0.85).combined(with: .opacity))
     }
 
     /// Count of enabled ("active") metrics across providers — the "N active" half of the Customize footer

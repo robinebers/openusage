@@ -2,7 +2,14 @@ import Foundation
 
 @MainActor
 final class GrokProvider: ProviderRuntime {
-    let provider = Provider(id: "grok", displayName: "Grok", icon: .providerMark("grok"))
+    let provider = Provider(
+        id: "grok",
+        displayName: "Grok",
+        icon: .providerMark("grok"),
+        links: [
+            .init(label: "Usage", url: "https://grok.com/?_s=usage")
+        ]
+    )
 
     let authStore: GrokAuthStore
     let usageClient: GrokUsageClient

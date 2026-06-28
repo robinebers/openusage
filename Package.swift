@@ -11,7 +11,7 @@ let package = Package(
     ],
     dependencies: [
         // The de-facto standard recorder + global hotkey for Mac apps (System Settings-style field).
-        .package(url: "https://github.com/sindresorhus/KeyboardShortcuts", from: "2.4.0"),
+        .package(url: "https://github.com/sindresorhus/KeyboardShortcuts", from: "3.0.1"),
         // In-app auto-updates (appcast + EdDSA-signed downloads). 2.8+ adds macOS 26 Tahoe support.
         .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.3"),
         // Anonymous, opt-out product analytics (official, MIT-licensed, first-party Swift SDK).

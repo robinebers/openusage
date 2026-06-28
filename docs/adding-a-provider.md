@@ -60,3 +60,4 @@ factory only when there is no typed error, and never return stale or empty data 
 
 - Validate only at the boundary (the API response); trust the app's internal types.
 - Match the metric labels and units the provider's own dashboard uses, so numbers are recognizable.
+- Declare the provider's **quick links** on its `Provider` value (`links:`). Each link is a `ProviderLink(label:url:)` rendered as a button in the card's expanded area that opens the URL in the default browser. Ship the provider's own Status / Console / Dashboard pages where they exist; leave `links` off (it defaults to empty) for providers without any. Only `http(s)` URLs with a non-empty label render.

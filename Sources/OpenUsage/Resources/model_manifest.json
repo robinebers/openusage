@@ -588,6 +588,17 @@
       "cache_read_per_million": 0.1,
       "output_per_million": 3.0,
       "apply_max_mode_uplift": true
+    },
+    "glm-5.2": {
+      "display_name": "GLM 5.2",
+      "provider": "zai",
+      "family_id": "glm-5.2",
+      "family_display_name": "GLM 5.2",
+      "input_per_million": 1.4,
+      "cache_write_per_million": 1.4,
+      "cache_read_per_million": 0.26,
+      "output_per_million": 4.4,
+      "apply_max_mode_uplift": true
     }
   },
   "alias_rules": [
@@ -651,6 +662,7 @@
     { "pattern": "^gpt-5\\.5(?:-(?:low|medium|high|xhigh|extra-high))?$", "canonical": "gpt-5.5" },
     { "pattern": "^kimi-k2\\.5$", "canonical": "kimi-k2.5" },
     { "pattern": "^kimi-k2p5$", "canonical": "kimi-k2.5" },
+    { "pattern": "^glm-5\\.2(?:-(?:high|max))?$", "canonical": "glm-5.2" },
     { "pattern": "^[Pp]remium \\((?:[Gg][Pp][Tt]-5\\.3-[Cc]odex|[Cc]odex 5\\.3)\\)$", "canonical": "gpt-5.3-codex" }
   ]
 }

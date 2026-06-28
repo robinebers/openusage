@@ -8,14 +8,26 @@ OpenUsage shows how much of your AI coding plans you've used: session and weekly
   <img src="assets/screenshot.jpg" alt="OpenUsage menu bar tracker showing Claude and Codex session, weekly, and spend usage" width="900">
 </p>
 
+## Installation
+
+**Homebrew:**
+
+```sh
+brew install --cask openusage
+```
+
+**Direct download:** grab the latest universal DMG from the [releases page](https://github.com/robinebers/openusage/releases/latest), open it, and drag OpenUsage to your Applications folder.
+
+Either way, the app updates itself in place via signed, notarized [Sparkle](docs/updates.md) updates. Requires macOS 15 (Sequoia) or later.
+
 ## Supported Providers
 
-- [**Antigravity**](docs/providers/antigravity.md) — Gemini Pro/Flash and Claude model quotas
-- [**Claude**](docs/providers/claude.md) — session, weekly, Sonnet, extra usage, local daily spend (ccusage)
-- [**Codex**](docs/providers/codex.md) — session, weekly, credits, local daily spend (ccusage)
-- [**Cursor**](docs/providers/cursor.md) — credits, total/auto/API usage, requests, on-demand, per-day spend
-- [**Devin**](docs/providers/devin.md) — weekly and daily quota, extra usage balance
-- [**Grok**](docs/providers/grok.md) — credits used, pay-as-you-go
+- **[Antigravity](docs/providers/antigravity.md)** — Gemini Pro/Flash and Claude model quotas
+- **[Claude](docs/providers/claude.md)** — session, weekly, Sonnet, extra usage, local daily spend (ccusage)
+- **[Codex](docs/providers/codex.md)** — session, weekly, credits, local daily spend (ccusage)
+- **[Cursor](docs/providers/cursor.md)** — credits, total/auto/API usage, requests, on-demand, per-day spend
+- **[Devin](docs/providers/devin.md)** — weekly and daily quota, extra usage balance
+- **[Grok](docs/providers/grok.md)** — credits used, pay-as-you-go
 
 Each provider reads the credentials already on your machine (keychain, auth files, app state) — no extra login, and nothing leaves your Mac except the same API calls the vendor's own tools make.
 
@@ -31,6 +43,8 @@ Each provider reads the credentials already on your machine (keychain, auth file
 - **Native settings.** Launch at login, global shortcut, menu style, theme, density, 12/24-hour time — see [Settings](docs/settings.md).
 - **[Automatic updates](docs/updates.md).** Signed, notarized in-app updates via Sparkle, with an optional early access channel.
 
+
+
 ## Documentation
 
 Behavior docs live in [docs/](docs/README.md): the [dashboard](docs/dashboard.md), [menu bar pins](docs/menu-bar.md), [settings](docs/settings.md), [refresh & caching](docs/refreshing.md), the [local HTTP API](docs/local-http-api.md), the [proxy](docs/proxy.md), and one page per provider.
@@ -43,6 +57,8 @@ For working on the code, see the developer docs: [architecture](docs/architectur
 - Universal binary — runs natively on both Apple Silicon and Intel Macs
 - A JavaScript package runner — optional, only for the local Today / Yesterday / Last 30 Days spend tiles (which run `ccusage`). [Bun](https://bun.sh) is preferred (`bunx`), but `pnpm dlx`, `yarn dlx`, `npm exec`, or `npx` work too — so an existing Node.js install is enough.
 
+
+
 ## Building
 
 ```sh
@@ -50,6 +66,8 @@ swift build            # debug build
 swift test             # run the test suite
 ./script/build_and_run.sh   # build and launch the dev app from dist/ (no install)
 ```
+
+
 
 ## Architecture
 
@@ -63,17 +81,19 @@ Releases are automated: pushing a `v*` tag on `main` builds, signs, notarizes, a
 
 The release workflow needs these repository secrets (Settings → Secrets and variables → Actions):
 
-| Secret | What it is |
-| --- | --- |
-| `APPLE_CERTIFICATE` | base64 of your Developer ID Application `.p12` |
-| `APPLE_CERTIFICATE_PASSWORD` | the password set when exporting that `.p12` |
-| `APPLE_ID` | the Apple ID email used for notarization |
-| `APPLE_PASSWORD` | an app-specific password for that Apple ID |
-| `APPLE_TEAM_ID` | your Apple Developer team ID |
-| `SPARKLE_PUBLIC_KEY` | base64 EdDSA public key, baked into the build as `SUPublicEDKey` |
-| `SPARKLE_PRIVATE_KEY` | base64 EdDSA private key used to sign the DMG |
-| `POSTHOG_CLI_API_KEY` | PostHog personal API key used to upload dSYMs for crash symbolication |
-| `POSTHOG_CLI_PROJECT_ID` | numeric PostHog project ID the dSYMs upload to |
+
+| Secret                       | What it is                                                            |
+| ---------------------------- | --------------------------------------------------------------------- |
+| `APPLE_CERTIFICATE`          | base64 of your Developer ID Application `.p12`                        |
+| `APPLE_CERTIFICATE_PASSWORD` | the password set when exporting that `.p12`                           |
+| `APPLE_ID`                   | the Apple ID email used for notarization                              |
+| `APPLE_PASSWORD`             | an app-specific password for that Apple ID                            |
+| `APPLE_TEAM_ID`              | your Apple Developer team ID                                          |
+| `SPARKLE_PUBLIC_KEY`         | base64 EdDSA public key, baked into the build as `SUPublicEDKey`      |
+| `SPARKLE_PRIVATE_KEY`        | base64 EdDSA private key used to sign the DMG                         |
+| `POSTHOG_CLI_API_KEY`        | PostHog personal API key used to upload dSYMs for crash symbolication |
+| `POSTHOG_CLI_PROJECT_ID`     | numeric PostHog project ID the dSYMs upload to                        |
+
 
 Export the Developer ID Application cert (with its private key) from Keychain Access as a `.p12`, then `base64 -i DeveloperID.p12 | pbcopy`. App-specific passwords come from appleid.apple.com → Sign-In and Security → App-Specific Passwords. Generate the Sparkle EdDSA key pair once with Sparkle's `generate_keys` tool; the public and private values must be a matching pair or signing is silently skipped.
 

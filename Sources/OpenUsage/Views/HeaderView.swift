@@ -4,9 +4,9 @@ import SwiftUI
 /// The dashboard footer's trailing control: a **split button** in Liquid Glass — one capsule with
 /// "Settings" on the left and a chevron segment on the right, divided by a hairline (the Export ▾
 /// idiom system apps use). Clicking "Settings" opens the Settings screen; clicking the chevron opens
-/// the overflow menu (Customize / Check for Updates / About / Quit). Settings leads because everyday
-/// layout edits (reorder, hide, pin) are already reachable by dragging and right-clicking on the
-/// dashboard itself, so Settings is the more frequent deliberate destination.
+/// the overflow menu (Customize / Share Screenshot / Check for Updates / About / Quit). Settings leads
+/// because everyday layout edits (reorder, hide, pin) are already reachable by dragging and
+/// right-clicking on the dashboard itself, so Settings is the more frequent deliberate destination.
 ///
 /// The joined-capsule look comes from one glass surface behind the *whole* control: an `HStack` of two
 /// `.buttonStyle(.plain)` tap targets (a `Button` and a chevron `Menu`) split by a `Divider`, with a
@@ -28,7 +28,9 @@ import SwiftUI
 /// unowned elsewhere, so it rides its menu item directly.
 struct HeaderView: View {
     @Environment(LayoutStore.self) private var layout
+    @Environment(WidgetDataStore.self) private var dataStore
     @Environment(UpdaterController.self) private var updater
+    @Environment(\.colorScheme) private var colorScheme
     /// The current screen. The footer is fixed chrome keyed off `layout.screen` (it no longer slides
     /// per-page), so this control shows only when that's `.dashboard` and swaps in place on a switch.
     let screen: PopoverScreen
@@ -106,6 +108,9 @@ struct HeaderView: View {
             Label("Customize", systemImage: "slider.horizontal.3")
         }
         .keyboardShortcut(.return, modifiers: [])
+
+        shareScreenshotMenu
+
         Button { updater.checkForUpdates() } label: {
             Label("Check for Updates…", systemImage: "arrow.triangle.2.circlepath")
         }
@@ -120,6 +125,45 @@ struct HeaderView: View {
             Label("Quit OpenUsage", systemImage: "power")
         }
         .keyboardShortcut("q") // ⌘Q — unowned elsewhere, so safe to register on the item.
+    }
+
+    /// The footer's "Share Screenshot" submenu: one entry per provider currently showing on the
+    /// dashboard (`displayGroups` — enabled providers with at least one visible metric), so a screenshot
+    /// is reachable without right-clicking a card. Each entry runs the same render path as the per-provider
+    /// right-click "Share Screenshot": a branded PNG of that provider's card copied to the clipboard. The
+    /// menu renders in its own `NSMenu`-backed window, so firing an item doesn't close the popover the way
+    /// a navigation toggle would — the share card reads the same live stores the dashboard does.
+    @ViewBuilder
+    private var shareScreenshotMenu: some View {
+        let groups = layout.displayGroups
+        Menu {
+            if groups.isEmpty {
+                // No provider is showing anything to screenshot — grey the item out instead of offering
+                // an empty submenu.
+                Button("No Enabled Providers") {}
+                    .disabled(true)
+            } else {
+                ForEach(groups) { group in
+                    Button(group.provider.displayName) { shareCard(group) }
+                }
+            }
+        } label: {
+            Label("Share Screenshot", systemImage: "square.and.arrow.up")
+        }
+    }
+
+    /// Renders the provider's branded share card and copies the PNG to the clipboard — the same action as
+    /// the dashboard's per-provider right-click "Share Screenshot". The appearance comes from the
+    /// popover's own `colorScheme`: the footer lives in the popover panel, whose appearance is
+    /// `AppearanceSetting.current` (explicit for Light/Dark, the menu bar for System), so the export
+    /// matches the card on screen instead of guessing from `NSApp.effectiveAppearance`.
+    private func shareCard(_ group: ProviderGroup) {
+        ShareCardRenderer.share(
+            group: group,
+            dataStore: dataStore,
+            layout: layout,
+            appearance: colorScheme
+        )
     }
 
     private func toggle(_ screen: PopoverScreen) {
