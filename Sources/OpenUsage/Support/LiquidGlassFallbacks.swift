@@ -10,8 +10,8 @@ import SwiftUI
 /// distinction, the scroll view still scrolls. Nothing here hides a runtime error — each branch is a
 /// compile-time `#available` check, which is the intended way to back-deploy newer-SDK APIs.
 ///
-/// These gate purely on OS version. The popover backdrop is opaque by default (`StatusItemController`'s
-/// `NSBox`, matching `Theme.traySurface`); the opt-in Increase Transparency mode crossfades it to a
+/// These gate purely on OS version. The popover backdrop is opaque by default (`PopoverBackdropView`'s
+/// opaque tray, matching `Theme.traySurface`); the opt-in Increase Transparency mode crossfades it to a
 /// behind-window vibrancy view so the desktop shows through, and the cards swap to a frosted standard
 /// material. Either way glass stays reserved for the footer chrome — its `.bar`/glass bar plus the
 /// interactive glass controls — never the content cards.

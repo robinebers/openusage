@@ -154,7 +154,7 @@ final class StatusItemController: NSObject {
         // Backdrop: by default an opaque tray so the data region never shows the desktop through it
         // (Liquid Glass stays reserved for the footer chrome, rendered in-window over this backing). The
         // `PopoverBackdropView` also holds a behind-window vibrancy layer that the transparency style
-        // swaps in for Increase Transparency / the ghost egg. It fills the whole window, so a
+        // swaps in for Increase Transparency / the secret-code egg. It fills the whole window, so a
         // screen-switch resize can't reveal a transparent strip, and any region SwiftUI leaves unpainted
         // shows the backdrop, not a raw hole. Its opaque tray is `Theme.trayNSColor` (tracks light/dark
         // and the forced appearance override) matching the SwiftUI tray (`DashboardView.PopoverSurface`),

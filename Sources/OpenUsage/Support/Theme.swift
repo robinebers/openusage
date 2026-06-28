@@ -100,7 +100,7 @@ extension View {
 /// it floats; the page base under a live card is the same color as the tray behind it, so it's
 /// invisible there. `lifted` is unused — both paths share the one surface.
 ///
-/// Under the translucent surface treatment (Increase Transparency / the ghost egg) the opaque page base
+/// Under the translucent surface treatment (Increase Transparency / the secret-code egg) the opaque page base
 /// is dropped so the behind-window vibrancy backdrop shows through, while the system grouped fill stays
 /// so cards still read as grouped boxes over the desktop.
 private struct CardSurfaceModifier: ViewModifier {
