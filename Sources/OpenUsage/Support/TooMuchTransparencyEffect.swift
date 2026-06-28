@@ -26,6 +26,13 @@ private let partyColors: [Color] = [
     Color(red: 1.00, green: 0.32, blue: 0.74),
 ]
 
+/// The keepalive runs far below the display's refresh: its only job is to out-pace the compositor's idle
+/// layer-cull (~1s of no repaint), and its blur is sub-pixel so the low cadence is invisible. The visible
+/// party animations, by contrast, run at the display's native rate (matching the user's refresh, ProMotion
+/// included) so they look exactly as designed — the energy win comes from pausing when the popover is
+/// hidden (see `\.popoverIsVisible`), not from capping the frame rate.
+private let keepAliveFrameInterval: Double = 1.0 / 10.0
+
 /// One stable modifier whose layers come and go by `style`. The `.animation(value:)` plus per-layer
 /// `.transition(.opacity)` is what makes toggling the egg fade in and out (the AppKit window alpha and
 /// backdrop crossfade on the same ~0.55s ease, driven by `StatusItemController`).
@@ -38,6 +45,9 @@ private struct TooMuchTransparencyModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .modifier(DrunkDistortion(active: isDrunk))
+            // Keep party's content continuously re-rasterizing so it survives losing key focus, the same
+            // way drunk's `DrunkDistortion` animation does (drunk never blanks for exactly this reason).
+            .modifier(PartyKeepAlive(active: isParty))
             .background {
                 if isParty { PartyBackdrop().transition(.opacity) }
             }
@@ -61,8 +71,10 @@ private struct TooMuchTransparencyModifier: ViewModifier {
 /// composite against the AppKit vibrancy view behind the host, so the desktop only blends through via
 /// alpha — hence the reduced opacity rather than a blend mode.)
 private struct PartyBackdrop: View {
+    @Environment(\.popoverIsVisible) private var isVisible
+
     var body: some View {
-        TimelineView(.animation) { timeline in
+        TimelineView(.animation(paused: !isVisible)) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
             ZStack {
                 AngularGradient(colors: partyColors, center: .center, angle: .degrees(t * 28))
@@ -81,8 +93,10 @@ private struct PartyBackdrop: View {
 
 /// A glowing rim that rotates around the popover edge — pure party, never over the text.
 private struct PartyRim: View {
+    @Environment(\.popoverIsVisible) private var isVisible
+
     var body: some View {
-        TimelineView(.animation) { timeline in
+        TimelineView(.animation(paused: !isVisible)) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
             RoundedRectangle(cornerRadius: 13, style: .continuous)
                 .strokeBorder(
@@ -94,17 +108,46 @@ private struct PartyRim: View {
     }
 }
 
+/// Keeps the party content layer resident while the panel isn't the key window.
+///
+/// On a non-opaque, non-key window the compositor drops *static* SwiftUI content — only views that
+/// repaint every frame survive. That's why, with focus elsewhere (Cmd-Tab, clicking another app,
+/// switching Spaces), the animated party gradient stays but the static cards/text blank out, and why
+/// drunk mode (whose whole content is animated by `DrunkDistortion`) never blanks. This forces a re-raster
+/// each frame with a *varying* sub-pixel blur — a transform/scale wouldn't, since those reuse the cached
+/// bitmap, whereas a changing blur re-renders the content. The radius peaks under a point, so it reads as
+/// crisp. Identity when inactive (no `TimelineView` mounted), and it only runs while party is on.
+private struct PartyKeepAlive: ViewModifier {
+    let active: Bool
+    @Environment(\.popoverIsVisible) private var isVisible
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if active {
+            // Low cadence (the blur is sub-pixel, so it's invisible) and paused while the popover is
+            // hidden — when it's not on-screen the layer can't be culled, so the keepalive isn't needed.
+            TimelineView(.animation(minimumInterval: keepAliveFrameInterval, paused: !isVisible)) { timeline in
+                let t = timeline.date.timeIntervalSinceReferenceDate
+                content.blur(radius: (1 + sin(t * 1.8)) * 0.3)   // 0–0.6pt, oscillating; forces a re-raster
+            }
+        } else {
+            content
+        }
+    }
+}
+
 // MARK: - Drunk (the woozy, barely-readable escalation)
 
 /// Blurs, hue-wobbles, and woozily sways the content — the "had one too many" part. Identity when
 /// inactive (no `TimelineView` mounted), so it costs nothing outside the egg.
 private struct DrunkDistortion: ViewModifier {
     let active: Bool
+    @Environment(\.popoverIsVisible) private var isVisible
 
     @ViewBuilder
     func body(content: Content) -> some View {
         if active {
-            TimelineView(.animation) { timeline in
+            TimelineView(.animation(paused: !isVisible)) { timeline in
                 let t = timeline.date.timeIntervalSinceReferenceDate
                 content
                     .saturation(1.55)
@@ -122,8 +165,10 @@ private struct DrunkDistortion: ViewModifier {
 /// The pink-glass haze layered over the content: a clear-glass lens (the deliberate Liquid Glass abuse),
 /// a pink wash, and a drifting specular shimmer — double-vision territory.
 private struct DrunkOverlays: View {
+    @Environment(\.popoverIsVisible) private var isVisible
+
     var body: some View {
-        TimelineView(.animation) { timeline in
+        TimelineView(.animation(paused: !isVisible)) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
             ZStack {
                 glassLens()

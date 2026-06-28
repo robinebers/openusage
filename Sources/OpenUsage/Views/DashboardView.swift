@@ -42,6 +42,10 @@ struct DashboardView: View {
     /// id, a freshly-started transition pins to the outgoing screen so the first frame never flashes
     /// the destination.
     @State private var animatedSlideID = 0
+    /// Whether the popover is on-screen. Drives `\.popoverIsVisible` so the easter-egg animation loops
+    /// pause while the popover is hidden (the SwiftUI tree survives a close, so they'd otherwise keep
+    /// ticking and burn CPU). Updated by the `PopoverVisibilityReader` below.
+    @State private var popoverVisible = false
     /// Reset to the top whenever the popover closes, so it never reopens mid-scroll.
     @State private var dashboardScrollPosition = ScrollPosition(edge: .top)
     /// Row rhythm tracks the global density setting live.
@@ -141,6 +145,7 @@ struct DashboardView: View {
             )
             .background(
                 PopoverVisibilityReader { visible in
+                    popoverVisible = visible    // pauses the egg animation loops while the popover is hidden
                     if visible {
                         // Reopen: the SwiftUI tree survives a close, so re-seed the height for whatever
                         // screen we're opening on. Un-animated, and ≈ the controller's opening guess, so
@@ -227,6 +232,10 @@ struct DashboardView: View {
             // for "Drunk Mode". No-op for the normal/increased styles. Controls stay clickable (overlays
             // don't hit-test), so the Settings "Drunk Mode" toggle is reachable while it's running.
             .tooMuchTransparency(transparency.effectiveStyle)
+            // Lets the egg animations (gradient, rim, keepalive, drunk distortion, provider pulses) pause
+            // their clocks while the popover is hidden — outermost so it reaches the `.background`/`.overlay`
+            // egg layers added by `tooMuchTransparency` as well as the in-content pulses.
+            .environment(\.popoverIsVisible, popoverVisible)
     }
 
     private func resetTransientState() {

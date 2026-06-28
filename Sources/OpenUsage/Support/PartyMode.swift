@@ -15,6 +15,22 @@ extension EnvironmentValues {
     }
 }
 
+/// Whether the popover is currently on-screen. The easter-egg animations pause their `TimelineView`
+/// clocks when this is `false`, so a closed (but still-egg-active) popover spends no CPU animating — the
+/// SwiftUI tree survives `orderOut`, so without this the loops would keep ticking while hidden. Driven
+/// from `DashboardView`'s `PopoverVisibilityReader`. Defaults to `false` (paused) so nothing animates
+/// until the popover reports itself visible.
+private struct PopoverIsVisibleKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var popoverIsVisible: Bool {
+        get { self[PopoverIsVisibleKey.self] }
+        set { self[PopoverIsVisibleKey.self] = newValue }
+    }
+}
+
 enum PartyMode {
     /// Vivid gradient fill for meter bars in party mode. The bar still shows its fraction by width, so
     /// it stays readable — it just trades the solid severity color for party colors.
@@ -45,8 +61,12 @@ extension View {
 }
 
 private struct PartyPulseModifier: ViewModifier {
+    @Environment(\.popoverIsVisible) private var isVisible
+
     func body(content: Content) -> some View {
-        TimelineView(.animation) { timeline in
+        // Runs at the display's native rate (matching the user's refresh, including ProMotion) while the
+        // popover is on-screen, and pauses entirely when it isn't — so a hidden popover spends no energy.
+        TimelineView(.animation(paused: !isVisible)) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
             content
                 .scaleEffect(1 + sin(t * 3.2) * 0.12)
