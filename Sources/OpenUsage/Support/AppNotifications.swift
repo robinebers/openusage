@@ -61,14 +61,26 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
     /// Post one immediate notification. `idPrefix` names the source (e.g. a metric key) for the log line;
     /// the actual identifier is made unique so repeated alerts on the same metric don't coalesce. `title`
     /// is the alert headline, `subtitle` carries provider + metric, and `body` is the verdict. No-op
-    /// under tests, when authorization is denied, or when notifications can't be authorized.
+    /// under tests or when notifications can't be authorized. A cached denial is re-checked live so a
+    /// user re-enabling notifications in System Settings doesn't have to restart the app to receive
+    /// alerts.
     func post(idPrefix: String, title: String, subtitle: String, body: String, soundEnabled: Bool = true) {
         guard !Self.isRunningUnderTests else { return }
         Task {
-            let authorized = await ensureAuthorization().value
-            guard authorized else {
-                AppLog.debug(.notifications, "skip \(idPrefix): not authorized")
-                return
+            var authorized = await ensureAuthorization().value
+            if !authorized {
+                // A cached denial may be stale — the user can re-enable notifications in System Settings
+                // at any time. Re-read the live status; if it's now authorized, refresh the cache and
+                // proceed instead of skipping delivery until an app restart.
+                let status = await centerProvider().notificationSettings().authorizationStatus
+                switch status {
+                case .authorized, .provisional, .ephemeral:
+                    authorized = true
+                    authorizationTask = Task<Bool, Never> { true }
+                default:
+                    AppLog.debug(.notifications, "skip \(idPrefix): not authorized")
+                    return
+                }
             }
             let content = UNMutableNotificationContent()
             content.title = title
