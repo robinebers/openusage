@@ -102,19 +102,21 @@ struct SettingsScreen: View {
                     picker($timeFormat, options: TimeFormatSetting.allCases, label: \.label)
                 }
                 // Translucent popover the proper way (behind-window vibrancy, text stays legible). It
-                // yields to the system accessibility settings — see the paused notice below.
+                // yields to the system accessibility settings, and to the party easter egg while that's
+                // running (the egg drives the look) — either way, see the paused notice below.
                 row("Increase Transparency") {
                     Toggle("", isOn: $transparency.increaseTransparency)
                         .settingsSwitchStyle()
+                        // Party mode owns the look while it's active, so disable (dim) the toggle to show
+                        // it has no effect right now — its stored value resumes once the egg is exited.
+                        .disabled(transparency.secretCodeActive)
                 }
-                if transparency.isPaused {
-                    // Same orange inline-notice idiom as the General section's error line.
-                    Text("macOS Reduce Transparency or Increase Contrast is on, so this stays paused.")
-                        .font(.caption)
-                        .foregroundStyle(Theme.notice)
-                        .padding(.horizontal, 12)
-                        .padding(.bottom, 8)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                // Egg first: while Party runs it overrides the toggle regardless of the system flags, so
+                // its notice takes precedence over the accessibility one.
+                if transparency.secretCodeActive {
+                    pausedNotice("Party mode is on, so this stays paused.")
+                } else if transparency.isPaused {
+                    pausedNotice("macOS Reduce Transparency or Increase Contrast is on, so this stays paused.")
                 }
                 // Surfaces only after the secret code has been entered — escalates the readable party
                 // into the woozy, barely-readable drunk mode.
@@ -426,6 +428,18 @@ struct SettingsScreen: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, density.controlRowPadding)
+    }
+
+    /// An inline "this setting is paused" caption under a row — the same orange notice idiom as the
+    /// General section's error line. Used for the Increase Transparency row (paused by a system
+    /// accessibility setting, or by Party mode taking over the look).
+    private func pausedNotice(_ text: String) -> some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(Theme.notice)
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// A trailing popup picker that hugs its selection — segmented controls don't fit the 320pt
