@@ -67,11 +67,12 @@ struct DashboardView: View {
             // content's height and this fill is a no-op; when content exceeds the screen cap the window
             // clamps and the scroll views inside take the overflow.
             .frame(maxHeight: .infinity, alignment: .top)
-            // Paint the opaque tray behind all content (and the footer) so the whole popover reads as
-            // one solid panel — the data region never shows the desktop through it. Outermost so the
-            // footer, header, and scroll content all sit on it; separation from the footer comes from
-            // the native soft scroll-edge fade (not a distinct bar). The resize handle is folded into
-            // the footer (see `footerBar`), so there's no separate root-level dragger inset anymore.
+            // Paint the page surface behind all content (and the footer). Opaque by default so the
+            // popover reads as one solid panel; under Increase Transparency / the egg it clears so the
+            // behind-window backdrop (or party gradient) shows through. Outermost so the footer, header,
+            // and scroll content all sit on it; separation from the footer comes from the native soft
+            // scroll-edge fade (not a distinct bar). The resize handle is folded into the footer (see
+            // `footerBar`), so there's no separate root-level dragger inset anymore.
             .background(PopoverSurface())
             // Drive the host panel's height on SwiftUI's clock. At the body root, OUTSIDE `modeBody`'s
             // `.animation(nil, value: layout.screenSlideID)`, so the height rides the active spring (the
