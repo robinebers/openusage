@@ -155,6 +155,33 @@ final class OpenRouterAuthStoreTests: XCTestCase {
         XCTAssertNoThrow(try store.deleteAPIKey())
         XCTAssertEqual(store.keyStatus(), .notSet)
     }
+
+    func testDeleteAPIKeyClearsAllConfigPaths() throws {
+        // A key in the alternate config path must also be cleared, or it resurfaces after the primary
+        // file is deleted and the Settings "clear" appears not to work.
+        let files = FakeFiles([
+            OpenRouterAuthStore.configPaths[0]: #"{"apiKey":"sk-or-primary"}"#,
+            OpenRouterAuthStore.configPaths[1]: "sk-or-alt"
+        ])
+        let store = OpenRouterAuthStore(files: files, environment: FakeEnvironment())
+
+        try store.deleteAPIKey()
+
+        XCTAssertNil(files.files[OpenRouterAuthStore.configPaths[0]])
+        XCTAssertNil(files.files[OpenRouterAuthStore.configPaths[1]])
+        XCTAssertEqual(store.keyStatus(), .notSet)
+    }
+
+    func testDeleteAPIKeyClearsAlternatePathOnly() throws {
+        let files = FakeFiles([OpenRouterAuthStore.configPaths[1]: "sk-or-alt"])
+        let store = OpenRouterAuthStore(files: files, environment: FakeEnvironment())
+
+        XCTAssertEqual(store.keyStatus(), .saved)
+        try store.deleteAPIKey()
+
+        XCTAssertNil(files.files[OpenRouterAuthStore.configPaths[1]])
+        XCTAssertEqual(store.keyStatus(), .notSet)
+    }
 }
 
 final class OpenRouterUsageMapperTests: XCTestCase {
@@ -309,6 +336,25 @@ final class OpenRouterProviderTests: XCTestCase {
         let snapshot = await provider.refresh()
 
         XCTAssertEqual(snapshot.errorCategory, .authInvalid)
+    }
+
+    func testRefreshDoesNotReportInvalidKeyWhenOnlyCreditsForbidden() async {
+        // `/credits` 403 (gated for this key type) but `/key` 200 — the key is valid, just gated for
+        // credits. With no usable lines, the error must NOT be "invalid key" (it's not the key's fault).
+        let provider = OpenRouterProvider(
+            authStore: makeAuthStore(key: "sk-or-test"),
+            usageClient: OpenRouterUsageClient(http: RoutingHTTPClient { request in
+                if request.url.absoluteString == OpenRouterUsageClient.creditsURL {
+                    return HTTPResponse(statusCode: 403, headers: [:], body: Data("{}".utf8))
+                }
+                // `/key` returns 200 but with no usable fields → no metric lines.
+                return jsonResponse(["data": [:]])
+            })
+        )
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertNotEqual(snapshot.errorCategory, .authInvalid)
     }
 
     func testProviderAPIKeyManagingDelegatesToAuthStore() throws {

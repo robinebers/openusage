@@ -3,10 +3,10 @@ import AppKit
 
 /// Settings ▸ API Keys — the second card from the Option 2 decision in the `openrouter-api-key-ux`
 /// canvas. Lists every provider that needs a user-supplied API key (`APIKeyManaging`), each row a
-/// status dot + Edit/Add button. Expanding reveals one full-width input with an eye inside (the
-/// standard API-key field pattern): read-only by default, showing a muted source hint; the eye
-/// reveals the real key; "Override With a Custom Key" flips the same field to editable for a new
-/// key; a leading clear button clears a saved/override key.
+/// status dot + Edit/Add button. Expanding reveals the native macOS key field with a clear button
+/// and an eye beside it: read-only by default, showing a muted source hint; the eye reveals the real
+/// key; "Override With a Custom Key" flips the same field to editable for a new key; a leading clear
+/// button clears a saved/override key.
 ///
 /// Providers (the card above) stays pure enable toggles; this card owns key management. A saved key
 /// writes to the config file the auth store already reads, and config > env — so "save" is also

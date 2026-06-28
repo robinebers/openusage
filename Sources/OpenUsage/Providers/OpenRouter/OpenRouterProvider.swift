@@ -61,9 +61,10 @@ final class OpenRouterProvider: ProviderRuntime {
             return ProviderSnapshot.make(provider: provider, plan: plan, lines: lines, refreshedAt: now())
         }
 
-        // Nothing usable came back — surface the most informative failure. A rejected key (401/403 on
-        // either call) reports as invalid; otherwise the credits failure reason (it's the primary call).
-        if credits.isAuthFailure || key.isAuthFailure {
+        // Nothing usable came back. Only call the key invalid when BOTH endpoints rejected it
+        // (401/403) — OpenRouter gates some endpoints to specific key types, so a single 403 (e.g.
+        // `/credits` forbidden) while `/key` succeeded means the key is valid but gated, not invalid.
+        if credits.isAuthFailure && key.isAuthFailure {
             return ProviderSnapshot.error(provider: provider, error: OpenRouterAuthError.invalidKey)
         }
         let error = credits.failureError ?? key.failureError ?? OpenRouterUsageError.invalidResponse

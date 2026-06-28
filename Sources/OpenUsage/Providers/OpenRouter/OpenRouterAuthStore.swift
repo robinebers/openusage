@@ -104,16 +104,21 @@ struct OpenRouterAuthStore: Sendable {
         }
     }
 
-    /// Remove the saved key from the primary config file. A missing file is a no-op — the caller
-    /// wants the key gone, and it already is. If an env key is present, `keyStatus()` then reports
-    /// `fromEnvironment` (the dashboard falls back to it on the next refresh).
+    /// Remove the saved key from every config file the auth store reads, so clearing truly clears
+    /// the key — not just the primary file. Without this, a key held in the alternate config path
+    /// (`~/.config/openrouter/key.json`) would resurface after the primary file is deleted, so the
+    /// Settings "clear" would appear not to work. A missing file is a no-op. If an env key remains,
+    /// `keyStatus()` then reports `fromEnvironment` (the dashboard falls back to it on the next
+    /// refresh).
     func deleteAPIKey() throws {
-        guard files.exists(Self.configPaths[0]) else { return }
-        do {
-            try files.remove(Self.configPaths[0])
-        } catch {
-            AppLog.error(.auth, "delete API key at \(Self.configPaths[0]) failed: \(error.localizedDescription)")
-            throw OpenRouterAuthError.deleteFailed
+        for path in Self.configPaths {
+            guard files.exists(path) else { continue }
+            do {
+                try files.remove(path)
+            } catch {
+                AppLog.error(.auth, "delete API key at \(path) failed: \(error.localizedDescription)")
+                throw OpenRouterAuthError.deleteFailed
+            }
         }
     }
 
