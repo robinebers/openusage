@@ -48,6 +48,15 @@ final class ClaudeDelegatedRefreshCoordinatorTests: XCTestCase {
             lock.lock()
             launches.append((executable, arguments))
             lock.unlock()
+            // `/usr/bin/which <cmd>` is a non-side-effecting PATH probe (no `--version` touch).
+            // Return success only if the test says the command resolves; never call onTouch for it.
+            if executable == "/usr/bin/which" {
+                let command = arguments.first ?? ""
+                if resolvableExecutables.contains(command) {
+                    return ProcessResult(exitCode: 0, stdout: "/fake/\(command)\n", stderr: "")
+                }
+                return ProcessResult(exitCode: 1, stdout: "", stderr: "not found")
+            }
             // A bare `claude` probe only "succeeds" if the test says it resolves.
             if !executable.hasPrefix("/"), !resolvableExecutables.contains(executable) {
                 return ProcessResult(exitCode: 127, stdout: "", stderr: "not found")
@@ -246,6 +255,34 @@ final class ClaudeDelegatedRefreshCoordinatorTests: XCTestCase {
         let stamped = defaults.double(forKey: "last")
         XCTAssertEqual(stamped, injectedTime.timeIntervalSince1970, accuracy: 0.001,
                        "success cooldown must use the injected `moment` time, not the now() closure")
+    }
+
+    func testPathBasedProbeUsesWhichNotVersion() async {
+        // Bugbot #d30aea11: when the CLI is resolved only via PATH, resolveCLI() used to run
+        // `claude --version` as a probe BEFORE runTouchAndVerify captured its baseline fingerprint.
+        // If that probe rotated the credential, the baseline reflected the post-probe state, the
+        // second touch looked unchanged, and the coordinator returned .attemptedFailed even though
+        // rotation already happened. Fix: commandExists uses `/usr/bin/which` (no side effect)
+        // instead of `claude --version`, so the probe doesn't rotate the credential and the touch's
+        // rotation is detected against the pre-touch baseline.
+        let box = FingerprintBox(.init(tokenHash: "before"))
+        // `resolvableExecutables: ["claude"]` makes the `which claude` probe succeed AND the bare
+        // `claude --version` touch succeed. `onTouch` rotates the credential on every non-`which`
+        // launch — with the fix, only the touch (not the probe) triggers it.
+        let runner = RecordingProcessRunner(resolvableExecutables: ["claude"]) { box.set(.init(tokenHash: "after")) }
+        let coordinator = makeCoordinator(
+            processRunner: runner,
+            executableCLIPaths: [],  // no absolute path → fall back to PATH-based resolution
+            fingerprint: { box.current }
+        )
+
+        let outcome = await coordinator.attempt()
+        XCTAssertEqual(outcome, .attemptedSucceeded,
+                       "PATH-based probe must not rotate the credential before the baseline; the touch's rotation must be detected")
+
+        // The PATH probe should use `/usr/bin/which`, not `claude --version`.
+        let whichLaunches = runner.launches.filter { $0.executable == "/usr/bin/which" }
+        XCTAssertFalse(whichLaunches.isEmpty, "commandExists should use /usr/bin/which for PATH resolution")
     }
 }
 

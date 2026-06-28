@@ -215,14 +215,21 @@ struct ClaudeDelegatedRefreshCoordinator: Sendable {
     }
 
     private func commandExists(_ command: String) -> Bool {
+        // Use `/usr/bin/which` to check PATH presence WITHOUT running `claude` — running
+        // `claude --version` here would be a side-effecting probe that could rotate the credential
+        // BEFORE `runTouchAndVerify` captures its baseline fingerprint, making the probe's rotation
+        // look like the baseline and the second touch look unchanged (bugbot #d30aea11). `which`
+        // only resolves the path; the actual `--version` touch (and its fingerprint verification)
+        // happens in `runTouchAndVerify`.
         do {
             let result = try processRunner.run(
-                executable: command,
-                arguments: ["--version"],
+                executable: "/usr/bin/which",
+                arguments: [command],
                 environment: enrichedPathEnvironment(),
                 timeout: 2
             )
-            return result.succeeded
+            // `which` exits 0 and prints the resolved path when the command is on PATH.
+            return result.succeeded && !result.stdout.isEmpty
         } catch {
             return false
         }

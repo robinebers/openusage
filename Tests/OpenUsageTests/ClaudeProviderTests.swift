@@ -1414,6 +1414,13 @@ private final class FingerprintRotatingRunner: ProcessRunning, @unchecked Sendab
         guard executable.hasPrefix("/") else {
             return ProcessResult(exitCode: 127, stdout: "", stderr: "not found")
         }
+        // `/usr/bin/which` is a non-side-effecting PATH probe; return FAILURE by default so tests
+        // that inject `isExecutable: { _ in false }` (CLI unavailable) don't accidentally find the
+        // CLI via PATH. Tests that exercise PATH-based resolution use the `RecordingProcessRunner`
+        // with `resolvableExecutables` instead.
+        if executable == "/usr/bin/which" {
+            return ProcessResult(exitCode: 1, stdout: "", stderr: "not found")
+        }
         onTouch()
         return ProcessResult(exitCode: 0, stdout: "1.2.3\n", stderr: "")
     }
