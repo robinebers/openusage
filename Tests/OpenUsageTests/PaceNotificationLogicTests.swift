@@ -119,16 +119,28 @@ final class PaceNotificationLogicTests: XCTestCase {
         XCTAssertTrue(dipsAgain.fire.contains(.underTenPercent))
     }
 
-    // MARK: - No trustworthy pace never fires
+    // MARK: - No data / level-band states
 
     func testNoDataNeverFires() {
         let result = step(.noData, fraction: 0.01)
         XCTAssertTrue(result.fire.isEmpty)
     }
 
-    func testLevelNeverFires() {
+    func testLevelPrimesWithoutFiringOnFirstObservation() {
+        // `.level` has used/limit data but no pace projection. The first observation primes (records the
+        // under-10% baseline) without firing — like any other first observation.
         let result = step(.level(.critical), fraction: 0.01)
         XCTAssertTrue(result.fire.isEmpty)
+    }
+
+    func testLevelFiresAlmostOutUnderTenPercent() {
+        // `.level` metrics still fire "Almost Out" on the under-10% edge — it's a remaining-based
+        // trigger, not a pace one. No pace milestone fires for `.level`.
+        let primed = step(.level(.critical), fraction: 0.20).newState
+        let first = step(.level(.critical), fraction: 0.08, from: primed)
+        XCTAssertTrue(first.fire.contains(.underTenPercent))
+        XCTAssertFalse(first.fire.contains(.healthyToClose))
+        XCTAssertFalse(first.fire.contains(.closeToRunningOut))
     }
 
     func testUntrackedDoesNotDisturbPreviousSignals() {
@@ -176,10 +188,12 @@ final class PaceNotificationLogicTests: XCTestCase {
         XCTAssertTrue(refired.fire.contains(.healthyToClose))
     }
 
-    // MARK: - Fresh session window (treated as untracked by the caller via .level/.noData)
+    // MARK: - Fresh session window (treated as .level by the caller)
 
-    func testFreshSessionStyleStateNeverFires() {
-        // A fresh session window resolves to an absolute-level state (`.level`), which is untracked.
+    func testFreshSessionLevelPrimesWithoutFiring() {
+        // A fresh session window resolves to an absolute-level state (`.level`) with plenty of quota
+        // left, so it primes without firing. (A `.level` metric can still fire "Almost Out" later if it
+        // drops under 10% — see testLevelFiresAlmostOutUnderTenPercent.)
         let result = step(.level(.normal), fraction: 0.99)
         XCTAssertTrue(result.fire.isEmpty)
     }

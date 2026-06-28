@@ -186,9 +186,10 @@ final class WidgetDataStore {
                 toggles: toggles
             )
             // Deliver each fired milestone, then commit dedup state only for the ones that actually
-            // delivered. A skipped/failed delivery (not authorized, or `add` errored) reverts that
-            // milestone's mark and the state advance so it re-fires on the next pass instead of being
-            // lost for the rest of the reset window.
+            // delivered. The logic doesn't mark milestones fired — that's done here, after delivery
+            // succeeds, so a skipped/failed delivery (not authorized, or `add` errored) leaves the
+            // milestone un-marked and the state advance reverted, re-firing on the next pass instead of
+            // being lost for the rest of the reset window.
             var next = result.newState
             var paceDelivered = false
             var underDelivered = false
@@ -196,8 +197,7 @@ final class WidgetDataStore {
                 let delivered = await post(milestone: milestone, data: data, providerID: descriptor.providerID)
                 if delivered {
                     if milestone == .underTenPercent { underDelivered = true } else { paceDelivered = true }
-                } else {
-                    next.firedMilestones.remove(milestone)
+                    next.firedMilestones.insert(milestone)
                 }
             }
             if result.fire.contains(where: { $0 != .underTenPercent }) && !paceDelivered {
