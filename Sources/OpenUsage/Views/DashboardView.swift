@@ -212,6 +212,9 @@ struct DashboardView: View {
         if layout.screen != .dashboard { layout.screen = .dashboard }
         reorderLift = nil
         layout.cancelDrag()
+        // A "Copied to clipboard" pill mid-countdown would otherwise reappear stale on the next open,
+        // since the layout store survives the popover and only the timer clears it.
+        layout.clearShareConfirmation()
         // Drop the driven height so the next open re-establishes it (un-animated) from the reopened
         // screen's measurement instead of springing from this session's last value. Until then the
         // 0 sentinel keeps `PanelHeightModifier` from pushing, so the controller's opening guess stands.
@@ -532,6 +535,41 @@ struct DashboardView: View {
             measuredFooter[screen] = height
             recomposeIdeal(for: screen)
         }
+        // A successful "Share Screenshot" springs a small "Copied ✓" pill up just above the footer —
+        // a floating success toast that's more glanceable than the in-footer text line, and separate
+        // from it. Dashboard-only (share is a dashboard action). The pill re-identifies on the trigger
+        // so back-to-back copies of the same provider each replay the pop-in.
+        .overlay(alignment: .top) {
+            if screen == .dashboard, layout.shareConfirmation {
+                shareCopiedPill
+                    // Float just above the footer's top edge with a small gap (the pill is ~28pt, so -34
+                    // leaves ~6pt of clear space) — a toast over the bottom content, not covering the
+                    // footer's own identity row / Settings button.
+                    .offset(y: -34)
+            }
+        }
+        .animation(Motion.spring, value: layout.shareConfirmation)
+        .animation(Motion.spring, value: layout.shareConfirmationTrigger)
+    }
+
+    /// The floating "Copied to clipboard" pill that springs up just above the footer when a provider
+    /// screenshot is copied — a small frosted capsule that reads as a transient success toast. `.id` on
+    /// the trigger so a repeat copy of the same provider re-pops instead of sitting motionless.
+    private var shareCopiedPill: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 11, weight: .semibold))
+            Text("Copied to clipboard")
+                .font(.system(size: 12, weight: .semibold))
+        }
+        .foregroundStyle(Theme.positive)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(.regularMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(.separator, lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
+        .id(layout.shareConfirmationTrigger)
+        .transition(.scale(scale: 0.85).combined(with: .opacity))
     }
 
     /// Count of enabled ("active") metrics across providers — the "N active" half of the Customize footer

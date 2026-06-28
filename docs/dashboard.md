@@ -30,17 +30,20 @@ Rows with a reset date tick every 30 seconds, so countdowns and pace stay live b
 ## Right-click menus
 
 Every row: **Hide · Pin to menu bar / Unpin · Refresh \<provider\> · Customize…**
-Provider headers: **Hide \<provider\> · Refresh \<provider\> · Customize…** (Hide turns the whole provider off; turn it back on under Settings ▸ Providers.) plus **Copy as Image** (see below).
+Provider headers: **Hide \<provider\> · Refresh \<provider\> · Customize…** (Hide turns the whole provider off; turn it back on under Settings ▸ Providers.) plus **Share Screenshot** (see below).
 
 ## Share
 
-Right-click a provider header and choose **Copy as Image** to copy a clean, branded PNG of that provider's usage to your clipboard, ready to paste into a chat, a tweet, or a doc.
+Copy a clean, branded PNG of one provider's usage to your clipboard, ready to paste into a chat, a tweet, or a doc. There are two ways to reach it:
+
+- Right-click a provider header and choose **Share Screenshot**.
+- Open the footer's **⌄** menu and choose **Share Screenshot** ▸ *\<provider\>*. The submenu lists every provider currently showing on the dashboard.
 
 The image is a flexible-height PNG using the app's look — the provider's mark and name up top, the metric rows you currently see for that provider, and a small OpenUsage mark centered at the bottom. It follows your Light/Dark appearance and shows everything on the card as-is (nothing is hidden or blurred).
 
 ## Footer
 
-The bar pinned to the bottom of the popover. On the left: the app version, and a live "Next update in …" countdown you can click (or press **⌘R**) to refresh right away. On the right: a **Customize** button paired with a **⌄** menu. The menu holds the app-level actions — **Settings**, **Check for Updates…**, **About OpenUsage**, and **Quit OpenUsage**.
+The bar pinned to the bottom of the popover. On the left: the app version, and a live "Next update in …" countdown you can click (or press **⌘R**) to refresh right away. On the right: a **Settings** button paired with a **⌄** menu. The menu holds the app-level actions — **Customize**, **Share Screenshot** (submenu of providers), **Check for Updates…**, **About OpenUsage**, and **Quit OpenUsage**.
 
 ## Customize
 

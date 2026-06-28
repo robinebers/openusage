@@ -16,6 +16,9 @@ final class AppContainer {
     /// Settings ▸ API Keys lists these and writes key changes through the capability. Empty when no
     /// installed provider needs a user key, in which case the section hides itself.
     let apiKeyProviders: [any APIKeyManaging]
+    /// Quota pace notification preferences (master + three triggers). Drives the Settings section and is
+    /// read by `WidgetDataStore.evaluateNotifications`.
+    let notificationSettings: NotificationSettingsStore
     /// Anonymous, opt-out usage telemetry (daily rollups). Exposed so Settings can toggle it and the
     /// app-termination hook can flush any queued events.
     let telemetry: TelemetryRecorder
@@ -43,6 +46,7 @@ final class AppContainer {
         let registry = WidgetRegistry.from(providers)
         let apiKeyProviders = providers.compactMap { $0 as? any APIKeyManaging }
         let enablement = ProviderEnablementStore()
+        let notificationSettings = NotificationSettingsStore()
         let layout = LayoutStore(
             registry: registry,
             isProviderEnabled: { [enablement] in enablement.isEnabled($0) }
@@ -51,7 +55,8 @@ final class AppContainer {
             registry: registry,
             providers: providers,
             isProviderEnabled: { [enablement] in enablement.isEnabled($0) },
-            orderedDescriptors: { [layout] in layout.visiblePlaced.compactMap { layout.descriptor(for: $0) } }
+            orderedDescriptors: { [layout] in layout.visiblePlaced.compactMap { layout.descriptor(for: $0) } },
+            notificationSettings: { notificationSettings }
         )
         // Re-enabling a provider should fetch it promptly, so clear any leftover failure backoff before
         // the enablement wake refreshes. `weak` breaks the cycle (dataStore already captures enablement).
@@ -59,6 +64,7 @@ final class AppContainer {
         self.registry = registry
         self.enablement = enablement
         self.apiKeyProviders = apiKeyProviders
+        self.notificationSettings = notificationSettings
         self.layout = layout
         self.dataStore = dataStore
 
@@ -100,6 +106,10 @@ final class AppContainer {
         })
         self.refreshTask = Self.startPeriodicRefresh(dataStore: dataStore, telemetry: telemetry)
         localAPI.start()
+        // Become the notification-center delegate so banners show while frontmost — a menu-bar accessory
+        // effectively always is. Notification authorization is requested the first time a trigger is
+        // turned on (from Settings), not at launch — triggers default off. No-op under tests.
+        AppNotifications.shared.registerAsDelegate()
     }
 
     deinit { refreshTask.cancel() }
@@ -112,6 +122,10 @@ final class AppContainer {
         Task {
             while !Task.isCancelled {
                 await dataStore.refreshAll()
+                // Re-evaluate quota pace milestones every tick — after the refresh so it sees fresh data,
+                // and on every loop (not just on a fetch) so pace worsening from elapsed time alone still
+                // alerts even with the popover closed.
+                await dataStore.evaluateNotifications()
                 // Day-rollover beat: emits `app_daily_active` once per local day and flushes any
                 // prior-day provider rollups. Runs on launch and every interval, so always-running
                 // instances still produce a daily-active signal.

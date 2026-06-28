@@ -82,6 +82,15 @@ final class LayoutStore {
     private(set) var pinNoticeShakeTrigger = 0
     private var pinNoticeClearTask: Task<Void, Never>?
 
+    /// Transient confirmation that a provider's screenshot was copied to the clipboard — drives the
+    /// floating "Copied to clipboard" pill above the footer. Set by `presentShareConfirmation`,
+    /// cleared automatically a couple of seconds later. Never persisted.
+    private(set) var shareConfirmation = false
+    /// Bumped on every successful share so the pill replays its pop-in even when the same provider is
+    /// copied twice in a row (the pill's text doesn't change, so without this it wouldn't re-animate).
+    private(set) var shareConfirmationTrigger = 0
+    private var shareConfirmationClearTask: Task<Void, Never>?
+
     /// Bounded, app-wide undo stack for layout customization (remove/add a metric, reorder metrics or
     /// providers, pin/unpin, move across the expand caret). UI-only state (not persisted): undo is a
     /// within-session affordance, so a relaunch starts fresh. Each entry is a pre-change `LayoutSnapshot`;
@@ -711,6 +720,29 @@ final class LayoutStore {
             guard !Task.isCancelled else { return }
             self?.pinLimitNotice = nil
         }
+    }
+
+    /// Record a successful "Share Screenshot" copy so the floating "Copied to clipboard" pill can
+    /// confirm it. Shown for a couple of seconds then cleared — the success-side counterpart to
+    /// `notePinDenied`'s transient denial notice, with the same lifecycle.
+    func presentShareConfirmation() {
+        shareConfirmation = true
+        shareConfirmationTrigger += 1
+        shareConfirmationClearTask?.cancel()
+        shareConfirmationClearTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2.5))
+            guard !Task.isCancelled else { return }
+            self?.shareConfirmation = false
+        }
+    }
+
+    /// Clear any showing "Copied to clipboard" confirmation and cancel its auto-clear task. Called when
+    /// the popover closes so a pill mid-countdown can't reappear stale on the next open — the timer is
+    /// otherwise the only clearer, and the layout store outlives the popover.
+    func clearShareConfirmation() {
+        shareConfirmation = false
+        shareConfirmationClearTask?.cancel()
+        shareConfirmationClearTask = nil
     }
 
     /// Pin or unpin a metric for the menu bar. Pinning is a no-op when it would exceed a cap, so callers

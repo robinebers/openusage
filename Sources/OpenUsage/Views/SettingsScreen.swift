@@ -1,7 +1,9 @@
 import AppKit
+import Combine
 import KeyboardShortcuts
 import ServiceManagement
 import SwiftUI
+import UserNotifications
 
 /// The in-popover Settings screen — the popover's third mode alongside the dashboard and
 /// Customize. It replaces the old separate Settings window, which forced the popover closed every
@@ -25,6 +27,12 @@ struct SettingsScreen: View {
     @AppStorage(LogLevelSetting.key) private var logLevel = LogLevelSetting.fallback
     /// Surfaced under the Advanced rows when copying the path or revealing the file fails.
     @State private var logActionError: String?
+    /// macOS notification authorization for OpenUsage, surfaced in the Notifications section so a
+    /// warning glyph and action button can appear when alerts can't be delivered. Refreshed on appear,
+    /// when a trigger turns on, and when the app becomes active again (e.g. the user returns from
+    /// System Settings after re-enabling).
+    private enum NotificationsAuthState { case authorized, denied, notDetermined }
+    @State private var notificationsAuth: NotificationsAuthState = .authorized
 
     /// Fills the region the dashboard's pinned footer leaves. Same scroller treatment as Customize:
     /// the overlay scroller stays (the scroll edge effect needs it) but is invisible.
@@ -38,6 +46,7 @@ struct SettingsScreen: View {
         @Bindable var store = container.dataStore
         @Bindable var layout = container.layout
         @Bindable var updater = updater
+        @Bindable var notifications = container.notificationSettings
         // Same section rhythm as the dashboard and Customize (all read the density setting).
         return VStack(alignment: .leading, spacing: density.sectionSpacing) {
             section("General") {
@@ -107,6 +116,10 @@ struct SettingsScreen: View {
                         .hoverTooltip("Show how you're pacing on every metric, not just ones near their limit")
                 }
             }
+            notificationsSection
+            #if DEBUG
+            debugNotificationsSection
+            #endif
             section("Providers") {
                 ForEach(container.registry.providers) { provider in
                     providerRow(provider)
@@ -165,7 +178,156 @@ struct SettingsScreen: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
+        .task { await refreshNotificationsAuth() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task { await refreshNotificationsAuth() }
+        }
     }
+
+    // MARK: - Notifications
+
+    /// Quota pace notifications: three per-trigger toggles (no master switch — turn all three off to
+    /// silence), each with an (i) tooltip. A warning glyph on the section header and an action row under
+    /// the toggles appear when macOS permission isn't authorized and at least one trigger is on. Defaults
+    /// are all off; the app requests authorization the first time a trigger is turned on.
+    private var notificationsSection: some View {
+        @Bindable var notifications = container.notificationSettings
+        let needsAttention = notificationsAuth != .authorized && anyToggleOn
+        return VStack(alignment: .leading, spacing: density.headerToCardSpacing) {
+            HStack(spacing: 6) {
+                Text("Notifications")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                if needsAttention {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .hoverTooltip(notificationsAuth == .denied
+                            ? "Notifications are turned off for OpenUsage. Enable them in System Settings."
+                            : "OpenUsage needs permission to send alerts.")
+                }
+            }
+            .padding(.horizontal, 8)
+            VStack(spacing: 0) {
+                notifToggleRow(.underTenPercent, isOn: $notifications.underTenPercent)
+                notifToggleRow(.healthyToClose, isOn: $notifications.healthyToClose)
+                notifToggleRow(.closeToRunningOut, isOn: $notifications.closeToRunningOut)
+                if needsAttention {
+                    notificationsActionRow
+                }
+            }
+            .cardSurface()
+        }
+        .onChange(of: anyToggleOn) { _, on in
+            if on {
+                // The first time a trigger is turned on, ask macOS for permission (memoized — it only
+                // prompts while authorization is still not determined). Then refresh so the
+                // warning/action row reflects the new status.
+                AppNotifications.shared.requestAuthorization()
+                Task { await refreshNotificationsAuth() }
+            }
+        }
+    }
+
+    /// One trigger row: the setting label, an (i) info icon with a one-sentence tooltip, and the toggle.
+    private func notifToggleRow(_ milestone: PaceMilestone, isOn: Binding<Bool>) -> some View {
+        HStack(spacing: 6) {
+            Text(milestone.settingLabel)
+            Image(systemName: "info.circle")
+                .imageScale(.small)
+                .foregroundStyle(.secondary)
+                .hoverTooltip(milestone.tooltip)
+            Spacer(minLength: 8)
+            Toggle("", isOn: isOn)
+                .settingsSwitchStyle()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, density.controlRowPadding)
+    }
+
+    /// The conditional action under the toggles: a full-width "Open System Settings" button when macOS
+    /// denied permission, or "Allow Notifications" when still undecided. The reason lives in the header
+    /// triangle's tooltip. Shown only when a trigger is on.
+    private var notificationsActionRow: some View {
+        VStack(spacing: 0) {
+            Divider()
+            Button {
+                if notificationsAuth == .denied {
+                    AppNotifications.shared.openSystemNotificationsSettings()
+                } else {
+                    AppNotifications.shared.requestAuthorization()
+                    Task { await refreshNotificationsAuth() }
+                }
+            } label: {
+                Text(notificationsAuth == .denied ? "Open System Settings" : "Allow Notifications")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .padding(.horizontal, 12)
+            .padding(.vertical, density.controlRowPadding)
+        }
+    }
+
+    /// True when at least one trigger is on — the gate for the permission warning + action row.
+    private var anyToggleOn: Bool {
+        let n = container.notificationSettings
+        return n.underTenPercent || n.healthyToClose || n.closeToRunningOut
+    }
+
+    /// Read the live macOS authorization status into `notificationsAuth`, but only when at least one
+    /// trigger is on so no warning shows while all alerts are off.
+    private func refreshNotificationsAuth() async {
+        guard anyToggleOn else {
+            notificationsAuth = .authorized
+            return
+        }
+        let status = await AppNotifications.shared.authorizationStatus()
+        switch status {
+        case .denied: notificationsAuth = .denied
+        case .notDetermined: notificationsAuth = .notDetermined
+        default: notificationsAuth = .authorized
+        }
+    }
+
+    #if DEBUG
+    /// Temporary debug buttons that post real quota notifications so the copy, stacking, and permission
+    /// flow can be verified on demand without waiting for a real worsening. DEBUG-only — never in a
+    /// release build. Remove once notification behavior is confirmed.
+    private var debugNotificationsSection: some View {
+        section("Debug") {
+            row("Almost Out") {
+                Button("Fire") { fire(.underTenPercent) }.buttonStyle(.bordered)
+            }
+            row("Cutting It Close") {
+                Button("Fire") { fire(.healthyToClose) }.buttonStyle(.bordered)
+            }
+            row("Will Run Out") {
+                Button("Fire") { fire(.closeToRunningOut) }.buttonStyle(.bordered)
+            }
+            row("All Three") {
+                Button("Fire") {
+                    fire(.underTenPercent)
+                    fire(.healthyToClose)
+                    fire(.closeToRunningOut)
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+    }
+
+    /// Post one real notification for a milestone so the banner title/subtitle/body and stacking can be
+    /// checked directly. Bypasses the dedup/prime logic — a manual trigger for testing only.
+    private func fire(_ milestone: PaceMilestone) {
+        Task {
+            _ = await AppNotifications.shared.post(
+                idPrefix: "debug.\(milestone.rawValue)",
+                title: milestone.notificationTitle,
+                subtitle: "Claude Session",
+                body: milestone.body
+            )
+        }
+    }
+    #endif
 
     // MARK: - Advanced (logging)
 

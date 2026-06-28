@@ -71,14 +71,16 @@ struct WidgetGroupedListView: View {
                 withAnimation(Motion.modeSwitch) { layout.isEditing = true }
             }
             Divider()
-            Button("Copy as Image") { shareCard(group) }
+            Button("Share Screenshot") { shareCard(group) }
         }
     }
 
     /// Renders the provider's branded share card and copies the PNG to the clipboard. The appearance is
     /// taken from the popover's own `colorScheme` — this view is hosted in the popover panel, whose
     /// appearance is `AppearanceSetting.current` (explicit for Light/Dark, the menu bar for System) — so
-    /// the export matches the card on screen instead of guessing from `NSApp.effectiveAppearance`.
+    /// the export matches the card on screen instead of guessing from `NSApp.effectiveAppearance`. The
+    /// same render path backs the footer's "Share Screenshot" submenu, which reaches it without a
+    /// right-click.
     private func shareCard(_ group: ProviderGroup) {
         ShareCardRenderer.share(
             group: group,

@@ -87,9 +87,20 @@ struct WidgetData: Hashable {
 
     /// Ring fill 0...1. Uses the same rounded value the headline shows, so the ring and the number
     /// never disagree — a value that reads "0%" draws an empty ring instead of a tiny sliver.
+    /// Display-mode-dependent: `remaining/limit` when the meter shows "remaining", `used/limit` when
+    /// it shows "used". Use `remainingFraction` when the value must mean "remaining" regardless of
+    /// display mode (e.g. quota notifications' under-10% check).
     var fraction: Double {
         guard let limit, limit > 0 else { return 0 }
         return min(max(roundedDisplayValue / limit, 0), 1)
+    }
+
+    /// Remaining share of the limit, 0...1, independent of the used/remaining display mode. Quota
+    /// notifications use this for the "under 10% remaining" rule so the alert always reflects actual
+    /// remaining, whether the headline shows used or remaining.
+    var remainingFraction: Double {
+        guard let limit, limit > 0 else { return 0 }
+        return min(max((limit - used) / limit, 0), 1)
     }
 
     /// Severity bands for the meter fill color (see `MeterState.severity`).

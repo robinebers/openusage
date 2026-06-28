@@ -24,6 +24,14 @@ final class WidgetDataStore {
     private let orderedDescriptors: @MainActor () -> [WidgetDescriptor]
     /// Clock for the failure-backoff window. Injected so tests can advance time deterministically.
     private let now: () -> Date
+    /// Quota-notification preferences (master + per-trigger). Injected; `nil` disables notifications
+    /// entirely (tests and previews that don't wire it).
+    private let notificationSettings: (@MainActor () -> NotificationSettingsStore)?
+    /// Where a fired milestone is delivered: `(idPrefix, title, subtitle, body) -> Bool`. The Bool is
+    /// whether it was actually delivered (authorized + scheduled); on false the caller leaves the
+    /// milestone un-marked so it retries next pass. Injected so tests can record posts without a live
+    /// notification center; defaults to the shared `AppNotifications`.
+    private let postNotification: @MainActor (String, String, String, String) async -> Bool
 
     private static let meterStyleKey = "meterStyle"
     private static let resetDisplayModeKey = "resetDisplayMode"
@@ -52,6 +60,10 @@ final class WidgetDataStore {
     /// Per-provider earliest next-probe time after a failure (see `failureRetryBackoff`). Not part of
     /// observable UI state, so it's excluded from `@Observable` tracking.
     @ObservationIgnored private var failureRetryAfter: [String: Date] = [:]
+
+    /// Per-metric dedup state for quota notifications, keyed by `providerID + "." + descriptorID`.
+    /// Not observable UI state. Dropped for a provider when it's disabled, so re-enabling starts fresh.
+    @ObservationIgnored private var notificationState: [String: NotificationState] = [:]
 
     /// Telemetry hook wired by `AppContainer`. Invoked once per *real* provider fetch — `.refreshed` or
     /// `.failed` only, never the cache-hit/skip/backoff outcomes that the 5-minute timer produces in
@@ -85,7 +97,9 @@ final class WidgetDataStore {
         defaults: UserDefaults = .standard,
         isProviderEnabled: @escaping @MainActor (String) -> Bool = { _ in true },
         orderedDescriptors: (@MainActor () -> [WidgetDescriptor])? = nil,
-        now: @escaping () -> Date = Date.init
+        now: @escaping () -> Date = Date.init,
+        notificationSettings: (@MainActor () -> NotificationSettingsStore)? = nil,
+        postNotification: (@MainActor (String, String, String, String) async -> Bool)? = nil
     ) {
         self.registry = registry
         self.providersByID = Dictionary(uniqueKeysWithValues: providers.map { ($0.provider.id, $0) })
@@ -94,6 +108,11 @@ final class WidgetDataStore {
         self.isProviderEnabled = isProviderEnabled
         self.orderedDescriptors = orderedDescriptors ?? { registry.descriptors }
         self.now = now
+        self.notificationSettings = notificationSettings
+        self.postNotification = postNotification
+            ?? { idPrefix, title, subtitle, body in
+                await AppNotifications.shared.post(idPrefix: idPrefix, title: title, subtitle: subtitle, body: body)
+            }
         self.meterStyle = defaults.enumValue(forKey: Self.meterStyleKey, default: .remaining)
         self.resetDisplayMode = defaults.enumValue(forKey: Self.resetDisplayModeKey, default: .relative)
         self.alwaysShowPacing = defaults.bool(forKey: Self.alwaysShowPacingKey)
@@ -134,6 +153,77 @@ final class WidgetDataStore {
         let cached = outcomes.count { $0 == .cacheHit }
         let backedOff = outcomes.count { $0 == .backedOff }
         AppLog.info(.refresh, "batch end (\(durationMs)ms, \(refreshed) ok / \(failed) failed / \(cached) cached / \(backedOff) backed off)")
+    }
+
+    /// Evaluate every visible, enabled metric for a quota pace milestone and post a notification for any
+    /// that just crossed one. Driven from the periodic loop *after* `refreshAll`, so it catches pace
+    /// worsening from time passing (not only from a fresh fetch). Deduped per metric per reset window via
+    /// `notificationState`; the no-trustworthy-pace states (no data, fresh session, level bands) never
+    /// fire. A no-op when notifications are unconfigured (tests/previews) or all triggers are off.
+    ///
+    /// State for metrics not visited this pass (e.g. a provider the user just disabled, or a metric
+    /// removed from the layout) is pruned, so re-enabling/re-adding starts fresh rather than carrying a
+    /// stale "already fired" flag.
+    func evaluateNotifications(now: Date = Date()) async {
+        guard let settingsProvider = notificationSettings else { return }
+        let settings = settingsProvider()
+        let toggles = settings.toggles
+        var nextState: [String: NotificationState] = [:]
+        for descriptor in orderedDescriptors() where isProviderEnabled(descriptor.providerID) {
+            let key = "\(descriptor.providerID).\(descriptor.id)"
+            let data = data(for: descriptor)
+            // Unbounded rows (no limit) and charts have no pace story — skip them outright so they never
+            // occupy state. `meterState` returns `.level`/`.noData` for them anyway, which wouldn't fire,
+            // but skipping keeps the state map to genuine meters.
+            guard data.isBounded else { continue }
+            let state = data.meterState(now: now)
+            let previous = notificationState[key] ?? NotificationState()
+            let result = PaceNotificationLogic.transitions(
+                state: state,
+                fraction: data.remainingFraction,
+                resetsAt: data.resetsAt,
+                previous: previous,
+                toggles: toggles
+            )
+            // Deliver each fired milestone, then commit dedup state only for the ones that actually
+            // delivered. The logic doesn't mark milestones fired — that's done here, after delivery
+            // succeeds, so a skipped/failed delivery (not authorized, or `add` errored) leaves the
+            // milestone un-marked and the state advance reverted, re-firing on the next pass instead of
+            // being lost for the rest of the reset window.
+            var next = result.newState
+            var paceDelivered = false
+            var underDelivered = false
+            for milestone in result.fire {
+                let delivered = await post(milestone: milestone, data: data, providerID: descriptor.providerID)
+                if delivered {
+                    if milestone == .underTenPercent { underDelivered = true } else { paceDelivered = true }
+                    next.firedMilestones.insert(milestone)
+                }
+            }
+            if result.fire.contains(where: { $0 != .underTenPercent }) && !paceDelivered {
+                next.previousBucket = previous.previousBucket
+            }
+            if result.fire.contains(.underTenPercent) && !underDelivered {
+                next.wasUnderTenPercent = previous.wasUnderTenPercent
+            }
+            nextState[key] = next
+        }
+        notificationState = nextState
+    }
+
+    /// Build and post one milestone notification. The title is the trigger name (matches the Settings
+    /// row), the subtitle is "Provider Metric" so the user knows which quota worsened, and the body is
+    /// the plain-language verdict. Title Case per AGENTS.md. Returns whether delivery succeeded.
+    private func post(milestone: PaceMilestone, data: WidgetData, providerID: String) async -> Bool {
+        let metricName = data.title
+        let providerName = providersByID[providerID]?.provider.displayName ?? providerID
+        let subtitle = "\(providerName) \(metricName)"
+        return await postNotification(
+            "\(providerID).\(milestone.rawValue)",
+            milestone.notificationTitle,
+            subtitle,
+            milestone.body
+        )
     }
 
     /// What a single provider's refresh actually did this pass, so `refreshAll` can summarize the batch

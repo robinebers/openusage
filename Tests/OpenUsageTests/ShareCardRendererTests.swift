@@ -73,4 +73,29 @@ final class ShareCardRendererTests: XCTestCase {
                            "row \(i) condensing should not bridge the expand caret boundary")
         }
     }
+
+    // MARK: - Clipboard write result
+
+    /// `copyToPasteboard` reports `false` when the image can't be PNG-encoded, so `share` can gate the
+    /// "Copied to clipboard" confirmation on a real successful write instead of claiming success after a
+    /// silent encode/pasteboard failure. Regression guard for the success-pill-after-copy-failure bug.
+    func testCopyToPasteboardReturnsFalseForUnencodableImage() {
+        // An empty NSImage has no representations, so tiffRepresentation is nil and PNG encoding fails.
+        let empty = NSImage()
+        XCTAssertFalse(ShareCardRenderer.copyToPasteboard(empty),
+                       "a failed encode must report false, not silently return success")
+    }
+
+    /// `copyToPasteboard` reports `true` and actually writes PNG data onto the pasteboard for a valid
+    /// image — the success contract the confirmation gates on.
+    func testCopyToPasteboardWritesPNGAndReturnsTrueForValidImage() throws {
+        let image = try XCTUnwrap(ShareCardRenderer.image(for: sampleCard()))
+        XCTAssertTrue(ShareCardRenderer.copyToPasteboard(image))
+
+        let png = try XCTUnwrap(NSPasteboard.general.data(forType: .png))
+        XCTAssertFalse(png.isEmpty)
+        // PNG magic bytes confirm the pasteboard holds an actual PNG, not just non-empty data.
+        let magic: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+        XCTAssertEqual(Array(png.prefix(magic.count)), magic)
+    }
 }

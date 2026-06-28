@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// An off-screen, branded PNG of one provider's usage, rendered for the right-click "Copy as Image"
+/// An off-screen, branded PNG of one provider's usage, rendered for the right-click "Share Screenshot"
 /// action. It is a static snapshot — no drag grips, spinners, staleness tags, or refresh warnings — that
 /// mirrors what the provider's card currently shows in the popover (respecting whether the caret is
 /// expanded), drawn at the popover's own scale and rasterized at ×4 for a crisp, large share image.

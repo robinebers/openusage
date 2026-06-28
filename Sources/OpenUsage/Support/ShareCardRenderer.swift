@@ -33,23 +33,29 @@ enum ShareCardRenderer {
 
     /// Writes the card's PNG onto the general pasteboard (replacing its contents). Beeps and logs if the
     /// PNG can't be encoded or the pasteboard rejects it, so a failed copy isn't silently swallowed.
-    static func copyToPasteboard(_ image: NSImage) {
+    /// Returns `true` only when the PNG actually landed on the pasteboard, so callers can gate a success
+    /// confirmation on it (and not claim "copied" when nothing was written).
+    @discardableResult
+    static func copyToPasteboard(_ image: NSImage) -> Bool {
         guard let png = pngData(from: image) else {
             AppLog.error(.lifecycle, "share card: failed to encode PNG for clipboard")
             NSSound.beep()
-            return
+            return false
         }
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         guard pasteboard.setData(png, forType: .png) else {
             AppLog.error(.lifecycle, "share card: pasteboard rejected the PNG")
             NSSound.beep()
-            return
+            return false
         }
+        return true
     }
 
-    /// Orchestrates a Copy as Image action end to end: resolve the provider's visible rows from the data
+    /// Orchestrates a Share Screenshot action end to end: resolve the provider's visible rows from the data
     /// store, build the card with the effective appearance, render it, and copy the PNG to the clipboard.
+    /// On a successful copy it asks the layout store to surface a transient "Copied to clipboard" pill —
+    /// a clipboard write gives no other signal that it landed.
     /// The rows mirror what the dashboard shows — always-shown plus expanded only when the provider's
     /// caret is open — so the export matches what the user sees.
     ///
@@ -95,6 +101,9 @@ enum ShareCardRenderer {
             NSSound.beep()
             return
         }
-        copyToPasteboard(image)
+        // Only surface the "Copied to clipboard" pill when the PNG actually landed on the pasteboard —
+        // a failed encode or a pasteboard rejection must not read as success.
+        guard copyToPasteboard(image) else { return }
+        layout.presentShareConfirmation()
     }
 }

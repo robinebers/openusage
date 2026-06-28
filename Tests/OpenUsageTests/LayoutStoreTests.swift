@@ -1091,6 +1091,21 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertEqual(store.placed.map(\.descriptorID), before)
     }
 
+    // MARK: - Share confirmation
+
+    /// `clearShareConfirmation` hides the pill immediately and cancels the auto-clear task, so a
+    /// confirmation mid-countdown can't reappear stale after the popover closes and reopens.
+    func testClearShareConfirmationHidesPillAndCancelsTimer() {
+        let store = makeStore("ShareConfirmationClear")
+        XCTAssertFalse(store.shareConfirmation)
+
+        store.presentShareConfirmation()
+        XCTAssertTrue(store.shareConfirmation, "present sets the confirmation the pill reads")
+
+        store.clearShareConfirmation()
+        XCTAssertFalse(store.shareConfirmation, "clear hides the pill immediately")
+    }
+
     private func makeStore(_ name: String) -> LayoutStore {
         LayoutStore(registry: .mock, defaults: makeDefaults(name), storageKey: "layout")
     }
