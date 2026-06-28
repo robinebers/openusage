@@ -196,6 +196,9 @@ struct SettingsScreen: View {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.caption)
                         .foregroundStyle(.orange)
+                        .hoverTooltip(notificationsAuth == .denied
+                            ? "Notifications are turned off for OpenUsage. Enable them in System Settings."
+                            : "OpenUsage needs permission to send alerts.")
                 }
             }
             .padding(.horizontal, 8)
@@ -236,28 +239,24 @@ struct SettingsScreen: View {
         .padding(.vertical, density.controlRowPadding)
     }
 
-    /// The conditional action under the toggles: "Open System Settings" when macOS denied permission, or
-    /// "Allow Notifications" when permission is still undecided. Shown only when a trigger is on.
+    /// The conditional action under the toggles: a full-width "Open System Settings" button when macOS
+    /// denied permission, or "Allow Notifications" when still undecided. The reason lives in the header
+    /// triangle's tooltip. Shown only when a trigger is on.
     private var notificationsActionRow: some View {
         VStack(spacing: 0) {
             Divider()
-            HStack(spacing: 10) {
-                Text(notificationsAuth == .denied
-                    ? "Notifications are turned off for OpenUsage."
-                    : "OpenUsage needs permission to send alerts.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 8)
-                Button(notificationsAuth == .denied ? "Open System Settings" : "Allow Notifications") {
-                    if notificationsAuth == .denied {
-                        AppNotifications.shared.openSystemNotificationsSettings()
-                    } else {
-                        AppNotifications.shared.requestAuthorization()
-                        Task { await refreshNotificationsAuth() }
-                    }
+            Button {
+                if notificationsAuth == .denied {
+                    AppNotifications.shared.openSystemNotificationsSettings()
+                } else {
+                    AppNotifications.shared.requestAuthorization()
+                    Task { await refreshNotificationsAuth() }
                 }
-                .buttonStyle(.bordered)
+            } label: {
+                Text(notificationsAuth == .denied ? "Open System Settings" : "Allow Notifications")
+                    .frame(maxWidth: .infinity)
             }
+            .buttonStyle(.bordered)
             .padding(.horizontal, 12)
             .padding(.vertical, density.controlRowPadding)
         }
