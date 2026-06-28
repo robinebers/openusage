@@ -132,6 +132,11 @@ struct SettingsScreen: View {
                         Toggle("", isOn: $transparency.drunkMode)
                             .settingsSwitchStyle()
                     }
+                    // The egg yields to the accessibility flags too: when one is on the panel stays
+                    // opaque, so explain why the party looks normal rather than leaving it a mystery.
+                    if transparency.partyPaused {
+                        pausedNotice("macOS Reduce Transparency or Increase Contrast is on, so the party stays paused.")
+                    }
                 }
             }
             section("Usage Display") {

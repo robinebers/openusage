@@ -2,8 +2,8 @@ import AppKit
 import Observation
 
 /// Single source of truth for the popover's transparency: the persisted "Increase Transparency"
-/// preference, the ephemeral secret-code easter-egg state, and the live macOS accessibility flags the proper
-/// toggle must yield to. Both SwiftUI (via `surfaceTreatment`) and the AppKit panel
+/// preference, the ephemeral secret-code easter-egg state, and the live macOS accessibility flags that
+/// both the proper toggle and the egg must yield to. Both SwiftUI (via `surfaceTreatment`) and the AppKit panel
 /// (`StatusItemController`, via `effectiveStyle`) read this one store, so the SwiftUI surface and the
 /// window can't drift apart.
 @MainActor
@@ -35,12 +35,17 @@ final class PopoverTransparencyStore {
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var accessibilityObservation: Task<Void, Never>?
 
-    init(defaults: UserDefaults = .standard) {
+    init(
+        defaults: UserDefaults = .standard,
+        reduceTransparency: Bool = NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency,
+        increaseContrast: Bool = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+    ) {
         self.defaults = defaults
         self.increaseTransparency = defaults.bool(forKey: Self.key)
-        let workspace = NSWorkspace.shared
-        self.reduceTransparency = workspace.accessibilityDisplayShouldReduceTransparency
-        self.increaseContrast = workspace.accessibilityDisplayShouldIncreaseContrast
+        // The flags default to the live `NSWorkspace` values (production) but are injectable so tests can
+        // pin them and exercise the accessibility clamp deterministically, independent of the test host.
+        self.reduceTransparency = reduceTransparency
+        self.increaseContrast = increaseContrast
         startObservingAccessibility()
     }
 
@@ -91,6 +96,13 @@ final class PopoverTransparencyStore {
     /// — so Settings can show a friendly "paused" note instead of silently doing nothing.
     var isPaused: Bool {
         increaseTransparency && (reduceTransparency || increaseContrast)
+    }
+
+    /// True when the egg is active but a system accessibility setting (Reduce Transparency / Increase
+    /// Contrast) is clamping the panel back to opaque — so Settings can explain why the party looks
+    /// normal rather than leaving the user puzzled that the code "did nothing".
+    var partyPaused: Bool {
+        secretCodeActive && (reduceTransparency || increaseContrast)
     }
 
     /// Accessibility display options post to `NSWorkspace`'s OWN notification center (never `.default`).

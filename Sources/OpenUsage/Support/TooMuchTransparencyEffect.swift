@@ -41,13 +41,19 @@ private struct TooMuchTransparencyModifier: ViewModifier {
 
     private var isParty: Bool { style == .party }
     private var isDrunk: Bool { style == .drunk }
+    /// Increase Transparency (`.increased`) and party both show *static* content on the translucent,
+    /// non-key panel, which the compositor culls unless it keeps repainting; drunk is exempt because
+    /// `DrunkDistortion` already repaints it every frame.
+    private var needsKeepAlive: Bool { style.surfaceTreatment == .translucent && !isDrunk }
 
     func body(content: Content) -> some View {
         content
             .modifier(DrunkDistortion(active: isDrunk))
-            // Keep party's content continuously re-rasterizing so it survives losing key focus, the same
-            // way drunk's `DrunkDistortion` animation does (drunk never blanks for exactly this reason).
-            .modifier(PartyKeepAlive(active: isParty))
+            // Keep translucent static content continuously re-rasterizing so it survives losing key
+            // focus, the same way drunk's `DrunkDistortion` animation does (drunk never blanks for
+            // exactly this reason). Covers the plain Increase Transparency surface too, not only party —
+            // both blank otherwise on a Space switch or Cmd-Tab.
+            .modifier(TranslucentKeepAlive(active: needsKeepAlive))
             .background {
                 if isParty { PartyBackdrop().transition(.opacity) }
             }
@@ -108,16 +114,17 @@ private struct PartyRim: View {
     }
 }
 
-/// Keeps the party content layer resident while the panel isn't the key window.
+/// Keeps a translucent content layer resident while the panel isn't the key window — for both the plain
+/// Increase Transparency surface and party.
 ///
 /// On a non-opaque, non-key window the compositor drops *static* SwiftUI content — only views that
 /// repaint every frame survive. That's why, with focus elsewhere (Cmd-Tab, clicking another app,
-/// switching Spaces), the animated party gradient stays but the static cards/text blank out, and why
-/// drunk mode (whose whole content is animated by `DrunkDistortion`) never blanks. This forces a re-raster
-/// each frame with a *varying* sub-pixel blur — a transform/scale wouldn't, since those reuse the cached
+/// switching Spaces), an animated layer stays but the static cards/text blank out, and why drunk mode
+/// (whose whole content is animated by `DrunkDistortion`) never blanks. This forces a re-raster each
+/// frame with a *varying* sub-pixel blur — a transform/scale wouldn't, since those reuse the cached
 /// bitmap, whereas a changing blur re-renders the content. The radius peaks under a point, so it reads as
-/// crisp. Identity when inactive (no `TimelineView` mounted), and it only runs while party is on.
-private struct PartyKeepAlive: ViewModifier {
+/// crisp. Identity when inactive (no `TimelineView` mounted), so it costs nothing on the opaque surface.
+private struct TranslucentKeepAlive: ViewModifier {
     let active: Bool
     @Environment(\.popoverIsVisible) private var isVisible
 

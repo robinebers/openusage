@@ -1,9 +1,10 @@
 import XCTest
 @testable import OpenUsage
 
-/// The transparency precedence rules: the egg wins regardless of the system accessibility flags (it's an
-/// opt-in cheat code) — the secret code is the readable `party`, "Drunk Mode" is the barely-readable
-/// `drunk` — while the proper "Increase Transparency" toggle yields to those flags.
+/// The transparency precedence rules: Reduce Transparency / Increase Contrast clamp everything to opaque
+/// first (an accessibility need, not a preference), so both the proper "Increase Transparency" toggle and
+/// the secret-code egg yield to them. With the flags off the egg wins — the secret code is the readable
+/// `party`, "Drunk Mode" the barely-readable `drunk`.
 final class PopoverTransparencyStyleTests: XCTestCase {
     private func resolve(increase: Bool, secretCode: Bool, drunkMode: Bool,
                          reduceTransparency: Bool, increaseContrast: Bool) -> PopoverTransparencyStyle {
@@ -55,11 +56,26 @@ final class PopoverTransparencyStyleTests: XCTestCase {
                                reduceTransparency: false, increaseContrast: false), .increased)
     }
 
-    func testEggIgnoresAccessibilityFlags() {
+    func testEggYieldsToAccessibilityFlags() {
+        // Reduce Transparency / Increase Contrast are accessibility needs, so they clamp the panel to
+        // opaque even when the secret code (and Drunk Mode) is active — the hidden egg may not override
+        // them. Either flag alone is enough.
         XCTAssertEqual(resolve(increase: false, secretCode: true, drunkMode: false,
-                               reduceTransparency: true, increaseContrast: true), .party)
+                               reduceTransparency: true, increaseContrast: false), .opaque)
+        XCTAssertEqual(resolve(increase: false, secretCode: true, drunkMode: false,
+                               reduceTransparency: false, increaseContrast: true), .opaque)
+        XCTAssertEqual(resolve(increase: false, secretCode: true, drunkMode: true,
+                               reduceTransparency: true, increaseContrast: false), .opaque)
         XCTAssertEqual(resolve(increase: true, secretCode: true, drunkMode: true,
-                               reduceTransparency: true, increaseContrast: true), .drunk)
+                               reduceTransparency: true, increaseContrast: true), .opaque)
+    }
+
+    func testEggRendersWhenAccessibilityFlagsAreOff() {
+        // With both flags off the egg still wins over the proper toggle.
+        XCTAssertEqual(resolve(increase: true, secretCode: true, drunkMode: false,
+                               reduceTransparency: false, increaseContrast: false), .party)
+        XCTAssertEqual(resolve(increase: true, secretCode: true, drunkMode: true,
+                               reduceTransparency: false, increaseContrast: false), .drunk)
     }
 
     func testSurfaceTreatmentPerStyle() {

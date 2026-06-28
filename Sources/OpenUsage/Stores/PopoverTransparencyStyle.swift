@@ -44,10 +44,13 @@ enum PopoverTransparencyStyle: Equatable, Sendable {
         }
     }
 
-    /// The single home for the precedence rules. The egg wins regardless of the system accessibility
-    /// flags (it's an opt-in cheat code the user explicitly invoked): the secret code turns on the
-    /// readable party, and "Drunk Mode" pushes it to the woozy, barely-readable drunk. The proper
-    /// "Increase Transparency" toggle yields to the system's Reduce Transparency / Increase Contrast.
+    /// The single home for the precedence rules. Reduce Transparency and Increase Contrast are
+    /// accessibility *needs*, not preferences, so they clamp everything to opaque first — neither the
+    /// opt-in "Increase Transparency" toggle nor the secret-code egg may turn the panel translucent or
+    /// fade the window while either is on. The egg being a hidden, user-invoked cheat code doesn't make
+    /// overriding an accessibility setting safe, so it yields too. With the flags off the egg wins (the
+    /// secret code is the readable party, "Drunk Mode" the woozy barely-readable drunk), then the proper
+    /// toggle, then opaque.
     static func resolve(
         increaseTransparency: Bool,
         secretCodeActive: Bool,
@@ -55,10 +58,14 @@ enum PopoverTransparencyStyle: Equatable, Sendable {
         reduceTransparency: Bool,
         increaseContrast: Bool
     ) -> PopoverTransparencyStyle {
+        // Accessibility wins over every translucent treatment, the egg included.
+        if reduceTransparency || increaseContrast {
+            return .opaque
+        }
         if secretCodeActive {
             return drunkMode ? .drunk : .party
         }
-        if increaseTransparency, !reduceTransparency, !increaseContrast {
+        if increaseTransparency {
             return .increased
         }
         return .opaque
