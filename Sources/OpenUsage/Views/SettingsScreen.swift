@@ -117,6 +117,9 @@ struct SettingsScreen: View {
                 }
             }
             notificationsSection
+            #if DEBUG
+            debugNotificationsSection
+            #endif
             section("Providers") {
                 ForEach(container.registry.providers) { provider in
                     providerRow(provider)
@@ -274,6 +277,44 @@ struct SettingsScreen: View {
         default: notificationsAuth = .authorized
         }
     }
+
+    #if DEBUG
+    /// Temporary debug buttons that post real quota notifications so the copy, stacking, and permission
+    /// flow can be verified on demand without waiting for a real worsening. DEBUG-only — never in a
+    /// release build. Remove once notification behavior is confirmed.
+    private var debugNotificationsSection: some View {
+        section("Debug") {
+            row("Almost Out") {
+                Button("Fire") { fire(.underTenPercent) }.buttonStyle(.bordered)
+            }
+            row("Cutting It Close") {
+                Button("Fire") { fire(.healthyToClose) }.buttonStyle(.bordered)
+            }
+            row("Will Run Out") {
+                Button("Fire") { fire(.closeToRunningOut) }.buttonStyle(.bordered)
+            }
+            row("All Three") {
+                Button("Fire") {
+                    fire(.underTenPercent)
+                    fire(.healthyToClose)
+                    fire(.closeToRunningOut)
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+    }
+
+    /// Post one real notification for a milestone so the banner title/subtitle/body and stacking can be
+    /// checked directly. Bypasses the dedup/prime logic — a manual trigger for testing only.
+    private func fire(_ milestone: PaceMilestone) {
+        AppNotifications.shared.post(
+            idPrefix: "debug.\(milestone.rawValue)",
+            title: milestone.notificationTitle,
+            subtitle: "Claude Session",
+            body: milestone.body
+        )
+    }
+    #endif
 
     // MARK: - Advanced (logging)
 
