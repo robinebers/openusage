@@ -8,8 +8,14 @@ import SwiftUI
 /// driven from `PopoverTransparencyStore.surfaceTreatment` and read by `PopoverSurface` (the tray) and
 /// `CardSurfaceModifier` (the grouped cards).
 enum PopoverSurfaceTreatment: Equatable, Sendable {
+    /// Today's solid panel: opaque tray, opaque card base.
     case opaque
+    /// The page clears to whatever is behind the window (vibrancy desktop, or the ghost chaos); cards
+    /// clear their opaque base too.
     case translucent
+    /// Disco: the page clears so the animated party backdrop shows, but cards keep a frosted material
+    /// base so the text on them stays readable over the moving colors.
+    case scrim
 }
 
 private struct PopoverSurfaceTreatmentKey: EnvironmentKey {

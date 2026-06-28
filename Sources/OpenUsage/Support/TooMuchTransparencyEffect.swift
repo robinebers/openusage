@@ -1,46 +1,105 @@
 import SwiftUI
 
 extension View {
-    /// The "too much transparency" easter-egg treatment for the ghost styles: an animated pink/rose
-    /// iridescence that slowly rotates over a clear Liquid Glass lens, a soft specular shimmer that
-    /// drifts around, and the content gently blurred, breathing, and swaying. The result is barely
-    /// readable, but on purpose and in a pretty, chaotic-but-elegant way — the joke leans into abusing
-    /// Liquid Glass, not just cranking the window alpha. A no-op for the non-egg styles.
+    /// The "too much transparency" easter-egg treatment.
+    ///
+    /// - `.disco`: the secret code's main state — a loud but **readable** party. A vivid churning
+    ///   gradient fills the popover behind the content and a glowing rim rotates around the edge, while
+    ///   the content stays crisp on frosted cards (no blur over text, the window stays solid). Meter bars
+    ///   and provider marks join in via the `popoverPartyMode` environment flag.
+    /// - `.ghost`: the "Even More" extreme — the deliberately barely-readable pink-glass chaos, where the
+    ///   abuse is layered *over* the content (blur, pink wash, sway) and the window goes see-through.
+    /// A no-op for the normal and increased styles.
     @ViewBuilder
     func tooMuchTransparency(_ style: PopoverTransparencyStyle) -> some View {
         switch style {
+        case .disco:
+            modifier(DiscoModifier())
         case .ghost:
-            modifier(TooMuchTransparencyModifier(intense: false))
-        case .ghostMore:
-            modifier(TooMuchTransparencyModifier(intense: true))
+            modifier(GhostModifier())
         case .opaque, .increased:
             self
         }
     }
 }
 
-/// Drives every animated value off one continuous clock (`TimelineView(.animation)`) so the motion is
-/// smooth and self-contained — the modifier is only mounted while the egg is on, so there's no cost
-/// otherwise. `intense` is the "Even More" gear: faster, blurrier, more saturated, more pink.
-private struct TooMuchTransparencyModifier: ViewModifier {
-    let intense: Bool
+/// Shared party palette — pink, violet, cyan, rose.
+private let discoColors: [Color] = [
+    Color(red: 1.00, green: 0.32, blue: 0.74),
+    Color(red: 0.62, green: 0.40, blue: 1.00),
+    Color(red: 0.30, green: 0.85, blue: 1.00),
+    Color(red: 1.00, green: 0.55, blue: 0.86),
+    Color(red: 1.00, green: 0.32, blue: 0.74),
+]
 
+// MARK: - Disco (loud but readable)
+
+private struct DiscoModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            // Leaf views (meters, provider marks) read this to join the party.
+            .environment(\.popoverPartyMode, true)
+            // The gradient lives BEHIND the content (which sits on frosted scrim cards), so text never
+            // gets washed or blurred — that's what keeps it readable.
+            .background { DiscoBackdrop() }
+            .overlay { DiscoRim().allowsHitTesting(false) }
+    }
+}
+
+/// A vivid, slowly churning gradient that fills the popover behind the (frosted, readable) content.
+private struct DiscoBackdrop: View {
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            ZStack {
+                AngularGradient(colors: discoColors, center: .center, angle: .degrees(t * 28))
+                RadialGradient(
+                    colors: [Color.white.opacity(0.22), .clear],
+                    center: UnitPoint(x: 0.5 + cos(t * 0.5) * 0.3, y: 0.5 + sin(t * 0.6) * 0.3),
+                    startRadius: 0,
+                    endRadius: 240
+                )
+                .blendMode(.plusLighter)
+            }
+        }
+    }
+}
+
+/// A glowing rim that rotates around the popover edge — pure party, never over the text.
+private struct DiscoRim: View {
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .strokeBorder(
+                    AngularGradient(colors: discoColors, center: .center, angle: .degrees(-t * 36)),
+                    lineWidth: 2.5
+                )
+                .shadow(color: Color(red: 1, green: 0.4, blue: 0.85).opacity(0.7), radius: 7)
+        }
+    }
+}
+
+// MARK: - Ghost (the unreadable "Even More" extreme)
+
+/// The deliberately barely-readable chaos: pink iridescence and a clear-glass lens layered *over* the
+/// content, which is blurred, hue-wobbled, and gently swaying. The joke leans into abusing Liquid Glass.
+private struct GhostModifier: ViewModifier {
     func body(content: Content) -> some View {
         TimelineView(.animation) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
-            let spin = t * (intense ? 26 : 14)                       // gradient rotation, degrees/sec
-            let hueWobble = sin(t * (intense ? 1.1 : 0.7)) * (intense ? 16 : 9)
-            let sway = sin(t * (intense ? 1.5 : 0.9)) * (intense ? 1.1 : 0.6)   // degrees
-            let breathe = 1 + sin(t * (intense ? 1.2 : 0.8)) * (intense ? 0.018 : 0.01)
-            let driftX = cos(t * (intense ? 0.8 : 0.5)) * 0.32       // shimmer drift, unit-point offset
-            let driftY = sin(t * (intense ? 0.9 : 0.6)) * 0.32
+            let spin = t * 26
+            let hueWobble = sin(t * 1.1) * 16
+            let sway = sin(t * 1.5) * 1.1
+            let breathe = 1 + sin(t * 1.2) * 0.018
+            let driftX = cos(t * 0.8) * 0.32
+            let driftY = sin(t * 0.9) * 0.32
 
             content
-                .saturation(intense ? 1.55 : 1.2)
-                .blur(radius: intense ? 3.6 : 2.2)
+                .saturation(1.55)
+                .blur(radius: 3.6)
                 .hueRotation(.degrees(hueWobble))
-                // Over-scale so the sway never opens a gap at the rounded corners; the host clips it.
-                .scaleEffect((intense ? 1.05 : 1.035) * breathe)
+                .scaleEffect(1.05 * breathe)        // over-scale hides sway gaps at the rounded corners
                 .rotationEffect(.degrees(sway))
                 .overlay { glassLens().allowsHitTesting(false) }
                 .overlay { pinkWash(angle: spin).allowsHitTesting(false) }
@@ -48,8 +107,8 @@ private struct TooMuchTransparencyModifier: ViewModifier {
         }
     }
 
-    /// The deliberate Liquid Glass abuse: a full-cover clear-glass lens that refracts and frosts the
-    /// whole popover (macOS 26), or a frosted material on macOS 15.
+    /// The deliberate Liquid Glass abuse: a full-cover clear-glass lens (macOS 26) or frosted material
+    /// (macOS 15) that refracts the whole popover.
     @ViewBuilder
     private func glassLens() -> some View {
         if #available(macOS 26, *) {
@@ -59,30 +118,20 @@ private struct TooMuchTransparencyModifier: ViewModifier {
         }
     }
 
-    /// The rotating pink iridescence, blended so it tints and washes the content rather than hiding it.
+    /// Rotating pink iridescence, blended so it tints and washes the content rather than hiding it flat.
     private func pinkWash(angle: Double) -> some View {
-        AngularGradient(
-            colors: [
-                Color(red: 1.00, green: 0.42, blue: 0.78),
-                Color(red: 0.96, green: 0.28, blue: 0.62),
-                Color(red: 0.80, green: 0.40, blue: 0.96),
-                Color(red: 1.00, green: 0.58, blue: 0.86),
-                Color(red: 1.00, green: 0.42, blue: 0.78),
-            ],
-            center: .center,
-            angle: .degrees(angle)
-        )
-        .blendMode(.overlay)
-        .opacity(intense ? 0.95 : 0.72)
+        AngularGradient(colors: discoColors, center: .center, angle: .degrees(angle))
+            .blendMode(.overlay)
+            .opacity(0.95)
     }
 
     /// A soft white specular highlight that drifts around — the "liquid" shimmer of the glass.
     private func shimmer(driftX: Double, driftY: Double) -> some View {
         RadialGradient(
-            colors: [Color.white.opacity(intense ? 0.55 : 0.4), .clear],
+            colors: [Color.white.opacity(0.55), .clear],
             center: UnitPoint(x: 0.5 + driftX, y: 0.5 + driftY),
             startRadius: 0,
-            endRadius: intense ? 130 : 170
+            endRadius: 130
         )
         .blendMode(.plusLighter)
     }

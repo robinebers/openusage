@@ -116,7 +116,8 @@ struct SettingsScreen: View {
                         .padding(.bottom, 8)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                // Surfaces only after the secret code has been entered — pushes the ghost even further.
+                // Surfaces only after the secret code has been entered — flips the readable disco into
+                // the unreadable ghost.
                 if transparency.secretCodeActive {
                     row("Even More") {
                         Toggle("", isOn: $transparency.evenMore)

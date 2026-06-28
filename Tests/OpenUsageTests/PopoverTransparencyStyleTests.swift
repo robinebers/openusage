@@ -2,7 +2,8 @@ import XCTest
 @testable import OpenUsage
 
 /// The transparency precedence rules: the egg wins regardless of the system accessibility flags (it's an
-/// opt-in cheat code), while the proper "Increase Transparency" toggle yields to them.
+/// opt-in cheat code) — the secret code is the readable `disco`, "Even More" is the unreadable `ghost` —
+/// while the proper "Increase Transparency" toggle yields to those flags.
 final class PopoverTransparencyStyleTests: XCTestCase {
     private func resolve(increase: Bool, secretCode: Bool, evenMore: Bool,
                          reduceTransparency: Bool, increaseContrast: Bool) -> PopoverTransparencyStyle {
@@ -35,42 +36,42 @@ final class PopoverTransparencyStyleTests: XCTestCase {
                                reduceTransparency: false, increaseContrast: true), .opaque)
     }
 
-    func testEggGhostsEvenWhenProperToggleIsOff() {
+    func testSecretCodeIsDiscoEvenWhenProperToggleIsOff() {
         XCTAssertEqual(resolve(increase: false, secretCode: true, evenMore: false,
-                               reduceTransparency: false, increaseContrast: false), .ghost)
+                               reduceTransparency: false, increaseContrast: false), .disco)
     }
 
-    func testEvenMoreIsGhostMore() {
+    func testEvenMoreIsGhost() {
         XCTAssertEqual(resolve(increase: false, secretCode: true, evenMore: true,
-                               reduceTransparency: false, increaseContrast: false), .ghostMore)
+                               reduceTransparency: false, increaseContrast: false), .ghost)
     }
 
     func testEggIgnoresAccessibilityFlags() {
         XCTAssertEqual(resolve(increase: false, secretCode: true, evenMore: false,
-                               reduceTransparency: true, increaseContrast: true), .ghost)
+                               reduceTransparency: true, increaseContrast: true), .disco)
         XCTAssertEqual(resolve(increase: true, secretCode: true, evenMore: true,
-                               reduceTransparency: true, increaseContrast: true), .ghostMore)
+                               reduceTransparency: true, increaseContrast: true), .ghost)
     }
 
     func testSurfaceTreatmentPerStyle() {
         XCTAssertEqual(PopoverTransparencyStyle.opaque.surfaceTreatment, .opaque)
         XCTAssertEqual(PopoverTransparencyStyle.increased.surfaceTreatment, .translucent)
+        XCTAssertEqual(PopoverTransparencyStyle.disco.surfaceTreatment, .scrim)
         XCTAssertEqual(PopoverTransparencyStyle.ghost.surfaceTreatment, .translucent)
-        XCTAssertEqual(PopoverTransparencyStyle.ghostMore.surfaceTreatment, .translucent)
     }
 
-    func testWindowAlphaPerStyle() {
+    func testWindowAlphaKeepsDiscoReadableAndGhostFaintest() {
         XCTAssertEqual(PopoverTransparencyStyle.opaque.windowAlpha, 1)
         XCTAssertEqual(PopoverTransparencyStyle.increased.windowAlpha, 1)
-        XCTAssertLessThan(PopoverTransparencyStyle.ghost.windowAlpha, 1)
-        XCTAssertLessThan(PopoverTransparencyStyle.ghostMore.windowAlpha,
-                          PopoverTransparencyStyle.ghost.windowAlpha)
+        XCTAssertGreaterThan(PopoverTransparencyStyle.disco.windowAlpha, 0.85)   // stays readable
+        XCTAssertLessThan(PopoverTransparencyStyle.ghost.windowAlpha,
+                          PopoverTransparencyStyle.disco.windowAlpha)            // faintest of all
     }
 
-    func testShadowDroppedOnlyForGhostModes() {
+    func testShadowDroppedOnlyForGhost() {
         XCTAssertTrue(PopoverTransparencyStyle.opaque.wantsShadow)
         XCTAssertTrue(PopoverTransparencyStyle.increased.wantsShadow)
+        XCTAssertTrue(PopoverTransparencyStyle.disco.wantsShadow)
         XCTAssertFalse(PopoverTransparencyStyle.ghost.wantsShadow)
-        XCTAssertFalse(PopoverTransparencyStyle.ghostMore.wantsShadow)
     }
 }

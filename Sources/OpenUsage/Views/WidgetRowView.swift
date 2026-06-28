@@ -26,6 +26,9 @@ struct WidgetRowView: View {
     var condensedTop: Bool = false
 
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
+    /// Disco easter egg: fill meter bars with the party gradient instead of the severity color. Off by
+    /// default everywhere else.
+    @Environment(\.popoverPartyMode) private var partyMode
 
     /// Both row fonts come from the density setting: point sizes — not just padding — are what make
     /// Compact read as a denser mode. The sizes are explicit because semantic
@@ -348,7 +351,7 @@ struct WidgetRowView: View {
                 // on glass and adapts to Increase Contrast / Reduce Transparency.
                 Capsule().fill(.quaternary)
                 Capsule()
-                    .fill(severityColor(state.severity))
+                    .fill(partyMode ? PartyMode.meterFill : severityColor(state.severity))
                     .frame(width: fillWidth(track: proxy.size.width))
             }
             .overlay(alignment: .leading) {

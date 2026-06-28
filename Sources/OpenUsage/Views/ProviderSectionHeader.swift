@@ -29,6 +29,8 @@ struct ProviderSectionHeader<Trailing: View>: View {
     /// Header type and icon track the density setting like the rows do, so Compact shrinks the
     /// whole section anatomy — not just the rows under it.
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
+    /// Disco easter egg: pulse the provider mark. Off by default everywhere else.
+    @Environment(\.popoverPartyMode) private var partyMode
 
     init(provider: Provider, plan: String? = nil, warning: String? = nil, refreshing: Bool = false, staleness: StalenessHint? = nil, showsDragHandle: Bool = false, @ViewBuilder trailing: () -> Trailing) {
         self.provider = provider
@@ -94,6 +96,7 @@ struct ProviderSectionHeader<Trailing: View>: View {
             // default list-context padding.
             ProviderIcon(source: provider.icon, inset: 0.04)
                 .frame(width: density.headerIconSize, height: density.headerIconSize)
+                .partyPulse(partyMode)
             trailing
         }
         // With the grip leading, shave the left inset so the handle sits a touch closer to the card's

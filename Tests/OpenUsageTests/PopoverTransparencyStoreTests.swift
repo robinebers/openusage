@@ -47,11 +47,11 @@ final class PopoverTransparencyStoreTests: XCTestCase {
     func testEffectiveStyleFollowsEgg() {
         // The egg path ignores the system accessibility flags, so these are deterministic on any host.
         let store = PopoverTransparencyStore(defaults: makeDefaults("style"))
-        store.toggleSecretCode()
+        store.toggleSecretCode()        // secret code -> readable disco
+        XCTAssertEqual(store.effectiveStyle, .disco)
+        XCTAssertEqual(store.surfaceTreatment, .scrim)
+        store.evenMore = true           // Even More -> unreadable ghost
         XCTAssertEqual(store.effectiveStyle, .ghost)
-        XCTAssertEqual(store.surfaceTreatment, .translucent)
-        store.evenMore = true
-        XCTAssertEqual(store.effectiveStyle, .ghostMore)
         store.toggleSecretCode()        // off; proper toggle is off too -> opaque regardless of host flags
         XCTAssertEqual(store.effectiveStyle, .opaque)
         XCTAssertEqual(store.surfaceTreatment, .opaque)

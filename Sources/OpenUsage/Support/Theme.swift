@@ -114,6 +114,11 @@ private struct CardSurfaceModifier: ViewModifier {
                     .overlay { Theme.cardShape.fill(Theme.cardFill) }
             case .translucent:
                 Theme.cardShape.fill(Theme.cardFill)
+            case .scrim:
+                // Frosted material over the animated disco backdrop so the metric text stays readable.
+                Theme.cardShape
+                    .fill(.regularMaterial)
+                    .overlay { Theme.cardShape.fill(Theme.cardFill) }
             }
         }
     }
