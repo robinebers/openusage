@@ -565,13 +565,13 @@ final class LayoutStore {
     /// model for Customize: the divider participates in target geometry like a row, but persistence
     /// remains metric-only.
     @discardableResult
-    func applyMetricDividerOrder(_ orderedIDsWithDivider: [String], dividerID: String, in providerID: String) -> Bool {
+    func applyMetricDividerOrder(_ orderedIDsWithDivider: [String], dragged: String, dividerID: String, in providerID: String) -> Bool {
         recordingUndoStep {
-            applyMetricDividerOrderImpl(orderedIDsWithDivider, dividerID: dividerID, in: providerID)
+            applyMetricDividerOrderImpl(orderedIDsWithDivider, dragged: dragged, dividerID: dividerID, in: providerID)
         }
     }
 
-    private func applyMetricDividerOrderImpl(_ orderedIDsWithDivider: [String], dividerID: String, in providerID: String) -> Bool {
+    private func applyMetricDividerOrderImpl(_ orderedIDsWithDivider: [String], dragged: String, dividerID: String, in providerID: String) -> Bool {
         let validIDs = metricOrder(for: providerID)
         let validSet = Set(validIDs)
         guard orderedIDsWithDivider.contains(dividerID) else { return false }
@@ -607,9 +607,14 @@ final class LayoutStore {
         let providerExpanded = Set(expanded)
         let providerIDs = Set(validIDs)
         let nextExpanded = expandedMetricIDs.subtracting(providerIDs).union(providerExpanded)
-        let nextDefaultExpandedOnEnableIDs = defaultExpandedOnEnableIDs.subtracting(seen)
-        let fallbackChanged = defaultExpandedOnEnableIDs != nextDefaultExpandedOnEnableIDs
-        guard metricOrderByProvider[providerID] != nextOrder || expandedMetricIDs != nextExpanded || fallbackChanged else {
+        // Only the dragged metric's expand-on-enable entry is consumed — an explicit placement.
+        // Clearing every metric in the list (the old `subtracting(seen)`) also cleared disabled
+        // optional metrics that `metricOrderWithDivider` includes by default but the user never moved,
+        // so they lost their below-caret default. Matches `reorderMetric`, which consumes only the
+        // dragged id.
+        var nextDefaultExpandedOnEnableIDs = defaultExpandedOnEnableIDs
+        let consumedExpandOnEnable = nextDefaultExpandedOnEnableIDs.remove(dragged) != nil
+        guard metricOrderByProvider[providerID] != nextOrder || expandedMetricIDs != nextExpanded || consumedExpandOnEnable else {
             return false
         }
 
@@ -618,7 +623,7 @@ final class LayoutStore {
         defaultExpandedOnEnableIDs = nextDefaultExpandedOnEnableIDs
         persistMetricOrder()
         persistExpanded()
-        if fallbackChanged { persistExpandOnEnable() }
+        if consumedExpandOnEnable { persistExpandOnEnable() }
         syncPlacedOrder()
         return true
     }

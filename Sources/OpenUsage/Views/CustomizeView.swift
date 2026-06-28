@@ -233,7 +233,7 @@ struct CustomizeView: View {
                 guard let next = LayoutStore.reordered(current, dragged: metricID, target: target) else {
                     return false
                 }
-                return layout.applyMetricDividerOrder(next, dividerID: expandedDividerID(for: providerID), in: providerID)
+                return layout.applyMetricDividerOrder(next, dragged: metricID, dividerID: expandedDividerID(for: providerID), in: providerID)
             }
         )
     }

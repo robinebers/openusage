@@ -476,7 +476,7 @@ final class LayoutStoreTests: XCTestCase {
             divider,
             "cursor.credits",
             "cursor.today"
-        ], dividerID: divider, in: "cursor"))
+        ], dragged: "cursor.requests", dividerID: divider, in: "cursor"))
         store.setMetricEnabled("cursor.requests", true)
 
         XCTAssertTrue(store.isMetricEnabled("cursor.requests"))
@@ -514,7 +514,38 @@ final class LayoutStoreTests: XCTestCase {
             "cursor.today",
             "cursor.usage",
             divider
-        ], dividerID: divider, in: "cursor"))
+        ], dragged: "cursor.today", dividerID: divider, in: "cursor"))
+        store.setMetricEnabled("cursor.requests", true)
+
+        XCTAssertTrue(store.isMetricExpanded("cursor.requests"))
+    }
+
+    func testCustomizeReorderDoesNotConsumeUnmovedDisabledExpandOnEnable() {
+        let defaults = makeDefaults("CustomizePrimaryReorderKeepsUnmovedFallback")
+        saveStored([
+            PlacedWidget(descriptorID: "cursor.usage"),
+            PlacedWidget(descriptorID: "cursor.today")
+        ], forKey: "layout", in: defaults)
+        let store = LayoutStore(
+            registry: .mock,
+            defaults: defaults,
+            storageKey: "layout",
+            defaultMetricIDs: ["cursor.usage", "cursor.today"],
+            migrationBaselineMetricIDs: ["cursor.usage", "cursor.today"],
+            defaultExpandedMetricIDs: ["cursor.requests"]
+        )
+        let divider = "cursor::expanded-divider"
+
+        // Customize passes the full metric list (metricOrderWithDivider includes the disabled
+        // cursor.requests before the divider) even when only reordering primary rows. The dragged
+        // metric is cursor.today, not cursor.requests — so cursor.requests' below-caret default must
+        // survive the reorder and still place it below the caret when later enabled.
+        XCTAssertTrue(store.applyMetricDividerOrder([
+            "cursor.today",
+            "cursor.usage",
+            "cursor.requests",
+            divider
+        ], dragged: "cursor.today", dividerID: divider, in: "cursor"))
         store.setMetricEnabled("cursor.requests", true)
 
         XCTAssertTrue(store.isMetricExpanded("cursor.requests"))
@@ -837,7 +868,7 @@ final class LayoutStoreTests: XCTestCase {
             "cursor.requests",
             "cursor.credits",
             "cursor.today"
-        ], dividerID: divider, in: "cursor"))
+        ], dragged: "cursor.requests", dividerID: divider, in: "cursor"))
 
         XCTAssertFalse(store.isMetricExpanded("cursor.usage"))
         XCTAssertTrue(store.isMetricExpanded("cursor.requests"))
@@ -860,7 +891,7 @@ final class LayoutStoreTests: XCTestCase {
             divider,
             "cursor.credits",
             "cursor.today"
-        ], dividerID: divider, in: "cursor"))
+        ], dragged: "cursor.requests", dividerID: divider, in: "cursor"))
 
         XCTAssertFalse(store.isMetricExpanded("cursor.requests"))
     }
@@ -881,7 +912,7 @@ final class LayoutStoreTests: XCTestCase {
             "cursor.usage",
             "cursor.today",
             divider
-        ], dividerID: divider, in: "cursor"))
+        ], dragged: "cursor.today", dividerID: divider, in: "cursor"))
         XCTAssertEqual(store.orderedSupportedMetrics(for: "cursor").map(\.id), [
             "cursor.usage", "cursor.credits", "cursor.today", "cursor.requests"
         ])

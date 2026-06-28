@@ -301,6 +301,7 @@ struct WidgetGroupedListView: View {
                     }
                     return layout.applyMetricDividerOrder(
                         next,
+                        dragged: descriptor.id,
                         dividerID: expandedDividerID(for: providerID),
                         in: providerID
                     )
