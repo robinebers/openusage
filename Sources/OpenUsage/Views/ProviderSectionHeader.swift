@@ -29,7 +29,7 @@ struct ProviderSectionHeader<Trailing: View>: View {
     /// Header type and icon track the density setting like the rows do, so Compact shrinks the
     /// whole section anatomy — not just the rows under it.
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
-    /// Disco easter egg: pulse the provider mark. Off by default everywhere else.
+    /// Party easter egg: pulse the provider mark. Off by default everywhere else.
     @Environment(\.popoverPartyMode) private var partyMode
 
     init(provider: Provider, plan: String? = nil, warning: String? = nil, refreshing: Bool = false, staleness: StalenessHint? = nil, showsDragHandle: Bool = false, @ViewBuilder trailing: () -> Trailing) {

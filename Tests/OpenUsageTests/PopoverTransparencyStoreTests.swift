@@ -27,31 +27,31 @@ final class PopoverTransparencyStoreTests: XCTestCase {
         let defaults = makeDefaults("ephemeral")
         let store = PopoverTransparencyStore(defaults: defaults)
         store.toggleSecretCode()
-        store.evenMore = true
+        store.drunkMode = true
         XCTAssertTrue(store.secretCodeActive)
         // The egg is ephemeral: a fresh store (a relaunch) starts clean.
         let reloaded = PopoverTransparencyStore(defaults: defaults)
         XCTAssertFalse(reloaded.secretCodeActive)
-        XCTAssertFalse(reloaded.evenMore)
+        XCTAssertFalse(reloaded.drunkMode)
     }
 
-    func testTurningEggOffClearsEvenMore() {
-        let store = PopoverTransparencyStore(defaults: makeDefaults("evenmore"))
+    func testTurningEggOffClearsDrunkMode() {
+        let store = PopoverTransparencyStore(defaults: makeDefaults("drunk"))
         store.toggleSecretCode()        // on
-        store.evenMore = true
+        store.drunkMode = true
         store.toggleSecretCode()        // off
         XCTAssertFalse(store.secretCodeActive)
-        XCTAssertFalse(store.evenMore, "Even More clears when the egg turns off")
+        XCTAssertFalse(store.drunkMode, "Drunk Mode clears when the egg turns off")
     }
 
     func testEffectiveStyleFollowsEgg() {
         // The egg path ignores the system accessibility flags, so these are deterministic on any host.
         let store = PopoverTransparencyStore(defaults: makeDefaults("style"))
-        store.toggleSecretCode()        // secret code -> readable disco
-        XCTAssertEqual(store.effectiveStyle, .disco)
+        store.toggleSecretCode()        // secret code -> readable party
+        XCTAssertEqual(store.effectiveStyle, .party)
         XCTAssertEqual(store.surfaceTreatment, .scrim)
-        store.evenMore = true           // Even More -> unreadable ghost
-        XCTAssertEqual(store.effectiveStyle, .ghost)
+        store.drunkMode = true          // Drunk Mode -> woozy, barely-readable drunk
+        XCTAssertEqual(store.effectiveStyle, .drunk)
         store.toggleSecretCode()        // off; proper toggle is off too -> opaque regardless of host flags
         XCTAssertEqual(store.effectiveStyle, .opaque)
         XCTAssertEqual(store.surfaceTreatment, .opaque)

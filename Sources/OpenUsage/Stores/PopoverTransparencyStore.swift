@@ -24,8 +24,9 @@ final class PopoverTransparencyStore {
     /// Ephemeral easter-egg state. Never persisted: it clears on quit, but survives panel open/close
     /// within a run, so the only way out is re-typing the code.
     private(set) var secretCodeActive = false
-    /// "Even More" — only meaningful while `secretCodeActive`. Cleared whenever the egg turns off.
-    var evenMore = false
+    /// "Drunk Mode" — escalates the party into the woozy, barely-readable state. Only meaningful while
+    /// `secretCodeActive`; cleared whenever the egg turns off.
+    var drunkMode = false
 
     /// Live system accessibility flags. Read from `NSWorkspace` and refreshed on the change notification.
     private(set) var reduceTransparency: Bool
@@ -49,7 +50,7 @@ final class PopoverTransparencyStore {
     /// the egg off.
     func toggleSecretCode() {
         secretCodeActive.toggle()
-        if !secretCodeActive { evenMore = false }
+        if !secretCodeActive { drunkMode = false }
         AppLog.info(.statusItem, "Too-much-transparency egg \(secretCodeActive ? "enabled" : "disabled")")
     }
 
@@ -58,7 +59,7 @@ final class PopoverTransparencyStore {
         PopoverTransparencyStyle.resolve(
             increaseTransparency: increaseTransparency,
             secretCodeActive: secretCodeActive,
-            evenMore: evenMore,
+            drunkMode: drunkMode,
             reduceTransparency: reduceTransparency,
             increaseContrast: increaseContrast
         )

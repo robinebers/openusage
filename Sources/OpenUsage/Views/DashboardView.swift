@@ -221,10 +221,10 @@ struct DashboardView: View {
             // Reaches `modeBody`, the `PopoverSurface` background, and every card: drives whether surfaces
             // paint their opaque base or clear to the behind-window vibrancy backdrop.
             .environment(\.popoverSurfaceTreatment, transparency.surfaceTreatment)
-            // The easter egg's visuals: the readable disco party (gradient backdrop + glowing rim, text
-            // crisp on frosted cards) for the secret code, or the unreadable pink-glass ghost for "Even
-            // More". No-op for the normal/increased styles. Controls stay clickable (overlays don't
-            // hit-test), so the Settings "Even More" toggle is reachable while it's running.
+            // The easter egg's visuals: the readable party (gradient backdrop + glowing rim, text crisp
+            // on frosted cards) for the secret code, or the woozy, barely-readable pink-glass drunk mode
+            // for "Drunk Mode". No-op for the normal/increased styles. Controls stay clickable (overlays
+            // don't hit-test), so the Settings "Drunk Mode" toggle is reachable while it's running.
             .tooMuchTransparency(transparency.effectiveStyle)
     }
 
@@ -686,7 +686,7 @@ private struct PopoverSurface: View {
                 Theme.traySurface
             case .translucent, .scrim:
                 // Clear so what's behind the page shows through: the behind-window vibrancy backdrop
-                // (the desktop) for increased/ghost, or the animated party gradient for disco.
+                // (the desktop) for increased/drunk, or the animated party gradient for party mode.
                 Color.clear
             }
         }

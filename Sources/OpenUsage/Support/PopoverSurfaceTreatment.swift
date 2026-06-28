@@ -13,7 +13,7 @@ enum PopoverSurfaceTreatment: Equatable, Sendable {
     /// The page clears to whatever is behind the window (vibrancy desktop, or the ghost chaos); cards
     /// clear their opaque base too.
     case translucent
-    /// Disco: the page clears so the animated party backdrop shows, but cards keep a frosted material
+    /// Party: the page clears so the animated party backdrop shows, but cards keep a frosted material
     /// base so the text on them stays readable over the moving colors.
     case scrim
 }

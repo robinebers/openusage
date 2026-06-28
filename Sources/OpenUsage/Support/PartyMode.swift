@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// True inside the readable "disco" easter-egg mode, so leaf views (meter bars, provider marks) can
+/// True inside the readable "party" easter-egg mode, so leaf views (meter bars, provider marks) can
 /// join the party while staying legible. Default `false` everywhere — the windowless ShareCard export
-/// and every normal surface never opt in.
+/// and every normal surface never opt in. (The unreadable "drunk" escalation does not set this; it just
+/// blurs everything.)
 private struct PopoverPartyModeKey: EnvironmentKey {
     static let defaultValue = false
 }
@@ -15,7 +16,7 @@ extension EnvironmentValues {
 }
 
 enum PartyMode {
-    /// Vivid gradient fill for meter bars in disco mode. The bar still shows its fraction by width, so
+    /// Vivid gradient fill for meter bars in party mode. The bar still shows its fraction by width, so
     /// it stays readable — it just trades the solid severity color for party colors.
     static let meterFill = AnyShapeStyle(
         LinearGradient(
@@ -31,7 +32,7 @@ enum PartyMode {
 }
 
 extension View {
-    /// A gentle pulse + color shimmer for the provider marks while disco mode is on; identity otherwise
+    /// A gentle pulse + color shimmer for the provider marks while party mode is on; identity otherwise
     /// (no `TimelineView` mounted when the party is off).
     @ViewBuilder
     func partyPulse(_ active: Bool) -> some View {
