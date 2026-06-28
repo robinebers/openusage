@@ -142,6 +142,14 @@ final class WidgetDataStore {
     /// (disabled / unknown / already in flight) so a wake-burst's suppression is visible in the logs.
     enum RefreshOutcome: Sendable { case refreshed, failed, cacheHit, skipped, backedOff }
 
+    /// Debug-only accessor for the raw provider runtime. Returns nil for unknown IDs. Used by the
+    /// Debug settings section (dev builds only) to run provider-specific diagnostic methods — e.g.
+    /// Claude's delegated-refresh test and credential-state dump. Not surfaced in release builds;
+    /// harmless in production since the UI never calls it.
+    func debugProvider(_ id: String) -> ProviderRuntime? {
+        providersByID[id]
+    }
+
     @discardableResult
     func refresh(providerID: String, force: Bool = false) async -> RefreshOutcome {
         guard isProviderEnabled(providerID) else { return .skipped }

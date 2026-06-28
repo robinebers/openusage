@@ -130,6 +130,11 @@ struct SettingsScreen: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             advancedSection
+            // Dev-build only: the signed release ships an SUFeedURL (so `updater.isActive` is true);
+            // dev builds and bare `swift run` don't, so this section is hidden in production.
+            if !updater.isActive {
+                debugSection
+            }
             // Visible whenever the updater is active (only the signed release build ships a feed; the
             // dev build and a bare `swift run`, with no feed, hide this).
             if updater.isActive {
@@ -198,6 +203,53 @@ struct SettingsScreen: View {
                     .padding(.horizontal, 12)
                     .padding(.bottom, 8)
                     .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    // MARK: - Debug (dev builds only)
+
+    /// Diagnostic buttons for the Claude provider's token-refresh path. Each button writes to the
+    /// file log (set Log Level to Debug in Advanced above to see the full trace, including the
+    /// coordinator's touch/verify polls). Hidden in release builds via the `!updater.isActive` gate
+    /// in `content`. The buttons run on the MainActor (the provider is `@MainActor`); keychain reads
+    /// inside the debug methods are offloaded to a background executor to match the production
+    /// refresh path and avoid freezing the popover.
+    private var debugSection: some View {
+        section("Debug") {
+            // Plain-language note so the section isn't a wall of unlabeled buttons.
+            Text("Diagnostic buttons for the Claude token-refresh path. Set Log Level to Debug above, then use Copy Log Path / Reveal in Finder to read the trace.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            logButton("Refresh Claude (full)") {
+                AppLog.info(.config, "[debug] manual Claude refresh triggered")
+                Task { await container.dataStore.refresh(providerID: "claude", force: true) }
+            }
+            logButton("Test Delegated CLI Refresh") {
+                guard let claude = container.dataStore.debugProvider("claude") as? ClaudeProvider else {
+                    AppLog.warn(.config, "[debug] Claude provider not found")
+                    return
+                }
+                AppLog.info(.config, "[debug] delegated CLI refresh test triggered")
+                Task { await claude.debugRunDelegatedRefresh() }
+            }
+            logButton("Dump Credential State") {
+                guard let claude = container.dataStore.debugProvider("claude") as? ClaudeProvider else {
+                    AppLog.warn(.config, "[debug] Claude provider not found")
+                    return
+                }
+                AppLog.info(.config, "[debug] credential state dump triggered")
+                Task { await claude.debugDumpCredentialState() }
+            }
+            logButton("Clear Failure Gate") {
+                guard let claude = container.dataStore.debugProvider("claude") as? ClaudeProvider else {
+                    AppLog.warn(.config, "[debug] Claude provider not found")
+                    return
+                }
+                claude.debugClearFailureGate()
             }
         }
     }

@@ -361,4 +361,65 @@ final class ClaudeProvider: ProviderRuntime {
         return decoded.accessToken
     }
 
+    // MARK: - Debug (dev builds only; surfaced in Settings → Debug)
+
+    /// Debug: run a delegated CLI refresh attempt in isolation and log the outcome plus the
+    /// fingerprint before/after. Surfaces the coordinator's CLI resolution, `--version` touch, and
+    /// fingerprint-verify logic end-to-end WITHOUT going through the full `refresh()` cycle (no usage
+    /// API call, no candidate loop). Used by the Debug settings section to verify the delegated
+    /// refresh path works against the real `claude` CLI. Set log level to Debug in Advanced to see
+    /// the coordinator's own touch/verify logs.
+    func debugRunDelegatedRefresh() async {
+        let before = await loadOffMainActor { [authStore] in authStore.currentFingerprint() }
+        AppLog.info(LogTag.auth("claude"), "[debug] delegated refresh test — fingerprint before: \(before)")
+        let outcome = await coordinator.attempt(now: now())
+        let after = await loadOffMainActor { [authStore] in authStore.currentFingerprint() }
+        AppLog.info(LogTag.auth("claude"), "[debug] delegated refresh outcome: \(outcome)")
+        AppLog.info(LogTag.auth("claude"), "[debug] fingerprint after: \(after)")
+        AppLog.info(LogTag.auth("claude"), "[debug] fingerprint changed: \(before != after)")
+        if case .attemptedSucceeded = outcome, before != after {
+            AppLog.info(LogTag.auth("claude"), "[debug] ✅ credential rotated — delegated refresh works")
+        } else if case .cliUnavailable = outcome {
+            AppLog.info(LogTag.auth("claude"), "[debug] ⚠️ claude CLI not found — install it or set CLAUDE_CLI_PATH")
+        } else if case .skippedByCooldown = outcome {
+            AppLog.info(LogTag.auth("claude"), "[debug] ⏸️ skipped by cooldown — wait or clear the gate first")
+        } else {
+            AppLog.info(LogTag.auth("claude"), "[debug] ❌ credential unchanged — `claude --version` didn't rotate the token (see TODO(#753) in the coordinator)")
+        }
+    }
+
+    /// Debug: dump the current Claude credential state to the log — every candidate's source, scope
+    /// presence, refresh-token presence, and expiry; the current fingerprint; the failure-gate state;
+    /// and whether `canFetchLiveUsage` would allow the live usage call. Used by the Debug settings
+    /// section to diagnose "No data" issues (e.g. #777's missing `user:profile` scope). Keychain
+    /// reads run off-main to match the production refresh path.
+    func debugDumpCredentialState() async {
+        let candidates = await loadOffMainActor { [authStore] in authStore.loadCredentialCandidates() }
+        let fingerprint = await loadOffMainActor { [authStore] in authStore.currentFingerprint() }
+        AppLog.info(LogTag.auth("claude"), "[debug] credential state dump — \(candidates.count) candidate(s):")
+        for candidate in candidates {
+            AppLog.info(LogTag.auth("claude"), "[debug]   \(candidate.diagnosticsLabel(now: now())) scopes=\(candidate.oauth.scopes ?? [])")
+        }
+        AppLog.info(LogTag.auth("claude"), "[debug] current fingerprint: \(fingerprint)")
+        let gateStatus = failureGate.currentBlockStatus(now: now())
+        AppLog.info(LogTag.auth("claude"), "[debug] failure gate: \(gateStatus.map { "\($0)" } ?? "none (no block)")")
+        if let first = candidates.first {
+            AppLog.info(LogTag.auth("claude"), "[debug] canFetchLiveUsage (preferred source): \(authStore.canFetchLiveUsage(first))")
+            let hasProfile = first.oauth.scopes?.contains("user:profile") ?? false
+            if !hasProfile {
+                AppLog.warn(LogTag.auth("claude"), "[debug] ⚠️ preferred credential is missing user:profile scope — live usage will show 'No data' (see #777/#782); re-login via `claude` subscription flow to fix")
+            }
+        } else {
+            AppLog.warn(LogTag.auth("claude"), "[debug] ⚠️ no credential candidates found — not logged in")
+        }
+    }
+
+    /// Debug: clear the Claude failure gate (terminal/transient block) so the next refresh retries
+    /// immediately instead of waiting for the backoff window. Used by the Debug settings section to
+    /// test recovery without waiting for the 5min→6h exponential backoff.
+    func debugClearFailureGate() {
+        failureGate.recordSuccess()
+        AppLog.info(LogTag.auth("claude"), "[debug] failure gate cleared — next refresh will retry immediately")
+    }
+
 }
