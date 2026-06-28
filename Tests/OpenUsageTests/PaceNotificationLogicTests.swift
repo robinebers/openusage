@@ -161,6 +161,21 @@ final class PaceNotificationLogicTests: XCTestCase {
         XCTAssertTrue(red.fire.isEmpty)
     }
 
+    func testOffToggleDoesNotConsumeTheEdge() {
+        // A worsening while the trigger is off must not silently consume the crossing: previousBucket
+        // stays behind, so turning the trigger back on while the quota is still in the worse bucket
+        // fires on the next evaluation.
+        let off = PaceNotificationToggles(underTenPercent: false, healthyToClose: false, closeToRunningOut: true)
+        var state = step(healthy, toggles: off).newState   // prime at healthy
+        let closeSkipped = step(self.close, fraction: 0.20, from: state, toggles: off)  // healthyToClose off
+        XCTAssertTrue(closeSkipped.fire.isEmpty)
+        state = closeSkipped.newState
+        // Turn healthyToClose on; the metric is still close, so the next evaluation fires it.
+        let on = PaceNotificationToggles(underTenPercent: false, healthyToClose: true, closeToRunningOut: true)
+        let refired = step(self.close, fraction: 0.20, from: state, toggles: on)
+        XCTAssertTrue(refired.fire.contains(.healthyToClose))
+    }
+
     // MARK: - Fresh session window (treated as untracked by the caller via .level/.noData)
 
     func testFreshSessionStyleStateNeverFires() {

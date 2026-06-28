@@ -172,54 +172,67 @@ enum PaceNotificationLogic {
         var fire: [PaceMilestone] = []
 
         // Pace-verdict edges. Severity order: untracked(-1) < healthy(0) < close(1) < runningOut(2).
-        // "Pace Warning" is the yellow state itself: it fires only when the metric is *currently* in
-        // `.close` having been below it (the guard on `currentBucket == .close`, not a pure severity
-        // comparison). "Pace Critical" fires when severity reaches `.runningOut` having been below it.
-        // Two consequences:
-        //   • a jump straight from blue to red fires *critical only* — the metric skipped yellow, so the
-        //     user gets the single, more urgent alert, never both at once;
-        //   • a *cold start* already in a bad bucket (previous == untracked, severity -1) still fires,
-        //     because untracked sorts below every live bucket — so launching already over-pace alerts
-        //     on the first evaluation.
+        // "Cutting It Close" is the yellow state itself: it fires only when the metric is *currently*
+        // in `.close` having been below it (the guard on `currentBucket == .close`, not a pure severity
+        // comparison). "Will Run Out" fires when severity reaches `.runningOut` having been below it.
+        // A jump straight from blue to red fires *Will Run Out only* — the metric skipped yellow, so the
+        // user gets the single, more urgent alert, never both at once.
         let previousSeverity = severity(next.previousBucket)
         let currentSeverity = severity(currentBucket)
+        var paceFired = false
         if currentBucket == .close, previousSeverity < severity(.close) {
-            maybeFire(.healthyToClose, into: &fire, state: &next, toggles: toggles)
+            if maybeFire(.healthyToClose, into: &fire, state: &next, toggles: toggles) { paceFired = true }
         }
         if currentSeverity >= severity(.runningOut), previousSeverity < severity(.runningOut) {
-            maybeFire(.closeToRunningOut, into: &fire, state: &next, toggles: toggles)
+            if maybeFire(.closeToRunningOut, into: &fire, state: &next, toggles: toggles) { paceFired = true }
         }
         // Improving pace clears the now-irrelevant fired flags so a later worsening re-fires them.
         if currentSeverity < previousSeverity {
             if currentSeverity <= severity(.healthy) { next.firedMilestones.remove(.healthyToClose) }
             if currentSeverity <= severity(.close) { next.firedMilestones.remove(.closeToRunningOut) }
         }
-        next.previousBucket = currentBucket
+        // Advance the recorded bucket only when a worsening was actually alerted (or there was no
+        // worsening). A worsening that no enabled trigger caught leaves `previousBucket` where it was,
+        // so turning a trigger back on while the quota is still in the worse bucket fires on the next
+        // evaluation instead of the crossing being silently consumed.
+        if currentSeverity <= previousSeverity || paceFired {
+            next.previousBucket = currentBucket
+        }
 
-        // Under-10%-remaining edge, tracked independently of the pace verdict.
+        // Under-10%-remaining edge, tracked independently of the pace verdict, with the same
+        // consume-guard: a crossing no enabled trigger caught leaves `wasUnderTenPercent` un-advanced,
+        // so re-enabling "Almost Out" while still under 10% still alerts.
         let underNow = fraction < 0.10
-        if underNow, !next.wasUnderTenPercent {
-            maybeFire(.underTenPercent, into: &fire, state: &next, toggles: toggles)
+        let underCrossed = underNow && !next.wasUnderTenPercent
+        var underFired = false
+        if underCrossed, maybeFire(.underTenPercent, into: &fire, state: &next, toggles: toggles) {
+            underFired = true
         }
         if !underNow {
             // Recovered above 10% — re-arm so a later dip fires again.
             next.firedMilestones.remove(.underTenPercent)
         }
-        next.wasUnderTenPercent = underNow
+        if !underCrossed || underFired {
+            next.wasUnderTenPercent = underNow
+        }
 
         return Transition(fire: fire, newState: next)
     }
 
     /// Fires a milestone if its toggle is on and it hasn't already fired this window, recording it.
+    /// Returns whether it actually fired, so callers can avoid consuming a worsening edge when the
+    /// trigger is off (the edge is then re-evaluated next pass, so re-enabling still alerts).
+    @discardableResult
     private static func maybeFire(
         _ milestone: PaceMilestone,
         into fire: inout [PaceMilestone],
         state: inout NotificationState,
         toggles: PaceNotificationToggles
-    ) {
-        guard toggles.isOn(milestone), !state.firedMilestones.contains(milestone) else { return }
+    ) -> Bool {
+        guard toggles.isOn(milestone), !state.firedMilestones.contains(milestone) else { return false }
         fire.append(milestone)
         state.firedMilestones.insert(milestone)
+        return true
     }
 
     /// Ordinal pace severity so transitions can be compared (`untracked` sorts below `healthy`).
