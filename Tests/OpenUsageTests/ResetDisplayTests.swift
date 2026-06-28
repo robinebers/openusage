@@ -49,10 +49,11 @@ final class ResetDisplayTests: XCTestCase {
         XCTAssertEqual(data.resetTooltip()?.hasPrefix("Resets in "), true)      // opposite = relative
     }
 
-    func testFreshSessionWindowShowsNotStartedForCodexAndClaude() {
+    func testFreshSessionWindowShowsNotStartedForCodexClaudeAndAntigravity() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let period: TimeInterval = 5 * 3600
-        for id in ["codex.session", "claude.session"] {
+        for id in ["codex.session", "claude.session",
+                   "antigravity.geminiPro", "antigravity.geminiFlash", "antigravity.claude"] {
             var data = WidgetData(title: "Session", icon: .symbol("clock"), kind: .percent, used: 0, limit: 100)
             data.widgetID = id
             data.periodDurationMs = Int(period * 1000)

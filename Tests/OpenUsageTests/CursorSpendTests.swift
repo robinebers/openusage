@@ -82,6 +82,29 @@ final class CursorPricingTests: XCTestCase {
         XCTAssertEqual(fable.outputPerMillion, opus48.outputPerMillion * 2)
     }
 
+    /// GLM 5.2 (Z.ai) was added to Cursor's pricing page after the 2026-06-09 manifest sync. It ships
+    /// as two reasoning-effort variants — `glm-5.2-high` and `glm-5.2-max` — which both resolve to the
+    /// one canonical `glm-5.2` entry. The pricing page lists no separate cache-write price, so cache
+    /// write is billed at the input rate ($1.4), matching how the Gemini/GPT entries are filled.
+    func testGLM52PricingAndAliases() throws {
+        XCTAssertEqual(CursorPricing.canonicalModel(for: "glm-5.2"), "glm-5.2")
+        XCTAssertEqual(CursorPricing.canonicalModel(for: "glm-5.2-high"), "glm-5.2")
+        XCTAssertEqual(CursorPricing.canonicalModel(for: "glm-5.2-max"), "glm-5.2")
+
+        let glm = try XCTUnwrap(CursorPricing.pricingEntry(for: "glm-5.2-max"))
+        XCTAssertEqual(glm.familyDisplayName, "GLM 5.2")
+        XCTAssertEqual(glm.inputPerMillion, 1.4)
+        XCTAssertEqual(glm.cacheWritePerMillion, 1.4)
+        XCTAssertEqual(glm.cacheReadPerMillion, 0.26)
+        XCTAssertEqual(glm.outputPerMillion, 4.4)
+
+        // 1M output at $4.4/M → $4.40; a slug outside the high/max allowlist stays unpriced ($0).
+        let outputOnly = CursorTokenUsage(inputCacheWrite: 0, inputNoCacheWrite: 0, cacheRead: 0, output: 1_000_000)
+        XCTAssertEqual(CursorPricing.estimatedCostDollars(model: "glm-5.2-high", maxMode: false, tokens: outputOnly), 4.4, accuracy: 1e-9)
+        XCTAssertNil(CursorPricing.canonicalModel(for: "glm-5.2-bogus"))
+        XCTAssertEqual(CursorPricing.estimatedCostDollars(model: "glm-5.2-bogus", maxMode: false, tokens: outputOnly), 0, accuracy: 1e-9)
+    }
+
     func testCostSumsAllFourBucketsAndUnpricedIsZero() {
         let entry = try! XCTUnwrap(CursorPricing.pricingEntry(for: "composer-1"))
         let tokens = CursorTokenUsage(

@@ -2,7 +2,15 @@ import Foundation
 
 @MainActor
 final class CodexProvider: ProviderRuntime {
-    let provider = Provider(id: "codex", displayName: "Codex", icon: .providerMark("codex"))
+    let provider = Provider(
+        id: "codex",
+        displayName: "Codex",
+        icon: .providerMark("codex"),
+        links: [
+            .init(label: "Status", url: "https://status.openai.com/"),
+            .init(label: "Dashboard", url: "https://chatgpt.com/codex/settings/usage")
+        ]
+    )
 
     let authStore: CodexAuthStore
     let usageClient: CodexUsageClient

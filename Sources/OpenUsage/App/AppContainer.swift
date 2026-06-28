@@ -31,6 +31,7 @@ final class AppContainer {
             CodexProvider(),
             CursorProvider(),
             AntigravityProvider(),
+            CopilotProvider(),
             DevinProvider(),
             GrokProvider()
         ]

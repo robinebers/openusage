@@ -91,4 +91,9 @@ enum DensitySetting: String, Hashable, Sendable, CaseIterable {
     /// The Customize "Shown on Expand" divider draws smaller than a metric row, while its invisible
     /// reorder frame stays row-sized so the drag threshold keeps matching normal rows.
     var customizeDividerRowHeight: CGFloat { self == .compact ? 24 : 28 }
+
+    /// Gap between cells in the dashboard's expanded-metrics grid (the area that opens below the
+    /// caret laying secondary metrics up to three across). Kept tight so two or three narrow cells
+    /// still read as one cluster, like the condensed text rows do in the single column above.
+    var expandedGridSpacing: CGFloat { self == .compact ? 4 : 6 }
 }

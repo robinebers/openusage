@@ -2,7 +2,15 @@ import Foundation
 
 @MainActor
 final class ClaudeProvider: ProviderRuntime {
-    let provider = Provider(id: "claude", displayName: "Claude", icon: .providerMark("claude"))
+    let provider = Provider(
+        id: "claude",
+        displayName: "Claude",
+        icon: .providerMark("claude"),
+        links: [
+            .init(label: "Status", url: "https://status.anthropic.com/"),
+            .init(label: "Dashboard", url: "https://claude.ai/settings/usage")
+        ]
+    )
 
     let authStore: ClaudeAuthStore
     let usageClient: ClaudeUsageClient

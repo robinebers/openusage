@@ -28,7 +28,7 @@ jobs:
   release:
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           # Build the requested tag. On a tag push `inputs.tag` is empty and checkout defaults to the
           # triggering tag; on workflow_dispatch this pins the tag instead of the default branch.

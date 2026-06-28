@@ -111,6 +111,17 @@ struct DashboardView: View {
                             layout.screen = layout.screen == .settings ? .dashboard : .settings
                         }
                         return true
+                    },
+                    // ⌘Z walks back the last customization step (remove/add, reorder, pin/unpin, caret
+                    // move) — app-wide, since Hide and Pin happen via the dashboard's context menus too,
+                    // not only in Customize. Always consumed here: by the time the monitor calls this it
+                    // has already confirmed the panel owns the keystroke and no text field is editing
+                    // (those keep their own ⌘Z), so returning false would only let AppKit beep on an empty
+                    // undo. With nothing to undo we swallow it silently instead.
+                    onUndo: {
+                        guard layout.canUndo else { return true }
+                        withAnimation(Motion.spring) { _ = layout.undo() }
+                        return true
                     }
                 )
             )
@@ -491,7 +502,8 @@ struct DashboardView: View {
         Group {
             if screen == .customize {
                 // Customize summarizes the layout — active (enabled) metrics and how many are pinned —
-                // centered, using the same middot the metric rows use.
+                // centered, using the same middot the metric rows use. ⌘Z (handled app-wide by the
+                // popover's key monitor) is the sole undo affordance; the footer stays a plain summary.
                 Text(layout.pinLimitNotice ?? "\(activeMetricCount) active · \(layout.pinnedCount) pinned")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(layout.pinLimitNotice == nil ? AnyShapeStyle(.secondary) : Theme.notice)
