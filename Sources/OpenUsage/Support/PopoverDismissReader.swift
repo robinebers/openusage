@@ -1,15 +1,25 @@
 import SwiftUI
 import AppKit
 
-/// Reports whether the hosting menu-bar popover is actually on-screen, via the window's occlusion
-/// state.
+/// Reports whether the hosting menu-bar popover is actually present (ordered-on), so the dashboard can
+/// reset its transient UI state when the popover genuinely goes away.
 ///
-/// Why occlusion and not key/focus: the popover keeps its SwiftUI view tree alive across
-/// open/close, so transient UI state (edit mode, the add-widget gallery) would otherwise
-/// persist and reopen "stuck". We need a signal for "the popover went away" — but it must NOT fire
-/// when the user merely clicks a control inside the popover. Key/resign-key fires on those clicks
-/// (breaking buttons); occlusion does not. Occlusion flips to not-`visible` when the popover is
-/// dismissed (its window orders out), which is exactly the moment we want to reset.
+/// Why this signal and not key/focus: the popover keeps its SwiftUI view tree alive across open/close,
+/// so transient UI state (edit mode, the add-widget gallery, scroll position) would otherwise persist
+/// and reopen "stuck". We need a signal for "the popover went away" that does NOT fire when the user
+/// merely clicks a control inside it. Key/resign-key fires on those clicks (breaking buttons), so it's
+/// out.
+///
+/// Why it reports `window.isVisible` rather than the occlusion state: a `.canJoinAllSpaces` panel that
+/// is open while the user switches macOS Spaces stays ordered-on (it follows them), but it is fully
+/// *occluded* during the Space transition, so `occlusionState` drops `.visible` and then regains it.
+/// Reporting occlusion directly mistook that for a dismissal and reset the still-open popover mid-switch
+/// — which blanked the scroll content (the reset scrolls to top, drops the driven height, and resets the
+/// screen) while the pinned chrome and the egg's gradient, living outside that subtree, kept rendering.
+/// `isVisible` is true the whole time the panel is ordered-on (across Space switches and partial
+/// occlusion) and flips to false only on a real `orderOut`, which is exactly the reset moment. The
+/// occlusion notification is still the cheap *trigger* — it fires on open, close, and Space switches —
+/// but the *value* we report is `isVisible`, so a Space switch no longer reads as "gone".
 struct PopoverVisibilityReader: NSViewRepresentable {
     var onChange: (Bool) -> Void
 
@@ -38,16 +48,22 @@ struct PopoverVisibilityReader: NSViewRepresentable {
                 report(false)
                 return
             }
+            // Occlusion is only the trigger (it fires on open, close, Space switches, and being covered);
+            // the value we report is `isVisible`, which is true whenever the panel is ordered-on — so a
+            // Space switch or a covering window no longer reads as a dismissal. `isVisible` is already
+            // false by the time this fires for a real `orderOut`, which is the genuine reset moment.
+            // (`isVisible` itself isn't KVO-compliant, so it can't be observed directly — hence the
+            // occlusion notification as the wake-up.)
             observer = NotificationCenter.default.addObserver(
                 forName: NSWindow.didChangeOcclusionStateNotification,
                 object: window,
                 queue: .main
             ) { [weak self, weak window] _ in
                 MainActor.assumeIsolated {
-                    self?.report(window?.occlusionState.contains(.visible) ?? false)
+                    self?.report(window?.isVisible ?? false)
                 }
             }
-            report(window.occlusionState.contains(.visible))
+            report(window.isVisible)
         }
 
         private func report(_ visible: Bool) {
