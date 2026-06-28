@@ -70,7 +70,8 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         settings: NotificationSettingsStore,
         recorder: Recorder,
         defaultsName: String,
-        isEnabled: @escaping @MainActor (String) -> Bool = { _ in true }
+        isEnabled: @escaping @MainActor (String) -> Bool = { _ in true },
+        delivered: @escaping @MainActor () -> Bool = { true }
     ) -> (WidgetDataStore, MutableRuntime, WidgetDescriptor) {
         let descriptor = Self.descriptor()
         let runtime = MutableRuntime(provider: Self.provider, descriptors: [descriptor], snapshot: snapshot(used: used))
@@ -83,7 +84,10 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
             isProviderEnabled: isEnabled,
             orderedDescriptors: { [descriptor] },
             notificationSettings: { settings },
-            postNotification: { idPrefix, title, subtitle, body in recorder.posts.append((idPrefix, title, subtitle, body)) }
+            postNotification: { idPrefix, title, subtitle, body in
+                recorder.posts.append((idPrefix, title, subtitle, body))
+                return delivered()
+            }
         )
         return (store, runtime, descriptor)
     }
@@ -94,19 +98,19 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         // 80% used at ~90% elapsed → projected ~89% → healthy.
         let (store, runtime, _) = makeStore(used: 80, settings: settings, recorder: recorder, defaultsName: "h2c")
         await store.refreshAll(force: true)
-        store.evaluateNotifications(now: base)
+        await store.evaluateNotifications(now: base)
         XCTAssertTrue(recorder.posts.isEmpty, "healthy should not fire")
 
         // Usage rises to 87% → projected ~96.7% → close.
         runtime.snapshot = snapshot(used: 87)
         await store.refreshAll(force: true)
-        store.evaluateNotifications(now: base)
+        await store.evaluateNotifications(now: base)
         XCTAssertEqual(recorder.posts.count, 1)
         XCTAssertEqual(recorder.posts.first?.0, "test.healthyToClose")
         XCTAssertEqual(recorder.posts.first?.1, "Cutting It Close")
 
         // Staying yellow doesn't re-fire.
-        store.evaluateNotifications(now: base)
+        await store.evaluateNotifications(now: base)
         XCTAssertEqual(recorder.posts.count, 1)
     }
 
@@ -115,13 +119,13 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         let recorder = Recorder()
         let (store, runtime, _) = makeStore(used: 87, settings: settings, recorder: recorder, defaultsName: "c2r")
         await store.refreshAll(force: true)
-        store.evaluateNotifications(now: base)   // close → primes (first real obs), no fire
+        await store.evaluateNotifications(now: base)   // close → primes (first real obs), no fire
         XCTAssertTrue(recorder.posts.isEmpty, "first launch primes the baseline without firing")
 
         // Usage rises to 95% → projected ~105% → red.
         runtime.snapshot = snapshot(used: 95)
         await store.refreshAll(force: true)
-        store.evaluateNotifications(now: base)
+        await store.evaluateNotifications(now: base)
         XCTAssertTrue(recorder.posts.contains { $0.0 == "test.closeToRunningOut" })
         XCTAssertTrue(recorder.posts.contains { $0.3 == "Projected to finish before the limit resets." })
         XCTAssertTrue(recorder.posts.contains { $0.2 == "Test Session" })
@@ -135,10 +139,10 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         let recorder = Recorder()
         let (store, runtime, _) = makeStore(used: 80, settings: settings, recorder: recorder, defaultsName: "all-off")
         await store.refreshAll(force: true)
-        store.evaluateNotifications(now: base)
+        await store.evaluateNotifications(now: base)
         runtime.snapshot = snapshot(used: 95)
         await store.refreshAll(force: true)
-        store.evaluateNotifications(now: base)
+        await store.evaluateNotifications(now: base)
         XCTAssertTrue(recorder.posts.isEmpty)
     }
 
@@ -148,15 +152,15 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         let recorder = Recorder()
         let (store, runtime, _) = makeStore(used: 80, settings: settings, recorder: recorder, defaultsName: "per-trigger")
         await store.refreshAll(force: true)
-        store.evaluateNotifications(now: base)
+        await store.evaluateNotifications(now: base)
         runtime.snapshot = snapshot(used: 87)
         await store.refreshAll(force: true)
-        store.evaluateNotifications(now: base)
+        await store.evaluateNotifications(now: base)
         XCTAssertFalse(recorder.posts.contains { $0.0 == "test.healthyToClose" })
         // The critical trigger is still on: pushing to red fires it.
         runtime.snapshot = snapshot(used: 95)
         await store.refreshAll(force: true)
-        store.evaluateNotifications(now: base)
+        await store.evaluateNotifications(now: base)
         XCTAssertTrue(recorder.posts.contains { $0.0 == "test.closeToRunningOut" })
     }
 
@@ -168,17 +172,17 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         let (store, runtime, _) = makeStore(used: 80, settings: settings, recorder: recorder,
                                             defaultsName: "disable", isEnabled: { _ in enabled.value })
         await store.refreshAll(force: true)
-        store.evaluateNotifications(now: base)   // healthy → primes, no fire
+        await store.evaluateNotifications(now: base)   // healthy → primes, no fire
         XCTAssertEqual(recorder.posts.count, 0)
         runtime.snapshot = snapshot(used: 95)    // → red, fires
         await store.refreshAll(force: true)
-        store.evaluateNotifications(now: base)
+        await store.evaluateNotifications(now: base)
         let firstCount = recorder.posts.count
         XCTAssertGreaterThan(firstCount, 0)
 
         // Disable the provider: evaluation skips it (and prunes its state), so nothing new fires.
         enabled.value = false
-        store.evaluateNotifications(now: base)
+        await store.evaluateNotifications(now: base)
         XCTAssertEqual(recorder.posts.count, firstCount)
     }
 
@@ -193,13 +197,32 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         let (store, runtime, _) = makeStore(used: 80, settings: settings, recorder: recorder, defaultsName: "used-mode")
         store.meterStyle = .used
         await store.refreshAll(force: true)
-        store.evaluateNotifications(now: base)   // healthy → primes, no fire
+        await store.evaluateNotifications(now: base)   // healthy → primes, no fire
         runtime.snapshot = snapshot(used: 95)    // → under 10% remaining
         await store.refreshAll(force: true)
-        store.evaluateNotifications(now: base)
+        await store.evaluateNotifications(now: base)
         XCTAssertTrue(
             recorder.posts.contains { $0.0 == "test.underTenPercent" },
             "Almost Out must fire on <10% remaining even when the meter displays 'used'"
         )
+    }
+
+    func testFailedDeliveryRetriesNextTick() async {
+        // Regression: if delivery fails (not authorized, or scheduling errored), the milestone must not
+        // be marked fired — the edge stays un-consumed so it re-fires on the next evaluation instead of
+        // being lost for the rest of the reset window.
+        let settings = NotificationSettingsStore(defaults: makeUserDefaults("retry-settings"))
+        let recorder = Recorder()
+        let (store, runtime, _) = makeStore(used: 80, settings: settings, recorder: recorder,
+                                            defaultsName: "retry", delivered: { false })
+        await store.refreshAll(force: true)
+        await store.evaluateNotifications(now: base)   // healthy → primes, no fire
+        runtime.snapshot = snapshot(used: 87)          // → close
+        await store.refreshAll(force: true)
+        await store.evaluateNotifications(now: base)   // attempt 1 (delivery "fails")
+        // Still close on the next tick — the un-delivered milestone re-fires instead of being deduped.
+        await store.refreshAll(force: true)
+        await store.evaluateNotifications(now: base)   // attempt 2 (re-tried)
+        XCTAssertEqual(recorder.posts.count, 2, "failed delivery should retry on the next tick")
     }
 }

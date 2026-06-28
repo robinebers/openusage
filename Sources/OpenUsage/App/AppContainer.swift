@@ -121,7 +121,7 @@ final class AppContainer {
                 // Re-evaluate quota pace milestones every tick — after the refresh so it sees fresh data,
                 // and on every loop (not just on a fetch) so pace worsening from elapsed time alone still
                 // alerts even with the popover closed.
-                dataStore.evaluateNotifications()
+                await dataStore.evaluateNotifications()
                 // Day-rollover beat: emits `app_daily_active` once per local day and flushes any
                 // prior-day provider rollups. Runs on launch and every interval, so always-running
                 // instances still produce a daily-active signal.

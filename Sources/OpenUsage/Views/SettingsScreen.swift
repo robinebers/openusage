@@ -307,12 +307,14 @@ struct SettingsScreen: View {
     /// Post one real notification for a milestone so the banner title/subtitle/body and stacking can be
     /// checked directly. Bypasses the dedup/prime logic — a manual trigger for testing only.
     private func fire(_ milestone: PaceMilestone) {
-        AppNotifications.shared.post(
-            idPrefix: "debug.\(milestone.rawValue)",
-            title: milestone.notificationTitle,
-            subtitle: "Claude Session",
-            body: milestone.body
-        )
+        Task {
+            _ = await AppNotifications.shared.post(
+                idPrefix: "debug.\(milestone.rawValue)",
+                title: milestone.notificationTitle,
+                subtitle: "Claude Session",
+                body: milestone.body
+            )
+        }
     }
     #endif
 

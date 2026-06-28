@@ -60,45 +60,46 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
 
     /// Post one immediate notification. `idPrefix` names the source (e.g. a metric key) for the log line;
     /// the actual identifier is made unique so repeated alerts on the same metric don't coalesce. `title`
-    /// is the alert headline, `subtitle` carries provider + metric, and `body` is the verdict. No-op
-    /// under tests or when notifications can't be authorized. A cached denial is re-checked live so a
-    /// user re-enabling notifications in System Settings doesn't have to restart the app to receive
-    /// alerts.
-    func post(idPrefix: String, title: String, subtitle: String, body: String, soundEnabled: Bool = true) {
-        guard !Self.isRunningUnderTests else { return }
-        Task {
-            var authorized = await ensureAuthorization().value
-            if !authorized {
-                // A cached denial may be stale — the user can re-enable notifications in System Settings
-                // at any time. Re-read the live status; if it's now authorized, refresh the cache and
-                // proceed instead of skipping delivery until an app restart.
-                let status = await centerProvider().notificationSettings().authorizationStatus
-                switch status {
-                case .authorized, .provisional, .ephemeral:
-                    authorized = true
-                    authorizationTask = Task<Bool, Never> { true }
-                default:
-                    AppLog.debug(.notifications, "skip \(idPrefix): not authorized")
-                    return
-                }
+    /// is the alert headline, `subtitle` carries provider + metric, and `body` is the verdict. Returns
+    /// whether it was actually delivered — false under tests, when not authorized, or when scheduling
+    /// errors, so the caller can leave the milestone un-marked and retry. A cached denial is re-checked
+    /// live so a user re-enabling notifications in System Settings doesn't have to restart the app to
+    /// receive alerts.
+    func post(idPrefix: String, title: String, subtitle: String, body: String, soundEnabled: Bool = true) async -> Bool {
+        guard !Self.isRunningUnderTests else { return false }
+        var authorized = await ensureAuthorization().value
+        if !authorized {
+            // A cached denial may be stale — the user can re-enable notifications in System Settings
+            // at any time. Re-read the live status; if it's now authorized, refresh the cache and
+            // proceed instead of skipping delivery until an app restart.
+            let status = await centerProvider().notificationSettings().authorizationStatus
+            switch status {
+            case .authorized, .provisional, .ephemeral:
+                authorized = true
+                authorizationTask = Task<Bool, Never> { true }
+            default:
+                AppLog.debug(.notifications, "skip \(idPrefix): not authorized")
+                return false
             }
-            let content = UNMutableNotificationContent()
-            content.title = title
-            content.subtitle = subtitle
-            content.body = body
-            // Group all OpenUsage alerts into one stacked thread so simultaneous alerts (e.g. a metric
-            // that fires two milestones at once) collapse into a single banner with a "N more" summary
-            // instead of separate banners.
-            content.threadIdentifier = "openusage"
-            if soundEnabled { content.sound = .default }
-            let id = "openusage-\(idPrefix)-\(UUID().uuidString)"
-            let request = UNNotificationRequest(identifier: id, content: content, trigger: nil)
-            do {
-                try await centerProvider().add(request)
-                AppLog.info(.notifications, "posted \(idPrefix)")
-            } catch {
-                AppLog.error(.notifications, "post \(idPrefix) failed: \(error.localizedDescription)")
-            }
+        }
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.subtitle = subtitle
+        content.body = body
+        // Group all OpenUsage alerts into one stacked thread so simultaneous alerts (e.g. a metric
+        // that fires two milestones at once) collapse into a single banner with a "N more" summary
+        // instead of separate banners.
+        content.threadIdentifier = "openusage"
+        if soundEnabled { content.sound = .default }
+        let id = "openusage-\(idPrefix)-\(UUID().uuidString)"
+        let request = UNNotificationRequest(identifier: id, content: content, trigger: nil)
+        do {
+            try await centerProvider().add(request)
+            AppLog.info(.notifications, "posted \(idPrefix)")
+            return true
+        } catch {
+            AppLog.error(.notifications, "post \(idPrefix) failed: \(error.localizedDescription)")
+            return false
         }
     }
 

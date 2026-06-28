@@ -27,9 +27,11 @@ final class WidgetDataStore {
     /// Quota-notification preferences (master + per-trigger). Injected; `nil` disables notifications
     /// entirely (tests and previews that don't wire it).
     private let notificationSettings: (@MainActor () -> NotificationSettingsStore)?
-    /// Where a fired milestone is delivered: `(idPrefix, title, subtitle, body)`. Injected so tests can
-    /// record the posts without a live notification center; defaults to the shared `AppNotifications`.
-    private let postNotification: @MainActor (String, String, String, String) -> Void
+    /// Where a fired milestone is delivered: `(idPrefix, title, subtitle, body) -> Bool`. The Bool is
+    /// whether it was actually delivered (authorized + scheduled); on false the caller leaves the
+    /// milestone un-marked so it retries next pass. Injected so tests can record posts without a live
+    /// notification center; defaults to the shared `AppNotifications`.
+    private let postNotification: @MainActor (String, String, String, String) async -> Bool
 
     private static let meterStyleKey = "meterStyle"
     private static let resetDisplayModeKey = "resetDisplayMode"
@@ -97,7 +99,7 @@ final class WidgetDataStore {
         orderedDescriptors: (@MainActor () -> [WidgetDescriptor])? = nil,
         now: @escaping () -> Date = Date.init,
         notificationSettings: (@MainActor () -> NotificationSettingsStore)? = nil,
-        postNotification: (@MainActor (String, String, String, String) -> Void)? = nil
+        postNotification: (@MainActor (String, String, String, String) async -> Bool)? = nil
     ) {
         self.registry = registry
         self.providersByID = Dictionary(uniqueKeysWithValues: providers.map { ($0.provider.id, $0) })
@@ -109,7 +111,7 @@ final class WidgetDataStore {
         self.notificationSettings = notificationSettings
         self.postNotification = postNotification
             ?? { idPrefix, title, subtitle, body in
-                AppNotifications.shared.post(idPrefix: idPrefix, title: title, subtitle: subtitle, body: body)
+                await AppNotifications.shared.post(idPrefix: idPrefix, title: title, subtitle: subtitle, body: body)
             }
         self.meterStyle = defaults.enumValue(forKey: Self.meterStyleKey, default: .remaining)
         self.resetDisplayMode = defaults.enumValue(forKey: Self.resetDisplayModeKey, default: .relative)
@@ -162,7 +164,7 @@ final class WidgetDataStore {
     /// State for metrics not visited this pass (e.g. a provider the user just disabled, or a metric
     /// removed from the layout) is pruned, so re-enabling/re-adding starts fresh rather than carrying a
     /// stale "already fired" flag.
-    func evaluateNotifications(now: Date = Date()) {
+    func evaluateNotifications(now: Date = Date()) async {
         guard let settingsProvider = notificationSettings else { return }
         let settings = settingsProvider()
         let toggles = settings.toggles
@@ -175,29 +177,48 @@ final class WidgetDataStore {
             // but skipping keeps the state map to genuine meters.
             guard data.isBounded else { continue }
             let state = data.meterState(now: now)
+            let previous = notificationState[key] ?? NotificationState()
             let result = PaceNotificationLogic.transitions(
                 state: state,
                 fraction: data.remainingFraction,
                 resetsAt: data.resetsAt,
-                previous: notificationState[key] ?? NotificationState(),
+                previous: previous,
                 toggles: toggles
             )
-            nextState[key] = result.newState
+            // Deliver each fired milestone, then commit dedup state only for the ones that actually
+            // delivered. A skipped/failed delivery (not authorized, or `add` errored) reverts that
+            // milestone's mark and the state advance so it re-fires on the next pass instead of being
+            // lost for the rest of the reset window.
+            var next = result.newState
+            var paceDelivered = false
+            var underDelivered = false
             for milestone in result.fire {
-                post(milestone: milestone, data: data, providerID: descriptor.providerID)
+                let delivered = await post(milestone: milestone, data: data, providerID: descriptor.providerID)
+                if delivered {
+                    if milestone == .underTenPercent { underDelivered = true } else { paceDelivered = true }
+                } else {
+                    next.firedMilestones.remove(milestone)
+                }
             }
+            if result.fire.contains(where: { $0 != .underTenPercent }) && !paceDelivered {
+                next.previousBucket = previous.previousBucket
+            }
+            if result.fire.contains(.underTenPercent) && !underDelivered {
+                next.wasUnderTenPercent = previous.wasUnderTenPercent
+            }
+            nextState[key] = next
         }
         notificationState = nextState
     }
 
     /// Build and post one milestone notification. The title is the trigger name (matches the Settings
     /// row), the subtitle is "Provider Metric" so the user knows which quota worsened, and the body is
-    /// the plain-language verdict. Title Case per AGENTS.md.
-    private func post(milestone: PaceMilestone, data: WidgetData, providerID: String) {
+    /// the plain-language verdict. Title Case per AGENTS.md. Returns whether delivery succeeded.
+    private func post(milestone: PaceMilestone, data: WidgetData, providerID: String) async -> Bool {
         let metricName = data.title
         let providerName = providersByID[providerID]?.provider.displayName ?? providerID
         let subtitle = "\(providerName) \(metricName)"
-        postNotification(
+        return await postNotification(
             "\(providerID).\(milestone.rawValue)",
             milestone.notificationTitle,
             subtitle,
