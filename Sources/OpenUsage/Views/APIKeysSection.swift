@@ -101,9 +101,8 @@ struct APIKeysSection: View {
                     primaryButton("Save", disabled: !hasInput) { save(provider) }
                     storageCaption(provider)
                 }
-            } else {
-                // Key present: the field is read-only until "Override" is checked, then it becomes the
-                // editable entry for a new key.
+            } else if status == .fromEnvironment {
+                // Env key, no custom key yet: read-only until "Override" is checked, then editable.
                 keyField(provider, editable: overrideChecked)
                 if overrideChecked {
                     HStack(spacing: 8) {
@@ -115,6 +114,11 @@ struct APIKeysSection: View {
                         .toggleStyle(.checkbox)
                         .font(.caption)
                 }
+            } else {
+                // saved / overrideActive: a custom key is already set, so the override checkbox is
+                // hidden. The field's clear (x) removes it — falling back to env (the checkbox
+                // re-appears) or to none (the notSet editor takes over).
+                keyField(provider, editable: false)
             }
             if let actionError {
                 Text(actionError)
