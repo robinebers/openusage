@@ -27,9 +27,9 @@ final class WidgetDataStore {
     /// Quota-notification preferences (master + per-trigger). Injected; `nil` disables notifications
     /// entirely (tests and previews that don't wire it).
     private let notificationSettings: (@MainActor () -> NotificationSettingsStore)?
-    /// Where a fired milestone is delivered: `(idPrefix, title, body)`. Injected so tests can record the
-    /// posts without a live notification center; defaults to the shared `AppNotifications`.
-    private let postNotification: @MainActor (String, String, String) -> Void
+    /// Where a fired milestone is delivered: `(idPrefix, title, subtitle, body)`. Injected so tests can
+    /// record the posts without a live notification center; defaults to the shared `AppNotifications`.
+    private let postNotification: @MainActor (String, String, String, String) -> Void
 
     private static let meterStyleKey = "meterStyle"
     private static let resetDisplayModeKey = "resetDisplayMode"
@@ -97,7 +97,7 @@ final class WidgetDataStore {
         orderedDescriptors: (@MainActor () -> [WidgetDescriptor])? = nil,
         now: @escaping () -> Date = Date.init,
         notificationSettings: (@MainActor () -> NotificationSettingsStore)? = nil,
-        postNotification: (@MainActor (String, String, String) -> Void)? = nil
+        postNotification: (@MainActor (String, String, String, String) -> Void)? = nil
     ) {
         self.registry = registry
         self.providersByID = Dictionary(uniqueKeysWithValues: providers.map { ($0.provider.id, $0) })
@@ -108,7 +108,9 @@ final class WidgetDataStore {
         self.now = now
         self.notificationSettings = notificationSettings
         self.postNotification = postNotification
-            ?? { idPrefix, title, body in AppNotifications.shared.post(idPrefix: idPrefix, title: title, body: body) }
+            ?? { idPrefix, title, subtitle, body in
+                AppNotifications.shared.post(idPrefix: idPrefix, title: title, subtitle: subtitle, body: body)
+            }
         self.meterStyle = defaults.enumValue(forKey: Self.meterStyleKey, default: .remaining)
         self.resetDisplayMode = defaults.enumValue(forKey: Self.resetDisplayModeKey, default: .relative)
         self.alwaysShowPacing = defaults.bool(forKey: Self.alwaysShowPacingKey)
@@ -155,7 +157,7 @@ final class WidgetDataStore {
     /// that just crossed one. Driven from the periodic loop *after* `refreshAll`, so it catches pace
     /// worsening from time passing (not only from a fresh fetch). Deduped per metric per reset window via
     /// `notificationState`; the no-trustworthy-pace states (no data, fresh session, level bands) never
-    /// fire. A no-op when notifications are unconfigured (tests/previews) or the master toggle is off.
+    /// fire. A no-op when notifications are unconfigured (tests/previews) or all triggers are off.
     ///
     /// State for metrics not visited this pass (e.g. a provider the user just disabled, or a metric
     /// removed from the layout) is pruned, so re-enabling/re-adding starts fresh rather than carrying a
@@ -163,12 +165,6 @@ final class WidgetDataStore {
     func evaluateNotifications(now: Date = Date()) {
         guard let settingsProvider = notificationSettings else { return }
         let settings = settingsProvider()
-        // The master switch is off: don't fire, and don't accumulate state (so turning it back on starts
-        // clean and the next worsening fires).
-        guard settings.enabled else {
-            if !notificationState.isEmpty { notificationState = [:] }
-            return
-        }
         let toggles = settings.toggles
         var nextState: [String: NotificationState] = [:]
         for descriptor in orderedDescriptors() where isProviderEnabled(descriptor.providerID) {
@@ -181,7 +177,7 @@ final class WidgetDataStore {
             let state = data.meterState(now: now)
             let result = PaceNotificationLogic.transitions(
                 state: state,
-                fraction: data.fraction,
+                fraction: data.remainingFraction,
                 resetsAt: data.resetsAt,
                 previous: notificationState[key] ?? NotificationState(),
                 toggles: toggles
@@ -194,24 +190,19 @@ final class WidgetDataStore {
         notificationState = nextState
     }
 
-    /// Build and post one milestone notification. Title/body are Title Case per AGENTS.md; the body names
-    /// the metric so the user knows which quota worsened without opening the popover.
+    /// Build and post one milestone notification. The title is the trigger name (matches the Settings
+    /// row), the subtitle is "Provider Metric" so the user knows which quota worsened, and the body is
+    /// the plain-language verdict. Title Case per AGENTS.md.
     private func post(milestone: PaceMilestone, data: WidgetData, providerID: String) {
         let metricName = data.title
-        let title: String
-        let body: String
-        switch milestone {
-        case .underTenPercent:
-            title = "Quota Almost Gone"
-            body = "\(metricName) is under 10% remaining for this period."
-        case .healthyToClose:
-            title = "Pace Warning"
-            body = "\(metricName) is on track to run close to its limit."
-        case .closeToRunningOut:
-            title = "Pace Critical"
-            body = "\(metricName) is projected to run out before it resets."
-        }
-        postNotification("\(providerID).\(milestone.rawValue)", title, body)
+        let providerName = providersByID[providerID]?.provider.displayName ?? providerID
+        let subtitle = "\(providerName) \(metricName)"
+        postNotification(
+            "\(providerID).\(milestone.rawValue)",
+            milestone.notificationTitle,
+            subtitle,
+            milestone.body
+        )
     }
 
     /// What a single provider's refresh actually did this pass, so `refreshAll` can summarize the batch

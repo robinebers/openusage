@@ -19,7 +19,7 @@ final class AppNotificationsTests: XCTestCase {
             probe.touched = true
             return UNUserNotificationCenter.current()
         })
-        notifications.post(idPrefix: "claude.session.healthyToClose", title: "Pace Warning", body: "x")
+        notifications.post(idPrefix: "claude.session.healthyToClose", title: "Cutting It Close", subtitle: "Claude Session", body: "x")
         notifications.registerAsDelegate()
         XCTAssertFalse(probe.touched, "Under tests, no notification path should reach the center provider")
     }

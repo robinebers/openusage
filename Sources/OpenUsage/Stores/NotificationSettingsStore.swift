@@ -1,9 +1,9 @@
 import Foundation
 import Observation
 
-/// User preferences for quota pace notifications: a master switch and the three per-milestone
-/// triggers. All default ON (owner decision) — a fresh install starts alerting, and the app requests
-/// notification authorization on first launch because of that.
+/// User preferences for quota pace notifications: the three per-milestone triggers (no master switch —
+/// turn all three off to silence). All default ON (owner decision) — a fresh install starts alerting,
+/// and the app requests notification authorization on first launch because of that.
 ///
 /// Persisted in `UserDefaults` (each key independently, so an unset key reads its `true` default and a
 /// future-added trigger defaults on without migration). `@Observable` so the Settings toggles and the
@@ -13,15 +13,9 @@ import Observation
 final class NotificationSettingsStore {
     private let defaults: UserDefaults
 
-    private static let masterKey = "openusage.notifications.enabled"
     private static let underTenKey = "openusage.notifications.underTenPercent"
     private static let healthyToCloseKey = "openusage.notifications.healthyToClose"
     private static let closeToRunningOutKey = "openusage.notifications.closeToRunningOut"
-
-    /// Master switch. When off, no quota notification fires regardless of the per-trigger toggles.
-    var enabled: Bool {
-        didSet { defaults.set(enabled, forKey: Self.masterKey) }
-    }
 
     /// Alert the first time a metric drops under 10% remaining for the period.
     var underTenPercent: Bool {
@@ -40,14 +34,12 @@ final class NotificationSettingsStore {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        self.enabled = defaults.boolWithDefault(Self.masterKey, default: true)
         self.underTenPercent = defaults.boolWithDefault(Self.underTenKey, default: true)
         self.healthyToClose = defaults.boolWithDefault(Self.healthyToCloseKey, default: true)
         self.closeToRunningOut = defaults.boolWithDefault(Self.closeToRunningOutKey, default: true)
     }
 
-    /// The per-milestone toggles as the pure logic consumes them. The master switch is applied
-    /// separately by the caller (it gates the whole evaluation, not one milestone).
+    /// The per-milestone toggles as the pure logic consumes them.
     var toggles: PaceNotificationToggles {
         PaceNotificationToggles(
             underTenPercent: underTenPercent,
@@ -55,6 +47,10 @@ final class NotificationSettingsStore {
             closeToRunningOut: closeToRunningOut
         )
     }
+
+    /// True when at least one trigger is on — used to decide whether to request authorization at launch
+    /// and whether the Settings permission notice should show. Turning all three off silences everything.
+    var anyEnabled: Bool { underTenPercent || healthyToClose || closeToRunningOut }
 }
 
 private extension UserDefaults {

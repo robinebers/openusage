@@ -59,7 +59,8 @@ final class PaceNotificationLogicTests: XCTestCase {
     // MARK: - Under 10% remaining
 
     func testUnderTenPercentFiresOncePerWindow() {
-        let first = step(close, fraction: 0.08)
+        let primed = step(close, fraction: 0.50).newState   // prime at close, 50% remaining
+        let first = step(close, fraction: 0.08, from: primed)
         XCTAssertTrue(first.fire.contains(.underTenPercent))
         let again = step(close, fraction: 0.05, from: first.newState)
         XCTAssertFalse(again.fire.contains(.underTenPercent))
@@ -67,10 +68,14 @@ final class PaceNotificationLogicTests: XCTestCase {
 
     // MARK: - Cold start with already-bad state
 
-    func testColdStartAlreadyRedFiresCritical() {
-        // No prior observation (previousBucket == .untracked). Entering red from cold still fires the
-        // yellow-boundary crossing.
-        let red = step(running, fraction: 0.02)
+    func testColdStartPrimesWithoutFiring() {
+        // First real observation at launch records the baseline without firing — an already-bad metric
+        // shouldn't spam alerts the moment the app opens.
+        let first = step(running, fraction: 0.02)
+        XCTAssertTrue(first.fire.isEmpty, "cold start primes, it doesn't fire")
+        // A later worsening (after recovery) still fires normally.
+        let recovered = step(healthy, fraction: 0.50, from: first.newState).newState
+        let red = step(running, fraction: 0.02, from: recovered)
         XCTAssertTrue(red.fire.contains(.closeToRunningOut))
         XCTAssertTrue(red.fire.contains(.underTenPercent))
     }
@@ -105,7 +110,8 @@ final class PaceNotificationLogicTests: XCTestCase {
     }
 
     func testUnderTenPercentReArmsAfterRecoveryAboveTen() {
-        let first = step(close, fraction: 0.05)
+        let primed = step(close, fraction: 0.50).newState   // prime at close, 50% remaining
+        let first = step(close, fraction: 0.05, from: primed)
         XCTAssertTrue(first.fire.contains(.underTenPercent))
         let recovered = step(close, fraction: 0.50, from: first.newState)  // back above 10%
         XCTAssertFalse(recovered.fire.contains(.underTenPercent))

@@ -11,6 +11,39 @@ enum PaceMilestone: String, CaseIterable, Hashable, Sendable {
     case closeToRunningOut
 }
 
+extension PaceMilestone {
+    /// User-facing label for the Settings row and the notification title (they match by design).
+    var settingLabel: String {
+        switch self {
+        case .underTenPercent: return "Almost Out"
+        case .healthyToClose: return "Cutting It Close"
+        case .closeToRunningOut: return "Will Run Out"
+        }
+    }
+
+    /// Notification title. Same as the setting label so a tapped alert maps back to one row.
+    var notificationTitle: String { settingLabel }
+
+    /// Notification body — the plain-language verdict. The subtitle carries provider + metric, so the
+    /// body stays generic and reads well for any metric (sessions, rate-limit resets, spend tiles).
+    var body: String {
+        switch self {
+        case .underTenPercent: return "Under 10% usage remaining for this window."
+        case .healthyToClose: return "Projected to finish close to your limit."
+        case .closeToRunningOut: return "Projected to finish before the limit resets."
+        }
+    }
+
+    /// One-sentence Settings tooltip (the (i) beside the row) explaining when this fires.
+    var tooltip: String {
+        switch self {
+        case .underTenPercent: return "Alert when a limit drops below 10% remaining."
+        case .healthyToClose: return "Alert when a limit is projected to finish with little left."
+        case .closeToRunningOut: return "Alert when a limit is projected to finish before it resets."
+        }
+    }
+}
+
 /// The pace-severity bucket a metric is in, derived from its `MeterState`. Only the three live-pace
 /// verdicts (and the terminal `spent`) carry a comparable severity; states with no trustworthy pace
 /// (`noData`, absolute-band `level`, and a fresh session window) are `untracked` — they neither fire a
@@ -39,6 +72,9 @@ struct NotificationState: Equatable, Sendable {
     /// Whether the metric was under 10% remaining on the previous evaluation, so the crossing into
     /// under-10% is an edge (and a recovery above 10% re-arms it).
     var wasUnderTenPercent: Bool = false
+    /// True once the first real (non-untracked) observation has been recorded as the baseline. Until
+    /// then, an already-bad metric at launch is recorded without firing; after, worsening edges fire.
+    var primed: Bool = false
 }
 
 /// Which per-milestone toggles are currently on. The master toggle is applied by the caller before
@@ -94,6 +130,8 @@ enum PaceNotificationLogic {
     /// - Improving pace clears the relevant fired flags so a later worsening re-fires.
     static func transitions(
         state: WidgetData.MeterState,
+        /// Remaining share of the limit, 0...1 — must mean "remaining" regardless of display mode
+        /// (callers pass `WidgetData.remainingFraction`, not the display-mode-dependent `fraction`).
         fraction: Double,
         resetsAt: Date?,
         previous: NotificationState,
@@ -119,19 +157,32 @@ enum PaceNotificationLogic {
             return Transition(fire: [], newState: next)
         }
 
+        // First real observation this launch: record it as the baseline without firing, so a quota
+        // already in a bad state when the app opens doesn't spam alerts at launch. From the next
+        // evaluation on, worsening edges fire normally. A new reset window mid-session doesn't re-prime
+        // — by then the user is watching, so an already-bad metric there can still alert.
+        if !next.primed {
+            next.primed = true
+            next.previousBucket = currentBucket
+            next.wasUnderTenPercent = fraction < 0.10
+            next.firedMilestones = []
+            return Transition(fire: [], newState: next)
+        }
+
         var fire: [PaceMilestone] = []
 
         // Pace-verdict edges. Severity order: untracked(-1) < healthy(0) < close(1) < runningOut(2).
-        // A milestone fires when the metric reaches (or passes) its threshold bucket having been below
-        // it before. Comparing severities — rather than naming exact buckets — makes two cases fall out:
-        //   • a jump straight from blue to red still crosses the yellow boundary, so it fires both;
-        //   • a *cold start* already in a bad bucket (previous == untracked, severity -1) fires too, so
-        //     a user who launches the app already over-pace is alerted on the first evaluation.
+        // "Pace Warning" is the yellow state itself: it fires only when the metric is *currently* in
+        // `.close` having been below it (the guard on `currentBucket == .close`, not a pure severity
+        // comparison). "Pace Critical" fires when severity reaches `.runningOut` having been below it.
+        // Two consequences:
+        //   • a jump straight from blue to red fires *critical only* — the metric skipped yellow, so the
+        //     user gets the single, more urgent alert, never both at once;
+        //   • a *cold start* already in a bad bucket (previous == untracked, severity -1) still fires,
+        //     because untracked sorts below every live bucket — so launching already over-pace alerts
+        //     on the first evaluation.
         let previousSeverity = severity(next.previousBucket)
         let currentSeverity = severity(currentBucket)
-        // "Pace Warning" is the yellow state itself: fire only when the metric is *currently* yellow and
-        // was below it before. If pace has already blown through to red, the user gets the single, more
-        // urgent "Pace Critical" instead — never both at once.
         if currentBucket == .close, previousSeverity < severity(.close) {
             maybeFire(.healthyToClose, into: &fire, state: &next, toggles: toggles)
         }

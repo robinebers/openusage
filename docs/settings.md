@@ -32,14 +32,13 @@ OpenUsage can alert you with a macOS notification when a metric's pace gets wors
 
 | Setting | Options | What it does |
 |---|---|---|
-| Quota Notifications | On / Off | The master switch. On (default) lets the three alerts below fire; off silences all of them. |
-| Low Remaining | On / Off | Alerts the first time a metric drops under 10% remaining for the period. |
-| Pace Warning | On / Off | Alerts when a metric's pace shifts from comfortable (blue) to close-to-limit (yellow) — on track to run near its limit before the reset. |
-| Pace Critical | On / Off | Alerts when a metric's pace worsens to running out (red) — projected to run out before the reset. |
+| Almost Out | On / Off | Alerts the first time a metric drops under 10% remaining for the period. |
+| Cutting It Close | On / Off | Alerts when a metric is projected to finish the period with little left — close to its limit. |
+| Will Run Out | On / Off | Alerts when a metric is projected to run out before it resets. |
 
-Each alert fires **once per metric per reset period**, so you get a heads-up without repeats on every refresh. If a metric recovers (its pace eases back) and later worsens again, it can alert again. When a new period begins, the slate is wiped clean. Metrics without a reset window, or while their data can't be read, don't pace and never alert.
+Each alert fires **once per metric per reset period**, so you get a heads-up without repeats on every refresh. Alerts fire only when a quota *worsens* while OpenUsage is running — a quota that's already in a bad state when you launch won't alert until it recovers and worsens again, or a new period begins. If a metric recovers (its pace eases back) and later worsens again, it can alert again. When a new period begins, the slate is wiped clean. Metrics without a reset window, or while their data can't be read, don't pace and never alert. Turn all three off to silence everything. When several alerts fire at once, they stack into a single grouped banner.
 
-Because the master switch is on by default, OpenUsage asks for notification permission the first time it launches. If you decline (or turn notifications off for OpenUsage in System Settings), this section shows a reminder with a link to re-enable them in System Settings → Notifications.
+All three alerts default on, so OpenUsage asks for notification permission the first time it launches. A notification's title is the alert name, its subtitle names the provider and metric, and its body is the plain-language verdict. If you decline permission (or turn notifications off for OpenUsage in System Settings), a warning mark appears on the Notifications header and an "Open System Settings" button shows under the toggles so you can re-enable them.
 
 ## Providers
 

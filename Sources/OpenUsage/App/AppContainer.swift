@@ -98,11 +98,13 @@ final class AppContainer {
         })
         self.refreshTask = Self.startPeriodicRefresh(dataStore: dataStore, telemetry: telemetry)
         localAPI.start()
-        // Quota notifications default ON, so request authorization once at launch (the prompt is
-        // expected) and become the notification-center delegate so banners show while frontmost — a
-        // menu-bar accessory effectively always is. No-op under tests.
+        // Become the notification-center delegate so banners show while frontmost — a menu-bar accessory
+        // effectively always is. Request authorization at launch only when at least one trigger is on
+        // (all default on, so a fresh install prompts); there's no master toggle anymore. No-op under tests.
         AppNotifications.shared.registerAsDelegate()
-        AppNotifications.shared.requestAuthorizationOnStartup()
+        if notificationSettings.anyEnabled {
+            AppNotifications.shared.requestAuthorization()
+        }
     }
 
     deinit { refreshTask.cancel() }

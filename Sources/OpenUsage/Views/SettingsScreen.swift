@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import KeyboardShortcuts
 import ServiceManagement
 import SwiftUI
@@ -26,10 +27,12 @@ struct SettingsScreen: View {
     @AppStorage(LogLevelSetting.key) private var logLevel = LogLevelSetting.fallback
     /// Surfaced under the Advanced rows when copying the path or revealing the file fails.
     @State private var logActionError: String?
-    /// True when notifications are enabled but macOS has denied authorization, so the Notifications
-    /// section shows an inline notice pointing the user to System Settings. Refreshed on appear and
-    /// whenever the master toggle flips on.
-    @State private var notificationsDenied = false
+    /// macOS notification authorization for OpenUsage, surfaced in the Notifications section so a
+    /// warning glyph and action button can appear when alerts can't be delivered. Refreshed on appear,
+    /// when a trigger turns on, and when the app becomes active again (e.g. the user returns from
+    /// System Settings after re-enabling).
+    private enum NotificationsAuthState { case authorized, denied, notDetermined }
+    @State private var notificationsAuth: NotificationsAuthState = .authorized
 
     /// Fills the region the dashboard's pinned footer leaves. Same scroller treatment as Customize:
     /// the overlay scroller stays (the scroll edge effect needs it) but is invisible.
@@ -166,63 +169,110 @@ struct SettingsScreen: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
-        .task { await refreshNotificationsDenied() }
+        .task { await refreshNotificationsAuth() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task { await refreshNotificationsAuth() }
+        }
     }
 
     // MARK: - Notifications
 
-    /// Quota pace notifications: a master switch, the three per-trigger rows (shown only when the master
-    /// is on), and an inline notice when macOS has denied permission. Defaults are all-on (owner
-    /// decision); the app requests authorization at first launch.
+    /// Quota pace notifications: three per-trigger toggles (no master switch — turn all three off to
+    /// silence), each with an (i) tooltip. A warning glyph on the section header and an action row under
+    /// the toggles appear when macOS permission isn't authorized and at least one trigger is on. Defaults
+    /// are all-on (owner decision); the app requests authorization at first launch.
     private var notificationsSection: some View {
         @Bindable var notifications = container.notificationSettings
-        return section("Notifications") {
-            row("Quota Notifications") {
-                Toggle("", isOn: $notifications.enabled)
-                    .settingsSwitchStyle()
-                    .onChange(of: notifications.enabled) { _, enabled in
-                        if enabled {
-                            // Turning it back on may need a fresh prompt (or surface a prior denial).
-                            AppNotifications.shared.requestAuthorizationOnStartup()
-                            Task { await refreshNotificationsDenied() }
-                        }
-                    }
-            }
-            if notifications.enabled {
-                if notificationsDenied {
-                    // Same orange inline-notice idiom as the Launch-at-Login error line.
-                    Text("Notifications Are Turned Off for OpenUsage. Enable Them in System Settings → Notifications.")
+        let needsAttention = notificationsAuth != .authorized && anyToggleOn
+        return VStack(alignment: .leading, spacing: density.headerToCardSpacing) {
+            HStack(spacing: 6) {
+                Text("Notifications")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                if needsAttention {
+                    Image(systemName: "exclamationmark.triangle")
                         .font(.caption)
-                        .foregroundStyle(Theme.notice)
-                        .padding(.horizontal, 12)
-                        .padding(.bottom, 8)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                row("Low Remaining") {
-                    Toggle("", isOn: $notifications.underTenPercent)
-                        .settingsSwitchStyle()
-                }
-                row("Pace Warning") {
-                    Toggle("", isOn: $notifications.healthyToClose)
-                        .settingsSwitchStyle()
-                }
-                row("Pace Critical") {
-                    Toggle("", isOn: $notifications.closeToRunningOut)
-                        .settingsSwitchStyle()
+                        .foregroundStyle(.orange)
                 }
             }
+            .padding(.horizontal, 8)
+            VStack(spacing: 0) {
+                notifToggleRow(.underTenPercent, isOn: $notifications.underTenPercent)
+                notifToggleRow(.healthyToClose, isOn: $notifications.healthyToClose)
+                notifToggleRow(.closeToRunningOut, isOn: $notifications.closeToRunningOut)
+                if needsAttention {
+                    notificationsActionRow
+                }
+            }
+            .cardSurface()
+        }
+        .onChange(of: anyToggleOn) { _, on in
+            if on { Task { await refreshNotificationsAuth() } }
         }
     }
 
-    /// Refresh `notificationsDenied` from the live authorization status — but only flag it when the user
-    /// actually wants notifications, so a denied notice never shows while the master switch is off.
-    private func refreshNotificationsDenied() async {
-        guard container.notificationSettings.enabled else {
-            notificationsDenied = false
+    /// One trigger row: the setting label, an (i) info icon with a one-sentence tooltip, and the toggle.
+    private func notifToggleRow(_ milestone: PaceMilestone, isOn: Binding<Bool>) -> some View {
+        HStack(spacing: 6) {
+            Text(milestone.settingLabel)
+            Image(systemName: "info.circle")
+                .imageScale(.small)
+                .foregroundStyle(.secondary)
+                .hoverTooltip(milestone.tooltip)
+            Spacer(minLength: 8)
+            Toggle("", isOn: isOn)
+                .settingsSwitchStyle()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, density.controlRowPadding)
+    }
+
+    /// The conditional action under the toggles: "Open System Settings" when macOS denied permission, or
+    /// "Allow Notifications" when permission is still undecided. Shown only when a trigger is on.
+    private var notificationsActionRow: some View {
+        VStack(spacing: 0) {
+            Divider()
+            HStack(spacing: 10) {
+                Text(notificationsAuth == .denied
+                    ? "Notifications are turned off for OpenUsage."
+                    : "OpenUsage needs permission to send alerts.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 8)
+                Button(notificationsAuth == .denied ? "Open System Settings" : "Allow Notifications") {
+                    if notificationsAuth == .denied {
+                        AppNotifications.shared.openSystemNotificationsSettings()
+                    } else {
+                        AppNotifications.shared.requestAuthorization()
+                        Task { await refreshNotificationsAuth() }
+                    }
+                }
+                .buttonStyle(.bordered)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, density.controlRowPadding)
+        }
+    }
+
+    /// True when at least one trigger is on — the gate for the permission warning + action row.
+    private var anyToggleOn: Bool {
+        let n = container.notificationSettings
+        return n.underTenPercent || n.healthyToClose || n.closeToRunningOut
+    }
+
+    /// Read the live macOS authorization status into `notificationsAuth`, but only when at least one
+    /// trigger is on so no warning shows while all alerts are off.
+    private func refreshNotificationsAuth() async {
+        guard anyToggleOn else {
+            notificationsAuth = .authorized
             return
         }
         let status = await AppNotifications.shared.authorizationStatus()
-        notificationsDenied = status == .denied
+        switch status {
+        case .denied: notificationsAuth = .denied
+        case .notDetermined: notificationsAuth = .notDetermined
+        default: notificationsAuth = .authorized
+        }
     }
 
     // MARK: - Advanced (logging)

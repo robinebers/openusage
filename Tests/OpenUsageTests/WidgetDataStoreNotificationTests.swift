@@ -2,9 +2,9 @@ import XCTest
 @testable import OpenUsage
 
 /// End-to-end coverage of `WidgetDataStore.evaluateNotifications`: it resolves each enabled, visible
-/// bounded metric, runs the pure milestone logic, gates on the master + per-trigger settings, dedups
-/// per metric per window, and posts one notification per fired milestone. A recording sink stands in
-/// for `AppNotifications`; pace worsens by raising the metric's `used` between refreshes (real-world
+/// bounded metric, runs the pure milestone logic, gates on the per-trigger settings, dedups per metric
+/// per window, and posts one notification per fired milestone. A recording sink stands in for
+/// `AppNotifications`; pace worsens by raising the metric's `used` between refreshes (real-world
 /// consumption), with `now` pinned so the projection stays deterministic.
 @MainActor
 final class WidgetDataStoreNotificationTests: XCTestCase {
@@ -13,9 +13,9 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
     /// Reset window with ~90% of the week already elapsed at `base`, so `used%` ≈ the projected end %.
     private var resetsAt: Date { base.addingTimeInterval(week * 0.10) }
 
-    /// A recording sink for posted notifications: each entry is `(idPrefix, title, body)`.
+    /// A recording sink for posted notifications: each entry is `(idPrefix, title, subtitle, body)`.
     private final class Recorder {
-        var posts: [(String, String, String)] = []
+        var posts: [(String, String, String, String)] = []
     }
 
     /// A mutable enablement flag the store reads through its injected closure (so a test can flip it
@@ -83,7 +83,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
             isProviderEnabled: isEnabled,
             orderedDescriptors: { [descriptor] },
             notificationSettings: { settings },
-            postNotification: { idPrefix, title, body in recorder.posts.append((idPrefix, title, body)) }
+            postNotification: { idPrefix, title, subtitle, body in recorder.posts.append((idPrefix, title, subtitle, body)) }
         )
         return (store, runtime, descriptor)
     }
@@ -103,7 +103,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         store.evaluateNotifications(now: base)
         XCTAssertEqual(recorder.posts.count, 1)
         XCTAssertEqual(recorder.posts.first?.0, "test.healthyToClose")
-        XCTAssertEqual(recorder.posts.first?.1, "Pace Warning")
+        XCTAssertEqual(recorder.posts.first?.1, "Cutting It Close")
 
         // Staying yellow doesn't re-fire.
         store.evaluateNotifications(now: base)
@@ -115,22 +115,25 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         let recorder = Recorder()
         let (store, runtime, _) = makeStore(used: 87, settings: settings, recorder: recorder, defaultsName: "c2r")
         await store.refreshAll(force: true)
-        store.evaluateNotifications(now: base)   // close → fires healthyToClose (cold→close)
-        XCTAssertTrue(recorder.posts.contains { $0.0 == "test.healthyToClose" })
+        store.evaluateNotifications(now: base)   // close → primes (first real obs), no fire
+        XCTAssertTrue(recorder.posts.isEmpty, "first launch primes the baseline without firing")
 
         // Usage rises to 95% → projected ~105% → red.
         runtime.snapshot = snapshot(used: 95)
         await store.refreshAll(force: true)
         store.evaluateNotifications(now: base)
         XCTAssertTrue(recorder.posts.contains { $0.0 == "test.closeToRunningOut" })
-        XCTAssertTrue(recorder.posts.contains { $0.2 == "Session is projected to run out before it resets." })
+        XCTAssertTrue(recorder.posts.contains { $0.3 == "Projected to finish before the limit resets." })
+        XCTAssertTrue(recorder.posts.contains { $0.2 == "Test Session" })
     }
 
-    func testMasterOffSuppressesAllPosts() async {
-        let settings = NotificationSettingsStore(defaults: makeUserDefaults("master-off-settings"))
-        settings.enabled = false
+    func testAllTogglesOffSuppressesAllPosts() async {
+        let settings = NotificationSettingsStore(defaults: makeUserDefaults("all-off-settings"))
+        settings.underTenPercent = false
+        settings.healthyToClose = false
+        settings.closeToRunningOut = false
         let recorder = Recorder()
-        let (store, runtime, _) = makeStore(used: 80, settings: settings, recorder: recorder, defaultsName: "master-off")
+        let (store, runtime, _) = makeStore(used: 80, settings: settings, recorder: recorder, defaultsName: "all-off")
         await store.refreshAll(force: true)
         store.evaluateNotifications(now: base)
         runtime.snapshot = snapshot(used: 95)
@@ -161,9 +164,13 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         let settings = NotificationSettingsStore(defaults: makeUserDefaults("disable-settings"))
         let recorder = Recorder()
         let enabled = EnabledFlag(true)
-        // 95% used → red immediately, so a milestone fires on the first evaluation.
-        let (store, _, _) = makeStore(used: 95, settings: settings, recorder: recorder,
-                                      defaultsName: "disable", isEnabled: { _ in enabled.value })
+        // Prime from healthy, then worsen to red so a milestone fires before the disable.
+        let (store, runtime, _) = makeStore(used: 80, settings: settings, recorder: recorder,
+                                            defaultsName: "disable", isEnabled: { _ in enabled.value })
+        await store.refreshAll(force: true)
+        store.evaluateNotifications(now: base)   // healthy → primes, no fire
+        XCTAssertEqual(recorder.posts.count, 0)
+        runtime.snapshot = snapshot(used: 95)    // → red, fires
         await store.refreshAll(force: true)
         store.evaluateNotifications(now: base)
         let firstCount = recorder.posts.count
@@ -173,5 +180,26 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         enabled.value = false
         store.evaluateNotifications(now: base)
         XCTAssertEqual(recorder.posts.count, firstCount)
+    }
+
+    func testLowRemainingFiresInUsedDisplayMode() async {
+        // Regression: the under-10%-remaining check must use remaining share, not the display-mode-
+        // dependent `fraction`. When the meter shows "used", `data.fraction` is `used/limit` (0.95
+        // here), so the old `< 0.10` check would NOT fire "Almost Out" despite only 5% remaining.
+        // `remainingFraction` fires it regardless of the used/remaining display choice. Prime from
+        // healthy first so the under-10% edge is a real transition, not a cold start.
+        let settings = NotificationSettingsStore(defaults: makeUserDefaults("used-mode-settings"))
+        let recorder = Recorder()
+        let (store, runtime, _) = makeStore(used: 80, settings: settings, recorder: recorder, defaultsName: "used-mode")
+        store.meterStyle = .used
+        await store.refreshAll(force: true)
+        store.evaluateNotifications(now: base)   // healthy → primes, no fire
+        runtime.snapshot = snapshot(used: 95)    // → under 10% remaining
+        await store.refreshAll(force: true)
+        store.evaluateNotifications(now: base)
+        XCTAssertTrue(
+            recorder.posts.contains { $0.0 == "test.underTenPercent" },
+            "Almost Out must fire on <10% remaining even when the meter displays 'used'"
+        )
     }
 }
