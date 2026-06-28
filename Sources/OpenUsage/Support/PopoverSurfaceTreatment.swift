@@ -10,13 +10,11 @@ import SwiftUI
 enum PopoverSurfaceTreatment: Equatable, Sendable {
     /// Today's solid panel: opaque tray, opaque card base.
     case opaque
-    /// The page clears to whatever is behind the window (the behind-window vibrancy desktop, or the
-    /// drunk haze); cards drop their opaque base for a frosted `.regularMaterial` so text stays legible
-    /// over it — the HIG-correct "translucent but legible" content material, not a bare fill.
+    /// The page clears to whatever is behind the window (the behind-window vibrancy desktop, the party
+    /// tint over it, or the drunk haze); cards drop their opaque base for a frosted `.regularMaterial`
+    /// so text stays legible over it — the HIG-correct "translucent but legible" content material, not a
+    /// bare fill. Shared by Increase Transparency, party, and drunk.
     case translucent
-    /// Party: the page clears so the animated party backdrop shows, but cards keep a frosted material
-    /// base so the text on them stays readable over the moving colors.
-    case scrim
 }
 
 private struct PopoverSurfaceTreatmentKey: EnvironmentKey {

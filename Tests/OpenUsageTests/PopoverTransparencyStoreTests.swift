@@ -49,7 +49,7 @@ final class PopoverTransparencyStoreTests: XCTestCase {
         let store = PopoverTransparencyStore(defaults: makeDefaults("style"))
         store.toggleSecretCode()        // secret code -> readable party
         XCTAssertEqual(store.effectiveStyle, .party)
-        XCTAssertEqual(store.surfaceTreatment, .scrim)
+        XCTAssertEqual(store.surfaceTreatment, .translucent)
         store.drunkMode = true          // Drunk Mode -> woozy, barely-readable drunk
         XCTAssertEqual(store.effectiveStyle, .drunk)
         store.toggleSecretCode()        // off; proper toggle is off too -> opaque regardless of host flags

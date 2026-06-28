@@ -56,14 +56,18 @@ final class PopoverTransparencyStyleTests: XCTestCase {
     func testSurfaceTreatmentPerStyle() {
         XCTAssertEqual(PopoverTransparencyStyle.opaque.surfaceTreatment, .opaque)
         XCTAssertEqual(PopoverTransparencyStyle.increased.surfaceTreatment, .translucent)
-        XCTAssertEqual(PopoverTransparencyStyle.party.surfaceTreatment, .scrim)
+        // Party shares Increase Transparency's translucent foundation (the blurred desktop shows through,
+        // tinted by the party gradient) rather than a distinct treatment.
+        XCTAssertEqual(PopoverTransparencyStyle.party.surfaceTreatment, .translucent)
         XCTAssertEqual(PopoverTransparencyStyle.drunk.surfaceTreatment, .translucent)
     }
 
     func testWindowAlphaKeepsPartyReadableAndDrunkFaintest() {
         XCTAssertEqual(PopoverTransparencyStyle.opaque.windowAlpha, 1)
         XCTAssertEqual(PopoverTransparencyStyle.increased.windowAlpha, 1)
-        XCTAssertGreaterThan(PopoverTransparencyStyle.party.windowAlpha, 0.85)    // stays readable
+        // Party keeps the window fully opaque like Increase Transparency — the desktop shows through the
+        // translucent backdrop, not by fading the window (which would dim the text too).
+        XCTAssertEqual(PopoverTransparencyStyle.party.windowAlpha, 1)
         XCTAssertLessThan(PopoverTransparencyStyle.drunk.windowAlpha,
                           PopoverTransparencyStyle.party.windowAlpha)             // faintest of all
     }

@@ -8,8 +8,9 @@ enum PopoverTransparencyStyle: Equatable, Sendable {
     case opaque
     /// The proper "Increase Transparency": the desktop shows through with system vibrancy, text legible.
     case increased
-    /// Secret-code easter egg: a loud but **readable** party — animated gradient backdrop, glowing rim,
-    /// party meters, all behind crisp text on frosted cards.
+    /// Secret-code easter egg: a loud but **readable** party built on the same translucent foundation as
+    /// `increased` — the blurred desktop shows through, tinted by an animated party gradient, with a
+    /// glowing rim, party meters, and crisp text on frosted cards on top.
     case party
     /// Party + "Drunk Mode": woozy and deliberately barely-readable — blur, pink haze, a spinning sway.
     case drunk
@@ -18,17 +19,19 @@ enum PopoverTransparencyStyle: Equatable, Sendable {
     var surfaceTreatment: PopoverSurfaceTreatment {
         switch self {
         case .opaque: return .opaque
-        case .increased, .drunk: return .translucent   // clear, so the desktop/haze shows through
-        case .party: return .scrim                      // frosted cards keep text readable over the party
+        // All three translucent modes clear the page so the behind-window vibrancy backdrop (the
+        // blurred desktop) shows through; party tints that same backdrop rather than replacing it.
+        case .increased, .party, .drunk: return .translucent
         }
     }
 
-    /// Window-level alpha. The proper and party modes stay (near) solid so text is crisp; only drunk
-    /// fades the whole window — text and all — into a see-through haze. (Tunable; verified live.)
+    /// Window-level alpha. Opaque, increased, and party all keep the window fully opaque — the desktop
+    /// shows through via the translucent backdrop, never by fading the window (fading would dim the text
+    /// too). Only drunk deliberately fades the whole window — text and all — into a see-through haze.
+    /// (Tunable; verified live.)
     var windowAlpha: CGFloat {
         switch self {
-        case .opaque, .increased: return 1
-        case .party: return 0.94
+        case .opaque, .increased, .party: return 1
         case .drunk: return 0.62
         }
     }

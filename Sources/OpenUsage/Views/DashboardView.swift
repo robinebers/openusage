@@ -685,9 +685,10 @@ private struct PopoverSurface: View {
             switch treatment {
             case .opaque:
                 Theme.traySurface
-            case .translucent, .scrim:
-                // Clear so what's behind the page shows through: the behind-window vibrancy backdrop
-                // (the desktop) for increased/drunk, or the animated party gradient for party mode.
+            case .translucent:
+                // Clear so what's behind the page shows through: the behind-window vibrancy backdrop —
+                // the blurred desktop for increased/drunk, and the same desktop tinted by the party
+                // gradient for party mode.
                 Color.clear
             }
         }

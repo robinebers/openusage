@@ -54,15 +54,21 @@ private struct TooMuchTransparencyModifier: ViewModifier {
 
 // MARK: - Party (loud but readable)
 
-/// A vivid, slowly churning gradient that fills the popover behind the (frosted, readable) content.
+/// A vivid, slowly churning gradient that **tints** the popover, sitting behind the (frosted, readable)
+/// content. Built on the same translucent foundation as Increase Transparency: it's deliberately
+/// semi-transparent so the behind-window vibrancy backdrop — the blurred desktop — shows through and
+/// blends with the party colors, rather than an opaque wall that hides it. (A SwiftUI `blendMode` can't
+/// composite against the AppKit vibrancy view behind the host, so the desktop only blends through via
+/// alpha — hence the reduced opacity rather than a blend mode.)
 private struct PartyBackdrop: View {
     var body: some View {
         TimelineView(.animation) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
             ZStack {
                 AngularGradient(colors: partyColors, center: .center, angle: .degrees(t * 28))
+                    .opacity(0.5)   // translucent tint, so the blurred desktop blends through the colors
                 RadialGradient(
-                    colors: [Color.white.opacity(0.22), .clear],
+                    colors: [Color.white.opacity(0.15), .clear],
                     center: UnitPoint(x: 0.5 + cos(t * 0.5) * 0.3, y: 0.5 + sin(t * 0.6) * 0.3),
                     startRadius: 0,
                     endRadius: 240
