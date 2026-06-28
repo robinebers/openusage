@@ -118,9 +118,16 @@ struct SettingsScreen: View {
                 } else if transparency.isPaused {
                     pausedNotice("macOS Reduce Transparency or Increase Contrast is on, so this stays paused.")
                 }
-                // Surfaces only after the secret code has been entered — escalates the readable party
-                // into the woozy, barely-readable drunk mode.
+                // Both rows surface only after the secret code has been entered. Party Mode is the egg's
+                // own switch: turning it off (like re-typing the code) exits the egg and hides both rows,
+                // dropping back to the base state. Drunk Mode escalates the readable party into the woozy,
+                // barely-readable state and back — turning it off stays in the party (4 → 3), while turning
+                // Party Mode off from there clears Drunk Mode too (4 → base).
                 if transparency.secretCodeActive {
+                    row("Party Mode") {
+                        Toggle("", isOn: $transparency.partyModeActive)
+                            .settingsSwitchStyle()
+                    }
                     row("Drunk Mode") {
                         Toggle("", isOn: $transparency.drunkMode)
                             .settingsSwitchStyle()

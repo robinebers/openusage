@@ -46,6 +46,15 @@ final class PopoverTransparencyStyleTests: XCTestCase {
                                reduceTransparency: false, increaseContrast: false), .drunk)
     }
 
+    func testDrunkModeIsIgnoredWithoutTheSecretCode() {
+        // Drunk can't exist without the party: with the code off, drunkMode is ignored entirely and the
+        // resolved style is just the base (opaque or increased), never .drunk.
+        XCTAssertEqual(resolve(increase: false, secretCode: false, drunkMode: true,
+                               reduceTransparency: false, increaseContrast: false), .opaque)
+        XCTAssertEqual(resolve(increase: true, secretCode: false, drunkMode: true,
+                               reduceTransparency: false, increaseContrast: false), .increased)
+    }
+
     func testEggIgnoresAccessibilityFlags() {
         XCTAssertEqual(resolve(increase: false, secretCode: true, drunkMode: false,
                                reduceTransparency: true, increaseContrast: true), .party)

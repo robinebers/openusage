@@ -47,11 +47,30 @@ final class PopoverTransparencyStore {
     deinit { accessibilityObservation?.cancel() }
 
     /// Toggled by `TooMuchTransparencyKeyReader` when the full code is entered — so a second entry turns
-    /// the egg off.
+    /// the egg off. Exiting drops back to the base state (Normal / Increase Transparency): the persisted
+    /// `increaseTransparency` is preserved untouched (its Settings toggle is disabled while the egg runs),
+    /// so the resolver returns to whichever base the user was in before.
     func toggleSecretCode() {
-        secretCodeActive.toggle()
-        if !secretCodeActive { drunkMode = false }
-        AppLog.info(.statusItem, "Too-much-transparency egg \(secretCodeActive ? "enabled" : "disabled")")
+        setSecretCode(!secretCodeActive)
+    }
+
+    /// The Settings "Party Mode" toggle (shown only while the egg is active). Reading mirrors the egg
+    /// state; setting it `false` exits the egg entirely — the only way *in* is the secret code, so the
+    /// toggle is never rendered while off and `set(true)` can't be reached from the UI. Turning it off
+    /// from "Party Mode + Drunk Mode" also clears Drunk Mode (you can't be drunk without the party), so
+    /// both rows disappear together.
+    var partyModeActive: Bool {
+        get { secretCodeActive }
+        set { setSecretCode(newValue) }
+    }
+
+    /// Single point that flips the egg, so the cheat code and the Party Mode toggle share one exit path:
+    /// leaving the egg always clears Drunk Mode (state 4 → base, never a dangling drunk-without-party).
+    private func setSecretCode(_ active: Bool) {
+        guard active != secretCodeActive else { return }
+        secretCodeActive = active
+        if !active { drunkMode = false }
+        AppLog.info(.statusItem, "Too-much-transparency egg \(active ? "enabled" : "disabled")")
     }
 
     /// The resolved level both the panel and the SwiftUI surface render.
