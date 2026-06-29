@@ -146,16 +146,16 @@ final class CursorSpendRangeTests: XCTestCase {
         XCTAssertEqual(values(lines, "Last 30 Days"), [MetricValue(number: 8.50, kind: .dollars), MetricValue(number: 1349, kind: .count, label: "tokens")])
     }
 
-    func testZeroActivityReadsZeroDollarsAndTokens() {
+    func testZeroActivityLeavesTilesUnbacked() {
         var lines: [MetricLine] = []
         CursorUsageMapper.appendSpendLines(rows: [], now: Date(), to: &lines)
 
-        // The export fetched but had no rows: a real, measured zero, so every tile reads "$0.00 · 0
-        // tokens" — not "0" and not "No data" (that's reserved for a failed export; see the provider test).
-        let zero = [MetricValue(number: 0, kind: .dollars), MetricValue(number: 0, kind: .count, label: "tokens")]
-        XCTAssertEqual(values(lines, "Today"), zero)
-        XCTAssertEqual(values(lines, "Yesterday"), zero)
-        XCTAssertEqual(values(lines, "Last 30 Days"), zero)
+        // The export fetched but had no rows: every period is idle, so no spend tile is appended and the
+        // tiles fall back to "No data" — not a fabricated "$0.00 · 0 tokens" ("No data" is also what a
+        // failed export produces; see the provider test).
+        XCTAssertNil(values(lines, "Today"))
+        XCTAssertNil(values(lines, "Yesterday"))
+        XCTAssertNil(values(lines, "Last 30 Days"))
     }
 
     func testAppendSpendLinesAlsoAppendsUsageTrend() {
@@ -181,8 +181,8 @@ final class CursorSpendRangeTests: XCTestCase {
     }
 
     func testNoRowsLeavesNoUsageTrend() {
-        // A fetched-but-empty export is a real zero for the spend tiles, but the trend has nothing to
-        // draw, so no chart line is appended (the row falls back to "No data").
+        // A fetched-but-empty export leaves the spend tiles unbacked and gives the trend nothing to draw,
+        // so no chart line is appended (the row falls back to "No data").
         var lines: [MetricLine] = []
         CursorUsageMapper.appendSpendLines(rows: [], now: Date(), to: &lines)
         XCTAssertNil(lines.first(where: { $0.label == "Usage Trend" }))
@@ -266,8 +266,10 @@ final class CursorSpendProviderTests: XCTestCase {
         // shared factory — this keeps the combined "cost · tokens" render shape covered for re-enable.
         let descriptor = try! XCTUnwrap(WidgetDescriptor.spendTiles(provider: cursor.provider).first { $0.id == "cursor.today" })
 
-        // The combined tile joins the dollar and the labeled token count. A no-usage day is a real zero,
-        // so it reads "$0.00 · 0 tokens" (not "No data" — that's only for a failed export).
+        // The combined tile joins the dollar and the labeled token count. The render shape for a zero
+        // line is still "$0.00 · 0 tokens" — the mapper no longer produces these (an idle period is left
+        // unbacked → "No data"), but a provider that reports a real $0.00 (e.g. OpenRouter) still renders
+        // it rather than hiding the figure.
         let cases: [(Double, Int, String, String)] = [
             (12.34, 891_000, "$12.34", "$12.34 · 891K tokens"),
             (0.0, 0, "$0.00", "$0.00 · 0 tokens")

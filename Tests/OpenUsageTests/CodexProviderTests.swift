@@ -258,19 +258,18 @@ final class CodexUsageMapperTests: XCTestCase {
         XCTAssertEqual(values(lines, "Today"),
                        [MetricValue(number: 0.75, kind: .dollars, estimated: true),
                         MetricValue(number: 150, kind: .count, label: "tokens")])
-        // No usage yesterday is a real, measured zero → "$0.00 · 0 tokens", not "0" and not "No data".
-        XCTAssertEqual(values(lines, "Yesterday"),
-                       [MetricValue(number: 0, kind: .dollars, estimated: true),
-                        MetricValue(number: 0, kind: .count, label: "tokens")])
+        // No usage yesterday → "No data" (no backing line), not a fabricated "$0.00 · 0 tokens".
+        XCTAssertNil(values(lines, "Yesterday"))
         XCTAssertEqual(values(lines, "Last 30 Days"),
                        [MetricValue(number: 1.75, kind: .dollars, estimated: true),
                         MetricValue(number: 450, kind: .count, label: "tokens")])
     }
 
-    func testZeroUsageReadsZeroDollarsAndTokensNotNoData() {
-        // The reported Grok "Today 0": a period with no usage is a measured zero, so every tile reads
-        // "$0.00 · 0 tokens" — never a bare "0", and never "No data" (that's only for an unreadable
-        // source). Fixed once in SpendTileMapper, so it holds for every provider that funnels through it.
+    func testZeroUsageLeavesTilesUnbacked() {
+        // A period with no usage is "No data" — no tile is appended, never a fabricated "$0.00 · 0 tokens".
+        // Fixed once in SpendTileMapper, so it holds for every provider that funnels through it. Here the
+        // only reported day is a zero-token Yesterday; Today is absent, Yesterday is idle, and the 30-day
+        // total is zero, so nothing is appended.
         var lines: [MetricLine] = []
         SpendTileMapper.appendTokenUsage(
             DailyUsageSeries(daily: [DailyUsageEntry(date: "2026-02-19", totalTokens: 0, costUSD: nil)]),
@@ -278,11 +277,7 @@ final class CodexUsageMapperTests: XCTestCase {
             now: makeDate("2026-02-20T16:00:00.000Z")
         )
 
-        let zero = [MetricValue(number: 0, kind: .dollars, estimated: true),
-                    MetricValue(number: 0, kind: .count, label: "tokens")]
-        XCTAssertEqual(values(lines, "Today"), zero)
-        XCTAssertEqual(values(lines, "Yesterday"), zero)
-        XCTAssertEqual(values(lines, "Last 30 Days"), zero)
+        XCTAssertTrue(lines.isEmpty, "an all-zero window appends no spend tiles")
     }
 
     func testUnpricedTokensShowTokensWithoutAFabricatedZeroDollar() {
