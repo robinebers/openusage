@@ -116,7 +116,7 @@ final class DevinUsageMapperTests: XCTestCase {
 
     /// The first dollar value's raw number on a `.values` line (the shape extra-usage balance now uses).
     private func dollars(_ lines: [MetricLine], _ label: String) -> Double? {
-        guard case .values(_, let values, _, _) = lines.first(where: { $0.label == label }) else {
+        guard case .values(_, let values, _, _, _) = lines.first(where: { $0.label == label }) else {
             return nil
         }
         return values.first(where: { $0.kind == .dollars })?.number

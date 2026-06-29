@@ -42,7 +42,10 @@ struct ProviderSnapshotCache {
         // v5 replaced it with an `expiriesAt` list (one per available credit, shown in the row's
         // tooltip). Old payloads decode cleanly (the absent key → empty list), but the bump refetches
         // once so the expiries show immediately on upgrade instead of after the cached snapshot expires.
-        storageKey: String = "openusage.providerSnapshots.v5",
+        // v6: `.values` rows gained `unknownModels` (Cursor spend tiles list the unpriced models behind a
+        // warning triangle). Same story — old payloads decode with an empty list, the bump just refetches
+        // once so the warning shows immediately instead of after the cached snapshot expires.
+        storageKey: String = "openusage.providerSnapshots.v6",
         ttl: TimeInterval = RefreshSetting.interval,
         now: @escaping () -> Date = Date.init
     ) {

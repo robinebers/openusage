@@ -308,6 +308,21 @@ struct WidgetRowView: View {
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
+            unknownModelWarningIcon
+        }
+    }
+
+    /// Amber warning triangle shown just after a spend tile's label (Today / Yesterday / Last 30 Days)
+    /// when the period used a model the pricing manifest can't price, so its cost is incomplete. Hovering
+    /// lists the unknown model names. Renders nothing otherwise.
+    @ViewBuilder
+    private var unknownModelWarningIcon: some View {
+        if data.hasUnknownModels {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: density.supportingPointSize - 1))
+                .foregroundStyle(severityColor(.warning))
+                .hoverTooltip(data.unknownModelTooltip)
+                .accessibilityLabel("This period used a model with unknown pricing")
         }
     }
 
