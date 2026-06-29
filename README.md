@@ -29,8 +29,9 @@ Either way, the app updates itself in place via signed, notarized [Sparkle](docs
 - **[Devin](docs/providers/devin.md)** — weekly and daily quota, extra usage balance
 - **[Grok](docs/providers/grok.md)** — credits used, pay-as-you-go
 - **[OpenRouter](docs/providers/openrouter.md)** — credit balance, daily/weekly/monthly spend (API key)
+- **[Z.ai](docs/providers/zai.md)** — session, weekly, web-search quotas (GLM Coding Plan, API key)
 
-Most providers read the credentials already on your machine (keychain, auth files, app state) — no extra login. OpenRouter is the exception: it has no local credential to reuse, so you supply an API key (see [its setup](docs/providers/openrouter.md)). Either way, nothing leaves your Mac except the same API calls the vendor's own tools make.
+Most providers read the credentials already on your machine (keychain, auth files, app state) — no extra login. OpenRouter and Z.ai are the exceptions: they have no local credential to reuse, so you supply an API key (see [OpenRouter setup](docs/providers/openrouter.md) or [Z.ai setup](docs/providers/zai.md)). Either way, nothing leaves your Mac except the same API calls the vendor's own tools make.
 
 ## Features
 

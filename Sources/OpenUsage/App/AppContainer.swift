@@ -46,7 +46,8 @@ final class AppContainer {
             CopilotProvider(),
             DevinProvider(),
             GrokProvider(),
-            OpenRouterProvider()
+            OpenRouterProvider(),
+            ZAIProvider()
         ]
         let registry = WidgetRegistry.from(providers)
         let apiKeyProviders = providers.compactMap { $0 as? any APIKeyManaging }

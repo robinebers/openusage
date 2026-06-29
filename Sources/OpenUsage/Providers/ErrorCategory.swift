@@ -188,6 +188,26 @@ extension OpenRouterUsageError: CategorizedError {
     }
 }
 
+extension ZAIAuthError: CategorizedError {
+    var errorCategory: ErrorCategory {
+        switch self {
+        case .missingKey: .notLoggedIn
+        case .invalidKey: .authInvalid
+        case .saveFailed, .deleteFailed: .other
+        }
+    }
+}
+
+extension ZAIUsageError: CategorizedError {
+    var errorCategory: ErrorCategory {
+        switch self {
+        case .connectionFailed: .network
+        case .invalidResponse: .decoding
+        case .requestFailed(let status): ErrorCategory.http(status)
+        }
+    }
+}
+
 extension HTTPClientError: CategorizedError {
     var errorCategory: ErrorCategory {
         switch self {

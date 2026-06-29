@@ -26,7 +26,9 @@ enum DefaultLayout {
         "grok.payAsYouGo", "grok.today", "grok.yesterday", "grok.last30",
 
         "openrouter.credits", "openrouter.balance",
-        "openrouter.today", "openrouter.week", "openrouter.month", "openrouter.keyLimit"
+        "openrouter.today", "openrouter.week", "openrouter.month", "openrouter.keyLimit",
+
+        "zai.session", "zai.weekly", "zai.webSearches"
     ]
 
     /// Frozen snapshot of the default-on metrics from the release that introduced default seeding.
@@ -58,7 +60,8 @@ enum DefaultLayout {
         "codex.session", "codex.weekly",
         "cursor.auto", "cursor.api",
         "copilot.premium",
-        "openrouter.credits"
+        "openrouter.credits",
+        "zai.session", "zai.weekly"
     ]
 
     /// Metrics tucked below the per-provider "Shown on expand" divider on a fresh install. This is
@@ -85,6 +88,8 @@ enum DefaultLayout {
         "grok.payAsYouGo", "grok.today", "grok.yesterday", "grok.last30",
         // OpenRouter: Credits meter + Balance stay above the fold; period spend and the per-key cap
         // sit below the caret.
-        "openrouter.today", "openrouter.week", "openrouter.month", "openrouter.keyLimit"
+        "openrouter.today", "openrouter.week", "openrouter.month", "openrouter.keyLimit",
+        // Z.ai: Session meter stays above the fold; Web Searches (monthly count) sits below the caret.
+        "zai.webSearches"
     ]
 }
