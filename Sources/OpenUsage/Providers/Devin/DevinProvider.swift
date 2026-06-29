@@ -2,7 +2,14 @@ import Foundation
 
 @MainActor
 final class DevinProvider: ProviderRuntime {
-    let provider = Provider(id: "devin", displayName: "Devin", icon: .providerMark("devin"))
+    let provider = Provider(
+        id: "devin",
+        displayName: "Devin",
+        icon: .providerMark("devin"),
+        links: [
+            .init(label: "Dashboard", url: "https://app.devin.ai/settings/plans")
+        ]
+    )
 
     let authStore: DevinAuthStore
     let usageClient: DevinUsageClient

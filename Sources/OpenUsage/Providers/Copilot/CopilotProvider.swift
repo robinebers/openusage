@@ -2,7 +2,15 @@ import Foundation
 
 @MainActor
 final class CopilotProvider: ProviderRuntime {
-    let provider = Provider(id: "copilot", displayName: "Copilot", icon: .providerMark("copilot"))
+    let provider = Provider(
+        id: "copilot",
+        displayName: "Copilot",
+        icon: .providerMark("copilot"),
+        links: [
+            .init(label: "Status", url: "https://www.githubstatus.com/"),
+            .init(label: "Billing", url: "https://github.com/settings/billing")
+        ]
+    )
 
     let authStore: CopilotAuthStore
     let usageClient: CopilotUsageClient
