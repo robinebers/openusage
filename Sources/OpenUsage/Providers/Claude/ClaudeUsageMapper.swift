@@ -46,6 +46,13 @@ enum ClaudeUsageMapper {
         )
     }
 
+    /// Provider warning shown on the Claude header (the amber triangle + tooltip, like Z.ai's "no coding
+    /// plan" notice) when the stored login can't read live usage because it lacks the `user:profile` scope
+    /// (an inference-only token, e.g. from `claude setup-token`). Without it the Session / Weekly bars just
+    /// read "No data" with no hint that a re-login restores them. The ccusage spend tiles are unaffected
+    /// and still load.
+    static let missingProfileScopeWarning = "Re-login for live usage. Run `claude` and sign in again to restore session and weekly limits."
+
     /// The "live usage is rate limited" note appended to a last-good snapshot so the still-shown bars are
     /// flagged as possibly stale. Shared with `rateLimitedUsage` so the wording stays in one place.
     static func rateLimitedNote(retryAfterSeconds: Int?) -> MetricLine {

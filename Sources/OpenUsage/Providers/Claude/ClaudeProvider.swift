@@ -96,8 +96,22 @@ final class ClaudeProvider: ProviderRuntime {
             lines: []
         )
 
-        if authStore.canFetchLiveUsage(state) {
+        var warning: String?
+        switch authStore.liveUsageAvailability(state) {
+        case .available:
             mapped = try await fetchLiveUsage(state: &state)
+        case .missingProfileScope:
+            // The login authenticates for inference but lacks the `user:profile` scope the usage endpoint
+            // needs (typically a `claude setup-token` token). Don't leave the session/weekly bars silently
+            // blank — log it for diagnosis and surface a provider header warning (the amber triangle, like
+            // Z.ai's "no coding plan" notice) telling the user a re-login restores them. The ccusage spend
+            // tiles below are unaffected and still load.
+            AppLog.warn(LogTag.plugin("claude"), "live usage unavailable: credential lacks the user:profile scope (inference-only token); re-login with `claude` to restore session/weekly limits")
+            warning = ClaudeUsageMapper.missingProfileScopeWarning
+        case .inferenceOnlyToken:
+            // An explicit CLAUDE_CODE_OAUTH_TOKEN is inference-only by design; nothing to fetch and nothing
+            // to nag about — the spend tiles still load below.
+            break
         }
 
         await SpendTileMapper.appendCcusageUsage(
@@ -106,7 +120,7 @@ final class ClaudeProvider: ProviderRuntime {
         )
 
         MetricLine.appendNoDataIfNeeded(&mapped.lines)
-        return ProviderSnapshot.make(provider: provider, plan: mapped.plan, lines: mapped.lines, refreshedAt: now())
+        return ProviderSnapshot.make(provider: provider, plan: mapped.plan, lines: mapped.lines, refreshedAt: now(), warning: warning)
     }
 
     private func fetchLiveUsage(state: inout ClaudeCredentialState) async throws -> ClaudeMappedUsage {

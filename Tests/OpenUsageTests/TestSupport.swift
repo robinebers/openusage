@@ -153,6 +153,31 @@ final class CountingProviderRuntime: ProviderRuntime {
     }
 }
 
+/// A runtime that returns `first` on the first refresh and `second` on every refresh after — for
+/// sequences like a success that later turns into a failure (e.g. testing that a hard error takes
+/// precedence over a stale soft warning from the prior success).
+@MainActor
+final class TogglingProviderRuntime: ProviderRuntime {
+    let provider: Provider
+    let widgetDescriptors: [WidgetDescriptor]
+    private let first: ProviderSnapshot
+    private let second: ProviderSnapshot
+    private var refreshed = false
+
+    init(provider: Provider, descriptors: [WidgetDescriptor], first: ProviderSnapshot, second: ProviderSnapshot) {
+        self.provider = provider
+        self.widgetDescriptors = descriptors
+        self.first = first
+        self.second = second
+    }
+
+    func refresh() async -> ProviderSnapshot {
+        if refreshed { return second }
+        refreshed = true
+        return first
+    }
+}
+
 /// Routes each request through a handler and records every request — for multi-request flows like
 /// the 401 → token refresh → retry sequence, where a single canned response can't express the flow.
 final class RoutingHTTPClient: HTTPClient, @unchecked Sendable {

@@ -99,6 +99,29 @@ final class ClaudeAuthStoreTests: XCTestCase {
 
         XCTAssertEqual(credentials?.oauth.accessToken, "env-token")
         XCTAssertFalse(store.canFetchLiveUsage(credentials!))
+        XCTAssertEqual(store.liveUsageAvailability(credentials!), .inferenceOnlyToken)
+    }
+
+    func testLiveUsageAvailabilityReflectsProfileScope() {
+        let store = ClaudeAuthStore(environment: FakeEnvironment(), files: FakeFiles(), keychain: FakeKeychain())
+        func state(_ scopes: [String]?, inferenceOnly: Bool = false) -> ClaudeCredentialState {
+            ClaudeCredentialState(
+                oauth: ClaudeOAuth(accessToken: "token", scopes: scopes),
+                source: .keychainCurrentUser(service: "Claude Code-credentials"),
+                fullData: nil,
+                inferenceOnly: inferenceOnly
+            )
+        }
+
+        // Older credentials predate the scopes field; an absent/empty list is "unknown, allow".
+        XCTAssertEqual(store.liveUsageAvailability(state(nil)), .available)
+        XCTAssertEqual(store.liveUsageAvailability(state([])), .available)
+        XCTAssertEqual(store.liveUsageAvailability(state(["user:inference", "user:profile"])), .available)
+        // An inference-only token (e.g. from `claude setup-token`) lacks user:profile → can't read usage.
+        XCTAssertEqual(store.liveUsageAvailability(state(["user:inference"])), .missingProfileScope)
+        XCTAssertFalse(store.canFetchLiveUsage(state(["user:inference"])))
+        // An explicit env token is inference-only by design: silent, not a missing-scope notice.
+        XCTAssertEqual(store.liveUsageAvailability(state(["user:inference"], inferenceOnly: true)), .inferenceOnlyToken)
     }
 
     func testMalformedCustomOAuthURLThrowsInsteadOfCrashing() {
@@ -275,6 +298,49 @@ final class ClaudeProviderTests: XCTestCase {
                         MetricValue(number: 150, kind: .count, label: "tokens")])
         XCTAssertEqual(processRunner.lastCcusageEnvironment?["CLAUDE_CONFIG_DIR"], "/tmp/claude")
         XCTAssertTrue(httpClient.requests.contains { $0.url.absoluteString == "https://api.anthropic.com/api/oauth/usage" })
+    }
+
+    func testInferenceOnlyScopeSurfacesReloginWarningAndSkipsUsageCallButKeepsSpendTiles() async {
+        // A credential that authenticates for inference but lacks the `user:profile` scope (e.g. a
+        // `claude setup-token` token) can't read the usage endpoint. The provider must NOT silently leave
+        // Session/Weekly blank: it surfaces a soft provider warning (the header's amber triangle, like
+        // Z.ai's "no coding plan" notice) telling the user to re-login, skips the usage HTTP call, and
+        // still loads the local ccusage spend tiles.
+        let now = OpenUsageISO8601.date(from: "2026-02-20T16:00:00.000Z")!
+        let httpClient = FakeHTTPClient(response: HTTPResponse(
+            statusCode: 200,
+            headers: [:],
+            body: Data(#"{"five_hour":{"utilization":25,"resets_at":"2099-01-01T00:00:00.000Z"}}"#.utf8)
+        ))
+        let provider = ClaudeProvider(
+            authStore: ClaudeAuthStore(
+                environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": "/tmp/claude"]),
+                files: FakeFiles([
+                    "/tmp/claude/.credentials.json": #"{"claudeAiOauth":{"accessToken":"token","subscriptionType":"max","rateLimitTier":"default_claude_max_5x","scopes":["user:inference"]}}"#
+                ]),
+                keychain: FakeKeychain(),
+                now: { now }
+            ),
+            usageClient: ClaudeUsageClient(httpClient: httpClient),
+            ccusageRunner: CcusageRunner(
+                processRunner: FakeProcessRunner(),
+                homeDirectory: { URL(fileURLWithPath: "/Users/test") }
+            ),
+            now: { now }
+        )
+
+        let snapshot = await provider.refresh()
+
+        // A soft provider warning explains the missing scope — not a hard error badge, and the live-usage
+        // meters stay blank (no "Session" line) rather than silently loading nothing.
+        XCTAssertEqual(snapshot.warning, ClaudeUsageMapper.missingProfileScopeWarning)
+        XCTAssertNil(badge(snapshot.lines, "Error"))
+        XCTAssertNil(snapshot.line(label: "Session"))
+        // The usage endpoint was never called — that's the whole point of the scope gate.
+        XCTAssertFalse(httpClient.requests.contains { $0.url.absoluteString.hasSuffix("/api/oauth/usage") })
+        // Local spend tiles are unaffected and still load.
+        XCTAssertNotNil(values(snapshot.lines, "Today"))
+        XCTAssertEqual(snapshot.plan, "Max 5x")
     }
 
     func testLiveClaudeUsageReportsResetFields() async throws {

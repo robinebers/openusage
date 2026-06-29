@@ -176,10 +176,34 @@ struct ClaudeAuthStore: Sendable {
         AppLog.debug(LogTag.auth("claude"), "persisted rotated credentials (source=\(state.source.label))")
     }
 
+    /// Why the live-usage endpoint (`/api/oauth/usage`, which backs Session / Weekly / Sonnet / Extra
+    /// Usage) can or can't be called for a credential. Reading usage requires the `user:profile` scope,
+    /// so a token that only carries `user:inference` (e.g. one minted by `claude setup-token`) can't —
+    /// and the provider surfaces that as a friendly "re-login" notice instead of silently blank bars.
+    enum LiveUsageAvailability: Equatable, Sendable {
+        case available
+        /// An explicit `CLAUDE_CODE_OAUTH_TOKEN`: inference-only by design, so there's nothing to fetch
+        /// and nothing to nag about — the spend tiles still load from local logs.
+        case inferenceOnlyToken
+        /// A stored login whose granted scopes lack `user:profile`. The usage endpoint would reject it,
+        /// so the session/weekly bars can't load until the user signs in again with `claude`.
+        case missingProfileScope
+    }
+
+    /// The required scope for the usage endpoint. A credential missing it can authenticate for inference
+    /// but can't read subscription usage windows.
+    static let usageScope = "user:profile"
+
+    func liveUsageAvailability(_ state: ClaudeCredentialState) -> LiveUsageAvailability {
+        if state.inferenceOnly { return .inferenceOnlyToken }
+        // Older credentials predate the scopes field; treat an absent/empty list as "unknown, allow" so
+        // we don't suppress usage for tokens that actually carry the access (and would 403 loudly if not).
+        guard let scopes = state.oauth.scopes, !scopes.isEmpty else { return .available }
+        return scopes.contains(Self.usageScope) ? .available : .missingProfileScope
+    }
+
     func canFetchLiveUsage(_ state: ClaudeCredentialState) -> Bool {
-        guard !state.inferenceOnly else { return false }
-        guard let scopes = state.oauth.scopes, !scopes.isEmpty else { return true }
-        return scopes.contains("user:profile")
+        liveUsageAvailability(state) == .available
     }
 
     func claudeHomeOverride() -> String? {
