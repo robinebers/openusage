@@ -7,7 +7,7 @@ final class ZAIProvider: ProviderRuntime {
         displayName: "Z.ai",
         icon: .providerMark("zai"),
         links: [
-            ProviderLink(label: "Console", url: "https://z.ai/manage-apikey/subscription"),
+            ProviderLink(label: "Dashboard", url: "https://z.ai/manage-apikey/coding-plan/personal/my-plan"),
             ProviderLink(label: "API Keys", url: "https://z.ai/manage-apikey/apikey-list")
         ]
     )

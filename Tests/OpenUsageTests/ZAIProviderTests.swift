@@ -303,6 +303,26 @@ final class ZAIUsageMapperTests: XCTestCase {
         XCTAssertTrue(mapped.lines.contains { $0.label == "Status" })
     }
 
+    func testNoCodingPlanYieldsClearStatus() throws {
+        // A valid key on an account with no GLM Coding Plan: the live quota endpoint answers 2xx with
+        // `success:false` / "…coding plan". Surface the specific state, not the generic "No usage data".
+        let lines = ZAIUsageMapper.mapQuota(data(#"{"code":500,"msg":"当前用户不存在coding plan","success":false}"#))
+        guard case .badge(let label, let text, _, _) = try XCTUnwrap(lines.first) else {
+            return XCTFail("expected a badge line")
+        }
+        XCTAssertEqual(label, "Status")
+        XCTAssertEqual(text, "No active GLM Coding Plan")
+    }
+
+    func testBusinessFailureWithoutCodingPlanMessageFallsBackToNoUsageData() throws {
+        // An unrecognized `success:false` (not a coding-plan message) degrades to the neutral placeholder.
+        let lines = ZAIUsageMapper.mapQuota(data(#"{"code":500,"msg":"internal error","success":false}"#))
+        guard case .badge(_, let text, _, _) = try XCTUnwrap(lines.first) else {
+            return XCTFail("expected a badge line")
+        }
+        XCTAssertEqual(text, "No usage data")
+    }
+
     func testClampsAboveRangePercentage() throws {
         let body = data(#"""
         {"data":{"limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":150,"currentValue":10,"usage":10}]}}

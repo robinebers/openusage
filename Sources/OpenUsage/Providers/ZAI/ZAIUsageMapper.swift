@@ -17,6 +17,11 @@ enum ZAIUsageMapper {
     /// One monthly web-search cycle, in milliseconds (Z.ai reports `unit: 5, number: 1`).
     static let monthlyPeriodMs = 30 * 24 * 60 * 60 * 1000
 
+    /// Shown when the key is valid but the account has no GLM Coding Plan. The quota endpoint answers a
+    /// 2xx with `success:false` / `msg` "…coding plan" and no `data`, so this is a distinct, friendly
+    /// state — it reads differently from "has a plan, no usage this period" (`MetricLine.noUsageData`).
+    static let noCodingPlan = MetricLine.badge(label: "Status", text: "No active GLM Coding Plan", colorHex: "#A3A3A3")
+
     /// `(plan, lines)` from the quota + subscription payloads. `subscription` may be `nil` (the
     /// request is best-effort) and the quota's `limits` array may carry one to three entries — only
     /// what's present is mapped, so a plan without web searches still shows the session meter.
@@ -30,6 +35,13 @@ enum ZAIUsageMapper {
     /// placeholder when the payload carries no usable limits, matching the legacy plugin.
     static func mapQuota(_ body: Data) -> [MetricLine] {
         guard let root = ProviderParse.jsonObject(body) else { return [.noUsageData] }
+        // A 2xx can still carry a business-level failure: a valid key whose account has no GLM Coding
+        // Plan gets `{"success":false,"code":500,"msg":"…coding plan"}` with no `data`. Surface that as
+        // its own state so "no plan" reads differently from "has a plan, no usage yet" ("No usage data").
+        if (root["success"] as? Bool) == false {
+            let message = (root["msg"] as? String)?.lowercased() ?? ""
+            return message.contains("coding plan") ? [noCodingPlan] : [.noUsageData]
+        }
         // The limits array lives under `data.limits`; the legacy plugin also tolerated the root object
         // being the container directly (no `data` wrapper), so honor both.
         let container = root["data"] as? [String: Any] ?? root
