@@ -26,15 +26,14 @@ final class CursorProvider: ProviderRuntime {
         self.now = now
     }
 
-    /// Cursor's usage-events CSV export (the source for the spend tiles + usage trend) started lagging
-    /// real time by ~12h+ in June 2026, so Today / Yesterday / Last 30 Days and the token trend would
-    /// show stale or empty data (e.g. "Today $0.00 · 0 tokens" mid-session). The cost lookup is disabled
-    /// until Cursor's reporting is timely again. Everything it needs stays in place — `CursorUsageCSV`,
-    /// `CursorPricing`, the bundled manifest, `CursorUsageMapper.appendSpendLines`, and the
-    /// `cursor.today/yesterday/last30/trend` entries in `DefaultLayout` (which `LayoutStore` ignores while
-    /// no descriptor exposes them) — so re-enabling is just flipping this flag back to `true`.
-    /// See https://github.com/robinebers/openusage/issues/758.
-    static let spendTrackingEnabled = false
+    /// Cursor's usage-events CSV export (the source for the spend tiles + usage trend) had lagged real
+    /// time by ~12h+ in June 2026, so spend tracking was disabled for a stretch (issue #758). It is back
+    /// on: the spend tiles (Today / Yesterday / Last 30 Days) and the token trend are imputed from the CSV
+    /// via `CursorUsageCSV`, `CursorPricing`, the bundled manifest, and `CursorUsageMapper.appendSpendLines`,
+    /// and the `cursor.today/yesterday/last30/trend` descriptors surface in the layout again. Spend that
+    /// uses a model the bundled pricing manifest doesn't know prices to $0, so each affected period's tile
+    /// carries the unknown model names for the warning triangle (see `appendSpendLines`).
+    static let spendTrackingEnabled = true
 
     var widgetDescriptors: [WidgetDescriptor] {
         var descriptors: [WidgetDescriptor] = [

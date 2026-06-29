@@ -37,6 +37,10 @@ struct WidgetData: Hashable {
     /// credits — one entry per still-available credit). Empty for every other row. Kept as raw `Date`s so
     /// the tooltip formats live and follows the global relative/absolute mode (see `expiryTooltip`).
     var expiriesAt: [Date] = []
+    /// Names of models this period's spend used that the pricing manifest can't price (Cursor spend tiles
+    /// only). Their tokens are counted but their cost is $0, so the period's dollar figure is incomplete.
+    /// Drives the label warning triangle and its hover list. Empty for every other row.
+    var unknownModels: [String] = []
     var periodDurationMs: Int?
     var valueTextOverride: String?
     var subtitleOverride: String?
@@ -347,6 +351,21 @@ struct WidgetData: Hashable {
         // entries already read "Feb 15 at 3:45 PM").
         let header = resetDisplayMode == .relative ? "Resets expire in:" : "Resets expire:"
         return ([header] + entries).joined(separator: "\n")
+    }
+
+    /// True when this period's spend used at least one model the pricing manifest can't price, so its
+    /// dollar figure is incomplete. Drives the label warning triangle on the Cursor spend tiles.
+    var hasUnknownModels: Bool {
+        hasData && !unknownModels.isEmpty
+    }
+
+    /// Hover copy for the unknown-model warning triangle: a header naming the problem, then each unpriced
+    /// model on its own line. Singular/plural header to read naturally. `nil` when the period priced every
+    /// model it used (the common case), so the triangle and its tooltip stay off.
+    var unknownModelTooltip: String? {
+        guard hasUnknownModels else { return nil }
+        let header = unknownModels.count == 1 ? "Unknown model found" : "Unknown models found"
+        return ([header] + unknownModels.map { "- \($0)" }).joined(separator: "\n")
     }
 
     /// Secondary line under an unbounded row's detail (e.g. "on-device estimate"); nil with no real data.

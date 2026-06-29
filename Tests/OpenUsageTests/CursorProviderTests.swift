@@ -232,7 +232,7 @@ private func progress(_ lines: [MetricLine], _ label: String) -> (used: Double, 
 }
 
 private func dollarValue(_ lines: [MetricLine], _ label: String) -> Double? {
-    guard case .values(_, let values, _, _) = lines.first(where: { $0.label == label }) else {
+    guard case .values(_, let values, _, _, _) = lines.first(where: { $0.label == label }) else {
         return nil
     }
     return values.first { $0.kind == .dollars }?.number

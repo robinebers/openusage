@@ -12,12 +12,17 @@ enum SpendTileMapper {
     /// (missing log, failed API/CSV), where the caller appends nothing and the tile falls back on its own.
     /// `estimated` flags the dollar value as a local estimate (drives the ⓘ); pass `false` for
     /// server-priced sources like Cursor.
+    /// `unknownModelsByDay` (Cursor only) maps a `yyyy-MM-dd` day key to the set of model names used that
+    /// day that the pricing manifest can't price. Today / Yesterday pick up their own day's set; Last 30
+    /// Days carries the union across the whole window. Empty (the default) for every other source, so
+    /// their tiles never carry unknown-model warnings.
     static func appendTokenUsage(
         _ usage: DailyUsageSeries,
         to lines: inout [MetricLine],
         now: Date = Date(),
         estimated: Bool = true,
-        missingRecentDaysUnknown: Bool = false
+        missingRecentDaysUnknown: Bool = false,
+        unknownModelsByDay: [String: Set<String>] = [:]
     ) {
         let today = dayKey(from: now)
         let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: now).map(dayKey(from:))
@@ -34,14 +39,18 @@ enum SpendTileMapper {
         let latestReportedDay = usage.daily.compactMap { dayKey(fromUsageDate: $0.date) }.max()
 
         appendDayUsage(label: "Today", dayKey: today, entry: todayEntry, latestReportedDay: latestReportedDay,
-                       missingRecentDaysUnknown: missingRecentDaysUnknown, estimated: estimated, to: &lines)
+                       missingRecentDaysUnknown: missingRecentDaysUnknown, estimated: estimated,
+                       unknownModels: sortedModels(unknownModelsByDay[today]), to: &lines)
         appendDayUsage(label: "Yesterday", dayKey: yesterday, entry: yesterdayEntry, latestReportedDay: latestReportedDay,
-                       missingRecentDaysUnknown: missingRecentDaysUnknown, estimated: estimated, to: &lines)
+                       missingRecentDaysUnknown: missingRecentDaysUnknown, estimated: estimated,
+                       unknownModels: sortedModels(yesterday.flatMap { unknownModelsByDay[$0] }), to: &lines)
 
         let totalTokens = usage.daily.reduce(0) { $0 + $1.totalTokens }
         let costSamples = usage.daily.compactMap(\.costUSD)
         let totalCost = costSamples.isEmpty ? nil : costSamples.reduce(0, +)
-        lines.append(.values(label: "Last 30 Days", values: spendValues(tokens: totalTokens, costUSD: totalCost, estimated: estimated)))
+        let allUnknown = unknownModelsByDay.values.reduce(into: Set<String>()) { $0.formUnion($1) }
+        lines.append(.values(label: "Last 30 Days", values: spendValues(tokens: totalTokens, costUSD: totalCost, estimated: estimated),
+                             unknownModels: sortedModels(allUnknown)))
     }
 
     /// Number of days before `now` the trend window spans; with `now` itself that's 31 calendar bars,
@@ -151,17 +160,24 @@ enum SpendTileMapper {
         latestReportedDay: String?,
         missingRecentDaysUnknown: Bool,
         estimated: Bool,
+        unknownModels: [String],
         to lines: inout [MetricLine]
     ) {
         // Day keys are zero-padded `yyyy-MM-dd`, so lexical `>` is chronological.
         if entry == nil, missingRecentDaysUnknown, let latestReportedDay, let dayKey, dayKey > latestReportedDay {
             return
         }
-        lines.append(dayUsageLine(label: label, entry: entry, estimated: estimated))
+        lines.append(dayUsageLine(label: label, entry: entry, estimated: estimated, unknownModels: unknownModels))
     }
 
-    private static func dayUsageLine(label: String, entry: DailyUsageEntry?, estimated: Bool) -> MetricLine {
-        .values(label: label, values: spendValues(tokens: entry?.totalTokens ?? 0, costUSD: entry?.costUSD, estimated: estimated))
+    private static func dayUsageLine(label: String, entry: DailyUsageEntry?, estimated: Bool, unknownModels: [String]) -> MetricLine {
+        .values(label: label, values: spendValues(tokens: entry?.totalTokens ?? 0, costUSD: entry?.costUSD, estimated: estimated),
+                unknownModels: unknownModels)
+    }
+
+    /// Stable, de-duplicated display order for a period's unknown-model names (the set is unordered).
+    private static func sortedModels(_ models: Set<String>?) -> [String] {
+        (models ?? []).sorted()
     }
 
     /// One period's spend as raw values: the estimated dollars followed by the measured token count,

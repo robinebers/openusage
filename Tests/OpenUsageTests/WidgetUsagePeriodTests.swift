@@ -54,6 +54,30 @@ final class WidgetUsagePeriodTests: XCTestCase {
         XCTAssertTrue(row.isZeroUsage && row.isUsagePeriod)
     }
 
+    func testUnknownModelWarningTooltipSingularAndPlural() {
+        var single = WidgetData(title: "Today", icon: .providerMark("cursor"), kind: .dollars, used: 0, limit: nil,
+                                values: [MetricValue(number: 1.0, kind: .dollars)])
+        single.unknownModels = ["GLM 5.2"]
+        XCTAssertTrue(single.hasUnknownModels)
+        XCTAssertEqual(single.unknownModelTooltip, "Unknown model found\n- GLM 5.2")
+
+        var many = single
+        many.unknownModels = ["GLM 5.2", "Some Other Model"]
+        XCTAssertEqual(many.unknownModelTooltip, "Unknown models found\n- GLM 5.2\n- Some Other Model")
+    }
+
+    func testNoUnknownModelsLeavesTriangleOff() {
+        var row = WidgetData(title: "Yesterday", icon: .providerMark("cursor"), kind: .dollars, used: 0, limit: nil,
+                             values: [MetricValue(number: 1.0, kind: .dollars)])
+        XCTAssertFalse(row.hasUnknownModels)
+        XCTAssertNil(row.unknownModelTooltip)
+        // A no-data tile never raises the warning even if names somehow rode along.
+        row.unknownModels = ["GLM 5.2"]
+        row.hasData = false
+        XCTAssertFalse(row.hasUnknownModels)
+        XCTAssertNil(row.unknownModelTooltip)
+    }
+
     func testZeroSpendPeriodWithSourceNoteKeepsTheNoUsageTooltip() {
         var row = WidgetData(title: "Last 30 Days", icon: .providerMark("cursor"), kind: .dollars, used: 0,
                              limit: nil,

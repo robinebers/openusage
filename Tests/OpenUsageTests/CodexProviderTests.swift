@@ -370,7 +370,7 @@ final class CodexUsageMapperTests: XCTestCase {
             now: OpenUsageISO8601.date(from: "2026-02-20T16:00:00.000Z")!
         )
 
-        guard case .values(_, let vals, _, let expiriesAt) = mapped.lines.first(where: { $0.label == "Rate Limit Resets" }) else {
+        guard case .values(_, let vals, _, let expiriesAt, _) = mapped.lines.first(where: { $0.label == "Rate Limit Resets" }) else {
             return XCTFail("expected a Rate Limit Resets values line")
         }
         XCTAssertEqual(vals, [MetricValue(number: 2, kind: .count, label: "available")])
@@ -403,7 +403,7 @@ final class CodexUsageMapperTests: XCTestCase {
             now: OpenUsageISO8601.date(from: "2026-02-20T16:00:00.000Z")!
         )
 
-        guard case .values(_, _, _, let expiriesAt) = mapped.lines.first(where: { $0.label == "Rate Limit Resets" }) else {
+        guard case .values(_, _, _, let expiriesAt, _) = mapped.lines.first(where: { $0.label == "Rate Limit Resets" }) else {
             return XCTFail("expected a Rate Limit Resets values line")
         }
         // The two status-less credits are kept (sorted); the "consumed" one is dropped.
@@ -425,7 +425,7 @@ final class CodexUsageMapperTests: XCTestCase {
             now: Date(timeIntervalSince1970: 1_800_000_000)
         )
 
-        guard case .values(_, let vals, _, let expiriesAt) = mapped.lines.first(where: { $0.label == "Rate Limit Resets" }) else {
+        guard case .values(_, let vals, _, let expiriesAt, _) = mapped.lines.first(where: { $0.label == "Rate Limit Resets" }) else {
             return XCTFail("expected a Rate Limit Resets values line")
         }
         XCTAssertEqual(vals, [MetricValue(number: 3, kind: .count, label: "available")])
@@ -488,7 +488,7 @@ final class CodexUsageMapperTests: XCTestCase {
     }
 
     private func values(_ lines: [MetricLine], _ label: String) -> [MetricValue]? {
-        guard case .values(_, let values, _, _) = lines.first(where: { $0.label == label }) else {
+        guard case .values(_, let values, _, _, _) = lines.first(where: { $0.label == label }) else {
             return nil
         }
         return values
@@ -534,7 +534,7 @@ final class CodexProviderTests: XCTestCase {
     }
 
     private func values(_ lines: [MetricLine], _ label: String) -> [MetricValue]? {
-        guard case .values(_, let values, _, _) = lines.first(where: { $0.label == label }) else {
+        guard case .values(_, let values, _, _, _) = lines.first(where: { $0.label == label }) else {
             return nil
         }
         return values

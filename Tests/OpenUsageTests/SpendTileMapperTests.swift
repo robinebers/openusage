@@ -84,7 +84,7 @@ final class SpendTileMapperTests: XCTestCase {
     }
 
     private func values(_ lines: [MetricLine], _ label: String) -> [MetricValue]? {
-        guard case .values(_, let values, _, _) = line(lines, label) else { return nil }
+        guard case .values(_, let values, _, _, _) = line(lines, label) else { return nil }
         return values
     }
 }

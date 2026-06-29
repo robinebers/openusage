@@ -188,10 +188,47 @@ final class CursorSpendRangeTests: XCTestCase {
         XCTAssertNil(lines.first(where: { $0.label == "Usage Trend" }))
     }
 
-    private func makeRow(date: Date, cost: Double, tokens: Int) -> CursorUsageCSVRow {
+    func testUnknownModelsAttachToTheRightPeriods() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let cal = Calendar.current
+        let rows = [
+            makeRow(date: now, cost: 1.00, tokens: 100, model: "composer-1"),                                  // priced, today
+            makeRow(date: now, cost: 0.00, tokens: 50, model: "totally-unknown-model-xyz"),                     // unknown, today
+            makeRow(date: cal.date(byAdding: .day, value: -1, to: now)!, cost: 2.00, tokens: 200, model: "composer-1"), // priced, yesterday
+            makeRow(date: cal.date(byAdding: .day, value: -3, to: now)!, cost: 0.00, tokens: 80, model: "another-unknown-abc") // unknown, last30 only
+        ]
+
+        var lines: [MetricLine] = []
+        CursorUsageMapper.appendSpendLines(rows: rows, now: now, to: &lines)
+
+        // Today carries its own unknown model; a fully-priced Yesterday stays clean; Last 30 Days carries
+        // the de-duplicated, sorted union across the whole window.
+        XCTAssertEqual(unknown(lines, "Today"), ["totally-unknown-model-xyz"])
+        XCTAssertEqual(unknown(lines, "Yesterday"), [])
+        XCTAssertEqual(unknown(lines, "Last 30 Days"), ["another-unknown-abc", "totally-unknown-model-xyz"])
+    }
+
+    func testUnknownModelWithZeroTokensIsNotFlagged() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        // A zero-token row of an unknown model changes no cost, so it never raises the warning.
+        let rows = [makeRow(date: now, cost: 0.00, tokens: 0, model: "totally-unknown-model-xyz")]
+
+        var lines: [MetricLine] = []
+        CursorUsageMapper.appendSpendLines(rows: rows, now: now, to: &lines)
+
+        XCTAssertEqual(unknown(lines, "Today"), [])
+        XCTAssertEqual(unknown(lines, "Last 30 Days"), [])
+    }
+
+    private func unknown(_ lines: [MetricLine], _ label: String) -> [String]? {
+        guard case .values(_, _, _, _, let unknownModels) = lines.first(where: { $0.label == label }) else { return nil }
+        return unknownModels
+    }
+
+    private func makeRow(date: Date, cost: Double, tokens: Int, model: String = "composer-1") -> CursorUsageCSVRow {
         CursorUsageCSVRow(
             date: date,
-            model: "composer-1",
+            model: model,
             maxMode: false,
             tokens: CursorTokenUsage(inputCacheWrite: 0, inputNoCacheWrite: tokens, cacheRead: 0, output: 0),
             imputedCostDollars: cost
@@ -199,7 +236,7 @@ final class CursorSpendRangeTests: XCTestCase {
     }
 
     private func values(_ lines: [MetricLine], _ label: String) -> [MetricValue]? {
-        guard case .values(_, let values, _, _) = lines.first(where: { $0.label == label }) else { return nil }
+        guard case .values(_, let values, _, _, _) = lines.first(where: { $0.label == label }) else { return nil }
         return values
     }
 }
@@ -208,18 +245,30 @@ final class CursorSpendRangeTests: XCTestCase {
 
 @MainActor
 final class CursorSpendProviderTests: XCTestCase {
-    func testSpendTrackingDisabledRemovesSpendTilesTrendAndCSVDownload() async {
-        // Cursor's CSV export now lags ~12h+, so spend tracking is disabled (issue #758): the provider
-        // must not download the usage CSV, must expose no spend-tile / trend descriptors, and must emit no
-        // Today / Yesterday / Last 30 Days / Usage Trend lines — while the live quota meters stay intact.
-        XCTAssertFalse(CursorProvider.spendTrackingEnabled, "this regression guards the disabled state")
+    func testSpendTrackingEnabledDownloadsCSVExposesSpendTilesAndFlagsUnknownModels() async {
+        // Spend tracking is back on (issue #758): the provider downloads the usage CSV, exposes the
+        // spend-tile + trend descriptors, and emits Today / Yesterday / Last 30 Days / Usage Trend lines
+        // alongside the live quota meters. A row that used a model the manifest can't price carries that
+        // model's name so the tile can warn its cost is incomplete.
+        XCTAssertTrue(CursorProvider.spendTrackingEnabled, "this regression guards the enabled state")
+
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let iso = ISO8601DateFormatter()
+        let todayStr = iso.string(from: now)
+        let yesterdayStr = iso.string(from: Calendar.current.date(byAdding: .day, value: -1, to: now)!)
+        // A priced model and an unknown one both used today, plus a priced row yesterday.
+        let csv = """
+        Date,Model,Max Mode,Input (w/ Cache Write),Input (w/o Cache Write),Cache Read,Output Tokens,Cost
+        \(todayStr),composer-1,No,0,1000000,0,0,Included
+        \(todayStr),totally-unknown-model-xyz,No,0,500000,0,0,Included
+        \(yesterdayStr),composer-1,No,0,200000,0,0,Included
+        """
 
         let accessToken = makeCursorJWT(sub: "google-oauth2|user_abc123")
         let http = RoutingHTTPClient { request in
             let url = request.url.absoluteString
             if url.contains("export-usage-events-csv") {
-                XCTFail("spend tracking is disabled — Cursor must not download the usage CSV")
-                return HTTPResponse(statusCode: 500, headers: [:], body: Data())
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(csv.utf8))
             }
             if url.contains("GetCurrentPeriodUsage") {
                 return HTTPResponse(statusCode: 200, headers: [:], body: Data("""
@@ -244,20 +293,32 @@ final class CursorSpendProviderTests: XCTestCase {
                 keychain: FakeKeychain()
             ),
             usageClient: CursorUsageClient(http: http),
-            now: { Date(timeIntervalSince1970: 1_800_000_000) }
+            now: { now }
         )
 
         let snapshot = await provider.refresh()
 
-        // Live quota meter survives; spend tiles + trend are gone.
+        XCTAssertTrue(http.requests.contains { $0.url.absoluteString.contains("export-usage-events-csv") },
+                      "spend tracking is enabled — Cursor must download the usage CSV")
+        // Live quota meter survives; spend tiles + trend are present.
         XCTAssertTrue(snapshot.lines.contains { $0.label == "Total usage" })
         for label in ["Today", "Yesterday", "Last 30 Days", "Usage Trend"] {
-            XCTAssertNil(snapshot.lines.first { $0.label == label }, "\(label) line must be absent")
+            XCTAssertNotNil(snapshot.lines.first { $0.label == label }, "\(label) line must be present")
         }
         let ids = Set(provider.widgetDescriptors.map(\.id))
         for id in ["cursor.today", "cursor.yesterday", "cursor.last30", "cursor.trend"] {
-            XCTAssertFalse(ids.contains(id), "\(id) descriptor must be absent")
+            XCTAssertTrue(ids.contains(id), "\(id) descriptor must be present")
         }
+
+        // The unknown model rode onto Today (and the Last 30 Days union); a fully-priced Yesterday stays clean.
+        XCTAssertEqual(unknownModels(snapshot.lines, "Today"), ["totally-unknown-model-xyz"])
+        XCTAssertEqual(unknownModels(snapshot.lines, "Yesterday"), [])
+        XCTAssertEqual(unknownModels(snapshot.lines, "Last 30 Days"), ["totally-unknown-model-xyz"])
+    }
+
+    private func unknownModels(_ lines: [MetricLine], _ label: String) -> [String]? {
+        guard case .values(_, _, _, _, let unknownModels) = lines.first(where: { $0.label == label }) else { return nil }
+        return unknownModels
     }
 
     func testSpendTileRendersCombinedCostAndTokensWithValueTooltip() async {
