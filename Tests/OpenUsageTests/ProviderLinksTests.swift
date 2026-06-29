@@ -71,4 +71,27 @@ final class ProviderLinksTests: XCTestCase {
         ]
         XCTAssertEqual(provider(links).visibleLinks.map(\.label), ["Status", "Console"])
     }
+
+    /// Every installed provider ships at most two quick links with standard labels.
+    func testInstalledProvidersRespectQuickLinkCap() {
+        let allowed = Set(["Status", "Dashboard", "API Keys", "Usage"])
+        let providers: [ProviderRuntime] = [
+            ClaudeProvider(), CodexProvider(), CursorProvider(),
+            AntigravityProvider(), CopilotProvider(), DevinProvider(),
+            GrokProvider(), OpenRouterProvider(), ZAIProvider()
+        ]
+        for runtime in providers {
+            let links = runtime.provider.visibleLinks
+            XCTAssertLessThanOrEqual(
+                links.count, 2,
+                "\(runtime.provider.displayName) has \(links.count) quick links"
+            )
+            for link in links {
+                XCTAssertTrue(
+                    allowed.contains(link.label),
+                    "\(runtime.provider.displayName) link label '\(link.label)' is non-standard"
+                )
+            }
+        }
+    }
 }
