@@ -664,13 +664,10 @@ final class LayoutStoreTests: XCTestCase {
             ($0.provider.id, $0.expandedMetrics.map(\.id))
         })
 
-        // Claude is de-emphasized: only Session stays primary, the rest go below the caret (a provider
-        // always keeps ≥1 primary row) — see AGENTS.md "## Providers".
-        XCTAssertEqual(primaryByProvider["claude"], ["claude.session"])
-        XCTAssertEqual(expandedByProvider["claude"], [
-            "claude.weekly", "claude.sonnet", "claude.extra", "claude.trend",
-            "claude.today", "claude.yesterday", "claude.last30"
-        ])
+        // Claude's core meters (Session, Weekly, Extra, Usage Trend) stay primary; spend-history rows
+        // go below the caret — the same "core above, history below" shape as the other providers.
+        XCTAssertEqual(primaryByProvider["claude"], ["claude.session", "claude.weekly", "claude.extra", "claude.trend"])
+        XCTAssertEqual(expandedByProvider["claude"], ["claude.sonnet", "claude.today", "claude.yesterday", "claude.last30"])
         XCTAssertEqual(primaryByProvider["codex"], ["codex.session", "codex.weekly", "codex.trend"])
         XCTAssertEqual(expandedByProvider["codex"], [
             "codex.credits", "codex.rateLimitResets", "codex.today", "codex.yesterday", "codex.last30"

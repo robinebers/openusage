@@ -26,6 +26,34 @@ struct CustomizeView: View {
                 .frame(maxWidth: .infinity)
         }
         .onPreferenceChange(ReorderFramePreferenceKey.self) { rowFrames = $0 }
+        // The transient star/denial pill floats above the Customize content — the same capsule style
+        // as the dashboard's "Copied to clipboard" share pill. Green for a successful star/unstar,
+        // orange for the per-provider cap denial.
+        .overlay(alignment: .bottom) {
+            if layout.customizationNotice != nil {
+                customizationNoticePill
+                    .padding(.bottom, 12)
+            }
+        }
+        .animation(Motion.spring, value: layout.customizationNotice)
+        .animation(Motion.spring, value: layout.customizationNoticeTrigger)
+    }
+
+    private var customizationNoticePill: some View {
+        let isNotice = layout.customizationNoticeTone == .notice
+        return HStack(spacing: 5) {
+            Image(systemName: isNotice ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                .font(.system(size: 11, weight: .semibold))
+            Text(layout.customizationNotice ?? "")
+                .font(.system(size: 12, weight: .semibold))
+        }
+        .foregroundStyle(isNotice ? Theme.notice : Theme.positive)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(.regularMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(.separator, lineWidth: 0.5))
+        .id(layout.customizationNoticeTrigger)
+        .transition(.scale(scale: 0.85).combined(with: .opacity))
     }
 
     @ViewBuilder

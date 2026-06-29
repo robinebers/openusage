@@ -101,6 +101,17 @@ final class LayoutStore {
     private(set) var shareConfirmationTrigger = 0
     private var shareConfirmationClearTask: Task<Void, Never>?
 
+    /// Transient in-Customize notice that drives the floating pill above the Customize content (e.g.
+    /// "Starred for menu bar", or the orange "Up to 2 stars per provider" denial). Set by
+    /// `presentCustomizationNotice`, cleared automatically after a couple of seconds. Never persisted;
+    /// cleared on popover close via `clearCustomizationNotice`.
+    private(set) var customizationNotice: String?
+    /// The notice's tone: `.positive` (green checkmark, success) or `.notice` (orange, the cap denial).
+    private(set) var customizationNoticeTone: CustomizationNoticeTone = .positive
+    /// Bumped on every present so the pill replays its pop-in even when the same notice repeats.
+    private(set) var customizationNoticeTrigger = 0
+    private var customizationNoticeClearTask: Task<Void, Never>?
+
     /// Bounded, app-wide undo stack for layout customization (remove/add a metric, reorder metrics or
     /// providers, pin/unpin, move across the expand caret). UI-only state (not persisted): undo is a
     /// within-session affordance, so a relaunch starts fresh. Each entry is a pre-change `LayoutSnapshot`;
@@ -797,6 +808,29 @@ final class LayoutStore {
         shareConfirmationClearTask = nil
     }
 
+    /// Show a transient in-Customize pill (the floating confirmation above the Customize content).
+    /// `tone` picks the green success style or the orange denial style. Auto-clears after a couple of
+    /// seconds; also cleared on popover close via `clearCustomizationNotice`.
+    func presentCustomizationNotice(_ message: String, tone: CustomizationNoticeTone = .positive) {
+        customizationNotice = message
+        customizationNoticeTone = tone
+        customizationNoticeTrigger += 1
+        customizationNoticeClearTask?.cancel()
+        customizationNoticeClearTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2.5))
+            guard !Task.isCancelled else { return }
+            self?.customizationNotice = nil
+        }
+    }
+
+    /// Clear any showing Customize pill and cancel its auto-clear task. Called when the popover closes
+    /// so a pill mid-countdown can't reappear stale on the next open.
+    func clearCustomizationNotice() {
+        customizationNotice = nil
+        customizationNoticeClearTask?.cancel()
+        customizationNoticeClearTask = nil
+    }
+
     /// Pin or unpin a metric for the menu bar. Pinning is a no-op when it would exceed a cap, so callers
     /// can gate the control on `canPin` and trust this never over-pins. Undoable like the other layout
     /// actions — the no-op guards mean a denied or redundant pin records no step.
@@ -1153,4 +1187,11 @@ struct ProviderRow: Identifiable {
     let metricCount: Int
     let pinnedCount: Int
     var id: String { provider.id }
+}
+
+/// Tone for the transient in-Customize pill (`LayoutStore.customizationNotice`): green success or
+/// orange denial.
+enum CustomizationNoticeTone {
+    case positive
+    case notice
 }
