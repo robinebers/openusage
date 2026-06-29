@@ -26,13 +26,6 @@ private let partyColors: [Color] = [
     Color(red: 1.00, green: 0.32, blue: 0.74),
 ]
 
-/// The keepalive runs far below the display's refresh: its only job is to out-pace the compositor's idle
-/// layer-cull (~1s of no repaint), and its blur is sub-pixel so the low cadence is invisible. The visible
-/// party animations, by contrast, run at the display's native rate (matching the user's refresh, ProMotion
-/// included) so they look exactly as designed — the energy win comes from pausing when the popover is
-/// hidden (see `\.popoverIsVisible`), not from capping the frame rate.
-private let keepAliveFrameInterval: Double = 1.0 / 10.0
-
 /// One stable modifier whose layers come and go by `style`. The `.animation(value:)` plus per-layer
 /// `.transition(.opacity)` is what makes toggling the egg fade in and out (the AppKit window alpha and
 /// backdrop crossfade on the same ~0.55s ease, driven by `StatusItemController`).
@@ -45,11 +38,6 @@ private struct TooMuchTransparencyModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .modifier(DrunkDistortion(active: isDrunk))
-            // Party's cards are static behind its animated gradient/rim; keep them re-rasterizing so they
-            // survive losing key focus, the same way drunk's `DrunkDistortion` animation does. Scoped to
-            // party ONLY: the plain Increase Transparency surface does not blank, and the keepalive's
-            // sub-pixel blur — invisible amid party — would read as a visible "pulse" on its crisp text.
-            .modifier(PartyKeepAlive(active: isParty))
             .background {
                 if isParty { PartyBackdrop().transition(.opacity) }
             }
@@ -106,37 +94,6 @@ private struct PartyRim: View {
                     lineWidth: 2.5
                 )
                 .shadow(color: Color(red: 1, green: 0.4, blue: 0.85).opacity(0.7), radius: 7)
-        }
-    }
-}
-
-/// Keeps party's static content re-rasterizing so it survives losing key focus.
-///
-/// In party mode the cards/text are static behind the animated gradient and rim. When focus left the
-/// popover (Cmd-Tab, clicking another app) those static cards were observed to blank while the animated
-/// layers kept rendering, so this forces a re-raster each frame with a *varying* sub-pixel blur — a
-/// transform/scale wouldn't, since those reuse the cached bitmap, whereas a changing blur re-renders the
-/// content. The radius peaks under a point, invisible amid the party visuals. Paused while the popover is
-/// hidden (nothing on-screen to keep alive), and identity when inactive, so it costs nothing off party.
-///
-/// Deliberately party-only. The plain Increase Transparency surface does NOT mount this: there the
-/// oscillating blur reads as a visible "pulse" on otherwise-crisp text, and — unlike the party visuals —
-/// that surface does not blank (the earlier belief that it shared party's failure was a wrong inference).
-private struct PartyKeepAlive: ViewModifier {
-    let active: Bool
-    @Environment(\.popoverIsVisible) private var isVisible
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if active {
-            // Low cadence (the blur is sub-pixel, so it's invisible) and paused while the popover is
-            // hidden — when it's not on-screen the layer can't be culled, so the keepalive isn't needed.
-            TimelineView(.animation(minimumInterval: keepAliveFrameInterval, paused: !isVisible)) { timeline in
-                let t = timeline.date.timeIntervalSinceReferenceDate
-                content.blur(radius: (1 + sin(t * 1.8)) * 0.3)   // 0–0.6pt, oscillating; forces a re-raster
-            }
-        } else {
-            content
         }
     }
 }

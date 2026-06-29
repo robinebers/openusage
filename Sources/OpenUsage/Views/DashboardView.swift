@@ -232,7 +232,7 @@ struct DashboardView: View {
             // for "Drunk Mode". No-op for the normal/increased styles. Controls stay clickable (overlays
             // don't hit-test), so the Settings "Drunk Mode" toggle is reachable while it's running.
             .tooMuchTransparency(transparency.effectiveStyle)
-            // Lets the egg animations (gradient, rim, keepalive, drunk distortion, provider pulses) pause
+            // Lets the egg animations (gradient, rim, drunk distortion, provider pulses) pause
             // their clocks while the popover is hidden — outermost so it reaches the `.background`/`.overlay`
             // egg layers added by `tooMuchTransparency` as well as the in-content pulses.
             .environment(\.popoverIsVisible, popoverVisible)
