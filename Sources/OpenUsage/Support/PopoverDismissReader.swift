@@ -26,8 +26,9 @@ struct PopoverVisibilityReader: NSViewRepresentable {
 
     /// What wakes the `isVisible` read. Occlusion alone misses the first show (a freshly-created panel's
     /// `occlusionState` already contains `.visible`, so the first `makeKeyAndOrderFront` posts no change),
-    /// so becoming key — which every open fires — is observed too. Both must stay present, or the egg
-    /// animations freeze on first activation until a close-and-reopen (guarded by a test).
+    /// so becoming key — which every open fires — is observed too. Both stay present so the first show is
+    /// reported like any other open (it drives the transient-state reset on close and the reopen height
+    /// re-seed); a test guards that both triggers remain wired.
     static let visibilityTriggers: [NSNotification.Name] = [
         NSWindow.didChangeOcclusionStateNotification,
         NSWindow.didBecomeKeyNotification
@@ -62,9 +63,9 @@ struct PopoverVisibilityReader: NSViewRepresentable {
             //
             // - Occlusion fires on close, Space switches, and being covered — but NOT on the very first
             //   show: a freshly-created panel's `occlusionState` already contains `.visible`, so the first
-            //   `makeKeyAndOrderFront` posts no *change*. Relying on it alone left the popover reporting
-            //   its launch-time `isVisible == false` until a close-and-reopen finally toggled occlusion —
-            //   which froze the easter-egg animations (paused via `\.popoverIsVisible`) on first activation.
+            //   `makeKeyAndOrderFront` posts no *change*. Relying on it alone would leave the first show
+            //   unreported (the popover stuck at its launch-time `isVisible == false`), so the open-side
+            //   height re-seed wouldn't run on the very first open.
             // - Becoming key fires on every `makeKeyAndOrderFront`, and every open goes through one, so it
             //   reliably catches that first show. We observe become-key but deliberately NOT resign-key: a
             //   panel that resigns key (a click in another app, a tracking menu) is still ordered-on and

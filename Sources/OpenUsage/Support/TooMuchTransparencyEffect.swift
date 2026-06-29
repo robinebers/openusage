@@ -61,10 +61,8 @@ private struct TooMuchTransparencyModifier: ViewModifier {
 /// composite against the AppKit vibrancy view behind the host, so the desktop only blends through via
 /// alpha — hence the reduced opacity rather than a blend mode.)
 private struct PartyBackdrop: View {
-    @Environment(\.popoverIsVisible) private var isVisible
-
     var body: some View {
-        TimelineView(.animation(paused: !isVisible)) { timeline in
+        TimelineView(.animation) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
             ZStack {
                 AngularGradient(colors: partyColors, center: .center, angle: .degrees(t * 28))
@@ -83,10 +81,8 @@ private struct PartyBackdrop: View {
 
 /// A glowing rim that rotates around the popover edge — pure party, never over the text.
 private struct PartyRim: View {
-    @Environment(\.popoverIsVisible) private var isVisible
-
     var body: some View {
-        TimelineView(.animation(paused: !isVisible)) { timeline in
+        TimelineView(.animation) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
             RoundedRectangle(cornerRadius: 13, style: .continuous)
                 .strokeBorder(
@@ -101,15 +97,16 @@ private struct PartyRim: View {
 // MARK: - Drunk (the woozy, barely-readable escalation)
 
 /// Blurs, hue-wobbles, and woozily sways the content — the "had one too many" part. Identity when
-/// inactive (no `TimelineView` mounted), so it costs nothing outside the egg.
+/// inactive (no `TimelineView` mounted), so it costs nothing outside the egg. Plain `.animation` (not the
+/// `paused:` overload), so the sway starts immediately when Drunk Mode is switched on with the popover
+/// already open — the visibility-coupled overload only attached on a window show, freezing in-place toggles.
 private struct DrunkDistortion: ViewModifier {
     let active: Bool
-    @Environment(\.popoverIsVisible) private var isVisible
 
     @ViewBuilder
     func body(content: Content) -> some View {
         if active {
-            TimelineView(.animation(paused: !isVisible)) { timeline in
+            TimelineView(.animation) { timeline in
                 let t = timeline.date.timeIntervalSinceReferenceDate
                 content
                     .saturation(1.55)
@@ -124,25 +121,16 @@ private struct DrunkDistortion: ViewModifier {
     }
 }
 
-/// The pink-glass haze layered over the content: a clear-glass lens (the deliberate Liquid Glass abuse),
-/// a pink wash, and a drifting specular shimmer — double-vision territory.
+/// The pink-glass haze layered over the content: a clear-glass lens (the deliberate Liquid Glass abuse)
+/// and a slowly churning pink wash — double-vision territory.
 private struct DrunkOverlays: View {
-    @Environment(\.popoverIsVisible) private var isVisible
-
     var body: some View {
-        TimelineView(.animation(paused: !isVisible)) { timeline in
+        TimelineView(.animation) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
             ZStack {
                 glassLens()
                 AngularGradient(colors: partyColors, center: .center, angle: .degrees(t * 26))
                     .opacity(0.5)
-                RadialGradient(
-                    colors: [Color.white.opacity(0.55), .clear],
-                    center: UnitPoint(x: 0.5 + cos(t * 0.8) * 0.32, y: 0.5 + sin(t * 0.9) * 0.32),
-                    startRadius: 0,
-                    endRadius: 130
-                )
-                .blendMode(.plusLighter)
             }
         }
     }
