@@ -4,7 +4,7 @@ struct ReorderLift {
     enum Payload {
         case dashboardProvider(provider: Provider, plan: String?, rows: [WidgetData])
         case dashboardMetric(data: WidgetData)
-        case customizeProvider(provider: Provider, rows: [String])
+        case customizeProviderRow(provider: Provider, isEnabled: Bool, metricCount: Int)
         case customizeMetric(title: String)
     }
 
@@ -65,8 +65,8 @@ struct ReorderLiftPreview: View {
             dashboardProviderPreview(provider: provider, plan: plan, rows: rows)
         case .dashboardMetric(let data):
             dashboardMetricPreview(data)
-        case .customizeProvider(let provider, let rows):
-            customizeProviderPreview(provider: provider, rows: rows)
+        case .customizeProviderRow(let provider, let isEnabled, let metricCount):
+            customizeProviderRowPreview(provider: provider, isEnabled: isEnabled, metricCount: metricCount)
         case .customizeMetric(let title):
             customizeMetricPreview(title)
         }
@@ -92,28 +92,24 @@ struct ReorderLiftPreview: View {
             .liftedRowSurface()
     }
 
-    private func customizeProviderPreview(provider: Provider, rows: [String]) -> some View {
-        // Same anatomy as the live Customize block (`CustomizeView.providerBlock`): header over the
-        // card of metric rows, at the density's header→card spacing.
-        VStack(alignment: .leading, spacing: density.headerToCardSpacing) {
-            ProviderSectionHeader(provider: provider, showsDragHandle: true)
-                .padding(.horizontal, 8)
-
-            VStack(spacing: 0) {
-                ForEach(Array(rows.enumerated()), id: \.offset) { _, title in
-                    CustomizeMetricRow(title: title) {
-                        CustomizeSwitchPlaceholder()
-                    }
-                }
-            }
-            .cardSurface(lifted: true)
-        }
+    private func customizeProviderRowPreview(provider: Provider, isEnabled: Bool, metricCount: Int) -> some View {
+        // Same row anatomy as the live L1 (`ProviderListRow`), rendered inert — the lift's shadow +
+        // scale read as the floating chip, and the whole preview is non-interactive (`.allowsHitTesting`
+        // false in `body`), so the toggle/chevron carry no live action.
+        ProviderListRow(
+            provider: provider,
+            isEnabled: isEnabled,
+            metricCount: metricCount,
+            handle: { $0 }
+        )
+        .liftedRowSurface()
     }
 
     private func customizeMetricPreview(_ title: String) -> some View {
-        CustomizeMetricRow(title: title) {
-            CustomizeSwitchPlaceholder()
-        }
+        CustomizeMetricRow(title: title,
+            leading: { CustomizeSwitchPlaceholder() },
+            trailing: { CustomizeStarPlaceholder() }
+        )
         .liftedRowSurface()
     }
 

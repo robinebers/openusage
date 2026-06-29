@@ -243,14 +243,14 @@ struct WidgetGroupedListView: View {
 
     /// Desktop-native management for a single metric: hide it, pin/unpin it, refresh its provider, or jump
     /// into Customize — without a trip through Customize first. Hide leads (the most-reached-for verb), then
-    /// pin, then a divider before the two provider-/app-level actions.
+    /// star, then a divider before the two provider-/app-level actions.
     @ViewBuilder
     private func rowMenu(_ descriptor: WidgetDescriptor, providerID: String) -> some View {
         Button("Hide") {
             layout.setMetricEnabled(descriptor.id, false)
         }
         if descriptor.pinnable {
-            Button(layout.isPinned(descriptor.id) ? "Unpin" : "Pin to menu bar") {
+            Button(layout.isPinned(descriptor.id) ? "Unstar" : "Star for menu bar") {
                 if layout.isPinned(descriptor.id) {
                     layout.setPinned(false, for: descriptor.id)
                 } else if layout.canPin(descriptor.id) {

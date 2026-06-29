@@ -1,36 +1,32 @@
 import SwiftUI
 
-/// The Customize metric row shape, shared by the live row in `CustomizeView` and the lifted drag
-/// preview in `ReorderLiftPreview`. Defining the grip + label + trailing layout (and its
-/// density-derived padding) once is what keeps the floating preview pixel-identical to the row the
-/// user is dragging — the two used to be hand-rebuilt separately and drifted apart.
+/// The Customize metric row shape, shared by the live row in `CustomizeProviderDetailView` and the
+/// lifted drag preview in `ReorderLiftPreview`. The layout is **toggle · label · star · grip** — the
+/// toggle leads with the metric name beside it (left-aligned), the star (menu-bar pin) and the drag
+/// grip trail. Defining the grip + label slot once is what keeps the floating preview pixel-identical
+/// to the row the user is dragging — the two used to be hand-rebuilt separately and drifted apart.
 ///
-/// The leading grip + label form the drag *handle* (the live row attaches its reorder gesture to
-/// just that region, leaving the trailing pin + toggle normally tappable); the trailing slot is
-/// supplied by the caller — the live row passes its real pin button + `Toggle`, the preview a
-/// static switch placeholder.
-struct CustomizeMetricRow<Handle: View, Trailing: View>: View {
+/// `leading` is the on/off toggle (live) or a placeholder (preview). `trailing` is the star button
+/// (live) or a placeholder (preview). `handle` wraps the trailing drag grip — the live row attaches
+/// its reorder gesture through it; the preview leaves it inert.
+struct CustomizeMetricRow<Leading: View, Handle: View, Trailing: View>: View {
     let title: String
-    /// Wraps the leading grip + label + spacer (the drag-handle region). The live row threads its
-    /// `contentShape` + reorder gesture through here; the preview leaves it untouched.
+    /// Wraps the trailing drag grip. The live row threads its reorder gesture through here; the
+    /// preview leaves it untouched.
     let handle: (AnyView) -> Handle
+    @ViewBuilder var leading: Leading
     @ViewBuilder var trailing: Trailing
 
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
 
     var body: some View {
         HStack(spacing: 10) {
-            handle(
-                AnyView(
-                    HStack(spacing: 10) {
-                        ReorderGrip()
-                        Text(title)
-                            .foregroundStyle(.primary)
-                        Spacer(minLength: 8)
-                    }
-                )
-            )
+            leading
+            Text(title)
+                .foregroundStyle(.primary)
+            Spacer(minLength: 8)
             trailing
+            handle(AnyView(ReorderGrip()))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, density.controlRowPadding)
@@ -38,9 +34,9 @@ struct CustomizeMetricRow<Handle: View, Trailing: View>: View {
 }
 
 extension CustomizeMetricRow where Handle == AnyView {
-    /// Static variant for the lifted drag preview: the handle region is rendered inert (no gesture).
-    init(title: String, @ViewBuilder trailing: () -> Trailing) {
-        self.init(title: title, handle: { $0 }, trailing: trailing)
+    /// Static variant for the lifted drag preview: the grip is rendered inert (no gesture).
+    init(title: String, @ViewBuilder leading: () -> Leading, @ViewBuilder trailing: () -> Trailing) {
+        self.init(title: title, handle: { $0 }, leading: leading, trailing: trailing)
     }
 }
 
@@ -52,5 +48,15 @@ struct CustomizeSwitchPlaceholder: View {
         Capsule()
             .fill(.quaternary)
             .frame(width: 28, height: 16)
+    }
+}
+
+/// The static star placeholder the lifted preview renders where the live row shows the star button.
+struct CustomizeStarPlaceholder: View {
+    var body: some View {
+        Image(systemName: "star")
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(.quaternary)
+            .frame(width: 18, height: 18)
     }
 }

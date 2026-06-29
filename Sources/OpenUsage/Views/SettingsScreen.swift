@@ -120,17 +120,6 @@ struct SettingsScreen: View {
             #if DEBUG
             debugNotificationsSection
             #endif
-            section("Providers") {
-                ForEach(container.registry.providers) { provider in
-                    providerRow(provider)
-                }
-            }
-            // Key management for providers that need a user-supplied key (OpenRouter today). Sits in its
-            // own card so Providers stays pure enable toggles — the Option 2 split from the API-key UX
-            // canvas. Hidden when no installed provider needs a key.
-            if !container.apiKeyProviders.isEmpty {
-                APIKeysSection(providers: container.apiKeyProviders)
-            }
             section("Privacy") {
                 row("Share Anonymous Usage") {
                     Toggle("", isOn: Binding(
@@ -430,21 +419,5 @@ struct SettingsScreen: View {
         .pickerStyle(.menu)
         .labelsHidden()
         .fixedSize()
-    }
-
-    private func providerRow(_ provider: Provider) -> some View {
-        HStack(spacing: 10) {
-            ProviderIcon(source: provider.icon)
-                .frame(width: 18, height: 18)
-            Text(provider.displayName)
-            Spacer(minLength: 8)
-            Toggle("", isOn: Binding(
-                get: { container.enablement.isEnabled(provider.id) },
-                set: { container.enablement.setEnabled($0, for: provider.id) }
-            ))
-            .settingsSwitchStyle()
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, density.controlRowPadding)
     }
 }

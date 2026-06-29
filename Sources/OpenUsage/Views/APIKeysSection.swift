@@ -38,7 +38,7 @@ struct APIKeysSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: density.headerToCardSpacing) {
-            Text("API Keys")
+            Text(providers.count == 1 ? "API Key" : "API Keys")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 8)

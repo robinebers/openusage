@@ -58,7 +58,7 @@ final class MenuBarPinTests: XCTestCase {
 
         store.setPinned(true, for: "a.m1")
         store.setPinned(true, for: "a.m2")
-        XCTAssertEqual(store.pinDenialReason("a.m3"), "Up to 2 pins per provider")
+        XCTAssertEqual(store.pinDenialReason("a.m3"), "Up to 2 stars per provider")
         XCTAssertNil(store.pinDenialReason("b.m1"))
 
         XCTAssertNil(store.pinDenialReason("b.m1"))
@@ -68,7 +68,7 @@ final class MenuBarPinTests: XCTestCase {
         XCTAssertNil(store.pinLimitNotice)
         XCTAssertEqual(store.pinNoticeShakeTrigger, 0)
         store.notePinDenied("a.m3")
-        XCTAssertEqual(store.pinLimitNotice, "Up to 2 pins per provider")
+        XCTAssertEqual(store.pinLimitNotice, "Up to 2 stars per provider")
         XCTAssertEqual(store.pinNoticeShakeTrigger, 1)
         store.notePinDenied("a.m3")
         XCTAssertEqual(store.pinNoticeShakeTrigger, 2)

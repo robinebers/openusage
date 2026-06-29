@@ -91,6 +91,12 @@ struct DashboardView: View {
                 // through and dismiss the popover.
                 PopoverKeyReader(
                     onEscape: {
+                        // From a provider's L2 detail, back out to the L1 list first; only from L1 /
+                        // Settings drop to the dashboard. Pressing Esc again from L1 closes the popover.
+                        if layout.customizeProviderID != nil {
+                            withAnimation(Motion.spring) { layout.customizeProviderID = nil }
+                            return true
+                        }
                         guard layout.screen != .dashboard else { return false }
                         withAnimation(Motion.modeSwitch) { layout.screen = .dashboard }
                         return true
@@ -351,9 +357,26 @@ struct DashboardView: View {
         case .dashboard:
             EmptyView()
         case .customize:
-            navBar(title: "Customize", showsReset: true)
+            // Title swaps to the provider name on L2; back is context-aware (L2 → L1, L1 → dashboard).
+            navBar(title: customizeTitle, showsReset: true, back: customizeBack)
         case .settings:
-            navBar(title: "Settings")
+            navBar(title: "Settings") {
+                withAnimation(Motion.modeSwitch) { layout.screen = .dashboard }
+            }
+        }
+    }
+
+    /// The Customize top-bar title: the provider's name when its L2 detail is open, otherwise "Customize".
+    private var customizeTitle: String {
+        layout.customizeProviderID.flatMap { layout.provider(id: $0)?.displayName } ?? "Customize"
+    }
+
+    /// Customize's context-aware back: L2 → L1 (the slide), L1 → dashboard (the usual screen slide).
+    private func customizeBack() {
+        if layout.customizeProviderID != nil {
+            withAnimation(Motion.spring) { layout.customizeProviderID = nil }
+        } else {
+            withAnimation(Motion.modeSwitch) { layout.screen = .dashboard }
         }
     }
 
@@ -399,7 +422,7 @@ struct DashboardView: View {
     /// Customize/Settings and clears on the dashboard, while the content slides beneath it. Its
     /// `barGlass()` (Liquid Glass) background lenses the content scrolling under it — the same
     /// content-aware glass as the footer.
-    private func navBar(title: String, showsReset: Bool = false) -> some View {
+    private func navBar(title: String, showsReset: Bool = false, back: @escaping () -> Void) -> some View {
         // Centered title with the back control floating leading and the reset menu trailing — the macOS
         // toolbar convention (leading navigation · centered title · trailing actions). The title is
         // centered against the *full* bar width (a ZStack layer, not an HStack slot) so it stays
@@ -412,7 +435,7 @@ struct DashboardView: View {
                 .frame(maxWidth: .infinity)
 
             HStack(spacing: 0) {
-                backButton
+                backButton(action: back)
                 Spacer(minLength: 8)
                 if showsReset {
                     resetMenu
@@ -427,11 +450,10 @@ struct DashboardView: View {
     }
 
     /// The round glass back button (chevron leading), matching the footer's glass control idiom. Esc
-    /// and the system shortcuts back out too; this is the visible, expected affordance.
-    private var backButton: some View {
-        Button {
-            withAnimation(Motion.modeSwitch) { layout.screen = .dashboard }
-        } label: {
+    /// and the system shortcuts back out too; this is the visible, expected affordance. The action is
+    /// supplied by the caller so Customize can back L2 → L1 before L1 → dashboard.
+    private func backButton(action: @escaping () -> Void) -> some View {
+        Button(action: action) {
             Label("Back", systemImage: "chevron.backward")
                 .labelStyle(.iconOnly)
                 .frame(width: 16, height: 16)
@@ -504,10 +526,11 @@ struct DashboardView: View {
     private func footerBar(for screen: PopoverScreen) -> some View {
         Group {
             if screen == .customize {
-                // Customize summarizes the layout — active (enabled) metrics and how many are pinned —
-                // centered, using the same middot the metric rows use. ⌘Z (handled app-wide by the
-                // popover's key monitor) is the sole undo affordance; the footer stays a plain summary.
-                Text(layout.pinLimitNotice ?? "\(activeMetricCount) active · \(layout.pinnedCount) pinned")
+                // Customize summarizes the layout — active (enabled) metrics, how many are starred for
+                // the menu bar, and how many providers are on — centered, using the same middot the
+                // metric rows use. ⌘Z (handled app-wide by the popover's key monitor) is the sole undo
+                // affordance; the footer stays a plain summary.
+                Text(layout.pinLimitNotice ?? "\(activeMetricCount) active · \(layout.pinnedCount) starred · \(providersOn) of \(providersCount) providers on")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(layout.pinLimitNotice == nil ? AnyShapeStyle(.secondary) : Theme.notice)
                     .denyShake(trigger: layout.pinNoticeShakeTrigger)
@@ -579,6 +602,12 @@ struct DashboardView: View {
             count + group.metrics.filter { layout.isMetricEnabled($0.id) }.count
         }
     }
+
+    /// Providers turned on — the "K of P providers on" tail of the Customize footer summary. Counts
+    /// from `customizeProviderRows` (every provider) so a freshly shipped provider counts as "on" even
+    /// before the user has placed any of its metrics.
+    private var providersOn: Int { layout.customizeProviderRows.filter(\.isEnabled).count }
+    private var providersCount: Int { layout.customizeProviderRows.count }
 
     /// Leading side of the footer. Normal mode shows the app name with the live "Next update in …"
     /// line beneath it; Customize mode shows the pin count ("4 pinned") in the same slot.

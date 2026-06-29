@@ -40,10 +40,6 @@ Each alert fires **once per metric per reset period**, so you get a heads-up wit
 
 All three alerts default off. The first time you turn one on, OpenUsage asks for notification permission; if you decline (or turn notifications off for OpenUsage in System Settings later), a warning mark appears on the Notifications header and an "Open System Settings" button shows under the toggles so you can re-enable them. A notification's title is the alert name, its subtitle names the provider and metric, and its body is the plain-language verdict.
 
-## Providers
-
-One switch per provider. Turning a provider **off** hides it everywhere (dashboard, Customize, menu bar, the collection endpoint of the [local HTTP API](local-http-api.md)) and pauses its updates. Nothing is deleted — turning it back on restores its metrics and order.
-
 ## Privacy
 
 | Setting | Options | What it does |
