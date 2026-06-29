@@ -52,7 +52,8 @@ window length decides which meter it feeds (sub-daily → Session, multi-day →
 - **"No Z.ai API key"** — add a key in Settings → API Keys, or export `ZAI_API_KEY`.
 - **"Z.ai API key invalid"** — the key was rejected (401/403). Regenerate it in the
   [Z.ai console](https://z.ai/manage-apikey/apikey-list).
-- **"No active GLM Coding Plan"** — the key is valid, but the account has no GLM Coding Plan. Subscribe
-  at [z.ai/subscribe](https://z.ai/subscribe); the meters appear on the next refresh.
+- **"No active GLM Coding Plan"** (amber notice by the name) — the key is valid, but the account has no
+  GLM Coding Plan, so there's nothing to meter. Subscribe at [z.ai/subscribe](https://z.ai/subscribe);
+  usage appears once your plan is active.
 - **Meters show "No usage data"** — you have a plan, but the quota endpoint returned no usable limits
   yet. Check your [plan](https://z.ai/manage-apikey/coding-plan/personal/my-plan).

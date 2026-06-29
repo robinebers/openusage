@@ -303,24 +303,16 @@ final class ZAIUsageMapperTests: XCTestCase {
         XCTAssertTrue(mapped.lines.contains { $0.label == "Status" })
     }
 
-    func testNoCodingPlanYieldsClearStatus() throws {
+    func testDetectsNoCodingPlanBody() {
         // A valid key on an account with no GLM Coding Plan: the live quota endpoint answers 2xx with
-        // `success:false` / "…coding plan". Surface the specific state, not the generic "No usage data".
-        let lines = ZAIUsageMapper.mapQuota(data(#"{"code":500,"msg":"当前用户不存在coding plan","success":false}"#))
-        guard case .badge(let label, let text, _, _) = try XCTUnwrap(lines.first) else {
-            return XCTFail("expected a badge line")
-        }
-        XCTAssertEqual(label, "Status")
-        XCTAssertEqual(text, "No active GLM Coding Plan")
+        // `success:false` / "…coding plan" (captured verbatim from the real API).
+        XCTAssertTrue(ZAIUsageMapper.isNoCodingPlan(data(#"{"code":500,"msg":"当前用户不存在coding plan","success":false}"#)))
     }
 
-    func testBusinessFailureWithoutCodingPlanMessageFallsBackToNoUsageData() throws {
-        // An unrecognized `success:false` (not a coding-plan message) degrades to the neutral placeholder.
-        let lines = ZAIUsageMapper.mapQuota(data(#"{"code":500,"msg":"internal error","success":false}"#))
-        guard case .badge(_, let text, _, _) = try XCTUnwrap(lines.first) else {
-            return XCTFail("expected a badge line")
-        }
-        XCTAssertEqual(text, "No usage data")
+    func testIsNoCodingPlanFalseForUsableOrUnrelatedBodies() {
+        // A real quota payload and an unrelated business failure are both not "no coding plan".
+        XCTAssertFalse(ZAIUsageMapper.isNoCodingPlan(data(quotaBothLimitsJSON)))
+        XCTAssertFalse(ZAIUsageMapper.isNoCodingPlan(data(#"{"code":500,"msg":"internal error","success":false}"#)))
     }
 
     func testClampsAboveRangePercentage() throws {
@@ -452,6 +444,29 @@ final class ZAIProviderTests: XCTestCase {
         let snapshot = await provider.refresh()
 
         XCTAssertEqual(snapshot.errorCategory, .network)
+    }
+
+    func testRefreshWithoutCodingPlanReportsNotAvailable() async {
+        // A valid key whose account has no GLM Coding Plan: the quota endpoint answers a 2xx with
+        // `success:false`. Surface a clear (non-malfunction) error so the header explains the empty card.
+        let provider = ZAIProvider(
+            authStore: makeAuthStore(key: "zai-test"),
+            usageClient: ZAIUsageClient(http: RoutingHTTPClient { request in
+                if request.url == ZAIUsageClient.quotaURL {
+                    return jsonResponse(#"{"code":500,"msg":"当前用户不存在coding plan","success":false}"#)
+                }
+                return jsonResponse(subscriptionJSON)
+            })
+        )
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(snapshot.errorCategory, .notAvailable)
+        XCTAssertEqual(snapshot.lines.first?.label, "Error")
+        guard case .badge(_, let text, _, _) = snapshot.lines.first else {
+            return XCTFail("expected an error badge")
+        }
+        XCTAssertTrue(text.contains("GLM Coding Plan"))
     }
 
     func testProviderAPIKeyManagingDelegatesToAuthStore() throws {

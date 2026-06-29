@@ -51,6 +51,12 @@ final class ZAIProvider: ProviderRuntime {
 
         switch quota {
         case .success(let body):
+            // A valid key whose account has no GLM Coding Plan gets a 2xx with `success:false`. Surface
+            // that as a clear provider warning (the header's amber notice) rather than three blank "No
+            // data" meters that don't explain why nothing's there.
+            if ZAIUsageMapper.isNoCodingPlan(body) {
+                return ProviderSnapshot.error(provider: provider, error: ZAIUsageError.noCodingPlan)
+            }
             let mapped = ZAIUsageMapper.map(quotaBody: body, subscriptionBody: optionalBody(subscription))
             return ProviderSnapshot.make(provider: provider, plan: mapped.plan, lines: mapped.lines, refreshedAt: now())
         case .authFailure:

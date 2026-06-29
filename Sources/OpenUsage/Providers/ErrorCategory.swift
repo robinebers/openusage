@@ -204,6 +204,7 @@ extension ZAIUsageError: CategorizedError {
         case .connectionFailed: .network
         case .invalidResponse: .decoding
         case .requestFailed(let status): ErrorCategory.http(status)
+        case .noCodingPlan: .notAvailable
         }
     }
 }
