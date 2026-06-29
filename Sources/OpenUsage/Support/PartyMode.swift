@@ -31,6 +31,22 @@ extension EnvironmentValues {
     }
 }
 
+/// Whether the popover is the key (focused) window. The translucent keepalive — which re-rasters static
+/// content so the compositor can't cull it on a non-key window — runs only when this is `false`. While
+/// the popover is focused there is no cull to fight, so the keepalive stays off and the content renders
+/// perfectly crisp; only the unfocused, floating popover pays the (sub-pixel) keepalive cost. Defaults to
+/// `true` (assume focused → no keepalive), so the windowless ShareCard export and previews never blur.
+private struct PopoverIsKeyKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
+extension EnvironmentValues {
+    var popoverIsKey: Bool {
+        get { self[PopoverIsKeyKey.self] }
+        set { self[PopoverIsKeyKey.self] = newValue }
+    }
+}
+
 enum PartyMode {
     /// Vivid gradient fill for meter bars in party mode. The bar still shows its fraction by width, so
     /// it stays readable — it just trades the solid severity color for party colors.

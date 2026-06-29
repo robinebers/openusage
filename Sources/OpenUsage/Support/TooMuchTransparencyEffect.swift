@@ -122,15 +122,21 @@ private struct PartyRim: View {
 /// switching Spaces), an animated layer stays but the static cards/text blank out, and why drunk mode
 /// (whose whole content is animated by `DrunkDistortion`) never blanks. This forces a re-raster each
 /// frame with a *varying* sub-pixel blur — a transform/scale wouldn't, since those reuse the cached
-/// bitmap, whereas a changing blur re-renders the content. The radius peaks under a point, so it reads as
-/// crisp. Identity when inactive (no `TimelineView` mounted), so it costs nothing on the opaque surface.
+/// bitmap, whereas a changing blur re-renders the content.
+///
+/// Crucially it runs ONLY while the popover is NOT the key window (`!isKey`): a focused popover isn't
+/// culled, so there's nothing to fight and the content must stay perfectly crisp — running the blur then
+/// is the visible "pulsing" regression. So while focused this is identity (plain content); it engages
+/// only once focus leaves, where the sub-pixel blur on the now-background popover is unnoticeable. Also
+/// identity when inactive or hidden, so it costs nothing on the opaque surface or a closed popover.
 private struct TranslucentKeepAlive: ViewModifier {
     let active: Bool
     @Environment(\.popoverIsVisible) private var isVisible
+    @Environment(\.popoverIsKey) private var isKey
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if active {
+        if active && !isKey {
             // Low cadence (the blur is sub-pixel, so it's invisible) and paused while the popover is
             // hidden — when it's not on-screen the layer can't be culled, so the keepalive isn't needed.
             TimelineView(.animation(minimumInterval: keepAliveFrameInterval, paused: !isVisible)) { timeline in

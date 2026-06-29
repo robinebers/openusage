@@ -46,6 +46,10 @@ struct DashboardView: View {
     /// pause while the popover is hidden (the SwiftUI tree survives a close, so they'd otherwise keep
     /// ticking and burn CPU). Updated by the `PopoverVisibilityReader` below.
     @State private var popoverVisible = false
+    /// Whether the popover is the key (focused) window. Drives `\.popoverIsKey` so the translucent
+    /// keepalive runs only while the popover is unfocused — focused content stays crisp (no sub-pixel
+    /// re-raster blur). Defaults to focused. Updated by the `PopoverVisibilityReader` below.
+    @State private var popoverKey = true
     /// Reset to the top whenever the popover closes, so it never reopens mid-scroll.
     @State private var dashboardScrollPosition = ScrollPosition(edge: .top)
     /// Row rhythm tracks the global density setting live.
@@ -144,20 +148,23 @@ struct DashboardView: View {
                 )
             )
             .background(
-                PopoverVisibilityReader { visible in
-                    popoverVisible = visible    // pauses the egg animation loops while the popover is hidden
-                    if visible {
-                        // Reopen: the SwiftUI tree survives a close, so re-seed the height for whatever
-                        // screen we're opening on. Un-animated, and ≈ the controller's opening guess, so
-                        // there's no visible jump. If not yet measured, the measurement onChange seeds it.
-                        if let target = targetHeight() {
-                            didEstablishHeight = true
-                            animatedHeight = target
+                PopoverVisibilityReader(
+                    onChange: { visible in
+                        popoverVisible = visible    // pauses the egg animation loops while the popover is hidden
+                        if visible {
+                            // Reopen: the SwiftUI tree survives a close, so re-seed the height for whatever
+                            // screen we're opening on. Un-animated, and ≈ the controller's opening guess, so
+                            // there's no visible jump. If not yet measured, the measurement onChange seeds it.
+                            if let target = targetHeight() {
+                                didEstablishHeight = true
+                                animatedHeight = target
+                            }
+                        } else {
+                            resetTransientState()
                         }
-                    } else {
-                        resetTransientState()
-                    }
-                }
+                    },
+                    onKeyChange: { key in popoverKey = key }   // keepalive runs only while unfocused
+                )
             )
             // A screen switch can tear the list down mid-drag, in which case the gesture's
             // `onEnded` never fires — clear the lift here or its overlay survives onto the new
@@ -236,6 +243,9 @@ struct DashboardView: View {
             // their clocks while the popover is hidden — outermost so it reaches the `.background`/`.overlay`
             // egg layers added by `tooMuchTransparency` as well as the in-content pulses.
             .environment(\.popoverIsVisible, popoverVisible)
+            // Gates the translucent keepalive: it re-rasters static content only while the popover is
+            // unfocused (the compositor cull hits non-key windows), so a focused popover stays crisp.
+            .environment(\.popoverIsKey, popoverKey)
     }
 
     private func resetTransientState() {
