@@ -41,19 +41,15 @@ private struct TooMuchTransparencyModifier: ViewModifier {
 
     private var isParty: Bool { style == .party }
     private var isDrunk: Bool { style == .drunk }
-    /// Increase Transparency (`.increased`) and party both show *static* content on the translucent,
-    /// non-key panel, which the compositor culls unless it keeps repainting; drunk is exempt because
-    /// `DrunkDistortion` already repaints it every frame.
-    private var needsKeepAlive: Bool { style.surfaceTreatment == .translucent && !isDrunk }
 
     func body(content: Content) -> some View {
         content
             .modifier(DrunkDistortion(active: isDrunk))
-            // Keep translucent static content continuously re-rasterizing so it survives losing key
-            // focus, the same way drunk's `DrunkDistortion` animation does (drunk never blanks for
-            // exactly this reason). Covers the plain Increase Transparency surface too, not only party —
-            // both blank otherwise on a Space switch or Cmd-Tab.
-            .modifier(TranslucentKeepAlive(active: needsKeepAlive))
+            // Party's cards are static behind its animated gradient/rim; keep them re-rasterizing so they
+            // survive losing key focus, the same way drunk's `DrunkDistortion` animation does. Scoped to
+            // party ONLY: the plain Increase Transparency surface does not blank, and the keepalive's
+            // sub-pixel blur — invisible amid party — would read as a visible "pulse" on its crisp text.
+            .modifier(PartyKeepAlive(active: isParty))
             .background {
                 if isParty { PartyBackdrop().transition(.opacity) }
             }
@@ -114,29 +110,25 @@ private struct PartyRim: View {
     }
 }
 
-/// Keeps a translucent content layer resident while the panel isn't the key window — for both the plain
-/// Increase Transparency surface and party.
+/// Keeps party's static content re-rasterizing so it survives losing key focus.
 ///
-/// On a non-opaque, non-key window the compositor drops *static* SwiftUI content — only views that
-/// repaint every frame survive. That's why, with focus elsewhere (Cmd-Tab, clicking another app,
-/// switching Spaces), an animated layer stays but the static cards/text blank out, and why drunk mode
-/// (whose whole content is animated by `DrunkDistortion`) never blanks. This forces a re-raster each
-/// frame with a *varying* sub-pixel blur — a transform/scale wouldn't, since those reuse the cached
-/// bitmap, whereas a changing blur re-renders the content.
+/// In party mode the cards/text are static behind the animated gradient and rim. When focus left the
+/// popover (Cmd-Tab, clicking another app) those static cards were observed to blank while the animated
+/// layers kept rendering, so this forces a re-raster each frame with a *varying* sub-pixel blur — a
+/// transform/scale wouldn't, since those reuse the cached bitmap, whereas a changing blur re-renders the
+/// content. The radius peaks under a point, invisible amid the party visuals. Paused while the popover is
+/// hidden (nothing on-screen to keep alive), and identity when inactive, so it costs nothing off party.
 ///
-/// Crucially it runs ONLY while the popover is NOT the key window (`!isKey`): a focused popover isn't
-/// culled, so there's nothing to fight and the content must stay perfectly crisp — running the blur then
-/// is the visible "pulsing" regression. So while focused this is identity (plain content); it engages
-/// only once focus leaves, where the sub-pixel blur on the now-background popover is unnoticeable. Also
-/// identity when inactive or hidden, so it costs nothing on the opaque surface or a closed popover.
-private struct TranslucentKeepAlive: ViewModifier {
+/// Deliberately party-only. The plain Increase Transparency surface does NOT mount this: there the
+/// oscillating blur reads as a visible "pulse" on otherwise-crisp text, and — unlike the party visuals —
+/// that surface does not blank (the earlier belief that it shared party's failure was a wrong inference).
+private struct PartyKeepAlive: ViewModifier {
     let active: Bool
     @Environment(\.popoverIsVisible) private var isVisible
-    @Environment(\.popoverIsKey) private var isKey
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if active && !isKey {
+        if active {
             // Low cadence (the blur is sub-pixel, so it's invisible) and paused while the popover is
             // hidden — when it's not on-screen the layer can't be culled, so the keepalive isn't needed.
             TimelineView(.animation(minimumInterval: keepAliveFrameInterval, paused: !isVisible)) { timeline in

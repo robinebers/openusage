@@ -8,16 +8,13 @@ import AppKit
 final class PopoverVisibilityReaderTests: XCTestCase {
     /// Occlusion alone misses the very first show — a freshly-created panel's `occlusionState` already
     /// contains `.visible`, so the first `makeKeyAndOrderFront` posts no change, leaving the egg frozen on
-    /// first activation until a close-and-reopen. Become-key (every open fires it) is that safeguard, and
-    /// the become/resign-key pair tracks focus for the translucent keepalive (which runs only while
-    /// unfocused). All three must stay wired.
-    func testWindowStateTriggersCoverFirstShowAndFocus() {
-        let triggers = PopoverVisibilityReader.windowStateTriggers
+    /// first activation until a close-and-reopen. Becoming key (every open fires it) is the safeguard, so
+    /// both triggers must stay wired.
+    func testVisibilityTriggersCoverTheFirstShow() {
+        let triggers = PopoverVisibilityReader.visibilityTriggers
         XCTAssertTrue(triggers.contains(NSWindow.didChangeOcclusionStateNotification),
                       "occlusion handles close and Space switches")
         XCTAssertTrue(triggers.contains(NSWindow.didBecomeKeyNotification),
-                      "becoming key catches the first show occlusion misses, and gains focus")
-        XCTAssertTrue(triggers.contains(NSWindow.didResignKeyNotification),
-                      "resigning key is when the keepalive must engage")
+                      "becoming key catches the first show occlusion misses")
     }
 }

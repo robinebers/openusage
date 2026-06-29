@@ -17,98 +17,78 @@ import AppKit
 /// — which blanked the scroll content (the reset scrolls to top, drops the driven height, and resets the
 /// screen) while the pinned chrome and the egg's gradient, living outside that subtree, kept rendering.
 /// `isVisible` is true the whole time the panel is ordered-on (across Space switches and partial
-/// occlusion) and flips to false only on a real `orderOut`, which is exactly the reset moment. Three
-/// notifications wake the reads — occlusion (open, close, Space switches) plus become/resign-key — but
-/// the *value* the dismiss/pause consumers use is always `isVisible`, so a Space switch or a focus change
-/// never reads as "gone". Become-key also catches the very first show that occlusion misses, and the
-/// become/resign-key pair feeds a separate `isKeyWindow` signal (`onKeyChange`) that the translucent
-/// keepalive uses to run only while the popover is unfocused. See `VisibilityView`.
+/// occlusion) and flips to false only on a real `orderOut`, which is exactly the reset moment. Two
+/// notifications wake the read — occlusion (open, close, Space switches) and the window becoming key
+/// (every `makeKeyAndOrderFront`, which is the one that catches the *first* show; see `VisibilityView`)
+/// — but the *value* reported is always `isVisible`, so a Space switch never reads as "gone".
 struct PopoverVisibilityReader: NSViewRepresentable {
-    /// Reports `window.isVisible` (ordered-on): false drives the dismiss reset and pauses the egg loops.
     var onChange: (Bool) -> Void
-    /// Reports `window.isKeyWindow` (focused). Optional — only the translucent keepalive needs it, to run
-    /// solely while the popover is *not* the key window (the cull only hits non-key windows), so a focused
-    /// popover keeps crisp content.
-    var onKeyChange: ((Bool) -> Void)?
 
-    /// What wakes the reads. Occlusion alone misses the first show (a freshly-created panel's
+    /// What wakes the `isVisible` read. Occlusion alone misses the first show (a freshly-created panel's
     /// `occlusionState` already contains `.visible`, so the first `makeKeyAndOrderFront` posts no change),
-    /// so the key transitions are observed too: become-key catches that first show, and the
-    /// become/resign-key pair tracks focus for the keepalive. All must stay present (guarded by a test).
-    static let windowStateTriggers: [NSNotification.Name] = [
+    /// so becoming key — which every open fires — is observed too. Both must stay present, or the egg
+    /// animations freeze on first activation until a close-and-reopen (guarded by a test).
+    static let visibilityTriggers: [NSNotification.Name] = [
         NSWindow.didChangeOcclusionStateNotification,
-        NSWindow.didBecomeKeyNotification,
-        NSWindow.didResignKeyNotification
+        NSWindow.didBecomeKeyNotification
     ]
 
     func makeNSView(context: Context) -> NSView {
         let view = VisibilityView()
         view.onChange = onChange
-        view.onKeyChange = onKeyChange
         return view
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
-        guard let view = nsView as? VisibilityView else { return }
-        view.onChange = onChange
-        view.onKeyChange = onKeyChange
+        (nsView as? VisibilityView)?.onChange = onChange
     }
 
     final class VisibilityView: NSView {
-        var onChange: ((Bool) -> Void)?            // window.isVisible (ordered-on)
-        var onKeyChange: ((Bool) -> Void)?         // window.isKeyWindow (focused)
+        var onChange: ((Bool) -> Void)?
         private var observers: [NSObjectProtocol] = []
         private var lastVisible: Bool?
-        private var lastKey: Bool?
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             observers.forEach(NotificationCenter.default.removeObserver)
             observers.removeAll()
             guard let window else {
-                report(visible: false, key: false)
+                report(false)
                 return
             }
-            // Three triggers, because no single one catches every transition. Both reported values come
-            // straight from the window (`isVisible`, `isKeyWindow`) — neither is KVO-compliant, so these
-            // notifications are the wake-up; the dedup in `report` ignores the redundant fires.
+            // Two triggers, because neither alone catches every transition. The value reported is always
+            // `window.isVisible` (true whenever the panel is ordered-on, false only on a real `orderOut`);
+            // `isVisible` itself isn't KVO-compliant, so these notifications are the wake-up.
             //
             // - Occlusion fires on close, Space switches, and being covered — but NOT on the very first
             //   show: a freshly-created panel's `occlusionState` already contains `.visible`, so the first
             //   `makeKeyAndOrderFront` posts no *change*. Relying on it alone left the popover reporting
             //   its launch-time `isVisible == false` until a close-and-reopen finally toggled occlusion —
             //   which froze the easter-egg animations (paused via `\.popoverIsVisible`) on first activation.
-            // - Become-key fires on every `makeKeyAndOrderFront` (every open), so it reliably catches that
-            //   first show, and with resign-key it tracks focus for the keepalive.
-            //
-            // The dismiss reset and the egg pause both ride the `isVisible` value, NOT the key state: a
-            // panel that resigns key (a click in another app, a tracking menu) is still ordered-on, so
-            // `isVisible` stays true and resign-key can't misfire a dismissal — it only flips the
-            // separate `isKeyWindow` signal the keepalive reads.
-            for name in PopoverVisibilityReader.windowStateTriggers {
+            // - Becoming key fires on every `makeKeyAndOrderFront`, and every open goes through one, so it
+            //   reliably catches that first show. We observe become-key but deliberately NOT resign-key: a
+            //   panel that resigns key (a click in another app, a tracking menu) is still ordered-on and
+            //   visible, and resign-key also fires on in-popover control clicks — the exact reason this
+            //   reader avoids key/focus for its value. Reporting only `true` here can't misfire a
+            //   dismissal (that rides a `false` from `orderOut`); it just fills the gap occlusion leaves.
+            for name in PopoverVisibilityReader.visibilityTriggers {
                 observers.append(NotificationCenter.default.addObserver(
                     forName: name,
                     object: window,
                     queue: .main
                 ) { [weak self, weak window] _ in
                     MainActor.assumeIsolated {
-                        self?.report(visible: window?.isVisible ?? false,
-                                     key: window?.isKeyWindow ?? false)
+                        self?.report(window?.isVisible ?? false)
                     }
                 })
             }
-            report(visible: window.isVisible, key: window.isKeyWindow)
+            report(window.isVisible)
         }
 
-        private func report(visible: Bool, key: Bool) {
-            if lastVisible != visible {
-                lastVisible = visible
-                onChange?(visible)
-            }
-            if lastKey != key {
-                lastKey = key
-                onKeyChange?(key)
-            }
+        private func report(_ visible: Bool) {
+            guard lastVisible != visible else { return }
+            lastVisible = visible
+            onChange?(visible)
         }
     }
 }
