@@ -362,10 +362,11 @@ final class GrokProviderTests: XCTestCase {
                        [MetricValue(number: 16.0, kind: .dollars, estimated: true), MetricValue(number: 2_000_000, kind: .count, label: "tokens")])
     }
 
-    func testPeriodWithoutUsageReadsZeroDollarsAndTokens() async {
+    func testPeriodWithoutUsageLeavesTileUnbacked() async {
         // Regression for the reported "Today 0" bug: the log exists and has yesterday's usage, but no
-        // inference ran today. Today is a real, measured zero → "$0.00 · 0 tokens", never a bare "0"
-        // and never "No data" (the log was readable). "No data" is reserved for a missing/unreadable log.
+        // inference ran today. An idle today is "No data" (no backing line), never a fabricated
+        // "$0.00 · 0 tokens" that contradicts a live session. "No data" is also what a missing/unreadable
+        // log produces — the two cases collapse to the same honest read.
         let now = OpenUsageISO8601.date(from: "2026-06-18T12:00:00.000Z")!
         let files = FakeFiles([
             GrokAuthStore.authPath: #"{"https://auth.x.ai::client":{"key":"token","refresh_token":"refresh","expires_at":"2026-07-01T00:00:00.000Z"}}"#
@@ -398,10 +399,10 @@ final class GrokProviderTests: XCTestCase {
 
         let snapshot = await provider.refresh()
 
-        // No usage today is a measured zero, not absence → "$0.00 · 0 tokens".
-        XCTAssertEqual(values(snapshot.lines, "Today"),
-                       [MetricValue(number: 0, kind: .dollars, estimated: true), MetricValue(number: 0, kind: .count, label: "tokens")])
-        XCTAssertNotNil(values(snapshot.lines, "Yesterday"))          // yesterday had real usage
+        // No usage today → "No data" (no Today line). Yesterday and the 30-day total still render.
+        XCTAssertNil(values(snapshot.lines, "Today"))
+        XCTAssertNotNil(values(snapshot.lines, "Yesterday"))
+        XCTAssertNotNil(values(snapshot.lines, "Last 30 Days"))
     }
 
     func testRefreshAppendsUsageTrendFromLog() async {
