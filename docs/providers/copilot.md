@@ -6,17 +6,20 @@ Tracks your GitHub Copilot quota using a GitHub token that Copilot tooling alrea
 
 | Metric | Meaning |
 |---|---|
-| Premium | Premium-request quota used (the headline meter) |
+| Credits | Share of your monthly AI-credit allotment used (the headline meter) |
+| Extra Usage | Premium interactions used beyond your included credits, once extra spend is enabled |
 | Chat | Chat-message quota used |
 | Completions | Code-completion quota used |
 
-Each meter shows percent used and, when the response includes one, a countdown to the next quota reset. The plan name (Pro, Business, Free, …) shows next to the provider.
+Credits and Extra Usage show above the fold; Chat and Completions sit under the "Shown on expand" caret. Each meter shows percent used and, when the response includes one, a countdown to the next reset. The plan name (Pro, Business, Free, …) shows next to the provider.
 
-Which meters appear depends on your plan:
+Since June 2026 GitHub Copilot bills all plans by **AI credits**, so what each account shows differs by plan:
 
-- **Paid plans** expose Premium and Chat (and sometimes Completions). Buckets a plan treats as unlimited show an empty meter; on most paid plans Completions has no quota to track and reads "No data".
-- **Free plans** expose Chat and Completions (no Premium).
-- **Copilot Business / token-based billing** returns no per-seat quota, so there's nothing to meter. The provider still shows the plan; the meters read "No data" rather than fabricating numbers. (GitHub only exposes that spend through its logged-in web billing page, which would require reading browser cookies — OpenUsage does not do that.)
+- **Paid plans** meter the credit pool — so you see Credits (and Extra Usage if you've turned on additional spend). Chat and completions are unlimited on paid plans, so those rows read "No data".
+- **Free plans** have no credits, so Credits reads "No data"; instead you see your fixed Chat and Completions counts under the caret.
+- **Copilot Business / token-based billing** returns no per-seat quota, so there's nothing to meter. The provider still shows the plan; the meters read "No data" rather than fabricating numbers.
+
+A dollar credit figure (e.g. "$12 of $15 used") isn't shown: GitHub only exposes that through its logged-in web billing page, which would require reading browser cookies — OpenUsage does not do that. Editors like VS Code show the same credit *percentage* from this endpoint, not a dollar amount.
 
 ## Where credentials come from
 

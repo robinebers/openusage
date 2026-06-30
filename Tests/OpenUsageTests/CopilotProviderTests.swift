@@ -132,27 +132,84 @@ final class CopilotAuthStoreTests: XCTestCase {
 }
 
 final class CopilotUsageMapperTests: XCTestCase {
-    func testMapsPaidPremiumAndChatAsPercentUsed() throws {
+    func testMapsPaidCreditsAndChatAsPercentUsed() throws {
         let mapped = try CopilotUsageMapper.map(body: makePaidBody())
 
         XCTAssertEqual(mapped.plan, "Pro")
-        XCTAssertEqual(progress(mapped.lines, "Premium")?.used, 59)
+        XCTAssertEqual(progress(mapped.lines, "Credits")?.used, 59)
         XCTAssertEqual(progress(mapped.lines, "Chat")?.used, 5)
-        XCTAssertNotNil(progress(mapped.lines, "Premium")?.resetsAt)
-        XCTAssertEqual(progress(mapped.lines, "Premium")?.periodDurationMs, CopilotUsageMapper.periodMs)
+        XCTAssertNotNil(progress(mapped.lines, "Credits")?.resetsAt)
+        XCTAssertEqual(progress(mapped.lines, "Credits")?.periodDurationMs, CopilotUsageMapper.periodMs)
     }
 
-    func testUnlimitedBucketRendersEmptyMeterWithoutReset() throws {
-        var snapshots = makePaidBody()
-        var quota = snapshots["quota_snapshots"] as! [String: Any]
+    func testSuppressesUnlimitedAndSentinelBuckets() throws {
+        // Paid plans report chat/completions as unlimited — both the explicit flag and the `-1`
+        // entitlement/remaining sentinel — which carry no real meter and must be suppressed, leaving
+        // just Credits.
+        var body = makePaidBody()
+        var quota = body["quota_snapshots"] as! [String: Any]
         quota["chat"] = ["unlimited": true, "entitlement": 0, "remaining": 0, "quota_id": "chat"]
-        snapshots["quota_snapshots"] = quota
+        quota["completions"] = ["entitlement": -1, "remaining": -1, "quota_id": "completions"]
+        body["quota_snapshots"] = quota
 
-        let mapped = try CopilotUsageMapper.map(body: snapshots)
+        let mapped = try CopilotUsageMapper.map(body: body)
 
-        XCTAssertEqual(progress(mapped.lines, "Chat")?.used, 0)
-        XCTAssertNil(progress(mapped.lines, "Chat")?.resetsAt)
-        XCTAssertNil(progress(mapped.lines, "Chat")?.periodDurationMs)
+        XCTAssertNil(progress(mapped.lines, "Chat"))
+        XCTAssertNil(progress(mapped.lines, "Completions"))
+        XCTAssertEqual(progress(mapped.lines, "Credits")?.used, 59)
+    }
+
+    func testEmitsExtraUsageWhenOveragePermitted() throws {
+        var body = makePaidBody()
+        var quota = body["quota_snapshots"] as! [String: Any]
+        var premium = quota["premium_interactions"] as! [String: Any]
+        premium["overage_permitted"] = true
+        premium["overage_count"] = 36
+        quota["premium_interactions"] = premium
+        body["quota_snapshots"] = quota
+
+        let mapped = try CopilotUsageMapper.map(body: body)
+
+        XCTAssertEqual(countValue(mapped.lines, "Extra Usage"), 36)
+    }
+
+    func testShowsExtraUsageZeroWhenPermittedButUnused() throws {
+        var body = makePaidBody()
+        var quota = body["quota_snapshots"] as! [String: Any]
+        var premium = quota["premium_interactions"] as! [String: Any]
+        premium["overage_permitted"] = true
+        premium["overage_count"] = 0
+        quota["premium_interactions"] = premium
+        body["quota_snapshots"] = quota
+
+        let mapped = try CopilotUsageMapper.map(body: body)
+
+        XCTAssertEqual(countValue(mapped.lines, "Extra Usage"), 0)
+    }
+
+    func testSuppressesExtraUsageWhenNotPermitted() throws {
+        // makePaidBody's premium has no overage flag → extra usage is genuinely N/A.
+        let mapped = try CopilotUsageMapper.map(body: makePaidBody())
+        XCTAssertNil(mapped.lines.first(where: { $0.label == "Extra Usage" }))
+    }
+
+    func testIgnoresLegacyLimitedQuotasWhenSnapshotsPresent() throws {
+        // A paid response with Credits present and chat/completions unlimited (-1) must NOT fall back to
+        // the legacy limited_user_quotas path, even if the payload still carries it — doing so would show
+        // free-tier Chat/Completions meters on a paid account alongside Credits.
+        var body = makePaidBody()
+        var quota = body["quota_snapshots"] as! [String: Any]
+        quota["chat"] = ["entitlement": -1, "remaining": -1, "quota_id": "chat"]
+        quota["completions"] = ["entitlement": -1, "remaining": -1, "quota_id": "completions"]
+        body["quota_snapshots"] = quota
+        body["limited_user_quotas"] = ["chat": 100, "completions": 1000]
+        body["monthly_quotas"] = ["chat": 500, "completions": 4000]
+
+        let mapped = try CopilotUsageMapper.map(body: body)
+
+        XCTAssertNotNil(progress(mapped.lines, "Credits"))
+        XCTAssertNil(progress(mapped.lines, "Chat"))
+        XCTAssertNil(progress(mapped.lines, "Completions"))
     }
 
     func testSuppressesZeroEntitlementPlaceholder() throws {
@@ -166,8 +223,33 @@ final class CopilotUsageMapperTests: XCTestCase {
 
         let mapped = try CopilotUsageMapper.map(body: body)
 
-        XCTAssertNil(progress(mapped.lines, "Premium"))
+        XCTAssertNil(progress(mapped.lines, "Credits"))
         XCTAssertEqual(progress(mapped.lines, "Chat")?.used, 20)
+    }
+
+    func testMapsLiveFreeAccountSnapshots() throws {
+        // The exact shape a free `individual` account returns today: real chat/completions counts in
+        // `quota_snapshots`, a zero-entitlement premium bucket, and `token_based_billing` on every bucket.
+        // Credits + Extra Usage suppress (no allotment / overage off); Chat + Completions render.
+        let body: [String: Any] = [
+            "copilot_plan": "individual",
+            "access_type_sku": "free_limited_copilot",
+            "token_based_billing": true,
+            "quota_reset_date": "2099-07-01",
+            "quota_snapshots": [
+                "chat": ["entitlement": 200, "remaining": 182, "percent_remaining": 91.0, "overage_permitted": false, "token_based_billing": true],
+                "completions": ["entitlement": 2000, "remaining": 1989, "percent_remaining": 99.4, "overage_permitted": false, "token_based_billing": true],
+                "premium_interactions": ["entitlement": 0, "remaining": 0, "percent_remaining": 0.0, "overage_permitted": false, "token_based_billing": true]
+            ]
+        ]
+
+        let mapped = try CopilotUsageMapper.map(body: body)
+
+        XCTAssertEqual(mapped.plan, "Individual")
+        XCTAssertNil(progress(mapped.lines, "Credits"))
+        XCTAssertNil(mapped.lines.first(where: { $0.label == "Extra Usage" }))
+        XCTAssertEqual(progress(mapped.lines, "Chat")?.used ?? -1, 9, accuracy: 0.0001)
+        XCTAssertEqual(progress(mapped.lines, "Completions")?.used ?? -1, 0.6, accuracy: 0.0001)
     }
 
     func testMapsFreeTierLimitedQuotas() throws {
@@ -244,7 +326,7 @@ final class CopilotProviderTests: XCTestCase {
 
         XCTAssertNil(snapshot.errorCategory)
         XCTAssertEqual(snapshot.plan, "Pro")
-        XCTAssertEqual(snapshot.line(label: "Premium")?.label, "Premium")
+        XCTAssertEqual(snapshot.line(label: "Credits")?.label, "Credits")
         XCTAssertEqual(http.requests.first?.headers["Authorization"], "token gho_editor")
     }
 
@@ -296,4 +378,11 @@ private func progress(_ lines: [MetricLine], _ label: String) -> (used: Double, 
         return nil
     }
     return (used, limit, resetsAt, periodDurationMs)
+}
+
+private func countValue(_ lines: [MetricLine], _ label: String) -> Double? {
+    guard case .values(_, let values, _, _, _) = lines.first(where: { $0.label == label }) else {
+        return nil
+    }
+    return values.first?.number
 }
