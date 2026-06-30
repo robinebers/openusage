@@ -18,7 +18,7 @@ enum DefaultLayout {
         "cursor.usage", "cursor.auto", "cursor.api", "cursor.trend",
         "cursor.onDemand", "cursor.today", "cursor.yesterday", "cursor.last30",
 
-        "copilot.premium", "copilot.chat", "copilot.completions",
+        "copilot.premium", "copilot.extra", "copilot.chat", "copilot.completions",
 
         "devin.daily", "devin.weekly", "devin.extra",
 
@@ -78,8 +78,9 @@ enum DefaultLayout {
         "codex.credits", "codex.rateLimitResets", "codex.today", "codex.yesterday", "codex.last30",
         "cursor.onDemand", "cursor.requests", "cursor.credits",
         "cursor.today", "cursor.yesterday", "cursor.last30",
-        // Copilot: only Premium (premium-request quota) stays above the fold; Chat + Completions sit
-        // below the caret. Completions has data on free tier only, so it's commonly "No data" for paid.
+        // Copilot: Credits (the metered premium pool) + Extra Usage stay above the fold; Chat +
+        // Completions sit below the caret. They carry real counts on free only — on paid they're
+        // unlimited (suppressed), so they read "No data" there.
         "copilot.chat", "copilot.completions",
         "devin.extra",
         "grok.payAsYouGo", "grok.today", "grok.yesterday", "grok.last30",

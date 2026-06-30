@@ -28,7 +28,8 @@ final class CopilotProvider: ProviderRuntime {
 
     var widgetDescriptors: [WidgetDescriptor] {
         [
-            .percent(id: "copilot.premium", provider: provider, title: "Premium"),
+            .percent(id: "copilot.premium", provider: provider, title: "Credits"),
+            .values(id: "copilot.extra", provider: provider, title: "Extra Usage", selection: .kind(.count)),
             .percent(id: "copilot.chat", provider: provider, title: "Chat"),
             .percent(id: "copilot.completions", provider: provider, title: "Completions")
         ]
