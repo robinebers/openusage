@@ -15,6 +15,30 @@ extension EnvironmentValues {
     }
 }
 
+/// Whether the hosting popover is currently on-screen. The easter-egg animation loops read this to
+/// **mount** their `TimelineView(.animation)` clocks only while the popover is visible and drop to a
+/// static frame when it isn't, so a closed popover with the egg still active runs no display link and
+/// spends no CPU. Default `false`, so the windowless ShareCard export and any non-popover host never
+/// mount the loops. Seeded from `PopoverTransparencyStore.popoverShown`, which `StatusItemController`
+/// flips at its `showPanel`/`hidePanel` chokepoints.
+///
+/// This is a STRUCTURAL mount gate (`if shown { TimelineView } else { static }`), deliberately NOT the
+/// reverted `TimelineView(.animation(paused: !shown))` overload (commit 1ef9c4e): that overload froze
+/// in-place activation because its schedule only re-primes on a window-lifecycle event, never on an
+/// in-place `paused` flip. Mounting a fresh `TimelineView` always attaches its display link, so the egg
+/// starts the instant it's switched on with the popover already open. Do not collapse this back to the
+/// paused overload.
+private struct PopoverIsVisibleKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var popoverIsVisible: Bool {
+        get { self[PopoverIsVisibleKey.self] }
+        set { self[PopoverIsVisibleKey.self] = newValue }
+    }
+}
+
 enum PartyMode {
     /// Vivid gradient fill for meter bars in party mode. The bar still shows its fraction by width, so
     /// it stays readable — it just trades the solid severity color for party colors.
@@ -45,15 +69,29 @@ extension View {
 }
 
 private struct PartyPulseModifier: ViewModifier {
+    @Environment(\.popoverIsVisible) private var shown
+
+    @ViewBuilder
     func body(content: Content) -> some View {
-        // Plain `.animation` (not the `paused:` overload), so it starts immediately when party is switched
-        // on with the popover already open — the visibility-coupled overload only attached on a window
-        // show, which froze in-place activation until a close→reopen.
-        TimelineView(.animation) { timeline in
-            let t = timeline.date.timeIntervalSinceReferenceDate
-            content
-                .scaleEffect(1 + sin(t * 3.2) * 0.12)
-                .hueRotation(.degrees(sin(t * 2.0) * 28))
+        // Mount the pulse clock only while the popover is on-screen; a closed popover with the egg still
+        // active drops to a static frame (no `TimelineView`, no display link, no CPU). A fresh mount on
+        // reopen / in-place activation always attaches its display link, so the pulse starts immediately —
+        // unlike the reverted `.animation(paused:)` overload (see `\.popoverIsVisible`).
+        if shown {
+            TimelineView(.animation) { timeline in
+                pulse(content, at: timeline.date.timeIntervalSinceReferenceDate)
+            }
+            .transition(.identity)
+        } else {
+            // Frozen at the current instant so it matches the live clock's first frame (no scale pop).
+            pulse(content, at: Date().timeIntervalSinceReferenceDate)
+                .transition(.identity)
         }
+    }
+
+    private func pulse(_ content: Content, at t: TimeInterval) -> some View {
+        content
+            .scaleEffect(1 + sin(t * 3.2) * 0.12)
+            .hueRotation(.degrees(sin(t * 2.0) * 28))
     }
 }

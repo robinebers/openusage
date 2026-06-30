@@ -227,6 +227,13 @@ struct DashboardView: View {
             // for "Drunk Mode". No-op for the normal/increased styles. Controls stay clickable (overlays
             // don't hit-test), so the Settings "Drunk Mode" toggle is reachable while it's running.
             .tooMuchTransparency(transparency.effectiveStyle)
+            // Gate the egg's animation loops on whether the popover is on-screen. Applied OUTSIDE
+            // `.tooMuchTransparency` so it reaches both the gradient/rim/drunk layers that modifier adds
+            // and the in-content `partyPulse`. Hidden → the loops unmount their `TimelineView` clocks, so a
+            // left-on egg spends no CPU; a fresh mount on reopen / in-place activation starts them at once.
+            // Sourced from the controller's show/hide chokepoints (`popoverShown`), not occlusion — a
+            // `.canJoinAllSpaces` panel is briefly occluded mid Space-switch while still on-screen.
+            .environment(\.popoverIsVisible, transparency.popoverShown)
     }
 
     private func resetTransientState() {

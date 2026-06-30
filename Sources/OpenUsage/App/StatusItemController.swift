@@ -343,6 +343,11 @@ final class StatusItemController: NSObject {
             AppLog.error(.statusItem, "Cannot show panel: status item has no button")
             return
         }
+        // Mark the popover on-screen before laying out, so the egg's animation loops mount their
+        // `TimelineView` clocks in time for the first displayed frame. Read by the SwiftUI egg via
+        // `\.popoverIsVisible`; a closed popover keeps the loops unmounted, so a left-on egg costs no CPU.
+        container.transparency.setPopoverShown(true)
+
         // Drop any morph heights still queued from a previous session so a quick reopen during an old
         // spring can't apply a stale height to this fresh open.
         PanelHeightBridge.invalidate()
@@ -384,6 +389,10 @@ final class StatusItemController: NSObject {
         if panel.isVisible {
             PanelHeightStore.save(panel.frame.height, for: container.layout.screen)
         }
+        // Closing: drop the on-screen flag so the egg's animation loops unmount their `TimelineView`
+        // clocks and stop ticking — the whole point of the gate (no CPU while the egg is left on but the
+        // popover is hidden). This is the authoritative hide signal, flipped synchronously with `orderOut`.
+        container.transparency.setPopoverShown(false)
         panel.orderOut(nil)
         stopOutsideClickMonitors()
         statusItem.button?.highlight(false)

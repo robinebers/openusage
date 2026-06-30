@@ -28,6 +28,16 @@ final class PopoverTransparencyStore {
     /// `secretCodeActive`; cleared whenever the egg turns off.
     var drunkMode = false
 
+    /// Whether the popover is currently on-screen (ordered-on). Runtime-transient like `secretCodeActive`
+    /// — never persisted. Set by `StatusItemController` at its `showPanel`/`hidePanel` chokepoints (the
+    /// authoritative on-screen state, flipped synchronously with `makeKeyAndOrderFront`/`orderOut`) and
+    /// read by the SwiftUI egg via `\.popoverIsVisible` to **mount** its animation loops only while
+    /// visible — so a closed popover with the egg still active spends no CPU animating. Deliberately NOT
+    /// derived from occlusion or window key state: a `.canJoinAllSpaces` panel is briefly fully occluded
+    /// mid Space-switch while still following the user on-screen, so an occlusion gate would freeze the
+    /// animation on the very panel the user is now looking at.
+    private(set) var popoverShown = false
+
     /// Live system accessibility flags. Read from `NSWorkspace` and refreshed on the change notification.
     private(set) var reduceTransparency: Bool
     private(set) var increaseContrast: Bool
@@ -78,6 +88,14 @@ final class PopoverTransparencyStore {
         AppLog.info(.statusItem, "Too-much-transparency egg \(active ? "enabled" : "disabled")")
     }
 
+    /// Flips the on-screen flag from `StatusItemController`'s show/hide chokepoints. Guards on change so a
+    /// redundant set doesn't churn observers. Orthogonal to `effectiveStyle` (it never enters `resolve`),
+    /// so toggling it re-renders only the SwiftUI egg's mount gate, never the AppKit backdrop crossfade.
+    func setPopoverShown(_ shown: Bool) {
+        guard shown != popoverShown else { return }
+        popoverShown = shown
+    }
+
     /// The resolved level both the panel and the SwiftUI surface render.
     var effectiveStyle: PopoverTransparencyStyle {
         PopoverTransparencyStyle.resolve(
@@ -91,6 +109,15 @@ final class PopoverTransparencyStore {
 
     /// SwiftUI surface treatment derived from the resolved style.
     var surfaceTreatment: PopoverSurfaceTreatment { effectiveStyle.surfaceTreatment }
+
+    /// True exactly when an egg animation loop should be mounted and ticking: the popover is on-screen
+    /// AND the resolved style is one of the animated egg states. The headless test seam for "no animation
+    /// work while the popover is hidden" — the SwiftUI loops gate on the same two inputs
+    /// (`\.popoverIsVisible` plus the party/drunk style). Reads `effectiveStyle`, so the accessibility
+    /// clamp (which resolves the egg to `.opaque`) correctly reports no animation even with the code on.
+    var eggAnimationsActive: Bool {
+        popoverShown && (effectiveStyle == .party || effectiveStyle == .drunk)
+    }
 
     /// True when the user turned the proper toggle on but a system accessibility setting is overriding it
     /// — so Settings can show a friendly "paused" note instead of silently doing nothing.

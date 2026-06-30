@@ -61,77 +61,125 @@ private struct TooMuchTransparencyModifier: ViewModifier {
 /// composite against the AppKit vibrancy view behind the host, so the desktop only blends through via
 /// alpha — hence the reduced opacity rather than a blend mode.)
 private struct PartyBackdrop: View {
+    @Environment(\.popoverIsVisible) private var shown
+
     var body: some View {
-        TimelineView(.animation) { timeline in
-            let t = timeline.date.timeIntervalSinceReferenceDate
-            ZStack {
-                AngularGradient(colors: partyColors, center: .center, angle: .degrees(t * 28))
-                    .opacity(0.5)   // translucent tint, so the blurred desktop blends through the colors
-                RadialGradient(
-                    colors: [Color.white.opacity(0.15), .clear],
-                    center: UnitPoint(x: 0.5 + cos(t * 0.5) * 0.3, y: 0.5 + sin(t * 0.6) * 0.3),
-                    startRadius: 0,
-                    endRadius: 240
-                )
-                .blendMode(.plusLighter)
+        // The churning clock is mounted only while the popover is on-screen; closed, it drops to a static
+        // frame so no display link ticks (see `\.popoverIsVisible`).
+        if shown {
+            TimelineView(.animation) { timeline in
+                gradient(at: timeline.date.timeIntervalSinceReferenceDate)
             }
+            .transition(.identity)
+        } else {
+            // Static frame at the current instant: matches the live clock's first frame, so the (at most
+            // one-frame) static render during a show is indistinguishable from the running animation.
+            gradient(at: Date().timeIntervalSinceReferenceDate)
+                .transition(.identity)
+        }
+    }
+
+    private func gradient(at t: TimeInterval) -> some View {
+        ZStack {
+            AngularGradient(colors: partyColors, center: .center, angle: .degrees(t * 28))
+                .opacity(0.5)   // translucent tint, so the blurred desktop blends through the colors
+            RadialGradient(
+                colors: [Color.white.opacity(0.15), .clear],
+                center: UnitPoint(x: 0.5 + cos(t * 0.5) * 0.3, y: 0.5 + sin(t * 0.6) * 0.3),
+                startRadius: 0,
+                endRadius: 240
+            )
+            .blendMode(.plusLighter)
         }
     }
 }
 
 /// A glowing rim that rotates around the popover edge — pure party, never over the text.
 private struct PartyRim: View {
+    @Environment(\.popoverIsVisible) private var shown
+
     var body: some View {
-        TimelineView(.animation) { timeline in
-            let t = timeline.date.timeIntervalSinceReferenceDate
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .strokeBorder(
-                    AngularGradient(colors: partyColors, center: .center, angle: .degrees(-t * 36)),
-                    lineWidth: 2.5
-                )
-                .shadow(color: Color(red: 1, green: 0.4, blue: 0.85).opacity(0.7), radius: 7)
+        if shown {
+            TimelineView(.animation) { timeline in
+                rim(at: timeline.date.timeIntervalSinceReferenceDate)
+            }
+            .transition(.identity)
+        } else {
+            rim(at: Date().timeIntervalSinceReferenceDate)
+                .transition(.identity)
         }
+    }
+
+    private func rim(at t: TimeInterval) -> some View {
+        RoundedRectangle(cornerRadius: 13, style: .continuous)
+            .strokeBorder(
+                AngularGradient(colors: partyColors, center: .center, angle: .degrees(-t * 36)),
+                lineWidth: 2.5
+            )
+            .shadow(color: Color(red: 1, green: 0.4, blue: 0.85).opacity(0.7), radius: 7)
     }
 }
 
 // MARK: - Drunk (the woozy, barely-readable escalation)
 
 /// Blurs, hue-wobbles, and woozily sways the content — the "had one too many" part. Identity when
-/// inactive (no `TimelineView` mounted), so it costs nothing outside the egg. Plain `.animation` (not the
-/// `paused:` overload), so the sway starts immediately when Drunk Mode is switched on with the popover
-/// already open — the visibility-coupled overload only attached on a window show, freezing in-place toggles.
+/// inactive (no `TimelineView`, no effect), so it costs nothing outside the egg. While Drunk is active the
+/// sway clock is mounted only with the popover on-screen (a fresh mount on in-place activation starts it
+/// immediately, unlike the reverted `.animation(paused:)` overload); when Drunk is active but the popover
+/// is hidden it freezes the distortion at a static frame rather than dropping it, so the look doesn't snap
+/// off on close. The three branches are deliberate — collapsing active-but-hidden into the inactive branch
+/// would visibly remove the blur the instant the popover closes.
 private struct DrunkDistortion: ViewModifier {
     let active: Bool
+    @Environment(\.popoverIsVisible) private var shown
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if active {
+        if active && shown {
             TimelineView(.animation) { timeline in
-                let t = timeline.date.timeIntervalSinceReferenceDate
-                content
-                    .saturation(1.55)
-                    .blur(radius: 3.6)
-                    .hueRotation(.degrees(sin(t * 1.1) * 16))
-                    .scaleEffect(1.05 * (1 + sin(t * 1.2) * 0.018))   // over-scale hides sway gaps
-                    .rotationEffect(.degrees(sin(t * 1.5) * 1.1))     // the room is spinning
+                distort(content, at: timeline.date.timeIntervalSinceReferenceDate)
             }
+            .transition(.identity)
+        } else if active {
+            distort(content, at: Date().timeIntervalSinceReferenceDate)
+                .transition(.identity)
         } else {
             content
         }
+    }
+
+    private func distort(_ content: Content, at t: TimeInterval) -> some View {
+        content
+            .saturation(1.55)
+            .blur(radius: 3.6)
+            .hueRotation(.degrees(sin(t * 1.1) * 16))
+            .scaleEffect(1.05 * (1 + sin(t * 1.2) * 0.018))   // over-scale hides sway gaps
+            .rotationEffect(.degrees(sin(t * 1.5) * 1.1))     // the room is spinning
     }
 }
 
 /// The pink-glass haze layered over the content: a clear-glass lens (the deliberate Liquid Glass abuse)
 /// and a slowly churning pink wash — double-vision territory.
 private struct DrunkOverlays: View {
+    @Environment(\.popoverIsVisible) private var shown
+
     var body: some View {
-        TimelineView(.animation) { timeline in
-            let t = timeline.date.timeIntervalSinceReferenceDate
-            ZStack {
-                glassLens()
-                AngularGradient(colors: partyColors, center: .center, angle: .degrees(t * 26))
-                    .opacity(0.5)
+        if shown {
+            TimelineView(.animation) { timeline in
+                haze(at: timeline.date.timeIntervalSinceReferenceDate)
             }
+            .transition(.identity)
+        } else {
+            haze(at: Date().timeIntervalSinceReferenceDate)
+                .transition(.identity)
+        }
+    }
+
+    private func haze(at t: TimeInterval) -> some View {
+        ZStack {
+            glassLens()
+            AngularGradient(colors: partyColors, center: .center, angle: .degrees(t * 26))
+                .opacity(0.5)
         }
     }
 
