@@ -17,4 +17,45 @@ final class PopoverVisibilityReaderTests: XCTestCase {
         XCTAssertTrue(triggers.contains(NSWindow.didBecomeKeyNotification),
                       "becoming key catches the first show occlusion misses")
     }
+
+    // MARK: - Delivery rule (suppress a `false` before any `true` — PR #784 right-click → Settings)
+
+    func testSuppressesPreShowFalseBeforeAnyShow() {
+        // The regression: the reader mounts into the not-yet-ordered-front panel and reports false. That
+        // must NOT be delivered — delivering it runs resetTransientState and clobbers a Settings screen
+        // openSettings pre-set before showing.
+        XCTAssertFalse(PopoverVisibilityReader.shouldDeliver(false, lastVisible: nil))
+    }
+
+    func testDeliversFirstShow() {
+        XCTAssertTrue(PopoverVisibilityReader.shouldDeliver(true, lastVisible: nil))
+    }
+
+    func testDeliversRealDismissalAfterAShow() {
+        XCTAssertTrue(PopoverVisibilityReader.shouldDeliver(false, lastVisible: true))
+    }
+
+    func testDeliversReshow() {
+        XCTAssertTrue(PopoverVisibilityReader.shouldDeliver(true, lastVisible: false))
+    }
+
+    func testDedupesUnchangedReports() {
+        XCTAssertFalse(PopoverVisibilityReader.shouldDeliver(false, lastVisible: false))
+        XCTAssertFalse(PopoverVisibilityReader.shouldDeliver(true, lastVisible: true))
+    }
+
+    func testTypicalSequenceDeliversOnlyShowAndRealDismissal() {
+        // Walk the lifecycle through the same logic `report` uses: pre-show false (suppressed) → first
+        // show (delivered) → close (delivered).
+        var last: Bool?
+        var delivered: [Bool] = []
+        func report(_ visible: Bool) {
+            if PopoverVisibilityReader.shouldDeliver(visible, lastVisible: last) { delivered.append(visible) }
+            last = visible
+        }
+        report(false)   // reader mounts into the not-yet-shown panel
+        report(true)    // makeKeyAndOrderFront
+        report(false)   // orderOut
+        XCTAssertEqual(delivered, [true, false], "only the real show and the real dismissal are delivered")
+    }
 }

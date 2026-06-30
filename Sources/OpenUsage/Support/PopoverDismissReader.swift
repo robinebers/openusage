@@ -34,6 +34,23 @@ struct PopoverVisibilityReader: NSViewRepresentable {
         NSWindow.didBecomeKeyNotification
     ]
 
+    /// Whether a visibility report should be delivered to `onChange`, given the value being reported and
+    /// the last delivered value. A `false` before any `true` (`lastVisible == nil`) is **not** a dismissal
+    /// — the popover was never shown, so there is nothing transient to reset — and is suppressed: the
+    /// reader mounts into the not-yet-ordered-front panel during `showPanel`'s pre-show layout, where
+    /// `isVisible` is still false, and delivering it would run the consumer's `resetTransientState` and
+    /// clobber a screen `openSettings` pre-set before showing. A real `orderOut` always arrives as a
+    /// `false` *after* a `true` (via the occlusion notification while the view is still in its window), so
+    /// genuine dismissals are unaffected. This suppression is deliberate — do not "fix" it to deliver the
+    /// initial `false`.
+    ///
+    /// `nonisolated static` so tests exercise it without a window or a MainActor hop (cf. the sibling
+    /// `PopoverKeyReader.keyTargetsPopover`).
+    nonisolated static func shouldDeliver(_ visible: Bool, lastVisible: Bool?) -> Bool {
+        guard let lastVisible else { return visible }   // first report: deliver only a `true`
+        return lastVisible != visible                   // otherwise deliver real changes
+    }
+
     func makeNSView(context: Context) -> NSView {
         let view = VisibilityView()
         view.onChange = onChange
@@ -54,7 +71,11 @@ struct PopoverVisibilityReader: NSViewRepresentable {
             observers.forEach(NotificationCenter.default.removeObserver)
             observers.removeAll()
             guard let window else {
-                report(false)
+                // Detaching from the window is not a dismissal: the panel is retained on close
+                // (`isReleasedWhenClosed = false`) and this reader is a permanent root-level `.background`,
+                // so this fires only on real teardown, never on a popover close. A genuine `orderOut` is
+                // already caught by the occlusion observer while the view is still in its window, so don't
+                // report `false` here — doing so could reset a still-on-screen popover.
                 return
             }
             // Two triggers, because neither alone catches every transition. The value reported is always
@@ -87,9 +108,11 @@ struct PopoverVisibilityReader: NSViewRepresentable {
         }
 
         private func report(_ visible: Bool) {
-            guard lastVisible != visible else { return }
+            // Compute from the prior value, then seed, then deliver — so a suppressed first `false`
+            // still updates `lastVisible` (next real change is detected) without firing `onChange`.
+            let deliver = PopoverVisibilityReader.shouldDeliver(visible, lastVisible: lastVisible)
             lastVisible = visible
-            onChange?(visible)
+            if deliver { onChange?(visible) }
         }
     }
 }
