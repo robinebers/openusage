@@ -75,7 +75,7 @@ final class ProviderLinksTests: XCTestCase {
     /// Every installed provider ships at most two quick links with standard labels.
     @MainActor
     func testInstalledProvidersRespectQuickLinkCap() {
-        let allowed = Set(["Status", "Dashboard", "API Keys", "Usage"])
+        let allowed = Set(["Status", "Dashboard", "API Keys", "Usage", "Activity", "Credits"])
         let providers: [ProviderRuntime] = [
             ClaudeProvider(), CodexProvider(), CursorProvider(),
             AntigravityProvider(), CopilotProvider(), DevinProvider(),
