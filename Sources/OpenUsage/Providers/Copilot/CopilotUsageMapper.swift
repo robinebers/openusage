@@ -39,12 +39,14 @@ enum CopilotUsageMapper {
         // Chat + completions: real per-bucket counts on free; the `-1` "unlimited" sentinel on paid
         // (suppressed by `snapshotLine`). Older free responses without `quota_snapshots` fall back to
         // `limited_user_quotas` / `monthly_quotas` below.
-        let chat = snapshotLine(label: "Chat", snapshots?["chat"], resetsAt: resetsAt)
-        let completions = snapshotLine(label: "Completions", snapshots?["completions"], resetsAt: resetsAt)
-        appendIfPresent(&lines, chat)
-        appendIfPresent(&lines, completions)
+        appendIfPresent(&lines, snapshotLine(label: "Chat", snapshots?["chat"], resetsAt: resetsAt))
+        appendIfPresent(&lines, snapshotLine(label: "Completions", snapshots?["completions"], resetsAt: resetsAt))
 
-        if chat == nil, completions == nil {
+        // Legacy free-tier shape (predates `quota_snapshots`): remaining counts against monthly limits.
+        // Gated on nothing else having been produced — otherwise a paid account (Credits present,
+        // chat/completions suppressed as unlimited) that still carried `limited_user_quotas` would
+        // wrongly show free-tier meters alongside Credits.
+        if lines.isEmpty {
             let limited = body["limited_user_quotas"] as? [String: Any]
             let monthly = body["monthly_quotas"] as? [String: Any]
             appendIfPresent(&lines, limitedLine(label: "Chat", remaining: limited?["chat"], total: monthly?["chat"], resetsAt: resetsAt))

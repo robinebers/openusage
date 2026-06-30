@@ -193,6 +193,25 @@ final class CopilotUsageMapperTests: XCTestCase {
         XCTAssertNil(mapped.lines.first(where: { $0.label == "Extra Usage" }))
     }
 
+    func testIgnoresLegacyLimitedQuotasWhenSnapshotsPresent() throws {
+        // A paid response with Credits present and chat/completions unlimited (-1) must NOT fall back to
+        // the legacy limited_user_quotas path, even if the payload still carries it — doing so would show
+        // free-tier Chat/Completions meters on a paid account alongside Credits.
+        var body = makePaidBody()
+        var quota = body["quota_snapshots"] as! [String: Any]
+        quota["chat"] = ["entitlement": -1, "remaining": -1, "quota_id": "chat"]
+        quota["completions"] = ["entitlement": -1, "remaining": -1, "quota_id": "completions"]
+        body["quota_snapshots"] = quota
+        body["limited_user_quotas"] = ["chat": 100, "completions": 1000]
+        body["monthly_quotas"] = ["chat": 500, "completions": 4000]
+
+        let mapped = try CopilotUsageMapper.map(body: body)
+
+        XCTAssertNotNil(progress(mapped.lines, "Credits"))
+        XCTAssertNil(progress(mapped.lines, "Chat"))
+        XCTAssertNil(progress(mapped.lines, "Completions"))
+    }
+
     func testSuppressesZeroEntitlementPlaceholder() throws {
         let body: [String: Any] = [
             "copilot_plan": "business",
