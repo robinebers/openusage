@@ -2,10 +2,6 @@ provider:
   - changed-files:
       - any-glob-to-any-file: "Sources/OpenUsage/Providers/**"
 
-core:
-  - changed-files:
-      - any-glob-to-any-file: "Sources/**"
-
 tests:
   - changed-files:
       - any-glob-to-any-file: "Tests/**"

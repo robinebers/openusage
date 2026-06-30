@@ -1,33 +1,33 @@
-## Description
+<!-- OpenUsage has a strict, issue-first PR policy. External pull requests are closed
+automatically unless they link an issue a maintainer has approved with the `approved`
+label, stay under 1,000 changed lines, and include screenshots for visual changes.
+See CONTRIBUTING.md. Maintainers and collaborators may open PRs directly. -->
 
-<!-- What does this PR do and why? -->
+## Approved issue
 
-## Related Issue
+<!-- External PRs require an open issue approved with the `approved` label. -->
+Fixes #
 
-<!-- Link to the issue this PR addresses: Fixes #123 -->
+## TL;DR
 
-## Type of Change
+<!-- One or two plain-English sentences: what does this PR do? -->
 
-- [ ] Bug fix
-- [ ] New feature
-- [ ] New provider
-- [ ] Documentation
-- [ ] Performance improvement
-- [ ] Other (describe below)
+## What was happening
 
-## Testing
+<!-- The prior behavior, bug, or gap that motivated this change. -->
 
-- [ ] I ran `swift build` and it succeeded
-- [ ] I ran `swift test` and all tests pass
-- [ ] I tested the change locally with `./script/build_and_run.sh`
+## What this changes
+
+<!-- What this PR actually changes. -->
+
+## Heads-up
+
+<!-- Optional: risks, follow-ups, or trade-offs a reviewer should know. Delete if none. -->
+
+## Tests
+
+<!-- Optional: how you verified the change. Delete if none. -->
 
 ## Screenshots
 
-<!-- Required for UI changes. Remove this section if not applicable. -->
-
-## Checklist
-
-- [ ] I read [CONTRIBUTING.md](../CONTRIBUTING.md)
-- [ ] My PR targets the `main` branch
-- [ ] **Behavior change?** I updated the matching `docs/` page(s) in this same PR (required when user-visible behavior changes — a docs/code mismatch is treated as a bug)
-- [ ] I did not introduce new dependencies without justification
+<!-- Required for any visual change: include before/after images. Write "Not applicable" if this isn't a visual change. -->
