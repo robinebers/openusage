@@ -242,6 +242,99 @@ final class CodexUsageMapperTests: XCTestCase {
         XCTAssertEqual(progress(mapped.lines, "Weekly")?.used, 7)
     }
 
+    func testSurfacesSparkLinesFromAdditionalRateLimits() throws {
+        // The usage body carries model-specific limits in `additional_rate_limits`; the Spark entry's
+        // primary/secondary windows become the Spark (5-hour) and Spark Weekly meters. Regression for
+        // issue #796 — the Swift edition dropped these when it didn't port the JS plugin's parsing.
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let nowSec = Int(now.timeIntervalSince1970)
+        let body = Data("""
+        {
+          "rate_limit": {
+            "primary_window": { "used_percent": 5, "reset_after_seconds": 60 },
+            "secondary_window": { "used_percent": 10, "reset_after_seconds": 120 }
+          },
+          "additional_rate_limits": [
+            {
+              "limit_name": "GPT-5.3-Codex-Spark",
+              "metered_feature": "codex_bengalfox",
+              "rate_limit": {
+                "primary_window": {
+                  "used_percent": 25,
+                  "limit_window_seconds": 18000,
+                  "reset_after_seconds": 3600,
+                  "reset_at": \(nowSec + 3600)
+                },
+                "secondary_window": {
+                  "used_percent": 40,
+                  "limit_window_seconds": 604800,
+                  "reset_after_seconds": 86400,
+                  "reset_at": \(nowSec + 86400)
+                }
+              }
+            }
+          ]
+        }
+        """.utf8)
+        let response = HTTPResponse(statusCode: 200, headers: [:], body: body)
+
+        let mapped = try CodexUsageMapper.mapUsageResponse(response, now: now)
+
+        XCTAssertEqual(progress(mapped.lines, "Spark")?.used, 25)
+        XCTAssertEqual(progress(mapped.lines, "Spark")?.periodDurationMs, 18_000_000)
+        XCTAssertEqual(progress(mapped.lines, "Spark")?.resetsAt,
+                       Date(timeIntervalSince1970: TimeInterval(nowSec + 3600)))
+        XCTAssertEqual(progress(mapped.lines, "Spark Weekly")?.used, 40)
+        XCTAssertEqual(progress(mapped.lines, "Spark Weekly")?.periodDurationMs, 604_800_000)
+        // The core Session/Weekly windows are unaffected by the new parsing.
+        XCTAssertEqual(progress(mapped.lines, "Session")?.used, 5)
+        XCTAssertEqual(progress(mapped.lines, "Weekly")?.used, 10)
+    }
+
+    func testMatchesSparkByMeteredFeatureWhenLimitNameLacksSpark() throws {
+        // `limit_name` wording can shift; matching `metered_feature` too keeps the row resolving.
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let body = Data("""
+        {
+          "additional_rate_limits": [
+            {
+              "limit_name": "Research Preview",
+              "metered_feature": "codex_spark_preview",
+              "rate_limit": { "primary_window": { "used_percent": 12, "reset_after_seconds": 60 } }
+            }
+          ]
+        }
+        """.utf8)
+        let response = HTTPResponse(statusCode: 200, headers: [:], body: body)
+
+        let mapped = try CodexUsageMapper.mapUsageResponse(response, now: now)
+
+        XCTAssertEqual(progress(mapped.lines, "Spark")?.used, 12)
+    }
+
+    func testIgnoresNonSparkAndMalformedAdditionalRateLimits() throws {
+        // Non-Spark model limits have no descriptors, so they aren't surfaced; a null/non-dictionary
+        // element is skipped without discarding its siblings; a Spark entry missing `rate_limit` yields
+        // no lines. None of this should ever throw.
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let body = Data("""
+        {
+          "additional_rate_limits": [
+            null,
+            { "limit_name": "Some Other Model", "rate_limit": { "primary_window": { "used_percent": 50, "reset_after_seconds": 60 } } },
+            { "limit_name": "GPT-5.3-Codex-Spark" }
+          ]
+        }
+        """.utf8)
+        let response = HTTPResponse(statusCode: 200, headers: [:], body: body)
+
+        let mapped = try CodexUsageMapper.mapUsageResponse(response, now: now)
+
+        XCTAssertNil(progress(mapped.lines, "Spark"))
+        XCTAssertNil(progress(mapped.lines, "Spark Weekly"))
+        XCTAssertNil(progress(mapped.lines, "Some Other Model"))
+    }
+
     func testAppendsTokenUsageLines() {
         var lines: [MetricLine] = []
         let usage = DailyUsageSeries(daily: [

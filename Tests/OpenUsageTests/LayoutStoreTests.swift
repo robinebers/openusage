@@ -614,7 +614,8 @@ final class LayoutStoreTests: XCTestCase {
             "claude.trend", "claude.today", "claude.yesterday", "claude.last30"
         ])
         XCTAssertEqual(store.orderedSupportedMetrics(for: "codex").map(\.id), [
-            "codex.session", "codex.weekly", "codex.credits", "codex.rateLimitResets",
+            "codex.session", "codex.weekly", "codex.spark", "codex.sparkWeekly",
+            "codex.credits", "codex.rateLimitResets",
             "codex.trend", "codex.today", "codex.yesterday", "codex.last30"
         ])
         XCTAssertEqual(store.orderedSupportedMetrics(for: "devin").map(\.id), [
@@ -644,7 +645,7 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertEqual(Set(store.placed.map(\.descriptorID)), Set([
             "claude.session", "claude.weekly", "claude.trend",
             "claude.extra", "claude.today", "claude.yesterday", "claude.last30",
-            "codex.session", "codex.weekly", "codex.trend",
+            "codex.session", "codex.weekly", "codex.spark", "codex.sparkWeekly", "codex.trend",
             "codex.credits", "codex.rateLimitResets", "codex.today", "codex.yesterday", "codex.last30",
             "devin.daily", "devin.weekly", "devin.extra",
             "grok.creditsUsed", "grok.trend",
@@ -669,7 +670,9 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertEqual(primaryByProvider["claude"], ["claude.session", "claude.weekly", "claude.extra", "claude.trend"])
         XCTAssertEqual(expandedByProvider["claude"], ["claude.sonnet", "claude.today", "claude.yesterday", "claude.last30"])
         XCTAssertEqual(primaryByProvider["codex"], ["codex.session", "codex.weekly", "codex.trend"])
+        // Spark (the optional model-specific limits) leads the expanded section, before credits.
         XCTAssertEqual(expandedByProvider["codex"], [
+            "codex.spark", "codex.sparkWeekly",
             "codex.credits", "codex.rateLimitResets", "codex.today", "codex.yesterday", "codex.last30"
         ])
         XCTAssertEqual(primaryByProvider["devin"], ["devin.daily", "devin.weekly"])
