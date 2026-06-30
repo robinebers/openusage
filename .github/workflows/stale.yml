@@ -29,4 +29,4 @@ jobs:
           stale-issue-label: stale
           stale-pr-label: stale
           exempt-issue-labels: "pinned,security,approved,help wanted"
-          exempt-pr-labels: "pinned,security,keep-open,approved,pre-approved"
+          exempt-pr-labels: "pinned,security,keep-open,approved,gate-passed"
