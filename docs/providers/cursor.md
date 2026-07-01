@@ -29,4 +29,4 @@ Cursor's per-day spend tiles (Today / Yesterday / Last 30 Days) and the Usage Tr
 
 ## Under the hood
 
-Connect RPC on `api2.cursor.sh` (dashboard usage), REST fallback at `cursor.com/api/usage` for request-based accounts, and Stripe balance at `cursor.com/api/auth/stripe`. A 401/403 triggers one token refresh and retry. (The usage-events CSV export at `cursor.com/api/dashboard/export-usage-events-csv` previously fed the spend history; it's not currently fetched — see above.)
+Connect RPC on `api2.cursor.sh` (dashboard usage), REST fallback at `cursor.com/api/usage` for request-based accounts, and Stripe balance at `cursor.com/api/auth/stripe`. A 401/403 triggers one token refresh and retry. Per-day spend imputation uses token counts and bundled rates in `model_manifest.json` (maintainers sync from [Cursor models & pricing](https://cursor.com/docs/models-and-pricing.md)). (The usage-events CSV export at `cursor.com/api/dashboard/export-usage-events-csv` previously fed the spend history; it's not currently fetched — see above.)

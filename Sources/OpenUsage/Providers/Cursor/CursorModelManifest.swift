@@ -3,6 +3,8 @@ import Foundation
 /// Bundled model-pricing manifest used to impute Cursor spend from the usage CSV.
 /// Ported from `../cursorcat/Sources/CursorCat/Support/ModelManifest.swift`; the only
 /// behavioral change is loading via `Bundle.module` instead of cursorcat's `AppBundle`.
+/// When adding models, sync rates from Cursor's docs:
+/// https://cursor.com/docs/models-and-pricing.md
 struct CursorModelManifest: Decodable, Sendable {
     let retrievedAt: String
     let pricing: [String: CursorModelManifestPricingEntry]

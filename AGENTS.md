@@ -33,6 +33,7 @@ AGENTS.md is the source of truth for agent instructions in this repository. CLAU
 Conventions for the per-provider modules under `Sources/OpenUsage/Providers/<Name>/`.
 
 - **Structure:** one folder per provider with an auth store (reads credentials already on the user's machine), a usage client (calls the provider API), and a mapper (normalizes to `MetricLine`), conforming to `ProviderRuntime`. See `docs/adding-a-provider.md`.
+- **Cursor spend imputation:** per-model token rates live in `Sources/OpenUsage/Resources/model_manifest.json`. Sync new or changed models from [Cursor models & pricing](https://cursor.com/docs/models-and-pricing.md) (update `retrieved_at`, pricing entries, and `alias_rules` for CSV model slugs).
 - **Default order:** Claude, Codex, Cursor first (the established providers, in that order), then every other provider alphabetically by display name (Antigravity, Devin, Grok, …). The order is the array order in `AppContainer`, which seeds `LayoutStore`'s default provider order (and `resetToDefault`). A new provider slots into the alphabetical tail.
 - **Metric placement defaults:** when adding or changing a metric, confirm its four defaults with the owner before choosing — never pick silently:
   1. enabled on/off (`DefaultLayout.metricIDs`),
