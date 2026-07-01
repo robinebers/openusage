@@ -82,6 +82,25 @@ final class CursorPricingTests: XCTestCase {
         XCTAssertEqual(fable.outputPerMillion, opus48.outputPerMillion * 2)
     }
 
+    /// Claude Sonnet 5 (2026-07-01): same API pool rates as Claude 4.6 Sonnet; thinking/effort slugs
+    /// resolve to one canonical entry. Cursor's page notes a launch promo ($2/$10 per M) through Aug 2026;
+    /// imputation uses the listed API rates ($3/$15) like other Sonnet rows.
+    func testClaudeSonnet5PricingAndAliases() throws {
+        XCTAssertEqual(CursorPricing.canonicalModel(for: "claude-sonnet-5"), "claude-sonnet-5")
+        XCTAssertEqual(CursorPricing.canonicalModel(for: "claude-sonnet-5-thinking-high"), "claude-sonnet-5")
+
+        let sonnet5 = try XCTUnwrap(CursorPricing.pricingEntry(for: "claude-sonnet-5"))
+        XCTAssertEqual(sonnet5.familyDisplayName, "Claude Sonnet 5")
+        XCTAssertEqual(sonnet5.inputPerMillion, 3.0)
+        XCTAssertEqual(sonnet5.cacheWritePerMillion, 3.75)
+        XCTAssertEqual(sonnet5.cacheReadPerMillion, 0.3)
+        XCTAssertEqual(sonnet5.outputPerMillion, 15.0)
+
+        let sonnet46 = try XCTUnwrap(CursorPricing.pricingEntry(for: "claude-4.6-sonnet"))
+        XCTAssertEqual(sonnet5.inputPerMillion, sonnet46.inputPerMillion)
+        XCTAssertEqual(sonnet5.outputPerMillion, sonnet46.outputPerMillion)
+    }
+
     /// GLM 5.2 (Z.ai) was added to Cursor's pricing page after the 2026-06-09 manifest sync. It ships
     /// as two reasoning-effort variants — `glm-5.2-high` and `glm-5.2-max` — which both resolve to the
     /// one canonical `glm-5.2` entry. The pricing page lists no separate cache-write price, so cache

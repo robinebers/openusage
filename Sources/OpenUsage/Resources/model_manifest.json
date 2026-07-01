@@ -1,5 +1,5 @@
 {
-  "retrieved_at": "2026-06-09",
+  "retrieved_at": "2026-07-01",
   "pricing": {
     "auto": {
       "display_name": "Auto",
@@ -224,6 +224,17 @@
       "cache_read_per_million": 1.0,
       "output_per_million": 50.0,
       "apply_max_mode_uplift": false
+    },
+    "claude-sonnet-5": {
+      "display_name": "Claude Sonnet 5",
+      "provider": "anthropic",
+      "family_id": "claude-sonnet-5",
+      "family_display_name": "Claude Sonnet 5",
+      "input_per_million": 3.0,
+      "cache_write_per_million": 3.75,
+      "cache_read_per_million": 0.3,
+      "output_per_million": 15.0,
+      "apply_max_mode_uplift": true
     },
     "gemini-3-flash": {
       "display_name": "Gemini 3 Flash",
@@ -625,6 +636,7 @@
     { "pattern": "^claude-opus-4-8(?:-thinking)?(?:-(?:low|medium|high|xhigh|max))?-fast$", "canonical": "claude-4.8-opus-fast" },
     { "pattern": "^claude-opus-4-8(?:-thinking)?(?:-(?:low|medium|high|xhigh|max))?$", "canonical": "claude-4.8-opus" },
     { "pattern": "^claude-fable-5(?:-thinking)?(?:-(?:low|medium|high|xhigh|max))?$", "canonical": "claude-fable-5" },
+    { "pattern": "^claude-sonnet-5(?:-thinking)?(?:-(?:low|medium|high|xhigh|max))?$", "canonical": "claude-sonnet-5" },
     { "pattern": "^gemini-2\\.5-flash$", "canonical": "gemini-2.5-flash" },
     { "pattern": "^gemini-3-flash(?:-preview)?$", "canonical": "gemini-3-flash" },
     { "pattern": "^gemini-3\\.5-flash(?:-preview)?$", "canonical": "gemini-3.5-flash" },
