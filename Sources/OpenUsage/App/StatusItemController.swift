@@ -49,8 +49,10 @@ final class StatusItemController: NSObject {
     private static let topGap: CGFloat = 4
     /// Corner radius of the panel surface; tuned to read like a system menu-bar popover.
     private static let cornerRadius: CGFloat = 13
-    /// Smallest the panel can be dragged — room for the footer plus a couple of rows.
-    private static let minPanelHeight: CGFloat = 480
+    /// Smallest the panel can be — room for the footer plus a single provider card. Kept low so the
+    /// auto-fit morph can shrink the panel to match its content instead of showing blank space when
+    /// only one or two providers are enabled (#800).
+    private static let minPanelHeight: CGFloat = 200
     /// Opening height before the user has ever resized the panel.
     private static let defaultPanelHeight: CGFloat = 800
     /// True while a SwiftUI-driven height morph is in flight. Outside-click dismissal is suspended for
