@@ -178,6 +178,10 @@ final class WidgetDataStore {
             guard data.isBounded else { continue }
             let state = data.meterState(now: now)
             let previous = notificationState[key] ?? NotificationState()
+            // Debug-only decision trace: record the inputs to each pace-notification check so a repeat
+            // alert can be matched against the exact state, reset timestamp, and prior dedupe flags.
+            let currentBucket = PaceNotificationLogic.bucket(for: state)
+            AppLog.debug(.notifications, "check \(key): metric=\(data.title) state=\(Self.notificationStateDescription(state)) bucket=\(Self.bucketDescription(currentBucket)) previousBucket=\(Self.bucketDescription(previous.previousBucket)) remaining=\(Self.percentDescription(data.remainingFraction)) reset=\(Self.dateDescription(data.resetsAt)) previousReset=\(Self.dateDescription(previous.resetsAt)) resetAdvanced=\(Self.resetAdvanced(current: data.resetsAt, previous: previous.resetsAt)) primed=\(previous.primed) wasUnderTen=\(previous.wasUnderTenPercent) firedBefore=\(Self.milestoneDescription(previous.firedMilestones)) toggles=\(Self.toggleDescription(toggles))")
             let result = PaceNotificationLogic.transitions(
                 state: state,
                 fraction: data.remainingFraction,
@@ -185,6 +189,7 @@ final class WidgetDataStore {
                 previous: previous,
                 toggles: toggles
             )
+            AppLog.debug(.notifications, "decision \(key): fire=\(Self.milestoneDescription(result.fire)) newBucket=\(Self.bucketDescription(result.newState.previousBucket)) newReset=\(Self.dateDescription(result.newState.resetsAt)) newWasUnderTen=\(result.newState.wasUnderTenPercent) newPrimed=\(result.newState.primed) newFired=\(Self.milestoneDescription(result.newState.firedMilestones))")
             // Deliver each fired milestone, then commit dedup state only for the ones that actually
             // delivered. The logic doesn't mark milestones fired — that's done here, after delivery
             // succeeds, so a skipped/failed delivery (not authorized, or `add` errored) leaves the
@@ -205,6 +210,9 @@ final class WidgetDataStore {
             }
             if result.fire.contains(.underTenPercent) && !underDelivered {
                 next.wasUnderTenPercent = previous.wasUnderTenPercent
+            }
+            if !result.fire.isEmpty {
+                AppLog.debug(.notifications, "commit \(key): paceDelivered=\(paceDelivered) underTenDelivered=\(underDelivered) persistedBucket=\(Self.bucketDescription(next.previousBucket)) persistedWasUnderTen=\(next.wasUnderTenPercent) persistedFired=\(Self.milestoneDescription(next.firedMilestones))")
             }
             nextState[key] = next
         }
@@ -231,6 +239,61 @@ final class WidgetDataStore {
     /// because the provider failed within the last `failureRetryBackoff` — distinct from `.skipped`
     /// (disabled / unknown / already in flight) so a wake-burst's suppression is visible in the logs.
     enum RefreshOutcome: Sendable { case refreshed, failed, cacheHit, skipped, backedOff }
+
+    // MARK: - Notification decision trace helpers (debug logging only)
+
+    /// True when the reset timestamp moved later or appeared where there was none — the condition that
+    /// would reset pace-notification dedupe. Logged so a repeat alert can be tied back to a rolling window.
+    private static func resetAdvanced(current: Date?, previous: Date?) -> Bool {
+        guard let current else { return false }
+        return previous == nil || current > (previous ?? .distantPast)
+    }
+
+    private static func dateDescription(_ date: Date?) -> String {
+        date.map { OpenUsageISO8601.string(from: $0) } ?? "nil"
+    }
+
+    private static func percentDescription(_ value: Double) -> String {
+        String(format: "%.1f%%", value * 100)
+    }
+
+    private static func toggleDescription(_ toggles: PaceNotificationToggles) -> String {
+        "under10=\(toggles.underTenPercent),close=\(toggles.healthyToClose),runOut=\(toggles.closeToRunningOut)"
+    }
+
+    private static func milestoneDescription(_ milestones: Set<PaceMilestone>) -> String {
+        milestoneDescription(milestones.sorted { $0.rawValue < $1.rawValue })
+    }
+
+    private static func milestoneDescription(_ milestones: [PaceMilestone]) -> String {
+        guard !milestones.isEmpty else { return "[]" }
+        return "[" + milestones.map(\.rawValue).joined(separator: ",") + "]"
+    }
+
+    private static func bucketDescription(_ bucket: PaceBucket) -> String {
+        switch bucket {
+        case .untracked: return "untracked"
+        case .healthy: return "healthy"
+        case .close: return "close"
+        case .runningOut: return "runningOut"
+        }
+    }
+
+    private static func notificationStateDescription(_ state: WidgetData.MeterState) -> String {
+        switch state {
+        case .noData: return "noData"
+        case .spent: return "spent"
+        case .runningOut: return "runningOut"
+        case .closeToLimit: return "closeToLimit"
+        case .healthy: return "healthy"
+        case .level(let severity):
+            switch severity {
+            case .normal: return "level.normal"
+            case .warning: return "level.warning"
+            case .critical: return "level.critical"
+            }
+        }
+    }
 
     @discardableResult
     func refresh(providerID: String, force: Bool = false) async -> RefreshOutcome {
