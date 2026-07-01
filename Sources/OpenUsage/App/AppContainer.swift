@@ -46,6 +46,7 @@ final class AppContainer {
             CopilotProvider(),
             DevinProvider(),
             GrokProvider(),
+            OpenCodeGoProvider(),
             OpenRouterProvider(),
             ZAIProvider()
         ]

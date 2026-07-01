@@ -209,6 +209,16 @@ extension ZAIUsageError: CategorizedError {
     }
 }
 
+extension OpenCodeGoUsageError: CategorizedError {
+    var errorCategory: ErrorCategory {
+        switch self {
+        case .connectionFailed: .network
+        case .invalidResponse, .noUsageSource: .notAvailable
+        case .requestFailed(let status): ErrorCategory.http(status)
+        }
+    }
+}
+
 extension HTTPClientError: CategorizedError {
     var errorCategory: ErrorCategory {
         switch self {
