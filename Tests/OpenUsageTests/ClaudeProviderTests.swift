@@ -173,6 +173,38 @@ final class ClaudeUsageMapperTests: XCTestCase {
         XCTAssertEqual(progress(mapped.lines, "Extra usage spent")?.limit, 10)
     }
 
+    func testMapsFableScopedWeeklyLimitFromLimitsArray() throws {
+        // Anthropic moved per-model weekly windows into `limits[]` as `weekly_scoped` rows keyed by
+        // `scope.model.display_name`; the legacy `seven_day_<model>` top-level keys now come back null.
+        let response = HTTPResponse(
+            statusCode: 200,
+            headers: [:],
+            body: Data("""
+            {
+              "five_hour": { "utilization": 10, "resets_at": "2099-01-01T00:00:00.000Z" },
+              "seven_day": { "utilization": 20, "resets_at": "2099-01-01T00:00:00.000Z" },
+              "seven_day_sonnet": null,
+              "limits": [
+                { "kind": "session", "group": "session", "percent": 10, "resets_at": "2099-01-01T00:00:00.000Z" },
+                { "kind": "weekly_all", "group": "weekly", "percent": 20, "resets_at": "2099-01-08T00:00:00.000Z" },
+                { "kind": "weekly_scoped", "group": "weekly", "percent": 7,
+                  "resets_at": "2099-01-08T00:00:00.000Z",
+                  "scope": { "model": { "display_name": "Fable", "id": null }, "surface": null } }
+              ]
+            }
+            """.utf8)
+        )
+
+        let mapped = try ClaudeUsageMapper.mapUsageResponse(
+            response,
+            credentials: ClaudeOAuth(subscriptionType: "max")
+        )
+
+        XCTAssertEqual(progress(mapped.lines, "Fable")?.used, 7)
+        XCTAssertEqual(progress(mapped.lines, "Fable")?.limit, 100)
+        XCTAssertEqual(progress(mapped.lines, "Fable")?.periodDurationMs, ClaudeUsageMapper.weeklyPeriodMs)
+    }
+
     func testUncappedExtraUsageIsAnUnboundedValuesRow() throws {
         // No `monthly_limit`: the spend has no cap, so it's an unbounded `.values` row (which formats
         // through `MetricFormatter`, matching the spend tiles) rather than a baked full-currency `.text`.

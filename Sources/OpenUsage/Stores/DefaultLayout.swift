@@ -74,7 +74,7 @@ enum DefaultLayout {
         "antigravity.claude",
         // Claude's core meters (Session, Weekly, Extra, Usage Trend) stay above the fold; spend-history
         // rows sit below the caret. Matches every other provider's "core above, history below" shape.
-        "claude.sonnet", "claude.today", "claude.yesterday", "claude.last30",
+        "claude.sonnet", "claude.fable", "claude.today", "claude.yesterday", "claude.last30",
         // Codex's core Session/Weekly meters and Usage Trend stay above the fold; Spark (the optional
         // model-specific limits), credits, reset details, and spend rows sit below the caret.
         "codex.spark", "codex.sparkWeekly",

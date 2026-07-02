@@ -24,6 +24,7 @@ enum ClaudeUsageMapper {
         appendUsageWindow(body["five_hour"], label: "Session", periodDurationMs: sessionPeriodMs, to: &lines)
         appendUsageWindow(body["seven_day"], label: "Weekly", periodDurationMs: weeklyPeriodMs, to: &lines)
         appendUsageWindow(body["seven_day_sonnet"], label: "Sonnet", periodDurationMs: weeklyPeriodMs, to: &lines)
+        appendScopedWeeklyLimit(body["limits"], modelName: "Fable", label: "Fable", to: &lines)
         appendExtraUsage(body["extra_usage"], to: &lines)
 
         return ClaudeMappedUsage(
@@ -106,6 +107,32 @@ enum ClaudeUsageMapper {
             resetsAt: resetDate(object["resets_at"]),
             periodDurationMs: periodDurationMs
         ))
+    }
+
+    /// A model-scoped weekly limit from the `limits` array — `kind: "weekly_scoped"` with
+    /// `scope.model.display_name` naming the model (e.g. "Fable"). Anthropic moved the per-model
+    /// weekly windows off the legacy top-level `seven_day_<model>` keys (which now come back null)
+    /// and into this array, so each scoped row is read by display name. `percent` is 0–100.
+    private static func appendScopedWeeklyLimit(_ limits: Any?, modelName: String, label: String, to lines: inout [MetricLine]) {
+        guard let array = limits as? [Any] else { return }
+        for entry in array {
+            guard let object = entry as? [String: Any],
+                  object["kind"] as? String == "weekly_scoped",
+                  let scope = object["scope"] as? [String: Any],
+                  let model = scope["model"] as? [String: Any],
+                  model["display_name"] as? String == modelName,
+                  let used = ProviderParse.number(object["percent"])
+            else { continue }
+            lines.append(.progress(
+                label: label,
+                used: used,
+                limit: 100,
+                format: .percent,
+                resetsAt: resetDate(object["resets_at"]),
+                periodDurationMs: weeklyPeriodMs
+            ))
+            return
+        }
     }
 
     private static func appendExtraUsage(_ value: Any?, to lines: inout [MetricLine]) {
