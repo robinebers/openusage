@@ -43,6 +43,10 @@ struct DashboardView: View {
     @State private var animatedSlideID = 0
     /// Reset to the top whenever the popover closes, so it never reopens mid-scroll.
     @State private var dashboardScrollPosition = ScrollPosition(edge: .top)
+    /// Drives the macOS-native confirmation sheet for the Customize "reset all" button. The alert
+    /// attaches to this panel as a sheet (see `StatusItemController`'s attached-sheet guard), so a
+    /// click on its buttons can't be misread as an outside click that dismisses the popover.
+    @State private var isPresentingResetAllConfirm = false
     /// Row rhythm tracks the global density setting live.
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
 
@@ -228,6 +232,9 @@ struct DashboardView: View {
         // since the layout store survives the popover and only the timer clears it.
         layout.clearShareConfirmation()
         layout.clearCustomizationNotice()
+        // Dismiss a pending Reset All confirmation if the popover closes mid-alert — the SwiftUI tree
+        // survives `orderOut`, so without this the sheet would reappear stale on the next open.
+        isPresentingResetAllConfirm = false
         // Drop the driven height so the next open re-establishes it (un-animated) from the reopened
         // screen's measurement instead of springing from this session's last value. Until then the
         // 0 sentinel keeps `PanelHeightModifier` from pushing, so the controller's opening guess stands.
@@ -364,15 +371,24 @@ struct DashboardView: View {
         case .dashboard:
             EmptyView()
         case .customize:
-            // L2 (provider detail) shows a per-provider reset button; L1 (the list) has no trailing
-            // action. Title swaps to the provider name on L2; back is context-aware (L2 → L1, L1 → dashboard).
+            // L2 (provider detail) shows a per-provider reset button; L1 (the list) carries the
+            // "reset all customization" button in the same trailing slot. Title swaps to the provider
+            // name on L2; back is context-aware (L2 → L1, L1 → dashboard).
             if let id = layout.customizeProviderID {
                 navBar(title: customizeTitle, back: customizeBack) {
                     resetButton(for: id)
                 }
             } else {
                 navBar(title: customizeTitle, back: customizeBack) {
-                    EmptyView()
+                    resetAllButton()
+                }
+                .alert("Reset All Customization?", isPresented: $isPresentingResetAllConfirm) {
+                    Button("Reset All", role: .destructive) {
+                        withAnimation(Motion.spring) { layout.resetToDefault() }
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("Resets every provider, their metrics and the order. Are you sure?")
                 }
             }
         case .settings:
@@ -498,6 +514,27 @@ struct DashboardView: View {
         .controlSize(.large)
         .hoverTooltip("Reset \(layout.provider(id: providerID)?.displayName ?? providerID)")
         .accessibilityLabel("Reset")
+    }
+
+    /// The trailing "reset all customization" button on the L1 Customize list — the all-providers
+    /// counterpart to `resetButton`. Same circular glass idiom and reset icon; the scope (everything
+    /// vs. one provider) is conveyed by the tooltip and the confirmation sheet it opens. The sheet
+    /// (`isPresentingResetAllConfirm`) is a real macOS alert, so a destructive "Reset All" is a
+    /// deliberate two-step action — never a single mis-click that wipes the whole layout.
+    private func resetAllButton() -> some View {
+        Button {
+            isPresentingResetAllConfirm = true
+        } label: {
+            Image(systemName: "arrow.counterclockwise")
+                .font(.system(size: 13, weight: .semibold))
+                .frame(width: 16, height: 16)
+                .contentShape(Rectangle())
+        }
+        .glassButtonStyle()
+        .buttonBorderShape(.circle)
+        .controlSize(.large)
+        .hoverTooltip("Reset All Customization")
+        .accessibilityLabel("Reset All Customization")
     }
 
     // MARK: - Pinned footer

@@ -499,6 +499,10 @@ final class StatusItemController: NSObject {
                 // While the panel is morphing its height, its frame is moving under a possibly
                 // stationary cursor — don't let a click land "outside" a frame that's mid-resize.
                 guard !self.isMorphing else { return }
+                // A sheet is attached to the panel (e.g. the Customize "Reset All Customization"
+                // confirmation alert). A click in another app would otherwise close the popover out
+                // from under the alert — keep the panel open for the sheet's lifetime.
+                guard self.panel.attachedSheet == nil else { return }
                 // Clicking the status item must NOT dismiss here — its own action toggles the panel.
                 // Dismissing on this click's mouse-down would close the panel, then the button action
                 // would reopen it on mouse-up (the close-then-reopen flicker).
@@ -526,6 +530,11 @@ final class StatusItemController: NSObject {
     private func shouldKeepPanelOpen(windowID: ObjectIdentifier?, windowTypeName: String?, screenPoint: NSPoint) -> Bool {
         // The frame is moving mid-morph; a hit-test against it would be racy, so keep the panel open.
         if isMorphing { return true }
+        // A sheet is attached to the panel (e.g. the Customize "Reset All Customization" confirmation
+        // alert). Its buttons live in a child window whose own `event.window` is the sheet, not the
+        // panel — without this guard a click on "Reset All" / "Cancel" reads as an outside click and
+        // dismisses the popover out from under the alert. Keep the panel open for the sheet's lifetime.
+        if panel.attachedSheet != nil { return true }
         if isOnStatusButton(screenPoint: screenPoint) { return true }
         if panel.frame.contains(screenPoint) { return true }
         guard let windowID, let windowTypeName else { return false }

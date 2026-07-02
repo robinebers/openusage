@@ -34,7 +34,7 @@ way, nothing leaves your Mac except the same API calls Z.ai's own subscription U
 export ZAI_API_KEY="YOUR_API_KEY"
 ```
 
-3. Z.ai appears on the dashboard and (after you pin a metric) the menu bar on the next refresh.
+3. Z.ai appears on the dashboard and (after you star a metric) the menu bar on the next refresh.
 
 ## Under the hood
 

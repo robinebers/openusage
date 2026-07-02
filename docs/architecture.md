@@ -43,7 +43,7 @@ The UI reads from a few observable stores:
 
 - `WidgetDataStore` — the latest snapshot per provider, plus refresh and caching. This is what the
   dashboard rows and menu-bar strip read.
-- `LayoutStore` — which metrics are shown, the provider/metric order, and which metrics are pinned to the
+- `LayoutStore` — which metrics are shown, the provider/metric order, and which metrics are starred for the
   menu bar.
 - `ProviderEnablementStore` — which providers the user has turned on or off.
 

@@ -51,7 +51,7 @@ Open Customize from the **⌄** menu next to the footer's Settings button (or pr
 
 The **provider list** shows every provider with a switch to turn it on or off, an Active/Inactive status, a count of its metrics, and a chevron into its detail. Turn a provider off and it stays in the list, greyed — its metrics hide from the dashboard and menu bar but keep their setup for when you turn it back on. Drag providers by their grip to reorder; tap a row to open its detail.
 
-A provider's **detail** has a header (the same on/off switch) and two metric sections: **Always Visible** (shown on the dashboard card) and **On Demand** (tucked behind the card's caret). Each metric row is a switch with its name beside it, a star to pin it to the menu bar, and a drag grip. Drag a metric across the dashed divider between the sections to move it between Always Visible and On Demand, or drag it onto a row on the other side. You can star up to two metrics per provider for the menu bar. Providers that need an API key (OpenRouter today) show an **API Key** section here too — add, edit, or clear the key for just that provider.
+A provider's **detail** has a header (the same on/off switch) and two metric sections: **Always Visible** (shown on the dashboard card) and **On Demand** (tucked behind the card's caret). Each metric row is a switch with its name beside it, a star to add it to the menu bar, and a drag grip. Drag a metric across the dashed divider between the sections to move it between Always Visible and On Demand, or drag it onto a row on the other side. You can star up to two metrics per provider for the menu bar. Providers that need an API key (OpenRouter today) show an **API Key** section here too — add, edit, or clear the key for just that provider.
 
 Drag-reorder also works directly on the dashboard — drag a row within its provider, drag it across the caret boundary while the card is open, or drag a provider header to reorder sections. On a Force Touch trackpad you'll feel a light tap each time the dragged item snaps into a new slot.
 
@@ -59,7 +59,7 @@ The default reset layout keeps each provider's core quota meters and Usage Trend
 
 Made a change you didn't mean to? Press **⌘Z** to undo — it works anywhere in the popover (the dashboard and Customize alike) and steps back through your recent customization changes one at a time: hiding or showing a metric, reordering metrics or whole providers, starring or unstarring, and moving a metric across the divider all undo. Each step restores the exact previous arrangement. Undo is per-session (it starts fresh after a relaunch), and resetting clears it.
 
-When OpenUsage ships a new default metric, existing layouts get it once. If you turn it off, it stays off. The **Reset** button in Customize restores the default metrics, order, menu-bar stars, and which metrics start on demand, but leaves other preferences unchanged.
+When OpenUsage ships a new default metric, existing layouts get it once. If you turn it off, it stays off. A provider's **Reset** button (top right of its detail) restores that provider's default metrics, order, menu-bar stars, and which metrics start on demand, but leaves other providers and the provider order untouched. The **Reset All Customization** button (top right of the provider list) does the same for every provider at once and also restores the default provider order — it asks for confirmation first, since it wipes the whole layout and can't be undone.
 
 ## Keyboard
 
