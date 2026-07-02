@@ -163,6 +163,13 @@ struct DashboardView: View {
                 reorderLift = nil
                 layout.cancelDrag()
             }
+            // The Reset All alert attaches to the Customize L1 nav bar. Leaving the list — back to the
+            // dashboard or into a provider's L2 detail — unmounts that host, which dismisses the alert
+            // but leaves `isPresentingResetAllConfirm` `true`. Drop it whenever L1 stops being visible
+            // so the destructive confirmation can't reappear stale on return without a fresh tap.
+            .onChange(of: layout.screen == .customize && layout.customizeProviderID == nil) { _, isL1Visible in
+                if !isL1Visible { isPresentingResetAllConfirm = false }
+            }
             // Each screen switch: pin to the outgoing screen for one render (`slideProgress = 0`),
             // then spring to the incoming one on the next runloop tick. Deferring the animation one
             // tick is what makes it animate — setting 0 then 1 in the same closure collapses to a
