@@ -13,7 +13,7 @@ swift package resolve
 for d in .agents .claude .codex .cursor; do
     if [ -d "$CODEX_SOURCE_TREE_PATH/$d" ]; then
         mkdir -p "$CODEX_WORKTREE_PATH/$d"
-        rsync -a "$CODEX_SOURCE_TREE_PATH/$d/." "$CODEX_WORKTREE_PATH/$d/"
+        rsync -a --exclude worktrees --exclude scheduled_tasks.lock "$CODEX_SOURCE_TREE_PATH/$d/." "$CODEX_WORKTREE_PATH/$d/"
     fi
 done
 
