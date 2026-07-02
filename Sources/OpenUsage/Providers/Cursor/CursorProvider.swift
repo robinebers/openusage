@@ -109,6 +109,10 @@ final class CursorProvider: ProviderRuntime {
             planInfoUnavailable: planInfoUnavailable
         )
         if fallback.shouldFallback {
+            if CursorUsageMapper.shouldUseUsageSummaryFallback(usage: usage, planName: planName),
+               let mapped = try? await usageSummaryResult(accessToken: currentToken, planName: planName) {
+                return snapshot(mapped)
+            }
             let mapped = try await requestBasedResult(
                 accessToken: currentToken,
                 planName: planName,
@@ -241,6 +245,28 @@ final class CursorProvider: ProviderRuntime {
             return nil
         }
         return ProviderParse.jsonObject(response.body)
+    }
+
+    private func usageSummaryResult(accessToken: String, planName: String?) async throws -> CursorMappedUsage {
+        guard let response = try await usageClient.fetchUsageSummary(accessToken: accessToken),
+              (200..<300).contains(response.statusCode),
+              let body = ProviderParse.jsonObject(response.body)
+        else {
+            throw CursorUsageError.requestBasedUnavailable("Enterprise usage data unavailable. Try again later.")
+        }
+        let creditGrants = await fetchCreditGrants(accessToken: accessToken)
+        let stripeResponse = try? await usageClient.fetchStripeBalance(accessToken: accessToken)
+        let stripeBalanceCents = CursorUsageMapper.stripeBalanceCents(from: stripeResponse ?? nil)
+        var mapped = try CursorUsageMapper.mapUsageSummary(
+            body,
+            planName: planName,
+            creditGrants: creditGrants,
+            stripeBalanceCents: stripeBalanceCents
+        )
+        if Self.spendTrackingEnabled {
+            await appendSpendLines(to: &mapped.lines, accessToken: accessToken)
+        }
+        return mapped
     }
 
     private func requestBasedResult(accessToken: String, planName: String?, unavailableMessage: String) async throws -> CursorMappedUsage {

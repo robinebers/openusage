@@ -183,6 +183,143 @@ enum CursorUsageMapper {
         return CursorMappedUsage(plan: planLabel(planName), lines: lines)
     }
 
+    static func mapUsageSummary(
+        _ summary: [String: Any],
+        planName: String?,
+        creditGrants: [String: Any]?,
+        stripeBalanceCents: Double
+    ) throws -> CursorMappedUsage {
+        var lines: [MetricLine] = []
+        appendCredits(creditGrants: creditGrants, stripeBalanceCents: stripeBalanceCents, to: &lines)
+
+        let cycle = billingCycleFromSummary(summary)
+        let teamUsage = summary["teamUsage"] as? [String: Any]
+        let individualUsage = summary["individualUsage"] as? [String: Any]
+        let pooled = teamUsage?["pooled"] as? [String: Any]
+        let onDemand = teamUsage?["onDemand"] as? [String: Any]
+        let overall = individualUsage?["overall"] as? [String: Any]
+
+        var hasUsageMetric = appendDollarUsageBucket(
+            pooled,
+            label: "Total usage",
+            resetsAt: cycle.resetsAt,
+            periodDurationMs: cycle.periodDurationMs,
+            to: &lines
+        )
+        if !hasUsageMetric {
+            hasUsageMetric = appendDollarUsageBucket(
+                overall,
+                label: "Total usage",
+                resetsAt: cycle.resetsAt,
+                periodDurationMs: cycle.periodDurationMs,
+                to: &lines
+            )
+        }
+
+        if let autoPercent = percentFromDisplayMessage(summary["autoModelSelectedDisplayMessage"] as? String) {
+            hasUsageMetric = true
+            lines.append(.progress(
+                label: "Auto usage",
+                used: autoPercent,
+                limit: 100,
+                format: .percent,
+                resetsAt: cycle.resetsAt,
+                periodDurationMs: cycle.periodDurationMs
+            ))
+        }
+
+        if let apiPercent = percentFromDisplayMessage(summary["namedModelSelectedDisplayMessage"] as? String) {
+            hasUsageMetric = true
+            lines.append(.progress(
+                label: "API usage",
+                used: apiPercent,
+                limit: 100,
+                format: .percent,
+                resetsAt: cycle.resetsAt,
+                periodDurationMs: cycle.periodDurationMs
+            ))
+        }
+
+        if appendDollarUsageBucket(onDemand, label: "On-demand", to: &lines) {
+            hasUsageMetric = true
+        }
+
+        guard hasUsageMetric else {
+            throw CursorUsageError.requestBasedUnavailable("Enterprise usage data unavailable. Try again later.")
+        }
+
+        let resolvedPlan = planName ?? (summary["membershipType"] as? String)
+        return CursorMappedUsage(plan: planLabel(resolvedPlan), lines: lines)
+    }
+
+    static func shouldUseUsageSummaryFallback(usage: [String: Any], planName: String?) -> Bool {
+        let (shouldFallback, _) = shouldUseRequestBasedFallback(
+            usage: usage,
+            planName: planName,
+            planInfoUnavailable: false
+        )
+        guard shouldFallback else { return false }
+
+        let normalizedPlan = planName?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        if normalizedPlan == "enterprise" || normalizedPlan == "team" {
+            return true
+        }
+
+        let spendLimitUsage = usage["spendLimitUsage"] as? [String: Any]
+        let pooledLimit = ProviderParse.number(spendLimitUsage?["pooledLimit"]) ?? 0
+        return (spendLimitUsage?["limitType"] as? String)?.lowercased() == "team" || pooledLimit > 0
+    }
+
+    private static func appendDollarUsageBucket(
+        _ bucket: [String: Any]?,
+        label: String,
+        resetsAt: Date? = nil,
+        periodDurationMs: Int? = nil,
+        to lines: inout [MetricLine]
+    ) -> Bool {
+        guard bucket?["enabled"] as? Bool != false,
+              let limitCents = ProviderParse.number(bucket?["limit"]),
+              limitCents > 0
+        else {
+            return false
+        }
+        let usedCents = ProviderParse.number(bucket?["used"])
+            ?? (limitCents - (ProviderParse.number(bucket?["remaining"]) ?? 0))
+        lines.append(.progress(
+            label: label,
+            used: ProviderParse.centsToDollars(usedCents),
+            limit: ProviderParse.centsToDollars(limitCents),
+            format: .dollars,
+            resetsAt: resetsAt,
+            periodDurationMs: periodDurationMs
+        ))
+        return true
+    }
+
+    private static func billingCycleFromSummary(_ summary: [String: Any]) -> (resetsAt: Date?, periodDurationMs: Int) {
+        let cycleStart = (summary["billingCycleStart"] as? String).flatMap(OpenUsageISO8601.date(from:))
+        let cycleEnd = (summary["billingCycleEnd"] as? String).flatMap(OpenUsageISO8601.date(from:))
+        guard let cycleStart, let cycleEnd, cycleEnd > cycleStart else {
+            return (cycleEnd, billingPeriodMs)
+        }
+        return (
+            cycleEnd,
+            Int(cycleEnd.timeIntervalSince(cycleStart) * 1000)
+        )
+    }
+
+    private static func percentFromDisplayMessage(_ message: String?) -> Double? {
+        guard let message else { return nil }
+        let pattern = #"(\d+(?:\.\d+)?)\s*%"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: message, range: NSRange(message.startIndex..., in: message)),
+              let range = Range(match.range(at: 1), in: message)
+        else {
+            return nil
+        }
+        return Double(message[range])
+    }
+
     static func shouldUseRequestBasedFallback(
         usage: [String: Any],
         planName: String?,

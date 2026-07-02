@@ -11,6 +11,7 @@ struct CursorUsageClient: Sendable {
     static let refreshURL = URL(string: "https://api2.cursor.sh/oauth/token")!
     static let creditsURL = URL(string: "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCreditGrantsBalance")!
     static let restUsageURL = URL(string: "https://cursor.com/api/usage")!
+    static let usageSummaryURL = URL(string: "https://cursor.com/api/usage-summary")!
     static let stripeURL = URL(string: "https://cursor.com/api/auth/stripe")!
     static let exportCSVURL = URL(string: "https://cursor.com/api/dashboard/export-usage-events-csv")!
     static let clientID = "KbZUR41cY7W6zRSdpSUJ7I7mLYBKOCmB"
@@ -46,6 +47,16 @@ struct CursorUsageClient: Sendable {
 
     func fetchCredits(accessToken: String) async throws -> HTTPResponse {
         try await connectPost(Self.creditsURL, accessToken: accessToken)
+    }
+
+    func fetchUsageSummary(accessToken: String) async throws -> HTTPResponse? {
+        guard let session = Self.session(from: accessToken) else { return nil }
+        return try await http.send(HTTPRequest(
+            method: "GET",
+            url: Self.usageSummaryURL,
+            headers: ["Cookie": "WorkosCursorSessionToken=\(session.sessionToken)"],
+            timeout: 10
+        ))
     }
 
     func fetchRequestBasedUsage(accessToken: String) async throws -> HTTPResponse? {

@@ -165,6 +165,49 @@ final class CursorUsageMapperTests: XCTestCase {
         XCTAssertEqual(total.limit, 400, accuracy: 0.001)   // of a $400.00 limit
         XCTAssertFalse(mapped.lines.contains { $0.label == "Bonus spend" })
     }
+
+    func testMapsEnterpriseUsageSummary() throws {
+        let mapped = try CursorUsageMapper.mapUsageSummary(
+            [
+                "billingCycleStart": "2026-07-01T00:00:00.000Z",
+                "billingCycleEnd": "2026-08-01T00:00:00.000Z",
+                "membershipType": "enterprise",
+                "limitType": "team",
+                "autoModelSelectedDisplayMessage": "You've used 12.5% of your included total usage",
+                "namedModelSelectedDisplayMessage": "You've used 7.5% of your included API usage",
+                "individualUsage": [
+                    "overall": ["enabled": true, "used": 71, "limit": 10_000, "remaining": 9_929]
+                ],
+                "teamUsage": [
+                    "onDemand": ["enabled": true, "used": 0, "limit": 5_000_000, "remaining": 5_000_000],
+                    "pooled": ["enabled": true, "used": 3_479_810, "limit": 60_000_000, "remaining": 56_520_190]
+                ]
+            ],
+            planName: nil,
+            creditGrants: nil,
+            stripeBalanceCents: 0
+        )
+
+        XCTAssertEqual(mapped.plan, "Enterprise")
+        let total = try XCTUnwrap(progress(mapped.lines, "Total usage"))
+        XCTAssertEqual(total.used, 34_798.10, accuracy: 0.01)
+        XCTAssertEqual(total.limit, 600_000, accuracy: 0.01)
+        XCTAssertEqual(total.resetsAt, OpenUsageISO8601.date(from: "2026-08-01T00:00:00.000Z"))
+        XCTAssertEqual(progress(mapped.lines, "Auto usage")?.used, 12.5)
+        XCTAssertEqual(progress(mapped.lines, "API usage")?.used, 7.5)
+        let onDemand = try XCTUnwrap(progress(mapped.lines, "On-demand"))
+        XCTAssertEqual(onDemand.used, 0)
+        XCTAssertEqual(onDemand.limit, 50_000, accuracy: 0.01)
+    }
+
+    func testShouldUseUsageSummaryFallbackForEnterprise() {
+        let usage: [String: Any] = [
+            "enabled": true,
+            "planUsage": ["totalPercentUsed": NSNull()]
+        ]
+        XCTAssertTrue(CursorUsageMapper.shouldUseUsageSummaryFallback(usage: usage, planName: "enterprise"))
+        XCTAssertFalse(CursorUsageMapper.shouldUseUsageSummaryFallback(usage: usage, planName: "pro plan"))
+    }
 }
 
 @MainActor
@@ -221,6 +264,58 @@ final class CursorProviderTests: XCTestCase {
         XCTAssertEqual(progress(snapshot.lines, "Auto usage")?.used, 12.5)
         XCTAssertEqual(progress(snapshot.lines, "API usage")?.used, 7.5)
         XCTAssertEqual(progress(snapshot.lines, "On-demand")?.used, 40)
+    }
+
+    func testRefreshFallsBackToUsageSummaryForEnterprise() async {
+        let accessToken = makeCursorJWT(sub: "google-oauth2|user_enterprise")
+        let http = RoutingHTTPClient { request in
+            let url = request.url.absoluteString
+            if url.contains("GetCurrentPeriodUsage") {
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data("""
+                {
+                  "enabled": true,
+                  "planUsage": {}
+                }
+                """.utf8))
+            }
+            if url.contains("GetPlanInfo") {
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"planInfo":{"planName":"enterprise"}}"#.utf8))
+            }
+            if url.contains("/api/usage-summary") {
+                XCTAssertEqual(request.headers["Cookie"], "WorkosCursorSessionToken=user_enterprise%3A%3A\(accessToken)")
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data("""
+                {
+                  "billingCycleStart": "2026-07-01T00:00:00.000Z",
+                  "billingCycleEnd": "2026-08-01T00:00:00.000Z",
+                  "membershipType": "enterprise",
+                  "teamUsage": {
+                    "pooled": { "enabled": true, "used": 100000, "limit": 4000000, "remaining": 3900000 }
+                  }
+                }
+                """.utf8))
+            }
+            if url.contains("GetCreditGrantsBalance") {
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"hasCreditGrants":false}"#.utf8))
+            }
+            if url.contains("/api/auth/stripe") {
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"customerBalance":"0"}"#.utf8))
+            }
+            return HTTPResponse(statusCode: 404, headers: [:], body: Data())
+        }
+        let provider = CursorProvider(
+            authStore: CursorAuthStore(
+                sqlite: FakeSQLite(values: [CursorAuthStore.accessTokenKey: accessToken]),
+                keychain: FakeKeychain()
+            ),
+            usageClient: CursorUsageClient(http: http),
+            now: { Date(timeIntervalSince1970: 1_800_000_000) }
+        )
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(snapshot.plan, "Enterprise")
+        XCTAssertEqual(progress(snapshot.lines, "Total usage")?.used, 1000, accuracy: 0.01)
+        XCTAssertEqual(progress(snapshot.lines, "Total usage")?.limit, 40_000, accuracy: 0.01)
     }
 }
 
