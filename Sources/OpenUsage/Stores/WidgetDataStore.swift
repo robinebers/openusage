@@ -471,6 +471,11 @@ final class WidgetDataStore {
         return StalenessHint(label: "Outdated", tooltip: "Last updated \(duration) ago")
     }
 
+    /// The signed-in account email for a provider's latest snapshot (Claude multi-account); nil otherwise.
+    func accountEmail(for providerID: String) -> String? {
+        snapshots[providerID]?.accountEmail
+    }
+
     var menuBarPrimaryText: String {
         // The tray mirrors the user's widget order: the first placed, enabled tile that has real data
         // drives it, skipping any no-data tile so it never shows a missing metric's placeholder. When

@@ -47,6 +47,16 @@ All three alerts default off. The first time you turn one on, OpenUsage asks for
 |---|---|---|
 | Share Anonymous Usage | On / Off | On (default) shares anonymous, daily usage summaries — no account details, credentials, or usage values. Off stops all sharing immediately. See [Privacy & Usage Data](privacy.md) for exactly what is and isn't sent. |
 
+## Accounts
+
+Add more than one **Claude** or **Codex** login so several subscriptions show side by side. Each account is listed with its signed-in email and appears as its own card on the [dashboard](dashboard.md).
+
+- **Add Account…** — pick the provider, give it a label (e.g. "Work"), and **Log In**. The provider's CLI opens its normal browser login, and the account is stored in its own config directory so it never disturbs your default login.
+- **Rename** — edit the name on an account row; names are keyed by email, so they follow the account across the dashboard.
+- **Remove** — the trash icon drops the account.
+
+Account changes apply on the next launch (the provider list is built at startup), so a **Relaunch** button appears after a change. A new account starts with the same metrics enabled as that provider's default login; after that, toggling a metric in Customize applies to every account of that provider, so they stay in sync. Logging in to an account that's already added is rejected, and if the same email ends up signed in twice the duplicate card is hidden.
+
 ## Advanced
 
 | Setting | Options | What it does |

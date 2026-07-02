@@ -2,27 +2,33 @@ import Foundation
 
 @MainActor
 final class CodexProvider: ProviderRuntime {
-    let provider = Provider(
-        id: "codex",
-        displayName: "Codex",
-        icon: .providerMark("codex"),
-        links: [
-            .init(label: "Status", url: "https://status.openai.com/"),
-            .init(label: "Dashboard", url: "https://chatgpt.com/codex/settings/usage")
-        ]
-    )
+    let provider: Provider
 
     let authStore: CodexAuthStore
     let usageClient: CodexUsageClient
     let ccusageRunner: CcusageRunner
     let now: @Sendable () -> Date
 
+    /// `instanceID` is the provider id: "codex" for the default account, "codex@<slot>" for an extra
+    /// account (whose `authStore` is pointed at its own `CODEX_HOME`). `displayName` differs per
+    /// account so the dashboard shows distinct groups.
     init(
+        instanceID: String = "codex",
+        displayName: String = "Codex",
         authStore: CodexAuthStore = CodexAuthStore(),
         usageClient: CodexUsageClient = CodexUsageClient(),
         ccusageRunner: CcusageRunner = CcusageRunner(),
         now: @escaping @Sendable () -> Date = Date.init
     ) {
+        self.provider = Provider(
+            id: instanceID,
+            displayName: displayName,
+            icon: .providerMark("codex"),
+            links: [
+                .init(label: "Status", url: "https://status.openai.com/"),
+                .init(label: "Dashboard", url: "https://chatgpt.com/codex/settings/usage")
+            ]
+        )
         self.authStore = authStore
         self.usageClient = usageClient
         self.ccusageRunner = ccusageRunner
@@ -31,15 +37,15 @@ final class CodexProvider: ProviderRuntime {
 
     var widgetDescriptors: [WidgetDescriptor] {
         [
-            .percent(id: "codex.session", provider: provider, title: "Session"),
-            .percent(id: "codex.weekly", provider: provider, title: "Weekly"),
+            .percent(id: "\(provider.id).session", provider: provider, title: "Session"),
+            .percent(id: "\(provider.id).weekly", provider: provider, title: "Weekly"),
             // Model-specific Spark limits (GPT-5.3-Codex-Spark), parsed from `additional_rate_limits`.
             // Declared right after Weekly so they group with the core rate-limit meters; seeded as
             // secondary (below the caret) and unpinned in `DefaultLayout`.
-            .percent(id: "codex.spark", provider: provider, title: "Spark"),
-            .percent(id: "codex.sparkWeekly", provider: provider, title: "Spark Weekly"),
-            .combined(id: "codex.credits", provider: provider, title: "Extra Usage", metricLabel: "Credits"),
-            .values(id: "codex.rateLimitResets", provider: provider, title: "Rate Limit Resets", metricLabel: "Rate Limit Resets"),
+            .percent(id: "\(provider.id).spark", provider: provider, title: "Spark"),
+            .percent(id: "\(provider.id).sparkWeekly", provider: provider, title: "Spark Weekly"),
+            .combined(id: "\(provider.id).credits", provider: provider, title: "Extra Usage", metricLabel: "Credits"),
+            .values(id: "\(provider.id).rateLimitResets", provider: provider, title: "Rate Limit Resets", metricLabel: "Rate Limit Resets"),
             .usageTrend(provider: provider)
         ] + WidgetDescriptor.spendTiles(provider: provider)
     }
@@ -115,7 +121,11 @@ final class CodexProvider: ProviderRuntime {
         )
 
         MetricLine.appendNoDataIfNeeded(&mapped.lines)
-        return ProviderSnapshot.make(provider: provider, plan: mapped.plan, lines: mapped.lines, refreshedAt: now())
+        var snapshot = ProviderSnapshot.make(provider: provider, plan: mapped.plan, lines: mapped.lines, refreshedAt: now())
+        // The id_token in this account's auth carries the signed-in email — decode it (offline) so
+        // multiple Codex accounts are distinguishable and de-dupe like Claude accounts do.
+        snapshot.accountEmail = CodexAccountIdentity.email(fromIDToken: authState.auth.tokens?.idToken)
+        return snapshot
     }
 
     /// Fetches the on-demand reset-credit balance (and per-credit expiry) without ever failing the

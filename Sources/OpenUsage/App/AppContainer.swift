@@ -26,6 +26,12 @@ final class AppContainer {
     /// ephemeral secret-code easter-egg state, and the system accessibility flags it yields to. Read by both
     /// the SwiftUI surface and the AppKit panel (`StatusItemController`).
     let transparency: PopoverTransparencyStore
+    /// Extra accounts (beyond the default CLI login) the user has added. Each is expanded into its own
+    /// provider instance below; the Accounts settings tab drives it (changes apply on next launch).
+    let accounts: AccountsStore
+    /// User-chosen names for accounts, keyed by email. Drives the dashboard card titles and is editable
+    /// in the Accounts settings; live (no relaunch needed) since it's read at render time.
+    let accountNames = AccountNamesStore()
     /// Read-only usage API on 127.0.0.1:6736 for other local apps (silently off when the port is taken).
     private let localAPI: LocalUsageServer
     // A `let` of a `Sendable` `Task` is implicitly nonisolated, so the nonisolated `deinit` can cancel it.
@@ -37,12 +43,13 @@ final class AppContainer {
         // run from a terminal. Warmed here so the first refresh finds the cache ready.
         LoginShellEnvironment.shared.prewarm()
 
+        let accounts = AccountsStore()
         // Default provider order (see AGENTS.md "## Providers"): the three established providers first —
         // Claude, Codex, Cursor — then every other provider alphabetically by display name. This registry
         // order is the default provider order (`LayoutStore.orderedProviderIDs` falls back to it, and
         // `resetToDefault` seeds it), so the dashboard, Customize sections, and the per-provider reset
         // menu all read this way.
-        let providers: [ProviderRuntime] = [
+        var providers: [ProviderRuntime] = [
             ClaudeProvider(),
             CodexProvider(),
             CursorProvider(),
@@ -53,6 +60,8 @@ final class AppContainer {
             OpenRouterProvider(),
             ZAIProvider()
         ]
+        // Expand the user's extra accounts into their own provider instances (Claude/Codex).
+        providers.append(contentsOf: AccountProviders.extraProviders(for: accounts.accounts))
         let registry = WidgetRegistry.from(providers)
         let apiKeyProviders = providers.compactMap { $0 as? any APIKeyManaging }
         let enablement = ProviderEnablementStore()
@@ -71,10 +80,15 @@ final class AppContainer {
         // Re-enabling a provider should fetch it promptly, so clear any leftover failure backoff before
         // the enablement wake refreshes. `weak` breaks the cycle (dataStore already captures enablement).
         enablement.onProviderEnabled = { [weak dataStore] id in dataStore?.clearFailureBackoff(for: id) }
+        // Break the layout↔data cycle with a late binding: layout hides duplicate accounts using the
+        // emails the data store resolves at refresh time (and feeds them through `visiblePlaced`, so the
+        // dashboard, Customize, and menu bar all dedupe from this one input).
+        layout.accountEmailLookup = { [dataStore] in dataStore.accountEmail(for: $0) }
         self.registry = registry
         self.enablement = enablement
         self.apiKeyProviders = apiKeyProviders
         self.notificationSettings = notificationSettings
+        self.accounts = accounts
         self.layout = layout
         self.dataStore = dataStore
 

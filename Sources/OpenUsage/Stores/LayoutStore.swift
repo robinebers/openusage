@@ -1,25 +1,6 @@
 import SwiftUI
 import Observation
 
-/// The screen showing inside the menu-bar popover. Customize and Settings replace the dashboard
-/// in place (the popover has no window stack); Esc backs out to the dashboard first.
-enum PopoverScreen: Hashable, Sendable {
-    case dashboard
-    case customize
-    case settings
-
-    /// Left-to-right order for the popover's horizontal screen-switch slide: the dashboard is home on
-    /// the left, with Customize and Settings to its right. The slide reads its direction from these
-    /// ranks — a higher-ranked target enters from the trailing edge, a lower one from the leading edge.
-    var slideRank: Int {
-        switch self {
-        case .dashboard: 0
-        case .customize: 1
-        case .settings: 2
-        }
-    }
-}
-
 /// Mutable layout: which widgets are enabled, provider order, and each provider's metric order.
 /// `placed` is the enabled set (with stable widget ids); `metricOrderByProvider` is the user's custom order.
 @MainActor
@@ -126,6 +107,12 @@ final class LayoutStore {
         didSet { defaults.set(menuBarStyle.rawValue, forKey: menuBarStyleKey) }
     }
 
+    /// Resolves a provider instance's signed-in account email from the live snapshots. Injected after
+    /// construction (the data store needs the layout, so the cycle is broken with a late binding); the
+    /// default "no email" keeps the layout usable headless, in tests, and during its own init. Single
+    /// input to duplicate-account hiding, so every surface agrees on which accounts are visible.
+    var accountEmailLookup: @MainActor (String) -> String? = { _ in nil }
+
     private let registry: WidgetRegistry
     private let defaults: UserDefaults
     private let storageKey: String
@@ -142,6 +129,7 @@ final class LayoutStore {
     private let defaultPinnedMetricIDs: [String]
     private let defaultExpandedMetricIDs: [String]
     private var defaultExpandedOnEnableIDs: Set<String>
+    private let seededAccountsKey: String
     private let isProviderEnabled: @MainActor (String) -> Bool
 
     init(
@@ -169,6 +157,7 @@ final class LayoutStore {
         self.migrationBaselineMetricIDs = migrationBaselineMetricIDs
         self.defaultPinnedMetricIDs = defaultPinnedMetricIDs
         self.defaultExpandedMetricIDs = defaultExpandedMetricIDs
+        self.seededAccountsKey = "\(storageKey).seededAccounts"
         self.isProviderEnabled = isProviderEnabled
 
         let hasStoredLayout = defaults.data(forKey: storageKey) != nil
@@ -190,6 +179,25 @@ final class LayoutStore {
             migrationBaselineMetricIDs: migrationBaselineMetricIDs
         )
         initialPlaced = seededResult.placed
+        // Seed a newly added extra-account provider (instance id "provider@slot") into the layout ONCE,
+        // mirroring the metrics its base type currently has placed, so the account shows up the first time
+        // it's seen instead of staying hidden. Tracked in `seededAccountIDs` so it never re-runs — turning
+        // off all of an account's metrics is then respected on the next launch instead of being resurrected.
+        // Ongoing toggles stay in sync across accounts via `setMetricEnabled`. Base providers are untouched.
+        var seededAccountIDs = Set(defaults.stringArray(forKey: seededAccountsKey) ?? [])
+        for provider in registry.providers where provider.id.contains("@") && !seededAccountIDs.contains(provider.id) {
+            let baseType = Self.baseProviderType(provider.id)
+            for descriptor in registry.descriptors(for: provider.id) {
+                let baseDescriptorID = "\(baseType).\(Self.metricSuffix(descriptor.id, providerID: provider.id))"
+                if initialPlaced.contains(where: { $0.descriptorID == baseDescriptorID }) {
+                    initialPlaced.append(PlacedWidget(descriptorID: descriptor.id))
+                }
+            }
+            seededAccountIDs.insert(provider.id)
+        }
+        // Forget accounts that no longer exist, so a removed-then-re-added account seeds fresh next time.
+        seededAccountIDs.formIntersection(registry.providers.map(\.id).filter { $0.contains("@") })
+        defaults.set(Array(seededAccountIDs), forKey: seededAccountsKey)
         placed = initialPlaced
 
         let initialProviderOrder: [String]
@@ -289,10 +297,26 @@ final class LayoutStore {
     }
 
     var visiblePlaced: [PlacedWidget] {
-        placed.filter { widget in
+        let duplicates = duplicateProviderIDs
+        return placed.filter { widget in
             guard let providerID = providerID(of: widget) else { return true }
-            return isProviderEnabled(providerID)
+            return isProviderEnabled(providerID) && !duplicates.contains(providerID)
         }
+    }
+
+    /// Provider instances hidden as duplicate accounts: walking the provider order, an instance whose
+    /// resolved account email already appeared is hidden (keeping the first — the default login is ordered
+    /// ahead of a later extra account, so the extra is the one dropped). The single source the dashboard,
+    /// Customize, and menu bar all read through `visiblePlaced`/`customizeGroups`, so every surface agrees.
+    /// Providers with no resolved email (single-account providers, or not yet loaded) are never hidden.
+    private var duplicateProviderIDs: Set<String> {
+        var seen = Set<String>()
+        var duplicates = Set<String>()
+        for id in orderedProviderIDs() {
+            guard let email = accountEmailLookup(id)?.lowercased(), !email.isEmpty else { continue }
+            if !seen.insert(email).inserted { duplicates.insert(id) }
+        }
+        return duplicates
     }
 
     var availableToAdd: [WidgetDescriptor] {
@@ -346,8 +370,9 @@ final class LayoutStore {
     /// Every enabled provider with *all* the metrics it supports, in its saved metric order. Enabled and
     /// disabled rows stay in-place; the switch only controls visibility.
     var customizeGroups: [ProviderMetrics] {
-        orderedProviders().compactMap { provider in
-            guard isProviderEnabled(provider.id) else { return nil }
+        let duplicates = duplicateProviderIDs
+        return orderedProviders().compactMap { provider in
+            guard isProviderEnabled(provider.id), !duplicates.contains(provider.id) else { return nil }
             let metrics = orderedSupportedMetrics(for: provider.id)
             guard !metrics.isEmpty else { return nil }
             return ProviderMetrics(
@@ -430,21 +455,38 @@ final class LayoutStore {
 
     // MARK: - Customize mutations
 
-    /// Toggle a metric on (add to the placed list) or off (remove it). The single seam the Customize
-    /// switches drive, so on/off goes through the same add/remove path the rest of the app uses.
+    /// Toggle a metric on (add to the placed list) or off (remove it). The change is mirrored to every
+    /// account of the same provider type, so a provider's enabled metrics stay in sync across all its
+    /// accounts (e.g. both Claude logins show the same statistics).
     func setMetricEnabled(_ descriptorID: String, _ enabled: Bool) {
         recordingUndoStep {
-            if enabled {
-                if defaultExpandedOnEnableIDs.remove(descriptorID) != nil {
-                    expandedMetricIDs.insert(descriptorID)
-                    persistExpanded()
-                    persistExpandOnEnable()
+            for id in sameTypeDescriptorIDs(matching: descriptorID) {
+                if enabled {
+                    if defaultExpandedOnEnableIDs.remove(id) != nil {
+                        expandedMetricIDs.insert(id)
+                        persistExpanded()
+                        persistExpandOnEnable()
+                    }
+                    add(id)
+                } else if let widget = placed.first(where: { $0.descriptorID == id }) {
+                    remove(widget.id)
                 }
-                add(descriptorID)
-            } else if let widget = placed.first(where: { $0.descriptorID == descriptorID }) {
-                remove(widget.id)
             }
         }
+    }
+
+    /// Every descriptor id across accounts of the same provider type that shares `descriptorID`'s metric
+    /// — e.g. "claude.session" -> ["claude.session", "claude@work.session", …]. Used so a metric toggle
+    /// applies to all accounts of a provider.
+    private func sameTypeDescriptorIDs(matching descriptorID: String) -> [String] {
+        guard let providerID = registry.descriptor(id: descriptorID)?.providerID else { return [descriptorID] }
+        let baseType = Self.baseProviderType(providerID)
+        let suffix = Self.metricSuffix(descriptorID, providerID: providerID)
+        return registry.providers
+            .map(\.id)
+            .filter { Self.baseProviderType($0) == baseType }
+            .map { "\($0).\(suffix)" }
+            .filter { registry.descriptor(id: $0) != nil }
     }
 
     // MARK: - Undo (#603)
@@ -735,6 +777,17 @@ final class LayoutStore {
         let insert = from < to ? adjusted + 1 : adjusted
         next.insert(dragged, at: min(insert, next.count))
         return next
+    }
+
+    /// The provider *type* of an instance id: "claude@work" -> "claude", "claude" -> "claude".
+    static func baseProviderType(_ providerID: String) -> String {
+        String(providerID.split(separator: "@").first ?? Substring(providerID))
+    }
+
+    /// The metric suffix of a descriptor id within its provider: "claude@work.session" -> "session".
+    static func metricSuffix(_ descriptorID: String, providerID: String) -> String {
+        let prefix = providerID + "."
+        return descriptorID.hasPrefix(prefix) ? String(descriptorID.dropFirst(prefix.count)) : descriptorID
     }
 
     // MARK: - Menu bar pins

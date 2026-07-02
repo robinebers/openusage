@@ -16,6 +16,23 @@ struct ProcessEnvironmentReader: EnvironmentReading {
     }
 }
 
+/// Returns fixed overrides for some keys and falls through to a base reader for everything else.
+/// Used to point a provider instance at a specific account's config dir (`CLAUDE_CONFIG_DIR` /
+/// `CODEX_HOME`) without disturbing the rest of the process environment.
+struct OverrideEnvironment: EnvironmentReading {
+    let overrides: [String: String]
+    let base: EnvironmentReading
+
+    init(_ overrides: [String: String], base: EnvironmentReading = ProcessEnvironmentReader()) {
+        self.overrides = overrides
+        self.base = base
+    }
+
+    func value(for name: String) -> String? {
+        overrides[name] ?? base.value(for: name)
+    }
+}
+
 protocol TextFileAccessing: Sendable {
     func exists(_ path: String) -> Bool
     func readText(_ path: String) throws -> String

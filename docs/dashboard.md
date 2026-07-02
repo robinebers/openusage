@@ -27,6 +27,10 @@ A provider card can also show **quick-link buttons** pinned at the bottom of its
 
 Rows with a reset date tick every 30 seconds, so countdowns and pace stay live between refreshes.
 
+## Accounts
+
+If you've added extra Claude or Codex logins in [Settings → Accounts](settings.md#accounts), each account is its own section, labeled with its name (or signed-in email) so the logins are easy to tell apart. Two logins that resolve to the same email collapse to a single section, so a duplicate never shows twice.
+
 ## Right-click menus
 
 Every row: **Hide · Star for menu bar / Unstar · Refresh \<provider\> · Customize…**

@@ -26,13 +26,19 @@ struct WidgetGroupedListView: View {
         // Provider-section spacing is noticeably wider than the in-card row rhythm (so groups
         // still read as groups); the exact step comes from the density setting.
         VStack(alignment: .leading, spacing: density.sectionSpacing) {
-            ForEach(layout.displayGroups) { group in
+            ForEach(visibleGroups) { group in
                 section(group)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .onPreferenceChange(ReorderFramePreferenceKey.self) { rowFrames = $0 }
-        .animation(Motion.spring, value: layout.displayGroups.map(\.provider.id))
+        .animation(Motion.spring, value: visibleGroups.map(\.provider.id))
+    }
+
+    /// Dashboard groups in layout order. Duplicate-account hiding now lives in `LayoutStore` (so the
+    /// dashboard, Customize, and menu bar all agree), so `displayGroups` already excludes duplicates.
+    private var visibleGroups: [ProviderGroup] {
+        layout.displayGroups
     }
 
     private func section(_ group: ProviderGroup) -> some View {
@@ -48,6 +54,8 @@ struct WidgetGroupedListView: View {
         ProviderSectionHeader(
             provider: group.provider,
             plan: dataStore.plan(for: group.provider.id),
+            nameOverride: container.accountNames.name(for: dataStore.accountEmail(for: group.provider.id)),
+            accountEmail: dataStore.accountEmail(for: group.provider.id),
             warning: dataStore.headerNotice(for: group.provider.id),
             refreshing: dataStore.refreshingProviderIDs.contains(group.provider.id),
             staleness: dataStore.stalenessHint(for: group.provider.id),

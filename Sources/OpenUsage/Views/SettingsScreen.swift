@@ -175,6 +175,7 @@ struct SettingsScreen: View {
                     .padding(.bottom, 8)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
+            AccountsSettingsSection()
             advancedSection
             // Visible whenever the updater is active (only the signed release build ships a feed; the
             // dev build and a bare `swift run`, with no feed, hide this).
