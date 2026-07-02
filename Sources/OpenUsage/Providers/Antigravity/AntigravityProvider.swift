@@ -1,13 +1,17 @@
 import Foundation
 
-/// Tracks per-model quota for Antigravity (Google's Codeium/Windsurf-derived AI IDE). Quotas are
-/// fraction-based and shown as three percent meters: Gemini Pro, Gemini Flash, and Claude (the shared
-/// non-Gemini pool).
+/// Tracks pool quota for Antigravity (Google's Codeium/Windsurf-derived AI IDE). Quotas are
+/// fraction-based and shown as up to four percent meters: the shared Gemini pool and the shared
+/// non-Gemini pool (Claude, GPT-OSS), each with a rolling 5-hour and a weekly window.
 ///
 /// Probe order, best source first:
 /// 1. Antigravity language server (running app) — richest, gives the authoritative plan.
 /// 2. `agy` language server (running CLI).
 /// 3. Keychain token → Google Cloud Code (works with the app closed); refreshes via Google OAuth.
+///
+/// On each source, `RetrieveUserQuotaSummary` is tried first (the only endpoint reporting the merged
+/// pools and the weekly windows); builds without it fall back to the legacy per-model endpoints,
+/// which are 5h-only — the weekly meters read "No data" there.
 @MainActor
 final class AntigravityProvider: ProviderRuntime {
     let provider = Provider(id: "antigravity", displayName: "Antigravity", icon: .providerMark("antigravity"))
@@ -31,9 +35,10 @@ final class AntigravityProvider: ProviderRuntime {
 
     var widgetDescriptors: [WidgetDescriptor] {
         [
-            .percent(id: "antigravity.geminiPro", provider: provider, title: "Gemini Pro"),
-            .percent(id: "antigravity.geminiFlash", provider: provider, title: "Gemini Flash"),
-            .percent(id: "antigravity.claude", provider: provider, title: "Claude")
+            .percent(id: AntigravityMetric.geminiID, provider: provider, title: AntigravityMetric.sessionLabel),
+            .percent(id: AntigravityMetric.geminiWeeklyID, provider: provider, title: AntigravityMetric.weeklyLabel),
+            .percent(id: AntigravityMetric.claudeID, provider: provider, title: AntigravityMetric.claudeLabel),
+            .percent(id: AntigravityMetric.claudeWeeklyID, provider: provider, title: AntigravityMetric.claudeWeeklyLabel)
         ]
     }
 
@@ -89,6 +94,30 @@ final class AntigravityProvider: ProviderRuntime {
         }
 
         for endpoint in endpoints {
+            // The quota summary is authoritative (merged pools + weekly windows), so it goes first.
+            // A parsed summary — even one with zero usable buckets — ends the probe: the legacy
+            // endpoints below fabricate "fully used" from missing quota info, so an authoritative
+            // answer must never fall through to them. Empty lines render as "No data" rows.
+            if let summary = await usageClient.callLS(scheme: endpoint.scheme, port: endpoint.port, csrf: discovered.csrf, method: "RetrieveUserQuotaSummary") {
+                if (200..<300).contains(summary.statusCode) {
+                    if let lines = AntigravityUsageMapper.parseQuotaSummary(summary.body) {
+                        // The plan comes from an independent GetUserStatus call; the summary never
+                        // gates on it — a failed plan lookup just leaves the plan blank.
+                        var plan: String?
+                        if let status = await usageClient.callLS(scheme: endpoint.scheme, port: endpoint.port, csrf: discovered.csrf, method: "GetUserStatus"),
+                           (200..<300).contains(status.statusCode) {
+                            plan = AntigravityUsageMapper.parseUserStatus(status.body)?.plan
+                        }
+                        return StrategyResult(plan: plan, lines: lines)
+                    }
+                    // 2xx but not a summary payload — the parser warned; fall to the legacy flow.
+                } else if summary.statusCode != 404 {
+                    // 404 = a build without the RPC (expected; legacy is the truth there, no retry).
+                    // Anything else is surprising enough to say before degrading to 5h-only data.
+                    AppLog.warn(LogTag.plugin("antigravity"), "RetrieveUserQuotaSummary HTTP \(summary.statusCode); falling back to legacy quota endpoints")
+                }
+            }
+
             guard let response = await usageClient.callLS(scheme: endpoint.scheme, port: endpoint.port, csrf: discovered.csrf, method: "GetUserStatus"),
                   (200..<300).contains(response.statusCode)
             else {
@@ -174,7 +203,23 @@ final class AntigravityProvider: ProviderRuntime {
     }
 
     private func fetchCloudCode(token: String) async -> CloudCodeProbe {
-        // Primary: fetchAvailableModels — the full Antigravity model set (Gemini + Claude + GPT-OSS).
+        // Authoritative first: the quota summary (merged pools + weekly windows). A parsed summary —
+        // even one with zero usable buckets — is the answer and must never fall into the legacy chain
+        // below, which fabricates "fully used" from missing quota info. A 404 (build without the RPC)
+        // reads as `.unavailable` and falls through.
+        switch await usageClient.cloudCode(path: AntigravityUsageClient.quotaSummaryPath, token: token, userAgent: "antigravity", body: [:]) {
+        case .authFailed:
+            return .authFailed
+        case .ok(let data):
+            if let lines = AntigravityUsageMapper.parseQuotaSummary(data) {
+                return .success(StrategyResult(plan: await loadPlan(token: token), lines: lines))
+            }
+            // 2xx but not a summary payload — the parser warned; fall to the legacy chain.
+        case .unavailable:
+            break
+        }
+
+        // Legacy: fetchAvailableModels — the full Antigravity model set (Gemini + Claude + GPT-OSS).
         switch await usageClient.cloudCode(path: AntigravityUsageClient.fetchModelsPath, token: token, userAgent: "antigravity", body: [:]) {
         case .authFailed:
             return .authFailed

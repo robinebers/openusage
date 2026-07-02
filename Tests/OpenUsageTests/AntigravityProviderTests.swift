@@ -27,10 +27,11 @@ final class AntigravityProviderTests: XCTestCase {
         ]
         let lines = AntigravityUsageMapper.buildLines(configs)
 
-        XCTAssertEqual(lines.map(\.label), ["Gemini Pro", "Gemini Flash", "Claude"])
-        XCTAssertEqual(used(lines[0]), 50)  // worst Gemini Pro fraction (0.5) -> 50% used
-        XCTAssertEqual(used(lines[1]), 0)   // Flash full
-        XCTAssertEqual(used(lines[2]), 70)  // worst non-Gemini (Claude 0.3) -> 70% used
+        // Pro and Flash share one pool since Antigravity's 2026-05-19 quota merge, so all Gemini
+        // models collapse into a single "Session" meter (worst fraction wins across the whole pool).
+        XCTAssertEqual(lines.map(\.label), ["Session", "Claude"])
+        XCTAssertEqual(used(lines[0]), 50)  // worst Gemini fraction (Pro Low 0.5) -> 50% used
+        XCTAssertEqual(used(lines[1]), 70)  // worst non-Gemini (Claude 0.3) -> 70% used
     }
 
     func testBuildLinesDedupKeepsWorstFractionAndItsReset() {
@@ -53,7 +54,7 @@ final class AntigravityProviderTests: XCTestCase {
             AntigravityModelConfig(label: "Gemini 3.1 Pro (High)", modelID: "ok", remainingFraction: 0.6, resetTime: nil)
         ]
         let lines = AntigravityUsageMapper.buildLines(configs)
-        XCTAssertEqual(lines.map(\.label), ["Gemini Pro"])
+        XCTAssertEqual(lines.map(\.label), ["Session"])
         XCTAssertEqual(used(lines[0]), 40)
     }
 
@@ -63,19 +64,21 @@ final class AntigravityProviderTests: XCTestCase {
             AntigravityModelConfig(label: "Claude Opus", modelID: "b", remainingFraction: -0.2, resetTime: nil)
         ]
         let lines = AntigravityUsageMapper.buildLines(configs)
-        XCTAssertEqual(used(lines.first { $0.label == "Gemini Pro" }), 0)   // clamped to full
-        XCTAssertEqual(used(lines.first { $0.label == "Claude" }), 100)     // clamped to empty
+        XCTAssertEqual(used(lines.first { $0.label == "Session" }), 0)   // clamped to full
+        XCTAssertEqual(used(lines.first { $0.label == "Claude" }), 100)  // clamped to empty
     }
 
     func testPoolLabelClassification() {
-        XCTAssertEqual(AntigravityUsageMapper.poolLabel("Gemini 3.1 Pro"), "Gemini Pro")
-        XCTAssertEqual(AntigravityUsageMapper.poolLabel("Gemini 3.5 Flash"), "Gemini Flash")
-        XCTAssertEqual(AntigravityUsageMapper.poolLabel("Gemini 3.1 Flash Lite"), "Gemini Flash")
+        // Pro and Flash merged into one shared Gemini pool (2026-05-19 quota restructure), shown as
+        // the "Session" meter.
+        XCTAssertEqual(AntigravityUsageMapper.poolLabel("Gemini 3.1 Pro"), "Session")
+        XCTAssertEqual(AntigravityUsageMapper.poolLabel("Gemini 3.5 Flash"), "Session")
+        XCTAssertEqual(AntigravityUsageMapper.poolLabel("Gemini 3.1 Flash Lite"), "Session")
         XCTAssertEqual(AntigravityUsageMapper.poolLabel("Claude Opus 4.6"), "Claude")
         XCTAssertEqual(AntigravityUsageMapper.poolLabel("GPT-OSS 120B"), "Claude")
-        // A Gemini model that is neither Pro nor Flash must stay in a Gemini pool, never Claude.
-        XCTAssertEqual(AntigravityUsageMapper.poolLabel("Gemini Ultra"), "Gemini Pro")
-        XCTAssertEqual(AntigravityUsageMapper.poolLabel("gemini-3"), "Gemini Pro")
+        // Any Gemini model must stay in the Gemini pool, never Claude.
+        XCTAssertEqual(AntigravityUsageMapper.poolLabel("Gemini Ultra"), "Session")
+        XCTAssertEqual(AntigravityUsageMapper.poolLabel("gemini-3"), "Session")
     }
 
     func testNormalizeLabelStripsTrailingParenthetical() {
@@ -110,7 +113,7 @@ final class AntigravityProviderTests: XCTestCase {
         let parsed = AntigravityUsageMapper.parseUserStatus(Data(json.utf8))
         XCTAssertEqual(parsed?.plan, "Pro")
         let lines = AntigravityUsageMapper.buildLines(parsed?.configs ?? [])
-        XCTAssertEqual(lines.map(\.label), ["Gemini Pro", "Claude"])
+        XCTAssertEqual(lines.map(\.label), ["Session", "Claude"])
         XCTAssertEqual(used(lines[0]), 50)
         XCTAssertEqual(used(lines[1]), 0)
         XCTAssertNotNil(resetsAt(lines[0]))
@@ -133,7 +136,7 @@ final class AntigravityProviderTests: XCTestCase {
         // isInternal (b) and empty-displayName (d) dropped at parse; blacklist (c) survives to buildLines.
         XCTAssertEqual(configs.count, 2)
         let lines = AntigravityUsageMapper.buildLines(configs)
-        XCTAssertEqual(lines.map(\.label), ["Gemini Pro"])  // c filtered by blacklist
+        XCTAssertEqual(lines.map(\.label), ["Session"])  // c filtered by blacklist
     }
 
     func testParseCloudCodeModelsTreatsMissingQuotaAsDepleted() {
@@ -157,7 +160,8 @@ final class AntigravityProviderTests: XCTestCase {
                     {"modelId":"gemini-3-flash-preview","remainingFraction":1}]}
         """
         let lines = AntigravityUsageMapper.buildLines(AntigravityUsageMapper.parseQuotaBuckets(Data(json.utf8)))
-        XCTAssertEqual(lines.map(\.label), ["Gemini Pro", "Gemini Flash"])
+        // Pro and Flash buckets pool into the one "Session" meter; the worst fraction (0.5) wins.
+        XCTAssertEqual(lines.map(\.label), ["Session"])
         XCTAssertEqual(used(lines[0]), 50)
     }
 
@@ -272,6 +276,10 @@ final class AntigravityProviderTests: XCTestCase {
 
         let routing = RoutingHTTPClient { request in
             let path = request.url.path
+            // Builds without the summary RPC 404 it — this test also covers summary-404 → legacy.
+            if path.contains("retrieveUserQuotaSummary") {
+                return HTTPResponse(statusCode: 404, headers: [:], body: Data())
+            }
             if path.contains("fetchAvailableModels") {
                 return HTTPResponse(statusCode: 200, headers: [:], body: Data(modelsJSON.utf8))
             }
@@ -292,10 +300,10 @@ final class AntigravityProviderTests: XCTestCase {
 
         let snapshot = await provider.refresh()
         XCTAssertEqual(snapshot.plan, "Pro")
-        XCTAssertEqual(snapshot.lines.map(\.label), ["Gemini Pro", "Gemini Flash", "Claude"])
+        // Legacy per-model data merges into the two pool meters (worst fraction per pool).
+        XCTAssertEqual(snapshot.lines.map(\.label), ["Session", "Claude"])
         XCTAssertEqual(used(snapshot.lines[0]), 60)
-        XCTAssertEqual(used(snapshot.lines[1]), 0)
-        XCTAssertEqual(used(snapshot.lines[2]), 30)
+        XCTAssertEqual(used(snapshot.lines[1]), 30)
     }
 
     @MainActor

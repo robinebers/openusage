@@ -1,7 +1,7 @@
 {
   "setup-worktree": [
     "swift package resolve",
-    "for d in .agents .claude .codex .cursor; do [ -d \"$ROOT_WORKTREE_PATH/$d\" ] && mkdir -p \"$d\" && rsync -a \"$ROOT_WORKTREE_PATH/$d/.\" \"$d/\"; done",
+    "for d in .agents .claude .codex .cursor; do [ -d \"$ROOT_WORKTREE_PATH/$d\" ] && mkdir -p \"$d\" && rsync -a --exclude worktrees --exclude scheduled_tasks.lock \"$ROOT_WORKTREE_PATH/$d/.\" \"$d/\"; done",
     "for f in .env .env.local .env.development .env.production; do [ -f \"$ROOT_WORKTREE_PATH/$f\" ] && cp \"$ROOT_WORKTREE_PATH/$f\" \"$f\" || true; done"
   ]
 }

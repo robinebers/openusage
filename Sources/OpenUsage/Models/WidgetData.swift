@@ -558,9 +558,11 @@ extension WidgetData {
 
     private static let sessionWindowWidgetIDs: Set<String> = [
         "codex.session", "claude.session",
-        // Antigravity's three quota pools are rolling 5-hour windows too: an unused pool reports
+        // Antigravity's two pool meters are rolling 5-hour windows too: an unused pool reports
         // `used == 0` with a reset a full period out, so it gets the same "Not started" treatment.
-        "antigravity.geminiPro", "antigravity.geminiFlash", "antigravity.claude"
+        // The weekly meters deliberately aren't listed — like Claude/Codex, only session windows
+        // read "Not started".
+        "antigravity.geminiPro", "antigravity.claude"
     ]
 
     /// True when the bounded primary row's trailing text is a concrete reset countdown (so the row makes

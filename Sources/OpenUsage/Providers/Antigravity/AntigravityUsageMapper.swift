@@ -10,14 +10,16 @@ struct AntigravityModelConfig: Sendable, Equatable {
     var resetTime: Date?
 }
 
-/// Turns Antigravity's per-model quota responses into the app's metric vocabulary. Antigravity exposes
-/// many fine-grained models that share a handful of quota pools, so models collapse into three meters —
-/// "Gemini Pro", "Gemini Flash", and "Claude" (every non-Gemini model, incl. GPT-OSS) — each keeping the
-/// worst (lowest) remaining fraction in its pool.
+/// Turns Antigravity's quota responses into the app's metric vocabulary.
+///
+/// The authoritative source is the `RetrieveUserQuotaSummary` RPC (`parseQuotaSummary`): two pools
+/// (Gemini, shown as "Session"/"Weekly"; Claude = every non-Gemini model incl. GPT-OSS), each with a
+/// rolling 5-hour and a weekly window — up to four meters. Builds without that RPC fall back to the
+/// legacy per-model endpoints, whose fine-grained models collapse into the two 5h pool meters
+/// ("Session", "Claude"), each keeping the
+/// worst (lowest) remaining fraction in its pool; the legacy data is 5h-only, so the weekly meters
+/// read "No data" there.
 enum AntigravityUsageMapper {
-    /// Quotas reset on a rolling 5-hour window.
-    static let quotaPeriodMs = 5 * 60 * 60 * 1000
-
     /// Internal/duplicate model IDs that should never surface as a meter. Matched against the model ID
     /// (LS `modelOrAlias.model`, Cloud Code `model`/key); the Cloud Code path also drops `isInternal`.
     static let modelBlacklist: Set<String> = [
@@ -27,7 +29,58 @@ enum AntigravityUsageMapper {
         "MODEL_PLACEHOLDER_M19", "MODEL_PLACEHOLDER_M9", "MODEL_PLACEHOLDER_M12"
     ]
 
-    // MARK: - Response parsing
+    // MARK: - Quota summary (the authoritative source)
+
+    /// The four pool buckets `RetrieveUserQuotaSummary` reports, matched by **exact `bucketId` only** —
+    /// a future bucket (e.g. `gemini-image-5h`) must never silently join a pool, and pool identity is
+    /// never inferred from `displayName`/`window`.
+    static let summaryBuckets: [(bucketID: String, label: String, periodMs: Int)] = [
+        ("gemini-5h", AntigravityMetric.sessionLabel, MetricPeriod.sessionMs),
+        ("gemini-weekly", AntigravityMetric.weeklyLabel, MetricPeriod.weekMs),
+        ("3p-5h", AntigravityMetric.claudeLabel, MetricPeriod.sessionMs),
+        ("3p-weekly", AntigravityMetric.claudeWeeklyLabel, MetricPeriod.weekMs)
+    ]
+
+    /// `RetrieveUserQuotaSummary` → up to four pool meters, ordered Session, Weekly, Claude,
+    /// Claude Weekly. Accepts both the LS envelope (`{"response": {"groups": …}}`) and the bare remote
+    /// payload (`{"groups": …}`).
+    ///
+    /// Nil means "not a summary" (undecodable body / no `groups` anywhere) and the caller may fall back
+    /// to the legacy endpoints. A non-nil result — even an empty one — is authoritative: the legacy
+    /// path fabricates "fully used" from missing quota info, so a parsed summary must never fall
+    /// through to it. Buckets decode leniently (one malformed bucket never voids the envelope); a
+    /// bucket with a missing/unusable `remainingFraction` drops its line (the row reads "No data")
+    /// rather than fabricating 0% or 100%.
+    static func parseQuotaSummary(_ data: Data) -> [MetricLine]? {
+        guard let envelope = try? JSONDecoder().decode(QuotaSummaryEnvelope.self, from: data),
+              let groups = envelope.response?.groups ?? envelope.groups
+        else {
+            // Callers only parse 2xx bodies, so an undecodable one is schema drift — say so loudly.
+            AppLog.warn(LogTag.plugin("antigravity"), "quota summary response has no decodable groups; treating as not-a-summary")
+            return nil
+        }
+
+        var pooled: [String: (fraction: Double, resetTime: Date?)] = [:]
+        for bucket in groups.flatMap({ $0.buckets ?? [] }) {
+            guard let id = bucket.bucketId, summaryBuckets.contains(where: { $0.bucketID == id }) else {
+                AppLog.warn(LogTag.plugin("antigravity"), "quota summary: skipping unrecognized bucket id '\(bucket.bucketId ?? "<absent>")'")
+                continue
+            }
+            guard pooled[id] == nil else { continue } // duplicate bucket id — first one wins
+            guard let fraction = bucket.remainingFraction, fraction.isFinite else {
+                AppLog.warn(LogTag.plugin("antigravity"), "quota summary: bucket '\(id)' has no usable remainingFraction; dropping its line")
+                continue
+            }
+            pooled[id] = (fraction, bucket.resetTime.flatMap { OpenUsageISO8601.date(from: $0) })
+        }
+
+        return summaryBuckets.compactMap { spec in
+            guard let entry = pooled[spec.bucketID] else { return nil }
+            return line(pool: spec.label, fraction: entry.fraction, resetTime: entry.resetTime, periodMs: spec.periodMs)
+        }
+    }
+
+    // MARK: - Response parsing (legacy per-model endpoints)
 
     /// LS `GetUserStatus` → plan name + model configs. Nil when the body has no `userStatus`.
     static func parseUserStatus(_ data: Data) -> (plan: String?, configs: [AntigravityModelConfig])? {
@@ -95,10 +148,10 @@ enum AntigravityUsageMapper {
         (try? JSONDecoder().decode(CCLoadEnvelope.self, from: data))?.cloudaicompanionProject?.nilIfEmpty
     }
 
-    // MARK: - Line building
+    // MARK: - Line building (legacy pooling)
 
-    /// Collapse model configs into the three quota-pool meters, keeping the worst fraction per pool and
-    /// ordering Gemini Pro → Gemini Flash → Claude. Blacklisted and empty-label models are dropped.
+    /// Collapse model configs into the two quota-pool meters, keeping the worst fraction per pool and
+    /// ordering the Gemini pool ("Session") before Claude. Blacklisted and empty-label models are dropped.
     static func buildLines(_ configs: [AntigravityModelConfig]) -> [MetricLine] {
         var pooled: [String: (fraction: Double, resetTime: Date?)] = [:]
         for config in configs {
@@ -119,19 +172,19 @@ enum AntigravityUsageMapper {
 
         return pooled
             .sorted { sortKey($0.key) < sortKey($1.key) }
-            .map { line(pool: $0.key, fraction: $0.value.fraction, resetTime: $0.value.resetTime) }
+            .map { line(pool: $0.key, fraction: $0.value.fraction, resetTime: $0.value.resetTime, periodMs: MetricPeriod.sessionMs) }
     }
 
-    static func line(pool: String, fraction: Double, resetTime: Date?) -> MetricLine {
+    static func line(pool: String, fraction: Double, resetTime: Date?, periodMs: Int) -> MetricLine {
         let clamped = max(0, min(1, fraction))
         let used = (1 - clamped) * 100
         return .progress(
             label: pool,
-            used: used.rounded(),
+            used: used.rounded(), // keep whole percents so a fresh window reads 0 and "Not started" works
             limit: 100,
             format: .percent,
             resetsAt: resetTime,
-            periodDurationMs: quotaPeriodMs
+            periodDurationMs: periodMs
         )
     }
 
@@ -146,23 +199,15 @@ enum AntigravityUsageMapper {
     }
 
     static func poolLabel(_ normalizedLabel: String) -> String {
-        let lower = normalizedLabel.lowercased()
-        // Any Gemini model maps to a Gemini pool — Flash variants to "Gemini Flash", everything else
-        // (Pro, Ultra, bare names) to "Gemini Pro" — so a Gemini model never leaks into the Claude pool.
-        if lower.contains("gemini") {
-            return lower.contains("flash") ? "Gemini Flash" : "Gemini Pro"
-        }
-        // Claude, GPT-OSS, and any other non-Gemini model share one pool.
-        return "Claude"
+        // Pro and Flash draw from one shared pool since Antigravity's 2026-05-19 quota merge, so every
+        // Gemini model (Pro, Flash, Ultra, bare names) maps to the single "Session" meter; Claude,
+        // GPT-OSS, and any other non-Gemini model share the other pool.
+        normalizedLabel.lowercased().contains("gemini") ? AntigravityMetric.sessionLabel : AntigravityMetric.claudeLabel
     }
 
     static func sortKey(_ poolLabel: String) -> String {
-        let lower = poolLabel.lowercased()
-        if lower.contains("gemini"), lower.contains("pro") { return "0a_\(poolLabel)" }
-        if lower.contains("gemini") { return "0b_\(poolLabel)" }
-        if lower.contains("claude"), lower.contains("opus") { return "1a_\(poolLabel)" }
-        if lower.contains("claude") { return "1b_\(poolLabel)" }
-        return "2_\(poolLabel)"
+        // The Gemini pool ("Session") before Claude, matching the widget declaration order.
+        poolLabel == AntigravityMetric.sessionLabel ? "0_\(poolLabel)" : "1_\(poolLabel)"
     }
 
     /// Normalize a raw plan/tier string to a short label. LS returns "Google AI Pro" (strip the prefix,
@@ -194,6 +239,40 @@ enum AntigravityUsageMapper {
 }
 
 // MARK: - Wire types (the documented response shapes; validated only at this boundary)
+
+/// `RetrieveUserQuotaSummary`, both envelopes: the LS wraps the payload in `{"response": {...}}`,
+/// the remote Cloud Code endpoint returns it bare. Every field is optional — third-party parsers have
+/// already regressed by assuming absent fields (defaulting a missing `remainingFraction` to "full").
+private struct QuotaSummaryEnvelope: Decodable {
+    let response: QuotaSummaryRoot?
+    let groups: [QuotaSummaryGroup]?
+}
+
+private struct QuotaSummaryRoot: Decodable {
+    let groups: [QuotaSummaryGroup]?
+}
+
+private struct QuotaSummaryGroup: Decodable {
+    let buckets: [QuotaSummaryBucket]?
+}
+
+/// A bucket that never fails its containing array: a malformed element (not an object, or a field of
+/// the wrong type) decodes to nil fields instead of throwing the whole summary into the legacy
+/// fallback. The mapper then drops the unusable bucket with a warning and keeps the rest.
+private struct QuotaSummaryBucket: Decodable {
+    let bucketId: String?
+    let remainingFraction: Double?
+    let resetTime: String?
+
+    private enum CodingKeys: String, CodingKey { case bucketId, remainingFraction, resetTime }
+
+    init(from decoder: Decoder) {
+        let container = try? decoder.container(keyedBy: CodingKeys.self)
+        bucketId = container.flatMap { (try? $0.decodeIfPresent(String.self, forKey: .bucketId)) ?? nil }
+        remainingFraction = container.flatMap { (try? $0.decodeIfPresent(Double.self, forKey: .remainingFraction)) ?? nil }
+        resetTime = container.flatMap { (try? $0.decodeIfPresent(String.self, forKey: .resetTime)) ?? nil }
+    }
+}
 
 private struct AntigravityQuotaInfo: Decodable {
     let remainingFraction: Double?

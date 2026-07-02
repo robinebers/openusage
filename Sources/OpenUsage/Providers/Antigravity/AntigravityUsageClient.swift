@@ -27,6 +27,7 @@ struct AntigravityUsageClient: Sendable {
     static let fetchModelsPath = "/v1internal:fetchAvailableModels"
     static let loadCodeAssistPath = "/v1internal:loadCodeAssist"
     static let retrieveQuotaPath = "/v1internal:retrieveUserQuota"
+    static let quotaSummaryPath = "/v1internal:retrieveUserQuotaSummary"
     static let googleOAuthURL = "https://oauth2.googleapis.com/token"
     // Google OAuth "installed application" client credentials, extracted verbatim from the Antigravity
     // app bundle — the same pair the shipped app and the legacy Tauri plugin use. For installed-app OAuth

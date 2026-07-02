@@ -2,11 +2,11 @@ import AppKit
 import SwiftUI
 
 /// The dashboard footer's trailing control: a **split button** in Liquid Glass — one capsule with
-/// "Settings" on the left and a chevron segment on the right, divided by a hairline (the Export ▾
-/// idiom system apps use). Clicking "Settings" opens the Settings screen; clicking the chevron opens
-/// the overflow menu (Customize / Share Screenshot / Check for Updates / About / Quit). Settings leads
-/// because everyday layout edits (reorder, hide, pin) are already reachable by dragging and
-/// right-clicking on the dashboard itself, so Settings is the more frequent deliberate destination.
+/// "Customize" on the left and a chevron segment on the right, divided by a hairline (the Export ▾
+/// idiom system apps use). Clicking "Customize" opens the Customize screen; clicking the chevron opens
+/// the overflow menu (Settings / Share Screenshot / Check for Updates / About / Quit). Customize leads
+/// because it's the screen users reach for most when shaping the dashboard; Settings stays one click
+/// away in the overflow (and always via ⌘,).
 ///
 /// The joined-capsule look comes from one glass surface behind the *whole* control: an `HStack` of two
 /// `.buttonStyle(.plain)` tap targets (a `Button` and a chevron `Menu`) split by a `Divider`, with a
@@ -48,7 +48,7 @@ struct HeaderView: View {
     private var leadingControl: some View {
         if screen == .dashboard {
             HStack(spacing: 0) {
-                settingsHalf
+                customizeHalf
                 Divider()
                     .frame(height: 16)
                 chevronHalf
@@ -58,13 +58,13 @@ struct HeaderView: View {
         }
     }
 
-    /// Left half: opens Settings. `.buttonStyle(.plain)` strips the system chrome so the shared glass
-    /// is the only surface; `contentShape` makes the whole padded half clickable. ⌘, opens Settings
+    /// Left half: opens Customize. `.buttonStyle(.plain)` strips the system chrome so the shared glass
+    /// is the only surface; `contentShape` makes the whole padded half clickable. ⏎ opens Customize
     /// from anywhere via `PopoverKeyReader`, so the shortcut isn't registered here (which would also
     /// flag the button as the window's default and draw a pulsing ring) — the tooltip surfaces it.
-    private var settingsHalf: some View {
-        Button { toggle(.settings) } label: {
-            Text("Settings")
+    private var customizeHalf: some View {
+        Button { toggle(.customize) } label: {
+            Text("Customize")
                 .font(.system(size: 13, weight: .semibold))
                 .padding(.leading, 14)
                 .padding(.trailing, 11)
@@ -72,7 +72,7 @@ struct HeaderView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .hoverTooltip("Settings (⌘,)")
+        .hoverTooltip("Customize (⏎)")
     }
 
     /// Right half: the chevron pull-down. `.menuStyle(.button)` + `.buttonStyle(.plain)` strip the menu
@@ -98,16 +98,16 @@ struct HeaderView: View {
 
     /// The chevron's overflow items, mirroring their in-popover entry points. `autoenablesItems` has no
     /// SwiftUI equivalent, so the Check for Updates item disables itself when Sparkle can't currently
-    /// check — e.g. dev builds with no feed, or while a check is already in flight. Customize carries its
-    /// bare-⏎ key equivalent so the menu shows the shortcut: when the menu is open the item handles ⏎;
-    /// when it's closed the `PopoverDismissReader` monitor handles (and consumes) ⏎ first, so the item's
-    /// equivalent can't double-fire. Same split as the old Settings ⌘, item / the Quit ⌘Q item below.
+    /// check — e.g. dev builds with no feed, or while a check is already in flight. Settings carries its
+    /// ⌘, key equivalent so the menu shows the shortcut: when the menu is open the item handles ⌘,;
+    /// when it's closed the `PopoverDismissReader` monitor handles (and consumes) ⌘, first, so the item's
+    /// equivalent can't double-fire. Same split as the Quit ⌘Q item below.
     @ViewBuilder
     private var moreMenuItems: some View {
-        Button { toggle(.customize) } label: {
-            Label("Customize", systemImage: "slider.horizontal.3")
+        Button { toggle(.settings) } label: {
+            Label("Settings", systemImage: "gearshape")
         }
-        .keyboardShortcut(.return, modifiers: [])
+        .keyboardShortcut(",")
 
         shareScreenshotMenu
 

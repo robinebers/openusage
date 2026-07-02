@@ -22,7 +22,7 @@ Either way, the app updates itself in place via signed, notarized [Sparkle](docs
 
 ## Supported Providers
 
-- **[Antigravity](docs/providers/antigravity.md)** — Gemini Pro/Flash and Claude model quotas
+- **[Antigravity](docs/providers/antigravity.md)** — shared Gemini and Claude pool quotas, 5-hour and weekly windows
 - **[Claude](docs/providers/claude.md)** — session, weekly, Sonnet, extra usage, local daily spend
 - **[Codex](docs/providers/codex.md)** — session, weekly, credits, local daily spend
 - **[Cursor](docs/providers/cursor.md)** — credits, total/auto/API usage, requests, on-demand, per-day spend

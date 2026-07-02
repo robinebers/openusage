@@ -29,8 +29,8 @@ Rows with a reset date tick every 30 seconds, so countdowns and pace stay live b
 
 ## Right-click menus
 
-Every row: **Hide · Star for menu bar / Unstar · Refresh \<provider\> · Customize…**
-Provider headers: **Hide \<provider\> · Refresh \<provider\> · Customize…** (Hide turns the whole provider off; turn it back on in Customize.) plus **Share Screenshot** (see below).
+Every row: **Hide · Star for menu bar / Unstar · Refresh \<provider\> · Customize…** (Customize opens straight to that provider's metrics.)
+Provider headers: **Hide \<provider\> · Refresh \<provider\> · Customize…** (Hide turns the whole provider off; turn it back on in Customize. Customize opens straight to that provider's metrics.) plus **Share Screenshot** (see below).
 
 ## Share
 
@@ -43,11 +43,11 @@ The image is a flexible-height PNG using the app's look — the provider's mark 
 
 ## Footer
 
-The bar pinned to the bottom of the popover. On the left: the app version, and a live "Next update in …" countdown you can click (or press **⌘R**) to refresh right away. On the right: a **Settings** button paired with a **⌄** menu. The menu holds the app-level actions — **Customize**, **Share Screenshot** (submenu of providers), **Check for Updates…**, **About OpenUsage**, and **Quit OpenUsage**.
+The bar pinned to the bottom of the popover. On the left: the app version, and a live "Next update in …" countdown you can click (or press **⌘R**) to refresh right away. On the right: a **Customize** button paired with a **⌄** menu. The menu holds the app-level actions — **Settings**, **Share Screenshot** (submenu of providers), **Check for Updates…**, **About OpenUsage**, and **Quit OpenUsage**.
 
 ## Customize
 
-Open Customize from the **⌄** menu next to the footer's Settings button (or press **Return**). It's a two-level screen: a list of providers, then a provider's detail.
+Open Customize from the footer's **Customize** button (or press **Return**). It's a two-level screen: a list of providers, then a provider's detail.
 
 The **provider list** shows every provider with a switch to turn it on or off, an Active/Inactive status, a count of its metrics, and a chevron into its detail. Turn a provider off and it stays in the list, greyed — its metrics hide from the dashboard and menu bar but keep their setup for when you turn it back on. Drag providers by their grip to reorder; tap a row to open its detail.
 

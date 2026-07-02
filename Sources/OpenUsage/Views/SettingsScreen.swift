@@ -202,6 +202,13 @@ struct SettingsScreen: View {
                     .padding(.vertical, density.controlRowPadding)
                 }
             }
+            // Mirror of the Customize cross-link — the layout controls live on the other screen.
+            ScreenCrossLinkRow(
+                systemImage: "slider.horizontal.3",
+                title: "Customize",
+                subtitle: "Choose what's visible and where",
+                destination: .customize
+            )
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)

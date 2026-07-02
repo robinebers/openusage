@@ -10,7 +10,7 @@ Right-click (or control-click) the menu bar icon for a quick menu with **Setting
 
 Star a metric from any row's right-click menu, or from the star that appears when hovering rows in Customize.
 
-- On first launch the app ships with a default set of stars (Claude Session/Weekly, Codex Session/Weekly, Cursor Auto Usage/API Usage) so the strip shows numbers right away. Change them anytime; Reset in Customize restores this set.
+- On first launch the app ships with a default set of stars (Antigravity Session/Weekly, Claude Session/Weekly, Codex Session/Weekly, Cursor Auto Usage/API Usage, Copilot Credits, OpenRouter Credits, Z.ai Session/Weekly) so the strip shows numbers right away. Change them anytime; Reset in Customize restores this set.
 - At most **2 stars per provider**.
 - When a star isn't allowed, the star button stays clickable — clicking it shakes and shows the reason in the footer (e.g. "Up to 2 stars per provider").
 - The Customize footer shows your count: `n starred`.

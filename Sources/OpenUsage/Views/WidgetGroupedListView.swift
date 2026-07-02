@@ -68,7 +68,7 @@ struct WidgetGroupedListView: View {
                 Task { await dataStore.refresh(providerID: group.provider.id, force: true) }
             }
             Button("Customize…") {
-                withAnimation(Motion.modeSwitch) { layout.isEditing = true }
+                openCustomize(for: group.provider.id)
             }
             Divider()
             Button("Share Screenshot") { shareCard(group) }
@@ -267,7 +267,15 @@ struct WidgetGroupedListView: View {
             }
         }
         Button("Customize…") {
-            withAnimation(Motion.modeSwitch) { layout.isEditing = true }
+            openCustomize(for: providerID)
+        }
+    }
+
+    /// From the dashboard, jump straight into this provider's Customize metrics (L2), not the provider list.
+    private func openCustomize(for providerID: String) {
+        withAnimation(Motion.modeSwitch) {
+            layout.customizeProviderID = providerID
+            layout.isEditing = true
         }
     }
 

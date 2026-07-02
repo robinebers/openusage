@@ -200,6 +200,21 @@ final class PaceTests: XCTestCase {
         }
     }
 
+    func testFreshUsageWindowToleratesFetchLatencyGrace() {
+        let session: TimeInterval = 5 * 3600 // minimumElapsed = 180s
+        // A few seconds "elapsed" from fetch latency still counts as not started…
+        XCTAssertTrue(Pace.isFreshUsageWindow(resetsAt: now.addingTimeInterval(session - 5),
+                                              periodDuration: session, now: now))
+        // …up to the projection gate (minimumElapsed), inclusive…
+        XCTAssertTrue(Pace.isFreshUsageWindow(resetsAt: now.addingTimeInterval(session - 180),
+                                              periodDuration: session, now: now))
+        // …but once a projection would be meaningful, the window has started.
+        XCTAssertFalse(Pace.isFreshUsageWindow(resetsAt: now.addingTimeInterval(session - 181),
+                                               periodDuration: session, now: now))
+        // An already-reset window is never fresh.
+        XCTAssertFalse(Pace.isFreshUsageWindow(resetsAt: now, periodDuration: session, now: now))
+    }
+
     func testPaceProjectionWaitsUntilWindowHasMateriallyStarted() {
         let session: TimeInterval = 5 * 3600
         let elapsed = 60 / session // one minute in — too early to extrapolate

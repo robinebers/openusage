@@ -53,7 +53,7 @@ final class ResetDisplayTests: XCTestCase {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let period: TimeInterval = 5 * 3600
         for id in ["codex.session", "claude.session",
-                   "antigravity.geminiPro", "antigravity.geminiFlash", "antigravity.claude"] {
+                   "antigravity.geminiPro", "antigravity.claude"] {
             var data = WidgetData(title: "Session", icon: .symbol("clock"), kind: .percent, used: 0, limit: 100)
             data.widgetID = id
             data.periodDurationMs = Int(period * 1000)
@@ -70,6 +70,22 @@ final class ResetDisplayTests: XCTestCase {
             XCTAssertEqual(state, .level(.normal), id)
             XCTAssertNil(state.tooltip, id)
             XCTAssertNil(data.paceTick(for: state, now: now), id)
+        }
+    }
+
+    func testAntigravityWeeklyRowsNeverReadNotStarted() {
+        // Antigravity's weekly meters are calendar windows, not rolling sessions — like Claude/Codex,
+        // only the 5h rows get the "Not started" treatment (fix: merged pools + weekly limits).
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let period: TimeInterval = 7 * 24 * 3600
+        for id in ["antigravity.geminiWeekly", "antigravity.claudeWeekly"] {
+            var data = WidgetData(title: "Weekly", icon: .symbol("clock"), kind: .percent, used: 0, limit: 100)
+            data.widgetID = id
+            data.periodDurationMs = Int(period * 1000)
+            data.resetsAt = now.addingTimeInterval(period / 2)
+            XCTAssertFalse(data.isFreshSessionWindow(now: now), id)
+            XCTAssertNotEqual(data.boundedTrailingText(now: now), "Not started", id)
+            XCTAssertEqual(data.boundedTrailingText(now: now)?.hasPrefix("Resets"), true, id)
         }
     }
 
