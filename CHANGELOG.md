@@ -1,5 +1,39 @@
 # Changelog
 
+## v0.7.2
+
+### New Features
+- feat(popover): make Customize the primary footer button and cross-link the two screens by @robinebers
+- feat(customize): add Reset All Customization button with confirmation ([#815](https://github.com/robinebers/openusage/pull/815)) by @robinebers
+- feat(appearance): Increase Transparency toggle + secret-code Party/Drunk easter egg ([#784](https://github.com/robinebers/openusage/pull/784)) by @validatedev
+
+### Bug Fixes
+- fix(dashboard): open provider Customize from context menu on metrics by @robinebers
+- fix(antigravity): rename pool rows to Session/Weekly for cross-provider consistency by @validatedev
+- fix(codex): tolerate fetch latency in fresh-window detection so untouched sessions stop reading 99% left by @robinebers
+- fix(antigravity): merged Gemini pool + weekly limits via RetrieveUserQuotaSummary by @validatedev
+- fix(notifications): ignore reset timestamp jitter ([#816](https://github.com/robinebers/openusage/pull/816)) by @robinebers
+
+### Chores
+- chore(worktree-setup): exclude stale agent worktrees from rsync by @robinebers
+- docs(release-swift): stable changelogs span last-stable to this-stable by @robinebers
+
+---
+
+### Changelog
+**Full Changelog**: [v0.7.1...v0.7.2](https://github.com/robinebers/openusage/compare/v0.7.1...v0.7.2)
+
+- [ed7ef3c](https://github.com/robinebers/openusage/commit/ed7ef3c9393b1ffb14c7aad87cf7423773c1e8d7) chore(worktree-setup): exclude stale agent worktrees from rsync by @robinebers
+- [a16ee82](https://github.com/robinebers/openusage/commit/a16ee828e2f1f12df9ff1a572d1cb6d586d9e331) fix(dashboard): open provider Customize from context menu on metrics by @robinebers
+- [7ab9208](https://github.com/robinebers/openusage/commit/7ab92087fde58915ea2d2fc5b540cfce5f369d95) fix(antigravity): rename pool rows to Session/Weekly for cross-provider consistency by @validatedev
+- [a090ba6](https://github.com/robinebers/openusage/commit/a090ba60b08c29a3b66d2cbeec31b4a503b421bb) fix(codex): tolerate fetch latency in fresh-window detection so untouched sessions stop reading 99% left by @robinebers
+- [1ce97bc](https://github.com/robinebers/openusage/commit/1ce97bcc7955e72d95a981c5dde971546264a8ae) fix(antigravity): merged Gemini pool + weekly limits via RetrieveUserQuotaSummary by @validatedev
+- [d7411a8](https://github.com/robinebers/openusage/commit/d7411a8d8c78fa72a2d5309878c41bf58b5e2e8a) feat(popover): make Customize the primary footer button and cross-link the two screens by @robinebers
+- [d152b09](https://github.com/robinebers/openusage/commit/d152b090d5707adfcb920de2ca2b597355df0b34) fix(notifications): ignore reset timestamp jitter (#816) by @robinebers
+- [21a109a](https://github.com/robinebers/openusage/commit/21a109ab4e963a1529caeccacf175bc092308dab) feat(customize): add Reset All Customization button with confirmation (#815) by @robinebers
+- [6e513ec](https://github.com/robinebers/openusage/commit/6e513eccf47bea8527420f8cdfc7fcc50702029f) feat(appearance): Increase Transparency toggle + secret-code Party/Drunk easter egg (#784) by @validatedev
+- [6aca8aa](https://github.com/robinebers/openusage/commit/6aca8aa1030bf9e4d11292bfd5c5b0205754ee2e) docs(release-swift): stable changelogs span last-stable to this-stable by @robinebers
+
 ## v0.7.1
 
 ### New Features
