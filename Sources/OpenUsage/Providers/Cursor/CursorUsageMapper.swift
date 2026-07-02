@@ -199,21 +199,30 @@ enum CursorUsageMapper {
         let onDemand = teamUsage?["onDemand"] as? [String: Any]
         let overall = individualUsage?["overall"] as? [String: Any]
 
-        var hasUsageMetric = appendDollarUsageBucket(
-            pooled,
+        let hasIndividualOverall = appendDollarUsageBucket(
+            overall,
             label: "Total usage",
             resetsAt: cycle.resetsAt,
             periodDurationMs: cycle.periodDurationMs,
             to: &lines
         )
+        var hasUsageMetric = hasIndividualOverall
         if !hasUsageMetric {
             hasUsageMetric = appendDollarUsageBucket(
-                overall,
+                pooled,
                 label: "Total usage",
                 resetsAt: cycle.resetsAt,
                 periodDurationMs: cycle.periodDurationMs,
                 to: &lines
             )
+        } else if appendDollarUsageBucket(
+            pooled,
+            label: "Team pool",
+            resetsAt: cycle.resetsAt,
+            periodDurationMs: cycle.periodDurationMs,
+            to: &lines
+        ) {
+            hasUsageMetric = true
         }
 
         if let autoPercent = percentFromDisplayMessage(summary["autoModelSelectedDisplayMessage"] as? String) {

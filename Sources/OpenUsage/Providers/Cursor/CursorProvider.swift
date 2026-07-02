@@ -44,6 +44,7 @@ final class CursorProvider: ProviderRuntime {
             .percent(id: "cursor.auto", provider: provider, title: "Auto Usage", metricLabel: "Auto usage"),
             .percent(id: "cursor.api", provider: provider, title: "API Usage", metricLabel: "API usage"),
             .boundedDollars(id: "cursor.onDemand", provider: provider, title: "Extra Usage", metricLabel: "On-demand", limit: 100, valueWord: "spent"),
+            .boundedDollars(id: "cursor.teamPool", provider: provider, title: "Team Pool", metricLabel: "Team pool", limit: 100, valueWord: "spent"),
             .boundedCount(id: "cursor.requests", provider: provider, title: "Requests", limit: 500,
                           suffix: "requests", periodDurationMs: CursorUsageMapper.billingPeriodMs),
             .dollarBalance(id: "cursor.credits", provider: provider, title: "Credits", valueWord: "left")

@@ -7,11 +7,12 @@ Tracks your Cursor plan usage using the login from the Cursor app.
 | Metric | Meaning |
 |---|---|
 | Credits | Credit balance left from grants and prepaid account balance |
-| Total Usage | Plan usage for the billing cycle (percent; dollars on team plans) |
+| Total Usage | Plan usage for the billing cycle (percent on pro plans; dollars on team plans). On enterprise accounts using `/api/usage-summary`, this is your individual monthly usage (`individualUsage.overall`) — the same "Your monthly usage" figure on the Cursor dashboard. |
+| Team Pool | Enterprise/team pooled spend (`teamUsage.pooled` from usage-summary). Only shown when individual monthly usage is also available, so Total Usage and Team Pool are not duplicated. |
 | Requests | Request count vs. cap (team/enterprise accounts) |
 | Auto Usage | Auto-model usage percent |
 | API Usage | API usage percent |
-| Extra Usage | On-demand spend; shown as a meter only when Cursor returns a limit |
+| Extra Usage | On-demand spend (`teamUsage.onDemand` on enterprise); shown as a meter only when Cursor returns a limit |
 | Plan | Your plan name (optional widget) |
 
 ## Where credentials come from
@@ -29,4 +30,4 @@ Cursor's per-day spend tiles (Today / Yesterday / Last 30 Days) and the Usage Tr
 
 ## Under the hood
 
-Connect RPC on `api2.cursor.sh` (dashboard usage), REST fallback at `cursor.com/api/usage` for request-based accounts, `cursor.com/api/usage-summary` for enterprise/team token-based accounts when dashboard usage is empty, and Stripe balance at `cursor.com/api/auth/stripe`. A 401/403 triggers one token refresh and retry. Per-day spend imputation uses token counts priced through the shared [model pricing](../pricing.md); Cursor-native models (`auto`, `composer-*`, …) come from its supplement layer, which maintainers sync from [Cursor models & pricing](https://cursor.com/docs/models-and-pricing.md). (The usage-events CSV export at `cursor.com/api/dashboard/export-usage-events-csv` previously fed the spend history; it's not currently fetched — see above.)
+Connect RPC on `api2.cursor.sh` (dashboard usage), REST fallback at `cursor.com/api/usage` for request-based accounts, `cursor.com/api/usage-summary` for enterprise/team token-based accounts when dashboard usage is empty, and Stripe balance at `cursor.com/api/auth/stripe`. On enterprise accounts, usage-summary maps `individualUsage.overall` to Total Usage (monthly individual spend in cents) and `teamUsage.pooled` to Team Pool; when only pooled data is returned, it falls back to Total Usage. A 401/403 triggers one token refresh and retry. Per-day spend imputation uses token counts priced through the shared [model pricing](../pricing.md); Cursor-native models (`auto`, `composer-*`, …) come from its supplement layer, which maintainers sync from [Cursor models & pricing](https://cursor.com/docs/models-and-pricing.md). (The usage-events CSV export at `cursor.com/api/dashboard/export-usage-events-csv` previously fed the spend history; it's not currently fetched — see above.)

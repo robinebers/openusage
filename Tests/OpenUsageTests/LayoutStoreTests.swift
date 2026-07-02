@@ -627,7 +627,7 @@ final class LayoutStoreTests: XCTestCase {
         ])
         // Cursor's spend tiles + usage trend are enabled, so they trail the live meters in declaration order.
         XCTAssertEqual(store.orderedSupportedMetrics(for: "cursor").map(\.id), [
-            "cursor.usage", "cursor.auto", "cursor.api", "cursor.onDemand", "cursor.requests",
+            "cursor.usage", "cursor.auto", "cursor.api", "cursor.onDemand", "cursor.teamPool", "cursor.requests",
             "cursor.credits", "cursor.trend", "cursor.today", "cursor.yesterday", "cursor.last30"
         ])
     }
@@ -685,7 +685,7 @@ final class LayoutStoreTests: XCTestCase {
         // today/yesterday/last30 rows sit below the caret alongside the other secondary metrics.
         XCTAssertEqual(primaryByProvider["cursor"], ["cursor.usage", "cursor.auto", "cursor.api", "cursor.trend"])
         XCTAssertEqual(expandedByProvider["cursor"], [
-            "cursor.onDemand", "cursor.requests", "cursor.credits",
+            "cursor.onDemand", "cursor.teamPool", "cursor.requests", "cursor.credits",
             "cursor.today", "cursor.yesterday", "cursor.last30"
         ])
     }
