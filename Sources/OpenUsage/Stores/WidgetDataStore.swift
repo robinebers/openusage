@@ -178,10 +178,12 @@ final class WidgetDataStore {
             guard data.isBounded else { continue }
             let state = data.meterState(now: now)
             let previous = notificationState[key] ?? NotificationState()
-            // Debug-only decision trace: record the inputs to each pace-notification check so a repeat
-            // alert can be matched against the exact state, reset timestamp, and prior dedupe flags.
             let currentBucket = PaceNotificationLogic.bucket(for: state)
-            AppLog.debug(.notifications, "check \(key): metric=\(data.title) state=\(Self.notificationStateDescription(state)) bucket=\(Self.bucketDescription(currentBucket)) previousBucket=\(Self.bucketDescription(previous.previousBucket)) remaining=\(Self.percentDescription(data.remainingFraction)) reset=\(Self.dateDescription(data.resetsAt)) previousReset=\(Self.dateDescription(previous.resetsAt)) resetAdvanced=\(Self.resetAdvanced(current: data.resetsAt, previous: previous.resetsAt)) primed=\(previous.primed) wasUnderTen=\(previous.wasUnderTenPercent) firedBefore=\(Self.milestoneDescription(previous.firedMilestones)) toggles=\(Self.toggleDescription(toggles))")
+            let resetDelta = Self.resetDelta(current: data.resetsAt, previous: previous.resetsAt)
+            let resetAdvanced = PaceNotificationLogic.resetWindowAdvanced(
+                resetsAt: data.resetsAt,
+                previousReset: previous.resetsAt
+            )
             let result = PaceNotificationLogic.transitions(
                 state: state,
                 fraction: data.remainingFraction,
@@ -189,7 +191,9 @@ final class WidgetDataStore {
                 previous: previous,
                 toggles: toggles
             )
-            AppLog.debug(.notifications, "decision \(key): fire=\(Self.milestoneDescription(result.fire)) newBucket=\(Self.bucketDescription(result.newState.previousBucket)) newReset=\(Self.dateDescription(result.newState.resetsAt)) newWasUnderTen=\(result.newState.wasUnderTenPercent) newPrimed=\(result.newState.primed) newFired=\(Self.milestoneDescription(result.newState.firedMilestones))")
+            if !result.fire.isEmpty || resetAdvanced || Self.isPositiveResetMovement(resetDelta) {
+                AppLog.debug(.notifications, "decision \(key): metric=\(data.title) state=\(Self.notificationStateDescription(state)) bucket=\(Self.bucketDescription(currentBucket)) previousBucket=\(Self.bucketDescription(previous.previousBucket)) remaining=\(Self.percentDescription(data.remainingFraction)) reset=\(Self.dateDescription(data.resetsAt)) previousReset=\(Self.dateDescription(previous.resetsAt)) resetDelta=\(Self.resetDeltaDescription(resetDelta)) resetReason=\(Self.resetReasonDescription(delta: resetDelta, advanced: resetAdvanced)) primed=\(previous.primed) wasUnderTen=\(previous.wasUnderTenPercent) firedBefore=\(Self.milestoneDescription(previous.firedMilestones)) fire=\(Self.milestoneDescription(result.fire)) newBucket=\(Self.bucketDescription(result.newState.previousBucket)) newFired=\(Self.milestoneDescription(result.newState.firedMilestones)) toggles=\(Self.toggleDescription(toggles))")
+            }
             // Deliver each fired milestone, then commit dedup state only for the ones that actually
             // delivered. The logic doesn't mark milestones fired — that's done here, after delivery
             // succeeds, so a skipped/failed delivery (not authorized, or `add` errored) leaves the
@@ -234,19 +238,29 @@ final class WidgetDataStore {
         )
     }
 
-    /// What a single provider's refresh actually did this pass, so `refreshAll` can summarize the batch
-    /// from real outcomes rather than cumulative error state. `.backedOff` is a probe deliberately skipped
-    /// because the provider failed within the last `failureRetryBackoff` — distinct from `.skipped`
-    /// (disabled / unknown / already in flight) so a wake-burst's suppression is visible in the logs.
-    enum RefreshOutcome: Sendable { case refreshed, failed, cacheHit, skipped, backedOff }
-
     // MARK: - Notification decision trace helpers (debug logging only)
 
-    /// True when the reset timestamp moved later or appeared where there was none — the condition that
-    /// would reset pace-notification dedupe. Logged so a repeat alert can be tied back to a rolling window.
-    private static func resetAdvanced(current: Date?, previous: Date?) -> Bool {
-        guard let current else { return false }
-        return previous == nil || current > (previous ?? .distantPast)
+    private static func resetDelta(current: Date?, previous: Date?) -> TimeInterval? {
+        guard let current, let previous else { return nil }
+        return current.timeIntervalSince(previous)
+    }
+
+    private static func isPositiveResetMovement(_ delta: TimeInterval?) -> Bool {
+        guard let delta else { return false }
+        return delta > 0
+    }
+
+    private static func resetReasonDescription(delta: TimeInterval?, advanced: Bool) -> String {
+        guard let delta else { return "firstOrMissingReset" }
+        if advanced { return "advanced" }
+        if delta > 0 { return "ignoredJitter" }
+        if delta < 0 { return "movedEarlier" }
+        return "unchanged"
+    }
+
+    private static func resetDeltaDescription(_ delta: TimeInterval?) -> String {
+        guard let delta else { return "nil" }
+        return String(format: "%.3fs", delta)
     }
 
     private static func dateDescription(_ date: Date?) -> String {
@@ -294,6 +308,12 @@ final class WidgetDataStore {
             }
         }
     }
+
+    /// What a single provider's refresh actually did this pass, so `refreshAll` can summarize the batch
+    /// from real outcomes rather than cumulative error state. `.backedOff` is a probe deliberately skipped
+    /// because the provider failed within the last `failureRetryBackoff` — distinct from `.skipped`
+    /// (disabled / unknown / already in flight) so a wake-burst's suppression is visible in the logs.
+    enum RefreshOutcome: Sendable { case refreshed, failed, cacheHit, skipped, backedOff }
 
     @discardableResult
     func refresh(providerID: String, force: Bool = false) async -> RefreshOutcome {

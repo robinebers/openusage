@@ -94,6 +94,30 @@ final class PaceNotificationLogicTests: XCTestCase {
         XCTAssertEqual(refired.fire, [.healthyToClose])
     }
 
+    func testResetJitterDoesNotRearmRunningOutAlert() {
+        var state = step(healthy).newState
+        state = step(running, from: state).newState   // fires closeToRunningOut this window
+
+        let jitteredReset = reset.addingTimeInterval(0.09)
+        let stillRunningOut = step(running, resetsAt: jitteredReset, from: state)
+
+        XCTAssertTrue(stillRunningOut.fire.isEmpty)
+        XCTAssertEqual(stillRunningOut.newState.previousBucket, .runningOut)
+        XCTAssertEqual(stillRunningOut.newState.resetsAt, jitteredReset)
+    }
+
+    func testResetJitterDoesNotRearmCloseAlert() {
+        var state = step(healthy).newState
+        state = step(close, from: state).newState   // fires healthyToClose this window
+
+        let jitteredReset = reset.addingTimeInterval(0.09)
+        let stillClose = step(close, resetsAt: jitteredReset, from: state)
+
+        XCTAssertTrue(stillClose.fire.isEmpty)
+        XCTAssertEqual(stillClose.newState.previousBucket, .close)
+        XCTAssertEqual(stillClose.newState.resetsAt, jitteredReset)
+    }
+
     // MARK: - Recovery re-arms
 
     func testRecoveryThenReworseningRefires() {

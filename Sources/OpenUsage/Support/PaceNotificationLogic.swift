@@ -119,7 +119,9 @@ enum PaceNotificationLogic {
     /// Decide which milestones to fire for one metric this pass, and the state to persist.
     ///
     /// Rules:
-    /// - A new reset window (a later `resetsAt`) clears the fired set so milestones can fire again.
+    /// - A new reset window (a meaningfully later `resetsAt`) clears the fired set so milestones can fire
+    ///   again. Provider timestamps can jitter by milliseconds between refreshes, so tiny differences are
+    ///   treated as the same reset window for notification dedupe.
     /// - `healthyToClose` / `closeToRunningOut` fire only on a worsening *edge* between adjacent
     ///   buckets, only if not already fired this window, and only if their toggle is on.
     /// - `underTenPercent` fires the first time remaining crosses under 10% this window; recovering
@@ -139,9 +141,9 @@ enum PaceNotificationLogic {
     ) -> Transition {
         var next = previous
 
-        // New window: reset dedup. A nil-or-equal reset keeps the window; a strictly later reset (or a
-        // reset appearing where there was none) starts fresh.
-        if let resetsAt, previous.resetsAt == nil || resetsAt > (previous.resetsAt ?? .distantPast) {
+        // New window: reset dedup. A nil-or-equal reset keeps the window; a reset appearing where there
+        // was none or moving later by more than the jitter tolerance starts fresh.
+        if resetWindowAdvanced(resetsAt: resetsAt, previousReset: previous.resetsAt) {
             next.firedMilestones = []
             next.wasUnderTenPercent = false
             next.previousBucket = .untracked
@@ -246,5 +248,15 @@ enum PaceNotificationLogic {
         case .close: return 1
         case .runningOut: return 2
         }
+    }
+
+    /// Reset timestamps can carry provider-side millisecond jitter. For notification dedupe, only a
+    /// meaningful advance re-arms milestones; the UI can still display the exact provider timestamp.
+    static let resetWindowJitterTolerance: TimeInterval = 1
+
+    static func resetWindowAdvanced(resetsAt: Date?, previousReset: Date?) -> Bool {
+        guard let resetsAt else { return false }
+        guard let previousReset else { return true }
+        return resetsAt.timeIntervalSince(previousReset) > resetWindowJitterTolerance
     }
 }

@@ -56,12 +56,12 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         )
     }
 
-    private func snapshot(used: Double) -> ProviderSnapshot {
+    private func snapshot(used: Double, resetsAt: Date? = nil) -> ProviderSnapshot {
         ProviderSnapshot(
             providerID: Self.provider.id,
             displayName: Self.provider.displayName,
             lines: [.progress(label: "Session", used: used, limit: 100, format: .percent,
-                              resetsAt: resetsAt, periodDurationMs: Int(week * 1000))]
+                              resetsAt: resetsAt ?? self.resetsAt, periodDurationMs: Int(week * 1000))]
         )
     }
 
@@ -139,6 +139,26 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         XCTAssertTrue(recorder.posts.contains { $0.0 == "test.closeToRunningOut" })
         XCTAssertTrue(recorder.posts.contains { $0.3 == "Projected to finish before the limit resets." })
         XCTAssertTrue(recorder.posts.contains { $0.2 == "Test Session" })
+    }
+
+    func testResetJitterDoesNotRefireRunningOutThroughTheStore() async {
+        let settings = NotificationSettingsStore(defaults: makeUserDefaults("jitter-settings"))
+        allOn(settings)
+        let recorder = Recorder()
+        let (store, runtime, _) = makeStore(used: 80, settings: settings, recorder: recorder, defaultsName: "jitter")
+        await store.refreshAll(force: true)
+        await store.evaluateNotifications(now: base)   // healthy -> primes, no fire
+
+        runtime.snapshot = snapshot(used: 95)
+        await store.refreshAll(force: true)
+        await store.evaluateNotifications(now: base)   // -> red, fires once
+        XCTAssertEqual(recorder.posts.filter { $0.0 == "test.closeToRunningOut" }.count, 1)
+
+        runtime.snapshot = snapshot(used: 95, resetsAt: resetsAt.addingTimeInterval(0.09))
+        await store.refreshAll(force: true)
+        await store.evaluateNotifications(now: base)   // same red state, reset jitter only
+
+        XCTAssertEqual(recorder.posts.filter { $0.0 == "test.closeToRunningOut" }.count, 1)
     }
 
     func testAllTogglesOffSuppressesAllPosts() async {
