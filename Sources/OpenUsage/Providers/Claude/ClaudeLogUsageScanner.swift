@@ -116,7 +116,9 @@ actor ClaudeLogUsageScanner {
 
     /// Claude config directories that actually contain a `projects/` folder, in ccusage's order:
     /// every entry of `CLAUDE_CONFIG_DIR` when set (an invalid list logs and yields none), else
-    /// `$XDG_CONFIG_HOME/claude` (default `~/.config/claude`) and `~/.claude`.
+    /// `$XDG_CONFIG_HOME/claude` (default `~/.config/claude`) and `~/.claude`. Cowork's per-session
+    /// `.claude` sandboxes are always appended — they live under the desktop app's own container,
+    /// so `CLAUDE_CONFIG_DIR` (a terminal-CLI override) doesn't speak for them.
     private func claudeRoots() -> [URL] {
         var roots: [URL] = []
         var seen: Set<String> = []
@@ -141,15 +143,51 @@ actor ClaudeLogUsageScanner {
             if roots.isEmpty {
                 AppLog.warn(LogTag.plugin("claude"), "CLAUDE_CONFIG_DIR is set but contains no Claude data directory with projects/: \(raw)")
             }
-            return roots
+        } else {
+            let home = homeDirectory()
+            let xdg = environment.value(for: "XDG_CONFIG_HOME")?.nilIfEmpty.map { URL(fileURLWithPath: expandHome($0)) }
+                ?? home.appendingPathComponent(".config")
+            addIfValid(xdg.appendingPathComponent("claude"))
+            addIfValid(home.appendingPathComponent(".claude"))
         }
 
-        let home = homeDirectory()
-        let xdg = environment.value(for: "XDG_CONFIG_HOME")?.nilIfEmpty.map { URL(fileURLWithPath: expandHome($0)) }
-            ?? home.appendingPathComponent(".config")
-        addIfValid(xdg.appendingPathComponent("claude"))
-        addIfValid(home.appendingPathComponent(".claude"))
+        for sandbox in Self.coworkClaudeDirs(home: homeDirectory()) {
+            addIfValid(sandbox)
+        }
         return roots
+    }
+
+    /// The `.claude` dirs Cowork (the Claude desktop app's agent mode) creates, one per session,
+    /// under `~/Library/Application Support/Claude/local-agent-mode-sessions/<group>/<sub>/local_*`
+    /// (plus an `agent/local_*` variant one level deeper). Each holds the same `projects/**/*.jsonl`
+    /// session logs as `~/.claude`, so they scan as additional roots. The walk is bounded to those
+    /// known levels — session dirs contain full sandbox homes we must not recurse into.
+    private static func coworkClaudeDirs(home: URL) -> [URL] {
+        let base = home
+            .appendingPathComponent("Library/Application Support/Claude/local-agent-mode-sessions")
+
+        func subdirectories(of url: URL) -> [URL] {
+            let contents = (try? FileManager.default.contentsOfDirectory(
+                at: url, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]
+            )) ?? []
+            return contents.filter {
+                (try? $0.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
+            }
+        }
+
+        var dirs: [URL] = []
+        for group in subdirectories(of: base) {
+            for sub in subdirectories(of: group) {
+                var sessions = subdirectories(of: sub)
+                for holder in sessions where holder.lastPathComponent == "agent" {
+                    sessions.append(contentsOf: subdirectories(of: holder))
+                }
+                for session in sessions {
+                    dirs.append(session.appendingPathComponent(".claude"))
+                }
+            }
+        }
+        return dirs.sorted { $0.path < $1.path }
     }
 
     struct DiscoveredFile: Sendable {

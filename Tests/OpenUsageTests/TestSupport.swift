@@ -29,14 +29,43 @@ enum ClaudeLogFixture {
     static func makeHome(files: [String: String] = [:]) throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("openusage-claude-\(UUID().uuidString)", isDirectory: true)
-        let projects = root.appendingPathComponent("projects", isDirectory: true)
+        try write(files: files, toProjectsOf: root)
+        return root
+    }
+
+    /// A temp *user home* fixture for Cowork tests. `claudeFiles` land under
+    /// `<home>/.claude/projects/`; each `coworkSessions` entry (session dir relative to
+    /// `local-agent-mode-sessions`, e.g. `group/sub/local_x` → files) lands under that session's
+    /// `.claude/projects/` inside `<home>/Library/Application Support/Claude/local-agent-mode-sessions`.
+    static func makeUserHome(
+        claudeFiles: [String: String] = [:],
+        coworkSessions: [String: [String: String]] = [:]
+    ) throws -> URL {
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openusage-claude-home-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        if !claudeFiles.isEmpty {
+            try write(files: claudeFiles, toProjectsOf: home.appendingPathComponent(".claude"))
+        }
+        let sessionsBase = home
+            .appendingPathComponent("Library/Application Support/Claude/local-agent-mode-sessions")
+        for (sessionDir, files) in coworkSessions {
+            try write(
+                files: files,
+                toProjectsOf: sessionsBase.appendingPathComponent(sessionDir).appendingPathComponent(".claude")
+            )
+        }
+        return home
+    }
+
+    private static func write(files: [String: String], toProjectsOf configDir: URL) throws {
+        let projects = configDir.appendingPathComponent("projects", isDirectory: true)
         try FileManager.default.createDirectory(at: projects, withIntermediateDirectories: true)
         for (relativePath, content) in files {
             let url = projects.appendingPathComponent(relativePath)
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try content.write(to: url, atomically: true, encoding: .utf8)
         }
-        return root
     }
 
     /// A scanner pinned to the fixture home (or to nothing when `home` is nil → "No data").
@@ -45,6 +74,12 @@ enum ClaudeLogFixture {
             environment: FakeEnvironment(home.map { ["CLAUDE_CONFIG_DIR": $0.path] } ?? [:]),
             homeDirectory: { FileManager.default.temporaryDirectory.appendingPathComponent("openusage-no-claude-home") }
         )
+    }
+
+    /// A scanner whose *user home* is the fixture from `makeUserHome` — exercises the default
+    /// `~/.claude` root plus Cowork session discovery, with no `CLAUDE_CONFIG_DIR` override.
+    static func scanner(userHome: URL) -> ClaudeLogUsageScanner {
+        ClaudeLogUsageScanner(environment: FakeEnvironment([:]), homeDirectory: { userHome })
     }
 
     /// One Claude Code usage line in the modern log shape. Pass `nil` to omit a field.

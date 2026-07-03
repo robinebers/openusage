@@ -370,6 +370,87 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
         }
     }
 
+    // MARK: - Cowork session roots
+
+    func testScanSumsTerminalAndCoworkLogs() async throws {
+        let now = Date()
+        let timestamp = OpenUsageISO8601.string(from: now)
+        let home = try ClaudeLogFixture.makeUserHome(
+            claudeFiles: [
+                "project-a/terminal.jsonl": ClaudeLogFixture.usageLine(
+                    timestamp: timestamp, input: 100, output: 50, costUSD: 0.25,
+                    messageID: "msg-terminal", requestID: "req-terminal"
+                )
+            ],
+            coworkSessions: [
+                "group-1/sub-1/local_a": [
+                    "workspace/session.jsonl": ClaudeLogFixture.usageLine(
+                        timestamp: timestamp, input: 10, output: 5, costUSD: 0.05,
+                        messageID: "msg-cowork", requestID: "req-cowork"
+                    )
+                ],
+                "group-1/sub-1/agent/local_ditto_a": [
+                    "workspace/session.jsonl": ClaudeLogFixture.usageLine(
+                        timestamp: timestamp, input: 2, output: 3, costUSD: 0.01,
+                        messageID: "msg-ditto", requestID: "req-ditto"
+                    )
+                ]
+            ]
+        )
+        let scanner = ClaudeLogFixture.scanner(userHome: home)
+
+        let result = await scanner.scan(now: now, pricing: pricing)
+        let scan = try XCTUnwrap(result)
+        XCTAssertEqual(scan.series.daily.count, 1)
+        XCTAssertEqual(scan.series.daily[0].totalTokens, 170)
+        XCTAssertEqual(scan.series.daily[0].costUSD ?? 0, 0.31, accuracy: 1e-9)
+    }
+
+    func testScanFindsCoworkLogsWithoutTerminalClaudeHome() async throws {
+        let now = Date()
+        let home = try ClaudeLogFixture.makeUserHome(coworkSessions: [
+            "group-1/sub-1/local_a": [
+                "workspace/session.jsonl": ClaudeLogFixture.usageLine(
+                    timestamp: OpenUsageISO8601.string(from: now), input: 10, output: 5, costUSD: 0.05
+                )
+            ]
+        ])
+        let scanner = ClaudeLogFixture.scanner(userHome: home)
+
+        let result = await scanner.scan(now: now, pricing: pricing)
+        let scan = try XCTUnwrap(result)
+        XCTAssertEqual(scan.series.daily.count, 1)
+        XCTAssertEqual(scan.series.daily[0].totalTokens, 15)
+    }
+
+    func testScanDeduplicatesReplaysAcrossTerminalAndCoworkLogs() async throws {
+        let now = Date()
+        let timestamp = OpenUsageISO8601.string(from: now)
+        let home = try ClaudeLogFixture.makeUserHome(
+            claudeFiles: [
+                "project-a/parent.jsonl": ClaudeLogFixture.usageLine(
+                    timestamp: timestamp, input: 100, output: 50, costUSD: 0.25,
+                    messageID: "msg-shared", requestID: "req-parent", isSidechain: false
+                )
+            ],
+            coworkSessions: [
+                "group-1/sub-1/local_a": [
+                    "workspace/replay.jsonl": ClaudeLogFixture.usageLine(
+                        timestamp: timestamp, input: 90_000, output: 10, costUSD: 9.99,
+                        messageID: "msg-shared", requestID: "req-replay", isSidechain: true
+                    )
+                ]
+            ]
+        )
+        let scanner = ClaudeLogFixture.scanner(userHome: home)
+
+        let result = await scanner.scan(now: now, pricing: pricing)
+        let scan = try XCTUnwrap(result)
+        XCTAssertEqual(scan.series.daily.count, 1)
+        XCTAssertEqual(scan.series.daily[0].totalTokens, 150)
+        XCTAssertEqual(scan.series.daily[0].costUSD ?? 0, 0.25, accuracy: 1e-9)
+    }
+
     func testScanAcceptsProjectsDirItselfInConfigDir() async throws {
         let now = Date()
         let home = try ClaudeLogFixture.makeHome(files: [
