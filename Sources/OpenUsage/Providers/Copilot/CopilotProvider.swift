@@ -70,11 +70,12 @@ final class CopilotProvider: ProviderRuntime {
 
             let mapped = try CopilotUsageMapper.map(response)
 
-            // An org-managed (token-based-billing) seat has no per-seat quota, so the mapper returns no
-            // lines; the real usage lives in the org's billing. Look it up there — best-effort: an org
-            // admin sees Org Credits / Org Spend, everyone else keeps the plan-only card as before.
+            // An org-managed (token-based-billing) seat has no per-seat quota, so the real usage lives
+            // in the org's billing. Look it up there — best-effort: an org admin sees Org Credits /
+            // Org Spend, everyone else keeps the plan-only card as before. Gated on the mapper's
+            // explicit flag, never on `lines` being empty (issue #839).
             var lines = mapped.lines
-            if lines.isEmpty {
+            if mapped.isOrgManagedSeat {
                 lines = await orgBillingLines(token: token.value)
             }
 

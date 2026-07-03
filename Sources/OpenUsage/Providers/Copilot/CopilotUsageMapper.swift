@@ -3,11 +3,18 @@ import Foundation
 struct CopilotMappedUsage: Equatable, Sendable {
     var plan: String?
     var lines: [MetricLine]
+    /// True for an org-managed (token-based-billing) seat whose response carried no usable per-seat
+    /// meters — the signal that the real usage lives in *organization* billing, where the provider
+    /// should look next. Kept as an explicit flag so the org lookup is never gated on the incidental
+    /// shape of `lines` (see issue #839: a placeholder `overage_permitted` used to sneak an
+    /// "Extra Usage: 0" row in and block the lookup).
+    var isOrgManagedSeat: Bool = false
 }
 
 /// Normalizes the `/copilot_internal/user` response into meters. Since 2026-06-01 every plan is on
 /// usage-based billing (AI Credits), so the `premium_interactions` bucket is surfaced as **Credits**
-/// (used % of the monthly allotment), with **Extra Usage** carrying overage beyond it. Paid plans report
+/// (used % of the monthly allotment), with **Extra Usage** carrying overage beyond it (emitted only
+/// alongside a real Credits meter — overage is meaningless without an included pool). Paid plans report
 /// `chat`/`completions` as the `-1` "unlimited" sentinel (suppressed); free plans carry real `chat` and
 /// `completions` counts — either inside `quota_snapshots` (current) or, on older responses, as
 /// `limited_user_quotas` against `monthly_quotas`. Zero-entitlement placeholder snapshots — what GitHub
@@ -30,11 +37,17 @@ enum CopilotUsageMapper {
 
         var lines: [MetricLine] = []
 
-        // The metered premium pool is shown as "Credits"; overage beyond it as "Extra Usage".
+        // The metered premium pool is shown as "Credits"; overage beyond it as "Extra Usage". Extra
+        // Usage only exists relative to an included pool, so it's tied to the Credits meter: an
+        // org-managed placeholder can carry `overage_permitted: true` on a zero-entitlement bucket,
+        // and rendering "0" for it would be meaningless (and used to block the org-billing fallback).
         let snapshots = body["quota_snapshots"] as? [String: Any]
         let premium = snapshots?["premium_interactions"]
-        appendIfPresent(&lines, snapshotLine(label: "Credits", premium, resetsAt: resetsAt))
-        appendIfPresent(&lines, overageLine(premium))
+        let creditsLine = snapshotLine(label: "Credits", premium, resetsAt: resetsAt)
+        appendIfPresent(&lines, creditsLine)
+        if creditsLine != nil {
+            appendIfPresent(&lines, overageLine(premium))
+        }
 
         // Chat + completions: real per-bucket counts on free; the `-1` "unlimited" sentinel on paid
         // (suppressed by `snapshotLine`). Older free responses without `quota_snapshots` fall back to
@@ -59,7 +72,7 @@ enum CopilotUsageMapper {
         // or garbled payload (no token-based-billing marker) is a real problem and fails loudly.
         guard !lines.isEmpty else {
             if readBool(body["token_based_billing"]) == true {
-                return CopilotMappedUsage(plan: plan, lines: [])
+                return CopilotMappedUsage(plan: plan, lines: [], isOrgManagedSeat: true)
             }
             throw CopilotUsageError.quotaUnavailable
         }

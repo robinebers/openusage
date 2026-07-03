@@ -281,6 +281,44 @@ final class CopilotUsageMapperTests: XCTestCase {
 
         XCTAssertEqual(mapped.plan, "Business")
         XCTAssertTrue(mapped.lines.isEmpty)
+        XCTAssertTrue(mapped.isOrgManagedSeat)
+    }
+
+    func testPlaceholderOveragePermittedDoesNotEmitExtraUsageOrBlockOrgFlag() throws {
+        // Regression for issue #839's second report: the org-managed placeholder carries
+        // `overage_permitted: true` on a zero-entitlement premium bucket. That must not render a
+        // meaningless "Extra Usage: 0" row — and must still flag the seat as org-managed so the
+        // provider runs the org-billing lookup.
+        var body: [String: Any] = [
+            "copilot_plan": "business",
+            "token_based_billing": true,
+            "quota_snapshots": [
+                "premium_interactions": [
+                    "entitlement": 0, "remaining": 0, "unlimited": true,
+                    "overage_permitted": true, "overage_count": 0, "token_based_billing": true
+                ]
+            ]
+        ]
+
+        let mapped = try CopilotUsageMapper.map(body: body)
+
+        XCTAssertNil(mapped.lines.first(where: { $0.label == "Extra Usage" }))
+        XCTAssertTrue(mapped.lines.isEmpty)
+        XCTAssertTrue(mapped.isOrgManagedSeat)
+
+        // A paid account with a real credit pool keeps its Extra Usage row.
+        body = makePaidBody()
+        var quota = body["quota_snapshots"] as! [String: Any]
+        var premium = quota["premium_interactions"] as! [String: Any]
+        premium["overage_permitted"] = true
+        premium["overage_count"] = 12
+        quota["premium_interactions"] = premium
+        body["quota_snapshots"] = quota
+
+        let paid = try CopilotUsageMapper.map(body: body)
+
+        XCTAssertEqual(countValue(paid.lines, "Extra Usage"), 12)
+        XCTAssertFalse(paid.isOrgManagedSeat)
     }
 
     func testThrowsQuotaUnavailableWhenEmpty() {
@@ -414,6 +452,8 @@ final class CopilotProviderTests: XCTestCase {
         XCTAssertEqual(snapshot.plan, "Business")
         XCTAssertEqual(orgCount(snapshot.lines, "Org Credits") ?? -1, 298.698546, accuracy: 0.0001)
         XCTAssertEqual(orgDollars(snapshot.lines, "Org Spend"), 0)
+        // The placeholder's `overage_permitted: true` must not leave a meaningless Extra Usage row.
+        XCTAssertNil(snapshot.lines.first(where: { $0.label == "Extra Usage" }))
         XCTAssertEqual(defaults.string(forKey: CopilotProvider.billingOrgDefaultsKey), "acme")
     }
 
@@ -555,14 +595,26 @@ private func routedClient(_ routes: [(substring: String, response: HTTPResponse)
     }
 }
 
-/// The `/copilot_internal/user` shape of an org-managed Copilot Business seat (issue #839): plan is
-/// reported but every quota bucket is a zero-entitlement token-based-billing placeholder.
+/// The exact `/copilot_internal/user` shape of an org-managed Copilot Business seat from issue #839:
+/// plan is reported but every quota bucket is a zero-entitlement token-based-billing placeholder.
+/// Crucially, the premium bucket carries `overage_permitted: true` — the field that used to sneak an
+/// "Extra Usage: 0" row into the mapped lines and block the org-billing fallback.
 private func makeBusinessPlaceholderBody() -> [String: Any] {
-    [
+    func bucket(_ id: String, overagePermitted: Bool) -> [String: Any] {
+        [
+            "overage_count": 0, "overage_entitlement": 0, "overage_permitted": overagePermitted,
+            "percent_remaining": 100.0, "quota_id": id, "quota_remaining": 0.0, "unlimited": true,
+            "has_quota": true, "quota_reset_at": 0, "token_based_billing": true,
+            "remaining": 0, "entitlement": 0
+        ]
+    }
+    return [
         "copilot_plan": "business",
         "token_based_billing": true,
         "quota_snapshots": [
-            "premium_interactions": ["entitlement": 0, "remaining": 0, "unlimited": true, "token_based_billing": true]
+            "chat": bucket("chat", overagePermitted: false),
+            "completions": bucket("completions", overagePermitted: false),
+            "premium_interactions": bucket("premium_interactions", overagePermitted: true)
         ]
     ]
 }

@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.7.3-beta.3
+
+### Bug Fixes
+- fix(copilot): don't let a placeholder Extra Usage row block the org billing lookup ([#844](https://github.com/robinebers/openusage/pull/844)) by @robinebers
+
+---
+
+### Changelog
+**Full Changelog**: [v0.7.3-beta.2...v0.7.3-beta.3](https://github.com/robinebers/openusage/compare/v0.7.3-beta.2...v0.7.3-beta.3)
+
+- [9709169](https://github.com/robinebers/openusage/commit/9709169108004785d34b7d5ecc1cccfd6fd2d8e2) fix(copilot): don't let a placeholder Extra Usage row block the org billing lookup by @robinebers
+
 ## v0.7.3-beta.2
 
 ### New Features
