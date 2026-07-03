@@ -471,6 +471,24 @@ final class CopilotProviderTests: XCTestCase {
         XCTAssertEqual(defaults.string(forKey: CopilotProvider.billingOrgDefaultsKey), "acme")
     }
 
+    func testDiscoveryKeepsProbingPastAFailingOrg() async {
+        // One org's billing endpoint having an outage (5xx) must not abort discovery — the next org's
+        // usage should still be found and cached.
+        let http = routedClient([
+            ("/copilot_internal/user", ok(makeBusinessPlaceholderBody())),
+            ("/user/orgs", okJSON([["login": "brokenorg"], ["login": "acme"]])),
+            ("/orgs/brokenorg/settings/billing/usage/summary", HTTPResponse(statusCode: 503, headers: [:], body: Data())),
+            ("/orgs/acme/settings/billing/usage/summary", ok(makeOrgSummaryBody()))
+        ])
+        let defaults = freshDefaults()
+        let provider = makeOrgProvider(http: http, defaults: defaults)
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertNotNil(orgCount(snapshot.lines, "Org Credits"))
+        XCTAssertEqual(defaults.string(forKey: CopilotProvider.billingOrgDefaultsKey), "acme")
+    }
+
     func testTransientBillingFailureKeepsCachedOrg() async {
         // A 5xx from the cached org's billing endpoint is a brief outage, not a stale org: the cache
         // must survive (no re-discovery), and the refresh degrades to the plan-only card.

@@ -94,16 +94,23 @@ final class CopilotProvider: ProviderRuntime {
     /// member (only owners and billing managers can read org billing), so it degrades to today's
     /// plan-only card instead of erroring the provider.
     private func orgBillingLines(token: String) async -> [MetricLine] {
-        do {
-            if let cached = defaults.string(forKey: Self.billingOrgDefaultsKey) {
+        if let cached = defaults.string(forKey: Self.billingOrgDefaultsKey) {
+            do {
                 if let lines = try await usageLines(org: cached, token: token) {
                     return lines
                 }
                 // The cached org answered but no longer shows Copilot usage (left the org, lost the
                 // billing role, org stopped using Copilot) — forget it and re-probe from scratch.
                 defaults.removeObject(forKey: Self.billingOrgDefaultsKey)
+            } catch {
+                // Transient failure: log it and keep the cached org for the next refresh.
+                AppLog.warn(LogTag.plugin("copilot"), "org billing lookup failed for the remembered org: \(error.localizedDescription)")
+                return []
             }
+        }
 
+        let orgs: [String]
+        do {
             let response = try await orgBillingClient.fetchUserOrgs(token: token)
             guard response.statusCode == 200 else {
                 // 403 here means the token lacks `read:org` (editor-plugin tokens can) — expected, not
@@ -111,16 +118,22 @@ final class CopilotProvider: ProviderRuntime {
                 AppLog.info(LogTag.plugin("copilot"), "org list HTTP \(response.statusCode); skipping org billing lookup")
                 return []
             }
+            orgs = CopilotOrgBillingMapper.orgLogins(response)
+        } catch {
+            AppLog.warn(LogTag.plugin("copilot"), "org list fetch failed: \(error.localizedDescription)")
+            return []
+        }
 
-            for org in CopilotOrgBillingMapper.orgLogins(response) {
+        for org in orgs {
+            do {
                 if let lines = try await usageLines(org: org, token: token) {
                     defaults.set(org, forKey: Self.billingOrgDefaultsKey)
                     return lines
                 }
+            } catch {
+                // One org's billing having an outage must not hide another org's usage — keep probing.
+                AppLog.warn(LogTag.plugin("copilot"), "org billing summary failed for one org; trying the next: \(error.localizedDescription)")
             }
-        } catch {
-            // Transient (network) failure: log it and keep the cached org for the next refresh.
-            AppLog.warn(LogTag.plugin("copilot"), "org billing lookup failed: \(error.localizedDescription)")
         }
         return []
     }
