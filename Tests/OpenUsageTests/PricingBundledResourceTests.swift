@@ -87,6 +87,21 @@ final class PricingBundledResourceTests: XCTestCase {
         XCTAssertEqual(sonnet5.outputPerMillion, sonnet46.outputPerMillion)
     }
 
+    /// Opus 4.7/4.8 fast modes: Cursor's published rates (supplement overrides) win over the
+    /// stale models.dev entries. Per Cursor, 4.8 fast is 3x cheaper per token than 4.7 fast.
+    func testOpusFastModeSupplementOverrides() throws {
+        let pricing = Self.pricing
+        let opus47Fast = try XCTUnwrap(pricing.resolve(model: "claude-opus-4-7-thinking-high-fast"))
+        XCTAssertEqual(opus47Fast.inputPerMillion, 30)
+        XCTAssertEqual(opus47Fast.cacheWritePerMillion, 37.5)
+        XCTAssertEqual(opus47Fast.cacheReadPerMillion, 3)
+        XCTAssertEqual(opus47Fast.outputPerMillion, 150)
+
+        let opus48Fast = try XCTUnwrap(pricing.resolve(model: "claude-opus-4-8-thinking-high-fast"))
+        XCTAssertEqual(opus48Fast.inputPerMillion, opus47Fast.inputPerMillion / 3)
+        XCTAssertEqual(opus48Fast.outputPerMillion, opus47Fast.outputPerMillion / 3)
+    }
+
     /// GLM 5.2: the high/max effort slugs resolve to the shared entry (LiteLLM's Cloudflare listing);
     /// no separate cache-write price, so cache writes bill at the input rate. Slugs outside the
     /// high/max allowlist stay unpriced.

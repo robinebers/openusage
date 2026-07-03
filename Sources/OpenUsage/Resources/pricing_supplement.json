@@ -1,6 +1,6 @@
 {
   "$comment": "OpenUsage pricing supplement. Prices Cursor-native models that no public catalog carries, supplies fast-variant multipliers the catalogs omit, and maps provider log/CSV model slugs to canonical pricing keys (LiteLLM keys, models.dev ids, or entries in this file). Published to gh-pages by .github/workflows/pricing-supplement.yml on every change, so installed apps pick edits up within a day - no release needed. Rates are USD per million tokens. Sources: https://cursor.com/docs/models-and-pricing.md for Cursor-native entries.",
-  "updated_at": "2026-07-02",
+  "updated_at": "2026-07-03",
   "pricing": {
     "auto": {
       "input_per_million": 1.25,
@@ -49,6 +49,20 @@
       "cache_write_per_million": 5.0,
       "cache_read_per_million": 0.5,
       "output_per_million": 30.0
+    },
+    "claude-opus-4-7-fast": {
+      "$comment": "Cursor bills Opus 4.7 fast mode at these rates; the models.dev entry carries higher (stale) numbers, so this override wins.",
+      "input_per_million": 30.0,
+      "cache_write_per_million": 37.5,
+      "cache_read_per_million": 3.0,
+      "output_per_million": 150.0
+    },
+    "claude-opus-4-8-fast": {
+      "$comment": "Cursor states Opus 4.8 fast mode is 3x lower per-token than Opus 4.7 fast mode (= 2x the Opus 4.8 base rate, matching LiteLLM's fast multiplier); the models.dev entry disagrees, so this override wins.",
+      "input_per_million": 10.0,
+      "cache_write_per_million": 12.5,
+      "cache_read_per_million": 1.0,
+      "output_per_million": 50.0
     },
     "claude-4-sonnet-1m": {
       "$comment": "Cursor's long-context Sonnet 4 tier: the whole request bills at the >200k rate.",
