@@ -2,7 +2,7 @@ import XCTest
 @testable import OpenUsage
 
 /// Covers the menu-bar pin model on `LayoutStore`: the ≤2-per-provider rendering cap, denial
-/// reasons/notices, order derivation from the Customize order,
+/// reasons/notices, order derivation from the Customize order, per-provider visibility,
 /// disabled-provider handling, and persistence across relaunch.
 @MainActor
 final class MenuBarPinTests: XCTestCase {
@@ -109,11 +109,63 @@ final class MenuBarPinTests: XCTestCase {
         XCTAssertTrue(store.isPinned("a.m1"))  // membership preserved while hidden
     }
 
+    func testProviderVisibilityTogglePreservesSelectionAndPersists() {
+        let defaults = makeDefaults("providerVisibility")
+        let store = LayoutStore(registry: makeRegistry(), defaults: defaults, storageKey: "layout")
+        store.setPinned(true, for: "a.m2")
+
+        store.setProviderShownInMenuBar(false, for: "a")
+
+        XCTAssertFalse(store.isProviderShownInMenuBar("a"))
+        XCTAssertTrue(store.isPinned("a.m2"))
+        XCTAssertTrue(store.pinnedGroups.isEmpty)
+
+        let reloaded = LayoutStore(registry: makeRegistry(), defaults: defaults, storageKey: "layout")
+        XCTAssertFalse(reloaded.isProviderShownInMenuBar("a"))
+        XCTAssertTrue(reloaded.isPinned("a.m2"))
+
+        reloaded.setProviderShownInMenuBar(true, for: "a")
+        XCTAssertTrue(reloaded.isProviderShownInMenuBar("a"))
+        XCTAssertEqual(reloaded.pinnedDescriptorIDsInOrder, ["a.m2"])
+    }
+
+    func testShowingProviderWithoutSelectionPinsFirstMetric() {
+        let store = makeStore("providerDefault")
+
+        store.setProviderShownInMenuBar(true, for: "a")
+
+        XCTAssertTrue(store.isProviderShownInMenuBar("a"))
+        XCTAssertEqual(store.pinnedDescriptorIDsInOrder, ["a.m1"])
+    }
+
+    func testPinningNewMetricRevealsHiddenProvider() {
+        let store = makeStore("pinReveals")
+        store.setPinned(true, for: "a.m1")
+        store.setProviderShownInMenuBar(false, for: "a")
+
+        store.setPinned(true, for: "a.m2")
+
+        XCTAssertTrue(store.isProviderShownInMenuBar("a"))
+        XCTAssertEqual(store.pinnedDescriptorIDsInOrder, ["a.m1", "a.m2"])
+    }
+
+    func testProviderVisibilityToggleIsUndoable() {
+        let store = makeStore("providerVisibilityUndo")
+        store.setPinned(true, for: "a.m1")
+        store.setProviderShownInMenuBar(false, for: "a")
+
+        XCTAssertTrue(store.undo())
+        XCTAssertTrue(store.isProviderShownInMenuBar("a"))
+        XCTAssertTrue(store.isPinned("a.m1"))
+    }
+
     func testResetToDefaultClearsPins() {
         let store = makeStore("reset")
         store.setPinned(true, for: "a.m1")
+        store.setProviderShownInMenuBar(false, for: "a")
         store.resetToDefault()
         XCTAssertTrue(store.pinnedMetricIDs.isEmpty)
+        XCTAssertTrue(store.menuBarHiddenProviderIDs.isEmpty)
     }
 
     func testMenuBarStylePersists() {

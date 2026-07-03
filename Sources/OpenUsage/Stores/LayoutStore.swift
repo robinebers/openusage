@@ -72,6 +72,11 @@ final class LayoutStore {
     /// `canPin` to at most `maxPinsPerProvider` per provider (the strip stacks a provider's values in pairs).
     private(set) var pinnedMetricIDs: Set<String>
 
+    /// Providers whose selected menu-bar metrics are temporarily hidden. Kept separately from
+    /// `pinnedMetricIDs` so turning a provider off in Customize preserves its metric selection for the
+    /// next time it is shown.
+    private(set) var menuBarHiddenProviderIDs: Set<String>
+
     /// Descriptor ids that sit below the per-provider "Shown on expand" divider: the dashboard hides
     /// them behind a caret until the user taps it, and Customize lists them under the divider.
     /// Membership only — the sequence within each section follows the provider's metric order, like
@@ -133,6 +138,7 @@ final class LayoutStore {
     private let metricOrderKey: String
     private let seededDefaultsKey: String
     private let pinsKey: String
+    private let menuBarHiddenProvidersKey: String
     private let expandedMetricsKey: String
     private let expandOnEnableKey: String
     private let expandedProvidersKey: String
@@ -161,6 +167,7 @@ final class LayoutStore {
         self.metricOrderKey = "\(storageKey).metricOrderByProvider"
         self.seededDefaultsKey = "\(storageKey).seededDefaults"
         self.pinsKey = "\(storageKey).menuBarPins"
+        self.menuBarHiddenProvidersKey = "\(storageKey).menuBarHiddenProviders"
         self.expandedMetricsKey = "\(storageKey).expandedMetrics"
         self.expandOnEnableKey = "\(storageKey).expandOnEnable"
         self.expandedProvidersKey = "\(storageKey).expandedProviders"
@@ -214,6 +221,11 @@ final class LayoutStore {
             pinnedMetricIDs = Set(savedPins.filter { registry.descriptor(id: $0) != nil })
         } else {
             pinnedMetricIDs = Set(defaultPinnedMetricIDs.filter { registry.descriptor(id: $0) != nil })
+        }
+        if let savedHiddenProviders = defaults.stringArray(forKey: menuBarHiddenProvidersKey) {
+            menuBarHiddenProviderIDs = Set(savedHiddenProviders.filter { registry.provider(id: $0) != nil })
+        } else {
+            menuBarHiddenProviderIDs = []
         }
 
         // Seed default expanded membership only on a genuinely fresh launch. An existing layout with no
@@ -460,6 +472,7 @@ final class LayoutStore {
             providerOrder: providerOrder,
             metricOrderByProvider: metricOrderByProvider,
             pinnedMetricIDs: pinnedMetricIDs,
+            menuBarHiddenProviderIDs: menuBarHiddenProviderIDs,
             expandedMetricIDs: expandedMetricIDs,
             defaultExpandedOnEnableIDs: defaultExpandedOnEnableIDs
         )
@@ -505,12 +518,14 @@ final class LayoutStore {
         providerOrder = snapshot.providerOrder
         metricOrderByProvider = snapshot.metricOrderByProvider
         pinnedMetricIDs = snapshot.pinnedMetricIDs
+        menuBarHiddenProviderIDs = snapshot.menuBarHiddenProviderIDs
         expandedMetricIDs = snapshot.expandedMetricIDs
         defaultExpandedOnEnableIDs = snapshot.defaultExpandedOnEnableIDs
         persist()
         persistProviderOrder()
         persistMetricOrder()
         persistPins()
+        persistMenuBarHiddenProviders()
         persistExpanded()
         persistExpandOnEnable()
     }
@@ -751,6 +766,38 @@ final class LayoutStore {
         pinnedMetricIDs.count { registry.descriptor(id: $0)?.providerID == providerID }
     }
 
+    /// The pin-capable metrics offered by a provider's menu-bar picker, in the same order as Customize.
+    func menuBarMetrics(for providerID: String) -> [WidgetDescriptor] {
+        orderedSupportedMetrics(for: providerID).filter(\.pinnable)
+    }
+
+    /// Whether this provider is configured to render in the menu bar. Provider enablement is applied
+    /// later by `pinnedGroups`; this preference remains intact while the whole provider is disabled.
+    func isProviderShownInMenuBar(_ providerID: String) -> Bool {
+        pinnedCount(forProvider: providerID) > 0 && !menuBarHiddenProviderIDs.contains(providerID)
+    }
+
+    /// Show or hide one provider in the menu bar without discarding its selected metrics. Showing a
+    /// provider that has never had a selection pins its first supported metric, producing the compact
+    /// one-value layout requested by default.
+    func setProviderShownInMenuBar(_ shown: Bool, for providerID: String) {
+        recordingUndoStep {
+            guard registry.provider(id: providerID) != nil else { return }
+            if shown {
+                var changed = menuBarHiddenProviderIDs.remove(providerID) != nil
+                if pinnedCount(forProvider: providerID) == 0,
+                   let firstMetric = menuBarMetrics(for: providerID).first {
+                    changed = pinnedMetricIDs.insert(firstMetric.id).inserted || changed
+                    persistPins()
+                }
+                if changed { persistMenuBarHiddenProviders() }
+            } else if pinnedCount(forProvider: providerID) > 0,
+                      menuBarHiddenProviderIDs.insert(providerID).inserted {
+                persistMenuBarHiddenProviders()
+            }
+        }
+    }
+
     /// Whether `descriptorID` can be newly pinned without breaking a cap. Already-pinned ids return
     /// `true`, so the toggle stays active for unpinning.
     func canPin(_ descriptorID: String) -> Bool {
@@ -837,8 +884,11 @@ final class LayoutStore {
     func setPinned(_ pinned: Bool, for descriptorID: String) {
         recordingUndoStep {
             if pinned {
-                guard canPin(descriptorID), registry.descriptor(id: descriptorID) != nil else { return }
+                guard canPin(descriptorID), let descriptor = registry.descriptor(id: descriptorID) else { return }
                 guard pinnedMetricIDs.insert(descriptorID).inserted else { return }
+                if menuBarHiddenProviderIDs.remove(descriptor.providerID) != nil {
+                    persistMenuBarHiddenProviders()
+                }
             } else {
                 guard pinnedMetricIDs.remove(descriptorID) != nil else { return }
             }
@@ -855,7 +905,8 @@ final class LayoutStore {
     /// but keeps its pins. Drives the menu-bar strip.
     var pinnedGroups: [ProviderMetrics] {
         orderedProviders().compactMap { provider in
-            guard isProviderEnabled(provider.id) else { return nil }
+            guard isProviderEnabled(provider.id),
+                  !menuBarHiddenProviderIDs.contains(provider.id) else { return nil }
             // Keep the strip order matching Customize: always-shown pins first, then expanded ones.
             let metrics = orderedSupportedMetrics(for: provider.id).filter { pinnedMetricIDs.contains($0.id) }
             return metrics.isEmpty ? nil : ProviderMetrics(
@@ -873,6 +924,10 @@ final class LayoutStore {
 
     private func persistPins() {
         defaults.set(Array(pinnedMetricIDs), forKey: pinsKey)
+    }
+
+    private func persistMenuBarHiddenProviders() {
+        defaults.set(Array(menuBarHiddenProviderIDs), forKey: menuBarHiddenProvidersKey)
     }
 
     private func persistExpanded() {
@@ -918,6 +973,8 @@ final class LayoutStore {
         persistMetricOrder()
         pinnedMetricIDs = Set(defaultPinnedMetricIDs.filter { registry.descriptor(id: $0) != nil })
         persistPins()
+        menuBarHiddenProviderIDs = []
+        persistMenuBarHiddenProviders()
         expandedMetricIDs = Set(defaultExpandedMetricIDs.filter { registry.descriptor(id: $0) != nil })
         defaultExpandedOnEnableIDs = []
         persistExpanded()
@@ -961,6 +1018,9 @@ final class LayoutStore {
         pinnedMetricIDs.subtract(owned)
         pinnedMetricIDs.formUnion(defaults(defaultPinnedMetricIDs))
         persistPins()
+        if menuBarHiddenProviderIDs.remove(providerID) != nil {
+            persistMenuBarHiddenProviders()
+        }
 
         expandedMetricIDs.subtract(owned)
         expandedMetricIDs.formUnion(defaults(defaultExpandedMetricIDs))

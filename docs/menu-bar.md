@@ -6,9 +6,14 @@ Star your most important metrics straight into the menu bar strip.
 
 Right-click (or control-click) the menu bar icon for a quick menu with **Settings** and **Quit**. Left-click opens the popover as usual.
 
-## Starring
+## Choosing Providers and Metrics
 
-Star a metric from any row's right-click menu, or from the star that appears when hovering rows in Customize.
+Open **Customize**, choose a provider, then use its **Menu Bar** controls:
+
+- Turn **Show in Menu Bar** off to remove that provider from the strip without removing it from the app panel. Its metric choices are kept for the next time you turn it on.
+- Open **Metrics** to choose one or two values. For example, choose Session, Weekly, or both.
+
+You can also star a metric from any row's right-click menu or from its star in Customize. Starring a metric makes its provider visible in the menu bar.
 
 - On first launch the app ships with a default set of stars (Antigravity Session/Weekly, Claude Session/Weekly, Codex Session/Weekly, Cursor Auto Usage/API Usage, Copilot Credits, OpenRouter Credits, Z.ai Session/Weekly) so the strip shows numbers right away. Change them anytime; Reset in Customize restores this set. Only providers that are turned on render in the strip — and a fresh install starts with just the providers detected on your Mac (see [Dashboard § First launch](dashboard.md#first-launch)) — so the default stars don't crowd the menu bar with tools you don't use.
 - At most **2 stars per provider**.

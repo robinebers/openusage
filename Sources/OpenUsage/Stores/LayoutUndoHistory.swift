@@ -12,6 +12,7 @@ struct LayoutSnapshot: Equatable {
     let providerOrder: [String]
     let metricOrderByProvider: [String: [String]]
     let pinnedMetricIDs: Set<String>
+    let menuBarHiddenProviderIDs: Set<String>
     let expandedMetricIDs: Set<String>
     let defaultExpandedOnEnableIDs: Set<String>
 }

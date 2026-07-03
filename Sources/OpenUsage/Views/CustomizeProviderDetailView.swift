@@ -7,7 +7,8 @@ import SwiftUI
 /// grip · name · star · toggle (drag left, toggle right — same shape as the provider rows). The star
 /// is always visible: outline when not starred, filled accent when starred; tapping it pops a
 /// transient confirmation pill (and an orange denial pill over the per-provider cap). Providers that
-/// need an API key get their own "API Key" section here too.
+/// need an API key get their own "API Key" section here too. A Menu Bar card controls whether the
+/// provider renders in the status item and which one or two of its metrics appear there.
 ///
 /// The drag gesture lives on the container, not on each row. With a per-row gesture, SwiftUI tears
 /// down the dragged row (and its gesture) when it crosses between the two cards' `ForEach`es,
@@ -28,6 +29,7 @@ struct CustomizeProviderDetailView: View {
     var body: some View {
         if let group = layout.customizeDetail(for: providerID) {
             VStack(alignment: .leading, spacing: density.sectionSpacing) {
+                menuBarSection(group)
                 metricSections(group)
                     .simultaneousGesture(metricDragGesture())
                 if let keyProvider = container.apiKeyProviders.first(where: { $0.provider.id == providerID }) {
@@ -40,6 +42,69 @@ struct CustomizeProviderDetailView: View {
             // Unknown provider — L1 only lists known providers, so this is unreachable in practice.
             EmptyView()
         }
+    }
+
+    // MARK: - Menu bar
+
+    private func menuBarSection(_ group: ProviderMetrics) -> some View {
+        let metrics = layout.menuBarMetrics(for: group.provider.id)
+        return VStack(alignment: .leading, spacing: density.headerToCardSpacing) {
+            Text("Menu Bar")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 8)
+            VStack(spacing: 0) {
+                HStack(spacing: 10) {
+                    Text("Show in Menu Bar")
+                    Spacer(minLength: 8)
+                    Toggle("", isOn: Binding(
+                        get: { layout.isProviderShownInMenuBar(group.provider.id) },
+                        set: { layout.setProviderShownInMenuBar($0, for: group.provider.id) }
+                    ))
+                    .settingsSwitchStyle()
+                    .disabled(metrics.isEmpty)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, density.controlRowPadding)
+
+                Divider()
+                    .padding(.leading, 12)
+
+                HStack(spacing: 10) {
+                    Text("Metrics")
+                    Spacer(minLength: 8)
+                    Menu {
+                        ForEach(metrics) { metric in
+                            Toggle(metric.title, isOn: Binding(
+                                get: { layout.isPinned(metric.id) },
+                                set: { layout.setPinned($0, for: metric.id) }
+                            ))
+                            .disabled(!layout.isPinned(metric.id) && !layout.canPin(metric.id))
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(menuBarMetricSummary(metrics))
+                                .lineLimit(1)
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.system(size: 8, weight: .semibold))
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .disabled(layout.menuBarHiddenProviderIDs.contains(group.provider.id))
+                    .accessibilityLabel("Menu Bar Metrics")
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, density.controlRowPadding)
+            }
+            .cardSurface()
+        }
+    }
+
+    private func menuBarMetricSummary(_ metrics: [WidgetDescriptor]) -> String {
+        let selected = metrics.filter { layout.isPinned($0.id) }.map(\.title)
+        return selected.isEmpty ? "None" : selected.joined(separator: " + ")
     }
 
     private func metricSections(_ group: ProviderMetrics) -> some View {

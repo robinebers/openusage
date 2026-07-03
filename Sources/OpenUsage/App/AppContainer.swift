@@ -114,7 +114,7 @@ final class AppContainer {
                 return TelemetryConfigSnapshot(
                     enabledProviders: registry.providers.map(\.id).filter { enablement.isEnabled($0) },
                     enabledMetricIDs: layout.placed.map(\.descriptorID).filter(providerOn),
-                    pinnedMetricIDs: layout.pinnedMetricIDs.filter(providerOn),
+                    pinnedMetricIDs: layout.pinnedDescriptorIDsInOrder.filter(providerOn),
                     expandedMetricIDs: layout.expandedMetricIDs.filter(providerOn),
                     menuBarStyle: layout.menuBarStyle.rawValue
                 )
