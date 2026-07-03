@@ -31,6 +31,11 @@ final class UpdaterController {
     private(set) var isActive = false
     /// Mirrors Sparkle's KVO `canCheckForUpdates`; drives the "Check for Updates…" button's enabled state.
     private(set) var canCheckForUpdates = false
+    /// The display version of an update a *scheduled* check found (e.g. "0.8.1"), or `nil` when there's
+    /// none pending. Set instead of showing Sparkle's window (which macOS keeps behind other apps for
+    /// dockless apps); the dashboard renders it as an "Update Available" banner whose install button
+    /// routes through `checkForUpdates()` — a user-initiated check, which Sparkle brings to the front.
+    private(set) var availableUpdateVersion: String?
 
     /// Backs the early-access toggle. Persisted to `UserDefaults`; flipping it resets Sparkle's update
     /// cycle so the new channel set takes effect on the next scheduled check instead of a day later.
@@ -60,6 +65,15 @@ final class UpdaterController {
             AppLog.info(.updates, "disabled: no SUFeedURL (unbundled or dev build)")
             return
         }
+        // The driver delegate's callbacks run on the main thread but the delegate itself is
+        // nonisolated (see below); these hops publish the banner state back onto this controller.
+        userDriverDelegate.onUpdateFound = { [weak self] version in
+            self?.availableUpdateVersion = version
+            AppLog.info(.updates, "scheduled check found \(version); showing in-app banner")
+        }
+        userDriverDelegate.onUpdateResolved = { [weak self] in
+            self?.availableUpdateVersion = nil
+        }
         let controller = SPUStandardUpdaterController(
             startingUpdater: true,
             updaterDelegate: channelDelegate,
@@ -81,6 +95,18 @@ final class UpdaterController {
     /// User-initiated check. Shows Sparkle's standard UI (progress, release notes, install prompt).
     func checkForUpdates() {
         controller?.checkForUpdates(nil)
+    }
+
+    /// The banner's install action. A user-initiated check: if the banner's update is still current,
+    /// Sparkle re-presents it in frontmost focus (its window, release notes, and install button).
+    func installAvailableUpdate() {
+        checkForUpdates()
+    }
+
+    /// The banner's dismiss action for this found update. Sparkle's next scheduled check re-surfaces
+    /// it, so a dismissal is a snooze — not a permanent skip (that stays in Sparkle's own window).
+    func dismissAvailableUpdate() {
+        availableUpdateVersion = nil
     }
 }
 
@@ -120,25 +146,60 @@ private final class UpdaterChannelDelegate: NSObject, SPUUpdaterDelegate {
 /// this delegate stays nonisolated; its callbacks run on the main thread, so they assume main-actor
 /// isolation to touch `NSApp`.
 private final class UpdaterUserDriverDelegate: NSObject, SPUStandardUserDriverDelegate {
+    /// Publishes "a scheduled check found version X" back to `UpdaterController` (main actor), which
+    /// renders it as the dashboard's update banner.
+    var onUpdateFound: (@MainActor @Sendable (String) -> Void)?
+    /// Clears the banner — the user gave the update attention (Sparkle's window is up) or the update
+    /// session ended (installed, skipped, or dismissed).
+    var onUpdateResolved: (@MainActor @Sendable () -> Void)?
+
     /// Opt into "gentle" reminders: as a menu-bar (accessory) app we don't want Sparkle stealing focus
     /// with an alert for scheduled checks.
     var supportsGentleScheduledUpdateReminders: Bool { true }
 
+    /// Take over showing *scheduled* updates entirely: for a dockless app macOS would put Sparkle's
+    /// window behind everything (even the "immediate focus" launch case is unreliable), so instead of
+    /// a buried window the update surfaces as the in-popover banner via `onUpdateFound`. User-initiated
+    /// checks never reach this method — Sparkle always shows those itself, in front.
+    func standardUserDriverShouldHandleShowingScheduledUpdate(
+        _ update: SUAppcastItem,
+        andInImmediateFocus immediateFocus: Bool
+    ) -> Bool {
+        false
+    }
+
     /// The app runs as an accessory (no Dock icon), so Sparkle's update window would open behind
     /// everything and without focus. Become a regular app while the update UI is on screen…
     ///
-    /// Only when Sparkle will actually show that window (`handleShowingUpdate`). For a gentle scheduled
-    /// reminder it passes `false` and shows no window, so flipping to `.regular` there would flash a
-    /// Dock icon with nothing behind it — the exact focus-stealing this delegate exists to avoid.
+    /// Only when Sparkle will actually show that window (`handleShowingUpdate`). For a scheduled
+    /// update we declined above, it passes `false` and shows no window — that's where the banner
+    /// state gets published instead; flipping to `.regular` there would flash a Dock icon with
+    /// nothing behind it — the exact focus-stealing this delegate exists to avoid.
     func standardUserDriverWillHandleShowingUpdate(
         _ handleShowingUpdate: Bool,
         forUpdate update: SUAppcastItem,
         state: SPUUserUpdateState
     ) {
-        guard handleShowingUpdate else { return }
+        let version = update.displayVersionString
+        // Hoisted so the main-actor closure captures only the Sendable callback, not this
+        // nonisolated `self` (which Swift 6 region isolation rejects).
+        let onUpdateFound = onUpdateFound
         MainActor.assumeIsolated {
+            guard handleShowingUpdate else {
+                onUpdateFound?(version)
+                return
+            }
             NSApp.setActivationPolicy(.regular)
             NSApp.activate()
+        }
+    }
+
+    /// The user reached Sparkle's window for this update (e.g. via the banner's install button) — the
+    /// banner has done its job, drop it.
+    func standardUserDriverDidReceiveUserAttention(forUpdate update: SUAppcastItem) {
+        let onUpdateResolved = onUpdateResolved
+        MainActor.assumeIsolated { () -> Void in
+            onUpdateResolved?()
         }
     }
 

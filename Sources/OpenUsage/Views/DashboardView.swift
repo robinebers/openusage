@@ -20,6 +20,7 @@ struct DashboardView: View {
     @Environment(LayoutStore.self) private var layout
     @Environment(WidgetDataStore.self) private var dataStore
     @Environment(PopoverTransparencyStore.self) private var transparency
+    @Environment(UpdaterController.self) private var updater
     @State private var didInitialRefresh = false
     @State private var reorderLift: ReorderLift?
     /// The panel height SwiftUI drives — the single animation clock. `PanelHeightModifier` follows it
@@ -450,6 +451,13 @@ struct DashboardView: View {
     private var scrollingDashboard: some View {
         PopoverScrollView {
             VStack(alignment: .leading, spacing: 0) {
+                // A pending update found by a scheduled Sparkle check tops everything — it's the
+                // reminder the buried Sparkle window can't deliver for a dockless app.
+                if let updateVersion = updater.availableUpdateVersion {
+                    UpdateBannerCard(version: updateVersion)
+                        .padding(.bottom, density.sectionSpacing)
+                        .transition(.scale(scale: 0.95).combined(with: .opacity))
+                }
                 // The one-time first-run hint sits above the provider sections (and above the
                 // empty-state line, which a fresh install can hit while nothing has data yet).
                 // It scrolls with the content — a grouped card, not chrome.
@@ -461,6 +469,7 @@ struct DashboardView: View {
                 widgetContent
             }
             .animation(Motion.spring, value: container.onboarding.isCustomizeHintPending)
+            .animation(Motion.spring, value: updater.availableUpdateVersion)
             .padding(.horizontal, Self.outerPadding)
             .padding(.top, density.contentTopPadding)
             .padding(.bottom, Self.contentBottomGap)
