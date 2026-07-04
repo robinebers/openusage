@@ -23,18 +23,34 @@ enum SpendTileMapper {
         to lines: inout [MetricLine],
         now: Date = Date(),
         estimated: Bool = true,
-        unknownModelsByDay: [String: Set<String>] = [:]
+        unknownModelsByDay: [String: Set<String>] = [:],
+        modelUsage: ModelUsageSeries? = nil,
+        modelSourceNote: String? = nil
     ) {
         let today = dayKey(from: now)
         let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: now).map(dayKey(from:))
 
         if let entry = usage.daily.first(where: { dayKey(fromUsageDate: $0.date) == today }), hasUsage(entry) {
             lines.append(dayUsageLine(label: "Today", entry: entry, estimated: estimated,
-                                      unknownModels: sortedModels(unknownModelsByDay[today])))
+                                      unknownModels: sortedModels(unknownModelsByDay[today]),
+                                      modelBreakdown: modelBreakdown(
+                                        modelUsage,
+                                        days: [today],
+                                        totalTokens: entry.totalTokens,
+                                        totalCostUSD: entry.costUSD,
+                                        sourceNote: modelSourceNote
+                                      )))
         }
         if let entry = usage.daily.first(where: { dayKey(fromUsageDate: $0.date) == yesterday }), hasUsage(entry) {
             lines.append(dayUsageLine(label: "Yesterday", entry: entry, estimated: estimated,
-                                      unknownModels: sortedModels(yesterday.flatMap { unknownModelsByDay[$0] })))
+                                      unknownModels: sortedModels(yesterday.flatMap { unknownModelsByDay[$0] }),
+                                      modelBreakdown: modelBreakdown(
+                                        modelUsage,
+                                        days: Set([yesterday].compactMap { $0 }),
+                                        totalTokens: entry.totalTokens,
+                                        totalCostUSD: entry.costUSD,
+                                        sourceNote: modelSourceNote
+                                      )))
         }
 
         let totalTokens = usage.daily.reduce(0) { $0 + $1.totalTokens }
@@ -44,7 +60,14 @@ enum SpendTileMapper {
             let allUnknown = unknownModelsByDay.values.reduce(into: Set<String>()) { $0.formUnion($1) }
             lines.append(.values(label: "Last 30 Days",
                                  values: spendValues(tokens: totalTokens, costUSD: totalCost, estimated: estimated),
-                                 unknownModels: sortedModels(allUnknown)))
+                                 unknownModels: sortedModels(allUnknown),
+                                 modelBreakdown: modelBreakdown(
+                                    modelUsage,
+                                    days: Set(usage.daily.compactMap { dayKey(fromUsageDate: $0.date) }),
+                                    totalTokens: totalTokens,
+                                    totalCostUSD: totalCost,
+                                    sourceNote: modelSourceNote
+                                 )))
         }
     }
 
@@ -108,6 +131,14 @@ enum SpendTileMapper {
         let value = rawDate.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { return nil }
 
+        if value.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil {
+            return value
+        }
+
+        if let date = OpenUsageISO8601.date(from: value) {
+            return dayKey(from: date)
+        }
+
         if let match = value.range(of: #"^\d{4}-\d{2}-\d{2}"#, options: .regularExpression) {
             return String(value[match])
         }
@@ -125,15 +156,18 @@ enum SpendTileMapper {
             return dayKey(from: date)
         }
 
-        if let date = OpenUsageISO8601.date(from: value) {
-            return dayKey(from: date)
-        }
         return nil
     }
 
-    private static func dayUsageLine(label: String, entry: DailyUsageEntry, estimated: Bool, unknownModels: [String]) -> MetricLine {
+    private static func dayUsageLine(
+        label: String,
+        entry: DailyUsageEntry,
+        estimated: Bool,
+        unknownModels: [String],
+        modelBreakdown: ModelUsageBreakdown?
+    ) -> MetricLine {
         .values(label: label, values: spendValues(tokens: entry.totalTokens, costUSD: entry.costUSD, estimated: estimated),
-                unknownModels: unknownModels)
+                unknownModels: unknownModels, modelBreakdown: modelBreakdown)
     }
 
     /// Stable, de-duplicated display order for a period's unknown-model names (the set is unordered).
@@ -156,5 +190,192 @@ enum SpendTileMapper {
         }
         values.append(MetricValue(number: Double(tokens), kind: .count, label: "tokens"))
         return values
+    }
+
+    private static let namedModelCap = 5
+
+    /// Tracks the casings seen for one case-folded name and elects the one that carried the most
+    /// tokens (ties prefer the all-lowercase spelling, then alphabetical) — so `GLM-5.2` and `glm-5.2`
+    /// collapse into one row titled with whichever spelling dominated the period.
+    private struct SpellingVote {
+        private var tokensBySpelling: [String: Int] = [:]
+
+        mutating func note(_ spelling: String, weight: Int) {
+            // Zero-token entries (cost-only lines) still get a say.
+            tokensBySpelling[spelling, default: 0] += max(weight, 1)
+        }
+
+        var best: String? {
+            tokensBySpelling.min { lhs, rhs in
+                if lhs.value != rhs.value { return lhs.value > rhs.value }
+                let lhsLower = lhs.key == lhs.key.lowercased()
+                let rhsLower = rhs.key == rhs.key.lowercased()
+                if lhsLower != rhsLower { return lhsLower }
+                return lhs.key < rhs.key
+            }?.key
+        }
+    }
+
+    private struct ModelAccumulator {
+        var tokens = 0
+        var costUSD: Double?
+        private var nameVote = SpellingVote()
+        /// Keyed by the case-folded slug; the vote inside restores a display spelling.
+        private var variants: [String: (tokens: Int, costUSD: Double?, vote: SpellingVote)] = [:]
+
+        /// The display spelling for this model, elected across every casing that merged into it.
+        var displayName: String? { nameVote.best }
+
+        /// Merge a same-model day entry: variants (raw slugs) merge line-by-line so a multi-day period
+        /// keeps one line per slug.
+        mutating func add(_ entry: ModelUsageEntry, spelledAs name: String) {
+            addTotals(of: entry, spelledAs: name)
+            for variant in entry.variants ?? [ModelUsageVariant(model: name, totalTokens: entry.totalTokens, costUSD: entry.costUSD)] {
+                mergeVariant(variant.model, tokens: variant.totalTokens, costUSD: variant.costUSD)
+            }
+        }
+
+        /// Fold a different model into this accumulator (the Other row): one variant per folded model —
+        /// its tooltip lists models, not their raw effort slugs. The Other row's own name is fixed, so
+        /// folded spellings only vote inside the variant lines.
+        mutating func fold(_ entry: ModelUsageEntry) {
+            tokens += entry.totalTokens
+            if let cost = entry.costUSD {
+                costUSD = (costUSD ?? 0) + cost
+            }
+            mergeVariant(entry.model, tokens: entry.totalTokens, costUSD: entry.costUSD)
+        }
+
+        private mutating func addTotals(of entry: ModelUsageEntry, spelledAs name: String) {
+            tokens += entry.totalTokens
+            if let cost = entry.costUSD {
+                costUSD = (costUSD ?? 0) + cost
+            }
+            nameVote.note(name, weight: entry.totalTokens)
+        }
+
+        private mutating func mergeVariant(_ model: String, tokens: Int, costUSD: Double?) {
+            let key = model.lowercased()
+            var existing = variants[key] ?? (0, nil, SpellingVote())
+            existing.tokens += tokens
+            existing.costUSD = costUSD.map { (existing.costUSD ?? 0) + $0 } ?? existing.costUSD
+            existing.vote.note(model, weight: tokens)
+            variants[key] = existing
+        }
+
+        func entry(model: String) -> ModelUsageEntry {
+            let list = variants
+                .map { key, value in
+                    ModelUsageVariant(model: value.vote.best ?? key, totalTokens: value.tokens,
+                                      costUSD: value.costUSD.map(SpendTileMapper.roundToCents))
+                }
+                .sorted(by: variantSortPrecedes)
+            // One variant carrying the row's own name is no breakdown — nil keeps the tooltip on plain figures.
+            let isTrivial = list.count == 1 && list[0].model.lowercased() == model.lowercased()
+            return ModelUsageEntry(model: model, totalTokens: tokens,
+                                   costUSD: costUSD.map(SpendTileMapper.roundToCents),
+                                   variants: isTrivial ? nil : list)
+        }
+    }
+
+    private static func variantSortPrecedes(_ lhs: ModelUsageVariant, _ rhs: ModelUsageVariant) -> Bool {
+        let lhsCost = lhs.costUSD ?? 0
+        let rhsCost = rhs.costUSD ?? 0
+        if lhsCost != rhsCost { return lhsCost > rhsCost }
+        if lhs.totalTokens != rhs.totalTokens { return lhs.totalTokens > rhs.totalTokens }
+        return lhs.model.localizedStandardCompare(rhs.model) == .orderedAscending
+    }
+
+    private static func modelBreakdown(
+        _ usage: ModelUsageSeries?,
+        days: Set<String>,
+        totalTokens: Int,
+        totalCostUSD: Double?,
+        sourceNote: String?
+    ) -> ModelUsageBreakdown? {
+        guard let usage, let sourceNote, !days.isEmpty else { return nil }
+
+        // Keyed by the case-folded name so `GLM-5.2` and `glm-5.2` land in one row; the accumulator's
+        // spelling vote decides which casing titles it.
+        var byModel: [String: ModelAccumulator] = [:]
+        for day in usage.daily where dayKey(fromUsageDate: day.date).map(days.contains) == true {
+            for model in day.models where model.totalTokens > 0 || (model.costUSD ?? 0) > 0 {
+                let name = normalizedModelName(model.model)
+                byModel[name.lowercased(), default: ModelAccumulator()].add(model, spelledAs: name)
+            }
+        }
+
+        let sorted = byModel.map { key, accumulator in accumulator.entry(model: accumulator.displayName ?? key) }
+            .sorted(by: modelSortPrecedes)
+        let folded = foldModelList(sorted)
+        guard !folded.isEmpty else { return nil }
+        return ModelUsageBreakdown(
+            totalTokens: totalTokens,
+            totalCostUSD: totalCostUSD,
+            models: folded,
+            sourceNote: sourceNote
+        )
+    }
+
+    private static func normalizedModelName(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? ModelUsageEntry.unattributedModelName : trimmed
+    }
+
+    private static func modelSortPrecedes(_ lhs: ModelUsageEntry, _ rhs: ModelUsageEntry) -> Bool {
+        let lhsCost = lhs.costUSD ?? 0
+        let rhsCost = rhs.costUSD ?? 0
+        if lhsCost != rhsCost { return lhsCost > rhsCost }
+        if lhs.totalTokens != rhs.totalTokens { return lhs.totalTokens > rhs.totalTokens }
+        return lhs.model.localizedStandardCompare(rhs.model) == .orderedAscending
+    }
+
+    /// Models below this share of the period fold into Other regardless of rank — a stack of sub-5%
+    /// slivers is noise, and Other's tooltip still names them.
+    private static let minVisibleShare = 0.05
+
+    private static func foldModelList(_ entries: [ModelUsageEntry]) -> [ModelUsageEntry] {
+        // The threshold must use the same basis the panel's percent labels use (cost shares only when
+        // every model is priced, token shares otherwise — see `ModelUsageDetail.share`), or a folded
+        // model could have displayed as 5%+.
+        let allPriced = entries.allSatisfy { $0.costUSD != nil }
+        let costTotal = entries.reduce(0.0) { $0 + ($1.costUSD ?? 0) }
+        let tokenTotal = entries.reduce(0) { $0 + $1.totalTokens }
+        func share(_ entry: ModelUsageEntry) -> Double {
+            if allPriced, costTotal > 0 { return (entry.costUSD ?? 0) / costTotal }
+            guard tokenTotal > 0 else { return 0 }
+            return Double(entry.totalTokens) / Double(tokenTotal)
+        }
+
+        var visible: [ModelUsageEntry] = []
+        var other = ModelAccumulator()
+        var namedCount = 0
+
+        for entry in entries {
+            // Tokens the logs couldn't tie to a model (Grok) read as noise under their own
+            // "Unattributed" row — the panel is an insight, not an accounting ledger, so they just
+            // count into Other however large they are.
+            let isUnattributed = entry.model.caseInsensitiveCompare(ModelUsageEntry.unattributedModelName) == .orderedSame
+            if isUnattributed || share(entry) < minVisibleShare {
+                other.fold(entry)
+            } else if entry.costUSD == nil {
+                visible.append(entry)
+                namedCount += 1
+            } else if namedCount < namedModelCap {
+                visible.append(entry)
+                namedCount += 1
+            } else {
+                other.fold(entry)
+            }
+        }
+
+        if other.tokens > 0 || (other.costUSD ?? 0) > 0 {
+            visible.append(other.entry(model: ModelUsageEntry.otherModelName))
+        }
+        return visible
+    }
+
+    private static func roundToCents(_ value: Double) -> Double {
+        (value * 100).rounded() / 100
     }
 }

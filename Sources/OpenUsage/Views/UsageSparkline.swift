@@ -39,7 +39,10 @@ struct UsageSparkline: View {
                 .onContinuousHover { phase in
                     if case .active = phase { hover.inlineHover(true) } else { hover.inlineHover(false) }
                 }
-                .popover(isPresented: Binding(get: { hover.isPresented }, set: { hover.isPresented = $0 }),
+                // Dismissing from outside (click-away) removes the detail view without an `.ended`
+                // hover event, so a plain assignment would strand `overDetail == true` and block
+                // future hides — reset the whole hover state instead.
+                .popover(isPresented: Binding(get: { hover.isPresented }, set: { if !$0 { hover.dismiss() } }),
                          arrowEdge: .top) {
                     UsageTrendDetail(title: data.title, points: points, note: data.chartNote) { inside in
                         hover.detailHover(inside)

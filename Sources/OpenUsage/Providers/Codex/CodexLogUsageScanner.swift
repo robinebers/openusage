@@ -443,6 +443,7 @@ actor CodexLogUsageScanner {
         var costByDay: [String: Double] = [:]
         var pricedDays: Set<String> = []
         var unknownModelsByDay: [String: Set<String>] = [:]
+        var modelsByDay: [String: [String: ModelAccumulator]] = [:]
 
         for event in events where event.timestamp >= since {
             let key = EventKey(
@@ -453,12 +454,28 @@ actor CodexLogUsageScanner {
 
             let day = dayKey(from: event.timestamp)
             tokensByDay[day, default: 0] += event.total
+            // One trimmed slug for pricing, the unknown-model warning, and the breakdown key alike —
+            // diverging spellings would let the warning triangle and the hover panel disagree.
+            let trimmedModel = event.model.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            let modelName = trimmedModel ?? ModelUsageEntry.unattributedModelName
 
-            if let rates = pricing.resolve(model: event.model) {
-                costByDay[day, default: 0] += cost(rates: rates, event: event, fastTier: fastTier)
+            if let model = trimmedModel, let rates = pricing.resolve(model: model) {
+                let eventCost = cost(rates: rates, event: event, fastTier: fastTier)
+                costByDay[day, default: 0] += eventCost
                 pricedDays.insert(day)
+                modelsByDay[day, default: [:]][modelName, default: ModelAccumulator()].add(
+                    tokens: event.total,
+                    costUSD: eventCost
+                )
             } else if event.total > 0 {
-                unknownModelsByDay[day, default: []].insert(event.model)
+                // A blank slug is unattributed, not unknown — there is no name to warn about.
+                if let model = trimmedModel {
+                    unknownModelsByDay[day, default: []].insert(model)
+                }
+                modelsByDay[day, default: [:]][modelName, default: ModelAccumulator()].add(
+                    tokens: event.total,
+                    costUSD: nil
+                )
             }
         }
 
@@ -469,7 +486,19 @@ actor CodexLogUsageScanner {
                 costUSD: pricedDays.contains(day) ? (costByDay[day] ?? 0) : nil
             )
         }
-        return LogUsageScan(series: DailyUsageSeries(daily: days), unknownModelsByDay: unknownModelsByDay)
+        let modelUsage = ModelUsageSeries(daily: modelsByDay.keys.sorted(by: >).map { day in
+            DailyModelUsageEntry(
+                date: day,
+                models: modelsByDay[day, default: [:]].map { model, accumulator in
+                    accumulator.entry(model: model)
+                }
+            )
+        })
+        return LogUsageScan(
+            series: DailyUsageSeries(daily: days),
+            modelUsage: modelUsage,
+            unknownModelsByDay: unknownModelsByDay
+        )
     }
 
     /// Codex cost math (ccusage's): non-cached input at the input rate, cached input at the
@@ -487,5 +516,21 @@ actor CodexLogUsageScanner {
     private static func dayKey(from date: Date) -> String {
         let components = Calendar.current.dateComponents([.year, .month, .day], from: date)
         return String(format: "%04d-%02d-%02d", components.year ?? 0, components.month ?? 0, components.day ?? 0)
+    }
+
+    private struct ModelAccumulator {
+        var tokens = 0
+        var costUSD: Double?
+
+        mutating func add(tokens: Int, costUSD: Double?) {
+            self.tokens += tokens
+            if let costUSD {
+                self.costUSD = (self.costUSD ?? 0) + costUSD
+            }
+        }
+
+        func entry(model: String) -> ModelUsageEntry {
+            ModelUsageEntry(model: model, totalTokens: tokens, costUSD: costUSD)
+        }
     }
 }

@@ -255,6 +255,7 @@ struct DashboardView: View {
         // Trend hover popover rides the same backstop.
         HoverTooltips.dismissAll()
         TrendHoverState.dismissAll()
+        ModelHoverState.dismissAll()
         if layout.screen != .dashboard { layout.screen = .dashboard }
         reorderLift = nil
         layout.cancelDrag()

@@ -226,10 +226,19 @@ enum CursorUsageMapper {
     /// `estimated: false` flag (Cursor spend is server-priced, so its dollars are not marked estimated). Callers only
     /// invoke this when the CSV fetched and parsed, so a failure appends nothing and the tiles read
     /// "No data".
-    static func appendSpendLines(rows: [CursorUsageCSVRow], now: Date, to lines: inout [MetricLine]) {
+    ///
+    /// Model breakdown rows group by base model, not raw CSV slug: Cursor exports one slug per thinking
+    /// effort / fast combination (`claude-opus-4-8-thinking-max`, `gpt-5.5-extra-high-fast`, …), and a
+    /// panel of near-duplicate rows hides the actual ranking. The supplement's alias rules already
+    /// collapse those slugs to a canonical pricing key, and `-fast` canonicals fold into their base, so
+    /// the family comes from the same machinery that prices the row (ported from cursorcat's
+    /// family grouping). The raw slugs survive as `variants` — the per-effort breakdown the row's
+    /// tooltip shows.
+    static func appendSpendLines(rows: [CursorUsageCSVRow], now: Date, pricing: ModelPricing, to lines: inout [MetricLine]) {
         let calendar = Calendar.current
         var costByDay: [String: Double] = [:]
         var tokensByDay: [String: Int] = [:]
+        var modelsByDay: [String: [String: ModelAccumulator]] = [:]
         // Models no pricing source can price (nil imputed cost) contribute tokens but $0 of cost, so a
         // period that used one has an understated dollar figure. Track those names per day so the spend
         // tile can warn which model made its cost incomplete. Only rows that actually spent tokens count —
@@ -240,6 +249,13 @@ enum CursorUsageMapper {
             costByDay[day, default: 0] += row.imputedCostDollars ?? 0
             tokensByDay[day, default: 0] += row.tokens.totalTokens
             let model = row.model.trimmingCharacters(in: .whitespacesAndNewlines)
+            let modelName = model.isEmpty ? ModelUsageEntry.unattributedModelName : model
+            let family = model.isEmpty ? modelName : familyName(for: model, pricing: pricing)
+            modelsByDay[day, default: [:]][family, default: ModelAccumulator()].add(
+                variant: modelName,
+                tokens: row.tokens.totalTokens,
+                costUSD: row.imputedCostDollars
+            )
             if row.tokens.totalTokens > 0, !model.isEmpty, row.imputedCostDollars == nil {
                 unknownModelsByDay[day, default: []].insert(model)
             }
@@ -255,8 +271,18 @@ enum CursorUsageMapper {
             )
         }
         let series = DailyUsageSeries(daily: daily)
+        let modelUsage = ModelUsageSeries(daily: modelsByDay.keys.sorted(by: >).map { day in
+            DailyModelUsageEntry(
+                date: day,
+                models: modelsByDay[day, default: [:]].map { model, accumulator in
+                    accumulator.entry(model: model)
+                }
+            )
+        })
         SpendTileMapper.appendTokenUsage(series, to: &lines, now: now, estimated: false,
-                                         unknownModelsByDay: unknownModelsByDay)
+                                         unknownModelsByDay: unknownModelsByDay,
+                                         modelUsage: modelUsage,
+                                         modelSourceNote: "From your Cursor usage export")
         // Cursor's tokens come from the server-priced usage CSV, not a local CLI log, so the trend
         // note names that source rather than the "estimated from local logs" line the log-scanning
         // providers use. Tokens are measured either way.
@@ -266,6 +292,41 @@ enum CursorUsageMapper {
     private static func dayKey(from date: Date, calendar: Calendar) -> String {
         let components = calendar.dateComponents([.year, .month, .day], from: date)
         return String(format: "%04d-%02d-%02d", components.year ?? 0, components.month ?? 0, components.day ?? 0)
+    }
+
+    /// The display family for a raw CSV slug: its canonical pricing key with a `-fast` suffix folded
+    /// into the base (`gpt-5.5-extra-high-fast` → `gpt-5.5-fast` → `gpt-5.5`). Slugs no alias rule
+    /// knows keep their raw name — a wrong guess would silently merge unrelated models.
+    private static func familyName(for model: String, pricing: ModelPricing) -> String {
+        let canonical = pricing.supplement.canonicalName(for: model) ?? model
+        guard canonical.hasSuffix("-fast") else { return canonical }
+        let base = String(canonical.dropLast("-fast".count))
+        return base.isEmpty ? canonical : base
+    }
+
+    private struct ModelAccumulator {
+        var tokens = 0
+        var costUSD: Double?
+        var variants: [String: (tokens: Int, costUSD: Double?)] = [:]
+
+        mutating func add(variant: String, tokens: Int, costUSD: Double?) {
+            self.tokens += tokens
+            if let costUSD {
+                self.costUSD = (self.costUSD ?? 0) + costUSD
+            }
+            let existing = variants[variant] ?? (0, nil)
+            let combinedCost: Double? = costUSD.map { (existing.costUSD ?? 0) + $0 } ?? existing.costUSD
+            variants[variant] = (existing.tokens + tokens, combinedCost)
+        }
+
+        func entry(model: String) -> ModelUsageEntry {
+            // A single variant with the family's own name is not a breakdown — leave `variants` nil so
+            // the hover tooltip falls back to plain figures.
+            let list = variants.map { ModelUsageVariant(model: $0.key, totalTokens: $0.value.tokens, costUSD: $0.value.costUSD) }
+            let isTrivial = list.count == 1 && list[0].model == model
+            return ModelUsageEntry(model: model, totalTokens: tokens, costUSD: costUSD,
+                                   variants: isTrivial ? nil : list)
+        }
     }
 
     static func stripeBalanceCents(from response: HTTPResponse?) -> Double {

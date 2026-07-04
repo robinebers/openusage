@@ -45,7 +45,9 @@ struct ProviderSnapshotCache {
         // v6: `.values` rows gained `unknownModels` (Cursor spend tiles list the unpriced models behind a
         // warning triangle). Same story — old payloads decode with an empty list, the bump just refetches
         // once so the warning shows immediately instead of after the cached snapshot expires.
-        storageKey: String = "openusage.providerSnapshots.v6",
+        // v7: spend `.values` rows gained `modelBreakdown` for the per-model hover panel. Old payloads
+        // decode cleanly without it, but the bump fetches fresh snapshots so hover panels appear right away.
+        storageKey: String = "openusage.providerSnapshots.v7",
         ttl: TimeInterval = RefreshSetting.interval,
         now: @escaping () -> Date = Date.init
     ) {

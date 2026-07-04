@@ -431,21 +431,43 @@ actor ClaudeLogUsageScanner {
         var costByDay: [String: Double] = [:]
         var pricedDays: Set<String> = []
         var unknownModelsByDay: [String: Set<String>] = [:]
+        var modelsByDay: [String: [String: ModelAccumulator]] = [:]
 
         for entry in entries where entry.timestamp >= since {
             let day = dayKey(from: entry.timestamp)
             tokensByDay[day, default: 0] += entry.tokens.totalTokens
+            // One trimmed slug for pricing, the unknown-model warning, and the breakdown key alike —
+            // diverging spellings would let the warning triangle and the hover panel disagree.
+            let trimmedModel = entry.model?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            let modelName = trimmedModel ?? ModelUsageEntry.unattributedModelName
 
             if let carried = entry.costUSD {
                 costByDay[day, default: 0] += carried
                 pricedDays.insert(day)
-            } else if let model = entry.model {
+                modelsByDay[day, default: [:]][modelName, default: ModelAccumulator()].add(
+                    tokens: entry.tokens.totalTokens,
+                    costUSD: carried
+                )
+            } else if let model = trimmedModel {
                 if let cost = pricing.estimatedCostDollars(model: model, tokens: entry.tokens) {
                     costByDay[day, default: 0] += cost
                     pricedDays.insert(day)
+                    modelsByDay[day, default: [:]][modelName, default: ModelAccumulator()].add(
+                        tokens: entry.tokens.totalTokens,
+                        costUSD: cost
+                    )
                 } else if entry.tokens.totalTokens > 0 {
                     unknownModelsByDay[day, default: []].insert(model)
+                    modelsByDay[day, default: [:]][modelName, default: ModelAccumulator()].add(
+                        tokens: entry.tokens.totalTokens,
+                        costUSD: nil
+                    )
                 }
+            } else if entry.tokens.totalTokens > 0 {
+                modelsByDay[day, default: [:]][modelName, default: ModelAccumulator()].add(
+                    tokens: entry.tokens.totalTokens,
+                    costUSD: nil
+                )
             }
         }
 
@@ -456,13 +478,41 @@ actor ClaudeLogUsageScanner {
                 costUSD: pricedDays.contains(day) ? (costByDay[day] ?? 0) : nil
             )
         }
-        return LogUsageScan(series: DailyUsageSeries(daily: days), unknownModelsByDay: unknownModelsByDay)
+        let modelUsage = ModelUsageSeries(daily: modelsByDay.keys.sorted(by: >).map { day in
+            DailyModelUsageEntry(
+                date: day,
+                models: modelsByDay[day, default: [:]].map { model, accumulator in
+                    accumulator.entry(model: model)
+                }
+            )
+        })
+        return LogUsageScan(
+            series: DailyUsageSeries(daily: days),
+            modelUsage: modelUsage,
+            unknownModelsByDay: unknownModelsByDay
+        )
     }
 
     /// Local calendar day as `yyyy-MM-dd`, matching `SpendTileMapper`'s day keys.
     private static func dayKey(from date: Date) -> String {
         let components = Calendar.current.dateComponents([.year, .month, .day], from: date)
         return String(format: "%04d-%02d-%02d", components.year ?? 0, components.month ?? 0, components.day ?? 0)
+    }
+
+    private struct ModelAccumulator {
+        var tokens = 0
+        var costUSD: Double?
+
+        mutating func add(tokens: Int, costUSD: Double?) {
+            self.tokens += tokens
+            if let costUSD {
+                self.costUSD = (self.costUSD ?? 0) + costUSD
+            }
+        }
+
+        func entry(model: String) -> ModelUsageEntry {
+            ModelUsageEntry(model: model, totalTokens: tokens, costUSD: costUSD)
+        }
     }
 }
 

@@ -141,7 +141,9 @@ final class ClaudeProvider: ProviderRuntime {
         if let scan = await logUsageScanner.scan(now: now(), pricing: pricing()) {
             SpendTileMapper.appendTokenUsage(
                 scan.series, to: &mapped.lines, now: now(),
-                unknownModelsByDay: scan.unknownModelsByDay
+                unknownModelsByDay: scan.unknownModelsByDay,
+                modelUsage: scan.modelUsage,
+                modelSourceNote: "From your Claude usage history (estimated)"
             )
             SpendTileMapper.appendUsageTrend(
                 scan.series, to: &mapped.lines, now: now(),

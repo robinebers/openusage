@@ -26,6 +26,7 @@ struct WidgetRowView: View {
     var condensedTop: Bool = false
 
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
+    @State private var modelHover = ModelHoverState()
     /// Party easter egg: fill meter bars with the party gradient instead of the severity color. Off by
     /// default everywhere else.
     @Environment(\.popoverPartyMode) private var partyMode
@@ -257,6 +258,24 @@ struct WidgetRowView: View {
     /// Unbounded: no bar. Label on the left, with a single right-aligned descriptive line ("1,503 left")
     /// and an optional secondary line ("on-device estimate") beneath it.
     private var unboundedRow: some View {
+        unboundedRowContent
+            .contentShape(Rectangle())
+            .onContinuousHover { phase in
+                guard data.hasModelBreakdown else {
+                    modelHover.dismiss()
+                    return
+                }
+                if case .active = phase {
+                    modelHover.inlineHover(true)
+                } else {
+                    modelHover.inlineHover(false)
+                }
+            }
+            .onChange(of: data.modelBreakdown) { _, _ in modelHover.dismiss() }
+            .onDisappear { modelHover.dismiss() }
+    }
+
+    private var unboundedRowContent: some View {
         HStack(alignment: .center, spacing: 10) {
             labelColumn
             Spacer(minLength: 12)
@@ -272,8 +291,11 @@ struct WidgetRowView: View {
                         // Hover target is the value text itself, not the whole row — the same
                         // per-element pattern the bounded row uses for "x left" and "Resets in …". Reveals
                         // the exact figures the compact value shortens, or "No usage in this period" on a
-                        // zero row; nil (no tooltip) on a small, already-full, non-zero row.
-                        .hoverTooltip(data.unboundedValueTooltip)
+                        // zero row; nil (no tooltip) on a small, already-full, non-zero row. Suppressed
+                        // when the model-breakdown popover is wired up — a text bubble and a popover
+                        // fighting over the same hover reads as two competing surfaces, and the panel's
+                        // per-model tooltips carry the exact figures instead.
+                        .hoverTooltip(data.hasModelBreakdown ? nil : data.unboundedValueTooltip)
                 }
                 if let subtitle = data.unboundedSubtitle {
                     // Secondary, not tertiary: the subtitle is informational ("on-device estimate"),
@@ -285,6 +307,24 @@ struct WidgetRowView: View {
                 }
             }
             .multilineTextAlignment(.trailing)
+            // Anchored to the value column (not the whole row) so the arrow centers on the figure it
+            // explains — the same anchoring the trend popover gets from the sparkline strip. The hover
+            // trigger stays row-wide (see `unboundedRow`); only the anchor is narrowed.
+            .popover(
+                isPresented: Binding(
+                    get: { data.hasModelBreakdown && modelHover.isPresented },
+                    // A click-outside dismiss removes the detail view without an `.ended` hover event,
+                    // so a plain assignment would strand `overDetail == true` and block future hides.
+                    set: { if !$0 { modelHover.dismiss() } }
+                ),
+                arrowEdge: .top
+            ) {
+                if let breakdown = data.modelBreakdown {
+                    ModelUsageDetail(title: data.title, breakdown: breakdown) { inside in
+                        modelHover.detailHover(inside)
+                    }
+                }
+            }
         }
     }
 

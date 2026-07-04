@@ -165,8 +165,9 @@ final class CursorProvider: ProviderRuntime {
         else {
             return
         }
-        let rows = CursorUsageCSV.parse(csv: csv, pricing: await pricing())
-        CursorUsageMapper.appendSpendLines(rows: rows, now: end, to: &lines)
+        let pricing = await pricing()
+        let rows = CursorUsageCSV.parse(csv: csv, pricing: pricing)
+        CursorUsageMapper.appendSpendLines(rows: rows, now: end, pricing: pricing, to: &lines)
     }
 
     private func fetchUsageWithRetry(accessToken: String, authState: inout CursorAuthState) async throws -> HTTPResponse {

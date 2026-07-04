@@ -107,10 +107,12 @@ final class GrokLogUsageScannerTests: XCTestCase {
 
         let usage = GrokLogUsageScanner.parse(log, since: since, pricing: TestPricing.bundled)
 
-        let day = usage.daily.first { $0.date == "2026-06-10" }
+        let day = usage.series.daily.first { $0.date == "2026-06-10" }
         XCTAssertEqual(day?.totalTokens, 4_000_000)
         // grok-build: 1M input @ $1 + 1M output @ $2 = $3. composer-2.5-fast: 1M @ $3 + 1M @ $15 = $18.
         XCTAssertEqual(day?.costUSD ?? 0, 21.0, accuracy: 0.0001)
+        let models = usage.modelUsage?.daily.first { $0.date == "2026-06-10" }?.models ?? []
+        XCTAssertEqual(Set(models.map(\.model)), Set(["grok-build", "grok-composer-2.5-fast"]))
     }
 
     func testTracksMidProcessModelSwitch() {
@@ -124,7 +126,7 @@ final class GrokLogUsageScannerTests: XCTestCase {
         let usage = GrokLogUsageScanner.parse(log, since: since, pricing: TestPricing.bundled)
 
         // First row priced as grok-build ($1/M input), second after the switch as composer-2.5-fast ($3/M).
-        XCTAssertEqual(usage.daily.first?.costUSD ?? 0, 4.0, accuracy: 0.0001)
+        XCTAssertEqual(usage.series.daily.first?.costUSD ?? 0, 4.0, accuracy: 0.0001)
     }
 
     func testUsesCachedReadRateForCachedPromptTokens() {
@@ -137,7 +139,7 @@ final class GrokLogUsageScannerTests: XCTestCase {
         let usage = GrokLogUsageScanner.parse(log, since: since, pricing: TestPricing.bundled)
 
         // 200k input @ $1/M ($0.2) + 800k cache read @ $0.2/M ($0.16) = $0.36.
-        XCTAssertEqual(usage.daily.first?.costUSD ?? 0, 0.36, accuracy: 0.0001)
+        XCTAssertEqual(usage.series.daily.first?.costUSD ?? 0, 0.36, accuracy: 0.0001)
     }
 
     func testSkipsRowsWithoutTokenFieldsAndOutsideWindow() {
@@ -151,8 +153,8 @@ final class GrokLogUsageScannerTests: XCTestCase {
         let usage = GrokLogUsageScanner.parse(log, since: since, pricing: TestPricing.bundled)
 
         // Only the in-window, token-bearing row counts (the pre-window row and the token-less row drop).
-        XCTAssertEqual(usage.daily.count, 1)
-        XCTAssertEqual(usage.daily.first?.totalTokens, 500_000)
+        XCTAssertEqual(usage.series.daily.count, 1)
+        XCTAssertEqual(usage.series.daily.first?.totalTokens, 500_000)
     }
 
     func testUnpricedModelLeavesCostNil() {
@@ -163,8 +165,27 @@ final class GrokLogUsageScannerTests: XCTestCase {
 
         let usage = GrokLogUsageScanner.parse(log, since: since, pricing: TestPricing.bundled)
 
-        XCTAssertEqual(usage.daily.first?.totalTokens, 1_000_000)
-        XCTAssertNil(usage.daily.first?.costUSD)
+        XCTAssertEqual(usage.series.daily.first?.totalTokens, 1_000_000)
+        XCTAssertNil(usage.series.daily.first?.costUSD)
+        XCTAssertEqual(usage.unknownModelsByDay["2026-06-10"], ["grok-unknown-model"])
+        XCTAssertEqual(usage.modelUsage?.daily.first?.models, [
+            ModelUsageEntry(model: "grok-unknown-model", totalTokens: 1_000_000, costUSD: nil)
+        ])
+    }
+
+    func testUnattributedRowsStayVisibleInModelUsage() {
+        let log = """
+        {"ts":"2026-06-10T10:00:00.000Z","pid":1,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":1000000,"completion_tokens":0,"reasoning_tokens":0}}
+        """
+
+        let usage = GrokLogUsageScanner.parse(log, since: since, pricing: TestPricing.bundled)
+
+        XCTAssertEqual(usage.series.daily.first?.totalTokens, 1_000_000)
+        XCTAssertNil(usage.series.daily.first?.costUSD)
+        XCTAssertTrue(usage.unknownModelsByDay.isEmpty)
+        XCTAssertEqual(usage.modelUsage?.daily.first?.models, [
+            ModelUsageEntry(model: ModelUsageEntry.unattributedModelName, totalTokens: 1_000_000, costUSD: nil)
+        ])
     }
 
     func testScanReadsGrokHomeOverride() async {
@@ -182,7 +203,7 @@ final class GrokLogUsageScannerTests: XCTestCase {
 
         let usage = await scanner.scan(daysBack: 30, now: OpenUsageISO8601.date(from: "2026-06-18T00:00:00.000Z")!, pricing: TestPricing.bundled)
 
-        XCTAssertEqual(usage?.daily.first?.totalTokens, 1_000_000)
+        XCTAssertEqual(usage?.series.daily.first?.totalTokens, 1_000_000)
     }
 
     func testScanReturnsNilWhenLogMissing() async {
@@ -476,7 +497,7 @@ final class GrokProviderTests: XCTestCase {
     }
 
     private func values(_ lines: [MetricLine], _ label: String) -> [MetricValue]? {
-        guard case .values(_, let values, _, _, _) = lines.first(where: { $0.label == label }) else { return nil }
+        guard case .values(_, let values, _, _, _, _) = lines.first(where: { $0.label == label }) else { return nil }
         return values
     }
 }

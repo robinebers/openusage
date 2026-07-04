@@ -92,9 +92,17 @@ enum MetricLine: Hashable, Sendable, Codable {
     /// tick and honor the global relative/absolute reset mode, like a bounded row's reset countdown.
     ///
     /// `unknownModels` carries the names of models this period's spend used that the bundled pricing
-    /// manifest doesn't know (Cursor spend tiles only). Their tokens are counted but their cost prices to
-    /// $0, so the row shows a warning triangle listing them on hover. Empty for every other row.
-    case values(label: String, values: [MetricValue], colorHex: String? = nil, expiriesAt: [Date] = [], unknownModels: [String] = [])
+    /// manifest doesn't know. Their tokens are counted but their cost is incomplete, so the row shows a
+    /// warning triangle listing them on hover. `modelBreakdown` carries the period-scoped ranked model
+    /// list for spend rows; it is internal UI data, not part of the local HTTP API wire shape.
+    case values(
+        label: String,
+        values: [MetricValue],
+        colorHex: String? = nil,
+        expiriesAt: [Date] = [],
+        unknownModels: [String] = [],
+        modelBreakdown: ModelUsageBreakdown? = nil
+    )
     case progress(
         label: String,
         used: Double,
@@ -110,7 +118,7 @@ enum MetricLine: Hashable, Sendable, Codable {
         switch self {
         case .text(let label, _, _, _),
              .progress(let label, _, _, _, _, _, _),
-             .values(let label, _, _, _, _),
+             .values(let label, _, _, _, _, _),
              .badge(let label, _, _, _),
              .chart(let label, _, _):
             return label
@@ -151,6 +159,7 @@ enum MetricLine: Hashable, Sendable, Codable {
         case resetsAt
         case expiriesAt
         case unknownModels
+        case modelBreakdown
         case periodDurationMs
         case colorHex
         case subtitle
@@ -184,7 +193,8 @@ enum MetricLine: Hashable, Sendable, Codable {
                 values: try container.decode([MetricValue].self, forKey: .values),
                 colorHex: try container.decodeIfPresent(String.self, forKey: .colorHex),
                 expiriesAt: try container.decodeIfPresent([Date].self, forKey: .expiriesAt) ?? [],
-                unknownModels: try container.decodeIfPresent([String].self, forKey: .unknownModels) ?? []
+                unknownModels: try container.decodeIfPresent([String].self, forKey: .unknownModels) ?? [],
+                modelBreakdown: try container.decodeIfPresent(ModelUsageBreakdown.self, forKey: .modelBreakdown)
             )
         case .progress:
             self = .progress(
@@ -221,13 +231,14 @@ enum MetricLine: Hashable, Sendable, Codable {
             try container.encode(value, forKey: .value)
             try container.encodeIfPresent(colorHex, forKey: .colorHex)
             try container.encodeIfPresent(subtitle, forKey: .subtitle)
-        case .values(let label, let values, let colorHex, let expiriesAt, let unknownModels):
+        case .values(let label, let values, let colorHex, let expiriesAt, let unknownModels, let modelBreakdown):
             try container.encode(LineType.values, forKey: .type)
             try container.encode(label, forKey: .label)
             try container.encode(values, forKey: .values)
             try container.encodeIfPresent(colorHex, forKey: .colorHex)
             if !expiriesAt.isEmpty { try container.encode(expiriesAt, forKey: .expiriesAt) }
             if !unknownModels.isEmpty { try container.encode(unknownModels, forKey: .unknownModels) }
+            try container.encodeIfPresent(modelBreakdown, forKey: .modelBreakdown)
         case .progress(let label, let used, let limit, let format, let resetsAt, let periodDurationMs, let colorHex):
             try container.encode(LineType.progress, forKey: .type)
             try container.encode(label, forKey: .label)
