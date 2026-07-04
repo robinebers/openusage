@@ -106,6 +106,7 @@ enum SQLiteError: Error, LocalizedError, Equatable {
 protocol KeychainAccessing: Sendable {
     func readGenericPassword(service: String) throws -> String?
     func writeGenericPassword(service: String, value: String) throws
+    func deleteGenericPassword(service: String) throws
     func readGenericPasswordForCurrentUser(service: String) throws -> String?
     func writeGenericPasswordForCurrentUser(service: String, value: String) throws
     /// Read a generic password scoped to an explicit account (`-a`). Used when another app stored the
@@ -122,6 +123,8 @@ extension KeychainAccessing {
     func writeGenericPasswordForCurrentUser(service: String, value: String) throws {
         try writeGenericPassword(service: service, value: value)
     }
+
+    func deleteGenericPassword(service: String) throws {}
 
     /// Default for mocks that don't model accounts: fall back to the service-only lookup. The real
     /// `SecurityKeychainAccessor` overrides this to pass `-a <account>`.
@@ -177,12 +180,24 @@ struct SecurityKeychainAccessor: KeychainAccessing {
     func writeGenericPassword(service: String, value: String) throws {
         let result = try processRunner.run(
             executable: "/usr/bin/security",
-            arguments: ["add-generic-password", "-U", "-s", service, "-w", value],
+            arguments: ["add-generic-password", "-U", "-a", currentUserAccount(), "-s", service, "-w", value],
             environment: [:],
             timeout: 5
         )
         if !result.succeeded {
             throw KeychainError.writeFailed(result.stderr)
+        }
+    }
+
+    func deleteGenericPassword(service: String) throws {
+        let result = try processRunner.run(
+            executable: "/usr/bin/security",
+            arguments: ["delete-generic-password", "-s", service],
+            environment: [:],
+            timeout: 5
+        )
+        if !result.succeeded && result.exitCode != Self.itemNotFoundExitCode {
+            throw KeychainError.deleteFailed(result.stderr)
         }
     }
 
@@ -207,6 +222,7 @@ struct SecurityKeychainAccessor: KeychainAccessing {
 enum KeychainError: Error, LocalizedError {
     case writeFailed(String)
     case readFailed(String)
+    case deleteFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -214,6 +230,8 @@ enum KeychainError: Error, LocalizedError {
             return message.isEmpty ? "Keychain write failed." : message
         case .readFailed(let message):
             return message.isEmpty ? "Keychain read failed." : message
+        case .deleteFailed(let message):
+            return message.isEmpty ? "Keychain delete failed." : message
         }
     }
 }
@@ -224,4 +242,3 @@ func expandHome(_ path: String) -> String {
     if path == "~" { return home }
     return home + String(path.dropFirst())
 }
-

@@ -255,7 +255,7 @@ final class WidgetDataStoreTests: XCTestCase {
         let remaining = store.data(for: descriptor)
         XCTAssertFalse(remaining.isBounded)
         XCTAssertEqual(remaining.unboundedDetail, "$40.00 · 1K credits")
-        XCTAssertEqual(remaining.menuBarValue, "$40")   // dollar value → compact tray reading
+        XCTAssertEqual(remaining.menuBarValue, "$40 · 1K credits")
         XCTAssertNil(remaining.unboundedSubtitle)
 
         store.meterStyle = .used
@@ -493,10 +493,10 @@ final class WidgetDataStoreTests: XCTestCase {
         XCTAssertEqual(tokenData.unboundedTooltip, "891,000 tokens")
         XCTAssertNil(tokenData.infoNote)
 
-        // Combined: both values joined; the tray glances at the leading dollar value, the tooltip is full.
+        // Combined: both values joined in the row and tray; the tooltip is full precision.
         let combinedData = store.data(for: combined)
         XCTAssertEqual(combinedData.unboundedDetail, "$478.00 · 891K tokens")
-        XCTAssertEqual(combinedData.menuBarValue, "$478")
+        XCTAssertEqual(combinedData.menuBarValue, "$478 · 891K tokens")
         XCTAssertEqual(combinedData.unboundedTooltip, "$478.00 · 891,000 tokens")
         XCTAssertEqual(combinedData.infoNote, WidgetData.localEstimateNote)
 

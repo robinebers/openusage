@@ -6,9 +6,11 @@ import Observation
 @MainActor
 @Observable
 final class AppContainer {
-    let registry: WidgetRegistry
+    var registry: WidgetRegistry
     let layout: LayoutStore
     let dataStore: WidgetDataStore
+    let codexAccounts: CodexAccountStore
+    let codexOAuth: CodexOAuthCoordinator
     /// Single source of truth for which providers the user has turned off. Both stores consult it (via
     /// injected closures) and the Providers settings tab drives it.
     let enablement: ProviderEnablementStore
@@ -38,6 +40,7 @@ final class AppContainer {
     /// The new-provider credential-detection pass (see `NewProviderSeeder`); `nil` unless this launch is
     /// the first with a provider the install has never seen.
     private let newProviderTask: Task<Void, Never>?
+    private var providers: [ProviderRuntime]
 
     /// `isFreshInstall` must be captured by the caller BEFORE `SettingsMigrator.migrate()` runs (the
     /// migrator's schema stamp makes the defaults domain non-empty). See `AppDelegate`.
@@ -52,23 +55,18 @@ final class AppContainer {
         // order is the default provider order (`LayoutStore.orderedProviderIDs` falls back to it, and
         // `resetToDefault` seeds it), so the dashboard, Customize sections, and the per-provider reset
         // menu all read this way.
-        let providers: [ProviderRuntime] = [
-            ClaudeProvider(),
-            CodexProvider(),
-            CursorProvider(),
-            AntigravityProvider(),
-            CopilotProvider(),
-            DevinProvider(),
-            GrokProvider(),
-            OpenRouterProvider(),
-            ZAIProvider()
-        ]
+        let codexAccounts = CodexAccountStore()
+        let providers = Self.makeProviders(codexAccounts: codexAccounts)
         let registry = WidgetRegistry.from(providers)
         let apiKeyProviders = providers.compactMap { $0 as? any APIKeyManaging }
         let enablement = ProviderEnablementStore()
         let notificationSettings = NotificationSettingsStore()
         let layout = LayoutStore(
             registry: registry,
+            defaultMetricIDs: Self.defaultMetricIDs(for: providers),
+            migrationBaselineMetricIDs: DefaultLayout.migrationBaselineMetricIDs,
+            defaultPinnedMetricIDs: Self.defaultPinnedMetricIDs(for: providers),
+            defaultExpandedMetricIDs: Self.defaultExpandedMetricIDs(for: providers),
             isProviderEnabled: { [enablement] in enablement.isEnabled($0) }
         )
         let dataStore = WidgetDataStore(
@@ -98,7 +96,10 @@ final class AppContainer {
             enablement: enablement
         )
         self.onboarding = onboarding
+        self.codexAccounts = codexAccounts
+        self.codexOAuth = CodexOAuthCoordinator(accountStore: codexAccounts)
         self.registry = registry
+        self.providers = providers
         self.enablement = enablement
         self.apiKeyProviders = apiKeyProviders
         self.notificationSettings = notificationSettings
@@ -148,6 +149,90 @@ final class AppContainer {
         // effectively always is. Notification authorization is requested the first time a trigger is
         // turned on (from Settings), not at launch — triggers default off. No-op under tests.
         AppNotifications.shared.registerAsDelegate()
+    }
+
+    func reloadCodexAccounts(forgetRemoved removedProviderID: String? = nil) {
+        let nextProviders = Self.makeProviders(codexAccounts: codexAccounts)
+        let nextRegistry = WidgetRegistry.from(nextProviders)
+        let currentIDs = Set(registry.providers.map(\.id))
+        let nextIDs = Set(nextRegistry.providers.map(\.id))
+        registry = nextRegistry
+        providers = nextProviders
+        layout.updateRegistry(
+            nextRegistry,
+            defaultMetricIDs: Self.defaultMetricIDs(for: nextProviders),
+            migrationBaselineMetricIDs: DefaultLayout.migrationBaselineMetricIDs,
+            defaultPinnedMetricIDs: Self.defaultPinnedMetricIDs(for: nextProviders),
+            defaultExpandedMetricIDs: Self.defaultExpandedMetricIDs(for: nextProviders)
+        )
+        dataStore.updateRegistry(nextRegistry, providers: nextProviders)
+        let added = nextIDs.subtracting(currentIDs)
+        if !added.isEmpty {
+            enablement.registerKnownProviders(added)
+            for id in added {
+                enablement.setEnabled(true, for: id)
+            }
+        }
+        if let removedProviderID {
+            dataStore.forgetProvider(removedProviderID)
+        }
+    }
+
+    private static func makeProviders(codexAccounts: CodexAccountStore) -> [ProviderRuntime] {
+        let codexProviders = codexAccounts.accountContexts().map { context in
+            CodexProvider(
+                providerID: context.record.providerID,
+                displayName: context.record.displayName,
+                authStore: context.authStore,
+                logUsageScanner: context.logUsageScanner
+            )
+        }
+        return [
+            ClaudeProvider()
+        ] + codexProviders + [
+            CursorProvider(),
+            AntigravityProvider(),
+            CopilotProvider(),
+            DevinProvider(),
+            GrokProvider(),
+            OpenRouterProvider(),
+            ZAIProvider()
+        ]
+    }
+
+    private static func defaultMetricIDs(for providers: [ProviderRuntime]) -> [String] {
+        var ids = DefaultLayout.metricIDs
+        for provider in providers where provider.provider.id.hasPrefix("codex.") {
+            ids.append(contentsOf: provider.widgetDescriptors.map(\.id))
+        }
+        return ids
+    }
+
+    private static func defaultExpandedMetricIDs(for providers: [ProviderRuntime]) -> [String] {
+        var ids = DefaultLayout.expandedMetricIDs
+        for provider in providers where provider.provider.id.hasPrefix("codex.") {
+            ids.append(contentsOf: [
+                "\(provider.provider.id).spark",
+                "\(provider.provider.id).sparkWeekly",
+                "\(provider.provider.id).credits",
+                "\(provider.provider.id).rateLimitResets",
+                "\(provider.provider.id).today",
+                "\(provider.provider.id).yesterday",
+                "\(provider.provider.id).last30"
+            ])
+        }
+        return ids
+    }
+
+    private static func defaultPinnedMetricIDs(for providers: [ProviderRuntime]) -> [String] {
+        var ids = DefaultLayout.pinnedMetricIDs
+        for provider in providers where provider.provider.id.hasPrefix("codex.") {
+            ids.append(contentsOf: [
+                "\(provider.provider.id).session",
+                "\(provider.provider.id).credits"
+            ])
+        }
+        return ids
     }
 
     deinit {

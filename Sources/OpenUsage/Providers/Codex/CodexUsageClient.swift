@@ -4,10 +4,12 @@ struct CodexRefreshResponse: Sendable, Equatable {
     var accessToken: String
     var refreshToken: String?
     var idToken: String?
+    var accountID: String?
 }
 
 struct CodexUsageClient: Sendable {
     static let clientID = "app_EMoamEEZ73f0CkXaXp7hrann"
+    static let authorizeURL = URL(string: "https://auth.openai.com/oauth/authorize")!
     static let refreshURL = URL(string: "https://auth.openai.com/oauth/token")!
     static let usageURL = URL(string: "https://chatgpt.com/backend-api/wham/usage")!
     static let resetCreditsURL = URL(string: "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits")!
@@ -71,7 +73,42 @@ struct CodexUsageClient: Sendable {
         return CodexRefreshResponse(
             accessToken: accessToken,
             refreshToken: body["refresh_token"] as? String,
-            idToken: body["id_token"] as? String
+            idToken: body["id_token"] as? String,
+            accountID: body["account_id"] as? String
+        )
+    }
+
+    func exchangeAuthorizationCode(
+        code: String,
+        redirectURI: String,
+        codeVerifier: String
+    ) async throws -> CodexRefreshResponse {
+        let body =
+            "grant_type=authorization_code" +
+            "&client_id=\(Self.clientID.urlFormEncoded)" +
+            "&code=\(code.urlFormEncoded)" +
+            "&redirect_uri=\(redirectURI.urlFormEncoded)" +
+            "&code_verifier=\(codeVerifier.urlFormEncoded)"
+
+        let response = try await http.send(HTTPRequest(
+            method: "POST",
+            url: Self.refreshURL,
+            headers: ["Content-Type": "application/x-www-form-urlencoded"],
+            body: Data(body.utf8),
+            timeout: 15
+        ))
+        guard (200..<300).contains(response.statusCode),
+              let body = ProviderParse.jsonObject(response.body),
+              let accessToken = body["access_token"] as? String,
+              !accessToken.isEmpty
+        else {
+            throw CodexUsageError.requestFailed(response.statusCode)
+        }
+        return CodexRefreshResponse(
+            accessToken: accessToken,
+            refreshToken: body["refresh_token"] as? String,
+            idToken: body["id_token"] as? String,
+            accountID: body["account_id"] as? String
         )
     }
 
@@ -118,4 +155,3 @@ struct CodexUsageClient: Sendable {
     }
 
 }
-

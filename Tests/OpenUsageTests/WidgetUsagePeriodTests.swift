@@ -34,6 +34,14 @@ final class WidgetUsagePeriodTests: XCTestCase {
         XCTAssertEqual(descriptors.first { $0.id == "codex.today" }?.sample.isUsagePeriod, true)
     }
 
+    func testCodexAccountDescriptorsUseProviderIDPrefix() {
+        let descriptors = CodexProvider(providerID: "codex.abc", displayName: "Codex 2").widgetDescriptors
+
+        XCTAssertNotNil(descriptors.first { $0.id == "codex.abc.session" })
+        XCTAssertNotNil(descriptors.first { $0.id == "codex.abc.today" })
+        XCTAssertNil(descriptors.first { $0.id == "codex.session" })
+    }
+
     /// A depleted balance (every value zero, not a usage period): `isZeroUsage` is still true, but the
     /// note gate `isZeroUsage && isUsagePeriod` is false, so no "No usage in this period" note shows.
     func testZeroBalanceRowIsGatedOutOfTheNote() {

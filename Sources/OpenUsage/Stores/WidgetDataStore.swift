@@ -12,8 +12,8 @@ struct StalenessHint: Equatable {
 @MainActor
 @Observable
 final class WidgetDataStore {
-    private let registry: WidgetRegistry
-    private let providersByID: [String: ProviderRuntime]
+    private var registry: WidgetRegistry
+    private var providersByID: [String: ProviderRuntime]
     private let cache: ProviderSnapshotCache
     private let defaults: UserDefaults
     /// Whether a provider is currently enabled. Injected so the store consults the single
@@ -120,6 +120,25 @@ final class WidgetDataStore {
         // dashboard show last-known values immediately at launch instead of "—"; the refresh loop
         // replaces them as soon as fresh data lands.
         self.snapshots = cache.loadSnapshots(providerIDs: registry.providers.map(\.id))
+    }
+
+    func updateRegistry(_ nextRegistry: WidgetRegistry, providers: [ProviderRuntime]) {
+        registry = nextRegistry
+        providersByID = Dictionary(uniqueKeysWithValues: providers.map { ($0.provider.id, $0) })
+        let known = Set(nextRegistry.providers.map(\.id))
+        snapshots = snapshots.filter { known.contains($0.key) }
+        providerErrors = providerErrors.filter { known.contains($0.key) }
+        failureRetryAfter = failureRetryAfter.filter { known.contains($0.key) }
+        refreshingProviderIDs = refreshingProviderIDs.filter { known.contains($0) }
+        snapshots.merge(cache.loadSnapshots(providerIDs: nextRegistry.providers.map(\.id))) { current, _ in current }
+    }
+
+    func forgetProvider(_ providerID: String) {
+        snapshots.removeValue(forKey: providerID)
+        providerErrors.removeValue(forKey: providerID)
+        failureRetryAfter.removeValue(forKey: providerID)
+        refreshingProviderIDs.remove(providerID)
+        cache.remove(providerID: providerID)
     }
 
     /// Refresh every enabled provider, concurrently — one slow provider never delays the rest.
@@ -630,4 +649,3 @@ final class WidgetDataStore {
         return Double(value[match].replacingOccurrences(of: ",", with: ""))
     }
 }
-

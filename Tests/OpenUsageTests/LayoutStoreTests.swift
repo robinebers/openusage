@@ -729,6 +729,35 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertEqual(store.pinnedMetricIDs, expected)
     }
 
+    func testRegistryUpdatePinsDefaultsForNewProviderOnly() {
+        let defaults = makeDefaults("UpdateRegistryPins")
+        let store = LayoutStore(
+            registry: .mock,
+            defaults: defaults,
+            storageKey: "layout",
+            defaultPinnedMetricIDs: ["codex.session"]
+        )
+        let extra = Provider(id: "codex.extra", displayName: "Codex 2", icon: .providerMark("codex"))
+        let extraSession = WidgetDescriptor.percent(id: "codex.extra.session", provider: extra, title: "Session")
+        let extraCredits = WidgetDescriptor.combined(id: "codex.extra.credits", provider: extra, title: "Extra Usage", metricLabel: "Credits")
+        let registry = WidgetRegistry(
+            providers: MockData.providers + [extra],
+            descriptors: MockData.descriptors + [extraSession, extraCredits]
+        )
+
+        store.updateRegistry(
+            registry,
+            defaultMetricIDs: ["codex.session", "codex.extra.session", "codex.extra.credits"],
+            migrationBaselineMetricIDs: [],
+            defaultPinnedMetricIDs: ["codex.session", "codex.extra.session", "codex.extra.credits"],
+            defaultExpandedMetricIDs: []
+        )
+
+        XCTAssertTrue(store.isPinned("codex.session"))
+        XCTAssertTrue(store.isPinned("codex.extra.session"))
+        XCTAssertTrue(store.isPinned("codex.extra.credits"))
+    }
+
     func testUnpinningEverythingPersistsAndIsNotReseeded() {
         let defaults = makeDefaults("UnpinAll")
         let store = LayoutStore(registry: .mock, defaults: defaults, storageKey: "layout")

@@ -1,6 +1,6 @@
 # Codex
 
-Tracks your ChatGPT/Codex subscription limits using the login from the Codex CLI.
+Tracks your ChatGPT/Codex subscription limits using accounts signed in through OpenUsage, with existing Codex CLI logins imported read-only.
 
 ## What it tracks
 
@@ -16,7 +16,11 @@ Tracks your ChatGPT/Codex subscription limits using the login from the Codex CLI
 
 ## Where credentials come from
 
-Sign in once with the Codex CLI (`codex`); OpenUsage reads the same auth files (`$CODEX_HOME` respected) with a keychain fallback. Tokens refresh automatically and rotate back into the auth file.
+Open **Settings → Codex Accounts → Add Codex Account** to sign in with ChatGPT in your browser. OpenUsage stores those account tokens in its own macOS keychain entries, refreshes them automatically, and never writes them into the Codex CLI auth files.
+
+OpenUsage also still imports existing Codex CLI logins read-only (`$CODEX_HOME` respected, plus the standard Codex auth locations and keychain fallback). Imported CLI accounts can be hidden in OpenUsage, but OpenUsage does not delete or modify the CLI's auth.
+
+Each signed-in account appears as its own Codex card. The first account keeps the regular **Codex** name and existing layout; additional accounts show as **Codex 2**, **Codex 3**, and can be renamed locally in Settings.
 
 ## The spend tiles
 
@@ -24,7 +28,7 @@ Today / Yesterday / Last 30 Days are computed **locally**: OpenUsage reads the C
 
 ## Troubleshooting
 
-- **"Not logged in"** — run `codex` and sign in, then refresh.
+- **"Not logged in"** — add a Codex account in OpenUsage Settings, or sign in with the Codex CLI for a read-only imported account.
 - **API-key-only setups** can't read subscription usage — sign in with your ChatGPT account instead.
 - **Spend tiles show "No data"** — OpenUsage found no Codex session logs in the last 30 days. If your Codex home lives somewhere custom, set `CODEX_HOME` so both the Codex CLI and OpenUsage look in the same place.
 

@@ -97,9 +97,16 @@ struct ProviderSnapshotCache {
         AppLog.debug(.cache, "write \(snapshot.providerID)")
         // Mark this provider as written *this session* so its snapshot now satisfies the freshness gate
         // (a launch-loaded snapshot never does — see `sessionWrites`).
-        sessionWrites.withLock { $0.insert(snapshot.providerID) }
+        _ = sessionWrites.withLock { $0.insert(snapshot.providerID) }
         var payload = loadPayload()
         payload.snapshots[snapshot.providerID] = snapshot
+        save(payload)
+    }
+
+    func remove(providerID: String) {
+        var payload = loadPayload()
+        payload.snapshots.removeValue(forKey: providerID)
+        _ = sessionWrites.withLock { $0.remove(providerID) }
         save(payload)
     }
 

@@ -2,15 +2,7 @@ import Foundation
 
 @MainActor
 final class CodexProvider: ProviderRuntime {
-    let provider = Provider(
-        id: "codex",
-        displayName: "Codex",
-        icon: .providerMark("codex"),
-        links: [
-            .init(label: "Status", url: "https://status.openai.com/"),
-            .init(label: "Dashboard", url: "https://chatgpt.com/codex/settings/usage")
-        ]
-    )
+    let provider: Provider
 
     let authStore: CodexAuthStore
     let usageClient: CodexUsageClient
@@ -19,12 +11,23 @@ final class CodexProvider: ProviderRuntime {
     let pricing: @Sendable () async -> ModelPricing
 
     init(
+        providerID: String = "codex",
+        displayName: String = "Codex",
         authStore: CodexAuthStore = CodexAuthStore(),
         usageClient: CodexUsageClient = CodexUsageClient(),
         logUsageScanner: CodexLogUsageScanner = CodexLogUsageScanner(),
         now: @escaping @Sendable () -> Date = Date.init,
         pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() }
     ) {
+        self.provider = Provider(
+            id: providerID,
+            displayName: displayName,
+            icon: .providerMark("codex"),
+            links: [
+                .init(label: "Status", url: "https://status.openai.com/"),
+                .init(label: "Dashboard", url: "https://chatgpt.com/codex/settings/usage")
+            ]
+        )
         self.authStore = authStore
         self.usageClient = usageClient
         self.logUsageScanner = logUsageScanner
@@ -34,15 +37,15 @@ final class CodexProvider: ProviderRuntime {
 
     var widgetDescriptors: [WidgetDescriptor] {
         [
-            .percent(id: "codex.session", provider: provider, title: "Session"),
-            .percent(id: "codex.weekly", provider: provider, title: "Weekly"),
+            .percent(id: "\(provider.id).session", provider: provider, title: "Session"),
+            .percent(id: "\(provider.id).weekly", provider: provider, title: "Weekly"),
             // Model-specific Spark limits (GPT-5.3-Codex-Spark), parsed from `additional_rate_limits`.
             // Declared right after Weekly so they group with the core rate-limit meters; seeded as
             // secondary (below the caret) and unpinned in `DefaultLayout`.
-            .percent(id: "codex.spark", provider: provider, title: "Spark"),
-            .percent(id: "codex.sparkWeekly", provider: provider, title: "Spark Weekly"),
-            .combined(id: "codex.credits", provider: provider, title: "Extra Usage", metricLabel: "Credits"),
-            .values(id: "codex.rateLimitResets", provider: provider, title: "Rate Limit Resets", metricLabel: "Rate Limit Resets"),
+            .percent(id: "\(provider.id).spark", provider: provider, title: "Spark"),
+            .percent(id: "\(provider.id).sparkWeekly", provider: provider, title: "Spark Weekly"),
+            .combined(id: "\(provider.id).credits", provider: provider, title: "Extra Usage", metricLabel: "Credits"),
+            .values(id: "\(provider.id).rateLimitResets", provider: provider, title: "Rate Limit Resets", metricLabel: "Rate Limit Resets"),
             .usageTrend(provider: provider)
         ] + WidgetDescriptor.spendTiles(provider: provider)
     }
@@ -198,6 +201,9 @@ final class CodexProvider: ProviderRuntime {
         }
         if let idToken = response.idToken {
             authState.auth.tokens?.idToken = idToken
+        }
+        if let accountID = response.accountID {
+            authState.auth.tokens?.accountID = accountID
         }
         authState.auth.lastRefresh = OpenUsageISO8601.string(from: now())
         // Fail loudly: a swallowed save strands the rotated token on disk (next launch re-refreshes /

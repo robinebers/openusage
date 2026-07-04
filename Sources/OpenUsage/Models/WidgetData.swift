@@ -225,7 +225,11 @@ struct WidgetData: Hashable {
             }
             return MetricFormatter.number(displayedValue, kind: kind, style: .tray)
         }
-        if let first = selectedValues.first {
+        let selected = selectedValues
+        if selected.count > 1 {
+            return selected.map { MetricFormatter.string(for: $0, style: .tray) }.joined(separator: " · ")
+        }
+        if let first = selected.first {
             if title == "Rate Limit Resets", first.kind == .count {
                 return "\(MetricFormatter.number(first.number, kind: .count, style: .tray)) resets"
             }

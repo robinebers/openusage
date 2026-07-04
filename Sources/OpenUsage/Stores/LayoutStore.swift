@@ -126,7 +126,7 @@ final class LayoutStore {
         didSet { defaults.set(menuBarStyle.rawValue, forKey: menuBarStyleKey) }
     }
 
-    private let registry: WidgetRegistry
+    private var registry: WidgetRegistry
     private let defaults: UserDefaults
     private let storageKey: String
     private let providerOrderKey: String
@@ -137,10 +137,10 @@ final class LayoutStore {
     private let expandOnEnableKey: String
     private let expandedProvidersKey: String
     private let menuBarStyleKey: String
-    private let defaultMetricIDs: [String]
-    private let migrationBaselineMetricIDs: [String]
-    private let defaultPinnedMetricIDs: [String]
-    private let defaultExpandedMetricIDs: [String]
+    private var defaultMetricIDs: [String]
+    private var migrationBaselineMetricIDs: [String]
+    private var defaultPinnedMetricIDs: [String]
+    private var defaultExpandedMetricIDs: [String]
     private var defaultExpandedOnEnableIDs: Set<String>
     private let isProviderEnabled: @MainActor (String) -> Bool
 
@@ -926,6 +926,66 @@ final class LayoutStore {
         persistExpandedProviders()
         persistSeededDefaults(Set(Self.knownMetricIDs(defaultMetricIDs, registry: registry)))
         persist()
+    }
+
+    func updateRegistry(
+        _ nextRegistry: WidgetRegistry,
+        defaultMetricIDs nextDefaultMetricIDs: [String],
+        migrationBaselineMetricIDs nextMigrationBaselineMetricIDs: [String],
+        defaultPinnedMetricIDs nextDefaultPinnedMetricIDs: [String],
+        defaultExpandedMetricIDs nextDefaultExpandedMetricIDs: [String]
+    ) {
+        cancelDrag()
+        let oldProviderIDs = Set(registry.providers.map(\.id))
+        registry = nextRegistry
+        defaultMetricIDs = nextDefaultMetricIDs
+        migrationBaselineMetricIDs = nextMigrationBaselineMetricIDs
+        defaultPinnedMetricIDs = nextDefaultPinnedMetricIDs
+        defaultExpandedMetricIDs = nextDefaultExpandedMetricIDs
+
+        placed = placed.filter { registry.descriptor(id: $0.descriptorID) != nil }
+        let seeded = Self.seedNewDefaultMetrics(
+            into: placed,
+            defaults: defaults,
+            key: seededDefaultsKey,
+            hasStoredLayout: true,
+            registry: registry,
+            defaultMetricIDs: defaultMetricIDs,
+            migrationBaselineMetricIDs: migrationBaselineMetricIDs
+        )
+        placed = seeded.placed
+        if seeded.shouldPersistSeededDefaults {
+            persistSeededDefaults(seeded.seededDefaults)
+        }
+
+        let knownProviders = Set(registry.providers.map(\.id))
+        var nextOrder = providerOrder.filter { knownProviders.contains($0) }
+        for provider in registry.providers where !nextOrder.contains(provider.id) {
+            nextOrder.append(provider.id)
+        }
+        providerOrder = nextOrder
+        persistProviderOrder()
+
+        metricOrderByProvider = Self.normalizedMetricOrder(metricOrderByProvider, registry: registry)
+        persistMetricOrder()
+
+        let newProviderIDs = Set(registry.providers.map(\.id)).subtracting(oldProviderIDs)
+        pinnedMetricIDs = pinnedMetricIDs.filter { registry.descriptor(id: $0) != nil }
+        pinnedMetricIDs.formUnion(defaultPinnedMetricIDs.filter { id in
+            guard let descriptor = registry.descriptor(id: id) else { return false }
+            return newProviderIDs.contains(descriptor.providerID)
+        })
+        persistPins()
+
+        expandedMetricIDs = expandedMetricIDs.filter { registry.descriptor(id: $0) != nil }
+        expandedMetricIDs.formUnion(seeded.newlyPlaced.filter { defaultExpandedMetricIDs.contains($0) })
+        defaultExpandedOnEnableIDs = defaultExpandedOnEnableIDs.filter { registry.descriptor(id: $0) != nil }
+        persistExpanded()
+        persistExpandOnEnable()
+
+        expandedProviderIDs = expandedProviderIDs.filter { knownProviders.contains($0) }
+        persistExpandedProviders()
+        syncPlacedOrder()
     }
 
     /// Reset a single provider's customization to default — its enabled metrics, metric order, pins,

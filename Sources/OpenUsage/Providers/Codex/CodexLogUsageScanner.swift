@@ -27,13 +27,16 @@ import Foundation
 actor CodexLogUsageScanner {
     private let environment: EnvironmentReading
     private let homeDirectory: @Sendable () -> URL
+    private let homesOverride: [URL]?
 
     init(
         environment: EnvironmentReading = ProcessEnvironmentReader(),
-        homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser }
+        homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser },
+        homesOverride: [URL]? = nil
     ) {
         self.environment = environment
         self.homeDirectory = homeDirectory
+        self.homesOverride = homesOverride
     }
 
     /// One turn's token usage, normalized from a `token_count` line (deltas already applied).
@@ -93,6 +96,9 @@ actor CodexLogUsageScanner {
 
     /// `CODEX_HOME` entries (comma-separated) when set, else `~/.codex` — same as ccusage.
     private func codexHomes() -> [URL] {
+        if let homesOverride {
+            return homesOverride
+        }
         if let raw = environment.value(for: "CODEX_HOME")?.trimmingCharacters(in: .whitespacesAndNewlines),
            !raw.isEmpty {
             return raw.split(separator: ",")

@@ -82,7 +82,7 @@ enum CodexAuthError: Error, LocalizedError, Equatable {
 }
 
 struct CodexAuthStore: Sendable {
-    static let keychainService = "Codex Auth"
+    static let defaultKeychainService = "Codex Auth"
     /// Refresh once the access token is within this window of its JWT `exp` — the same 5-minute slack
     /// the `codex` CLI itself uses, so OpenUsage rotates on the same schedule rather than guessing.
     static let accessTokenRefreshWindow: TimeInterval = 5 * 60
@@ -93,17 +93,23 @@ struct CodexAuthStore: Sendable {
     var files: TextFileAccessing
     var keychain: KeychainAccessing
     var now: @Sendable () -> Date
+    var authPathsOverride: [String]?
+    var keychainService: String
 
     init(
         environment: EnvironmentReading = ProcessEnvironmentReader(),
         files: TextFileAccessing = LocalTextFileAccessor(),
         keychain: KeychainAccessing = SecurityKeychainAccessor(),
-        now: @escaping @Sendable () -> Date = Date.init
+        now: @escaping @Sendable () -> Date = Date.init,
+        authPathsOverride: [String]? = nil,
+        keychainService: String = Self.defaultKeychainService
     ) {
         self.environment = environment
         self.files = files
         self.keychain = keychain
         self.now = now
+        self.authPathsOverride = authPathsOverride
+        self.keychainService = keychainService
     }
 
     func loadAuthCandidates() -> ([CodexAuthState], [String]) {
@@ -137,7 +143,7 @@ struct CodexAuthStore: Sendable {
     }
 
     func loadKeychainAuth() -> CodexAuthState? {
-        guard let value = try? keychain.readGenericPassword(service: Self.keychainService),
+        guard let value = try? keychain.readGenericPassword(service: keychainService),
               let auth = Self.parseAuth(value),
               Self.hasTokenLikeAuth(auth)
         else {
@@ -158,7 +164,7 @@ struct CodexAuthStore: Sendable {
         case .file(let path):
             try files.writeText(path, text)
         case .keychain:
-            try keychain.writeGenericPassword(service: Self.keychainService, value: text)
+            try keychain.writeGenericPassword(service: keychainService, value: text)
         }
     }
 
@@ -192,6 +198,9 @@ struct CodexAuthStore: Sendable {
     }
 
     func authPaths() -> [String] {
+        if let authPathsOverride {
+            return authPathsOverride
+        }
         if let codexHome = codexHome() {
             return [joinPath(codexHome, Self.authFile)]
         }
@@ -228,4 +237,3 @@ private extension CodexAuthState.Source {
         return false
     }
 }
-
