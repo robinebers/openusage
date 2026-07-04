@@ -80,7 +80,7 @@ gh run list --workflow=pricing-supplement.yml --limit 1
 curl -s https://robinebers.github.io/openusage/pricing_supplement.json | python3 -c "import json,sys; print(json.load(sys.stdin)['updated_at'])"
 ```
 
-The `updated_at` served must match the merged file. GitHub Pages deploys occasionally stall in `deployment_queued`; if the URL is stale after ~10 minutes, re-trigger with `gh api -X POST repos/robinebers/openusage/pages/builds` and re-check.
+The `updated_at` served must match the merged file. Publishing is two hops: the supplement workflow pushes the file to the `gh-pages` branch, then the `Deploy Pages` workflow (defined on the `gh-pages` branch itself; the repo's Pages source is "GitHub Actions") deploys that branch to the live site. If the URL is stale after ~10 minutes, check `gh run list --workflow=deploy-pages.yml` and re-run it with `gh workflow run deploy-pages.yml --ref gh-pages`.
 
 ## Optional: refresh bundled snapshots
 

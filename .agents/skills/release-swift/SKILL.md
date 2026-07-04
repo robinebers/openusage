@@ -82,7 +82,10 @@ Never leave a release blank.
 gh release view v{version} --json isDraft,isPrerelease,assets,body \
   --jq '{isDraft, isPrerelease, assets:[.assets[].name], bodyLen:(.body|length)}'
 git fetch origin gh-pages && git show origin/gh-pages:appcast.xml | grep -F "OpenUsage-{version}.dmg"
+curl -s "https://robinebers.github.io/openusage/appcast.xml" | grep -F "OpenUsage-{version}.dmg"
 ```
+
+The second check matters: the `gh-pages` branch is deployed to the live site by the `Deploy Pages` workflow (defined on the `gh-pages` branch; the repo's Pages source is "GitHub Actions"). If the branch has the version but the live URL doesn't after ~10 minutes, re-run it with `gh workflow run deploy-pages.yml --ref gh-pages` — Sparkle clients only see the live URL.
 
 Require `isDraft=false`, `isPrerelease=true` for beta or `false` for stable, an `OpenUsage-<version>.dmg` asset, `bodyLen>0`, and the version present in the appcast. If a draft was left behind, migrate its notes/assets onto the published release, then delete it — but only once a separate PUBLISHED release for the tag already exists:
 
