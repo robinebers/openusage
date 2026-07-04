@@ -617,6 +617,12 @@ final class ClaudeProviderTests: XCTestCase {
 
         XCTAssertEqual(snapshot.plan, "Pro")
         XCTAssertEqual(badge(snapshot.lines, "Status")?.hasPrefix("Rate limited"), true)
+        // The badge/note lines only render when enabled in the layout, so the state must also reach the
+        // provider header warning (amber triangle) — without it the default dashboard is silently blank.
+        XCTAssertEqual(
+            snapshot.warning,
+            "Updates blocked by Anthropic. Be patient — manual refreshes will make it worse. Retrying in ~10m."
+        )
     }
 
     func testRateLimitServesLastGoodUsageThenBacksOff() async {
@@ -654,20 +660,25 @@ final class ClaudeProviderTests: XCTestCase {
             pricing: { TestPricing.bundled }
         )
 
-        // 1) Live fetch succeeds and is cached.
+        // 1) Live fetch succeeds and is cached; no warning rides along.
         let first = await provider.refresh()
         XCTAssertEqual(Self.progress(first.lines, "Session")?.used, 25)
+        XCTAssertNil(first.warning)
 
-        // 2) 429: still shows the cached Session bar plus the staleness note, not a bare "Status" badge.
+        // 2) 429: still shows the cached Session bar plus the staleness note, not a bare "Status" badge —
+        // and the header warning flags the rate-limited state even when the note line isn't in the layout.
         let second = await provider.refresh()
         XCTAssertEqual(Self.progress(second.lines, "Session")?.used, 25)
         XCTAssertEqual(text(second.lines, "Note")?.contains("rate limited"), true)
         XCTAssertNil(badge(second.lines, "Status"))
+        XCTAssertEqual(second.warning?.hasPrefix("Updates blocked by Anthropic"), true)
 
-        // 3) Within the cooldown the live call is skipped entirely; the cached bar is still shown.
+        // 3) Within the cooldown the live call is skipped entirely; the cached bar is still shown and the
+        // warning persists.
         clock.set(t0.addingTimeInterval(60))
         let third = await provider.refresh()
         XCTAssertEqual(Self.progress(third.lines, "Session")?.used, 25)
+        XCTAssertEqual(third.warning?.hasPrefix("Updates blocked by Anthropic"), true)
         XCTAssertEqual(httpClient.requests.filter { $0.url.absoluteString.hasSuffix("/api/oauth/usage") }.count, 2)
     }
 

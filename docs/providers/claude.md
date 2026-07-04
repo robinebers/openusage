@@ -33,7 +33,7 @@ Today / Yesterday / Last 30 Days are computed **locally**: OpenUsage reads the C
 - **"Not logged in"** — run `claude` and sign in, then refresh.
 - **"Signed in to the Claude desktop app?"** — a login done only in the Claude desktop app is stored encrypted in a way OpenUsage can't read. Run `claude` in a terminal and sign in once; both logins coexist, and OpenUsage picks up the CLI one.
 - **"Re-login for live usage"** (an amber warning on the Claude header) — your saved login can authenticate for inference but can't read your subscription limits, because it lacks the `user:profile` access (this is what an inference-only token from `claude setup-token` carries). Run `claude` and sign in again with your Claude account, then refresh; the spend tiles keep working in the meantime.
-- **"Rate limited, retry in ~Nm"** — the usage API is throttling; OpenUsage shows when to expect data again and keeps your last values.
+- **"Updates blocked by Anthropic"** (an amber warning on the Claude header) — the usage API is throttling OpenUsage. It keeps your last values, shows when it will retry, and backs off in the meantime — manual refreshes only extend the block, so the best fix is patience.
 - **Spend tiles show "No data"** — OpenUsage found no Claude Code logs in the last 30 days. If your logs live somewhere custom, set `CLAUDE_CONFIG_DIR` so both Claude Code and OpenUsage look in the same place.
 
 ## Under the hood

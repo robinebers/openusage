@@ -3,6 +3,9 @@ import Foundation
 struct ClaudeMappedUsage: Equatable, Sendable {
     var plan: String?
     var lines: [MetricLine]
+    /// Provider header notice (amber triangle + tooltip) riding along with this usage, e.g. the
+    /// rate-limited warning. `nil` for a clean fetch.
+    var warning: String?
 }
 
 enum ClaudeUsageMapper {
@@ -43,8 +46,19 @@ enum ClaudeUsageMapper {
             lines: [
                 .badge(label: "Status", text: waitText, colorHex: "#F59E0B"),
                 rateLimitedNote(retryAfterSeconds: retryAfterSeconds)
-            ]
+            ],
+            warning: rateLimitedWarning(retryAfterSeconds: retryAfterSeconds)
         )
+    }
+
+    /// Provider header warning (the amber triangle + tooltip) for the rate-limited state. The badge/note
+    /// lines above only render when their metrics are enabled in the layout, so without this the default
+    /// dashboard showed bare "No data" rows with no hint of why. Also warns the
+    /// user off manual refreshes, which extend Anthropic's rate limiting.
+    static func rateLimitedWarning(retryAfterSeconds: Int?) -> String {
+        let base = "Updates blocked by Anthropic. Be patient — manual refreshes will make it worse."
+        guard let retryText = retryAfterSeconds.map(formatRateLimitMinutes) else { return base }
+        return "\(base) Retrying in ~\(retryText)."
     }
 
     /// Provider warning shown on the Claude header (the amber triangle + tooltip, like Z.ai's "no coding

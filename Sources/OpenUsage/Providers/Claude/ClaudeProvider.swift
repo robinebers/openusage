@@ -119,6 +119,9 @@ final class ClaudeProvider: ProviderRuntime {
         switch authStore.liveUsageAvailability(state) {
         case .available:
             mapped = try await fetchLiveUsage(state: &state)
+            // A rate-limited fetch rides its "Updates blocked by Anthropic" notice on the mapped usage so
+            // it reaches the header triangle even when the badge/note lines aren't in the user's layout.
+            warning = mapped.warning
         case .missingProfileScope:
             // The login authenticates for inference but lacks the `user:profile` scope the usage endpoint
             // needs (typically a `claude setup-token` token). Don't leave the session/weekly bars silently
@@ -203,6 +206,7 @@ final class ClaudeProvider: ProviderRuntime {
             return ClaudeUsageMapper.rateLimitedUsage(credentials: credentials, retryAfterSeconds: retryAfterSeconds)
         }
         mapped.lines.append(ClaudeUsageMapper.rateLimitedNote(retryAfterSeconds: retryAfterSeconds))
+        mapped.warning = ClaudeUsageMapper.rateLimitedWarning(retryAfterSeconds: retryAfterSeconds)
         return mapped
     }
 
