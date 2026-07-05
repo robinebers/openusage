@@ -51,6 +51,9 @@ struct ProtobufMessage {
                 guard shift < 64 else { throw ProtobufWireError.varintOverflow }
                 let byte = bytes[offset]
                 offset += 1
+                // At shift 63 (the 10th byte) only the lowest payload bit still fits in a UInt64;
+                // `<<` would silently discard the rest, accepting a corrupt varint as a small value.
+                guard shift < 63 || byte & 0x7F <= 1 else { throw ProtobufWireError.varintOverflow }
                 result |= UInt64(byte & 0x7F) << shift
                 if byte & 0x80 == 0 { return result }
                 shift += 7

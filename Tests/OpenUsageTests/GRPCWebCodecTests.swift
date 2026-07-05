@@ -155,6 +155,23 @@ final class ProtobufWireReaderTests: XCTestCase {
         }
     }
 
+    func testThrowsOnTenthVarintByteOverflowingPayloadBits() {
+        // At the 10th byte only the lowest payload bit still fits in 64 bits. `<<` silently drops
+        // the overflow, so nine 0x80s + 0x02 would decode as 0 — a corrupt varint accepted as a
+        // small value (e.g. a network-provided timestamp collapsing to 1970) instead of an error.
+        let bytes = Data([0x08] + Array(repeating: UInt8(0x80), count: 9) + [0x02])
+        XCTAssertThrowsError(try ProtobufMessage(bytes)) { error in
+            XCTAssertEqual(error as? ProtobufWireError, .varintOverflow)
+        }
+    }
+
+    func testDecodesMaxUInt64Varint() throws {
+        // The canonical UInt64.max encoding (nine 0xFF + 0x01) uses exactly the one payload bit the
+        // 10th byte is allowed — the overflow guard must not reject it.
+        let bytes = Data([0x08] + Array(repeating: UInt8(0xFF), count: 9) + [0x01])
+        XCTAssertEqual(try ProtobufMessage(bytes).varint(1), UInt64.max)
+    }
+
     func testThrowsOnGroupWireType() {
         XCTAssertThrowsError(try ProtobufMessage(Data([0x0B]))) { error in // field 1, wire type 3
             XCTAssertEqual(error as? ProtobufWireError, .unsupportedWireType(3))
