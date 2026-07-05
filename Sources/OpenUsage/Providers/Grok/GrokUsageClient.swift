@@ -37,6 +37,17 @@ struct GrokUsageClient: Sendable {
     static let refreshURL = URL(string: "https://auth.x.ai/oauth2/token")!
     static let tokenAuthHeader = "xai-grok-cli"
 
+    /// The weekly shared-pool data lives behind a gRPC-web RPC on grok.com (the website's transport;
+    /// the CLI reaches the same backend over a WebSocket gateway we don't speak). Protobuf only —
+    /// JSON codecs are rejected. Cloudflare fronts it and 403s unrecognized User-Agents; the
+    /// standard `User-Agent: OpenUsage` header passes.
+    static let creditsConfigURL = URL(string: "https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig")!
+
+    /// The request message: protobuf field 1 varint = 1, captured from the website. An empty message
+    /// is rejected (grpc-status 13 "Missing request message") and the field's semantics are unknown —
+    /// treat these exact bytes as part of the protocol and keep them pinned by tests.
+    static let creditsConfigRequestMessage = Data([0x08, 0x01])
+
     var httpClient: HTTPClient
 
     init(httpClient: HTTPClient = URLSessionHTTPClient()) {
@@ -63,6 +74,20 @@ struct GrokUsageClient: Sendable {
             method: "GET",
             url: Self.billingURL,
             headers: authHeaders(accessToken: accessToken),
+            timeout: 10
+        ))
+    }
+
+    func fetchCreditsConfig(accessToken: String) async throws -> HTTPResponse {
+        var headers = authHeaders(accessToken: accessToken)
+        headers["Accept"] = "application/grpc-web+proto"
+        headers["Content-Type"] = "application/grpc-web+proto"
+        headers["X-Grpc-Web"] = "1"
+        return try await httpClient.send(HTTPRequest(
+            method: "POST",
+            url: Self.creditsConfigURL,
+            headers: headers,
+            body: GRPCWebCodec.frame(Self.creditsConfigRequestMessage),
             timeout: 10
         ))
     }

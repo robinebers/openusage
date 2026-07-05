@@ -46,6 +46,34 @@ enum GrokUsageMapper {
         ])
     }
 
+    /// Provider header warning (the amber triangle) for a failed weekly fetch: the monthly REST data
+    /// and local spend tiles still render, so the provider degrades instead of erroring outright.
+    static let weeklyUnavailableWarning = "Weekly limit couldn't be updated. Monthly usage is unaffected."
+
+    /// Map the gRPC-web credits config into the Weekly meter line. Returns `nil` (no line → the tile
+    /// reads "No data") when the account's current period isn't weekly — an account still on the old
+    /// monthly-only billing has no weekly pool, and mislabeling its monthly percent would be worse
+    /// than an honest blank.
+    static func mapCreditsConfig(_ response: HTTPResponse) throws -> MetricLine? {
+        try ProviderAuthRetry.requireSuccess(
+            response,
+            authExpired: GrokAuthError.expired,
+            requestFailed: { GrokUsageError.requestFailed($0) }
+        )
+        let config = try GrokCreditsConfigDecoder.decode(responseBody: response.body)
+        guard config.periodType == GrokCreditsConfigDecoder.weeklyPeriodType else {
+            return nil
+        }
+        return .progress(
+            label: "Weekly limit",
+            used: ProviderParse.clampPercent(config.usedPercent),
+            limit: 100,
+            format: .percent,
+            resetsAt: config.periodEnd,
+            periodDurationMs: config.periodDurationMs
+        )
+    }
+
     static func planName(from response: HTTPResponse) -> String? {
         guard (200..<300).contains(response.statusCode),
               let body = ProviderParse.jsonObject(response.body),
