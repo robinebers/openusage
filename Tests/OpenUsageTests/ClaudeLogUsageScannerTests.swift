@@ -226,6 +226,11 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(scan.series.daily[0].totalTokens, 1650)
         XCTAssertEqual(scan.series.daily[0].costUSD ?? 0, 0.75 + 0.02, accuracy: 1e-9)
         XCTAssertTrue(scan.unknownModelsByDay.isEmpty)
+        let models = scan.modelUsage?.daily.first { $0.date == day }?.models ?? []
+        XCTAssertEqual(models.count, 1)
+        XCTAssertEqual(models.first?.model, "claude-test-model")
+        XCTAssertEqual(models.first?.totalTokens, 1650)
+        XCTAssertEqual(models.first?.costUSD ?? 0, 0.77, accuracy: 1e-9)
     }
 
     func testAggregateFastSpeedAppliesMultiplier() {
@@ -249,6 +254,9 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
         // Tokens count; nothing was priced, so the day's cost stays nil (token-only tile).
         XCTAssertEqual(scan.series.daily, [DailyUsageEntry(date: day, totalTokens: 15, costUSD: nil)])
         XCTAssertEqual(scan.unknownModelsByDay[day], ["mystery-model"])
+        XCTAssertEqual(scan.modelUsage?.daily.first?.models, [
+            ModelUsageEntry(model: "mystery-model", totalTokens: 15, costUSD: nil)
+        ])
     }
 
     func testAggregateSyntheticModelContributesTokensWithoutWarning() {
@@ -261,6 +269,9 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(scan.series.daily[0].totalTokens, 15)
         XCTAssertNil(scan.series.daily[0].costUSD)
         XCTAssertTrue(scan.unknownModelsByDay.isEmpty)
+        XCTAssertEqual(scan.modelUsage?.daily.first?.models, [
+            ModelUsageEntry(model: ModelUsageEntry.unattributedModelName, totalTokens: 15, costUSD: nil)
+        ])
     }
 
     func testAggregateFiltersEntriesBeforeSince() {

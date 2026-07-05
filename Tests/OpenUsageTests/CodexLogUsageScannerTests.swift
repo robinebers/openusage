@@ -283,6 +283,40 @@ final class CodexLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(may12?.totalTokens, 300)
         XCTAssertEqual(may12?.costUSD ?? 0, 0.5, accuracy: 0.0001)
         XCTAssertTrue(scan.unknownModelsByDay.isEmpty)
+        let may12Models = scan.modelUsage?.daily.first { $0.date == "2026-05-12" }?.models ?? []
+        XCTAssertEqual(may12Models, [ModelUsageEntry(model: "gpt-5.2", totalTokens: 300, costUSD: 0.5)])
+    }
+
+    func testAggregateFeedsSingleModelTodayBreakdown() throws {
+        let now = Date()
+        let event = CodexLogUsageScanner.Event(
+            timestamp: now,
+            model: "gpt-5.2",
+            input: 100,
+            cached: 0,
+            output: 50,
+            reasoning: 0,
+            total: 150
+        )
+        let scan = CodexLogUsageScanner.aggregate(
+            events: [event], since: .distantPast, pricing: fixedRates(), fastTier: false
+        )
+
+        var lines: [MetricLine] = []
+        SpendTileMapper.appendTokenUsage(
+            scan.series,
+            to: &lines,
+            now: now,
+            unknownModelsByDay: scan.unknownModelsByDay,
+            modelUsage: scan.modelUsage,
+            modelSourceNote: "From Codex test logs"
+        )
+
+        guard case .values(_, _, _, _, _, let breakdown) = lines.first(where: { $0.label == "Today" }) else {
+            return XCTFail("Expected a Today spend row")
+        }
+        let today = try XCTUnwrap(breakdown)
+        XCTAssertEqual(today.models, [ModelUsageEntry(model: "gpt-5.2", totalTokens: 150, costUSD: 0.25)])
     }
 
     func testAggregateDropsIdenticalEventsAcrossFiles() {
@@ -320,6 +354,11 @@ final class CodexLogUsageScannerTests: XCTestCase {
             (base.series.daily.first?.costUSD ?? 0) * 2,
             accuracy: 0.0001
         )
+        XCTAssertEqual(
+            fast.modelUsage?.daily.first?.models.first?.costUSD ?? 0,
+            (base.modelUsage?.daily.first?.models.first?.costUSD ?? 0) * 2,
+            accuracy: 0.0001
+        )
     }
 
     func testAggregateUnknownModelCountsTokensAtZeroCost() {
@@ -331,6 +370,9 @@ final class CodexLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(scan.series.daily.first?.totalTokens, 150)
         XCTAssertNil(scan.series.daily.first?.costUSD)
         XCTAssertEqual(scan.unknownModelsByDay["2026-05-12"], ["mystery-model-9"])
+        XCTAssertEqual(scan.modelUsage?.daily.first?.models, [
+            ModelUsageEntry(model: "mystery-model-9", totalTokens: 150, costUSD: nil)
+        ])
     }
 
     func testAggregateFiltersEventsBeforeSince() {

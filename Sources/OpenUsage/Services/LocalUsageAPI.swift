@@ -96,10 +96,12 @@ enum LocalUsageAPI {
                 try container.encode(value, forKey: .value)
                 try container.encode(color, forKey: .color)        // explicit null, like the original
                 try container.encode(subtitle, forKey: .subtitle)
-            case .values(let label, let values, let color, let expiriesAt, _):
+            case .values(let label, let values, let color, let expiriesAt, _, _):
                 // Serialize as the original `text` shape (one combined `value` string) so existing
                 // local-API integrations keep working: dollars in full, counts compact — exactly the
                 // string the mapper used to produce (e.g. "$5.17 · 9.2M tokens").
+                // Per-model hover details are UI-only for now and are intentionally omitted from this
+                // documented public wire shape.
                 try container.encode("text", forKey: .type)
                 try container.encode(label, forKey: .label)
                 try container.encode(Self.legacyValueString(values), forKey: .value)

@@ -36,10 +36,13 @@ struct WidgetData: Hashable {
     /// credits — one entry per still-available credit). Empty for every other row. Kept as raw `Date`s so
     /// the tooltip formats live and follows the global relative/absolute mode (see `expiryTooltip`).
     var expiriesAt: [Date] = []
-    /// Names of models this period's spend used that the pricing manifest can't price (Cursor spend tiles
-    /// only). Their tokens are counted but their cost is $0, so the period's dollar figure is incomplete.
+    /// Names of models this period's spend used that the pricing manifest can't price. Their tokens are
+    /// counted but their cost is incomplete, so the period's dollar figure can be understated.
     /// Drives the label warning triangle and its hover list. Empty for every other row.
     var unknownModels: [String] = []
+    /// Period-scoped model spend/tokens for the Today / Yesterday / Last 30 Days hover popover. Nil for
+    /// non-spend rows and for periods where the provider has no model-level data.
+    var modelBreakdown: ModelUsageBreakdown?
     var periodDurationMs: Int?
     var valueTextOverride: String?
     var subtitleOverride: String?
@@ -73,12 +76,16 @@ struct WidgetData: Hashable {
     var isUsagePeriod: Bool = false
     /// Per-day points for a Usage Trend row (empty for every other tile). Set true `isChart` flags the
     /// row so the view draws the sparkline instead of the value layout; `chartNote` is the source line
-    /// shown on hover (e.g. "Estimated from local logs at API rates").
+    /// shown on hover (e.g. "From your Claude usage history (estimated)").
     var isChart: Bool = false
     var chartPoints: [MetricChartPoint] = []
     var chartNote: String?
 
     var isBounded: Bool { limit != nil }
+
+    var hasModelBreakdown: Bool {
+        hasData && isUsagePeriod && !(modelBreakdown?.models.isEmpty ?? true)
+    }
 
     /// `values` projected through `selection` — exactly what this tile shows.
     var selectedValues: [MetricValue] { selection.apply(to: values) }
