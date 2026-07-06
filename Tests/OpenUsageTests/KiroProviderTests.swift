@@ -231,6 +231,12 @@ final class KiroAuthStoreTests: XCTestCase {
 
 @MainActor
 final class KiroProviderRuntimeTests: XCTestCase {
+    func testCreditsDescriptorMatchesMappedLineLabel() throws {
+        let provider = KiroProvider()
+        let descriptor = try XCTUnwrap(provider.widgetDescriptors.first { $0.id == "kiro.credits" })
+        XCTAssertEqual(descriptor.metricLabel, "Credits")
+    }
+
     func testHasLocalCredentialsReturnsFalseWhenNoToken() async {
         let store = KiroAuthStore(sqlite: StubSQLite(value: nil))
         let provider = KiroProvider(authStore: store, usageClient: KiroUsageClient())

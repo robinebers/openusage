@@ -31,7 +31,7 @@ final class KiroProvider: ProviderRuntime {
                 id: "kiro.credits",
                 provider: provider,
                 title: "Credits",
-                metricLabel: "Credits used",
+                metricLabel: "Credits",
                 limit: 50,
                 suffix: "credits",
                 periodDurationMs: KiroUsageMapper.billingPeriodMs
