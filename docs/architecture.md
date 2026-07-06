@@ -5,8 +5,9 @@ A high-level map of how OpenUsage is put together, for people working on the cod
 
 ## The shape of the app
 
-OpenUsage is a single SwiftPM executable — there is no Xcode project. It's a menu-bar app: a SwiftUI
-interface hosted inside an AppKit status item and panel. The code is grouped by role:
+OpenUsage's host app is a SwiftPM executable. It's a menu-bar app: a SwiftUI interface hosted inside an
+AppKit status item and panel. A small standalone Xcode project builds the WidgetKit extension that the
+packaging scripts embed in the host app. The code is grouped by role:
 
 - `App/` — startup and the AppKit bridge (status item, panel, the app entry point).
 - `Models/` — the small value types the rest of the app speaks in (`MetricLine`, `WidgetData`, descriptors).
@@ -15,6 +16,7 @@ interface hosted inside an AppKit status item and panel. The code is grouped by 
 - `Services/` — shared infrastructure (HTTP, the local API, process running).
 - `Support/` — small shared helpers (formatting, parsing, animations).
 - `Views/` — the SwiftUI screens (dashboard, customize, settings, menu-bar strip).
+- `Widgets/` — the read-only macOS WidgetKit extension.
 
 ## Composition root
 
@@ -50,6 +52,17 @@ The UI reads from a few observable stores:
 Refresh runs on a timer in `AppContainer`; each pass respects the cache, so the network is only hit once a
 snapshot has actually expired.
 
+## WidgetKit bridge
+
+Provider authentication and refresh stay in the host process. A host-side exporter resolves the same
+ordered `WidgetData` used by the dashboard into a small, versioned document containing display-ready
+rows and no credentials or detailed errors. It atomically writes that document to an App Group file and
+asks WidgetKit to reload only when the semantic content changed.
+
+The sandboxed extension reads that file to render one configured provider. It never imports provider
+runtimes, scans local logs, refreshes tokens, or calls provider APIs. If the host stops, the extension
+keeps the last good document and marks it outdated.
+
 ## The AppKit bridge
 
 macOS menu-bar apps live in an `NSStatusItem`. OpenUsage shows its content in a custom, key-capable
@@ -68,9 +81,10 @@ standard controls with the same behavior (the footer still pins, the buttons kee
 one of those version checks lives in a single file — `Support/LiquidGlassFallbacks.swift` — so the views
 stay free of `#available` checks.
 
-The release build (`script/release.sh`) ships a universal binary (arm64 + x86_64), so a single DMG runs
-natively on both Apple Silicon and Intel Macs. The dev build (`script/build_and_run.sh`) stays host-arch
-only — a universal dev build just doubles compile time on the maintainer's own machine for no benefit.
+The release build (`script/release.sh`) ships universal host and widget binaries (arm64 + x86_64), so a
+single DMG runs natively on both Apple Silicon and Intel Macs. The dev build
+(`script/build_and_run.sh`) stays host-arch only. The extension is signed before the containing app;
+both carry the same channel-specific App Group entitlement.
 
 ## Local HTTP API
 

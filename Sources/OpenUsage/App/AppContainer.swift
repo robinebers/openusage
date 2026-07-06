@@ -34,6 +34,8 @@ final class AppContainer {
     private let providers: [ProviderRuntime]
     /// Read-only usage API on 127.0.0.1:6736 for other local apps (silently off when the port is taken).
     private let localAPI: LocalUsageServer
+    /// Host-to-WidgetKit presentation bridge. Nil only when the current build has no App Group.
+    private let widgetBridgeCoordinator: WidgetBridgeCoordinator?
     // A `let` of a `Sendable` `Task` is implicitly nonisolated, so the nonisolated `deinit` can cancel it.
     private let refreshTask: Task<Void, Never>
     /// The fresh-install credential-detection pass (see `FirstRunSeeder`); `nil` on every later launch.
@@ -146,7 +148,17 @@ final class AppContainer {
                 snapshots: dataStore.snapshots
             )
         })
+        let widgetBridgeCoordinator = WidgetBridgeCoordinator.makeDefault(
+            exporter: WidgetBridgeExporter(
+                registry: registry,
+                layout: layout,
+                dataStore: dataStore,
+                enablement: enablement
+            )
+        )
+        self.widgetBridgeCoordinator = widgetBridgeCoordinator
         self.refreshTask = Self.startPeriodicRefresh(dataStore: dataStore, telemetry: telemetry)
+        widgetBridgeCoordinator?.start()
         localAPI.start()
         // Become the notification-center delegate so banners show while frontmost — a menu-bar accessory
         // effectively always is. Notification authorization is requested the first time a trigger is

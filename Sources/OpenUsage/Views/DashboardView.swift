@@ -223,6 +223,15 @@ struct DashboardView: View {
                     withAnimation(Motion.spring) { animatedHeight = target }
                 }
             }
+            .onChange(of: layout.dashboardFocusRequestID) { _, _ in
+                consumeDashboardProviderFocus()
+            }
+            // A cold-start URL can be drained while the AppKit hosting controller is being assembled,
+            // before this view installs its `onChange` subscription. Consume the store's current
+            // request on first appearance as well; repeated warm links still use the token above.
+            .onAppear {
+                consumeDashboardProviderFocus()
+            }
             .task {
                 guard !didInitialRefresh else { return }
                 didInitialRefresh = true
@@ -272,6 +281,15 @@ struct DashboardView: View {
         animatedHeight = 0
         didEstablishHeight = false
         dashboardScrollPosition.scrollTo(edge: .top)
+    }
+
+    private func consumeDashboardProviderFocus() {
+        guard layout.screen == .dashboard,
+              let providerID = layout.dashboardFocusProviderID,
+              layout.displayGroups.contains(where: { $0.provider.id == providerID }) else { return }
+        let requestID = layout.dashboardFocusRequestID
+        dashboardScrollPosition.scrollTo(id: providerID, anchor: .top)
+        layout.acknowledgeDashboardProviderFocus(requestID: requestID)
     }
 
     /// The popover's screens as a horizontal pager. At rest only the current screen is mounted (one

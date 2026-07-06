@@ -58,6 +58,11 @@ final class LayoutStore {
     /// (DashboardView resets `screen` to `.dashboard`). Kept separate from `expandedProviderIDs` —
     /// that's the dashboard caret, unrelated to this master/detail route.
     var customizeProviderID: String?
+    /// A transient, repeatable request to reveal one dashboard provider. The id is validated before it
+    /// enters the store; the token increments even for repeated clicks on the same widget so SwiftUI's
+    /// `onChange` fires and scrolls again. Neither value is persisted.
+    private(set) var dashboardFocusProviderID: String?
+    private(set) var dashboardFocusRequestID = 0
     /// Placed widget being drag-reordered (transient). `PlacedWidget.id`, never persisted.
     var draggingID: UUID?
     /// Persisted provider display order (provider IDs). Drives both the dashboard groups and the
@@ -279,6 +284,23 @@ final class LayoutStore {
     }
 
     func provider(id: String) -> Provider? { registry.provider(id: id) }
+
+    /// Requests dashboard scrolling only for a provider in the live registry. This validation is a
+    /// second boundary behind URL parsing and keeps arbitrary strings out of SwiftUI view identity.
+    @discardableResult
+    func requestDashboardProviderFocus(_ providerID: String) -> Bool {
+        guard registry.provider(id: providerID) != nil else { return false }
+        dashboardFocusProviderID = providerID
+        dashboardFocusRequestID &+= 1
+        return true
+    }
+
+    /// Clears a focus request only after the dashboard has acted on that exact request. Matching the
+    /// token prevents an older view callback from clearing a newer deep link that arrived meanwhile.
+    func acknowledgeDashboardProviderFocus(requestID: Int) {
+        guard requestID == dashboardFocusRequestID else { return }
+        dashboardFocusProviderID = nil
+    }
 
     func descriptor(for widget: PlacedWidget) -> WidgetDescriptor? {
         registry.descriptor(id: widget.descriptorID)

@@ -6,6 +6,7 @@ What the app does and how it behaves. These pages describe **behavior, not visua
 
 - [Dashboard](dashboard.md) — the popover: rows, toggles, reordering, keyboard shortcuts
 - [Menu bar](menu-bar.md) — pinning metrics into the menu bar
+- [macOS widgets](macos-widgets.md) — provider cards on the desktop and in Notification Center
 - [Settings](settings.md) — every option, what it changes
 - [Refreshing & caching](refreshing.md) — when data updates and what happens when a fetch fails
 - [Model pricing](pricing.md) — how spend tiles price tokens, and where the rates come from

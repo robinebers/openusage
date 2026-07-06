@@ -19,6 +19,10 @@ struct OpenUsageApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var container: AppContainer?
     private var statusItemController: StatusItemController?
+    /// Widget clicks can reach the delegate before `applicationDidFinishLaunching` has assembled the
+    /// AppKit-owned status item. Keep only validated-at-use URLs here, then drain them once the
+    /// controller exists. This also gives warm and cold launches the same routing path.
+    private var pendingOpenURLs: [URL] = []
     private let updater = UpdaterController()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -54,9 +58,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppearanceSetting.applyCurrent()
         let container = AppContainer(isFreshInstall: isFreshInstall)
         self.container = container
-        statusItemController = StatusItemController(container: container, updater: updater)
+        let statusItemController = StatusItemController(container: container, updater: updater)
+        self.statusItemController = statusItemController
+        for url in pendingOpenURLs {
+            statusItemController.openProviderDeepLink(url)
+        }
+        pendingOpenURLs.removeAll()
         // Starts background update checks (release build only; dormant under preview/`swift run`).
         updater.start()
+    }
+
+    /// Handles the widget URL scheme declared by this build (`openusage://` for release or
+    /// `openusage-dev://` for development). Parsing and known-provider validation live at the
+    /// controller boundary; queuing raw URLs here is safe because nothing is rendered or used as an
+    /// identifier until that validation.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        guard let statusItemController else {
+            pendingOpenURLs.append(contentsOf: urls)
+            return
+        }
+        for url in urls {
+            statusItemController.openProviderDeepLink(url)
+        }
     }
 
     /// Flush queued telemetry on quit. The SDK's lifecycle autocapture is off (we emit our own daily
@@ -64,5 +87,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// from being stranded across a clean quit.
     func applicationWillTerminate(_ notification: Notification) {
         container?.telemetry.flush()
+    }
+}
+
+/// The deliberately small URL surface exposed by widget cards.
+///
+/// Only `openusage[-dev]://provider/<known-id>` is accepted. In particular, query/fragment/user-info
+/// and extra path components are rejected so untrusted URL text never becomes view identity, copy, or
+/// logging input. The final allow-list check binds the route to the live provider registry.
+struct ProviderDeepLink: Equatable, Sendable {
+    let providerID: String
+
+    static func parse(
+        _ url: URL,
+        expectedScheme: String,
+        knownProviderIDs: Set<String>
+    ) -> ProviderDeepLink? {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let scheme = components.scheme?.lowercased(),
+              scheme == expectedScheme.lowercased(),
+              scheme == "openusage" || scheme == "openusage-dev",
+              components.host?.lowercased() == "provider",
+              components.user == nil,
+              components.password == nil,
+              components.port == nil,
+              components.query == nil,
+              components.fragment == nil else { return nil }
+
+        let pathComponents = components.path.split(separator: "/", omittingEmptySubsequences: true)
+        guard pathComponents.count == 1 else { return nil }
+        let providerID = String(pathComponents[0])
+        guard knownProviderIDs.contains(providerID) else { return nil }
+        return ProviderDeepLink(providerID: providerID)
+    }
+}
+
+enum ProviderDeepLinkDestination: Equatable, Sendable {
+    case dashboard
+    case customize
+
+    static func resolve(isEnabled: Bool, hasVisibleMetrics: Bool) -> Self {
+        isEnabled && hasVisibleMetrics ? .dashboard : .customize
     }
 }

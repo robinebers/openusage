@@ -36,6 +36,7 @@ Most providers read the credentials already on your machine (keychain, auth file
 ## Features
 
 - **Menu bar pins.** Pin metrics to the menu bar (up to 2 per provider); render as compact text or mini bars. The strip hides metrics with no data instead of showing placeholders.
+- **Native macOS widgets.** Put a configurable provider card on the desktop or in Notification Center; values follow the same metrics and order as the dashboard.
 - **Dashboard popover.** Provider-grouped meters with live reset countdowns, pace indicators, and context menus (pin, hide, used⟷left, countdown⟷exact resets, refresh).
 - **Global shortcut.** Toggle the popover from anywhere — record any combo in Settings.
 - **Customize.** Add/remove widgets, drag-reorder providers and metrics.
@@ -49,7 +50,7 @@ Most providers read the credentials already on your machine (keychain, auth file
 
 ## Documentation
 
-Behavior docs live in [docs/](docs/README.md): the [dashboard](docs/dashboard.md), [menu bar pins](docs/menu-bar.md), [settings](docs/settings.md), [refresh & caching](docs/refreshing.md), the [local HTTP API](docs/local-http-api.md), the [proxy](docs/proxy.md), and one page per provider.
+Behavior docs live in [docs/](docs/README.md): the [dashboard](docs/dashboard.md), [menu bar pins](docs/menu-bar.md), [macOS widgets](docs/macos-widgets.md), [settings](docs/settings.md), [refresh & caching](docs/refreshing.md), the [local HTTP API](docs/local-http-api.md), the [proxy](docs/proxy.md), and one page per provider.
 
 For working on the code, see the developer docs: [architecture](docs/architecture.md), [adding a provider](docs/adding-a-provider.md), and [debugging & capturing logs](docs/debugging.md).
 
@@ -74,7 +75,7 @@ swift test             # run the test suite
 
 ## Architecture
 
-SwiftPM executable, SwiftUI content hosted in an AppKit-owned `NSStatusItem` + `NSPopover`, Swift 6 strict concurrency. Providers implement a small `ProviderRuntime` protocol (auth store → usage client → mapper → `ProviderSnapshot`), and the UI renders normalized `MetricLine` values — see the [architecture overview](docs/architecture.md) for how the pieces fit together and [AGENTS.md](AGENTS.md) for engineering conventions.
+SwiftPM executable, SwiftUI content hosted in an AppKit-owned `NSStatusItem` + panel, plus an Xcode-built WidgetKit extension. Providers implement a small `ProviderRuntime` protocol (auth store → usage client → mapper → `ProviderSnapshot`), and every surface renders normalized values — see the [architecture overview](docs/architecture.md) and [AGENTS.md](AGENTS.md).
 
 ## Releasing
 

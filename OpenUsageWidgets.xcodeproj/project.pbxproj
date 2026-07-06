@@ -1,0 +1,208 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		100000000000000000000001 /* OpenUsageWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000001 /* OpenUsageWidgets.swift */; };
+		100000000000000000000002 /* ProviderWidgetConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000002 /* ProviderWidgetConfiguration.swift */; };
+		100000000000000000000003 /* WidgetPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000003 /* WidgetPresentation.swift */; };
+		100000000000000000000004 /* ProviderUsageTimelineProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000004 /* ProviderUsageTimelineProvider.swift */; };
+		100000000000000000000005 /* WidgetBridgeReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000005 /* WidgetBridgeReader.swift */; };
+		100000000000000000000006 /* ProviderIconView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000006 /* ProviderIconView.swift */; };
+		100000000000000000000007 /* ProviderUsageWidgetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000007 /* ProviderUsageWidgetView.swift */; };
+		100000000000000000000008 /* ProviderIcons in Resources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000A /* ProviderIcons */; };
+		100000000000000000000009 /* OpenUsageWidgetSupport in Frameworks */ = {isa = PBXBuildFile; productRef = 900000000000000000000002 /* OpenUsageWidgetSupport */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		200000000000000000000001 /* OpenUsageWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenUsageWidgets.swift; sourceTree = "<group>"; };
+		200000000000000000000002 /* ProviderWidgetConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderWidgetConfiguration.swift; sourceTree = "<group>"; };
+		200000000000000000000003 /* WidgetPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetPresentation.swift; sourceTree = "<group>"; };
+		200000000000000000000004 /* ProviderUsageTimelineProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderUsageTimelineProvider.swift; sourceTree = "<group>"; };
+		200000000000000000000005 /* WidgetBridgeReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetBridgeReader.swift; sourceTree = "<group>"; };
+		200000000000000000000006 /* ProviderIconView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderIconView.swift; sourceTree = "<group>"; };
+		200000000000000000000007 /* ProviderUsageWidgetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderUsageWidgetView.swift; sourceTree = "<group>"; };
+		200000000000000000000008 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		200000000000000000000009 /* OpenUsageWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OpenUsageWidgets.entitlements; sourceTree = "<group>"; };
+		20000000000000000000000A /* ProviderIcons */ = {isa = PBXFileReference; explicitFileType = folder; name = ProviderIcons; path = Sources/OpenUsage/Resources/ProviderIcons; sourceTree = SOURCE_ROOT; };
+		20000000000000000000000B /* OpenUsageWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = OpenUsageWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		300000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (100000000000000000000009 /* OpenUsageWidgetSupport in Frameworks */,);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		400000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				400000000000000000000002 /* OpenUsageWidgets */,
+				20000000000000000000000A /* ProviderIcons */,
+				400000000000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		400000000000000000000002 /* OpenUsageWidgets */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000001 /* OpenUsageWidgets.swift */,
+				200000000000000000000002 /* ProviderWidgetConfiguration.swift */,
+				200000000000000000000003 /* WidgetPresentation.swift */,
+				200000000000000000000004 /* ProviderUsageTimelineProvider.swift */,
+				200000000000000000000005 /* WidgetBridgeReader.swift */,
+				200000000000000000000006 /* ProviderIconView.swift */,
+				200000000000000000000007 /* ProviderUsageWidgetView.swift */,
+				200000000000000000000008 /* Info.plist */,
+				200000000000000000000009 /* OpenUsageWidgets.entitlements */,
+			);
+			path = Widgets/OpenUsageWidgets;
+			sourceTree = SOURCE_ROOT;
+		};
+		400000000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (20000000000000000000000B /* OpenUsageWidgets.appex */,);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		500000000000000000000001 /* OpenUsageWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 600000000000000000000002 /* Build configuration list for PBXNativeTarget "OpenUsageWidgets" */;
+			buildPhases = (
+				700000000000000000000001 /* Sources */,
+				300000000000000000000001 /* Frameworks */,
+				700000000000000000000002 /* Resources */,
+			);
+			buildRules = ();
+			dependencies = ();
+			name = OpenUsageWidgets;
+			packageProductDependencies = (900000000000000000000002 /* OpenUsageWidgetSupport */,);
+			productName = OpenUsageWidgets;
+			productReference = 20000000000000000000000B /* OpenUsageWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		800000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1630;
+				LastUpgradeCheck = 1630;
+				TargetAttributes = {500000000000000000000001 = {CreatedOnToolsVersion = 16.3; };};
+			};
+			buildConfigurationList = 600000000000000000000001 /* Build configuration list for PBXProject "OpenUsageWidgets" */;
+			compatibilityVersion = "Xcode 16.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (en, Base);
+			mainGroup = 400000000000000000000001;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (900000000000000000000001 /* XCLocalSwiftPackageReference "." */,);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 400000000000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (500000000000000000000001 /* OpenUsageWidgets */,);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		700000000000000000000002 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (100000000000000000000008 /* ProviderIcons in Resources */,);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		700000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000001 /* OpenUsageWidgets.swift in Sources */,
+				100000000000000000000002 /* ProviderWidgetConfiguration.swift in Sources */,
+				100000000000000000000003 /* WidgetPresentation.swift in Sources */,
+				100000000000000000000004 /* ProviderUsageTimelineProvider.swift in Sources */,
+				100000000000000000000005 /* WidgetBridgeReader.swift in Sources */,
+				100000000000000000000006 /* ProviderIconView.swift in Sources */,
+				100000000000000000000007 /* ProviderUsageWidgetView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		A00000000000000000000001 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; MACOSX_DEPLOYMENT_TARGET = 15.0; SDKROOT = macosx; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; SWIFT_VERSION = 6.0; }; name = Debug; };
+		A00000000000000000000002 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; MACOSX_DEPLOYMENT_TARGET = 15.0; SDKROOT = macosx; SWIFT_VERSION = 6.0; }; name = Release; };
+		A00000000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = Widgets/OpenUsageWidgets/OpenUsageWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Widgets/OpenUsageWidgets/Info.plist;
+				MARKETING_VERSION = 0.7.0;
+				OPENUSAGE_APP_GROUP = "$(DEVELOPMENT_TEAM).com.robinebers.openusage.dev.shared";
+				OPENUSAGE_URL_SCHEME = openusage-dev;
+				PRODUCT_BUNDLE_IDENTIFIER = com.robinebers.openusage.dev.widgets;
+				PRODUCT_MODULE_NAME = OpenUsageWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
+			};
+			name = Debug;
+		};
+		A00000000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = Widgets/OpenUsageWidgets/OpenUsageWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Widgets/OpenUsageWidgets/Info.plist;
+				MARKETING_VERSION = 0.7.0;
+				OPENUSAGE_APP_GROUP = "$(DEVELOPMENT_TEAM).com.robinebers.openusage.shared";
+				OPENUSAGE_URL_SCHEME = openusage;
+				PRODUCT_BUNDLE_IDENTIFIER = com.robinebers.openusage.widgets;
+				PRODUCT_MODULE_NAME = OpenUsageWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		600000000000000000000001 /* Build configuration list for PBXProject "OpenUsageWidgets" */ = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000001, A00000000000000000000002); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		600000000000000000000002 /* Build configuration list for PBXNativeTarget "OpenUsageWidgets" */ = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000003, A00000000000000000000004); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		900000000000000000000001 /* XCLocalSwiftPackageReference "." */ = {isa = XCLocalSwiftPackageReference; relativePath = "."; };
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		900000000000000000000002 /* OpenUsageWidgetSupport */ = {isa = XCSwiftPackageProductDependency; package = 900000000000000000000001 /* XCLocalSwiftPackageReference "." */; productName = OpenUsageWidgetSupport; };
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 800000000000000000000001 /* Project object */;
+}

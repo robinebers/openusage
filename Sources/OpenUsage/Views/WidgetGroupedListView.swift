@@ -42,6 +42,9 @@ struct WidgetGroupedListView: View {
         }
         .opacity(activeProviderID == group.provider.id ? 0 : 1)
         .reorderFrame(id: group.provider.id, in: .named(reorderSpaceName))
+        // Stable target consumed by DashboardView's ScrollPosition when a widget deep link opens this
+        // provider. Provider ids come exclusively from the registry, never directly from URL text.
+        .id(group.provider.id)
     }
 
     private func header(_ group: ProviderGroup) -> some View {
