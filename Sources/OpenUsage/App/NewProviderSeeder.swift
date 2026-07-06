@@ -36,9 +36,10 @@ enum NewProviderSeeder {
         AppLog.info(.config, "new providers since last run: \(newIDs.sorted()); probing local credentials")
 
         return Task {
-            for provider in providers where newIDs.contains(provider.provider.id) {
-                let id = provider.provider.id
-                guard await provider.hasLocalCredentials() else { continue }
+            // Same concurrent local-only probe as first-run detection and the Reset All reseed.
+            let newProviders = providers.filter { newIDs.contains($0.provider.id) }
+            let detected = await FirstRunSeeder.detectLocalProviders(newProviders)
+            for id in detected.sorted() {
                 // The probe takes a moment; if the user already turned the provider on themselves,
                 // leave their toggle alone (setEnabled would be a no-op anyway).
                 guard !enablement.isEnabled(id) else { continue }

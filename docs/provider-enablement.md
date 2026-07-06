@@ -4,7 +4,7 @@ How OpenUsage decides which providers start on, what happens when an update adds
 
 ## First install
 
-A fresh install doesn't turn on every provider OpenUsage knows about. It starts with Claude, Codex, and Cursor, then quickly checks which AI tools are actually set up on your Mac — by looking for their local logins (config files, keychain); nothing is sent anywhere — and switches to exactly that set. If nothing is found, the Claude/Codex/Cursor starter set stays. See [Dashboard § First launch](dashboard.md#first-launch) for how the dashboard presents this.
+A fresh install doesn't turn on every provider OpenUsage knows about. It starts with Claude, Codex, and Cursor, then quickly checks which AI tools are actually set up on your Mac — by looking for their local logins (config files, keychain); nothing is sent anywhere — and switches to exactly that set. All providers are checked at once, so detection takes as long as the slowest single check, not the sum of them. If nothing is found, the Claude/Codex/Cursor starter set stays. Providers the check turns on are fetched right away, so they appear with data instead of waiting for the next scheduled refresh. See [Dashboard § First launch](dashboard.md#first-launch) for how the dashboard presents this.
 
 ## When an update adds a new provider
 

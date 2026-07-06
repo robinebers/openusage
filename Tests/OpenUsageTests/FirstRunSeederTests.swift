@@ -142,6 +142,23 @@ final class FirstRunSeederTests: XCTestCase {
         XCTAssertEqual(enablement.enabledIDs, ["claude", "cursor"])
     }
 
+    // MARK: - Concurrent detection
+
+    func testDetectLocalProvidersProbesConcurrently() async {
+        // A single probe can block on a `security`/`sqlite3` subprocess for seconds, so probing
+        // sequentially made first-launch detection take the sum of all providers' waits. Each gated
+        // stub suspends until every probe has *started* (and reports a credential only then), so a
+        // sequential regression — where the first probe would finish before the second begins — fails
+        // the assertion instead of detecting anything.
+        let ids = ["claude", "codex", "cursor", "grok"]
+        let gate = ProbeGate(expected: ids.count)
+        let providers = ids.map { GatedCredentialProvider(id: $0, gate: gate) }
+
+        let detected = await FirstRunSeeder.detectLocalProviders(providers)
+
+        XCTAssertEqual(detected, Set(ids), "all probes must be in flight at once, not one after another")
+    }
+
     // MARK: - OnboardingStore persistence
 
     func testCustomizeHintFlagPersistsAcrossInstances() {
@@ -187,4 +204,60 @@ private final class CredentialStubProvider: ProviderRuntime {
     }
 
     func hasLocalCredentials() async -> Bool { hasCredentials }
+}
+
+/// A provider whose credential probe suspends on a shared `ProbeGate` until all expected probes have
+/// started — "credentials found" therefore means "my probe overlapped every other probe".
+@MainActor
+private final class GatedCredentialProvider: ProviderRuntime {
+    let provider: Provider
+    let widgetDescriptors: [WidgetDescriptor] = []
+    private let gate: ProbeGate
+
+    init(id: String, gate: ProbeGate) {
+        self.provider = Provider(id: id, displayName: id.capitalized, icon: .providerMark(id))
+        self.gate = gate
+    }
+
+    func refresh() async -> ProviderSnapshot {
+        ProviderSnapshot.make(provider: provider, plan: nil, lines: [], refreshedAt: Date())
+    }
+
+    func hasLocalCredentials() async -> Bool { await gate.arrive() }
+}
+
+/// Suspends each arriver until `expected` arrivals are in flight, then resumes them all with `true`.
+/// A safety valve resumes stragglers with `false` after a few seconds, so a sequential-probing
+/// regression fails the test's assertion instead of hanging the suite.
+@MainActor
+private final class ProbeGate {
+    private let expected: Int
+    private var arrived = 0
+    private var nextWaiterID = 0
+    private var waiters: [Int: CheckedContinuation<Bool, Never>] = [:]
+
+    init(expected: Int) {
+        self.expected = expected
+    }
+
+    func arrive() async -> Bool {
+        arrived += 1
+        if arrived == expected {
+            for waiter in waiters.values {
+                waiter.resume(returning: true)
+            }
+            waiters = [:]
+            return true
+        }
+        let id = nextWaiterID
+        nextWaiterID += 1
+        return await withCheckedContinuation { continuation in
+            waiters[id] = continuation
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(5))
+                guard let waiter = self?.waiters.removeValue(forKey: id) else { return }
+                waiter.resume(returning: false)
+            }
+        }
+    }
 }

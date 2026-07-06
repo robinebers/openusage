@@ -172,8 +172,23 @@ final class AppContainer {
     /// cache, so it only hits the network once a snapshot has actually expired. `@Observable` propagates
     /// the resulting snapshot changes to the menu-bar label and any open widgets, so the UI refreshes on
     /// its own instead of only when the popover opens.
+    ///
+    /// Between passes the loop sleeps via `RefreshWakeSignal`, which wakes it early when the user
+    /// enables/disables a provider so a newly-enabled provider is fetched promptly instead of waiting out
+    /// the full interval. The signal subscribes BEFORE the first pass and buffers, so an enablement change
+    /// landing while a pass is still running (first-run credential detection, `NewProviderSeeder`, the
+    /// Customize "Reset All" reseed — all of which typically finish faster than the network fetches) is
+    /// never lost. Each pass still honors the cache (and the per-provider failure backoff), so an early
+    /// wake only hits the network for a provider whose snapshot has actually expired.
+    ///
+    /// The wake is deliberately scoped to `ProviderEnablementStore.didChangeNotification` — NOT the
+    /// firehose `UserDefaults.didChangeNotification`, which fires for the app's own snapshot-cache writes,
+    /// Sparkle's update bookkeeping, and unrelated global-domain changes from other processes. Waking on
+    /// that, with no minimum interval before re-refreshing, collapsed the fixed 5-minute cadence into a
+    /// refresh storm.
     private static func startPeriodicRefresh(dataStore: WidgetDataStore, telemetry: TelemetryRecorder) -> Task<Void, Never> {
         Task {
+            let wakeSignal = RefreshWakeSignal()
             while !Task.isCancelled {
                 await dataStore.refreshAll()
                 // Re-evaluate quota pace milestones every tick — after the refresh so it sees fresh data,
@@ -184,33 +199,8 @@ final class AppContainer {
                 // prior-day provider rollups. Runs on launch and every interval, so always-running
                 // instances still produce a daily-active signal.
                 telemetry.tick()
-                await waitForNextRefresh()
+                await wakeSignal.waitForWake(timeout: RefreshSetting.interval)
             }
-        }
-    }
-
-    /// Sleep for the refresh interval, but wake early when the user enables/disables a provider so a
-    /// newly-enabled provider is fetched promptly instead of waiting out the full interval. Each pass still
-    /// honors the cache (and the per-provider failure backoff), so an early wake only hits the network for
-    /// a provider whose snapshot has actually expired.
-    ///
-    /// Deliberately scoped to `ProviderEnablementStore.didChangeNotification` — NOT the firehose
-    /// `UserDefaults.didChangeNotification`, which fires for the app's own snapshot-cache writes, Sparkle's
-    /// update bookkeeping, and unrelated global-domain changes from other processes. Waking on that, with
-    /// no minimum interval before re-refreshing, collapsed the fixed 5-minute cadence into a refresh storm.
-    private static func waitForNextRefresh() async {
-        let interval = RefreshSetting.interval
-        await withTaskGroup(of: Void.self) { group in
-            group.addTask {
-                try? await Task.sleep(for: .seconds(interval))
-            }
-            group.addTask {
-                for await _ in NotificationCenter.default.notifications(named: ProviderEnablementStore.didChangeNotification) {
-                    break
-                }
-            }
-            _ = await group.next()
-            group.cancelAll()
         }
     }
 }

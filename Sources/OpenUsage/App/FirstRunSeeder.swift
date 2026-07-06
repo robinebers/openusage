@@ -70,12 +70,21 @@ enum FirstRunSeeder {
     }
 
     /// Local-only credential probe across every provider: the set whose `hasLocalCredentials()` (config
-    /// files/keychain, never the network) reports a login on this machine. Shared by first-run seeding
-    /// and the Customize "Reset All" reseed so both detect installed tools the same way.
+    /// files/keychain, never the network) reports a login on this machine. Shared by first-run seeding,
+    /// `NewProviderSeeder`, and the Customize "Reset All" reseed so all detect installed tools the same way.
+    ///
+    /// Probes run concurrently — the same MainActor-safe fan-out as `WidgetDataStore.refreshAll` (one
+    /// `Task {}` per provider; the overlap happens at the off-main-actor loads inside each probe). A
+    /// single probe can shell out to `security`/`sqlite3` with waits of up to ~5s, so probing the whole
+    /// registry sequentially made detection take the *sum* of those waits — long enough that detected
+    /// providers visibly trickled in on first launch.
     static func detectLocalProviders(_ providers: [ProviderRuntime]) async -> Set<String> {
+        let probes = providers.map { provider in
+            (provider.provider.id, Task { await provider.hasLocalCredentials() })
+        }
         var detected = Set<String>()
-        for provider in providers where await provider.hasLocalCredentials() {
-            detected.insert(provider.provider.id)
+        for (id, probe) in probes where await probe.value {
+            detected.insert(id)
         }
         return detected
     }
