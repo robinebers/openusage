@@ -226,3 +226,22 @@ extension AntigravityError: CategorizedError {
         }
     }
 }
+
+extension KiroAuthError: CategorizedError {
+    var errorCategory: ErrorCategory {
+        switch self {
+        case .notLoggedIn: .notLoggedIn
+        case .tokenExpired: .authExpired
+        }
+    }
+}
+
+extension KiroUsageError: CategorizedError {
+    var errorCategory: ErrorCategory {
+        switch self {
+        case .connectionFailed: .network
+        case .invalidResponse: .decoding
+        case .usageUnavailable: .notAvailable
+        }
+    }
+}

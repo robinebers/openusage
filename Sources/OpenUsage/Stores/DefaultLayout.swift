@@ -26,6 +26,8 @@ enum DefaultLayout {
         "grok.weekly", "grok.trend",
         "grok.payAsYouGo", "grok.today", "grok.yesterday", "grok.last30",
 
+        "kiro.credits",
+
         "openrouter.credits", "openrouter.balance",
         "openrouter.today", "openrouter.week", "openrouter.month", "openrouter.keyLimit",
 
