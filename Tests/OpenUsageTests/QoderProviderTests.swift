@@ -233,10 +233,10 @@ final class QoderUsageMapperTests: XCTestCase {
 
         let lines = QoderUsageMapper.map(usage)
 
-        let plan = try XCTUnwrap(progress(lines, QoderMetric.planCredits))
+        let plan = try XCTUnwrap(progress(lines, QoderMetric.monthly))
         XCTAssertEqual(plan.used, 12.5, accuracy: 0.001)
         XCTAssertEqual(plan.limit, 100, accuracy: 0.001)
-        XCTAssertEqual(plan.format, .count(suffix: "credits"))
+        XCTAssertEqual(plan.format, .percent)
         XCTAssertEqual(try XCTUnwrap(plan.resetsAt?.timeIntervalSince1970), 1_770_648_402.389, accuracy: 0.001)
 
         let addOn = try XCTUnwrap(progress(lines, QoderMetric.addOnCredits))
@@ -246,11 +246,6 @@ final class QoderUsageMapperTests: XCTestCase {
         let org = try XCTUnwrap(progress(lines, QoderMetric.orgCredits))
         XCTAssertEqual(org.used, 123, accuracy: 0.001)
         XCTAssertEqual(org.limit, 500, accuracy: 0.001)
-
-        let total = try XCTUnwrap(progress(lines, QoderMetric.totalUsage))
-        XCTAssertEqual(total.used, 37.5, accuracy: 0.001)
-        XCTAssertEqual(total.limit, 100, accuracy: 0.001)
-        XCTAssertEqual(total.format, .percent)
     }
 
     func testOmitsMissingOptionalBucketsWithoutFabricatingZero() throws {
@@ -266,11 +261,28 @@ final class QoderUsageMapperTests: XCTestCase {
 
         let lines = QoderUsageMapper.map(usage)
 
-        XCTAssertNotNil(progress(lines, QoderMetric.planCredits))
-        XCTAssertNotNil(progress(lines, QoderMetric.totalUsage))
+        XCTAssertNotNil(progress(lines, QoderMetric.monthly))
         XCTAssertNil(progress(lines, QoderMetric.addOnCredits))
         XCTAssertNil(progress(lines, QoderMetric.orgCredits))
         XCTAssertFalse(lines.contains { $0 == .noUsageData })
+    }
+
+    func testMonthlyFallsBackToComputedPercentage() throws {
+        let usage = try decodeUsage([
+            "userQuota": [
+                "used": 50,
+                "total": 200,
+                "remaining": 150,
+                "unit": "credits"
+            ]
+        ])
+
+        let lines = QoderUsageMapper.map(usage)
+
+        let monthly = try XCTUnwrap(progress(lines, QoderMetric.monthly))
+        XCTAssertEqual(monthly.used, 25, accuracy: 0.001)
+        XCTAssertEqual(monthly.limit, 100, accuracy: 0.001)
+        XCTAssertEqual(monthly.format, .percent)
     }
 
     func testEmptyUsageYieldsNoUsageData() throws {
@@ -289,12 +301,18 @@ final class QoderProviderTests: XCTestCase {
         XCTAssertEqual(provider.provider.id, "qoder")
         XCTAssertEqual(provider.provider.displayName, "Qoder")
         XCTAssertEqual(provider.provider.visibleLinks.map(\.label), ["Dashboard"])
+        XCTAssertEqual(provider.provider.visibleLinks.map(\.url), ["https://qoder.com/account/usage"])
         XCTAssertEqual(provider.widgetDescriptors.map(\.id), [
             "qoder.planCredits",
             "qoder.addOnCredits",
-            "qoder.orgCredits",
-            "qoder.totalUsage"
+            "qoder.orgCredits"
         ])
+        XCTAssertEqual(provider.widgetDescriptors.map(\.title), [
+            "Monthly",
+            "Add-on Credits",
+            "Org Credits"
+        ])
+        XCTAssertEqual(provider.widgetDescriptors.first?.sample.kind, .percent)
 
         let suiteName = "OpenUsage.QoderLayout.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -309,13 +327,12 @@ final class QoderProviderTests: XCTestCase {
         XCTAssertEqual(store.placed.map(\.descriptorID), [
             "qoder.planCredits",
             "qoder.addOnCredits",
-            "qoder.orgCredits",
-            "qoder.totalUsage"
+            "qoder.orgCredits"
         ])
-        XCTAssertEqual(store.pinnedMetricIDs, ["qoder.planCredits", "qoder.totalUsage"] as Set<String>)
+        XCTAssertEqual(store.pinnedMetricIDs, ["qoder.planCredits"] as Set<String>)
 
         let group = try XCTUnwrap(store.customizeGroups.first)
-        XCTAssertEqual(group.alwaysShownMetrics.map(\.id), ["qoder.planCredits", "qoder.totalUsage"])
+        XCTAssertEqual(group.alwaysShownMetrics.map(\.id), ["qoder.planCredits"])
         XCTAssertEqual(group.expandedMetrics.map(\.id), ["qoder.addOnCredits", "qoder.orgCredits"])
     }
 
@@ -325,7 +342,8 @@ final class QoderProviderTests: XCTestCase {
             usageClient: QoderUsageClient(processRunner: FakeQoderStreamRunner.success())
         )
 
-        XCTAssertTrue(await provider.hasLocalCredentials())
+        let hasCredentials = await provider.hasLocalCredentials()
+        XCTAssertTrue(hasCredentials)
     }
 
     func testRefreshMapsLocalCLIUsage() async throws {
@@ -341,8 +359,8 @@ final class QoderProviderTests: XCTestCase {
         XCTAssertEqual(snapshot.displayName, "Qoder")
         XCTAssertNil(snapshot.errorCategory)
         XCTAssertEqual(snapshot.refreshedAt, Date(timeIntervalSince1970: 1_800_000_000))
-        XCTAssertNotNil(snapshot.line(label: QoderMetric.planCredits))
-        XCTAssertNotNil(snapshot.line(label: QoderMetric.totalUsage))
+        XCTAssertNotNil(snapshot.line(label: QoderMetric.monthly))
+        XCTAssertNil(snapshot.line(label: "Total Usage"))
     }
 
     func testRefreshMissingCLIReportsFriendlyError() async {

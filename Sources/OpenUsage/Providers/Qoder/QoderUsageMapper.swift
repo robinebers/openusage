@@ -36,10 +36,9 @@ struct QoderUsageOrgResourcePackage: Decodable, Equatable, Sendable {
 }
 
 enum QoderMetric {
-    static let planCredits = "Plan Credits"
+    static let monthly = "Monthly"
     static let addOnCredits = "Add-on Credits"
     static let orgCredits = "Org Credits"
-    static let totalUsage = "Total Usage"
 }
 
 enum QoderUsageMapper {
@@ -48,7 +47,7 @@ enum QoderUsageMapper {
         let resetsAt = resetDate(from: usage.expiresAt)
 
         if let quota = usage.userQuota,
-           let line = quotaLine(label: QoderMetric.planCredits, bucket: quota, resetsAt: resetsAt) {
+           let line = monthlyLine(quota, resetsAt: resetsAt) {
             lines.append(line)
         }
         if let quota = usage.addOnQuota,
@@ -59,32 +58,29 @@ enum QoderUsageMapper {
            let line = orgPackageLine(package, resetsAt: resetsAt) {
             lines.append(line)
         }
-        if let totalUsage = usage.totalUsagePercentage {
-            lines.append(.progress(
-                label: QoderMetric.totalUsage,
-                used: ProviderParse.clampPercent(totalUsage),
-                limit: 100,
-                format: .percent,
-                resetsAt: resetsAt
-            ))
-        }
-
         MetricLine.appendNoDataIfNeeded(&lines)
         return lines
     }
 
-    private static func quotaLine(label: String, bucket: QoderUsageQuotaBucket, resetsAt: Date?) -> MetricLine? {
-        guard let used = usedValue(used: bucket.used, total: bucket.total, remaining: bucket.remaining),
-              let total = totalValue(total: bucket.total, used: bucket.used, remaining: bucket.remaining) else {
-            return nil
-        }
+    private static func monthlyLine(_ bucket: QoderUsageQuotaBucket, resetsAt: Date?) -> MetricLine? {
+        guard let usedPercent = usedPercentage(bucket) else { return nil }
         return .progress(
-            label: label,
-            used: max(0, used),
-            limit: max(0, total),
-            format: .count(suffix: bucket.unit?.nilIfEmpty ?? "credits"),
+            label: QoderMetric.monthly,
+            used: ProviderParse.clampPercent(usedPercent),
+            limit: 100,
+            format: .percent,
             resetsAt: resetsAt
         )
+    }
+
+    private static func usedPercentage(_ bucket: QoderUsageQuotaBucket) -> Double? {
+        if let percentage = bucket.percentage { return percentage }
+        guard let used = usedValue(used: bucket.used, total: bucket.total, remaining: bucket.remaining),
+              let total = totalValue(total: bucket.total, used: bucket.used, remaining: bucket.remaining),
+              total > 0 else {
+            return nil
+        }
+        return used / total * 100
     }
 
     private static func quotaLine(label: String, bucket: QoderUsageAddOnQuotaBucket, resetsAt: Date?) -> MetricLine? {

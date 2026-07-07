@@ -29,7 +29,7 @@ enum DefaultLayout {
         "openrouter.credits", "openrouter.balance",
         "openrouter.today", "openrouter.week", "openrouter.month", "openrouter.keyLimit",
 
-        "qoder.planCredits", "qoder.addOnCredits", "qoder.orgCredits", "qoder.totalUsage",
+        "qoder.planCredits", "qoder.addOnCredits", "qoder.orgCredits",
 
         "zai.session", "zai.weekly", "zai.webSearches"
     ]
@@ -64,7 +64,7 @@ enum DefaultLayout {
         "cursor.auto", "cursor.api",
         "copilot.premium",
         "openrouter.credits",
-        "qoder.planCredits", "qoder.totalUsage",
+        "qoder.planCredits",
         "zai.session", "zai.weekly"
     ]
 
@@ -96,8 +96,8 @@ enum DefaultLayout {
         // OpenRouter: Credits meter + Balance stay above the fold; period spend and the per-key cap
         // sit below the caret.
         "openrouter.today", "openrouter.week", "openrouter.month", "openrouter.keyLimit",
-        // Qoder: Plan Credits and Total Usage stay above the fold; optional add-on and org buckets
-        // sit below the caret because many personal accounts do not return them.
+        // Qoder: Monthly stays above the fold; optional add-on and org buckets sit below the caret
+        // because many personal accounts do not return them.
         "qoder.addOnCredits", "qoder.orgCredits",
         // Z.ai: Session meter stays above the fold; Web Searches (monthly count) sits below the caret.
         "zai.webSearches"

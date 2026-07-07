@@ -6,10 +6,9 @@ Tracks [Qoder](https://qoder.com) personal usage quotas from the local Qoder CLI
 
 | Metric | Meaning |
 |---|---|
-| Plan Credits | Credits used from your main plan quota |
+| Monthly | Percent used from your main monthly plan quota |
 | Add-on Credits | Credits used from your add-on quota, when Qoder returns one |
 | Org Credits | Credits used from an organization resource package, when Qoder returns one |
-| Total Usage | Overall usage percentage for the current billing period |
 
 ## Where credentials come from
 
@@ -36,6 +35,7 @@ export QODER_PERSONAL_ACCESS_TOKEN="YOUR_TOKEN"
 
 OpenUsage starts `qodercli` in stream-json mode and sends two local control requests: `initialize`, then `get_usage_info`.
 The CLI returns Qoder's `UsageInfo` payload, including `userQuota`, optional `addOnQuota`, optional `orgResourcePackage`, and `totalUsagePercentage`.
+OpenUsage shows the main `userQuota` bucket as Monthly percentage remaining and does not render `totalUsagePercentage` as a separate row because it duplicates the same monthly quota at a percentage level.
 
 Optional buckets are not faked.
 If Qoder does not return add-on or organization credits for your account, those rows show no data until Qoder reports them.

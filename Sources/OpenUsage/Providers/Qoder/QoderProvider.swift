@@ -7,7 +7,7 @@ final class QoderProvider: ProviderRuntime {
         displayName: "Qoder",
         icon: .providerMark("qoder"),
         links: [
-            ProviderLink(label: "Dashboard", url: "https://qoder.com")
+            ProviderLink(label: "Dashboard", url: "https://qoder.com/account/usage")
         ]
     )
 
@@ -27,13 +27,11 @@ final class QoderProvider: ProviderRuntime {
 
     var widgetDescriptors: [WidgetDescriptor] {
         [
-            .boundedCount(id: "qoder.planCredits", provider: provider, title: QoderMetric.planCredits,
-                          limit: 100, suffix: "credits"),
+            .percent(id: "qoder.planCredits", provider: provider, title: QoderMetric.monthly),
             .boundedCount(id: "qoder.addOnCredits", provider: provider, title: QoderMetric.addOnCredits,
                           limit: 100, suffix: "credits"),
             .boundedCount(id: "qoder.orgCredits", provider: provider, title: QoderMetric.orgCredits,
-                          limit: 100, suffix: "credits"),
-            .percent(id: "qoder.totalUsage", provider: provider, title: QoderMetric.totalUsage)
+                          limit: 100, suffix: "credits")
         ]
     }
 
