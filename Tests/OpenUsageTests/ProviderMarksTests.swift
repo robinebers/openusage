@@ -16,7 +16,7 @@ final class ProviderMarksTests: XCTestCase {
     }
 
     func testStandardProviderMarksLoad() {
-        for id in ["claude", "codex", "cursor"] {
+        for id in ["claude", "codex", "cursor", "qoder"] {
             let mark = ProviderMarks.mark(for: id)
             XCTAssertNotNil(mark, "\(id) should load")
             XCTAssertFalse(mark?.path.isEmpty ?? true, "\(id) mark must carry SVG path data")

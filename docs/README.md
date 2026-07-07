@@ -29,6 +29,7 @@ What each provider tracks, where its credentials come from, and what to do when 
 - [Devin](providers/devin.md)
 - [Grok](providers/grok.md)
 - [OpenRouter](providers/openrouter.md)
+- [Qoder](providers/qoder.md)
 - [Z.ai](providers/zai.md)
 
 ## For developers

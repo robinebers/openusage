@@ -209,6 +209,27 @@ extension ZAIUsageError: CategorizedError {
     }
 }
 
+extension QoderAuthError: CategorizedError {
+    var errorCategory: ErrorCategory {
+        switch self {
+        case .missingCLI, .notLoggedIn: .notLoggedIn
+        case .statusUnavailable: .decoding
+        }
+    }
+}
+
+extension QoderUsageError: CategorizedError {
+    var errorCategory: ErrorCategory {
+        switch self {
+        case .authPayloadFailed, .processFailed: .other
+        case .connectionFailed, .timedOut: .network
+        case .invalidAuth: .authInvalid
+        case .invalidResponse: .decoding
+        case .unsupportedCLI: .notAvailable
+        }
+    }
+}
+
 extension HTTPClientError: CategorizedError {
     var errorCategory: ErrorCategory {
         switch self {
