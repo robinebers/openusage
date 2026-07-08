@@ -145,7 +145,7 @@ private final class UpdaterChannelDelegate: NSObject, SPUUpdaterDelegate {
 /// The accessory-app activation dance. `SPUStandardUserDriverDelegate` is nonisolated in Sparkle, so
 /// this delegate stays nonisolated; its callbacks run on the main thread, so they assume main-actor
 /// isolation to touch `NSApp`.
-private final class UpdaterUserDriverDelegate: NSObject, SPUStandardUserDriverDelegate {
+final class UpdaterUserDriverDelegate: NSObject, SPUStandardUserDriverDelegate {
     /// Publishes "a scheduled check found version X" back to `UpdaterController` (main actor), which
     /// renders it as the dashboard's update banner.
     var onUpdateFound: (@MainActor @Sendable (String) -> Void)?
@@ -203,10 +203,13 @@ private final class UpdaterUserDriverDelegate: NSObject, SPUStandardUserDriverDe
         }
     }
 
-    /// …then drop back to a pure menu-bar app once the update session ends.
+    /// …then drop back to a pure menu-bar app once the update session ends and clear any in-app
+    /// indicator still left behind by a dismissal, skip, install, or failure.
     func standardUserDriverWillFinishUpdateSession() {
+        let onUpdateResolved = onUpdateResolved
         MainActor.assumeIsolated { () -> Void in
             NSApp.setActivationPolicy(.accessory)
+            onUpdateResolved?()
         }
     }
 }
