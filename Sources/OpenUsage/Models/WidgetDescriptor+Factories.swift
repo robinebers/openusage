@@ -68,7 +68,8 @@ extension WidgetDescriptor {
         selection: ValueSelection = .all,
         valueWord: String? = nil,
         isUsagePeriod: Bool = false,
-        traySuffix: String? = nil
+        traySuffix: String? = nil,
+        showsResetExpiries: Bool = false
     ) -> WidgetDescriptor {
         // `kind` is unused for `.values` rendering (each value carries its own), but a count-only tile
         // reads tidier seeded as `.count`; everything else defaults to `.dollars`.
@@ -78,6 +79,7 @@ extension WidgetDescriptor {
         sample.selection = selection
         sample.isUsagePeriod = isUsagePeriod
         sample.traySuffix = traySuffix
+        sample.showsResetExpiries = showsResetExpiries
         return make(id: id, provider: provider, metricLabel: metricLabel ?? title, sample: sample)
     }
 

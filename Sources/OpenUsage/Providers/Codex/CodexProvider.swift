@@ -42,7 +42,7 @@ final class CodexProvider: ProviderRuntime {
             .percent(id: "codex.spark", provider: provider, title: "Spark"),
             .percent(id: "codex.sparkWeekly", provider: provider, title: "Spark Weekly"),
             .combined(id: "codex.credits", provider: provider, title: "Extra Usage", metricLabel: "Credits"),
-            .values(id: "codex.rateLimitResets", provider: provider, title: "Rate Limit Resets", metricLabel: "Rate Limit Resets", traySuffix: "resets"),
+            .values(id: "codex.rateLimitResets", provider: provider, title: "Rate Limit Resets", metricLabel: "Rate Limit Resets", traySuffix: "resets", showsResetExpiries: true),
             .usageTrend(provider: provider)
         ] + WidgetDescriptor.spendTiles(provider: provider)
     }

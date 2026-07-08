@@ -36,6 +36,11 @@ struct WidgetData: Hashable {
     /// credits — one entry per still-available credit). Empty for every other row. Kept as raw `Date`s so
     /// the tooltip formats live and follows the global relative/absolute mode (see `expiryTooltip`).
     var expiriesAt: [Date] = []
+    /// Descriptor opt-in marking this as the Codex rate-limit-reset-credits row. When set, the value
+    /// column reveals the resets popover on hover (a timeline of each credit's expiry, or an empty
+    /// state when none are available) and lights up like the spend rows — so it stays reachable even
+    /// at "0 available", where `expiriesAt` is empty. Off for every other row.
+    var showsResetExpiries: Bool = false
     /// Names of models this period's spend used that the pricing manifest can't price. Their tokens are
     /// counted but their cost is incomplete, so the period's dollar figure can be understated.
     /// Drives the label warning triangle and its hover list. Empty for every other row.
@@ -338,14 +343,28 @@ struct WidgetData: Hashable {
     static let expiryWarningWindow: TimeInterval = 7 * 24 * 60 * 60
     static let expiryCriticalWindow: TimeInterval = 48 * 60 * 60
 
+    /// Severity band for a single expiry `timeRemaining` seconds out: red under 48h, amber under a
+    /// week, blue beyond. Shared by the row's status dot (soonest expiry) and the resets popover's
+    /// per-credit dots, so one credit can never read a different color in the two places.
+    static func expirySeverity(secondsRemaining: TimeInterval) -> MeterSeverity {
+        if secondsRemaining <= expiryCriticalWindow { return .critical }
+        if secondsRemaining <= expiryWarningWindow { return .warning }
+        return .normal
+    }
+
     /// Visual status for rows carrying reset-credit expiries. Recomputes on the popover's 30s tick because
     /// the row keeps ticking while it carries expiries.
     func expirySeverity(now: Date = Date()) -> MeterSeverity? {
         guard hasData, let soonest = expiriesAt.min() else { return nil }
-        let timeRemaining = soonest.timeIntervalSince(now)
-        if timeRemaining <= Self.expiryCriticalWindow { return .critical }
-        if timeRemaining <= Self.expiryWarningWindow { return .warning }
-        return .normal
+        return Self.expirySeverity(secondsRemaining: soonest.timeIntervalSince(now))
+    }
+
+    /// The available reset-credit count backing a `showsResetExpiries` row (its "N available" figure).
+    /// Lets the popover tell "no credits" (empty state) from "credits whose per-credit expiries we
+    /// couldn't fetch" — the usage-body fallback carries the count but no expiry list, so `expiriesAt`
+    /// is empty while the row still reads e.g. "3 available".
+    var resetCreditCount: Int {
+        Int((selectedValues.first?.number ?? 0).rounded(.down))
     }
 
     /// Hover tooltip for a row carrying expiry instants (the Codex reset-credit row, "2 available"):

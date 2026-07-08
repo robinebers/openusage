@@ -137,7 +137,7 @@ final class WidgetDataStoreTests: XCTestCase {
             resetsAt: nil,
             periodDurationMs: ClaudeUsageMapper.weeklyPeriodMs
         )
-        XCTAssertEqual(weekly.boundedSubtitle, "Resets in 7d")
+        XCTAssertEqual(weekly.boundedSubtitle, "Resets in 7d 0h")
     }
 
     func testDollarLimitSubtitleIsNotAReset() {
@@ -221,7 +221,7 @@ final class WidgetDataStoreTests: XCTestCase {
             countSuffix: "requests",
             periodDurationMs: CursorUsageMapper.billingPeriodMs
         )
-        XCTAssertEqual(requests.boundedSubtitle, "Resets in 30d")
+        XCTAssertEqual(requests.boundedSubtitle, "Resets in 30d 0h")
     }
 
     func testCreditsRenderDollarAndCountCombinedInvariantToMeterStyle() async {
@@ -299,6 +299,45 @@ final class WidgetDataStoreTests: XCTestCase {
         XCTAssertFalse(data.isBounded)
         XCTAssertEqual(data.unboundedDetail, "1 available")
         XCTAssertEqual(data.menuBarValue, "1 resets")
+    }
+
+    func testZeroRateLimitResetsStillFlagsResetPopoverForEmptyState() async {
+        // The descriptor opt-in must survive resolve even at "0 available" (no expiries): that's exactly
+        // when the value column needs to stay a hover target so the popover can show the empty state.
+        let provider = Provider(id: "codex", displayName: "Codex", icon: .providerMark("codex"))
+        let descriptor = WidgetDescriptor.values(
+            id: "codex.rateLimitResets",
+            provider: provider,
+            title: "Rate Limit Resets",
+            metricLabel: "Rate Limit Resets",
+            traySuffix: "resets",
+            showsResetExpiries: true
+        )
+        let runtime = TestProviderRuntime(
+            provider: provider,
+            descriptors: [descriptor],
+            snapshot: ProviderSnapshot(
+                providerID: provider.id,
+                displayName: provider.displayName,
+                lines: [.values(label: "Rate Limit Resets",
+                                values: [MetricValue(number: 0, kind: .count, label: "available")])]
+            )
+        )
+        let defaults = makeUserDefaults("codex-resets-empty")
+        let store = WidgetDataStore(
+            registry: WidgetRegistry(providers: [provider], descriptors: [descriptor]),
+            providers: [runtime],
+            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() }),
+            defaults: defaults
+        )
+        await store.refreshAll()
+
+        let data = store.data(for: descriptor)
+        XCTAssertTrue(data.showsResetExpiries)
+        XCTAssertTrue(data.hasData)
+        XCTAssertTrue(data.expiriesAt.isEmpty)
+        XCTAssertNil(data.expirySeverity())          // no dot at zero
+        XCTAssertEqual(data.unboundedDetail, "0 available")
     }
 
     func testBoundedDollarAndCountTrayValuesHonorMeterStyleWithoutPercentConversion() async {
