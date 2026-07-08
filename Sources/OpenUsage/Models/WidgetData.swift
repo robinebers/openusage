@@ -506,6 +506,9 @@ extension WidgetData {
             case .ahead:
                 return .healthy(projectedFraction: result.projectedUsage / ctx.limit)
             case .onTrack:
+                // A whole-percent 1% reading at the projection gate can land exactly on the limit.
+                // Keep the same near-empty safeguard as `.behind` so it never becomes a red alarm.
+                guard used / ctx.limit >= 0.05 else { return absoluteLevelState(used: used, limit: limit) }
                 let projected = result.projectedUsage / ctx.limit
                 let spare = Int(((1 - projected) * 100).rounded())
                 guard spare >= 1 else { return .runningOut(eta: nil, projectedFraction: projected) }
