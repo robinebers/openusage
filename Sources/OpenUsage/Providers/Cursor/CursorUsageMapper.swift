@@ -103,19 +103,19 @@ enum CursorUsageMapper {
         appendCredits(creditGrants: creditGrants, stripeBalanceCents: stripeBalanceCents, to: &lines)
 
         let planUsedCents = ProviderParse.number(planUsage["totalSpend"])
-            ?? ((ProviderParse.number(planUsage["limit"]) ?? 0) - (ProviderParse.number(planUsage["remaining"]) ?? 0))
-        let computedPercentUsed = ProviderParse.number(planUsage["limit"]).flatMap { limit -> Double? in
+            ?? ((facts.limit ?? 0) - (ProviderParse.number(planUsage["remaining"]) ?? 0))
+        let computedPercentUsed = facts.limit.flatMap { limit -> Double? in
             guard limit > 0 else { return nil }
             return planUsedCents / limit * 100
         } ?? 0
-        let totalUsagePercent = ProviderParse.number(planUsage["totalPercentUsed"]) ?? computedPercentUsed
+        let totalUsagePercent = facts.totalPercentUsed ?? computedPercentUsed
 
         let cycle = billingCycle(from: usage)
         let spendLimitUsage = usage["spendLimitUsage"] as? [String: Any]
         let isTeamAccount = normalizedPlan == "team" || facts.isTeamByShape
 
         if isTeamAccount {
-            guard let limitCents = ProviderParse.number(planUsage["limit"]) else {
+            guard let limitCents = facts.limit else {
                 throw CursorUsageError.requestBasedUnavailable("Cursor request-based usage data unavailable. Try again later.")
             }
             lines.append(.progress(
@@ -278,7 +278,7 @@ enum CursorUsageMapper {
         // count — a 0-token row of an unknown model changes nothing, so it isn't worth flagging.
         var unknownModelsByDay: [String: Set<String>] = [:]
         for row in rows {
-            let day = dayKey(from: row.date, calendar: calendar)
+            let day = DailyUsageAccumulator.dayKey(from: row.date, calendar: calendar)
             let model = row.model.trimmingCharacters(in: .whitespacesAndNewlines)
             guard let cost = row.imputedCostDollars else {
                 if row.tokens.totalTokens > 0, !model.isEmpty {
@@ -323,10 +323,6 @@ enum CursorUsageMapper {
         // note names that source rather than the "estimated from local logs" line the log-scanning
         // providers use. Tokens are measured either way.
         SpendTileMapper.appendUsageTrend(series, to: &lines, now: now, note: "From your Cursor usage export")
-    }
-
-    private static func dayKey(from date: Date, calendar: Calendar) -> String {
-        DailyUsageAccumulator.dayKey(from: date, calendar: calendar)
     }
 
     /// The display family for a raw CSV slug: its canonical pricing key with a `-fast` suffix folded

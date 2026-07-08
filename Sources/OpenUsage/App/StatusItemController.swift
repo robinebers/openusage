@@ -28,8 +28,9 @@ final class StatusItemController: NSObject {
     private let container: AppContainer
     private let updater: UpdaterController
     private let statusItem: NSStatusItem
-    /// Owns the menu-bar strip render loop (created in `init` once the status button exists).
-    private var imageUpdater: StatusItemImageUpdater?
+    /// Owns the menu-bar strip render loop. Its apply closure captures the `NSStatusItem` directly
+    /// (which never retains the controller), so this can be a plain non-optional `let`.
+    private let imageUpdater: StatusItemImageUpdater
     private let panel: MenuBarPanel
     private let hostingController: NSHostingController<AnyView>
     /// The panel's backdrop: an opaque tray by default, swapped to a behind-window vibrancy view when
@@ -71,7 +72,14 @@ final class StatusItemController: NSObject {
     init(container: AppContainer, updater: UpdaterController) {
         self.container = container
         self.updater = updater
-        self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        self.statusItem = statusItem
+        // Captures the status item, not `self` — no retain cycle, and no optional property just to
+        // work around `[weak self]` being unavailable before `super.init()`. The button is resolved
+        // lazily at each apply, so a not-yet-configured button is harmless (same as before the split).
+        self.imageUpdater = StatusItemImageUpdater(container: container) { image in
+            statusItem.button?.image = image
+        }
 
         let hosting = NSHostingController(
             rootView: AnyView(
@@ -99,10 +107,7 @@ final class StatusItemController: NSObject {
 
         configurePanel()
         configureStatusItem()
-        imageUpdater = StatusItemImageUpdater(container: container) { [weak self] image in
-            self?.statusItem.button?.image = image
-        }
-        imageUpdater?.update()
+        imageUpdater.update()
         applyTransparency()
 
         appearanceObserver = NotificationCenter.default.addObserver(
@@ -216,7 +221,8 @@ final class StatusItemController: NSObject {
     private var hasAppliedTransparency = false
 
     /// Applies the resolved transparency style to the panel and re-arms on the next change. Mirrors
-    /// `updateButtonImage`'s `withObservationTracking` re-arm (its `onChange` is one-shot). Reads the
+    /// `StatusItemImageUpdater.update()`'s `withObservationTracking` re-arm (its `onChange` is
+    /// one-shot). Reads the
     /// store's `effectiveStyle`, which folds in the persisted toggle, the egg state, and the system
     /// accessibility flags — so this fires whenever any of them changes. Backdrop already exists (it's a
     /// stored property), so the first call from `init` safely sets the initial look.

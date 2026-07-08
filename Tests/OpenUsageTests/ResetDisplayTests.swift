@@ -74,6 +74,27 @@ final class ResetDisplayTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testSessionWindowFlagIsWiredOnExactlyTheShippingSessionDescriptors() {
+        // The test above hand-sets `isSessionWindow`, so it pins the mechanism but not the wiring.
+        // This one pins the wiring: the descriptor opt-in replaced a model-level widget-ID set, so a
+        // provider dropping (or spuriously gaining) the flag must fail here, not ship silently.
+        let providers: [ProviderRuntime] = [
+            ClaudeProvider(), CodexProvider(), CursorProvider(),
+            AntigravityProvider(), CopilotProvider(), DevinProvider(),
+            GrokProvider(), OpenRouterProvider(), ZAIProvider()
+        ]
+        let descriptors = providers.flatMap(\.widgetDescriptors)
+        let sessionIDs = Set(descriptors.filter(\.sample.isSessionWindow).map(\.id))
+        XCTAssertEqual(sessionIDs, ["codex.session", "claude.session",
+                                    "antigravity.geminiPro", "antigravity.claude"])
+
+        // Same wiring pin for the menu-bar tray suffix (it replaced a title-string match).
+        let suffixed = descriptors.filter { $0.sample.traySuffix != nil }
+        XCTAssertEqual(suffixed.map(\.id), ["codex.rateLimitResets"])
+        XCTAssertEqual(suffixed.first?.sample.traySuffix, "resets")
+    }
+
     func testAntigravityWeeklyRowsNeverReadNotStarted() {
         // Antigravity's weekly meters are calendar windows, not rolling sessions — like Claude/Codex,
         // only the 5h rows get the "Not started" treatment (fix: merged pools + weekly limits).

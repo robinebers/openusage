@@ -57,7 +57,7 @@ actor ClaudeLogUsageScanner {
         let files = Self.usageFiles(under: roots)
         guard !files.isEmpty else { return nil }
 
-        let since = IncrementalJSONLScanner<Entry>.sinceDate(daysBack: daysBack, now: now)
+        let since = JSONLScanning.sinceDate(daysBack: daysBack, now: now)
         // Entries come back concatenated in path-sorted file order, so dedup's keep-first is deterministic.
         let entries = await scanner.items(from: files, since: since, parse: Self.parseFile)
         return Self.aggregate(entries: Self.dedup(entries), since: since, pricing: pricing)
@@ -143,9 +143,9 @@ actor ClaudeLogUsageScanner {
 
     /// Every `*.jsonl` under each root's `projects/`, path-sorted so the dedup pass (keep-first wins)
     /// is deterministic — the same order ccusage scans in.
-    private static func usageFiles(under roots: [URL]) -> [IncrementalJSONLScanner<Entry>.DiscoveredFile] {
+    private static func usageFiles(under roots: [URL]) -> [JSONLScanning.DiscoveredFile] {
         roots
-            .flatMap { IncrementalJSONLScanner<Entry>.jsonlFiles(under: $0.appendingPathComponent("projects")) }
+            .flatMap { JSONLScanning.jsonlFiles(under: $0.appendingPathComponent("projects")) }
             .sorted { $0.path < $1.path }
     }
 

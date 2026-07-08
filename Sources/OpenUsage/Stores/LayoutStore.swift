@@ -10,8 +10,9 @@ final class LayoutStore {
 
     /// In-popover navigation (screen, Customize master/detail, screen-switch slide). Its own store so
     /// screen routing isn't tangled with layout state; the `screen`/`isEditing`/`customizeProviderID`/
-    /// `screenSlide*` surface below forwards to it, so existing call sites are unchanged.
-    let navigation = PopoverNavigationStore()
+    /// `screenSlide*` surface below forwards to it, so existing call sites are unchanged. Private so the
+    /// forwarding surface stays the ONLY spelling — two live paths to the same state invites drift.
+    private let navigation = PopoverNavigationStore()
 
     /// Which in-popover screen is showing. Drives the footer buttons, the Esc handler, and the
     /// popover-closed reset alike.
@@ -57,15 +58,12 @@ final class LayoutStore {
     /// stay open across popover closes and app restarts.
     private(set) var expandedProviderIDs: Set<String>
 
-    /// Transient explanation for a denied pin attempt (the WhatsApp-style "you can only pin N chats"
-    /// feedback). Set by `notePinDenied`, cleared automatically a few seconds later; the popover footer
-    /// renders it in place of the pin counter. Never persisted.
     /// The three transient popover pills, each an auto-clearing `TransientNotice` (was three copy-pasted
     /// value+trigger+clearTask machines). The public `pinLimitNotice`/`shareConfirmation`/
     /// `customizationNotice` surface below forwards to these, so call sites are unchanged.
     private let pinNotice = TransientNotice<String?>(clearedValue: nil, timeout: .seconds(3))
     private let shareNotice = TransientNotice<Bool>(clearedValue: false, timeout: .seconds(2.5))
-    private let customizationNoticeStore = TransientNotice<CustomizationNoticeContent?>(clearedValue: nil, timeout: .seconds(2.5))
+    private let customizeNotice = TransientNotice<CustomizationNoticeContent?>(clearedValue: nil, timeout: .seconds(2.5))
 
     /// Transient explanation for a denied pin attempt; the popover footer renders it in place of the pin
     /// counter. Set by `notePinDenied`, auto-cleared a few seconds later.
@@ -79,11 +77,14 @@ final class LayoutStore {
     var shareConfirmationTrigger: Int { shareNotice.trigger }
 
     /// Transient in-Customize notice (e.g. "Starred for menu bar", or the orange cap denial).
-    var customizationNotice: String? { customizationNoticeStore.value?.message }
-    /// The notice's tone: `.positive` (green checkmark) or `.notice` (orange denial).
-    var customizationNoticeTone: CustomizationNoticeTone { customizationNoticeStore.value?.tone ?? .positive }
+    var customizationNotice: String? { customizeNotice.value?.message }
+    /// The notice's tone: `.positive` (green checkmark) or `.notice` (orange denial). Falls back to
+    /// `.positive` once cleared (tone is only read while `customizationNotice` is non-nil, so the
+    /// snap-back is unobservable — message and tone now clear atomically, which the old split state
+    /// machine couldn't guarantee).
+    var customizationNoticeTone: CustomizationNoticeTone { customizeNotice.value?.tone ?? .positive }
     /// Bumped on every present so the pill replays its pop-in even when the same notice repeats.
-    var customizationNoticeTrigger: Int { customizationNoticeStore.trigger }
+    var customizationNoticeTrigger: Int { customizeNotice.trigger }
 
     /// Bounded, app-wide undo stack for layout customization (remove/add a metric, reorder metrics or
     /// providers, pin/unpin, move across the expand caret). UI-only state (not persisted): undo is a
@@ -783,13 +784,13 @@ final class LayoutStore {
     /// `tone` picks the green success style or the orange denial style. Auto-clears after a couple of
     /// seconds; also cleared on popover close via `clearCustomizationNotice`.
     func presentCustomizationNotice(_ message: String, tone: CustomizationNoticeTone = .positive) {
-        customizationNoticeStore.present(CustomizationNoticeContent(message: message, tone: tone))
+        customizeNotice.present(CustomizationNoticeContent(message: message, tone: tone))
     }
 
     /// Clear any showing Customize pill and cancel its auto-clear task. Called when the popover closes
     /// so a pill mid-countdown can't reappear stale on the next open.
     func clearCustomizationNotice() {
-        customizationNoticeStore.clear()
+        customizeNotice.clear()
     }
 
     /// Pin or unpin a metric for the menu bar. Pinning is a no-op when it would exceed a cap, so callers
