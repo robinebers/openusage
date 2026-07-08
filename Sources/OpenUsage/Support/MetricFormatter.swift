@@ -62,4 +62,69 @@ enum MetricFormatter {
         guard let label = value.label, !label.isEmpty else { return text }
         return "\(text) \(label)"
     }
+
+    /// Dollars per million tokens for legends and tooltips — dollar formatting plus a fixed `/MTok`
+    /// suffix so those one-line surfaces never drift.
+    static func costPerMtok(_ value: Double, style: Style) -> String {
+        number(value, kind: .dollars, style: style) + "/MTok"
+    }
+
+    /// The Total Spend ring's two-line center: a short primary on top and a quiet unit underneath so
+    /// Cost/MTok doesn't cram `/MTok` into the hole. Shared by the live card and the share PNG.
+    struct TotalSpendRingCenter: Equatable {
+        let primary: String
+        let unit: String
+    }
+
+    static func totalSpendRingCenter(_ value: Double, metric: TotalSpendMetric) -> TotalSpendRingCenter {
+        switch metric {
+        case .cost:
+            // Keep the `$` — unit line still says "dollars" for clarity in the hole.
+            return TotalSpendRingCenter(primary: number(value, kind: .dollars, style: .tray), unit: "dollars")
+        case .tokens:
+            return tokenRingCenter(value)
+        case .costPerMtok:
+            // `$1.37` with two decimals under 1k; abbreviated above. Unit line is `MTok`.
+            return TotalSpendRingCenter(primary: costPerMtokRingPrimary(value), unit: "MTok")
+        }
+    }
+
+    /// Dollar-rate figure for the Cost/MTok hole — `$` plus two decimals under 1k, abbreviated above.
+    private static func costPerMtokRingPrimary(_ value: Double) -> String {
+        if abs(value) >= 1000 {
+            return "$" + value.formatted(.number.notation(.compactName).precision(.fractionLength(0...1)).locale(locale))
+        }
+        return Formatters.currency(value, fractionDigits: 2)
+    }
+
+    /// Token totals put the magnitude word on the second line (`461.8` / `million`) so the hole
+    /// stays short even when the total runs past a billion.
+    private static func tokenRingCenter(_ value: Double) -> TotalSpendRingCenter {
+        let magnitude = abs(value)
+        if magnitude >= 1_000_000_000 {
+            let scaled = value / 1_000_000_000
+            return TotalSpendRingCenter(
+                primary: scaled.formatted(.number.precision(.fractionLength(0...1)).locale(locale)),
+                unit: "billion"
+            )
+        }
+        if magnitude >= 1_000_000 {
+            let scaled = value / 1_000_000
+            return TotalSpendRingCenter(
+                primary: scaled.formatted(.number.precision(.fractionLength(0...1)).locale(locale)),
+                unit: "million"
+            )
+        }
+        if magnitude >= 1_000 {
+            let scaled = value / 1_000
+            return TotalSpendRingCenter(
+                primary: scaled.formatted(.number.precision(.fractionLength(0...1)).locale(locale)),
+                unit: "thousand"
+            )
+        }
+        return TotalSpendRingCenter(
+            primary: value.formatted(.number.precision(.fractionLength(0...1)).locale(locale)),
+            unit: "tokens"
+        )
+    }
 }

@@ -90,23 +90,25 @@ enum ShareCardRenderer {
     }
 
     /// The Total Spend counterpart to `share(group:…)`: renders the aggregate ring card for the
-    /// currently selected period and copies the PNG to the clipboard, with the same pinned-density
-    /// render and the same "Copied to clipboard" confirmation. `total` is passed already aggregated —
-    /// the card computed it for the on-screen ring, so the export can't drift from the display.
-    /// Returns whether the PNG landed on the pasteboard, so the share button can gate its own
-    /// "copied" micro-animation on actual success.
+    /// currently selected period and metric and copies the PNG to the clipboard, with the same
+    /// pinned-density render and the same "Copied to clipboard" confirmation. `total` is passed
+    /// already aggregated — the card computed it for the on-screen ring, so the export can't drift
+    /// from the display. Returns whether the PNG landed on the pasteboard, so the share button can
+    /// gate its own "copied" micro-animation on actual success.
     @discardableResult
     static func shareTotalSpend(
         total: TotalSpend,
+        metric: TotalSpendMetric,
         appearance: ColorScheme,
         layout: LayoutStore
     ) -> Bool {
-        guard !total.isEmpty else {
+        let projection = total.projection(for: metric)
+        guard !projection.isEmpty else {
             NSSound.beep()
             return false
         }
-        let view = TotalSpendShareCardView(total: total, appearance: appearance)
-        return renderAndCopy(view, label: "total spend", layout: layout)
+        let view = TotalSpendShareCardView(total: total, metric: metric, appearance: appearance)
+        return renderAndCopy(view, label: metric.title.lowercased(), layout: layout)
     }
 
     /// Shared render→copy pipeline for both share actions. Pins the render to regular density (the rows
