@@ -99,7 +99,10 @@
     "gpt-5.2-codex": 2.0,
     "gpt-5.3-codex": 2.0,
     "gpt-5.4": 2.0,
-    "gpt-5.5": 2.5
+    "gpt-5.5": 2.5,
+    "gpt-5.6-sol": 2.5,
+    "gpt-5.6-terra": 2.5,
+    "gpt-5.6-luna": 2.5
   },
   "alias_rules": [
     { "pattern": "^agent_review$", "canonical": "gpt-5.4" },
@@ -162,8 +165,11 @@
     { "pattern": "^gpt-5\\.4-(?:low|medium|high|xhigh)$", "canonical": "gpt-5.4" },
     { "pattern": "^gpt-5\\.5(?:-(?:low|medium|high|xhigh|extra-high))?-fast$", "canonical": "gpt-5.5-fast" },
     { "pattern": "^gpt-5\\.5(?:-(?:low|medium|high|xhigh|extra-high))?$", "canonical": "gpt-5.5" },
+    { "pattern": "^gpt-5\\.6-sol(?:-(?:none|low|medium|high|xhigh|max|ultra))?-fast$", "canonical": "gpt-5.6-sol-fast" },
     { "pattern": "^gpt-5\\.6-sol(?:-(?:none|low|medium|high|xhigh|max|ultra))?$", "canonical": "gpt-5.6-sol" },
+    { "pattern": "^gpt-5\\.6-terra(?:-(?:none|low|medium|high|xhigh|max))?-fast$", "canonical": "gpt-5.6-terra-fast" },
     { "pattern": "^gpt-5\\.6-terra(?:-(?:none|low|medium|high|xhigh|max))?$", "canonical": "gpt-5.6-terra" },
+    { "pattern": "^gpt-5\\.6-luna(?:-(?:none|low|medium|high|xhigh|max))?-fast$", "canonical": "gpt-5.6-luna-fast" },
     { "pattern": "^gpt-5\\.6-luna(?:-(?:none|low|medium|high|xhigh|max))?$", "canonical": "gpt-5.6-luna" },
     { "pattern": "^kimi-k2\\.5$", "canonical": "moonshot/kimi-k2.5" },
     { "pattern": "^kimi-k2p5$", "canonical": "moonshot/kimi-k2.5" },
