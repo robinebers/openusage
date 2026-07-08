@@ -47,15 +47,15 @@ struct GrokLogUsageScanner: Sendable {
     func scan(daysBack: Int = 30, now: Date = Date(), pricing: ModelPricing) async -> LogUsageScan? {
         let path = logPath
         guard files.exists(path) else {
-            await readFailureReporter.update(failingPaths: [])
+            await readFailureReporter.update(checkedPaths: [path], failingPaths: [])
             return nil
         }
         let text: String
         do {
             text = try files.readText(path)
-            await readFailureReporter.update(failingPaths: [])
+            await readFailureReporter.update(checkedPaths: [path], failingPaths: [])
         } catch {
-            await readFailureReporter.update(failingPaths: [path])
+            await readFailureReporter.update(checkedPaths: [path], failingPaths: [path])
             return nil
         }
         return Self.parse(text, since: JSONLScanning.sinceDate(daysBack: daysBack, now: now), pricing: pricing)

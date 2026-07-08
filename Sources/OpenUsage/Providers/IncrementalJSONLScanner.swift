@@ -96,8 +96,9 @@ actor IncrementalJSONLScanner<Item: Sendable> {
             maxConcurrentParses: maxConcurrentParses,
             parse: parse
         )
+        let checkedPaths = Set(parseResults.lazy.map(\.file.path))
         let unreadablePaths = Set(parseResults.lazy.filter(\.readFailed).map(\.file.path))
-        await readFailureReporter.update(failingPaths: unreadablePaths)
+        await readFailureReporter.update(checkedPaths: checkedPaths, failingPaths: unreadablePaths)
         for result in parseResults {
             let (file, parsed) = (result.file, result.items)
             guard let parsed else { continue }

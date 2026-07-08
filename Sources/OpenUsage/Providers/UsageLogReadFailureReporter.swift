@@ -15,9 +15,12 @@ actor UsageLogReadFailureReporter {
         }
     }
 
-    func update(failingPaths nextFailingPaths: Set<String>) {
+    func update(checkedPaths: Set<String>, failingPaths nextFailingPaths: Set<String>) {
         let newlyFailing = nextFailingPaths.subtracting(failingPaths)
-        failingPaths = nextFailingPaths
+        // Only clear a remembered failure when that same path was checked again and no longer failed.
+        // A scan may look at a different batch of files, which says nothing about older failures.
+        failingPaths.subtract(checkedPaths)
+        failingPaths.formUnion(nextFailingPaths)
         guard !newlyFailing.isEmpty else { return }
         warning(newlyFailing.count)
     }

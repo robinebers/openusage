@@ -70,6 +70,33 @@ final class IncrementalJSONLScannerTests: XCTestCase {
         XCTAssertEqual(warnings.counts, [1, 1])
     }
 
+    func testScanningAnotherBatchDoesNotForgetAnUnreadableFile() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OpenUsageScannerWarningBatches-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let unreadableURL = directory.appendingPathComponent("a.jsonl")
+        try FileManager.default.createDirectory(at: unreadableURL, withIntermediateDirectories: true)
+        let readableURL = directory.appendingPathComponent("b.jsonl")
+        try Data("7".utf8).write(to: readableURL)
+
+        let now = Date()
+        let unreadable = JSONLScanning.DiscoveredFile(path: unreadableURL.path, size: 0, mtime: now)
+        let readable = JSONLScanning.DiscoveredFile(path: readableURL.path, size: 1, mtime: now)
+        let warnings = WarningRecorder()
+        let scanner = IncrementalJSONLScanner<Int>(readFailureWarning: warnings.record)
+        let parse: @Sendable (Data) -> [Int]? = { data in
+            String(data: data, encoding: .utf8).flatMap(Int.init).map { [$0] }
+        }
+
+        _ = await scanner.items(from: [unreadable], since: .distantPast, parse: parse)
+        _ = await scanner.items(from: [readable], since: .distantPast, parse: parse)
+        _ = await scanner.items(from: [unreadable], since: .distantPast, parse: parse)
+
+        XCTAssertEqual(warnings.counts, [1])
+    }
+
     func testMissingFileDoesNotWarn() async {
         let warnings = WarningRecorder()
         let scanner = IncrementalJSONLScanner<Int>(readFailureWarning: warnings.record)
