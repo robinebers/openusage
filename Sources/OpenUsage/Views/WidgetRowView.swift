@@ -27,11 +27,6 @@ struct WidgetRowView: View {
 
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
     @State private var modelHover = HoverPopoverState()
-    /// True while the pointer is over the value column of a row that has a model breakdown. Drives the
-    /// hover highlight that signals the value is an interactive target — set the instant the pointer
-    /// arrives (before the reveal dwell), separate from `modelHover` which only flips once the popover
-    /// actually opens.
-    @State private var valueHovering = false
     /// Party easter egg: fill meter bars with the party gradient instead of the severity color. Off by
     /// default everywhere else.
     @Environment(\.popoverPartyMode) private var partyMode
@@ -264,22 +259,18 @@ struct WidgetRowView: View {
     /// and an optional secondary line ("on-device estimate") beneath it.
     private var unboundedRow: some View {
         unboundedRowContent
-            .onChange(of: data.modelBreakdown) { _, _ in
-                modelHover.dismiss()
-                valueHovering = false
-            }
-            .onDisappear {
-                modelHover.dismiss()
-                valueHovering = false
-            }
+            .onChange(of: data.modelBreakdown) { _, _ in modelHover.dismiss() }
+            .onDisappear { modelHover.dismiss() }
     }
 
     /// The value column reveals the model breakdown on hover, so it lights up under the pointer the way
     /// a Finder / System Settings list row does — the native cue that "this is a target." Lit the moment
-    /// the pointer arrives (not after the reveal dwell) and held lit while the popover is open, so the
-    /// value reads as the popover's source. Only rows that actually have a breakdown light up.
+    /// the pointer arrives (`overInline`, before the reveal dwell) and held lit while the popover is open,
+    /// so the value reads as the popover's source. Both flags live on `modelHover`, so the panel's close
+    /// path (`dismissAll`) clears the highlight even though this view's state survives `orderOut`. Only
+    /// rows that actually have a breakdown light up.
     private var showValueHighlight: Bool {
-        data.hasModelBreakdown && (valueHovering || modelHover.isPresented)
+        data.hasModelBreakdown && (modelHover.overInline || modelHover.isPresented)
     }
 
     private var unboundedRowContent: some View {
@@ -334,15 +325,12 @@ struct WidgetRowView: View {
             .contentShape(Rectangle())
             .onContinuousHover { phase in
                 guard data.hasModelBreakdown else {
-                    valueHovering = false
                     modelHover.dismiss()
                     return
                 }
                 if case .active = phase {
-                    valueHovering = true
                     modelHover.inlineHover(true)
                 } else {
-                    valueHovering = false
                     modelHover.inlineHover(false)
                 }
             }

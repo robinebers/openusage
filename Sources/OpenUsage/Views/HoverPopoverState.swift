@@ -19,7 +19,12 @@ final class HoverPopoverState {
         for state in live.allObjects { state.dismiss() }
     }
 
-    @ObservationIgnored private var overInline = false
+    /// Whether the pointer is over the inline row/value. Unlike the rest of the hover bookkeeping this
+    /// is observed and readable, so a view can drive a hover affordance (the value's highlight chip) off
+    /// it. Crucially, `dismiss()` clears it, so `dismissAll()` on panel close clears the affordance too —
+    /// the dashboard view tree (and a view's own `@State`) survives the panel's `orderOut`, so a plain
+    /// `@State` flag would strand `true` and light the chip with no pointer over the value on reopen.
+    private(set) var overInline = false
     @ObservationIgnored private var overDetail = false
     @ObservationIgnored private var showTask: Task<Void, Never>?
     @ObservationIgnored private var hideTask: Task<Void, Never>?
@@ -37,7 +42,9 @@ final class HoverPopoverState {
     }
 
     func inlineHover(_ active: Bool) {
-        overInline = active
+        // `onContinuousHover` fires every pointer-move frame; only mutate on a real transition so the
+        // now-observed `overInline` doesn't post a change notification on every frame of a hover.
+        if overInline != active { overInline = active }
         active ? scheduleShow() : scheduleHide()
     }
 
