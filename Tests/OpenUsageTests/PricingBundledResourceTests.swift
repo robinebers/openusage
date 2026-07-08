@@ -49,6 +49,7 @@ final class PricingBundledResourceTests: XCTestCase {
         XCTAssertEqual(pricing.resolve(model: "gpt-5.6-luna-fast")?.inputPerMillion, 2.5)
         XCTAssertEqual(pricing.resolve(model: "grok-4-20-thinking")?.inputPerMillion, 2)
         XCTAssertEqual(pricing.resolve(model: "grok-4.5")?.inputPerMillion, 2)
+        XCTAssertEqual(pricing.resolve(model: "grok-4.5-fast-high")?.inputPerMillion, 4)
         XCTAssertEqual(pricing.resolve(model: "grok-4.5-high-fast")?.inputPerMillion, 4)
         XCTAssertEqual(pricing.resolve(model: "kimi-k2p5")?.inputPerMillion, 0.6)
         XCTAssertEqual(pricing.resolve(model: "kimi-k2.7-code")?.inputPerMillion, 0.95)
@@ -190,6 +191,9 @@ final class PricingBundledResourceTests: XCTestCase {
         XCTAssertEqual(fast.cacheWritePerMillion, 4.0)
         XCTAssertEqual(fast.cacheReadPerMillion, 1.0)
         XCTAssertEqual(fast.outputPerMillion, 18.0)
+        // Cursor CSV uses fast-before-effort (`grok-4.5-fast-high`); also accept effort-before-fast.
+        XCTAssertEqual(pricing.resolve(model: "grok-4.5-fast-high"), fast)
+        XCTAssertEqual(pricing.resolve(model: "grok-4.5-fast-medium"), fast)
         XCTAssertEqual(pricing.resolve(model: "grok-4.5-medium-fast"), fast)
     }
 
