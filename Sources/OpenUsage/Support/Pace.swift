@@ -27,22 +27,6 @@ enum Pace {
         max(60, periodDuration * 0.01)
     }
 
-    /// A rolling usage window whose reset is still (nearly) a full period away has not started yet.
-    /// Reliable when `resetsAt` and `periodDuration` come from the provider (Codex `reset_at` +
-    /// `limit_window_seconds`, Claude `resets_at` + the known five-hour session length).
-    ///
-    /// The grace is `minimumElapsed` (60s / 1% of the period), not a razor-thin 1s: Codex computes
-    /// `reset_at` server-side at request time (often already sub-second short of a full period), and
-    /// the mapper's `now` lags it by network latency plus a second API round trip. With a 1s
-    /// tolerance an untouched session routinely failed the test, so its floored `used_percent: 1`
-    /// survived normalization and the row read "99% left" forever (issue #708 regressing). Anything
-    /// inside `minimumElapsed` has no pace signal anyway — `evaluate` refuses to project there — so
-    /// "not started" is the honest reading for the ≤1% meters this feeds.
-    static func isFreshUsageWindow(resetsAt: Date, periodDuration: TimeInterval, now: Date = Date()) -> Bool {
-        guard periodDuration > 0, now < resetsAt else { return false }
-        return resetsAt.timeIntervalSince(now) >= periodDuration - minimumElapsed(periodDuration: periodDuration)
-    }
-
     /// Full pace evaluation, or `nil` when there's no signal (window not started yet, already reset,
     /// or too early in the window for a stable projection). Mirrors `calculatePaceStatus`.
     static func evaluate(used: Double, limit: Double, resetsAt: Date, periodDuration: TimeInterval,

@@ -185,6 +185,18 @@ final class PaceTests: XCTestCase {
         XCTAssertEqual(data.meterState(now: now), .level(.normal))
     }
 
+    func testOnePercentAtProjectionGateDoesNotBecomeRed() {
+        let session: TimeInterval = 5 * 3600
+        var data = WidgetData(title: "Session", icon: .symbol("clock"), kind: .percent,
+                              used: 1, limit: 100)
+        data.resetsAt = resetsAt(elapsed: 0.01, period: session)
+        data.periodDurationMs = Int(session * 1000)
+        XCTAssertEqual(Pace.evaluate(used: 1, limit: 100,
+                                     resetsAt: data.resetsAt!,
+                                     periodDuration: session, now: now)?.status, .onTrack)
+        XCTAssertEqual(data.meterState(now: now), .level(.normal))
+    }
+
     func testRunOutFlameShowsOnceFivePercentUsedDespiteHighRemaining() {
         let session: TimeInterval = 5 * 3600
         let elapsed = 240 / session
@@ -198,21 +210,6 @@ final class PaceTests: XCTestCase {
         guard case .runningOut = data.meterState(now: now) else {
             return XCTFail("expected runningOut when burning fast with ≥5% used")
         }
-    }
-
-    func testFreshUsageWindowToleratesFetchLatencyGrace() {
-        let session: TimeInterval = 5 * 3600 // minimumElapsed = 180s
-        // A few seconds "elapsed" from fetch latency still counts as not started…
-        XCTAssertTrue(Pace.isFreshUsageWindow(resetsAt: now.addingTimeInterval(session - 5),
-                                              periodDuration: session, now: now))
-        // …up to the projection gate (minimumElapsed), inclusive…
-        XCTAssertTrue(Pace.isFreshUsageWindow(resetsAt: now.addingTimeInterval(session - 180),
-                                              periodDuration: session, now: now))
-        // …but once a projection would be meaningful, the window has started.
-        XCTAssertFalse(Pace.isFreshUsageWindow(resetsAt: now.addingTimeInterval(session - 181),
-                                               periodDuration: session, now: now))
-        // An already-reset window is never fresh.
-        XCTAssertFalse(Pace.isFreshUsageWindow(resetsAt: now, periodDuration: session, now: now))
     }
 
     func testPaceProjectionWaitsUntilWindowHasMateriallyStarted() {

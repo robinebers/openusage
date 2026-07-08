@@ -97,8 +97,8 @@ enum CodexUsageMapper {
     }
 
     /// One rate-limit window → a percent-used meter, or `nil` when `usedPercent` is absent. Resolves the
-    /// window's own period (falling back to `defaultPeriodMs`) and applies the fresh-window normalization,
-    /// so all six Session/Weekly/Spark meters (body + header-fallback + spark) share one construction.
+    /// window's own period (falling back to `defaultPeriodMs`) while preserving the percentage reported
+    /// by Codex, so all Session/Weekly/Spark paths share one construction.
     private static func windowLine(
         label: String,
         usedPercent: Double?,
@@ -110,7 +110,7 @@ enum CodexUsageMapper {
         let periodDurationMs = readPeriodMs(window) ?? defaultPeriodMs
         return progress(
             label: label,
-            used: normalizedUsedPercent(usedPercent, resetWindow: window, now: now, periodDurationMs: periodDurationMs),
+            used: usedPercent,
             resetWindow: window,
             now: now,
             periodDurationMs: periodDurationMs
@@ -119,8 +119,8 @@ enum CodexUsageMapper {
 
     /// Spark (and any future model-specific) limits from `additional_rate_limits`. Each array entry is a
     /// named limit whose `rate_limit` reuses the primary (5-hour) / secondary (weekly) window shape, so
-    /// the parsing mirrors the core Session/Weekly path exactly — including the fresh-window 1%→0
-    /// normalization. We surface the entry whose `limit_name`/`metered_feature` names Spark as the
+    /// the parsing mirrors the core Session/Weekly path exactly. We surface the entry whose
+    /// `limit_name`/`metered_feature` names Spark as the
     /// `Spark` and `Spark Weekly` meters; a non-dictionary or null array element is skipped rather than
     /// discarding its valid siblings. Returns an empty list when the field is absent or carries no Spark
     /// entry (the common case for accounts without the limit), so those rows simply read "No data".
@@ -172,29 +172,6 @@ enum CodexUsageMapper {
         guard let window else { return nil }
         guard let seconds = ProviderParse.number(window["limit_window_seconds"]) else { return nil }
         return Int(seconds * 1000)
-    }
-
-    /// A rolling window whose reset is still a full period away has not meaningfully started — Codex
-    /// often still reports `used_percent: 1` (whole-percent floor) in that state.
-    private static func isFreshRateLimitWindow(_ window: [String: Any]?, now: Date, periodDurationMs: Int) -> Bool {
-        guard periodDurationMs > 0,
-              let resetsAt = resetDate(window, now: now)
-        else { return false }
-        let period = Double(periodDurationMs) / 1000
-        return Pace.isFreshUsageWindow(resetsAt: resetsAt, periodDuration: period, now: now)
-    }
-
-    /// At a fresh window, treat a 1% whole-percent reading as unused so the row matches a full counter.
-    private static func normalizedUsedPercent(
-        _ used: Double,
-        resetWindow: [String: Any]?,
-        now: Date,
-        periodDurationMs: Int
-    ) -> Double {
-        guard isFreshRateLimitWindow(resetWindow, now: now, periodDurationMs: periodDurationMs), used <= 1 else {
-            return used
-        }
-        return 0
     }
 
     /// Codex flex credits as raw values: the floored credit count and its dollar value (count × 4¢),

@@ -83,7 +83,7 @@ struct WidgetData: Hashable {
     /// Rate Limit Resets → "2 resets"). Set by the descriptor, so renaming the tile can't silently drop
     /// the suffix — replaces matching on the tile's title. `nil` for tiles that show the bare value.
     var traySuffix: String?
-    /// Session-window meters (Codex/Claude/Antigravity 5-hour pools) that read "Not started" when unused.
+    /// Session-window meters (Claude/Antigravity 5-hour pools) that read "Not started" when unused.
     /// Set by those descriptors and carried through `WidgetDataStore.resolve`, so the "fresh window"
     /// treatment is a descriptor opt-in rather than a hardcoded widget-ID list in the model.
     var isSessionWindow: Bool = false
@@ -506,14 +506,17 @@ extension WidgetData {
             case .ahead:
                 return .healthy(projectedFraction: result.projectedUsage / ctx.limit)
             case .onTrack:
+                // A whole-percent 1% reading at the projection gate can land exactly on the limit.
+                // Keep the same near-empty safeguard as `.behind` so it never becomes a red alarm.
+                guard used / ctx.limit >= 0.05 else { return absoluteLevelState(used: used, limit: limit) }
                 let projected = result.projectedUsage / ctx.limit
                 let spare = Int(((1 - projected) * 100).rounded())
                 guard spare >= 1 else { return .runningOut(eta: nil, projectedFraction: projected) }
                 return .closeToLimit(spare: "~\(spare)% spare", projectedFraction: projected)
             case .behind:
-                // Coarse meters (Codex session `used_percent` is whole points) can read 1% used at
-                // a fresh window; linear extrapolation then projects a bogus blow-out while the
-                // headline still shows ~99% left. When >95% of the quota clearly remains (used below
+                // Coarse whole-percent meters can read 1% used very early in a window; linear
+                // extrapolation then projects a bogus blow-out while the headline still shows ~99%
+                // left. When >95% of the quota clearly remains (used below
                 // 5%), distrust the projection entirely and use the absolute level bands instead — a
                 // calm bar with no projection copy, never a fabricated "~N% left at reset" cushion.
                 guard used / ctx.limit >= 0.05 else { return absoluteLevelState(used: used, limit: limit) }
@@ -558,8 +561,7 @@ extension WidgetData {
 
     /// Trailing text on the bounded primary row, reset-display-mode aware. Priority mirrors
     /// `boundedSubtitle`, but a concrete reset honors `resetDisplayMode` (relative ⟷ absolute).
-    /// Codex, Claude, and Antigravity session rows show "Not started" while the rolling window has
-    /// not begun.
+    /// Claude and Antigravity session rows show "Not started" while the rolling window has not begun.
     func boundedTrailingText(now: Date = Date()) -> String? {
         guard hasData else { return Self.noDataSubtitle }
         if let subtitleOverride { return subtitleOverride }
@@ -572,14 +574,14 @@ extension WidgetData {
         return boundedSubtitle // period cadence / dollar limit / count suffix — nothing to flip
     }
 
-    /// Codex, Claude, and Antigravity session meters only: a "Not started" state for the current window
+    /// Claude and Antigravity session meters only: a "Not started" state for the current window
     /// when nothing has been spent in it yet. Driven by frozen usage (`used == 0`), not a window-timing
     /// read — the `resetsAt - now ≈ full period` test is only valid the instant the snapshot is captured,
     /// then drifts every second until the next refresh, which split the headline from the label (headline
     /// "100% left" while the label fell back to "Resets in 5h"). Usage is the stable, snapshot-consistent
-    /// signal: Codex's whole-percent floor is normalized to 0 at a fresh window in its mapper, Claude
-    /// reports 0 utilization directly, and Antigravity's mapper rounds its fraction-derived percent (so a
-    /// pool under ~0.5% used also reads 0). In each case zero means the window is effectively unused.
+    /// signal: providers that report 0 utilization directly remain at 0, and Antigravity's mapper rounds
+    /// its fraction-derived percent (so a pool under ~0.5% used also reads 0). Codex percentages are
+    /// preserved verbatim, so a reported 1% is not treated as "Not started."
     /// Still gated on `now < resetsAt`: once the reset has passed the snapshot is stale, so we drop the
     /// "Not started" claim and let the row fall back to the normal "Resets soon"/countdown formatting.
     func isFreshSessionWindow(now: Date = Date()) -> Bool {

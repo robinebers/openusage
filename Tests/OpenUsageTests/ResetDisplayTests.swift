@@ -49,10 +49,10 @@ final class ResetDisplayTests: XCTestCase {
         XCTAssertEqual(data.resetTooltip()?.hasPrefix("Resets in "), true)      // opposite = relative
     }
 
-    func testFreshSessionWindowShowsNotStartedForCodexClaudeAndAntigravity() {
+    func testFreshSessionWindowShowsNotStartedForClaudeAndAntigravity() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let period: TimeInterval = 5 * 3600
-        for id in ["codex.session", "claude.session",
+        for id in ["claude.session",
                    "antigravity.geminiPro", "antigravity.claude"] {
             var data = WidgetData(title: "Session", icon: .symbol("clock"), kind: .percent, used: 0, limit: 100)
             data.widgetID = id
@@ -86,7 +86,7 @@ final class ResetDisplayTests: XCTestCase {
         ]
         let descriptors = providers.flatMap(\.widgetDescriptors)
         let sessionIDs = Set(descriptors.filter(\.sample.isSessionWindow).map(\.id))
-        XCTAssertEqual(sessionIDs, ["codex.session", "claude.session",
+        XCTAssertEqual(sessionIDs, ["claude.session",
                                     "antigravity.geminiPro", "antigravity.claude"])
 
         // Same wiring pin for the menu-bar tray suffix (it replaced a title-string match).
@@ -96,7 +96,7 @@ final class ResetDisplayTests: XCTestCase {
     }
 
     func testAntigravityWeeklyRowsNeverReadNotStarted() {
-        // Antigravity's weekly meters are calendar windows, not rolling sessions — like Claude/Codex,
+        // Antigravity's weekly meters are calendar windows, not rolling sessions — like Claude,
         // only the 5h rows get the "Not started" treatment (fix: merged pools + weekly limits).
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let period: TimeInterval = 7 * 24 * 3600
