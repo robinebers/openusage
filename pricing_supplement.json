@@ -135,6 +135,7 @@
     { "pattern": "^composer-2\\.5$", "canonical": "composer-2.5" },
     { "pattern": "^composer-2\\.5-fast$", "canonical": "composer-2.5-fast" },
     { "pattern": "^github_bugbot$", "canonical": "github_bugbot" },
+    { "pattern": "^grok-4\\.5-fast(?:-(?:low|medium|high))?$", "canonical": "grok-4.5-fast" },
     { "pattern": "^grok-4\\.5(?:-(?:low|medium|high))?-fast$", "canonical": "grok-4.5-fast" },
     { "pattern": "^grok-4\\.5(?:-(?:low|medium|high))?$", "canonical": "grok-4.5" },
     { "pattern": "^kimi-k2\\.7(?:-code)?$", "canonical": "kimi-k2.7-code" },
