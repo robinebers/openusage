@@ -41,6 +41,9 @@ final class PricingBundledResourceTests: XCTestCase {
         XCTAssertEqual(pricing.resolve(model: "claude-4.6-opus-max-thinking")?.inputPerMillion, 5)
         XCTAssertEqual(pricing.resolve(model: "claude-4.6-opus-max-thinking-fast")?.inputPerMillion, 30)
         XCTAssertEqual(pricing.resolve(model: "gpt-5.5-xhigh-fast")?.inputPerMillion, 12.5)
+        XCTAssertEqual(pricing.resolve(model: "gpt-5.6-sol-ultra")?.inputPerMillion, 5)
+        XCTAssertEqual(pricing.resolve(model: "gpt-5.6-terra-high")?.inputPerMillion, 2.5)
+        XCTAssertEqual(pricing.resolve(model: "gpt-5.6-luna")?.inputPerMillion, 1)
         XCTAssertEqual(pricing.resolve(model: "grok-4-20-thinking")?.inputPerMillion, 2)
         XCTAssertEqual(pricing.resolve(model: "kimi-k2p5")?.inputPerMillion, 0.6)
         XCTAssertEqual(pricing.resolve(model: "glm-5.2-max")?.inputPerMillion, 1.4)
@@ -85,6 +88,27 @@ final class PricingBundledResourceTests: XCTestCase {
         let sonnet46 = try XCTUnwrap(pricing.resolve(model: "claude-4.6-sonnet"))
         XCTAssertEqual(sonnet5.inputPerMillion, sonnet46.inputPerMillion)
         XCTAssertEqual(sonnet5.outputPerMillion, sonnet46.outputPerMillion)
+    }
+
+    func testGPT56PricingAndAliases() throws {
+        let pricing = Self.pricing
+        let sol = try XCTUnwrap(pricing.resolve(model: "gpt-5.6-sol-ultra"))
+        XCTAssertEqual(sol.inputPerMillion, 5.0)
+        XCTAssertEqual(sol.cacheWritePerMillion, 6.25)
+        XCTAssertEqual(sol.cacheReadPerMillion, 0.5)
+        XCTAssertEqual(sol.outputPerMillion, 30.0)
+
+        let terra = try XCTUnwrap(pricing.resolve(model: "gpt-5.6-terra-high"))
+        XCTAssertEqual(terra.inputPerMillion, 2.5)
+        XCTAssertEqual(terra.cacheWritePerMillion, 3.125)
+        XCTAssertEqual(terra.cacheReadPerMillion, 0.25)
+        XCTAssertEqual(terra.outputPerMillion, 15.0)
+
+        let luna = try XCTUnwrap(pricing.resolve(model: "gpt-5.6-luna"))
+        XCTAssertEqual(luna.inputPerMillion, 1.0)
+        XCTAssertEqual(luna.cacheWritePerMillion, 1.25)
+        XCTAssertEqual(luna.cacheReadPerMillion, 0.1)
+        XCTAssertEqual(luna.outputPerMillion, 6.0)
     }
 
     /// Opus 4.7/4.8 fast modes: Cursor's published rates (supplement overrides) win over the
