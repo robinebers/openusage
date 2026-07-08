@@ -355,7 +355,16 @@ struct DashboardView: View {
                     isPresentingResetAllConfirm: $isPresentingResetAllConfirm
                 )
             }
-            .pinnedFooter(spacing: 0) { footerBar(for: layout.screen) }
+            .pinnedFooter(spacing: 0) {
+                PopoverFooter(
+                    screen: layout.screen,
+                    layout: layout,
+                    dataStore: dataStore,
+                    horizontalPadding: Self.footerHorizontalPadding
+                ) { screen, height in
+                    heightCoordinator.setFooter(height, for: screen)
+                }
+            }
     }
 
     /// The scrolling content for a screen, without chrome — this is the part that slides during a
@@ -384,152 +393,6 @@ struct DashboardView: View {
         }
     }
 
-    // MARK: - Pinned footer
-
-    /// The bottom chrome as one unit: the footer row — app identity + live refresh countdown (or the
-    /// Customize pin summary) plus the glass Customize/Settings buttons. Pinned via `pinnedFooter`
-    /// (`safeAreaBar` on macOS 26; `safeAreaInset` on macOS 15).
-    ///
-    /// Its background is `barGlass()` — content-aware Liquid Glass (`glassEffect`) that lenses the
-    /// in-app data scrolling beneath it, so the footer reads as real glass over the content (and stays
-    /// consistent regardless of what's behind the window; the body stays opaque). A custom `safeAreaBar`
-    /// gets no automatic system glass on macOS 27, so this explicit background is REQUIRED — without it
-    /// the footer is transparent and content bleeds through. On Settings the trailing buttons are empty
-    /// (`HeaderView` only shows them on the dashboard), leaving just the identity line.
-    @ViewBuilder
-    private func footerBar(for screen: PopoverScreen) -> some View {
-        Group {
-            if screen == .customize {
-                // No footer on Customize — the summary was retired with the old flat layout. A denied
-                // star shakes in place (StarButton) instead of surfacing a footer notice here.
-                EmptyView()
-            } else {
-                HStack(alignment: .center, spacing: 8) {
-                    footerIdentity
-                    Spacer(minLength: 8)
-                    HeaderView(screen: screen)
-                }
-            }
-        }
-        .padding(.horizontal, Self.footerHorizontalPadding)
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity)
-        // Content-aware Liquid Glass: `glassEffect` lenses the in-app data scrolling under the footer
-        // (not the desktop), so it stays consistent regardless of what's behind the window. Renders on
-        // macOS 26+, including the macOS 27 (Golden Gate) beta; macOS 15 falls back to a frosted material.
-        .barGlass()
-        // The footer's height feeds the auto-fit sum (see `PanelHeightCoordinator`); it varies — the
-        // Customize summary line vs the dashboard identity row vs the denied-pin notice — so measure it
-        // rather than assume a constant. Keyed by the destination `screen` (footer is keyed off `layout.screen`).
-        .onGeometryChange(for: CGFloat.self) { proxy in proxy.size.height } action: { height in
-            heightCoordinator.setFooter(height, for: screen)
-        }
-        // A successful "Share Screenshot" springs a small "Copied ✓" pill up just above the footer —
-        // a floating success toast that's more glanceable than the in-footer text line, and separate
-        // from it. Dashboard-only (share is a dashboard action). The pill re-identifies on the trigger
-        // so back-to-back copies of the same provider each replay the pop-in.
-        .overlay(alignment: .top) {
-            if screen == .dashboard, layout.shareConfirmation {
-                shareCopiedPill
-                    // Float just above the footer's top edge with a small gap (the pill is ~28pt, so -34
-                    // leaves ~6pt of clear space) — a toast over the bottom content, not covering the
-                    // footer's own identity row / Settings button.
-                    .offset(y: -34)
-            }
-        }
-        .animation(Motion.spring, value: layout.shareConfirmation)
-        .animation(Motion.spring, value: layout.shareConfirmationTrigger)
-    }
-
-    /// The floating "Copied to clipboard" pill that springs up just above the footer when a provider
-    /// screenshot is copied — a small frosted capsule that reads as a transient success toast. `.id` on
-    /// the trigger so a repeat copy of the same provider re-pops instead of sitting motionless.
-    private var shareCopiedPill: some View {
-        TransientPill(
-            systemImage: "checkmark.circle.fill",
-            text: "Copied to clipboard",
-            tint: Theme.positive,
-            trigger: layout.shareConfirmationTrigger
-        )
-    }
-
-    /// Count of enabled ("active") metrics across providers — the "N active" half of the Customize footer
-    /// summary. Pinned metrics are a subset of these.
-    /// Leading side of the footer. Normal mode shows the app name with the live "Next update in …"
-    /// line beneath it; Customize mode shows the pin count ("4 pinned") in the same slot.
-    /// Settings keeps the normal identity — the version line doubles as the About info there.
-    /// A denied pin attempt swaps either line for the reason (in orange), played with the macOS
-    /// deny shake — the wrong-password idiom — on every blocked click.
-    @ViewBuilder
-    private var footerIdentity: some View {
-        // Both lines share the same font and muted style so the footer reads as one block.
-        VStack(alignment: .leading, spacing: 0) {
-            Text("OpenUsage \(AppInfo.version)")
-            if let notice = layout.pinLimitNotice {
-                Text(notice)
-                    .foregroundStyle(Theme.notice)
-                    // This label is inserted by the denial itself, so it must shake on mount.
-                    .denyShake(trigger: layout.pinNoticeShakeTrigger, shakeOnAppear: true)
-            } else {
-                nextUpdateButton
-            }
-        }
-        .font(.caption2)
-        .foregroundStyle(.secondary)
-        .animation(Motion.spring, value: layout.pinLimitNotice)
-    }
-
-    /// Ticks once a second so the "Next update in …" copy counts down live, and doubles as the manual
-    /// refresh control: clicking it (or ⌘R) forces a fresh pass immediately. While a refresh is in
-    /// flight it reads "Updating…" with a small system spinner after the text.
-    private var nextUpdateButton: some View {
-        Button {
-            refreshNow()
-        } label: {
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                HStack(spacing: 5) {
-                    Text(updateStatusText(now: context.date))
-                        .monospacedDigit()
-                        .contentTransition(.numericText())
-                    if isUpdating {
-                        ProgressView()
-                            .controlSize(.mini)
-                    }
-                }
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .keyboardShortcut("r", modifiers: .command)
-        .hoverTooltip("Refresh now (⌘R)")
-        .disabled(isUpdating)
-    }
-
-    private func refreshNow() {
-        guard !isUpdating else { return }
-        Task { await dataStore.refreshAll(force: true) }
-    }
-
-    private var isUpdating: Bool {
-        !dataStore.refreshingProviderIDs.isEmpty
-    }
-
-    /// "Updating…" during an in-flight refresh, otherwise a live countdown to the next scheduled pass
-    /// (last completed pass + the refresh interval). Falls back to a full interval before the first pass.
-    private func updateStatusText(now: Date) -> String {
-        if isUpdating {
-            return "Updating…"
-        }
-        let interval = RefreshSetting.interval
-        let base = dataStore.lastRefreshAt ?? now
-        let remaining = max(0, base.addingTimeInterval(interval).timeIntervalSince(now))
-        let totalSeconds = Int(remaining.rounded(.up))
-        if totalSeconds >= 60 {
-            let minutes = Int((Double(totalSeconds) / 60).rounded(.up))
-            return "Next update in \(minutes)m"
-        }
-        return "Next update in \(totalSeconds)s"
-    }
 }
 
 /// The popover's opaque backdrop tray, painted behind all content so the popover reads as one solid
