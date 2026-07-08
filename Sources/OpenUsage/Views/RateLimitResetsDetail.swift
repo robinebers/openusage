@@ -9,6 +9,9 @@ import SwiftUI
 /// calm — header + flat body — presented via `.popover`.
 struct RateLimitResetsDetail: View {
     let title: String
+    /// The row's "N available" count. Only used to disambiguate an empty `expiries` list: 0 → genuinely
+    /// no credits (empty state); > 0 → credits we have but whose expiry times weren't fetched.
+    let count: Int
     let expiries: [Date]
     /// Reports whether the cursor is inside the popover, so the trigger keeps it open while the cursor
     /// travels from the inline value into the popover, and closes once it leaves both.
@@ -19,13 +22,12 @@ struct RateLimitResetsDetail: View {
     private static let width: CGFloat = 250
 
     var body: some View {
-        let entries = Self.entries(from: expiries)
         VStack(alignment: .leading, spacing: 8) {
             header
-            if entries.isEmpty {
-                emptyState
-            } else {
-                timeline(entries)
+            switch Self.content(count: count, expiries: expiries) {
+            case .timeline(let entries): timeline(entries)
+            case .unknownExpiries(let count): unknownExpiriesState(count)
+            case .empty: emptyState
             }
         }
         .padding(14)
@@ -54,6 +56,27 @@ struct RateLimitResetsDetail: View {
                 .accessibilityHidden(true)
             Text("You have no rate limit resets")
                 .font(.system(size: density.supportingPointSize))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+    }
+
+    /// Shown when the row has credits but their per-credit expiry list wasn't fetched (the usage-body
+    /// count fallback): state the count so the popover never contradicts the row's "N available", and
+    /// say plainly that the expiry times aren't available rather than implying there are none.
+    private func unknownExpiriesState(_ count: Int) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: "clock.badge.questionmark")
+                .font(.system(size: 20))
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text("\(count) available")
+                .font(.system(size: density.supportingPointSize))
+                .foregroundStyle(.primary)
+            Text("Expiry times unavailable")
+                .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
@@ -126,9 +149,27 @@ struct RateLimitResetsDetail: View {
         .accessibilityLabel(entry.accessibilityLabel)
     }
 
+    /// What the body renders, resolved once from the count and expiry list so the "empty vs. count-only
+    /// vs. timeline" choice is unit-testable and can't drift between the view and its tests.
+    enum Content: Equatable {
+        case timeline([Entry])
+        case unknownExpiries(count: Int)
+        case empty
+    }
+
+    /// Empty `expiries` is ambiguous: a genuinely empty balance (`count == 0`) shows the empty state,
+    /// but a positive `count` with no expiries means the dedicated expiry fetch was unavailable and the
+    /// row fell back to the usage-body count — show that count rather than "no resets".
+    static func content(count: Int, expiries: [Date], now: Date = Date()) -> Content {
+        let entries = entries(from: expiries, now: now)
+        if !entries.isEmpty { return .timeline(entries) }
+        if count > 0 { return .unknownExpiries(count: count) }
+        return .empty
+    }
+
     /// One timeline node's display strings, derived from a credit's expiry instant. Pure and static so
     /// the phrasing is unit-testable without a view.
-    struct Entry: Identifiable {
+    struct Entry: Identifiable, Equatable {
         let id: Int          // 0-based row index (soonest first)
         let number: Int      // 1-based reset number, shown inside the dot
         let severity: WidgetData.MeterSeverity

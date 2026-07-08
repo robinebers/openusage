@@ -219,6 +219,27 @@ final class ResetDisplayTests: XCTestCase {
         XCTAssertTrue(RateLimitResetsDetail.entries(from: [], now: Date()).isEmpty)
     }
 
+    func testResetsPopoverContentResolvesEmptyCountOnlyAndTimeline() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+        // Zero credits -> the genuine empty state.
+        XCTAssertEqual(RateLimitResetsDetail.content(count: 0, expiries: [], now: now), .empty)
+
+        // Credits present but no expiry list (dedicated fetch unavailable -> usage-body count fallback):
+        // must NOT read "no resets"; it states the count instead.
+        XCTAssertEqual(
+            RateLimitResetsDetail.content(count: 3, expiries: [], now: now),
+            .unknownExpiries(count: 3)
+        )
+
+        // Expiries present -> the timeline.
+        let expiries = [now.addingTimeInterval(4 * 24 * 3600)]
+        guard case .timeline(let entries) = RateLimitResetsDetail.content(count: 1, expiries: expiries, now: now) else {
+            return XCTFail("expected timeline")
+        }
+        XCTAssertEqual(entries.count, 1)
+    }
+
     func testDeadlineLabelSharesFormatAcrossPrefixesAndModes() {
         let calendar = utcCalendar()
         let now = calendar.date(from: DateComponents(year: 2024, month: 6, day: 1, hour: 12))!

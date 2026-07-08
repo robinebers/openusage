@@ -359,6 +359,14 @@ struct WidgetData: Hashable {
         return Self.expirySeverity(secondsRemaining: soonest.timeIntervalSince(now))
     }
 
+    /// The available reset-credit count backing a `showsResetExpiries` row (its "N available" figure).
+    /// Lets the popover tell "no credits" (empty state) from "credits whose per-credit expiries we
+    /// couldn't fetch" — the usage-body fallback carries the count but no expiry list, so `expiriesAt`
+    /// is empty while the row still reads e.g. "3 available".
+    var resetCreditCount: Int {
+        Int((selectedValues.first?.number ?? 0).rounded(.down))
+    }
+
     /// Hover tooltip for a row carrying expiry instants (the Codex reset-credit row, "2 available"):
     /// when each credit's reset will expire, following the global relative/absolute mode. One credit →
     /// "Reset expires in 12d 18h" (relative) / "Reset expires Feb 15 at 3:45 PM" (absolute); several →

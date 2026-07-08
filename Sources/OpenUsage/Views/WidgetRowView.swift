@@ -361,7 +361,8 @@ struct WidgetRowView: View {
                         modelHover.detailHover(inside)
                     }
                 } else if data.showsResetExpiries {
-                    RateLimitResetsDetail(title: data.title, expiries: data.expiriesAt) { inside in
+                    RateLimitResetsDetail(title: data.title, count: data.resetCreditCount,
+                                          expiries: data.expiriesAt) { inside in
                         modelHover.detailHover(inside)
                     }
                 }
