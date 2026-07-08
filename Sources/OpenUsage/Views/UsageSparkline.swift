@@ -34,6 +34,17 @@ struct UsageSparkline: View {
             // Anchor the popover to the bar strip (not the whole row), so its arrow points straight up
             // at the chart rather than at the row's center, off to the left of the bars.
             bars
+                // Match the spend/reset value affordance: light the sparkline as soon as the pointer
+                // arrives, then hold the highlight while its detail popover is open so the chart still
+                // reads as the popover's source. `hover.dismiss()` clears both flags on panel close.
+                .background {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(.quaternary)
+                        .padding(.horizontal, -7)
+                        .padding(.vertical, -4)
+                        .opacity(showChartHighlight ? 1 : 0)
+                }
+                .animation(.easeOut(duration: 0.12), value: showChartHighlight)
                 // Only the bar strip is hoverable — hovering the title must not reveal the detail.
                 .contentShape(Rectangle())
                 .onContinuousHover { phase in
@@ -52,6 +63,11 @@ struct UsageSparkline: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
         .onDisappear { hover.dismiss() }
+    }
+
+    /// Immediate pointer affordance plus a persistent source highlight while the popover is visible.
+    private var showChartHighlight: Bool {
+        hover.overInline || hover.isPresented
     }
 
     private var bars: some View {
