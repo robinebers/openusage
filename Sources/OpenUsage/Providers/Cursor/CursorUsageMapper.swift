@@ -254,9 +254,9 @@ enum CursorUsageMapper {
     /// Append the shared Today / Yesterday / Last 30 Days spend tiles from Cursor's CSV rows. The rows
     /// are aggregated into one local-calendar-day `DailyUsageSeries` and handed to `SpendTileMapper`
     /// — the same builder the Claude/Codex/Grok tiles use — so the output is identical apart from the
-    /// `estimated: false` flag (Cursor spend is server-priced, so its dollars are not marked estimated). Callers only
-    /// invoke this when the CSV fetched and parsed, so a failure appends nothing and the tiles read
-    /// "No data".
+    /// source note. Cursor's costs are calculated locally from the exported token counts, so the dollar
+    /// values carry the estimate icon. Callers only invoke this when the CSV fetched and parsed, so a
+    /// failure appends nothing and the tiles read "No data".
     ///
     /// Model breakdown rows group by base model, not raw CSV slug: Cursor exports one slug per thinking
     /// effort / fast combination (`claude-opus-4-8-thinking-max`, `gpt-5.5-extra-high-fast`, …), and a
@@ -315,11 +315,11 @@ enum CursorUsageMapper {
                 }
             )
         })
-        SpendTileMapper.appendTokenUsage(series, to: &lines, now: now, estimated: false,
+        SpendTileMapper.appendTokenUsage(series, to: &lines, now: now, estimated: true,
                                          unknownModelsByDay: unknownModelsByDay,
                                          modelUsage: modelUsage,
                                          modelSourceNote: "From your Cursor usage export")
-        // Cursor's tokens come from the server-priced usage CSV, not a local CLI log, so the trend
+        // Cursor's tokens come from the server-exported usage CSV, not a local CLI log, so the trend
         // note names that source rather than the "estimated from local logs" line the log-scanning
         // providers use. Tokens are measured either way.
         SpendTileMapper.appendUsageTrend(series, to: &lines, now: now, note: "From your Cursor usage export")

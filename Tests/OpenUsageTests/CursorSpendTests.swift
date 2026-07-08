@@ -94,11 +94,11 @@ final class CursorSpendRangeTests: XCTestCase {
         var lines: [MetricLine] = []
         CursorUsageMapper.appendSpendLines(rows: rows, now: now, pricing: TestPricing.bundled, to: &lines)
 
-        // Combined cost + tokens, server-priced so the dollar value is not marked estimated.
-        XCTAssertEqual(values(lines, "Today"), [MetricValue(number: 1.00, kind: .dollars), MetricValue(number: 100, kind: .count, label: "tokens")])
-        XCTAssertEqual(values(lines, "Yesterday"), [MetricValue(number: 2.00, kind: .dollars), MetricValue(number: 200, kind: .count, label: "tokens")])
+        // Tokens come from Cursor; dollars are calculated locally and marked as estimated.
+        XCTAssertEqual(values(lines, "Today"), [MetricValue(number: 1.00, kind: .dollars, estimated: true), MetricValue(number: 100, kind: .count, label: "tokens")])
+        XCTAssertEqual(values(lines, "Yesterday"), [MetricValue(number: 2.00, kind: .dollars, estimated: true), MetricValue(number: 200, kind: .count, label: "tokens")])
         // Last 30 Days sums every fetched day (the provider scopes the CSV to a 30-day window).
-        XCTAssertEqual(values(lines, "Last 30 Days"), [MetricValue(number: 8.50, kind: .dollars), MetricValue(number: 1349, kind: .count, label: "tokens")])
+        XCTAssertEqual(values(lines, "Last 30 Days"), [MetricValue(number: 8.50, kind: .dollars, estimated: true), MetricValue(number: 1349, kind: .count, label: "tokens")])
     }
 
     func testZeroActivityLeavesTilesUnbacked() {
@@ -128,7 +128,7 @@ final class CursorSpendRangeTests: XCTestCase {
             return XCTFail("expected a Usage Trend chart line")
         }
         XCTAssertEqual(label, "Usage Trend")
-        // Cursor's tokens come from the server-priced CSV, so the note names that source, not local logs.
+        // Cursor's tokens come from its server export, so the note names that source, not local logs.
         XCTAssertEqual(note, "From your Cursor usage export")
         XCTAssertEqual(points.count, 31, "one bar per calendar day across the 31-day window")
         XCTAssertEqual(points.last?.value, 100, "today's tokens land on the last bar")
@@ -195,7 +195,7 @@ final class CursorSpendRangeTests: XCTestCase {
         // The unpriced row is excluded from the tile's tokens and the breakdown alike — it surfaces
         // only through the unknown-model warning.
         XCTAssertEqual(values(lines, "Today"),
-                       [MetricValue(number: 3.01, kind: .dollars), MetricValue(number: 300, kind: .count, label: "tokens")])
+                       [MetricValue(number: 3.01, kind: .dollars, estimated: true), MetricValue(number: 300, kind: .count, label: "tokens")])
         XCTAssertEqual(unknown(lines, "Today"), ["unpriced-cursor-model"])
         let breakdown = try XCTUnwrap(modelBreakdown(lines, "Today"))
         XCTAssertEqual(breakdown.sourceNote, "From your Cursor usage export")
@@ -380,7 +380,7 @@ final class CursorSpendProviderTests: XCTestCase {
                     providerID: cursor.provider.id,
                     displayName: cursor.provider.displayName,
                     lines: [.values(label: "Today", values: [
-                        MetricValue(number: dollars, kind: .dollars),
+                        MetricValue(number: dollars, kind: .dollars, estimated: true),
                         MetricValue(number: Double(tokens), kind: .count, label: "tokens")
                     ])]
                 )
@@ -402,8 +402,7 @@ final class CursorSpendProviderTests: XCTestCase {
             XCTAssertTrue(remaining.hasData)
             XCTAssertEqual(remaining.valueText, expectedValue)
             XCTAssertEqual(remaining.unboundedDetail, expectedDetail)
-            // Cursor spend is server-priced, so the combined tile carries no local-estimate note.
-            XCTAssertNil(remaining.infoNote)
+            XCTAssertEqual(remaining.infoNote, WidgetData.localEstimateNote)
             // Unbounded: identical under both meter styles.
             XCTAssertEqual(used.valueText, remaining.valueText)
             XCTAssertEqual(used.unboundedDetail, remaining.unboundedDetail)

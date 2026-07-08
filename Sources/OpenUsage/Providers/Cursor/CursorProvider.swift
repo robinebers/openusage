@@ -33,9 +33,9 @@ final class CursorProvider: ProviderRuntime {
     /// time by ~12h+ in June 2026, so spend tracking was disabled for a stretch (issue #758). It is back
     /// on: the spend tiles (Today / Yesterday / Last 30 Days) and the token trend are imputed from the CSV
     /// via `CursorUsageCSV`, the shared `ModelPricingStore`, and `CursorUsageMapper.appendSpendLines`,
-    /// and the `cursor.today/yesterday/last30/trend` descriptors surface in the layout again. Spend that
-    /// uses a model no pricing source knows prices to $0, so each affected period's tile carries the
-    /// unknown model names for the warning triangle (see `appendSpendLines`).
+    /// and the `cursor.today/yesterday/last30/trend` descriptors surface in the layout again. Usage from
+    /// a model no pricing source knows is left out, and the affected period carries the model name for
+    /// the warning triangle (see `appendSpendLines`).
     static let spendTrackingEnabled = true
 
     var widgetDescriptors: [WidgetDescriptor] {

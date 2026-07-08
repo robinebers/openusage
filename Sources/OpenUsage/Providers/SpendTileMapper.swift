@@ -2,8 +2,8 @@ import Foundation
 
 /// Turns local daily token/cost data into the shared Today / Yesterday / Last 30 Days spend tiles.
 /// Every spend-tracking provider funnels through here so the tiles render identically regardless of
-/// source: Claude / Codex / Grok feed token/cost from their CLI logs (estimated dollars),
-/// Cursor feeds server-priced dollars from its CSV export (`estimated: false`). The data shape
+/// source: Claude / Codex / Grok feed token/cost from their CLI logs, while Cursor feeds token/cost
+/// derived from its CSV export. The data shape
 /// (`DailyUsageSeries`) is a provider-neutral per-day carrier shared by every source.
 enum SpendTileMapper {
     /// Append the three spend tiles (Today / Yesterday / Last 30 Days). A period with no usage is left
@@ -12,8 +12,7 @@ enum SpendTileMapper {
     /// that proves otherwise. This holds for every source (the Claude/Codex/Grok log scanners,
     /// Cursor's CSV export); there's no per-source branching. "No data" is also what a tile shows when
     /// the source couldn't be read at all (missing log, failed API/CSV), where the caller appends
-    /// nothing. `estimated` flags the dollar value as a local estimate (drives the ⓘ); pass `false` for
-    /// server-priced sources like Cursor.
+    /// nothing. `estimated` controls whether the dollar value carries the local-estimate marker (ⓘ).
     /// `unknownModelsByDay` maps a `yyyy-MM-dd` day key to the set of model names used that day that no
     /// pricing source can price. Today / Yesterday pick up their own day's set; Last 30 Days carries the
     /// union across the whole window. Empty (the default) for sources without unknown-model detection, so
@@ -178,10 +177,9 @@ enum SpendTileMapper {
     /// rendered combined as "$4.08 · 1.2M tokens". The token value carries the "tokens" unit (the same
     /// way Codex credits carry "credits"), so the three spend tiles read consistently.
     ///
-    /// Only called for a period with real usage (see `hasUsage`), so the dollar is omitted only for an
-    /// unpriced day that still used tokens (e.g. an unknown model) — that row shows just the token count,
-    /// since its cost is genuinely unknown rather than zero. `estimated` flags the dollars as a local
-    /// estimate (the ⓘ); token counts are always measured, never flagged.
+    /// Only called for a period with real usage (see `hasUsage`). Some token-only callers may not provide
+    /// a dollar value. `estimated` flags locally calculated dollars with the ⓘ; token counts are always
+    /// measured, never flagged.
     private static func spendValues(tokens: Int, costUSD: Double?, estimated: Bool) -> [MetricValue] {
         var values: [MetricValue] = []
         if let costUSD {
