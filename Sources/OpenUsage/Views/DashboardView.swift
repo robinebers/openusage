@@ -49,10 +49,7 @@ struct DashboardView: View {
     /// attaches to this panel as a sheet (see `StatusItemController`'s attached-sheet guard), so a
     /// click on its buttons can't be misread as an outside click that dismisses the popover.
     @State private var isPresentingResetAllConfirm = false
-    /// Row rhythm tracks the global density setting live.
-    @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
-    @AppStorage(TotalSpendSetting.key) private var showTotalSpend = true
-
+    /// Shared horizontal inset for dashboard content and fixed chrome.
     private static let outerPadding: CGFloat = 14
     /// Breathing room between the bottom of the scrolling content and the pinned footer. Kept small
     /// because the native scroll edge effect — not whitespace — provides the visual separation.
@@ -356,7 +353,16 @@ struct DashboardView: View {
     private func scrollBody(for screen: PopoverScreen) -> some View {
         switch screen {
         case .dashboard:
-            scrollingDashboard
+            DashboardContentView(
+                container: container,
+                layout: layout,
+                updater: updater,
+                reorderSpaceName: Self.reorderSpace,
+                horizontalPadding: Self.outerPadding,
+                bottomGap: Self.contentBottomGap,
+                reorderLift: $reorderLift,
+                scrollPosition: $dashboardScrollPosition
+            )
         case .customize:
             CustomizeView(
                 reorderSpaceName: Self.reorderSpace,
@@ -419,67 +425,6 @@ struct DashboardView: View {
             withAnimation(Motion.spring) { layout.customizeProviderID = nil }
         } else {
             withAnimation(Motion.modeSwitch) { layout.screen = .dashboard }
-        }
-    }
-
-    /// The widget list as a scroll view that fills the region the footer leaves. The content scrolls
-    /// under the footer with the native soft scroll-edge fade (`softTopScrollEdge`/`softBottomScrollEdge`
-    /// are applied uniformly in `screenView`). Unlike Customize/Settings it tracks the dashboard's own
-    /// scroll position, so that modifier stays here on the scroll view.
-    private var scrollingDashboard: some View {
-        PopoverScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                // A pending update found by a scheduled Sparkle check tops everything — it's the
-                // reminder the buried Sparkle window can't deliver for a dockless app.
-                if let updateVersion = updater.availableUpdateVersion {
-                    UpdateBannerCard(version: updateVersion)
-                        .padding(.bottom, density.sectionSpacing)
-                        .transition(.scale(scale: 0.95).combined(with: .opacity))
-                }
-                // The one-time first-run hint sits above the provider sections (and above the
-                // empty-state line, which a fresh install can hit while nothing has data yet).
-                // It scrolls with the content — a grouped card, not chrome.
-                if container.onboarding.isCustomizeHintPending {
-                    CustomizeHintCard()
-                        .padding(.bottom, density.sectionSpacing)
-                        .transition(.scale(scale: 0.95).combined(with: .opacity))
-                }
-                widgetContent
-            }
-            .animation(Motion.spring, value: container.onboarding.isCustomizeHintPending)
-            .animation(Motion.spring, value: updater.availableUpdateVersion)
-            .padding(.horizontal, Self.outerPadding)
-            .padding(.top, density.contentTopPadding)
-            .padding(.bottom, Self.contentBottomGap)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .scrollPosition($dashboardScrollPosition)
-    }
-
-    @ViewBuilder
-    private var widgetContent: some View {
-        // The cross-provider Total Spend ring tops the provider sections whenever the user hasn't
-        // hidden it (Settings → General) and any enabled provider is capable of tracking spend.
-        // The gate is capability, not data — and independent of the provider sections below, so a
-        // fresh morning, a lone provider, or a dashboard with every metric hidden still shows the
-        // card (with its ring or "No spend data" state) rather than silently dropping it.
-        if showTotalSpend, layout.hasSpendCapableProvider {
-            TotalSpendCard()
-                .padding(.bottom, density.sectionSpacing)
-        }
-        if layout.displayGroups.isEmpty {
-            Text("Turn on Customize to choose what to show.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 24)
-                .padding(.horizontal, 16)
-        } else {
-            WidgetGroupedListView(
-                reorderSpaceName: Self.reorderSpace,
-                reorderLift: $reorderLift
-            )
         }
     }
 
