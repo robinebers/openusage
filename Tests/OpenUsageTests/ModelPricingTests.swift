@@ -139,10 +139,17 @@ final class ModelPricingTests: XCTestCase {
         XCTAssertEqual(fast?.fastMultiplier, 1, "multiplier folded into the scaled rates")
     }
 
-    func testFastSuffixWithoutMultiplierFallsBackToBaseRate() throws {
-        // ccusage parity: unknown fast variants price at the base rate via fuzzy matching.
+    func testFastSuffixWithoutMultiplierReturnsNil() throws {
         let pricing = try makePricing(primary: ["gpt-9": rates(1, 2)])
-        XCTAssertEqual(pricing.resolve(model: "gpt-9-fast")?.inputPerMillion, 1)
+        XCTAssertNil(pricing.resolve(model: "gpt-9-fast"))
+    }
+
+    func testFastSuffixWithoutMultiplierUsesSecondaryExactEntry() throws {
+        let pricing = try makePricing(
+            primary: ["gpt-9": rates(1, 2)],
+            secondary: ["gpt-9-fast": rates(2.5, 5)]
+        )
+        XCTAssertEqual(pricing.resolve(model: "gpt-9-fast")?.inputPerMillion, 2.5)
     }
 
     func testDatedBaseKeyStillFindsFastMultiplier() throws {

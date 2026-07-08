@@ -9,8 +9,9 @@ import os
 /// 1. Supplement alias rules rewrite the slug to a canonical key (raw name kept as fallback).
 /// 2. Supplement pricing (exact) — Cursor-native models live here.
 /// 3. LiteLLM exact.
-/// 4. `-fast` suffix: price the base model and scale by its fast multiplier.
-/// 5. LiteLLM fuzzy (boundary-aware substring matching).
+/// 4. `-fast` suffix: price the base model and scale by its fast multiplier; if no multiplier or
+///    exact fast entry exists, leave it unpriced instead of silently using standard-speed rates.
+/// 5. LiteLLM fuzzy (boundary-aware substring matching, for non-fast slugs only).
 /// 6. models.dev exact — id-level gap-filler only. models.dev aggregates resellers under near-
 ///    identical bare ids (`glm-5-2` vs `glm-5.2`) with diverging rates, so fuzzy matching against
 ///    it risks wrong dollars; unknown slug variants stay unpriced (and visibly flagged) instead.
@@ -68,14 +69,15 @@ final class ModelPricing: Sendable {
         if let entry = supplement.pricing[name] { return entry }
         if let exact = primary.findExact(name) { return exact.rates }
         if let fast = fastVariant(name) { return fast }
+        if name.hasSuffix("-fast") { return secondary.findExact(name)?.rates }
         if let fuzzy = primary.findFuzzy(name) { return fuzzy.rates }
         if let exact = secondary.findExact(name) { return exact.rates }
         return nil
     }
 
     /// Prices `<base>-fast` slugs from their base entry when a fast multiplier is known. Returns
-    /// nil when the multiplier is unknown so plain fuzzy matching can still price the base rate
-    /// (ccusage's behavior for unrecognized fast variants).
+    /// nil when the multiplier is unknown; the caller may still accept an exact fast entry from
+    /// models.dev, but never fuzzy-matches the standard-speed base rate.
     private func fastVariant(_ name: String) -> ModelRates? {
         guard name.hasSuffix("-fast") else { return nil }
         let base = String(name.dropLast("-fast".count))
