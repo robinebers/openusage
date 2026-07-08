@@ -105,6 +105,33 @@ final class ModelUsageHoverTests: XCTestCase {
         }
     }
 
+    func testSharesUseCostWhenEveryModelIsPriced() {
+        let models = [
+            ModelUsageEntry(model: "alpha", totalTokens: 10, costUSD: 3),
+            ModelUsageEntry(model: "beta", totalTokens: 90, costUSD: 1)
+        ]
+
+        XCTAssertEqual(ModelUsageDetail.shares(for: models), [0.75, 0.25])
+    }
+
+    func testSharesUseTokensForEveryModelWhenOneIsUnpriced() {
+        let models = [
+            ModelUsageEntry(model: "alpha", totalTokens: 25, costUSD: 9),
+            ModelUsageEntry(model: "beta", totalTokens: 75, costUSD: nil)
+        ]
+
+        XCTAssertEqual(ModelUsageDetail.shares(for: models), [0.25, 0.75])
+    }
+
+    func testSharesAreZeroWhenThereIsNoCostOrTokenTotal() {
+        let models = [
+            ModelUsageEntry(model: "alpha", totalTokens: 0, costUSD: nil),
+            ModelUsageEntry(model: "beta", totalTokens: 0, costUSD: nil)
+        ]
+
+        XCTAssertEqual(ModelUsageDetail.shares(for: models), [0, 0])
+    }
+
     func testHoverPopoverStateOpensThenClosesAroundBothRegions() async {
         let state = HoverPopoverState(revealDelay: .milliseconds(1), hideGrace: .milliseconds(1))
         XCTAssertFalse(state.isPresented)
