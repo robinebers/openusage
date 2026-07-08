@@ -59,10 +59,16 @@ actor IncrementalJSONLScanner<Item: Sendable> {
 
     private var cache: [String: CachedFile] = [:]
     private let maxConcurrentParses: Int
+    private let readFailureReporter: UsageLogReadFailureReporter
 
-    init(maxConcurrentParses: Int = 8) {
+    init(
+        maxConcurrentParses: Int = 8,
+        logTag: String = LogTag.refresh.rawValue,
+        readFailureWarning: UsageLogReadFailureReporter.Warning? = nil
+    ) {
         precondition(maxConcurrentParses > 0)
         self.maxConcurrentParses = maxConcurrentParses
+        self.readFailureReporter = UsageLogReadFailureReporter(logTag: logTag, warning: readFailureWarning)
     }
 
     /// Re-parse the in-window files (reusing the cache on an unchanged path + size + mtime), then return
@@ -85,11 +91,15 @@ actor IncrementalJSONLScanner<Item: Sendable> {
                 toParse.append(file)
             }
         }
-        for (file, parsed) in await Self.parseFiles(
+        let parseResults = await Self.parseFiles(
             toParse,
             maxConcurrentParses: maxConcurrentParses,
             parse: parse
-        ) {
+        )
+        let unreadablePaths = Set(parseResults.lazy.filter(\.readFailed).map(\.file.path))
+        await readFailureReporter.update(failingPaths: unreadablePaths)
+        for result in parseResults {
+            let (file, parsed) = (result.file, result.items)
             guard let parsed else { continue }
             nextCache[file.path] = CachedFile(size: file.size, mtime: file.mtime, items: parsed)
         }
@@ -109,15 +119,21 @@ actor IncrementalJSONLScanner<Item: Sendable> {
         _ files: [JSONLScanning.DiscoveredFile],
         maxConcurrentParses: Int,
         parse: @Sendable @escaping (Data) -> [Item]?
-    ) async -> [(JSONLScanning.DiscoveredFile, [Item]?)] {
-        await withTaskGroup(of: (Int, [Item]?).self, returning: [(JSONLScanning.DiscoveredFile, [Item]?)].self) { group in
+    ) async -> [(file: JSONLScanning.DiscoveredFile, items: [Item]?, readFailed: Bool)] {
+        await withTaskGroup(
+            of: (Int, [Item]?, Bool).self,
+            returning: [(file: JSONLScanning.DiscoveredFile, items: [Item]?, readFailed: Bool)].self
+        ) { group in
             func addTask(at index: Int) {
                 let file = files[index]
                 group.addTask {
-                    guard let data = FileManager.default.contents(atPath: file.path) else {
-                        return (index, nil)
+                    guard FileManager.default.fileExists(atPath: file.path) else {
+                        return (index, nil, false)
                     }
-                    return (index, parse(data))
+                    guard let data = FileManager.default.contents(atPath: file.path) else {
+                        return (index, nil, true)
+                    }
+                    return (index, parse(data), false)
                 }
             }
 
@@ -128,9 +144,9 @@ actor IncrementalJSONLScanner<Item: Sendable> {
                 nextIndex += 1
             }
 
-            var results: [(JSONLScanning.DiscoveredFile, [Item]?)] = files.map { ($0, nil) }
-            for await (index, items) in group {
-                results[index] = (files[index], items)
+            var results = files.map { (file: $0, items: Optional<[Item]>.none, readFailed: false) }
+            for await (index, items, readFailed) in group {
+                results[index] = (files[index], items, readFailed)
                 if nextIndex < files.count {
                     addTask(at: nextIndex)
                     nextIndex += 1

@@ -48,7 +48,7 @@ actor CodexLogUsageScanner {
     }
 
     /// Off-main-actor incremental parse cache (keyed path + size + mtime), owned by the shared scanner.
-    private let scanner = IncrementalJSONLScanner<Event>()
+    private let scanner = IncrementalJSONLScanner<Event>(logTag: LogTag.plugin("codex"))
 
     /// Scan the last `daysBack` days of Codex rollouts. Returns `nil` when no Codex home or no
     /// session files exist (the spend tiles then render "No data").

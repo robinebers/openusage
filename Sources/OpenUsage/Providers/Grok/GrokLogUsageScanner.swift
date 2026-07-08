@@ -12,15 +12,21 @@ struct GrokLogUsageScanner: Sendable {
     var files: TextFileAccessing
     var environment: EnvironmentReading
     var homeDirectory: @Sendable () -> URL
+    private let readFailureReporter: UsageLogReadFailureReporter
 
     init(
         files: TextFileAccessing = LocalTextFileAccessor(),
         environment: EnvironmentReading = ProcessEnvironmentReader(),
-        homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser }
+        homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser },
+        readFailureWarning: UsageLogReadFailureReporter.Warning? = nil
     ) {
         self.files = files
         self.environment = environment
         self.homeDirectory = homeDirectory
+        self.readFailureReporter = UsageLogReadFailureReporter(
+            logTag: LogTag.plugin("grok"),
+            warning: readFailureWarning
+        )
     }
 
     /// `~/.grok/logs/unified.jsonl`, or `$GROK_HOME/logs/unified.jsonl` when that env var is set.
@@ -40,7 +46,16 @@ struct GrokLogUsageScanner: Sendable {
     /// read + parse runs off the main actor when a `@MainActor` provider `await`s it.
     func scan(daysBack: Int = 30, now: Date = Date(), pricing: ModelPricing) async -> LogUsageScan? {
         let path = logPath
-        guard files.exists(path), let text = try? files.readText(path) else {
+        guard files.exists(path) else {
+            await readFailureReporter.update(failingPaths: [])
+            return nil
+        }
+        let text: String
+        do {
+            text = try files.readText(path)
+            await readFailureReporter.update(failingPaths: [])
+        } catch {
+            await readFailureReporter.update(failingPaths: [path])
             return nil
         }
         return Self.parse(text, since: JSONLScanning.sinceDate(daysBack: daysBack, now: now), pricing: pricing)

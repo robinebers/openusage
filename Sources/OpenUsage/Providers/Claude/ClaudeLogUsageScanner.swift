@@ -45,7 +45,7 @@ actor ClaudeLogUsageScanner {
     }
 
     /// Off-main-actor incremental parse cache (keyed path + size + mtime), owned by the shared scanner.
-    private let scanner = IncrementalJSONLScanner<Entry>()
+    private let scanner = IncrementalJSONLScanner<Entry>(logTag: LogTag.plugin("claude"))
 
     /// Scan the last `daysBack` days of Claude logs. Returns `nil` when no Claude data directory or
     /// no log files exist (the spend tiles then render "No data"); returns an empty series when logs

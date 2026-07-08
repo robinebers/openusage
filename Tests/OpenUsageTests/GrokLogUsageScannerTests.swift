@@ -132,13 +132,72 @@ final class GrokLogUsageScannerTests: XCTestCase {
     }
 
     func testScanReturnsNilWhenLogMissing() async {
+        let warnings = GrokWarningRecorder()
         let scanner = GrokLogUsageScanner(
             files: FakeFiles(),
             environment: FakeEnvironment(),
-            homeDirectory: { URL(fileURLWithPath: "/home/none") }
+            homeDirectory: { URL(fileURLWithPath: "/home/none") },
+            readFailureWarning: warnings.record
         )
 
         let usage = await scanner.scan(pricing: TestPricing.bundled)
         XCTAssertNil(usage)
+        XCTAssertEqual(warnings.counts, [])
+    }
+
+    func testUnreadableLogWarnsOnceUntilItRecovers() async {
+        let path = "/custom/grok/logs/unified.jsonl"
+        let files = FailingTextFiles(path: path)
+        let warnings = GrokWarningRecorder()
+        let scanner = GrokLogUsageScanner(
+            files: files,
+            environment: FakeEnvironment(["GROK_HOME": "/custom/grok"]),
+            homeDirectory: { URL(fileURLWithPath: "/home/ignored") },
+            readFailureWarning: warnings.record
+        )
+
+        _ = await scanner.scan(pricing: TestPricing.bundled)
+        _ = await scanner.scan(pricing: TestPricing.bundled)
+        XCTAssertEqual(warnings.counts, [1])
+
+        files.shouldFail = false
+        _ = await scanner.scan(pricing: TestPricing.bundled)
+        files.shouldFail = true
+        _ = await scanner.scan(pricing: TestPricing.bundled)
+        XCTAssertEqual(warnings.counts, [1, 1])
+    }
+}
+
+private final class GrokWarningRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recordedCounts: [Int] = []
+
+    var counts: [Int] { lock.withLock { recordedCounts } }
+
+    func record(_ count: Int) {
+        lock.withLock { recordedCounts.append(count) }
+    }
+}
+
+private final class FailingTextFiles: TextFileAccessing, @unchecked Sendable {
+    let path: String
+    var shouldFail = true
+
+    init(path: String) {
+        self.path = path
+    }
+
+    func exists(_ path: String) -> Bool { path == self.path }
+
+    func readText(_ path: String) throws -> String {
+        if shouldFail { throw TestError.unreadable }
+        return ""
+    }
+
+    func writeText(_ path: String, _ text: String) throws {}
+    func remove(_ path: String) throws {}
+
+    private enum TestError: Error {
+        case unreadable
     }
 }

@@ -29,6 +29,10 @@ takes effect immediately — no restart.
 The release default is **Info** — quiet but useful. **Debug** is opt-in; turn it on only while
 reproducing a problem, since it is much noisier.
 
+If a local usage log exists but cannot be read, OpenUsage writes one warning and skips it for that
+refresh. It does not repeat the warning every five minutes; it warns again only if the file recovers
+and later becomes unreadable again.
+
 ## Subsystem tags
 
 Every line is prefixed with a bracketed tag so the log is easy to grep:
