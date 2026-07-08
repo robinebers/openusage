@@ -157,9 +157,10 @@ final class WidgetDataStore {
 
     /// Evaluate every visible, enabled metric for a quota pace milestone and post a notification for any
     /// that just crossed one. Driven from the periodic loop *after* `refreshAll`, so it catches pace
-    /// worsening from time passing (not only from a fresh fetch). Deduped per metric per reset window via
-    /// `notificationState`; the no-trustworthy-pace states (no data, fresh session, level bands) never
-    /// fire. A no-op when notifications are unconfigured (tests/previews) or all triggers are off.
+    /// worsening from time passing (not only from a fresh fetch). Deduped per metric per reset window by
+    /// the evaluator's per-key state; the no-trustworthy-pace states (no data, fresh session, level
+    /// bands) never fire. A no-op when notifications are unconfigured (tests/previews) or all triggers
+    /// are off.
     ///
     /// State for metrics not visited this pass (e.g. a provider the user just disabled, or a metric
     /// removed from the layout) is pruned, so re-enabling/re-adding starts fresh rather than carrying a
@@ -170,6 +171,9 @@ final class WidgetDataStore {
         // Gather this pass's enabled, bounded, visible metrics — unbounded rows and charts have no pace
         // story (their meterState never fires), so they're skipped here rather than occupying state.
         // Order is the layout order; the evaluator prunes state for anything not passed this pass.
+        // Deliberate delta from the pre-extraction loop: the pass decides from this snapshot, taken
+        // before the first delivery `await`, where the old inline loop re-read `data(for:)` between
+        // deliveries — a mid-pass refresh no longer changes later metrics' inputs within one pass.
         let metrics = orderedDescriptors()
             .filter { isProviderEnabled($0.providerID) }
             .compactMap { descriptor -> QuotaNotificationEvaluator.Metric? in

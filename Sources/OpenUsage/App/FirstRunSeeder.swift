@@ -46,7 +46,8 @@ enum FirstRunSeeder {
         providers: [ProviderRuntime],
         enablement: ProviderEnablementStore
     ) -> Task<Void, Never> {
-        seedFallbackThenDetect(providers: providers, enablement: enablement, logPrefix: "reset all")
+        seedFallbackThenDetect(providers: providers, enablement: enablement,
+                               logPrefix: "reset all", probeVerb: "re-probing")
     }
 
     /// The shared seed→probe→replace sequence behind both first-run seeding and the "Reset All" reseed:
@@ -58,11 +59,12 @@ enum FirstRunSeeder {
     private static func seedFallbackThenDetect(
         providers: [ProviderRuntime],
         enablement: ProviderEnablementStore,
-        logPrefix: String
+        logPrefix: String,
+        probeVerb: String = "probing"
     ) -> Task<Void, Never> {
         let fallback = fallbackProviderIDs.intersection(Set(providers.map(\.provider.id)))
         enablement.seedEnabledProviders(fallback)
-        AppLog.info(.config, "\(logPrefix): seeded providers \(fallback.sorted()); probing local credentials")
+        AppLog.info(.config, "\(logPrefix): seeded providers \(fallback.sorted()); \(probeVerb) local credentials")
         return Task {
             let detected = await detectLocalProviders(providers)
             AppLog.info(.config, "\(logPrefix): detected credentials for \(detected.sorted())")

@@ -44,7 +44,8 @@ struct CustomizeView: View {
             systemImage: isNotice ? "exclamationmark.triangle.fill" : "checkmark.circle.fill",
             text: layout.customizationNotice ?? "",
             tint: isNotice ? Theme.notice : Theme.positive,
-            trigger: layout.customizationNoticeTrigger
+            trigger: layout.customizationNoticeTrigger,
+            showsShadow: false
         )
     }
 

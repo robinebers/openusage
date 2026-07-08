@@ -1,4 +1,3 @@
-import Foundation
 import Observation
 
 /// A small auto-clearing UI notice — the "shown for a couple of seconds, then it clears itself" pill.
@@ -17,8 +16,9 @@ final class TransientNotice<Value> {
     /// Bumped on every `present` so a `.id(trigger)`-keyed view replays its transition each time.
     private(set) var trigger = 0
 
-    @ObservationIgnored private let clearedValue: Value
-    @ObservationIgnored private let timeout: Duration
+    // `let`s are never observation-tracked; only the mutable task needs the annotation.
+    private let clearedValue: Value
+    private let timeout: Duration
     @ObservationIgnored private var clearTask: Task<Void, Never>?
 
     /// - Parameters:

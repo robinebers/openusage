@@ -43,12 +43,7 @@ struct GrokLogUsageScanner: Sendable {
         guard files.exists(path), let text = try? files.readText(path) else {
             return nil
         }
-        return Self.parse(text, since: sinceDate(daysBack: daysBack, now: now), pricing: pricing)
-    }
-
-    private func sinceDate(daysBack: Int, now: Date) -> Date {
-        let shifted = Calendar.current.date(byAdding: .day, value: -daysBack, to: now) ?? now
-        return Calendar.current.startOfDay(for: shifted)
+        return Self.parse(text, since: JSONLScanning.sinceDate(daysBack: daysBack, now: now), pricing: pricing)
     }
 
     /// Single chronological pass over the append-only log. Model-carrying events update a per-`pid`

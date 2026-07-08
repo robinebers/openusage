@@ -57,7 +57,7 @@ actor CodexLogUsageScanner {
         let files = Self.sessionFiles(homes: homes)
         guard !files.isEmpty else { return nil }
 
-        let since = IncrementalJSONLScanner<Event>.sinceDate(daysBack: daysBack, now: now)
+        let since = JSONLScanning.sinceDate(daysBack: daysBack, now: now)
         let events = await scanner.items(from: files, since: since, parse: Self.parseFile)
         return Self.aggregate(
             events: events, since: since, pricing: pricing, fastTier: usesFastServiceTier(homes: homes)
@@ -81,8 +81,8 @@ actor CodexLogUsageScanner {
     /// Every rollout `*.jsonl` under each home's `sessions/` and `archived_sessions/` (a home with
     /// neither is scanned directly, ccusage's fallback). When both dirs of one home contain the same
     /// relative path, the `sessions/` copy wins — an archived duplicate must not double-count.
-    private static func sessionFiles(homes: [URL]) -> [IncrementalJSONLScanner<Event>.DiscoveredFile] {
-        var files: [IncrementalJSONLScanner<Event>.DiscoveredFile] = []
+    private static func sessionFiles(homes: [URL]) -> [JSONLScanning.DiscoveredFile] {
+        var files: [JSONLScanning.DiscoveredFile] = []
         var seenDirs: Set<String> = []
         for home in homes {
             var seenRelative: Set<String> = []
@@ -98,7 +98,7 @@ actor CodexLogUsageScanner {
                 sourceDirs = [home]
             }
             for dir in sourceDirs where seenDirs.insert(dir.path).inserted {
-                for file in IncrementalJSONLScanner<Event>.jsonlFiles(under: dir) {
+                for file in JSONLScanning.jsonlFiles(under: dir) {
                     let relative = String(file.path.dropFirst(dir.path.count))
                     guard seenRelative.insert(relative).inserted else { continue }
                     files.append(file)

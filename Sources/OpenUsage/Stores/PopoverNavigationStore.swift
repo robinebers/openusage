@@ -1,4 +1,3 @@
-import SwiftUI
 import Observation
 
 /// The screen showing inside the menu-bar popover. Customize and Settings replace the dashboard

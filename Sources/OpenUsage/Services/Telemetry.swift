@@ -42,6 +42,12 @@ protocol TelemetrySink: AnyObject {
 /// sink is inert (the app still builds and the toggle still works), so dev builds never phone home.
 @MainActor
 final class PostHogTelemetrySink: TelemetrySink {
+    /// Crash / uncaught-exception autocapture is gated on the SAME opt-out as usage telemetry, decided
+    /// here so the opt-out contract is unit-testable without touching the `PostHogSDK.shared` singleton.
+    /// Gating *install* (not just sending) on the opt-out means an opted-out launch installs no signal/
+    /// exception handler and writes no crash report to disk — honoring privacy.md's "nothing while off".
+    nonisolated static func errorAutocaptureEnabled(telemetryEnabled: Bool) -> Bool { telemetryEnabled }
+
     private let configured: Bool
 
     init(enabled: Bool, token: String = TelemetryConfig.token, host: String = TelemetryConfig.host) {
@@ -74,7 +80,7 @@ final class PostHogTelemetrySink: TelemetrySink {
         // cache at init, capture arms on the *second* launch after enabling (first launch fetches+caches).
         // Never reference sessionReplay / surveys / captureElementInteractions / tracingHeaders here:
         // they do not exist on a macOS target.
-        config.errorTrackingConfig.autoCapture = enabled
+        config.errorTrackingConfig.autoCapture = Self.errorAutocaptureEnabled(telemetryEnabled: enabled)
         PostHogSDK.shared.setup(config)
 
         // Super properties ride on every subsequent event (anonymous, non-PII).

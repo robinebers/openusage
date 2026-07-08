@@ -1,85 +1,15 @@
 import Foundation
 
-/// The incremental, off-main-actor scan machinery shared by the Claude and Codex log scanners: discover
-/// `*.jsonl` files, re-parse only those changed since the last scan (a per-file cache keyed by path +
-/// size + mtime), and return the parsed items concatenated in file order. Each provider supplies its own
-/// file discovery, per-file parser, and post-parse dedup/aggregation; this owns the cache, the parallel
-/// parse, the mtime-window skip, and the jsonl enumeration so that scaffolding isn't copied per provider.
-///
-/// An actor so the parse cache persists across the ~5-minute provider refreshes while staying off the
-/// main actor. Held as an instance by each provider scanner; `Item` is the provider's parsed row.
-actor IncrementalJSONLScanner<Item: Sendable> {
-    /// A discovered log file plus the stat fields the cache is keyed on.
+/// The `Item`-independent half of the incremental scan machinery: file discovery and the scan-window
+/// lower bound. A non-generic namespace so providers that only need the window math (Grok) share it
+/// without dragging in the generic actor, and so call sites read `JSONLScanning.sinceDate(...)` instead
+/// of `IncrementalJSONLScanner<Entry>.sinceDate(...)`.
+enum JSONLScanning {
+    /// A discovered log file plus the stat fields the parse cache is keyed on.
     struct DiscoveredFile: Sendable {
         var path: String
         var size: Int
         var mtime: Date
-    }
-
-    private struct CachedFile {
-        var size: Int
-        var mtime: Date
-        var items: [Item]
-    }
-
-    private var cache: [String: CachedFile] = [:]
-
-    /// Re-parse the in-window files (reusing the cache on an unchanged path + size + mtime), then return
-    /// every file's items concatenated in the input order — callers pass a path-sorted list so a
-    /// keep-first dedup stays deterministic. Files whose mtime predates `since` are skipped, so a
-    /// years-deep tree stays cheap to rescan; an unreadable file is skipped and not cached, so a
-    /// transient read failure doesn't stick.
-    func items(
-        from files: [DiscoveredFile],
-        since: Date,
-        parse: @Sendable @escaping (Data) -> [Item]?
-    ) async -> [Item] {
-        var nextCache: [String: CachedFile] = [:]
-        var toParse: [DiscoveredFile] = []
-        for file in files {
-            guard file.mtime >= since else { continue }
-            if let cached = cache[file.path], cached.size == file.size, cached.mtime == file.mtime {
-                nextCache[file.path] = cached
-            } else {
-                toParse.append(file)
-            }
-        }
-        for (file, parsed) in await Self.parseFiles(toParse, parse: parse) {
-            guard let parsed else { continue }
-            nextCache[file.path] = CachedFile(size: file.size, mtime: file.mtime, items: parsed)
-        }
-        cache = nextCache
-
-        var items: [Item] = []
-        for file in files {
-            guard let cached = nextCache[file.path] else { continue }
-            items.append(contentsOf: cached.items)
-        }
-        return items
-    }
-
-    /// Read + parse the changed files in parallel (they're independent; the first scan of a heavy tree
-    /// is CPU-bound on JSON decoding). Results are keyed back to the input order; a `nil` item list
-    /// marks an unreadable file.
-    private static func parseFiles(
-        _ files: [DiscoveredFile],
-        parse: @Sendable @escaping (Data) -> [Item]?
-    ) async -> [(DiscoveredFile, [Item]?)] {
-        await withTaskGroup(of: (Int, [Item]?).self, returning: [(DiscoveredFile, [Item]?)].self) { group in
-            for (index, file) in files.enumerated() {
-                group.addTask {
-                    guard let data = FileManager.default.contents(atPath: file.path) else {
-                        return (index, nil)
-                    }
-                    return (index, parse(data))
-                }
-            }
-            var results: [(DiscoveredFile, [Item]?)] = files.map { ($0, nil) }
-            for await (index, items) in group {
-                results[index] = (files[index], items)
-            }
-            return results
-        }
     }
 
     /// Start of the day `daysBack` days before `now` — the lower bound of the scan window.
@@ -108,5 +38,82 @@ actor IncrementalJSONLScanner<Item: Sendable> {
             ))
         }
         return files.sorted { $0.path < $1.path }
+    }
+}
+
+/// The incremental, off-main-actor scan machinery shared by the Claude and Codex log scanners: discover
+/// `*.jsonl` files, re-parse only those changed since the last scan (a per-file cache keyed by path +
+/// size + mtime), and return the parsed items concatenated in file order. Each provider supplies its own
+/// file discovery, per-file parser, and post-parse dedup/aggregation; this owns the cache, the parallel
+/// parse, the mtime-window skip, and (via `JSONLScanning`) the jsonl enumeration so that scaffolding
+/// isn't copied per provider.
+///
+/// An actor so the parse cache persists across the ~5-minute provider refreshes while staying off the
+/// main actor. Held as an instance by each provider scanner; `Item` is the provider's parsed row.
+actor IncrementalJSONLScanner<Item: Sendable> {
+    private struct CachedFile {
+        var size: Int
+        var mtime: Date
+        var items: [Item]
+    }
+
+    private var cache: [String: CachedFile] = [:]
+
+    /// Re-parse the in-window files (reusing the cache on an unchanged path + size + mtime), then return
+    /// every file's items concatenated in the input order — callers pass a path-sorted list so a
+    /// keep-first dedup stays deterministic. Files whose mtime predates `since` are skipped, so a
+    /// years-deep tree stays cheap to rescan; an unreadable file is skipped and not cached, so a
+    /// transient read failure doesn't stick.
+    func items(
+        from files: [JSONLScanning.DiscoveredFile],
+        since: Date,
+        parse: @Sendable @escaping (Data) -> [Item]?
+    ) async -> [Item] {
+        var nextCache: [String: CachedFile] = [:]
+        var toParse: [JSONLScanning.DiscoveredFile] = []
+        for file in files {
+            guard file.mtime >= since else { continue }
+            if let cached = cache[file.path], cached.size == file.size, cached.mtime == file.mtime {
+                nextCache[file.path] = cached
+            } else {
+                toParse.append(file)
+            }
+        }
+        for (file, parsed) in await Self.parseFiles(toParse, parse: parse) {
+            guard let parsed else { continue }
+            nextCache[file.path] = CachedFile(size: file.size, mtime: file.mtime, items: parsed)
+        }
+        cache = nextCache
+
+        var items: [Item] = []
+        for file in files {
+            guard let cached = nextCache[file.path] else { continue }
+            items.append(contentsOf: cached.items)
+        }
+        return items
+    }
+
+    /// Read + parse the changed files in parallel (they're independent; the first scan of a heavy tree
+    /// is CPU-bound on JSON decoding). Results are keyed back to the input order; a `nil` item list
+    /// marks an unreadable file.
+    private static func parseFiles(
+        _ files: [JSONLScanning.DiscoveredFile],
+        parse: @Sendable @escaping (Data) -> [Item]?
+    ) async -> [(JSONLScanning.DiscoveredFile, [Item]?)] {
+        await withTaskGroup(of: (Int, [Item]?).self, returning: [(JSONLScanning.DiscoveredFile, [Item]?)].self) { group in
+            for (index, file) in files.enumerated() {
+                group.addTask {
+                    guard let data = FileManager.default.contents(atPath: file.path) else {
+                        return (index, nil)
+                    }
+                    return (index, parse(data))
+                }
+            }
+            var results: [(JSONLScanning.DiscoveredFile, [Item]?)] = files.map { ($0, nil) }
+            for await (index, items) in group {
+                results[index] = (files[index], items)
+            }
+            return results
+        }
     }
 }
