@@ -194,6 +194,77 @@ enum CursorUsageMapper {
         return inferred > 0 ? inferred : (reported.first ?? 0)
     }
 
+    /// Map the dashboard's `/api/usage-summary` response — the endpoint enterprise/team
+    /// (`TOKEN_BASED_CONTRACT`) accounts need, since `GetCurrentPeriodUsage` returns no usable
+    /// `planUsage` for them (issue #829). Returns nil when the payload has no usable meter so the
+    /// caller can fall back to the request-based path. All money values are cents.
+    static func mapUsageSummary(_ summary: [String: Any], planName: String?) -> CursorMappedUsage? {
+        let cycle = usageSummaryBillingCycle(from: summary)
+        let limitType = (summary["limitType"] as? String)?.lowercased()
+        let teamUsage = summary["teamUsage"] as? [String: Any]
+        let individualOverall = (summary["individualUsage"] as? [String: Any])?["overall"] as? [String: Any]
+
+        var lines: [MetricLine] = []
+
+        // Total usage: team-pooled dollars when the account is pooled, otherwise the individual
+        // allocation. Skip meters that are disabled or missing a positive limit rather than erroring.
+        let pooled = usableMeter(teamUsage?["pooled"])
+        let individual = usableMeter(individualOverall)
+        if limitType == "team", let pooled {
+            appendDollarMeter(pooled, label: "Total usage", cycle: cycle, to: &lines)
+        } else if let individual {
+            appendDollarMeter(individual, label: "Total usage", cycle: cycle, to: &lines)
+        } else if let pooled {
+            appendDollarMeter(pooled, label: "Total usage", cycle: cycle, to: &lines)
+        }
+
+        if let onDemand = usableMeter(teamUsage?["onDemand"]) {
+            appendDollarMeter(onDemand, label: "On-demand", cycle: nil, to: &lines)
+        }
+
+        guard !lines.isEmpty else { return nil }
+        let plan = planLabel(planName) ?? planLabel(summary["membershipType"] as? String)
+        return CursorMappedUsage(plan: plan, lines: lines)
+    }
+
+    private static func usableMeter(_ value: Any?) -> (used: Double, limit: Double)? {
+        guard let meter = value as? [String: Any],
+              meter["enabled"] as? Bool != false,
+              let limit = ProviderParse.number(meter["limit"]),
+              limit > 0
+        else {
+            return nil
+        }
+        let used = ProviderParse.number(meter["used"])
+            ?? (limit - (ProviderParse.number(meter["remaining"]) ?? limit))
+        return (used, limit)
+    }
+
+    private static func appendDollarMeter(
+        _ meter: (used: Double, limit: Double),
+        label: String,
+        cycle: (resetsAt: Date?, periodDurationMs: Int)?,
+        to lines: inout [MetricLine]
+    ) {
+        lines.append(.progress(
+            label: label,
+            used: ProviderParse.centsToDollars(meter.used),
+            limit: ProviderParse.centsToDollars(meter.limit),
+            format: .dollars,
+            resetsAt: cycle?.resetsAt,
+            periodDurationMs: cycle?.periodDurationMs
+        ))
+    }
+
+    private static func usageSummaryBillingCycle(from summary: [String: Any]) -> (resetsAt: Date?, periodDurationMs: Int) {
+        let start = (summary["billingCycleStart"] as? String).flatMap(OpenUsageISO8601.date(from:))
+        let end = (summary["billingCycleEnd"] as? String).flatMap(OpenUsageISO8601.date(from:))
+        guard let start, let end, end > start else {
+            return (end, billingPeriodMs)
+        }
+        return (end, Int(end.timeIntervalSince(start) * 1000))
+    }
+
     static func mapRequestBasedUsage(
         _ usage: [String: Any]?,
         planName: String?,

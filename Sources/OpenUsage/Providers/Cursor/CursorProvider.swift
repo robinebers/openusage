@@ -114,6 +114,12 @@ final class CursorProvider: ProviderRuntime {
             planInfoUnavailable: planInfoUnavailable
         )
         if fallback.shouldFallback {
+            // Enterprise/team (TOKEN_BASED_CONTRACT) accounts: the dashboard's usage-summary REST
+            // endpoint returns full usage where GetCurrentPeriodUsage and /api/usage do not (#829).
+            // Any failure here falls through to the request-based path so behavior can only improve.
+            if let mapped = await usageSummaryResult(accessToken: currentToken, planName: planName) {
+                return snapshot(mapped)
+            }
             let mapped = try await requestBasedResult(
                 accessToken: currentToken,
                 planName: planName,
@@ -245,6 +251,16 @@ final class CursorProvider: ProviderRuntime {
             return nil
         }
         return ProviderParse.jsonObject(response.body)
+    }
+
+    private func usageSummaryResult(accessToken: String, planName: String?) async -> CursorMappedUsage? {
+        guard let response = try? await usageClient.fetchUsageSummary(accessToken: accessToken),
+              (200..<300).contains(response.statusCode),
+              let body = ProviderParse.jsonObject(response.body)
+        else {
+            return nil
+        }
+        return CursorUsageMapper.mapUsageSummary(body, planName: planName)
     }
 
     private func requestBasedResult(accessToken: String, planName: String?, unavailableMessage: String) async throws -> CursorMappedUsage {

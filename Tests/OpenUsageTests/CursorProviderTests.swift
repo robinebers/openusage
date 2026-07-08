@@ -120,6 +120,63 @@ final class CursorUsageMapperTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(dollarValue(mapped.lines, "On-demand")), 164.74, accuracy: 0.001)
     }
 
+    func testMapsEnterpriseUsageSummaryWithPooledTeamLimit() throws {
+        // Fixture from issue #829: enterprise account with a team-pooled dollar limit.
+        let mapped = try XCTUnwrap(CursorUsageMapper.mapUsageSummary(
+            [
+                "billingCycleStart": "2026-07-01T00:00:00.000Z",
+                "billingCycleEnd": "2026-08-01T00:00:00.000Z",
+                "membershipType": "enterprise",
+                "limitType": "team",
+                "individualUsage": [
+                    "overall": ["enabled": true, "used": 71, "limit": 10_000, "remaining": 9_929]
+                ],
+                "teamUsage": [
+                    "onDemand": ["enabled": true, "used": 0, "limit": 5_000_000, "remaining": 5_000_000],
+                    "pooled": ["enabled": true, "used": 3_479_810, "limit": 60_000_000, "remaining": 56_520_190]
+                ]
+            ],
+            planName: "enterprise"
+        ))
+
+        XCTAssertEqual(mapped.plan, "Enterprise")
+        let total = try XCTUnwrap(progress(mapped.lines, "Total usage"))
+        XCTAssertEqual(total.used, 34_798.10, accuracy: 0.001)
+        XCTAssertEqual(total.limit, 600_000, accuracy: 0.001)
+        XCTAssertEqual(total.resetsAt, OpenUsageISO8601.date(from: "2026-08-01T00:00:00.000Z"))
+        XCTAssertEqual(total.periodDurationMs, 31 * 24 * 3_600 * 1_000)
+        let onDemand = try XCTUnwrap(progress(mapped.lines, "On-demand"))
+        XCTAssertEqual(onDemand.used, 0)
+        XCTAssertEqual(onDemand.limit, 50_000, accuracy: 0.001)
+    }
+
+    func testMapsUsageSummaryIndividualLimitWhenNotPooled() throws {
+        let mapped = try XCTUnwrap(CursorUsageMapper.mapUsageSummary(
+            [
+                "limitType": "user",
+                "individualUsage": [
+                    "overall": ["enabled": true, "used": 71, "limit": 10_000, "remaining": 9_929]
+                ]
+            ],
+            planName: nil
+        ))
+
+        let total = try XCTUnwrap(progress(mapped.lines, "Total usage"))
+        XCTAssertEqual(total.used, 0.71, accuracy: 0.001)
+        XCTAssertEqual(total.limit, 100, accuracy: 0.001)
+    }
+
+    func testUsageSummaryWithoutUsableMetersReturnsNil() {
+        XCTAssertNil(CursorUsageMapper.mapUsageSummary(
+            [
+                "limitType": "team",
+                "teamUsage": ["pooled": ["enabled": false, "limit": 0]]
+            ],
+            planName: "enterprise"
+        ))
+        XCTAssertNil(CursorUsageMapper.mapUsageSummary([:], planName: nil))
+    }
+
     func testMapsRequestBasedFallback() throws {
         let mapped = try CursorUsageMapper.mapRequestBasedUsage(
             [
@@ -221,6 +278,53 @@ final class CursorProviderTests: XCTestCase {
         XCTAssertEqual(progress(snapshot.lines, "Auto usage")?.used, 12.5)
         XCTAssertEqual(progress(snapshot.lines, "API usage")?.used, 7.5)
         XCTAssertEqual(progress(snapshot.lines, "On-demand")?.used, 40)
+    }
+
+    func testEnterpriseAccountFallsBackToUsageSummary() async {
+        // Regression for #829: enterprise accounts get no usable planUsage from
+        // GetCurrentPeriodUsage; the provider must fetch /api/usage-summary instead of erroring.
+        let accessToken = makeCursorJWT(sub: "google-oauth2|user_ent1")
+        let http = RoutingHTTPClient { request in
+            let url = request.url.absoluteString
+            if url.contains("GetCurrentPeriodUsage") {
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"enabled": true}"#.utf8))
+            }
+            if url.contains("GetPlanInfo") {
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"planInfo":{"planName":"enterprise"}}"#.utf8))
+            }
+            if url.contains("/api/usage-summary") {
+                XCTAssertEqual(request.headers["Cookie"], "WorkosCursorSessionToken=user_ent1%3A%3A\(accessToken)")
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data("""
+                {
+                  "billingCycleStart": "2026-07-01T00:00:00.000Z",
+                  "billingCycleEnd": "2026-08-01T00:00:00.000Z",
+                  "membershipType": "enterprise",
+                  "limitType": "team",
+                  "individualUsage": { "overall": { "enabled": true, "used": 71, "limit": 10000, "remaining": 9929 } },
+                  "teamUsage": {
+                    "onDemand": { "enabled": true, "used": 0, "limit": 5000000, "remaining": 5000000 },
+                    "pooled": { "enabled": true, "used": 3479810, "limit": 60000000, "remaining": 56520190 }
+                  }
+                }
+                """.utf8))
+            }
+            return HTTPResponse(statusCode: 404, headers: [:], body: Data())
+        }
+        let provider = CursorProvider(
+            authStore: CursorAuthStore(
+                sqlite: FakeSQLite(values: [CursorAuthStore.accessTokenKey: accessToken]),
+                keychain: FakeKeychain()
+            ),
+            usageClient: CursorUsageClient(http: http),
+            now: { Date(timeIntervalSince1970: 1_800_000_000) }
+        )
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertNil(snapshot.errorCategory)
+        XCTAssertEqual(snapshot.plan, "Enterprise")
+        XCTAssertEqual(progress(snapshot.lines, "Total usage")?.used ?? -1, 34_798.10, accuracy: 0.001)
+        XCTAssertEqual(progress(snapshot.lines, "On-demand")?.limit ?? -1, 50_000, accuracy: 0.001)
     }
 }
 
