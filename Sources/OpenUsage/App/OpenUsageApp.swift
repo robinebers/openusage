@@ -68,6 +68,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // above resolves same-bundle startup races even if both launch triggers fire; this just avoids
         // the wasted second launch.
         NSApp.disableRelaunchOnLogin()
+        // The legacy Tauri edition's autostart agent (~/Library/LaunchAgents/OpenUsage.plist)
+        // survives the upgrade and re-launches this binary at every login, racing the login item —
+        // the double launch behind #874 and the "SUNSTORY LLC" Login Items entry from #607.
+        // Deleting it (only when it provably points into our bundle) stops that race at the source;
+        // the instance guard above stays as the referee for the remaining triggers. Runs after the
+        // guard on purpose, so only the surviving copy touches the file.
+        LegacyLaunchAgentCleanup.removeLeftoverAgent()
         // App-wide theme override (NSApp.appearance): the popover ignores SwiftUI's
         // preferredColorScheme, so the override is applied at the AppKit level once at launch;
         // the Theme picker on the Settings screen re-applies it on change.

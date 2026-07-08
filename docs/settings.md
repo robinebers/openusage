@@ -10,6 +10,8 @@ Settings lives inside the popover — there is no separate window. Open it from 
 | Launch at Login | on/off | Registers the app as a login item (the system's login-item registry is the source of truth). |
 | Global Shortcut | record a shortcut | Global shortcut that toggles the popover from anywhere. Click the field and press a combo; the ⓧ clears it and disables the shortcut. |
 
+**Upgrading from the legacy (pre-0.7) edition:** the old edition managed start-on-login with its own launcher file, which an in-place update left behind. That leftover could start the app a second time at every login and showed up in System Settings → Login Items under the signing company's name ("SUNSTORY LLC") instead of OpenUsage. The app now removes it automatically on launch — only when the file verifiably points at OpenUsage itself — so login starts exactly one copy, controlled by the Launch at Login toggle above.
+
 ## Appearance
 
 | Setting | Options | What it does |
