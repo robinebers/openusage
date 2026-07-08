@@ -567,10 +567,7 @@ final class CopilotProviderTests: XCTestCase {
     }
 
     private func freshDefaults() -> UserDefaults {
-        let suiteName = "CopilotProviderTests-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        return defaults
+        makeScratchDefaults(suiteName: "CopilotProviderTests-\(UUID().uuidString)")
     }
 
     private func editorTokenStore() -> CopilotAuthStore {

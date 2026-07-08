@@ -210,9 +210,6 @@ final class UsageTrendTests: XCTestCase {
     }
 
     private func makeDefaults(_ name: String) -> UserDefaults {
-        let suiteName = "OpenUsageTests.Trend.\(name).\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        return defaults
+        makeScratchDefaults(suiteName: "OpenUsageTests.Trend.\(name).\(UUID().uuidString)")
     }
 }

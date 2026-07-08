@@ -101,10 +101,7 @@ final class AntigravityLayoutTests: XCTestCase {
     }
 
     private func makeDefaults(_ name: String) -> UserDefaults {
-        let suiteName = "OpenUsageTests.AntigravityLayout.\(name).\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        return defaults
+        makeScratchDefaults(suiteName: "OpenUsageTests.AntigravityLayout.\(name).\(UUID().uuidString)")
     }
 
     private func saveStored<T: Encodable>(_ value: T, forKey key: String, in defaults: UserDefaults) {

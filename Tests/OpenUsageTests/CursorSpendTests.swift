@@ -413,10 +413,7 @@ final class CursorSpendProviderTests: XCTestCase {
     // MARK: helpers
 
     private func isolatedDefaults(_ name: String) -> UserDefaults {
-        let suiteName = "OpenUsageTests.CursorSpend.\(name).\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        return defaults
+        makeScratchDefaults(suiteName: "OpenUsageTests.CursorSpend.\(name).\(UUID().uuidString)")
     }
 
     private func isolatedCache(_ defaults: UserDefaults) -> ProviderSnapshotCache {

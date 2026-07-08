@@ -1,6 +1,20 @@
 import XCTest
 @testable import OpenUsage
 
+extension XCTestCase {
+    /// A `UserDefaults` backed by a throwaway suite that is cleared *now* (so the test starts from a
+    /// clean slate) and whose persistent domain is removed again in this test's teardown. Use this for
+    /// any test needing an isolated defaults store: it prevents test data from lingering after the
+    /// run. Pass a unique `suiteName` (embed a `UUID()`) so parallel or repeated tests don't collide.
+    /// macOS 27 may still recreate an empty plist shell for a suite when the test process exits.
+    func makeScratchDefaults(suiteName: String) -> UserDefaults {
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName) // clean slate at start
+        addTeardownBlock { UserDefaults().removePersistentDomain(forName: suiteName) }
+        return defaults
+    }
+}
+
 /// The shipped pricing resources (supplement + LiteLLM/models.dev snapshots) as a ready-to-use
 /// `ModelPricing` — loaded once, entirely offline (no store, no network, no disk cache). Tests that
 /// price real model names use this the way production code uses `ModelPricingStore.current()`.

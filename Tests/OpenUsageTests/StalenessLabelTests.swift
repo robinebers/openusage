@@ -121,9 +121,7 @@ final class StalenessLabelTests: XCTestCase {
         descriptor: WidgetDescriptor,
         runtime: some ProviderRuntime
     ) -> WidgetDataStore {
-        let suiteName = "OpenUsageTests.Staleness.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
+        let defaults = makeScratchDefaults(suiteName: "OpenUsageTests.Staleness.\(UUID().uuidString)")
         return WidgetDataStore(
             registry: WidgetRegistry(providers: [provider], descriptors: [descriptor]),
             providers: [runtime],

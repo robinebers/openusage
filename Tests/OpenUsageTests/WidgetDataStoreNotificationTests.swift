@@ -39,10 +39,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
     }
 
     private func makeUserDefaults(_ name: String) -> UserDefaults {
-        let suite = "WidgetDataStoreNotificationTests.\(name)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defaults.removePersistentDomain(forName: suite)
-        return defaults
+        makeScratchDefaults(suiteName: "WidgetDataStoreNotificationTests.\(name)")
     }
 
     private static let provider = Provider(id: "test", displayName: "Test", icon: .providerMark("cursor"))
