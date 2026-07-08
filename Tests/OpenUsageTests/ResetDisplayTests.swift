@@ -231,6 +231,16 @@ final class ResetDisplayTests: XCTestCase {
         XCTAssertTrue(RateLimitResetsDetail.entries(from: [], now: Date()).isEmpty)
     }
 
+    func testCompactDurationAlwaysShowsHoursAtDayScale() {
+        // Day-scale durations always show two units so a whole-day-ish span never reads as a flat "Xd"
+        // that hides the sub-day remainder. Sub-day durations are unchanged.
+        XCTAssertEqual(Formatters.compactDuration(4 * 24 * 3600 + 52 * 60), "4d 0h") // 4d 52m -> "4d 0h"
+        XCTAssertEqual(Formatters.compactDuration(7 * 24 * 3600), "7d 0h")            // exact week
+        XCTAssertEqual(Formatters.compactDuration(9 * 24 * 3600 + 21 * 3600), "9d 21h")
+        XCTAssertEqual(Formatters.compactDuration(5 * 3600), "5h")                    // sub-day unchanged
+        XCTAssertEqual(Formatters.compactDuration(52 * 60), "52m")
+    }
+
     func testResetsPopoverContentResolvesEmptyCountOnlyAndTimeline() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
 

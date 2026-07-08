@@ -83,6 +83,9 @@ enum Formatters {
         deadlineLabel("Resets", at: resetsAt, mode: .absolute, now: now, calendar: calendar)
     }
 
+    /// Compact "Xd Yh" / "Xh Ym" / "Xm" duration. At the day scale it always shows two units — the
+    /// hours ride along even when zero ("4d 0h") — so a span 4 days + 52 min out never reads as a flat
+    /// "4d" that hides the sub-day remainder. Minutes are dropped at the day scale.
     static func compactDuration(_ seconds: TimeInterval) -> String? {
         guard seconds.isFinite, seconds > 0 else { return nil }
         let totalMinutes = max(1, Int((seconds / 60).rounded(.up)))
@@ -91,7 +94,7 @@ enum Formatters {
         let minutes = totalMinutes % 60
 
         if days > 0 {
-            return hours > 0 ? "\(days)d \(hours)h" : "\(days)d"
+            return "\(days)d \(hours)h"
         }
         if hours > 0 {
             return minutes > 0 ? "\(hours)h \(minutes)m" : "\(hours)h"
