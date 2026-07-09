@@ -2,9 +2,9 @@ import Foundation
 
 /// Metrics enabled on first launch. Core quota meters and trends stay visible above the fold, while
 /// balances, reset details, and spend-history rows are enabled but tucked behind each provider's caret.
-/// `LayoutStore` filters this to whatever the active registry actually knows, so registries that don't
+/// Layout bootstrap filters this to whatever the active registry actually knows, so registries that don't
 /// define an ID (e.g. the test fixtures) silently ignore it. The provider-section order isn't seeded
-/// here: an empty saved order reconciles to plain registry order in `LayoutStore`.
+/// here: a missing saved order starts in plain registry order during bootstrap.
 enum DefaultLayout {
     static let metricIDs: [String] = [
         "antigravity.geminiPro", "antigravity.geminiWeekly", "antigravity.claude", "antigravity.claudeWeekly",

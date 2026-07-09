@@ -4,10 +4,15 @@ import XCTest
 @MainActor
 final class LayoutStoreTests: XCTestCase {
     func testRemoveClearsDragStateAndAllowsRepeatedRemoval() {
-        let store = makeStore("RepeatedRemoval")
-        let first = PlacedWidget(id: UUID(), descriptorID: DefaultLayout.metricIDs[0])
-        let second = PlacedWidget(id: UUID(), descriptorID: DefaultLayout.metricIDs[1])
-        store.placed = [first, second]
+        let store = LayoutStore(
+            registry: .mock,
+            defaults: makeDefaults("RepeatedRemoval"),
+            storageKey: "layout",
+            defaultMetricIDs: ["claude.session", "claude.weekly"]
+        )
+        guard store.placed.count == 2 else { return XCTFail("expected two default widgets") }
+        let first = store.placed[0]
+        let second = store.placed[1]
         store.draggingID = first.id
 
         store.remove(first.id)
@@ -239,8 +244,12 @@ final class LayoutStoreTests: XCTestCase {
     func testDirectRemoveDoesNotRecordUndo() {
         // The low-level `remove(_:)` (used by drag teardown and tests) is not a user-facing seam, so it
         // doesn't feed the undo stack — only the wrapped mutations (setMetricEnabled, reorder, pin) do.
-        let store = makeStore("UndoDirectRemove")
-        store.placed = [PlacedWidget(descriptorID: "claude.weekly")]
+        let store = LayoutStore(
+            registry: .mock,
+            defaults: makeDefaults("UndoDirectRemove"),
+            storageKey: "layout",
+            defaultMetricIDs: ["claude.weekly"]
+        )
         guard let widget = store.placed.first(where: { $0.descriptorID == "claude.weekly" }) else {
             return XCTFail("metric was not placed")
         }
@@ -262,7 +271,7 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertTrue(reloaded.placed.isEmpty)
     }
 
-    func testUnreadableStoredLayoutIsNotMistakenForFreshInstall() {
+    func testUnreadableStoredLayoutIsNotMistakenForFreshInstall() throws {
         let defaults = makeDefaults("UnreadableExistingLayout")
         defaults.set(Data("not valid layout data".utf8), forKey: "layout")
 
@@ -276,6 +285,13 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertFalse(
             store.expandedMetricIDs.contains("claude.weekly"),
             "present but damaged data is still an existing layout, so fresh-only defaults must stay off"
+        )
+        XCTAssertNoThrow(
+            try JSONDecoder().decode(
+                [PlacedWidget].self,
+                from: XCTUnwrap(defaults.data(forKey: "layout"))
+            ),
+            "the recovered default layout replaces unreadable storage instead of failing every launch"
         )
     }
 

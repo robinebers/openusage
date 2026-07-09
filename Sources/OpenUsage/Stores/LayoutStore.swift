@@ -6,7 +6,7 @@ import Observation
 @MainActor
 @Observable
 final class LayoutStore {
-    var placed: [PlacedWidget]
+    private(set) var placed: [PlacedWidget]
 
     /// In-popover navigation (screen, Customize master/detail, screen-switch slide). Its own store so
     /// screen routing isn't tangled with layout state; the `screen`/`isEditing`/`customizeProviderID`/
@@ -37,10 +37,10 @@ final class LayoutStore {
     var draggingID: UUID?
     /// Persisted provider display order (provider IDs). Drives both the dashboard groups and the
     /// Customize sections, so the user can drag whole providers into the order they want.
-    var providerOrder: [String]
+    private(set) var providerOrder: [String]
     /// Persisted metric order within each provider. Toggle switches do not mutate this, so turning a metric on
     /// or off never makes rows jump around in Customize.
-    var metricOrderByProvider: [String: [String]]
+    private(set) var metricOrderByProvider: [String: [String]]
 
     /// Descriptor ids pinned to the menu bar. Membership only — display order is derived from the
     /// provider + metric order above, so pins follow the same sequence shown in Customize. Capped via
@@ -145,10 +145,8 @@ final class LayoutStore {
         defaultExpandedOnEnableIDs = initial.defaultExpandedOnEnableIDs
         menuBarStyle = initial.menuBarStyle
 
-        if initial.shouldPersistExpandOnEnable { persistExpandOnEnable() }
-        if initial.shouldPersistExpanded { persistExpanded() }
-        if let seededDefaults = initial.seededDefaultsToPersist { persistSeededDefaults(seededDefaults) }
-        syncPlacedOrder(persistChanges: initial.shouldPersistPlaced)
+        syncPlacedOrder(persistChanges: false)
+        persistence.activate(initial.persistencePlan, registry: registry)
     }
 
     func provider(id: String) -> Provider? { registry.provider(id: id) }
@@ -196,17 +194,8 @@ final class LayoutStore {
 
     // MARK: - Provider grouping
 
-    /// Known providers in the user's saved order, with any not-yet-seen provider appended in registry order
-    /// so a newly added provider still shows up.
-    private func orderedProviderIDs() -> [String] {
-        let known = registry.providers.map(\.id)
-        let ordered = providerOrder.filter { known.contains($0) }
-        let missing = known.filter { !ordered.contains($0) }
-        return ordered + missing
-    }
-
     private func orderedProviders() -> [Provider] {
-        orderedProviderIDs().compactMap { registry.provider(id: $0) }
+        providerOrder.compactMap { registry.provider(id: $0) }
     }
 
     /// Enabled (and provider-enabled) widgets grouped by provider, in the user's provider order, each
@@ -409,7 +398,7 @@ final class LayoutStore {
         recordingUndoStep {
             let shown = customizeGroups.map(\.provider.id)
             guard let next = Self.reordered(shown, dragged: dragged, target: target) else { return false }
-            let rest = orderedProviderIDs().filter { !next.contains($0) }
+            let rest = providerOrder.filter { !next.contains($0) }
             providerOrder = next + rest
             persistProviderOrder()
             syncPlacedOrder()
@@ -819,23 +808,18 @@ final class LayoutStore {
     }
 
     private func metricOrder(for providerID: String) -> [String] {
-        let valid = registry.descriptors(for: providerID).map(\.id)
-        let saved = metricOrderByProvider[providerID] ?? []
-        return LayoutOrdering.normalizedMetricIDs(saved, validIDs: valid)
+        metricOrderByProvider[providerID] ?? []
     }
 
     private func syncPlacedOrder(persistChanges: Bool = true) {
-        let byDescriptor = Dictionary(
-            placed.map { ($0.descriptorID, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
-        var ordered: [PlacedWidget] = []
-        for providerID in orderedProviderIDs() {
-            ordered.append(contentsOf: metricOrder(for: providerID).compactMap { byDescriptor[$0] })
+        // Startup canonicalization plus private setters guarantee one known widget per descriptor.
+        // Trust that invariant here: silently appending duplicate or unregistered runtime leftovers
+        // would hide an internal bug. Opaque future IDs live only in the persistence layer's retained
+        // projection and never leak into this runtime collection.
+        let byDescriptor = Dictionary(uniqueKeysWithValues: placed.map { ($0.descriptorID, $0) })
+        placed = providerOrder.flatMap { providerID in
+            metricOrder(for: providerID).compactMap { byDescriptor[$0] }
         }
-        let orderedIDs = Set(ordered.map(\.id))
-        ordered.append(contentsOf: placed.filter { !orderedIDs.contains($0.id) })
-        placed = ordered
         if persistChanges { persist() }
     }
 

@@ -3,6 +3,17 @@ import XCTest
 
 @MainActor
 final class LayoutPersistenceTests: XCTestCase {
+    func testStartupRepairsUseCrashSafeDependencyOrder() throws {
+        let order = LayoutPersistence.startupWriteOrder
+        let placed = try XCTUnwrap(order.firstIndex(of: .placed))
+
+        XCTAssertEqual(Set(order), Set(LayoutPersistenceField.allCases))
+        XCTAssertEqual(order.count, LayoutPersistenceField.allCases.count)
+        XCTAssertLessThan(try XCTUnwrap(order.firstIndex(of: .expandedMetrics)), placed)
+        XCTAssertLessThan(try XCTUnwrap(order.firstIndex(of: .expandOnEnable)), placed)
+        XCTAssertEqual(order.last, .seededDefaults)
+    }
+
     func testLoadsEveryExistingKeyAndFormat() throws {
         let defaults = makeDefaults("LoadsExistingKeys")
         defaults.set(try JSONEncoder().encode([PlacedWidget(descriptorID: "claude.session")]), forKey: "layout")
@@ -20,17 +31,31 @@ final class LayoutPersistenceTests: XCTestCase {
 
         let persistence = LayoutPersistence(defaults: defaults, storageKey: "layout")
 
-        XCTAssertTrue(persistence.hasStoredLayout)
-        XCTAssertTrue(persistence.hasStoredSeededDefaults)
-        XCTAssertEqual(persistence.loadPlaced()?.map(\.descriptorID), ["claude.session"])
-        XCTAssertEqual(persistence.loadProviderOrder(), ["cursor", "claude"])
-        XCTAssertEqual(persistence.loadMetricOrder()?["claude"], ["claude.weekly", "claude.session"])
-        XCTAssertEqual(persistence.loadSeededDefaults(), ["claude.session"])
-        XCTAssertEqual(persistence.loadPins(), ["claude.session"])
-        XCTAssertEqual(persistence.loadExpandedMetrics(), ["claude.weekly"])
-        XCTAssertEqual(persistence.loadExpandOnEnable(), ["cursor.requests"])
-        XCTAssertEqual(persistence.loadExpandedProviders(), ["claude"])
+        XCTAssertTrue(persistence.loadPlaced().isPresent)
+        XCTAssertTrue(persistence.loadSeededDefaults().isPresent)
+        XCTAssertEqual(persistence.loadPlaced().value?.map(\.descriptorID), ["claude.session"])
+        XCTAssertEqual(persistence.loadProviderOrder().value, ["cursor", "claude"])
+        XCTAssertEqual(persistence.loadMetricOrder().value?["claude"], ["claude.weekly", "claude.session"])
+        XCTAssertEqual(persistence.loadSeededDefaults().value, ["claude.session"])
+        XCTAssertEqual(persistence.loadPins().value, ["claude.session"])
+        XCTAssertEqual(persistence.loadExpandedMetrics().value, ["claude.weekly"])
+        XCTAssertEqual(persistence.loadExpandOnEnable().value, ["cursor.requests"])
+        XCTAssertEqual(persistence.loadExpandedProviders().value, ["claude"])
         XCTAssertEqual(persistence.loadMenuBarStyle(), .bars)
+    }
+
+    func testLoadsDistinguishMissingAndMalformedValues() {
+        let defaults = makeDefaults("LoadState")
+        defaults.set("not encoded data", forKey: "layout")
+        defaults.set([42], forKey: "layout.menuBarPins")
+        let persistence = LayoutPersistence(defaults: defaults, storageKey: "layout")
+
+        XCTAssertTrue(persistence.loadPlaced().isPresent)
+        XCTAssertNil(persistence.loadPlaced().value)
+        XCTAssertTrue(persistence.loadPins().isPresent)
+        XCTAssertNil(persistence.loadPins().value)
+        XCTAssertFalse(persistence.loadProviderOrder().isPresent)
+        XCTAssertNil(persistence.loadProviderOrder().value)
     }
 
     func testSavesEveryExistingKeyAndFormat() throws {

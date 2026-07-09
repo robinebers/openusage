@@ -44,7 +44,8 @@ The UI reads from a few observable stores:
 - `WidgetDataStore` — the latest snapshot per provider, plus refresh and caching. This is what the
   dashboard rows and menu-bar strip read.
 - `LayoutStore` — which metrics are shown, the provider/metric order, and which metrics are starred for the
-  menu bar.
+  menu bar. `LayoutBootstrap` repairs saved layouts for the current registry, while `LayoutPersistence`
+  keeps entries from newer app versions safe when the known layout changes.
 - `ProviderEnablementStore` — which providers the user has turned on or off.
 
 Refresh runs on a timer in `AppContainer`; each pass respects the cache, so the network is only hit once a

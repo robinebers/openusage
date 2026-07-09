@@ -15,10 +15,13 @@ final class LayoutBootstrapTests: XCTestCase {
         XCTAssertEqual(state.placed.map(\.descriptorID), ["claude.session", "claude.weekly"])
         XCTAssertEqual(state.pinnedMetricIDs, ["claude.session"])
         XCTAssertEqual(state.expandedMetricIDs, ["claude.weekly"])
-        XCTAssertEqual(state.seededDefaultsToPersist, ["claude.session", "claude.weekly"])
-        XCTAssertTrue(state.shouldPersistExpanded)
-        XCTAssertTrue(state.shouldPersistExpandOnEnable)
-        XCTAssertFalse(state.shouldPersistPlaced)
+        XCTAssertEqual(
+            state.persistencePlan.fieldsToWrite,
+            [.seededDefaults, .expandedMetrics, .expandOnEnable]
+        )
+        XCTAssertEqual(state.persistencePlan.state.seededDefaults, ["claude.session", "claude.weekly"])
+        XCTAssertEqual(state.persistencePlan.state.expandedMetrics, ["claude.weekly"])
+        XCTAssertEqual(state.persistencePlan.state.expandOnEnable, [])
     }
 
     func testExistingLayoutUsesLegacyBaselineWithoutRestoringRemovedMetric() {
@@ -33,10 +36,9 @@ final class LayoutBootstrapTests: XCTestCase {
 
         XCTAssertEqual(state.placed.map(\.descriptorID), ["claude.session"])
         XCTAssertFalse(state.expandedMetricIDs.contains("claude.weekly"))
-        XCTAssertFalse(state.shouldPersistExpanded)
-        XCTAssertTrue(state.shouldPersistExpandOnEnable)
-        XCTAssertFalse(state.shouldPersistPlaced)
-        XCTAssertEqual(state.seededDefaultsToPersist, ["claude.session", "claude.weekly"])
+        XCTAssertEqual(state.persistencePlan.fieldsToWrite, [.seededDefaults, .expandOnEnable])
+        XCTAssertEqual(state.persistencePlan.state.expandOnEnable, ["claude.weekly"])
+        XCTAssertEqual(state.persistencePlan.state.seededDefaults, ["claude.session", "claude.weekly"])
     }
 
     func testPreviouslySeededMetricStaysOffWhenUserDisabledIt() {
@@ -51,8 +53,8 @@ final class LayoutBootstrapTests: XCTestCase {
         )
 
         XCTAssertEqual(state.placed.map(\.descriptorID), ["claude.session"])
-        XCTAssertFalse(state.shouldPersistPlaced)
-        XCTAssertNil(state.seededDefaultsToPersist)
+        XCTAssertEqual(state.persistencePlan.fieldsToWrite, [.expandOnEnable])
+        XCTAssertEqual(state.persistencePlan.state.expandOnEnable, ["claude.weekly"])
     }
 
     private func makeDefaultSet() -> LayoutDefaultSet {

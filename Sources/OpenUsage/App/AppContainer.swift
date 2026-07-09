@@ -52,9 +52,9 @@ final class AppContainer {
 
         // Default provider order (see AGENTS.md "## Providers"): the three established providers first —
         // Claude, Codex, Cursor — then every other provider alphabetically by display name. This registry
-        // order is the default provider order (`LayoutStore.orderedProviderIDs` falls back to it, and
-        // `resetToDefault` seeds it), so the dashboard, Customize sections, and the per-provider reset
-        // menu all read this way.
+        // order is the default provider order (`LayoutStore` canonicalizes saved order against it, and
+        // `resetToDefault` restores it), so the dashboard, Customize sections, and the per-provider
+        // reset menu all read this way.
         let providers: [ProviderRuntime] = [
             ClaudeProvider(),
             CodexProvider(),
