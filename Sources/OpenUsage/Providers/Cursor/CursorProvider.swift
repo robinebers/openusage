@@ -88,6 +88,10 @@ final class CursorProvider: ProviderRuntime {
                 if accessToken == nil {
                     throw error
                 }
+                // A near-expiry JWT may still be accepted by the usage endpoint, so retain the existing
+                // fallback. Keep the swallowed refresh failure diagnosable without interpolating an
+                // error that could contain request details or credentials.
+                AppLog.warn(LogTag.auth("cursor"), "proactive token refresh failed; trying the existing access token")
             }
         }
 
@@ -192,24 +196,33 @@ final class CursorProvider: ProviderRuntime {
             return nil
         }
 
-        let response = try await usageClient.refreshToken(refreshToken)
+        let response: HTTPResponse
+        do {
+            response = try await usageClient.refreshToken(refreshToken)
+        } catch {
+            throw CursorUsageError.connectionFailed
+        }
         if response.statusCode == 400 || response.statusCode == 401 {
-            let body = ProviderParse.jsonObject(response.body)
-            if body?["shouldLogout"] as? Bool == true {
+            guard let body = ProviderParse.jsonObject(response.body),
+                  let shouldLogout = body["shouldLogout"] as? Bool else {
+                throw CursorUsageError.invalidResponse
+            }
+            if shouldLogout {
                 throw CursorAuthError.sessionExpired
             }
             throw CursorAuthError.tokenExpired
         }
-        guard (200..<300).contains(response.statusCode),
-              let body = ProviderParse.jsonObject(response.body)
-        else {
-            return nil
+        guard (200..<300).contains(response.statusCode) else {
+            throw CursorUsageError.requestFailed(response.statusCode)
+        }
+        guard let body = ProviderParse.jsonObject(response.body) else {
+            throw CursorUsageError.invalidResponse
         }
         if body["shouldLogout"] as? Bool == true {
             throw CursorAuthError.sessionExpired
         }
         guard let accessToken = (body["access_token"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty else {
-            return nil
+            throw CursorUsageError.invalidResponse
         }
         // Fail loudly, but do NOT interpolate the error: the Cursor token is persisted via a SQL
         // statement that embeds the token, and a sqlite3 failure surfaces as stderr that could echo a
@@ -218,7 +231,7 @@ final class CursorProvider: ProviderRuntime {
         do {
             try authStore.saveAccessToken(accessToken, source: authState.source)
         } catch {
-            AppLog.error(LogTag.auth("cursor"), "failed to persist rotated access token to the Cursor state DB; using it for this session only")
+            AppLog.error(LogTag.auth("cursor"), "failed to persist rotated access token to the Cursor credential store; using it for this session only")
         }
         return accessToken
     }

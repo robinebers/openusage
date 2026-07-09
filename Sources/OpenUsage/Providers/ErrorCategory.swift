@@ -102,11 +102,10 @@ extension CursorAuthError: CategorizedError {
 extension CursorUsageError: CategorizedError {
     var errorCategory: ErrorCategory {
         switch self {
-        case .connectionFailed: .network
+        case .connectionFailed, .usageAfterRefreshFailed: .network
         case .invalidResponse, .totalUsageLimitMissing: .decoding
         case .requestFailed(let status): ErrorCategory.http(status)
         case .requestBasedUnavailable, .noActiveSubscription: .notAvailable
-        case .usageAfterRefreshFailed: .other
         }
     }
 }

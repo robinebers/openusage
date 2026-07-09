@@ -24,7 +24,7 @@ Today, Yesterday, Last 30 Days, and Usage Trend come from Cursor's usage export.
 
 ## Troubleshooting
 
-- **"Not logged in" / token errors** — open Cursor and make sure you're signed in, then refresh.
+- **"Not logged in" / "Session expired" / "Token expired"** — open Cursor and make sure you're signed in, then refresh. Network, server, rate-limit, and malformed token-refresh responses are reported separately because signing in again cannot fix those failures.
 - **Some metrics missing** — Cursor omits fields depending on plan type (e.g. Requests only exists on request-based accounts); missing metrics simply show "No data".
 
 ## Under the hood

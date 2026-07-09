@@ -222,6 +222,191 @@ final class CursorProviderTests: XCTestCase {
         XCTAssertEqual(progress(snapshot.lines, "API usage")?.used, 7.5)
         XCTAssertEqual(progress(snapshot.lines, "On-demand")?.used, 40)
     }
+
+    func testRefreshOnlyCredentialsSurfaceRefreshConnectionFailure() async {
+        let provider = makeProvider(accessToken: nil, refreshToken: "refresh-token") { request in
+            if request.url == CursorUsageClient.refreshURL {
+                throw URLError(.cannotConnectToHost)
+            }
+            return HTTPResponse(statusCode: 404, headers: [:], body: Data())
+        }
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(badge(snapshot.lines, "Error"), ProviderUsageErrorText.connectionFailed)
+        XCTAssertEqual(snapshot.errorCategory, .network)
+    }
+
+    func testUsage401PreservesRefreshResponseFailureSemantics() async {
+        let cases: [(name: String, response: HTTPResponse, message: String, category: ErrorCategory)] = [
+            (
+                "server failure",
+                HTTPResponse(statusCode: 503, headers: [:], body: Data()),
+                ProviderUsageErrorText.requestFailed(statusCode: 503),
+                .http5xx
+            ),
+            (
+                "rate limit",
+                HTTPResponse(statusCode: 429, headers: [:], body: Data()),
+                ProviderUsageErrorText.requestFailed(statusCode: 429),
+                .rateLimited
+            ),
+            (
+                "malformed JSON",
+                HTTPResponse(statusCode: 200, headers: [:], body: Data("not-json".utf8)),
+                ProviderUsageErrorText.invalidResponse,
+                .decoding
+            ),
+            (
+                "missing access token",
+                HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"shouldLogout":false}"#.utf8)),
+                ProviderUsageErrorText.invalidResponse,
+                .decoding
+            ),
+            (
+                "malformed unauthorized response",
+                HTTPResponse(statusCode: 401, headers: [:], body: Data("not-json".utf8)),
+                ProviderUsageErrorText.invalidResponse,
+                .decoding
+            )
+        ]
+
+        for testCase in cases {
+            let provider = makeProvider(
+                accessToken: makeCursorJWT(),
+                refreshToken: "refresh-token"
+            ) { request in
+                if request.url == CursorUsageClient.refreshURL {
+                    return testCase.response
+                }
+                if request.url == CursorUsageClient.usageURL {
+                    return HTTPResponse(statusCode: 401, headers: [:], body: Data())
+                }
+                return HTTPResponse(statusCode: 404, headers: [:], body: Data())
+            }
+
+            let snapshot = await provider.refresh()
+
+            XCTAssertEqual(badge(snapshot.lines, "Error"), testCase.message, testCase.name)
+            XCTAssertEqual(snapshot.errorCategory, testCase.category, testCase.name)
+            XCTAssertNotEqual(snapshot.errorCategory, .authExpired, testCase.name)
+        }
+    }
+
+    func testRefreshUsesAuthErrorsOnlyForExplicitExpirySemantics() async {
+        let cases: [(name: String, response: HTTPResponse, error: CursorAuthError)] = [
+            (
+                "logout response",
+                HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"shouldLogout":true}"#.utf8)),
+                .sessionExpired
+            ),
+            (
+                "unauthorized logout response",
+                HTTPResponse(statusCode: 401, headers: [:], body: Data(#"{"shouldLogout":true}"#.utf8)),
+                .sessionExpired
+            ),
+            (
+                "unauthorized token response",
+                HTTPResponse(statusCode: 401, headers: [:], body: Data(#"{"shouldLogout":false}"#.utf8)),
+                .tokenExpired
+            )
+        ]
+
+        for testCase in cases {
+            let provider = makeProvider(
+                accessToken: makeCursorJWT(),
+                refreshToken: "refresh-token"
+            ) { request in
+                if request.url == CursorUsageClient.refreshURL {
+                    return testCase.response
+                }
+                if request.url == CursorUsageClient.usageURL {
+                    return HTTPResponse(statusCode: 401, headers: [:], body: Data())
+                }
+                return HTTPResponse(statusCode: 404, headers: [:], body: Data())
+            }
+
+            let snapshot = await provider.refresh()
+
+            XCTAssertEqual(badge(snapshot.lines, "Error"), testCase.error.localizedDescription, testCase.name)
+            XCTAssertEqual(snapshot.errorCategory, .authExpired, testCase.name)
+        }
+    }
+
+    func testProactiveRefreshFailureStillTriesUsableExistingToken() async {
+        let expiredAccessToken = makeCursorJWT(exp: 1)
+        let provider = makeProvider(
+            accessToken: expiredAccessToken,
+            refreshToken: "refresh-token"
+        ) { request in
+            if request.url == CursorUsageClient.refreshURL {
+                throw URLError(.cannotConnectToHost)
+            }
+            if request.url == CursorUsageClient.usageURL {
+                XCTAssertEqual(request.headers["Authorization"], "Bearer \(expiredAccessToken)")
+                return HTTPResponse(
+                    statusCode: 200,
+                    headers: [:],
+                    body: Data(#"{"enabled":true,"planUsage":{"limit":10000,"remaining":8000,"totalPercentUsed":20}}"#.utf8)
+                )
+            }
+            return HTTPResponse(statusCode: 404, headers: [:], body: Data())
+        }
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertNil(badge(snapshot.lines, "Error"))
+        XCTAssertEqual(progress(snapshot.lines, "Total usage")?.used, 20)
+    }
+
+    func testUsageTransportFailureAfterSuccessfulRefreshStaysNetworkClassified() async {
+        let refreshedToken = makeCursorJWT(sub: "google-oauth2|refreshed-user")
+        let usageCalls = CursorCallCounter()
+        let provider = makeProvider(
+            accessToken: makeCursorJWT(),
+            refreshToken: "refresh-token"
+        ) { request in
+            if request.url == CursorUsageClient.refreshURL {
+                return HTTPResponse(
+                    statusCode: 200,
+                    headers: [:],
+                    body: Data(#"{"access_token":"\#(refreshedToken)","shouldLogout":false}"#.utf8)
+                )
+            }
+            if request.url == CursorUsageClient.usageURL {
+                if usageCalls.next() == 1 {
+                    return HTTPResponse(statusCode: 401, headers: [:], body: Data())
+                }
+                throw URLError(.networkConnectionLost)
+            }
+            return HTTPResponse(statusCode: 404, headers: [:], body: Data())
+        }
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(badge(snapshot.lines, "Error"), CursorUsageError.usageAfterRefreshFailed.localizedDescription)
+        XCTAssertEqual(snapshot.errorCategory, .network)
+    }
+
+    private func makeProvider(
+        accessToken: String?,
+        refreshToken: String?,
+        handler: @escaping @Sendable (HTTPRequest) async throws -> HTTPResponse
+    ) -> CursorProvider {
+        var values: [String: String] = [:]
+        values[CursorAuthStore.accessTokenKey] = accessToken
+        values[CursorAuthStore.refreshTokenKey] = refreshToken
+        return CursorProvider(
+            authStore: CursorAuthStore(
+                sqlite: FakeSQLite(values: values),
+                keychain: FakeKeychain(),
+                now: { Date(timeIntervalSince1970: 1_800_000_000) }
+            ),
+            usageClient: CursorUsageClient(http: RoutingHTTPClient(handler: handler)),
+            now: { Date(timeIntervalSince1970: 1_800_000_000) },
+            pricing: { TestPricing.bundled }
+        )
+    }
 }
 
 private func progress(_ lines: [MetricLine], _ label: String) -> (used: Double, limit: Double, resetsAt: Date?, periodDurationMs: Int?)? {
@@ -236,6 +421,13 @@ private func dollarValue(_ lines: [MetricLine], _ label: String) -> Double? {
         return nil
     }
     return values.first { $0.kind == .dollars }?.number
+}
+
+private func badge(_ lines: [MetricLine], _ label: String) -> String? {
+    guard case .badge(_, let value, _, _) = lines.first(where: { $0.label == label }) else {
+        return nil
+    }
+    return value
 }
 
 private func makeCursorJWT(sub: String = "google-oauth2|user", exp: Double = 9_999_999_999) -> String {
@@ -278,6 +470,18 @@ private final class FakeSQLite: SQLiteAccessing, @unchecked Sendable {
             return nil
         }
         return String(sql[start..<end]).replacingOccurrences(of: "''", with: "'")
+    }
+}
+
+private final class CursorCallCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = 0
+
+    func next() -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        value += 1
+        return value
     }
 }
 
