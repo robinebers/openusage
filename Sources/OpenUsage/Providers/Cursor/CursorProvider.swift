@@ -123,18 +123,20 @@ final class CursorProvider: ProviderRuntime {
         }
 
         if shouldTryGenericRequestFallback(usage: usage) {
-            if let mapped = try? await requestBasedResult(
-                accessToken: currentToken,
-                planName: planName,
-                unavailableMessage: "Cursor request-based usage data unavailable. Try again later."
-            ) {
+            do {
+                let mapped = try await requestBasedResult(
+                    accessToken: currentToken,
+                    planName: planName,
+                    unavailableMessage: "Cursor request-based usage data unavailable. Try again later."
+                )
                 return snapshot(mapped)
+            } catch {
+                AppLog.warn(LogTag.plugin("cursor"), "optional request-based usage fallback failed")
             }
         }
 
         let creditGrants = await fetchCreditGrants(accessToken: currentToken)
-        let stripeResponse = try? await usageClient.fetchStripeBalance(accessToken: currentToken)
-        let stripeBalanceCents = CursorUsageMapper.stripeBalanceCents(from: stripeResponse ?? nil)
+        let stripeBalanceCents = await fetchStripeBalanceCents(accessToken: currentToken)
         var mapped = try CursorUsageMapper.mapUsage(
             usage: usage,
             planName: planName,
@@ -224,27 +226,82 @@ final class CursorProvider: ProviderRuntime {
     }
 
     private func fetchPlanName(accessToken: String) async -> (String?, Bool) {
-        do {
-            let response = try await usageClient.fetchPlan(accessToken: accessToken)
-            guard (200..<300).contains(response.statusCode),
-                  let body = ProviderParse.jsonObject(response.body),
-                  let planInfo = body["planInfo"] as? [String: Any]
-            else {
-                return (nil, true)
-            }
-            return (planInfo["planName"] as? String, false)
-        } catch {
+        guard let body = await fetchOptionalJSONObject(label: "plan", request: {
+            try await self.usageClient.fetchPlan(accessToken: accessToken)
+        }) else {
             return (nil, true)
         }
+        guard let planInfo = body["planInfo"] as? [String: Any],
+              let planName = (planInfo["planName"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .nilIfEmpty
+        else {
+            AppLog.warn(LogTag.plugin("cursor"), "optional plan response contained invalid plan metadata")
+            return (nil, true)
+        }
+        return (planName, false)
     }
 
     private func fetchCreditGrants(accessToken: String) async -> [String: Any]? {
-        guard let response = try? await usageClient.fetchCredits(accessToken: accessToken),
-              (200..<300).contains(response.statusCode)
-        else {
+        guard let body = await fetchOptionalJSONObject(label: "credit-grants", request: {
+            try await self.usageClient.fetchCredits(accessToken: accessToken)
+        }) else {
             return nil
         }
-        return ProviderParse.jsonObject(response.body)
+        guard let hasCreditGrants = body["hasCreditGrants"] as? Bool else {
+            AppLog.warn(LogTag.plugin("cursor"), "optional credit-grants response contained invalid grant metadata")
+            return nil
+        }
+        if hasCreditGrants {
+            guard let totalCents = ProviderParse.number(body["totalCents"]), totalCents > 0,
+                  let usedCents = ProviderParse.number(body["usedCents"]), usedCents >= 0 else {
+                AppLog.warn(LogTag.plugin("cursor"), "optional credit-grants response contained invalid grant metadata")
+                return nil
+            }
+        }
+        return body
+    }
+
+    private func fetchStripeBalanceCents(accessToken: String) async -> Double {
+        guard let body = await fetchOptionalJSONObject(label: "prepaid-balance", request: {
+            try await self.usageClient.fetchStripeBalance(accessToken: accessToken)
+        }) else {
+            return 0
+        }
+        guard ProviderParse.number(body["customerBalance"]) != nil else {
+            AppLog.warn(LogTag.plugin("cursor"), "optional prepaid-balance response contained invalid balance metadata")
+            return 0
+        }
+        return CursorUsageMapper.stripeBalanceCents(from: body)
+    }
+
+    /// Optional endpoints enrich a usable primary snapshot; they never fail the whole provider. Keep
+    /// their boundary handling in one place so transport, preparation, status, and schema failures are
+    /// all visible with fixed, credential-free diagnostics.
+    private func fetchOptionalJSONObject(
+        label: String,
+        request: () async throws -> HTTPResponse?
+    ) async -> [String: Any]? {
+        let response: HTTPResponse?
+        do {
+            response = try await request()
+        } catch {
+            AppLog.warn(LogTag.plugin("cursor"), "optional \(label) request failed")
+            return nil
+        }
+        guard let response else {
+            AppLog.warn(LogTag.plugin("cursor"), "optional \(label) request could not be prepared from the current session")
+            return nil
+        }
+        guard (200..<300).contains(response.statusCode) else {
+            AppLog.warn(LogTag.plugin("cursor"), "optional \(label) request returned HTTP \(response.statusCode)")
+            return nil
+        }
+        guard let body = ProviderParse.jsonObject(response.body) else {
+            AppLog.warn(LogTag.plugin("cursor"), "optional \(label) response was invalid")
+            return nil
+        }
+        return body
     }
 
     private func requestBasedResult(accessToken: String, planName: String?, unavailableMessage: String) async throws -> CursorMappedUsage {

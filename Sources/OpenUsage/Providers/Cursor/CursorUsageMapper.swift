@@ -360,11 +360,9 @@ enum CursorUsageMapper {
         }
     }
 
-    static func stripeBalanceCents(from response: HTTPResponse?) -> Double {
-        guard let response,
-              (200..<300).contains(response.statusCode),
-              let stripe = ProviderParse.jsonObject(response.body),
-              let balance = ProviderParse.number(stripe["customerBalance"]),
+    static func stripeBalanceCents(from body: [String: Any]?) -> Double {
+        guard let body,
+              let balance = ProviderParse.number(body["customerBalance"]),
               balance < 0
         else {
             return 0

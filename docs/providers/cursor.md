@@ -26,6 +26,7 @@ Today, Yesterday, Last 30 Days, and Usage Trend come from Cursor's usage export.
 
 - **"Not logged in" / token errors** — open Cursor and make sure you're signed in, then refresh.
 - **Some metrics missing** — Cursor omits fields depending on plan type (e.g. Requests only exists on request-based accounts); missing metrics simply show "No data".
+- **Optional lookup failed** — plan, credit-grant, prepaid-balance, and request-fallback failures stay nonfatal when primary usage is available. OpenUsage records fixed, credential-free reasons in the diagnostic log.
 
 ## Under the hood
 
