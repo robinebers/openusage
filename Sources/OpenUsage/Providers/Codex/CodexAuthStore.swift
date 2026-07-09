@@ -71,11 +71,14 @@ enum CodexAuthError: Error, LocalizedError, Equatable {
         }
     }
 
+    /// Whether this error invalidates only the current credential candidate. The provider retains the
+    /// last fallback error, so an API-key-only setup still ends with `usageAPIKey`; it just no longer
+    /// prevents a later OAuth file or keychain candidate from being tried.
     var allowsAuthFallback: Bool {
         switch self {
-        case .sessionExpired, .tokenConflict, .tokenRevoked, .tokenExpired:
+        case .sessionExpired, .tokenConflict, .tokenRevoked, .tokenExpired, .usageAPIKey:
             return true
-        case .notLoggedIn, .usageAPIKey, .invalidAuthPayload:
+        case .notLoggedIn, .invalidAuthPayload:
             return false
         }
     }
@@ -217,4 +220,3 @@ private extension CodexAuthState.Source {
         return false
     }
 }
-

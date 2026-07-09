@@ -170,7 +170,13 @@ final class CodexProvider: ProviderRuntime {
                     return try await self.refreshAccessToken(authState: &working, refreshToken: refreshToken)
                 } catch let error as CodexAuthError {
                     throw error
+                } catch let error as CodexUsageError {
+                    // The token endpoint returned a categorized HTTP/decode failure. Preserve it so
+                    // the user-facing error and telemetry don't misreport every refresh failure as a
+                    // transport outage.
+                    throw error
                 } catch {
+                    // URLSession transport failures are untyped at this boundary.
                     throw CodexUsageError.connectionFailed
                 }
             },

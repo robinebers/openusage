@@ -16,7 +16,7 @@ Tracks your ChatGPT/Codex subscription limits using the login from the Codex CLI
 
 ## Where credentials come from
 
-Sign in once with the Codex CLI (`codex`); OpenUsage reads the same auth files (`$CODEX_HOME` respected) with a keychain fallback. Tokens refresh automatically and rotate back into the auth file.
+Sign in once with the Codex CLI (`codex`); OpenUsage reads the same auth files (`$CODEX_HOME` respected) with a keychain fallback. When multiple standard auth files exist, an API-key-only file doesn't hide a later ChatGPT OAuth login. Tokens refresh automatically and rotate back into the auth file.
 
 ## The spend tiles
 
@@ -26,6 +26,9 @@ Today / Yesterday / Last 30 Days are computed **locally**: OpenUsage reads the C
 
 - **"Not logged in"** — run `codex` and sign in, then refresh.
 - **API-key-only setups** can't read subscription usage — sign in with your ChatGPT account instead.
+- **"Usage request failed" or "Usage response invalid"** — OpenUsage found your login, but a token
+  refresh or usage request hit a temporary network, server, or response problem. Retry first; unlike a
+  token-expired message, this does not mean the local login is missing.
 - **Spend tiles show "No data"** — OpenUsage found no Codex session logs in the last 30 days. If your Codex home lives somewhere custom, set `CODEX_HOME` so both the Codex CLI and OpenUsage look in the same place.
 
 ## Under the hood
