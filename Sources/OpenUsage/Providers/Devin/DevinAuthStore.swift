@@ -7,11 +7,14 @@ struct DevinAuth: Hashable, Sendable {
 
 enum DevinAuthError: Error, LocalizedError, Equatable {
     case notLoggedIn
+    case sessionExpired
 
     var errorDescription: String? {
         switch self {
         case .notLoggedIn:
             return "Run devin auth login or sign in to Devin and try again."
+        case .sessionExpired:
+            return "Devin session expired. Run `devin auth login` or sign in to Devin again."
         }
     }
 }

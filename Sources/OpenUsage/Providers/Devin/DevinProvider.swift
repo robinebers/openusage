@@ -41,58 +41,76 @@ final class DevinProvider: ProviderRuntime {
     }
 
     func refresh() async -> ProviderSnapshot {
-        var sawAPIKey = false
         var sawAuthFailure = false
+        var firstUsageFailure: DevinUsageError?
         let credentials = await loadOffMainActor { [authStore] in authStore.loadCredentialsFile() }
 
         if let credentials {
-            sawAPIKey = true
-            switch await attempt(auth: credentials) {
+            switch await attempt(auth: credentials, sourceLabel: "CLI credentials") {
             case .success(let mapped):
                 return snapshot(from: mapped)
             case .authFailure:
                 sawAuthFailure = true
-            case .unavailable:
-                break
+            case .usageFailure(let error):
+                firstUsageFailure = error
             }
         }
 
         let appAuth = await loadOffMainActor({ [authStore] in authStore.loadAppAuth() })
         if let appAuth,
            credentials == nil || shouldAttemptAppAuth(appAuth, after: credentials) {
-            sawAPIKey = true
-            switch await attempt(auth: appAuth) {
+            switch await attempt(auth: appAuth, sourceLabel: "app credentials") {
             case .success(let mapped):
                 return snapshot(from: mapped)
             case .authFailure:
                 sawAuthFailure = true
-            case .unavailable:
-                break
+            case .usageFailure(let error):
+                firstUsageFailure = firstUsageFailure ?? error
             }
         }
 
-        if sawAuthFailure {
-            return ProviderSnapshot.error(provider: provider, error: DevinAuthError.notLoggedIn)
+        // An auth rejection only proves that one candidate is stale. If another candidate encountered a
+        // transport, HTTP, or decoding failure, preserve that actionable failure instead of replacing it
+        // with a misleading login fallback.
+        if let firstUsageFailure {
+            return ProviderSnapshot.error(provider: provider, error: firstUsageFailure)
         }
-        if sawAPIKey {
-            return ProviderSnapshot.error(provider: provider, error: DevinUsageError.quotaUnavailable)
+        if sawAuthFailure {
+            return ProviderSnapshot.error(provider: provider, error: DevinAuthError.sessionExpired)
         }
         return ProviderSnapshot.error(provider: provider, error: DevinAuthError.notLoggedIn)
     }
 
-    private func attempt(auth: DevinAuth) async -> DevinAuthAttempt {
+    private func attempt(auth: DevinAuth, sourceLabel: String) async -> DevinAuthAttempt {
         let apiServerURL = authStore.effectiveAPIServerURL(auth)
+        let response: HTTPResponse
         do {
-            let response = try await usageClient.fetchUserStatus(auth: auth, apiServerURL: apiServerURL)
-            if response.statusCode == 401 || response.statusCode == 403 {
-                return .authFailure
-            }
-            guard (200..<300).contains(response.statusCode) else {
-                return .unavailable
-            }
-            return .success(try DevinUsageMapper.mapUserStatusResponse(response))
+            response = try await usageClient.fetchUserStatus(auth: auth, apiServerURL: apiServerURL)
+        } catch let error as DevinUsageError {
+            AppLog.error(LogTag.plugin("devin"), "\(sourceLabel) quota request could not be created")
+            return .usageFailure(error)
         } catch {
-            return .unavailable
+            AppLog.error(LogTag.plugin("devin"), "\(sourceLabel) quota request failed to connect")
+            return .usageFailure(.connectionFailed)
+        }
+
+        if response.statusCode == 401 || response.statusCode == 403 {
+            AppLog.warn(LogTag.auth("devin"), "\(sourceLabel) rejected (HTTP \(response.statusCode)); trying the next source if available")
+            return .authFailure
+        }
+        guard (200..<300).contains(response.statusCode) else {
+            AppLog.error(LogTag.plugin("devin"), "\(sourceLabel) quota request failed (HTTP \(response.statusCode))")
+            return .usageFailure(.requestFailed(response.statusCode))
+        }
+
+        do {
+            return .success(try DevinUsageMapper.mapUserStatusResponse(response))
+        } catch let error as DevinUsageError {
+            AppLog.error(LogTag.plugin("devin"), "\(sourceLabel) quota response was unusable")
+            return .usageFailure(error)
+        } catch {
+            AppLog.error(LogTag.plugin("devin"), "\(sourceLabel) quota response could not be decoded")
+            return .usageFailure(.invalidResponse)
         }
     }
 
@@ -110,5 +128,5 @@ final class DevinProvider: ProviderRuntime {
 private enum DevinAuthAttempt {
     case success(DevinMappedUsage)
     case authFailure
-    case unavailable
+    case usageFailure(DevinUsageError)
 }

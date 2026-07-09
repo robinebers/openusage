@@ -135,6 +135,7 @@ extension DevinAuthError: CategorizedError {
     var errorCategory: ErrorCategory {
         switch self {
         case .notLoggedIn: .notLoggedIn
+        case .sessionExpired: .authExpired
         }
     }
 }
@@ -142,7 +143,9 @@ extension DevinAuthError: CategorizedError {
 extension DevinUsageError: CategorizedError {
     var errorCategory: ErrorCategory {
         switch self {
+        case .connectionFailed: .network
         case .invalidResponse: .decoding
+        case .requestFailed(let status): ErrorCategory.http(status)
         case .quotaUnavailable: .notAvailable
         }
     }

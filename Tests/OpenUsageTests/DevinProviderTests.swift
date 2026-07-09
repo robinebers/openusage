@@ -181,6 +181,89 @@ final class DevinProviderTests: XCTestCase {
         ])
     }
 
+    func testRefreshFallsBackToAppStateAfterPrimaryServiceFailure() async throws {
+        let httpClient = QueueHTTPClient(responses: [
+            HTTPResponse(statusCode: 500, headers: [:], body: Data("{}".utf8)),
+            HTTPResponse(statusCode: 200, headers: [:], body: try makeUserStatusBody(planName: "Teams"))
+        ])
+
+        let snapshot = await makeProviderWithDistinctCredentials(http: httpClient).refresh()
+
+        XCTAssertEqual(snapshot.plan, "Teams")
+        XCTAssertNil(snapshot.errorCategory)
+        XCTAssertEqual(httpClient.requests.count, 2)
+    }
+
+    func testRefreshKeepsNonAuthFailureWhenAnotherCredentialIsRejected() async {
+        struct Scenario {
+            var name: String
+            var results: [QueuedHTTPResult]
+            var expectedText: String
+            var expectedCategory: ErrorCategory
+        }
+
+        let scenarios = [
+            Scenario(
+                name: "primary server error then stale app credentials",
+                results: [
+                    .response(HTTPResponse(statusCode: 500, headers: [:], body: Data("{}".utf8))),
+                    .response(HTTPResponse(statusCode: 401, headers: [:], body: Data("{}".utf8)))
+                ],
+                expectedText: DevinUsageError.requestFailed(500).localizedDescription,
+                expectedCategory: .http5xx
+            ),
+            Scenario(
+                name: "stale primary credentials then malformed app response",
+                results: [
+                    .response(HTTPResponse(statusCode: 401, headers: [:], body: Data("{}".utf8))),
+                    .response(HTTPResponse(statusCode: 200, headers: [:], body: Data("{}".utf8)))
+                ],
+                expectedText: DevinUsageError.invalidResponse.localizedDescription,
+                expectedCategory: .decoding
+            ),
+            Scenario(
+                name: "primary connection failure then stale app credentials",
+                results: [
+                    .connectionFailure,
+                    .response(HTTPResponse(statusCode: 403, headers: [:], body: Data("{}".utf8)))
+                ],
+                expectedText: DevinUsageError.connectionFailed.localizedDescription,
+                expectedCategory: .network
+            ),
+            Scenario(
+                name: "two service failures keep the preferred credential's failure",
+                results: [
+                    .response(HTTPResponse(statusCode: 429, headers: [:], body: Data("{}".utf8))),
+                    .response(HTTPResponse(statusCode: 200, headers: [:], body: Data("{}".utf8)))
+                ],
+                expectedText: DevinUsageError.requestFailed(429).localizedDescription,
+                expectedCategory: .rateLimited
+            )
+        ]
+
+        for scenario in scenarios {
+            let httpClient = QueueHTTPClient(results: scenario.results)
+            let snapshot = await makeProviderWithDistinctCredentials(http: httpClient).refresh()
+
+            XCTAssertEqual(errorText(snapshot.lines), scenario.expectedText, scenario.name)
+            XCTAssertEqual(snapshot.errorCategory, scenario.expectedCategory, scenario.name)
+            XCTAssertEqual(httpClient.requests.count, 2, scenario.name)
+        }
+    }
+
+    func testRefreshReportsExpiredSessionWhenEveryCredentialIsRejected() async {
+        let httpClient = QueueHTTPClient(responses: [
+            HTTPResponse(statusCode: 401, headers: [:], body: Data("{}".utf8)),
+            HTTPResponse(statusCode: 403, headers: [:], body: Data("{}".utf8))
+        ])
+
+        let snapshot = await makeProviderWithDistinctCredentials(http: httpClient).refresh()
+
+        XCTAssertEqual(errorText(snapshot.lines), DevinAuthError.sessionExpired.localizedDescription)
+        XCTAssertEqual(snapshot.errorCategory, .authExpired)
+        XCTAssertEqual(httpClient.requests.count, 2)
+    }
+
     func testRefreshReturnsLoginHintWithoutAuth() async {
         let provider = DevinProvider(
             authStore: DevinAuthStore(files: FakeFiles(), sqlite: FakeSQLite()),
@@ -201,6 +284,21 @@ final class DevinProviderTests: XCTestCase {
             return nil
         }
         return text
+    }
+
+    private func makeProviderWithDistinctCredentials(http: QueueHTTPClient) -> DevinProvider {
+        DevinProvider(
+            authStore: DevinAuthStore(
+                files: FakeFiles([
+                    DevinAuthStore.credentialsPath: """
+                    windsurf_api_key = "devin-session-token$cli"
+                    api_server_url = "https://server.codeium.test"
+                    """
+                ]),
+                sqlite: FakeSQLite(value: #"{"apiKey":"devin-session-token$app"}"#)
+            ),
+            usageClient: DevinUsageClient(http: http)
+        )
     }
 }
 
@@ -248,18 +346,36 @@ private final class FakeSQLite: SQLiteAccessing, @unchecked Sendable {
 }
 
 private final class QueueHTTPClient: HTTPClient, @unchecked Sendable {
-    var responses: [HTTPResponse]
+    var results: [QueuedHTTPResult]
     var requests: [HTTPRequest] = []
 
     init(responses: [HTTPResponse] = []) {
-        self.responses = responses
+        self.results = responses.map(QueuedHTTPResult.response)
+    }
+
+    init(results: [QueuedHTTPResult]) {
+        self.results = results
     }
 
     func send(_ request: HTTPRequest) async throws -> HTTPResponse {
         requests.append(request)
-        guard !responses.isEmpty else {
+        guard !results.isEmpty else {
             return HTTPResponse(statusCode: 500, headers: [:], body: Data("{}".utf8))
         }
-        return responses.removeFirst()
+        switch results.removeFirst() {
+        case .response(let response):
+            return response
+        case .connectionFailure:
+            throw StubHTTPError.connectionFailure
+        }
     }
+}
+
+private enum QueuedHTTPResult {
+    case response(HTTPResponse)
+    case connectionFailure
+}
+
+private enum StubHTTPError: Error {
+    case connectionFailure
 }
