@@ -3,8 +3,8 @@ import Foundation
 import UserNotifications
 
 /// The single entry point for posting macOS user notifications. Quota pace alerts go through `post`;
-/// authorization is requested at launch when at least one trigger is on (all default ON, so the prompt
-/// is expected on a fresh install).
+/// authorization is requested when the first Settings trigger is turned on (all default off, so a
+/// fresh install stays quiet until the user opts in).
 ///
 /// Authorization is memoized in one `Task<Bool, Never>`: the first caller reads the current settings,
 /// short-circuits an already-authorized or already-denied state, and otherwise requests it; every later
@@ -17,12 +17,28 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
     /// Injectable so tests can supply a fake center and assert what got scheduled. Production returns
     /// the system `current()` center.
     private let centerProvider: @Sendable () -> UNUserNotificationCenter
+    /// Narrow authorization seams keep memoization testable without constructing or touching the live
+    /// `UNUserNotificationCenter`, which cannot be instantiated or subclassed in a unit test.
+    private let authorizationStatusProvider: @Sendable () async -> UNAuthorizationStatus
+    private let authorizationRequestProvider: @Sendable () async throws -> Bool
 
     /// Memoized authorization request — created on first use, awaited by everyone after.
     private var authorizationTask: Task<Bool, Never>?
 
-    init(centerProvider: @escaping @Sendable () -> UNUserNotificationCenter = { UNUserNotificationCenter.current() }) {
+    init(
+        centerProvider: @escaping @Sendable () -> UNUserNotificationCenter = {
+            UNUserNotificationCenter.current()
+        },
+        authorizationStatusProvider: (@Sendable () async -> UNAuthorizationStatus)? = nil,
+        authorizationRequestProvider: (@Sendable () async throws -> Bool)? = nil
+    ) {
         self.centerProvider = centerProvider
+        self.authorizationStatusProvider = authorizationStatusProvider ?? {
+            await centerProvider().notificationSettings().authorizationStatus
+        }
+        self.authorizationRequestProvider = authorizationRequestProvider ?? {
+            try await centerProvider().requestAuthorization(options: [.alert, .sound])
+        }
         super.init()
     }
 
@@ -33,16 +49,16 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
         NSClassFromString("XCTestCase") != nil
     }
 
-    /// Make this object the delegate and kick off the authorization request once at launch. Safe to call
-    /// from app launch; a no-op under tests.
+    /// Make this object the delegate at launch. Authorization remains deferred until a Settings trigger
+    /// is enabled; this method is a no-op under tests.
     func registerAsDelegate() {
         guard !Self.isRunningUnderTests else { return }
         centerProvider().delegate = self
     }
 
-    /// Request notification authorization. Called at launch when any trigger is on, and from the
-    /// Settings "Allow Notifications" button when permission is still not determined. Memoized, so
-    /// repeated calls don't re-prompt — macOS won't re-show the banner once the user has answered anyway.
+    /// Request notification authorization. Called when the first trigger turns on and from Settings'
+    /// "Allow Notifications" button while permission is still not determined. Memoized, so repeated
+    /// callers await one system prompt and macOS is never asked twice.
     @discardableResult
     func requestAuthorization() -> Task<Bool, Never> {
         ensureAuthorization()
@@ -109,10 +125,10 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
     /// resolved (authorized/denied) state, and otherwise requests alert + sound permission.
     private func ensureAuthorization() -> Task<Bool, Never> {
         if let authorizationTask { return authorizationTask }
-        let center = centerProvider()
+        let authorizationStatusProvider = authorizationStatusProvider
+        let authorizationRequestProvider = authorizationRequestProvider
         let task = Task<Bool, Never> {
-            let settings = await center.notificationSettings()
-            switch settings.authorizationStatus {
+            switch await authorizationStatusProvider() {
             case .authorized, .provisional, .ephemeral:
                 return true
             case .denied:
@@ -120,7 +136,7 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
                 return false
             case .notDetermined:
                 do {
-                    let granted = try await center.requestAuthorization(options: [.alert, .sound])
+                    let granted = try await authorizationRequestProvider()
                     AppLog.info(.notifications, "authorization \(granted ? "granted" : "refused")")
                     return granted
                 } catch {

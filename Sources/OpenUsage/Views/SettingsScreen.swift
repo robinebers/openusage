@@ -2,7 +2,6 @@ import AppKit
 import Combine
 import KeyboardShortcuts
 import SwiftUI
-import UserNotifications
 
 /// The in-popover Settings screen — the popover's third mode alongside the dashboard and
 /// Customize. It replaces the old separate Settings window, which forced the popover closed every
@@ -23,11 +22,9 @@ struct SettingsScreen: View {
     /// Surfaced under the Advanced rows when copying the path or revealing the file fails.
     @State private var logActionError: String?
     /// macOS notification authorization for OpenUsage, surfaced in the Notifications section so a
-    /// warning glyph and action button can appear when alerts can't be delivered. Refreshed on appear,
-    /// when a trigger turns on, and when the app becomes active again (e.g. the user returns from
-    /// System Settings after re-enabling).
-    private enum NotificationsAuthState { case authorized, denied, notDetermined }
-    @State private var notificationsAuth: NotificationsAuthState = .authorized
+    /// warning glyph and action button can appear when alerts can't be delivered. The coordinator
+    /// sequences permission requests before status refreshes and is independently unit-testable.
+    @State private var notificationAuthorization = NotificationAuthorizationCoordinator()
 
     /// Fills the region the dashboard's pinned footer leaves. Same scroller treatment as Customize:
     /// the overlay scroller stays (the scroll edge effect needs it) but is invisible.
@@ -193,9 +190,9 @@ struct SettingsScreen: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
-        .task { await refreshNotificationsAuth() }
+        .task { await notificationAuthorization.refresh(isEnabled: anyToggleOn) }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            Task { await refreshNotificationsAuth() }
+            Task { await notificationAuthorization.refresh(isEnabled: anyToggleOn) }
         }
     }
 
@@ -207,7 +204,7 @@ struct SettingsScreen: View {
     /// are all off; the app requests authorization the first time a trigger is turned on.
     private var notificationsSection: some View {
         @Bindable var notifications = container.notificationSettings
-        let needsAttention = notificationsAuth != .authorized && anyToggleOn
+        let needsAttention = notificationAuthorization.state != .authorized && anyToggleOn
         return VStack(alignment: .leading, spacing: density.headerToCardSpacing) {
             HStack(spacing: 6) {
                 Text("Notifications")
@@ -217,7 +214,7 @@ struct SettingsScreen: View {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.caption)
                         .foregroundStyle(.orange)
-                        .hoverTooltip(notificationsAuth == .denied
+                        .hoverTooltip(notificationAuthorization.state == .denied
                             ? "Notifications are turned off for OpenUsage. Enable them in System Settings."
                             : "OpenUsage needs permission to send alerts.")
                 }
@@ -235,11 +232,9 @@ struct SettingsScreen: View {
         }
         .onChange(of: anyToggleOn) { _, on in
             if on {
-                // The first time a trigger is turned on, ask macOS for permission (memoized — it only
-                // prompts while authorization is still not determined). Then refresh so the
-                // warning/action row reflects the new status.
-                AppNotifications.shared.requestAuthorization()
-                Task { await refreshNotificationsAuth() }
+                // Await the memoized system request before refreshing the status. Otherwise the read
+                // can race the still-open prompt and briefly surface a redundant Allow action.
+                Task { await notificationAuthorization.requestThenRefresh(isEnabled: true) }
             }
         }
     }
@@ -267,14 +262,9 @@ struct SettingsScreen: View {
         VStack(spacing: 0) {
             Divider()
             Button {
-                if notificationsAuth == .denied {
-                    AppNotifications.shared.openSystemNotificationsSettings()
-                } else {
-                    AppNotifications.shared.requestAuthorization()
-                    Task { await refreshNotificationsAuth() }
-                }
+                Task { await notificationAuthorization.performAction(isEnabled: anyToggleOn) }
             } label: {
-                Text(notificationsAuth == .denied ? "Open System Settings" : "Allow Notifications")
+                Text(notificationAuthorization.state == .denied ? "Open System Settings" : "Allow Notifications")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
@@ -287,21 +277,6 @@ struct SettingsScreen: View {
     /// Delegates to the store's `anyEnabled` so the disjunction lives in one place.
     private var anyToggleOn: Bool {
         container.notificationSettings.anyEnabled
-    }
-
-    /// Read the live macOS authorization status into `notificationsAuth`, but only when at least one
-    /// trigger is on so no warning shows while all alerts are off.
-    private func refreshNotificationsAuth() async {
-        guard anyToggleOn else {
-            notificationsAuth = .authorized
-            return
-        }
-        let status = await AppNotifications.shared.authorizationStatus()
-        switch status {
-        case .denied: notificationsAuth = .denied
-        case .notDetermined: notificationsAuth = .notDetermined
-        default: notificationsAuth = .authorized
-        }
     }
 
     // MARK: - Advanced (logging)
