@@ -186,7 +186,7 @@ final class ResetDisplayTests: XCTestCase {
         // The popover timeline sorts the credits soonest-first, numbers them from 1, and pairs each
         // exact expiry time with its countdown. Per-credit dot color reuses the row's severity bands.
         let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let entries = RateLimitResetsDetail.entries(
+        let entries = RateLimitResetsPresentation.entries(
             from: [
                 // Deliberately out of order to prove the sort.
                 now.addingTimeInterval(12 * 24 * 3600 + 18 * 3600),          // ~12d18h -> blue
@@ -207,7 +207,7 @@ final class ResetDisplayTests: XCTestCase {
         // wall-clock time or countdown, so it collapses to "Expiring soon" with no trailing countdown —
         // matching Formatters.imminent. Its dot stays red.
         let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let entries = RateLimitResetsDetail.entries(from: [now.addingTimeInterval(-60)], now: now)
+        let entries = RateLimitResetsPresentation.entries(from: [now.addingTimeInterval(-60)], now: now)
 
         XCTAssertEqual(entries.count, 1)
         XCTAssertEqual(entries[0].time, "Expiring soon")
@@ -220,7 +220,7 @@ final class ResetDisplayTests: XCTestCase {
         // exact time must not print a wall-clock while the countdown vanishes — both collapse to
         // "Expiring soon" with no countdown.
         let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let entries = RateLimitResetsDetail.entries(from: [now.addingTimeInterval(180)], now: now)
+        let entries = RateLimitResetsPresentation.entries(from: [now.addingTimeInterval(180)], now: now)
 
         XCTAssertEqual(entries.count, 1)
         XCTAssertEqual(entries[0].time, "Expiring soon")
@@ -228,7 +228,7 @@ final class ResetDisplayTests: XCTestCase {
     }
 
     func testResetsPopoverEmptyWhenNoCredits() {
-        XCTAssertTrue(RateLimitResetsDetail.entries(from: [], now: Date()).isEmpty)
+        XCTAssertTrue(RateLimitResetsPresentation.entries(from: [], now: Date()).isEmpty)
     }
 
     func testCompactDurationAlwaysShowsHoursAtDayScale() {
@@ -245,18 +245,18 @@ final class ResetDisplayTests: XCTestCase {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
 
         // Zero credits -> the genuine empty state.
-        XCTAssertEqual(RateLimitResetsDetail.content(count: 0, expiries: [], now: now), .empty)
+        XCTAssertEqual(RateLimitResetsPresentation.content(count: 0, expiries: [], now: now), .empty)
 
         // Credits present but no expiry list (dedicated fetch unavailable -> usage-body count fallback):
         // must NOT read "no resets"; it states the count instead.
         XCTAssertEqual(
-            RateLimitResetsDetail.content(count: 3, expiries: [], now: now),
+            RateLimitResetsPresentation.content(count: 3, expiries: [], now: now),
             .unknownExpiries(count: 3)
         )
 
         // Expiries present -> the timeline.
         let expiries = [now.addingTimeInterval(4 * 24 * 3600)]
-        guard case .timeline(let entries) = RateLimitResetsDetail.content(count: 1, expiries: expiries, now: now) else {
+        guard case .timeline(let entries) = RateLimitResetsPresentation.content(count: 1, expiries: expiries, now: now) else {
             return XCTFail("expected timeline")
         }
         XCTAssertEqual(entries.count, 1)

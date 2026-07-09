@@ -34,7 +34,8 @@ let package = Package(
                 .copy("Resources/pricing_models_dev_snapshot.json")
             ],
             swiftSettings: [
-                .swiftLanguageMode(.v6)
+                .swiftLanguageMode(.v6),
+                .treatAllWarnings(as: .error)
             ]
         ),
         .testTarget(
@@ -42,7 +43,8 @@ let package = Package(
             dependencies: ["OpenUsage"],
             path: "Tests/OpenUsageTests",
             swiftSettings: [
-                .swiftLanguageMode(.v6)
+                .swiftLanguageMode(.v6),
+                .treatAllWarnings(as: .error)
             ]
         )
     ]

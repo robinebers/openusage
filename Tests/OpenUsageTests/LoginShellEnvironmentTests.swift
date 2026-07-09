@@ -1,3 +1,4 @@
+import os
 import XCTest
 @testable import OpenUsage
 
@@ -35,13 +36,13 @@ final class LoginShellEnvironmentTests: XCTestCase {
         let runner = RecordingRunner(stdout: [begin, "OPENROUTER_API_KEY=sk-or-test", end].joined(separator: "\0"))
         let env = LoginShellEnvironment(runner: runner)
         let captured = expectation(description: "captured off-main")
-        var value: String?
+        let value = OSAllocatedUnfairLock<String?>(initialState: nil)
         DispatchQueue.global().async {
-            value = env.value(for: "OPENROUTER_API_KEY")
+            value.withLock { $0 = env.value(for: "OPENROUTER_API_KEY") }
             captured.fulfill()
         }
         wait(for: [captured], timeout: 5)
-        XCTAssertEqual(value, "sk-or-test")
+        XCTAssertEqual(value.withLock { $0 }, "sk-or-test")
         XCTAssertEqual(runner.callCount, 1)
     }
 

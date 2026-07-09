@@ -21,7 +21,7 @@ final class CursorProvider: ProviderRuntime {
         authStore: CursorAuthStore = CursorAuthStore(),
         usageClient: CursorUsageClient = CursorUsageClient(),
         now: @escaping @Sendable () -> Date = Date.init,
-        pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() }
+        pricing: @escaping @Sendable () async -> ModelPricing = { ModelPricingStore.shared.current() }
     ) {
         self.authStore = authStore
         self.usageClient = usageClient

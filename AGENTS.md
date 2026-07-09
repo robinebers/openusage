@@ -44,6 +44,7 @@ Conventions for the per-provider modules under `Sources/OpenUsage/Providers/<Nam
 ## Running / Testing Changes
 
 - There is no hot reload. The app is a long-lived menu-bar process, so **every code change requires a full rebuild and restart of the running app** to take effect — kill the running instance, rebuild, and relaunch before testing.
+- Swift warnings are build and CI errors for both the app and test targets; keep every build warning-free.
 
 ## Pull Requests
 

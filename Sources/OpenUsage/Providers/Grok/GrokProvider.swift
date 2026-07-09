@@ -22,7 +22,7 @@ final class GrokProvider: ProviderRuntime {
         usageClient: GrokUsageClient = GrokUsageClient(),
         logUsageScanner: GrokLogUsageScanner = GrokLogUsageScanner(),
         now: @escaping @Sendable () -> Date = Date.init,
-        pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() }
+        pricing: @escaping @Sendable () async -> ModelPricing = { ModelPricingStore.shared.current() }
     ) {
         self.authStore = authStore
         self.usageClient = usageClient
