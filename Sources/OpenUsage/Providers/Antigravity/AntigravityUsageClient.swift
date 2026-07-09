@@ -100,9 +100,9 @@ struct AntigravityUsageClient: Sendable {
     func refreshGoogleToken(_ refreshToken: String) async -> TokenRefreshOutcome {
         guard let url = URL(string: Self.googleOAuthURL) else { return .unavailable }
         let form = [
-            "client_id=\(Self.formEncoded(Self.googleClientID))",
-            "client_secret=\(Self.formEncoded(Self.googleClientSecret))",
-            "refresh_token=\(Self.formEncoded(refreshToken))",
+            "client_id=\(Self.googleClientID.urlFormEncoded)",
+            "client_secret=\(Self.googleClientSecret.urlFormEncoded)",
+            "refresh_token=\(refreshToken.urlFormEncoded)",
             "grant_type=refresh_token"
         ].joined(separator: "&")
         let request = HTTPRequest(
@@ -128,11 +128,6 @@ struct AntigravityUsageClient: Sendable {
         default:
             return .unavailable // 5xx and anything else — transient
         }
-    }
-
-    private static func formEncoded(_ value: String) -> String {
-        // Conservative: refresh tokens contain `/`, so encode everything but alphanumerics.
-        value.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? value
     }
 }
 

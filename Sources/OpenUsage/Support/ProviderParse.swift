@@ -129,9 +129,22 @@ enum ProviderParse {
 }
 
 extension String {
-    /// Percent-encode for use as an `application/x-www-form-urlencoded` value.
+    /// Percent-encode one `application/x-www-form-urlencoded` value. Only the ASCII characters
+    /// RFC 3986 defines as unreserved pass through; spaces use `%20` so a literal `+` remains
+    /// distinguishable from a form-space separator.
     var urlFormEncoded: String {
-        addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? self
+        var encoded = ""
+        encoded.reserveCapacity(utf8.count)
+
+        for byte in utf8 {
+            switch byte {
+            case 0x41...0x5A, 0x61...0x7A, 0x30...0x39, 0x2D, 0x2E, 0x5F, 0x7E:
+                encoded.append(Character(UnicodeScalar(byte)))
+            default:
+                encoded.append(String(format: "%%%02X", byte))
+            }
+        }
+        return encoded
     }
 
     /// `nil` when the string is empty, otherwise the string itself — for treating "" as "missing".
