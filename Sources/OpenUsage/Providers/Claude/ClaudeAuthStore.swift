@@ -44,6 +44,17 @@ struct ClaudeCredentialState: Hashable, Sendable {
         oauth.accessToken?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
     }
 
+    /// The single definition of a usable refresh token for diagnostics, proactive refresh, and the
+    /// 401 retry. Stored credential files can contain whitespace-only strings; those are absent, not
+    /// secrets worth sending to the OAuth endpoint.
+    var usableRefreshToken: String? {
+        guard let token = oauth.refreshToken?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !token.isEmpty else {
+            return nil
+        }
+        return token
+    }
+
     /// A token-free, log-safe one-line descriptor for diagnosing auth failures from a default-level
     /// (info) log: the source kind plus booleans for whether this candidate carries a refresh token and
     /// whether its access token is already expired (`expiresAt`, epoch ms, vs `now`). NEVER includes any
@@ -51,7 +62,7 @@ struct ClaudeCredentialState: Hashable, Sendable {
     /// booleans: a candidate with `refresh=no` can never self-heal an expiry (the #738 root cause), and
     /// `expired=yes` explains why a refresh was needed at all.
     func diagnosticsLabel(now: Date) -> String {
-        let refresh = (oauth.refreshToken?.isEmpty == false) ? "yes" : "no"
+        let refresh = usableRefreshToken == nil ? "no" : "yes"
         let expired: String
         if let expiresAt = oauth.expiresAt {
             expired = expiresAt <= now.timeIntervalSince1970 * 1000 ? "yes" : "no"
@@ -67,7 +78,8 @@ enum ClaudeAuthError: Error, LocalizedError, Equatable {
     case desktopAppOnly
     case sessionExpired
     case tokenExpired
-    case invalidOAuthURL(String)
+    case credentialsChanged
+    case invalidOAuthURL
 
     var errorDescription: String? {
         switch self {
@@ -79,8 +91,10 @@ enum ClaudeAuthError: Error, LocalizedError, Equatable {
             return "Session expired. Run `claude` to log in again."
         case .tokenExpired:
             return "Token expired. Run `claude` to log in again."
-        case .invalidOAuthURL(let value):
-            return "Invalid Claude OAuth URL: \(value). Check CLAUDE_CODE_CUSTOM_OAUTH_URL / CLAUDE_LOCAL_OAUTH_API_BASE."
+        case .credentialsChanged:
+            return "Claude credentials changed during refresh. Refresh again."
+        case .invalidOAuthURL:
+            return "Invalid Claude OAuth URL configuration. Check CLAUDE_CODE_CUSTOM_OAUTH_URL / CLAUDE_LOCAL_OAUTH_API_BASE."
         }
     }
 
@@ -94,7 +108,7 @@ enum ClaudeAuthError: Error, LocalizedError, Equatable {
         switch self {
         case .sessionExpired, .tokenExpired:
             return true
-        case .notLoggedIn, .desktopAppOnly, .invalidOAuthURL:
+        case .notLoggedIn, .desktopAppOnly, .credentialsChanged, .invalidOAuthURL:
             return false
         }
     }
@@ -189,11 +203,23 @@ struct ClaudeAuthStore: Sendable {
         return expiresAt - now().timeIntervalSince1970 * 1000 <= 5 * 60 * 1000
     }
 
-    func save(_ state: ClaudeCredentialState) throws {
+    /// Persist a rotated credential only when the source still contains the OAuth state this refresh
+    /// started from. Claude Code can re-login while the token request is suspended; blindly writing the
+    /// older rotation afterward would clobber that newer login. This is a best-effort compare-before-write
+    /// guard across the file/keychain boundary (the underlying stores provide no atomic CAS operation).
+    func save(_ state: ClaudeCredentialState, replacing expectedOAuth: ClaudeOAuth) throws -> Bool {
+        guard try currentOAuth(in: state.source) == expectedOAuth else {
+            AppLog.warn(
+                LogTag.auth("claude"),
+                "credential source changed during token refresh; skipped persisting the older rotation"
+            )
+            return false
+        }
+
         var fullData = state.fullData ?? ClaudeCredentialsFile()
         fullData.claudeAiOauth = state.oauth
         let data = try JSONEncoder().encode(fullData)
-        guard let text = String(data: data, encoding: .utf8) else { return }
+        guard let text = String(data: data, encoding: .utf8) else { return false }
 
         switch state.source {
         case .file:
@@ -203,10 +229,28 @@ struct ClaudeAuthStore: Sendable {
         case .keychainLegacy(let service):
             try keychain.writeGenericPassword(service: service, value: text)
         case .environment:
-            return
+            return false
         }
         // NEVER log the credential blob/tokens — only that a rotation was persisted, and to where.
         AppLog.debug(LogTag.auth("claude"), "persisted rotated credentials (source=\(state.source.label))")
+        return true
+    }
+
+    private func currentOAuth(in source: ClaudeCredentialState.Source) throws -> ClaudeOAuth? {
+        let serialized: String?
+        switch source {
+        case .file:
+            let path = credentialsPath()
+            serialized = files.exists(path) ? try files.readText(path) : nil
+        case .keychainCurrentUser(let service):
+            serialized = try keychain.readGenericPasswordForCurrentUser(service: service)
+        case .keychainLegacy(let service):
+            serialized = try keychain.readGenericPassword(service: service)
+        case .environment:
+            return nil
+        }
+        guard let serialized else { return nil }
+        return Self.parseCredentials(serialized)?.claudeAiOauth
     }
 
     /// Why the live-usage endpoint (`/api/oauth/usage`, which backs Session / Weekly / Sonnet / Extra
@@ -289,17 +333,31 @@ struct ClaudeAuthStore: Sendable {
     func oauthConfig() throws -> ClaudeOAuthConfig {
         let endpoints = resolveOAuthEndpoints()
         let usageURLString = "\(endpoints.baseAPI)/api/oauth/usage"
-        guard let usageURL = URL(string: usageURLString) else {
-            throw ClaudeAuthError.invalidOAuthURL(usageURLString)
-        }
-        guard let refreshURL = URL(string: endpoints.refreshURL) else {
-            throw ClaudeAuthError.invalidOAuthURL(endpoints.refreshURL)
-        }
+        let usageURL = try Self.validatedOAuthURL(usageURLString)
+        let refreshURL = try Self.validatedOAuthURL(endpoints.refreshURL)
         return ClaudeOAuthConfig(
             usageURL: usageURL,
             refreshURL: refreshURL,
             clientID: endpoints.clientID
         )
+    }
+
+    /// OAuth endpoints are system-boundary input. Foundation also constructs relative, file, hostless,
+    /// and query-bearing URLs, so `URL(string:) != nil` alone is not a safety or classification check.
+    /// Reject credentials in URLs and never echo a rejected value into logs or user-facing errors.
+    private static func validatedOAuthURL(_ value: String) throws -> URL {
+        guard let url = URL(string: value),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "https" || scheme == "http",
+              let host = url.host,
+              !host.isEmpty,
+              url.user == nil,
+              url.password == nil,
+              url.query == nil,
+              url.fragment == nil else {
+            throw ClaudeAuthError.invalidOAuthURL
+        }
+        return url
     }
 
     func keychainServiceCandidates() -> [String] {
@@ -414,5 +472,3 @@ struct ClaudeAuthStore: Sendable {
         return String(digest.map { String(format: "%02x", $0) }.joined().prefix(8))
     }
 }
-
-

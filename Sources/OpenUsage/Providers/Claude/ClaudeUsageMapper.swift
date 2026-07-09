@@ -53,10 +53,10 @@ enum ClaudeUsageMapper {
 
     /// Provider header warning (the amber triangle + tooltip) for the rate-limited state. The badge/note
     /// lines above only render when their metrics are enabled in the layout, so without this the default
-    /// dashboard showed bare "No data" rows with no hint of why. Also warns the
-    /// user off manual refreshes, which extend Anthropic's rate limiting.
+    /// dashboard showed bare "No data" rows with no hint of why. The copy describes the local cooldown:
+    /// manual refreshes during it are suppressed and do not extend the deadline.
     static func rateLimitedWarning(retryAfterSeconds: Int?) -> String {
-        let base = "Updates blocked by Anthropic. Be patient — manual refreshes will make it worse."
+        let base = "Updates blocked by Anthropic. Live requests are paused while OpenUsage backs off."
         guard let retryText = retryAfterSeconds.map(formatRateLimitMinutes) else { return base }
         return "\(base) Retrying in ~\(retryText)."
     }
@@ -201,4 +201,3 @@ private enum HTTPDateFormatter {
         return formatter.date(from: value)
     }
 }
-

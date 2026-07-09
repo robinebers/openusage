@@ -54,6 +54,7 @@ extension ClaudeAuthError: CategorizedError {
         switch self {
         case .notLoggedIn, .desktopAppOnly: .notLoggedIn
         case .sessionExpired, .tokenExpired: .authExpired
+        case .credentialsChanged: .other
         case .invalidOAuthURL: .authInvalid
         }
     }

@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 @MainActor
@@ -18,13 +19,19 @@ final class ClaudeProvider: ProviderRuntime {
     let now: @Sendable () -> Date
     let pricing: @Sendable () async -> ModelPricing
 
-    /// Last successful live-usage result and a rate-limit cooldown, carried across refreshes (the provider
-    /// is a long-lived singleton). `/api/oauth/usage` rate-limits aggressively, so on a 429 we serve the
-    /// last-good bars with a staleness note instead of blanking the dashboard, and skip the live call
-    /// entirely until the cooldown expires so we don't keep hammering an endpoint that's already limiting
-    /// us. Mirrors the legacy plugin's `cachedUsageData` + `rateLimitedUntilMs`.
-    private var lastGoodUsage: ClaudeMappedUsage?
-    private var rateLimitedUntil: Date?
+    /// Last successful live usage and its rate-limit cooldown, scoped to a one-way fingerprint of the
+    /// access + refresh credential pair that produced them. The provider is long-lived while users can
+    /// re-login or switch sources underneath it; access-token-only identity is insufficient because an
+    /// external edit can replace the refresh token before OpenUsage observes the next rotation.
+    /// A successful OAuth refresh migrates state only when the complete pre-refresh identity still
+    /// matches the cache. Unobserved credential-file changes deliberately do not.
+    private struct LiveUsageCache {
+        let credentialFingerprint: Data
+        var lastGoodUsage: ClaudeMappedUsage?
+        var rateLimitedUntil: Date?
+    }
+
+    private var liveUsageCache: LiveUsageCache?
     private static let rateLimitCooldown: TimeInterval = 5 * 60
 
     init(
@@ -59,6 +66,13 @@ final class ClaudeProvider: ProviderRuntime {
     }
 
     func refresh() async -> ProviderSnapshot {
+        await refresh(credentialReloadsRemaining: 1)
+    }
+
+    /// A Claude Code login can replace credentials while an OAuth refresh is suspended. Reload the
+    /// candidate set once when that happens so the stale account cannot reach the UI or live-usage
+    /// cache. Bound the retry so a source that changes continuously cannot trap the refresh loop.
+    private func refresh(credentialReloadsRemaining: Int) async -> ProviderSnapshot {
         let storedCandidates = await loadOffMainActor { [authStore] in authStore.loadCredentialCandidates() }
         let candidates = storedCandidates.filter(\.hasUsableAccessToken)
         guard !candidates.isEmpty else {
@@ -91,6 +105,9 @@ final class ClaudeProvider: ProviderRuntime {
                 let snapshot = try await probe(state: state)
                 AppLog.info(LogTag.plugin("claude"), "refresh end (\(Int(Date().timeIntervalSince(start) * 1000))ms)")
                 return snapshot
+            } catch ClaudeAuthError.credentialsChanged where credentialReloadsRemaining > 0 {
+                AppLog.info(LogTag.auth("claude"), "credential source changed during token refresh; reloading current login")
+                return await refresh(credentialReloadsRemaining: credentialReloadsRemaining - 1)
             } catch let error as ClaudeAuthError where error.allowsAuthFallback {
                 AppLog.warn(LogTag.auth("claude"), "\(state.source.label) failed (\(error)); falling back to next source if any")
                 lastFallbackError = error
@@ -156,29 +173,47 @@ final class ClaudeProvider: ProviderRuntime {
     }
 
     private func fetchLiveUsage(state: inout ClaudeCredentialState) async throws -> ClaudeMappedUsage {
+        // Resolve caller-controlled endpoint configuration once, before the authenticated retry helper.
+        // A malformed custom URL is an auth/config error, not a transport failure from the HTTP attempt.
+        let oauthConfig = try authStore.oauthConfig()
+
         // Inside an active rate-limit cooldown, skip the live call and serve the last-good usage so a
         // constantly-limited endpoint doesn't blank the dashboard (and we don't pile on more 429s).
-        if let until = rateLimitedUntil, now() < until {
-            AppLog.info(LogTag.plugin("claude"), "rate-limited (cooldown active, serving \(lastGoodUsage == nil ? "badge" : "last-good usage"))")
-            return rateLimitedSnapshot(credentials: state.oauth, retryAfterSeconds: Int(until.timeIntervalSince(now()).rounded(.up)))
+        let initialFingerprint = Self.credentialFingerprint(state.oauth)
+        if let cache = liveUsageCache,
+           cache.credentialFingerprint == initialFingerprint,
+           let until = cache.rateLimitedUntil,
+           now() < until {
+            AppLog.info(LogTag.plugin("claude"), "rate-limited (cooldown active, serving \(cache.lastGoodUsage == nil ? "badge" : "last-good usage"))")
+            return rateLimitedSnapshot(
+                credentials: state.oauth,
+                credentialFingerprint: initialFingerprint,
+                retryAfterSeconds: Int(until.timeIntervalSince(now()).rounded(.up))
+            )
         }
 
-        if authStore.needsRefresh(state.oauth),
-           let refreshToken = state.oauth.refreshToken,
-           !refreshToken.isEmpty {
-            state.oauth.accessToken = try await refreshAccessToken(state: &state, refreshToken: refreshToken)
+        if authStore.needsRefresh(state.oauth), let refreshToken = state.usableRefreshToken {
+            state.oauth.accessToken = try await refreshAccessToken(
+                state: &state,
+                refreshToken: refreshToken,
+                config: oauthConfig
+            )
         }
 
         var working = state
         defer { state = working }
         let response = try await ProviderAuthRetry.fetch(
             token: working.oauth.accessToken ?? "",
-            attempt: { try await self.usageClient.fetchUsage(accessToken: $0, config: self.authStore.oauthConfig()) },
+            attempt: { try await self.usageClient.fetchUsage(accessToken: $0, config: oauthConfig) },
             refreshAccessToken: {
-                guard let refreshToken = working.oauth.refreshToken, !refreshToken.isEmpty else {
+                guard let refreshToken = working.usableRefreshToken else {
                     throw ClaudeAuthError.tokenExpired
                 }
-                return try await self.refreshAccessToken(state: &working, refreshToken: refreshToken)
+                return try await self.refreshAccessToken(
+                    state: &working,
+                    refreshToken: refreshToken,
+                    config: oauthConfig
+                )
             },
             connectionFailed: ClaudeUsageError.connectionFailed,
             authExpired: ClaudeAuthError.tokenExpired
@@ -188,23 +223,46 @@ final class ClaudeProvider: ProviderRuntime {
         // (respecting Retry-After) and serve the last-good usage rather than a bare badge.
         if response.statusCode == 429 {
             let retryAfterSeconds = ClaudeUsageMapper.parseRetryAfterSeconds(response, now: now())
-            rateLimitedUntil = now().addingTimeInterval(TimeInterval(retryAfterSeconds ?? Int(Self.rateLimitCooldown)))
-            AppLog.info(LogTag.plugin("claude"), "rate-limited (serving \(lastGoodUsage == nil ? "badge" : "last-good usage"))")
-            return rateLimitedSnapshot(credentials: working.oauth, retryAfterSeconds: retryAfterSeconds)
+            let fingerprint = Self.credentialFingerprint(working.oauth)
+            let matchingLastGood = liveUsageCache?.credentialFingerprint == fingerprint
+                ? liveUsageCache?.lastGoodUsage
+                : nil
+            liveUsageCache = LiveUsageCache(
+                credentialFingerprint: fingerprint,
+                lastGoodUsage: matchingLastGood,
+                rateLimitedUntil: now().addingTimeInterval(
+                    TimeInterval(retryAfterSeconds ?? Int(Self.rateLimitCooldown))
+                )
+            )
+            AppLog.info(LogTag.plugin("claude"), "rate-limited (serving \(matchingLastGood == nil ? "badge" : "last-good usage"))")
+            return rateLimitedSnapshot(
+                credentials: working.oauth,
+                credentialFingerprint: fingerprint,
+                retryAfterSeconds: retryAfterSeconds
+            )
         }
 
         let mapped = try ClaudeUsageMapper.mapUsageResponse(response, credentials: working.oauth, now: now())
-        lastGoodUsage = mapped
-        rateLimitedUntil = nil
+        liveUsageCache = LiveUsageCache(
+            credentialFingerprint: Self.credentialFingerprint(working.oauth),
+            lastGoodUsage: mapped,
+            rateLimitedUntil: nil
+        )
         return mapped
     }
 
     /// Last-good usage with an appended staleness note when we have it; otherwise the plain rate-limited
-    /// badge (no successful fetch yet this run). `lastGoodUsage` only ever holds a clean `mapUsageResponse`
-    /// result (never a rate-limited snapshot), so the note is never duplicated and no stale spend tiles
-    /// ride along — `probe` appends those fresh after this returns.
-    private func rateLimitedSnapshot(credentials: ClaudeOAuth, retryAfterSeconds: Int?) -> ClaudeMappedUsage {
-        guard var mapped = lastGoodUsage else {
+    /// badge. The fingerprint match is mandatory: changing login or credential source must never expose
+    /// the previous token's quota. Cached usage only ever holds a clean `mapUsageResponse` result, so the
+    /// note is never duplicated and no stale spend tiles ride along—`probe` appends those fresh afterward.
+    private func rateLimitedSnapshot(
+        credentials: ClaudeOAuth,
+        credentialFingerprint: Data,
+        retryAfterSeconds: Int?
+    ) -> ClaudeMappedUsage {
+        guard let cache = liveUsageCache,
+              cache.credentialFingerprint == credentialFingerprint,
+              var mapped = cache.lastGoodUsage else {
             return ClaudeUsageMapper.rateLimitedUsage(credentials: credentials, retryAfterSeconds: retryAfterSeconds)
         }
         mapped.lines.append(ClaudeUsageMapper.rateLimitedNote(retryAfterSeconds: retryAfterSeconds))
@@ -212,9 +270,58 @@ final class ClaudeProvider: ProviderRuntime {
         return mapped
     }
 
-    private func refreshAccessToken(state: inout ClaudeCredentialState, refreshToken: String) async throws -> String {
+    /// A non-reversible in-memory identity for cache partitioning. Hash the access and refresh token
+    /// separately before combining their fixed-width digests, so no delimiter ambiguity is possible.
+    /// Never logged or persisted.
+    private static func credentialFingerprint(_ credentials: ClaudeOAuth) -> Data {
+        guard let accessToken = credentials.accessToken?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !accessToken.isEmpty else {
+            preconditionFailure("live usage requires a validated access token")
+        }
+        let refreshToken = credentials.refreshToken?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        var identity = Data(SHA256.hash(data: Data(accessToken.utf8)))
+        identity.append(contentsOf: SHA256.hash(data: Data(refreshToken.utf8)))
+        return Data(SHA256.hash(data: identity))
+    }
+
+    /// Carry last-good usage and cooldown state across a rotation OpenUsage performed itself, but only
+    /// when the cache matches the complete pre-refresh access + refresh identity. A refresh response
+    /// authenticates the refresh token, not the access token; requiring both prevents an externally
+    /// swapped refresh token from relabeling another account's cached quota.
+    private func migrateLiveUsageCache(from previousCredentials: ClaudeOAuth, to refreshedCredentials: ClaudeOAuth) {
+        let previousFingerprint = Self.credentialFingerprint(previousCredentials)
+        let refreshedFingerprint = Self.credentialFingerprint(refreshedCredentials)
+        guard previousFingerprint != refreshedFingerprint,
+              let cache = liveUsageCache,
+              cache.credentialFingerprint == previousFingerprint else {
+            return
+        }
+        liveUsageCache = LiveUsageCache(
+            credentialFingerprint: refreshedFingerprint,
+            lastGoodUsage: cache.lastGoodUsage,
+            rateLimitedUntil: cache.rateLimitedUntil
+        )
+    }
+
+    private func refreshAccessToken(
+        state: inout ClaudeCredentialState,
+        refreshToken: String,
+        config: ClaudeOAuthConfig
+    ) async throws -> String {
         AppLog.info(LogTag.auth("claude"), "token refresh attempt")
-        let response = try await usageClient.refreshToken(refreshToken, config: authStore.oauthConfig())
+        let response: HTTPResponse
+        do {
+            response = try await usageClient.refreshToken(refreshToken, config: config)
+        } catch is HTTPClientError {
+            AppLog.warn(LogTag.auth("claude"), "token refresh returned an invalid HTTP response")
+            throw ClaudeUsageError.invalidResponse
+        } catch is URLError {
+            AppLog.warn(LogTag.auth("claude"), "token refresh request failed")
+            throw ClaudeUsageError.connectionFailed
+        } catch {
+            AppLog.warn(LogTag.auth("claude"), "token refresh failed before receiving a response")
+            throw error
+        }
         if response.statusCode == 400 || response.statusCode == 401 {
             let body = (try? JSONSerialization.jsonObject(with: response.body)) as? [String: Any]
             let errorCode = body?["error"] as? String ?? body?["error_description"] as? String
@@ -225,31 +332,72 @@ final class ClaudeProvider: ProviderRuntime {
             // A 400/401 without a recognized OAuth error code isn't necessarily an expired token — it
             // can be an HTML proxy/WAF page or a gateway error. Surface the HTTP status rather than
             // telling the user to re-login (which can't fix a transport/infra failure).
+            AppLog.warn(LogTag.auth("claude"), "token refresh failed (HTTP \(response.statusCode))")
             throw ClaudeUsageError.requestFailed(response.statusCode)
         }
         guard (200..<300).contains(response.statusCode) else {
+            AppLog.warn(LogTag.auth("claude"), "token refresh failed (HTTP \(response.statusCode))")
             throw ClaudeUsageError.requestFailed(response.statusCode)
         }
-        // NEVER log decoded.accessToken / refreshToken — only the fact that a rotation happened.
-        let decoded = try JSONDecoder().decode(ClaudeRefreshResponse.self, from: response.body)
-        state.oauth.accessToken = decoded.accessToken
-        if let refreshToken = decoded.refreshToken {
-            state.oauth.refreshToken = refreshToken
+
+        let decoded: ClaudeRefreshResponse
+        do {
+            decoded = try JSONDecoder().decode(ClaudeRefreshResponse.self, from: response.body)
+        } catch {
+            AppLog.warn(LogTag.auth("claude"), "token refresh response was invalid")
+            throw ClaudeUsageError.invalidResponse
         }
+        let accessToken = decoded.accessToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !accessToken.isEmpty else {
+            AppLog.warn(LogTag.auth("claude"), "token refresh response contained an empty access token")
+            throw ClaudeUsageError.invalidResponse
+        }
+        let expiresAt: Double?
         if let expiresIn = decoded.expiresIn {
-            state.oauth.expiresAt = now().timeIntervalSince1970 * 1000 + expiresIn * 1000
+            let candidate = now().timeIntervalSince1970 * 1000 + expiresIn * 1000
+            guard expiresIn.isFinite, expiresIn > 0, candidate.isFinite else {
+                AppLog.warn(LogTag.auth("claude"), "token refresh response contained invalid expiry metadata")
+                throw ClaudeUsageError.invalidResponse
+            }
+            expiresAt = candidate
+        } else {
+            expiresAt = nil
         }
+
+        // Validate the complete response before changing either in-memory state or persisted credentials.
+        // NEVER log access or refresh tokens — only the fact that a validated rotation happened.
+        let previousCredentials = state.oauth
+        var refreshedState = state
+        refreshedState.oauth.accessToken = accessToken
+        if let refreshToken = decoded.refreshToken?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !refreshToken.isEmpty {
+            refreshedState.oauth.refreshToken = refreshToken
+        }
+        // A missing expiry means unknown, not "reuse the old token's already-expired deadline".
+        refreshedState.oauth.expiresAt = expiresAt
         // Fail loudly: a swallowed save leaves the OLD refresh token on disk after a rotation, so the
         // next launch refreshes with a server-invalidated token and the user sees a misleading
         // "session expired". The refreshed token still works for this session, so we log and continue
         // rather than fail the live fetch.
+        let persisted: Bool?
         do {
-            try authStore.save(state)
+            persisted = try await Task.detached(priority: .utility) { [authStore] in
+                try authStore.save(refreshedState, replacing: previousCredentials)
+            }.value
         } catch {
             AppLog.error(LogTag.auth("claude"), "failed to persist rotated credentials; using the refreshed token for this session only: \(error.localizedDescription)")
+            persisted = nil
         }
+        // A false result means Claude Code replaced this source while the token request was in flight.
+        // Do not install, query with, or cache the stale account's rotation; the outer refresh reloads
+        // the current source once and starts over with the newly active login.
+        guard persisted != false else {
+            throw ClaudeAuthError.credentialsChanged
+        }
+        state = refreshedState
+        migrateLiveUsageCache(from: previousCredentials, to: refreshedState.oauth)
         AppLog.info(LogTag.auth("claude"), "token refresh ok (rotated)")
-        return decoded.accessToken
+        return accessToken
     }
 
 }
