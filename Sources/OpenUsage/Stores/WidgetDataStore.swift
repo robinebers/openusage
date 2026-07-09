@@ -136,10 +136,25 @@ final class WidgetDataStore {
         let tasks = providerIDs.map { providerID in
             Task { await self.refresh(providerID: providerID, force: force) }
         }
-        var outcomes: [RefreshOutcome] = []
-        outcomes.reserveCapacity(tasks.count)
-        for task in tasks {
-            outcomes.append(await task.value)
+        let outcomes = await withTaskCancellationHandler {
+            var outcomes: [RefreshOutcome] = []
+            outcomes.reserveCapacity(tasks.count)
+            for task in tasks {
+                outcomes.append(await task.value)
+            }
+            return outcomes
+        } onCancel: {
+            // These are unstructured tasks, so cancellation does not propagate from `refreshAll`
+            // automatically. Forward it explicitly to every in-flight provider refresh.
+            for task in tasks {
+                task.cancel()
+            }
+        }
+        // A cancelled batch is not a completed refresh pass. Provider tasks have already unwound, but
+        // completion bookkeeping and the summary must keep describing the last finished pass.
+        guard !Task.isCancelled else {
+            AppLog.debug(.refresh, "batch cancelled")
+            return
         }
         // Stamp the end of the pass so the footer countdown targets the next scheduled refresh
         // (this time + one refresh interval), mirroring the periodic loop that sleeps one interval
@@ -202,6 +217,9 @@ final class WidgetDataStore {
 
     @discardableResult
     func refresh(providerID: String, force: Bool = false) async -> RefreshOutcome {
+        // A batch can be cancelled before one of its unstructured provider tasks gets actor time. Do
+        // not let that already-cancelled child begin credential loading or network work.
+        guard !Task.isCancelled else { return .skipped }
         guard isProviderEnabled(providerID) else { return .skipped }
         if !force, let cached = cache.snapshot(providerID: providerID) {
             // Skip the no-op write: `@Observable` doesn't compare values, so unconditionally
@@ -232,6 +250,13 @@ final class WidgetDataStore {
         defer { refreshingProviderIDs.remove(providerID) }
         let start = Date()
         let snapshot = await provider.refresh()
+        // Providers return user-facing error snapshots rather than throwing. A cancelled network call
+        // can therefore arrive here looking like a normal failure; discard it before mutating errors,
+        // backoff, telemetry, snapshots, or cache so a later task can retry immediately.
+        guard !Task.isCancelled else {
+            AppLog.debug(.refresh, "\(providerID) refresh cancelled")
+            return .skipped
+        }
         let durationMs = Int(Date().timeIntervalSince(start) * 1000)
         if let message = Self.errorMessage(in: snapshot) {
             // Failed refresh: surface the error but keep the last good snapshot on screen rather than
@@ -503,4 +528,3 @@ final class WidgetDataStore {
         return Double(value[match].replacingOccurrences(of: ",", with: ""))
     }
 }
-

@@ -34,7 +34,8 @@ enum ProviderAuthRetry {
     ///   - token: access token for the first attempt.
     ///   - attempt: performs the request with the given token; called at most twice.
     ///   - refreshAccessToken: returns a fresh access token or throws the provider's auth error.
-    ///   - connectionFailed: thrown when `attempt` itself fails (transport, not status).
+    ///   - connectionFailed: thrown when `attempt` itself fails (transport, not status). Task and URL
+    ///     cancellation pass through unchanged.
     ///   - retriedConnectionFailed: optional distinct error for a transport failure on the retry
     ///     (Cursor reports these separately); defaults to `connectionFailed`.
     ///   - authExpired: thrown when the retried request still comes back 401/403.
@@ -46,27 +47,43 @@ enum ProviderAuthRetry {
         retriedConnectionFailed: Error? = nil,
         authExpired: Error
     ) async throws -> HTTPResponse {
-        let response: HTTPResponse
-        do {
-            response = try await attempt(token)
-        } catch {
-            throw connectionFailed
-        }
+        let response = try await performAttempt(
+            token: token,
+            attempt: attempt,
+            connectionFailed: connectionFailed
+        )
         guard isAuthFailure(response) else { return response }
 
         AppLog.debug(.auth, "\(response.statusCode) -> refreshing token, retrying once")
         let refreshed = try await refreshAccessToken()
 
-        let retried: HTTPResponse
-        do {
-            retried = try await attempt(refreshed)
-        } catch {
-            throw retriedConnectionFailed ?? connectionFailed
-        }
+        let retried = try await performAttempt(
+            token: refreshed,
+            attempt: attempt,
+            connectionFailed: retriedConnectionFailed ?? connectionFailed
+        )
         if isAuthFailure(retried) {
             AppLog.warn(.auth, "retry still unauthorized -> auth expired")
             throw authExpired
         }
         return retried
+    }
+
+    /// Transport failures become the provider's friendly connection error, but cancellation remains
+    /// cancellation so callers can stop a refresh without manufacturing a provider failure.
+    private static func performAttempt(
+        token: String,
+        attempt: (_ accessToken: String) async throws -> HTTPResponse,
+        connectionFailed: Error
+    ) async throws -> HTTPResponse {
+        do {
+            return try await attempt(token)
+        } catch let error as CancellationError {
+            throw error
+        } catch let error as URLError where error.code == .cancelled {
+            throw error
+        } catch {
+            throw connectionFailed
+        }
     }
 }

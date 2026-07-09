@@ -1,12 +1,14 @@
 import XCTest
 @testable import OpenUsage
 
-/// Covers `ProviderAuthRetry.requireSuccess`, the shared non-2xx triage the Claude/Codex/Grok mappers
-/// and `CursorProvider` route through: 401/403 → the provider's auth-expired error, any other non-2xx →
-/// the provider's request-failed error (carrying the status), and a 2xx returns without throwing.
+/// Covers the shared response triage and authenticated retry sequence used across providers, including
+/// the cancellation signals that must not be rewritten as provider connection failures.
+@MainActor
 final class ProviderAuthRetryTests: XCTestCase {
     private enum SampleError: Error, Equatable {
         case authExpired
+        case connectionFailed
+        case retriedConnectionFailed
         case requestFailed(Int)
     }
 
@@ -38,6 +40,49 @@ final class ProviderAuthRetryTests: XCTestCase {
             XCTAssertThrowsError(try requireSuccess(status: status)) { error in
                 XCTAssertEqual(error as? SampleError, .requestFailed(status))
             }
+        }
+    }
+
+    func testInitialAttemptPreservesCancellationErrors() async {
+        await assertCancellationPreserved(CancellationError(), throwingOnAttempt: 1)
+        await assertCancellationPreserved(URLError(.cancelled), throwingOnAttempt: 1)
+    }
+
+    func testRetriedAttemptPreservesCancellationErrors() async {
+        await assertCancellationPreserved(CancellationError(), throwingOnAttempt: 2)
+        await assertCancellationPreserved(URLError(.cancelled), throwingOnAttempt: 2)
+    }
+
+    private func assertCancellationPreserved(
+        _ expectedError: Error,
+        throwingOnAttempt targetAttempt: Int,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        var attemptCount = 0
+        do {
+            _ = try await ProviderAuthRetry.fetch(
+                token: "old-token",
+                attempt: { _ in
+                    attemptCount += 1
+                    if attemptCount == targetAttempt {
+                        throw expectedError
+                    }
+                    return HTTPResponse(statusCode: 401, headers: [:], body: Data())
+                },
+                refreshAccessToken: { "new-token" },
+                connectionFailed: SampleError.connectionFailed,
+                retriedConnectionFailed: SampleError.retriedConnectionFailed,
+                authExpired: SampleError.authExpired
+            )
+            XCTFail("Expected cancellation from attempt \(targetAttempt)", file: file, line: line)
+        } catch is CancellationError {
+            XCTAssertTrue(expectedError is CancellationError, file: file, line: line)
+        } catch let error as URLError {
+            XCTAssertEqual((expectedError as? URLError)?.code, .cancelled, file: file, line: line)
+            XCTAssertEqual(error.code, .cancelled, file: file, line: line)
+        } catch {
+            XCTFail("Expected the original cancellation, got \(error)", file: file, line: line)
         }
     }
 }
