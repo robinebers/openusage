@@ -157,15 +157,45 @@ final class CursorProvider: ProviderRuntime {
         let startOfToday = calendar.startOfDay(for: end)
         let start = calendar.date(byAdding: .day, value: -29, to: startOfToday) ?? startOfToday
 
-        guard let response = try? await usageClient.fetchUsageCSV(accessToken: accessToken, start: start, end: end),
-              (200..<300).contains(response.statusCode),
-              let csv = String(data: response.body, encoding: .utf8)
-        else {
+        let response: HTTPResponse?
+        do {
+            response = try await usageClient.fetchUsageCSV(accessToken: accessToken, start: start, end: end)
+        } catch {
+            AppLog.warn(LogTag.plugin("cursor"), "usage CSV request failed")
+            return
+        }
+        guard let response else {
+            AppLog.warn(LogTag.plugin("cursor"), "usage CSV request could not be prepared from the current session")
+            return
+        }
+        guard (200..<300).contains(response.statusCode) else {
+            AppLog.warn(LogTag.plugin("cursor"), "usage CSV request returned HTTP \(response.statusCode)")
+            return
+        }
+        guard let csv = String(data: response.body, encoding: .utf8) else {
+            AppLog.warn(LogTag.plugin("cursor"), "usage CSV response was not valid UTF-8")
             return
         }
         let pricing = await pricing()
-        let rows = CursorUsageCSV.parse(csv: csv, pricing: pricing)
-        CursorUsageMapper.appendSpendLines(rows: rows, now: end, pricing: pricing, to: &lines)
+        do {
+            let parsed = try CursorUsageCSV.parse(csv: csv, pricing: pricing)
+            if parsed.rejectedRowCount > 0 {
+                AppLog.warn(
+                    LogTag.plugin("cursor"),
+                    "usage CSV ignored \(parsed.rejectedRowCount) malformed row\(parsed.rejectedRowCount == 1 ? "" : "s")"
+                )
+            }
+            CursorUsageMapper.appendSpendLines(rows: parsed.rows, now: end, pricing: pricing, to: &lines)
+        } catch let error as CursorUsageCSVError {
+            switch error {
+            case .missingColumns(let columns):
+                AppLog.warn(LogTag.plugin("cursor"), "usage CSV missing required columns: \(columns.joined(separator: ", "))")
+            case .malformedCSV:
+                AppLog.warn(LogTag.plugin("cursor"), "usage CSV is structurally malformed")
+            }
+        } catch {
+            AppLog.warn(LogTag.plugin("cursor"), "usage CSV could not be parsed")
+        }
     }
 
     private func fetchUsageWithRetry(accessToken: String, authState: inout CursorAuthState) async throws -> HTTPResponse {
