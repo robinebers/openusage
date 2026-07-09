@@ -15,8 +15,6 @@ struct PricingCatalog: Sendable, Equatable {
         self.retrievedAt = retrievedAt
     }
 
-    var isEmpty: Bool { entries.isEmpty }
-
     func findExact(_ model: String) -> (key: String, rates: ModelRates)? {
         entries[model].map { (model, $0) }
     }

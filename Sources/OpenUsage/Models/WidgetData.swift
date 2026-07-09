@@ -29,8 +29,6 @@ struct WidgetData: Hashable {
     /// the blue/healthy row also shows the even-pace tick and its projection copy. Yellow and red rows
     /// always show the tick when a reset window exists; this toggle only adds it on blue.
     var alwaysShowPacing: Bool = false
-    /// Widget descriptor id when this tile is backed by live data (`codex.session`, `claude.session`, …).
-    var widgetID: String?
     var resetsAt: Date?
     /// Zero or more future expiry instants surfaced in the row's hover tooltip (Codex rate-limit-reset
     /// credits — one entry per still-available credit). Empty for every other row. Kept as raw `Date`s so
@@ -65,7 +63,7 @@ struct WidgetData: Hashable {
     /// numeric part is still parsed into `used` so the menu bar keeps its compact value.
     var preservesRawText: Bool = false
     /// False when no real provider metric backs this tile. The view then shows a "No data" state
-    /// instead of the descriptor's placeholder sample numbers. True for real data and gallery samples.
+    /// instead of the descriptor's placeholder template numbers. True for real data and direct fixtures.
     var hasData: Bool = true
     /// Raw numbers for an unbounded `.values` row (empty for meters and legacy `.text` rows). The view
     /// formats these at render time instead of reading a baked string — see `unboundedDetail`.
@@ -215,7 +213,7 @@ struct WidgetData: Hashable {
         }
     }
 
-    /// Primary value string (menu bar, unbounded tiles, the Add-Widget gallery). Returns the no-data
+    /// Primary value string for the menu bar and unbounded rows. Returns the no-data
     /// marker when no real metric backs the tile, so no surface can print the descriptor's placeholder
     /// sample numbers as if they were measured usage.
     var valueText: String {
@@ -301,13 +299,6 @@ struct WidgetData: Hashable {
     var headline: String {
         guard hasData else { return Self.noDataHeadline }
         return isBounded ? boundedHeadline : valueText
-    }
-
-    /// View-facing caption under the headline (kept visible — no tooltips). Shows "No data" when no
-    /// real metric backs the tile; otherwise the metric's reset/limit context.
-    var subtitle: String? {
-        guard hasData else { return Self.noDataSubtitle }
-        return boundedSubtitle
     }
 
     /// Right-aligned descriptive line for an unbounded row (no bar): just "<value> <word>". The word is

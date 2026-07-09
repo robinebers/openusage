@@ -2,7 +2,7 @@ import XCTest
 @testable import OpenUsage
 
 /// Covers that the enable/disable choice is actually *enforced* everywhere a provider is consulted:
-/// the refresh loop, the menu-bar value, and the dashboard layout (visible tiles + Add-Widget gallery).
+/// the refresh loop, the menu-bar value, and the dashboard / Customize layout.
 @MainActor
 final class ProviderEnablementEnforcementTests: XCTestCase {
     // MARK: - WidgetDataStore refresh
@@ -43,7 +43,7 @@ final class ProviderEnablementEnforcementTests: XCTestCase {
 
     // MARK: - Layout
 
-    func testVisiblePlacedAndAvailableToAddExcludeDisabledProviderThenRestore() {
+    func testVisiblePlacedAndCustomizeGroupsExcludeDisabledProviderThenRestore() {
         let enablement = ProviderEnablementStore(defaults: makeDefaults("layout-enablement"))
         let layout = LayoutStore(
             registry: .mock,
@@ -54,7 +54,7 @@ final class ProviderEnablementEnforcementTests: XCTestCase {
 
         // All enabled => visiblePlaced is byte-for-byte the full placed list.
         XCTAssertEqual(layout.visiblePlaced, layout.placed)
-        XCTAssertTrue(layout.availableToAdd.contains { $0.providerID == "cursor" })
+        XCTAssertTrue(layout.customizeGroups.contains { $0.provider.id == "cursor" })
 
         enablement.setEnabled(false, for: "cursor")
 
@@ -62,12 +62,14 @@ final class ProviderEnablementEnforcementTests: XCTestCase {
         XCTAssertTrue(layout.visiblePlaced.contains { $0.descriptorID.hasPrefix("claude.") })
         // Disabling hides but does not delete: the Cursor tiles are still parked in `placed`.
         XCTAssertTrue(layout.placed.contains { $0.descriptorID.hasPrefix("cursor.") })
-        XCTAssertFalse(layout.availableToAdd.contains { $0.providerID == "cursor" })
+        XCTAssertFalse(layout.customizeGroups.contains { $0.provider.id == "cursor" })
+        XCTAssertEqual(layout.customizeProviderRows.first { $0.id == "cursor" }?.isEnabled, false)
 
         enablement.setEnabled(true, for: "cursor")
 
         XCTAssertEqual(layout.visiblePlaced, layout.placed)
-        XCTAssertTrue(layout.availableToAdd.contains { $0.providerID == "cursor" })
+        XCTAssertTrue(layout.customizeGroups.contains { $0.provider.id == "cursor" })
+        XCTAssertEqual(layout.customizeProviderRows.first { $0.id == "cursor" }?.isEnabled, true)
     }
 
     // MARK: - Helpers

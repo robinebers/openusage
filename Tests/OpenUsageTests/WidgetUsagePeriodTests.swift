@@ -37,7 +37,7 @@ final class WidgetUsagePeriodTests: XCTestCase {
     /// A depleted balance (every value zero, not a usage period): `isZeroUsage` is still true, but the
     /// note gate `isZeroUsage && isUsagePeriod` is false, so no "No usage in this period" note shows.
     func testZeroBalanceRowIsGatedOutOfTheNote() {
-        var row = WidgetData(title: "Rate Limit Resets", icon: .symbol("clock"), kind: .count, used: 0,
+        var row = WidgetData(title: "Rate Limit Resets", icon: .providerMark("codex"), kind: .count, used: 0,
                              limit: nil, values: [MetricValue(number: 0, kind: .count)])
         row.isUsagePeriod = false
         XCTAssertTrue(row.isZeroUsage)
@@ -46,7 +46,7 @@ final class WidgetUsagePeriodTests: XCTestCase {
 
     /// A zero spend day (every value zero, a usage period): both true, so the note shows.
     func testZeroSpendPeriodKeepsTheNote() {
-        var row = WidgetData(title: "Today", icon: .symbol("clock"), kind: .dollars, used: 0, limit: nil,
+        var row = WidgetData(title: "Today", icon: .providerMark("codex"), kind: .dollars, used: 0, limit: nil,
                              values: [MetricValue(number: 0, kind: .dollars),
                                       MetricValue(number: 0, kind: .count)])
         row.isUsagePeriod = true

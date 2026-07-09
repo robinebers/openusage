@@ -1,14 +1,14 @@
 import SwiftUI
 
-/// Shared provider section header used by the dashboard, Customize, and lifted reorder previews.
+/// Shared provider section header used by the dashboard and its lifted provider-reorder preview.
 /// The name leads with the optional plan badge beside it; the provider mark sits at the trailing
-/// edge. Callers supply only an optional accessory after the mark (drag grip) and an optional
-/// `warning` — the latest refresh error, rendered as a small amber triangle beside the name whose
-/// hover tooltip carries the message (e.g. "Not logged in. Run `codex` to authenticate."). The
+/// edge. Callers supply an optional `warning` — the latest refresh error, rendered as a small amber
+/// triangle beside the name whose hover tooltip carries the message (e.g. "Not logged in. Run `codex`
+/// to authenticate."). The
 /// optional `staleness` is the dashboard-only hint that the values shown are an aged snapshot still
 /// revalidating: a short "Outdated" tag whose hover tooltip carries the precise age ("Last updated 3h
 /// 12m ago"), so fossilized plan/limits never pass for current data.
-struct ProviderSectionHeader<Trailing: View>: View {
+struct ProviderSectionHeader: View {
     let provider: Provider
     var plan: String?
     var warning: String?
@@ -17,14 +17,9 @@ struct ProviderSectionHeader<Trailing: View>: View {
     /// the previous, possibly stale, numbers).
     var refreshing: Bool = false
     /// A muted "Outdated" hint shown only when the displayed snapshot has aged past its freshness window
-    /// (dashboard only; `nil` in Customize / reorder previews, which never surface staleness). Its tooltip
-    /// carries the precise age.
+    /// (dashboard only; `nil` in the reorder preview, which never surfaces staleness). Its tooltip carries
+    /// the precise age.
     var staleness: StalenessHint?
-    /// Dashboard-only: when true, a small dot-grid grip leads the name to signal the header line is
-    /// draggable (providers reorder by dragging the header). Off in Customize, which carries its own
-    /// trailing grip.
-    var showsDragHandle: Bool = false
-    private let trailing: Trailing
 
     /// Header type and icon track the density setting like the rows do, so Compact shrinks the
     /// whole section anatomy — not just the rows under it.
@@ -32,26 +27,21 @@ struct ProviderSectionHeader<Trailing: View>: View {
     /// Party easter egg: pulse the provider mark. Off by default everywhere else.
     @Environment(\.popoverPartyMode) private var partyMode
 
-    init(provider: Provider, plan: String? = nil, warning: String? = nil, refreshing: Bool = false, staleness: StalenessHint? = nil, showsDragHandle: Bool = false, @ViewBuilder trailing: () -> Trailing) {
+    init(provider: Provider, plan: String? = nil, warning: String? = nil, refreshing: Bool = false, staleness: StalenessHint? = nil) {
         self.provider = provider
         self.plan = plan
         self.warning = warning
         self.refreshing = refreshing
         self.staleness = staleness
-        self.showsDragHandle = showsDragHandle
-        self.trailing = trailing()
     }
 
     var body: some View {
         HStack(spacing: 5) {
             // A grip leading the name marks the header line as draggable to reorder providers. The
-            // whole line still carries the gesture; this just makes the affordance discoverable.
-            if showsDragHandle {
-                // Purely a visual affordance (the whole header line carries the drag gesture). The
-                // extra trailing gap keeps the grip from crowding the provider name beside it.
-                DragHandleGrip()
-                    .padding(.trailing, 4)
-            }
+            // whole line still carries the gesture; this is only the visual affordance. The trailing
+            // gap keeps it from crowding the provider name beside it.
+            DragHandleGrip()
+                .padding(.trailing, 4)
             // Baseline-aligned pair: the plan badge (and stale tag) are smaller type and sit on the
             // name's text baseline, so the words line up along the bottom rather than floating centered.
             HStack(alignment: .firstTextBaseline, spacing: 5) {
@@ -97,20 +87,12 @@ struct ProviderSectionHeader<Trailing: View>: View {
             ProviderIcon(source: provider.icon, inset: 0.04)
                 .frame(width: density.headerIconSize, height: density.headerIconSize)
                 .partyPulse(partyMode)
-            trailing
         }
-        // With the grip leading, shave the left inset so the handle sits a touch closer to the card's
-        // left edge; Customize (no grip) keeps the symmetric inset so its name doesn't shift.
-        .padding(.leading, showsDragHandle ? 2 : 4)
+        // Shave the left inset so the leading grip sits a touch closer to the card's edge.
+        .padding(.leading, 2)
         .padding(.trailing, 4)
         .padding(.vertical, 2)
         .contentShape(Rectangle())
-    }
-}
-
-extension ProviderSectionHeader where Trailing == EmptyView {
-    init(provider: Provider, plan: String? = nil, warning: String? = nil, refreshing: Bool = false, staleness: StalenessHint? = nil, showsDragHandle: Bool = false) {
-        self.init(provider: provider, plan: plan, warning: warning, refreshing: refreshing, staleness: staleness, showsDragHandle: showsDragHandle) { EmptyView() }
     }
 }
 

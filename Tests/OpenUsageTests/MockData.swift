@@ -39,7 +39,7 @@ enum MockData {
         descriptors.filter { $0.providerID == providerID }
     }
 
-    // MARK: - Descriptor builders (one display name = tile + gallery + metric label)
+    // MARK: - Descriptor builders (one display name = row + metric label)
     private static func percent(id: String, provider: Provider, title: String, used: Double) -> WidgetDescriptor {
         descriptor(
             id,

@@ -1,5 +1,4 @@
 import SwiftUI
-import AppKit
 
 /// The per-provider API-key card shown in a provider's Customize detail (since key management moved out
 /// of a shared Settings list into each provider's detail). A status dot + Edit/Add button; expanding

@@ -168,11 +168,6 @@ final class LayoutStore {
         }
     }
 
-    var availableToAdd: [WidgetDescriptor] {
-        let placedIDs = Set(placed.map(\.descriptorID))
-        return registry.descriptors.filter { !placedIDs.contains($0.id) && isProviderEnabled($0.providerID) }
-    }
-
     func isMetricEnabled(_ descriptorID: String) -> Bool {
         placed.contains { $0.descriptorID == descriptorID }
     }
@@ -250,16 +245,14 @@ final class LayoutStore {
 
     /// The L1 Customize list: every known provider in the user's saved order, regardless of enablement.
     /// Disabled providers appear here (greyed in the UI) so the user can re-enable them or open their
-    /// detail — unlike `customizeGroups`, which filters them out for the dashboard and the old flat
-    /// Customize. Each row carries the enablement flag, the total metric count (the badge number), and
-    /// the pinned count.
+    /// detail — unlike the enabled-provider reorder list exposed by `customizeGroups`, which filters them
+    /// out. Each row carries the enablement flag and total metric count shown by the list.
     var customizeProviderRows: [ProviderRow] {
         orderedProviders().map { provider in
             ProviderRow(
                 provider: provider,
                 isEnabled: isProviderEnabled(provider.id),
-                metricCount: metricCount(for: provider.id),
-                pinnedCount: pinnedCount(forProvider: provider.id)
+                metricCount: metricCount(for: provider.id)
             )
         }
     }
@@ -598,8 +591,6 @@ final class LayoutStore {
 
     func isPinned(_ descriptorID: String) -> Bool { pinnedMetricIDs.contains(descriptorID) }
 
-    var pinnedCount: Int { pinnedMetricIDs.count }
-
     func pinnedCount(forProvider providerID: String) -> Int {
         pinnedMetricIDs.count { registry.descriptor(id: $0)?.providerID == providerID }
     }
@@ -876,7 +867,6 @@ struct ProviderMetrics: Identifiable {
 
     /// Every supported metric in custom order (always-shown first, then expanded).
     var metrics: [WidgetDescriptor] { alwaysShownMetrics + expandedMetrics }
-    var hasExpandedMetrics: Bool { !expandedMetrics.isEmpty }
 }
 
 /// One row in the Customize provider list (L1): the provider plus the derived bits the row renders —
@@ -887,7 +877,6 @@ struct ProviderRow: Identifiable {
     let provider: Provider
     let isEnabled: Bool
     let metricCount: Int
-    let pinnedCount: Int
     var id: String { provider.id }
 }
 

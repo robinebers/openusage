@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 /// One metric as a row inside a provider's grouped list container. The provider icon is drawn once in the
@@ -81,7 +80,7 @@ struct WidgetRowView: View {
     private var rowContent: some View {
         if data.isChart, data.hasData {
             // The sparkline owns its own label + bars; a chart with no real points falls through to the
-            // unbounded "No data" row below (and so the descriptor's gallery sample never leaks here).
+            // unbounded "No data" row below (and so descriptor template data never leaks here).
             UsageSparkline(data: data)
         } else if data.isBounded {
             boundedRow

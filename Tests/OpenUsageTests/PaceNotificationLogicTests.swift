@@ -1,6 +1,14 @@
 import XCTest
 @testable import OpenUsage
 
+private extension PaceNotificationToggles {
+    static let allOn = PaceNotificationToggles(
+        underTenPercent: true,
+        healthyToClose: true,
+        closeToRunningOut: true
+    )
+}
+
 /// Covers the pure milestone logic that decides when a quota notification fires: worsening pace edges
 /// (blue→yellow, yellow→red), the under-10%-remaining crossing, per-window dedup, reset rollover,
 /// recovery re-arming, the no-trustworthy-pace suppression, and the toggle gates. Mirrors CodexBar's

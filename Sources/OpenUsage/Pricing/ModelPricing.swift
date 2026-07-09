@@ -45,10 +45,6 @@ final class ModelPricing: Sendable {
         return resolved
     }
 
-    func canPrice(model: String) -> Bool {
-        resolve(model: model) != nil
-    }
-
     /// Dollar cost of `tokens` for `model`, or nil when the model can't be priced. Aggregated sources
     /// can disable long-context tiers when they do not preserve individual request boundaries.
     func estimatedCostDollars(

@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 /// Hover detail for a spend period: a flat ranked list of models, each two text lines (name/cost,

@@ -1,8 +1,8 @@
 import XCTest
 @testable import OpenUsage
 
-/// Covers `WidgetDataStore.plan(for:)` and the Plan widget row: plan is `nil`
-/// until the provider has a snapshot, then mirrors that snapshot's `plan`.
+/// Covers `WidgetDataStore.plan(for:)`: the provider-header plan is `nil` until the provider has a
+/// snapshot, then mirrors that snapshot's `plan`.
 @MainActor
 final class WidgetDataStorePlanTests: XCTestCase {
     func testPlanIsNilBeforeRefreshThenMirrorsSnapshot() async {
@@ -67,37 +67,6 @@ final class WidgetDataStorePlanTests: XCTestCase {
         await store.refreshAll()
 
         XCTAssertNil(store.plan(for: "codex"))
-    }
-
-    func testPlanWidgetResolvesSnapshotPlan() async {
-        let provider = Provider(id: "claude", displayName: "Claude", icon: .providerMark("claude"))
-        let planDescriptor = PlanWidget.descriptor(for: provider)
-        let runtime = TestProviderRuntime(
-            provider: provider,
-            descriptors: [planDescriptor],
-            snapshot: ProviderSnapshot(
-                providerID: "claude",
-                displayName: "Claude",
-                plan: "Team 5x",
-                lines: []
-            )
-        )
-        let defaults = makeDefaults("plan-widget")
-        let store = WidgetDataStore(
-            registry: WidgetRegistry(providers: [provider], descriptors: [planDescriptor]),
-            providers: [runtime],
-            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() }),
-            defaults: defaults
-        )
-
-        let before = store.data(for: planDescriptor)
-        XCTAssertFalse(before.hasData)
-
-        await store.refreshAll()
-
-        let after = store.data(for: planDescriptor)
-        XCTAssertTrue(after.hasData)
-        XCTAssertEqual(after.unboundedDetail, "Team 5x")
     }
 
     private func makeDefaults(_ name: String) -> UserDefaults {

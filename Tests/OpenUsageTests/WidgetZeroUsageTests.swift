@@ -6,7 +6,7 @@ import XCTest
 /// note instead of a figures reveal.
 final class WidgetZeroUsageTests: XCTestCase {
     private func row(values: [MetricValue], hasData: Bool = true) -> WidgetData {
-        WidgetData(title: "Today", icon: .symbol("clock"), kind: .count, used: 0, limit: nil,
+        WidgetData(title: "Today", icon: .providerMark("codex"), kind: .count, used: 0, limit: nil,
                    hasData: hasData, values: values)
     }
 

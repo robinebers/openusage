@@ -57,7 +57,7 @@ final class PaceTests: XCTestCase {
 
     /// Half the window gone, `used` percent of 100 spent → projected = used * 2.
     private func weeklyData(used: Double, displayMode: WidgetDisplayMode = .used) -> WidgetData {
-        var data = WidgetData(title: "Weekly", icon: .symbol("clock"), kind: .percent,
+        var data = WidgetData(title: "Weekly", icon: .providerMark("codex"), kind: .percent,
                               used: used, limit: 100, displayMode: displayMode)
         data.resetsAt = resetsAt(elapsed: 0.5, period: week)
         data.periodDurationMs = Int(week * 1000)
@@ -84,7 +84,7 @@ final class PaceTests: XCTestCase {
     }
 
     func testNoTickWithoutAResetWindow() {
-        var data = WidgetData(title: "Credits", icon: .symbol("creditcard"), kind: .dollars,
+        var data = WidgetData(title: "Credits", icon: .providerMark("codex"), kind: .dollars,
                               used: 12, limit: 20)
         XCTAssertNil(tick(data))                         // no reset window at all
         data.resetsAt = now.addingTimeInterval(week)
@@ -108,10 +108,10 @@ final class PaceTests: XCTestCase {
     func testSpentReadsLimitReached() {
         XCTAssertEqual(weeklyData(used: 100).meterState(now: now), .spent)
         XCTAssertEqual(weeklyData(used: 100).meterState(now: now).tooltip, "Limit reached")
-        let nearlyEmpty = WidgetData(title: "Credits", icon: .symbol("creditcard"), kind: .dollars,
+        let nearlyEmpty = WidgetData(title: "Credits", icon: .providerMark("codex"), kind: .dollars,
                                      used: 99.999, limit: 100)
         XCTAssertEqual(nearlyEmpty.meterState(now: now), .spent)
-        let withHeadroom = WidgetData(title: "Credits", icon: .symbol("creditcard"), kind: .dollars,
+        let withHeadroom = WidgetData(title: "Credits", icon: .providerMark("codex"), kind: .dollars,
                                       used: 99.0, limit: 100)
         XCTAssertNil(withHeadroom.meterState(now: now).tooltip)
     }
@@ -123,7 +123,7 @@ final class PaceTests: XCTestCase {
     }
 
     func testSpentOutranksCloseToLimitSoNoTickOrSpare() {
-        var data = WidgetData(title: "Weekly", icon: .symbol("clock"), kind: .percent,
+        var data = WidgetData(title: "Weekly", icon: .providerMark("codex"), kind: .percent,
                               used: 99.6, limit: 100)
         data.resetsAt = resetsAt(elapsed: 0.997, period: week)
         data.periodDurationMs = Int(week * 1000)
@@ -174,7 +174,7 @@ final class PaceTests: XCTestCase {
     func testPlentyRemainingSuppressesFalseRunOutFlame() {
         let session: TimeInterval = 5 * 3600
         let elapsed = 240 / session // four minutes into a five-hour window
-        var data = WidgetData(title: "Session", icon: .symbol("clock"), kind: .percent,
+        var data = WidgetData(title: "Session", icon: .providerMark("codex"), kind: .percent,
                               used: 2, limit: 100)
         data.resetsAt = resetsAt(elapsed: elapsed, period: session)
         data.periodDurationMs = Int(session * 1000)
@@ -187,7 +187,7 @@ final class PaceTests: XCTestCase {
 
     func testOnePercentAtProjectionGateDoesNotBecomeRed() {
         let session: TimeInterval = 5 * 3600
-        var data = WidgetData(title: "Session", icon: .symbol("clock"), kind: .percent,
+        var data = WidgetData(title: "Session", icon: .providerMark("codex"), kind: .percent,
                               used: 1, limit: 100)
         data.resetsAt = resetsAt(elapsed: 0.01, period: session)
         data.periodDurationMs = Int(session * 1000)
@@ -200,7 +200,7 @@ final class PaceTests: XCTestCase {
     func testRunOutFlameShowsOnceFivePercentUsedDespiteHighRemaining() {
         let session: TimeInterval = 5 * 3600
         let elapsed = 240 / session
-        var data = WidgetData(title: "Session", icon: .symbol("clock"), kind: .percent,
+        var data = WidgetData(title: "Session", icon: .providerMark("codex"), kind: .percent,
                               used: 6, limit: 100)
         data.resetsAt = resetsAt(elapsed: elapsed, period: session)
         data.periodDurationMs = Int(session * 1000)
@@ -223,7 +223,7 @@ final class PaceTests: XCTestCase {
 
     private func pacedData(used: Double, elapsed: Double, displayMode: WidgetDisplayMode = .used,
                            alwaysShowPacing: Bool = false) -> WidgetData {
-        var data = WidgetData(title: "Weekly", icon: .symbol("clock"), kind: .percent,
+        var data = WidgetData(title: "Weekly", icon: .providerMark("codex"), kind: .percent,
                               used: used, limit: 100, displayMode: displayMode)
         data.resetsAt = resetsAt(elapsed: elapsed, period: week)
         data.periodDurationMs = Int(week * 1000)
@@ -271,7 +271,7 @@ final class PaceTests: XCTestCase {
     }
 
     func testAlwaysShowPacingLeavesRowsWithoutResetWindowPlain() {
-        var data = WidgetData(title: "Credits", icon: .symbol("creditcard"), kind: .dollars,
+        var data = WidgetData(title: "Credits", icon: .providerMark("codex"), kind: .dollars,
                               used: 12, limit: 20)
         data.alwaysShowPacing = true
         XCTAssertNil(tick(data))

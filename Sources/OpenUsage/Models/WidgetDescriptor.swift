@@ -1,8 +1,7 @@
 import Foundation
 
-/// What a provider offers to the gallery: identity, render kind, and a sample of the
-/// data it would feed (mocked). The display name is the single `sample.title`, shared
-/// by the tile and the gallery — there is no separate title string.
+/// A provider metric's identity and presentation template. Live provider lines supply the values;
+/// `sample` carries stable display metadata such as title, icon, kind, and descriptor opt-ins.
 struct WidgetDescriptor: Identifiable, Hashable {
     let id: String                 // "claude.session"
     let providerID: String
@@ -16,7 +15,7 @@ struct WidgetDescriptor: Identifiable, Hashable {
     /// wrongly rope in look-alike rows like OpenRouter's API-spend "Today".
     var isSpendTile: Bool = false
 
-    /// The one display name for this widget (tile + gallery).
+    /// The metric's single display name.
     var title: String { sample.title }
 
     static func == (lhs: WidgetDescriptor, rhs: WidgetDescriptor) -> Bool { lhs.id == rhs.id }

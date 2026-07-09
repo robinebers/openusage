@@ -26,7 +26,6 @@ final class MenuBarPanel: NSPanel {
 @MainActor
 final class StatusItemController: NSObject {
     private let container: AppContainer
-    private let updater: UpdaterController
     private let statusItem: NSStatusItem
     /// Owns the menu-bar strip render loop. Its apply closure captures the `NSStatusItem` directly
     /// (which never retains the controller), so this can be a plain non-optional `let`.
@@ -51,7 +50,6 @@ final class StatusItemController: NSObject {
 
     init(container: AppContainer, updater: UpdaterController) {
         self.container = container
-        self.updater = updater
         let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         self.statusItem = statusItem
         // Captures the status item, not `self` — no retain cycle, and no optional property just to

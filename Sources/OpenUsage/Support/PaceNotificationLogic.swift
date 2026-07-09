@@ -84,8 +84,6 @@ struct PaceNotificationToggles: Sendable {
     var healthyToClose: Bool
     var closeToRunningOut: Bool
 
-    static let allOn = PaceNotificationToggles(underTenPercent: true, healthyToClose: true, closeToRunningOut: true)
-
     func isOn(_ milestone: PaceMilestone) -> Bool {
         switch milestone {
         case .underTenPercent: return underTenPercent

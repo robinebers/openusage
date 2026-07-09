@@ -190,7 +190,6 @@ Snapshot to view:
   - global meter style
   - reset display mode
   - `alwaysShowPacing`
-  - `widgetID = descriptor.id`
 - `WidgetGroupedListView` resolves each row and renders `WidgetRowView(data: ...)`.
 
 Current row structure:

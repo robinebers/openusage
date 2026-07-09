@@ -170,8 +170,8 @@ final class UsageTrendTests: XCTestCase {
     }
 
     func testChartTileWithoutABackingLineRendersNoData() {
-        // The placed tile with no `.chart` line must NOT leak the descriptor's gallery sample bars onto
-        // the dashboard — it falls back to the no-data state.
+        // A placed row with no `.chart` line must not treat descriptor template data as live usage — it
+        // falls back to the no-data state.
         let provider = Provider(id: "claude", displayName: "Claude", icon: .providerMark("claude"))
         let descriptor = WidgetDescriptor.usageTrend(provider: provider)
         let store = makeDataStore(provider: provider, descriptor: descriptor)

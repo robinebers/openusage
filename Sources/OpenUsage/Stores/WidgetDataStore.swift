@@ -294,17 +294,6 @@ final class WidgetDataStore {
     }
 
     func data(for descriptor: WidgetDescriptor) -> WidgetData {
-        if PlanWidget.isPlan(descriptor) {
-            var result = descriptor.sample
-            if let plan = plan(for: descriptor.providerID) {
-                result.valueTextOverride = plan
-                result.hasData = true
-            } else {
-                result.hasData = false
-            }
-            return result
-        }
-
         var result: WidgetData
         if let snapshot = snapshots[descriptor.providerID],
            let line = snapshot.line(label: descriptor.metricLabel),
@@ -317,18 +306,17 @@ final class WidgetDataStore {
             result.hasData = false
         }
 
-        // Single global choke point: tiles, the Add-Widget gallery, and the menu-bar value all funnel
-        // through here, so stamping the mode once makes them follow the global setting. Inert for
-        // unbounded tiles (limit == nil), whose displayed value ignores displayMode.
+        // Single global choke point: dashboard/share rows and menu-bar values all funnel through here,
+        // so stamping the mode once makes them follow the global setting. Inert for unbounded rows
+        // (limit == nil), whose displayed value ignores displayMode.
         result.displayMode = meterStyle
         result.resetDisplayMode = resetDisplayMode
         result.alwaysShowPacing = alwaysShowPacing
-        result.widgetID = descriptor.id
         return result
     }
 
-    /// The plan label for a provider's latest snapshot (also feeds the optional Plan widget). `nil` until a
-    /// snapshot exists or when the provider doesn't expose a plan.
+    /// The plan label for a provider's latest snapshot. `nil` until a snapshot exists or when the
+    /// provider doesn't expose a plan. Provider section headers render this beside the provider name.
     func plan(for providerID: String) -> String? {
         snapshots[providerID]?.plan
     }
@@ -375,7 +363,6 @@ final class WidgetDataStore {
                 limit: limit,
                 countSuffix: format.countSuffix,
                 valuePrefix: descriptor.sample.valuePrefix,
-                widgetID: descriptor.id,
                 resetsAt: resetsAt,
                 periodDurationMs: periodDurationMs,
                 limitNoun: descriptor.sample.limitNoun,
@@ -393,7 +380,7 @@ final class WidgetDataStore {
             var data = descriptor.sample
             data.values = values
             // A `.values` line is unbounded by definition (see `MetricLine`), so it never renders as a
-            // meter even when the descriptor's gallery sample carries a placeholder limit — e.g. Claude's
+            // meter even when the descriptor template carries a placeholder limit — e.g. Claude's
             // `claude.extra` is `boundedDollars` for its capped `.progress` case but feeds an uncapped
             // `.values` row when there's no monthly cap.
             data.limit = nil
@@ -421,7 +408,7 @@ final class WidgetDataStore {
         case .chart(_, let points, let note):
             // Presentation (title, icon) from the sample; the live per-day points from the line. No
             // points means the source was read but had no usable day — render "No data", not an empty
-            // axis (and so the sample's gallery bars never leak onto the dashboard).
+            // axis (and so descriptor template data never leaks onto the dashboard).
             var data = descriptor.sample
             data.isChart = true
             data.chartPoints = points
@@ -503,4 +490,3 @@ final class WidgetDataStore {
         return Double(value[match].replacingOccurrences(of: ",", with: ""))
     }
 }
-

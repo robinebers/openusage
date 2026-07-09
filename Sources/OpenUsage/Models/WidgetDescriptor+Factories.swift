@@ -1,9 +1,9 @@
 import Foundation
 
-/// Shared descriptor factories — the one place that knows how a descriptor's sample `WidgetData`
-/// is assembled, so a provider declares its gallery as a flat list instead of re-implementing the
-/// same private builders. Sample numbers are structural only (a row without real data renders the
-/// no-data marker, never the sample), so every factory seeds `used: 0`.
+/// Shared descriptor factories — the one place that knows how a descriptor's template `WidgetData`
+/// is assembled, so providers declare flat metric lists instead of re-implementing the same private
+/// builders. Template numbers are structural only (a row without real data renders the no-data marker,
+/// never the template), so every factory seeds `used: 0`.
 extension WidgetDescriptor {
     /// Bounded 0–100% meter (session/weekly-style quotas). `isSessionWindow` opts the tile into the
     /// "Not started" fresh-window treatment (rolling 5-hour session pools), replacing a hardcoded
@@ -154,21 +154,14 @@ extension WidgetDescriptor {
     }
 
     /// The Usage Trend row: a day-by-day token sparkline backed by a provider `.chart` line. Not
-    /// pinnable — the tray can't draw a chart — but otherwise a normal Customize widget (toggle,
-    /// reorder, hide). The sample carries a few bars so it reads as a chart in the gallery.
+    /// pinnable — the tray can't draw a chart — but otherwise a normal Customize metric (toggle,
+    /// reorder, hide). `isChart` tells the dashboard how to render live chart points.
     static func usageTrend(provider: Provider) -> WidgetDescriptor {
         var sample = WidgetData(title: "Usage Trend", icon: provider.icon, kind: .count, used: 0, limit: nil)
         sample.isChart = true
-        sample.chartPoints = sampleTrendPoints
         return make(id: "\(provider.id).trend", provider: provider, metricLabel: "Usage Trend",
                     sample: sample, pinnable: false)
     }
-
-    /// A gentle wave of sample bars so the gallery preview reads as a trend chart, never confused for
-    /// real usage (the dashboard renders real points or "No data", never this sample).
-    private static let sampleTrendPoints: [MetricChartPoint] = [
-        9, 14, 11, 22, 13, 18, 25, 16, 12, 28, 20, 15, 31, 19, 24
-    ].enumerated().map { MetricChartPoint(value: Double($0.element), label: "\($0.offset)") }
 
     private static func make(
         id: String,
