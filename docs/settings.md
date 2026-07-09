@@ -32,15 +32,15 @@ Settings lives inside the popover — there is no separate window. Open it from 
 
 ## Notifications
 
-OpenUsage can alert you with a macOS notification when a metric's pace gets worse, so you don't have to keep the popover open to catch a quota creeping toward its limit. Alerts work while the app runs in the menu bar, even with the popover closed.
+OpenUsage can alert you with a macOS notification when a metric runs low or its pace gets worse, so you don't have to keep the popover open to catch a quota creeping toward its limit. Alerts work while the app runs in the menu bar, even with the popover closed.
 
 | Setting | Options | What it does |
 |---|---|---|
-| Almost Out | On / Off | Alerts the first time a metric drops under 10% remaining for the period. |
+| Almost Out | On / Off | Alerts when a metric crosses under 10% remaining, including balances without a reset window. |
 | Cutting It Close | On / Off | Alerts when a metric is projected to finish the period with little left — close to its limit. |
 | Will Run Out | On / Off | Alerts when a metric is projected to run out before it resets. |
 
-Each alert fires **once per metric per reset period**, so you get a heads-up without repeats on every refresh. Alerts fire only when a quota *worsens* while OpenUsage is running — a quota that's already in a bad state when you launch won't alert until it recovers and worsens again, or a new period begins. If a metric recovers (its pace eases back) and later worsens again, it can alert again. When a new period begins, the slate is wiped clean. Metrics without a reset window, or while their data can't be read, don't pace and never alert. Turn all three off to silence everything. When several alerts fire at once, they stack into a single grouped banner.
+Alerts fire on a new crossing or pace worsening, then stay deduplicated while that condition is unchanged, so you do not get repeats on every refresh. A quota already in a bad state when OpenUsage launches establishes the baseline without alerting. If it recovers and later worsens again, the alert re-arms; a new reset period also clears the reset-based history. **Almost Out** is based only on the remaining share, so it also works for bounded balances without a reset window. **Cutting It Close** and **Will Run Out** require reset-window pace context. Metrics whose data cannot be read never alert. Turn all three triggers off to silence everything. When several alerts fire at once, they stack into a single grouped banner.
 
 All three alerts default off. The first time you turn one on, OpenUsage asks for notification permission; if you decline (or turn notifications off for OpenUsage in System Settings later), a warning mark appears on the Notifications header and an "Open System Settings" button shows under the toggles so you can re-enable them. A notification's title is the alert name, its subtitle names the provider and metric, and its body is the plain-language verdict. Tapping an alert opens the popover on the dashboard.
 

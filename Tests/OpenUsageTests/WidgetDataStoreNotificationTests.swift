@@ -56,12 +56,17 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         )
     }
 
-    private func snapshot(used: Double, resetsAt: Date? = nil) -> ProviderSnapshot {
+    private func snapshot(
+        used: Double,
+        resetsAt: Date? = nil,
+        hasPaceWindow: Bool = true
+    ) -> ProviderSnapshot {
         ProviderSnapshot(
             providerID: Self.provider.id,
             displayName: Self.provider.displayName,
             lines: [.progress(label: "Session", used: used, limit: 100, format: .percent,
-                              resetsAt: resetsAt ?? self.resetsAt, periodDurationMs: Int(week * 1000))]
+                              resetsAt: hasPaceWindow ? (resetsAt ?? self.resetsAt) : nil,
+                              periodDurationMs: hasPaceWindow ? Int(week * 1000) : nil)]
         )
     }
 
@@ -70,11 +75,16 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         settings: NotificationSettingsStore,
         recorder: Recorder,
         defaultsName: String,
+        hasPaceWindow: Bool = true,
         isEnabled: @escaping @MainActor (String) -> Bool = { _ in true },
         delivered: @escaping @MainActor () -> Bool = { true }
     ) -> (WidgetDataStore, MutableRuntime, WidgetDescriptor) {
         let descriptor = Self.descriptor()
-        let runtime = MutableRuntime(provider: Self.provider, descriptors: [descriptor], snapshot: snapshot(used: used))
+        let runtime = MutableRuntime(
+            provider: Self.provider,
+            descriptors: [descriptor],
+            snapshot: snapshot(used: used, hasPaceWindow: hasPaceWindow)
+        )
         let defaults = makeUserDefaults(defaultsName)
         let store = WidgetDataStore(
             registry: WidgetRegistry(providers: [Self.provider], descriptors: [descriptor]),
@@ -139,6 +149,81 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         XCTAssertTrue(recorder.posts.contains { $0.0 == "test.closeToRunningOut" })
         XCTAssertTrue(recorder.posts.contains { $0.3 == "Projected to finish before the limit resets." })
         XCTAssertTrue(recorder.posts.contains { $0.2 == "Test Session" })
+    }
+
+    func testNoResetSpentFiresAlmostOutWithoutPaceAlerts() async {
+        let settings = NotificationSettingsStore(defaults: makeUserDefaults("no-reset-spent-settings"))
+        allOn(settings)
+        let recorder = Recorder()
+        let (store, runtime, _) = makeStore(
+            used: 80,
+            settings: settings,
+            recorder: recorder,
+            defaultsName: "no-reset-spent",
+            hasPaceWindow: false
+        )
+        await store.refreshAll(force: true)
+        await store.evaluateNotifications(now: base) // level-band baseline
+
+        runtime.snapshot = snapshot(used: 100, hasPaceWindow: false)
+        await store.refreshAll(force: true)
+        await store.evaluateNotifications(now: base)
+
+        XCTAssertEqual(recorder.posts.map { $0.0 }, ["test.underTenPercent"])
+        XCTAssertEqual(recorder.posts.first?.1, "Almost Out")
+        XCTAssertEqual(recorder.posts.first?.3, "Under 10% of this limit remains.")
+
+        // Staying spent is deduped; it must not discover a pace edge on a later tick.
+        await store.evaluateNotifications(now: base)
+        XCTAssertEqual(recorder.posts.count, 1)
+    }
+
+    func testNoResetLevelCrossingUnderTenFiresAlmostOut() async {
+        let settings = NotificationSettingsStore(defaults: makeUserDefaults("no-reset-under-ten-settings"))
+        allOn(settings)
+        let recorder = Recorder()
+        let (store, runtime, _) = makeStore(
+            used: 80,
+            settings: settings,
+            recorder: recorder,
+            defaultsName: "no-reset-under-ten",
+            hasPaceWindow: false
+        )
+        await store.refreshAll(force: true)
+        await store.evaluateNotifications(now: base) // 20% remaining, primes
+
+        runtime.snapshot = snapshot(used: 92, hasPaceWindow: false)
+        await store.refreshAll(force: true)
+        await store.evaluateNotifications(now: base)
+
+        XCTAssertEqual(recorder.posts.map { $0.0 }, ["test.underTenPercent"])
+    }
+
+    func testPacedSpentStillFiresWillRunOutAndDedups() async {
+        let settings = NotificationSettingsStore(defaults: makeUserDefaults("paced-spent-settings"))
+        allOn(settings)
+        let recorder = Recorder()
+        let (store, runtime, _) = makeStore(
+            used: 80,
+            settings: settings,
+            recorder: recorder,
+            defaultsName: "paced-spent"
+        )
+        await store.refreshAll(force: true)
+        await store.evaluateNotifications(now: base) // healthy pace baseline
+
+        runtime.snapshot = snapshot(used: 100)
+        await store.refreshAll(force: true)
+        await store.evaluateNotifications(now: base)
+
+        XCTAssertEqual(
+            recorder.posts.map { $0.0 },
+            ["test.closeToRunningOut", "test.underTenPercent"]
+        )
+        XCTAssertTrue(recorder.posts.contains { $0.3 == "Projected to finish before the limit resets." })
+
+        await store.evaluateNotifications(now: base)
+        XCTAssertEqual(recorder.posts.count, 2)
     }
 
     func testResetJitterDoesNotRefireRunningOutThroughTheStore() async {

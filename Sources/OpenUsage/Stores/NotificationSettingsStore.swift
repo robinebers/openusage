@@ -5,9 +5,8 @@ import Observation
 /// turn all three off to silence). All default OFF; the app requests notification authorization the
 /// first time a trigger is turned on, so a fresh install stays quiet until the user opts in.
 ///
-/// Persisted in `UserDefaults` (each key independently, so an unset key reads its `true` default and a
-/// future-added trigger defaults on without migration). `@Observable` so the Settings toggles and the
-/// evaluation in `WidgetDataStore` read live values.
+/// Persisted in `UserDefaults` (each key independently, with an unset key reading the off default).
+/// `@Observable` so the Settings toggles and `WidgetDataStore` evaluation read live values.
 @MainActor
 @Observable
 final class NotificationSettingsStore {
@@ -17,7 +16,7 @@ final class NotificationSettingsStore {
     private static let healthyToCloseKey = "openusage.notifications.healthyToClose"
     private static let closeToRunningOutKey = "openusage.notifications.closeToRunningOut"
 
-    /// Alert the first time a metric drops under 10% remaining for the period.
+    /// Alert when a metric crosses under 10% remaining, with or without a reset window.
     var underTenPercent: Bool {
         didSet { defaults.set(underTenPercent, forKey: Self.underTenKey) }
     }

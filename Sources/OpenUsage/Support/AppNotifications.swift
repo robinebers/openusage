@@ -3,8 +3,8 @@ import Foundation
 import UserNotifications
 
 /// The single entry point for posting macOS user notifications. Quota pace alerts go through `post`;
-/// authorization is requested at launch when at least one trigger is on (all default ON, so the prompt
-/// is expected on a fresh install).
+/// authorization is requested when the first Settings trigger is turned on. All triggers default off,
+/// so a fresh install remains quiet until the user opts in.
 ///
 /// Authorization is memoized in one `Task<Bool, Never>`: the first caller reads the current settings,
 /// short-circuits an already-authorized or already-denied state, and otherwise requests it; every later
@@ -33,8 +33,8 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
         NSClassFromString("XCTestCase") != nil
     }
 
-    /// Make this object the delegate and kick off the authorization request once at launch. Safe to call
-    /// from app launch; a no-op under tests.
+    /// Make this object the delegate. Authorization is requested separately when a trigger is enabled.
+    /// Safe to call from app launch; a no-op under tests.
     func registerAsDelegate() {
         guard !Self.isRunningUnderTests else { return }
         centerProvider().delegate = self

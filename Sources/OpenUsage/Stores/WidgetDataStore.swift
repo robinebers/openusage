@@ -24,7 +24,7 @@ final class WidgetDataStore {
     private let orderedDescriptors: @MainActor () -> [WidgetDescriptor]
     /// Clock for the failure-backoff window. Injected so tests can advance time deterministically.
     private let now: () -> Date
-    /// Quota-notification preferences (master + per-trigger). Injected; `nil` disables notifications
+    /// Quota-notification preferences for the three triggers. Injected; `nil` disables notifications
     /// entirely (tests and previews that don't wire it).
     private let notificationSettings: (@MainActor () -> NotificationSettingsStore)?
     /// Where a fired milestone is delivered: `(idPrefix, title, subtitle, body) -> Bool`. The Bool is
@@ -157,10 +157,10 @@ final class WidgetDataStore {
 
     /// Evaluate every visible, enabled metric for a quota pace milestone and post a notification for any
     /// that just crossed one. Driven from the periodic loop *after* `refreshAll`, so it catches pace
-    /// worsening from time passing (not only from a fresh fetch). Deduped per metric per reset window by
-    /// the evaluator's per-key state; the no-trustworthy-pace states (no data, fresh session, level
-    /// bands) never fire. A no-op when notifications are unconfigured (tests/previews) or all triggers
-    /// are off.
+    /// worsening from time passing (not only from a fresh fetch). Deduped per metric by the evaluator's
+    /// per-key state. No-data metrics never fire; states without pace projection skip pace alerts but can
+    /// still fire the remaining-based Almost Out alert. A no-op when notifications are unconfigured
+    /// (tests/previews) or all triggers are off.
     ///
     /// State for metrics not visited this pass (e.g. a provider the user just disabled, or a metric
     /// removed from the layout) is pruned, so re-enabling/re-adding starts fresh rather than carrying a
@@ -503,4 +503,3 @@ final class WidgetDataStore {
         return Double(value[match].replacingOccurrences(of: ",", with: ""))
     }
 }
-

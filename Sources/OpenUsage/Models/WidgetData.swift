@@ -476,6 +476,11 @@ extension WidgetData {
         return (limit, resetsAt, TimeInterval(periodDurationMs) / 1000)
     }
 
+    /// Whether this metric has the limit, reset, and period context required for pace alerts. `.spent`
+    /// is visually identical with or without a reset, so notification logic uses this explicit bit to
+    /// avoid treating a plain exhausted balance as projected to run out before a reset.
+    var hasPaceContext: Bool { paceContext != nil }
+
     /// The meter's full visual state for `now` — the single source the row's color, amber tick,
     /// and warning copy all read from, so they can't drift apart. Precedence, highest first:
     ///

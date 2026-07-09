@@ -16,7 +16,7 @@ final class AppContainer {
     /// Settings ▸ API Keys lists these and writes key changes through the capability. Empty when no
     /// installed provider needs a user key, in which case the section hides itself.
     let apiKeyProviders: [any APIKeyManaging]
-    /// Quota pace notification preferences (master + three triggers). Drives the Settings section and is
+    /// Quota notification preferences (three triggers, with no master switch). Drives Settings and is
     /// read by `WidgetDataStore.evaluateNotifications`.
     let notificationSettings: NotificationSettingsStore
     /// Anonymous, opt-out usage telemetry (daily rollups). Exposed so Settings can toggle it and the

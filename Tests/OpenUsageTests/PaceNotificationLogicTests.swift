@@ -3,10 +3,10 @@ import XCTest
 
 /// Covers the pure milestone logic that decides when a quota notification fires: worsening pace edges
 /// (blue→yellow, yellow→red), the under-10%-remaining crossing, per-window dedup, reset rollover,
-/// recovery re-arming, the no-trustworthy-pace suppression, and the toggle gates. Mirrors CodexBar's
-/// QuotaWarningNotificationLogicTests.
+/// recovery re-arming, suppression of pace edges without a projection, and the toggle gates. Mirrors
+/// CodexBar's QuotaWarningNotificationLogicTests.
 final class PaceNotificationLogicTests: XCTestCase {
-    private let reset = Date(timeIntervalSince1970: 1_700_000_000)
+    private static let reset = Date(timeIntervalSince1970: 1_700_000_000)
 
     // Meter states with a comfortable fraction so the under-10% rule doesn't co-fire unless intended.
     private let healthy = WidgetData.MeterState.healthy(projectedFraction: 0.5)
@@ -17,12 +17,14 @@ final class PaceNotificationLogicTests: XCTestCase {
     private func step(
         _ state: WidgetData.MeterState,
         fraction: Double = 0.5,
-        resetsAt: Date? = nil,
+        resetsAt: Date? = PaceNotificationLogicTests.reset,
+        hasPaceContext: Bool = true,
         from previous: NotificationState = NotificationState(),
         toggles: PaceNotificationToggles = .allOn
     ) -> PaceNotificationLogic.Transition {
         PaceNotificationLogic.transitions(
-            state: state, fraction: fraction, resetsAt: resetsAt ?? reset,
+            state: state, fraction: fraction, resetsAt: resetsAt,
+            hasPaceContext: hasPaceContext,
             previous: previous, toggles: toggles
         )
     }
@@ -88,7 +90,7 @@ final class PaceNotificationLogicTests: XCTestCase {
         XCTAssertTrue(step(close, from: state).fire.isEmpty)   // deduped within the window
         // A later reset window: same worsening should fire again. Re-enter healthy then close in the
         // new window so the edge is present.
-        let newReset = reset.addingTimeInterval(3600)
+        let newReset = Self.reset.addingTimeInterval(3600)
         let rolled = step(healthy, resetsAt: newReset, from: state).newState
         let refired = step(close, resetsAt: newReset, from: rolled)
         XCTAssertEqual(refired.fire, [.healthyToClose])
@@ -98,7 +100,7 @@ final class PaceNotificationLogicTests: XCTestCase {
         var state = step(healthy).newState
         state = step(running, from: state).newState   // fires closeToRunningOut this window
 
-        let jitteredReset = reset.addingTimeInterval(0.09)
+        let jitteredReset = Self.reset.addingTimeInterval(0.09)
         let stillRunningOut = step(running, resetsAt: jitteredReset, from: state)
 
         XCTAssertTrue(stillRunningOut.fire.isEmpty)
@@ -110,7 +112,7 @@ final class PaceNotificationLogicTests: XCTestCase {
         var state = step(healthy).newState
         state = step(close, from: state).newState   // fires healthyToClose this window
 
-        let jitteredReset = reset.addingTimeInterval(0.09)
+        let jitteredReset = Self.reset.addingTimeInterval(0.09)
         let stillClose = step(close, resetsAt: jitteredReset, from: state)
 
         XCTAssertTrue(stillClose.fire.isEmpty)
@@ -150,21 +152,64 @@ final class PaceNotificationLogicTests: XCTestCase {
         XCTAssertTrue(result.fire.isEmpty)
     }
 
-    func testLevelPrimesWithoutFiringOnFirstObservation() {
+    func testNoResetLevelPrimesWithoutFiringOnFirstObservation() {
         // `.level` has used/limit data but no pace projection. The first observation primes (records the
         // under-10% baseline) without firing — like any other first observation.
-        let result = step(.level(.critical), fraction: 0.01)
+        let result = step(
+            .level(.critical),
+            fraction: 0.01,
+            resetsAt: nil,
+            hasPaceContext: false
+        )
         XCTAssertTrue(result.fire.isEmpty)
     }
 
-    func testLevelFiresAlmostOutUnderTenPercent() {
+    func testNoResetLevelFiresAlmostOutUnderTenPercent() {
         // `.level` metrics still fire "Almost Out" on the under-10% edge — it's a remaining-based
         // trigger, not a pace one. No pace milestone fires for `.level`.
-        let primed = step(.level(.critical), fraction: 0.20).newState
-        let first = step(.level(.critical), fraction: 0.08, from: primed)
+        let primed = step(
+            .level(.warning),
+            fraction: 0.20,
+            resetsAt: nil,
+            hasPaceContext: false
+        ).newState
+        let first = step(
+            .level(.critical),
+            fraction: 0.08,
+            resetsAt: nil,
+            hasPaceContext: false,
+            from: primed
+        )
         XCTAssertTrue(first.fire.contains(.underTenPercent))
         XCTAssertFalse(first.fire.contains(.healthyToClose))
         XCTAssertFalse(first.fire.contains(.closeToRunningOut))
+    }
+
+    func testNoResetSpentFiresOnlyAlmostOut() {
+        let primed = step(
+            .level(.warning),
+            fraction: 0.20,
+            resetsAt: nil,
+            hasPaceContext: false
+        ).newState
+        let spent = step(
+            .spent,
+            fraction: 0,
+            resetsAt: nil,
+            hasPaceContext: false,
+            from: primed
+        )
+
+        XCTAssertEqual(spent.fire, [.underTenPercent])
+        XCTAssertEqual(spent.newState.previousBucket, .untracked)
+    }
+
+    func testPacedSpentStillFiresRunningOutAndAlmostOut() {
+        let primed = step(healthy, fraction: 0.20).newState
+        let spent = step(.spent, fraction: 0, from: primed)
+
+        XCTAssertEqual(spent.fire, [.closeToRunningOut, .underTenPercent])
+        XCTAssertEqual(spent.newState.previousBucket, .runningOut)
     }
 
     func testUntrackedDoesNotDisturbPreviousSignals() {
@@ -178,9 +223,8 @@ final class PaceNotificationLogicTests: XCTestCase {
 
     // MARK: - Toggle gates
 
-    func testMasterOffSuppressionIsCallerSide() {
-        // The pure logic has no master flag; the caller gates it. With all per-triggers off, nothing
-        // fires even on a clear worsening — this stands in for the per-trigger-off path.
+    func testAllTogglesOffSuppressesAllMilestones() {
+        // There is no master flag. With all three triggers off, nothing fires on a clear worsening.
         let off = PaceNotificationToggles(underTenPercent: false, healthyToClose: false, closeToRunningOut: false)
         let state = step(healthy, toggles: off).newState
         let close = step(self.close, fraction: 0.05, from: state, toggles: off)
@@ -217,7 +261,7 @@ final class PaceNotificationLogicTests: XCTestCase {
     func testFreshSessionLevelPrimesWithoutFiring() {
         // A fresh session window resolves to an absolute-level state (`.level`) with plenty of quota
         // left, so it primes without firing. (A `.level` metric can still fire "Almost Out" later if it
-        // drops under 10% — see testLevelFiresAlmostOutUnderTenPercent.)
+        // drops under 10% — see testNoResetLevelFiresAlmostOutUnderTenPercent.)
         let result = step(.level(.normal), fraction: 0.99)
         XCTAssertTrue(result.fire.isEmpty)
     }

@@ -6,9 +6,10 @@ import Foundation
 /// bounded, visible metrics and calls `evaluate`; delivery + the provider display name come in as
 /// closures so this type stays independent of the store's providers.
 ///
-/// Deduped per metric per reset window; the no-trustworthy-pace states (no data, fresh session, level
-/// bands) never fire. State for metrics not passed this pass is pruned, so re-enabling/re-adding a
-/// metric starts fresh rather than carrying a stale "already fired" flag.
+/// Deduped per metric while a condition remains unchanged. No-data metrics never fire; level-band and
+/// non-paced spent metrics skip pace alerts but can still fire the remaining-based Almost Out alert.
+/// State for metrics not passed this pass is pruned, so re-enabling/re-adding a metric starts fresh
+/// rather than carrying a stale "already fired" flag.
 @MainActor
 final class QuotaNotificationEvaluator {
     /// One enabled, bounded, visible metric for this pass, already resolved by the store.
@@ -35,8 +36,12 @@ final class QuotaNotificationEvaluator {
             let key = metric.key
             let data = metric.data
             let state = data.meterState(now: now)
+            let hasPaceContext = data.hasPaceContext
             let previous = notificationState[key] ?? NotificationState()
-            let currentBucket = PaceNotificationLogic.bucket(for: state)
+            let currentBucket = PaceNotificationLogic.bucket(
+                for: state,
+                hasPaceContext: hasPaceContext
+            )
             let resetDelta = Self.resetDelta(current: data.resetsAt, previous: previous.resetsAt)
             let resetAdvanced = PaceNotificationLogic.resetWindowAdvanced(
                 resetsAt: data.resetsAt,
@@ -46,11 +51,12 @@ final class QuotaNotificationEvaluator {
                 state: state,
                 fraction: data.remainingFraction,
                 resetsAt: data.resetsAt,
+                hasPaceContext: hasPaceContext,
                 previous: previous,
                 toggles: toggles
             )
             if !result.fire.isEmpty || resetAdvanced || Self.isPositiveResetMovement(resetDelta) {
-                AppLog.debug(.notifications, "decision \(key): metric=\(data.title) state=\(Self.notificationStateDescription(state)) bucket=\(Self.bucketDescription(currentBucket)) previousBucket=\(Self.bucketDescription(previous.previousBucket)) remaining=\(Self.percentDescription(data.remainingFraction)) reset=\(Self.dateDescription(data.resetsAt)) previousReset=\(Self.dateDescription(previous.resetsAt)) resetDelta=\(Self.resetDeltaDescription(resetDelta)) resetReason=\(Self.resetReasonDescription(delta: resetDelta, advanced: resetAdvanced)) primed=\(previous.primed) wasUnderTen=\(previous.wasUnderTenPercent) firedBefore=\(Self.milestoneDescription(previous.firedMilestones)) fire=\(Self.milestoneDescription(result.fire)) newBucket=\(Self.bucketDescription(result.newState.previousBucket)) newFired=\(Self.milestoneDescription(result.newState.firedMilestones)) toggles=\(Self.toggleDescription(toggles))")
+                AppLog.debug(.notifications, "decision \(key): metric=\(data.title) state=\(Self.notificationStateDescription(state)) paceContext=\(hasPaceContext ? "available" : "unavailable") bucket=\(Self.bucketDescription(currentBucket)) previousBucket=\(Self.bucketDescription(previous.previousBucket)) remaining=\(Self.percentDescription(data.remainingFraction)) reset=\(Self.dateDescription(data.resetsAt)) previousReset=\(Self.dateDescription(previous.resetsAt)) resetDelta=\(Self.resetDeltaDescription(resetDelta)) resetReason=\(Self.resetReasonDescription(delta: resetDelta, advanced: resetAdvanced)) primed=\(previous.primed) wasUnderTen=\(previous.wasUnderTenPercent) firedBefore=\(Self.milestoneDescription(previous.firedMilestones)) fire=\(Self.milestoneDescription(result.fire)) newBucket=\(Self.bucketDescription(result.newState.previousBucket)) newFired=\(Self.milestoneDescription(result.newState.firedMilestones)) toggles=\(Self.toggleDescription(toggles))")
             }
             // Deliver each fired milestone, then commit dedup state only for the ones that actually
             // delivered. The logic doesn't mark milestones fired — that's done here, after delivery
