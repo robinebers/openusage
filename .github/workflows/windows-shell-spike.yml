@@ -1,0 +1,74 @@
+# SPIKE JOB — non-required Windows CI for the full Candidate A spike (core + shell + zip).
+# Signing is NOT wired; artifacts are unsigned. Do not mark as a required check until
+# Authenticode signing and release-windows.yml are production-ready.
+
+name: Windows Shell Spike
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'spikes/windows-core/**'
+      - 'spikes/windows-shell/**'
+      - 'script/package_windows.ps1'
+      - '.github/workflows/windows-shell-spike.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  windows-shell-spike:
+    name: Build sidecar, shell, and package zip
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install Swift toolchain (winget)
+        shell: pwsh
+        run: |
+          winget install --id Swift.Toolchain -e --accept-source-agreements --accept-package-agreements
+          if (-not $env:SDKROOT) {
+            $sdk = [Environment]::GetEnvironmentVariable("SDKROOT", "User")
+            if ($sdk) { "SDKROOT=$sdk" >> $env:GITHUB_ENV }
+          }
+
+      - name: Ensure VS C++ build tools
+        shell: pwsh
+        run: |
+          if (-not (Get-Command link -ErrorAction SilentlyContinue)) {
+            winget install --id Microsoft.VisualStudio.2022.BuildTools -e `
+              --accept-source-agreements --accept-package-agreements `
+              --override "--quiet --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+          }
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Swift test (spikes/windows-core)
+        shell: cmd
+        working-directory: spikes/windows-core
+        run: |
+          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" 2>nul ^
+            || call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+          for /d %%i in ("%LOCALAPPDATA%\Programs\Swift\Toolchains\*") do set "PATH=%%i\usr\bin;%PATH%"
+          for /d %%i in ("%LOCALAPPDATA%\Programs\Swift\Runtimes\*") do set "PATH=%%i\usr\bin;%PATH%"
+          swift test
+
+      - name: Package Windows zip (unsigned)
+        shell: pwsh
+        run: |
+          # Signing not yet wired — see docs/research/windows-phase5-findings.md
+          .\script\package_windows.ps1
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenUsage-windows-x64-unsigned
+          path: dist/windows/OpenUsage-windows-x64.zip
+          if-no-files-found: error

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://robinebers.github.io/openusage/windows-update-feed.schema.json",
+  "title": "OpenUsage Windows Update Feed",
+  "description": "JSON feed served from gh-pages alongside appcast.xml. Consumed by the Windows shell UpdateChecker stub (Phase 5); production updater (Velopack or WinSparkle) should validate sha256 and Authenticode signatures before applying.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "url"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Release version in the shared 0.7.x line (semver; pre-release suffix allowed for early-access, e.g. 0.7.1-beta.2).",
+      "examples": ["0.7.1", "0.7.2-beta.1"]
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "HTTPS download URL for the installer or self-contained zip published on the GitHub Release.",
+      "examples": ["https://github.com/robinebers/openusage/releases/download/v0.7.1/OpenUsage-windows-x64.zip"]
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-fA-F0-9]{64}$",
+      "description": "SHA-256 hex digest of the download artifact. Required for production updater integrity checks."
+    },
+    "channel": {
+      "type": "string",
+      "enum": ["stable", "early-access"],
+      "default": "stable",
+      "description": "Update channel. early-access mirrors macOS -beta.N tags."
+    },
+    "notes": {
+      "type": "string",
+      "description": "Optional short release notes shown in the update banner."
+    },
+    "publishedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp when this feed entry was published."
+    },
+    "minOS": {
+      "type": "string",
+      "description": "Optional minimum Windows build (e.g. 10.0.19041) if the release raises the OS floor."
+    }
+  }
+}

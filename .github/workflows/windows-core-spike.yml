@@ -1,0 +1,69 @@
+# SPIKE JOB — non-required Windows CI for spikes/windows-core only.
+# This does NOT build the shipped macOS OpenUsage app. Do not mark as a required check until
+# the real OpenUsageCore target split lands on main and stays green.
+
+name: Windows Core Spike
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'spikes/windows-core/**'
+      - '.github/workflows/windows-core-spike.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  windows-core-spike:
+    name: Build & test spikes/windows-core
+    runs-on: windows-latest
+    # Intentionally NOT listed in branch protection — spike/experimental until Phase 1 target split.
+    continue-on-error: true
+    defaults:
+      run:
+        shell: cmd
+        working-directory: spikes/windows-core
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install Swift toolchain (winget)
+        shell: pwsh
+        run: |
+          winget install --id Swift.Toolchain -e --accept-source-agreements --accept-package-agreements
+          $swiftBin = "$env:LOCALAPPDATA\Programs\Swift\Toolchains\*\usr\bin"
+          $runtimeBin = "$env:LOCALAPPDATA\Programs\Swift\Runtimes\*\usr\bin"
+          "SWIFT_BIN=$swiftBin" >> $env:GITHUB_ENV
+          "RUNTIME_BIN=$runtimeBin" >> $env:GITHUB_ENV
+          if (-not $env:SDKROOT) {
+            $sdk = [Environment]::GetEnvironmentVariable("SDKROOT", "User")
+            if ($sdk) { "SDKROOT=$sdk" >> $env:GITHUB_ENV }
+          }
+
+      - name: Ensure VS C++ build tools
+        shell: pwsh
+        run: |
+          if (-not (Get-Command link -ErrorAction SilentlyContinue)) {
+            winget install --id Microsoft.VisualStudio.2022.BuildTools -e `
+              --accept-source-agreements --accept-package-agreements `
+              --override "--quiet --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+          }
+
+      - name: Build
+        run: |
+          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" 2>nul ^
+            || call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+          for /d %%i in ("%LOCALAPPDATA%\Programs\Swift\Toolchains\*") do set "PATH=%%i\usr\bin;%PATH%"
+          for /d %%i in ("%LOCALAPPDATA%\Programs\Swift\Runtimes\*") do set "PATH=%%i\usr\bin;%PATH%"
+          swift build
+
+      - name: Test
+        run: |
+          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" 2>nul ^
+            || call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+          for /d %%i in ("%LOCALAPPDATA%\Programs\Swift\Toolchains\*") do set "PATH=%%i\usr\bin;%PATH%"
+          for /d %%i in ("%LOCALAPPDATA%\Programs\Swift\Runtimes\*") do set "PATH=%%i\usr\bin;%PATH%"
+          swift test

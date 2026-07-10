@@ -39,3 +39,16 @@ How the app is built and how to extend it.
 - [Adding a provider](adding-a-provider.md) — the metric contract and the register/test/document steps
 - [Debugging & capturing logs](debugging.md) — running a local build and streaming logs
 - [Logging](logging.md) — the file log, log levels, subsystem tags, and what is never logged
+
+## Windows research (experimental)
+
+Not a shipped platform yet — spike code under `spikes/` only.
+
+- [Windows (experimental)](windows.md) — install, credentials, build, known gaps
+- [PR readiness](research/windows-pr-readiness.md) — cleanup checklist, product blockers, `gh` flow
+- [PR body template](research/windows-pr-body.md) — for `gh pr create --body-file`
+- [Port plan](research/windows-port-plan.md) — phased roadmap
+- [Toolchain](research/windows-toolchain.md) — Swift + MSVC setup
+- [Phase findings](research/windows-phase6-findings.md) — latest rollup (links to phase 0–5 reports)
+- [Cleanup consensus](research/windows-spike-cleanup-consensus.md) — Claude CLI cleanup/polish verdict
+- [Manual test checklist](research/windows-manual-test-checklist.md)

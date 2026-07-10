@@ -28,3 +28,8 @@ node_modules/
 # Local appcast / Sparkle feed output
 feed/
 appcast.xml
+
+# Windows spike build outputs (.NET / Swift)
+**/bin/
+**/obj/
+spikes/**/.build/

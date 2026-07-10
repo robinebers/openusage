@@ -1,0 +1,5 @@
+module Win32Shim [system] {
+    header "include/ou_shim.h"
+    link "advapi32"
+    export *
+}
