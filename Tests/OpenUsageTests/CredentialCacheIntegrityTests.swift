@@ -96,6 +96,7 @@ final class AntigravityCredentialCacheIntegrityTests: XCTestCase {
 
         let detected = await provider.hasLocalCredentials()
         XCTAssertFalse(detected)
+        XCTAssertNil(files.files[AntigravityAuthStore.cachePath])
         let snapshot = await provider.refresh()
 
         XCTAssertEqual(snapshot.errorCategory, .notLoggedIn)

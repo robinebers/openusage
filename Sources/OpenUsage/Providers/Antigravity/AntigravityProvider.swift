@@ -46,9 +46,14 @@ final class AntigravityProvider: ProviderRuntime {
         // The Keychain login is the source of truth. The app-owned access-token cache is derivative
         // and must never independently enable the provider after logout.
         do {
-            return try await loadOffMainActor { [authStore] in
+            let keychainToken = try await loadOffMainActor { [authStore] in
                 try authStore.loadKeychainToken()
-            } != nil
+            }
+            guard keychainToken != nil else {
+                await loadOffMainActor { [authStore] in authStore.discardCachedToken() }
+                return false
+            }
+            return true
         } catch {
             // Detection runs once; keep an indeterminate store enabled so refresh can show the repair.
             return true
