@@ -13,23 +13,23 @@ final class WidgetNoDataTests: XCTestCase {
         XCTAssertFalse(store.data(for: missing).hasData)
     }
 
-    func testNoDataHeadlineAndSubtitleCopy() async {
+    func testNoDataHeadlineAndTrailingCopy() async {
         let (store, present, missing) = await makeRefreshedStore(suite: "copy")
 
         let blank = store.data(for: missing)
         XCTAssertFalse(blank.hasData)
         XCTAssertEqual(blank.headline, "—")
-        XCTAssertEqual(blank.subtitle, "No data")
+        XCTAssertEqual(blank.boundedTrailingText(), "No data")
 
         let real = store.data(for: present)
         XCTAssertTrue(real.hasData)
         XCTAssertNotEqual(real.headline, "—")
-        XCTAssertNotEqual(real.subtitle, "No data")
+        XCTAssertNotEqual(real.boundedTrailingText(), "No data")
     }
 
     func testValueTextHidesPlaceholderWhenNoData() async {
-        // The Add-Widget gallery prints `valueText`; a missing line must never leak the descriptor's
-        // placeholder sample numbers there, so `valueText` reports the no-data marker just like the tile.
+        // The menu bar reads `valueText`; a missing line must never leak the descriptor's placeholder
+        // template numbers there, so `valueText` reports the no-data marker just like the dashboard row.
         let (store, present, missing) = await makeRefreshedStore(suite: "valuetext")
 
         XCTAssertEqual(store.data(for: missing).valueText, WidgetData.noDataHeadline)

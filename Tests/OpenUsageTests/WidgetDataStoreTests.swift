@@ -554,8 +554,9 @@ final class WidgetDataStoreTests: XCTestCase {
     }
 
     func testCursorSpendValueTooltipUsesUsageHistorySourceNote() async {
-        let provider = Provider(id: "cursor", displayName: "Cursor", icon: .providerMark("cursor"))
-        let combined = WidgetDescriptor.spendTiles(provider: provider).first { $0.id == "cursor.last30" }!
+        let cursor = CursorProvider()
+        let provider = cursor.provider
+        let combined = cursor.widgetDescriptors.first { $0.id == "cursor.last30" }!
         let runtime = TestProviderRuntime(
             provider: provider,
             descriptors: [combined],

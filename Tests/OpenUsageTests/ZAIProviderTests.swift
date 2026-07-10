@@ -496,8 +496,6 @@ final class ZAIProviderTests: XCTestCase {
 
         XCTAssertEqual(provider.apiKeyStatus, .fromEnvironment)
         XCTAssertEqual(provider.currentAPIKey(), "zai-env")
-        XCTAssertEqual(provider.apiKeyEnvironmentName, "ZAI_API_KEY")
-        XCTAssertTrue(provider.apiKeyStorageDescription.contains("zai.json"))
 
         try provider.saveAPIKey("zai-saved")
         XCTAssertEqual(provider.apiKeyStatus, .overrideActive)

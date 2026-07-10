@@ -34,7 +34,7 @@ final class ResetDisplayTests: XCTestCase {
     }
 
     func testWidgetDataTrailingAndTooltipHonorMode() {
-        var data = WidgetData(title: "Weekly", icon: .symbol("clock"),
+        var data = WidgetData(title: "Weekly", icon: .providerMark("codex"),
                               kind: .percent, used: 50, limit: 100)
         data.resetsAt = Date().addingTimeInterval(4 * 24 * 3600 + 17 * 3600) // ~4d17h out
         data.periodDurationMs = 7 * 24 * 60 * 60 * 1000
@@ -54,8 +54,7 @@ final class ResetDisplayTests: XCTestCase {
         let period: TimeInterval = 5 * 3600
         for id in ["claude.session",
                    "antigravity.geminiPro", "antigravity.claude"] {
-            var data = WidgetData(title: "Session", icon: .symbol("clock"), kind: .percent, used: 0, limit: 100)
-            data.widgetID = id
+            var data = WidgetData(title: "Session", icon: .providerMark("codex"), kind: .percent, used: 0, limit: 100)
             data.isSessionWindow = true   // descriptor opt-in the session tiles now carry
             data.periodDurationMs = Int(period * 1000)
             // Half the window has elapsed on the clock, so pace would otherwise project — but usage is
@@ -101,8 +100,7 @@ final class ResetDisplayTests: XCTestCase {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let period: TimeInterval = 7 * 24 * 3600
         for id in ["antigravity.geminiWeekly", "antigravity.claudeWeekly"] {
-            var data = WidgetData(title: "Weekly", icon: .symbol("clock"), kind: .percent, used: 0, limit: 100)
-            data.widgetID = id
+            var data = WidgetData(title: "Weekly", icon: .providerMark("codex"), kind: .percent, used: 0, limit: 100)
             data.periodDurationMs = Int(period * 1000)
             data.resetsAt = now.addingTimeInterval(period / 2)
             XCTAssertFalse(data.isFreshSessionWindow(now: now), id)
@@ -114,7 +112,7 @@ final class ResetDisplayTests: XCTestCase {
     func testExpiryTooltipSingleCreditFollowsTimeSetting() {
         // One reset credit: the row reads "1 available" and the hover tooltip is a single line. Relative
         // → "Reset expires in 12d 18h"; absolute → a wall-clock phrase ("Reset expires … at …").
-        var data = WidgetData(title: "Rate Limit Resets", icon: .symbol("clock"),
+        var data = WidgetData(title: "Rate Limit Resets", icon: .providerMark("codex"),
                               kind: .count, used: 0, limit: nil)
         data.values = [MetricValue(number: 1, kind: .count, label: "available")]
         data.expiriesAt = [Date().addingTimeInterval(12 * 24 * 3600 + 18 * 3600)] // ~12d18h out
@@ -132,7 +130,7 @@ final class ResetDisplayTests: XCTestCase {
     func testExpiryTooltipMultipleCreditsIsNumberedList() {
         // Several credits: the tooltip is a numbered list under a header, sorted soonest-first, each
         // entry following the global mode. The row itself still reads just the count.
-        var data = WidgetData(title: "Rate Limit Resets", icon: .symbol("clock"),
+        var data = WidgetData(title: "Rate Limit Resets", icon: .providerMark("codex"),
                               kind: .count, used: 0, limit: nil)
         data.values = [MetricValue(number: 2, kind: .count, label: "available")]
         data.expiriesAt = [
@@ -149,7 +147,7 @@ final class ResetDisplayTests: XCTestCase {
         // The reset-credit dot reflects the soonest expiry: blue normally, yellow under 7 days, red under
         // 48 hours.
         let now = Date(timeIntervalSince1970: 1_800_000_000)
-        var data = WidgetData(title: "Rate Limit Resets", icon: .symbol("clock"),
+        var data = WidgetData(title: "Rate Limit Resets", icon: .providerMark("codex"),
                               kind: .count, used: 0, limit: nil)
         data.values = [MetricValue(number: 2, kind: .count, label: "available")]
 
@@ -175,7 +173,7 @@ final class ResetDisplayTests: XCTestCase {
 
     func testNoExpiryTooltipWhenNoExpiries() {
         // The empty state — "0 available" — and any row without expiries carry no expiry tooltip.
-        var data = WidgetData(title: "Rate Limit Resets", icon: .symbol("clock"),
+        var data = WidgetData(title: "Rate Limit Resets", icon: .providerMark("codex"),
                               kind: .count, used: 0, limit: nil)
         data.values = [MetricValue(number: 0, kind: .count, label: "available")]
         XCTAssertEqual(data.unboundedDetail, "0 available")
@@ -290,7 +288,7 @@ final class ResetDisplayTests: XCTestCase {
         // Halfway through a 10h window with 90/100 used → behind pace, projected run-out ~34m away,
         // safely before the reset 5h out. The label carries its own "Limit" verb (no flame in tests),
         // so the copy reads "Limit in 34m" / "Limit today at …".
-        var data = WidgetData(title: "Session", icon: .symbol("clock"),
+        var data = WidgetData(title: "Session", icon: .providerMark("codex"),
                               kind: .percent, used: 90, limit: 100)
         data.resetsAt = Date().addingTimeInterval(5 * 3600)
         data.periodDurationMs = 10 * 3600 * 1000
@@ -308,7 +306,7 @@ final class ResetDisplayTests: XCTestCase {
     }
 
     func testNoResetLabelWithoutResetDate() {
-        var data = WidgetData(title: "Credits", icon: .symbol("creditcard"),
+        var data = WidgetData(title: "Credits", icon: .providerMark("codex"),
                               kind: .dollars, used: 12, limit: 20)
         data.resetDisplayMode = .absolute
         XCTAssertFalse(data.hasResetLabel())        // no resetsAt → not a clickable reset

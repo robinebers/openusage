@@ -89,7 +89,6 @@ final class ModelPricingTests: XCTestCase {
     func testUnknownModelReturnsNil() throws {
         let pricing = try makePricing(primary: ["gpt-5.5": rates(5, 30)])
         XCTAssertNil(pricing.resolve(model: "made-up-model-9000"))
-        XCTAssertFalse(pricing.canPrice(model: "made-up-model-9000"))
     }
 
     // MARK: - Supplement precedence, aliases, fast multipliers

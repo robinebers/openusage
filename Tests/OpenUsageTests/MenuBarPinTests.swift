@@ -49,7 +49,7 @@ final class MenuBarPinTests: XCTestCase {
             store.setPinned(true, for: "\(provider).m2")
             XCTAssertFalse(store.canPin("\(provider).m3"))
         }
-        XCTAssertEqual(store.pinnedCount, 8)
+        XCTAssertEqual(store.pinnedMetricIDs.count, 8)
     }
 
     func testPinDenialReasonsAndFooterNotice() {

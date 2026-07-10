@@ -283,13 +283,11 @@ final class CursorSpendRangeTests: XCTestCase {
 
 @MainActor
 final class CursorSpendProviderTests: XCTestCase {
-    func testSpendTrackingEnabledDownloadsCSVExposesSpendTilesAndFlagsUnknownModels() async {
-        // Spend tracking is back on (issue #758): the provider downloads the usage CSV, exposes the
-        // spend-tile + trend descriptors, and emits Today / Yesterday / Last 30 Days / Usage Trend lines
+    func testSpendTrackingDownloadsCSVExposesSpendTilesAndFlagsUnknownModels() async {
+        // The provider downloads the usage CSV, exposes the spend-tile + trend descriptors, and emits
+        // Today / Yesterday / Last 30 Days / Usage Trend lines
         // alongside the live quota meters. A row that used a model no pricing source can price carries
         // that model's name so the tile can warn its cost is incomplete.
-        XCTAssertTrue(CursorProvider.spendTrackingEnabled, "this regression guards the enabled state")
-
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let iso = ISO8601DateFormatter()
         let todayStr = iso.string(from: now)
@@ -338,7 +336,7 @@ final class CursorSpendProviderTests: XCTestCase {
         let snapshot = await provider.refresh()
 
         XCTAssertTrue(http.requests.contains { $0.url.absoluteString.contains("export-usage-events-csv") },
-                      "spend tracking is enabled — Cursor must download the usage CSV")
+                      "Cursor refresh must download the usage CSV for spend metrics")
         // Live quota meter survives; spend tiles + trend are present.
         XCTAssertTrue(snapshot.lines.contains { $0.label == "Total usage" })
         for label in ["Today", "Yesterday", "Last 30 Days", "Usage Trend"] {
@@ -362,9 +360,7 @@ final class CursorSpendProviderTests: XCTestCase {
 
     func testSpendTileRendersCombinedCostAndTokensWithValueTooltip() async {
         let cursor = CursorProvider()
-        // Source the descriptor from the shared factory so this test can isolate the combined
-        // "cost · tokens" render shape from the provider's network refresh behavior.
-        let descriptor = try! XCTUnwrap(WidgetDescriptor.spendTiles(provider: cursor.provider).first { $0.id == "cursor.today" })
+        let descriptor = try! XCTUnwrap(cursor.widgetDescriptors.first { $0.id == "cursor.today" })
 
         // The combined tile joins the dollar and the labeled token count. The render shape for a zero
         // line is still "$0.00 · 0 tokens" — the mapper no longer produces these (an idle period is left

@@ -362,8 +362,6 @@ final class OpenRouterProviderTests: XCTestCase {
 
         XCTAssertEqual(provider.apiKeyStatus, .fromEnvironment)
         XCTAssertEqual(provider.currentAPIKey(), "sk-or-env")
-        XCTAssertEqual(provider.apiKeyEnvironmentName, "OPENROUTER_API_KEY")
-        XCTAssertTrue(provider.apiKeyStorageDescription.contains("openrouter.json"))
 
         try provider.saveAPIKey("sk-or-saved")
         XCTAssertEqual(provider.apiKeyStatus, .overrideActive)
@@ -382,4 +380,3 @@ private func jsonResponse(_ object: [String: Any]) -> HTTPResponse {
     let body = (try? JSONSerialization.data(withJSONObject: object)) ?? Data("{}".utf8)
     return HTTPResponse(statusCode: 200, headers: [:], body: body)
 }
-

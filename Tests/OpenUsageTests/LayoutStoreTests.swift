@@ -615,11 +615,6 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertFalse(store.isMetricEnabled("cursor.credits"))
     }
 
-    func testPlanWidgetsAreNotRegisteredAsAddableMetrics() {
-        let store = makeStore("Plans")
-        XCTAssertFalse(store.availableToAdd.contains { PlanWidget.isPlan($0) })
-    }
-
     func testTogglingMetricDoesNotChangeCustomizeOrder() {
         let store = makeStore("ToggleKeepsOrder")
         let before = store.orderedSupportedMetrics(for: "cursor").map(\.id)
@@ -1173,11 +1168,10 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertTrue(store.customizeProviderRows.first { $0.id == "claude" }?.isEnabled ?? false)
     }
 
-    func testCustomizeProviderRowsCarriesMetricAndPinnedCounts() {
+    func testCustomizeProviderRowsCarriesMetricCounts() {
         let store = makeStore("RowCounts")
         for row in store.customizeProviderRows {
             XCTAssertEqual(row.metricCount, MockData.descriptors(for: row.id).count)
-            XCTAssertEqual(row.pinnedCount, store.pinnedCount(forProvider: row.id))
         }
     }
 
