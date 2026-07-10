@@ -26,6 +26,8 @@ A `CLAUDE_CODE_OAUTH_TOKEN` — usually a long-lived `claude setup-token` — ca
 
 If one source holds an expired or "locked out" token, OpenUsage falls back to the others — so signing in again with `claude` outside the app is picked up on the next refresh, without restarting OpenUsage. Tokens are refreshed automatically; rotated tokens are written back where they came from.
 
+Credential sources are checked independently. A valid login from any source still works when another source is unreadable or malformed. If no valid source remains, OpenUsage distinguishes a missing login from credentials it could not read or parse, so the dashboard shows the repair that is actually needed.
+
 ## The spend tiles
 
 Today / Yesterday / Last 30 Days are computed **locally**: OpenUsage reads the Claude Code session logs under `~/.claude/projects/` (or `$CLAUDE_CONFIG_DIR`) itself — no external tools needed. Cowork (the Claude desktop app's agent mode) counts too: it writes the same logs into per-session folders under `~/Library/Application Support/Claude/local-agent-mode-sessions/`, and OpenUsage scans those as well, so desktop agent sessions show up in the tiles alongside terminal ones. Days are grouped in your Mac's local time zone, so they line up with your own calendar. Each period is one tile showing cost and tokens together (`$4.08 · 1.2M tokens`); a day with no usage reads **No data** rather than a misleading `$0.00 · 0 tokens` — the same as every other spend-tracking provider. The live Session and Weekly meters are unaffected. The dollars are estimated from token counts at API rates (that's the ⓘ) using the shared [model pricing](../pricing.md); the token counts themselves are measured. No log data leaves your Mac.
@@ -33,6 +35,8 @@ Today / Yesterday / Last 30 Days are computed **locally**: OpenUsage reads the C
 ## Troubleshooting
 
 - **"Not logged in"** — run `claude` and sign in, then refresh.
+- **"Couldn't read Claude credentials"** — OpenUsage found a credential source but macOS would not let it read the file or Keychain entry. Check file permissions and Keychain access, then refresh.
+- **"Claude credentials are invalid"** — a credential file or Keychain entry exists but is malformed or has no usable access token. Run `claude` and sign in again to replace it.
 - **"Signed in to the Claude desktop app?"** — a login done only in the Claude desktop app is stored encrypted in a way OpenUsage can't read. Run `claude` in a terminal and sign in once; both logins coexist, and OpenUsage picks up the CLI one.
 - **"Re-login for live usage"** (an amber warning on the Claude header) — your saved login can authenticate for inference but can't read your subscription limits, because it lacks the `user:profile` access (this is what an inference-only token from `claude setup-token` carries). Run `claude` and sign in again with your Claude account, then refresh; the spend tiles keep working in the meantime.
 - **"Updates blocked by Anthropic"** (an amber warning on the Claude header) — the usage API is throttling OpenUsage. It keeps your last values, shows when it will retry, and backs off in the meantime — manual refreshes only extend the block, so the best fix is patience.

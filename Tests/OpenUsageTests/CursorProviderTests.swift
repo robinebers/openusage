@@ -2,7 +2,7 @@ import XCTest
 @testable import OpenUsage
 
 final class CursorAuthStoreTests: XCTestCase {
-    func testPrefersKeychainWhenSQLiteLooksFreeAndSubjectsDiffer() {
+    func testPrefersKeychainWhenSQLiteLooksFreeAndSubjectsDiffer() throws {
         let sqliteToken = makeCursorJWT(sub: "google-oauth2|sqlite-user")
         let keychainToken = makeCursorJWT(sub: "auth0|keychain-user")
         let sqlite = FakeSQLite(values: [
@@ -16,7 +16,7 @@ final class CursorAuthStoreTests: XCTestCase {
         ])
         let store = CursorAuthStore(sqlite: sqlite, keychain: keychain)
 
-        let state = store.loadAuthState()
+        let state = try store.loadAuthState()
 
         XCTAssertEqual(state?.source, .keychain)
         XCTAssertEqual(state?.accessToken, keychainToken)

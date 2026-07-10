@@ -53,20 +53,34 @@ final class ClaudeProvider: ProviderRuntime {
     }
 
     func hasLocalCredentials() async -> Bool {
-        // Same sources and same usability filter as `refresh()` (see `hasUsableAccessToken`).
-        await loadOffMainActor { [authStore] in authStore.loadCredentialCandidates() }
-            .contains(where: \.hasUsableAccessToken)
+        // A proven miss across every source is absent. A read/parse failure counts conservatively so
+        // one-shot detection enables Claude and `refresh()` can show the repairable error.
+        do {
+            return try await loadOffMainActor { [authStore] in
+                try authStore.loadCredentialCandidates().contains(where: \.hasUsableAccessToken)
+            }
+        } catch {
+            logUnexpectedCredentialProbeError(error)
+            return true
+        }
     }
 
     func refresh() async -> ProviderSnapshot {
-        let storedCandidates = await loadOffMainActor { [authStore] in authStore.loadCredentialCandidates() }
+        let storedCandidates: [ClaudeCredentialState]
+        do {
+            storedCandidates = try await loadOffMainActor { [authStore] in
+                try authStore.loadCredentialCandidates()
+            }
+        } catch {
+            return ProviderSnapshot.error(provider: provider, error: credentialLoadError(error))
+        }
         let candidates = storedCandidates.filter(\.hasUsableAccessToken)
         guard !candidates.isEmpty else {
             // No CLI credentials anywhere. A login done only in the Claude desktop app is stored in an
             // Electron-encrypted blob OpenUsage can't read, so a bare "Not logged in" reads as wrong to
             // a user who is clearly signed in (#825) — point them at the one-time CLI login instead.
-            // Gated on the store finding nothing at all: a stored-but-blank token means the CLI *did*
-            // write credentials, so the plain "Not logged in" is the right guidance there.
+            // This branch is reached only after every CLI source was proven absent. Present-but-invalid
+            // credentials fail during loading above and surface their own repairable error instead.
             if storedCandidates.isEmpty, await loadOffMainActor({ [authStore] in authStore.hasDesktopAppData() }) {
                 AppLog.info(LogTag.auth("claude"), "no CLI credentials, but desktop app data found — CLI login needed")
                 return ProviderSnapshot.error(provider: provider, error: ClaudeAuthError.desktopAppOnly)
@@ -250,6 +264,17 @@ final class ClaudeProvider: ProviderRuntime {
         }
         AppLog.info(LogTag.auth("claude"), "token refresh ok (rotated)")
         return decoded.accessToken
+    }
+
+    private func credentialLoadError(_ error: Error) -> ClaudeAuthError {
+        if let authError = error as? ClaudeAuthError { return authError }
+        AppLog.error(LogTag.auth("claude"), "unexpected credential load failure: \(error.localizedDescription)")
+        return .credentialStoreUnreadable
+    }
+
+    private func logUnexpectedCredentialProbeError(_ error: Error) {
+        guard !(error is ClaudeAuthError) else { return }
+        AppLog.error(LogTag.auth("claude"), "unexpected credential probe failure: \(error.localizedDescription)")
     }
 
 }

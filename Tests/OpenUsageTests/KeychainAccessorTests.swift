@@ -38,4 +38,12 @@ final class KeychainAccessorTests: XCTestCase {
         ))
         XCTAssertEqual(try accessor.readGenericPassword(service: "Test"), "secret-token")
     }
+
+    func testFoundBlankValueRemainsPresent() throws {
+        let accessor = SecurityKeychainAccessor(processRunner: StubRunner(
+            result: ProcessResult(exitCode: 0, stdout: "  \n", stderr: "")
+        ))
+
+        XCTAssertEqual(try accessor.readGenericPassword(service: "Test"), "")
+    }
 }

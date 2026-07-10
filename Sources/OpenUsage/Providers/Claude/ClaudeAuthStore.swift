@@ -65,6 +65,8 @@ struct ClaudeCredentialState: Hashable, Sendable {
 enum ClaudeAuthError: Error, LocalizedError, Equatable {
     case notLoggedIn
     case desktopAppOnly
+    case credentialStoreUnreadable
+    case invalidCredentialData
     case sessionExpired
     case tokenExpired
     case invalidOAuthURL(String)
@@ -75,6 +77,10 @@ enum ClaudeAuthError: Error, LocalizedError, Equatable {
             return "Not logged in. Run `claude` to authenticate."
         case .desktopAppOnly:
             return "Signed in to the Claude desktop app? OpenUsage needs a CLI login — run `claude` in a terminal and sign in once."
+        case .credentialStoreUnreadable:
+            return "Couldn't read Claude credentials. Check access to the Claude credential file and Keychain, then try again."
+        case .invalidCredentialData:
+            return "Claude credentials are invalid. Run `claude` to sign in again."
         case .sessionExpired:
             return "Session expired. Run `claude` to log in again."
         case .tokenExpired:
@@ -94,7 +100,8 @@ enum ClaudeAuthError: Error, LocalizedError, Equatable {
         switch self {
         case .sessionExpired, .tokenExpired:
             return true
-        case .notLoggedIn, .desktopAppOnly, .invalidOAuthURL:
+        case .notLoggedIn, .desktopAppOnly, .credentialStoreUnreadable,
+             .invalidCredentialData, .invalidOAuthURL:
             return false
         }
     }
@@ -132,14 +139,18 @@ struct ClaudeAuthStore: Sendable {
         self.now = now
     }
 
-    /// All credential sources currently on disk/keychain, in fixed keychain-before-file order, for the
-    /// refresh loop to try in order. The provider probes each and — on an auth-expiry error
+    /// All usable credential sources currently on disk/keychain, in fixed keychain-before-file order,
+    /// for the refresh loop to try in order. A missing source contributes nothing; an unreadable or
+    /// malformed source throws only when no usable sibling source exists. The provider probes each and —
+    /// on an auth-expiry error
     /// (`ClaudeAuthError.allowsAuthFallback`) — falls through to the next, so an external `claude`
     /// re-login is picked up no matter which source it lands in, even when a stale/locked-out token still
     /// sits in another. Re-read on every refresh; nothing is cached in memory.
-    func loadCredentialCandidates() -> [ClaudeCredentialState] {
-        let stored = orderedStoredCandidates()
+    func loadCredentialCandidates() throws -> [ClaudeCredentialState] {
+        let storedLoad = orderedStoredCandidates()
+        let stored = storedLoad.candidates
         guard let envAccessToken = envText("CLAUDE_CODE_OAUTH_TOKEN") else {
+            if stored.isEmpty, let error = storedLoad.firstError { throw error }
             return stored
         }
         // An explicit `CLAUDE_CODE_OAUTH_TOKEN` is inference-only (typically a `claude setup-token`
@@ -322,67 +333,125 @@ struct ClaudeAuthStore: Sendable {
     /// (older installs / Linux-style layouts). The refresh loop still falls through to the file on an
     /// auth-expiry error, so a fresh external `claude` re-login that landed in the other source is picked
     /// up (#687) WITHOUT letting a stale file outrank the live keychain just because its token carries a
-    /// later expiry (the #738 regression from ranking purely by expiry). The source kind (never the
-    /// token) is logged so a "locked out" report can be diagnosed from which source was chosen.
-    private func orderedStoredCandidates() -> [ClaudeCredentialState] {
+    /// later expiry (the #738 regression from ranking purely by expiry). Distinct current-user, legacy,
+    /// hashed-service, and base-service Keychain entries remain separate fallback candidates; duplicate
+    /// token pairs returned by overlapping Keychain lookups are attempted only once. The source kind
+    /// (never the token) is logged so a "locked out" report can be diagnosed from which source was chosen.
+    private struct CandidateLoad {
         var candidates: [ClaudeCredentialState] = []
-        if let keychain = loadKeychainCredentials() { candidates.append(keychain) }
-        if let file = loadFileCredentials() { candidates.append(file) }
+        var firstError: ClaudeAuthError?
 
-        if candidates.count > 1 {
-            let labels = candidates.map(\.source.label).joined(separator: ", ")
+        mutating func append(_ candidate: ClaudeCredentialState) {
+            let alreadyLoaded = candidates.contains {
+                $0.oauth.accessToken == candidate.oauth.accessToken &&
+                $0.oauth.refreshToken == candidate.oauth.refreshToken
+            }
+            if !alreadyLoaded { candidates.append(candidate) }
+        }
+
+        mutating func record(_ error: ClaudeAuthError) {
+            if firstError == nil { firstError = error }
+        }
+    }
+
+    private func orderedStoredCandidates() -> CandidateLoad {
+        var load = loadKeychainCredentials()
+        let fileLoad = loadFileCredentials()
+        for candidate in fileLoad.candidates {
+            load.append(candidate)
+        }
+        if let error = fileLoad.firstError { load.record(error) }
+
+        if load.candidates.count > 1 {
+            let labels = load.candidates.map(\.source.label).joined(separator: ", ")
             AppLog.debug(LogTag.auth("claude"), "credential candidates (keychain first): \(labels)")
-        } else if let only = candidates.first {
+        } else if let only = load.candidates.first {
             AppLog.debug(LogTag.auth("claude"), "credential source: \(only.source.label)")
         }
-        return candidates
+        return load
     }
 
-    private func loadFileCredentials() -> ClaudeCredentialState? {
+    private func loadFileCredentials() -> CandidateLoad {
         let path = credentialsPath()
-        guard files.exists(path),
-              let text = try? files.readText(path),
-              let parsed = Self.parseCredentials(text),
+        let text: String
+        do {
+            guard let stored = try files.readTextIfPresent(path) else { return CandidateLoad() }
+            text = stored
+        } catch {
+            AppLog.error(LogTag.auth("claude"), "credential file read failed")
+            return CandidateLoad(firstError: .credentialStoreUnreadable)
+        }
+
+        guard let parsed = Self.parseCredentials(text),
               let oauth = parsed.claudeAiOauth,
-              oauth.accessToken?.isEmpty == false
+              oauth.accessToken?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
         else {
-            return nil
+            AppLog.error(LogTag.auth("claude"), "credential file is malformed or has no usable access token")
+            return CandidateLoad(firstError: .invalidCredentialData)
         }
-        return ClaudeCredentialState(oauth: oauth, source: .file, fullData: parsed, inferenceOnly: false)
+        return CandidateLoad(candidates: [
+            ClaudeCredentialState(
+                oauth: oauth,
+                source: .file,
+                fullData: parsed,
+                inferenceOnly: false
+            )
+        ])
     }
 
-    private func loadKeychainCredentials() -> ClaudeCredentialState? {
-        // The service name is safe to log; NEVER log the returned credential blob / OAuth tokens.
+    private func loadKeychainCredentials() -> CandidateLoad {
+        var load = CandidateLoad()
         for service in keychainServiceCandidates() {
-            if let state = credentialState(
-                from: try? keychain.readGenericPasswordForCurrentUser(service: service),
-                service: service, source: .keychainCurrentUser(service: service)
-            ) {
-                return state
+            do {
+                if let value = try keychain.readGenericPasswordForCurrentUser(service: service) {
+                    if let state = credentialState(
+                        from: value,
+                        service: service,
+                        source: .keychainCurrentUser(service: service)
+                    ) {
+                        load.append(state)
+                    } else {
+                        AppLog.error(LogTag.auth("claude"), "current-user Keychain credential is malformed or has no usable access token")
+                        load.record(.invalidCredentialData)
+                    }
+                }
+            } catch {
+                AppLog.error(LogTag.auth("claude"), "current-user Keychain credential read failed")
+                load.record(.credentialStoreUnreadable)
             }
-            if let state = credentialState(
-                from: try? keychain.readGenericPassword(service: service),
-                service: service, source: .keychainLegacy(service: service)
-            ) {
-                return state
+
+            do {
+                if let value = try keychain.readGenericPassword(service: service) {
+                    if let state = credentialState(
+                        from: value,
+                        service: service,
+                        source: .keychainLegacy(service: service)
+                    ) {
+                        load.append(state)
+                    } else {
+                        AppLog.error(LogTag.auth("claude"), "legacy Keychain credential is malformed or has no usable access token")
+                        load.record(.invalidCredentialData)
+                    }
+                }
+            } catch {
+                AppLog.error(LogTag.auth("claude"), "legacy Keychain credential read failed")
+                load.record(.credentialStoreUnreadable)
             }
-            AppLog.debug(.keychain, "read miss service=\(service)")
         }
-        return nil
+        return load
     }
 
-    /// Parse one keychain hit into a credential state, or `nil` if it's absent / malformed / tokenless.
-    /// Shared by the current-user and legacy reads so they don't repeat the parse-guard-log-build block;
-    /// the keychain read itself stays at the call site to preserve the read order and error-swallowing.
+    /// Parse one present keychain value into a credential state. A `nil` result means the stored value
+    /// is malformed or tokenless; absence is represented by the keychain accessor returning `nil` before
+    /// this helper is called.
     private func credentialState(
-        from value: String?,
+        from value: String,
         service: String,
         source: ClaudeCredentialState.Source
     ) -> ClaudeCredentialState? {
-        guard let value,
-              let parsed = Self.parseCredentials(value),
+        guard let parsed = Self.parseCredentials(value),
               let oauth = parsed.claudeAiOauth,
-              oauth.accessToken?.isEmpty == false
+              oauth.accessToken?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
         else {
             return nil
         }
@@ -414,5 +483,3 @@ struct ClaudeAuthStore: Sendable {
         return String(digest.map { String(format: "%02x", $0) }.joined().prefix(8))
     }
 }
-
-

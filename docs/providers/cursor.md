@@ -18,6 +18,8 @@ Tracks your Cursor plan usage using the login from the Cursor app.
 
 Just be signed into the Cursor app. OpenUsage reads Cursor's local state database (and its keychain entries) for the session tokens; refreshed tokens are persisted back. Nothing extra to install or configure.
 
+The local database and Keychain are checked independently. A usable session from either one still works if the other cannot be read. Only when neither source has a usable session does a read failure become a dashboard error; genuinely missing records remain the normal "Not logged in" state.
+
 ## Spend history
 
 Today, Yesterday, Last 30 Days, and Usage Trend come from Cursor's usage export. OpenUsage uses the exported token counts and shared model pricing to estimate the cost locally. Cursor's export may occasionally arrive late, so the newest figures can lag behind current activity.
@@ -25,6 +27,7 @@ Today, Yesterday, Last 30 Days, and Usage Trend come from Cursor's usage export.
 ## Troubleshooting
 
 - **"Not logged in" / token errors** — open Cursor and make sure you're signed in, then refresh.
+- **"Couldn't read Cursor credentials"** — OpenUsage could not read Cursor's local state database or Keychain entries, and no usable session was available from the other source. Check access to Cursor's app data and Keychain, then refresh.
 - **Some metrics missing** — Cursor omits fields depending on plan type (e.g. Requests only exists on request-based accounts); missing metrics simply show "No data".
 
 ## Under the hood

@@ -55,6 +55,8 @@ extension ClaudeAuthError: CategorizedError {
     var errorCategory: ErrorCategory {
         switch self {
         case .notLoggedIn, .desktopAppOnly: .notLoggedIn
+        case .credentialStoreUnreadable: .credentialAccess
+        case .invalidCredentialData: .authInvalid
         case .sessionExpired, .tokenExpired: .authExpired
         case .invalidOAuthURL: .authInvalid
         }
@@ -96,6 +98,7 @@ extension CursorAuthError: CategorizedError {
     var errorCategory: ErrorCategory {
         switch self {
         case .notLoggedIn: .notLoggedIn
+        case .credentialStoreUnreadable: .credentialAccess
         case .sessionExpired, .tokenExpired: .authExpired
         }
     }

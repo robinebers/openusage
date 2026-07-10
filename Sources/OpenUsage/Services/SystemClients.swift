@@ -139,6 +139,8 @@ enum SQLiteError: Error, LocalizedError, Equatable {
 }
 
 protocol KeychainAccessing: Sendable {
+    /// Read an item by service. `nil` means the item is absent; a successfully read empty value remains
+    /// `""` so credential parsers can distinguish missing storage from invalid stored data.
     func readGenericPassword(service: String) throws -> String?
     func writeGenericPassword(service: String, value: String) throws
     func readGenericPasswordForCurrentUser(service: String) throws -> String?
@@ -199,14 +201,16 @@ struct SecurityKeychainAccessor: KeychainAccessing {
         )
         guard result.succeeded else {
             if result.exitCode == Self.itemNotFoundExitCode { return nil }
-            // Log loudly here so a locked/denied keychain is diagnosable even though current callers
-            // `try?` this back to nil ("not signed in"). Surfacing a distinct user-facing "keychain
-            // locked" message needs the auth-load chains to propagate the throw (folded into H1).
+            // Log loudly here so a locked or denied keychain remains diagnosable. Credential loaders
+            // propagate this failure when no valid sibling source exists; callers with an independent
+            // valid source may deliberately continue without turning that source-level failure into UI.
             AppLog.warn(.keychain, "read failed for service '\(service)' (exit \(result.exitCode))")
             throw KeychainError.readFailed(result.stderr)
         }
-        let value = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-        return value.isEmpty ? nil : value
+        // A successful lookup means the item exists even when its stored value is blank. Preserve that
+        // distinction so credential parsers can classify a present-but-invalid item; only exit 44 above
+        // represents absence.
+        return result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     func writeGenericPassword(service: String, value: String) throws {

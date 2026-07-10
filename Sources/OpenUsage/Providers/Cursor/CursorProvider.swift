@@ -56,13 +56,29 @@ final class CursorProvider: ProviderRuntime {
     }
 
     func hasLocalCredentials() async -> Bool {
-        // Same source as `refresh()`: any auth state (state DB or keychain) counts.
-        await loadOffMainActor { [authStore] in authStore.loadAuthState() } != nil
+        // A proven miss across both sources is absent. A read failure counts conservatively so
+        // one-shot detection enables Cursor and `refresh()` can show the repairable error.
+        do {
+            return try await loadOffMainActor { [authStore] in
+                try authStore.loadAuthState() != nil
+            }
+        } catch {
+            logUnexpectedCredentialProbeError(error)
+            return true
+        }
     }
 
     func refresh() async -> ProviderSnapshot {
-        guard let state = await loadOffMainActor({ [authStore] in authStore.loadAuthState() }) else {
-            return ProviderSnapshot.error(provider: provider, error: CursorAuthError.notLoggedIn)
+        let state: CursorAuthState
+        do {
+            guard let loaded = try await loadOffMainActor({ [authStore] in
+                try authStore.loadAuthState()
+            }) else {
+                return ProviderSnapshot.error(provider: provider, error: CursorAuthError.notLoggedIn)
+            }
+            state = loaded
+        } catch {
+            return ProviderSnapshot.error(provider: provider, error: credentialLoadError(error))
         }
 
         do {
@@ -269,5 +285,16 @@ final class CursorProvider: ProviderRuntime {
 
     private func snapshot(_ mapped: CursorMappedUsage) -> ProviderSnapshot {
         ProviderSnapshot.make(provider: provider, plan: mapped.plan, lines: mapped.lines, refreshedAt: now())
+    }
+
+    private func credentialLoadError(_ error: Error) -> CursorAuthError {
+        if let authError = error as? CursorAuthError { return authError }
+        AppLog.error(LogTag.auth("cursor"), "unexpected credential load failure: \(error.localizedDescription)")
+        return .credentialStoreUnreadable
+    }
+
+    private func logUnexpectedCredentialProbeError(_ error: Error) {
+        guard !(error is CursorAuthError) else { return }
+        AppLog.error(LogTag.auth("cursor"), "unexpected credential probe failure: \(error.localizedDescription)")
     }
 }
