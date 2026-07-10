@@ -229,6 +229,7 @@ final class WidgetDataStore {
         }
 
         var outcome = await performRefresh(providerID: providerID, provider: provider, force: force)
+        refreshCoalescer.resolveNonForcedWaiters(providerID: providerID, outcome: outcome)
         if Task.isCancelled {
             if refreshCoalescer.hasQueuedForcedRefresh(providerID: providerID) {
                 // The cancelled owner cannot satisfy a force requested by another live caller. Release
@@ -248,7 +249,11 @@ final class WidgetDataStore {
             // provenance instead of letting an already-cancelled owner enter provider work.
             if Task.isCancelled {
                 ownsProviderSlot = false
-                finishCancelledForcedRefreshClaim(forceClaim, providerID: providerID)
+                finishCancelledForcedRefreshClaim(
+                    forceClaim,
+                    providerID: providerID,
+                    outcome: .skipped
+                )
                 return .skipped
             }
             // A disable that lands during the active request wins; do not start a new request for a
@@ -260,9 +265,14 @@ final class WidgetDataStore {
             AppLog.debug(.refresh, "run queued forced refresh \(providerID)")
             outcome = await performRefresh(providerID: providerID, provider: provider, force: true)
             queuedOutcome = outcome
+            refreshCoalescer.resolveNonForcedWaiters(providerID: providerID, outcome: outcome)
             if Task.isCancelled {
                 ownsProviderSlot = false
-                finishCancelledForcedRefreshClaim(forceClaim, providerID: providerID)
+                finishCancelledForcedRefreshClaim(
+                    forceClaim,
+                    providerID: providerID,
+                    outcome: outcome
+                )
                 return .skipped
             }
         }
@@ -270,22 +280,24 @@ final class WidgetDataStore {
         return outcome
     }
 
-    /// Release a cancelled owner's slot and preserve only live intent from its claimed follow-up. A
-    /// cancelled waiter must not manufacture an ownerless request; enablement intent remains valid on
-    /// its own and is handed to a task with an independent cancellation lifetime.
+    /// Release a cancelled owner's slot. An interrupted follow-up restores only its still-live intent;
+    /// a follow-up that already produced a real outcome is complete and must never be replayed. Newer
+    /// forced work, if any, is handed to a task with an independent cancellation lifetime.
     private func finishCancelledForcedRefreshClaim(
         _ claim: ProviderRefreshCoalescer.ForcedRefreshClaim,
-        providerID: String
+        providerID: String,
+        outcome: RefreshOutcome
     ) {
-        let hasLiveForcedRefresh = refreshCoalescer.restoreQueuedForcedRefresh(
-            claim,
-            providerID: providerID
-        )
+        let hasLiveForcedRefresh = if outcome == .skipped {
+            refreshCoalescer.restoreQueuedForcedRefresh(claim, providerID: providerID)
+        } else {
+            refreshCoalescer.hasQueuedForcedRefresh(providerID: providerID)
+        }
         refreshingProviderIDs.remove(providerID)
         if hasLiveForcedRefresh {
             handOffQueuedForcedRefresh(providerID: providerID)
         } else {
-            refreshCoalescer.resolveWaiters(providerID: providerID, outcome: .skipped)
+            refreshCoalescer.resolveWaiters(providerID: providerID, outcome: outcome)
         }
     }
 

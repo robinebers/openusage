@@ -162,6 +162,57 @@ final class RefreshCoalescingTests: XCTestCase {
         XCTAssertFalse(fixture.store.refreshingProviderIDs.contains(testProvider.id))
     }
 
+    func testCancellingOwnerAfterClaimedForceSucceedsDoesNotReplayCompletedClaim() async {
+        let fixture = makeFixture(
+            snapshots: [
+                successSnapshot(used: 20),
+                successSnapshot(used: 80),
+                successSnapshot(used: 95),
+            ]
+        )
+        let firstStarted = expectation(description: "original refresh started")
+        let followUpStarted = expectation(description: "forced follow-up started")
+        fixture.runtime.onStart = { count in
+            if count == 1 { firstStarted.fulfill() }
+            if count == 2 { followUpStarted.fulfill() }
+            if count == 3 {
+                // Keep a regressed implementation from hanging the test on its erroneous replay.
+                Task {
+                    await Task.yield()
+                    fixture.runtime.resumeNext()
+                }
+            }
+        }
+
+        var original: Task<WidgetDataStore.RefreshOutcome, Never>?
+        fixture.store.onRefreshOutcome = { _, outcome, _, force in
+            // Cancellation lands after the forced request committed its successful snapshot but before
+            // the owner resumes from performRefresh. The consumed claim is already satisfied.
+            if force, outcome == .refreshed, fixture.runtime.refreshCount == 2 {
+                original?.cancel()
+            }
+        }
+
+        original = Task { await fixture.store.refresh(providerID: testProvider.id) }
+        await fulfillment(of: [firstStarted], timeout: 1)
+        let forced = Task { await fixture.store.refresh(providerID: testProvider.id, force: true) }
+        await Task.yield()
+
+        fixture.runtime.resumeNext()
+        await fulfillment(of: [followUpStarted], timeout: 1)
+        fixture.runtime.resumeNext()
+
+        let originalOutcome = await original?.value
+        let forcedOutcome = await forced.value
+        for _ in 0..<20 { await Task.yield() }
+
+        XCTAssertTrue(originalOutcome == .skipped)
+        XCTAssertTrue(forcedOutcome == .refreshed)
+        XCTAssertEqual(fixture.runtime.refreshCount, 2, "completed forced work must not be replayed")
+        XCTAssertEqual(fixture.store.snapshots[testProvider.id]?.line(label: "Session"), sessionLine(used: 80))
+        XCTAssertFalse(fixture.store.refreshingProviderIDs.contains(testProvider.id))
+    }
+
     func testCancelledClaimedEnablementIntentIsHandedOff() async {
         let fixture = makeFixture(
             snapshots: [
@@ -426,15 +477,18 @@ final class RefreshCoalescingTests: XCTestCase {
 
         let original = Task { await fixture.store.refresh(providerID: testProvider.id) }
         await fulfillment(of: [firstStarted], timeout: 1)
+        let joined = Task { await fixture.store.refresh(providerID: testProvider.id) }
         let forced = Task { await fixture.store.refresh(providerID: testProvider.id, force: true) }
         await Task.yield()
 
         enabled.value = false
         fixture.runtime.resumeNext()
         let originalOutcome = await original.value
+        let joinedOutcome = await joined.value
         let forcedOutcome = await forced.value
 
         XCTAssertTrue(originalOutcome == .refreshed)
+        XCTAssertTrue(joinedOutcome == .refreshed, "an ordinary joiner keeps the active request outcome")
         XCTAssertTrue(forcedOutcome == .skipped)
         XCTAssertEqual(fixture.runtime.refreshCount, 1)
         XCTAssertFalse(fixture.store.refreshingProviderIDs.contains(testProvider.id))

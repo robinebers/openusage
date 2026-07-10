@@ -8,9 +8,10 @@ extension WidgetDataStore {
     enum RefreshOutcome: Sendable { case refreshed, failed, cacheHit, skipped, backedOff }
 }
 
-/// Pending work behind `WidgetDataStore`'s per-provider in-flight guard. A forced request queues one
-/// post-flight probe; callers that reach the guard wait for the active request's final outcome.
-/// Keeping this bookkeeping separate leaves the store focused on fetch policy and snapshot updates.
+/// Pending work behind `WidgetDataStore`'s per-provider in-flight guard. An ordinary caller receives
+/// the active request's outcome; a forced caller queues a post-flight probe and waits until the forced
+/// chain settles. Keeping this bookkeeping separate leaves the store focused on fetch policy and
+/// snapshot updates.
 @MainActor
 final class ProviderRefreshCoalescer {
     /// `Task.cancel()` invokes its handler off-actor. This flag closes the interval before the cleanup
@@ -29,6 +30,7 @@ final class ProviderRefreshCoalescer {
 
     private struct Waiter {
         let id: UUID
+        let waitsForForcedRefresh: Bool
         var needsForcedRefresh: Bool
         let cancellation: WaiterCancellation
         let continuation: CheckedContinuation<WidgetDataStore.RefreshOutcome, Never>
@@ -87,6 +89,7 @@ final class ProviderRefreshCoalescer {
         }
         waiters[providerID, default: []].append(Waiter(
             id: waiterID,
+            waitsForForcedRefresh: force,
             needsForcedRefresh: force,
             cancellation: cancellation,
             continuation: continuation
@@ -176,6 +179,21 @@ final class ProviderRefreshCoalescer {
             || waiters[providerID]?.contains(where: {
                 claim.waiterIDs.contains($0.id) && !$0.cancellation.isCancelled
             }) == true
+    }
+
+    /// Complete callers that joined only the request that just finished. Forced callers stay queued
+    /// until the forced chain settles, including any newer force that arrived during a follow-up.
+    func resolveNonForcedWaiters(
+        providerID: String,
+        outcome: WidgetDataStore.RefreshOutcome
+    ) {
+        guard let providerWaiters = waiters[providerID] else { return }
+        let completed = providerWaiters.filter { !$0.waitsForForcedRefresh }
+        let remaining = providerWaiters.filter(\.waitsForForcedRefresh)
+        waiters[providerID] = remaining.isEmpty ? nil : remaining
+        for waiter in completed {
+            waiter.continuation.resume(returning: waiter.cancellation.isCancelled ? .skipped : outcome)
+        }
     }
 
     func resolveWaiters(

@@ -5,7 +5,7 @@
 - All enabled providers refresh together: at launch, then every 5 minutes (a fixed cadence — there's no setting for it). Providers fetch in parallel — one slow provider doesn't delay the others.
 - Turning a provider on (yourself in Customize, or automatically by first-launch/new-provider detection) fetches it promptly instead of waiting out the interval — even when the change lands in the middle of a refresh that's already running.
 - The popover footer shows `Next update in Nm`. **Clicking it (or ⌘R)** refreshes immediately, skipping the cache.
-- Forced refreshes waiting behind the same active provider request coalesce into one fresh follow-up. A later force that arrives while that follow-up is already running queues one more sequential refresh, so a changed credential is not lost and provider calls never overlap.
+- Forced refreshes waiting behind the same active provider request coalesce into one fresh follow-up. A later force that arrives while that follow-up is already running queues one more sequential refresh, so a changed credential is not lost and provider calls never overlap. Ordinary refresh callers waiting on the active request receive that request's result; cancelling a later forced follow-up (for example, by turning the provider off) does not rewrite a completed result as skipped.
 - While a provider is fetching, a small spinner appears next to its name (and one shows in the footer beside the countdown), so you can tell a refresh is in flight rather than wondering if the numbers are stale.
 
 ## Caching
