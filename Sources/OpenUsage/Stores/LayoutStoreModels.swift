@@ -1,5 +1,5 @@
-/// A provider and its placed (visible) widgets, split into the always-shown rows and the ones tucked
-/// behind the dashboard's "show more" caret. Drives the grouped dashboard list.
+/// A provider and its placed (visible) widgets, split into Always Visible rows and On Demand rows
+/// behind the dashboard's caret. Drives the grouped dashboard list.
 struct ProviderGroup: Identifiable {
     let provider: Provider
     let alwaysShownWidgets: [PlacedWidget]
@@ -12,8 +12,8 @@ struct ProviderGroup: Identifiable {
     var hasExpandedMetrics: Bool { !expandedWidgets.isEmpty }
 }
 
-/// A provider and every metric it supports, in the provider's custom order, split across the "Shown on
-/// expand" divider. Drives the Customize screen and the menu-bar pin grouping.
+/// A provider and every metric it supports, in the provider's custom order, split between Always
+/// Visible and On Demand. Drives the Customize screen and the menu-bar pin grouping.
 struct ProviderMetrics: Identifiable {
     let provider: Provider
     let alwaysShownMetrics: [WidgetDescriptor]
