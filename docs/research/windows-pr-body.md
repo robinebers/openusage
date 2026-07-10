@@ -2,15 +2,25 @@
 
 Research spike for a Windows port of OpenUsage: Swift sidecar (`spikes/windows-core`) + WPF shell (`spikes/windows-shell`) with a floating always-on-top metrics strip, tray brand icon, and dark flyout. **No production macOS code paths were changed.**
 
-Screenshots (strip + flyout): see `docs/windows.md` and `docs/research/images/`.
+### Preview
+
+Floating strip:
+
+![Floating metrics strip](https://raw.githubusercontent.com/Cagatay342/openusage/research/windows-spike/docs/research/images/windows-strip.png)
+
+Flyout:
+
+![Provider flyout](https://raw.githubusercontent.com/Cagatay342/openusage/research/windows-spike/docs/research/images/windows-flyout.png)
 
 ## What was happening
 
-OpenUsage ships as a native macOS menu-bar app. There was no shared, measured answer for what a Windows port costs (toolchain, credentials, UI shell, packaging). Phases 0–6 explored Candidate A (C# shell + Swift core over a named pipe) end to end on a real Windows box.
+- OpenUsage ships as a native macOS menu-bar app only.
+- There was no shared, measured answer for what a Windows port costs (toolchain, credentials, UI shell, packaging).
+- Phases 0–6 explored Candidate A (C# shell + Swift core over a named pipe) end to end on a real Windows box.
 
 ## What this changes
 
-- Adds `spikes/windows-core` (Swift 6 providers + Win32 shims + `sidecar` product) and `spikes/windows-shell` (tray, floating strip, flyout, 5‑minute refresh, single-instance, autostart toggle, toasts).
+- Adds `spikes/windows-core` (Swift 6 providers + Win32 shims + `sidecar` product) and `spikes/windows-shell` (tray, floating strip, flyout, 5‑minute refresh, single-instance, autostart toggle, branded toasts).
 - Adds `docs/windows.md`, phase findings / port plan / toolchain notes, and spike-scoped CI workflows.
 - Adds `script/build_and_run.ps1` and `script/package_windows.ps1` for an unsigned zip.
 - Leaves `Sources/OpenUsage/`, root `Package.swift`, and production `release.yml` untouched.
