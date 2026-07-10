@@ -20,6 +20,16 @@ It also reports **crashes**, so we can find and fix the bugs that make the app q
 - No error **messages** or file paths — only coarse error categories as counts.
 - Nothing while the toggle is off.
 
+## Credential caches on this Mac
+
+OpenUsage primarily reads credentials that provider tools already keep on your Mac. For Antigravity,
+it may cache a refreshed access token briefly so it does not repeat the same OAuth exchange every five
+minutes. That cache is tied to the current Keychain login with a one-way fingerprint of its refresh
+credential; the refresh credential itself is never copied into the cache. The cached token is ignored
+and removed after logout, an account change, or a mismatch, and is never used while Keychain access is
+unavailable. This prevents a previous account's cached token from continuing to fetch and display that
+account's quota after the active login changes.
+
 ## Other network requests
 
 Besides the provider API calls the vendor's own tools would make, OpenUsage fetches public [model price lists](pricing.md) about once a day (from `raw.githubusercontent.com`, `models.dev`, and this project's GitHub Pages). These are plain downloads of public data — they carry no usage, log, or account information, and they run regardless of the Share Anonymous Usage setting. The spend tiles are computed from local CLI logs entirely on your Mac; no log data ever leaves it.

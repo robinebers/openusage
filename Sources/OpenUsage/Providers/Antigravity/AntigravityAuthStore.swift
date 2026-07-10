@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// Credentials Antigravity already has on the machine. On current builds the OAuth tokens live in the
@@ -58,12 +59,23 @@ struct AntigravityAuthStore: Sendable {
 
     // MARK: - Refreshed-token cache
 
-    struct CachedToken: Codable {
+    private struct CachedToken: Codable {
         var accessToken: String
         var expiresAtMs: Double
+        /// SHA-256 of the Keychain refresh token that produced this access token. Optional only so
+        /// caches written by older OpenUsage builds decode as an unbound legacy miss instead of being
+        /// mislabeled as corrupt. Every newly written cache includes it.
+        var credentialFingerprint: Data?
     }
 
-    func loadCachedToken() -> String? {
+    /// Load the refreshed access token only for the Keychain login that produced it. The cache is never
+    /// an independent credential: a logout, unreadable Keychain, or account switch must not let a still-
+    /// valid access token query and display the previous account's quota.
+    func loadCachedToken(matching source: AntigravityKeychainToken) -> String? {
+        guard let expectedFingerprint = Self.credentialFingerprint(for: source.refreshToken) else {
+            discardCachedToken()
+            return nil
+        }
         // Require at least `refreshBuffer` of life left, matching `isUsable(expiry:)` for the keychain
         // token — a near-expiry cached token would otherwise yield a near-certain 401 and a wasteful
         // extra refresh. This is OpenUsage's own best-effort cache, not the primary credential store:
@@ -77,22 +89,37 @@ struct AntigravityAuthStore: Sendable {
             return nil
         }
         guard let cached = try? JSONDecoder().decode(CachedToken.self, from: Data(text.utf8)) else {
-            AppLog.warn(LogTag.auth("antigravity"), "refreshed-token cache is malformed; ignoring it")
+            AppLog.warn(LogTag.auth("antigravity"), "refreshed-token cache is malformed; discarding it")
+            discardCachedToken()
+            return nil
+        }
+        guard cached.credentialFingerprint == expectedFingerprint else {
+            // Includes legacy caches with no fingerprint. Never log either fingerprint or credential.
+            discardCachedToken()
             return nil
         }
         guard cached.expiresAtMs > (now().timeIntervalSince1970 + Self.refreshBuffer) * 1000 else {
+            discardCachedToken()
             return nil
         }
         guard let token = cached.accessToken.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty else {
-            AppLog.warn(LogTag.auth("antigravity"), "refreshed-token cache has no usable token; ignoring it")
+            AppLog.warn(LogTag.auth("antigravity"), "refreshed-token cache has no usable token; discarding it")
+            discardCachedToken()
             return nil
         }
         return token
     }
 
-    func cacheToken(_ accessToken: String, expiresIn: Double) {
+    func cacheToken(_ accessToken: String, expiresIn: Double, sourceRefreshToken: String) {
+        guard let credentialFingerprint = Self.credentialFingerprint(for: sourceRefreshToken) else {
+            return
+        }
         let expiresAtMs = (now().timeIntervalSince1970 + expiresIn) * 1000
-        let cached = CachedToken(accessToken: accessToken, expiresAtMs: expiresAtMs)
+        let cached = CachedToken(
+            accessToken: accessToken,
+            expiresAtMs: expiresAtMs,
+            credentialFingerprint: credentialFingerprint
+        )
         do {
             let data = try JSONEncoder().encode(cached)
             try files.writeText(Self.cachePath, String(decoding: data, as: UTF8.self))
@@ -101,6 +128,24 @@ struct AntigravityAuthStore: Sendable {
             // again next cycle. Log loudly rather than fail the live fetch.
             AppLog.warn(LogTag.auth("antigravity"), "failed to cache refreshed token: \(error.localizedDescription)")
         }
+    }
+
+    /// Remove only OpenUsage's own derived token. Antigravity's Keychain entry is never changed.
+    func discardCachedToken() {
+        do {
+            try files.remove(Self.cachePath)
+        } catch {
+            AppLog.warn(LogTag.auth("antigravity"), "failed to remove stale refreshed-token cache")
+        }
+    }
+
+    private static func credentialFingerprint(for refreshToken: String?) -> Data? {
+        guard let refreshToken = refreshToken?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty else {
+            return nil
+        }
+        return Data(SHA256.hash(data: Data(refreshToken.utf8)))
     }
 
     // MARK: - Token extraction (pure)

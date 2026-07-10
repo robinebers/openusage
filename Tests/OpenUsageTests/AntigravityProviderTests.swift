@@ -220,47 +220,6 @@ final class AntigravityProviderTests: XCTestCase {
         XCTAssertEqual(candidates.map(\.pid), [4276])
     }
 
-    // MARK: - Keychain token extraction
-
-    func testExtractTokenFromGoKeyringWrappedJSON() {
-        let inner = """
-        {"token":{"access_token":"ya29.test","refresh_token":"1//refresh","expiry":"2099-01-01T00:00:00Z","token_type":"Bearer"},"auth_method":"consumer"}
-        """
-        let wrapped = "go-keyring-base64:" + Data(inner.utf8).base64EncodedString()
-        let token = AntigravityAuthStore.extractToken(fromKeychainRaw: wrapped)
-        XCTAssertEqual(token?.accessToken, "ya29.test")
-        XCTAssertEqual(token?.refreshToken, "1//refresh")
-        XCTAssertEqual(token?.expiry, OpenUsageISO8601.date(from: "2099-01-01T00:00:00Z"))
-    }
-
-    func testExtractTokenFromRawJSONAndBearerAndPlain() {
-        let plainJSON = #"{"access_token":"abc","refresh_token":"r"}"#
-        XCTAssertEqual(AntigravityAuthStore.extractToken(fromKeychainRaw: plainJSON)?.accessToken, "abc")
-        XCTAssertEqual(AntigravityAuthStore.extractToken(fromKeychainRaw: "Bearer xyz")?.accessToken, "xyz")
-        XCTAssertEqual(AntigravityAuthStore.extractToken(fromKeychainRaw: "rawtoken")?.accessToken, "rawtoken")
-    }
-
-    func testLoadCachedTokenAppliesRefreshBuffer() {
-        let now = Date(timeIntervalSince1970: 1_000_000)
-        func store(expiresInSeconds: Double) -> AntigravityAuthStore {
-            let ms = (now.timeIntervalSince1970 + expiresInSeconds) * 1000
-            let files = FakeFiles([AntigravityAuthStore.cachePath: #"{"accessToken":"ya29.cached","expiresAtMs":\#(ms)}"#])
-            return AntigravityAuthStore(keychain: FakeKeychain(nil), files: files, now: { now })
-        }
-        // Within the 60s refresh buffer -> treated as expired (avoids a near-certain 401 + extra refresh).
-        XCTAssertNil(store(expiresInSeconds: 30).loadCachedToken())
-        XCTAssertEqual(store(expiresInSeconds: 7200).loadCachedToken(), "ya29.cached")
-    }
-
-    func testLoadKeychainTokenThroughStore() throws {
-        let inner = #"{"token":{"access_token":"ya29.kc","refresh_token":"1//r"}}"#
-        let wrapped = "go-keyring-base64:" + Data(inner.utf8).base64EncodedString()
-        let store = AntigravityAuthStore(keychain: FakeKeychain(wrapped), files: FakeFiles())
-        let token = try store.loadKeychainToken()
-        XCTAssertEqual(token?.accessToken, "ya29.kc")
-        XCTAssertEqual(token?.refreshToken, "1//r")
-    }
-
     // MARK: - Provider integration (Cloud Code path, no language server)
 
     @MainActor

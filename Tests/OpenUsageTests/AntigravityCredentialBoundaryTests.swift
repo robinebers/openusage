@@ -58,16 +58,17 @@ final class AntigravityCredentialBoundaryTests: XCTestCase {
         XCTAssertEqual(errorText(snapshot), AntigravityError.invalidCredentialData.localizedDescription)
     }
 
-    func testValidCacheWinsAfterKeychainReadFailure() async {
+    func testKeychainReadFailureNeverUsesCachedCredential() async {
         let routing = RoutingHTTPClient { request in
             if request.url.path.contains("retrieveUserQuotaSummary") {
                 return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"groups":[]}"#.utf8))
             }
             return HTTPResponse(statusCode: 503, headers: [:], body: Data())
         }
+        let files = boundCache(sourceRefreshToken: "old-account-refresh")
         let provider = makeProvider(
             keychain: AntigravityBoundaryKeychain(readFails: true),
-            files: FakeFiles([AntigravityAuthStore.cachePath: cachedToken(expiresIn: 3_600)]),
+            files: files,
             http: routing
         )
 
@@ -75,15 +76,59 @@ final class AntigravityCredentialBoundaryTests: XCTestCase {
         XCTAssertTrue(detected)
         let snapshot = await provider.refresh()
 
-        XCTAssertNil(snapshot.errorCategory)
-        XCTAssertTrue(routing.requests.contains { $0.url.path.contains("retrieveUserQuotaSummary") })
+        XCTAssertEqual(snapshot.errorCategory, .credentialAccess)
+        XCTAssertEqual(errorText(snapshot), AntigravityError.credentialStoreUnreadable.localizedDescription)
+        XCTAssertTrue(routing.requests.isEmpty, "an unverified cached token must never leave the machine")
+        XCTAssertNotNil(files.files[AntigravityAuthStore.cachePath], "a transient Keychain error must not erase the cache")
     }
 
-    func testCorruptAppOwnedCacheIsIgnoredRatherThanSurfacedAsPrimaryCredentialFailure() async {
-        let provider = makeProvider(
-            keychain: FakeKeychain(),
-            files: FakeFiles([AntigravityAuthStore.cachePath: "{ not-json"])
+    func testAccountSwitchRejectsOldCacheAndRefreshesCurrentLogin() async {
+        let files = boundCache(sourceRefreshToken: "old-account-refresh", accessToken: "old-account-access")
+        let routing = RoutingHTTPClient { request in
+            if request.url.host == "oauth2.googleapis.com" {
+                return HTTPResponse(
+                    statusCode: 200,
+                    headers: [:],
+                    body: Data(#"{"access_token":"new-account-access","expires_in":3600}"#.utf8)
+                )
+            }
+            if request.url.path.contains("retrieveUserQuotaSummary") {
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"groups":[]}"#.utf8))
+            }
+            return HTTPResponse(statusCode: 503, headers: [:], body: Data())
+        }
+        let currentLogin = keychainToken(
+            accessToken: "expired-new-account-access",
+            refreshToken: "newaccountrefresh",
+            expiry: "2000-01-01T00:00:00Z"
         )
+        let provider = makeProvider(keychain: FakeKeychain(currentLogin), files: files, http: routing)
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertNil(snapshot.errorCategory)
+        let oauthRequest = routing.requests.first { $0.url.host == "oauth2.googleapis.com" }
+        XCTAssertTrue(String(decoding: oauthRequest?.body ?? Data(), as: UTF8.self).contains("newaccountrefresh"))
+        let cloudAuthorizations = routing.requests
+            .filter { $0.url.host != "oauth2.googleapis.com" }
+            .compactMap { $0.headers["Authorization"] }
+        XCTAssertTrue(cloudAuthorizations.contains("Bearer new-account-access"))
+        XCTAssertFalse(cloudAuthorizations.contains("Bearer old-account-access"))
+        let currentSource = try? provider.authStore.loadKeychainToken()
+        XCTAssertEqual(
+            currentSource.flatMap { provider.authStore.loadCachedToken(matching: $0) },
+            "new-account-access",
+            "the successful refresh should replace the discarded cache under the current login"
+        )
+    }
+
+    func testLogoutDoesNotTreatBoundCacheAsCredential() async {
+        let files = boundCache(sourceRefreshToken: "signed-out-account-refresh")
+        let routing = RoutingHTTPClient { _ in
+            XCTFail("a cached token must not be used after logout")
+            return HTTPResponse(statusCode: 500, headers: [:], body: Data())
+        }
+        let provider = makeProvider(keychain: FakeKeychain(), files: files, http: routing)
 
         let detected = await provider.hasLocalCredentials()
         XCTAssertFalse(detected)
@@ -91,32 +136,8 @@ final class AntigravityCredentialBoundaryTests: XCTestCase {
 
         XCTAssertEqual(snapshot.errorCategory, .notLoggedIn)
         XCTAssertEqual(errorText(snapshot), AntigravityError.notSignedIn.localizedDescription)
-    }
-
-    func testUnreadableAppOwnedCacheIsIgnoredRatherThanSurfacedAsPrimaryCredentialFailure() async {
-        let provider = makeProvider(
-            keychain: FakeKeychain(),
-            files: AntigravityBoundaryFiles([AntigravityAuthStore.cachePath: .unreadable])
-        )
-
-        let detected = await provider.hasLocalCredentials()
-        XCTAssertFalse(detected)
-        let snapshot = await provider.refresh()
-
-        XCTAssertEqual(snapshot.errorCategory, .notLoggedIn)
-    }
-
-    func testExpiredAppOwnedCacheIsANormalMiss() async {
-        let provider = makeProvider(
-            keychain: FakeKeychain(),
-            files: FakeFiles([AntigravityAuthStore.cachePath: cachedToken(expiresIn: 30)])
-        )
-
-        let detected = await provider.hasLocalCredentials()
-        XCTAssertFalse(detected)
-        let snapshot = await provider.refresh()
-
-        XCTAssertEqual(snapshot.errorCategory, .notLoggedIn)
+        XCTAssertTrue(routing.requests.isEmpty)
+        XCTAssertNil(files.files[AntigravityAuthStore.cachePath], "logout should remove OpenUsage's stale derived token")
     }
 
     private func makeProvider(
@@ -133,9 +154,26 @@ final class AntigravityCredentialBoundaryTests: XCTestCase {
         )
     }
 
-    private func cachedToken(expiresIn: TimeInterval) -> String {
-        let expiresAtMs = (now.timeIntervalSince1970 + expiresIn) * 1_000
-        return #"{"accessToken":"cached-access-token","expiresAtMs":\#(expiresAtMs)}"#
+    private func boundCache(
+        sourceRefreshToken: String,
+        accessToken: String = "cached-access-token",
+        expiresIn: TimeInterval = 3_600
+    ) -> FakeFiles {
+        let files = FakeFiles()
+        let fixedNow = now
+        AntigravityAuthStore(keychain: FakeKeychain(), files: files, now: { fixedNow }).cacheToken(
+            accessToken,
+            expiresIn: expiresIn,
+            sourceRefreshToken: sourceRefreshToken
+        )
+        return files
+    }
+
+    private func keychainToken(accessToken: String, refreshToken: String, expiry: String) -> String {
+        let json = """
+        {"token":{"access_token":"\(accessToken)","refresh_token":"\(refreshToken)","expiry":"\(expiry)"}}
+        """
+        return "go-keyring-base64:" + Data(json.utf8).base64EncodedString()
     }
 
     private func errorText(_ snapshot: ProviderSnapshot) -> String? {
@@ -164,39 +202,6 @@ private struct AntigravityBoundaryKeychain: KeychainAccessing {
     }
 
     func writeGenericPassword(service: String, value: String) throws {}
-}
-
-private final class AntigravityBoundaryFiles: TextFileAccessing, @unchecked Sendable {
-    enum Entry {
-        case text(String)
-        case unreadable
-    }
-
-    private var entries: [String: Entry]
-
-    init(_ entries: [String: Entry]) {
-        self.entries = entries
-    }
-
-    func exists(_ path: String) -> Bool {
-        entries[path] != nil
-    }
-
-    func readText(_ path: String) throws -> String {
-        switch entries[path] {
-        case .text(let text): return text
-        case .unreadable: throw AntigravityBoundaryTestError.unreadable
-        case nil: return ""
-        }
-    }
-
-    func writeText(_ path: String, _ text: String) throws {
-        entries[path] = .text(text)
-    }
-
-    func remove(_ path: String) throws {
-        entries.removeValue(forKey: path)
-    }
 }
 
 private struct AntigravityNoProcessRunner: ProcessRunning {

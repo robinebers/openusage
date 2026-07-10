@@ -43,20 +43,15 @@ final class AntigravityProvider: ProviderRuntime {
     }
 
     func hasLocalCredentials() async -> Bool {
-        // The keychain token (or our refreshed-token cache) is the works-with-the-app-closed source
-        // `refresh()` falls back to; a logged-in Antigravity install has it even when no language
-        // server is running, so process discovery isn't needed here. A keychain boundary failure is
-        // conservatively present; the app-owned refreshed-token cache remains best-effort.
-        var keychainToken: AntigravityKeychainToken?
-        var keychainFailed = false
+        // The Keychain login is the source of truth when the app is closed; the app-owned access-token
+        // cache is only a derivative bound to that login and must never independently seed a provider
+        // after logout. A boundary failure remains conservatively present for the one-shot detector.
         do {
-            keychainToken = try await loadOffMainActor { [authStore] in try authStore.loadKeychainToken() }
+            return try await loadOffMainActor { [authStore] in try authStore.loadKeychainToken() } != nil
         } catch {
             logUnexpectedBoundaryError(error, source: "keychain credential probe")
-            keychainFailed = true
+            return true
         }
-        let cachedToken = await loadOffMainActor { [authStore] in authStore.loadCachedToken() }
-        return keychainToken != nil || cachedToken != nil || keychainFailed
     }
 
     func refresh() async -> ProviderSnapshot {
@@ -162,25 +157,31 @@ final class AntigravityProvider: ProviderRuntime {
     private func probeCloudCode() async throws -> StrategyResult {
         let authStore = self.authStore
         let keychainToken: AntigravityKeychainToken?
-        var loadError: AntigravityError?
         do {
             keychainToken = try await loadOffMainActor { try authStore.loadKeychainToken() }
         } catch {
-            loadError = boundaryError(error, source: "keychain credential load")
-            keychainToken = nil
+            throw boundaryError(error, source: "keychain credential load")
+        }
+
+        guard let keychainToken else {
+            // A proven logout invalidates OpenUsage's derived access token. A read failure throws above
+            // and deliberately leaves the cache untouched for later recovery.
+            await loadOffMainActor { authStore.discardCachedToken() }
+            throw AntigravityError.notSignedIn
         }
 
         var tokens: [String] = []
-        if let keychainToken, let access = keychainToken.accessToken, authStore.isUsable(expiry: keychainToken.expiry) {
+        if let access = keychainToken.accessToken, authStore.isUsable(expiry: keychainToken.expiry) {
             tokens.append(access)
         }
-        if let cached = await loadOffMainActor({ authStore.loadCachedToken() }), !tokens.contains(cached) {
+        if let cached = await loadOffMainActor({ authStore.loadCachedToken(matching: keychainToken) }),
+           !tokens.contains(cached) {
             tokens.append(cached)
         }
 
         // We have something to authenticate with if any token was tried or a refresh token exists. Used
         // to tell a transient outage ("temporarily unavailable") apart from a genuine "not signed in".
-        let hasCredentials = !tokens.isEmpty || (keychainToken?.refreshToken?.isEmpty == false)
+        let hasCredentials = !tokens.isEmpty || (keychainToken.refreshToken?.isEmpty == false)
 
         var sawAuthFailure = false
         for token in tokens {
@@ -193,10 +194,16 @@ final class AntigravityProvider: ProviderRuntime {
 
         // Only refresh on evidence of an auth failure (or no token to try) — a transient Cloud Code
         // outage must not trigger a Google OAuth refresh every cycle.
-        if sawAuthFailure || tokens.isEmpty, let refreshToken = keychainToken?.refreshToken {
+        if sawAuthFailure || tokens.isEmpty, let refreshToken = keychainToken.refreshToken {
             switch await usageClient.refreshGoogleToken(refreshToken) {
             case .refreshed(let accessToken, let expiresIn):
-                authStore.cacheToken(accessToken, expiresIn: expiresIn)
+                await loadOffMainActor {
+                    authStore.cacheToken(
+                        accessToken,
+                        expiresIn: expiresIn,
+                        sourceRefreshToken: refreshToken
+                    )
+                }
                 switch await fetchCloudCode(token: accessToken) {
                 case .success(let result): return result
                 case .authFailed: throw AntigravityError.authExpired
@@ -217,7 +224,6 @@ final class AntigravityProvider: ProviderRuntime {
         if sawAuthFailure { throw AntigravityError.authExpired }
         // Signed in but every endpoint was unreachable — report a transient failure, not "not signed in".
         if hasCredentials { throw AntigravityError.unavailable }
-        if let loadError { throw loadError }
         throw AntigravityError.notSignedIn
     }
 
