@@ -195,6 +195,20 @@ final class AntigravityCredentialCacheIntegrityTests: XCTestCase {
         XCTAssertTrue(http.requests.isEmpty)
     }
 
+    func testBOMPrefixedMalformedStructuredKeychainValueIsNotSentAsBearerToken() async {
+        let http = RoutingHTTPClient { _ in
+            XCTFail("BOM-prefixed malformed structured credentials must not be sent")
+            return HTTPResponse(statusCode: 500, headers: [:], body: Data())
+        }
+        let malformed = "\u{FEFF} \n\t{broken-json"
+        let provider = makeProvider(keychain: FakeKeychain(malformed), files: FakeFiles(), http: http)
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(snapshot.errorCategory, .authInvalid)
+        XCTAssertTrue(http.requests.isEmpty)
+    }
+
     private func makeStore(files: TextFileAccessing) -> AntigravityAuthStore {
         let fixedNow = now
         return AntigravityAuthStore(keychain: FakeKeychain(), files: files, now: { fixedNow })

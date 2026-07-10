@@ -146,7 +146,14 @@ struct AntigravityAuthStore: Sendable {
     /// `go-keyring-base64:` wrapper around JSON `{ token: { access_token, refresh_token, expiry }, … }`,
     /// with fallbacks for a bare JSON string, a `Bearer …` value, or a raw token.
     static func extractToken(fromKeychainRaw raw: String) -> AntigravityKeychainToken? {
-        guard let text = ProviderParse.unwrapGoKeyring(raw) else { return nil }
+        let boundaryCharacters = CharacterSet.whitespacesAndNewlines
+            .union(CharacterSet(charactersIn: "\u{FEFF}"))
+        let normalizedRaw = raw.trimmingCharacters(in: boundaryCharacters)
+        guard let unwrapped = ProviderParse.unwrapGoKeyring(normalizedRaw),
+              let text = unwrapped.trimmingCharacters(in: boundaryCharacters).nilIfEmpty
+        else {
+            return nil
+        }
 
         if let json = try? JSONSerialization.jsonObject(with: Data(text.utf8)) {
             if let dict = json as? [String: Any] {
