@@ -5,8 +5,9 @@ set -euo pipefail
 # to /Applications. The dev build:
 #   - is signed with a stable Apple Development identity, so keychain/permission grants stick across
 #     rebuilds (macOS keys those to the signing identity + bundle id, not the install location);
-#   - uses its own bundle id (com.robinebers.openusage.dev), so it never touches the real installed
-#     app's settings or keychain. To run against the real app's data instead, set BUNDLE_ID to
+#   - uses its own bundle id (com.robinebers.openusage.dev), isolating app preferences and
+#     single-instance state. Provider credential files, databases, and keychain items remain shared
+#     intentionally. To test the release app's settings domain, set BUNDLE_ID to
 #     com.robinebers.openusage below;
 #   - ships no Sparkle feed, so it never checks for or installs updates (test updates with a real
 #     signed + notarized release build — that's the only honest way).
@@ -36,7 +37,31 @@ INFO_PLIST="$APP_CONTENTS/Info.plist"
 RESOURCE_BUNDLE_NAME="${TARGET_NAME}_${TARGET_NAME}.bundle"
 ENTITLEMENTS="$ROOT_DIR/script/OpenUsage.dev.entitlements.plist"
 
-pkill -x "$TARGET_NAME" >/dev/null 2>&1 || true
+wait_for_app_exit() {
+  pkill -x "$TARGET_NAME" >/dev/null 2>&1 || return 0
+  for ((attempt = 0; attempt < 50; attempt++)); do
+    if ! pgrep -x "$TARGET_NAME" >/dev/null; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "timed out waiting for the previous $APP_DISPLAY process to exit" >&2
+  return 1
+}
+
+wait_for_app_launch() {
+  for ((attempt = 0; attempt < 50; attempt++)); do
+    if pgrep -x "$TARGET_NAME" >/dev/null; then
+      echo "==> running"
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "$APP_DISPLAY exited before launch verification completed" >&2
+  return 1
+}
+
+wait_for_app_exit
 
 echo "==> swift build ($CONFIG)"
 swift build -c "$CONFIG"
@@ -177,8 +202,7 @@ case "$MODE" in
     ;;
   verify)
     launch_app
-    sleep 1
-    pgrep -x "$TARGET_NAME" >/dev/null && echo "==> running"
+    wait_for_app_launch
     ;;
   *)
     echo "usage: $0 [run|build|logs|verify]" >&2

@@ -13,10 +13,16 @@ The project script owns the build/run loop. From the repo root:
 ./script/build_and_run.sh verify   # launch and confirm the process is running
 ```
 
+Every invocation asks any running `OpenUsage` process to exit and waits up to five seconds before
+rebuilding. `verify` also polls the new launch for up to five seconds. The script fails loudly if either
+lifecycle transition stalls.
+
 The script builds a signed app bundle under `dist/` and launches it in place — nothing is installed to
-`/Applications`. The dev build uses its own bundle id (`com.robinebers.openusage.dev`), so it keeps its
-own settings and keychain and never disturbs a released OpenUsage. It ships no update feed, so it never
-checks for updates — test updates with a real signed, notarized release build.
+`/Applications`. The dev build uses its own bundle id (`com.robinebers.openusage.dev`), so its app
+preferences and single-instance state stay separate from the released bundle. Provider credential
+files, databases, keychain items, and OpenUsage API-key files remain shared intentionally, so
+authentication changes can affect provider tools or a released OpenUsage. The dev build ships no
+update feed; test updates with a real signed, notarized release build.
 
 ## Stream logs
 
