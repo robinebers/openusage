@@ -149,7 +149,9 @@ final class WidgetMeterStyleTests: XCTestCase {
             snapshot: ProviderSnapshot(
                 providerID: provider.id,
                 displayName: provider.displayName,
-                lines: [.text(label: "Today", value: "$42.50 · 12K tokens")]
+                lines: [.values(label: "Today", values: [
+                    MetricValue(number: 42.50, kind: .dollars)
+                ])]
             )
         )
         let isolated = makeUserDefaults("unbounded")

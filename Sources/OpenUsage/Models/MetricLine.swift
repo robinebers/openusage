@@ -84,7 +84,7 @@ enum MetricLine: Hashable, Sendable, Codable {
     /// An unbounded row carrying one or more raw numbers (see `MetricValue`) — the preferred shape for
     /// numeric rows. The number is the source of truth; formatting and which value(s) to show happen at
     /// the display edge, so the menu bar never has to re-parse a finished string. `.text` stays only for
-    /// genuinely string-y rows and a few descriptor-bounded dollar rows.
+    /// genuinely string-valued provider notices exposed through the local API; widgets do not parse it.
     ///
     /// `expiriesAt` carries zero or more future expiry instants the row surfaces in its hover tooltip —
     /// used for the Codex rate-limit-reset-credits row ("2 available", with each credit's expiry listed

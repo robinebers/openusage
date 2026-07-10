@@ -372,8 +372,10 @@ final class WidgetDataStore {
             // `.progress` result doesn't start from the sample, so carry the flag explicitly.
             result.isSessionWindow = descriptor.sample.isSessionWindow
             return result
-        case .text(_, let value, _, _):
-            return resolveText(value, descriptor: descriptor)
+        case .text:
+            // Text lines carry provider notices for the local API; no dashboard descriptor consumes
+            // them. Numeric widgets use typed progress/values lines and must never parse display text.
+            return nil
         case .values(_, let values, _, let expiriesAt, let unknownModels, let modelBreakdown):
             // The number is carried raw — no regex re-parse. Presentation (title, icon, selection,
             // trailing word) comes from the descriptor's sample; the live numbers come from the line.
@@ -418,75 +420,4 @@ final class WidgetDataStore {
         }
     }
 
-    private func resolveText(_ value: String, descriptor: WidgetDescriptor) -> WidgetData? {
-        let sample = descriptor.sample
-        switch sample.kind {
-        case .dollars:
-            guard let amount = Self.firstCurrencyAmount(in: value) else { return sample }
-            // A raw-text descriptor shows the provider's line verbatim (the parsed amount above still
-            // feeds the menu bar's compact value); otherwise the value is reformatted from `used`.
-            return textData(sample, kind: .dollars, used: amount, limit: sample.limit,
-                            valueTextOverride: sample.preservesRawText ? value : nil,
-                            unboundedValueWord: sample.unboundedValueWord)
-        case .count:
-            guard let count = Self.firstNumber(in: value) else { return sample }
-            // A raw-text descriptor shows the provider's line verbatim (the parsed count above still
-            // feeds the menu bar's compact value); otherwise the value is reformatted from `used`.
-            return textData(sample, kind: .count, used: count, limit: sample.limit,
-                            valueTextOverride: sample.preservesRawText ? value : nil,
-                            unboundedValueWord: sample.unboundedValueWord)
-        case .percent:
-            guard let percent = Self.firstNumber(in: value) else { return sample }
-            // Percent rows are always 0–100, so a missing sample limit defaults to a full 100 scale,
-            // and they carry no `unboundedValueWord` (they're never an unbounded balance). `firstNumber`
-            // accepts a leading sign, so clamp the parsed value to the same 0...100 domain the
-            // `.progress` percent path guarantees, keeping a stray "-5%" out of every surface.
-            return textData(sample, kind: .percent, used: ProviderParse.clampPercent(percent), limit: sample.limit ?? 100)
-        }
-    }
-
-    /// Builds the resolved `WidgetData` for a `.text` line: the metric identity and presentation come
-    /// from the descriptor's `sample`, while the parsed `used` (and the per-kind `limit`,
-    /// `valueTextOverride`, `unboundedValueWord`) come from the live value. Fields the sample uses for
-    /// real metrics but a fresh text row must not inherit (display/reset mode, reset timing, period,
-    /// limit noun, raw-text flag, no-data flag) deliberately reset to their `WidgetData` defaults.
-    private func textData(
-        _ sample: WidgetData,
-        kind: MetricKind,
-        used: Double,
-        limit: Double?,
-        valueTextOverride: String? = nil,
-        unboundedValueWord: String? = nil
-    ) -> WidgetData {
-        WidgetData(
-            title: sample.title,
-            icon: sample.icon,
-            kind: kind,
-            used: used,
-            limit: limit,
-            countSuffix: sample.countSuffix,
-            valuePrefix: sample.valuePrefix,
-            valueTextOverride: valueTextOverride,
-            subtitleOverride: sample.subtitleOverride,
-            unboundedValueWord: unboundedValueWord,
-            infoNote: sample.infoNote
-        )
-    }
-
-    static func firstCurrencyAmount(in value: String) -> Double? {
-        let pattern = #"[-+]?\$([0-9][0-9,]*(?:\.[0-9]+)?)"#
-        guard let match = value.range(of: pattern, options: .regularExpression) else {
-            return nil
-        }
-        let matched = value[match].replacingOccurrences(of: "$", with: "")
-        return Double(matched.replacingOccurrences(of: ",", with: ""))
-    }
-
-    static func firstNumber(in value: String) -> Double? {
-        let pattern = #"[-+]?[0-9][0-9,]*(?:\.[0-9]+)?"#
-        guard let match = value.range(of: pattern, options: .regularExpression) else {
-            return nil
-        }
-        return Double(value[match].replacingOccurrences(of: ",", with: ""))
-    }
 }
