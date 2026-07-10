@@ -107,6 +107,17 @@ final class AntigravityTokenCacheTests: XCTestCase {
         XCTAssertNil(files.files[AntigravityAuthStore.cachePath])
     }
 
+    func testCacheWithEmptyAccessTokenIsDiscardedForCurrentLogin() {
+        let files = FakeFiles()
+        let store = makeStore(files: files)
+        let source = AntigravityKeychainToken(accessToken: nil, refreshToken: "refresh", expiry: nil)
+        store.cacheToken(" \n", expiresIn: 7_200, sourceRefreshToken: "refresh")
+
+        XCTAssertNotNil(files.files[AntigravityAuthStore.cachePath])
+        XCTAssertNil(store.loadCachedToken(matching: source))
+        XCTAssertNil(files.files[AntigravityAuthStore.cachePath])
+    }
+
     func testUnreadableCacheIsIgnoredForCurrentLogin() {
         let store = makeStore(files: UnreadableAntigravityCacheFiles())
         let source = AntigravityKeychainToken(accessToken: nil, refreshToken: "refresh", expiry: nil)

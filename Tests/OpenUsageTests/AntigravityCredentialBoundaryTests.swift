@@ -82,6 +82,39 @@ final class AntigravityCredentialBoundaryTests: XCTestCase {
         XCTAssertNotNil(files.files[AntigravityAuthStore.cachePath], "a transient Keychain error must not erase the cache")
     }
 
+    func testMatchingCacheIsUsedForCurrentReadableLoginWithoutOAuthRefresh() async {
+        let files = boundCache(
+            sourceRefreshToken: "current-account-refresh",
+            accessToken: "current-account-cached-access"
+        )
+        let routing = RoutingHTTPClient { request in
+            if request.url.host == "oauth2.googleapis.com" {
+                XCTFail("a valid cache bound to the current login must avoid an OAuth refresh")
+                return HTTPResponse(statusCode: 500, headers: [:], body: Data())
+            }
+            if request.url.path.contains("retrieveUserQuotaSummary") {
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"groups":[]}"#.utf8))
+            }
+            return HTTPResponse(statusCode: 503, headers: [:], body: Data())
+        }
+        let currentLogin = keychainToken(
+            accessToken: "expired-current-account-access",
+            refreshToken: "current-account-refresh",
+            expiry: "2000-01-01T00:00:00Z"
+        )
+        let provider = makeProvider(keychain: FakeKeychain(currentLogin), files: files, http: routing)
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertNil(snapshot.errorCategory)
+        XCTAssertFalse(routing.requests.contains { $0.url.host == "oauth2.googleapis.com" })
+        let cloudAuthorizations = routing.requests
+            .filter { $0.url.host != "oauth2.googleapis.com" }
+            .compactMap { $0.headers["Authorization"] }
+        XCTAssertFalse(cloudAuthorizations.isEmpty)
+        XCTAssertEqual(Set(cloudAuthorizations), ["Bearer current-account-cached-access"])
+    }
+
     func testAccountSwitchRejectsOldCacheAndRefreshesCurrentLogin() async {
         let files = boundCache(sourceRefreshToken: "old-account-refresh", accessToken: "old-account-access")
         let routing = RoutingHTTPClient { request in
