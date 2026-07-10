@@ -24,7 +24,9 @@ It also reports **crashes**, so we can find and fix the bugs that make the app q
 
 OpenUsage primarily reads credentials that provider tools already keep on your Mac. When it writes a
 user-supplied API key or saves a refreshed credential, the file is replaced atomically and restricted to
-your macOS account (owner read and write only).
+your macOS account (owner read and write only). Antigravity's short-lived refreshed-token cache is tied
+to the current Keychain login using a one-way fingerprint; the refresh credential itself is not copied.
+The cache is never used after logout, an account change, or while Keychain access is unavailable.
 
 ## Other network requests
 

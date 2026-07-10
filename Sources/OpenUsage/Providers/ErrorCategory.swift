@@ -14,6 +14,8 @@ enum ErrorCategory: String, Sendable, CaseIterable, Codable {
     case authExpired = "auth_expired"
     /// Auth is structurally wrong rather than stale (bad payload, misconfigured OAuth URL, unsupported key).
     case authInvalid = "auth_invalid"
+    /// Local credential material exists, but its file, database, or Keychain entry could not be read.
+    case credentialAccess = "credential_access"
     /// The request never completed (transport / connection failure).
     case network = "network"
     /// A response came back but could not be parsed / a required field was missing.
@@ -221,6 +223,8 @@ extension AntigravityError: CategorizedError {
     var errorCategory: ErrorCategory {
         switch self {
         case .notSignedIn: .notLoggedIn
+        case .credentialStoreUnreadable: .credentialAccess
+        case .invalidCredentialData: .authInvalid
         case .authExpired: .authExpired
         case .unavailable: .network
         }

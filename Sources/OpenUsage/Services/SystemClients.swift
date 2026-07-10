@@ -19,11 +19,23 @@ struct ProcessEnvironmentReader: EnvironmentReading {
 
 protocol TextFileAccessing: Sendable {
     func exists(_ path: String) -> Bool
+    /// Read a UTF-8 file when it exists. `nil` means the path is absent; permission, encoding, and
+    /// other failures still throw so credential callers do not confuse broken storage with logout.
+    func readTextIfPresent(_ path: String) throws -> String?
     func readText(_ path: String) throws -> String
     func writeText(_ path: String, _ text: String) throws
     /// Remove the file at `path`. A missing file is not an error — the caller wants the key gone, and
     /// it already is. Used by the in-app API-key editor's Remove / Clear-override actions.
     func remove(_ path: String) throws
+}
+
+extension TextFileAccessing {
+    /// Compatibility path for test doubles. The production accessor classifies the read error directly
+    /// so it does not have an exists-then-read race.
+    func readTextIfPresent(_ path: String) throws -> String? {
+        guard exists(path) else { return nil }
+        return try readText(path)
+    }
 }
 
 struct LocalTextFileAccessor: TextFileAccessing {
@@ -38,6 +50,14 @@ struct LocalTextFileAccessor: TextFileAccessing {
 
     func readText(_ path: String) throws -> String {
         try String(contentsOfFile: expandHome(path), encoding: .utf8)
+    }
+
+    func readTextIfPresent(_ path: String) throws -> String? {
+        do {
+            return try readText(path)
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+            return nil
+        }
     }
 
     func writeText(_ path: String, _ text: String) throws {
@@ -127,7 +147,10 @@ struct SQLiteCLIAccessor: SQLiteAccessing {
     }
 
     func queryValue(path: String, sql: String) throws -> String? {
-        let result = try run(path: path, sql: sql)
+        // A normal sqlite3 open can create a missing database. Credential probes must be read-only and
+        // side-effect free, so absence returns nil before a process is launched.
+        guard try databaseExists(path) else { return nil }
+        let result = try run(path: path, sql: sql, readOnly: true)
         guard result.succeeded else {
             throw SQLiteError.queryFailed(result.stderr)
         }
@@ -142,19 +165,29 @@ struct SQLiteCLIAccessor: SQLiteAccessing {
         }
     }
 
-    private func run(path: String, sql: String) throws -> ProcessResult {
-        try processRunner.run(
+    private func run(path: String, sql: String, readOnly: Bool = false) throws -> ProcessResult {
+        var arguments = ["-batch", "-noheader"]
+        if readOnly { arguments.append("-readonly") }
+        arguments += [
+            "-cmd", ".timeout 1000",
+            expandHome(path),
+            sql
+        ]
+        return try processRunner.run(
             executable: "/usr/bin/sqlite3",
-            arguments: [
-                "-batch",
-                "-noheader",
-                "-cmd", ".timeout 1000",
-                expandHome(path),
-                sql
-            ],
+            arguments: arguments,
             environment: [:],
             timeout: 5
         )
+    }
+
+    private func databaseExists(_ path: String) throws -> Bool {
+        do {
+            _ = try FileManager.default.attributesOfItem(atPath: expandHome(path))
+            return true
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+            return false
+        }
     }
 }
 

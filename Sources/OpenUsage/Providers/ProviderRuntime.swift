@@ -42,3 +42,8 @@ protocol ProviderRuntime: AnyObject {
 func loadOffMainActor<T: Sendable>(_ load: @escaping @Sendable () -> T) async -> T {
     await Task.detached(priority: .utility, operation: load).value
 }
+
+/// Throwing counterpart for blocking credential reads that distinguish absence from access failure.
+func loadOffMainActor<T: Sendable>(_ load: @escaping @Sendable () throws -> T) async throws -> T {
+    try await Task.detached(priority: .utility, operation: load).value
+}
