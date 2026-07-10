@@ -7,6 +7,10 @@ extension LayoutStore {
 
     func isPinned(_ descriptorID: String) -> Bool { pinnedMetricIDs.contains(descriptorID) }
 
+    func togglePin(_ descriptorID: String) {
+        setPinned(!isPinned(descriptorID), for: descriptorID)
+    }
+
     var pinnedCount: Int { pinnedMetricIDs.count }
 
     func pinnedCount(forProvider providerID: String) -> Int {

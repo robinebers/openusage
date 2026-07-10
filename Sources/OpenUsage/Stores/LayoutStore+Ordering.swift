@@ -1,4 +1,8 @@
 extension LayoutStore {
+    func metricOrder(for providerID: String) -> [String] {
+        metricOrderByProvider[providerID] ?? []
+    }
+
     static func mergingMissingMetrics(into ordered: [String], previous: [String]) -> [String] {
         let orderedSet = Set(ordered)
         var result: [String] = []

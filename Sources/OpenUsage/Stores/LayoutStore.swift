@@ -37,7 +37,7 @@ final class LayoutStore {
     /// Provider IDs whose dashboard cards are currently opened with their expanded metrics visible.
     /// Unlike hover and drag state, this is a user preference: if someone likes Codex open, it should
     /// stay open across popover closes and app restarts.
-    var expandedProviderIDs: Set<String>
+    private(set) var expandedProviderIDs: Set<String>
 
     /// The three transient popover pills, each an auto-clearing `TransientNotice` (was three copy-pasted
     /// value+trigger+clearTask machines). The public `pinLimitNotice`/`shareConfirmation`/
@@ -351,10 +351,6 @@ final class LayoutStore {
         }
     }
 
-    func togglePin(_ descriptorID: String) {
-        setPinned(!isPinned(descriptorID), for: descriptorID)
-    }
-
     private func persistPins() {
         persistence.savePins(pinnedMetricIDs)
     }
@@ -367,8 +363,21 @@ final class LayoutStore {
         persistence.saveExpandOnEnable(defaultExpandedOnEnableIDs)
     }
 
-    func persistExpandedProviders() {
+    private func persistExpandedProviders() {
         persistence.saveExpandedProviders(expandedProviderIDs)
+    }
+
+    @discardableResult
+    func setProviderExpanded(_ expanded: Bool, for providerID: String) -> Bool {
+        guard registry.provider(id: providerID) != nil else { return false }
+        guard expandedProviderIDs.contains(providerID) != expanded else { return false }
+        if expanded {
+            expandedProviderIDs.insert(providerID)
+        } else {
+            expandedProviderIDs.remove(providerID)
+        }
+        persistExpandedProviders()
+        return true
     }
 
     // MARK: - Mutations
@@ -474,10 +483,6 @@ final class LayoutStore {
 
     private func persistSeededDefaults(_ ids: Set<String>) {
         persistence.saveSeededDefaults(ids)
-    }
-
-    func metricOrder(for providerID: String) -> [String] {
-        metricOrderByProvider[providerID] ?? []
     }
 
     private func syncPlacedOrder(persistChanges: Bool = true) {

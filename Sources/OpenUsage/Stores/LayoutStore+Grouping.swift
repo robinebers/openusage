@@ -25,14 +25,14 @@ extension LayoutStore {
         placed.contains { $0.descriptorID == descriptorID }
     }
 
-    /// Whether any enabled provider ships the local spend tiles — the capability gate for the
+    /// Whether any enabled provider ships the spend-history tiles — the capability gate for the
     /// Total Spend card. Keyed off the registry's descriptors, not off refreshed data, so the card
     /// can show its "No spend data" state on a fresh morning instead of vanishing.
     var hasSpendCapableProvider: Bool {
         !spendCapableProviders.isEmpty
     }
 
-    /// Enabled providers that ship the local spend tiles (`WidgetDescriptor.spendTiles`), in the
+    /// Enabled providers that ship the spend-history tiles (`WidgetDescriptor.spendTiles`), in the
     /// user's provider order — the exact set the Total Spend card aggregates. Deliberately *not*
     /// `displayGroups`: a provider whose every metric is hidden in Customize still spends money and
     /// must still count, and look-alike dollar rows from other providers (OpenRouter's API-spend
@@ -138,19 +138,6 @@ extension LayoutStore {
 
     func isProviderExpanded(_ providerID: String) -> Bool {
         expandedProviderIDs.contains(providerID)
-    }
-
-    @discardableResult
-    func setProviderExpanded(_ expanded: Bool, for providerID: String) -> Bool {
-        guard registry.provider(id: providerID) != nil else { return false }
-        guard expandedProviderIDs.contains(providerID) != expanded else { return false }
-        if expanded {
-            expandedProviderIDs.insert(providerID)
-        } else {
-            expandedProviderIDs.remove(providerID)
-        }
-        persistExpandedProviders()
-        return true
     }
 
 }
