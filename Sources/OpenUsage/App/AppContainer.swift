@@ -10,14 +10,14 @@ final class AppContainer {
     let layout: LayoutStore
     let dataStore: WidgetDataStore
     /// Single source of truth for which providers the user has turned off. Both stores consult it (via
-    /// injected closures) and the Providers settings tab drives it.
+    /// injected closures) and the Customize provider list drives it.
     let enablement: ProviderEnablementStore
-    /// Providers that need a user-supplied API key (OpenRouter today), conforming to `APIKeyManaging`.
-    /// Settings ▸ API Keys lists these and writes key changes through the capability. Empty when no
-    /// installed provider needs a user key, in which case the section hides itself.
+    /// Providers that need a user-supplied API key (currently OpenRouter and Z.ai), conforming to
+    /// `APIKeyManaging`. The matching provider detail renders the shared editor and writes changes
+    /// through this capability.
     let apiKeyProviders: [any APIKeyManaging]
-    /// Quota pace notification preferences (master + three triggers). Drives the Settings section and is
-    /// read by `WidgetDataStore.evaluateNotifications`.
+    /// Quota pace notification preferences (three independent triggers). Drives the Settings section
+    /// and is read by `WidgetDataStore.evaluateNotifications`.
     let notificationSettings: NotificationSettingsStore
     /// Anonymous, opt-out usage telemetry (daily rollups). Exposed so Settings can toggle it and the
     /// app-termination hook can flush any queued events.
@@ -94,8 +94,8 @@ final class AppContainer {
             onboarding: onboarding
         )
         // Providers added by an update get the same credential detection on their first launch — enabled
-        // only when the user actually has the tool. Runs every launch; a no-op unless the registry has a
-        // provider this install has never seen (fresh installs were just baselined by FirstRunSeeder).
+        // only when credentials are available locally. Runs every launch; a no-op unless the registry has
+        // a provider this install has never seen (fresh installs were just baselined by FirstRunSeeder).
         self.newProviderTask = NewProviderSeeder.reconcileIfNeeded(
             providers: providers,
             enablement: enablement

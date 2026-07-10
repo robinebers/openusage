@@ -25,9 +25,10 @@ protocol ProviderRuntime: AnyObject {
     func refresh() async -> ProviderSnapshot
 
     /// Whether credentials for this provider already exist on this machine — a cheap, local-only probe
-    /// (files, keychain, SQLite; never the network). Used once, on a fresh install's first launch, by
-    /// `FirstRunSeeder` to enable exactly the providers the user actually has. Mirror the credential
-    /// sources `refresh()` reads, and run blocking loads via `loadOffMainActor`. Return `false` only
+    /// (files, databases, keychain, saved keys, and environment variables; never the network). Used once,
+    /// on a fresh install's first launch, by `FirstRunSeeder` to enable exactly the providers with local
+    /// credentials. Mirror the sources `refresh()` reads and run blocking loads via `loadOffMainActor`.
+    /// Return `false` only
     /// when those sources are proven absent; an unreadable/malformed local store should be logged and
     /// count conservatively as present so the enabled provider can surface its friendly refresh error.
     func hasLocalCredentials() async -> Bool

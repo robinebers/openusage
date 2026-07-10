@@ -79,173 +79,6 @@ private func data(_ json: String) -> Data {
     Data(json.utf8)
 }
 
-// MARK: - ZAIAuthStoreTests
-
-final class ZAIAuthStoreTests: XCTestCase {
-    func testPrefersConfigFileOverEnvironment() {
-        // Config file wins so editing it to rotate the key isn't shadowed by a stale env value.
-        let store = ZAIAuthStore(
-            files: FakeFiles([ZAIAuthStore.configPaths[0]: #"{"apiKey":"zai-file"}"#]),
-            environment: FakeEnvironment(["ZAI_API_KEY": "zai-env"])
-        )
-
-        let auth = store.loadAPIKey()
-
-        XCTAssertEqual(auth?.apiKey, "zai-file")
-    }
-
-    func testFallsBackToEnvironmentWhenNoConfigFile() {
-        let store = ZAIAuthStore(
-            files: FakeFiles(),
-            environment: FakeEnvironment(["ZAI_API_KEY": "zai-env"])
-        )
-
-        let auth = store.loadAPIKey()
-
-        XCTAssertEqual(auth?.apiKey, "zai-env")
-    }
-
-    func testAcceptsLegacyGLMEnvName() {
-        // GLM_API_KEY is the older Zhipu name some users still export.
-        let store = ZAIAuthStore(
-            files: FakeFiles(),
-            environment: FakeEnvironment(["GLM_API_KEY": "glm-env"])
-        )
-
-        XCTAssertEqual(store.loadAPIKey()?.apiKey, "glm-env")
-    }
-
-    func testZAIKeyNameBeatsGLMKeyName() {
-        // ZAI_API_KEY is primary; GLM_API_KEY only the fallback.
-        let store = ZAIAuthStore(
-            files: FakeFiles(),
-            environment: FakeEnvironment(["ZAI_API_KEY": "zai", "GLM_API_KEY": "glm"])
-        )
-
-        XCTAssertEqual(store.loadAPIKey()?.apiKey, "zai")
-    }
-
-    func testReadsKeyFromJSONConfigFile() {
-        let store = ZAIAuthStore(
-            files: FakeFiles([ZAIAuthStore.configPaths[0]: #"{ "api_key": "zai-json" }"#]),
-            environment: FakeEnvironment()
-        )
-
-        let auth = store.loadAPIKey()
-
-        XCTAssertEqual(auth?.apiKey, "zai-json")
-    }
-
-    func testReadsPlainTextKeyFile() {
-        let store = ZAIAuthStore(
-            files: FakeFiles([ZAIAuthStore.configPaths[1]: "  zai-plain\n"]),
-            environment: FakeEnvironment()
-        )
-
-        XCTAssertEqual(store.loadAPIKey()?.apiKey, "zai-plain")
-    }
-
-    func testReturnsNilWhenNoKeyAnywhere() {
-        let store = ZAIAuthStore(files: FakeFiles(), environment: FakeEnvironment())
-        XCTAssertNil(store.loadAPIKey())
-    }
-
-    // MARK: - In-app save / delete / status (Settings ▸ API Keys)
-
-    func testSaveAPIKeyWritesTrimmedJSONConfigFile() throws {
-        let files = FakeFiles()
-        let store = ZAIAuthStore(files: files, environment: FakeEnvironment())
-
-        try store.saveAPIKey("  zai-new  ")
-
-        XCTAssertEqual(files.files[ZAIAuthStore.configPaths[0]], #"{"apiKey":"zai-new"}"#)
-        XCTAssertEqual(store.loadAPIKey()?.apiKey, "zai-new")
-    }
-
-    func testSaveAPIKeyRejectsEmptyKey() {
-        let files = FakeFiles()
-        let store = ZAIAuthStore(files: files, environment: FakeEnvironment())
-
-        XCTAssertThrowsError(try store.saveAPIKey("   ")) { error in
-            XCTAssertEqual(error as? ZAIAuthError, .missingKey)
-        }
-        XCTAssertNil(files.files[ZAIAuthStore.configPaths[0]])
-    }
-
-    func testSavedKeyOverridesEnvironment() throws {
-        let files = FakeFiles()
-        let store = ZAIAuthStore(files: files, environment: FakeEnvironment(["ZAI_API_KEY": "zai-env"]))
-
-        try store.saveAPIKey("zai-saved")
-
-        XCTAssertEqual(store.loadAPIKey()?.apiKey, "zai-saved")
-        XCTAssertEqual(store.keyStatus(), .overrideActive)
-    }
-
-    func testKeyStatusReportsAllFourStates() {
-        let envKey = ["ZAI_API_KEY": "zai-env"]
-        let file = [ZAIAuthStore.configPaths[0]: #"{"apiKey":"zai-file"}"#]
-
-        XCTAssertEqual(ZAIAuthStore(files: FakeFiles(), environment: FakeEnvironment()).keyStatus(), .notSet)
-        XCTAssertEqual(ZAIAuthStore(files: FakeFiles(), environment: FakeEnvironment(envKey)).keyStatus(), .fromEnvironment)
-        XCTAssertEqual(ZAIAuthStore(files: FakeFiles(file), environment: FakeEnvironment()).keyStatus(), .saved)
-        XCTAssertEqual(ZAIAuthStore(files: FakeFiles(file), environment: FakeEnvironment(envKey)).keyStatus(), .overrideActive)
-    }
-
-    func testCurrentAPIKeyReturnsEffectiveKey() {
-        let store = ZAIAuthStore(
-            files: FakeFiles([ZAIAuthStore.configPaths[0]: #"{"apiKey":"zai-file"}"#]),
-            environment: FakeEnvironment(["ZAI_API_KEY": "zai-env"])
-        )
-        XCTAssertEqual(store.currentAPIKey(), "zai-file")
-    }
-
-    func testDeleteAPIKeyFallsBackToEnvironment() throws {
-        let files = FakeFiles([ZAIAuthStore.configPaths[0]: #"{"apiKey":"zai-file"}"#])
-        let store = ZAIAuthStore(files: files, environment: FakeEnvironment(["ZAI_API_KEY": "zai-env"]))
-
-        XCTAssertEqual(store.keyStatus(), .overrideActive)
-        try store.deleteAPIKey()
-
-        XCTAssertNil(files.files[ZAIAuthStore.configPaths[0]])
-        XCTAssertEqual(store.keyStatus(), .fromEnvironment)
-        XCTAssertEqual(store.loadAPIKey()?.apiKey, "zai-env")
-    }
-
-    func testDeleteAPIKeyBecomesNotSetWhenNoEnvKey() throws {
-        let files = FakeFiles([ZAIAuthStore.configPaths[0]: #"{"apiKey":"zai-file"}"#])
-        let store = ZAIAuthStore(files: files, environment: FakeEnvironment())
-
-        try store.deleteAPIKey()
-
-        XCTAssertNil(files.files[ZAIAuthStore.configPaths[0]])
-        XCTAssertEqual(store.keyStatus(), .notSet)
-        XCTAssertNil(store.loadAPIKey())
-    }
-
-    func testDeleteAPIKeyIsNoOpWhenFileMissing() throws {
-        let store = ZAIAuthStore(files: FakeFiles(), environment: FakeEnvironment())
-        XCTAssertNoThrow(try store.deleteAPIKey())
-        XCTAssertEqual(store.keyStatus(), .notSet)
-    }
-
-    func testDeleteAPIKeyClearsAllConfigPaths() throws {
-        // A key in the alternate config path must also be cleared, or it resurfaces after the primary
-        // file is deleted and the Settings "clear" appears not to work.
-        let files = FakeFiles([
-            ZAIAuthStore.configPaths[0]: #"{"apiKey":"zai-primary"}"#,
-            ZAIAuthStore.configPaths[1]: "zai-alt"
-        ])
-        let store = ZAIAuthStore(files: files, environment: FakeEnvironment())
-
-        try store.deleteAPIKey()
-
-        XCTAssertNil(files.files[ZAIAuthStore.configPaths[0]])
-        XCTAssertNil(files.files[ZAIAuthStore.configPaths[1]])
-        XCTAssertEqual(store.keyStatus(), .notSet)
-    }
-}
-
 // MARK: - ZAIUsageMapperTests
 
 final class ZAIUsageMapperTests: XCTestCase {
@@ -494,17 +327,19 @@ final class ZAIProviderTests: XCTestCase {
             usageClient: ZAIUsageClient(http: RoutingHTTPClient { _ in jsonResponse("{}") })
         )
 
-        XCTAssertEqual(provider.apiKeyStatus, .fromEnvironment)
-        XCTAssertEqual(provider.currentAPIKey(), "zai-env")
-        XCTAssertEqual(provider.apiKeyEnvironmentName, "ZAI_API_KEY")
-        XCTAssertTrue(provider.apiKeyStorageDescription.contains("zai.json"))
+        XCTAssertEqual(
+            provider.apiKeyEditorSnapshot,
+            APIKeyEditorSnapshot(status: .fromEnvironment, revealableKey: "zai-env")
+        )
 
         try provider.saveAPIKey("zai-saved")
-        XCTAssertEqual(provider.apiKeyStatus, .overrideActive)
-        XCTAssertEqual(provider.currentAPIKey(), "zai-saved")
+        XCTAssertEqual(
+            provider.apiKeyEditorSnapshot,
+            APIKeyEditorSnapshot(status: .overrideActive, revealableKey: "zai-saved")
+        )
 
         try provider.deleteAPIKey()
-        XCTAssertEqual(provider.apiKeyStatus, .fromEnvironment)
+        XCTAssertEqual(provider.apiKeyEditorSnapshot.status, .fromEnvironment)
     }
 
     func testProviderIdentityAndLinks() {

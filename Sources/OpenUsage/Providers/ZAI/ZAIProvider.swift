@@ -39,12 +39,24 @@ final class ZAIProvider: ProviderRuntime {
     }
 
     func hasLocalCredentials() async -> Bool {
-        // Same source as `refresh()`: a stored or environment-exported API key.
-        await loadOffMainActor { [authStore] in authStore.loadAPIKey() } != nil
+        // A proven miss across every config/env source is absent. A present unreadable or malformed
+        // config counts conservatively so the one-shot probe enables Z.ai and refresh can show the
+        // repairable storage error.
+        do {
+            return try await loadOffMainActor { [authStore] in try authStore.loadAPIKey() } != nil
+        } catch {
+            return true
+        }
     }
 
     func refresh() async -> ProviderSnapshot {
-        guard let auth = await loadOffMainActor({ [authStore] in authStore.loadAPIKey() }) else {
+        let auth: ZAIAuth?
+        do {
+            auth = try await loadOffMainActor { [authStore] in try authStore.loadAPIKey() }
+        } catch {
+            return ProviderSnapshot.error(provider: provider, error: error)
+        }
+        guard let auth else {
             return ProviderSnapshot.error(provider: provider, error: ZAIAuthError.missingKey)
         }
 
@@ -101,14 +113,9 @@ final class ZAIProvider: ProviderRuntime {
 }
 
 extension ZAIProvider: APIKeyManaging {
-    var apiKeyStatus: APIKeyStatus { authStore.keyStatus() }
-    func currentAPIKey() -> String? { authStore.currentAPIKey() }
+    var apiKeyEditorSnapshot: APIKeyEditorSnapshot { authStore.editorSnapshot() }
     func saveAPIKey(_ key: String) throws { try authStore.saveAPIKey(key) }
     func deleteAPIKey() throws { try authStore.deleteAPIKey() }
-    /// Where the in-app editor writes — the primary config file the auth store reads first.
-    var apiKeyStorageDescription: String { ZAIAuthStore.configPaths[0] }
-    /// The env var shown in the "Using ZAI_API_KEY from your environment" line.
-    var apiKeyEnvironmentName: String { ZAIAuthStore.environmentNames[0] }
 }
 
 private enum QuotaResult {

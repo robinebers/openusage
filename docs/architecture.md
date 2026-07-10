@@ -27,8 +27,8 @@ globals, which keeps the pieces testable in isolation.
 
 Each provider is a small module that conforms to `ProviderRuntime`. A refresh flows through three parts:
 
-1. **Auth store** — reads credentials that already exist on the machine (config files, keychain). OpenUsage
-   never asks the user to paste tokens.
+1. **Auth store** — reads credentials from the provider's existing local login (config files, keychain),
+   or from a user-supplied API key for providers such as OpenRouter and Z.ai.
 2. **Usage client** — makes the HTTP calls to the provider's API.
 3. **Mapper** — turns the provider's response into the app's own vocabulary: a `ProviderSnapshot`
    containing `MetricLine` values (`.progress`, `.text`, `.badge`).

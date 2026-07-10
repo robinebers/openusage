@@ -63,9 +63,12 @@ struct LocalTextFileAccessor: TextFileAccessing {
     }
 
     func remove(_ path: String) throws {
-        let expanded = expandHome(path)
-        guard FileManager.default.fileExists(atPath: expanded) else { return }
-        try FileManager.default.removeItem(atPath: expanded)
+        do {
+            try FileManager.default.removeItem(atPath: expandHome(path))
+        } catch let error as CocoaError
+            where error.code == .fileNoSuchFile || error.code == .fileReadNoSuchFile {
+            return
+        }
     }
 }
 

@@ -1,6 +1,6 @@
 import Foundation
 
-/// Turns on providers that arrived with an update — but only the ones the user actually has.
+/// Turns on providers that arrived with an update — but only when credentials are available locally.
 ///
 /// `FirstRunSeeder` handles the very first launch; this is its every-later-launch sibling. It diffs the
 /// registry against the store's known-provider set: anything never seen before gets the same local-only

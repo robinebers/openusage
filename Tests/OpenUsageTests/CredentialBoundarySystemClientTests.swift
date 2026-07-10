@@ -10,6 +10,14 @@ final class CredentialBoundarySystemClientTests: XCTestCase {
         XCTAssertNil(try LocalTextFileAccessor().readTextIfPresent(path))
     }
 
+    func testRemoveTreatsOnlyMissingFileAsSuccess() throws {
+        let path = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OpenUsageTests.missing.\(UUID().uuidString)")
+            .path
+
+        XCTAssertNoThrow(try LocalTextFileAccessor().remove(path))
+    }
+
     func testSQLiteQueryDoesNotLaunchProcessForMissingDatabase() throws {
         let runner = CountingProcessRunner()
         let accessor = SQLiteCLIAccessor(processRunner: runner)

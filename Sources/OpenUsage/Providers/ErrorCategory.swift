@@ -177,6 +177,8 @@ extension OpenRouterAuthError: CategorizedError {
     var errorCategory: ErrorCategory {
         switch self {
         case .missingKey: .notLoggedIn
+        case .credentialStoreUnreadable: .credentialAccess
+        case .invalidCredentialData: .authInvalid
         case .invalidKey: .authInvalid
         case .saveFailed, .deleteFailed: .other
         }
@@ -197,6 +199,8 @@ extension ZAIAuthError: CategorizedError {
     var errorCategory: ErrorCategory {
         switch self {
         case .missingKey: .notLoggedIn
+        case .credentialStoreUnreadable: .credentialAccess
+        case .invalidCredentialData: .authInvalid
         case .invalidKey: .authInvalid
         case .saveFailed, .deleteFailed: .other
         }

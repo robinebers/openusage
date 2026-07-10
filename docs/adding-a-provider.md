@@ -8,19 +8,22 @@ pieces below make sense.
 A provider is a small Swift module under `Sources/OpenUsage/Providers/<Name>/` that conforms to
 `ProviderRuntime`. It has three parts:
 
-- an **auth store** that reads credentials already on the user's machine (config files, keychain),
+- an **auth store** that reads credentials from the provider's existing local login, or from a saved or
+  environment-provided API key,
 - a **usage client** that calls the provider's API,
 - a **mapper** that turns the response into the app's metric vocabulary.
 
-OpenUsage never asks the user to paste a token — if the provider's own CLI or app has already logged in,
-OpenUsage reads those existing credentials.
+OpenUsage reuses a provider's existing local login whenever one is available. If the provider has no
+companion CLI or app to reuse, it can opt into OpenUsage's per-provider API-key editor instead; see
+[User-supplied API keys](#user-supplied-api-keys).
 
 Besides `refresh()`, every provider implements `hasLocalCredentials()` — a cheap, local-only check
-(files, keychain; never the network) for whether those credentials exist at all. A fresh install probes
-it once to turn on exactly the providers the user actually has (see `FirstRunSeeder`), and existing
+(files, databases, keychain, saved keys, and environment variables; never the network) for whether
+those credentials exist at all. A fresh install probes
+it once to turn on exactly the providers with credentials available locally (see `FirstRunSeeder`), and existing
 installs probe it once on the first launch after your provider ships (see `NewProviderSeeder`) — so
-implementing it correctly is what gets the new provider auto-enabled for the users who actually have
-the tool (see [Which Providers Are On](provider-enablement.md)). Mirror the same credential sources
+implementing it correctly is what gets the new provider auto-enabled when credentials are available
+locally (see [Which Providers Are On](provider-enablement.md)). Mirror the same credential sources
 `refresh()` reads, and run blocking loads via `loadOffMainActor`. The shared load must distinguish a
 credential that is genuinely absent from one that exists but cannot be read or parsed: return `nil` (or
 an empty candidate list) only for proven absence, and throw after logging a safe source-only diagnostic
@@ -83,17 +86,22 @@ factory only when there is no typed error, and never return stale or empty data 
 ## User-supplied API keys
 
 Most providers read credentials already on the machine (a companion CLI/app's session, the keychain).
-A provider with nothing local to read — OpenRouter is the first — conforms to `APIKeyManaging` so the
-in-app **Settings → API Keys** card manages its key with no per-provider UI work:
+A provider with nothing reusable — currently OpenRouter and Z.ai — conforms to `APIKeyManaging`. Its
+**Customize → provider → API Key** section then manages the key without a provider-specific view:
 
-- The auth store exposes a four-state `keyStatus()` (`notSet` / `fromEnvironment` / `saved` /
-  `overrideActive`), a `currentAPIKey()` for the reveal toggle, and `saveAPIKey(_:)` / `deleteAPIKey()`
-  that write to a config file the auth store already reads. Config-file precedence over the env var is
-  what makes a saved key an override for free.
-- The provider conforms by delegating those to its auth store, and reports its storage path and env
-  name for the card's copy.
-- `AppContainer` collects every `APIKeyManaging` provider into `apiKeyProviders`, which the card
-  lists. Add the provider to the registry as usual and the card picks it up.
+- The auth store exposes one atomic `APIKeyEditorSnapshot` (source status plus revealable key) and
+  `saveAPIKey(_:)` / `deleteAPIKey()` operations that write to a config file it already reads.
+  Config-file precedence over the environment makes a saved key an override for free. A config that
+  cannot be read or parsed logs only its path and records `savedKeyError`; reveal returns no fallback
+  key under that status, so the editor never mislabels an environment or alternate-file fallback.
+- The refresh load is throwing: missing files and blank environment values are absent, while unreadable
+  and malformed present files become friendly typed errors. Continue through the declared config/env
+  sources first — any valid fallback wins, and the stored boundary error surfaces only when no usable
+  key loads. The one-shot `hasLocalCredentials()` probe treats that thrown case conservatively as present.
+- The provider conforms by delegating those operations to its auth store.
+- `AppContainer` collects every `APIKeyManaging` provider into `apiKeyProviders`; the matching
+  provider detail displays the editor automatically. Add the provider to the registry as usual and
+  the Customize screen picks it up.
 
 Persist the key to a file the auth store already checks (don't introduce a parallel store), so the
 file remains the source of truth and a user can still edit it by hand.

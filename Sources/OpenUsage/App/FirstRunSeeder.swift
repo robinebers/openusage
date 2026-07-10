@@ -1,14 +1,15 @@
 import Foundation
 
-/// Seeds a fresh install's enabled providers so the first launch shows only the tools the user
-/// actually has, instead of every provider OpenUsage knows about.
+/// Seeds a fresh install's enabled providers so the first launch shows only providers with credentials
+/// available locally, instead of every provider OpenUsage knows about.
 ///
 /// Two steps, both on the first launch only (existing installs keep their all-on legacy default and
 /// are never touched):
 /// 1. **Synchronously** switch `ProviderEnablementStore` into enabled-list mode with the established
 ///    fallback set (Claude, Codex, Cursor), so the dashboard and menu bar never flash all providers.
-/// 2. **Asynchronously** probe every provider's `hasLocalCredentials()` (local files/keychain only, no
-///    network) and replace the fallback with exactly the detected set — unless nothing was detected
+/// 2. **Asynchronously** probe every provider's `hasLocalCredentials()` (local files, databases,
+///    Keychain, saved keys, and environment variables only; no network) and replace the fallback with
+///    exactly the detected set — unless nothing was detected
 ///    (keep the fallback) or the user already touched the toggles while the probe ran (their choice wins).
 @MainActor
 enum FirstRunSeeder {
@@ -52,7 +53,7 @@ enum FirstRunSeeder {
 
     /// The shared seed→probe→replace sequence behind both first-run seeding and the "Reset All" reseed:
     /// synchronously snap the enabled set to the `fallbackProviderIDs` intersected with the known
-    /// providers (so the UI never waits on the probe), then off the main actor detect installed tools and
+    /// providers (so the UI never waits on the probe), then detect providers with local credentials and
     /// replace the fallback with exactly the detected set. The guard encodes two policies that must stay
     /// together: a toggle the user flipped during the (brief, local-only) probe wins over detection, and
     /// an empty detection keeps the fallback. Returns the detection task so callers/tests can await it.
@@ -73,9 +74,10 @@ enum FirstRunSeeder {
         }
     }
 
-    /// Local-only credential probe across every provider: the set whose `hasLocalCredentials()` (config
-    /// files/keychain, never the network) reports a login on this machine. Shared by first-run seeding,
-    /// `NewProviderSeeder`, and the Customize "Reset All" reseed so all detect installed tools the same way.
+    /// Local-only credential probe across every provider: the set whose `hasLocalCredentials()` reports
+    /// a usable or repairable local source (files, databases, Keychain, saved keys, or environment
+    /// variables; never the network). Shared by first-run seeding, `NewProviderSeeder`, and the Customize
+    /// "Reset All" reseed so all detect providers the same way.
     ///
     /// Probes run concurrently — the same MainActor-safe fan-out as `WidgetDataStore.refreshAll` (one
     /// `Task {}` per provider; the overlap happens at the off-main-actor loads inside each probe). A

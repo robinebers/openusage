@@ -2,10 +2,11 @@ import SwiftUI
 import AppKit
 
 /// The per-provider API-key card shown in a provider's Customize detail (since key management moved out
-/// of a shared Settings list into each provider's detail). A status dot + Edit/Add button; expanding
-/// reveals the native macOS key field with a clear button and an eye beside it: read-only by default,
-/// showing a muted source hint; the eye reveals the real key; "Override With a Custom Key" flips the
-/// same field to editable for a new key; a leading clear button clears a saved/override key.
+/// of a shared Settings list into each provider's detail). A status dot and Add/Manage/Fix button
+/// expand the native macOS key field with a clear button and an eye beside it: read-only by default,
+/// showing a muted source hint; the eye reveals the real key when the saved source is healthy;
+/// "Override With a Custom Key" flips the same field to editable for a new key; a leading clear
+/// button clears a saved/override key.
 ///
 /// A saved key writes to the config file the auth store already reads, and config > env — so "save" is
 /// also "override the env key", and clearing a saved override falls back to the env key or to none.
@@ -22,7 +23,7 @@ struct APIKeysSection: View {
     /// dot stays truthful without re-reading files on every render.
     @State private var status: APIKeyStatus = .notSet
 
-    // Transient editor state. Reset when the editor opens or a save/clear commits.
+    // Transient editor state. Reset whenever the editor opens or closes, or a save/clear commits.
     @State private var revealDisplay = false
     @State private var revealInput = false
     @State private var overrideChecked = false
@@ -30,7 +31,7 @@ struct APIKeysSection: View {
     @State private var revealedKey: String?
     @State private var actionError: String?
 
-    private static let inputPlaceholder = "sk-or-v1-…"
+    private static let inputPlaceholder = "Enter API Key"
 
     var body: some View {
         VStack(alignment: .leading, spacing: density.headerToCardSpacing) {
@@ -50,7 +51,7 @@ struct APIKeysSection: View {
             // background can't poke out of the card's rounded bottom.
             .clipShape(Theme.cardShape)
         }
-        .onAppear { status = provider.apiKeyStatus }
+        .onAppear { refreshStatus() }
     }
 
     // MARK: - Rows
@@ -62,7 +63,7 @@ struct APIKeysSection: View {
             Text(provider.provider.displayName)
             Spacer(minLength: 8)
             statusDot
-            Button(isOpen ? "Done" : (status == .notSet ? "Add" : "Edit")) {
+            Button(isOpen ? "Done" : (status == .notSet ? "Add" : (status == .savedKeyError ? "Fix" : "Manage"))) {
                 toggleExpand()
             }
             .buttonStyle(.bordered)
@@ -72,11 +73,23 @@ struct APIKeysSection: View {
         .padding(.vertical, density.controlRowPadding)
     }
 
-    /// The dot is binary, never a palette: red when no key is set, green when a key is usable (from
-    /// the environment, saved, or overriding the env). It's the row's only status signal.
+    /// The dot is binary, never a palette: red when no key is set or a saved config needs attention,
+    /// green when a key source is healthy. It's the row's only collapsed status signal.
     private var statusDot: some View {
-        let color = status == .notSet ? Color(nsColor: .systemRed) : Color(nsColor: .systemGreen)
-        return Circle().fill(color).frame(width: 6, height: 6)
+        let needsAttention = status == .notSet || status == .savedKeyError
+        let color = needsAttention ? Color(nsColor: .systemRed) : Color(nsColor: .systemGreen)
+        return Circle()
+            .fill(color)
+            .frame(width: 6, height: 6)
+            .accessibilityLabel(statusAccessibilityLabel)
+    }
+
+    private var statusAccessibilityLabel: String {
+        switch status {
+        case .notSet: "API key not set"
+        case .savedKeyError: "Saved key needs attention"
+        case .fromEnvironment, .saved, .overrideActive: "API key connected"
+        }
     }
 
     // MARK: - Editor
@@ -100,6 +113,14 @@ struct APIKeysSection: View {
                     Toggle("Override With a Custom Key", isOn: $overrideChecked)
                         .toggleStyle(.checkbox)
                         .font(.caption)
+                }
+            } else if status == .savedKeyError {
+                // The stored source is indeterminate, so never reveal a lower-priority fallback under
+                // the saved-key label. Offer direct replacement or an explicit clear-and-fall-back path.
+                keyField(editable: true)
+                HStack(spacing: 8) {
+                    primaryButton("Replace", disabled: !hasInput) { save() }
+                    ghostButton("Clear Saved Key") { remove() }
                 }
             } else {
                 // saved / overrideActive: a custom key is already set, so the override checkbox is
@@ -164,6 +185,7 @@ struct APIKeysSection: View {
         case .fromEnvironment: "From Your Environment"
         case .saved: "Saved in App"
         case .overrideActive: "Custom Key"
+        case .savedKeyError: "Saved Key Needs Attention"
         case .notSet: ""
         }
     }
@@ -188,11 +210,17 @@ struct APIKeysSection: View {
     // MARK: - Actions
 
     private func refreshStatus() {
-        status = provider.apiKeyStatus
+        let snapshot = provider.apiKeyEditorSnapshot
+        status = snapshot.status
+        if revealDisplay {
+            revealedKey = snapshot.revealableKey
+            if revealedKey == nil { revealDisplay = false }
+        }
     }
 
     private func toggleExpand() {
         if isOpen {
+            resetEditor()
             isOpen = false
         } else {
             isOpen = true
@@ -211,8 +239,15 @@ struct APIKeysSection: View {
     }
 
     private func toggleRevealDisplay() {
-        revealDisplay.toggle()
-        if revealDisplay { revealedKey = provider.currentAPIKey() }
+        if revealDisplay {
+            revealDisplay = false
+            revealedKey = nil
+            return
+        }
+        let snapshot = provider.apiKeyEditorSnapshot
+        status = snapshot.status
+        revealedKey = snapshot.revealableKey
+        revealDisplay = revealedKey != nil
     }
 
     private func save() {
@@ -236,6 +271,11 @@ struct APIKeysSection: View {
             refreshStatus()
             triggerRefresh()
         } catch {
+            // Clear can partially succeed across multiple configured paths. Re-resolve immediately so
+            // a deleted revealed key is not retained, and refresh against whichever source remains.
+            resetEditor()
+            refreshStatus()
+            triggerRefresh()
             actionError = error.localizedDescription
             AppLog.error(.auth, "API key delete failed for \(provider.provider.id): \(error.localizedDescription)")
         }
@@ -281,6 +321,7 @@ private struct APIKeyField: View {
                 }
             }
             .textFieldStyle(.roundedBorder)
+            .accessibilityLabel("API Key")
             fieldIcon(reveal ? "eye.slash" : "eye", action: onReveal, label: reveal ? "Hide" : "Show")
         }
     }
