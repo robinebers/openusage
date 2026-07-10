@@ -1,30 +1,24 @@
 import XCTest
 @testable import OpenUsage
 
-enum ClaudeLogUsageScannerTestFixtures {
-    /// Deterministic fixture pricing: input $10/M, output $20/M, cache write $12.5/M, read $1/M.
-    static func pricing() -> ModelPricing {
-        ModelPricing(
-            supplement: PricingSupplement(),
-            primary: PricingCatalog(entries: [
-                "claude-test-model": ModelRates(
-                    inputPerMillion: 10, outputPerMillion: 20,
-                    cacheWritePerMillion: 12.5, cacheReadPerMillion: 1,
-                    fastMultiplier: 2
-                )
-            ]),
-            secondary: PricingCatalog(entries: [:])
-        )
-    }
-}
-
 /// Line parsing, deduplication, and day aggregation for the native Claude log scanner — the
 /// dedup/validity fixtures are ported from ccusage's Claude adapter tests so the two agree on
 /// what counts.
 final class ClaudeLogUsageScannerTests: XCTestCase {
     private typealias Entry = ClaudeLogUsageScanner.Entry
 
-    let pricing = ClaudeLogUsageScannerTestFixtures.pricing()
+    /// Deterministic fixture pricing: input $10/M, output $20/M, cache write $12.5/M, read $1/M.
+    let pricing = ModelPricing(
+        supplement: PricingSupplement(),
+        primary: PricingCatalog(entries: [
+            "claude-test-model": ModelRates(
+                inputPerMillion: 10, outputPerMillion: 20,
+                cacheWritePerMillion: 12.5, cacheReadPerMillion: 1,
+                fastMultiplier: 2
+            )
+        ]),
+        secondary: PricingCatalog(entries: [:])
+    )
 
     private func localDay(_ iso: String) -> String {
         let date = OpenUsageISO8601.date(from: iso)!
