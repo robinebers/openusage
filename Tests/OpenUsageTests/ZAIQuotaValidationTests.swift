@@ -39,6 +39,16 @@ final class ZAIQuotaValidationMapperTests: XCTestCase {
         XCTAssertNotNil(lines.first { $0.label == "Session" })
         XCTAssertNil(lines.first { $0.label == "Weekly" })
     }
+
+    func testOnlyUnknownLimitsRemainForwardCompatibleNoData() throws {
+        let body = Data(
+            #"{"data":{"limits":[{"type":"FUTURE_LIMIT"},{"type":"TOKENS_LIMIT","unit":99,"number":1,"percentage":70}]}}"#.utf8
+        )
+
+        let lines = try ZAIUsageMapper.mapQuota(body)
+
+        XCTAssertNotNil(lines.first { $0.label == "Status" })
+    }
 }
 
 @MainActor

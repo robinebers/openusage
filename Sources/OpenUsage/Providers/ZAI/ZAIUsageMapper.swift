@@ -65,8 +65,8 @@ enum ZAIUsageMapper {
         // a multi-day window is the weekly meter. Z.ai reports both, and both are percentage meters.
         let tokenLimits = limits.filter { ($0["type"] as? String) == "TOKENS_LIMIT" || ($0["name"] as? String) == "TOKENS_LIMIT" }
         for entry in tokenLimits {
-            sawRecognizedLimit = true
             guard let window = try classifyTokenWindow(entry) else { continue }
+            sawRecognizedLimit = true
             switch window {
             case .session(let periodMs):
                 lines.append(try percentLine(entry, label: "Session", periodMs: periodMs))
