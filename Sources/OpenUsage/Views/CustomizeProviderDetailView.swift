@@ -28,6 +28,11 @@ struct CustomizeProviderDetailView: View {
     var body: some View {
         if let group = layout.customizeDetail(for: providerID) {
             VStack(alignment: .leading, spacing: density.sectionSpacing) {
+                if let account = container.claudeAccounts.record(forProviderID: providerID) {
+                    ClaudeAccountNameSection(account: account) { newName in
+                        container.renameClaudeAccount(id: account.id, to: newName)
+                    }
+                }
                 metricSections(group)
                     .simultaneousGesture(metricDragGesture())
                 if let keyProvider = container.apiKeyProviders.first(where: { $0.provider.id == providerID }) {
@@ -167,6 +172,39 @@ struct CustomizeProviderDetailView: View {
     private func makeLift(metricID: String, value: DragGesture.Value) -> ReorderLift? {
         let title = layout.customizeDetail(for: providerID)?.metrics.first { $0.id == metricID }?.title ?? ""
         return ReorderLift.make(id: metricID, payload: .customizeMetric(title: title), value: value, frames: rowFrames)
+    }
+}
+
+/// Rename field for an extra Claude account. The placeholder shows the auto-generated name (e.g.
+/// "Claude (3f9a2b1c)"); typing a name and committing it persists a custom name. The registry is built
+/// at launch, so the new name shows on the next relaunch. No tooltip (house rule).
+private struct ClaudeAccountNameSection: View {
+    let account: ClaudeAccountRecord
+    let onRename: (String) -> Void
+    @State private var name: String
+    @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
+
+    init(account: ClaudeAccountRecord, onRename: @escaping (String) -> Void) {
+        self.account = account
+        self.onRename = onRename
+        _name = State(initialValue: account.customName ?? "")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: density.headerToCardSpacing) {
+            Text("Account Name")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 8)
+            TextField(account.displayName, text: $name)
+                .textFieldStyle(.plain)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .onSubmit { onRename(name) }
+                .cardSurface()
+        }
+        // Commit on leave too, so a rename isn't lost when the user navigates back without pressing Return.
+        .onDisappear { onRename(name) }
     }
 }
 

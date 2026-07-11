@@ -29,6 +29,9 @@ final class AppContainer {
     /// One-time onboarding state (the first-run Customize hint card). Only ever marked pending by
     /// `FirstRunSeeder` on a fresh install, so existing installs never see the card.
     let onboarding: OnboardingStore
+    /// Additional Claude accounts detected on the machine (beyond the default `~/.claude` login). Exposed
+    /// so the Customize detail can rename an extra account. See the Claude multi-account note below.
+    let claudeAccounts: ClaudeAccountsStore
     /// The provider runtimes, kept so on-demand credential detection (the Customize "Reset All" reseed)
     /// can re-probe `hasLocalCredentials()` the same way first-run seeding does.
     private let providers: [ProviderRuntime]
@@ -55,8 +58,18 @@ final class AppContainer {
         // order is the default provider order (`LayoutStore.orderedProviderIDs` falls back to it, and
         // `resetToDefault` seeds it), so the dashboard, Customize sections, and the per-provider reset
         // menu all read this way.
-        let providers: [ProviderRuntime] = [
-            ClaudeProvider(),
+        // Claude multi-account: the default `~/.claude` login is always provider id "claude"; any extra
+        // accounts detected on the machine slot in right after it, each its own `ClaudeProvider` instance
+        // (id "claude.<uuid>"). Discovery runs synchronously here — a file stat plus one attributes-only
+        // keychain query, both fast and prompt-free — so the provider array is ready at init.
+        // ponytail: discovery runs at launch only; a newly-added account appears on the next relaunch.
+        let claudeAccounts = ClaudeAccountsStore()
+        let claudeAccountRecords = claudeAccounts.reconcile(
+            with: ClaudeAccountDiscovery().discover().filter { !$0.isDefault }
+        )
+        let extraClaudeProviders = claudeAccountRecords.map { ClaudeProvider(account: $0) }
+
+        let providers: [ProviderRuntime] = [ClaudeProvider()] + extraClaudeProviders + [
             CodexProvider(),
             CursorProvider(),
             AntigravityProvider(),
@@ -70,9 +83,26 @@ final class AppContainer {
         let apiKeyProviders = providers.compactMap { $0 as? any APIKeyManaging }
         let enablement = ProviderEnablementStore()
         let notificationSettings = NotificationSettingsStore()
+        // Extra Claude accounts mirror the default Claude instance's metric placement: Session / Weekly /
+        // Extra Usage enabled and always visible; Sonnet / Fable disabled by default (absent from the
+        // enabled set), pre-placed in the On Demand section only so they land there if a user enables
+        // them later. They are NOT pinned to the menu bar by default (only the primary account is). No
+        // spend tiles exist for extra accounts.
+        let extraClaudeMetricIDs = claudeAccountRecords.flatMap { record in
+            ["\(record.providerID).session", "\(record.providerID).weekly", "\(record.providerID).extra"]
+        }
+        let extraClaudeExpandedIDs = claudeAccountRecords.flatMap { record in
+            ["\(record.providerID).sonnet", "\(record.providerID).fable"]
+        }
         let layout = LayoutStore(
             registry: registry,
-            isProviderEnabled: { [enablement] in enablement.isEnabled($0) }
+            defaultMetricIDs: DefaultLayout.metricIDs + extraClaudeMetricIDs,
+            defaultExpandedMetricIDs: DefaultLayout.expandedMetricIDs + extraClaudeExpandedIDs,
+            isProviderEnabled: { [enablement] in enablement.isEnabled($0) },
+            // Resolve an extra Claude account's name on every render so a rename applies live everywhere the
+            // provider name shows. Reading the `@Observable` accounts store here makes SwiftUI (and the
+            // menu-bar strip's observation tracking) re-render on rename — no registry rebuild, no relaunch.
+            providerNameOverride: { [claudeAccounts] in claudeAccounts.record(forProviderID: $0)?.displayName }
         )
         let dataStore = WidgetDataStore(
             registry: registry,
@@ -102,6 +132,7 @@ final class AppContainer {
         )
         self.providers = providers
         self.onboarding = onboarding
+        self.claudeAccounts = claudeAccounts
         self.registry = registry
         self.enablement = enablement
         self.apiKeyProviders = apiKeyProviders
@@ -166,6 +197,13 @@ final class AppContainer {
     @discardableResult
     func reseedEnabledProviders() -> Task<Void, Never> {
         FirstRunSeeder.reseed(providers: providers, enablement: enablement)
+    }
+
+    /// Rename an extra Claude account. The new name is persisted immediately and applied live: the
+    /// `providerNameOverride` wired into `LayoutStore` resolves it on every render, so the dashboard card,
+    /// Customize lists, and menu-bar strip pick it up without a relaunch.
+    func renameClaudeAccount(id: UUID, to name: String) {
+        claudeAccounts.setCustomName(name, forID: id)
     }
 
     /// Drives live updates: refresh on launch, then again every refresh interval. Each pass honors the
