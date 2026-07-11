@@ -158,7 +158,7 @@ private struct MenuBarTextStrip: View {
     private func glyph(_ icon: IconSource) -> some View {
         if let mark = ProviderMarks.mark(for: icon.providerID) {
             ProviderIconShape(pathData: mark.path, inset: 0.04)
-                .fill(Color.black)
+                .fill(Color.black, style: FillStyle(eoFill: true))
                 .frame(width: Self.glyphSide, height: Self.glyphSide)
         } else {
             Circle().fill(Color.black).frame(width: Self.glyphSide - 1, height: Self.glyphSide - 1)

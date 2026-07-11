@@ -23,7 +23,7 @@ struct ProviderIcon: View {
     var body: some View {
         if let mark = ProviderMarks.mark(for: source.providerID) {
             ProviderIconShape(pathData: mark.path, inset: inset)
-                .fill(Theme.iconGray)
+                .fill(Theme.iconGray, style: FillStyle(eoFill: true))
         } else {
             Image(systemName: ProviderMarks.symbolFallback(for: source.providerID))
                 .foregroundStyle(Theme.iconGray)
@@ -92,6 +92,7 @@ enum ProviderMarks {
         case "cursor": return "cube"
         case "grok": return "bolt.fill"
         case "openrouter": return "point.3.connected.trianglepath.dotted"
+        case "kiro": return "k.circle"
         case "zai": return "z.signal"
         default: return "app.dashed"
         }
