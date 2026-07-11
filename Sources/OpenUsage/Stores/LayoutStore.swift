@@ -109,6 +109,11 @@ final class LayoutStore {
     private let defaultExpandedMetricIDs: [String]
     var defaultExpandedOnEnableIDs: Set<String>
     let isProviderEnabled: @MainActor (String) -> Bool
+    /// Live display-name override for a provider id, or `nil` to keep the registry's baked name. Backs
+    /// the Claude multi-account rename: the extra-account name is resolved on every render (reading the
+    /// `@Observable` accounts store) so a rename shows immediately without rebuilding the registry or
+    /// relaunching. Defaults to "no override" for tests and previews.
+    let providerNameOverride: @MainActor (String) -> String?
 
     init(
         registry: WidgetRegistry,
@@ -118,7 +123,8 @@ final class LayoutStore {
         migrationBaselineMetricIDs: [String] = DefaultLayout.migrationBaselineMetricIDs,
         defaultPinnedMetricIDs: [String] = DefaultLayout.pinnedMetricIDs,
         defaultExpandedMetricIDs: [String] = DefaultLayout.expandedMetricIDs,
-        isProviderEnabled: @escaping @MainActor (String) -> Bool = { _ in true }
+        isProviderEnabled: @escaping @MainActor (String) -> Bool = { _ in true },
+        providerNameOverride: @escaping @MainActor (String) -> String? = { _ in nil }
     ) {
         self.registry = registry
         let persistence = LayoutPersistence(defaults: defaults, storageKey: storageKey)
@@ -127,6 +133,7 @@ final class LayoutStore {
         self.defaultPinnedMetricIDs = defaultPinnedMetricIDs
         self.defaultExpandedMetricIDs = defaultExpandedMetricIDs
         self.isProviderEnabled = isProviderEnabled
+        self.providerNameOverride = providerNameOverride
 
         let initial = LayoutBootstrap.load(
             registry: registry,

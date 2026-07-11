@@ -1,5 +1,14 @@
 extension LayoutStore {
-    func provider(id: String) -> Provider? { registry.provider(id: id) }
+    func provider(id: String) -> Provider? { registry.provider(id: id).map(applyingNameOverride) }
+
+    /// Swap in a live display-name override (Claude multi-account rename) when one exists, else return the
+    /// registry's baked provider unchanged. The single seam every provider-returning accessor funnels
+    /// through, so the whole UI — dashboard cards, Customize list/detail, menu-bar strip — reads the
+    /// renamed account without a relaunch.
+    private func applyingNameOverride(_ provider: Provider) -> Provider {
+        guard let name = providerNameOverride(provider.id) else { return provider }
+        return Provider(id: provider.id, displayName: name, icon: provider.icon, links: provider.links)
+    }
 
     func descriptor(for widget: PlacedWidget) -> WidgetDescriptor? {
         registry.descriptor(id: widget.descriptorID)
@@ -49,7 +58,7 @@ extension LayoutStore {
     }
 
     private func orderedProviders() -> [Provider] {
-        orderedProviderIDs().compactMap { registry.provider(id: $0) }
+        orderedProviderIDs().compactMap { registry.provider(id: $0).map(applyingNameOverride) }
     }
 
     /// Enabled (and provider-enabled) widgets grouped by provider, in the user's provider order, each
@@ -116,7 +125,7 @@ extension LayoutStore {
     /// provider is disabled so L2 can render dimmed-but-editable. nil for an unknown provider or one
     /// with no metrics — the per-provider slice of `customizeGroups` without the enablement guard.
     func customizeDetail(for providerID: String) -> ProviderMetrics? {
-        guard let provider = registry.provider(id: providerID) else { return nil }
+        guard let provider = registry.provider(id: providerID).map(applyingNameOverride) else { return nil }
         let metrics = orderedSupportedMetrics(for: providerID)
         guard !metrics.isEmpty else { return nil }
         return ProviderMetrics(

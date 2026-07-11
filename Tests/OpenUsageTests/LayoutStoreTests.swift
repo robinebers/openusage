@@ -20,6 +20,32 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertTrue(store.placed.isEmpty)
     }
 
+    // MARK: - Provider name override (live Claude account rename)
+
+    func testProviderNameOverrideAppliesToAllProviderAccessors() {
+        var overrides: [String: String] = ["claude": "Work Account"]
+        let store = LayoutStore(
+            registry: .mock,
+            defaults: makeDefaults("NameOverride"),
+            storageKey: "layout",
+            providerNameOverride: { overrides[$0] }
+        )
+
+        // Direct lookup, the L1 Customize list, and the L2 detail all resolve the override live.
+        XCTAssertEqual(store.provider(id: "claude")?.displayName, "Work Account")
+        XCTAssertEqual(store.customizeDetail(for: "claude")?.provider.displayName, "Work Account")
+        XCTAssertEqual(
+            store.customizeProviderRows.first { $0.provider.id == "claude" }?.provider.displayName,
+            "Work Account"
+        )
+        // A provider with no override keeps the registry's baked name.
+        XCTAssertEqual(store.provider(id: "codex")?.displayName, "Codex")
+
+        // A later rename is picked up on the next read — no rebuild, no relaunch.
+        overrides["claude"] = "Personal"
+        XCTAssertEqual(store.provider(id: "claude")?.displayName, "Personal")
+    }
+
     // MARK: - Undo (#603)
 
     func testUndoRestoresRemovedMetricToSamePosition() {
