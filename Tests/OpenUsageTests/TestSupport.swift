@@ -272,6 +272,10 @@ final class ServiceKeychain: KeychainAccessing, @unchecked Sendable {
     func writeGenericPasswordForCurrentUser(service: String, value: String) throws {
         currentUserValues[service] = value
     }
+
+    func genericPasswordServices(withPrefix prefix: String) throws -> [String] {
+        Set(values.keys).union(currentUserValues.keys).filter { $0.hasPrefix(prefix) }.sorted()
+    }
 }
 
 final class FakeHTTPClient: HTTPClient, @unchecked Sendable {

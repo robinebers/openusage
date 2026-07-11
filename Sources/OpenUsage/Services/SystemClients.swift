@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import Security
 
 protocol EnvironmentReading: Sendable {
     func value(for name: String) -> String?
@@ -211,6 +212,10 @@ protocol KeychainAccessing: Sendable {
     /// item under a known account name (e.g. Antigravity's `agy` token under service `gemini`,
     /// account `antigravity`) rather than the current user.
     func readGenericPassword(service: String, account: String) throws -> String?
+    /// Service names of every generic-password item whose service begins with `prefix`. Attributes-only
+    /// (never returns the secret data), so it enumerates without triggering an ACL/unlock prompt. Used by
+    /// Claude multi-account discovery to find keychain-stored logins under `Claude Code-credentials*`.
+    func genericPasswordServices(withPrefix prefix: String) throws -> [String]
 }
 
 extension KeychainAccessing {
@@ -227,6 +232,9 @@ extension KeychainAccessing {
     func readGenericPassword(service: String, account: String) throws -> String? {
         try readGenericPassword(service: service)
     }
+
+    /// Default for mocks that don't model enumeration: nothing to enumerate.
+    func genericPasswordServices(withPrefix prefix: String) throws -> [String] { [] }
 }
 
 struct SecurityKeychainAccessor: KeychainAccessing {
@@ -296,6 +304,28 @@ struct SecurityKeychainAccessor: KeychainAccessing {
     private func currentUserAccount() -> String {
         ProcessInfo.processInfo.environment["USER"]?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         ?? NSUserName()
+    }
+
+    // Attributes-only enumeration goes straight through the Security framework (not the `security` CLI,
+    // whose `dump-keychain` prompts): `kSecReturnAttributes` with no `kSecReturnData` returns each item's
+    // metadata without unlocking the secret, so no ACL prompt fires.
+    func genericPasswordServices(withPrefix prefix: String) throws -> [String] {
+        let query: [CFString: Any] = [
+            kSecClass: kSecClassGenericPassword,
+            kSecMatchLimit: kSecMatchLimitAll,
+            kSecReturnAttributes: true
+        ]
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        if status == errSecItemNotFound { return [] }
+        guard status == errSecSuccess else {
+            AppLog.warn(.keychain, "service enumeration failed (status \(status))")
+            throw KeychainError.readFailed("keychain enumeration failed (status \(status))")
+        }
+        guard let items = result as? [[String: Any]] else { return [] }
+        return items
+            .compactMap { $0[kSecAttrService as String] as? String }
+            .filter { $0.hasPrefix(prefix) }
     }
 }
 
