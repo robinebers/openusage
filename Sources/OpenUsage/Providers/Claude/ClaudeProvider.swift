@@ -3,7 +3,9 @@ import Foundation
 
 @MainActor
 final class ClaudeProvider: ProviderRuntime {
-    let provider = Provider(
+    /// The default (primary) Claude account — the singleton `ClaudeProvider()` uses this, id `"claude"`.
+    /// Additional accounts get their own `Provider` (id `"claude.<uuid>"`) built by `ClaudeAccountRecord`.
+    static let defaultProvider = Provider(
         id: "claude",
         displayName: "Claude",
         icon: .providerMark("claude"),
@@ -12,6 +14,12 @@ final class ClaudeProvider: ProviderRuntime {
             .init(label: "Dashboard", url: "https://claude.ai/settings/usage")
         ]
     )
+
+    let provider: Provider
+    /// Spend tiles (Today / Yesterday / Last 30 Days / Usage Trend) come from local session logs, which
+    /// the scanner merges across ALL config dirs and can't attribute per account — so only the default
+    /// instance shows them. Extra accounts show live-usage metrics only.
+    private let includeSpendTiles: Bool
 
     let authStore: ClaudeAuthStore
     let usageClient: ClaudeUsageClient
@@ -34,24 +42,52 @@ final class ClaudeProvider: ProviderRuntime {
         usageClient: ClaudeUsageClient = ClaudeUsageClient(),
         logUsageScanner: ClaudeLogUsageScanner = ClaudeLogUsageScanner(),
         now: @escaping @Sendable () -> Date = Date.init,
-        pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() }
+        pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() },
+        provider: Provider = ClaudeProvider.defaultProvider,
+        includeSpendTiles: Bool = true
     ) {
         self.authStore = authStore
         self.usageClient = usageClient
         self.logUsageScanner = logUsageScanner
         self.now = now
         self.pricing = pricing
+        self.provider = provider
+        self.includeSpendTiles = includeSpendTiles
+    }
+
+    /// An additional (non-default) Claude account: id `"claude.<uuid>"`, its own credential sources, and
+    /// live-usage metrics only (no local-log spend tiles — those can't be attributed per account).
+    convenience init(
+        account: ClaudeAccountRecord,
+        usageClient: ClaudeUsageClient = ClaudeUsageClient(),
+        logUsageScanner: ClaudeLogUsageScanner = ClaudeLogUsageScanner(),
+        now: @escaping @Sendable () -> Date = Date.init,
+        pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() }
+    ) {
+        self.init(
+            authStore: ClaudeAuthStore(account: account.scope),
+            usageClient: usageClient,
+            logUsageScanner: logUsageScanner,
+            now: now,
+            pricing: pricing,
+            provider: account.makeProvider(),
+            includeSpendTiles: false
+        )
     }
 
     var widgetDescriptors: [WidgetDescriptor] {
-        [
-            .percent(id: "claude.session", provider: provider, title: "Session", isSessionWindow: true),
-            .percent(id: "claude.weekly", provider: provider, title: "Weekly"),
-            .percent(id: "claude.sonnet", provider: provider, title: "Sonnet"),
-            .percent(id: "claude.fable", provider: provider, title: "Fable"),
-            .boundedDollars(id: "claude.extra", provider: provider, title: "Extra Usage", metricLabel: "Extra usage spent", limit: 100, valueWord: "spent"),
-            .usageTrend(provider: provider)
-        ] + WidgetDescriptor.spendTiles(provider: provider)
+        var descriptors: [WidgetDescriptor] = [
+            .percent(id: "\(provider.id).session", provider: provider, title: "Session", isSessionWindow: true),
+            .percent(id: "\(provider.id).weekly", provider: provider, title: "Weekly"),
+            .percent(id: "\(provider.id).sonnet", provider: provider, title: "Sonnet"),
+            .percent(id: "\(provider.id).fable", provider: provider, title: "Fable"),
+            .boundedDollars(id: "\(provider.id).extra", provider: provider, title: "Extra Usage", metricLabel: "Extra usage spent", limit: 100, valueWord: "spent")
+        ]
+        if includeSpendTiles {
+            descriptors.append(.usageTrend(provider: provider))
+            descriptors += WidgetDescriptor.spendTiles(provider: provider)
+        }
+        return descriptors
     }
 
     func hasLocalCredentials() async -> Bool {
@@ -158,8 +194,10 @@ final class ClaudeProvider: ProviderRuntime {
         }
 
         // Local spend tiles, scanned natively from Claude Code's session logs and priced through the
-        // shared pricing store. `scan` runs on the scanner actor, off the main actor.
-        if let scan = await logUsageScanner.scan(now: now(), pricing: pricing()) {
+        // shared pricing store. `scan` runs on the scanner actor, off the main actor. Only the default
+        // instance carries spend tiles — the scanner merges logs across all config dirs, so extra
+        // accounts can't be attributed a share and skip it entirely.
+        if includeSpendTiles, let scan = await logUsageScanner.scan(now: now(), pricing: pricing()) {
             SpendTileMapper.appendTokenUsage(
                 scan.series, to: &mapped.lines, now: now(),
                 unknownModelsByDay: scan.unknownModelsByDay,
