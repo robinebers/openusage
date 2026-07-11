@@ -3,6 +3,24 @@ import XCTest
 
 @MainActor
 final class GrokProviderTests: XCTestCase {
+    func testRefreshFormEncodesReservedCharactersInRequestBody() async throws {
+        let httpClient = RecordingHTTPClient { _ in
+            HTTPResponse(statusCode: 200, headers: [:], body: Data())
+        }
+        let client = GrokUsageClient(httpClient: httpClient)
+
+        _ = try await client.refreshToken("refresh token&=+/?%", clientID: "client id&=+/?%")
+
+        let request = try XCTUnwrap(httpClient.requests.first)
+        XCTAssertEqual(request.method, "POST")
+        XCTAssertEqual(request.headers["Content-Type"], "application/x-www-form-urlencoded")
+        XCTAssertEqual(
+            String(data: try XCTUnwrap(request.body), encoding: .utf8),
+            "grant_type=refresh_token&client_id=client%20id%26%3D%2B%2F%3F%25" +
+                "&refresh_token=refresh%20token%26%3D%2B%2F%3F%25"
+        )
+    }
+
     func testRefreshesExpiredTokenPersistsAuthAndFetchesUsage() async {
         let now = OpenUsageISO8601.date(from: "2026-02-02T00:00:00.000Z")!
         let files = FakeFiles([

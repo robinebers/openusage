@@ -15,6 +15,28 @@ final class AntigravityProviderTests: XCTestCase {
         return resetsAt
     }
 
+    func testGoogleRefreshFormEncodesReservedCharactersInRequestBody() async throws {
+        let http = FakeHTTPClient(response: HTTPResponse(
+            statusCode: 200,
+            headers: [:],
+            body: Data(#"{"access_token":"new-token","expires_in":3600}"#.utf8)
+        ))
+        let client = AntigravityUsageClient(lsHTTP: http, http: http)
+
+        _ = await client.refreshGoogleToken("refresh token&=+/?%")
+
+        let request = try XCTUnwrap(http.requests.first)
+        XCTAssertEqual(request.method, "POST")
+        XCTAssertEqual(request.headers["Content-Type"], "application/x-www-form-urlencoded")
+        XCTAssertEqual(
+            String(data: try XCTUnwrap(request.body), encoding: .utf8),
+            "client_id=\(AntigravityUsageClient.googleClientID)" +
+                "&client_secret=\(AntigravityUsageClient.googleClientSecret)" +
+                "&refresh_token=refresh%20token%26%3D%2B%2F%3F%25" +
+                "&grant_type=refresh_token"
+        )
+    }
+
     // MARK: - Mapper: pooling
 
     func testBuildLinesPoolsAndOrders() {

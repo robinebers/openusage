@@ -646,6 +646,26 @@ final class CodexProviderTests: XCTestCase {
 }
 
 final class CodexUsageClientRefreshTests: XCTestCase {
+    func testRefreshFormEncodesReservedCharactersInRequestBody() async throws {
+        let http = FakeHTTPClient(response: HTTPResponse(
+            statusCode: 200,
+            headers: [:],
+            body: Data(#"{"access_token":"new-token"}"#.utf8)
+        ))
+        let client = CodexUsageClient(http: http)
+
+        _ = try await client.refreshToken("refresh token&=+/?%")
+
+        let request = try XCTUnwrap(http.requests.first)
+        XCTAssertEqual(request.method, "POST")
+        XCTAssertEqual(request.headers["Content-Type"], "application/x-www-form-urlencoded")
+        XCTAssertEqual(
+            String(data: try XCTUnwrap(request.body), encoding: .utf8),
+            "grant_type=refresh_token&client_id=app_EMoamEEZ73f0CkXaXp7hrann" +
+                "&refresh_token=refresh%20token%26%3D%2B%2F%3F%25"
+        )
+    }
+
     func testRefreshReportsRequestFailureForUnrecognizedErrorBody() async {
         // A 400 carrying a non-OAuth body (an HTML proxy/WAF page) must surface as a request failure,
         // not "Token expired. Run `codex` to log in again." — re-login can't fix a transport/infra error.
