@@ -2,9 +2,9 @@ import AppKit
 import Foundation
 import UserNotifications
 
-/// The single entry point for posting macOS user notifications. Quota pace alerts go through `post`;
-/// authorization is requested at launch when at least one trigger is on (all default ON, so the prompt
-/// is expected on a fresh install).
+/// The single entry point for posting macOS user notifications. Quota alerts go through `post`;
+/// authorization is requested when the user first enables a trigger (all default off), while `post`
+/// also checks authorization before delivery.
 ///
 /// Authorization is memoized in one `Task<Bool, Never>`: the first caller reads the current settings,
 /// short-circuits an already-authorized or already-denied state, and otherwise requests it; every later
@@ -33,14 +33,14 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
         NSClassFromString("XCTestCase") != nil
     }
 
-    /// Make this object the delegate and kick off the authorization request once at launch. Safe to call
-    /// from app launch; a no-op under tests.
+    /// Make this object the delegate at launch so banners can display while the app is frontmost. A
+    /// no-op under tests; authorization remains on demand.
     func registerAsDelegate() {
         guard !Self.isRunningUnderTests else { return }
         centerProvider().delegate = self
     }
 
-    /// Request notification authorization. Called at launch when any trigger is on, and from the
+    /// Request notification authorization. Called when the first trigger is enabled and from the
     /// Settings "Allow Notifications" button when permission is still not determined. Memoized, so
     /// repeated calls don't re-prompt — macOS won't re-show the banner once the user has answered anyway.
     @discardableResult

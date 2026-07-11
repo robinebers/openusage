@@ -1,5 +1,14 @@
 # Model Hover Panel: data and architecture feasibility
 
+> **Historical / superseded.** This feasibility report is a 2026-07-04 preimplementation snapshot.
+> The model-breakdown data path and spend-row hover panel described as proposed below shipped that
+> day; see [Dashboard rows](../../dashboard.md#rows),
+> [`SpendTileMapper.swift`](../../../Sources/OpenUsage/Providers/SpendTileMapper.swift),
+> [`HoverPopoverState.swift`](../../../Sources/OpenUsage/Views/HoverPopoverState.swift), and
+> [`ModelUsageDetail.swift`](../../../Sources/OpenUsage/Views/ModelUsageDetail.swift) for the current
+> implementation. The analysis remains a historical record rather than current-state documentation;
+> narrow implementation references may be corrected as the code evolves.
+
 Research date: 2026-07-04. Scope: current `main`-line SwiftPM app architecture in this worktree. This is read-only technical research for a hover-revealed per-model spend/usage breakdown on the existing `Today`, `Yesterday`, and `Last 30 Days` spend rows.
 
 > **Status update (2026-07-10):** This document records the preimplementation architecture at its research date. The current code now carries per-model usage through `ModelUsageSeries`; Cursor's boundary parser also throws on unusable CSV structure and returns `CursorUsageCSVParseResult` (`rows` plus `rejectedRowCount`). See [Cursor](../../providers/cursor.md) for current user-facing behavior.

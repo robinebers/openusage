@@ -2,8 +2,8 @@ import SwiftUI
 
 /// The Customize provider list (L1): every known provider as a row, in the user's saved order —
 /// including disabled ones (greyed), so the user can re-enable them or open their detail. Each row
-/// carries the master on/off toggle, an Active/Inactive status, a metric-count badge, and a chevron
-/// into the provider's detail (L2). Providers drag-reorder by the leading grip; tapping a row opens
+/// carries an on/off toggle, a metric-count label, and a chevron into the provider's detail (L2).
+/// Enabled providers drag-reorder by the leading grip; tapping a row opens
 /// L2 (`layout.customizeProviderID = id`).
 struct CustomizeProviderListView: View {
     @Environment(LayoutStore.self) private var layout

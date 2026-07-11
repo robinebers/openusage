@@ -1,8 +1,9 @@
 import SwiftUI
 
 /// The popover content: the provider/metric list (or the Customize / Settings screen) as a scroll
-/// view between fixed chrome — a top back/title bar on Customize/Settings, and a single bottom footer
-/// (app identity / Customize pin summary + the glass Customize/Settings buttons).
+/// view between fixed chrome — a top back/title bar on Customize/Settings and bottom identity/action
+/// chrome on Dashboard and Settings. Customize uses its top bar and scrolling content without footer
+/// controls.
 ///
 /// The chrome is fixed: it's keyed off `layout.screen` and applied uniformly in `screenView`, so on a
 /// screen switch only the content slides while the footer and top bar stay put. Each screen's scroll
@@ -88,7 +89,7 @@ struct DashboardView: View {
                 // Esc backs out of Customize / Settings first; only from the dashboard does it close
                 // the popover. Return opens Customize from the dashboard (the same affordance the
                 // footer's Options ▸ Customize menu item carries) and returns to the
-                // dashboard from Customize or Settings — matching Esc and the prominent "Done" control,
+                // dashboard from Customize or Settings — matching Esc and the back navigation,
                 // never jumping Settings → Customize. Always consumed, so a bare Return can't fall
                 // through and dismiss the popover.
                 PopoverKeyReader(
@@ -115,11 +116,9 @@ struct DashboardView: View {
                         return true
                     },
                     // ⌘, toggles Settings, on this always-on monitor so it fires from every screen —
-                    // including Settings, which has no footer. Handling it here (and consuming it) is
-                    // also what lets the More menu's Settings item carry ⌘, purely as a label without a
-                    // second SwiftUI registration fighting it. (#717 made footers per-page and dropped
-                    // the Settings footer, so the old footer-hosted shortcut button no longer fired
-                    // there — ⌘, fell through to AppKit and defocused the panel.)
+                    // including Settings, whose footer has no Settings action. Handling it here (and
+                    // consuming it) also lets the Options menu's Settings item carry ⌘, as a label
+                    // without a second SwiftUI registration fighting it.
                     onSettings: {
                         withAnimation(Motion.modeSwitch) {
                             layout.screen = layout.screen == .settings ? .dashboard : .settings

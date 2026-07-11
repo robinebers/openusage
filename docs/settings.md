@@ -2,7 +2,7 @@
 
 Settings lives inside the popover — there is no separate window. Open it from the footer's **Options** menu, with ⌘, while the popover is showing, or by right-clicking the menu bar icon and choosing Settings. The dashboard slides over to the Settings screen, which carries a back button in its top-left corner. Go back with that button, the ⌘, shortcut, or Esc (Esc always backs out to the dashboard first — pressing it again closes the popover).
 
-## Startup
+## General
 
 | Setting | Options | What it does |
 |---|---|---|
@@ -16,7 +16,7 @@ Settings lives inside the popover — there is no separate window. Open it from 
 
 | Setting | Options | What it does |
 |---|---|---|
-| Menu Style | Text / Bars | How starred metrics render in the menu bar. See [Menu bar](menu-bar.md). |
+| Icon Style | Text / Bars | How starred metrics render in the menu bar. See [Menu bar](menu-bar.md). |
 | Theme | System / Light / Dark | App-wide appearance override for the popover. |
 | Density | Default / Compact | Default breathes; Compact is a real information-dense mode — text steps down one size, rows and provider sections pull together, and Customize / Settings rows tighten with them. In both, consecutive one-line metrics (Today / Yesterday / …) pull together; Compact pulls harder. |
 | Time Format | Auto / 12-hour / 24-hour | How exact times read (e.g. "Resets today at 6:38 PM" vs "18:38"). Auto follows the system. |
@@ -32,15 +32,15 @@ Settings lives inside the popover — there is no separate window. Open it from 
 
 ## Notifications
 
-OpenUsage can alert you with a macOS notification when a metric's pace gets worse, so you don't have to keep the popover open to catch a quota creeping toward its limit. Alerts work while the app runs in the menu bar, even with the popover closed.
+OpenUsage can alert you with a macOS notification when a metric runs low or its pace gets worse, so you don't have to keep the popover open to catch a quota creeping toward its limit. Alerts work while the app runs in the menu bar, even with the popover closed.
 
 | Setting | Options | What it does |
 |---|---|---|
-| Almost Out | On / Off | Alerts the first time a metric drops under 10% remaining for the period. |
+| Almost Out | On / Off | Alerts when a metric crosses under 10% remaining, including balances without a reset window. |
 | Cutting It Close | On / Off | Alerts when a metric is projected to finish the period with little left — close to its limit. |
 | Will Run Out | On / Off | Alerts when a metric is projected to run out before it resets. |
 
-Each alert fires **once per metric per reset period**, so you get a heads-up without repeats on every refresh. Alerts fire only when a quota *worsens* while OpenUsage is running — a quota that's already in a bad state when you launch won't alert until it recovers and worsens again, or a new period begins. If a metric recovers (its pace eases back) and later worsens again, it can alert again. When a new period begins, the slate is wiped clean. Metrics without a reset window, or while their data can't be read, don't pace and never alert. Turn all three off to silence everything. When several alerts fire at once, they stack into a single grouped banner.
+Alerts fire on a new crossing or pace worsening, then stay deduplicated while that condition is unchanged, so you do not get repeats on every refresh. A quota already in a bad state when OpenUsage launches establishes the baseline without alerting. If it recovers and later worsens again, the alert re-arms; a new reset period also clears the reset-based history. **Almost Out** is based only on the remaining share, so it also works for bounded balances without a reset window. **Cutting It Close** and **Will Run Out** require reset-window pace context. Metrics whose data cannot be read never alert. Turn all three triggers off to silence everything. When several alerts fire at once, they stack into a single grouped banner.
 
 All three alerts default off. The first time you turn one on, OpenUsage asks for notification permission; if you decline (or turn notifications off for OpenUsage in System Settings later), a warning mark appears on the Notifications header and an "Open System Settings" button shows under the toggles so you can re-enable them. A notification's title is the alert name, its subtitle names the provider and metric, and its body is the plain-language verdict. Tapping an alert opens the popover on the dashboard.
 
@@ -59,6 +59,19 @@ All three alerts default off. The first time you turn one on, OpenUsage asks for
 | Reveal in Finder | button | Opens a Finder window with the log file selected. |
 
 See [Logging](logging.md) for the full behavior: subsystem tags, the file size cap, and the guarantee that secrets are never written.
+
+## Updates
+
+The Updates section appears in official packaged builds that include the signed update feed. Local
+developer builds do not show it.
+
+| Setting | Options | What it does |
+|---|---|---|
+| Update Automatically | On / Off | Whether Sparkle checks for updates in the background. You can still check manually when this is off. |
+| Beta Updates | On / Off | Adds pre-release builds to the updates you can receive. Stable releases remain available either way. |
+| Check for Updates… | button | Starts a manual update check and opens Sparkle's update window. |
+
+See [Updates](updates.md) for the dashboard banner, channels, and signature verification.
 
 ## Version
 

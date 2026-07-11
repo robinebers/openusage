@@ -13,7 +13,7 @@ import Sparkle
 @MainActor
 @Observable
 final class UpdaterController {
-    /// `UserDefaults` key for the early-access (beta channel) opt-in. Read in two places — the SwiftUI
+    /// `UserDefaults` key for the beta-channel opt-in. Read in two places — the SwiftUI
     /// toggle here and the Sparkle channel delegate's `allowedChannels` — so the stored default is the
     /// single source of truth rather than a cached property.
     static let betaChannelDefaultsKey = "betaUpdatesEnabled"
@@ -37,7 +37,7 @@ final class UpdaterController {
     /// routes through `checkForUpdates()` — a user-initiated check, which Sparkle brings to the front.
     private(set) var availableUpdateVersion: String?
 
-    /// Backs the early-access toggle. Persisted to `UserDefaults`; flipping it resets Sparkle's update
+    /// Backs the "Beta Updates" toggle. Persisted to `UserDefaults`; flipping it resets Sparkle's update
     /// cycle so the new channel set takes effect on the next scheduled check instead of a day later.
     var betaChannelEnabled: Bool {
         didSet {
@@ -47,7 +47,7 @@ final class UpdaterController {
         }
     }
 
-    /// Backs the "Automatically Check for Updates" toggle. Sparkle persists this in `UserDefaults` itself,
+    /// Backs the "Update Automatically" toggle. Sparkle persists this in `UserDefaults` itself,
     /// so this is a thin pass-through rather than a shadow preference.
     var automaticallyChecksForUpdates: Bool {
         get { controller?.updater.automaticallyChecksForUpdates ?? false }
@@ -115,7 +115,7 @@ final class UpdaterController {
 @MainActor
 private final class UpdaterChannelDelegate: NSObject, SPUUpdaterDelegate {
     /// Stable channel is the default (every user). Returning `["beta"]` additionally opts a user into
-    /// early-access items tagged `<sparkle:channel>beta</sparkle:channel>`; Sparkle always includes the
+    /// pre-release items tagged `<sparkle:channel>beta</sparkle:channel>`; Sparkle always includes the
     /// default channel regardless, so stable users are never starved of stable releases.
     func allowedChannels(for updater: SPUUpdater) -> Set<String> {
         UserDefaults.standard.bool(forKey: UpdaterController.betaChannelDefaultsKey) ? ["beta"] : []

@@ -13,7 +13,7 @@ Tracks your GitHub Copilot quota using a GitHub token that Copilot tooling alrea
 | Chat | Chat-message quota used |
 | Completions | Code-completion quota used |
 
-Credits and Extra Usage show above the fold; Org Credits, Org Spend, Chat, and Completions sit under the "Shown on expand" caret. Each meter shows percent used and, when the response includes one, a countdown to the next reset. The plan name (Pro, Business, Free, …) shows next to the provider.
+Credits and Extra Usage are Always Visible by default; Org Credits, Org Spend, Chat, and Completions start in On Demand behind the card's caret. Each meter shows percent used and, when the response includes one, a countdown to the next reset. The plan name (Pro, Business, Free, …) shows next to the provider.
 
 Since June 2026 GitHub Copilot bills all plans by **AI credits**, so what each account shows differs by plan:
 

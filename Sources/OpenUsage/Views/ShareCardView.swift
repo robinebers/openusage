@@ -16,7 +16,7 @@ struct ShareCardView: View {
     var plan: String?
     let rows: [WidgetData]
     let appearance: ColorScheme
-    /// Index in `rows` where the "shown on expand" rows begin (the always-shown count), so the
+    /// Index in `rows` where the On Demand rows begin (the Always Visible count), so the
     /// neighbor-aware condensing treats the expand caret as a hard boundary the way the live dashboard
     /// does. `nil` when the provider is collapsed (no expanded section).
     var expandBoundaryIndex: Int? = nil

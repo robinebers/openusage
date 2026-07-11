@@ -46,8 +46,8 @@ struct SettingsScreen: View {
         // Same section rhythm as the dashboard and Customize (all read the density setting).
         return VStack(alignment: .leading, spacing: density.sectionSpacing) {
             section("General") {
-                // The dashboard's cross-provider Total Spend card; the card still requires two or
-                // more providers with spend data, so this toggle can't conjure it up alone.
+                // The dashboard's cross-provider Total Spend card; at least one enabled spend-capable
+                // provider must exist, so this toggle can't conjure it up alone.
                 row("Show Total Spend") {
                     Toggle("", isOn: $showTotalSpend)
                         .settingsSwitchStyle()

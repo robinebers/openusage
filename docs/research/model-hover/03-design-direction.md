@@ -1,5 +1,12 @@
 # Model-Hover Panel — Native Design Direction
 
+> **Historical / superseded.** This design report guided the model-breakdown hover panel that shipped
+> on 2026-07-04. See [Dashboard rows](../../dashboard.md#rows),
+> [`HoverPopoverState.swift`](../../../Sources/OpenUsage/Views/HoverPopoverState.swift), and
+> [`ModelUsageDetail.swift`](../../../Sources/OpenUsage/Views/ModelUsageDetail.swift) for current
+> behavior and implementation. References, line numbers, and proposed component names below remain
+> unchanged as a record of the design decision at that time.
+
 **Research report — 2026-07-04**
 **Question:** What should the hover panel for the Today / Yesterday / Last 30 Days spend rows look like, given the attached AI-generated concept (a "Models" flyout with a "TOP DRIVER" hero card, donut, and ranked model list)? The owner's verdict on the concept: directionally right, but "a bit over the top" — inconsistent type sizes, not native enough. Goal: an Apple-first, native macOS treatment that belongs in OpenUsage, works for Cursor / Claude / Codex / Grok, and is not Cursor-branded.
 

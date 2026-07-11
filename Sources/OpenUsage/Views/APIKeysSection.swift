@@ -1,8 +1,7 @@
 import SwiftUI
 
-/// The per-provider API-key card shown in a provider's Customize detail (since key management moved out
-/// of a shared Settings list into each provider's detail). A status dot + Edit/Add button; expanding
-/// reveals the native macOS key field with a clear button and an eye beside it: read-only by default,
+/// The per-provider API-key card shown in a provider's Customize detail. A status dot + Edit/Add
+/// button expands the native macOS key field with a clear button and an eye beside it: read-only by default,
 /// showing a muted source hint; the eye reveals the real key; "Override With a Custom Key" flips the
 /// same field to editable for a new key; a leading clear button clears a saved/override key.
 ///

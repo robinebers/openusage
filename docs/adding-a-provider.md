@@ -55,10 +55,10 @@ factory only when there is no typed error, and never return stale or empty data 
    or in progress.
 2. **Create the module.** Add `Sources/OpenUsage/Providers/<Name>/` with the auth store, usage client, and
    mapper, conforming to `ProviderRuntime` — both `refresh()` and `hasLocalCredentials()` (the compiler
-   enforces the latter; there is no default). Implement `hasLocalCredentials()` as a null-check on the
-   same auth-store load `refresh()` starts with — don't write a second credential-reading path. Reuse the
-   shared helpers in `Support/` (`ProviderParse` for JSON/number/percent parsing, `OpenUsageISO8601` for
-   timestamps) instead of copying them.
+   enforces the latter; there is no default). The probe must stay local-only and reuse the same auth-store
+   loaders and credential-usability filters that `refresh()` starts with — don't write a second
+   credential-reading path. Reuse the shared helpers in `Support/` (`ProviderParse` for
+   JSON/number/percent parsing, `OpenUsageISO8601` for timestamps) instead of copying them.
 3. **Declare its widgets.** Expose the provider's metrics as `WidgetDescriptor`s using the factories in
    `WidgetDescriptor+Factories.swift` (`percent`, `boundedDollars`, `spend`, `tokenSpend`, `combined`, `values`, `badge`, and so on).
 4. **Register it.** Add the provider to the list in `AppContainer`.

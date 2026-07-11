@@ -31,7 +31,8 @@ final class PanelHeightCoordinator {
         recomposeIdeal(for: screen)
     }
 
-    /// Record a screen's measured footer height (it varies — e.g. the Customize footer) and recompose.
+    /// Record a screen's measured footer height (Dashboard and Settings have different content) and
+    /// recompose.
     func setFooter(_ height: CGFloat, for screen: PopoverScreen) {
         measuredFooter[screen] = height
         recomposeIdeal(for: screen)

@@ -1,5 +1,12 @@
 # PR #740 archaeology: per-model usage leaderboard
 
+> **Historical / superseded.** This report records the repository as it stood on 2026-07-04. A
+> provider-neutral model breakdown on spend-row hover shipped on 2026-07-04 and has evolved since;
+> see [Dashboard rows](../../dashboard.md#rows),
+> [`SpendTileMapper.swift`](../../../Sources/OpenUsage/Providers/SpendTileMapper.swift), and
+> [`ModelUsageDetail.swift`](../../../Sources/OpenUsage/Views/ModelUsageDetail.swift) for current
+> behavior and implementation. The historical branch analysis below is intentionally unchanged.
+
 Research date: 2026-07-04. PR remains **open** and **unmerged** on branch `claude/eager-banach-ecf5a1` (~106 commits behind `main` as of this writing). This note compares that branch to current `main` for anyone revisiting per-model / model-hover UX.
 
 ## (a) What PR #740 did

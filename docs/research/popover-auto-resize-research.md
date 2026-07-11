@@ -1,5 +1,14 @@
 # Smooth Content-Driven Auto-Resize for the Custom Menu-Bar Panel
 
+> **Historical / superseded.** This 2026-06-25 research preceded the coordinated content-driven panel
+> resize that shipped later that day and was subsequently refined. See the current
+> [AppKit bridge](../architecture.md#the-appkit-bridge),
+> [`DashboardView.swift`](../../Sources/OpenUsage/Views/DashboardView.swift),
+> [`PanelHeightCoordinator.swift`](../../Sources/OpenUsage/Views/PanelHeightCoordinator.swift), and
+> [`PanelHeightController.swift`](../../Sources/OpenUsage/App/PanelHeightController.swift). The rejected
+> approaches and proposed file map below are preserved as historical research, not current setup
+> instructions.
+
 **Research report — 2026-06-25**
 **Question:** How do real macOS apps auto-resize a *custom, keyboard-capable* popover to its content smoothly — without (a) resize lag/stutter and (b) the "diagonal" jank when a screen-slide and a window-resize run at the same time — given OpenUsage must keep its custom `NSPanel` for keyboard shortcuts?
 

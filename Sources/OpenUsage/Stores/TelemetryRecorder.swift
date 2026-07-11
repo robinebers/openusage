@@ -1,7 +1,7 @@
 import Foundation
 
 /// The once-a-day configuration snapshot that rides on `app_daily_active` (answers "which providers /
-/// metrics are enabled" and "which are primary vs secondary"). All values are stable IDs/enums.
+/// metrics are enabled" and "which are Always Visible vs On Demand"). All values are stable IDs/enums.
 struct TelemetryConfigSnapshot: Sendable {
     let enabledProviders: [String]
     let enabledMetricIDs: [String]

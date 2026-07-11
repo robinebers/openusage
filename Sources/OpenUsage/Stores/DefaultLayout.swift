@@ -65,7 +65,7 @@ enum DefaultLayout {
         "zai.session", "zai.weekly"
     ]
 
-    /// Metrics tucked below the per-provider "Shown on expand" divider on a fresh install. This is
+    /// Metrics placed in the per-provider On Demand section on a fresh install. This is
     /// membership, not enablement: optional disabled rows like Sonnet or Cursor Requests/Credits are
     /// listed here so if the user enables them later they appear below the caret by default.
     /// Filtered to the active registry by `LayoutStore`, and only seeded on a genuinely fresh launch

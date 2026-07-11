@@ -13,16 +13,16 @@ they install, so you always get a genuine, unmodified build.
   next time the app finds the update. Because OpenUsage lives in the menu bar, it briefly shows a Dock
   icon while the update window is open, then hides again.
 - **Manual check.** Open **Settings → Updates** and click **Check for Updates…** at any time.
-- **Turn it off.** The **Automatically Check for Updates** switch in **Settings → Updates** stops the
+- **Turn it off.** The **Update Automatically** switch in **Settings → Updates** stops the
   background checks. You can still check manually.
 
-## Early access
+## Beta updates
 
-**Settings → Updates → Early Access Updates** opts you into pre-release builds before they ship to
+**Settings → Updates → Beta Updates** opts you into pre-release builds before they ship to
 everyone. Turn it off to go back to stable-only; you'll stay on your current version until the next
 stable release catches up.
 
-Everyone always receives stable releases — early access only *adds* the pre-release builds on top.
+Everyone always receives stable releases — the beta option only *adds* pre-release builds on top.
 
 ## Where updates come from
 

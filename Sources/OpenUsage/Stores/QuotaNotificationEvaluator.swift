@@ -6,9 +6,9 @@ import Foundation
 /// bounded, visible metrics and calls `evaluate`; delivery + the provider display name come in as
 /// closures so this type stays independent of the store's providers.
 ///
-/// Deduped per metric per reset window; the no-trustworthy-pace states (no data, fresh session, level
-/// bands) never fire. State for metrics not passed this pass is pruned, so re-enabling/re-adding a
-/// metric starts fresh rather than carrying a stale "already fired" flag.
+/// Deduped per metric per reset window. No-data metrics never fire; bounded level-only metrics can fire
+/// Almost Out, but not pace-based milestones. State for metrics not passed this pass is pruned, so
+/// re-enabling/re-adding a metric starts fresh rather than carrying a stale "already fired" flag.
 @MainActor
 final class QuotaNotificationEvaluator {
     /// One enabled, bounded, visible metric for this pass, already resolved by the store.

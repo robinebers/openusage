@@ -14,9 +14,9 @@ import Foundation
 ///
 /// Threading: the capture subprocess never runs (or is waited on) while the state lock is held, so
 /// a cache read can't stall behind it. The **main thread** never triggers the capture — it reads
-/// whatever is cached and otherwise returns `nil`, so opening Settings before the cache warms can't
-/// freeze the UI. Off-main callers (provider refreshes) capture on demand and block only for the
-/// single, one-time spawn, so the first refresh still resolves the key. `prewarm()` kicks the
+/// whatever is cached and otherwise returns `nil`, so opening a provider's API-key editor before the
+/// cache warms can't freeze the UI. Off-main callers (provider refreshes) capture on demand and block
+/// only for the single, one-time spawn, so the first refresh still resolves the key. `prewarm()` kicks the
 /// capture at launch so the cache is normally warm before anything reads it.
 final class LoginShellEnvironment: @unchecked Sendable {
     static let shared = LoginShellEnvironment()

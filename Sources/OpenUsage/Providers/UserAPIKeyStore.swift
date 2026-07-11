@@ -25,8 +25,8 @@ struct UserAPIKeyStore: Sendable {
         keyFromConfigFile() ?? keyFromEnvironment()
     }
 
-    /// Which combination of sources currently holds a key — drives the four-state API Keys card. A saved
-    /// key plus an env key is `overrideActive` because config wins, so the saved one overrides.
+    /// Which combination of sources currently holds a key — drives the four-state per-provider API-key
+    /// editor. A saved key plus an environment key is `overrideActive` because config wins.
     func keyStatus() -> APIKeyStatus {
         let hasConfig = keyFromConfigFile() != nil
         let hasEnv = keyFromEnvironment() != nil

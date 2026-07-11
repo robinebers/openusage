@@ -24,8 +24,8 @@ final class WidgetDataStore {
     private let orderedDescriptors: @MainActor () -> [WidgetDescriptor]
     /// Clock for the failure-backoff window. Injected so tests can advance time deterministically.
     private let now: () -> Date
-    /// Quota-notification preferences (master + per-trigger). Injected; `nil` disables notifications
-    /// entirely (tests and previews that don't wire it).
+    /// Quota-notification preferences (three independent triggers). Injected; `nil` disables
+    /// notifications entirely (tests and previews that don't wire it).
     private let notificationSettings: (@MainActor () -> NotificationSettingsStore)?
     /// Where a fired milestone is delivered: `(idPrefix, title, subtitle, body) -> Bool`. The Bool is
     /// whether it was actually delivered (authorized + scheduled); on false the caller leaves the
@@ -158,9 +158,9 @@ final class WidgetDataStore {
     /// Evaluate every visible, enabled metric for a quota pace milestone and post a notification for any
     /// that just crossed one. Driven from the periodic loop *after* `refreshAll`, so it catches pace
     /// worsening from time passing (not only from a fresh fetch). Deduped per metric per reset window by
-    /// the evaluator's per-key state; the no-trustworthy-pace states (no data, fresh session, level
-    /// bands) never fire. A no-op when notifications are unconfigured (tests/previews) or all triggers
-    /// are off.
+    /// the evaluator's per-key state. No-data metrics never fire; bounded level-only metrics can fire
+    /// Almost Out, but not pace-based milestones. A no-op when notifications are unconfigured
+    /// (tests/previews) or all triggers are off.
     ///
     /// State for metrics not visited this pass (e.g. a provider the user just disabled, or a metric
     /// removed from the layout) is pruned, so re-enabling/re-adding starts fresh rather than carrying a

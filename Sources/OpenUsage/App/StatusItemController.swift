@@ -109,8 +109,7 @@ final class StatusItemController: NSObject {
             self?.togglePopover()
         }
 
-        // Esc on the dashboard (and the footer's close affordances) dismiss through the same code
-        // path as a status-item click.
+        // Esc on the dashboard dismisses through the same code path as a status-item click.
         MenuBarPopover.dismissHandler = { [weak self] in
             self?.hidePanel()
         }
@@ -245,8 +244,8 @@ final class StatusItemController: NSObject {
         }
     }
 
-    /// Right-click / control-click on the status item: a native menu mirroring the popover footer's
-    /// "More" items for Settings and Quit (same titles, symbols, and ⌘ shortcuts). Assigning
+    /// Right-click / control-click on the status item: a native menu mirroring the Settings and Quit
+    /// items in the popover footer's Options menu (same titles, symbols, and ⌘ shortcuts). Assigning
     /// `statusItem.menu` for the span of one `performClick` shows the menu anchored under the item and
     /// highlights the button, then clearing it restores the left-click toggle behavior.
     private func showContextMenu() {

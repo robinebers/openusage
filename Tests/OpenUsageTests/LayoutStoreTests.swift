@@ -698,7 +698,7 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertEqual(primaryByProvider["claude"], ["claude.session", "claude.weekly", "claude.extra", "claude.trend"])
         XCTAssertEqual(expandedByProvider["claude"], ["claude.sonnet", "claude.fable", "claude.today", "claude.yesterday", "claude.last30"])
         XCTAssertEqual(primaryByProvider["codex"], ["codex.session", "codex.weekly", "codex.trend"])
-        // Spark (the optional model-specific limits) leads the expanded section, before credits.
+        // Spark (the optional model-specific limits) leads the On Demand section, before credits.
         XCTAssertEqual(expandedByProvider["codex"], [
             "codex.spark", "codex.sparkWeekly",
             "codex.credits", "codex.rateLimitResets", "codex.today", "codex.yesterday", "codex.last30"
@@ -809,7 +809,7 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertEqual(reloaded.placed.map(\.descriptorID), ["claude.session"])
     }
 
-    // MARK: - Expanded ("Shown on expand") membership
+    // MARK: - On Demand membership
 
     func testDividerDragMovesMetricBelowDividerAndPersists() {
         let defaults = makeDefaults("ExpandMove")

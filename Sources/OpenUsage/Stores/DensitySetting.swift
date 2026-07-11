@@ -88,8 +88,7 @@ enum DensitySetting: String, Hashable, Sendable, CaseIterable {
     /// (row content ≈ 24pt + `controlRowPadding` × 2).
     var estimatedMetricRowHeight: CGFloat { self == .compact ? 36 : 42 }
 
-    /// Gap between cells in the dashboard's expanded-metrics grid (the area that opens below the
-    /// caret laying secondary metrics up to three across). Kept tight so two or three narrow cells
-    /// still read as one cluster, like the condensed text rows do in the single column above.
+    /// Gap between cells in the provider quick-links grid. Kept tight so two narrow cells still read
+    /// as one cluster.
     var expandedGridSpacing: CGFloat { self == .compact ? 4 : 6 }
 }

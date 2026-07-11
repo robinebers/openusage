@@ -10,7 +10,8 @@ struct OpenRouterUsageClient: Sendable {
         self.http = http
     }
 
-    /// Account-wide credit balance and lifetime spend. Required for a usable snapshot.
+    /// Account-wide credit balance and lifetime spend. Fetched independently from key metadata because
+    /// OpenRouter can gate either endpoint for a particular key type.
     func fetchCredits(apiKey: String) async throws -> HTTPResponse {
         try await get(Self.creditsURL, apiKey: apiKey)
     }

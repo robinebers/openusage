@@ -1,11 +1,10 @@
 import AppKit
 
 /// Explicit appearance override for the whole app; `.system` follows macOS. Applied as
-/// `NSApp.appearance` — the popover hosting ignores SwiftUI's `preferredColorScheme`, so the
-/// override has to happen at the AppKit level. The menu-bar popover does not even inherit
-/// `NSApp.appearance` (an `NSPopover` follows its positioning view, the status-bar button), so
-/// `applyCurrent()` also posts `didChangeNotification` for `StatusItemController` to restyle the
-/// popover directly. The menu-bar label is unaffected (template image).
+/// `NSApp.appearance` — the panel hosting ignores SwiftUI's `preferredColorScheme`, so the override
+/// has to happen at the AppKit level. `applyCurrent()` also posts `didChangeNotification` for
+/// `StatusItemController` to pin the same appearance directly on the menu-bar panel. The menu-bar
+/// label is unaffected (template image).
 enum AppearanceSetting: String, Hashable, Sendable, CaseIterable, UserDefaultsBacked {
     case system
     case light
@@ -15,7 +14,7 @@ enum AppearanceSetting: String, Hashable, Sendable, CaseIterable, UserDefaultsBa
     static var fallback: AppearanceSetting { .system }
 
     /// Posted by `applyCurrent()` after the app-level appearance is set, so the popover owner can
-    /// mirror the override onto the popover (which does not inherit `NSApp.appearance`).
+    /// mirror the override onto the menu-bar panel.
     static let didChangeNotification = Notification.Name("AppearanceSettingDidChange")
 
     var label: String {
@@ -26,8 +25,8 @@ enum AppearanceSetting: String, Hashable, Sendable, CaseIterable, UserDefaultsBa
         }
     }
 
-    /// `nil` for `.system`: an unset appearance inherits — `NSApp` from the OS setting, the
-    /// popover from the menu bar — so "System" tracks live theme switches without re-applying.
+    /// `nil` for `.system`: both `NSApp` and the menu-bar panel inherit the OS setting, so "System"
+    /// tracks live theme switches without re-applying.
     var nsAppearance: NSAppearance? {
         switch self {
         case .system: return nil
@@ -40,7 +39,7 @@ enum AppearanceSetting: String, Hashable, Sendable, CaseIterable, UserDefaultsBa
 
     /// Reads the stored choice and applies it app-wide. Call once at launch and again whenever
     /// the setting changes — app windows restyle immediately, and the notification lets the
-    /// status-item owner restyle the popover (which inherits from the menu bar, not the app).
+    /// status-item owner restyle the menu-bar panel.
     @MainActor
     static func applyCurrent() {
         NSApplication.shared.appearance = current.nsAppearance

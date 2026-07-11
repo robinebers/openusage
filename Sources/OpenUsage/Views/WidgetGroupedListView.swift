@@ -57,8 +57,8 @@ struct WidgetGroupedListView: View {
         .padding(.horizontal, 8)
         .highPriorityGesture(providerDragGesture(for: group))
         .contextMenu {
-            // Hides the whole provider section (Settings ▸ Providers brings it back). Mirrors the per-metric
-            // "Hide" but one level up, so the verb order reads the same on a header as on a row.
+            // Hides the whole provider section (the Customize provider list brings it back). Mirrors
+            // the per-metric "Hide" but one level up, so the verb order reads the same on a header as a row.
             Button("Hide \(group.provider.displayName)") {
                 container.enablement.setEnabled(false, for: group.provider.id)
             }
@@ -127,7 +127,7 @@ struct WidgetGroupedListView: View {
         let isExpanded = layout.isProviderExpanded(providerID)
         let alwaysRows = resolvedRows(group.alwaysShownWidgets)
         let expandedRows = resolvedRows(group.expandedWidgets)
-        // The caret is a boundary between primary and expanded rows, so text-row condensing should not
+        // The caret separates Always Visible and On Demand rows, so text-row condensing should not
         // bridge across it. Each side tightens only against rows on the same side of the separator.
         let condensedIDs = visibleCondensedTextRowIDs(alwaysRows: alwaysRows, expandedRows: isExpanded ? expandedRows : [])
         let cardRows = metricCardRows(
@@ -182,8 +182,8 @@ struct WidgetGroupedListView: View {
             + (isExpanded && hasLinks ? [.links(links)] : [])
     }
 
-    /// The centered caret at the bottom of a provider card that reveals or hides its "Shown on expand"
-    /// metrics. Only rendered for providers that actually have expanded metrics.
+    /// The centered caret at the bottom of a provider card that reveals or hides its On Demand metrics
+    /// and quick links. Rendered whenever the provider has either kind of expanded content.
     private func expandToggle(providerID: String, isExpanded: Bool) -> some View {
         Button {
             withAnimation(Motion.spring) {
