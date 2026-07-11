@@ -141,6 +141,15 @@ struct ClaudeOAuthConfig: Hashable, Sendable {
     var clientID: String
 }
 
+/// Pins a `ClaudeAuthStore` to ONE additional account's credential sources (a specific config-dir file
+/// and/or a specific keychain service), with no cross-account fallback and no env-token fallback. The
+/// default instance leaves this `nil` and behaves exactly as before (env `CLAUDE_CONFIG_DIR`, the bare
+/// keychain service, and the `CLAUDE_CODE_OAUTH_TOKEN` fallback).
+struct ClaudeAccountScope: Hashable, Sendable {
+    var configDir: String?
+    var keychainService: String?
+}
+
 struct ClaudeAuthStore: Sendable {
     private static let defaultClaudeHome = "~/.claude"
     private static let credentialFileName = ".credentials.json"
@@ -154,17 +163,22 @@ struct ClaudeAuthStore: Sendable {
     var files: TextFileAccessing
     var keychain: KeychainAccessing
     var now: @Sendable () -> Date
+    /// When set, this store reads/writes ONLY the pinned account's sources (see `ClaudeAccountScope`).
+    /// `nil` is the default instance — unchanged env-driven behavior.
+    var account: ClaudeAccountScope?
 
     init(
         environment: EnvironmentReading = ProcessEnvironmentReader(),
         files: TextFileAccessing = LocalTextFileAccessor(),
         keychain: KeychainAccessing = SecurityKeychainAccessor(),
-        now: @escaping @Sendable () -> Date = Date.init
+        now: @escaping @Sendable () -> Date = Date.init,
+        account: ClaudeAccountScope? = nil
     ) {
         self.environment = environment
         self.files = files
         self.keychain = keychain
         self.now = now
+        self.account = account
     }
 
     /// All credential sources currently on disk/keychain, in fixed keychain-before-file order, for the
@@ -174,7 +188,9 @@ struct ClaudeAuthStore: Sendable {
     /// sits in another. Re-read on every refresh; nothing is cached in memory.
     func loadCredentialCandidates() -> [ClaudeCredentialState] {
         let stored = orderedStoredCandidates()
-        guard let envAccessToken = envText("CLAUDE_CODE_OAUTH_TOKEN") else {
+        // The ambient `CLAUDE_CODE_OAUTH_TOKEN` fallback belongs only to the default instance: an
+        // account-scoped store reads exactly its own file/keychain sources, never a shared env token.
+        guard account == nil, let envAccessToken = envText("CLAUDE_CODE_OAUTH_TOKEN") else {
             return stored
         }
         // An explicit `CLAUDE_CODE_OAUTH_TOKEN` is inference-only (typically a `claude setup-token`
@@ -240,7 +256,8 @@ struct ClaudeAuthStore: Sendable {
 
         switch state.source {
         case .file:
-            try files.writeText(credentialsPath(), text)
+            guard let path = credentialsPath() else { return false }
+            try files.writeText(path, text)
         case .keychainCurrentUser(let service):
             try keychain.writeGenericPasswordForCurrentUser(service: service, value: text)
         case .keychainLegacy(let service):
@@ -347,13 +364,32 @@ struct ClaudeAuthStore: Sendable {
     }
 
     func keychainServiceCandidates() -> [String] {
+        // An account-scoped store reads only its own pinned keychain service (or none for a file-only
+        // account) — never the bare service or the env-derived hash.
+        if let account {
+            return account.keychainService.map { [$0] } ?? []
+        }
+        return keychainServiceCandidates(forConfigDir: claudeHomeOverride())
+    }
+
+    /// The keychain service names Claude Code would use for a given config dir, most specific first:
+    /// the base `Claude Code<suffix>-credentials`, hash-suffixed by the config dir when one is given.
+    /// The single home of this derivation — Claude multi-account discovery reuses it to map a config
+    /// dir to its keychain service rather than re-deriving the hash.
+    func keychainServiceCandidates(forConfigDir configDir: String?) -> [String] {
         // Only needs the file suffix, which never fails — keep this off the throwing URL path so
         // credential loading stays forgiving even when a custom OAuth URL is malformed.
         let base = "\(Self.keychainServicePrefix)\(resolveOAuthEndpoints().suffix)-credentials"
-        if let configDir = claudeHomeOverride() {
+        if let configDir {
             return ["\(base)-\(hashSuffix(configDir))", base]
         }
         return [base]
+    }
+
+    /// The bare (default-account) keychain service — `Claude Code<suffix>-credentials` with no config-dir
+    /// hash. Discovery pairs this with `~/.claude` as the one default account.
+    func baseKeychainService() -> String {
+        "\(Self.keychainServicePrefix)\(resolveOAuthEndpoints().suffix)-credentials"
     }
 
     static func parseCredentials(_ text: String) -> ClaudeCredentialsFile? {
@@ -383,7 +419,7 @@ struct ClaudeAuthStore: Sendable {
     }
 
     private func loadFileCredentials() -> ClaudeCredentialState? {
-        let path = credentialsPath()
+        guard let path = credentialsPath() else { return nil }
         guard files.exists(path),
               let text = try? files.readText(path),
               let parsed = Self.parseCredentials(text),
@@ -434,8 +470,13 @@ struct ClaudeAuthStore: Sendable {
         return ClaudeCredentialState(oauth: oauth, source: source, fullData: parsed, inferenceOnly: false)
     }
 
-    private func credentialsPath() -> String {
-        "\(envText("CLAUDE_CONFIG_DIR") ?? Self.defaultClaudeHome)/\(Self.credentialFileName)"
+    /// The credentials file to read/write, or `nil` when this store has no file source (a keychain-only
+    /// scoped account). The default instance always resolves a path (env override or `~/.claude`).
+    private func credentialsPath() -> String? {
+        if let account {
+            return account.configDir.map { "\($0)/\(Self.credentialFileName)" }
+        }
+        return "\(envText("CLAUDE_CONFIG_DIR") ?? Self.defaultClaudeHome)/\(Self.credentialFileName)"
     }
 
     private func envText(_ name: String) -> String? {
