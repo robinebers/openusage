@@ -31,6 +31,14 @@ If one source holds an expired or "locked out" token, OpenUsage falls back to th
 
 Today / Yesterday / Last 30 Days are computed **locally**: OpenUsage reads the Claude Code session logs under `~/.claude/projects/` (or `$CLAUDE_CONFIG_DIR`) itself — no external tools needed. Cowork (the Claude desktop app's agent mode) counts too: it writes the same logs into per-session folders under `~/Library/Application Support/Claude/local-agent-mode-sessions/`, and OpenUsage scans those as well, so desktop agent sessions show up in the tiles alongside terminal ones. Days are grouped in your Mac's local time zone, so they line up with your own calendar. Each period is one tile showing cost and tokens together (`$4.08 · 1.2M tokens`); a day with no usage reads **No data** rather than a misleading `$0.00 · 0 tokens` — the same as every other spend-tracking provider. The live Session and Weekly meters are unaffected. The dollars are estimated from token counts at API rates (that's the ⓘ) using the shared [model pricing](../pricing.md); the token counts themselves are measured. No log data leaves your Mac.
 
+## Multiple accounts
+
+If you sign in to more than one Claude account on the same Mac, OpenUsage shows each as its own card. It finds the extra accounts automatically at launch — no setup — by looking one level deep: your default `~/.claude`, any sibling `~/.claude*` folder that has credentials, `$XDG_CONFIG_HOME/claude`, anything in `CLAUDE_CONFIG_DIR`, and the Claude Code entries in your keychain. Nothing on disk is searched beyond those spots.
+
+- Your primary account is the usual **Claude** card. Each additional account gets its own card, named `Claude (########)` until you rename it (open Customize, tap the account, and set an **Account Name**). Renames apply right away, everywhere the account name shows.
+- Extra accounts show the live meters only — Session, Weekly, Sonnet, Fable, and Extra Usage. They don't show the local spend tiles (Today / Yesterday / Last 30 Days) or the usage trend, because those come from local logs that can't be split per account; the spend tiles stay on the primary Claude card and still cover all your usage.
+- A new account you add is picked up the next time OpenUsage launches. Removing an account's credentials leaves its card in place showing "Not logged in" rather than silently dropping your layout.
+
 ## Troubleshooting
 
 - **"Not logged in"** — run `claude` and sign in, then refresh.
