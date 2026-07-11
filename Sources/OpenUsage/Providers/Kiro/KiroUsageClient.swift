@@ -71,20 +71,16 @@ struct KiroUsageClient: Sendable {
     }
 
     /// Refresh an OIDC token via AWS SSO OIDC endpoint. Requires the client ID and secret from the
-    /// device registration stored in the CLI database.
+    /// device registration stored in the CLI database. AWS SSO OIDC expects form-encoded parameters
+    /// with snake_case keys, not a JSON body.
     func refreshOIDCToken(refreshToken: String, clientId: String, clientSecret: String, region: String) async throws -> KiroRefreshedToken {
         let url = URL(string: "https://oidc.\(region).amazonaws.com/token")!
-        let body: [String: Any] = [
-            "grantType": "refresh_token",
-            "refreshToken": refreshToken,
-            "clientId": clientId,
-            "clientSecret": clientSecret,
-        ]
+        let body = "grant_type=refresh_token&refresh_token=\(refreshToken.urlFormEncoded)&client_id=\(clientId.urlFormEncoded)&client_secret=\(clientSecret.urlFormEncoded)"
         let response = try await http.send(HTTPRequest(
             method: "POST",
             url: url,
-            headers: ["Content-Type": "application/json"],
-            body: try JSONSerialization.data(withJSONObject: body),
+            headers: ["Content-Type": "application/x-www-form-urlencoded"],
+            body: Data(body.utf8),
             timeout: 15
         ))
 
@@ -93,7 +89,7 @@ struct KiroUsageClient: Sendable {
         }
 
         guard let json = ProviderParse.jsonObject(response.body),
-              let accessToken = (json["accessToken"] as? String)?.nilIfEmpty
+              let accessToken = coalesce(json["accessToken"], json["access_token"])?.nilIfEmpty
         else {
             throw KiroUsageError.invalidResponse
         }
@@ -149,7 +145,7 @@ enum KiroUsageError: Error, LocalizedError, Equatable, CategorizedError {
         switch self {
         case .connectionFailed: .network
         case .invalidResponse: .decoding
-        case .requestFailed: .http4xx
+        case .requestFailed(let status): ErrorCategory.http(status)
         case .tokenRefreshFailed: .authExpired
         case .quotaUnavailable: .notAvailable
         }

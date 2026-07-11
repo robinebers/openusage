@@ -24,9 +24,11 @@ enum KiroUsageMapper {
 
         var lines: [MetricLine] = []
 
-        // Primary credit pool from usageBreakdownList.
+        // Primary credit pool from usageBreakdownList. Only map CREDIT-type entries so we don't
+        // mislabel other breakdown types (chat/completions) as credits.
         if let breakdownList = root["usageBreakdownList"] as? [[String: Any]] {
             for entry in breakdownList {
+                guard (entry["type"] as? String)?.uppercased() == "CREDIT" else { continue }
                 if let line = try? creditLine(from: entry, resetDate: nextReset) {
                     lines.append(line)
                 }

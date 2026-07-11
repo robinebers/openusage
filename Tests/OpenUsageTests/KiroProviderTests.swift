@@ -42,6 +42,23 @@ final class KiroUsageMapperTests: XCTestCase {
         XCTAssertNotNil(credits?.resetsAt)
     }
 
+    func testIgnoresNonCreditBreakdownEntries() throws {
+        let body = try makeUsageBody(
+            usageBreakdownList: [
+                ["type": "CREDIT", "currentUsage": 200, "usageLimit": 1000, "resetDate": "2026-05-01T00:00:00.000Z"],
+                ["type": "CHAT", "currentUsage": 50, "usageLimit": 500, "resetDate": "2026-05-01T00:00:00.000Z"]
+            ]
+        )
+
+        let mapped = try KiroUsageMapper.map(body)
+
+        let creditLines = mapped.lines.filter { $0.label == "Credits" }
+        XCTAssertEqual(creditLines.count, 1)
+        let credits = progress(mapped.lines, "Credits")
+        XCTAssertEqual(credits?.used, 200)
+        XCTAssertEqual(credits?.limit, 1000)
+    }
+
     func testMapsBonusCredits() throws {
         let body = try makeUsageBody(
             usageBreakdownList: [

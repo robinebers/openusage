@@ -190,6 +190,7 @@ struct KiroAuthStore: Sendable {
     func effectiveProfileArn(_ auth: KiroAuth) -> String? {
         if let arn = auth.profileArn { return arn }
         if let arn = loadProfileFile() { return arn }
+        if let arn = loadCLIProfileArn() { return arn }
         return nil
     }
 
