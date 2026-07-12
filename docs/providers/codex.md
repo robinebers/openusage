@@ -30,7 +30,7 @@ Today / Yesterday / Last 30 Days are computed **locally**: OpenUsage reads the C
 
 ## Under the hood
 
-`GET https://chatgpt.com/backend-api/wham/usage` with the Codex OAuth token; refresh via `auth.openai.com`. A 401/403 triggers one token refresh and retry. Session and Weekly are read from the usage window in that response, with the response headers used only when the window fields are missing.
+`GET https://chatgpt.com/backend-api/wham/usage` with the Codex OAuth token; refresh via `auth.openai.com`. A 401/403 triggers one token refresh and retry. Session and Weekly are identified by each usage window's reported duration, with the usual primary/secondary positions kept as a fallback for older responses and response headers used only when the window fields are missing. This keeps a weekly-only response labeled Weekly when Codex temporarily removes the 5-hour limit, and naturally restores both rows when that limit returns.
 
 Spark and Spark Weekly come from the same response's `additional_rate_limits` array — model-specific limits that reuse the Session/Weekly window shape. OpenUsage surfaces the entry whose name identifies GPT-5.3-Codex-Spark as those two meters; accounts without the limit simply omit the entry, so the rows read "No data". Other model limits in that array aren't shown.
 

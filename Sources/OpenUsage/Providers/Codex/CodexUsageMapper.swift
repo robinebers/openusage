@@ -8,6 +8,12 @@ struct CodexMappedUsage: Equatable, Sendable {
 enum CodexUsageMapper {
     static let sessionPeriodMs = MetricPeriod.sessionMs
     static let weeklyPeriodMs = MetricPeriod.weekMs
+
+    private enum WindowKind {
+        case session
+        case weekly
+    }
+
     /// Codex flex credits are worth 4¢ each; the credits line leads with the dollar value
     /// (mirrors the JS plugin's `CREDIT_USD_RATE`).
     static let creditUSDRate = 0.04
@@ -32,49 +38,22 @@ enum CodexUsageMapper {
         let primaryWindow = rateLimit?["primary_window"] as? [String: Any]
         let secondaryWindow = rateLimit?["secondary_window"] as? [String: Any]
 
-        if let used = ProviderParse.number(primaryWindow?["used_percent"]) {
-            let periodDurationMs = readPeriodMs(primaryWindow) ?? sessionPeriodMs
-            lines.append(progress(
-                label: "Session",
-                used: normalizedUsedPercent(used, resetWindow: primaryWindow, now: now, periodDurationMs: periodDurationMs),
-                resetWindow: primaryWindow,
-                now: now,
-                periodDurationMs: periodDurationMs
-            ))
-        }
-        if let used = ProviderParse.number(secondaryWindow?["used_percent"]) {
-            let periodDurationMs = readPeriodMs(secondaryWindow) ?? weeklyPeriodMs
-            lines.append(progress(
-                label: "Weekly",
-                used: normalizedUsedPercent(used, resetWindow: secondaryWindow, now: now, periodDurationMs: periodDurationMs),
-                resetWindow: secondaryWindow,
-                now: now,
-                periodDurationMs: periodDurationMs
-            ))
-        }
+        appendWindowLine(to: &lines, sessionLabel: "Session", weeklyLabel: "Weekly",
+                         usedPercent: ProviderParse.number(primaryWindow?["used_percent"]),
+                         window: primaryWindow, fallbackKind: .session, now: now)
+        appendWindowLine(to: &lines, sessionLabel: "Session", weeklyLabel: "Weekly",
+                         usedPercent: ProviderParse.number(secondaryWindow?["used_percent"]),
+                         window: secondaryWindow, fallbackKind: .weekly, now: now)
 
-        if !lines.contains(where: { $0.label == "Session" }),
-           let used = ProviderParse.number(response.header("x-codex-primary-used-percent")) {
-            let periodDurationMs = readPeriodMs(primaryWindow) ?? sessionPeriodMs
-            lines.append(progress(
-                label: "Session",
-                used: normalizedUsedPercent(used, resetWindow: primaryWindow, now: now, periodDurationMs: periodDurationMs),
-                resetWindow: primaryWindow,
-                now: now,
-                periodDurationMs: periodDurationMs
-            ))
-        }
-        if !lines.contains(where: { $0.label == "Weekly" }),
-           let used = ProviderParse.number(response.header("x-codex-secondary-used-percent")) {
-            let periodDurationMs = readPeriodMs(secondaryWindow) ?? weeklyPeriodMs
-            lines.append(progress(
-                label: "Weekly",
-                used: normalizedUsedPercent(used, resetWindow: secondaryWindow, now: now, periodDurationMs: periodDurationMs),
-                resetWindow: secondaryWindow,
-                now: now,
-                periodDurationMs: periodDurationMs
-            ))
-        }
+        // Header fallback when the body carried no usable percentage. Each header value is still
+        // classified through its body window's metadata, so a weekly-only primary window can't
+        // reappear as Session.
+        appendWindowLine(to: &lines, sessionLabel: "Session", weeklyLabel: "Weekly",
+                         usedPercent: ProviderParse.number(response.header("x-codex-primary-used-percent")),
+                         window: primaryWindow, fallbackKind: .session, now: now)
+        appendWindowLine(to: &lines, sessionLabel: "Session", weeklyLabel: "Weekly",
+                         usedPercent: ProviderParse.number(response.header("x-codex-secondary-used-percent")),
+                         window: secondaryWindow, fallbackKind: .weekly, now: now)
 
         // Model-specific limits (e.g. GPT-5.3-Codex-Spark) ride in a separate `additional_rate_limits`
         // array, each entry reusing the primary/secondary window shape. Surfaced as their own Spark /
@@ -119,6 +98,48 @@ enum CodexUsageMapper {
         )
     }
 
+    /// Appends one rate-limit meter, labeling it by the window's declared duration rather than its
+    /// primary/secondary slot. Codex normally carries the 5-hour window in `primary_window` and the
+    /// weekly window in `secondary_window`, but moves the weekly window into primary while the 5-hour
+    /// restriction is disabled (issue #978) — the slot alone can't be trusted. The slot still decides
+    /// the label when the window omits `limit_window_seconds` or reports an unrecognized duration.
+    /// A window whose label is already present is skipped, so the header fallback can't repeat a body
+    /// window under the other name.
+    private static func appendWindowLine(
+        to lines: inout [MetricLine],
+        sessionLabel: String,
+        weeklyLabel: String,
+        usedPercent: Double?,
+        window: [String: Any]?,
+        fallbackKind: WindowKind,
+        now: Date
+    ) {
+        guard let usedPercent else { return }
+        let kind = windowKind(window, fallback: fallbackKind)
+        let label = kind == .session ? sessionLabel : weeklyLabel
+        guard !lines.contains(where: { $0.label == label }) else { return }
+
+        let periodDurationMs = readPeriodMs(window) ?? (kind == .session ? sessionPeriodMs : weeklyPeriodMs)
+        lines.append(progress(
+            label: label,
+            used: normalizedUsedPercent(usedPercent, resetWindow: window, now: now, periodDurationMs: periodDurationMs),
+            resetWindow: window,
+            now: now,
+            periodDurationMs: periodDurationMs
+        ))
+    }
+
+    private static func windowKind(_ window: [String: Any]?, fallback: WindowKind) -> WindowKind {
+        guard let periodMs = readPeriodMs(window) else { return fallback }
+        if periodMs == sessionPeriodMs {
+            return .session
+        }
+        if periodMs == weeklyPeriodMs {
+            return .weekly
+        }
+        return fallback
+    }
+
     /// Spark (and any future model-specific) limits from `additional_rate_limits`. Each array entry is a
     /// named limit whose `rate_limit` reuses the primary (5-hour) / secondary (weekly) window shape, so
     /// the parsing mirrors the core Session/Weekly path exactly — including the fresh-window 1%→0
@@ -139,26 +160,12 @@ enum CodexUsageMapper {
         let primaryWindow = rateLimit["primary_window"] as? [String: Any]
         let secondaryWindow = rateLimit["secondary_window"] as? [String: Any]
 
-        if let used = ProviderParse.number(primaryWindow?["used_percent"]) {
-            let periodDurationMs = readPeriodMs(primaryWindow) ?? sessionPeriodMs
-            lines.append(progress(
-                label: "Spark",
-                used: normalizedUsedPercent(used, resetWindow: primaryWindow, now: now, periodDurationMs: periodDurationMs),
-                resetWindow: primaryWindow,
-                now: now,
-                periodDurationMs: periodDurationMs
-            ))
-        }
-        if let used = ProviderParse.number(secondaryWindow?["used_percent"]) {
-            let periodDurationMs = readPeriodMs(secondaryWindow) ?? weeklyPeriodMs
-            lines.append(progress(
-                label: "Spark Weekly",
-                used: normalizedUsedPercent(used, resetWindow: secondaryWindow, now: now, periodDurationMs: periodDurationMs),
-                resetWindow: secondaryWindow,
-                now: now,
-                periodDurationMs: periodDurationMs
-            ))
-        }
+        appendWindowLine(to: &lines, sessionLabel: "Spark", weeklyLabel: "Spark Weekly",
+                         usedPercent: ProviderParse.number(primaryWindow?["used_percent"]),
+                         window: primaryWindow, fallbackKind: .session, now: now)
+        appendWindowLine(to: &lines, sessionLabel: "Spark", weeklyLabel: "Spark Weekly",
+                         usedPercent: ProviderParse.number(secondaryWindow?["used_percent"]),
+                         window: secondaryWindow, fallbackKind: .weekly, now: now)
         return lines
     }
 

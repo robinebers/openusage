@@ -178,6 +178,65 @@ final class CodexUsageMapperTests: XCTestCase {
         XCTAssertEqual(progress(mapped.lines, "Session")?.periodDurationMs, 18_000_000)
     }
 
+    func testClassifiesWeeklyOnlyPrimaryWindowByReportedDuration() throws {
+        // Codex temporarily removed the 5-hour restriction and moved the remaining weekly limit into
+        // `primary_window` (issue #978). The slot is transport structure; the declared duration is the
+        // window's meaning. The primary header must not resurrect the same window as Session either.
+        let body = Data("""
+        {
+          "rate_limit": {
+            "primary_window": {
+              "used_percent": 42,
+              "limit_window_seconds": 604800,
+              "reset_after_seconds": 345600
+            }
+          }
+        }
+        """.utf8)
+        let response = HTTPResponse(
+            statusCode: 200,
+            headers: ["x-codex-primary-used-percent": "99"],
+            body: body
+        )
+
+        let mapped = try CodexUsageMapper.mapUsageResponse(
+            response,
+            now: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+
+        XCTAssertNil(progress(mapped.lines, "Session"))
+        XCTAssertEqual(progress(mapped.lines, "Weekly")?.used, 42)
+        XCTAssertEqual(progress(mapped.lines, "Weekly")?.periodDurationMs, CodexUsageMapper.weeklyPeriodMs)
+    }
+
+    func testClassifiesRestoredSessionAndWeeklyWindowsByReportedDuration() throws {
+        // When the 5-hour limit returns, both slots resolve back to their usual labels with no
+        // further code change.
+        let body = Data("""
+        {
+          "rate_limit": {
+            "primary_window": {
+              "used_percent": 12,
+              "limit_window_seconds": 18000
+            },
+            "secondary_window": {
+              "used_percent": 34,
+              "limit_window_seconds": 604800
+            }
+          }
+        }
+        """.utf8)
+        let response = HTTPResponse(statusCode: 200, headers: [:], body: body)
+
+        let mapped = try CodexUsageMapper.mapUsageResponse(
+            response,
+            now: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+
+        XCTAssertEqual(progress(mapped.lines, "Session")?.used, 12)
+        XCTAssertEqual(progress(mapped.lines, "Weekly")?.used, 34)
+    }
+
     func testMapsWindowsCreditsAndPlan() throws {
         let body = Data("""
         {
