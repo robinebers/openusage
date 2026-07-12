@@ -60,7 +60,11 @@ struct RateLimitResetsDetail: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let banner { bannerView(banner) }
+            if let banner {
+                bannerView(banner)
+                    // Unfold from the top edge as the claimed node collapses below — one combined motion.
+                    .transition(.scale(scale: 0.95, anchor: .top).combined(with: .opacity))
+            }
             switch Self.content(count: count - claimedExpiries.count, expiries: visibleExpiries) {
             case .timeline(let entries): timeline(entries)
             case .unknownExpiries(let count): unknownExpiriesState(count)
@@ -125,7 +129,10 @@ struct RateLimitResetsDetail: View {
     /// and the connector runs unbroken down to the next node.
     private func timeline(_ entries: [Entry]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(entries) { entry in
+            // Identity by expiry instant, not positional index: after a claim removes a node the others
+            // renumber, and index identity would read as "every row replaced" instead of one row leaving
+            // — date identity lets the removal collapse while the survivors slide up.
+            ForEach(entries, id: \.date) { entry in
                 let isFirst = entry.id == 0
                 let isLast = entry.id == entries.count - 1
                 HStack(alignment: .top, spacing: 10) {
@@ -185,14 +192,19 @@ struct RateLimitResetsDetail: View {
     private func node(_ entry: Entry) -> some View {
         if confirmingExpiry == entry.date {
             confirmRow(entry)
+                // Grow out of / collapse back into the one-line node it replaces: anchored at the top so
+                // the first line (which the rail dot aligns to) stays put while the card unfolds below it.
+                .transition(.scale(scale: 0.95, anchor: .top).combined(with: .opacity))
         } else if claimingExpiry == entry.date {
             claimingRow()
+                .transition(.opacity)
         } else {
             row(entry)
                 // Freeze and fade the other nodes while a claim is being confirmed or run, so only the
                 // active node reads as live.
                 .opacity(claimInProgress ? 0.45 : 1)
                 .allowsHitTesting(!claimInProgress)
+                .transition(.opacity)
         }
     }
 
@@ -228,18 +240,25 @@ struct RateLimitResetsDetail: View {
     /// reason in its tooltip rather than as inline text. Native small bordered button — no accent fill.
     @ViewBuilder
     private func trailing(_ entry: Entry) -> some View {
-        if claim != nil, hoveredExpiry == entry.date, !claimInProgress {
-            Button("Use") { beginConfirm(entry.date) }
-                .controlSize(.small)
-                .disabled(usageAtZero)
-                .hoverTooltip(usageAtZero ? "Usage is already at 0%, nothing to reset" : nil)
-        } else if let countdown = entry.countdown {
-            Text(countdown)
-                .font(.system(size: density.supportingPointSize))
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
-                .fixedSize(horizontal: true, vertical: false)
+        // A quick crossfade between the countdown and the Use button (both transitions are opacity-only;
+        // the animation rides `hoveredExpiry`), so the reveal reads as a fade, not a pop.
+        Group {
+            if claim != nil, hoveredExpiry == entry.date, !claimInProgress {
+                Button("Use") { beginConfirm(entry.date) }
+                    .controlSize(.small)
+                    .disabled(usageAtZero)
+                    .hoverTooltip(usageAtZero ? "Usage is already at 0%, nothing to reset" : nil)
+                    .transition(.opacity)
+            } else if let countdown = entry.countdown {
+                Text(countdown)
+                    .font(.system(size: density.supportingPointSize))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .fixedSize(horizontal: true, vertical: false)
+                    .transition(.opacity)
+            }
         }
+        .animation(.easeOut(duration: 0.12), value: hoveredExpiry)
     }
 
     /// The active node's inline confirm: a short scope-aware question and Reset / Cancel. The numbered
@@ -309,26 +328,38 @@ struct RateLimitResetsDetail: View {
 
     // MARK: - Claim flow actions
 
+    /// One clock for every claim-flow layout change (card expand/collapse, node swap, banner, credit
+    /// removal), so the rail, the rows, and the popover height all move together.
+    private static let flowAnimation: Animation = .snappy(duration: 0.25)
+
     private func beginConfirm(_ date: Date) {
-        banner = nil
-        hoveredExpiry = nil
-        confirmingExpiry = date
+        withAnimation(Self.flowAnimation) {
+            banner = nil
+            hoveredExpiry = nil
+            confirmingExpiry = date
+        }
         onPinChange?(true)
     }
 
     private func cancelConfirm() {
-        confirmingExpiry = nil
+        withAnimation(Self.flowAnimation) {
+            confirmingExpiry = nil
+        }
         onPinChange?(false)
     }
 
     private func runClaim(_ date: Date) {
         guard let claim else { return }
-        confirmingExpiry = nil
-        claimingExpiry = date
+        withAnimation(Self.flowAnimation) {
+            confirmingExpiry = nil
+            claimingExpiry = date
+        }
         Task {
             let outcome = await claim(date)
-            claimingExpiry = nil
-            apply(outcome, for: date)
+            withAnimation(Self.flowAnimation) {
+                claimingExpiry = nil
+                apply(outcome, for: date)
+            }
             onPinChange?(false)
         }
     }
