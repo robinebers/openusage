@@ -3,6 +3,14 @@
     <channel>
         <title>OpenUsage</title>
         <item>
+            <title>0.7.4</title>
+            <pubDate>Sun, 12 Jul 2026 13:10:25 +0000</pubDate>
+            <sparkle:version>427</sparkle:version>
+            <sparkle:shortVersionString>0.7.4</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/robinebers/openusage/releases/download/v0.7.4/OpenUsage-0.7.4.dmg" length="9762072" type="application/octet-stream" sparkle:edSignature="nPeuz/S/x8CMAJjLquSAViKAxP1yDLjNwykDC8qT0H0E69ISM4coSTok2LG/OKoWS7iPUAweHepd5gnmZN/ADQ=="/>
+        </item>
+        <item>
             <title>0.7.4-beta.5</title>
             <pubDate>Wed, 08 Jul 2026 11:17:36 +0000</pubDate>
             <sparkle:channel>beta</sparkle:channel>
