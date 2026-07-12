@@ -124,19 +124,23 @@ final class CodexProvider: ProviderRuntime {
         )
         var mapped = try CodexUsageMapper.mapUsageResponse(response, resetCredits: resetCredits, now: now())
 
-        // Local spend tiles, scanned natively from the Codex CLI's session rollouts and priced
-        // through the shared pricing store. `scan` runs on the scanner actor, off the main actor.
-        if let scan = await logUsageScanner.scan(now: now(), pricing: pricing()) {
+        // Local spend tiles, scanned natively from the Codex CLI's session rollouts and priced through
+        // the shared pricing store, merged with Codex usage that happened inside pi (attributed back
+        // here). Both scans run on their scanner actors, off the main actor.
+        let pricing = await pricing()
+        let nativeScan = await logUsageScanner.scan(now: now(), pricing: pricing)
+        let piScan = await PiUsageScanner.shared.scan(cardID: provider.id, now: now(), pricing: pricing)
+        if let scan = DailyUsageAccumulator.merged([nativeScan, piScan]) {
+            let note = piScan == nil
+                ? "From your Codex logs (estimated)"
+                : "From your Codex logs and pi (estimated)"
             SpendTileMapper.appendTokenUsage(
                 scan.series, to: &mapped.lines, now: now(),
                 unknownModelsByDay: scan.unknownModelsByDay,
                 modelUsage: scan.modelUsage,
-                modelSourceNote: "From your Codex logs (estimated)"
+                modelSourceNote: note
             )
-            SpendTileMapper.appendUsageTrend(
-                scan.series, to: &mapped.lines, now: now(),
-                note: "From your Codex logs (estimated)"
-            )
+            SpendTileMapper.appendUsageTrend(scan.series, to: &mapped.lines, now: now(), note: note)
         }
 
         MetricLine.appendNoDataIfNeeded(&mapped.lines)
