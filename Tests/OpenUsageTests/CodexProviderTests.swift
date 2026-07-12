@@ -373,6 +373,38 @@ final class CodexUsageMapperTests: XCTestCase {
         XCTAssertEqual(progress(mapped.lines, "Weekly")?.used, 10)
     }
 
+    func testClassifiesWeeklyOnlySparkPrimaryWindowByReportedDuration() throws {
+        // Spark windows reuse the core primary/secondary shape, so a disabled 5-hour Spark limit moves
+        // the weekly window into `primary_window` the same way (issue #978) — it must surface as Spark
+        // Weekly, not Spark.
+        let body = Data("""
+        {
+          "additional_rate_limits": [
+            {
+              "limit_name": "GPT-5.3-Codex-Spark",
+              "rate_limit": {
+                "primary_window": {
+                  "used_percent": 42,
+                  "limit_window_seconds": 604800,
+                  "reset_after_seconds": 345600
+                }
+              }
+            }
+          ]
+        }
+        """.utf8)
+        let response = HTTPResponse(statusCode: 200, headers: [:], body: body)
+
+        let mapped = try CodexUsageMapper.mapUsageResponse(
+            response,
+            now: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+
+        XCTAssertNil(progress(mapped.lines, "Spark"))
+        XCTAssertEqual(progress(mapped.lines, "Spark Weekly")?.used, 42)
+        XCTAssertEqual(progress(mapped.lines, "Spark Weekly")?.periodDurationMs, CodexUsageMapper.weeklyPeriodMs)
+    }
+
     func testMatchesSparkByMeteredFeatureWhenLimitNameLacksSpark() throws {
         // `limit_name` wording can shift; matching `metered_feature` too keeps the row resolving.
         let now = Date(timeIntervalSince1970: 1_800_000_000)
