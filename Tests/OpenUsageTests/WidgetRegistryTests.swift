@@ -60,6 +60,18 @@ final class WidgetRegistryTests: XCTestCase {
         XCTAssertEqual(registry.descriptors(for: "missing"), [])
     }
 
+    func testProviderOrderFiltersUnknownAndAppendsNewProviders() {
+        let claude = provider("claude")
+        let codex = provider("codex")
+        let cursor = provider("cursor")
+        let registry = WidgetRegistry(providers: [claude, codex, cursor], descriptors: [])
+
+        XCTAssertEqual(
+            registry.orderedProviderIDs(savedOrder: ["codex", "removed", "claude"]),
+            ["codex", "claude", "cursor"]
+        )
+    }
+
     /// With duplicate ids, both single-entry lookups resolve to the first match — matching the original
     /// `.first { $0.id == id }` accessors so the refactor can't change which descriptor/provider wins.
     func testDuplicateIDsResolveToFirstMatch() {

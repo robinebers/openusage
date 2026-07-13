@@ -55,7 +55,11 @@ public struct UsageReader {
         let cache = ProviderSnapshotCache(userDefaults: defaults, allowsPersistedFreshness: true)
         let allProviderIDs = registry.providers.map(\.id)
         let cachedSnapshots = cache.loadSnapshots(providerIDs: allProviderIDs)
-        let orderedIDs = orderedProviderIDs(registry: registry)
+        let savedOrder = LayoutPersistence(
+            defaults: defaults,
+            storageKey: "openusage.layout.v1"
+        ).loadProviderOrder() ?? []
+        let orderedIDs = registry.orderedProviderIDs(savedOrder: savedOrder)
         let enabledOrderedIDs = orderedIDs.filter(includesProvider)
         let needsRefresh = force || enabledOrderedIDs.contains { cache.snapshot(providerID: $0) == nil }
         var snapshots = cachedSnapshots
@@ -78,7 +82,7 @@ public struct UsageReader {
             }
             snapshots = dataStore.snapshots
             errors = dataStore.providerErrors
-            warnings = orderedProviderIDs(registry: registry)
+            warnings = orderedIDs
                 .compactMap { id in errors[id].map { "\(id): \($0)" } }
         }
 
@@ -100,15 +104,4 @@ public struct UsageReader {
         return UsageReadResult(data: data, warnings: warnings)
     }
 
-    private func orderedProviderIDs(registry: WidgetRegistry) -> [String] {
-        let defaultsOrder = registry.providers.map(\.id)
-        let savedOrder = LayoutPersistence(
-            defaults: defaults,
-            storageKey: "openusage.layout.v1"
-        ).loadProviderOrder() ?? []
-        let knownIDs = Set(defaultsOrder)
-        let validSavedOrder = savedOrder.filter { knownIDs.contains($0) }
-        let savedIDs = Set(validSavedOrder)
-        return validSavedOrder + defaultsOrder.filter { !savedIDs.contains($0) }
-    }
 }

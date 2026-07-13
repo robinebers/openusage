@@ -44,6 +44,16 @@ struct WidgetRegistry: Sendable {
         descriptorsByProvider[providerID] ?? []
     }
 
+    /// Saved order filtered to installed providers, with newly introduced providers appended in the
+    /// canonical registry order. Shared by the dashboard, local API, and one-shot CLI.
+    func orderedProviderIDs(savedOrder: [String]) -> [String] {
+        let defaults = providers.map(\.id)
+        let known = Set(defaults)
+        let saved = savedOrder.filter { known.contains($0) }
+        let savedIDs = Set(saved)
+        return saved + defaults.filter { !savedIDs.contains($0) }
+    }
+
     var limitDescriptorsByProvider: [String: [WidgetDescriptor]] {
         descriptorsByProvider.mapValues { $0.filter { !$0.limitResources.isEmpty } }
     }

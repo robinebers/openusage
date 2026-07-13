@@ -42,10 +42,7 @@ extension LayoutStore {
     /// Known providers in the user's saved order, with any not-yet-seen provider appended in registry order
     /// so a newly added provider still shows up.
     func orderedProviderIDs() -> [String] {
-        let known = registry.providers.map(\.id)
-        let ordered = providerOrder.filter { known.contains($0) }
-        let missing = known.filter { !ordered.contains($0) }
-        return ordered + missing
+        registry.orderedProviderIDs(savedOrder: providerOrder)
     }
 
     private func orderedProviders() -> [Provider] {
