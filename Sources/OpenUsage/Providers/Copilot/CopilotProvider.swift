@@ -38,12 +38,18 @@ final class CopilotProvider: ProviderRuntime {
 
     var widgetDescriptors: [WidgetDescriptor] {
         [
-            .percent(id: "copilot.premium", provider: provider, title: "Credits"),
-            .values(id: "copilot.extra", provider: provider, title: "Extra Usage", selection: .kind(.count)),
-            .values(id: "copilot.orgCredits", provider: provider, title: "Org Credits", selection: .kind(.count)),
-            .values(id: "copilot.orgSpend", provider: provider, title: "Org Spend", selection: .kind(.dollars), valueWord: "spent"),
-            .percent(id: "copilot.chat", provider: provider, title: "Chat"),
+            .percent(id: "copilot.premium", provider: provider, title: "Credits")
+                .exportingLimit("premiumCredits", unit: "percent"),
+            .values(id: "copilot.extra", provider: provider, title: "Extra Usage", selection: .kind(.count))
+                .exportingLimit("extraUsage", unit: "count", source: .value(kind: .count)),
+            .values(id: "copilot.orgCredits", provider: provider, title: "Org Credits", selection: .kind(.count))
+                .exportingLimit("orgCredits", unit: "credits", source: .value(kind: .count, label: "credits")),
+            .values(id: "copilot.orgSpend", provider: provider, title: "Org Spend", selection: .kind(.dollars), valueWord: "spent")
+                .exportingLimit("orgSpend", unit: "usd", source: .value(kind: .dollars)),
+            .percent(id: "copilot.chat", provider: provider, title: "Chat")
+                .exportingLimit("chat", unit: "percent"),
             .percent(id: "copilot.completions", provider: provider, title: "Completions")
+                .exportingLimit("completions", unit: "percent")
         ]
     }
 

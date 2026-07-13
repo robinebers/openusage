@@ -35,10 +35,14 @@ final class AntigravityProvider: ProviderRuntime {
 
     var widgetDescriptors: [WidgetDescriptor] {
         [
-            .percent(id: AntigravityMetric.geminiID, provider: provider, title: AntigravityMetric.sessionLabel, isSessionWindow: true),
-            .percent(id: AntigravityMetric.geminiWeeklyID, provider: provider, title: AntigravityMetric.weeklyLabel),
-            .percent(id: AntigravityMetric.claudeID, provider: provider, title: AntigravityMetric.claudeLabel, isSessionWindow: true),
+            .percent(id: AntigravityMetric.geminiID, provider: provider, title: AntigravityMetric.sessionLabel, isSessionWindow: true)
+                .exportingLimit("geminiSession", unit: "percent"),
+            .percent(id: AntigravityMetric.geminiWeeklyID, provider: provider, title: AntigravityMetric.weeklyLabel)
+                .exportingLimit("geminiWeekly", unit: "percent"),
+            .percent(id: AntigravityMetric.claudeID, provider: provider, title: AntigravityMetric.claudeLabel, isSessionWindow: true)
+                .exportingLimit("nonGeminiSession", unit: "percent"),
             .percent(id: AntigravityMetric.claudeWeeklyID, provider: provider, title: AntigravityMetric.claudeWeeklyLabel)
+                .exportingLimit("nonGeminiWeekly", unit: "percent")
         ]
     }
 

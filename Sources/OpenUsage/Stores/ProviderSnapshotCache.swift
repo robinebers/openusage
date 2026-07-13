@@ -28,6 +28,9 @@ struct ProviderSnapshotCache {
     /// fresh regardless of its `refreshedAt` — see `sessionWrites`. Tests inject a fixed TTL for a
     /// deterministic freshness window.
     private let ttl: TimeInterval
+    /// The menu-bar app deliberately refreshes once per launch, even when its persisted snapshot is
+    /// young. A one-shot reader has no meaningful session, so it opts into timestamp-only freshness.
+    private let allowsPersistedFreshness: Bool
     private let now: () -> Date
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
@@ -47,13 +50,17 @@ struct ProviderSnapshotCache {
         // once so the warning shows immediately instead of after the cached snapshot expires.
         // v7: spend `.values` rows gained `modelBreakdown` for the per-model hover panel. Old payloads
         // decode cleanly without it, but the bump fetches fresh snapshots so hover panels appear right away.
-        storageKey: String = "openusage.providerSnapshots.v7",
+        // v8: provider snapshots gained normalized daily history for iCloud aggregation. Refetch on
+        // upgrade so enabling sync can publish a complete first document immediately.
+        storageKey: String = "openusage.providerSnapshots.v8",
         ttl: TimeInterval = RefreshSetting.interval,
+        allowsPersistedFreshness: Bool = false,
         now: @escaping () -> Date = Date.init
     ) {
         self.userDefaults = userDefaults
         self.storageKey = storageKey
         self.ttl = ttl
+        self.allowsPersistedFreshness = allowsPersistedFreshness
         self.now = now
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -84,8 +91,9 @@ struct ProviderSnapshotCache {
         // promptly instead of waiting out the previous session's remaining interval (#697).
         let writtenThisSession = sessionWrites.withLock { $0.contains(providerID) }
         let age = now().timeIntervalSince(snapshot.refreshedAt)
-        let fresh = writtenThisSession && age < ttl
-        let reason = !writtenThisSession ? "stale (not written this session)"
+        let trusted = allowsPersistedFreshness || writtenThisSession
+        let fresh = trusted && age < ttl
+        let reason = !trusted ? "stale (not written this session)"
             : fresh ? "fresh" : "stale"
         AppLog.debug(.cache, "\(providerID) staleness \(Int(age))s vs ttl \(Int(ttl))s -> \(reason)")
         return fresh ? snapshot : nil

@@ -29,29 +29,15 @@ enum CodexUsageMapper {
 
         var lines: [MetricLine] = []
         let rateLimit = body["rate_limit"] as? [String: Any]
-        let primaryWindow = rateLimit?["primary_window"] as? [String: Any]
-        let secondaryWindow = rateLimit?["secondary_window"] as? [String: Any]
-
-        if let line = windowLine(label: "Session", usedPercent: ProviderParse.number(primaryWindow?["used_percent"]),
-                                 window: primaryWindow, defaultPeriodMs: sessionPeriodMs, now: now) {
-            lines.append(line)
-        }
-        if let line = windowLine(label: "Weekly", usedPercent: ProviderParse.number(secondaryWindow?["used_percent"]),
-                                 window: secondaryWindow, defaultPeriodMs: weeklyPeriodMs, now: now) {
-            lines.append(line)
-        }
-
-        // Header fallback when the body carried no window (only fills a Session/Weekly not already present).
-        if !lines.contains(where: { $0.label == "Session" }),
-           let line = windowLine(label: "Session", usedPercent: ProviderParse.number(response.header("x-codex-primary-used-percent")),
-                                 window: primaryWindow, defaultPeriodMs: sessionPeriodMs, now: now) {
-            lines.append(line)
-        }
-        if !lines.contains(where: { $0.label == "Weekly" }),
-           let line = windowLine(label: "Weekly", usedPercent: ProviderParse.number(response.header("x-codex-secondary-used-percent")),
-                                 window: secondaryWindow, defaultPeriodMs: weeklyPeriodMs, now: now) {
-            lines.append(line)
-        }
+        lines.append(contentsOf: classifiedWindowLines(
+            rateLimit: rateLimit,
+            labels: (session: "Session", weekly: "Weekly"),
+            headerPercents: (
+                primary: ProviderParse.number(response.header("x-codex-primary-used-percent")),
+                secondary: ProviderParse.number(response.header("x-codex-secondary-used-percent"))
+            ),
+            now: now
+        ))
 
         // Model-specific limits (e.g. GPT-5.3-Codex-Spark) ride in a separate `additional_rate_limits`
         // array, each entry reusing the primary/secondary window shape. Surfaced as their own Spark /
@@ -117,6 +103,79 @@ enum CodexUsageMapper {
         )
     }
 
+    private enum WindowKind {
+        case session
+        case weekly
+    }
+
+    private struct WindowCandidate {
+        var window: [String: Any]
+        var usedPercent: Double?
+        var fallbackKind: WindowKind
+    }
+
+    /// Codex normally returns the five-hour window as `primary_window` and the weekly window as
+    /// `secondary_window`, but it can move a temporarily sole weekly limit into the primary slot.
+    /// Classify by the explicit duration when present; keep the historical slot mapping only as a
+    /// compatibility fallback for payloads that omit or introduce an unfamiliar duration.
+    private static func classifiedWindowLines(
+        rateLimit: [String: Any]?,
+        labels: (session: String, weekly: String),
+        headerPercents: (primary: Double?, secondary: Double?) = (nil, nil),
+        now: Date
+    ) -> [MetricLine] {
+        let candidates = [
+            windowCandidate(rateLimit?["primary_window"], headerPercent: headerPercents.primary, fallbackKind: .session),
+            windowCandidate(rateLimit?["secondary_window"], headerPercent: headerPercents.secondary, fallbackKind: .weekly)
+        ].compactMap { $0 }
+
+        return [
+            classifiedWindowLine(kind: .session, label: labels.session, candidates: candidates, now: now),
+            classifiedWindowLine(kind: .weekly, label: labels.weekly, candidates: candidates, now: now)
+        ].compactMap { $0 }
+    }
+
+    private static func windowCandidate(
+        _ value: Any?,
+        headerPercent: Double?,
+        fallbackKind: WindowKind
+    ) -> WindowCandidate? {
+        guard let window = value as? [String: Any] ?? (headerPercent == nil ? nil : [:]) else { return nil }
+        return WindowCandidate(
+            window: window,
+            usedPercent: ProviderParse.number(window["used_percent"]) ?? headerPercent,
+            fallbackKind: fallbackKind
+        )
+    }
+
+    private static func classifiedWindowLine(
+        kind: WindowKind,
+        label: String,
+        candidates: [WindowCandidate],
+        now: Date
+    ) -> MetricLine? {
+        let exact = candidates.first { exactKind(for: $0.window) == kind }
+        let fallback = candidates.first { exactKind(for: $0.window) == nil && $0.fallbackKind == kind }
+        guard let candidate = exact ?? fallback else { return nil }
+        let defaultPeriodMs = kind == .session ? sessionPeriodMs : weeklyPeriodMs
+        return windowLine(
+            label: label,
+            usedPercent: candidate.usedPercent,
+            window: candidate.window,
+            defaultPeriodMs: defaultPeriodMs,
+            now: now
+        )
+    }
+
+    private static func exactKind(for window: [String: Any]) -> WindowKind? {
+        guard let periodMs = readPeriodMs(window) else { return nil }
+        switch periodMs {
+        case sessionPeriodMs: return .session
+        case weeklyPeriodMs: return .weekly
+        default: return nil
+        }
+    }
+
     /// Spark (and any future model-specific) limits from `additional_rate_limits`. Each array entry is a
     /// named limit whose `rate_limit` reuses the primary (5-hour) / secondary (weekly) window shape, so
     /// the parsing mirrors the core Session/Weekly path exactly. We surface the entry whose
@@ -133,19 +192,11 @@ enum CodexUsageMapper {
             return []
         }
 
-        var lines: [MetricLine] = []
-        let primaryWindow = rateLimit["primary_window"] as? [String: Any]
-        let secondaryWindow = rateLimit["secondary_window"] as? [String: Any]
-
-        if let line = windowLine(label: "Spark", usedPercent: ProviderParse.number(primaryWindow?["used_percent"]),
-                                 window: primaryWindow, defaultPeriodMs: sessionPeriodMs, now: now) {
-            lines.append(line)
-        }
-        if let line = windowLine(label: "Spark Weekly", usedPercent: ProviderParse.number(secondaryWindow?["used_percent"]),
-                                 window: secondaryWindow, defaultPeriodMs: weeklyPeriodMs, now: now) {
-            lines.append(line)
-        }
-        return lines
+        return classifiedWindowLines(
+            rateLimit: rateLimit,
+            labels: (session: "Spark", weekly: "Spark Weekly"),
+            now: now
+        )
     }
 
     /// True when an `additional_rate_limits` entry is the Spark limit — matched on either `limit_name`

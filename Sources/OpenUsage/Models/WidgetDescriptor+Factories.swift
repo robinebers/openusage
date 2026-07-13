@@ -116,7 +116,9 @@ extension WidgetDescriptor {
                 metricLabel: descriptor.metricLabel,
                 sample: sample,
                 pinnable: descriptor.pinnable,
-                isSpendTile: true
+                isSpendTile: true,
+                limitResources: descriptor.limitResources,
+                historyResource: descriptor.historyResource
             )
         }
     }

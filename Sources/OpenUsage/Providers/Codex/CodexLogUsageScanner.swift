@@ -97,7 +97,10 @@ actor CodexLogUsageScanner {
             if sourceDirs.isEmpty {
                 sourceDirs = [home]
             }
-            for dir in sourceDirs where seenDirs.insert(dir.path).inserted {
+            // `jsonlFiles` resolves symlinks before enumerating, so the discovered paths carry the
+            // resolved dir as their prefix — resolve here too or the relative keys (and the
+            // cross-home dir dedup) stop matching for symlinked Codex homes.
+            for dir in sourceDirs.map({ $0.resolvingSymlinksInPath() }) where seenDirs.insert(dir.path).inserted {
                 for file in JSONLScanning.jsonlFiles(under: dir) {
                     let relative = String(file.path.dropFirst(dir.path.count))
                     guard seenRelative.insert(relative).inserted else { continue }

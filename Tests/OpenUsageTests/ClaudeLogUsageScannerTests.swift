@@ -514,4 +514,33 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(scan.series.daily.count, 1)
         XCTAssertEqual(scan.series.daily[0].totalTokens, 15)
     }
+
+    func testScanFollowsSymlinkedProjectsDir() async throws {
+        let now = Date()
+        let timestamp = OpenUsageISO8601.string(from: now)
+        // The real logs live outside the config dir (e.g. a externally sync-ed folder) and
+        // `~/.claude/projects` is a symlink to them. Root discovery accepted this layout
+        // (`fileExists` follows symlinks) but enumeration used to come back empty, so the spend
+        // tiles silently under-counted to just the Cowork logs.
+        let real = try ClaudeLogFixture.makeHome(files: [
+            "project-a/session.jsonl": ClaudeLogFixture.usageLine(
+                timestamp: timestamp, input: 100, output: 50, costUSD: 0.25
+            )
+        ])
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openusage-claude-symlink-home-\(UUID().uuidString)", isDirectory: true)
+        let configDir = home.appendingPathComponent(".claude", isDirectory: true)
+        try FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(
+            at: configDir.appendingPathComponent("projects"),
+            withDestinationURL: real.appendingPathComponent("projects")
+        )
+        let scanner = ClaudeLogFixture.scanner(userHome: home)
+
+        let result = await scanner.scan(now: now, pricing: pricing)
+        let scan = try XCTUnwrap(result)
+        XCTAssertEqual(scan.series.daily.count, 1)
+        XCTAssertEqual(scan.series.daily[0].totalTokens, 150)
+        XCTAssertEqual(scan.series.daily[0].costUSD ?? 0, 0.25, accuracy: 1e-9)
+    }
 }

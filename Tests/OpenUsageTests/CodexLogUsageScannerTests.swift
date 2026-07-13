@@ -439,6 +439,36 @@ final class CodexLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(scan?.series.daily.reduce(0) { $0 + $1.totalTokens }, 150)
     }
 
+    func testScanKeepsDistinctFilesThroughSymlinkedHome() async throws {
+        let day = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-3600))
+        // The dedup keys are relative paths stripped of the source dir; discovery resolves symlinks,
+        // so the strip must resolve too. With a link path longer than its target, an unresolved
+        // strip overshoots and keys every file to "" — silently dropping all but the first.
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openusage-codex-symlink-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        let real = base.appendingPathComponent("r", isDirectory: true)
+        for (relativePath, content) in [
+            "sessions/a.jsonl": CodexLogFixture.tokenCount(
+                timestamp: day, last: CodexLogFixture.usage(input: 100, output: 50), model: "gpt-5.2"
+            ),
+            "archived_sessions/b.jsonl": CodexLogFixture.tokenCount(
+                timestamp: day, last: CodexLogFixture.usage(input: 30, output: 20), model: "gpt-5.2"
+            )
+        ] {
+            let url = real.appendingPathComponent(relativePath)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try content.write(to: url, atomically: true, encoding: .utf8)
+        }
+        let link = base.appendingPathComponent("a-codex-home-link-much-longer-than-its-resolved-target-path")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: real)
+        let scanner = CodexLogFixture.scanner(home: link)
+
+        let scan = await scanner.scan(pricing: fixedRates())
+
+        XCTAssertEqual(scan?.series.daily.reduce(0) { $0 + $1.totalTokens }, 200)
+    }
+
     func testScanReturnsNilWithoutCodexHome() async {
         let scanner = CodexLogFixture.scanner(home: nil)
         let scan = await scanner.scan(pricing: fixedRates())

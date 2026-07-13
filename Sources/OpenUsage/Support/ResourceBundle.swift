@@ -14,9 +14,13 @@ extension Bundle {
     /// `Bundle.module` for `swift run` / `swift test`, where the build path is valid.
     static let openUsageResources: Bundle = {
         let bundleName = "OpenUsage_OpenUsage.bundle"
+        let containingAppResources = Bundle.main.executableURL
+            .flatMap(ContainingAppBundle.url(for:))?
+            .appendingPathComponent("Contents/Resources", isDirectory: true)
         let searchBases: [URL?] = [
             Bundle.main.resourceURL,                          // packaged .app: Contents/Resources
             Bundle.main.bundleURL,                            // bundle beside the app root
+            containingAppResources,                          // bundled CLI: helper -> app Resources
             Bundle(for: ResourceBundleToken.self).resourceURL,
             Bundle(for: ResourceBundleToken.self).bundleURL
         ]

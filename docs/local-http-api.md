@@ -8,9 +8,28 @@ The server starts automatically with the app. If the port is already in use, the
 
 ## Routes
 
+### `GET /v1/limits`
+
+Returns a machine-facing envelope for all **enabled** providers. Providers and resources are keyed by
+stable IDs; values are raw scalars with explicit units. This is the preferred route for new integrations
+and the exact format printed by the `openusage` CLI.
+
+### `GET /v1/limits/:providerId`
+
+Returns the same envelope containing one provider. It works for disabled providers too.
+
+- **200 OK** — limits envelope, including an `errors` entry when a refresh failed.
+- **204 No Content** — provider is known but has neither a snapshot nor a recorded refresh failure yet.
+- **404 Not Found** — provider ID is unknown.
+
 ### `GET /v1/usage`
 
-Returns the latest snapshots for all **enabled** providers, in your dashboard order.
+Returns the legacy UI-oriented snapshots for all **enabled** providers, in your dashboard order. Existing
+consumers remain supported while this route is deprecated; new consumers should use `/v1/limits`.
+
+Both routes read the same rendered provider snapshots. When iCloud Sync is on, that means they both see
+the same iCloud-combined usage as the dashboard; `/v1/usage` returns the old UI-oriented shape, while
+`/v1/limits` projects the data into stable resource IDs and raw scalar values.
 
 - **200 OK** — JSON array (may be empty `[]` if nothing has been fetched yet).
 
@@ -26,7 +45,71 @@ Returns the latest snapshot for one provider. Works for disabled providers too.
 
 Methods other than `GET`/`OPTIONS` return **405**; unknown routes return **404**. When the server is already handling its maximum of 16 concurrent connections, requests get **503** — back off and retry.
 
-## Response shape
+## Limits response shape
+
+```jsonc
+{
+  "schema": "openusage.limits.v1",
+  "generatedAt": "2026-07-13T01:40:00.000Z",
+  "providers": {
+    "codex": {
+      "displayName": "Codex",
+      "plan": "Pro 20x",
+      "fetchedAt": "2026-07-13T01:39:30.000Z",
+      "expiresAt": "2026-07-13T01:44:30.000Z",
+      "stale": false,
+      "resources": {
+        "session": {
+          "kind": "consumption",
+          "unit": "percent",
+          "used": 42,
+          "limit": 100,
+          "remaining": 58,
+          "utilization": 0.42,
+          "resetsAt": "2026-07-13T06:00:00.000Z",
+          "windowSeconds": 18000
+        },
+        "credits": {
+          "kind": "balance",
+          "unit": "credits",
+          "available": 821
+        }
+      }
+    }
+  },
+  "errors": []
+}
+```
+
+`kind` is `consumption` (`used`) or `balance` (`available`). Bounded consumption also carries `limit`,
+`remaining`, and a 0–1 `utilization`. Reset, window, expiry-list, and `estimated` fields appear only when
+the provider supplies that meaning. A provider or resource with no current value is omitted rather than
+invented as zero. `expiresAt` is always `fetchedAt` plus the same five-minute freshness interval used by
+the app and CLI; `stale` says whether that instant has passed. Refresh failures appear in `errors` as
+`{"providerId":"…","message":"…"}` while a last-good provider snapshot remains available.
+For bounded progress resources, `unit` follows the provider's live metric format. For example, Cursor
+`totalUsage` is `percent` on percentage-based plans, `requests` on request-based Enterprise plans, and
+`usd` when Cursor reports a dollar pool.
+
+### Public resources
+
+| Provider | Resource keys |
+| --- | --- |
+| Claude | `session`, `weekly`, `sonnet`, `fable`, `extraUsage` |
+| Codex | `session`, `weekly`, `spark`, `sparkWeekly`, `credits`, `creditValue`, `rateLimitResets` |
+| Cursor | `totalUsage`, `autoUsage`, `apiUsage`, `onDemand`, `requests`, `credits` |
+| Antigravity | `geminiSession`, `geminiWeekly`, `nonGeminiSession`, `nonGeminiWeekly` |
+| Copilot | `premiumCredits`, `extraUsage`, `orgCredits`, `orgSpend`, `chat`, `completions` |
+| Devin | `daily`, `weekly`, `extraUsageBalance` |
+| Grok | `weekly` |
+| OpenCode | `session`, `weekly`, `monthly` |
+| OpenRouter | `credits`, `balance`, `keyLimit` |
+| Z.ai | `session`, `weekly`, `webSearches` |
+
+Charts, colors, subtitles, formatted badges, layout state, and historical spend periods stay out of this
+contract. Codex's combined Credits UI row becomes two scalar resources: `credits` and `creditValue`.
+
+## Legacy usage response shape
 
 ```jsonc
 {

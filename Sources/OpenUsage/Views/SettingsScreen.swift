@@ -15,6 +15,7 @@ struct SettingsScreen: View {
     @Environment(UpdaterController.self) private var updater
 
     @State private var launchAtLogin = LaunchAtLoginSetting()
+    @State private var commandLineTool = CommandLineToolInstaller()
     @AppStorage(TotalSpendSetting.key) private var showTotalSpend = true
     @AppStorage(AppearanceSetting.key) private var appearance = AppearanceSetting.system
     @AppStorage(TimeFormatSetting.key) private var timeFormat = TimeFormatSetting.auto
@@ -68,6 +69,7 @@ struct SettingsScreen: View {
                         .hoverTooltip("Open OpenUsage from anywhere")
                 }
             }
+            ICloudSyncSettingsSection(sync: container.iCloudSync)
             section("Appearance") {
                 row("Icon Style") {
                     picker($layout.menuBarStyle, options: MenuBarStyle.allCases, label: \.label)
@@ -156,6 +158,7 @@ struct SettingsScreen: View {
                     .padding(.bottom, 8)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
+            commandLineSection
             advancedSection
             // Visible whenever the updater is active (only the signed release build ships a feed; the
             // dev build and a bare `swift run`, with no feed, hide this).
@@ -195,6 +198,7 @@ struct SettingsScreen: View {
         .padding(.vertical, 12)
         .task { await refreshNotificationsAuth() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            commandLineTool.refreshStatus()
             Task { await refreshNotificationsAuth() }
         }
     }
@@ -301,6 +305,35 @@ struct SettingsScreen: View {
         case .denied: notificationsAuth = .denied
         case .notDetermined: notificationsAuth = .notDetermined
         default: notificationsAuth = .authorized
+        }
+    }
+
+    // MARK: - Command Line
+
+    private var commandLineSection: some View {
+        section("Command Line") {
+            row("Terminal Helper") {
+                switch commandLineTool.status {
+                case .installed:
+                    Button("Uninstall") { commandLineTool.uninstall() }
+                case .notInstalled:
+                    Button("Install…") { commandLineTool.install() }
+                case .conflict:
+                    Text("Unavailable")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Text("Adds a global `openusage` command agents can use to monitor limits.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if commandLineTool.status == .conflict {
+                inlineNotice("\(commandLineTool.destinationPath) already exists and wasn't installed by OpenUsage.")
+            } else if let errorMessage = commandLineTool.errorMessage {
+                inlineNotice(errorMessage)
+            }
         }
     }
 

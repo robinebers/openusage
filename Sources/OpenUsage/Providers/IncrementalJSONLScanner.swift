@@ -21,6 +21,9 @@ enum JSONLScanning {
     /// Every `*.jsonl` regular file under `dir` (recursively), path-sorted so a keep-first dedup is
     /// deterministic. Empty when `dir` can't be enumerated.
     static func jsonlFiles(under dir: URL) -> [DiscoveredFile] {
+        // `FileManager.enumerator` silently yields nothing when `dir` itself is a symlink.
+        // Resolve first so the enumeration sees the real directory.
+        let dir = dir.resolvingSymlinksInPath()
         let keys: [URLResourceKey] = [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey]
         guard let enumerator = FileManager.default.enumerator(
             at: dir, includingPropertiesForKeys: keys, options: []

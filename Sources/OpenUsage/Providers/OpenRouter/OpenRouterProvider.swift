@@ -29,9 +29,11 @@ final class OpenRouterProvider: ProviderRuntime {
     var widgetDescriptors: [WidgetDescriptor] {
         [
             .boundedDollars(id: "openrouter.credits", provider: provider, title: "Credits",
-                            metricLabel: "Credits", limit: 100, limitNoun: "purchased"),
+                            metricLabel: "Credits", limit: 100, limitNoun: "purchased")
+                .exportingLimit("credits", unit: "usd"),
             .dollarBalance(id: "openrouter.balance", provider: provider, title: "Balance",
-                           metricLabel: "Balance", valueWord: "left"),
+                           metricLabel: "Balance", valueWord: "left")
+                .exportingLimit("balance", kind: .balance, unit: "usd", source: .value(kind: .dollars)),
             .values(id: "openrouter.today", provider: provider, title: "Today",
                     metricLabel: "Today", selection: .kind(.dollars), isUsagePeriod: true),
             .values(id: "openrouter.week", provider: provider, title: "This Week",
@@ -40,6 +42,7 @@ final class OpenRouterProvider: ProviderRuntime {
                     metricLabel: "This Month", selection: .kind(.dollars), isUsagePeriod: true),
             .boundedDollars(id: "openrouter.keyLimit", provider: provider, title: "Key Limit",
                             metricLabel: "Key Limit", limit: 100, valueWord: "spent")
+                .exportingLimit("keyLimit", unit: "usd")
         ]
     }
 

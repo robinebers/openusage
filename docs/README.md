@@ -8,12 +8,14 @@ What the app does and how it behaves. These pages describe **behavior, not visua
 - [Menu bar](menu-bar.md) — pinning metrics into the menu bar
 - [Settings](settings.md) — every option, what it changes
 - [Refreshing & caching](refreshing.md) — when data updates and what happens when a fetch fails
+- [iCloud Sync](icloud-sync.md) — how spend history is combined across Macs
 - [Model pricing](pricing.md) — how spend tiles price tokens, and where the rates come from
 - [Updates](updates.md) — automatic updates, manual checks, and the beta channel
 - [Privacy & usage data](privacy.md) — what anonymous data is shared, and how to turn it off
 
 ## Integrations
 
+- [Command-line interface](cli.md) — one-shot cached and forced usage reads for agents and scripts
 - [Local HTTP API](local-http-api.md) — read your usage from other apps on `127.0.0.1:6736`
 - [Proxy](proxy.md) — route provider requests through SOCKS5 or HTTP(S)
 

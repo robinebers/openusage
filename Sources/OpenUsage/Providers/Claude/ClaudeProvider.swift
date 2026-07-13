@@ -45,39 +45,98 @@ final class ClaudeProvider: ProviderRuntime {
 
     var widgetDescriptors: [WidgetDescriptor] {
         [
-            .percent(id: "claude.session", provider: provider, title: "Session", isSessionWindow: true),
-            .percent(id: "claude.weekly", provider: provider, title: "Weekly"),
-            .percent(id: "claude.sonnet", provider: provider, title: "Sonnet"),
-            .percent(id: "claude.fable", provider: provider, title: "Fable"),
-            .boundedDollars(id: "claude.extra", provider: provider, title: "Extra Usage", metricLabel: "Extra usage spent", limit: 100, valueWord: "spent"),
+            .percent(id: "claude.session", provider: provider, title: "Session", isSessionWindow: true)
+                .exportingLimit("session", unit: "percent"),
+            .percent(id: "claude.weekly", provider: provider, title: "Weekly")
+                .exportingLimit("weekly", unit: "percent"),
+            .percent(id: "claude.sonnet", provider: provider, title: "Sonnet")
+                .exportingLimit("sonnet", unit: "percent"),
+            .percent(id: "claude.fable", provider: provider, title: "Fable")
+                .exportingLimit("fable", unit: "percent"),
+            .boundedDollars(id: "claude.extra", provider: provider, title: "Extra Usage", metricLabel: "Extra usage spent", limit: 100, valueWord: "spent")
+                .exportingLimit("extraUsage", unit: "usd", source: .progressOrValue(kind: .dollars)),
             .usageTrend(provider: provider)
+                .exportingHistory(
+                    scope: .machineLocal,
+                    estimatedCost: true,
+                    sourceNote: "From your Claude usage history (estimated)"
+                )
         ] + WidgetDescriptor.spendTiles(provider: provider)
     }
 
     func hasLocalCredentials() async -> Bool {
-        // Same sources and same usability filter as `refresh()` (see `hasUsableAccessToken`).
-        await loadOffMainActor { [authStore] in authStore.loadCredentialCandidates() }
-            .contains(where: \.hasUsableAccessToken)
+        // Never trigger another app's Keychain prompt during first-run detection. Encrypted Desktop
+        // material still counts as a local login; the first manual refresh requests access if needed.
+        let load = await loadOffMainActor { [authStore] in authStore.loadCredentialSet() }
+        if load.candidates.contains(where: \.hasUsableAccessToken) { return true }
+        return load.desktopStatus == .permissionRequired || load.desktopStatus == .stale
     }
 
     func refresh() async -> ProviderSnapshot {
-        await refresh(credentialReloadsRemaining: 1)
+        await refresh(
+            credentialReloadsRemaining: 1,
+            forceDesktopFallback: false,
+            previousFallbackError: nil
+        )
     }
 
     /// Claude Code can replace a login while a request is in flight. Reload once when that happens so
     /// the older account cannot reach the dashboard or cache; bound the retry for a changing source.
-    private func refresh(credentialReloadsRemaining: Int) async -> ProviderSnapshot {
-        let storedCandidates = await loadOffMainActor { [authStore] in authStore.loadCredentialCandidates() }
-        let candidates = storedCandidates.filter(\.hasUsableAccessToken)
+    private func refresh(
+        credentialReloadsRemaining: Int,
+        forceDesktopFallback: Bool,
+        previousFallbackError: ClaudeAuthError?
+    ) async -> ProviderSnapshot {
+        let allowDesktopInteraction = ProviderRefreshContext.isManual
+        let credentialLoad = await loadOffMainActor { [authStore] in
+            authStore.loadCredentialSet(
+                allowDesktopInteraction: allowDesktopInteraction,
+                forceDesktopFallback: forceDesktopFallback
+            )
+        }
+        let storedCandidates = credentialLoad.candidates
+        let candidates = storedCandidates.filter {
+            $0.hasUsableAccessToken && (!forceDesktopFallback || $0.source == .desktop)
+        }
+        if forceDesktopFallback {
+            switch credentialLoad.desktopStatus {
+            case .permissionRequired:
+                return ProviderSnapshot.error(provider: provider, error: ClaudeAuthError.desktopPermissionRequired)
+            case .stale, .invalid, .notFound:
+                if let previousFallbackError {
+                    return ProviderSnapshot.error(provider: provider, error: previousFallbackError)
+                }
+            case .notChecked, .available:
+                break
+            }
+        }
+        let hasLiveUsageCandidate = candidates.contains {
+            authStore.liveUsageAvailability($0) == .available
+        }
+        let desktopFallbackWarning: String? = if !hasLiveUsageCandidate {
+            switch credentialLoad.desktopStatus {
+            case .permissionRequired:
+                ClaudeAuthError.desktopPermissionRequired.localizedDescription
+            case .stale:
+                ClaudeAuthError.desktopTokenExpired.localizedDescription
+            case .invalid:
+                ClaudeAuthError.desktopCredentialsUnavailable.localizedDescription
+            case .notChecked, .notFound, .available:
+                nil
+            }
+        } else {
+            nil
+        }
         guard !candidates.isEmpty else {
-            // No CLI credentials anywhere. A login done only in the Claude desktop app is stored in an
-            // Electron-encrypted blob OpenUsage can't read, so a bare "Not logged in" reads as wrong to
-            // a user who is clearly signed in (#825) — point them at the one-time CLI login instead.
-            // Gated on the store finding nothing at all: a stored-but-blank token means the CLI *did*
-            // write credentials, so the plain "Not logged in" is the right guidance there.
-            if storedCandidates.isEmpty, await loadOffMainActor({ [authStore] in authStore.hasDesktopAppData() }) {
-                AppLog.info(LogTag.auth("claude"), "no CLI credentials, but desktop app data found — CLI login needed")
-                return ProviderSnapshot.error(provider: provider, error: ClaudeAuthError.desktopAppOnly)
+            switch credentialLoad.desktopStatus {
+            case .permissionRequired:
+                return ProviderSnapshot.error(provider: provider, error: ClaudeAuthError.desktopPermissionRequired)
+            case .stale:
+                return ProviderSnapshot.error(provider: provider, error: ClaudeAuthError.desktopTokenExpired)
+            case .invalid:
+                return ProviderSnapshot.error(provider: provider, error: ClaudeAuthError.desktopCredentialsUnavailable)
+            case .notChecked, .notFound, .available:
+                break
             }
             AppLog.info(LogTag.auth("claude"), "no access token, not logged in")
             return ProviderSnapshot.error(provider: provider, error: ClaudeAuthError.notLoggedIn)
@@ -93,19 +152,37 @@ final class ClaudeProvider: ProviderRuntime {
         // stale/locked-out token that an external `claude` re-login replaced in another source) falls
         // through to the next rather than failing the whole refresh; any non-auth error (rate limit,
         // request/transport failure) surfaces immediately so a real outage is never masked as a retry.
-        var lastFallbackError: Error?
+        var lastFallbackError: ClaudeAuthError?
         var credentialGeneration = ClaudeCredentialGeneration(storedCandidates)
         for state in candidates {
+            // The environment token cannot read subscription usage. If a CLI login was rejected, try
+            // Desktop before this spend-only fallback can turn the refresh into a false success.
+            if !forceDesktopFallback,
+               lastFallbackError != nil,
+               credentialLoad.desktopStatus == .notChecked,
+               authStore.liveUsageAvailability(state) == .inferenceOnlyToken
+            {
+                return await refresh(
+                    credentialReloadsRemaining: credentialReloadsRemaining,
+                    forceDesktopFallback: true,
+                    previousFallbackError: lastFallbackError
+                )
+            }
             do {
                 let snapshot = try await probe(
                     state: state,
-                    credentialGeneration: &credentialGeneration
+                    credentialGeneration: &credentialGeneration,
+                    fallbackWarning: desktopFallbackWarning
                 )
                 AppLog.info(LogTag.plugin("claude"), "refresh end (\(Int(Date().timeIntervalSince(start) * 1000))ms)")
                 return snapshot
             } catch ClaudeAuthError.credentialsChanged where credentialReloadsRemaining > 0 {
                 AppLog.info(LogTag.auth("claude"), "credential source changed during refresh; reloading current login")
-                return await refresh(credentialReloadsRemaining: credentialReloadsRemaining - 1)
+                return await refresh(
+                    credentialReloadsRemaining: credentialReloadsRemaining - 1,
+                    forceDesktopFallback: forceDesktopFallback,
+                    previousFallbackError: previousFallbackError
+                )
             } catch let error as ClaudeAuthError where error.allowsAuthFallback {
                 AppLog.warn(LogTag.auth("claude"), "\(state.source.label) failed (\(error)); falling back to next source if any")
                 lastFallbackError = error
@@ -113,6 +190,17 @@ final class ClaudeProvider: ProviderRuntime {
             } catch {
                 return ProviderSnapshot.error(provider: provider, error: error)
             }
+        }
+        if !forceDesktopFallback,
+           lastFallbackError != nil,
+           credentialLoad.desktopStatus == .notChecked
+        {
+            AppLog.info(LogTag.auth("claude"), "stored Claude login failed; trying Claude Desktop")
+            return await refresh(
+                credentialReloadsRemaining: credentialReloadsRemaining,
+                forceDesktopFallback: true,
+                previousFallbackError: lastFallbackError
+            )
         }
         return ProviderSnapshot.error(
             provider: provider,
@@ -122,7 +210,8 @@ final class ClaudeProvider: ProviderRuntime {
 
     private func probe(
         state initialState: ClaudeCredentialState,
-        credentialGeneration: inout ClaudeCredentialGeneration
+        credentialGeneration: inout ClaudeCredentialGeneration,
+        fallbackWarning: String?
     ) async throws -> ProviderSnapshot {
         var state = initialState
         var mapped = ClaudeMappedUsage(
@@ -156,6 +245,9 @@ final class ClaudeProvider: ProviderRuntime {
             // to nag about — the spend tiles still load below.
             break
         }
+        if let fallbackWarning {
+            warning = fallbackWarning
+        }
 
         // Local spend tiles, scanned natively from Claude Code's session logs and priced through the
         // shared pricing store, merged with Claude usage that happened inside pi (attributed back here).
@@ -163,10 +255,16 @@ final class ClaudeProvider: ProviderRuntime {
         let pricing = await pricing()
         let nativeScan = await logUsageScanner.scan(now: now(), pricing: pricing)
         let piScan = await PiUsageScanner.shared.scan(cardID: provider.id, now: now(), pricing: pricing)
+        var usageHistory: ProviderUsageHistory?
         if let scan = DailyUsageAccumulator.merged([nativeScan, piScan]) {
             let note = piScan == nil
                 ? "From your Claude usage history (estimated)"
                 : "From your Claude usage history and pi (estimated)"
+            usageHistory = ProviderUsageHistory(
+                series: scan.series,
+                modelUsage: scan.modelUsage,
+                unknownModelsByDay: scan.unknownModelsByDay
+            )
             SpendTileMapper.appendTokenUsage(
                 scan.series, to: &mapped.lines, now: now(),
                 unknownModelsByDay: scan.unknownModelsByDay,
@@ -177,7 +275,14 @@ final class ClaudeProvider: ProviderRuntime {
         }
 
         MetricLine.appendNoDataIfNeeded(&mapped.lines)
-        return ProviderSnapshot.make(provider: provider, plan: mapped.plan, lines: mapped.lines, refreshedAt: now(), warning: warning)
+        return ProviderSnapshot.make(
+            provider: provider,
+            plan: mapped.plan,
+            lines: mapped.lines,
+            refreshedAt: now(),
+            usageHistory: usageHistory,
+            warning: warning
+        )
     }
 
     private func fetchLiveUsage(
@@ -213,6 +318,9 @@ final class ClaudeProvider: ProviderRuntime {
             token: working.oauth.accessToken ?? "",
             attempt: { try await self.usageClient.fetchUsage(accessToken: $0, config: self.authStore.oauthConfig()) },
             refreshAccessToken: {
+                if working.source == .desktop {
+                    throw ClaudeAuthError.desktopTokenExpired
+                }
                 guard let refreshToken = working.oauth.refreshToken, !refreshToken.isEmpty else {
                     throw ClaudeAuthError.tokenExpired
                 }
@@ -230,8 +338,9 @@ final class ClaudeProvider: ProviderRuntime {
             authExpired: ClaudeAuthError.tokenExpired
         )
 
+        let forceDesktopGeneration = working.source == .desktop
         let currentGeneration = await loadOffMainActor { [authStore] in
-            authStore.credentialGeneration()
+            authStore.credentialGeneration(forceDesktopFallback: forceDesktopGeneration)
         }
         guard currentGeneration == expectedGeneration else { throw ClaudeAuthError.credentialsChanged }
 

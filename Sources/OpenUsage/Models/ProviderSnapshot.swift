@@ -7,6 +7,9 @@ struct ProviderSnapshot: Hashable, Sendable, Codable {
     var plan: String?
     var lines: [MetricLine]
     var refreshedAt: Date
+    /// Raw normalized daily history used to build spend rows. This always belongs to this Mac; peer
+    /// history is combined only in the in-memory rendered view and is never written into the cache.
+    var usageHistory: ProviderUsageHistory?
     /// A soft, non-blocking notice carried on a *successful* snapshot — e.g. Claude's "Re-login for live
     /// usage" when the saved login lacks the `user:profile` scope. Distinct from `errorCategory` (which is
     /// only on error snapshots): the refresh succeeded and partial data (spend tiles) still loads, so this
@@ -23,6 +26,7 @@ struct ProviderSnapshot: Hashable, Sendable, Codable {
         plan: String? = nil,
         lines: [MetricLine],
         refreshedAt: Date = Date(),
+        usageHistory: ProviderUsageHistory? = nil,
         warning: String? = nil,
         errorCategory: ErrorCategory? = nil
     ) {
@@ -31,6 +35,7 @@ struct ProviderSnapshot: Hashable, Sendable, Codable {
         self.plan = plan
         self.lines = lines
         self.refreshedAt = refreshedAt
+        self.usageHistory = usageHistory
         self.warning = warning
         self.errorCategory = errorCategory
     }
@@ -42,13 +47,21 @@ struct ProviderSnapshot: Hashable, Sendable, Codable {
     /// The success-path counterpart to `error(provider:message:)`: derives `providerID`/`displayName`
     /// from the provider so every runtime builds its snapshot the same way (`refreshedAt` is required
     /// so each call passes its own `now()`).
-    static func make(provider: Provider, plan: String?, lines: [MetricLine], refreshedAt: Date, warning: String? = nil) -> ProviderSnapshot {
+    static func make(
+        provider: Provider,
+        plan: String?,
+        lines: [MetricLine],
+        refreshedAt: Date,
+        usageHistory: ProviderUsageHistory? = nil,
+        warning: String? = nil
+    ) -> ProviderSnapshot {
         ProviderSnapshot(
             providerID: provider.id,
             displayName: provider.displayName,
             plan: plan,
             lines: lines,
             refreshedAt: refreshedAt,
+            usageHistory: usageHistory,
             warning: warning
         )
     }
@@ -74,4 +87,3 @@ struct ProviderSnapshot: Hashable, Sendable, Codable {
         )
     }
 }
-

@@ -9,6 +9,8 @@ final class AppContainer {
     let registry: WidgetRegistry
     let layout: LayoutStore
     let dataStore: WidgetDataStore
+    /// Opt-in private iCloud document sync for additive machine-local daily history.
+    let iCloudSync: ICloudUsageSyncStore
     /// Single source of truth for which providers the user has turned off. Both stores consult it (via
     /// injected closures) and the Customize provider list drives it.
     let enablement: ProviderEnablementStore
@@ -55,23 +57,7 @@ final class AppContainer {
         // run from a terminal. Warmed here so the first refresh finds the cache ready.
         LoginShellEnvironment.shared.prewarm()
 
-        // Default provider order (see AGENTS.md "## Providers"): the three established providers first —
-        // Claude, Codex, Cursor — then every other provider alphabetically by display name. This registry
-        // order is the default provider order (`LayoutStore.orderedProviderIDs` falls back to it, and
-        // `resetToDefault` seeds it), so the dashboard, Customize sections, and the per-provider reset
-        // menu all read this way.
-        let providers: [ProviderRuntime] = [
-            ClaudeProvider(),
-            CodexProvider(),
-            CursorProvider(),
-            AntigravityProvider(),
-            CopilotProvider(),
-            DevinProvider(),
-            GrokProvider(),
-            OpenCodeProvider(),
-            OpenRouterProvider(),
-            ZAIProvider()
-        ]
+        let providers = ProviderCatalog.make()
         let registry = WidgetRegistry.from(providers)
         let apiKeyProviders = providers.compactMap { $0 as? any APIKeyManaging }
         let enablement = ProviderEnablementStore()
@@ -87,9 +73,14 @@ final class AppContainer {
             orderedDescriptors: { [layout] in layout.visiblePlaced.compactMap { layout.descriptor(for: $0) } },
             notificationSettings: { notificationSettings }
         )
+        let iCloudSync = ICloudUsageSyncStore(dataStore: dataStore)
         // Re-enabling a provider should fetch it promptly, so clear any leftover failure backoff before
         // the enablement wake refreshes. `weak` breaks the cycle (dataStore already captures enablement).
         enablement.onProviderEnabled = { [weak dataStore] id in dataStore?.clearFailureBackoff(for: id) }
+        enablement.onChange = { [weak dataStore, weak iCloudSync] in
+            dataStore?.providerEnablementDidChange()
+            iCloudSync?.scheduleWrite()
+        }
         // Fresh installs start minimal: seed the enabled-provider list (Claude/Codex/Cursor right away,
         // then the detected set once the local credential probe finishes). No-op on every later launch.
         let onboarding = OnboardingStore()
@@ -114,6 +105,7 @@ final class AppContainer {
         self.notificationSettings = notificationSettings
         self.layout = layout
         self.dataStore = dataStore
+        self.iCloudSync = iCloudSync
 
         // The resets popover's claim service, sharing the Codex provider's credential loading and HTTP
         // client so the claim's auth can't drift from the provider's. A successful claim forces a Codex
@@ -189,9 +181,11 @@ final class AppContainer {
         self.transparency = PopoverTransparencyStore()
         self.localAPI = LocalUsageServer(state: { [layout, enablement, dataStore] in
             LocalUsageAPI.State(
-                enabledOrderedIDs: layout.providerOrder.filter { enablement.isEnabled($0) },
+                enabledOrderedIDs: layout.orderedProviderIDs().filter { enablement.isEnabled($0) },
                 knownIDs: Set(registry.providers.map(\.id)),
-                snapshots: dataStore.snapshots
+                snapshots: dataStore.snapshots,
+                limitDescriptors: registry.limitDescriptorsByProvider,
+                errors: dataStore.providerErrors
             )
         })
         self.refreshTask = Self.startPeriodicRefresh(dataStore: dataStore, telemetry: telemetry)

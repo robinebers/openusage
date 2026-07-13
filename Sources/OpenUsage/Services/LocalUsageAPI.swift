@@ -11,7 +11,13 @@ enum LocalUsageAPI {
         var enabledOrderedIDs: [String]
         /// Every provider the registry knows — single-provider lookups work for disabled ones too.
         var knownIDs: Set<String>
+        /// The rendered snapshot set shared by both routes. `/v1/usage` and `/v1/limits` only differ
+        /// in how they project this data onto their legacy and normalized wire formats.
         var snapshots: [String: ProviderSnapshot]
+        /// Only descriptors explicitly opted into the stable limits contract.
+        var limitDescriptors: [String: [WidgetDescriptor]] = [:]
+        var errors: [String: String] = [:]
+        var generatedAt = Date()
     }
 
     struct Response: Equatable, Sendable {
@@ -30,6 +36,27 @@ enum LocalUsageAPI {
             .map(String.init)
 
         switch (segments.count, segments.first, segments.dropFirst().first) {
+        case (2, "v1", "limits"):
+            guard method == "GET" else { return error(405, "method_not_allowed") }
+            return Response(
+                status: 200,
+                body: LocalLimitsAPI.encode(providerIDs: state.enabledOrderedIDs, state: state)
+            )
+
+        case (3, "v1", "limits"):
+            guard method == "GET" else { return error(405, "method_not_allowed") }
+            let providerID = segments[2]
+            guard state.knownIDs.contains(providerID) else { return error(404, "provider_not_found") }
+            // A failed refresh without a last-good snapshot still has useful machine-readable output.
+            // Only the genuinely untouched state is 204; failures return the normal envelope + error.
+            guard state.snapshots[providerID] != nil || state.errors[providerID] != nil else {
+                return Response(status: 204, body: nil)
+            }
+            return Response(
+                status: 200,
+                body: LocalLimitsAPI.encode(providerIDs: [providerID], state: state)
+            )
+
         case (2, "v1", "usage"):
             guard method == "GET" else { return error(405, "method_not_allowed") }
             let snapshots = state.enabledOrderedIDs.compactMap { state.snapshots[$0] }

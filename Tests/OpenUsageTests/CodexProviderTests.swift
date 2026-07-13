@@ -154,6 +154,46 @@ final class CodexUsageMapperTests: XCTestCase {
         XCTAssertEqual(progress(mapped.lines, "Session")?.periodDurationMs, 18_000_000)
     }
 
+    func testMapsWeeklyOnlyPrimaryWindowByDuration() throws {
+        let body = Data("""
+        {
+          "rate_limit": {
+            "primary_window": {
+              "used_percent": 5,
+              "limit_window_seconds": 604800,
+              "reset_after_seconds": 60
+            },
+            "secondary_window": null
+          }
+        }
+        """.utf8)
+        let mapped = try CodexUsageMapper.mapUsageResponse(
+            HTTPResponse(statusCode: 200, headers: [:], body: body),
+            now: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+
+        XCTAssertNil(progress(mapped.lines, "Session"))
+        XCTAssertEqual(progress(mapped.lines, "Weekly")?.used, 5)
+        XCTAssertEqual(progress(mapped.lines, "Weekly")?.periodDurationMs, CodexUsageMapper.weeklyPeriodMs)
+    }
+
+    func testUnknownWindowDurationKeepsPositionalFallback() throws {
+        let body = Data("""
+        {
+          "rate_limit": {
+            "primary_window": { "used_percent": 11, "limit_window_seconds": 86400 },
+            "secondary_window": { "used_percent": 22, "limit_window_seconds": 2592000 }
+          }
+        }
+        """.utf8)
+        let mapped = try CodexUsageMapper.mapUsageResponse(
+            HTTPResponse(statusCode: 200, headers: [:], body: body)
+        )
+
+        XCTAssertEqual(progress(mapped.lines, "Session")?.used, 11)
+        XCTAssertEqual(progress(mapped.lines, "Weekly")?.used, 22)
+    }
+
     func testMapsWindowsCreditsAndPlan() throws {
         let body = Data("""
         {
@@ -288,6 +328,32 @@ final class CodexUsageMapperTests: XCTestCase {
         // The core Session/Weekly windows are unaffected by the new parsing.
         XCTAssertEqual(progress(mapped.lines, "Session")?.used, 5)
         XCTAssertEqual(progress(mapped.lines, "Weekly")?.used, 10)
+    }
+
+    func testMapsWeeklyOnlySparkPrimaryWindowByDuration() throws {
+        let body = Data("""
+        {
+          "additional_rate_limits": [{
+            "limit_name": "GPT-5.3-Codex-Spark",
+            "rate_limit": {
+              "primary_window": {
+                "used_percent": 7,
+                "limit_window_seconds": 604800,
+                "reset_after_seconds": 60
+              },
+              "secondary_window": null
+            }
+          }]
+        }
+        """.utf8)
+        let mapped = try CodexUsageMapper.mapUsageResponse(
+            HTTPResponse(statusCode: 200, headers: [:], body: body),
+            now: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+
+        XCTAssertNil(progress(mapped.lines, "Spark"))
+        XCTAssertEqual(progress(mapped.lines, "Spark Weekly")?.used, 7)
+        XCTAssertEqual(progress(mapped.lines, "Spark Weekly")?.periodDurationMs, CodexUsageMapper.weeklyPeriodMs)
     }
 
     func testMatchesSparkByMeteredFeatureWhenLimitNameLacksSpark() throws {
