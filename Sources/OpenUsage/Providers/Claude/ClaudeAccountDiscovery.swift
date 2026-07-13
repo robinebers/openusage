@@ -44,6 +44,21 @@ struct ClaudeAccountDiscovery {
         return candidates
             .map(\.service)
             .sorted()
-            .map { DiscoveredAccount(configDir: nil, keychainService: $0, keychainAccount: nil) }
+            .map { DiscoveredAccount(keychainService: $0) }
+            + desktopAccounts()
+    }
+
+    /// Claude Desktop logins beyond the active one. Desktop keeps one token-cache entry per signed-in
+    /// organization; the ACTIVE organization already feeds the default card's Desktop fallback (see
+    /// `ClaudeAuthStore.loadCredentialSet`), so every OTHER organization is an extra account. Read
+    /// without keychain interaction: until the user's one-time Safe Storage grant (a manual refresh),
+    /// the inventory is simply unavailable and Desktop accounts appear on a later launch.
+    private func desktopAccounts() -> [DiscoveredAccount] {
+        guard let inventory = authStore.desktop.organizationInventory(allowInteraction: false) else {
+            return []
+        }
+        return inventory.organizations
+            .filter { $0 != inventory.active }
+            .map { DiscoveredAccount(desktopOrganization: $0) }
     }
 }

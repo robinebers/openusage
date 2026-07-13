@@ -13,6 +13,21 @@ struct DiscoveredAccount: Hashable, Sendable {
     /// Keychain account attribute, for providers that keep one service and distinguish accounts by
     /// account name (Codex: service `Codex Auth`, account `cli|<hash>`).
     var keychainAccount: String?
+    /// A desktop-app organization UUID, for logins borrowed read-only from a desktop app's own
+    /// encrypted session store (Claude Desktop keeps one token-cache entry per organization).
+    var desktopOrganization: String?
+
+    init(
+        configDir: String? = nil,
+        keychainService: String? = nil,
+        keychainAccount: String? = nil,
+        desktopOrganization: String? = nil
+    ) {
+        self.configDir = configDir
+        self.keychainService = keychainService
+        self.keychainAccount = keychainAccount
+        self.desktopOrganization = desktopOrganization
+    }
 }
 
 /// One persisted additional login for a provider. The default account is NEVER stored — only extra
@@ -24,8 +39,29 @@ struct ProviderAccount: Codable, Hashable, Sendable, Identifiable {
     var configDir: String?
     var keychainService: String?
     var keychainAccount: String?
+    /// See `DiscoveredAccount.desktopOrganization`. Optional and absent in older records, so
+    /// pre-existing persisted accounts decode unchanged.
+    var desktopOrganization: String?
     /// User-supplied display name from Customize. `nil` falls back to a short id-derived name.
     var customName: String?
+
+    init(
+        id: UUID,
+        providerID: String,
+        configDir: String? = nil,
+        keychainService: String? = nil,
+        keychainAccount: String? = nil,
+        desktopOrganization: String? = nil,
+        customName: String? = nil
+    ) {
+        self.id = id
+        self.providerID = providerID
+        self.configDir = configDir
+        self.keychainService = keychainService
+        self.keychainAccount = keychainAccount
+        self.desktopOrganization = desktopOrganization
+        self.customName = customName
+    }
 
     /// The key this account's snapshots are cached and refreshed under. The default account of every
     /// provider uses the bare provider id (which is why existing caches need no migration); extras get
@@ -33,10 +69,13 @@ struct ProviderAccount: Codable, Hashable, Sendable, Identifiable {
     var accountKey: String { "\(providerID)@\(id.uuidString.lowercased())" }
 
     /// Shown in the account picker and Customize: the custom name when set, else a short stable
-    /// id-derived tag the user can recognize until they rename it.
+    /// tag the user can recognize until they rename it (a Desktop login is named for what it is).
     var displayName: String {
         if let trimmed = customName?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty {
             return trimmed
+        }
+        if let desktopOrganization {
+            return "Desktop (\(String(desktopOrganization.lowercased().prefix(8))))"
         }
         return "Account \(String(id.uuidString.lowercased().prefix(8)))"
     }
@@ -44,6 +83,7 @@ struct ProviderAccount: Codable, Hashable, Sendable, Identifiable {
     /// Whether a freshly discovered credential source refers to this account (any shared source
     /// counts). Used by reconcile to keep the UUID stable across launches.
     func matches(_ discovered: DiscoveredAccount) -> Bool {
+        if let organization = discovered.desktopOrganization { return organization == desktopOrganization }
         if let dir = discovered.configDir, dir == configDir { return true }
         if let service = discovered.keychainService, keychainAccount == nil, discovered.keychainAccount == nil,
            service == keychainService {
@@ -70,6 +110,10 @@ struct ProviderAccount: Codable, Hashable, Sendable, Identifiable {
             guard keychainService == other.keychainService, keychainAccount == other.keychainAccount else {
                 return false
             }
+            sharesSource = true
+        }
+        if let organization = desktopOrganization {
+            guard organization == other.desktopOrganization else { return false }
             sharesSource = true
         }
         return sharesSource

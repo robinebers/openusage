@@ -324,7 +324,11 @@ final class WidgetDataStore {
             }
         }
         let start = Date()
-        let snapshot = await account.runtime.refresh()
+        // Task-local manual-refresh marker: a forced (user-initiated) refresh may show a one-time
+        // keychain prompt (Claude Desktop's Safe Storage); the background timer never may.
+        let snapshot = await ProviderRefreshContext.$isManual.withValue(force) {
+            await account.runtime.refresh()
+        }
         let durationMs = Int(Date().timeIntervalSince(start) * 1000)
         if let message = Self.errorMessage(in: snapshot) {
             // Failed refresh: surface the error but keep the last good snapshot on screen rather than
