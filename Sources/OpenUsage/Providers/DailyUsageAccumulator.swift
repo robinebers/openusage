@@ -43,7 +43,10 @@ struct DailyUsageAccumulator {
         for scan in present {
             for day in scan.modelUsage?.daily ?? [] {
                 for model in day.models {
-                    accumulator.add(day: day.date, tokens: model.totalTokens, cost: model.costUSD ?? 0, model: model.model)
+                    // Skip cost-unknown entries rather than treating nil as $0 — their unknown-model
+                    // metadata is already carried through via unknownModelsByDay below.
+                    guard let cost = model.costUSD else { continue }
+                    accumulator.add(day: day.date, tokens: model.totalTokens, cost: cost, model: model.model)
                 }
             }
             for (day, models) in scan.unknownModelsByDay {
