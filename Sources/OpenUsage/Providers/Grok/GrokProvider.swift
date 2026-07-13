@@ -37,6 +37,11 @@ final class GrokProvider: ProviderRuntime {
                 .exportingLimit("weekly", unit: "percent"),
             .badge(id: "grok.payAsYouGo", provider: provider, title: "Extra Usage", metricLabel: "Pay as you go"),
             .usageTrend(provider: provider)
+                .exportingHistory(
+                    scope: .machineLocal,
+                    estimatedCost: true,
+                    sourceNote: "From your Grok logs (estimated)"
+                )
             // Local spend tiles, estimated from the Grok CLI log (see GrokLogUsageScanner).
         ] + WidgetDescriptor.spendTiles(provider: provider)
     }
@@ -90,7 +95,13 @@ final class GrokProvider: ProviderRuntime {
 
         // Local spend tiles, read natively from the Grok CLI log and priced via the shared pricing
         // store. `scan` is awaited so its whole-file read + parse runs off the main actor.
+        var usageHistory: ProviderUsageHistory?
         if let scan = await logUsageScanner.scan(daysBack: 30, now: now(), pricing: await pricing()) {
+            usageHistory = ProviderUsageHistory(
+                series: scan.series,
+                modelUsage: scan.modelUsage,
+                unknownModelsByDay: scan.unknownModelsByDay
+            )
             SpendTileMapper.appendTokenUsage(
                 scan.series,
                 to: &mapped.lines,
@@ -103,7 +114,13 @@ final class GrokProvider: ProviderRuntime {
                                              note: "From your Grok logs (estimated)")
         }
 
-        return ProviderSnapshot.make(provider: provider, plan: plan, lines: mapped.lines, refreshedAt: now())
+        return ProviderSnapshot.make(
+            provider: provider,
+            plan: plan,
+            lines: mapped.lines,
+            refreshedAt: now(),
+            usageHistory: usageHistory
+        )
     }
 
     private func fetchCreditsConfigWithRetry(accessToken: String, state: inout GrokAuthState) async throws -> HTTPResponse {

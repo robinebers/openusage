@@ -71,6 +71,11 @@ final class OpenCodeProvider: ProviderRuntime {
             .boundedDollars(id: "opencode.monthly", provider: provider, title: "Monthly", limit: OpenCodeUsageMapper.monthlyCap)
                 .exportingLimit("monthly", unit: "usd", estimated: true),
             .usageTrend(provider: provider)
+                .exportingHistory(
+                    scope: .machineLocal,
+                    estimatedCost: false,
+                    sourceNote: sourceNote
+                )
         ] + WidgetDescriptor.spendTiles(provider: provider)
     }
 
@@ -150,6 +155,16 @@ final class OpenCodeProvider: ProviderRuntime {
         // `goWindows` is present only on a current Go signal (key or recent spend), never a stale anchor,
         // so it's the honest source for the plan badge too.
         let plan: String? = scan.goWindows != nil ? "Go" : nil
-        return ProviderSnapshot.make(provider: provider, plan: plan, lines: lines, refreshedAt: refreshedAt)
+        return ProviderSnapshot.make(
+            provider: provider,
+            plan: plan,
+            lines: lines,
+            refreshedAt: refreshedAt,
+            usageHistory: ProviderUsageHistory(
+                series: scan.logScan.series,
+                modelUsage: scan.logScan.modelUsage,
+                unknownModelsByDay: scan.logScan.unknownModelsByDay
+            )
+        )
     }
 }

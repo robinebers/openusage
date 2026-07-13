@@ -54,13 +54,18 @@ final class WidgetDataStore {
     /// would cause. The manual `force` refresh (⌘R) always bypasses it.
     private static let failureRetryBackoff: TimeInterval = 60
 
-    /// The snapshot each provider's card shows — always its SELECTED account's data, keyed by the
-    /// bare provider id. This is the projection every view reads; the full per-account picture lives
-    /// in `accountSnapshots` and is re-projected here whenever a refresh lands or the selection moves.
+    /// Rendered snapshots consumed by every UI/API surface, keyed by provider id. For a provider on
+    /// its DEFAULT account this equals `localSnapshots` (plus the peer-history union while iCloud
+    /// sync is on); for a provider whose picker is on an EXTRA account it is that account's own
+    /// snapshot — peer history is provider-level and belongs to the default card only.
     var snapshots: [String: ProviderSnapshot] = [:]
-    /// The latest snapshot per account key (`"<provider>"` for defaults, `"<provider>@<uuid>"` for
-    /// extras). Not read by views directly — the projection above is — but kept warm for every
-    /// account so switching the picker is instant.
+    /// Last-good snapshots produced on this Mac by each provider's DEFAULT account. These alone are
+    /// exported to iCloud, so a peer contribution can never echo back out and multiply on the next
+    /// device — and an extra account's data never leaves this Mac under the provider's shared id.
+    private(set) var localSnapshots: [String: ProviderSnapshot] = [:]
+    /// The latest snapshot per account key (`"<provider>"` for defaults — mirroring
+    /// `localSnapshots` — `"<provider>@<uuid>"` for extras), kept warm for every account so
+    /// switching the picker is instant.
     @ObservationIgnored private var accountSnapshots: [String: ProviderSnapshot] = [:]
     var refreshingProviderIDs: Set<String> = []
     /// Per-account in-flight guard (the dup-fetch gate); `refreshingProviderIDs` above stays the
@@ -92,6 +97,9 @@ final class WidgetDataStore {
     /// bulk — so the recorder can roll daily usage and error counts up into one event per provider per
     /// day. `nil` (and so a no-op) in tests and previews. Not observable UI state.
     @ObservationIgnored var onRefreshOutcome: (@MainActor (String, RefreshOutcome, ErrorCategory?, Bool) -> Void)?
+    /// Wired by `ICloudUsageSyncStore`; debounced there so a concurrent provider batch produces one file.
+    @ObservationIgnored var onLocalHistoryChanged: (@MainActor () -> Void)?
+    @ObservationIgnored private var peerHistoryDocuments: [UsageHistoryDocument] = []
 
     /// Global meter style: whether every bounded tile (and the menu-bar value) renders as "used" or
     /// "left/remaining". Persisted so the choice survives relaunch; defaults to `.remaining`.
@@ -148,13 +156,17 @@ final class WidgetDataStore {
         self.alwaysShowPacing = defaults.bool(forKey: Self.alwaysShowPacingKey)
         // Stale-while-revalidate: load whatever was cached (expired included) so the menu bar and
         // dashboard show last-known values immediately at launch instead of "—"; the refresh loop
-        // replaces them as soon as fresh data lands. Loaded for every account key, then projected so
-        // each card paints its selected account.
+        // replaces them as soon as fresh data lands. Loaded for every account key; the bare
+        // provider-id keys are the default accounts' snapshots (the iCloud-exported set), and the
+        // rendered map starts from those overlaid with each provider's selected account.
         self.accountSnapshots = cache.loadSnapshots(keys: runtimes.map(\.accountKey))
+        let providerIDs = Set(registry.providers.map(\.id))
+        self.localSnapshots = accountSnapshots.filter { providerIDs.contains($0.key) }
+        self.snapshots = localSnapshots
         for providerID in accountRuntimesByProvider.keys {
             let key = self.selectedAccountKey(providerID)
-            if let snapshot = accountSnapshots[key] {
-                self.snapshots[providerID] = snapshot
+            if key != providerID {
+                self.snapshots[providerID] = accountSnapshots[key]
             }
         }
     }
@@ -184,13 +196,10 @@ final class WidgetDataStore {
     }
 
     /// Re-derive the provider-keyed display state (`snapshots`, `providerErrors`) from the
-    /// account-keyed truth for one provider. The no-op writes are skipped: `@Observable` doesn't
-    /// compare values, so blind re-assignment would re-render the menu-bar label for nothing.
+    /// account-keyed truth for one provider. Routed through the full rendered rebuild so the
+    /// peer-history union and the selection overlay can never disagree.
     private func projectSelection(providerID: String) {
-        let key = selectedAccountKey(providerID)
-        if snapshots[providerID] != accountSnapshots[key] {
-            snapshots[providerID] = accountSnapshots[key]
-        }
+        rebuildRenderedSnapshots()
         projectSelectedError(providerID: providerID)
     }
 
@@ -216,7 +225,7 @@ final class WidgetDataStore {
         let start = Date()
         AppLog.info(.refresh, "batch start (\(providerIDs.count) providers, force=\(force))")
         let tasks = providerIDs.map { providerID in
-            Task { await self.refresh(providerID: providerID, force: force) }
+            Task { await self.refresh(providerID: providerID, force: force, notifyHistoryChange: false) }
         }
         var outcomes: [RefreshOutcome] = []
         outcomes.reserveCapacity(tasks.count)
@@ -234,6 +243,7 @@ final class WidgetDataStore {
         let failed = outcomes.count { $0 == .failed }
         let cached = outcomes.count { $0 == .cacheHit }
         let backedOff = outcomes.count { $0 == .backedOff }
+        if refreshed > 0 { onLocalHistoryChanged?() }
         AppLog.info(.refresh, "batch end (\(durationMs)ms, \(refreshed) ok / \(failed) failed / \(cached) cached / \(backedOff) backed off)")
     }
 
@@ -287,7 +297,11 @@ final class WidgetDataStore {
     /// callers act on (the post-claim reconcile loop, the enablement wake); the other accounts still
     /// refresh so switching the picker is instant.
     @discardableResult
-    func refresh(providerID: String, force: Bool = false) async -> RefreshOutcome {
+    func refresh(
+        providerID: String,
+        force: Bool = false,
+        notifyHistoryChange: Bool = true
+    ) async -> RefreshOutcome {
         guard isProviderEnabled(providerID) else { return .skipped }
         guard let runtimes = accountRuntimesByProvider[providerID], !runtimes.isEmpty else {
             return .skipped
@@ -298,19 +312,28 @@ final class WidgetDataStore {
             (runtime.accountKey, Task { await self.refreshAccount(runtime, force: force) })
         }
         var selectedOutcome = RefreshOutcome.skipped
+        var defaultOutcome = RefreshOutcome.skipped
         for (key, task) in tasks {
             let outcome = await task.value
             if key == selectedKey { selectedOutcome = outcome }
+            if key == providerID { defaultOutcome = outcome }
         }
+        // Only the DEFAULT account feeds the iCloud export (`localSnapshots`), so the history
+        // notification keys off its outcome — the selected account's may be a cache hit while the
+        // default actually fetched. `refreshAll` passes false and fires once at batch end instead.
+        if notifyHistoryChange, defaultOutcome == .refreshed { onLocalHistoryChanged?() }
         return selectedOutcome
     }
 
     private func refreshAccount(_ account: AccountRuntime, force: Bool) async -> RefreshOutcome {
         let key = account.accountKey
         if !force, let cached = cache.snapshot(key: key) {
+            // Skip the no-op write: `@Observable` doesn't compare values, so unconditionally
+            // re-assigning an unchanged snapshot would re-render the menu-bar label every pass.
             AppLog.debug(.refresh, "cache hit \(key)")
             if accountSnapshots[key] != cached {
                 accountSnapshots[key] = cached
+                if key == account.providerID { localSnapshots[key] = cached }
                 projectSelection(providerID: account.providerID)
             }
             return .cacheHit
@@ -343,7 +366,7 @@ final class WidgetDataStore {
         let start = Date()
         // Task-local manual-refresh marker: a forced (user-initiated) refresh may show a one-time
         // keychain prompt (Claude Desktop's Safe Storage); the background timer never may.
-        let snapshot = await ProviderRefreshContext.$isManual.withValue(force) {
+        var snapshot = await ProviderRefreshContext.$isManual.withValue(force) {
             await account.runtime.refresh()
         }
         let durationMs = Int(Date().timeIntervalSince(start) * 1000)
@@ -361,7 +384,26 @@ final class WidgetDataStore {
         accountErrors[key] = nil
         // Recovered: drop any backoff so the account resumes the normal cadence immediately.
         failureRetryAfter[key] = nil
+        // A provider can refresh its live limits successfully while its optional local log/CSV scan
+        // produces no result. Keep only the last-good normalized history in that case; the new plan,
+        // limits, warnings, and timestamp still win. A non-nil empty history remains authoritative and
+        // clears the old rows, because it proves the scan completed and found no usage.
+        if snapshot.usageHistory == nil,
+           let history = accountSnapshots[key]?.usageHistory,
+           let descriptor = registry.historyDescriptorsByProvider[account.providerID]
+        {
+            snapshot.usageHistory = history
+            snapshot = UsageHistorySnapshotRenderer.render(
+                local: snapshot,
+                history: history,
+                descriptor: descriptor,
+                now: now(),
+                combined: false
+            )
+            AppLog.debug(.refresh, "preserved last-good history for \(key) after scan miss")
+        }
         accountSnapshots[key] = snapshot
+        if key == account.providerID { localSnapshots[key] = snapshot }
         cache.store(snapshot, key: key)
         projectSelection(providerID: account.providerID)
         AppLog.info(.refresh, "\(key) ok (\(durationMs)ms)")
@@ -378,6 +420,94 @@ final class WidgetDataStore {
         for runtime in accountRuntimesByProvider[providerID] ?? [] {
             failureRetryAfter[runtime.accountKey] = nil
         }
+    }
+
+    /// Rebuild the in-memory union immediately after a provider toggle. Local cached data remains
+    /// available to direct API reads, but disabled providers stop receiving peer contributions.
+    func providerEnablementDidChange() {
+        rebuildRenderedSnapshots()
+    }
+
+    /// Replaces the downloaded peer set. A conflicted duplicate device file resolves to the newest
+    /// valid document, and this Mac's own downloaded copy is excluded in favor of current memory.
+    func setPeerHistoryDocuments(_ documents: [UsageHistoryDocument], ownDeviceID: String) {
+        peerHistoryDocuments = UsageHistoryDocument.newestByDevice(documents)
+            .filter { $0.deviceID != ownDeviceID }
+        rebuildRenderedSnapshots()
+    }
+
+    func clearPeerHistoryDocuments() {
+        guard !peerHistoryDocuments.isEmpty else { return }
+        peerHistoryDocuments = []
+        rebuildRenderedSnapshots()
+    }
+
+    func localHistoryDocument(deviceID: String, deviceName: String, updatedAt: Date = Date()) -> UsageHistoryDocument {
+        var providers: [String: ProviderUsageHistory] = [:]
+        for (providerID, descriptor) in registry.historyDescriptorsByProvider
+        where descriptor.scope == .machineLocal && isProviderEnabled(providerID) {
+            if let history = localSnapshots[providerID]?.usageHistory {
+                providers[providerID] = history
+            }
+        }
+        return UsageHistoryDocument(
+            deviceID: deviceID,
+            deviceName: deviceName,
+            updatedAt: updatedAt,
+            providers: providers
+        )
+    }
+
+    private func rebuildRenderedSnapshots() {
+        guard !peerHistoryDocuments.isEmpty else {
+            snapshots = applyingSelectedAccounts(to: localSnapshots)
+            return
+        }
+        let renderDate = now()
+        let enabledDescriptors = registry.historyDescriptorsByProvider.reduce(
+            into: [String: UsageHistoryDescriptor]()
+        ) { result, entry in
+            if isProviderEnabled(entry.key) { result[entry.key] = entry.value }
+        }
+        let merged = UsageHistoryAggregator.merged(
+            localSnapshots: localSnapshots,
+            peerDocuments: peerHistoryDocuments,
+            descriptors: enabledDescriptors,
+            now: renderDate
+        )
+        var rendered = localSnapshots
+        for (providerID, history) in merged {
+            guard let descriptor = registry.historyDescriptorsByProvider[providerID],
+                  let provider = registry.provider(id: providerID)
+            else { continue }
+            let local = localSnapshots[providerID] ?? ProviderSnapshot(
+                providerID: providerID,
+                displayName: provider.displayName,
+                lines: [],
+                refreshedAt: peerHistoryDocuments.map(\.updatedAt).max() ?? renderDate
+            )
+            rendered[providerID] = UsageHistorySnapshotRenderer.render(
+                local: local,
+                history: history,
+                descriptor: descriptor,
+                now: renderDate
+            )
+        }
+        snapshots = applyingSelectedAccounts(to: rendered)
+    }
+
+    /// Overlay each provider's selected EXTRA account onto the rendered map: that card shows the
+    /// account's own snapshot instead of the default's (and instead of the peer union — peer history
+    /// is provider-level and can't be attributed to a specific account).
+    private func applyingSelectedAccounts(to rendered: [String: ProviderSnapshot]) -> [String: ProviderSnapshot] {
+        var result = rendered
+        for providerID in accountRuntimesByProvider.keys {
+            let key = selectedAccountKey(providerID)
+            if key != providerID {
+                result[providerID] = accountSnapshots[key]
+            }
+        }
+        return result
     }
 
     /// The provider's latest refresh error, or `nil` when its last refresh succeeded.

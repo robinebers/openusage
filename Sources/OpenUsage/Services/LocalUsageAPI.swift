@@ -11,6 +11,8 @@ enum LocalUsageAPI {
         var enabledOrderedIDs: [String]
         /// Every provider the registry knows — single-provider lookups work for disabled ones too.
         var knownIDs: Set<String>
+        /// The rendered snapshot set shared by both routes. `/v1/usage` and `/v1/limits` only differ
+        /// in how they project this data onto their legacy and normalized wire formats.
         var snapshots: [String: ProviderSnapshot]
         /// Only descriptors explicitly opted into the stable limits contract.
         var limitDescriptors: [String: [WidgetDescriptor]] = [:]

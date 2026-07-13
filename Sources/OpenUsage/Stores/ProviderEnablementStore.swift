@@ -42,6 +42,9 @@ final class ProviderEnablementStore {
     /// refresh actually probes it instead of being suppressed by a backoff left over from a failure
     /// just before it was turned off.
     var onProviderEnabled: (@MainActor (String) -> Void)?
+    /// Called after any real enablement-set change. iCloud history rewrites its one machine document so
+    /// disabling a provider removes its stale contribution as promptly as enabling adds it.
+    var onChange: (@MainActor () -> Void)?
 
     /// Legacy-mode state: the providers the user turned off. Unused (empty) in enabled-list mode.
     private(set) var disabledIDs: Set<String>
@@ -89,6 +92,7 @@ final class ProviderEnablementStore {
         // Clear the backoff BEFORE the wake notification, so the refresh it triggers actually probes the
         // just-enabled provider instead of skipping it as recently-failed.
         if enabled { onProviderEnabled?(id) }
+        onChange?()
         NotificationCenter.default.post(name: Self.didChangeNotification, object: nil)
     }
 
@@ -115,6 +119,7 @@ final class ProviderEnablementStore {
         defaults.set(Array(ids), forKey: Self.enabledStorageKey)
         guard changed else { return }
         for id in newlyEnabled.sorted() { onProviderEnabled?(id) }
+        onChange?()
         NotificationCenter.default.post(name: Self.didChangeNotification, object: nil)
     }
 }

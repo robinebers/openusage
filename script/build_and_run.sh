@@ -14,6 +14,8 @@ set -euo pipefail
 # Usage: script/build_and_run.sh [run|build|logs|verify]
 # Env:   CODESIGN_IDENTITY  override signing identity (exact name or hash)
 #        CONFIG             "release" (default) or "debug"
+#        ICLOUD_PROVISIONING_PROFILE  optional override for the development provisioning profile;
+#                         otherwise the newest matching installed profile is selected automatically
 
 MODE="${1:-run}"
 CONFIG="${CONFIG:-release}"
@@ -21,6 +23,7 @@ CONFIG="${CONFIG:-release}"
 TARGET_NAME="OpenUsage"                 # SwiftPM target / binary name
 APP_DISPLAY="OpenUsage"                 # user-facing app name
 BUNDLE_ID="${BUNDLE_ID:-com.robinebers.openusage.dev}"
+ICLOUD_CONTAINER_ID="iCloud.com.robinebers.openusage.dev"
 MIN_SYSTEM_VERSION="15.0"
 APP_VERSION="0.7.0"
 APP_BUILD="0.7.0"
@@ -37,6 +40,7 @@ CLI_BINARY="$APP_HELPERS/openusage"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 RESOURCE_BUNDLE_NAME="${TARGET_NAME}_${TARGET_NAME}.bundle"
 ENTITLEMENTS="$ROOT_DIR/script/OpenUsage.dev.entitlements.plist"
+SIGN_ENTITLEMENTS="$ROOT_DIR/script/OpenUsage.local.entitlements.plist"
 
 pkill -x "$TARGET_NAME" >/dev/null 2>&1 || true
 
@@ -142,9 +146,42 @@ cat >"$INFO_PLIST" <<PLIST
   <string>NSApplication</string>
   <key>NSHighResolutionCapable</key>
   <true/>
+  <key>NSUbiquitousContainers</key>
+  <dict>
+    <key>iCloud.com.robinebers.openusage.dev</key>
+    <dict>
+      <key>NSUbiquitousContainerIsDocumentScopePublic</key>
+      <false/>
+      <key>NSUbiquitousContainerName</key>
+      <string>OpenUsage</string>
+      <key>NSUbiquitousContainerSupportedFolderLevels</key>
+      <string>None</string>
+    </dict>
+  </dict>
 </dict>
 </plist>
 PLIST
+
+if [ -n "${ICLOUD_PROVISIONING_PROFILE:-}" ] && [ ! -f "$ICLOUD_PROVISIONING_PROFILE" ]; then
+  echo "iCloud provisioning profile not found: $ICLOUD_PROVISIONING_PROFILE" >&2
+  exit 1
+fi
+
+if [ -z "${ICLOUD_PROVISIONING_PROFILE:-}" ]; then
+  ICLOUD_PROVISIONING_PROFILE=$("$ROOT_DIR/script/find_icloud_provisioning_profile.sh" \
+    "$BUNDLE_ID" "$ICLOUD_CONTAINER_ID" || true)
+fi
+
+if [ -n "${ICLOUD_PROVISIONING_PROFILE:-}" ]; then
+  echo "==> using iCloud provisioning profile: $ICLOUD_PROVISIONING_PROFILE"
+  cp "$ICLOUD_PROVISIONING_PROFILE" "$APP_CONTENTS/embedded.provisionprofile"
+  SIGN_ENTITLEMENTS="$DIST_DIR/OpenUsage.dev.resolved.entitlements.plist"
+  "$ROOT_DIR/script/render_icloud_entitlements.sh" \
+    "$ENTITLEMENTS" "$ICLOUD_PROVISIONING_PROFILE" "$SIGN_ENTITLEMENTS" \
+    "$ICLOUD_CONTAINER_ID"
+else
+  echo "WARNING: no matching installed iCloud provisioning profile was found; iCloud Sync will be unavailable in this build." >&2
+fi
 
 # Pick a stable Apple Development identity so ad-hoc cdhash churn doesn't re-trigger
 # permission prompts on every rebuild. Fall back to ad-hoc only if none is found.
@@ -164,12 +201,12 @@ if [ -n "$CODESIGN_IDENTITY" ]; then
   # Not --deep: the Sparkle framework is already signed above and must keep that signature.
   /usr/bin/codesign --force --options runtime \
     --sign "$CODESIGN_IDENTITY" \
-    --entitlements "$ENTITLEMENTS" \
+    --entitlements "$SIGN_ENTITLEMENTS" \
     "$APP_BUNDLE" >/dev/null
   echo "==> signed with: $CODESIGN_IDENTITY"
 else
   /usr/bin/codesign --force --sign - "$CLI_BINARY" >/dev/null
-  /usr/bin/codesign --force --sign - --entitlements "$ENTITLEMENTS" "$APP_BUNDLE" >/dev/null
+  /usr/bin/codesign --force --sign - --entitlements "$SIGN_ENTITLEMENTS" "$APP_BUNDLE" >/dev/null
   echo "WARNING: no Apple Development identity found; ad-hoc signed." >&2
 fi
 

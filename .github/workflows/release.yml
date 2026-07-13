@@ -79,6 +79,13 @@ jobs:
           printf '%s' "$SPARKLE_PRIVATE_KEY" > "$RUNNER_TEMP/sparkle_ed_private_key"
           echo "SPARKLE_PRIVATE_KEY_FILE=$RUNNER_TEMP/sparkle_ed_private_key" >> "$GITHUB_ENV"
 
+      - name: Write iCloud provisioning profile
+        env:
+          ICLOUD_PROFILE_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_ICLOUD_PROFILE }}
+        run: |
+          printf '%s' "$ICLOUD_PROFILE_BASE64" | base64 --decode > "$RUNNER_TEMP/openusage-icloud.provisionprofile"
+          echo "ICLOUD_PROVISIONING_PROFILE=$RUNNER_TEMP/openusage-icloud.provisionprofile" >> "$GITHUB_ENV"
+
       - name: Carry forward the existing appcast
         run: |
           # generate_appcast works on a folder: it reads the existing appcast.xml there and the new DMG,

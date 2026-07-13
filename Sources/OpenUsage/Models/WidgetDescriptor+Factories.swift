@@ -117,7 +117,8 @@ extension WidgetDescriptor {
                 sample: sample,
                 pinnable: descriptor.pinnable,
                 isSpendTile: true,
-                limitResources: descriptor.limitResources
+                limitResources: descriptor.limitResources,
+                historyResource: descriptor.historyResource
             )
         }
     }

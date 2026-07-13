@@ -12,6 +12,14 @@ Settings lives inside the popover — there is no separate window. Open it from 
 
 **Upgrading from the legacy (pre-0.7) edition:** the old edition managed start-on-login with its own launcher file, which an in-place update left behind. That leftover could start the app a second time at every login and showed up in System Settings → Login Items under the signing company's name ("SUNSTORY LLC") instead of OpenUsage. The app now removes it automatically on launch — only when the file verifiably points at OpenUsage itself — so login starts exactly one copy, controlled by the Launch at Login toggle above.
 
+## iCloud Sync
+
+**Sync Across Macs** is off by default. Turning it on shares normalized OpenUsage history through the
+app's private iCloud container and combines machine-local tokens and spend across Macs signed into the
+same iCloud account. Settings shows the five-minute write cadence and each Mac's relative **Updated**
+time; it also reports unavailable iCloud, loading, write, and malformed-file states. See
+[iCloud Sync](icloud-sync.md) for what is included and which surfaces use the combined values.
+
 ## Appearance
 
 | Setting | Options | What it does |

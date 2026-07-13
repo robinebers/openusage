@@ -16,6 +16,9 @@ struct WidgetDescriptor: Identifiable, Hashable {
     var isSpendTile: Bool = false
     /// Stable scalar resources exported by `/v1/limits`. Empty for UI-only/history widgets.
     var limitResources: [LimitResourceDescriptor] = []
+    /// Explicit aggregation semantics for this provider's normalized daily history. Exactly one
+    /// descriptor carries it for every provider that exposes the shared spend tiles.
+    var historyResource: UsageHistoryDescriptor? = nil
 
     /// The metric's single display name.
     var title: String { sample.title }

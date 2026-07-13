@@ -69,6 +69,7 @@ struct SettingsScreen: View {
                         .hoverTooltip("Open OpenUsage from anywhere")
                 }
             }
+            ICloudSyncSettingsSection(sync: container.iCloudSync)
             section("Appearance") {
                 row("Icon Style") {
                     picker($layout.menuBarStyle, options: MenuBarStyle.allCases, label: \.label)

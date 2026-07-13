@@ -50,7 +50,9 @@ struct ProviderSnapshotCache {
         // once so the warning shows immediately instead of after the cached snapshot expires.
         // v7: spend `.values` rows gained `modelBreakdown` for the per-model hover panel. Old payloads
         // decode cleanly without it, but the bump fetches fresh snapshots so hover panels appear right away.
-        storageKey: String = "openusage.providerSnapshots.v7",
+        // v8: provider snapshots gained normalized daily history for iCloud aggregation. Refetch on
+        // upgrade so enabling sync can publish a complete first document immediately.
+        storageKey: String = "openusage.providerSnapshots.v8",
         ttl: TimeInterval = RefreshSetting.interval,
         allowsPersistedFreshness: Bool = false,
         now: @escaping () -> Date = Date.init

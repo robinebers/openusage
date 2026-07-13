@@ -82,6 +82,38 @@ final class LocalLimitsAPITests: XCTestCase {
         XCTAssertEqual(expiredProvider["stale"] as? Bool, true)
     }
 
+    func testUsageAndLimitsProjectTheSameRenderedSnapshot() throws {
+        let provider = Provider(id: "codex", displayName: "Codex", icon: .providerMark("codex"))
+        let session = WidgetDescriptor.percent(id: "codex.session", provider: provider, title: "Session")
+            .exportingLimit("session", unit: "percent")
+        let snapshot = ProviderSnapshot(
+            providerID: "codex",
+            displayName: "Codex",
+            lines: [.progress(label: "Session", used: 73, limit: 100, format: .percent)],
+            refreshedAt: fetchedAt
+        )
+        let state = LocalUsageAPI.State(
+            enabledOrderedIDs: ["codex"],
+            knownIDs: ["codex"],
+            snapshots: ["codex": snapshot],
+            limitDescriptors: ["codex": [session]],
+            generatedAt: generatedAt
+        )
+
+        let usage = try XCTUnwrap(
+            JSONSerialization.jsonObject(
+                with: XCTUnwrap(LocalUsageAPI.respond(method: "GET", path: "/v1/usage", state: state).body)
+            ) as? [[String: Any]]
+        )
+        let usageLine = try XCTUnwrap((usage.first?["lines"] as? [[String: Any]])?.first)
+        let limitsRoot = try json(LocalUsageAPI.respond(method: "GET", path: "/v1/limits", state: state).body)
+        let limitsProvider = try XCTUnwrap((limitsRoot["providers"] as? [String: Any])?["codex"] as? [String: Any])
+        let limitsSession = try XCTUnwrap((limitsProvider["resources"] as? [String: Any])?["session"] as? [String: Any])
+
+        XCTAssertEqual(usageLine["used"] as? Double, 73)
+        XCTAssertEqual(limitsSession["used"] as? Double, 73)
+    }
+
     func testKnownProviderRouteUsesSameEnvelopeAndPreservesMissingSnapshotStatus() throws {
         var state = LocalUsageAPI.State(
             enabledOrderedIDs: [],

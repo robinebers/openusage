@@ -58,6 +58,12 @@ struct WidgetRegistry: Sendable {
         descriptorsByProvider.mapValues { $0.filter { !$0.limitResources.isEmpty } }
     }
 
+    var historyDescriptorsByProvider: [String: UsageHistoryDescriptor] {
+        descriptorsByProvider.compactMapValues { descriptors in
+            descriptors.compactMap(\.historyResource).first
+        }
+    }
+
     @MainActor
     static func from(_ runtimes: [ProviderRuntime]) -> WidgetRegistry {
         let providers = runtimes.map(\.provider)

@@ -265,7 +265,12 @@ enum CursorUsageMapper {
     /// the family comes from the same machinery that prices the row (ported from cursorcat's
     /// family grouping). The raw slugs survive as `variants` — the per-effort breakdown the row's
     /// tooltip shows.
-    static func appendSpendLines(rows: [CursorUsageCSVRow], now: Date, pricing: ModelPricing, to lines: inout [MetricLine]) {
+    static func appendSpendLines(
+        rows: [CursorUsageCSVRow],
+        now: Date,
+        pricing: ModelPricing,
+        to lines: inout [MetricLine]
+    ) -> ProviderUsageHistory {
         let calendar = Calendar.current
         var costByDay: [String: Double] = [:]
         var tokensByDay: [String: Int] = [:]
@@ -323,6 +328,11 @@ enum CursorUsageMapper {
         // note names that source rather than the "estimated from local logs" line the log-scanning
         // providers use. Tokens are measured either way.
         SpendTileMapper.appendUsageTrend(series, to: &lines, now: now, note: "From your Cursor usage export")
+        return ProviderUsageHistory(
+            series: series,
+            modelUsage: modelUsage,
+            unknownModelsByDay: unknownModelsByDay
+        )
     }
 
     /// The display family for a raw CSV slug: its canonical pricing key with a `-fast` suffix folded

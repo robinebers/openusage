@@ -45,6 +45,11 @@ final class CursorProvider: ProviderRuntime {
             .dollarBalance(id: "cursor.credits", provider: provider, title: "Credits", valueWord: "left")
                 .exportingLimit("credits", kind: .balance, unit: "usd", source: .value(kind: .dollars)),
             .usageTrend(provider: provider)
+                .exportingHistory(
+                    scope: .accountWide,
+                    estimatedCost: true,
+                    sourceNote: "From your Cursor usage export"
+                )
         ] + WidgetDescriptor.spendTiles(
             provider: provider,
             valueTooltipNote: WidgetData.cursorUsageHistoryNote
@@ -139,14 +144,14 @@ final class CursorProvider: ProviderRuntime {
             creditGrants: creditGrants,
             stripeBalanceCents: stripeBalanceCents
         )
-        await appendSpendLines(to: &mapped.lines, accessToken: currentToken)
-        return snapshot(mapped)
+        let history = await appendSpendLines(to: &mapped.lines, accessToken: currentToken)
+        return snapshot(mapped, usageHistory: history)
     }
 
     /// Strictly additive: fetch the usage CSV and append the three per-day spend tiles. Any failure
     /// (no session, non-2xx, or undecodable body) appends nothing, so the live Cursor mapping is never
     /// affected and the spend tiles fall back to "No data".
-    private func appendSpendLines(to lines: inout [MetricLine], accessToken: String) async {
+    private func appendSpendLines(to lines: inout [MetricLine], accessToken: String) async -> ProviderUsageHistory? {
         let calendar = Calendar.current
         let end = now()
         let startOfToday = calendar.startOfDay(for: end)
@@ -157,19 +162,19 @@ final class CursorProvider: ProviderRuntime {
             response = try await usageClient.fetchUsageCSV(accessToken: accessToken, start: start, end: end)
         } catch {
             AppLog.warn(LogTag.plugin("cursor"), "usage CSV request failed")
-            return
+            return nil
         }
         guard let response else {
             AppLog.warn(LogTag.plugin("cursor"), "usage CSV request could not be prepared from the current session")
-            return
+            return nil
         }
         guard (200..<300).contains(response.statusCode) else {
             AppLog.warn(LogTag.plugin("cursor"), "usage CSV request returned HTTP \(response.statusCode)")
-            return
+            return nil
         }
         guard let csv = String(data: response.body, encoding: .utf8) else {
             AppLog.warn(LogTag.plugin("cursor"), "usage CSV response was not valid UTF-8")
-            return
+            return nil
         }
         let pricing = await pricing()
         do {
@@ -180,7 +185,7 @@ final class CursorProvider: ProviderRuntime {
                     "usage CSV ignored \(parsed.rejectedRowCount) malformed row\(parsed.rejectedRowCount == 1 ? "" : "s")"
                 )
             }
-            CursorUsageMapper.appendSpendLines(rows: parsed.rows, now: end, pricing: pricing, to: &lines)
+            return CursorUsageMapper.appendSpendLines(rows: parsed.rows, now: end, pricing: pricing, to: &lines)
         } catch let error as CursorUsageCSVError {
             switch error {
             case .missingColumns(let columns):
@@ -191,6 +196,7 @@ final class CursorProvider: ProviderRuntime {
         } catch {
             AppLog.warn(LogTag.plugin("cursor"), "usage CSV could not be parsed")
         }
+        return nil
     }
 
     private func fetchUsageWithRetry(accessToken: String, authState: inout CursorAuthState) async throws -> HTTPResponse {
@@ -347,7 +353,13 @@ final class CursorProvider: ProviderRuntime {
         CursorPlanUsageFacts(usage: usage).shouldTryGenericRequestFallback
     }
 
-    private func snapshot(_ mapped: CursorMappedUsage) -> ProviderSnapshot {
-        ProviderSnapshot.make(provider: provider, plan: mapped.plan, lines: mapped.lines, refreshedAt: now())
+    private func snapshot(_ mapped: CursorMappedUsage, usageHistory: ProviderUsageHistory? = nil) -> ProviderSnapshot {
+        ProviderSnapshot.make(
+            provider: provider,
+            plan: mapped.plan,
+            lines: mapped.lines,
+            refreshedAt: now(),
+            usageHistory: usageHistory
+        )
     }
 }
