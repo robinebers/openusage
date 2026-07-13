@@ -266,11 +266,16 @@ enum CursorUsageMapper {
     /// family grouping). The raw slugs survive as `variants` — the per-effort breakdown the row's
     /// tooltip shows.
     static func appendSpendLines(
-        rows: [CursorUsageCSVRow],
+        rows allRows: [CursorUsageCSVRow],
         now: Date,
         pricing: ModelPricing,
+        view: CursorSpendViewSetting = .all,
         to lines: inout [MetricLine]
     ) -> ProviderUsageHistory {
+        // The spend-view setting picks which billing side counts (#609); `.all` is today's combined
+        // behavior. Filtered-out rows vanish entirely — tiles, trend, and model breakdown alike — so
+        // a view with no matching rows reads "No data", same as an idle export.
+        let rows = view == .all ? allRows : allRows.filter { view.includes($0.billing) }
         let calendar = Calendar.current
         var costByDay: [String: Double] = [:]
         var tokensByDay: [String: Int] = [:]

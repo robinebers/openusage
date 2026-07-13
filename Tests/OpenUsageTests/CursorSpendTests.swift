@@ -51,6 +51,32 @@ final class CursorCSVParserTests: XCTestCase {
         XCTAssertNil(parsed.rows[1].imputedCostDollars)
     }
 
+    func testUsageCSVParsesBillingKindFromCostColumn() throws {
+        // "Included" marks plan-covered rows; a dollar amount marks billed / on-demand rows.
+        let csv = """
+        Date,Model,Max Mode,Input (w/ Cache Write),Input (w/o Cache Write),Cache Read,Output Tokens,Cost
+        2026-01-01T00:00:00Z,composer-1,No,0,0,0,100,Included
+        2026-01-01T00:00:00Z,composer-1,No,0,0,0,100,included
+        2026-01-01T00:00:00Z,composer-1,No,0,0,0,100,$1.23
+        2026-01-01T00:00:00Z,composer-1,No,0,0,0,100,1.23
+        2026-01-01T00:00:00Z,composer-1,No,0,0,0,100,
+        """
+        let parsed = try CursorUsageCSV.parse(csv: csv, pricing: TestPricing.bundled)
+
+        XCTAssertEqual(parsed.rows.map(\.billing), [.included, .included, .billed, .billed, .unknown])
+    }
+
+    func testUsageCSVWithoutCostColumnMarksBillingUnknown() throws {
+        // Exports predating the Cost column still parse; their rows just can't be classified.
+        let csv = """
+        Date,Model,Max Mode,Input (w/ Cache Write),Input (w/o Cache Write),Cache Read,Output Tokens
+        2026-01-01T00:00:00Z,composer-1,No,0,0,0,100
+        """
+        let parsed = try CursorUsageCSV.parse(csv: csv, pricing: TestPricing.bundled)
+
+        XCTAssertEqual(parsed.rows.map(\.billing), [.unknown])
+    }
+
     func testUsageCSVDoesNotTreatAggregatedRowsAsSingleLongContextRequests() throws {
         var rates = ModelRates(
             inputPerMillion: 3,
@@ -263,13 +289,56 @@ final class CursorSpendRangeTests: XCTestCase {
         return unknownModels
     }
 
+    func testSpendViewFiltersRowsByBillingKind() {
+        // One included, one billed, and one unclassifiable row on the same day: each view mode sums
+        // exactly its own rows. Unknown rows only count in All Usage — old exports without a Cost
+        // column can't be split, and quietly assigning them to a side would fake the split.
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let rows = [
+            makeRow(date: now, cost: 1.00, tokens: 100, billing: .included),
+            makeRow(date: now, cost: 2.00, tokens: 200, billing: .billed),
+            makeRow(date: now, cost: 4.00, tokens: 400, billing: .unknown)
+        ]
+
+        var allLines: [MetricLine] = []
+        CursorUsageMapper.appendSpendLines(rows: rows, now: now, pricing: TestPricing.bundled, view: .all, to: &allLines)
+        XCTAssertEqual(values(allLines, "Today"), [MetricValue(number: 7.00, kind: .dollars, estimated: true), MetricValue(number: 700, kind: .count, label: "tokens")])
+
+        var includedLines: [MetricLine] = []
+        CursorUsageMapper.appendSpendLines(rows: rows, now: now, pricing: TestPricing.bundled, view: .included, to: &includedLines)
+        XCTAssertEqual(values(includedLines, "Today"), [MetricValue(number: 1.00, kind: .dollars, estimated: true), MetricValue(number: 100, kind: .count, label: "tokens")])
+
+        var apiLines: [MetricLine] = []
+        CursorUsageMapper.appendSpendLines(rows: rows, now: now, pricing: TestPricing.bundled, view: .api, to: &apiLines)
+        XCTAssertEqual(values(apiLines, "Today"), [MetricValue(number: 2.00, kind: .dollars, estimated: true), MetricValue(number: 200, kind: .count, label: "tokens")])
+    }
+
+    func testSpendViewFilteringOutEveryRowLeavesTilesUnbacked() {
+        // A view with no matching rows behaves like an idle export: "No data", not a fabricated $0.
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let rows = [makeRow(date: now, cost: 1.00, tokens: 100, billing: .included)]
+
+        var lines: [MetricLine] = []
+        CursorUsageMapper.appendSpendLines(rows: rows, now: now, pricing: TestPricing.bundled, view: .api, to: &lines)
+
+        XCTAssertNil(values(lines, "Today"))
+        XCTAssertNil(lines.first(where: { $0.label == "Usage Trend" }))
+    }
+
     /// `cost: nil` models a row no pricing source could price (the unknown-model case).
-    private func makeRow(date: Date, cost: Double?, tokens: Int, model: String = "composer-1") -> CursorUsageCSVRow {
+    private func makeRow(
+        date: Date,
+        cost: Double?,
+        tokens: Int,
+        model: String = "composer-1",
+        billing: CursorBillingKind = .unknown
+    ) -> CursorUsageCSVRow {
         CursorUsageCSVRow(
             date: date,
             model: model,
             tokens: TokenBreakdown(input: tokens),
-            imputedCostDollars: cost
+            imputedCostDollars: cost,
+            billing: billing
         )
     }
 
