@@ -299,6 +299,12 @@ final class WidgetDataStore {
         failureRetryAfter[providerID] = nil
     }
 
+    /// Rebuild the in-memory union immediately after a provider toggle. Local cached data remains
+    /// available to direct API reads, but disabled providers stop receiving peer contributions.
+    func providerEnablementDidChange() {
+        rebuildRenderedSnapshots()
+    }
+
     /// Replaces the downloaded peer set. A conflicted duplicate device file resolves to the newest
     /// valid document, and this Mac's own downloaded copy is excluded in favor of current memory.
     func setPeerHistoryDocuments(_ documents: [UsageHistoryDocument], ownDeviceID: String) {
@@ -335,10 +341,15 @@ final class WidgetDataStore {
             return
         }
         let renderDate = now()
+        let enabledDescriptors = registry.historyDescriptorsByProvider.reduce(
+            into: [String: UsageHistoryDescriptor]()
+        ) { result, entry in
+            if isProviderEnabled(entry.key) { result[entry.key] = entry.value }
+        }
         let merged = UsageHistoryAggregator.merged(
             localSnapshots: localSnapshots,
             peerDocuments: peerHistoryDocuments,
-            descriptors: registry.historyDescriptorsByProvider,
+            descriptors: enabledDescriptors,
             now: renderDate
         )
         var rendered = localSnapshots
