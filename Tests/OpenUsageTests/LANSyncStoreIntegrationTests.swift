@@ -58,7 +58,7 @@ final class LANSyncStoreIntegrationTests: XCTestCase {
             if case .compareCode = storeA.outgoingPairing { return !storeB.incomingPairRequests.isEmpty }
             return false
         }
-        guard case .compareCode(_, let codeA) = storeA.outgoingPairing,
+        guard case .compareCode(_, _, let codeA) = storeA.outgoingPairing,
               let request = storeB.incomingPairRequests.first else {
             return XCTFail("expected code on both peers")
         }

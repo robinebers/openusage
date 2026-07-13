@@ -229,7 +229,11 @@ struct SettingsScreen: View {
                 ForEach(lan.pairedDevices) { device in
                     pairedDeviceRow(device)
                 }
-                let unpaired = lan.nearbyDevices.filter { !$0.isPaired }
+                // A Mac already represented by a pairing card (incoming approval or an in-flight
+                // outgoing attempt) shouldn't also appear as a plain discovered row below it.
+                let representedIDs = Set(lan.incomingPairRequests.map(\.deviceID))
+                    .union(lan.outgoingPairing.map { [$0.deviceID] } ?? [])
+                let unpaired = lan.nearbyDevices.filter { !$0.isPaired && !representedIDs.contains($0.id) }
                 ForEach(unpaired) { device in
                     nearbyDeviceRow(device)
                 }
@@ -249,19 +253,19 @@ struct SettingsScreen: View {
         VStack(alignment: .leading, spacing: 8) {
             Divider()
             switch pairing {
-            case .connecting(let name):
+            case .connecting(_, let name):
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
                     Text("Connecting to \(name)…")
                 }
-            case .compareCode(let name, let code):
+            case .compareCode(_, let name, let code):
                 Text("Compare this code on \(name), then approve there.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text(code)
                     .font(.title2.monospacedDigit().weight(.semibold))
                     .textSelection(.enabled)
-            case .failed(let name, let message):
+            case .failed(_, let name, let message):
                 Text("Couldn't connect to \(name)").fontWeight(.medium)
                 Text(message).font(.caption).foregroundStyle(.secondary)
                 Button("Dismiss") { container.lanSync.dismissPairingStatus() }

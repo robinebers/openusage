@@ -9,7 +9,7 @@ enum LANSyncProtocol {
     static let serviceType = "_openusage._tcp"
     static let maxFrameBytes = 8 * 1024 * 1024
 
-    enum Mode: String, Codable, Sendable { case pair, sync }
+    enum Mode: String, Codable, Sendable { case pair, sync, unpair }
 
     struct Hello: Codable, Sendable {
         let version: Int
@@ -27,6 +27,11 @@ enum LANSyncProtocol {
         let publicKey: Data
         let nonce: Data
         let proof: Data?
+        /// True when the responder no longer knows this pairing (e.g. the user hit Forget there).
+        /// Sent before authentication, so the requester treats it as advisory only: it improves the
+        /// error message but never removes a pairing by itself. Optional so version-1 peers that
+        /// don't send the field still decode.
+        var notPaired: Bool?
     }
 
     struct PairDecision: Codable, Sendable {
@@ -53,6 +58,7 @@ enum LANSyncProtocol {
         case authenticationFailed
         case pairingDenied
         case missingPairSecret
+        case peerNotPaired
         case connectionClosed
         case timedOut
 
@@ -65,6 +71,7 @@ enum LANSyncProtocol {
             case .authenticationFailed: "The nearby Mac could not be authenticated."
             case .pairingDenied: "The connection request was declined."
             case .missingPairSecret: "This Mac no longer has the key for that paired device. Pair it again."
+            case .peerNotPaired: "That Mac no longer recognizes this connection. Forget it and connect again."
             case .connectionClosed: "The nearby Mac closed the connection."
             case .timedOut: "The nearby Mac didn't respond in time."
             }

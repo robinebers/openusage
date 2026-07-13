@@ -19,9 +19,17 @@ struct LANIncomingPairRequest: Identifiable, Sendable {
 }
 
 enum LANOutgoingPairing: Equatable, Sendable {
-    case connecting(name: String)
-    case compareCode(name: String, code: String)
-    case failed(name: String, message: String)
+    case connecting(deviceID: String, name: String)
+    case compareCode(deviceID: String, name: String, code: String)
+    case failed(deviceID: String, name: String, message: String)
+
+    /// The Mac being paired with; the Settings list hides its plain discovered row while this
+    /// status card is on screen so the device doesn't appear twice.
+    var deviceID: String {
+        switch self {
+        case .connecting(let id, _), .compareCode(let id, _, _), .failed(let id, _, _): id
+        }
+    }
 }
 
 struct LANPeerSyncState: Equatable, Sendable {
