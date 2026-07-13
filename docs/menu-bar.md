@@ -34,6 +34,15 @@ Normally:
 While the screen is shared or recorded:
 
 ![The menu bar strip concealed behind the OpenUsage wordmark](assets/menu-bar-privacy-sharing.png)
+## The notch
+
+On MacBooks with a notch, a crowded menu bar can push the OpenUsage item underneath it — the item still exists, but you can't see or click it. OpenUsage watches for this and recovers on its own:
+
+1. **Move back into view** — the item's remembered menu-bar position is rewritten so it re-lands just right of the notch. This is the normal outcome; you may notice the strip hop.
+2. **Surrogate button** — if the move doesn't stick, a small round OpenUsage button appears just below the menu bar next to the notch. Click it to open the dashboard, drag it anywhere, or right-click → Hide Until Relaunch.
+3. Either way, the dashboard always opens beside the notch where you can see it, never centered under it.
+
+Freeing up menu bar space (quitting other menu bar apps, or using a menu bar manager) returns everything to normal automatically.
 
 ## What the strip shows
 

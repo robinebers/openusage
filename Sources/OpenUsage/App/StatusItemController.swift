@@ -39,6 +39,19 @@ final class StatusItemController: NSObject {
         onInsidePanelClick: { [weak self] in self?.clearStrayFocus() },
         onDismiss: { [weak self] in self?.hidePanel() }
     )
+    /// Keeps the app reachable when the menu bar overflows and macOS parks the status item under
+    /// the notch: first tries to move the item back into the visible menu bar, and if that doesn't
+    /// stick, shows a surrogate pill at the nearest visible notch edge that opens the dashboard.
+    private lazy var occlusionMonitor = StatusItemOcclusionMonitor(
+        statusItem: statusItem,
+        onActivate: { [weak self] in
+            self?.container.layout.screen = .dashboard
+            self?.showPopover()
+        },
+        onRescue: { [weak self] _ in
+            self?.repositionStatusItemRightOfNotch()
+        }
+    )
     private let hostingController: NSHostingController<AnyView>
     /// The panel's backdrop: an opaque tray by default, swapped to a behind-window vibrancy view when
     /// the transparency style is non-opaque. Built once and toggled, so it can't race the style observer.
@@ -120,6 +133,7 @@ final class StatusItemController: NSObject {
         }
 
         heightController.installBridge()
+        occlusionMonitor.start()
 
         AppLog.info(.statusItem, "Status item ready (button: \(self.statusItem.button != nil), shortcut: \(KeyboardShortcuts.getShortcut(for: .togglePopover)?.description ?? "none"))")
     }
@@ -188,6 +202,50 @@ final class StatusItemController: NSObject {
         // Left-click toggles the popover; right-click (or control-click) drops the context menu.
         // Both arrive through `statusButtonClicked`, which branches on the triggering event.
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+    }
+
+    /// Moves a notch-hidden status item back into the visible menu bar by rewriting its preferred
+    /// position — the same defaults key macOS maintains when the user ⌘-drags the item — and
+    /// re-adding the item so AppKit reads it. The key is undocumented but long-stable (it is how
+    /// every status item's position persists across launches); if a macOS release stops honoring
+    /// it, the occlusion monitor's re-measure simply falls back to the surrogate pill.
+    ///
+    /// The menu bar is zero-sum: landing right of the notch shifts a neighbor leftward. That is the
+    /// deliberate trade — the user is interacting with OpenUsage, and the displaced neighbor is
+    /// whatever macOS was about to hide anyway when space next runs out.
+    private func repositionStatusItemRightOfNotch() {
+        guard
+            let button = statusItem.button,
+            let window = button.window,
+            let screen = window.screen,
+            let notch = NotchGeometry.notchRect(of: screen)
+        else { return }
+        let itemWidth = max(button.bounds.width, 24)
+        // Preferred position ≈ distance from the screen's right edge to the item's right edge.
+        // Target: the item's left edge lands just right of the notch.
+        let offset = screen.frame.maxX - notch.maxX - itemWidth - 12
+        guard offset > 0 else { return }
+        // `autosaveName` is an IUO; interpolating it directly would write a key literally named
+        // "… Optional(\"Item-0\")" that AppKit never reads.
+        guard let name = statusItem.autosaveName else { return }
+        UserDefaults.standard.set(
+            Double(offset),
+            forKey: "NSStatusItem Preferred Position \(name)"
+        )
+        // AppKit only reads a preferred position when an autosave name is assigned (toggling
+        // `isVisible` re-adds the item at its old spot). Bounce through a scratch name and back:
+        // assigning the original name again makes AppKit look up — and move to — the position
+        // just written. The scratch key is removed so it can't shadow anything later.
+        statusItem.autosaveName = "\(name).rescue"
+        statusItem.autosaveName = name
+        UserDefaults.standard.removeObject(forKey: "NSStatusItem Preferred Position \(name).rescue")
+        // The bounce can rebuild the button; re-attach click handling and repaint the strip.
+        configureStatusItem()
+        imageUpdater.update()
+        AppLog.warn(
+            .statusItem,
+            "Status item was behind the notch; repositioned to \(Int(offset))pt from the right edge"
+        )
     }
 
     // MARK: - Transparency
@@ -303,10 +361,26 @@ final class StatusItemController: NSObject {
             return
         }
         let buttonRectOnScreen = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
+        // A button parked under the notch is no anchor: the panel would open centered below the
+        // notch, seemingly out of nowhere. Anchor at the nearest visible notch edge instead.
+        var anchorRect = buttonRectOnScreen
+        if let screen = buttonWindow.screen,
+           let notch = NotchGeometry.notchRect(of: screen),
+           let occlusion = NotchGeometry.occlusion(of: buttonRectOnScreen, notch: notch),
+           occlusion.isEffectivelyHidden {
+            anchorRect = NotchGeometry.panelAnchorRect(
+                for: occlusion,
+                buttonRect: buttonRectOnScreen,
+                panelWidth: PanelHeightController.panelWidth
+            )
+            AppLog.warn(.statusItem, "Status item is behind the notch; anchoring the panel at x=\(Int(anchorRect.minX))")
+        }
+        // The pill and the panel share the same anchor; showing both stacks them.
+        occlusionMonitor.setSuppressed(true)
         // Record the display before changing the visibility signal. That signal makes SwiftUI
         // immediately clamp the measured height; without the display anchor the clamp falls back to
         // the fixed opening guess, making large and small displays open at the same height.
-        heightController.prepareForOpening(below: buttonRectOnScreen)
+        heightController.prepareForOpening(below: anchorRect)
         // Mark the popover on-screen before laying out, so the egg's animation loops mount their
         // `TimelineView` clocks in time for the first displayed frame. Read by the SwiftUI egg via
         // `\.popoverIsVisible`; a closed popover keeps the loops unmounted, so a left-on egg costs no CPU.
@@ -348,6 +422,8 @@ final class StatusItemController: NSObject {
         outsideClickMonitor.stop()
         statusItem.button?.highlight(false)
         heightController.finishClosing()
+        // Re-evaluate occlusion now that the panel is gone (brings the pill back if still hidden).
+        occlusionMonitor.setSuppressed(false)
     }
 
     /// Drops keyboard focus inside the panel so a clicked plain-styled control (a metric row's
