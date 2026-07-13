@@ -226,6 +226,12 @@ final class ICloudUsageSyncStore {
             )
             do {
                 try await fileStore.write(document)
+                // Disabling can run while the coordinated write is in flight. If it did, remove the
+                // just-finished write as well so this Mac cannot reappear in peers after opting out.
+                guard enabled else {
+                    try await fileStore.delete(deviceID: deviceID)
+                    return
+                }
                 serviceError = nil
                 await reload()
             } catch {
@@ -239,6 +245,8 @@ final class ICloudUsageSyncStore {
         await withSyncActivity {
             do {
                 let result = try await fileStore.loadDocuments()
+                // A read that began while enabled must not restore peer state after sync was disabled.
+                guard enabled else { return }
                 documents = UsageHistoryDocument.newestByDevice(result.documents)
                 invalidFileMessages = result.invalidFileMessages
                 dataStore.setPeerHistoryDocuments(result.documents, ownDeviceID: deviceID)
@@ -273,7 +281,11 @@ final class ICloudUsageSyncStore {
         let center = NotificationCenter.default
         notificationTokens = [
             center.addObserver(forName: .NSMetadataQueryDidFinishGathering, object: query, queue: .main) { [weak self] _ in
-                Task { @MainActor in await self?.reload() }
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.metadataQuery?.enableUpdates()
+                    await self.reload()
+                }
             },
             center.addObserver(forName: .NSMetadataQueryDidUpdate, object: query, queue: .main) { [weak self] _ in
                 Task { @MainActor in await self?.reload() }

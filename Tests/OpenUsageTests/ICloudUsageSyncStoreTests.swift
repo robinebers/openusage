@@ -48,6 +48,30 @@ final class ICloudUsageSyncStoreTests: XCTestCase {
         XCTAssertEqual(writeCount, 2)
     }
 
+    func testDisableDeletesWriteThatWasAlreadyInFlight() async throws {
+        let defaults = makeDefaults("disable-in-flight-write")
+        let fileStore = RecordingHistoryFileStore(writeDelay: .milliseconds(80))
+        let sync = ICloudUsageSyncStore(
+            dataStore: makeDataStore(defaults),
+            defaults: defaults,
+            fileStore: fileStore,
+            observesMetadataChanges: false
+        )
+
+        sync.enabled = true
+        try await waitUntil { await fileStore.writeInFlight }
+
+        sync.enabled = false
+        try await waitUntil {
+            let deletedCount = await fileStore.deletedDeviceIDs.filter { $0 == sync.deviceID }.count
+            let writeInFlight = await fileStore.writeInFlight
+            return deletedCount >= 2 && !writeInFlight && !sync.isSyncing
+        }
+
+        let documents = await fileStore.documents
+        XCTAssertFalse(documents.contains { $0.deviceID == sync.deviceID })
+    }
+
     func testUnavailableStoreSurfacesFriendlyError() async throws {
         let defaults = makeDefaults("unavailable")
         let fileStore = RecordingHistoryFileStore(unavailable: true)
@@ -154,18 +178,22 @@ private actor RecordingHistoryFileStore: UsageHistoryFileStoring {
     private(set) var deletedDeviceIDs: [String] = []
     private let unavailable: Bool
     private let loadDelay: Duration?
+    private let writeDelay: Duration?
     private(set) var loadInFlight = false
+    private(set) var writeInFlight = false
 
     init(
         unavailable: Bool = false,
         seedDocuments: [UsageHistoryDocument] = [],
         invalidFileMessages: [String] = [],
-        loadDelay: Duration? = nil
+        loadDelay: Duration? = nil,
+        writeDelay: Duration? = nil
     ) {
         self.unavailable = unavailable
         self.documents = seedDocuments
         self.invalidFileMessages = invalidFileMessages
         self.loadDelay = loadDelay
+        self.writeDelay = writeDelay
     }
 
     func loadDocuments() async throws -> UsageHistoryLoadResult {
@@ -181,6 +209,11 @@ private actor RecordingHistoryFileStore: UsageHistoryFileStoring {
     func write(_ document: UsageHistoryDocument) async throws {
         if unavailable { throw ICloudUsageSyncError.unavailable }
         writeCount += 1
+        writeInFlight = true
+        defer { writeInFlight = false }
+        if let writeDelay {
+            try await Task.sleep(for: writeDelay)
+        }
         documents.removeAll { $0.deviceID == document.deviceID }
         documents.append(document)
     }
