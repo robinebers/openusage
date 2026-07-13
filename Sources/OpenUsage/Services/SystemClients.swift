@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import Security
 
 protocol EnvironmentReading: Sendable {
     func value(for name: String) -> String?
@@ -211,6 +212,17 @@ protocol KeychainAccessing: Sendable {
     /// item under a known account name (e.g. Antigravity's `agy` token under service `gemini`,
     /// account `antigravity`) rather than the current user.
     func readGenericPassword(service: String, account: String) throws -> String?
+    /// Write a generic password scoped to an explicit account (`-a`), so a rotation targets the right
+    /// item when several logins share one service (Codex keeps every login under `Codex Auth`).
+    func writeGenericPassword(service: String, account: String, value: String) throws
+    /// Service names of every generic-password item whose service begins with `prefix`.
+    /// Attributes-only (never the secret data), so it enumerates without an ACL/unlock prompt. Used
+    /// by Claude multi-account discovery (`Claude Code-credentials*`, one service per login).
+    func genericPasswordServices(withPrefix prefix: String) throws -> [String]
+    /// Account names of every generic-password item stored under exactly `service`. Attributes-only,
+    /// same as above. Used by Codex multi-account discovery (service `Codex Auth`, one account
+    /// attribute per login).
+    func genericPasswordAccounts(forService service: String) throws -> [String]
 }
 
 extension KeychainAccessing {
@@ -222,11 +234,19 @@ extension KeychainAccessing {
         try writeGenericPassword(service: service, value: value)
     }
 
-    /// Default for mocks that don't model accounts: fall back to the service-only lookup. The real
-    /// `SecurityKeychainAccessor` overrides this to pass `-a <account>`.
+    /// Defaults for mocks that don't model accounts: fall back to the service-only lookup/write. The
+    /// real `SecurityKeychainAccessor` overrides these to pass `-a <account>`.
     func readGenericPassword(service: String, account: String) throws -> String? {
         try readGenericPassword(service: service)
     }
+
+    func writeGenericPassword(service: String, account: String, value: String) throws {
+        try writeGenericPassword(service: service, value: value)
+    }
+
+    /// Defaults for mocks that don't model enumeration: nothing to enumerate.
+    func genericPasswordServices(withPrefix prefix: String) throws -> [String] { [] }
+    func genericPasswordAccounts(forService service: String) throws -> [String] { [] }
 }
 
 struct SecurityKeychainAccessor: KeychainAccessing {
@@ -281,6 +301,10 @@ struct SecurityKeychainAccessor: KeychainAccessing {
         try writePassword(["add-generic-password", "-U", "-a", currentUserAccount(), "-s", service, "-w", value])
     }
 
+    func writeGenericPassword(service: String, account: String, value: String) throws {
+        try writePassword(["add-generic-password", "-U", "-a", account, "-s", service, "-w", value])
+    }
+
     private func writePassword(_ arguments: [String]) throws {
         let result = try processRunner.run(
             executable: "/usr/bin/security",
@@ -296,6 +320,38 @@ struct SecurityKeychainAccessor: KeychainAccessing {
     private func currentUserAccount() -> String {
         ProcessInfo.processInfo.environment["USER"]?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         ?? NSUserName()
+    }
+
+    // Enumeration goes straight through the Security framework rather than the `security` CLI (whose
+    // `dump-keychain` prompts): `kSecReturnAttributes` with no `kSecReturnData` returns each item's
+    // metadata without unlocking the secret, so no ACL prompt fires.
+    // Adapted from PR #965 by Ryan George (@QuadDepo).
+    func genericPasswordServices(withPrefix prefix: String) throws -> [String] {
+        try enumerateGenericPasswordAttributes()
+            .compactMap { $0[kSecAttrService as String] as? String }
+            .filter { $0.hasPrefix(prefix) }
+    }
+
+    func genericPasswordAccounts(forService service: String) throws -> [String] {
+        try enumerateGenericPasswordAttributes()
+            .filter { ($0[kSecAttrService as String] as? String) == service }
+            .compactMap { $0[kSecAttrAccount as String] as? String }
+    }
+
+    private func enumerateGenericPasswordAttributes() throws -> [[String: Any]] {
+        let query: [CFString: Any] = [
+            kSecClass: kSecClassGenericPassword,
+            kSecMatchLimit: kSecMatchLimitAll,
+            kSecReturnAttributes: true
+        ]
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        if status == errSecItemNotFound { return [] }
+        guard status == errSecSuccess else {
+            AppLog.warn(.keychain, "keychain enumeration failed (status \(status))")
+            throw KeychainError.readFailed("keychain enumeration failed (status \(status))")
+        }
+        return (result as? [[String: Any]]) ?? []
     }
 }
 

@@ -61,7 +61,7 @@ final class UsageReaderTests: XCTestCase {
 
         let result = try await reader.read(providerID: "stub", force: true)
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: result.data) as? [String: Any])
-        let cached = ProviderSnapshotCache(userDefaults: defaults).loadSnapshots(providerIDs: ["stub"])
+        let cached = ProviderSnapshotCache(userDefaults: defaults).loadSnapshots(keys: ["stub"])
 
         XCTAssertEqual(provider.refreshCount, 1)
         XCTAssertNotNil((object["providers"] as? [String: Any])?["stub"])

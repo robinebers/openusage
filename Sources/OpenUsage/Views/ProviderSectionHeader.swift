@@ -8,6 +8,25 @@ import SwiftUI
 /// optional `staleness` is the dashboard-only hint that the values shown are an aged snapshot still
 /// revalidating: a short "Outdated" tag whose hover tooltip carries the precise age ("Last updated 3h
 /// 12m ago"), so fossilized plan/limits never pass for current data.
+/// The header's account switch, shown only when discovery found more than one login for the
+/// provider. The selected account's name renders beside the provider name as a pull-down (the same
+/// title-as-menu pattern as the Total Spend card's metric switch); picking an entry swaps the whole
+/// card — and the provider's menu-bar pins — to that login's data.
+struct ProviderAccountPicker {
+    /// The provider's extra accounts (the default account is always offered first, as "Default").
+    var accounts: [ProviderAccount]
+    /// The selected extra account, or `nil` for the default account.
+    var selectedID: UUID?
+    var onSelect: (UUID?) -> Void
+
+    var selectedLabel: String {
+        guard let selectedID, let record = accounts.first(where: { $0.id == selectedID }) else {
+            return "Default"
+        }
+        return record.displayName
+    }
+}
+
 struct ProviderSectionHeader: View {
     let provider: Provider
     var plan: String?
@@ -20,6 +39,9 @@ struct ProviderSectionHeader: View {
     /// (dashboard only; `nil` in the reorder preview, which never surfaces staleness). Its tooltip carries
     /// the precise age.
     var staleness: StalenessHint?
+    /// The account switch, present only when the provider has more than one login (`nil` hides it —
+    /// single-account providers keep the plain name).
+    var accountPicker: ProviderAccountPicker?
 
     /// Header type and icon track the density setting like the rows do, so Compact shrinks the
     /// whole section anatomy — not just the rows under it.
@@ -27,12 +49,20 @@ struct ProviderSectionHeader: View {
     /// Party easter egg: pulse the provider mark. Off by default everywhere else.
     @Environment(\.popoverPartyMode) private var partyMode
 
-    init(provider: Provider, plan: String? = nil, warning: String? = nil, refreshing: Bool = false, staleness: StalenessHint? = nil) {
+    init(
+        provider: Provider,
+        plan: String? = nil,
+        warning: String? = nil,
+        refreshing: Bool = false,
+        staleness: StalenessHint? = nil,
+        accountPicker: ProviderAccountPicker? = nil
+    ) {
         self.provider = provider
         self.plan = plan
         self.warning = warning
         self.refreshing = refreshing
         self.staleness = staleness
+        self.accountPicker = accountPicker
     }
 
     var body: some View {
@@ -53,6 +83,10 @@ struct ProviderSectionHeader: View {
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                     .layoutPriority(1)
+                if let accountPicker {
+                    accountMenu(accountPicker)
+                        .layoutPriority(1)
+                }
                 if let plan {
                     ProviderPlanBadge(plan: plan)
                         .layoutPriority(1)
@@ -93,6 +127,48 @@ struct ProviderSectionHeader: View {
         .padding(.trailing, 4)
         .padding(.vertical, 2)
         .contentShape(Rectangle())
+    }
+
+    /// The selected account's name as a pull-down with zero extra chrome — plan-badge type so it
+    /// reads subordinate to the provider name it follows, plus the small caret that marks it as the
+    /// switch. Mirrors `TotalSpendCard`'s title menu.
+    private func accountMenu(_ picker: ProviderAccountPicker) -> some View {
+        Menu {
+            Button {
+                picker.onSelect(nil)
+            } label: {
+                if picker.selectedID == nil {
+                    Label("Default", systemImage: "checkmark")
+                } else {
+                    Text("Default")
+                }
+            }
+            ForEach(picker.accounts) { account in
+                Button {
+                    picker.onSelect(account.id)
+                } label: {
+                    if picker.selectedID == account.id {
+                        Label(account.displayName, systemImage: "checkmark")
+                    } else {
+                        Text(account.displayName)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 3) {
+                Text(picker.selectedLabel)
+                    .font(.system(size: density.planBadgePointSize))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(provider.displayName) Account")
+        .accessibilityValue(picker.selectedLabel)
     }
 }
 

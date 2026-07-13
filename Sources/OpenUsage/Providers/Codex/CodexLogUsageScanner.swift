@@ -27,13 +27,19 @@ import Foundation
 actor CodexLogUsageScanner {
     private let environment: EnvironmentReading
     private let homeDirectory: @Sendable () -> URL
+    /// When set, scan exactly these Codex homes instead of resolving `CODEX_HOME` / `~/.codex`. An
+    /// extra account's scanner is pinned to its own home dir, so its spend tiles cover only that
+    /// account's sessions.
+    private let homesOverride: [String]?
 
     init(
         environment: EnvironmentReading = ProcessEnvironmentReader(),
-        homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser }
+        homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser },
+        homesOverride: [String]? = nil
     ) {
         self.environment = environment
         self.homeDirectory = homeDirectory
+        self.homesOverride = homesOverride
     }
 
     /// One turn's token usage, normalized from a `token_count` line (deltas already applied).
@@ -66,8 +72,12 @@ actor CodexLogUsageScanner {
 
     // MARK: - Discovery
 
-    /// `CODEX_HOME` entries (comma-separated) when set, else `~/.codex` — same as ccusage.
+    /// The pinned homes when this scanner is account-scoped; else `CODEX_HOME` entries
+    /// (comma-separated) when set, else `~/.codex` — same as ccusage.
     private func codexHomes() -> [URL] {
+        if let homesOverride {
+            return homesOverride.map { URL(fileURLWithPath: expandHome($0)) }
+        }
         if let raw = environment.value(for: "CODEX_HOME")?.trimmingCharacters(in: .whitespacesAndNewlines),
            !raw.isEmpty {
             return raw.split(separator: ",")

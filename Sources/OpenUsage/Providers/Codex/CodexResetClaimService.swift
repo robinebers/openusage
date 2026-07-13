@@ -53,15 +53,18 @@ final class CodexResetClaimService {
     /// first, then keychain), and `claim` falls back across them on an auth rejection the same way the
     /// provider's probe does. No token refresh here: the claim runs seconds after a successful usage
     /// fetch (which rotates tokens back to disk), so a candidate that still fails auth is genuinely
-    /// dead and the next one is the right move.
+    /// dead and the next one is the right move. The auth store is resolved per claim (not captured
+    /// once) so a claim always runs against the ACCOUNT the card currently shows — the resets the
+    /// user is looking at.
     convenience init(
-        authStore: CodexAuthStore,
+        authStore: @escaping @MainActor () -> CodexAuthStore,
         usageClient: CodexUsageClient,
         refreshAfterClaim: @escaping () async -> Void
     ) {
         self.init(
             usageClient: usageClient,
             credentialCandidates: {
+                let authStore = await authStore()
                 var candidates = authStore.loadAuthCandidates()
                 if let keychain = await loadOffMainActor({ authStore.loadKeychainAuth() }) {
                     candidates.append(keychain)

@@ -1,7 +1,7 @@
 import Foundation
 
 @MainActor
-final class CodexProvider: ProviderRuntime {
+final class CodexProvider: MultiAccountProviderRuntime {
     let provider = Provider(
         id: "codex",
         displayName: "Codex",
@@ -30,6 +30,24 @@ final class CodexProvider: ProviderRuntime {
         self.logUsageScanner = logUsageScanner
         self.now = now
         self.pricing = pricing
+    }
+
+    /// File + keychain scan — see `CodexAccountDiscovery`.
+    func discoverExtraAccounts() -> [DiscoveredAccount] {
+        CodexAccountDiscovery(authStore: authStore).discoverExtraAccounts()
+    }
+
+    /// A sibling instance pinned to one extra account. Unlike Claude, a dir-backed Codex account
+    /// gets real per-account spend tiles: its session rollouts live inside its own home dir, so its
+    /// scanner is pinned there. A keychain-only account has no dir to scan — its snapshot carries no
+    /// spend lines and those tiles read "No data" while it's selected.
+    func makeAccountRuntime(for account: ProviderAccount) -> ProviderRuntime {
+        CodexProvider(
+            authStore: CodexAuthStore(
+                account: CodexAccountScope(configDir: account.configDir, keychainAccount: account.keychainAccount)
+            ),
+            logUsageScanner: CodexLogUsageScanner(homesOverride: account.configDir.map { [$0] } ?? [])
+        )
     }
 
     var widgetDescriptors: [WidgetDescriptor] {

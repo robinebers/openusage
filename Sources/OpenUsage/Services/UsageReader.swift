@@ -54,14 +54,14 @@ public struct UsageReader {
         }
         let cache = ProviderSnapshotCache(userDefaults: defaults, allowsPersistedFreshness: true)
         let allProviderIDs = registry.providers.map(\.id)
-        let cachedSnapshots = cache.loadSnapshots(providerIDs: allProviderIDs)
+        let cachedSnapshots = cache.loadSnapshots(keys: allProviderIDs)
         let savedOrder = LayoutPersistence(
             defaults: defaults,
             storageKey: "openusage.layout.v1"
         ).loadProviderOrder() ?? []
         let orderedIDs = registry.orderedProviderIDs(savedOrder: savedOrder)
         let enabledOrderedIDs = orderedIDs.filter(includesProvider)
-        let needsRefresh = force || enabledOrderedIDs.contains { cache.snapshot(providerID: $0) == nil }
+        let needsRefresh = force || enabledOrderedIDs.contains { cache.snapshot(key: $0) == nil }
         var snapshots = cachedSnapshots
         var warnings: [String] = []
         var errors: [String: String] = [:]

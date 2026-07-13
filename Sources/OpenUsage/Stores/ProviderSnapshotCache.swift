@@ -15,7 +15,7 @@ struct ProviderSnapshotCache {
     private let memo = OSAllocatedUnfairLock<Payload?>(initialState: nil)
 
     /// Provider IDs whose snapshot was written by `store` *during this cache instance's lifetime* (i.e.
-    /// this running session). The freshness gate (`snapshot(providerID:)`) trusts a snapshot only when
+    /// this running session). The freshness gate (`snapshot(key:)`) trusts a snapshot only when
     /// its provider is in here — so a snapshot loaded from disk on launch is shown (via `loadSnapshots`)
     /// but never counts as fresh, forcing one refresh on the first post-launch pass. Lock-backed for the
     /// same reason as `memo`: the value-type cache shares it across copies and stays safe. See #697.
@@ -68,46 +68,50 @@ struct ProviderSnapshotCache {
         self.decoder = decoder
     }
 
-    /// Every stored snapshot for the given providers, including expired ones. Display uses this
+    /// Every stored snapshot for the given account keys, including expired ones. Display uses this
     /// (stale-while-revalidate: last-known values keep showing while a refresh runs); refresh gating
-    /// still goes through the TTL-checked `snapshot(providerID:)`.
-    func loadSnapshots(providerIDs: [String]) -> [String: ProviderSnapshot] {
-        let providerIDSet = Set(providerIDs)
-        let loaded = loadPayload().snapshots.filter { providerID, _ in
-            providerIDSet.contains(providerID)
+    /// still goes through the TTL-checked `snapshot(key:)`. A key is the bare provider id for a
+    /// provider's default account, `"<provider>@<uuid>"` for an extra account.
+    func loadSnapshots(keys: [String]) -> [String: ProviderSnapshot] {
+        let keySet = Set(keys)
+        let loaded = loadPayload().snapshots.filter { key, _ in
+            keySet.contains(key)
         }
         AppLog.debug(.cache, "loaded \(loaded.count) snapshots from disk")
         return loaded
     }
 
-    func snapshot(providerID: String) -> ProviderSnapshot? {
-        let snapshot = loadPayload().snapshots[providerID]
+    func snapshot(key: String) -> ProviderSnapshot? {
+        let snapshot = loadPayload().snapshots[key]
         guard let snapshot else { return nil }
         // Freshness has two requirements, and disk age alone is not enough: the snapshot must have been
         // written *this session* AND still be within TTL. A snapshot served from a previous session's
         // persisted blob is shown for instant paint but never gates a refresh, so every launch refetches
         // promptly instead of waiting out the previous session's remaining interval (#697).
-        let writtenThisSession = sessionWrites.withLock { $0.contains(providerID) }
+        let writtenThisSession = sessionWrites.withLock { $0.contains(key) }
         let age = now().timeIntervalSince(snapshot.refreshedAt)
         let trusted = allowsPersistedFreshness || writtenThisSession
         let fresh = trusted && age < ttl
         let reason = !trusted ? "stale (not written this session)"
             : fresh ? "fresh" : "stale"
-        AppLog.debug(.cache, "\(providerID) staleness \(Int(age))s vs ttl \(Int(ttl))s -> \(reason)")
+        AppLog.debug(.cache, "\(key) staleness \(Int(age))s vs ttl \(Int(ttl))s -> \(reason)")
         return fresh ? snapshot : nil
     }
 
-    func store(_ snapshot: ProviderSnapshot) {
+    /// `key` defaults to the snapshot's provider id — the default account's key. Extra accounts pass
+    /// their namespaced key explicitly (the snapshot itself carries only the shared provider identity).
+    func store(_ snapshot: ProviderSnapshot, key: String? = nil) {
+        let key = key ?? snapshot.providerID
         guard !snapshot.lines.contains(where: \.isError) else {
-            AppLog.debug(.cache, "skip write \(snapshot.providerID) (error snapshot)")
+            AppLog.debug(.cache, "skip write \(key) (error snapshot)")
             return
         }
-        AppLog.debug(.cache, "write \(snapshot.providerID)")
-        // Mark this provider as written *this session* so its snapshot now satisfies the freshness gate
+        AppLog.debug(.cache, "write \(key)")
+        // Mark this key as written *this session* so its snapshot now satisfies the freshness gate
         // (a launch-loaded snapshot never does — see `sessionWrites`).
-        sessionWrites.withLock { $0.insert(snapshot.providerID) }
+        sessionWrites.withLock { $0.insert(key) }
         var payload = loadPayload()
-        payload.snapshots[snapshot.providerID] = snapshot
+        payload.snapshots[key] = snapshot
         save(payload)
     }
 

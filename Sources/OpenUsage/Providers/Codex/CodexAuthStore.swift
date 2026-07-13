@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 struct CodexTokens: Codable, Hashable, Sendable {
@@ -81,6 +82,17 @@ enum CodexAuthError: Error, LocalizedError, Equatable {
     }
 }
 
+/// Pins a `CodexAuthStore` to ONE extra account's credential sources: the `auth.json` in a specific
+/// Codex home dir and/or a specific keychain item. The default instance leaves this `nil` and behaves
+/// exactly as before (env `CODEX_HOME`, the default homes, the shared keychain item).
+struct CodexAccountScope: Hashable, Sendable {
+    var configDir: String?
+    /// The keychain account attribute (`cli|<hash>`) — the `codex` CLI keeps every login under ONE
+    /// service (`Codex Auth`) and distinguishes them by account, the mirror image of Claude Code's
+    /// hash-suffixed services.
+    var keychainAccount: String?
+}
+
 struct CodexAuthStore: Sendable {
     static let keychainService = "Codex Auth"
     /// Refresh once the access token is within this window of its JWT `exp` — the same 5-minute slack
@@ -93,17 +105,22 @@ struct CodexAuthStore: Sendable {
     var files: TextFileAccessing
     var keychain: KeychainAccessing
     var now: @Sendable () -> Date
+    /// When set, this store reads/writes ONLY the pinned account's sources (see `CodexAccountScope`).
+    /// `nil` is the default instance — unchanged env-driven behavior.
+    var account: CodexAccountScope?
 
     init(
         environment: EnvironmentReading = ProcessEnvironmentReader(),
         files: TextFileAccessing = LocalTextFileAccessor(),
         keychain: KeychainAccessing = SecurityKeychainAccessor(),
-        now: @escaping @Sendable () -> Date = Date.init
+        now: @escaping @Sendable () -> Date = Date.init,
+        account: CodexAccountScope? = nil
     ) {
         self.environment = environment
         self.files = files
         self.keychain = keychain
         self.now = now
+        self.account = account
     }
 
     func loadAuthCandidates() -> [CodexAuthState] {
@@ -126,13 +143,40 @@ struct CodexAuthStore: Sendable {
     }
 
     func loadKeychainAuth() -> CodexAuthState? {
-        guard let value = try? keychain.readGenericPassword(service: Self.keychainService),
-              let auth = Self.parseAuth(value),
-              Self.hasTokenLikeAuth(auth)
-        else {
-            return nil
+        // A scoped store reads exactly its pinned keychain item (or nothing, for a file-only
+        // account). The default instance prefers its own hash account — with several logins stored
+        // under the shared "Codex Auth" service, a service-only lookup would return an arbitrary
+        // one — and falls back to the service-only read for items predating the account attribute.
+        let accounts: [String?]
+        if let account {
+            guard let keychainAccount = account.keychainAccount else { return nil }
+            accounts = [keychainAccount]
+        } else {
+            accounts = [defaultKeychainAccount(), nil]
         }
-        return CodexAuthState(auth: auth, source: .keychain)
+        for keychainAccount in accounts {
+            let value = try? keychainAccount.map { try keychain.readGenericPassword(service: Self.keychainService, account: $0) }
+                ?? keychain.readGenericPassword(service: Self.keychainService)
+            guard let value, let auth = Self.parseAuth(value), Self.hasTokenLikeAuth(auth) else { continue }
+            return CodexAuthState(auth: auth, source: .keychain)
+        }
+        return nil
+    }
+
+    /// The keychain account attribute the `codex` CLI derives for a Codex home dir: `cli|` + the
+    /// first 16 hex chars of SHA-256 over the canonicalized (symlink-resolved) path. The single home
+    /// of this derivation — multi-account discovery reuses it to pair a dir with its keychain item.
+    static func keychainAccountName(forConfigDir dir: String) -> String {
+        let canonical = URL(fileURLWithPath: expandHome(dir)).standardizedFileURL.resolvingSymlinksInPath().path
+        let digest = SHA256.hash(data: Data(canonical.utf8))
+        let hex = digest.map { String(format: "%02x", $0) }.joined()
+        return "cli|\(hex.prefix(16))"
+    }
+
+    /// The default account's keychain account attribute, derived from the same home resolution as
+    /// `authPaths()` (env `CODEX_HOME`, else `~/.codex` — the CLI's own default).
+    func defaultKeychainAccount() -> String {
+        Self.keychainAccountName(forConfigDir: codexHome() ?? "~/.codex")
     }
 
     func save(_ state: CodexAuthState) throws {
@@ -147,7 +191,13 @@ struct CodexAuthStore: Sendable {
         case .file(let path):
             try files.writeText(path, text)
         case .keychain:
-            try keychain.writeGenericPassword(service: Self.keychainService, value: text)
+            // Target the same account attribute the credential was loaded under, so a rotation with
+            // several logins stored under the shared service updates the right item.
+            try keychain.writeGenericPassword(
+                service: Self.keychainService,
+                account: account?.keychainAccount ?? defaultKeychainAccount(),
+                value: text
+            )
         }
     }
 
@@ -181,6 +231,11 @@ struct CodexAuthStore: Sendable {
     }
 
     func authPaths() -> [String] {
+        // A scoped store reads only its own pinned home (or no file at all for a keychain-only
+        // account) — never the env override or the default homes.
+        if let account {
+            return account.configDir.map { [joinPath($0, Self.authFile)] } ?? []
+        }
         if let codexHome = codexHome() {
             return [joinPath(codexHome, Self.authFile)]
         }

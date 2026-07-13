@@ -14,6 +14,14 @@ struct StalenessHint: Equatable {
 final class WidgetDataStore {
     private let registry: WidgetRegistry
     private let providersByID: [String: ProviderRuntime]
+    /// Every runtime the refresh loop drives, grouped by provider: the default account's runtime
+    /// plus one scoped runtime per extra account. A provider without extra accounts has exactly one
+    /// entry — the pre-accounts behavior, unchanged.
+    private let accountRuntimesByProvider: [String: [AccountRuntime]]
+    /// Which account's snapshot the provider's card (and menu-bar pins) currently shows — the bare
+    /// provider id for the default account. Injected from `ProviderAccountsStore`; defaults to
+    /// "always the default account" for tests, previews, and the one-shot CLI reader.
+    private let selectedAccountKey: @MainActor (String) -> String
     private let cache: ProviderSnapshotCache
     private let defaults: UserDefaults
     /// Whether a provider is currently enabled. Injected so the store consults the single
@@ -45,19 +53,32 @@ final class WidgetDataStore {
     /// would cause. The manual `force` refresh (⌘R) always bypasses it.
     private static let failureRetryBackoff: TimeInterval = 60
 
+    /// The snapshot each provider's card shows — always its SELECTED account's data, keyed by the
+    /// bare provider id. This is the projection every view reads; the full per-account picture lives
+    /// in `accountSnapshots` and is re-projected here whenever a refresh lands or the selection moves.
     var snapshots: [String: ProviderSnapshot] = [:]
+    /// The latest snapshot per account key (`"<provider>"` for defaults, `"<provider>@<uuid>"` for
+    /// extras). Not read by views directly — the projection above is — but kept warm for every
+    /// account so switching the picker is instant.
+    @ObservationIgnored private var accountSnapshots: [String: ProviderSnapshot] = [:]
     var refreshingProviderIDs: Set<String> = []
+    /// Per-account in-flight guard (the dup-fetch gate); `refreshingProviderIDs` above stays the
+    /// provider-level spinner state views read.
+    @ObservationIgnored private var inFlightAccountKeys: Set<String> = []
     /// Wall-clock time the most recent full refresh pass finished. Together with the chosen refresh
     /// cadence it drives the dashboard footer's live "Next update in …" countdown, so the footer reflects
     /// the real schedule instead of a hardcoded value. `nil` until the first pass completes.
     var lastRefreshAt: Date?
-    /// Latest refresh error per provider (e.g. "Not logged in. Run `codex` to authenticate."). Set when
-    /// a refresh comes back as an error snapshot, cleared on the next successful one. The dashboard
-    /// renders it as a warning indicator beside the provider name; the last good snapshot keeps
-    /// displaying (stale-while-revalidate) instead of being replaced by dead "No data" rows.
+    /// Latest refresh error per provider (e.g. "Not logged in. Run `codex` to authenticate.") — like
+    /// `snapshots`, the SELECTED account's error, projected from `accountErrors`. Set when a refresh
+    /// comes back as an error snapshot, cleared on the next successful one. The dashboard renders it
+    /// as a warning indicator beside the provider name; the last good snapshot keeps displaying
+    /// (stale-while-revalidate) instead of being replaced by dead "No data" rows.
     var providerErrors: [String: String] = [:]
+    /// Latest refresh error per account key (see `accountSnapshots` for the key scheme).
+    @ObservationIgnored private var accountErrors: [String: String] = [:]
 
-    /// Per-provider earliest next-probe time after a failure (see `failureRetryBackoff`). Not part of
+    /// Per-account earliest next-probe time after a failure (see `failureRetryBackoff`). Not part of
     /// observable UI state, so it's excluded from `@Observable` tracking.
     @ObservationIgnored private var failureRetryAfter: [String: Date] = [:]
 
@@ -93,6 +114,8 @@ final class WidgetDataStore {
     init(
         registry: WidgetRegistry,
         providers: [ProviderRuntime],
+        accountRuntimes: [AccountRuntime]? = nil,
+        selectedAccountKey: (@MainActor (String) -> String)? = nil,
         cache: ProviderSnapshotCache = ProviderSnapshotCache(),
         defaults: UserDefaults = .standard,
         isProviderEnabled: @escaping @MainActor (String) -> Bool = { _ in true },
@@ -103,6 +126,12 @@ final class WidgetDataStore {
     ) {
         self.registry = registry
         self.providersByID = Dictionary(uniqueKeysWithValues: providers.map { ($0.provider.id, $0) })
+        // With no explicit account runtimes (tests, previews, the CLI reader), every provider runs as
+        // its single default account — exactly the pre-accounts behavior.
+        let runtimes = accountRuntimes
+            ?? providers.map { AccountRuntime(providerID: $0.provider.id, accountKey: $0.provider.id, runtime: $0) }
+        self.accountRuntimesByProvider = Dictionary(grouping: runtimes, by: \.providerID)
+        self.selectedAccountKey = selectedAccountKey ?? { $0 }
         self.cache = cache
         self.defaults = defaults
         self.isProviderEnabled = isProviderEnabled
@@ -118,8 +147,44 @@ final class WidgetDataStore {
         self.alwaysShowPacing = defaults.bool(forKey: Self.alwaysShowPacingKey)
         // Stale-while-revalidate: load whatever was cached (expired included) so the menu bar and
         // dashboard show last-known values immediately at launch instead of "—"; the refresh loop
-        // replaces them as soon as fresh data lands.
-        self.snapshots = cache.loadSnapshots(providerIDs: registry.providers.map(\.id))
+        // replaces them as soon as fresh data lands. Loaded for every account key, then projected so
+        // each card paints its selected account.
+        self.accountSnapshots = cache.loadSnapshots(keys: runtimes.map(\.accountKey))
+        for providerID in accountRuntimesByProvider.keys {
+            let key = self.selectedAccountKey(providerID)
+            if let snapshot = accountSnapshots[key] {
+                self.snapshots[providerID] = snapshot
+            }
+        }
+    }
+
+    /// Swap the provider card (and its menu-bar pins) to the newly selected account: re-project the
+    /// displayed snapshot/error from the per-account state, then kick a cache-gated refresh so a
+    /// never-fetched account fills in promptly. Wired to `ProviderAccountsStore.onSelectionChange`.
+    func applySelection(providerID: String) {
+        projectSelection(providerID: providerID)
+        Task { await refresh(providerID: providerID) }
+    }
+
+    /// Re-derive the provider-keyed display state (`snapshots`, `providerErrors`) from the
+    /// account-keyed truth for one provider. The no-op writes are skipped: `@Observable` doesn't
+    /// compare values, so blind re-assignment would re-render the menu-bar label for nothing.
+    private func projectSelection(providerID: String) {
+        let key = selectedAccountKey(providerID)
+        if snapshots[providerID] != accountSnapshots[key] {
+            snapshots[providerID] = accountSnapshots[key]
+        }
+        projectSelectedError(providerID: providerID)
+    }
+
+    /// The error half of the projection alone — the failed-refresh path uses this so a failure never
+    /// touches the displayed snapshot (stale-while-revalidate: the last good data stays on screen
+    /// under the warning triangle).
+    private func projectSelectedError(providerID: String) {
+        let key = selectedAccountKey(providerID)
+        if providerErrors[providerID] != accountErrors[key] {
+            providerErrors[providerID] = accountErrors[key]
+        }
     }
 
     /// Refresh every enabled provider, concurrently — one slow provider never delays the rest.
@@ -200,67 +265,98 @@ final class WidgetDataStore {
     /// (disabled / unknown / already in flight) so a wake-burst's suppression is visible in the logs.
     enum RefreshOutcome: Sendable { case refreshed, failed, cacheHit, skipped, backedOff }
 
+    /// Refresh every account of the provider, concurrently (each is an independent login with its own
+    /// cache entry and backoff). Returns the SELECTED account's outcome — the one the card shows and
+    /// callers act on (the post-claim reconcile loop, the enablement wake); the other accounts still
+    /// refresh so switching the picker is instant.
     @discardableResult
     func refresh(providerID: String, force: Bool = false) async -> RefreshOutcome {
         guard isProviderEnabled(providerID) else { return .skipped }
-        if !force, let cached = cache.snapshot(providerID: providerID) {
-            // Skip the no-op write: `@Observable` doesn't compare values, so unconditionally
-            // re-assigning an unchanged snapshot would re-render the menu-bar label every pass.
-            AppLog.debug(.refresh, "cache hit \(providerID)")
-            if snapshots[providerID] != cached {
-                snapshots[providerID] = cached
+        guard let runtimes = accountRuntimesByProvider[providerID], !runtimes.isEmpty else {
+            return .skipped
+        }
+        let selectedKey = selectedAccountKey(providerID)
+        // Fire one task per account (MainActor-inherited, like `refreshAll`), then await them all.
+        let tasks = runtimes.map { runtime in
+            (runtime.accountKey, Task { await self.refreshAccount(runtime, force: force) })
+        }
+        var selectedOutcome = RefreshOutcome.skipped
+        for (key, task) in tasks {
+            let outcome = await task.value
+            if key == selectedKey { selectedOutcome = outcome }
+        }
+        return selectedOutcome
+    }
+
+    private func refreshAccount(_ account: AccountRuntime, force: Bool) async -> RefreshOutcome {
+        let key = account.accountKey
+        if !force, let cached = cache.snapshot(key: key) {
+            AppLog.debug(.refresh, "cache hit \(key)")
+            if accountSnapshots[key] != cached {
+                accountSnapshots[key] = cached
+                projectSelection(providerID: account.providerID)
             }
             return .cacheHit
         }
-        if !force { AppLog.debug(.refresh, "cache miss \(providerID)") }
+        if !force { AppLog.debug(.refresh, "cache miss \(key)") }
 
-        // A provider that just failed isn't cached, so nothing else stops the loop from re-probing it on
+        // An account that just failed isn't cached, so nothing else stops the loop from re-probing it on
         // every wake. Hold off until its backoff expires; the manual `force` refresh ignores the backoff.
-        if !force, let retryAfter = failureRetryAfter[providerID], now() < retryAfter {
-            AppLog.debug(.refresh, "backoff skip \(providerID) (failed <\(Int(Self.failureRetryBackoff))s ago)")
+        if !force, let retryAfter = failureRetryAfter[key], now() < retryAfter {
+            AppLog.debug(.refresh, "backoff skip \(key) (failed <\(Int(Self.failureRetryBackoff))s ago)")
             return .backedOff
         }
 
-        guard let provider = providersByID[providerID] else { return .skipped }
-        // Skip if an in-flight refresh already owns this provider (e.g. the background timer racing the
-        // first popover open), so we never fire duplicate network calls for the same provider.
-        guard !refreshingProviderIDs.contains(providerID) else {
-            AppLog.debug(.refresh, "cache skip \(providerID) (already in flight)")
+        // Skip if an in-flight refresh already owns this account (e.g. the background timer racing the
+        // first popover open), so we never fire duplicate network calls for the same login.
+        guard !inFlightAccountKeys.contains(key) else {
+            AppLog.debug(.refresh, "cache skip \(key) (already in flight)")
             return .skipped
         }
-        refreshingProviderIDs.insert(providerID)
-        defer { refreshingProviderIDs.remove(providerID) }
+        inFlightAccountKeys.insert(key)
+        // The header spinner is provider-level: on while ANY of the provider's accounts is fetching.
+        refreshingProviderIDs.insert(account.providerID)
+        defer {
+            inFlightAccountKeys.remove(key)
+            let providerKeys = (accountRuntimesByProvider[account.providerID] ?? []).map(\.accountKey)
+            if inFlightAccountKeys.isDisjoint(with: providerKeys) {
+                refreshingProviderIDs.remove(account.providerID)
+            }
+        }
         let start = Date()
-        let snapshot = await provider.refresh()
+        let snapshot = await account.runtime.refresh()
         let durationMs = Int(Date().timeIntervalSince(start) * 1000)
         if let message = Self.errorMessage(in: snapshot) {
             // Failed refresh: surface the error but keep the last good snapshot on screen rather than
             // collapsing every row to "No data". The provider error string is already user-safe.
-            providerErrors[providerID] = message
-            // Negative-cache the failure so a wake burst can't re-probe this provider in a tight loop.
-            failureRetryAfter[providerID] = now().addingTimeInterval(Self.failureRetryBackoff)
-            AppLog.warn(.refresh, "\(providerID) failed: \(message)")
-            onRefreshOutcome?(providerID, .failed, snapshot.errorCategory, force)
+            accountErrors[key] = message
+            // Negative-cache the failure so a wake burst can't re-probe this account in a tight loop.
+            failureRetryAfter[key] = now().addingTimeInterval(Self.failureRetryBackoff)
+            AppLog.warn(.refresh, "\(key) failed: \(message)")
+            projectSelectedError(providerID: account.providerID)
+            onRefreshOutcome?(account.providerID, .failed, snapshot.errorCategory, force)
             return .failed
         }
-        if providerErrors[providerID] != nil {
-            providerErrors[providerID] = nil
-        }
-        // Recovered: drop any backoff so the provider resumes the normal cadence immediately.
-        failureRetryAfter[providerID] = nil
-        snapshots[providerID] = snapshot
-        cache.store(snapshot)
-        AppLog.info(.refresh, "\(providerID) ok (\(durationMs)ms)")
-        onRefreshOutcome?(providerID, .refreshed, nil, force)
+        accountErrors[key] = nil
+        // Recovered: drop any backoff so the account resumes the normal cadence immediately.
+        failureRetryAfter[key] = nil
+        accountSnapshots[key] = snapshot
+        cache.store(snapshot, key: key)
+        projectSelection(providerID: account.providerID)
+        AppLog.info(.refresh, "\(key) ok (\(durationMs)ms)")
+        onRefreshOutcome?(account.providerID, .refreshed, nil, force)
         return .refreshed
     }
 
-    /// Clears a provider's failure backoff so the next pass probes it immediately. Called when the user
-    /// re-enables a provider: the enablement wake exists to fetch promptly, so a stale backoff from a
-    /// failure just before it was turned off must not suppress that fetch (the loop wouldn't otherwise
-    /// retry until the 5-minute heartbeat). The periodic loop never calls this — only the user action does.
+    /// Clears a provider's failure backoff (every account's) so the next pass probes it immediately.
+    /// Called when the user re-enables a provider: the enablement wake exists to fetch promptly, so a
+    /// stale backoff from a failure just before it was turned off must not suppress that fetch (the
+    /// loop wouldn't otherwise retry until the 5-minute heartbeat). The periodic loop never calls
+    /// this — only the user action does.
     func clearFailureBackoff(for providerID: String) {
-        failureRetryAfter[providerID] = nil
+        for runtime in accountRuntimesByProvider[providerID] ?? [] {
+            failureRetryAfter[runtime.accountKey] = nil
+        }
     }
 
     /// The provider's latest refresh error, or `nil` when its last refresh succeeded.

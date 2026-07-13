@@ -28,10 +28,10 @@ final class ProviderSnapshotCacheTests: XCTestCase {
         cache.store(snapshot("beta", used: 20, now: now))
 
         // The second store must not drop the first, and reads come back from the mirror unchanged.
-        XCTAssertEqual(cache.loadSnapshots(providerIDs: ["alpha", "beta"]).count, 2)
-        XCTAssertEqual(cache.snapshot(providerID: "alpha")?.lines.first,
+        XCTAssertEqual(cache.loadSnapshots(keys: ["alpha", "beta"]).count, 2)
+        XCTAssertEqual(cache.snapshot(key: "alpha")?.lines.first,
                        .progress(label: "Session", used: 10, limit: 100, format: .percent))
-        XCTAssertEqual(cache.snapshot(providerID: "beta")?.lines.first,
+        XCTAssertEqual(cache.snapshot(key: "beta")?.lines.first,
                        .progress(label: "Session", used: 20, limit: 100, format: .percent))
     }
 
@@ -44,10 +44,10 @@ final class ProviderSnapshotCacheTests: XCTestCase {
 
         // A fresh instance starts with an empty mirror, so the *display* read (`loadSnapshots`) proves the
         // write reached disk — the mirror is a cache over persistence, not a replacement for it. (The
-        // freshness gate `snapshot(providerID:)` deliberately treats this disk-loaded value as stale; see
+        // freshness gate `snapshot(key:)` deliberately treats this disk-loaded value as stale; see
         // `testRelaunchLoadedSnapshotIsStaleEvenWithinTTL`.)
         let reloaded = ProviderSnapshotCache(userDefaults: defaults, storageKey: "k", ttl: 9_999, now: { now })
-        XCTAssertEqual(reloaded.loadSnapshots(providerIDs: ["alpha"])["alpha"]?.lines.first,
+        XCTAssertEqual(reloaded.loadSnapshots(keys: ["alpha"])["alpha"]?.lines.first,
                        .progress(label: "Session", used: 42, limit: 100, format: .percent))
     }
 
@@ -66,9 +66,9 @@ final class ProviderSnapshotCacheTests: XCTestCase {
         // Session 2 (fresh instance = relaunch) reloads it from disk.
         let relaunched = ProviderSnapshotCache(userDefaults: defaults, storageKey: "k", ttl: 9_999, now: { now })
         // Display still paints the last-known value...
-        XCTAssertNotNil(relaunched.loadSnapshots(providerIDs: ["alpha"])["alpha"])
+        XCTAssertNotNil(relaunched.loadSnapshots(keys: ["alpha"])["alpha"])
         // ...but the refresh gate treats it as stale, forcing a refresh on the first post-launch pass.
-        XCTAssertNil(relaunched.snapshot(providerID: "alpha"))
+        XCTAssertNil(relaunched.snapshot(key: "alpha"))
     }
 
     /// Acceptance criterion 2: a snapshot written *this* session still short-circuits a redundant refresh
@@ -81,7 +81,7 @@ final class ProviderSnapshotCacheTests: XCTestCase {
         let cache = ProviderSnapshotCache(userDefaults: defaults, storageKey: "k", ttl: 9_999, now: { now })
 
         cache.store(snapshot("alpha", used: 42, now: now))
-        XCTAssertEqual(cache.snapshot(providerID: "alpha")?.lines.first,
+        XCTAssertEqual(cache.snapshot(key: "alpha")?.lines.first,
                        .progress(label: "Session", used: 42, limit: 100, format: .percent))
     }
 
@@ -96,6 +96,6 @@ final class ProviderSnapshotCacheTests: XCTestCase {
 
         cache.store(snapshot("alpha", used: 42, now: now))
         now = now.addingTimeInterval(101)
-        XCTAssertNil(cache.snapshot(providerID: "alpha"))
+        XCTAssertNil(cache.snapshot(key: "alpha"))
     }
 }

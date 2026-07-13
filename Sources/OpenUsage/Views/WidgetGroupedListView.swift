@@ -50,7 +50,8 @@ struct WidgetGroupedListView: View {
             plan: dataStore.plan(for: group.provider.id),
             warning: dataStore.headerNotice(for: group.provider.id),
             refreshing: dataStore.refreshingProviderIDs.contains(group.provider.id),
-            staleness: dataStore.stalenessHint(for: group.provider.id)
+            staleness: dataStore.stalenessHint(for: group.provider.id),
+            accountPicker: accountPicker(for: group.provider.id)
         )
         // 8pt (+ 4pt internal) on both sides: insets the drag grip off the card's left edge and
         // lines the provider mark up with the card's right content edge.
@@ -72,6 +73,19 @@ struct WidgetGroupedListView: View {
             Divider()
             Button("Share Screenshot") { shareCard(group) }
         }
+    }
+
+    /// The header's account switch — present only when discovery found extra logins for this
+    /// provider, so single-account providers keep their plain name. Selecting an entry swaps the
+    /// card (and the provider's menu-bar pins) to that account's data.
+    private func accountPicker(for providerID: String) -> ProviderAccountPicker? {
+        let accounts = container.providerAccounts.accounts(for: providerID)
+        guard !accounts.isEmpty else { return nil }
+        return ProviderAccountPicker(
+            accounts: accounts,
+            selectedID: container.providerAccounts.selectedAccountID(for: providerID),
+            onSelect: { container.providerAccounts.select(accountID: $0, for: providerID) }
+        )
     }
 
     /// Renders the provider's branded share card and copies the PNG to the clipboard. The appearance is

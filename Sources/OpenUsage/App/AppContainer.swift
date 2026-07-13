@@ -29,6 +29,9 @@ final class AppContainer {
     /// One-time onboarding state (the first-run Customize hint card). Only ever marked pending by
     /// `FirstRunSeeder` on a fresh install, so existing installs never see the card.
     let onboarding: OnboardingStore
+    /// Extra provider accounts found on this machine and which one each provider card shows. The
+    /// header's account picker and Customize's Accounts section both read and drive this.
+    let providerAccounts: ProviderAccountsStore
     /// Claims Codex rate-limit reset credits from the resets popover (the app's only provider-API
     /// write). Shares the Codex provider's auth store and usage client; `nil` only if the Codex
     /// provider were ever removed from the registry. Injected into the view tree via
@@ -60,6 +63,29 @@ final class AppContainer {
         let apiKeyProviders = providers.compactMap { $0 as? any APIKeyManaging }
         let enablement = ProviderEnablementStore()
         let notificationSettings = NotificationSettingsStore()
+
+        // Multi-account: each capable provider scans for extra logins (file stats plus one
+        // attributes-only keychain enumeration — cheap, prompt-free, so it runs synchronously here),
+        // the persisted records reconcile against the scan, and every record gets a runtime pinned to
+        // its own credentials. Discovery runs at launch only; a newly added account appears on the
+        // next relaunch. Everything else (layout, enablement, metric ids) stays per-provider — the
+        // account picker only swaps which login's data fills the card.
+        let providerAccounts = ProviderAccountsStore()
+        var accountRuntimes: [AccountRuntime] = []
+        for runtime in providers {
+            let providerID = runtime.provider.id
+            accountRuntimes.append(AccountRuntime(providerID: providerID, accountKey: providerID, runtime: runtime))
+            guard let multi = runtime as? any MultiAccountProviderRuntime else { continue }
+            let records = providerAccounts.reconcile(providerID: providerID, discovered: multi.discoverExtraAccounts())
+            for record in records {
+                accountRuntimes.append(AccountRuntime(
+                    providerID: providerID,
+                    accountKey: record.accountKey,
+                    runtime: multi.makeAccountRuntime(for: record)
+                ))
+            }
+        }
+
         let layout = LayoutStore(
             registry: registry,
             isProviderEnabled: { [enablement] in enablement.isEnabled($0) }
@@ -67,10 +93,17 @@ final class AppContainer {
         let dataStore = WidgetDataStore(
             registry: registry,
             providers: providers,
+            accountRuntimes: accountRuntimes,
+            selectedAccountKey: { [providerAccounts] in providerAccounts.selectedAccountKey(for: $0) },
             isProviderEnabled: { [enablement] in enablement.isEnabled($0) },
             orderedDescriptors: { [layout] in layout.visiblePlaced.compactMap { layout.descriptor(for: $0) } },
             notificationSettings: { notificationSettings }
         )
+        // Picking another account swaps the card (and its menu-bar pins) to that login's snapshot,
+        // then fetches it if the cache has nothing fresh.
+        providerAccounts.onSelectionChange = { [weak dataStore] providerID in
+            dataStore?.applySelection(providerID: providerID)
+        }
         // Re-enabling a provider should fetch it promptly, so clear any leftover failure backoff before
         // the enablement wake refreshes. `weak` breaks the cycle (dataStore already captures enablement).
         enablement.onProviderEnabled = { [weak dataStore] id in dataStore?.clearFailureBackoff(for: id) }
@@ -92,6 +125,7 @@ final class AppContainer {
         )
         self.providers = providers
         self.onboarding = onboarding
+        self.providerAccounts = providerAccounts
         self.registry = registry
         self.enablement = enablement
         self.apiKeyProviders = apiKeyProviders
@@ -100,14 +134,24 @@ final class AppContainer {
         self.dataStore = dataStore
 
         // The resets popover's claim service, sharing the Codex provider's credential loading and HTTP
-        // client so the claim's auth can't drift from the provider's. A successful claim forces a Codex
-        // refresh so the meters and credit count reconcile before the popover shows its result. The
-        // forced refresh returns `.skipped` when another refresh already owns the provider — and that
-        // in-flight probe may carry *pre-claim* usage — so retry until this refresh actually runs
-        // (bounded; the racing probe finishes in seconds).
-        self.codexResetClaim = providers.compactMap { $0 as? CodexProvider }.first.map { codex in
+        // client so the claim's auth can't drift from the provider's. The auth store is resolved per
+        // claim through the account selection, so the claim always targets the account whose resets
+        // the popover is showing. A successful claim forces a Codex refresh so the meters and credit
+        // count reconcile before the popover shows its result. The forced refresh returns `.skipped`
+        // when another refresh already owns the provider — and that in-flight probe may carry
+        // *pre-claim* usage — so retry until this refresh actually runs (bounded; the racing probe
+        // finishes in seconds).
+        let codexRuntimesByKey: [String: CodexProvider] = Dictionary(
+            uniqueKeysWithValues: accountRuntimes.compactMap { entry in
+                (entry.runtime as? CodexProvider).map { (entry.accountKey, $0) }
+            }
+        )
+        self.codexResetClaim = codexRuntimesByKey["codex"].map { codex in
             CodexResetClaimService(
-                authStore: codex.authStore,
+                authStore: { [providerAccounts] in
+                    let key = providerAccounts.selectedAccountKey(for: codex.provider.id)
+                    return (codexRuntimesByKey[key] ?? codex).authStore
+                },
                 usageClient: codex.usageClient,
                 refreshAfterClaim: { [weak dataStore] in
                     // The bound must outlast the provider's slowest refresh: usage fetch (10s timeout)

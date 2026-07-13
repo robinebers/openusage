@@ -251,14 +251,22 @@ final class FakeKeychain: KeychainAccessing, @unchecked Sendable {
 final class ServiceKeychain: KeychainAccessing, @unchecked Sendable {
     var values: [String: String]
     var currentUserValues: [String: String]
+    /// service → account → value, for items distinguished by their account attribute (Codex keeps
+    /// every login under one service).
+    var accountValues: [String: [String: String]]
 
-    init(values: [String: String] = [:], currentUserValues: [String: String] = [:]) {
+    init(
+        values: [String: String] = [:],
+        currentUserValues: [String: String] = [:],
+        accountValues: [String: [String: String]] = [:]
+    ) {
         self.values = values
         self.currentUserValues = currentUserValues
+        self.accountValues = accountValues
     }
 
     func readGenericPassword(service: String) throws -> String? {
-        values[service]
+        values[service] ?? accountValues[service]?.values.first
     }
 
     func writeGenericPassword(service: String, value: String) throws {
@@ -271,6 +279,26 @@ final class ServiceKeychain: KeychainAccessing, @unchecked Sendable {
 
     func writeGenericPasswordForCurrentUser(service: String, value: String) throws {
         currentUserValues[service] = value
+    }
+
+    func readGenericPassword(service: String, account: String) throws -> String? {
+        // Fall back to a service-only item for tests that don't model accounts, mirroring how a real
+        // account-specific lookup still finds the single legacy item most tests stage.
+        accountValues[service]?[account] ?? values[service]
+    }
+
+    func writeGenericPassword(service: String, account: String, value: String) throws {
+        accountValues[service, default: [:]][account] = value
+    }
+
+    func genericPasswordServices(withPrefix prefix: String) throws -> [String] {
+        Set(values.keys).union(currentUserValues.keys).union(accountValues.keys)
+            .filter { $0.hasPrefix(prefix) }
+            .sorted()
+    }
+
+    func genericPasswordAccounts(forService service: String) throws -> [String] {
+        (accountValues[service]?.keys).map { $0.sorted() } ?? []
     }
 }
 

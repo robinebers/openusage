@@ -2,7 +2,7 @@ import CryptoKit
 import Foundation
 
 @MainActor
-final class ClaudeProvider: ProviderRuntime {
+final class ClaudeProvider: MultiAccountProviderRuntime {
     let provider = Provider(
         id: "claude",
         displayName: "Claude",
@@ -43,6 +43,24 @@ final class ClaudeProvider: ProviderRuntime {
         self.pricing = pricing
     }
 
+    /// Discovery is keychain-only on purpose — see `ClaudeAccountDiscovery`.
+    func discoverExtraAccounts() -> [DiscoveredAccount] {
+        ClaudeAccountDiscovery(authStore: authStore).discoverExtraAccounts()
+    }
+
+    /// A sibling instance pinned to one extra account's keychain item. Shares the provider identity
+    /// and descriptors; the local-log spend tiles stay with the default instance (the session logs
+    /// live under the default config dir — a keychain-only account has no dir to scan), so the
+    /// scoped instance's snapshot simply carries no spend lines and those tiles read "No data" while
+    /// this account is selected.
+    func makeAccountRuntime(for account: ProviderAccount) -> ProviderRuntime {
+        ClaudeProvider(
+            authStore: ClaudeAuthStore(
+                account: ClaudeAccountScope(configDir: account.configDir, keychainService: account.keychainService)
+            )
+        )
+    }
+
     var widgetDescriptors: [WidgetDescriptor] {
         [
             .percent(id: "claude.session", provider: provider, title: "Session", isSessionWindow: true)
@@ -79,8 +97,11 @@ final class ClaudeProvider: ProviderRuntime {
             // Electron-encrypted blob OpenUsage can't read, so a bare "Not logged in" reads as wrong to
             // a user who is clearly signed in (#825) — point them at the one-time CLI login instead.
             // Gated on the store finding nothing at all: a stored-but-blank token means the CLI *did*
-            // write credentials, so the plain "Not logged in" is the right guidance there.
-            if storedCandidates.isEmpty, await loadOffMainActor({ [authStore] in authStore.hasDesktopAppData() }) {
+            // write credentials, so the plain "Not logged in" is the right guidance there. Only the
+            // default instance gives this hint — an extra account's vanished keychain item says
+            // nothing about the desktop app.
+            if authStore.account == nil, storedCandidates.isEmpty,
+               await loadOffMainActor({ [authStore] in authStore.hasDesktopAppData() }) {
                 AppLog.info(LogTag.auth("claude"), "no CLI credentials, but desktop app data found — CLI login needed")
                 return ProviderSnapshot.error(provider: provider, error: ClaudeAuthError.desktopAppOnly)
             }
@@ -163,8 +184,11 @@ final class ClaudeProvider: ProviderRuntime {
         }
 
         // Local spend tiles, scanned natively from Claude Code's session logs and priced through the
-        // shared pricing store. `scan` runs on the scanner actor, off the main actor.
-        if let scan = await logUsageScanner.scan(now: now(), pricing: pricing()) {
+        // shared pricing store. `scan` runs on the scanner actor, off the main actor. Default
+        // instance only: the scanner reads the default config dirs, which belong to the default
+        // account — an extra (keychain-only) account has no log dir, so its snapshot carries no
+        // spend lines and those tiles read "No data" while it's selected.
+        if authStore.account == nil, let scan = await logUsageScanner.scan(now: now(), pricing: pricing()) {
             SpendTileMapper.appendTokenUsage(
                 scan.series, to: &mapped.lines, now: now(),
                 unknownModelsByDay: scan.unknownModelsByDay,

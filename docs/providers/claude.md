@@ -31,6 +31,14 @@ If one source holds an expired or "locked out" token, OpenUsage falls back to th
 
 Today / Yesterday / Last 30 Days are computed **locally**: OpenUsage reads the Claude Code session logs under `~/.claude/projects/` (or `$CLAUDE_CONFIG_DIR`) itself — no external tools needed. Symlinks are followed, so a projects folder linked into a synced location (say, a Dropbox folder) is read all the same. Cowork (the Claude desktop app's agent mode) counts too: it writes the same logs into per-session folders under `~/Library/Application Support/Claude/local-agent-mode-sessions/`, and OpenUsage scans those as well, so desktop agent sessions show up in the tiles alongside terminal ones. Days are grouped in your Mac's local time zone, so they line up with your own calendar. Each period is one tile showing cost and tokens together (`$4.08 · 1.2M tokens`); a day with no usage reads **No data** rather than a misleading `$0.00 · 0 tokens` — the same as every other spend-tracking provider. The live Session and Weekly meters are unaffected. The dollars are estimated from token counts at API rates (that's the ⓘ) using the shared [model pricing](../pricing.md); the token counts themselves are measured. No log data leaves your Mac.
 
+## Multiple accounts
+
+If you're signed in to more than one Claude account on this Mac, the Claude card grows a small picker beside the provider name (the caret, like the Total Spend card's metric switch). Pick an account to swap the whole card — and any Claude metrics you've pinned to the menu bar — to that login's numbers. Nothing else changes: your metric layout, stars, and provider order are shared, only the data swaps.
+
+- Extra accounts are found automatically at launch by listing the Claude Code entries in your keychain (each `CLAUDE_CONFIG_DIR` login is its own entry) — no setup, nothing on disk is searched, and no secret is read until the account is actually refreshed. A newly added login shows up the next time OpenUsage launches. The first refresh of an extra account can show macOS's usual one-time keychain permission dialog, once per account — the same dialog your main login showed.
+- Rename or remove an extra account in Customize → Claude → **Accounts**. Renames apply immediately everywhere the name shows. Removing an account only makes OpenUsage forget it — the login itself is untouched, and one that still exists is found again on a later launch.
+- The spend tiles (Today / Yesterday / Last 30 Days) and the usage trend come from the session logs on this Mac, which belong to your default setup — so they show real numbers on the default account and **No data** while an extra account is selected.
+
 ## Troubleshooting
 
 - **"Not logged in"** — run `claude` and sign in, then refresh.

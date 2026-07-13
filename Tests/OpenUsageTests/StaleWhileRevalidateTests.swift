@@ -193,7 +193,7 @@ final class StaleWhileRevalidateTests: XCTestCase {
         defaults.set(Data("not a valid snapshot payload".utf8), forKey: "snapshots")
         let cache = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() })
 
-        let loaded = cache.loadSnapshots(providerIDs: ["test.alpha"])
+        let loaded = cache.loadSnapshots(keys: ["test.alpha"])
 
         XCTAssertTrue(loaded.isEmpty)
     }

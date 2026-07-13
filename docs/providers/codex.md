@@ -23,6 +23,15 @@ Sign in once with the Codex CLI (`codex`); OpenUsage reads the same auth files (
 
 Today / Yesterday / Last 30 Days are computed **locally**: OpenUsage reads the Codex CLI's session rollouts under `~/.codex/sessions/` and `archived_sessions/` (or `$CODEX_HOME`) itself — no external tools needed. Symlinks are followed, so a Codex home linked into a synced location (say, a Dropbox folder) is read all the same. Days are grouped in your Mac's local time zone, so they line up with your own calendar. Each period is one tile showing cost and tokens together (`$4.08 · 1.2M tokens`); a day with no usage reads **No data** rather than a misleading `$0.00 · 0 tokens` — the same as every other spend-tracking provider. The live Session and Weekly meters are unaffected. The dollars are estimated from token counts at API rates (that's the ⓘ) using the shared [model pricing](../pricing.md); if your `config.toml` requests the fast/priority service tier, the fast rates apply. The token counts themselves are measured. No log data leaves your Mac.
 
+## Multiple accounts
+
+If you're signed in to more than one Codex account on this Mac, the Codex card grows a small picker beside the provider name (the caret, like the Total Spend card's metric switch). Pick an account to swap the whole card — and any Codex metrics you've pinned to the menu bar — to that login's numbers. Nothing else changes: your metric layout, stars, and provider order are shared, only the data swaps.
+
+- Extra accounts are found automatically at launch, in both places the Codex CLI can keep a login: any sibling `~/.codex*` folder holding an `auth.json`, and the CLI's keychain entries (its keyring mode keeps one keychain item per Codex home). A folder and its keychain item are recognized as the same account. A newly added login shows up the next time OpenUsage launches. The first refresh of a keychain-backed extra account can show macOS's usual one-time keychain permission dialog, once per account.
+- Rename or remove an extra account in Customize → Codex → **Accounts**. Renames apply immediately everywhere the name shows. Removing an account only makes OpenUsage forget it — the login itself is untouched, and one that still exists is found again on a later launch.
+- An extra account backed by its own folder gets its own spend tiles too: its session rollouts live inside that folder, so Today / Yesterday / Last 30 Days and the trend are computed per account. A keychain-only account has no folder to scan, so its spend tiles read **No data**.
+- Claiming a rate-limit reset from the resets popover always targets the account the card is currently showing.
+
 ## Troubleshooting
 
 - **"Not logged in"** — run `codex` and sign in, then refresh.
