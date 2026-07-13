@@ -36,6 +36,9 @@ struct CustomizeProviderDetailView: View {
                 if providerID == "codex" {
                     CodexPricingSection()
                 }
+                if providerID == "cursor" {
+                    CursorSpendViewSection()
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .animation(Motion.spring, value: layout.expandedMetricIDs)
