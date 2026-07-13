@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.7.5
+
+### New Features
+- Claim Codex rate-limit resets from the popover ([#972](https://github.com/robinebers/openusage/pull/972)) by @robinebers
+
+### Bug Fixes
+- Fix Codex window routing by duration ([#980](https://github.com/robinebers/openusage/pull/980)) by @robinebers
+
+---
+
+### Changelog
+**Full Changelog**: [v0.7.4...v0.7.5](https://github.com/robinebers/openusage/compare/v0.7.4...v0.7.5)
+
+- [e1ddf23](https://github.com/robinebers/openusage/commit/e1ddf233faf118aefcadd80dc525064fe44cb689) Fix Codex window routing by duration by @robinebers
+- [50e0a94](https://github.com/robinebers/openusage/commit/50e0a949f841ab403a9834ebb14d1f164909a778) fix: say what we know when disabling Use after nothing_to_reset by @robinebers
+- [7b6d4a9](https://github.com/robinebers/openusage/commit/7b6d4a9ca33dd34085718b5cf6229675710adf22) fix: retry the post-claim refresh on transient failure; drop the unused popover title by @robinebers
+- [ad59baf](https://github.com/robinebers/openusage/commit/ad59baffd786578587598163326d533e92e7e5a6) fix: close the second review's three findings on the claim hardening by @robinebers
+- [ce755b9](https://github.com/robinebers/openusage/commit/ce755b954c992465eb88a4cf89a2ded46a0d89d2) fix: harden the resets claim per review findings by @robinebers
+- [be00fe2](https://github.com/robinebers/openusage/commit/be00fe2c451b0db4c97c212a527f202753735314) feat: wire the resets claim to the real Codex consume endpoint by @robinebers
+- [bb46eae](https://github.com/robinebers/openusage/commit/bb46eae4a9d24cf07d2402e74aa14d0b95c7d44e) feat: animate the resets claim flow by @robinebers
+- [20fb41f](https://github.com/robinebers/openusage/commit/20fb41f7c139ab8df5699d82c41117d96b4b5422) feat: claim flow in the Codex resets popover (mocked claim) by @robinebers
+
 ## v0.7.4
 
 ### New Features
