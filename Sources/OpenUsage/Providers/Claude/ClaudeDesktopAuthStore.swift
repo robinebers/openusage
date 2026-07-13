@@ -38,6 +38,11 @@ struct ClaudeDesktopSafeStorageKeyReader: ClaudeDesktopSafeStorageKeyReading {
             let context = LAContext()
             context.interactionNotAllowed = true
             query[kSecUseAuthenticationContext as String] = context
+            // Belt and braces: `interactionNotAllowed` governs LocalAuthentication-protected items,
+            // but a classic login-keychain ACL dialog is not reliably suppressed by it — and this
+            // read can run during launch, where a blocking dialog would freeze startup. This key
+            // makes the item lookup fail fast instead of ever showing UI.
+            query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
         }
 
         var result: CFTypeRef?

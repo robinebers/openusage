@@ -16,8 +16,9 @@ final class WidgetDataStore {
     private let providersByID: [String: ProviderRuntime]
     /// Every runtime the refresh loop drives, grouped by provider: the default account's runtime
     /// plus one scoped runtime per extra account. A provider without extra accounts has exactly one
-    /// entry — the pre-accounts behavior, unchanged.
-    private let accountRuntimesByProvider: [String: [AccountRuntime]]
+    /// entry — the pre-accounts behavior, unchanged. `var` because post-launch account discovery
+    /// registers runtimes for newly found accounts (see `registerAccountRuntime`).
+    private var accountRuntimesByProvider: [String: [AccountRuntime]]
     /// Which account's snapshot the provider's card (and menu-bar pins) currently shows — the bare
     /// provider id for the default account. Injected from `ProviderAccountsStore`; defaults to
     /// "always the default account" for tests, previews, and the one-shot CLI reader.
@@ -156,6 +157,22 @@ final class WidgetDataStore {
                 self.snapshots[providerID] = snapshot
             }
         }
+    }
+
+    /// Adopt a runtime for an account that post-launch discovery just found, so it's usable
+    /// immediately (picker entry, refreshes, cache) rather than after a relaunch. Idempotent per
+    /// account key. Pulls any cached snapshot for the key first (stale-while-revalidate, same as
+    /// init), then kicks a cache-gated refresh to warm it.
+    func registerAccountRuntime(_ account: AccountRuntime) {
+        var runtimes = accountRuntimesByProvider[account.providerID] ?? []
+        guard !runtimes.contains(where: { $0.accountKey == account.accountKey }) else { return }
+        runtimes.append(account)
+        accountRuntimesByProvider[account.providerID] = runtimes
+        if let cached = cache.loadSnapshots(keys: [account.accountKey])[account.accountKey] {
+            accountSnapshots[account.accountKey] = cached
+            projectSelection(providerID: account.providerID)
+        }
+        Task { await refresh(providerID: account.providerID) }
     }
 
     /// Swap the provider card (and its menu-bar pins) to the newly selected account: re-project the

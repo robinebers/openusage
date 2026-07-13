@@ -40,6 +40,14 @@ final class AppContainer {
     /// The provider runtimes, kept so on-demand credential detection (the Customize "Reset All" reseed)
     /// can re-probe `hasLocalCredentials()` the same way first-run seeding does.
     private let providers: [ProviderRuntime]
+    /// The multi-account-capable subset of `providers`, kept for account rediscovery (the post-launch
+    /// scan and the manual-refresh interactive one). See `rediscoverAccounts`.
+    private let multiAccountProviders: [any MultiAccountProviderRuntime]
+    /// The post-launch account scan. `var` only because it captures `self` and so can't be created
+    /// until init completes — which also makes it MainActor-isolated and unreachable from the
+    /// nonisolated deinit; that's fine: it holds `self` weakly and one scan finishes in milliseconds,
+    /// so there is nothing long-lived to cancel.
+    private var accountDiscoveryTask: Task<Void, Never>?
     /// Read-only usage API on 127.0.0.1:6736 for other local apps (silently off when the port is taken).
     private let localAPI: LocalUsageServer
     // A `let` of a `Sendable` `Task` is implicitly nonisolated, so the nonisolated `deinit` can cancel it.
@@ -64,20 +72,19 @@ final class AppContainer {
         let enablement = ProviderEnablementStore()
         let notificationSettings = NotificationSettingsStore()
 
-        // Multi-account: each capable provider scans for extra logins (file stats plus one
-        // attributes-only keychain enumeration — cheap, prompt-free, so it runs synchronously here),
-        // the persisted records reconcile against the scan, and every record gets a runtime pinned to
-        // its own credentials. Discovery runs at launch only; a newly added account appears on the
-        // next relaunch. Everything else (layout, enablement, metric ids) stays per-provider — the
-        // account picker only swaps which login's data fills the card.
+        // Multi-account: launch builds runtimes from the PERSISTED account records only — no
+        // discovery I/O on the startup path (a keychain read here once froze launch behind a hidden
+        // ACL dialog). The actual scan runs just after init in `rediscoverAccounts`, which reconciles
+        // the records and registers runtimes for anything new, live. Everything else (layout,
+        // enablement, metric ids) stays per-provider — the account picker only swaps which login's
+        // data fills the card.
         let providerAccounts = ProviderAccountsStore()
         var accountRuntimes: [AccountRuntime] = []
         for runtime in providers {
             let providerID = runtime.provider.id
             accountRuntimes.append(AccountRuntime(providerID: providerID, accountKey: providerID, runtime: runtime))
             guard let multi = runtime as? any MultiAccountProviderRuntime else { continue }
-            let records = providerAccounts.reconcile(providerID: providerID, discovered: multi.discoverExtraAccounts())
-            for record in records {
+            for record in providerAccounts.accounts(for: providerID) {
                 accountRuntimes.append(AccountRuntime(
                     providerID: providerID,
                     accountKey: record.accountKey,
@@ -104,6 +111,7 @@ final class AppContainer {
         providerAccounts.onSelectionChange = { [weak dataStore] providerID in
             dataStore?.applySelection(providerID: providerID)
         }
+        self.multiAccountProviders = providers.compactMap { $0 as? any MultiAccountProviderRuntime }
         // Re-enabling a provider should fetch it promptly, so clear any leftover failure backoff before
         // the enablement wake refreshes. `weak` breaks the cycle (dataStore already captures enablement).
         enablement.onProviderEnabled = { [weak dataStore] id in dataStore?.clearFailureBackoff(for: id) }
@@ -230,12 +238,49 @@ final class AppContainer {
         // effectively always is. Notification authorization is requested the first time a trigger is
         // turned on in Settings, not at launch — triggers default off. No-op under tests.
         AppNotifications.shared.registerAsDelegate()
+        // The launch account scan, right after init and OFF the startup path (see the multi-account
+        // note above). Never interactive: a keychain that would need a dialog simply yields nothing
+        // until the user's manual refresh grants access.
+        accountDiscoveryTask = Task { [weak self] in
+            await self?.rediscoverAccounts(allowInteraction: false)
+        }
     }
 
     deinit {
         refreshTask.cancel()
         seedTask?.cancel()
         newProviderTask?.cancel()
+    }
+
+    /// The user's explicit "Refresh now" (⌘R / the footer button): re-scan for provider accounts
+    /// WITH keychain interaction allowed — this is the one moment a one-time ACL dialog (Claude
+    /// Desktop's Safe Storage) may appear, per the manual-refresh-only rule — then force-refresh
+    /// every provider.
+    func refreshNow() async {
+        await rediscoverAccounts(allowInteraction: true)
+        await dataStore.refreshAll(force: true)
+    }
+
+    /// Discover extra accounts for every multi-account provider, reconcile them into the persisted
+    /// records, and register a runtime for anything new — so a found account is usable immediately,
+    /// not on the next relaunch. Runs post-launch (never interactive) and on every manual refresh
+    /// (interactive, so the Safe Storage grant can happen).
+    private func rediscoverAccounts(allowInteraction: Bool) async {
+        for multi in multiAccountProviders {
+            let providerID = multi.provider.id
+            let known = Set(providerAccounts.accounts(for: providerID).map(\.id))
+            let records = providerAccounts.reconcile(
+                providerID: providerID,
+                discovered: multi.discoverExtraAccounts(allowInteraction: allowInteraction)
+            )
+            for record in records where !known.contains(record.id) {
+                dataStore.registerAccountRuntime(AccountRuntime(
+                    providerID: providerID,
+                    accountKey: record.accountKey,
+                    runtime: multi.makeAccountRuntime(for: record)
+                ))
+            }
+        }
     }
 
     /// Re-runs first-launch credential detection on demand — the enablement half of the Customize

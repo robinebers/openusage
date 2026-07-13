@@ -32,8 +32,9 @@ final class CodexProvider: MultiAccountProviderRuntime {
         self.pricing = pricing
     }
 
-    /// File + keychain scan — see `CodexAccountDiscovery`.
-    func discoverExtraAccounts() -> [DiscoveredAccount] {
+    /// File + keychain scan — see `CodexAccountDiscovery`. Never needs interaction: the enumeration
+    /// is attributes-only and `auth.json` reads are plain file I/O.
+    func discoverExtraAccounts(allowInteraction: Bool) -> [DiscoveredAccount] {
         CodexAccountDiscovery(authStore: authStore).discoverExtraAccounts()
     }
 

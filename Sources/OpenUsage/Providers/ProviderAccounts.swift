@@ -139,8 +139,11 @@ struct AccountRuntime {
 @MainActor
 protocol MultiAccountProviderRuntime: ProviderRuntime {
     /// Cheap, local-only scan for additional logins (file stats and attributes-only keychain
-    /// enumeration; never the network, never a secret read). Runs synchronously at launch.
-    func discoverExtraAccounts() -> [DiscoveredAccount]
+    /// enumeration; never the network). Runs post-launch and on manual refresh — NEVER on the
+    /// startup path, where a keychain ACL dialog would freeze launch. `allowInteraction` is true
+    /// only for the manual-refresh scan: the one moment a one-time keychain permission dialog may
+    /// appear (Claude Desktop's Safe Storage); the background scan must fail fast instead.
+    func discoverExtraAccounts(allowInteraction: Bool) -> [DiscoveredAccount]
     /// A runtime pinned to exactly this account's credential sources — no cross-account fallback,
     /// no env-token fallback. Shares the provider identity and descriptors with the default runtime.
     func makeAccountRuntime(for account: ProviderAccount) -> ProviderRuntime

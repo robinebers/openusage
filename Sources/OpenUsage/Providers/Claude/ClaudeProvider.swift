@@ -43,9 +43,9 @@ final class ClaudeProvider: MultiAccountProviderRuntime {
         self.pricing = pricing
     }
 
-    /// Discovery is keychain-only on purpose — see `ClaudeAccountDiscovery`.
-    func discoverExtraAccounts() -> [DiscoveredAccount] {
-        ClaudeAccountDiscovery(authStore: authStore).discoverExtraAccounts()
+    /// Keychain items + Claude Desktop organizations — see `ClaudeAccountDiscovery`.
+    func discoverExtraAccounts(allowInteraction: Bool) -> [DiscoveredAccount] {
+        ClaudeAccountDiscovery(authStore: authStore).discoverExtraAccounts(allowInteraction: allowInteraction)
     }
 
     /// A sibling instance pinned to one extra account — a keychain item, or a Claude Desktop

@@ -20,7 +20,7 @@ struct ClaudeAccountDiscovery {
         self.keychain = keychain
     }
 
-    func discoverExtraAccounts() -> [DiscoveredAccount] {
+    func discoverExtraAccounts(allowInteraction: Bool = false) -> [DiscoveredAccount] {
         let enumerated: [KeychainItemSummary]
         do {
             enumerated = try keychain.genericPasswordItems(withServicePrefix: authStore.baseKeychainService())
@@ -45,16 +45,17 @@ struct ClaudeAccountDiscovery {
             .map(\.service)
             .sorted()
             .map { DiscoveredAccount(keychainService: $0) }
-            + desktopAccounts()
+            + desktopAccounts(allowInteraction: allowInteraction)
     }
 
     /// Claude Desktop logins beyond the active one. Desktop keeps one token-cache entry per signed-in
     /// organization; the ACTIVE organization already feeds the default card's Desktop fallback (see
-    /// `ClaudeAuthStore.loadCredentialSet`), so every OTHER organization is an extra account. Read
-    /// without keychain interaction: until the user's one-time Safe Storage grant (a manual refresh),
-    /// the inventory is simply unavailable and Desktop accounts appear on a later launch.
-    private func desktopAccounts() -> [DiscoveredAccount] {
-        guard let inventory = authStore.desktop.organizationInventory(allowInteraction: false) else {
+    /// `ClaudeAuthStore.loadCredentialSet`), so every OTHER organization is an extra account.
+    /// Interaction is allowed only on the manual-refresh scan — that's where the one-time Safe
+    /// Storage grant happens; the background scan fails fast and finds Desktop accounts on the next
+    /// pass after the grant.
+    private func desktopAccounts(allowInteraction: Bool) -> [DiscoveredAccount] {
+        guard let inventory = authStore.desktop.organizationInventory(allowInteraction: allowInteraction) else {
             return []
         }
         return inventory.organizations

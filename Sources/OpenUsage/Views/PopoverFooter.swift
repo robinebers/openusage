@@ -3,6 +3,7 @@ import SwiftUI
 /// Fixed popover footer chrome: app identity, refresh status, dashboard actions, and copy confirmation.
 /// It uses the destination screen so both pages mounted during a slide draw the same footer.
 struct PopoverFooter: View {
+    @Environment(AppContainer.self) private var container
     let screen: PopoverScreen
     let layout: LayoutStore
     let dataStore: WidgetDataStore
@@ -93,7 +94,10 @@ struct PopoverFooter: View {
 
     private func refreshNow() {
         guard !isUpdating else { return }
-        Task { await dataStore.refreshAll(force: true) }
+        // Through the container, not the data store directly: the manual refresh also re-scans for
+        // provider accounts (the one moment keychain interaction is allowed — the one-time Claude
+        // Desktop Safe Storage grant happens here).
+        Task { await container.refreshNow() }
     }
 
     private func updateStatusText(now: Date) -> String {
