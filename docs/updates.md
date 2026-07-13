@@ -10,9 +10,11 @@ they install, so you always get a genuine, unmodified build.
   When one is found, an **Update Available** banner appears at the top of the popover instead of a
   window popping up behind your other apps. Click **Install Update** to open the update window (release
   notes, download, install) front and center. The banner's close button snoozes it; it comes back the
-  next time the app finds the update. Because OpenUsage lives in the menu bar, it briefly shows a Dock
-  icon while the update window is open, then hides again.
+  next time the app finds the update.
 - **Manual check.** Open **Settings → Updates** and click **Check for Updates…** at any time.
+  For both manual checks and banner installs, OpenUsage brings itself to the foreground before opening
+  Sparkle so the update window doesn't get buried behind another app. Because OpenUsage normally lives
+  only in the menu bar, it briefly shows a Dock icon for the update session, then hides again.
 - **Turn it off.** The **Update Automatically** switch in **Settings → Updates** stops the
   background checks. You can still check manually.
 
