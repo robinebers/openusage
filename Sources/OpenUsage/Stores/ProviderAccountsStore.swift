@@ -93,6 +93,9 @@ final class ProviderAccountsStore {
                     accounts[index].keychainService = service
                     accounts[index].keychainAccount = source.keychainAccount
                 }
+                if let organization = source.desktopOrganization {
+                    accounts[index].desktopOrganization = organization
+                }
                 let survivorID = accounts[index].id
                 matchedIDs.insert(survivorID)
                 collapseSubsumedRecords(into: survivorID)
@@ -103,6 +106,7 @@ final class ProviderAccountsStore {
                     configDir: source.configDir,
                     keychainService: source.keychainService,
                     keychainAccount: source.keychainAccount,
+                    desktopOrganization: source.desktopOrganization,
                     customName: nil
                 )
                 matchedIDs.insert(record.id)

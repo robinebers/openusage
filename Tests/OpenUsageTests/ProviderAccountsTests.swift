@@ -87,6 +87,27 @@ final class ProviderAccountsTests: XCTestCase {
         XCTAssertEqual(store.selectedAccountKey(for: "codex"), "codex")
     }
 
+    func testReconcileCarriesEveryLocatorIntoTheRecord() {
+        // Regression: a discovered Desktop organization must land ON the record — a record without
+        // its locator builds an empty credential scope and can only ever say "Not logged in".
+        let defaults = makeUserDefaults("locators")
+        let store = ProviderAccountsStore(defaults: defaults)
+        let org = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+
+        let records = store.reconcile(providerID: "claude", discovered: [
+            DiscoveredAccount(desktopOrganization: org)
+        ])
+
+        XCTAssertEqual(records.count, 1)
+        XCTAssertEqual(records[0].desktopOrganization, org)
+        XCTAssertEqual(records[0].displayName, "Desktop (bbbbbbbb)")
+        // And it round-trips through persistence.
+        XCTAssertEqual(
+            ProviderAccountsStore(defaults: defaults).accounts(for: "claude").first?.desktopOrganization,
+            org
+        )
+    }
+
     func testReconcilePrunesUnnamedRecordsButKeepsRenamedOnes() {
         let store = ProviderAccountsStore(defaults: makeUserDefaults("prune"))
         let junk = DiscoveredAccount(configDir: nil, keychainService: "Claude Code-credentials-junk", keychainAccount: nil)
