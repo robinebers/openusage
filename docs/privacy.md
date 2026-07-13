@@ -29,6 +29,10 @@ your macOS account (owner read and write only). Antigravity's short-lived refres
 to the current Keychain login using a one-way fingerprint; the refresh credential itself is not copied.
 The cache is never used after logout, an account change, or while Keychain access is unavailable.
 
+Claude Desktop access is strictly read-only. OpenUsage may ask macOS for permission to use the
+`Claude Safe Storage` Keychain item so it can decrypt Desktop's current access token. It never uses
+Desktop's rotating refresh token and never modifies Desktop's config, cookies, or Keychain data.
+
 ## Other network requests
 
 Besides the provider API calls the vendor's own tools would make, OpenUsage fetches public [model price lists](pricing.md) about once an hour (from `raw.githubusercontent.com`, `models.dev`, and this project's GitHub Pages). These are plain downloads of public data — they carry no usage, log, or account information, and they run regardless of the Share Anonymous Usage setting. The spend tiles are computed from local CLI logs entirely on your Mac; no log data ever leaves it.
