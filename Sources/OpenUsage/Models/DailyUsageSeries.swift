@@ -20,6 +20,20 @@ struct DailyUsageSeries: Hashable, Sendable, Codable {
     var daily: [DailyUsageEntry]
 }
 
+/// The calendar window shared by local scanners, combined iCloud history, and the usage trend.
+/// `previousDays` excludes today, so 30 means today plus the previous 30 calendar days.
+enum UsageHistoryWindow {
+    static let previousDays = 30
+
+    static func dayKeys(through now: Date, calendar: Calendar = .current) -> Set<String> {
+        let today = calendar.startOfDay(for: now)
+        return Set((0...previousDays).compactMap { offset in
+            calendar.date(byAdding: .day, value: -offset, to: today)
+                .map { DailyUsageAccumulator.dayKey(from: $0, calendar: calendar) }
+        })
+    }
+}
+
 /// Token/cost totals for one model before a period collapses it into a spend row. Costs stay unrounded
 /// here; `SpendTileMapper` snaps them to cents once for the displayed Today / Yesterday / Last 30 Days
 /// breakdown, matching the spend-row totals.

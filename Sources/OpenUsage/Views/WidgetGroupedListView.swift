@@ -50,10 +50,10 @@ struct WidgetGroupedListView: View {
             plan: dataStore.plan(for: group.provider.id),
             warning: dataStore.headerNotice(for: group.provider.id),
             refreshing: dataStore.refreshingProviderIDs.contains(group.provider.id),
-            staleness: dataStore.stalenessHint(for: group.provider.id)
+            staleness: dataStore.stalenessHint(for: group.provider.id),
+            onCopyScreenshot: { shareCard(group) }
         )
-        // 8pt (+ 4pt internal) on both sides: insets the drag grip off the card's left edge and
-        // lines the provider mark up with the card's right content edge.
+        // Keep the provider mark and hover-revealed copy control aligned with the card's content edges.
         .padding(.horizontal, 8)
         .highPriorityGesture(providerDragGesture(for: group))
         .contextMenu {
@@ -70,7 +70,7 @@ struct WidgetGroupedListView: View {
                 openCustomize(for: group.provider.id)
             }
             Divider()
-            Button("Share Screenshot") { shareCard(group) }
+            Button("Share Screenshot") { _ = shareCard(group) }
         }
     }
 
@@ -80,7 +80,7 @@ struct WidgetGroupedListView: View {
     /// the export matches the card on screen instead of guessing from `NSApp.effectiveAppearance`. The
     /// same render path backs the footer's "Share Screenshot" submenu, which reaches it without a
     /// right-click.
-    private func shareCard(_ group: ProviderGroup) {
+    private func shareCard(_ group: ProviderGroup) -> Bool {
         ShareCardRenderer.share(
             group: group,
             dataStore: dataStore,

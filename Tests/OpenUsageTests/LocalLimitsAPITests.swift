@@ -166,6 +166,39 @@ final class LocalLimitsAPITests: XCTestCase {
         XCTAssertNil(resource["utilization"])
     }
 
+    func testProgressResourceUnitFollowsRuntimeMetricFormat() throws {
+        let provider = Provider(id: "cursor", displayName: "Cursor", icon: .providerMark("cursor"))
+        let total = WidgetDescriptor.percent(
+            id: "cursor.usage", provider: provider, title: "Total Usage", metricLabel: "Total usage"
+        ).exportingLimit("totalUsage", unit: "percent")
+        let snapshot = ProviderSnapshot(
+            providerID: "cursor",
+            displayName: "Cursor",
+            lines: [.progress(
+                label: "Total usage", used: 37, limit: 750,
+                format: .count(suffix: "requests")
+            )],
+            refreshedAt: fetchedAt
+        )
+        let state = LocalUsageAPI.State(
+            enabledOrderedIDs: ["cursor"],
+            knownIDs: ["cursor"],
+            snapshots: ["cursor": snapshot],
+            limitDescriptors: ["cursor": [total]],
+            generatedAt: generatedAt
+        )
+
+        let root = try json(LocalUsageAPI.respond(method: "GET", path: "/v1/limits", state: state).body)
+        let providers = try XCTUnwrap(root["providers"] as? [String: Any])
+        let cursor = try XCTUnwrap(providers["cursor"] as? [String: Any])
+        let resources = try XCTUnwrap(cursor["resources"] as? [String: Any])
+        let resource = try XCTUnwrap(resources["totalUsage"] as? [String: Any])
+
+        XCTAssertEqual(resource["unit"] as? String, "requests")
+        XCTAssertEqual(resource["used"] as? Double, 37)
+        XCTAssertEqual(resource["limit"] as? Double, 750)
+    }
+
     @MainActor
     func testEveryProviderDeclaresTheApprovedPublicResourceKeys() {
         let defaults = UserDefaults(suiteName: "LocalLimitsAPITests.\(UUID().uuidString)")!

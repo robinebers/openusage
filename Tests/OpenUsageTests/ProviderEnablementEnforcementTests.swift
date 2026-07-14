@@ -38,6 +38,69 @@ final class ProviderEnablementEnforcementTests: XCTestCase {
         XCTAssertNil(store.snapshots["codex"])
     }
 
+    func testDisablingProviderRemovesPeerHistoryButKeepsLocalSnapshot() async throws {
+        let enablement = ProviderEnablementStore(defaults: makeDefaults("history-enablement"))
+        let provider = Provider(id: "claude", displayName: "Claude", icon: .providerMark("claude"))
+        let historyDescriptor = UsageHistoryDescriptor(
+            scope: .machineLocal,
+            estimatedCost: true,
+            sourceNote: "From test logs"
+        )
+        let descriptors = [
+            WidgetDescriptor.usageTrend(provider: provider).exportingHistory(
+                scope: historyDescriptor.scope,
+                estimatedCost: historyDescriptor.estimatedCost,
+                sourceNote: historyDescriptor.sourceNote
+            )
+        ] + WidgetDescriptor.spendTiles(provider: provider)
+        let now = Calendar.current.date(from: DateComponents(year: 2026, month: 7, day: 13, hour: 12))!
+        let localHistory = history(tokens: 100, cost: 1, now: now)
+        let localSnapshot = UsageHistorySnapshotRenderer.render(
+            local: ProviderSnapshot(
+                providerID: provider.id,
+                displayName: provider.displayName,
+                lines: [],
+                usageHistory: localHistory
+            ),
+            history: localHistory,
+            descriptor: historyDescriptor,
+            now: now,
+            combined: false
+        )
+        let runtime = CountingProviderRuntime(
+            provider: provider,
+            descriptors: descriptors,
+            snapshot: localSnapshot
+        )
+        let defaults = makeDefaults("history-store")
+        let store = WidgetDataStore(
+            registry: WidgetRegistry(providers: [provider], descriptors: descriptors),
+            providers: [runtime],
+            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots"),
+            defaults: defaults,
+            isProviderEnabled: { enablement.isEnabled($0) },
+            now: { now }
+        )
+        enablement.onChange = { store.providerEnablementDidChange() }
+
+        await store.refreshAll(force: true)
+        store.setPeerHistoryDocuments([
+            UsageHistoryDocument(
+                deviceID: "peer",
+                deviceName: "Peer Mac",
+                updatedAt: now,
+                providers: [provider.id: history(tokens: 200, cost: 2, now: now)]
+            )
+        ], ownDeviceID: "this-mac")
+        XCTAssertEqual(try spendTokens(store.snapshots[provider.id], label: "Today"), 300)
+
+        enablement.setEnabled(false, for: provider.id)
+
+        XCTAssertEqual(try spendTokens(store.snapshots[provider.id], label: "Today"), 100)
+        XCTAssertNotNil(store.localSnapshots[provider.id])
+        XCTAssertNil(store.localHistoryDocument(deviceID: "this-mac", deviceName: "This Mac").providers[provider.id])
+    }
+
     // Tray ownership by layout order + disabled-provider exclusion is exercised on the real tray path
     // (LayoutStore.pinnedGroups + MenuBarContentBuilder) in MenuBarPinTests / MenuBarContentTests.
 
@@ -105,6 +168,23 @@ final class ProviderEnablementEnforcementTests: XCTestCase {
             )
         )
         return Fixture(provider: provider, descriptor: descriptor, runtime: runtime)
+    }
+
+    private func history(tokens: Int, cost: Double, now: Date) -> ProviderUsageHistory {
+        ProviderUsageHistory(series: DailyUsageSeries(daily: [
+            DailyUsageEntry(
+                date: DailyUsageAccumulator.dayKey(from: now),
+                totalTokens: tokens,
+                costUSD: cost
+            )
+        ]))
+    }
+
+    private func spendTokens(_ snapshot: ProviderSnapshot?, label: String) throws -> Double {
+        guard case .values(_, let values, _, _, _, _) = try XCTUnwrap(snapshot?.line(label: label)) else {
+            throw NSError(domain: "ProviderEnablementEnforcementTests", code: 1)
+        }
+        return try XCTUnwrap(values.first { $0.kind == .count }?.number)
     }
 
     private func makeDefaults(_ name: String) -> UserDefaults {

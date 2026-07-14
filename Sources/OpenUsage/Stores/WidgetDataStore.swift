@@ -247,7 +247,9 @@ final class WidgetDataStore {
         refreshingProviderIDs.insert(providerID)
         defer { refreshingProviderIDs.remove(providerID) }
         let start = Date()
-        let snapshot = await provider.refresh()
+        var snapshot = await ProviderRefreshContext.$isManual.withValue(force) {
+            await provider.refresh()
+        }
         let durationMs = Int(Date().timeIntervalSince(start) * 1000)
         if let message = Self.errorMessage(in: snapshot) {
             // Failed refresh: surface the error but keep the last good snapshot on screen rather than
@@ -264,6 +266,24 @@ final class WidgetDataStore {
         }
         // Recovered: drop any backoff so the provider resumes the normal cadence immediately.
         failureRetryAfter[providerID] = nil
+        // A provider can refresh its live limits successfully while its optional local log/CSV scan
+        // produces no result. Keep only the last-good normalized history in that case; the new plan,
+        // limits, warnings, and timestamp still win. A non-nil empty history remains authoritative and
+        // clears the old rows, because it proves the scan completed and found no usage.
+        if snapshot.usageHistory == nil,
+           let history = localSnapshots[providerID]?.usageHistory,
+           let descriptor = registry.historyDescriptorsByProvider[providerID]
+        {
+            snapshot.usageHistory = history
+            snapshot = UsageHistorySnapshotRenderer.render(
+                local: snapshot,
+                history: history,
+                descriptor: descriptor,
+                now: now(),
+                combined: false
+            )
+            AppLog.debug(.refresh, "preserved last-good history for \(providerID) after scan miss")
+        }
         localSnapshots[providerID] = snapshot
         cache.store(snapshot)
         rebuildRenderedSnapshots()
@@ -279,6 +299,12 @@ final class WidgetDataStore {
     /// retry until the 5-minute heartbeat). The periodic loop never calls this — only the user action does.
     func clearFailureBackoff(for providerID: String) {
         failureRetryAfter[providerID] = nil
+    }
+
+    /// Rebuild the in-memory union immediately after a provider toggle. Local cached data remains
+    /// available to direct API reads, but disabled providers stop receiving peer contributions.
+    func providerEnablementDidChange() {
+        rebuildRenderedSnapshots()
     }
 
     /// Replaces the downloaded peer set. A conflicted duplicate device file resolves to the newest
@@ -316,10 +342,17 @@ final class WidgetDataStore {
             snapshots = localSnapshots
             return
         }
+        let renderDate = now()
+        let enabledDescriptors = registry.historyDescriptorsByProvider.reduce(
+            into: [String: UsageHistoryDescriptor]()
+        ) { result, entry in
+            if isProviderEnabled(entry.key) { result[entry.key] = entry.value }
+        }
         let merged = UsageHistoryAggregator.merged(
             localSnapshots: localSnapshots,
             peerDocuments: peerHistoryDocuments,
-            descriptors: registry.historyDescriptorsByProvider
+            descriptors: enabledDescriptors,
+            now: renderDate
         )
         var rendered = localSnapshots
         for (providerID, history) in merged {
@@ -330,13 +363,13 @@ final class WidgetDataStore {
                 providerID: providerID,
                 displayName: provider.displayName,
                 lines: [],
-                refreshedAt: peerHistoryDocuments.map(\.updatedAt).max() ?? now()
+                refreshedAt: peerHistoryDocuments.map(\.updatedAt).max() ?? renderDate
             )
             rendered[providerID] = UsageHistorySnapshotRenderer.render(
                 local: local,
                 history: history,
                 descriptor: descriptor,
-                now: now()
+                now: renderDate
             )
         }
         snapshots = rendered

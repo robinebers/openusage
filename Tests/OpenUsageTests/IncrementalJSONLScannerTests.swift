@@ -97,6 +97,23 @@ final class IncrementalJSONLScannerTests: XCTestCase {
         XCTAssertEqual(warnings.counts, [1])
     }
 
+    func testJsonlFilesFollowsSymlinkedRoot() throws {
+        // Users symlink log dirs into synced folders (`~/.claude/projects -> ~/Dropbox/...`);
+        // `FileManager.enumerator` yields nothing for a symlinked root, so discovery must resolve it.
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OpenUsageScannerSymlink-\(UUID().uuidString)", isDirectory: true)
+        let real = base.appendingPathComponent("real", isDirectory: true)
+        try FileManager.default.createDirectory(at: real, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        try Data("{}".utf8).write(to: real.appendingPathComponent("a.jsonl"))
+        let link = base.appendingPathComponent("link")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: real)
+
+        let files = JSONLScanning.jsonlFiles(under: link)
+
+        XCTAssertEqual(files.map { ($0.path as NSString).lastPathComponent }, ["a.jsonl"])
+    }
+
     func testMissingFileDoesNotWarn() async {
         let warnings = WarningRecorder()
         let scanner = IncrementalJSONLScanner<Int>(readFailureWarning: warnings.record)

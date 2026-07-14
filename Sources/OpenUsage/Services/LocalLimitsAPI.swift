@@ -95,7 +95,7 @@ enum LocalLimitsAPI {
 
         init?(resource: LimitResourceDescriptor, line: MetricLine) {
             kind = resource.kind
-            unit = resource.unit
+            unit = Self.progressUnit(line) ?? resource.unit
 
             switch (resource.source, line) {
             case (.progress, .progress(_, let rawUsed, let rawLimit, _, let reset, let periodMs, _)):
@@ -128,6 +128,21 @@ enum LocalLimitsAPI {
 
             default:
                 return nil
+            }
+        }
+
+        /// A descriptor names the stable resource and supplies a fallback unit for value rows. Progress
+        /// rows carry their actual runtime unit, which can vary by plan (for example Cursor Total Usage
+        /// is percent on individual plans and requests on request-based Enterprise plans).
+        private static func progressUnit(_ line: MetricLine) -> String? {
+            guard case .progress(_, _, _, let format, _, _, _) = line else { return nil }
+            switch format {
+            case .percent:
+                return "percent"
+            case .dollars:
+                return "usd"
+            case .count(let suffix):
+                return suffix.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
             }
         }
 

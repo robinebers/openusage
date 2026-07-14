@@ -23,6 +23,7 @@ final class UpdaterController {
     // single isolation and break one of the two conformances under Swift 6.
     private let channelDelegate = UpdaterChannelDelegate()
     private let userDriverDelegate = UpdaterUserDriverDelegate()
+    private let presentationController: UpdaterPresentationController
     private var controller: SPUStandardUpdaterController?
     private var canCheckObservation: AnyCancellable?
 
@@ -54,7 +55,8 @@ final class UpdaterController {
         set { controller?.updater.automaticallyChecksForUpdates = newValue }
     }
 
-    init() {
+    init(presentationController: UpdaterPresentationController = UpdaterPresentationController()) {
+        self.presentationController = presentationController
         self.betaChannelEnabled = UserDefaults.standard.bool(forKey: Self.betaChannelDefaultsKey)
     }
 
@@ -73,6 +75,12 @@ final class UpdaterController {
         }
         userDriverDelegate.onUpdateResolved = { [weak self] in
             self?.availableUpdateVersion = nil
+        }
+        userDriverDelegate.onUpdateWillShow = { [weak self] in
+            self?.presentationController.bringToFront(reason: "Sparkle will show update")
+        }
+        userDriverDelegate.onUpdateSessionFinished = { [weak self] in
+            self?.presentationController.returnToMenuBar()
         }
         let controller = SPUStandardUpdaterController(
             startingUpdater: true,
@@ -94,7 +102,15 @@ final class UpdaterController {
 
     /// User-initiated check. Shows Sparkle's standard UI (progress, release notes, install prompt).
     func checkForUpdates() {
-        controller?.checkForUpdates(nil)
+        guard let controller else { return }
+        // Sparkle 2.9.4 also activates dockless apps with `ignoringOtherApps`, but promote OpenUsage
+        // before handing control over so the activation-policy transition cannot leave Sparkle's
+        // checking window behind the currently active app. The next-runloop handoff mirrors the
+        // workaround verified in sparkle-project/Sparkle#2889.
+        presentationController.bringToFront(reason: "user initiated check")
+        DispatchQueue.main.async {
+            controller.checkForUpdates(nil)
+        }
     }
 
     /// The banner's install action. A user-initiated check: if the banner's update is still current,
@@ -107,6 +123,62 @@ final class UpdaterController {
     /// it, so a dismissal is a snooze — not a permanent skip (that stays in Sparkle's own window).
     func dismissAvailableUpdate() {
         availableUpdateVersion = nil
+    }
+}
+
+/// Owns the narrow AppKit boundary required to present Sparkle from a dockless menu-bar app.
+///
+/// `NSApplication.activate()` is unreliable when another app is active (sparkle-project/Sparkle#2889),
+/// so user-initiated update UI deliberately uses the older API that ignores the current foreground app.
+/// The injected closures keep that behavior unit-testable without trying to automate macOS focus.
+@MainActor
+final class UpdaterPresentationController {
+    private let activationPolicy: @MainActor () -> NSApplication.ActivationPolicy
+    private let isActive: @MainActor () -> Bool
+    private let setActivationPolicy: @MainActor (NSApplication.ActivationPolicy) -> Bool
+    private let activate: @MainActor (Bool) -> Void
+
+    convenience init(application: NSApplication = .shared) {
+        self.init(
+            activationPolicy: { application.activationPolicy() },
+            isActive: { application.isActive },
+            setActivationPolicy: { application.setActivationPolicy($0) },
+            activate: { application.activate(ignoringOtherApps: $0) }
+        )
+    }
+
+    init(
+        activationPolicy: @escaping @MainActor () -> NSApplication.ActivationPolicy,
+        isActive: @escaping @MainActor () -> Bool,
+        setActivationPolicy: @escaping @MainActor (NSApplication.ActivationPolicy) -> Bool,
+        activate: @escaping @MainActor (Bool) -> Void
+    ) {
+        self.activationPolicy = activationPolicy
+        self.isActive = isActive
+        self.setActivationPolicy = setActivationPolicy
+        self.activate = activate
+    }
+
+    func bringToFront(reason: String) {
+        let beforePolicy = activationPolicy()
+        let beforeActive = isActive()
+        let policyChanged = setActivationPolicy(.regular)
+        activate(true)
+        AppLog.info(
+            .updates,
+            "foreground updater (reason=\(reason), policy=\(beforePolicy.rawValue)->\(activationPolicy().rawValue), " +
+                "active=\(beforeActive)->\(isActive()), policyChanged=\(policyChanged))"
+        )
+    }
+
+    func returnToMenuBar() {
+        let beforePolicy = activationPolicy()
+        let policyChanged = setActivationPolicy(.accessory)
+        AppLog.info(
+            .updates,
+            "finish updater presentation (policy=\(beforePolicy.rawValue)->\(activationPolicy().rawValue), " +
+                "active=\(isActive()), policyChanged=\(policyChanged))"
+        )
     }
 }
 
@@ -152,6 +224,10 @@ final class UpdaterUserDriverDelegate: NSObject, SPUStandardUserDriverDelegate {
     /// Clears the banner — the user gave the update attention (Sparkle's window is up) or the update
     /// session ended (installed, skipped, or dismissed).
     var onUpdateResolved: (@MainActor @Sendable () -> Void)?
+    /// Reasserts foreground activation immediately before Sparkle presents user-facing update UI.
+    var onUpdateWillShow: (@MainActor @Sendable () -> Void)?
+    /// Restores OpenUsage to its normal dockless activation policy after Sparkle finishes the session.
+    var onUpdateSessionFinished: (@MainActor @Sendable () -> Void)?
 
     /// Opt into "gentle" reminders: as a menu-bar (accessory) app we don't want Sparkle stealing focus
     /// with an alert for scheduled checks.
@@ -184,13 +260,13 @@ final class UpdaterUserDriverDelegate: NSObject, SPUStandardUserDriverDelegate {
         // Hoisted so the main-actor closure captures only the Sendable callback, not this
         // nonisolated `self` (which Swift 6 region isolation rejects).
         let onUpdateFound = onUpdateFound
+        let onUpdateWillShow = onUpdateWillShow
         MainActor.assumeIsolated {
             guard handleShowingUpdate else {
                 onUpdateFound?(version)
                 return
             }
-            NSApp.setActivationPolicy(.regular)
-            NSApp.activate()
+            onUpdateWillShow?()
         }
     }
 
@@ -207,8 +283,9 @@ final class UpdaterUserDriverDelegate: NSObject, SPUStandardUserDriverDelegate {
     /// indicator still left behind by a dismissal, skip, install, or failure.
     func standardUserDriverWillFinishUpdateSession() {
         let onUpdateResolved = onUpdateResolved
+        let onUpdateSessionFinished = onUpdateSessionFinished
         MainActor.assumeIsolated { () -> Void in
-            NSApp.setActivationPolicy(.accessory)
+            onUpdateSessionFinished?()
             onUpdateResolved?()
         }
     }

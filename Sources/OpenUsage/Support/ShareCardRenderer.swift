@@ -63,12 +63,13 @@ enum ShareCardRenderer {
     /// rows read density via `@AppStorage`, so the saved value is swapped to `.regular` for the duration
     /// of the render and restored on exit (synchronously), keeping the exported card consistent without
     /// disturbing the live popover.
+    @discardableResult
     static func share(
         group: ProviderGroup,
         dataStore: WidgetDataStore,
         layout: LayoutStore,
         appearance: ColorScheme
-    ) {
+    ) -> Bool {
         let isExpanded = layout.isProviderExpanded(group.provider.id)
         let alwaysRows = group.alwaysShownWidgets.compactMap { widget -> WidgetData? in
             guard let descriptor = layout.descriptor(for: widget) else { return nil }
@@ -86,7 +87,7 @@ enum ShareCardRenderer {
             appearance: appearance,
             expandBoundaryIndex: isExpanded ? alwaysRows.count : nil
         )
-        renderAndCopy(view, label: group.provider.id, layout: layout)
+        return renderAndCopy(view, label: group.provider.id, layout: layout)
     }
 
     /// The Total Spend counterpart to `share(group:…)`: renders the aggregate ring card for the

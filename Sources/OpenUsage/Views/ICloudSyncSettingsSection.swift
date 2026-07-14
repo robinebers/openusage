@@ -15,8 +15,8 @@ struct ICloudSyncSettingsSection: View {
                     .foregroundStyle(.secondary)
                     .hoverTooltip(
                         "OpenUsage calculates costs and tokens for Claude, Codex, and other providers "
-                            + "from files stored on each Mac. Sync shares that history through iCloud so "
-                            + "you can see one combined summary."
+                            + "from files stored on each Mac. Account limits, credentials, and logs are "
+                            + "never shared."
                     )
             }
             .padding(.horizontal, 8)
@@ -37,7 +37,7 @@ struct ICloudSyncSettingsSection: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, density.controlRowPadding)
                 .animation(Motion.spring, value: sync.isSyncing)
-                Text("Account limits, credentials, and logs are never shared.")
+                Text("Shares usage history through iCloud, so you can see one combined summary for all your Macs.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 12)
@@ -77,6 +77,8 @@ struct ICloudSyncSettingsSection: View {
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 5) {
                     Text(document.deviceName)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                     if isThisMac {
                         Text("This Mac")
                             .font(.caption2.weight(.medium))
@@ -84,20 +86,17 @@ struct ICloudSyncSettingsSection: View {
                             .padding(.horizontal, 5)
                             .padding(.vertical, 1)
                             .background(.secondary.opacity(0.12), in: Capsule())
+                            .fixedSize()
                     }
                 }
                 TimelineView(.periodic(from: .now, by: 60)) { context in
                     Text("Updated \(relativeAge(document.updatedAt, now: context.date))")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
             }
-            Spacer(minLength: 8)
-            if !isThisMac {
-                Button("Remove") { sync.remove(document) }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, density.controlRowPadding)

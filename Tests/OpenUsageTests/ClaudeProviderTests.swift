@@ -615,11 +615,7 @@ final class ClaudeProviderTests: XCTestCase {
         XCTAssertEqual(badge(snapshot.lines, "Error"), ClaudeAuthError.sessionExpired.localizedDescription)
     }
 
-    func testDesktopAppOnlyLoginExplainsCLILoginInsteadOfNotLoggedIn() async {
-        // #825: a login done only in the Claude desktop app lives in an Electron-encrypted blob the app
-        // can't read, so a bare "Not logged in" reads as wrong to a signed-in user. When no CLI
-        // credentials exist but the desktop app's data folder does, the error must point at the
-        // one-time `claude` CLI login instead.
+    func testNoCredentialsReportsNotLoggedIn() async {
         func makeProvider(files: FakeFiles) -> ClaudeProvider {
             ClaudeProvider(
                 authStore: ClaudeAuthStore(
@@ -633,24 +629,14 @@ final class ClaudeProviderTests: XCTestCase {
             )
         }
 
-        let desktopOnly = makeProvider(files: FakeFiles([
-            "~/Library/Application Support/Claude/claude-code": ""
-        ]))
-        let desktopSnapshot = await desktopOnly.refresh()
-        XCTAssertEqual(badge(desktopSnapshot.lines, "Error"), ClaudeAuthError.desktopAppOnly.localizedDescription)
-        XCTAssertEqual(desktopSnapshot.errorCategory, .notLoggedIn)
-
-        // Without any desktop-app data the plain "Not logged in" guidance stays.
         let noneAtAll = makeProvider(files: FakeFiles())
         let plainSnapshot = await noneAtAll.refresh()
         XCTAssertEqual(badge(plainSnapshot.lines, "Error"), ClaudeAuthError.notLoggedIn.localizedDescription)
 
         // A stored-but-blank CLI token (whitespace accessToken survives the store's isEmpty check but is
-        // dropped by the provider's trim filter) means the CLI did write credentials — the desktop-app
-        // hint must not fire even when the desktop folder exists; plain "Not logged in" is correct.
+        // dropped by the provider's trim filter) is still unusable.
         let corruptCLI = makeProvider(files: FakeFiles([
-            "~/.claude/.credentials.json": #"{"claudeAiOauth":{"accessToken":"   "}}"#,
-            "~/Library/Application Support/Claude/claude-code": ""
+            "~/.claude/.credentials.json": #"{"claudeAiOauth":{"accessToken":"   "}}"#
         ]))
         let corruptSnapshot = await corruptCLI.refresh()
         XCTAssertEqual(badge(corruptSnapshot.lines, "Error"), ClaudeAuthError.notLoggedIn.localizedDescription)

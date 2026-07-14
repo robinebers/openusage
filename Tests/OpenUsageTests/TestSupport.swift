@@ -180,6 +180,19 @@ enum CodexLogFixture {
         ]
     }
 
+    /// An `event_msg`/`thread_settings_applied` line carrying the session's service tier, the way
+    /// Codex CLI ≥ July 2026 records tier changes.
+    static func threadSettingsApplied(timestamp: String, serviceTier: String, model: String = "gpt-5.2") -> String {
+        jsonLine([
+            "timestamp": timestamp,
+            "type": "event_msg",
+            "payload": [
+                "type": "thread_settings_applied",
+                "thread_settings": ["model": model, "service_tier": serviceTier]
+            ]
+        ])
+    }
+
     /// A `session_meta` line marking the file as a `thread_spawn` subagent session.
     static func subagentSessionMeta(timestamp: String) -> String {
         jsonLine([

@@ -19,6 +19,7 @@ struct ClaudeCredentialState: Hashable, Sendable {
         case file
         case keychainCurrentUser(service: String)
         case keychainLegacy(service: String)
+        case desktop
         case environment
 
         /// Log-safe source kind — NEVER the keychain service name or any token.
@@ -27,6 +28,7 @@ struct ClaudeCredentialState: Hashable, Sendable {
             case .file: "file"
             case .keychainCurrentUser: "keychainCurrentUser"
             case .keychainLegacy: "keychainLegacy"
+            case .desktop: "desktop"
             case .environment: "environment"
             }
         }
@@ -94,9 +96,16 @@ struct ClaudeCredentialGeneration: Equatable, Sendable {
     }
 }
 
+struct ClaudeCredentialLoad: Sendable {
+    var candidates: [ClaudeCredentialState]
+    var desktopStatus: ClaudeDesktopCredentialStatus
+}
+
 enum ClaudeAuthError: Error, LocalizedError, Equatable {
     case notLoggedIn
-    case desktopAppOnly
+    case desktopPermissionRequired
+    case desktopTokenExpired
+    case desktopCredentialsUnavailable
     case sessionExpired
     case tokenExpired
     case credentialsChanged
@@ -106,8 +115,12 @@ enum ClaudeAuthError: Error, LocalizedError, Equatable {
         switch self {
         case .notLoggedIn:
             return "Not logged in. Run `claude` to authenticate."
-        case .desktopAppOnly:
-            return "Signed in to the Claude desktop app? OpenUsage needs a CLI login — run `claude` in a terminal and sign in once."
+        case .desktopPermissionRequired:
+            return "Claude Desktop login found. Refresh once and choose Always Allow to connect it."
+        case .desktopTokenExpired:
+            return "Claude Desktop login is stale. Open Claude Desktop, then refresh OpenUsage."
+        case .desktopCredentialsUnavailable:
+            return "Claude Desktop login couldn't be read. Open Claude Desktop, then try again."
         case .sessionExpired:
             return "Session expired. Run `claude` to log in again."
         case .tokenExpired:
@@ -127,9 +140,10 @@ enum ClaudeAuthError: Error, LocalizedError, Equatable {
     /// `CodexAuthError.allowsAuthFallback`.
     var allowsAuthFallback: Bool {
         switch self {
-        case .sessionExpired, .tokenExpired:
+        case .sessionExpired, .tokenExpired, .desktopTokenExpired:
             return true
-        case .notLoggedIn, .desktopAppOnly, .credentialsChanged, .invalidOAuthURL:
+        case .notLoggedIn, .desktopPermissionRequired, .desktopCredentialsUnavailable,
+             .credentialsChanged, .invalidOAuthURL:
             return false
         }
     }
@@ -153,17 +167,20 @@ struct ClaudeAuthStore: Sendable {
     var environment: EnvironmentReading
     var files: TextFileAccessing
     var keychain: KeychainAccessing
+    var desktop: ClaudeDesktopAuthStore
     var now: @Sendable () -> Date
 
     init(
         environment: EnvironmentReading = ProcessEnvironmentReader(),
         files: TextFileAccessing = LocalTextFileAccessor(),
         keychain: KeychainAccessing = SecurityKeychainAccessor(),
+        desktop: ClaudeDesktopAuthStore? = nil,
         now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.environment = environment
         self.files = files
         self.keychain = keychain
+        self.desktop = desktop ?? ClaudeDesktopAuthStore(files: files, now: now)
         self.now = now
     }
 
@@ -172,8 +189,40 @@ struct ClaudeAuthStore: Sendable {
     /// (`ClaudeAuthError.allowsAuthFallback`) — falls through to the next, so an external `claude`
     /// re-login is picked up no matter which source it lands in, even when a stale/locked-out token still
     /// sits in another. Re-read on every refresh; nothing is cached in memory.
+    func loadCredentialSet(
+        allowDesktopInteraction: Bool = false,
+        forceDesktopFallback: Bool = false
+    ) -> ClaudeCredentialLoad {
+        var stored = orderedStoredCandidates()
+        var desktopStatus: ClaudeDesktopCredentialStatus = .notChecked
+        // A working CLI login remains the source of truth and avoids a second Keychain prompt. Desktop
+        // is a fallback for people who only use the native app (or whose stored CLI login lacks profile
+        // scope), never a competing account source.
+        let hasUsableCLILogin = stored.contains {
+            $0.hasUsableAccessToken && liveUsageAvailability($0) == .available
+        }
+        if forceDesktopFallback || !hasUsableCLILogin {
+            let result = desktop.load(allowInteraction: allowDesktopInteraction)
+            desktopStatus = result.status
+            if let oauth = result.oauth {
+                stored.insert(ClaudeCredentialState(
+                    oauth: oauth,
+                    source: .desktop,
+                    fullData: nil,
+                    inferenceOnly: false
+                ), at: 0)
+            }
+        }
+
+        let candidates = applyingEnvironmentToken(to: stored)
+        return ClaudeCredentialLoad(candidates: candidates, desktopStatus: desktopStatus)
+    }
+
     func loadCredentialCandidates() -> [ClaudeCredentialState] {
-        let stored = orderedStoredCandidates()
+        loadCredentialSet().candidates
+    }
+
+    private func applyingEnvironmentToken(to stored: [ClaudeCredentialState]) -> [ClaudeCredentialState] {
         guard let envAccessToken = envText("CLAUDE_CODE_OAUTH_TOKEN") else {
             return stored
         }
@@ -204,28 +253,13 @@ struct ClaudeAuthStore: Sendable {
         return liveCapable.isEmpty ? [envCandidate] : liveCapable + [envCandidate]
     }
 
-    /// Data folders the Claude desktop app keeps under `~/Library/Application Support` — the standalone
-    /// Claude Code app and the Claude Code area inside the main Claude app. Their presence (checked only
-    /// when no CLI credentials exist anywhere) means the user likely signed in through the desktop app,
-    /// whose session lives in an Electron `safeStorage`-encrypted blob OpenUsage can't read (#825).
-    private static let desktopAppDataPaths = [
-        "~/Library/Application Support/Claude Code",
-        "~/Library/Application Support/Claude/claude-code"
-    ]
-
-    /// Whether a desktop-app login is the likely reason no CLI credentials were found, so the provider
-    /// can explain that a one-time `claude` CLI login is needed instead of a bare "Not logged in".
-    func hasDesktopAppData() -> Bool {
-        Self.desktopAppDataPaths.contains { files.exists($0) }
-    }
-
     func needsRefresh(_ oauth: ClaudeOAuth) -> Bool {
         guard let expiresAt = oauth.expiresAt else { return false }
         return expiresAt - now().timeIntervalSince1970 * 1000 <= 5 * 60 * 1000
     }
 
-    func credentialGeneration() -> ClaudeCredentialGeneration {
-        ClaudeCredentialGeneration(loadCredentialCandidates())
+    func credentialGeneration(forceDesktopFallback: Bool = false) -> ClaudeCredentialGeneration {
+        ClaudeCredentialGeneration(loadCredentialSet(forceDesktopFallback: forceDesktopFallback).candidates)
     }
 
     /// Save an OAuth rotation only if the ordered effective candidate set is unchanged. Checking the
@@ -245,6 +279,8 @@ struct ClaudeAuthStore: Sendable {
             try keychain.writeGenericPasswordForCurrentUser(service: service, value: text)
         case .keychainLegacy(let service):
             try keychain.writeGenericPassword(service: service, value: text)
+        case .desktop:
+            return false
         case .environment:
             return false
         }

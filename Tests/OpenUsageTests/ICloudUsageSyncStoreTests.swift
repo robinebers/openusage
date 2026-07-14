@@ -10,6 +10,7 @@ final class ICloudUsageSyncStoreTests: XCTestCase {
             dataStore: makeDataStore(defaults),
             defaults: defaults,
             fileStore: fileStore,
+            deviceIDStore: MemoryDeviceIDStore(),
             writeDebounce: .milliseconds(10),
             observesMetadataChanges: false
         )
@@ -32,6 +33,7 @@ final class ICloudUsageSyncStoreTests: XCTestCase {
             dataStore: makeDataStore(defaults),
             defaults: defaults,
             fileStore: fileStore,
+            deviceIDStore: MemoryDeviceIDStore(),
             writeDebounce: .milliseconds(20),
             observesMetadataChanges: false
         )
@@ -48,6 +50,39 @@ final class ICloudUsageSyncStoreTests: XCTestCase {
         XCTAssertEqual(writeCount, 2)
     }
 
+    func testDisableDeletesWriteThatWasAlreadyInFlight() async throws {
+        let defaults = makeDefaults("disable-in-flight-write")
+        let fileStore = RecordingHistoryFileStore()
+        let sync = ICloudUsageSyncStore(
+            dataStore: makeDataStore(defaults),
+            defaults: defaults,
+            fileStore: fileStore,
+            deviceIDStore: MemoryDeviceIDStore(),
+            observesMetadataChanges: false
+        )
+
+        // Hold the enable write open so disable can race it deliberately, instead of hoping an
+        // 80ms sleep is still in flight when the test flips the toggle on a loaded CI runner.
+        await fileStore.holdNextWrite()
+        sync.enabled = true
+        try await waitUntil { await fileStore.writeInFlight }
+
+        sync.enabled = false
+        try await waitUntil {
+            await fileStore.deletedDeviceIDs.contains(sync.deviceID)
+        }
+
+        await fileStore.releaseWrite()
+        try await waitUntil {
+            let deletedCount = await fileStore.deletedDeviceIDs.filter { $0 == sync.deviceID }.count
+            let writeInFlight = await fileStore.writeInFlight
+            return deletedCount >= 2 && !writeInFlight && !sync.isSyncing
+        }
+
+        let documents = await fileStore.documents
+        XCTAssertFalse(documents.contains { $0.deviceID == sync.deviceID })
+    }
+
     func testUnavailableStoreSurfacesFriendlyError() async throws {
         let defaults = makeDefaults("unavailable")
         let fileStore = RecordingHistoryFileStore(unavailable: true)
@@ -55,6 +90,7 @@ final class ICloudUsageSyncStoreTests: XCTestCase {
             dataStore: makeDataStore(defaults),
             defaults: defaults,
             fileStore: fileStore,
+            deviceIDStore: MemoryDeviceIDStore(),
             observesMetadataChanges: false
         )
 
@@ -81,6 +117,7 @@ final class ICloudUsageSyncStoreTests: XCTestCase {
             dataStore: makeDataStore(defaults),
             defaults: defaults,
             fileStore: fileStore,
+            deviceIDStore: MemoryDeviceIDStore(),
             observesMetadataChanges: false
         )
 
@@ -93,11 +130,12 @@ final class ICloudUsageSyncStoreTests: XCTestCase {
 
     func testBackgroundReloadShowsSyncActivity() async throws {
         let defaults = makeDefaults("background-sync-activity")
-        let fileStore = RecordingHistoryFileStore(loadDelay: .milliseconds(80))
+        let fileStore = RecordingHistoryFileStore()
         let sync = ICloudUsageSyncStore(
             dataStore: makeDataStore(defaults),
             defaults: defaults,
             fileStore: fileStore,
+            deviceIDStore: MemoryDeviceIDStore(),
             writeDebounce: .milliseconds(10),
             observesMetadataChanges: false
         )
@@ -107,14 +145,62 @@ final class ICloudUsageSyncStoreTests: XCTestCase {
             await fileStore.writeCount == 1 && !sync.isSyncing
         }
 
+        // Gate only the post-write reload so isSyncing stays true long enough to observe.
+        await fileStore.holdNextLoad()
         sync.scheduleWrite()
         try await waitUntil {
             let writeCount = await fileStore.writeCount
             let loadInFlight = await fileStore.loadInFlight
-            return writeCount == 2 && loadInFlight
+            return writeCount == 2 && loadInFlight && sync.isSyncing
         }
 
-        XCTAssertTrue(sync.isSyncing)
+        await fileStore.releaseLoad()
+        try await waitUntil { !sync.isSyncing }
+    }
+
+    func testDeviceIdentitySurvivesPreferencesResetThroughKeychainStore() {
+        let expectedID = UUID().uuidString.lowercased()
+        let firstDefaults = makeDefaults("identity-first")
+        firstDefaults.set(expectedID, forKey: "openusage.icloudSync.deviceID.v1")
+        let deviceIDStore = MemoryDeviceIDStore()
+
+        let first = ICloudUsageSyncStore(
+            dataStore: makeDataStore(firstDefaults),
+            defaults: firstDefaults,
+            fileStore: RecordingHistoryFileStore(),
+            deviceIDStore: deviceIDStore,
+            observesMetadataChanges: false
+        )
+        let resetDefaults = makeDefaults("identity-after-reset")
+        let afterReset = ICloudUsageSyncStore(
+            dataStore: makeDataStore(resetDefaults),
+            defaults: resetDefaults,
+            fileStore: RecordingHistoryFileStore(),
+            deviceIDStore: deviceIDStore,
+            observesMetadataChanges: false
+        )
+
+        XCTAssertEqual(first.deviceID, expectedID)
+        XCTAssertEqual(afterReset.deviceID, expectedID)
+        XCTAssertEqual(resetDefaults.string(forKey: "openusage.icloudSync.deviceID.v1"), expectedID)
+    }
+
+    func testKeychainIdentityIsScopedToDevelopmentAndProductionBundles() throws {
+        let keychain = ServiceKeychain()
+        let development = KeychainICloudDeviceIDStore(
+            keychain: keychain,
+            bundleIdentifier: "com.robinebers.openusage.dev"
+        )
+        let production = KeychainICloudDeviceIDStore(
+            keychain: keychain,
+            bundleIdentifier: "com.robinebers.openusage"
+        )
+
+        try development.writeDeviceID("development-id")
+        try production.writeDeviceID("production-id")
+
+        XCTAssertEqual(try development.readDeviceID(), "development-id")
+        XCTAssertEqual(try production.readDeviceID(), "production-id")
     }
 
     private func makeDataStore(_ defaults: UserDefaults) -> WidgetDataStore {
@@ -134,7 +220,7 @@ final class ICloudUsageSyncStoreTests: XCTestCase {
     }
 
     private func waitUntil(
-        timeout: Duration = .seconds(1),
+        timeout: Duration = .seconds(2),
         condition: @escaping () async -> Bool
     ) async throws {
         let clock = ContinuousClock()
@@ -147,33 +233,50 @@ final class ICloudUsageSyncStoreTests: XCTestCase {
     }
 }
 
+private final class MemoryDeviceIDStore: ICloudDeviceIDStoring, @unchecked Sendable {
+    private var deviceID: String?
+
+    func readDeviceID() throws -> String? {
+        deviceID
+    }
+
+    func writeDeviceID(_ deviceID: String) throws {
+        self.deviceID = deviceID
+    }
+}
+
 private actor RecordingHistoryFileStore: UsageHistoryFileStoring {
     private(set) var documents: [UsageHistoryDocument]
     private(set) var invalidFileMessages: [String]
     private(set) var writeCount = 0
     private(set) var deletedDeviceIDs: [String] = []
     private let unavailable: Bool
-    private let loadDelay: Duration?
     private(set) var loadInFlight = false
+    private(set) var writeInFlight = false
+    private var shouldHoldNextLoad = false
+    private var shouldHoldNextWrite = false
+    private var loadGate: CheckedContinuation<Void, Never>?
+    private var writeGate: CheckedContinuation<Void, Never>?
 
     init(
         unavailable: Bool = false,
         seedDocuments: [UsageHistoryDocument] = [],
-        invalidFileMessages: [String] = [],
-        loadDelay: Duration? = nil
+        invalidFileMessages: [String] = []
     ) {
         self.unavailable = unavailable
         self.documents = seedDocuments
         self.invalidFileMessages = invalidFileMessages
-        self.loadDelay = loadDelay
     }
 
     func loadDocuments() async throws -> UsageHistoryLoadResult {
         if unavailable { throw ICloudUsageSyncError.unavailable }
         loadInFlight = true
         defer { loadInFlight = false }
-        if let loadDelay {
-            try await Task.sleep(for: loadDelay)
+        if shouldHoldNextLoad {
+            shouldHoldNextLoad = false
+            await withCheckedContinuation { continuation in
+                loadGate = continuation
+            }
         }
         return UsageHistoryLoadResult(documents: documents, invalidFileMessages: invalidFileMessages)
     }
@@ -181,6 +284,14 @@ private actor RecordingHistoryFileStore: UsageHistoryFileStoring {
     func write(_ document: UsageHistoryDocument) async throws {
         if unavailable { throw ICloudUsageSyncError.unavailable }
         writeCount += 1
+        writeInFlight = true
+        defer { writeInFlight = false }
+        if shouldHoldNextWrite {
+            shouldHoldNextWrite = false
+            await withCheckedContinuation { continuation in
+                writeGate = continuation
+            }
+        }
         documents.removeAll { $0.deviceID == document.deviceID }
         documents.append(document)
     }
@@ -189,5 +300,23 @@ private actor RecordingHistoryFileStore: UsageHistoryFileStoring {
         if unavailable { throw ICloudUsageSyncError.unavailable }
         deletedDeviceIDs.append(deviceID)
         documents.removeAll { $0.deviceID == deviceID }
+    }
+
+    func holdNextLoad() {
+        shouldHoldNextLoad = true
+    }
+
+    func holdNextWrite() {
+        shouldHoldNextWrite = true
+    }
+
+    func releaseLoad() {
+        loadGate?.resume()
+        loadGate = nil
+    }
+
+    func releaseWrite() {
+        writeGate?.resume()
+        writeGate = nil
     }
 }

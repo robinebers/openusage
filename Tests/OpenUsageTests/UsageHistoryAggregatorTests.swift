@@ -40,7 +40,8 @@ final class UsageHistoryAggregatorTests: XCTestCase {
             descriptors: [
                 "claude": UsageHistoryDescriptor(scope: .machineLocal, estimatedCost: true, sourceNote: "logs"),
                 "cursor": UsageHistoryDescriptor(scope: .accountWide, estimatedCost: true, sourceNote: "export")
-            ]
+            ],
+            now: localDay(2026, 7, 13)
         )
 
         let claude = try XCTUnwrap(merged["claude"])
@@ -51,6 +52,43 @@ final class UsageHistoryAggregatorTests: XCTestCase {
         XCTAssertEqual(claude.modelUsage?.daily[0].models.first?.totalTokens, 300)
         XCTAssertEqual(claude.unknownModelsByDay["2026-07-13"], ["unknown-a", "unknown-b"])
         XCTAssertNil(merged["cursor"], "account-wide Cursor history must never be added across Macs")
+    }
+
+    func testAggregationExcludesRowsOutsideScannerWindow() throws {
+        let peerHistory = ProviderUsageHistory(
+            series: DailyUsageSeries(daily: [
+                DailyUsageEntry(date: "2026-07-13", totalTokens: 10, costUSD: 1),
+                DailyUsageEntry(date: "2026-06-13", totalTokens: 20, costUSD: 2),
+                DailyUsageEntry(date: "2026-06-12", totalTokens: 9_000, costUSD: 90)
+            ]),
+            modelUsage: ModelUsageSeries(daily: [
+                DailyModelUsageEntry(date: "2026-07-13", models: [
+                    ModelUsageEntry(model: "Current", totalTokens: 10, costUSD: 1)
+                ]),
+                DailyModelUsageEntry(date: "2026-06-12", models: [
+                    ModelUsageEntry(model: "Stale", totalTokens: 9_000, costUSD: 90)
+                ])
+            ]),
+            unknownModelsByDay: [
+                "2026-07-13": ["current-unknown"],
+                "2026-06-12": ["stale-unknown"]
+            ]
+        )
+
+        let merged = UsageHistoryAggregator.merged(
+            localSnapshots: [:],
+            peerDocuments: [document(deviceID: "peer", updatedAt: 100, providers: ["claude": peerHistory])],
+            descriptors: [
+                "claude": UsageHistoryDescriptor(scope: .machineLocal, estimatedCost: true, sourceNote: "logs")
+            ],
+            now: localDay(2026, 7, 13)
+        )
+
+        let claude = try XCTUnwrap(merged["claude"])
+        XCTAssertEqual(claude.series.daily.map(\.date), ["2026-07-13", "2026-06-13"])
+        XCTAssertEqual(claude.series.daily.reduce(0) { $0 + $1.totalTokens }, 30)
+        XCTAssertEqual(claude.modelUsage?.daily.flatMap(\.models).map(\.model), ["Current"])
+        XCTAssertEqual(claude.unknownModelsByDay, ["2026-07-13": ["current-unknown"]])
     }
 
     func testRendererReplacesOnlySpendRowsAndKeepsLocalState() throws {

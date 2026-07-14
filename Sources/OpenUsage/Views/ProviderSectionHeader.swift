@@ -1,8 +1,9 @@
 import SwiftUI
 
 /// Shared provider section header used by the dashboard and its lifted provider-reorder preview.
-/// The name leads with the optional plan badge beside it; the provider mark sits at the trailing
-/// edge. Callers supply an optional `warning` — the latest refresh error, rendered as a small amber
+/// The provider mark and name lead, followed by the optional plan badge. Dashboard callers supply a
+/// screenshot-copy action, revealed at the trailing edge while the header is hovered. Callers can also
+/// supply an optional `warning` — the latest refresh error, rendered as a small amber
 /// triangle beside the name whose hover tooltip carries the message (e.g. "Not logged in. Run `codex`
 /// to authenticate."). The
 /// optional `staleness` is the dashboard-only hint that the values shown are an aged snapshot still
@@ -20,28 +21,40 @@ struct ProviderSectionHeader: View {
     /// (dashboard only; `nil` in the reorder preview, which never surfaces staleness). Its tooltip carries
     /// the precise age.
     var staleness: StalenessHint?
+    /// Dashboard-only screenshot action. The reorder preview omits it, while Customize uses its own
+    /// row type and is unaffected by this header.
+    var onCopyScreenshot: (() -> Bool)?
 
     /// Header type and icon track the density setting like the rows do, so Compact shrinks the
     /// whole section anatomy — not just the rows under it.
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
     /// Party easter egg: pulse the provider mark. Off by default everywhere else.
     @Environment(\.popoverPartyMode) private var partyMode
+    @State private var isHovered = false
 
-    init(provider: Provider, plan: String? = nil, warning: String? = nil, refreshing: Bool = false, staleness: StalenessHint? = nil) {
+    init(
+        provider: Provider,
+        plan: String? = nil,
+        warning: String? = nil,
+        refreshing: Bool = false,
+        staleness: StalenessHint? = nil,
+        onCopyScreenshot: (() -> Bool)? = nil
+    ) {
         self.provider = provider
         self.plan = plan
         self.warning = warning
         self.refreshing = refreshing
         self.staleness = staleness
+        self.onCopyScreenshot = onCopyScreenshot
     }
 
     var body: some View {
         HStack(spacing: 5) {
-            // A grip leading the name marks the header line as draggable to reorder providers. The
-            // whole line still carries the gesture; this is only the visual affordance. The trailing
-            // gap keeps it from crowding the provider name beside it.
-            DragHandleGrip()
-                .padding(.trailing, 4)
+            // The provider mark replaces the dashboard's visual drag grip. Reordering still belongs
+            // to the whole header at the caller, so the logo itself stays presentational.
+            ProviderIcon(source: provider.icon, inset: 0.04)
+                .frame(width: density.headerIconSize, height: density.headerIconSize)
+                .partyPulse(partyMode)
             // Baseline-aligned pair: the plan badge (and stale tag) are smaller type and sit on the
             // name's text baseline, so the words line up along the bottom rather than floating centered.
             HStack(alignment: .firstTextBaseline, spacing: 5) {
@@ -81,18 +94,19 @@ struct ProviderSectionHeader: View {
                     .accessibilityLabel(warning)
             }
             Spacer(minLength: 8)
-            // Match the menu-bar strip glyph: a near-zero inset lets the mark fill its box so the
-            // header logo reads at the same scale as the tray, instead of floating small inside the
-            // default list-context padding.
-            ProviderIcon(source: provider.icon, inset: 0.04)
-                .frame(width: density.headerIconSize, height: density.headerIconSize)
-                .partyPulse(partyMode)
+            if let onCopyScreenshot {
+                CopyFeedbackButton(
+                    accessibilityLabel: "Copy \(provider.displayName) Screenshot",
+                    isRevealed: isHovered,
+                    action: onCopyScreenshot
+                )
+            }
         }
-        // Shave the left inset so the leading grip sits a touch closer to the card's edge.
         .padding(.leading, 2)
         .padding(.trailing, 4)
         .padding(.vertical, 2)
         .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
     }
 }
 
@@ -119,30 +133,5 @@ struct ReorderGrip: View {
             .foregroundStyle(.tertiary)
             .frame(width: 16, height: 22)
             .contentShape(Rectangle())
-    }
-}
-
-/// The 2×3 dot-grid grip that leads the dashboard provider name. Kept quiet (tertiary) so it reads
-/// as an affordance hinting the header line can be dragged to reorder providers, not as a control
-/// competing with the name beside it.
-struct DragHandleGrip: View {
-    var body: some View {
-        VStack(spacing: 2) {
-            ForEach(0..<3) { _ in
-                HStack(spacing: 2) {
-                    dot
-                    dot
-                }
-            }
-        }
-        .frame(height: 22)
-        .contentShape(Rectangle())
-        .accessibilityHidden(true)
-    }
-
-    private var dot: some View {
-        Circle()
-            .fill(.tertiary)
-            .frame(width: 1.75, height: 1.75)
     }
 }

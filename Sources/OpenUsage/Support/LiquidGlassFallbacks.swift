@@ -130,17 +130,3 @@ extension View {
         }
     }
 }
-
-/// A share button's icon with built-in "copied" feedback: while `copied` is set, the share arrow
-/// becomes a checkmark — a hard swap, deliberately with no symbol transition (on macOS 26 the
-/// Replace transition defaults to Magic Replace, which draws the checkmark on stroke by stroke;
-/// tried and rejected) — and the checkmark bounces once as it lands. Flip `copied` inside
-/// `withAnimation`.
-struct ShareFeedbackIcon: View {
-    let copied: Bool
-
-    var body: some View {
-        Image(systemName: copied ? "checkmark" : "square.and.arrow.up")
-            .symbolEffect(.bounce, value: copied)
-    }
-}

@@ -77,7 +77,10 @@ final class AppContainer {
         // Re-enabling a provider should fetch it promptly, so clear any leftover failure backoff before
         // the enablement wake refreshes. `weak` breaks the cycle (dataStore already captures enablement).
         enablement.onProviderEnabled = { [weak dataStore] id in dataStore?.clearFailureBackoff(for: id) }
-        enablement.onChange = { [weak iCloudSync] in iCloudSync?.scheduleWrite() }
+        enablement.onChange = { [weak dataStore, weak iCloudSync] in
+            dataStore?.providerEnablementDidChange()
+            iCloudSync?.scheduleWrite()
+        }
         // Fresh installs start minimal: seed the enabled-provider list (Claude/Codex/Cursor right away,
         // then the detected set once the local credential probe finishes). No-op on every later launch.
         let onboarding = OnboardingStore()

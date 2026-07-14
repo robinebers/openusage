@@ -23,7 +23,8 @@ enum PricingCatalogCodecs {
                 inputPerMillion: input * 1_000_000,
                 outputPerMillion: output * 1_000_000,
                 cacheWritePerMillion: (cacheWrite ?? input) * 1_000_000,
-                cacheReadPerMillion: (cacheRead ?? input * 0.1) * 1_000_000
+                cacheReadPerMillion: (cacheRead ?? input * 0.1) * 1_000_000,
+                cacheReadIsExplicit: cacheRead != nil
             )
             rates.inputAbove200kPerMillion = doubleValue(entry["input_cost_per_token_above_200k_tokens"]).map { $0 * 1_000_000 }
             rates.outputAbove200kPerMillion = doubleValue(entry["output_cost_per_token_above_200k_tokens"]).map { $0 * 1_000_000 }
@@ -62,7 +63,8 @@ enum PricingCatalogCodecs {
                     inputPerMillion: input,
                     outputPerMillion: output,
                     cacheWritePerMillion: doubleValue(cost["cache_write"]) ?? input,
-                    cacheReadPerMillion: doubleValue(cost["cache_read"]) ?? input * 0.1
+                    cacheReadPerMillion: doubleValue(cost["cache_read"]) ?? input * 0.1,
+                    cacheReadIsExplicit: cost["cache_read"] != nil
                 )
             }
         }
@@ -91,6 +93,7 @@ enum PricingCatalogCodecs {
                 outputAbove200kPerMillion: model.oa,
                 cacheWriteAbove200kPerMillion: model.cwa,
                 cacheReadAbove200kPerMillion: model.cra,
+                cacheReadIsExplicit: model.cre ?? true,
                 fastMultiplier: model.fast ?? 1
             )
         }
@@ -110,6 +113,7 @@ enum PricingCatalogCodecs {
                 oa: rates.outputAbove200kPerMillion,
                 cwa: rates.cacheWriteAbove200kPerMillion,
                 cra: rates.cacheReadAbove200kPerMillion,
+                cre: rates.cacheReadIsExplicit ? nil : false,
                 fast: rates.fastMultiplier == 1 ? nil : rates.fastMultiplier
             )
         }
@@ -133,6 +137,9 @@ enum PricingCatalogCodecs {
             var oa: Double?
             var cwa: Double?
             var cra: Double?
+            /// Omitted means explicit for backward compatibility with snapshots written before the
+            /// provenance bit existed. Newly compacted synthesized rates write `false`.
+            var cre: Bool?
             var fast: Double?
         }
 

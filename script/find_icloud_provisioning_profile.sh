@@ -1,6 +1,30 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+profile_matches_identifiers() {
+  local application_identifier="$1"
+  local container_identifier="$2"
+  local bundle_id="$3"
+  local expected_container_id="$4"
+  local team_identifier
+
+  case "$application_identifier" in
+    *."$bundle_id") team_identifier="${application_identifier%."$bundle_id"}" ;;
+    *) return 1 ;;
+  esac
+
+  case "$container_identifier" in
+    "$expected_container_id"|"$team_identifier.$expected_container_id") return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Keep the identifier matcher sourceable so its exact profile-selection behavior can be tested
+# without manufacturing signed provisioning profiles.
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+  return 0
+fi
+
 BUNDLE_ID="${1:?usage: find_icloud_provisioning_profile.sh <bundle-id> <container-id>}"
 CONTAINER_ID="${2:?usage: find_icloud_provisioning_profile.sh <bundle-id> <container-id>}"
 
@@ -32,11 +56,9 @@ for directory in "${profile_directories[@]}"; do
     expiration=$(/usr/bin/plutil -extract ExpirationDate raw -o - "$decoded_profile" 2>/dev/null || true)
     /bin/rm -f "$decoded_profile"
 
-    case "$application_identifier" in
-      *."$BUNDLE_ID") ;;
-      *) continue ;;
-    esac
-    [ "$container_identifier" = "$CONTAINER_ID" ] || continue
+    profile_matches_identifiers \
+      "$application_identifier" "$container_identifier" "$BUNDLE_ID" "$CONTAINER_ID" \
+      || continue
 
     expiration_epoch=$(/bin/date -j -u -f "%Y-%m-%dT%H:%M:%SZ" "$expiration" +%s 2>/dev/null || true)
     [ -n "$expiration_epoch" ] || continue

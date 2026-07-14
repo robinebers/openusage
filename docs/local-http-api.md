@@ -87,6 +87,9 @@ the provider supplies that meaning. A provider or resource with no current value
 invented as zero. `expiresAt` is always `fetchedAt` plus the same five-minute freshness interval used by
 the app and CLI; `stale` says whether that instant has passed. Refresh failures appear in `errors` as
 `{"providerId":"…","message":"…"}` while a last-good provider snapshot remains available.
+For bounded progress resources, `unit` follows the provider's live metric format. For example, Cursor
+`totalUsage` is `percent` on percentage-based plans, `requests` on request-based Enterprise plans, and
+`usd` when Cursor reports a dollar pool.
 
 ### Public resources
 

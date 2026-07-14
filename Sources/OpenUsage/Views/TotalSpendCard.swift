@@ -20,12 +20,6 @@ struct TotalSpendCard: View {
     @AppStorage("openusage.totalSpend.metric") private var metricRawValue = TotalSpendMetric.cost.rawValue
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
 
-    /// True briefly after a successful copy: the share arrow becomes a checkmark, then reverts.
-    @State private var shareCopied = false
-    /// The pending revert, kept so a rapid second click restarts the window instead of cutting the
-    /// fresh checkmark short.
-    @State private var shareRevertTask: Task<Void, Never>?
-
     private var period: TotalSpendPeriod {
         TotalSpendPeriod(rawValue: periodRawValue) ?? .today
     }
@@ -115,33 +109,14 @@ struct TotalSpendCard: View {
     }
 
     private var shareButton: some View {
-        Button {
-            // The checkmark only appears when the PNG actually landed on the pasteboard — a failed
-            // render/copy beeps (inside the renderer) and the icon stays a share arrow.
-            guard ShareCardRenderer.shareTotalSpend(
+        CopyFeedbackButton(accessibilityLabel: "Copy \(metric.title) Screenshot") {
+            ShareCardRenderer.shareTotalSpend(
                 total: total,
                 metric: metric,
                 appearance: colorScheme,
                 layout: layout
-            ) else { return }
-            withAnimation(Motion.spring) { shareCopied = true }
-            shareRevertTask?.cancel()
-            shareRevertTask = Task {
-                try? await Task.sleep(for: .seconds(1.4))
-                guard !Task.isCancelled else { return }
-                withAnimation(Motion.spring) { shareCopied = false }
-            }
-        } label: {
-            ShareFeedbackIcon(copied: shareCopied)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-                // Same height as the provider headers' trailing mark, so the header row measures the
-                // same and the arrow centers vertically exactly like the provider icons do.
-                .frame(width: 16, height: density.headerIconSize)
-                .contentShape(Rectangle())
+            )
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Share \(metric.title) Screenshot")
     }
 
     // MARK: - Card

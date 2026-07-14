@@ -59,6 +59,15 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
         XCTAssertNil(entry.costUSD)
     }
 
+    func testLogReportedStandardSpeedRemainsAuthoritativeAfterFastModeChange() throws {
+        let line = #"{"timestamp":"2026-06-30T12:00:00.000Z","message":{"model":"claude-opus-4-6","usage":{"input_tokens":10,"output_tokens":5,"speed":"standard"}}}"#
+
+        let entry = try XCTUnwrap(ClaudeLogUsageScanner.parseLine(Data(line.utf8)))
+
+        XCTAssertTrue(entry.hasSpeed)
+        XCTAssertFalse(entry.tokens.isFast)
+    }
+
     func testRejectsLinesTheCcusageSchemaRejects() {
         // Missing usage.input_tokens / output_tokens.
         XCTAssertNil(ClaudeLogUsageScanner.parseLine(Data(
@@ -126,6 +135,62 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
         let entries = ClaudeLogUsageScanner.parseFile(Data(content.utf8))
         XCTAssertEqual(entries.count, 1)
         XCTAssertEqual(entries[0].tokens.totalTokens, 3)
+    }
+
+    func testPersistedPrintModeUsageCountsLikeInteractiveUsage() throws {
+        // `claude -p` writes the same assistant usage record with the `sdk-cli` entrypoint unless
+        // the caller explicitly passes `--no-session-persistence`.
+        let line = #"{"type":"assistant","entrypoint":"sdk-cli","timestamp":"2026-02-20T12:00:00.000Z","sessionId":"print-session","requestId":"print-request","version":"2.1.207","message":{"id":"print-message","model":"claude-test-model","usage":{"input_tokens":100,"output_tokens":20,"cache_creation_input_tokens":30,"cache_read_input_tokens":40,"speed":"standard"}}}"#
+
+        let entries = ClaudeLogUsageScanner.parseFile(Data(line.utf8))
+        let entry = try XCTUnwrap(entries.first)
+        let scan = ClaudeLogUsageScanner.aggregate(
+            entries: entries,
+            since: .distantPast,
+            pricing: pricing
+        )
+
+        XCTAssertEqual(entry.tokens.totalTokens, 190)
+        XCTAssertEqual(scan.series.daily.first?.totalTokens, 190)
+        XCTAssertEqual(scan.series.daily.first?.costUSD ?? 0, 0.001_815, accuracy: 0.000_000_001)
+    }
+
+    func testParseFileExpandsOnlyAdvisorIterationsWithoutRecountingMainUsage() {
+        let line = #"{"timestamp":"2026-02-20T12:00:00.000Z","requestId":"req_1","costUSD":1.23,"message":{"id":"msg_1","model":"main-model","usage":{"input_tokens":2,"output_tokens":491,"cache_creation_input_tokens":7853,"cache_read_input_tokens":226584,"iterations":[{"type":"message","input_tokens":1,"output_tokens":200},{"type":"advisor_message","model":"claude-test-model","input_tokens":10,"output_tokens":2,"cache_creation_input_tokens":3,"cache_read_input_tokens":4},{"type":"message","input_tokens":1,"output_tokens":291}]}}}"#
+
+        let entries = ClaudeLogUsageScanner.parseFile(Data(line.utf8))
+
+        XCTAssertEqual(entries.count, 2)
+        XCTAssertEqual(entries[0].model, "main-model")
+        XCTAssertEqual(entries[0].tokens, TokenBreakdown(
+            input: 2, cacheWrite5m: 7853, cacheRead: 226584, output: 491
+        ))
+        XCTAssertEqual(entries[0].costUSD, 1.23)
+        XCTAssertEqual(entries[1].model, "claude-test-model")
+        XCTAssertEqual(entries[1].messageID, "msg_1:advisor:0")
+        XCTAssertEqual(entries[1].requestID, "req_1")
+        XCTAssertEqual(entries[1].tokens, TokenBreakdown(
+            input: 10, cacheWrite5m: 3, cacheRead: 4, output: 2
+        ))
+        XCTAssertNil(entries[1].costUSD)
+    }
+
+    func testAdvisorIterationUsesItsOwnModelPriceAlongsideParentCarriedCost() {
+        let line = #"{"timestamp":"2026-02-20T12:00:00.000Z","requestId":"req_1","costUSD":1.23,"message":{"id":"msg_1","model":"main-model","usage":{"input_tokens":1,"output_tokens":2,"iterations":[{"type":"advisor_message","model":"claude-test-model","input_tokens":10,"output_tokens":2}]}}}"#
+        let entries = ClaudeLogUsageScanner.parseFile(Data(line.utf8))
+
+        let scan = ClaudeLogUsageScanner.aggregate(
+            entries: ClaudeLogUsageScanner.dedup(entries), since: .distantPast, pricing: pricing
+        )
+
+        // Parent: carried $1.23. Advisor: 10 input at $10/M + 2 output at $20/M.
+        XCTAssertEqual(scan.series.daily.first?.totalTokens, 15)
+        XCTAssertEqual(scan.series.daily.first?.costUSD ?? 0, 1.23014, accuracy: 1e-9)
+        let models = scan.modelUsage?.daily.first?.models ?? []
+        XCTAssertEqual(models.first { $0.model == "main-model" }?.costUSD, 1.23)
+        XCTAssertEqual(
+            models.first { $0.model == "claude-test-model" }?.costUSD ?? 0, 0.00014, accuracy: 1e-9
+        )
     }
 
     // MARK: - Deduplication (ported from ccusage)
@@ -513,5 +578,34 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
         let scan = try XCTUnwrap(result)
         XCTAssertEqual(scan.series.daily.count, 1)
         XCTAssertEqual(scan.series.daily[0].totalTokens, 15)
+    }
+
+    func testScanFollowsSymlinkedProjectsDir() async throws {
+        let now = Date()
+        let timestamp = OpenUsageISO8601.string(from: now)
+        // The real logs live outside the config dir (e.g. a externally sync-ed folder) and
+        // `~/.claude/projects` is a symlink to them. Root discovery accepted this layout
+        // (`fileExists` follows symlinks) but enumeration used to come back empty, so the spend
+        // tiles silently under-counted to just the Cowork logs.
+        let real = try ClaudeLogFixture.makeHome(files: [
+            "project-a/session.jsonl": ClaudeLogFixture.usageLine(
+                timestamp: timestamp, input: 100, output: 50, costUSD: 0.25
+            )
+        ])
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openusage-claude-symlink-home-\(UUID().uuidString)", isDirectory: true)
+        let configDir = home.appendingPathComponent(".claude", isDirectory: true)
+        try FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(
+            at: configDir.appendingPathComponent("projects"),
+            withDestinationURL: real.appendingPathComponent("projects")
+        )
+        let scanner = ClaudeLogFixture.scanner(userHome: home)
+
+        let result = await scanner.scan(now: now, pricing: pricing)
+        let scan = try XCTUnwrap(result)
+        XCTAssertEqual(scan.series.daily.count, 1)
+        XCTAssertEqual(scan.series.daily[0].totalTokens, 150)
+        XCTAssertEqual(scan.series.daily[0].costUSD ?? 0, 0.25, accuracy: 1e-9)
     }
 }

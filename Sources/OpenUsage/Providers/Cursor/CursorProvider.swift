@@ -115,12 +115,13 @@ final class CursorProvider: ProviderRuntime {
             planInfoUnavailable: planInfoUnavailable
         )
         if fallback.shouldFallback {
-            let mapped = try await requestBasedResult(
+            var mapped = try await usageSummaryAndRequestResult(
                 accessToken: currentToken,
                 planName: planName,
                 unavailableMessage: fallback.message
             )
-            return snapshot(mapped)
+            let history = await appendSpendLines(to: &mapped.lines, accessToken: currentToken)
+            return snapshot(mapped, usageHistory: history)
         }
 
         if shouldTryGenericRequestFallback(usage: usage) {
@@ -347,6 +348,31 @@ final class CursorProvider: ProviderRuntime {
         } catch {
             throw CursorUsageError.requestBasedUnavailable(unavailableMessage)
         }
+    }
+
+    private func usageSummaryAndRequestResult(
+        accessToken: String,
+        planName: String?,
+        unavailableMessage: String
+    ) async throws -> CursorMappedUsage {
+        let summary = await fetchOptionalJSONObject(label: "usage-summary", request: {
+            try await self.usageClient.fetchUsageSummary(accessToken: accessToken)
+        })
+        if let summary, !CursorUsageSummaryMapper.hasUsableSummaryPayload(summary) {
+            AppLog.warn(LogTag.plugin("cursor"), "optional usage-summary response contained no usable usage fields")
+        }
+        let requestUsage = await fetchOptionalJSONObject(label: "request-based usage", request: {
+            try await self.usageClient.fetchRequestBasedUsage(accessToken: accessToken)
+        })
+        if let requestUsage, !CursorUsageSummaryMapper.hasUsableRequestPayload(requestUsage) {
+            AppLog.warn(LogTag.plugin("cursor"), "optional request-based usage response contained no usable usage fields")
+        }
+        return try CursorUsageSummaryMapper.map(
+            summary: summary,
+            requestUsage: requestUsage,
+            planName: planName,
+            unavailableMessage: unavailableMessage
+        )
     }
 
     private func shouldTryGenericRequestFallback(usage: [String: Any]) -> Bool {

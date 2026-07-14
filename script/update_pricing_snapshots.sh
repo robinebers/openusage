@@ -12,8 +12,9 @@
 #
 # The compact format must stay in sync with PricingCatalogCodecs.swift (compact codec + the
 # defaulting rules of the LiteLLM/models.dev parsers): per-million rates, cache write defaults to
-# the input rate, cache read to a tenth of it. After regenerating, `swift test` exercises the
-# snapshots via the pricing resolution tests.
+# the input rate, and cache read to a tenth of it. When cache read is synthesized, `cre:false`
+# preserves that provenance so providers can distinguish the fallback from a published discount.
+# After regenerating, `swift test` exercises the snapshots via the pricing resolution tests.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -38,9 +39,11 @@ from datetime import datetime, timezone
 tmpdir, resources = sys.argv[1], sys.argv[2]
 retrieved_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-def compact_model(input_pm, output_pm, cache_write_pm, cache_read_pm,
+def compact_model(input_pm, output_pm, cache_write_pm, cache_read_pm, cache_read_explicit,
                   ia=None, oa=None, cwa=None, cra=None, fast=None):
     model = {"i": input_pm, "o": output_pm, "cw": cache_write_pm, "cr": cache_read_pm}
+    if not cache_read_explicit:
+        model["cre"] = False
     for key, value in (("ia", ia), ("oa", oa), ("cwa", cwa), ("cra", cra), ("fast", fast)):
         if value is not None:
             model[key] = value
@@ -66,6 +69,7 @@ for key, entry in litellm.items():
         i * 1e6, o * 1e6,
         (cw if cw is not None else i) * 1e6,
         (cr if cr is not None else i * 0.1) * 1e6,
+        cr is not None,
         ia=(lambda v: v * 1e6 if v is not None else None)(number(entry.get("input_cost_per_token_above_200k_tokens"))),
         oa=(lambda v: v * 1e6 if v is not None else None)(number(entry.get("output_cost_per_token_above_200k_tokens"))),
         cwa=(lambda v: v * 1e6 if v is not None else None)(number(entry.get("cache_creation_input_token_cost_above_200k_tokens"))),
@@ -98,6 +102,7 @@ for provider_name in sorted(models_dev):
             i, o,
             cw if cw is not None else i,
             cr if cr is not None else i * 0.1,
+            cr is not None,
         )
 if not models:
     sys.exit("models.dev feed produced no usable entries - aborting.")
