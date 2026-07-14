@@ -129,7 +129,8 @@ extension PricingSupplement {
                 inputAbove200kPerMillion: entry.inputLongContextPerMillion,
                 outputAbove200kPerMillion: entry.outputLongContextPerMillion,
                 cacheWriteAbove200kPerMillion: entry.cacheWriteLongContextPerMillion,
-                cacheReadAbove200kPerMillion: entry.cacheReadLongContextPerMillion
+                cacheReadAbove200kPerMillion: entry.cacheReadLongContextPerMillion,
+                cacheReadIsExplicit: entry.cacheReadPerMillion != nil
             )
         }
         var rules: [AliasRule] = []

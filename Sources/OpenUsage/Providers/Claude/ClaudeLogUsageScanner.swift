@@ -12,6 +12,8 @@ import Foundation
 /// - Entries are deduplicated by `(message.id, requestId)`, with a second pass that catches
 ///   sidechain logs replaying a parent message under a new request id. On collision the non-sidechain
 ///   entry wins, then the larger token total, then the one carrying a `speed` field.
+/// - Advisor-message iterations become separate entries under their own model. Other iteration
+///   types stay represented only by the parent usage totals, avoiding double-counting.
 /// - Cost mode "auto": a line's `costUSD` when present, else tokens priced through `ModelPricing`.
 ///
 /// An actor so the whole scan runs off the main actor, and so the per-file parse cache (keyed by
@@ -159,9 +161,7 @@ actor ClaudeLogUsageScanner {
         for line in data.split(separator: UInt8(ascii: "\n")) {
             guard line.range(of: marker) != nil else { continue }
             if hasUnsupportedNullField(line) { continue }
-            if let entry = parseLine(Data(line)) {
-                entries.append(entry)
-            }
+            entries.append(contentsOf: parseEntries(Data(line)))
         }
         return entries
     }
@@ -170,12 +170,64 @@ actor ClaudeLogUsageScanner {
     /// with numeric `input_tokens`/`output_tokens` is required, everything else optional, and a
     /// malformed or invalid line is skipped rather than failing the file.
     static func parseLine(_ data: Data) -> Entry? {
+        parseEntries(data).first
+    }
+
+    /// A Claude log line can carry nested advisor work in `usage.iterations`. The top-level usage
+    /// remains the main-model entry; only advisor-message iterations become additional entries,
+    /// matching ccusage without recounting the ordinary message iterations that feed that total.
+    private static func parseEntries(_ data: Data) -> [Entry] {
         guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
               let timestampRaw = object["timestamp"] as? String,
               let timestamp = OpenUsageISO8601.date(from: timestampRaw),
               let message = object["message"] as? [String: Any],
               let usage = message["usage"] as? [String: Any],
-              let input = usage["input_tokens"] as? NSNumber,
+              let parsedUsage = tokenBreakdown(from: usage),
+              isValidEntry(object, message: message)
+        else { return [] }
+
+        let model = (message["model"] as? String).flatMap { $0 == "<synthetic>" ? nil : $0 }
+        let parent = Entry(
+            timestamp: timestamp,
+            tokens: parsedUsage.tokens,
+            messageID: message["id"] as? String,
+            requestID: object["requestId"] as? String,
+            isSidechain: object["isSidechain"] as? Bool ?? false,
+            hasSpeed: parsedUsage.hasSpeed,
+            costUSD: (object["costUSD"] as? NSNumber)?.doubleValue,
+            model: model
+        )
+
+        guard let iterations = usage["iterations"] as? [[String: Any]] else { return [parent] }
+
+        var entries = [parent]
+        var advisorIndex = 0
+        for iteration in iterations {
+            guard iteration["type"] as? String == "advisor_message",
+                  let advisorModel = iteration["model"] as? String,
+                  !advisorModel.isEmpty,
+                  let advisorUsage = tokenBreakdown(from: iteration)
+            else { continue }
+
+            entries.append(Entry(
+                timestamp: parent.timestamp,
+                tokens: advisorUsage.tokens,
+                messageID: parent.messageID.map { "\($0):advisor:\(advisorIndex)" },
+                requestID: parent.requestID,
+                isSidechain: parent.isSidechain,
+                hasSpeed: advisorUsage.hasSpeed,
+                costUSD: nil,
+                model: advisorModel
+            ))
+            advisorIndex += 1
+        }
+        return entries
+    }
+
+    private static func tokenBreakdown(
+        from usage: [String: Any]
+    ) -> (tokens: TokenBreakdown, hasSpeed: Bool)? {
+        guard let input = usage["input_tokens"] as? NSNumber,
               let output = usage["output_tokens"] as? NSNumber
         else { return nil }
 
@@ -183,8 +235,6 @@ actor ClaudeLogUsageScanner {
         // shape we don't understand, so the line is skipped (ccusage's enum parse does the same).
         let speed = usage["speed"] as? String
         if let speed, speed != "fast", speed != "standard" { return nil }
-
-        guard isValidEntry(object, message: message) else { return nil }
 
         // Cache writes: the 5m/1h split when present (1h bills at 2x input), else the legacy
         // aggregate `cache_creation_input_tokens` treated as all-5m.
@@ -197,26 +247,14 @@ actor ClaudeLogUsageScanner {
             cacheWrite5m = (usage["cache_creation_input_tokens"] as? NSNumber)?.intValue ?? 0
         }
 
-        let tokens = TokenBreakdown(
+        return (TokenBreakdown(
             input: input.intValue,
             cacheWrite5m: cacheWrite5m,
             cacheWrite1h: cacheWrite1h,
             cacheRead: (usage["cache_read_input_tokens"] as? NSNumber)?.intValue ?? 0,
             output: output.intValue,
             isFast: speed == "fast"
-        )
-
-        let model = (message["model"] as? String).flatMap { $0 == "<synthetic>" ? nil : $0 }
-        return Entry(
-            timestamp: timestamp,
-            tokens: tokens,
-            messageID: message["id"] as? String,
-            requestID: object["requestId"] as? String,
-            isSidechain: object["isSidechain"] as? Bool ?? false,
-            hasSpeed: speed != nil,
-            costUSD: (object["costUSD"] as? NSNumber)?.doubleValue,
-            model: model
-        )
+        ), speed != nil)
     }
 
     /// ccusage's validity rules: a `version` that isn't semver-ish marks a foreign log format, and

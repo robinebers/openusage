@@ -16,11 +16,16 @@ struct ModelRates: Sendable, Equatable {
 
     /// Rates for requests whose prompt exceeds `longContextThresholdTokens`, where the provider
     /// prices the whole request at the higher long-context tier. The property names retain their
-    /// LiteLLM terminology because that feed calls these its `above_200k` fields.
+    /// catalog feeds' common `above_200k` terminology.
     var inputAbove200kPerMillion: Double?
     var outputAbove200kPerMillion: Double?
     var cacheWriteAbove200kPerMillion: Double?
     var cacheReadAbove200kPerMillion: Double?
+
+    /// Whether the pricing source explicitly published the cache-read rate. Catalog codecs synthesize
+    /// a 10%-of-input fallback for general estimates, but Codex must charge full input when no prompt-
+    /// caching discount is actually published.
+    var cacheReadIsExplicit: Bool = true
 
     /// Rate multiplier for the model's "fast" variant (1 when the model has none).
     var fastMultiplier: Double = 1
@@ -38,6 +43,7 @@ struct ModelRates: Sendable, Equatable {
             outputAbove200kPerMillion: outputAbove200kPerMillion.map { $0 * factor },
             cacheWriteAbove200kPerMillion: cacheWriteAbove200kPerMillion.map { $0 * factor },
             cacheReadAbove200kPerMillion: cacheReadAbove200kPerMillion.map { $0 * factor },
+            cacheReadIsExplicit: cacheReadIsExplicit,
             fastMultiplier: 1
         )
     }

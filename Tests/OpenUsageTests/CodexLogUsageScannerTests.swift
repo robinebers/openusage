@@ -18,6 +18,18 @@ final class CodexLogUsageScannerTests: XCTestCase {
         )
     }
 
+    private func modelPricing(
+        model: String,
+        rates: ModelRates,
+        supplementFastMultipliers: [String: Double] = [:]
+    ) -> ModelPricing {
+        ModelPricing(
+            supplement: PricingSupplement(fastMultipliers: supplementFastMultipliers),
+            primary: PricingCatalog(entries: [model: rates]),
+            secondary: PricingCatalog(entries: [:])
+        )
+    }
+
     // MARK: - Line parsing
 
     func testLastTokenUsageWinsOverTotalsDelta() {
@@ -124,6 +136,60 @@ final class CodexLogUsageScannerTests: XCTestCase {
         let events = CodexLogUsageScanner.parseFile(Data(lines.utf8))
 
         XCTAssertEqual(events.map(\.model), ["gpt-5.4", "gpt-5.4"])
+    }
+
+    func testServiceTierTracksThreadSettingsAppliedLines() {
+        // The tier comes from the session's own thread_settings_applied lines, per event: turns
+        // before a priority switch stay standard, turns after a switch back to default do too.
+        let lines = [
+            CodexLogFixture.turnContext(timestamp: "2026-07-12T08:00:00.000Z", model: "gpt-5.2"),
+            CodexLogFixture.tokenCount(
+                timestamp: "2026-07-12T08:01:00.000Z",
+                last: CodexLogFixture.usage(input: 10, output: 5)
+            ),
+            CodexLogFixture.threadSettingsApplied(timestamp: "2026-07-12T08:02:00.000Z", serviceTier: "priority"),
+            CodexLogFixture.tokenCount(
+                timestamp: "2026-07-12T08:03:00.000Z",
+                last: CodexLogFixture.usage(input: 20, output: 10)
+            ),
+            CodexLogFixture.threadSettingsApplied(timestamp: "2026-07-12T08:04:00.000Z", serviceTier: "default"),
+            CodexLogFixture.tokenCount(
+                timestamp: "2026-07-12T08:05:00.000Z",
+                last: CodexLogFixture.usage(input: 30, output: 15)
+            )
+        ].joined(separator: "\n")
+
+        let events = CodexLogUsageScanner.parseFile(Data(lines.utf8))
+
+        XCTAssertEqual(events.map(\.isFast), [false, true, false])
+    }
+
+    func testSessionWithoutServiceTierMetadataIsStandard() {
+        // Rollouts written before Codex recorded the tier (or by older CLIs) carry no
+        // thread_settings_applied line — they must price at standard rates, never at whatever
+        // the current config.toml happens to say.
+        let lines = [
+            CodexLogFixture.turnContext(timestamp: "2026-05-12T08:00:00.000Z", model: "gpt-5.2"),
+            CodexLogFixture.tokenCount(
+                timestamp: "2026-05-12T08:01:00.000Z",
+                last: CodexLogFixture.usage(input: 10, output: 5)
+            )
+        ].joined(separator: "\n")
+
+        XCTAssertEqual(CodexLogUsageScanner.parseFile(Data(lines.utf8)).map(\.isFast), [false])
+    }
+
+    func testFastServiceTierAlsoMarksEventsFast() {
+        let lines = [
+            CodexLogFixture.threadSettingsApplied(timestamp: "2026-07-12T08:00:00.000Z", serviceTier: "fast"),
+            CodexLogFixture.tokenCount(
+                timestamp: "2026-07-12T08:01:00.000Z",
+                last: CodexLogFixture.usage(input: 10, output: 5),
+                model: "gpt-5.2"
+            )
+        ].joined(separator: "\n")
+
+        XCTAssertEqual(CodexLogUsageScanner.parseFile(Data(lines.utf8)).map(\.isFast), [true])
     }
 
     func testCachedTokensCapAtInputTokens() {
@@ -258,12 +324,12 @@ final class CodexLogUsageScannerTests: XCTestCase {
 
     private func makeEvent(
         _ timestamp: String, model: String = "gpt-5.2", input: Int = 100, cached: Int = 0,
-        output: Int = 50, reasoning: Int = 0
+        output: Int = 50, reasoning: Int = 0, isFast: Bool = false
     ) -> CodexLogUsageScanner.Event {
         CodexLogUsageScanner.Event(
             timestamp: OpenUsageISO8601.date(from: timestamp)!,
             model: model, input: input, cached: cached, output: output, reasoning: reasoning,
-            total: input + output
+            total: input + output, isFast: isFast
         )
     }
 
@@ -274,7 +340,7 @@ final class CodexLogUsageScannerTests: XCTestCase {
                 makeEvent("2026-05-12T09:00:00.000Z"),
                 makeEvent("2026-05-13T08:00:00.000Z")
             ],
-            since: .distantPast, pricing: fixedRates(), fastTier: false
+            since: .distantPast, pricing: fixedRates()
         )
 
         XCTAssertEqual(scan.series.daily.count, 2)
@@ -299,7 +365,7 @@ final class CodexLogUsageScannerTests: XCTestCase {
             total: 150
         )
         let scan = CodexLogUsageScanner.aggregate(
-            events: [event], since: .distantPast, pricing: fixedRates(), fastTier: false
+            events: [event], since: .distantPast, pricing: fixedRates()
         )
 
         var lines: [MetricLine] = []
@@ -323,7 +389,7 @@ final class CodexLogUsageScannerTests: XCTestCase {
         // The same event parsed from a copied session file counts once.
         let event = makeEvent("2026-05-12T08:00:00.000Z")
         let scan = CodexLogUsageScanner.aggregate(
-            events: [event, event], since: .distantPast, pricing: fixedRates(), fastTier: false
+            events: [event, event], since: .distantPast, pricing: fixedRates()
         )
 
         XCTAssertEqual(scan.series.daily.first?.totalTokens, 150)
@@ -332,21 +398,119 @@ final class CodexLogUsageScannerTests: XCTestCase {
     func testAggregateCachedTokensPriceAtCacheReadRate() {
         let scan = CodexLogUsageScanner.aggregate(
             events: [makeEvent("2026-05-12T08:00:00.000Z", input: 1000, cached: 400, output: 0)],
-            since: .distantPast, pricing: fixedRates(), fastTier: false
+            since: .distantPast, pricing: fixedRates()
         )
 
         // 600 non-cached x $1000/M + 400 cached x $100/M = 0.6 + 0.04.
         XCTAssertEqual(scan.series.daily.first?.costUSD ?? 0, 0.64, accuracy: 0.0001)
     }
 
-    func testAggregateFastTierDoublesWhenNoExplicitMultiplier() {
+    func testAggregateMissingCacheDiscountChargesCachedTokensAtFullInputRate() {
+        let rates = ModelRates(
+            inputPerMillion: 5,
+            outputPerMillion: 30,
+            cacheWritePerMillion: 5,
+            cacheReadPerMillion: 0.5,
+            cacheReadIsExplicit: false
+        )
+        let scan = CodexLogUsageScanner.aggregate(
+            events: [makeEvent(
+                "2026-05-12T08:00:00.000Z", model: "gpt-test",
+                input: 1000, cached: 400, output: 0
+            )],
+            since: .distantPast,
+            pricing: modelPricing(model: "gpt-test", rates: rates)
+        )
+
+        XCTAssertEqual(scan.series.daily.first?.costUSD ?? 0, 0.005, accuracy: 0.000_001)
+    }
+
+    func testProModelWithoutCacheDiscountOverridesLegacySynthesizedRate() {
+        let legacyRates = ModelRates(
+            inputPerMillion: 30,
+            outputPerMillion: 180,
+            cacheWritePerMillion: 30,
+            cacheReadPerMillion: 3,
+            cacheReadIsExplicit: true
+        )
+        let event = makeEvent(
+            "2026-05-12T08:00:00.000Z", model: "gpt-5.5-pro",
+            input: 1000, cached: 400, output: 0
+        )
+
+        XCTAssertEqual(
+            CodexLogUsageScanner.cost(
+                rates: legacyRates, event: event, model: event.model,
+                fastTier: false, fastMultiplier: 1
+            ),
+            0.03,
+            accuracy: 0.000_001
+        )
+    }
+
+    func testCodexLongContextRatesCoverSupportedModels() {
+        let rates = ModelRates(
+            inputPerMillion: 1,
+            outputPerMillion: 1,
+            cacheWritePerMillion: 1,
+            cacheReadPerMillion: 0.1
+        )
+        let event = makeEvent(
+            "2026-05-12T08:00:00.000Z", input: 300_000, cached: 100_000, output: 10_000
+        )
+        let expectedCosts: [(String, Double)] = [
+            ("gpt-5.4", 1.275),
+            ("gpt-5.4-pro-2026-03-05", 20.7),
+            ("gpt-5.5", 2.55),
+            ("gpt-5.5-pro-20260423", 20.7),
+            ("gpt-5.6-sol", 2.55),
+            ("gpt-5.6-terra", 1.275),
+            ("gpt-5.6-luna", 0.51)
+        ]
+
+        for (model, expected) in expectedCosts {
+            XCTAssertEqual(
+                CodexLogUsageScanner.cost(
+                    rates: rates, event: event, model: model,
+                    fastTier: false, fastMultiplier: 1
+                ),
+                expected,
+                accuracy: 0.000_001,
+                model
+            )
+        }
+    }
+
+    func testCodexExactly272kInputKeepsBaseRates() {
+        let rates = ModelRates(
+            inputPerMillion: 5,
+            outputPerMillion: 30,
+            cacheWritePerMillion: 5,
+            cacheReadPerMillion: 0.5
+        )
+        let event = makeEvent(
+            "2026-05-12T08:00:00.000Z", model: "gpt-5.5",
+            input: 272_000, cached: 72_000, output: 1000
+        )
+
+        XCTAssertEqual(
+            CodexLogUsageScanner.cost(
+                rates: rates, event: event, model: "gpt-5.5",
+                fastTier: false, fastMultiplier: 1
+            ),
+            1.066,
+            accuracy: 0.000_001
+        )
+    }
+
+    func testAggregateFastEventsDoubleWhenNoExplicitMultiplier() {
         let base = CodexLogUsageScanner.aggregate(
             events: [makeEvent("2026-05-12T08:00:00.000Z")],
-            since: .distantPast, pricing: fixedRates(), fastTier: false
+            since: .distantPast, pricing: fixedRates()
         )
         let fast = CodexLogUsageScanner.aggregate(
-            events: [makeEvent("2026-05-12T08:00:00.000Z")],
-            since: .distantPast, pricing: fixedRates(), fastTier: true
+            events: [makeEvent("2026-05-12T08:00:00.000Z", isFast: true)],
+            since: .distantPast, pricing: fixedRates()
         )
 
         XCTAssertEqual(
@@ -361,13 +525,96 @@ final class CodexLogUsageScannerTests: XCTestCase {
         )
     }
 
+    func testAggregatePriorityTierUsesProviderSpecificModelMultipliers() {
+        let rates = ModelRates(
+            inputPerMillion: 5,
+            outputPerMillion: 30,
+            cacheWritePerMillion: 5,
+            cacheReadPerMillion: 0.5
+        )
+        let cases: [(model: String, supplementMultiplier: Double, expected: Double)] = [
+            ("gpt-5.5", 2.5, 2.5),
+            // Cursor's supplement currently says 2.5 for this model; Codex priority is 2x.
+            ("gpt-5.6-sol", 2.5, 2)
+        ]
+
+        for entry in cases {
+            let pricing = modelPricing(
+                model: entry.model,
+                rates: rates,
+                supplementFastMultipliers: [entry.model: entry.supplementMultiplier]
+            )
+            let standard = CodexLogUsageScanner.aggregate(
+                events: [makeEvent("2026-05-12T08:00:00.000Z", model: entry.model, input: 100, output: 50)],
+                since: .distantPast, pricing: pricing
+            )
+            let priority = CodexLogUsageScanner.aggregate(
+                events: [makeEvent(
+                    "2026-05-12T08:00:00.000Z", model: entry.model, input: 100, output: 50, isFast: true
+                )],
+                since: .distantPast, pricing: pricing
+            )
+
+            XCTAssertEqual(
+                priority.series.daily.first?.costUSD ?? 0,
+                (standard.series.daily.first?.costUSD ?? 0) * entry.expected,
+                accuracy: 0.000_001,
+                entry.model
+            )
+        }
+    }
+
+    func testAggregateFastAliasUsesUnscaledCodexRatesAndProviderMultiplier() throws {
+        let alias = PricingSupplement.AliasRule(
+            pattern: try NSRegularExpression(pattern: #"^gpt-5\.6-sol-ultra-fast$"#),
+            canonical: "gpt-5.6-sol-fast"
+        )
+        let rates = ModelRates(
+            inputPerMillion: 5,
+            outputPerMillion: 30,
+            cacheWritePerMillion: 6.25,
+            cacheReadPerMillion: 0.5
+        )
+        let pricing = ModelPricing(
+            supplement: PricingSupplement(
+                pricing: ["gpt-5.6-sol": rates],
+                fastMultipliers: ["gpt-5.6-sol": 2.5],
+                aliasRules: [alias]
+            ),
+            primary: PricingCatalog(entries: [:]),
+            secondary: PricingCatalog(entries: [:])
+        )
+
+        let short = CodexLogUsageScanner.aggregate(
+            events: [makeEvent(
+                "2026-05-12T08:00:00.000Z", model: "gpt-5.6-sol-ultra-fast",
+                input: 100_000, output: 10_000
+            )],
+            since: .distantPast,
+            pricing: pricing
+        )
+        let long = CodexLogUsageScanner.aggregate(
+            events: [makeEvent(
+                "2026-05-12T09:00:00.000Z", model: "gpt-5.6-sol-ultra-fast",
+                input: 300_000, cached: 100_000, output: 10_000
+            )],
+            since: .distantPast,
+            pricing: pricing
+        )
+
+        // The alias itself selects Codex priority pricing: 2x the unscaled base/long-context
+        // rates, not Cursor's 2.5x supplement variant and never both multipliers at once.
+        XCTAssertEqual(short.series.daily.first?.costUSD ?? 0, 1.6, accuracy: 0.000_001)
+        XCTAssertEqual(long.series.daily.first?.costUSD ?? 0, 5.1, accuracy: 0.000_001)
+    }
+
     func testAggregateUnknownModelIsExcludedFromTotalsButWarns() {
         let scan = CodexLogUsageScanner.aggregate(
             events: [
                 makeEvent("2026-05-12T08:00:00.000Z", model: "mystery-model-9"),
                 makeEvent("2026-05-12T09:00:00.000Z")
             ],
-            since: .distantPast, pricing: fixedRates(), fastTier: false
+            since: .distantPast, pricing: fixedRates()
         )
 
         // Unpriceable tokens never enter the displayed totals — they surface only through the
@@ -381,7 +628,7 @@ final class CodexLogUsageScannerTests: XCTestCase {
     func testAggregateUnknownModelOnlyLeavesDayUnbacked() {
         let scan = CodexLogUsageScanner.aggregate(
             events: [makeEvent("2026-05-12T08:00:00.000Z", model: "mystery-model-9")],
-            since: .distantPast, pricing: fixedRates(), fastTier: false
+            since: .distantPast, pricing: fixedRates()
         )
 
         // A day with nothing priceable produces no series entry at all (→ "No data"), but the
@@ -395,7 +642,7 @@ final class CodexLogUsageScannerTests: XCTestCase {
         let scan = CodexLogUsageScanner.aggregate(
             events: [makeEvent("2026-01-01T08:00:00.000Z"), makeEvent("2026-05-12T08:00:00.000Z")],
             since: OpenUsageISO8601.date(from: "2026-05-01T00:00:00.000Z")!,
-            pricing: fixedRates(), fastTier: false
+            pricing: fixedRates()
         )
 
         XCTAssertEqual(scan.series.daily.map(\.date), ["2026-05-12"])
@@ -467,6 +714,28 @@ final class CodexLogUsageScannerTests: XCTestCase {
         let scan = await scanner.scan(pricing: fixedRates())
 
         XCTAssertEqual(scan?.series.daily.reduce(0) { $0 + $1.totalTokens }, 200)
+    }
+
+    func testScanIgnoresConfigTomlServiceTier() async throws {
+        // Regression: the tier used to be read from the *current* config.toml and applied to the
+        // entire 30-day history, so toggling priority for one task retroactively ~doubled every
+        // past day (and the synced iCloud history with it). The current config must not matter;
+        // only the tier recorded in each session's log does.
+        let day = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-3600))
+        let home = try CodexLogFixture.makeHome(files: [
+            "sessions/rollout-a.jsonl": CodexLogFixture.tokenCount(
+                timestamp: day, last: CodexLogFixture.usage(input: 100, output: 50), model: "gpt-5.2"
+            )
+        ])
+        try #"service_tier = "priority""#.write(
+            to: home.appendingPathComponent("config.toml"), atomically: true, encoding: .utf8
+        )
+        let scanner = CodexLogFixture.scanner(home: home)
+
+        let scan = await scanner.scan(pricing: fixedRates())
+
+        // Standard rates: (100 x $1000 + 50 x $3000) / 1M = $0.25 — no multiplier.
+        XCTAssertEqual(scan?.series.daily.first?.costUSD ?? 0, 0.25, accuracy: 0.0001)
     }
 
     func testScanReturnsNilWithoutCodexHome() async {

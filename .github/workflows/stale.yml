@@ -16,7 +16,7 @@ jobs:
       - uses: actions/stale@v10
         with:
           stale-issue-message: >
-            This issue has been inactive for 7 days. It will be closed in 3 days
+            This issue has been inactive for 30 days. It will be closed in 3 days
             unless there is new activity. If this is still relevant, please comment.
           stale-pr-message: >
             This PR has been inactive for 7 days. It will be closed in 3 days
@@ -24,7 +24,8 @@ jobs:
             or push an update.
           close-issue-message: Closed due to inactivity.
           close-pr-message: Closed due to inactivity.
-          days-before-stale: 7
+          days-before-issue-stale: 30
+          days-before-pr-stale: 7
           days-before-close: 3
           stale-issue-label: stale
           stale-pr-label: stale

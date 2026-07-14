@@ -18,8 +18,11 @@ import Foundation
 /// - Identical events (same timestamp + model + token counts) appearing in multiple files (copied
 ///   session logs) count once.
 /// - Cost per event: `(input - cached) x input rate + cached x cache-read rate + output x output
-///   rate`, all x the model's fast multiplier (default 2) when the user's `config.toml` requests
-///   the fast/priority service tier. No 200k tiering — OpenAI doesn't price long context higher.
+///   rate`, all x the model's Codex priority multiplier when the session ran on the fast/priority
+///   service tier. The tier is tracked per session from `thread_settings_applied` lines — never from
+///   the current `config.toml`, which would retroactively reprice the whole history when toggled.
+///   Events with no recorded tier price at standard rates. Supported GPT-5.4/5.5/5.6 requests above
+///   272k input tokens use OpenAI's higher rates for the whole request.
 ///
 /// An actor for the same reasons as `ClaudeLogUsageScanner`: scans run off the main actor, and a
 /// per-file parse cache keyed (path, size, mtime) makes the ~5-minute refresh re-parse only files
@@ -37,6 +40,8 @@ actor CodexLogUsageScanner {
     }
 
     /// One turn's token usage, normalized from a `token_count` line (deltas already applied).
+    /// `isFast` records whether the session was on the fast/priority service tier when the turn
+    /// ran, tracked from the session's own log; absent tier metadata means standard.
     struct Event: Sendable, Equatable {
         var timestamp: Date
         var model: String
@@ -45,6 +50,7 @@ actor CodexLogUsageScanner {
         var output: Int
         var reasoning: Int
         var total: Int
+        var isFast: Bool = false
     }
 
     /// Off-main-actor incremental parse cache (keyed path + size + mtime), owned by the shared scanner.
@@ -59,9 +65,7 @@ actor CodexLogUsageScanner {
 
         let since = JSONLScanning.sinceDate(daysBack: daysBack, now: now)
         let events = await scanner.items(from: files, since: since, parse: Self.parseFile)
-        return Self.aggregate(
-            events: events, since: since, pricing: pricing, fastTier: usesFastServiceTier(homes: homes)
-        )
+        return Self.aggregate(events: events, since: since, pricing: pricing)
     }
 
     // MARK: - Discovery
@@ -111,46 +115,29 @@ actor CodexLogUsageScanner {
         return files
     }
 
-    /// The user runs Codex on the fast/priority service tier (billed at the fast multiplier) when
-    /// any home's `config.toml` sets `service_tier = "fast"` or `"priority"` — ccusage's detection.
-    private func usesFastServiceTier(homes: [URL]) -> Bool {
-        for home in homes {
-            guard let content = try? String(contentsOf: home.appendingPathComponent("config.toml"), encoding: .utf8)
-            else { continue }
-            for line in content.split(separator: "\n", omittingEmptySubsequences: false) {
-                let setting = line.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)
-                    .first ?? ""
-                guard let equals = setting.firstIndex(of: "=") else { continue }
-                let key = setting[..<equals].trimmingCharacters(in: .whitespaces)
-                guard key == "service_tier" else { continue }
-                let value = setting[setting.index(after: equals)...]
-                    .trimmingCharacters(in: .whitespaces)
-                    .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
-                if value == "fast" || value == "priority" { return true }
-            }
-        }
-        return false
-    }
-
     // MARK: - File parsing
 
-    /// Parse one rollout file: track the current model from `turn_context`, normalize each
-    /// `token_count` into a delta event, and skip a subagent's replayed parent counts.
+    /// Parse one rollout file: track the current model from `turn_context` and the current service
+    /// tier from `thread_settings_applied`, normalize each `token_count` into a delta event, and
+    /// skip a subagent's replayed parent counts. A session that never records a tier is standard.
     static func parseFile(_ data: Data) -> [Event] {
         let subagent = data.prefix(16 * 1024).range(of: Data("thread_spawn".utf8)) != nil
         let replaySecond = subagent ? detectSubagentReplaySecond(data) : nil
 
         let turnContextMarker = Data(#""type":"turn_context""#.utf8)
         let tokenCountMarker = Data(#""type":"token_count""#.utf8)
+        let threadSettingsMarker = Data(#""type":"thread_settings_applied""#.utf8)
 
         var events: [Event] = []
         var previousTotals: RawUsage?
         var currentModel: String?
+        var currentTierIsFast = false
         var skipReplay = replaySecond != nil
 
         for line in data.split(separator: UInt8(ascii: "\n")) {
             let isTurnContext = line.range(of: turnContextMarker) != nil
-            guard isTurnContext || line.range(of: tokenCountMarker) != nil else { continue }
+            let isThreadSettings = line.range(of: threadSettingsMarker) != nil
+            guard isTurnContext || isThreadSettings || line.range(of: tokenCountMarker) != nil else { continue }
             guard let object = (try? JSONSerialization.jsonObject(with: line)) as? [String: Any] else { continue }
 
             let type = object["type"] as? String
@@ -159,6 +146,13 @@ actor CodexLogUsageScanner {
             if type == "turn_context" {
                 if let model = payload.flatMap(modelName(in:)) {
                     currentModel = model
+                }
+                continue
+            }
+            if isThreadSettings, type == "event_msg",
+               payload?["type"] as? String == "thread_settings_applied" {
+                if let tier = serviceTier(in: payload) {
+                    currentTierIsFast = tier == "fast" || tier == "priority"
                 }
                 continue
             }
@@ -207,10 +201,24 @@ actor CodexLogUsageScanner {
                 cached: min(usage.cached, usage.input),
                 output: usage.output,
                 reasoning: usage.reasoning,
-                total: usage.total
+                total: usage.total,
+                isFast: currentTierIsFast
             ))
         }
         return events
+    }
+
+    /// The `service_tier` a `thread_settings_applied` payload carries in `thread_settings`
+    /// (tolerating a top-level spelling), e.g. `"default"`, `"fast"`, or `"priority"`.
+    private static func serviceTier(in payload: [String: Any]?) -> String? {
+        guard let payload else { return nil }
+        let settings = payload["thread_settings"] as? [String: Any]
+        for value in [settings?["service_tier"], payload["service_tier"]] {
+            if let text = (value as? String)?.trimmingCharacters(in: .whitespaces), !text.isEmpty {
+                return text
+            }
+        }
+        return nil
     }
 
     /// Token fields of a `token_count` usage object, tolerating the older field spellings ccusage
@@ -364,7 +372,7 @@ actor CodexLogUsageScanner {
     /// `unknownModelsByDay` (the tile's warning triangle), the only place unpriceable usage surfaces.
     /// A blank slug is unattributed, not unknown — there is no name to warn about.
     static func aggregate(
-        events: [Event], since: Date, pricing: ModelPricing, fastTier: Bool
+        events: [Event], since: Date, pricing: ModelPricing
     ) -> LogUsageScan {
         var seen: Set<EventKey> = []
         var accumulator = DailyUsageAccumulator()
@@ -381,28 +389,111 @@ actor CodexLogUsageScanner {
             // diverging spellings would let the warning triangle and the hover panel disagree.
             let trimmedModel = event.model.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
 
-            guard let model = trimmedModel, let rates = pricing.resolve(model: model) else {
-                if let model = trimmedModel, event.total > 0 {
+            guard let model = trimmedModel else {
+                continue
+            }
+            let canonicalModel = pricing.supplement.canonicalName(for: model) ?? model
+            let isFastAlias = canonicalModel.hasSuffix("-fast")
+            let rateModel = isFastAlias ? String(canonicalModel.dropLast("-fast".count)) : canonicalModel
+
+            // Codex speed is a provider tier, not Cursor's `-fast` price variant. Resolve a fast
+            // alias through its unscaled base rates, then apply the Codex multiplier exactly once.
+            // If a third-party fast-only model has no base entry, retain its already-scaled rate
+            // and do not apply a second speed multiplier.
+            let baseRates = pricing.resolve(model: rateModel)
+            let resolvedRates = baseRates ?? pricing.resolve(model: model)
+            guard let rates = resolvedRates else {
+                if event.total > 0 {
                     accumulator.addUnknownModel(day: day, model: model)
                 }
                 continue
             }
-            let eventCost = cost(rates: rates, event: event, fastTier: fastTier)
+            let appliesCodexFastTier = isFastAlias ? baseRates != nil : event.isFast
+            let eventCost = cost(
+                rates: rates,
+                event: event,
+                model: rateModel,
+                fastTier: appliesCodexFastTier,
+                fastMultiplier: codexPriorityMultiplier(for: rateModel, rates: rates)
+            )
             accumulator.add(day: day, tokens: event.total, cost: eventCost, model: model)
         }
 
         return accumulator.build()
     }
 
-    /// Codex cost math (ccusage's): non-cached input at the input rate, cached input at the
-    /// cache-read rate, output (reasoning included) at the output rate — no 200k tiers, no cache
-    /// writes. On the fast tier the model's fast multiplier applies, defaulting to 2 when the
-    /// pricing sources carry none.
-    static func cost(rates: ModelRates, event: Event, fastTier: Bool) -> Double {
-        let multiplier = fastTier ? (rates.fastMultiplier == 1 ? 2 : rates.fastMultiplier) : 1
+    /// Codex cost math (ccusage's): non-cached input at the input rate, cached input at the explicit
+    /// cache-read rate (or full input when the source publishes no discount), and output (reasoning
+    /// included) at the output rate. Supported OpenAI models switch the whole request above 272k.
+    static func cost(
+        rates: ModelRates,
+        event: Event,
+        model: String,
+        fastTier: Bool,
+        fastMultiplier: Double
+    ) -> Double {
+        var effectiveRates = rates
+        if let longContext = codexLongContextRates(for: model) {
+            effectiveRates.inputAbove200kPerMillion = longContext.input
+            effectiveRates.outputAbove200kPerMillion = longContext.output
+            effectiveRates.cacheReadAbove200kPerMillion = longContext.cacheRead
+            effectiveRates.longContextThresholdTokens = 272_000
+        }
+        if codexModelHasNoCacheDiscount(model) {
+            effectiveRates.cacheReadPerMillion = effectiveRates.inputPerMillion
+            effectiveRates.cacheReadAbove200kPerMillion = effectiveRates.inputAbove200kPerMillion
+        } else if !rates.cacheReadIsExplicit {
+            effectiveRates.cacheReadPerMillion = effectiveRates.inputPerMillion
+            effectiveRates.cacheReadAbove200kPerMillion = effectiveRates.inputAbove200kPerMillion
+        }
+        effectiveRates.fastMultiplier = fastMultiplier
+
         let nonCached = max(0, event.input - event.cached)
-        return (Double(nonCached) * rates.inputPerMillion
-            + Double(event.cached) * rates.cacheReadPerMillion
-            + Double(event.output) * rates.outputPerMillion) / 1_000_000 * multiplier
+        return effectiveRates.costDollars(for: TokenBreakdown(
+            input: nonCached,
+            cacheRead: event.cached,
+            output: event.output,
+            isFast: fastTier
+        ))
+    }
+
+    /// Codex priority service-tier multipliers are provider-specific and intentionally do not use
+    /// the supplement's Cursor `-fast` multipliers. Unknown models retain the catalog/fallback rule.
+    private static func codexPriorityMultiplier(for model: String, rates: ModelRates) -> Double {
+        let base = datedBaseModel(model)
+        switch base {
+        case "gpt-5.5", "gpt-5.5-pro": return 2.5
+        case "gpt-5.4", "gpt-5.4-pro",
+             "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna": return 2
+        default: return rates.fastMultiplier == 1 ? 2 : rates.fastMultiplier
+        }
+    }
+
+    /// OpenAI explicitly publishes no cached-input discount for these Pro models. Keep this
+    /// provider rule even while an older bundled catalog lacks cache-rate provenance.
+    private static func codexModelHasNoCacheDiscount(_ model: String) -> Bool {
+        switch datedBaseModel(model) {
+        case "gpt-5.4-pro", "gpt-5.5-pro": return true
+        default: return false
+        }
+    }
+
+    private static func codexLongContextRates(for model: String) -> (input: Double, output: Double, cacheRead: Double)? {
+        switch datedBaseModel(model) {
+        case "gpt-5.4": return (5, 22.5, 0.5)
+        case "gpt-5.4-pro": return (60, 270, 60)
+        case "gpt-5.5": return (10, 45, 1)
+        case "gpt-5.5-pro": return (60, 270, 60)
+        case "gpt-5.6-sol": return (10, 45, 1)
+        case "gpt-5.6-terra": return (5, 22.5, 0.5)
+        case "gpt-5.6-luna": return (2, 9, 0.2)
+        default: return nil
+        }
+    }
+
+    private static func datedBaseModel(_ model: String) -> String {
+        model
+            .replacingOccurrences(of: #"-\d{4}-\d{2}-\d{2}$"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"-\d{8}$"#, with: "", options: .regularExpression)
     }
 }
