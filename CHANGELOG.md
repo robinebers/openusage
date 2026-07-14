@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.7.6-beta.3
+
+### Bug Fixes
+- Fix ~20x Codex spend inflation from subagent replay logs ([#1001](https://github.com/robinebers/openusage/pull/1001)) by @robinebers
+- Make iCloud sync in-flight tests deterministic ([#1000](https://github.com/robinebers/openusage/pull/1000)) by @robinebers
+- Accept xhigh effort suffix on Grok 4.5 alias rules ([#999](https://github.com/robinebers/openusage/pull/999)) by @robinebers
+
+---
+
+### Changelog
+**Full Changelog**: [v0.7.6-beta.2...v0.7.6-beta.3](https://github.com/robinebers/openusage/compare/v0.7.6-beta.2...v0.7.6-beta.3)
+
+- [55dd61f](https://github.com/robinebers/openusage/commit/55dd61f3615ac8fc488e1ac2ba9323652f4b07e3) Fix ~20x Codex spend inflation from subagent replay logs (#1001) by @robinebers
+- [acc032f](https://github.com/robinebers/openusage/commit/acc032f1f77dcef0918092954cbc8975a012b5a9) fix: make iCloud sync in-flight tests deterministic (#1000) by @robinebers
+- [27fb007](https://github.com/robinebers/openusage/commit/27fb0076cefa49b16b9a3982c58977f1b467cf7d) Merge pull request #999 from robinebers/fix/grok-45-xhigh-alias by @robinebers
+- [bd49afa](https://github.com/robinebers/openusage/commit/bd49afa8fc023782ee60ad5c5222a129cce932de) fix(pricing): accept xhigh effort suffix on grok-4.5 alias rules by @robinebers
+
 ## v0.7.6-beta.2
 
 ### Bug Fixes
