@@ -330,6 +330,10 @@ final class SpendTileMapperTests: XCTestCase {
         let mixed = try XCTUnwrap(last30.models.first { $0.model == "mixed" })
         XCTAssertEqual(mixed.totalTokens, 700)
         XCTAssertNil(mixed.costUSD, "a partial model cost must not represent all 700 tokens")
+        XCTAssertFalse(
+            try XCTUnwrap(values(lines, "Last 30 Days")).contains { $0.kind == .dollars },
+            "the tile total must not pair a partial dollar value with all 700 tokens"
+        )
     }
 
     // MARK: - Helpers

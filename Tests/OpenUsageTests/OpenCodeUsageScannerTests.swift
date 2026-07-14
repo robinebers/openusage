@@ -319,6 +319,28 @@ final class OpenCodeUsageScannerTests: XCTestCase {
         XCTAssertTrue(scan.logScan.series.daily.isEmpty)
         XCTAssertEqual(scan.logScan.modelUsage?.daily.isEmpty, true)
         XCTAssertEqual(scan.logScan.unknownModelsByDay["2026-07-12"], ["openai/private-model"])
+        XCTAssertEqual(scan.warning, "OpenCode couldn't price usage for: openai/private-model.")
+    }
+
+    func testNegativeExternalRecordedCostIsExcludedInsteadOfEstimated() async throws {
+        let db = "[" + row(
+            "2026-07-12T10:00:00.000Z", "-1", 100, "gpt-test", "openai",
+            input: 100
+        ) + "]"
+        let scanner = OpenCodeUsageScanner(
+            sqlite: FakeSQLite(data: ["/oc/opencode.db": db]),
+            databasePaths: { ["/oc/opencode.db"] }
+        )
+        let modelPricing = pricing(["openai/gpt-test": rates(input: 99, output: 99, cacheRead: 99)])
+        let result = try await scanner.scan(now: now, pricing: modelPricing)
+        let scan = try XCTUnwrap(result)
+
+        XCTAssertTrue(scan.logScan.series.daily.isEmpty)
+        XCTAssertEqual(scan.logScan.unknownModelsByDay["2026-07-12"], ["openai/gpt-test"])
+        XCTAssertEqual(
+            scan.warning,
+            "Some completed OpenCode messages have invalid cost data. Affected usage is excluded from totals."
+        )
     }
 
     func testGoWindowsExcludeExternalEstimatedCost() async throws {
@@ -434,6 +456,25 @@ final class OpenCodeUsageScannerTests: XCTestCase {
         XCTAssertEqual(scan.warning, "Some completed OpenCode messages have invalid cost data. Affected usage is excluded from totals.")
         XCTAssertEqual(scan.goWindows?.sessionSpend ?? -1, 2, accuracy: 0.0001)
         XCTAssertEqual(scan.logScan.series.daily.first?.totalTokens, 100)
+    }
+
+    func testHistoricalInvalidGoCostOutsideActiveWindowsKeepsCurrentMeters() async throws {
+        let db = "[" + [
+            row("2026-07-12T11:00:00.000Z", "2", 100, "glm", "opencode-go"),
+            row("2026-06-20T10:00:00.000Z", "null", 100, "old-glm", "opencode-go")
+        ].joined(separator: ",") + "]"
+        let scanner = OpenCodeUsageScanner(
+            sqlite: FakeSQLite(data: ["/oc/opencode.db": db]),
+            databasePaths: { ["/oc/opencode.db"] }
+        )
+
+        let result = try await scanner.scan(now: now, hasGoKey: true)
+        let scan = try XCTUnwrap(result)
+        XCTAssertEqual(scan.goWindows?.sessionSpend ?? -1, 2, accuracy: 0.0001)
+        XCTAssertEqual(
+            scan.warning,
+            "Some completed OpenCode messages have invalid cost data. Affected usage is excluded from totals."
+        )
     }
 
     func testZeroTokenHostedPlaceholderDoesNotSuppressGoWindows() async throws {

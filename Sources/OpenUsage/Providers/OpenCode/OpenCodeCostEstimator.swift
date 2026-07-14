@@ -22,6 +22,12 @@ struct OpenCodeCostEstimator: OpenCodeCostEstimating {
     func resolve(row: OpenCodeUsageRow, pricing: ModelPricing) -> OpenCodeCostResolution {
         let displayModel = Self.displayModel(for: row)
 
+        // A malformed external value is not the same as an absent/zero subscription cost. Exclude it
+        // loudly instead of replacing corrupted accounting with an apparently valid catalog estimate.
+        if row.hasInvalidRecordedCost {
+            return row.tokens > 0 ? .unpriced(model: displayModel) : .ignored
+        }
+
         if OpenCodeProviderIDs.hosted.contains(row.providerID) {
             if let recordedCost = row.recordedCost {
                 return .priced(tokens: row.tokens, cost: recordedCost, model: displayModel)

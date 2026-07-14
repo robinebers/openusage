@@ -34,27 +34,53 @@ enum OpenCodeGoWindowMath {
     ///     calendar month.
     static func compute(costs: [(ms: Double, cost: Double)], anchorMs: Double?, now: Date) -> OpenCodeGoWindows {
         let nowMs = ms(now)
+        let bounds = windowBounds(nowMs: nowMs, anchorMs: anchorMs)
 
-        let sessionStart = nowMs - fiveHoursMs
-        let sessionSpend = sumRange(costs, start: sessionStart, end: nowMs)
-        let oldestInSession = costs.lazy.filter { $0.ms >= sessionStart && $0.ms < nowMs }.map(\.ms).min()
+        let sessionSpend = sumRange(costs, start: bounds.sessionStart, end: nowMs)
+        let oldestInSession = costs.lazy.filter { $0.ms >= bounds.sessionStart && $0.ms < nowMs }.map(\.ms).min()
         let sessionResetsAt = date(ms: (oldestInSession ?? nowMs) + fiveHoursMs)
 
-        let weekStart = startOfUtcWeek(nowMs)
-        let weekEnd = weekStart + weekMs
-        let weeklySpend = sumRange(costs, start: weekStart, end: weekEnd)
-
-        let month = anchoredMonthBounds(nowMs: nowMs, anchorMs: anchorMs)
-        let monthlySpend = sumRange(costs, start: month.start, end: month.end)
+        let weeklySpend = sumRange(costs, start: bounds.weekStart, end: bounds.weekEnd)
+        let monthlySpend = sumRange(costs, start: bounds.monthStart, end: bounds.monthEnd)
 
         return OpenCodeGoWindows(
             sessionSpend: sessionSpend,
             sessionResetsAt: sessionResetsAt,
             weeklySpend: weeklySpend,
-            weeklyResetsAt: date(ms: weekEnd),
+            weeklyResetsAt: date(ms: bounds.weekEnd),
             monthlySpend: monthlySpend,
-            monthlyResetsAt: date(ms: month.end),
-            monthlyPeriodMs: Int((month.end - month.start).rounded())
+            monthlyResetsAt: date(ms: bounds.monthEnd),
+            monthlyPeriodMs: Int((bounds.monthEnd - bounds.monthStart).rounded())
+        )
+    }
+
+    /// Whether a row contributes to at least one cap currently shown to the user. Malformed Go costs
+    /// outside these ranges must not hide otherwise valid live meters.
+    static func containsActiveWindow(timestampMs: Double, anchorMs: Double?, now: Date) -> Bool {
+        let nowMs = ms(now)
+        let bounds = windowBounds(nowMs: nowMs, anchorMs: anchorMs)
+        return (timestampMs >= bounds.sessionStart && timestampMs < nowMs)
+            || (timestampMs >= bounds.weekStart && timestampMs < bounds.weekEnd)
+            || (timestampMs >= bounds.monthStart && timestampMs < bounds.monthEnd)
+    }
+
+    private struct WindowBounds {
+        var sessionStart: Double
+        var weekStart: Double
+        var weekEnd: Double
+        var monthStart: Double
+        var monthEnd: Double
+    }
+
+    private static func windowBounds(nowMs: Double, anchorMs: Double?) -> WindowBounds {
+        let weekStart = startOfUtcWeek(nowMs)
+        let month = anchoredMonthBounds(nowMs: nowMs, anchorMs: anchorMs)
+        return WindowBounds(
+            sessionStart: nowMs - fiveHoursMs,
+            weekStart: weekStart,
+            weekEnd: weekStart + weekMs,
+            monthStart: month.start,
+            monthEnd: month.end
         )
     }
 

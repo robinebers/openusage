@@ -41,7 +41,8 @@ OpenUsage prices those buckets through the same shared catalog as Codex. This is
 money charged on top of your subscription. Because each completed OpenCode message preserves its token
 buckets, model-specific long-context pricing can be applied per request. OpenCode-specific model aliases
 and provider spellings are normalized before catalog lookup. When a model has no known rate, its usage is excluded from the
-token and dollar totals and the warning triangle names it, rather than showing mismatched figures.
+token and dollar totals and the warning triangle names it, rather than showing mismatched figures. If
+none of the usage can be priced, the provider warning still names the affected models.
 
 Each spend tile shows cost and the corresponding priced tokens together (`$4.08 · 1.2M tokens`). A period
 where nothing can be priced reads "No data".
@@ -64,8 +65,9 @@ used Go). Zen usage is pay-as-you-go credits with no cap, so it appears only in 
   `~/.local/share/opencode`.
 - **"Couldn't read OpenCode's auth.json"** — the file exists but is unreadable or not valid JSON. Check
   its permissions, or log into a provider in OpenCode again to rewrite it.
-- **An invalid-cost warning appears** — one or more completed Go or Zen records have malformed cost data.
-  Affected usage and Go meters stay hidden rather than appearing artificially low.
+- **An invalid-cost warning appears** — one or more completed records have malformed cost data. Affected
+  usage is excluded rather than appearing artificially low. Go meters are hidden only when the malformed
+  record falls inside a currently active Go cap window.
 - **A dollar value has an estimate marker** — it is an API-rate value derived by OpenCode or OpenUsage,
   not an amount read from your provider bill.
 - **Numbers look lower than your dashboard** — the meters are local-observed spend (this Mac only); see the
@@ -76,5 +78,7 @@ used Go). Zen usage is pay-as-you-go credits with no cap, so it appears only in 
 OpenUsage reads the assistant-message provider, model, `cost`, and token-bucket fields from every `opencode*.db` in the data
 directory (OpenCode partitions its database by release channel — stable is `opencode.db`, the preview line
 is `opencode-next.db` — so all channels are unioned and duplicate message IDs count once). The Go caps sum
-only `opencode-go` messages; the spend tiles and trend sum every provider ID. Read-only, no network. If OpenCode's
-proposed `/zen/go/v1/usage` API ships, the same Go key becomes the bearer token for authoritative windows.
+only `opencode-go` messages; the spend tiles and trend sum every provider ID. Database access is read-only,
+and no log or credential data is uploaded. When an external row needs a local cost estimate, OpenUsage may
+download the same public pricing catalogs used by its other providers. If OpenCode's proposed
+`/zen/go/v1/usage` API ships, the same Go key becomes the bearer token for authoritative windows.

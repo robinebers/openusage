@@ -122,7 +122,7 @@ final class OpenCodeProvider: ProviderRuntime {
             scan = try await usageScanner.scan(
                 now: refreshedAt,
                 hasGoKey: authState.goAPIKey != nil,
-                pricing: await pricing()
+                pricing: pricing
             )
         } catch {
             return ProviderSnapshot.error(provider: provider, error: error)

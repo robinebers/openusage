@@ -130,10 +130,15 @@ final class OpenCodeProviderTests: XCTestCase {
         // Freshly logged into Go, before the first local message: the key alone establishes the plan,
         // so the published caps show at $0 instead of a bare "No usage data".
         let now = d("2026-07-12T12:00:00.000Z")
+        let pricingCalls = PricingCallCounter()
         let provider = OpenCodeProvider(
             authStore: authStore(files: FakeFiles(["/oc/auth.json": authJSON])),
             usageScanner: OpenCodeUsageScanner(sqlite: StubSQLite(), databasePaths: { [] }),
-            now: { now }
+            now: { now },
+            pricing: {
+                await pricingCalls.increment()
+                return .empty
+            }
         )
         let snapshot = await provider.refresh()
         XCTAssertNil(snapshot.errorCategory)
@@ -145,6 +150,8 @@ final class OpenCodeProviderTests: XCTestCase {
         XCTAssertEqual(limit, OpenCodeUsageMapper.sessionCap)
         XCTAssertNotNil(snapshot.line(label: "Weekly"))
         XCTAssertNotNil(snapshot.line(label: "Monthly"))
+        let pricingCallCount = await pricingCalls.value
+        XCTAssertEqual(pricingCallCount, 0, "database discovery must happen before shared pricing is loaded")
     }
 
     func testRefreshExternalAuthWithoutDatabaseShowsNoDataNotLoginError() async {
@@ -296,6 +303,24 @@ final class OpenCodeProviderTests: XCTestCase {
         XCTAssertEqual(unknownModels, ["openai/private"])
     }
 
+    func testAllUnpricedUsageSurfacesModelInProviderWarning() async {
+        let now = d("2026-07-12T12:00:00.000Z")
+        let db = "[" + row("2026-07-12T10:00:00.000Z", "0", 321, "private", "openai") + "]"
+        let provider = OpenCodeProvider(
+            authStore: authStore(files: FakeFiles(["/oc/auth.json": openAIAuthJSON])),
+            usageScanner: OpenCodeUsageScanner(
+                sqlite: StubSQLite(data: ["/oc/opencode.db": db]),
+                databasePaths: { ["/oc/opencode.db"] }
+            ),
+            now: { now },
+            pricing: { .empty }
+        )
+
+        let snapshot = await provider.refresh()
+        XCTAssertEqual(snapshot.line(label: "Status"), .noUsageData)
+        XCTAssertEqual(snapshot.warning, "OpenCode couldn't price usage for: openai/private.")
+    }
+
     func testStaleGoHistoryDoesNotShowGoPlanOrMeters() async {
         // Zen-only recent usage + an old opencode-go anchor + no Go key: no "Go" badge, no cap meters,
         // but the Zen spend still shows in the tiles.
@@ -313,6 +338,14 @@ final class OpenCodeProviderTests: XCTestCase {
         XCTAssertNil(snapshot.plan)
         XCTAssertNil(snapshot.line(label: "Session"))
         XCTAssertNotNil(snapshot.line(label: "Today"))
+    }
+}
+
+private actor PricingCallCounter {
+    private(set) var value = 0
+
+    func increment() {
+        value += 1
     }
 }
 

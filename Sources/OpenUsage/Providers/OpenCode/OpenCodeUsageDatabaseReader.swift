@@ -3,6 +3,7 @@ import Foundation
 struct OpenCodeUsageRow: Sendable {
     var ms: Double
     var recordedCost: Double?
+    var hasInvalidRecordedCost: Bool
     var tokens: Int
     var model: String
     var providerID: String
@@ -156,7 +157,9 @@ struct OpenCodeUsageDatabaseReader: Sendable {
             let bucketTotal = min(input + cacheRead + cacheWrite + output + reasoning, 1_000_000_000_000_000)
             let storedTotal = ProviderParse.number(entry[2]).map(clampedTokens) ?? 0
             let tokens = bucketTotal > 0 ? bucketTotal : storedTotal
-            let recordedCost = ProviderParse.number(entry[1]).flatMap { $0 >= 0 ? $0 : nil }
+            let rawRecordedCost = ProviderParse.number(entry[1])
+            let hasInvalidRecordedCost = rawRecordedCost.map { !$0.isFinite || $0 < 0 } ?? false
+            let recordedCost = rawRecordedCost.flatMap { $0.isFinite && $0 >= 0 ? $0 : nil }
             let model = ((entry[3] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             let messageID = (entry.count > 10 ? entry[10] as? String : nil)?
                 .trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
@@ -164,6 +167,7 @@ struct OpenCodeUsageDatabaseReader: Sendable {
             rows.append(OpenCodeUsageRow(
                 ms: ms,
                 recordedCost: recordedCost,
+                hasInvalidRecordedCost: hasInvalidRecordedCost,
                 tokens: tokens,
                 model: model,
                 providerID: providerID,

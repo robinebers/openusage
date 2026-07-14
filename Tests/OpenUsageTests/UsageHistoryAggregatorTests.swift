@@ -46,7 +46,7 @@ final class UsageHistoryAggregatorTests: XCTestCase {
 
         let claude = try XCTUnwrap(merged["claude"])
         XCTAssertEqual(claude.series.daily, [
-            DailyUsageEntry(date: "2026-07-13", totalTokens: 350, costUSD: 3)
+            DailyUsageEntry(date: "2026-07-13", totalTokens: 350, costUSD: nil)
         ])
         XCTAssertEqual(claude.modelUsage?.daily[0].models.map(\.model), ["Opus", "Sonnet"])
         XCTAssertEqual(claude.modelUsage?.daily[0].models.first?.totalTokens, 300)
@@ -120,6 +120,37 @@ final class UsageHistoryAggregatorTests: XCTestCase {
         let model = try XCTUnwrap(merged["opencode"]?.modelUsage?.daily.first?.models.first)
         XCTAssertEqual(model.totalTokens, 300)
         XCTAssertNil(model.costUSD, "a peer's unpriced tokens must invalidate the merged model cost")
+    }
+
+    func testAggregationDoesNotShowPartialDayCostAcrossMachines() throws {
+        let local = ProviderSnapshot(
+            providerID: "opencode",
+            displayName: "OpenCode",
+            lines: [],
+            usageHistory: history(tokens: 100, cost: 1, model: "openai/priced")
+        )
+        let peer = document(
+            deviceID: "peer",
+            updatedAt: 100,
+            providers: ["opencode": history(tokens: 200, cost: nil, model: "openai/unpriced")]
+        )
+
+        let merged = UsageHistoryAggregator.merged(
+            localSnapshots: ["opencode": local],
+            peerDocuments: [peer],
+            descriptors: [
+                "opencode": UsageHistoryDescriptor(
+                    scope: .machineLocal,
+                    estimatedCost: true,
+                    sourceNote: "From OpenCode logs"
+                )
+            ],
+            now: localDay(2026, 7, 13)
+        )
+
+        let day = try XCTUnwrap(merged["opencode"]?.series.daily.first)
+        XCTAssertEqual(day.totalTokens, 300)
+        XCTAssertNil(day.costUSD, "a peer's unpriced tokens must invalidate the merged day cost")
     }
 
     func testRendererReplacesOnlySpendRowsAndKeepsLocalState() throws {

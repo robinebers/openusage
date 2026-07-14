@@ -56,7 +56,8 @@ enum SpendTileMapper {
 
         let totalTokens = usage.daily.reduce(0) { $0 + $1.totalTokens }
         let costSamples = usage.daily.compactMap(\.costUSD)
-        let totalCost = costSamples.isEmpty ? nil : costSamples.reduce(0, +)
+        let hasUnpricedUsage = usage.daily.contains { $0.totalTokens > 0 && $0.costUSD == nil }
+        let totalCost = costSamples.isEmpty || hasUnpricedUsage ? nil : costSamples.reduce(0, +)
         if totalTokens > 0 || (totalCost ?? 0) > 0 {
             let allUnknown = unknownModelsByDay.values.reduce(into: Set<String>()) { $0.formUnion($1) }
             lines.append(.values(label: "Last 30 Days",

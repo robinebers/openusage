@@ -29,17 +29,19 @@ enum UsageHistoryAggregator {
         _ histories: [ProviderUsageHistory],
         includedDays: Set<String>
     ) -> ProviderUsageHistory {
-        var days: [String: (tokens: Int, cost: Double?, sawCost: Bool)] = [:]
+        var days: [String: (tokens: Int, cost: Double?, sawCost: Bool, sawUnpriced: Bool)] = [:]
         var models: [String: [String: ModelAccumulator]] = [:]
         var unknown: [String: Set<String>] = [:]
 
         for history in histories {
             for day in history.series.daily where includedDays.contains(day.date) {
-                var value = days[day.date] ?? (0, nil, false)
+                var value = days[day.date] ?? (0, nil, false, false)
                 value.tokens += day.totalTokens
                 if let cost = day.costUSD {
                     value.cost = (value.cost ?? 0) + cost
                     value.sawCost = true
+                } else if day.totalTokens > 0 {
+                    value.sawUnpriced = true
                 }
                 days[day.date] = value
             }
@@ -58,7 +60,7 @@ enum UsageHistoryAggregator {
             DailyUsageEntry(
                 date: date,
                 totalTokens: value.tokens,
-                costUSD: value.sawCost ? value.cost : nil
+                costUSD: value.sawCost && !value.sawUnpriced ? value.cost : nil
             )
         }.sorted { $0.date > $1.date })
 
