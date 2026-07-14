@@ -384,6 +384,53 @@ final class CodexLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(CodexLogUsageScanner.parseFile(Data(lines.utf8)).count, 2)
     }
 
+    func testRootSessionMetaWithNullParentFieldsIsNotTreatedAsChild() {
+        // JSONSerialization represents JSON null as NSNull (not Swift nil). A root session that
+        // declares forked_from_id / parent_thread_id / source.subagent as null must keep all lines.
+        let sessionMeta = #"{"timestamp":"2026-05-12T08:03:00.000Z","type":"session_meta","payload":{"id":"root-abc","forked_from_id":null,"parent_thread_id":null,"source":{"subagent":null}}}"#
+        let lines = [
+            sessionMeta,
+            CodexLogFixture.tokenCount(
+                timestamp: "2026-05-12T08:03:00.100Z",
+                last: CodexLogFixture.usage(input: 100, output: 20)
+            ),
+            CodexLogFixture.tokenCount(
+                timestamp: "2026-05-12T08:03:00.500Z",
+                last: CodexLogFixture.usage(input: 50, output: 10)
+            )
+        ].joined(separator: "\n")
+
+        XCTAssertEqual(CodexLogUsageScanner.parseFile(Data(lines.utf8)).map(\.input), [100, 50])
+        XCTAssertFalse(CodexLogUsageScanner.isChildSessionMeta([
+            "id": "root-abc",
+            "forked_from_id": NSNull(),
+            "parent_thread_id": NSNull(),
+            "source": ["subagent": NSNull()]
+        ]))
+    }
+
+    func testChildSessionMetaWithoutTimestampStillSkipsReplay() {
+        // A child session_meta with no parseable creation timestamp must still suppress replayed
+        // parent history. The gate clears on the first task_started whose started_at is at/after
+        // that line's own wall-clock second.
+        let sessionMeta = #"{"type":"session_meta","payload":{"id":"subagent-abc","forked_from_id":"parent-xyz"}}"#
+        let lines = [
+            sessionMeta,
+            CodexLogFixture.taskStarted(timestamp: "2026-05-12T08:03:00.100Z", startedAt: childCreationEpoch - 900),
+            CodexLogFixture.tokenCount(
+                timestamp: "2026-05-12T08:03:00.100Z",
+                last: CodexLogFixture.usage(input: 1000, output: 200)
+            ),
+            CodexLogFixture.taskStarted(timestamp: "2026-05-12T08:03:05.000Z", startedAt: childCreationEpoch + 5),
+            CodexLogFixture.tokenCount(
+                timestamp: "2026-05-12T08:03:30.000Z",
+                last: CodexLogFixture.usage(input: 50, output: 10)
+            )
+        ].joined(separator: "\n")
+
+        XCTAssertEqual(CodexLogUsageScanner.parseFile(Data(lines.utf8)).map(\.input), [50])
+    }
+
     func testFileWithoutSessionMetaKeepsAllLines() {
         // Older fixtures / truncated files with no session_meta at all: treat as a root session.
         let lines = [

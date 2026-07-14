@@ -15,9 +15,12 @@ import Foundation
 ///   `token_count` history at spawn with rewritten timestamps. Those replayed lines are skipped —
 ///   they only seed the delta baseline — until the file's first live turn: a `task_started` whose
 ///   `started_at` is at or after the child session's own creation time (replayed `task_started`
-///   lines carry the parent's original, older `started_at`). This is deliberately not time-window
-///   based: a large parent history takes multiple seconds to replay, so any "same second" heuristic
-///   undercuts it (that was the cause of a ~20x spend inflation).
+///   lines carry the parent's original, older `started_at`). When the child's `session_meta` has no
+///   parseable creation timestamp, the same skip still arms and clears on the first `task_started`
+///   whose `started_at` is at or after that line's own wall-clock second. This is deliberately not
+///   a "same second as spawn" window over `token_count` timestamps: a large parent history takes
+///   multiple seconds to replay, so that heuristic undercuts it (that was the cause of a ~20x
+///   spend inflation).
 /// - A `token_count` line whose cumulative `total_token_usage` is unchanged from the previous line
 ///   is a re-emitted stale snapshot, not new usage, and is skipped even when it carries a
 ///   `last_token_usage`.
@@ -141,14 +144,13 @@ actor CodexLogUsageScanner {
         var currentModel: String?
         var currentTierIsFast = false
         var sawSessionMeta = false
-        // Non-nil while inside a child session's replayed parent history: the child's creation
-        // epoch (floored to the second, matching `started_at`'s integer resolution).
-        var replayGateEpoch: TimeInterval?
+        // Non-nil while inside a child session's replayed parent history.
+        var replayGate: ChildReplayGate?
 
         for line in data.split(separator: UInt8(ascii: "\n")) {
             let isTurnContext = line.range(of: turnContextMarker) != nil
             let isSessionMeta = !sawSessionMeta && line.range(of: sessionMetaMarker) != nil
-            let isTaskStarted = replayGateEpoch != nil && line.range(of: taskStartedMarker) != nil
+            let isTaskStarted = replayGate != nil && line.range(of: taskStartedMarker) != nil
             let isThreadSettings = line.range(of: threadSettingsMarker) != nil
             guard isTurnContext || isSessionMeta || isTaskStarted || isThreadSettings
                 || line.range(of: tokenCountMarker) != nil
@@ -168,10 +170,14 @@ actor CodexLogUsageScanner {
             // session_meta lines right after its own.
             if type == "session_meta", !sawSessionMeta {
                 sawSessionMeta = true
-                if let payload, isChildSessionMeta(payload),
-                   let timestampRaw = (object["timestamp"] as? String)?.trimmingCharacters(in: .whitespaces),
-                   let created = OpenUsageISO8601.date(from: timestampRaw) {
-                    replayGateEpoch = created.timeIntervalSince1970.rounded(.down)
+                if let payload, isChildSessionMeta(payload) {
+                    if let timestampRaw = (object["timestamp"] as? String)?.trimmingCharacters(in: .whitespaces),
+                       let created = OpenUsageISO8601.date(from: timestampRaw) {
+                        replayGate = .untilStartedAt(created.timeIntervalSince1970.rounded(.down))
+                    } else {
+                        // Still a child — suppress replay even without a creation timestamp.
+                        replayGate = .untilSelfTimedTaskStarted
+                    }
                 }
                 continue
             }
@@ -184,13 +190,13 @@ actor CodexLogUsageScanner {
             }
             guard type == "event_msg", let payload else { continue }
 
-            // The first task_started at/after the child's creation is the child's first live turn;
-            // replayed task_started lines carry the parent's original, older started_at.
+            // The first live task_started opens the child's own turns; replayed task_started lines
+            // carry the parent's original, older started_at.
             if payload["type"] as? String == "task_started" {
-                if let gate = replayGateEpoch,
+                if let gate = replayGate,
                    let startedAt = payload["started_at"] as? NSNumber,
-                   startedAt.doubleValue >= gate {
-                    replayGateEpoch = nil
+                   gate.isCleared(byStartedAt: startedAt.doubleValue, lineTimestamp: object["timestamp"] as? String) {
+                    replayGate = nil
                 }
                 continue
             }
@@ -203,7 +209,7 @@ actor CodexLogUsageScanner {
             let totals = (info?["total_token_usage"] as? [String: Any]).map(RawUsage.init(json:))
 
             // Replayed parent history: seed the delta baseline from it but never emit usage.
-            if replayGateEpoch != nil {
+            if replayGate != nil {
                 if let totals { previousTotals = totals }
                 continue
             }
@@ -319,14 +325,53 @@ actor CodexLogUsageScanner {
         return nil
     }
 
+    /// How a child session's replayed parent history is gated until the first live turn.
+    private enum ChildReplayGate {
+        /// Clear when `task_started.started_at` is at/after the child's creation epoch.
+        case untilStartedAt(TimeInterval)
+        /// Child `session_meta` had no parseable creation timestamp: clear when `started_at` is
+        /// at/after that `task_started` line's own wall-clock second (replayed turns keep an older
+        /// `started_at`; live turns start near the line timestamp).
+        case untilSelfTimedTaskStarted
+
+        func isCleared(byStartedAt startedAt: TimeInterval, lineTimestamp: String?) -> Bool {
+            switch self {
+            case .untilStartedAt(let gate):
+                return startedAt >= gate
+            case .untilSelfTimedTaskStarted:
+                guard let raw = lineTimestamp?.trimmingCharacters(in: .whitespaces),
+                      let lineDate = OpenUsageISO8601.date(from: raw)
+                else { return false }
+                return startedAt >= lineDate.timeIntervalSince1970.rounded(.down)
+            }
+        }
+    }
+
     /// A session_meta payload marking the file as a child session (subagent spawn or fork) whose
     /// leading `token_count` lines replay the parent's history.
+    ///
+    /// JSON `null` is `NSNull`, not Swift `nil` — treat null (and blank strings) as absent so a
+    /// root session that declares `forked_from_id: null` is not misclassified as a child.
     static func isChildSessionMeta(_ payload: [String: Any]) -> Bool {
-        if payload["forked_from_id"] != nil { return true }
-        if payload["parent_thread_id"] != nil { return true }
+        if hasNonNullValue(payload["forked_from_id"]) { return true }
+        if hasNonNullValue(payload["parent_thread_id"]) { return true }
         if payload["thread_source"] as? String == "subagent" { return true }
-        if let source = payload["source"] as? [String: Any], source["subagent"] != nil { return true }
+        if let source = payload["source"] as? [String: Any], hasNonNullValue(source["subagent"]) {
+            return true
+        }
         return false
+    }
+
+    /// `true` when JSONSerialization yielded a real value (not missing, not `null`, not blank text).
+    private static func hasNonNullValue(_ value: Any?) -> Bool {
+        switch value {
+        case nil, is NSNull:
+            return false
+        case let text as String:
+            return !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        default:
+            return true
+        }
     }
 
     /// ccusage's model resolution: an explicit model on the line updates the session's current
