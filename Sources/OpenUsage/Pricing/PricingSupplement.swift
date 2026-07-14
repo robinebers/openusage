@@ -54,31 +54,20 @@ struct PricingSupplement: Sendable {
         return nil
     }
 
-    /// Overlays a fetched supplement on the bundled baseline. Remote base prices and multipliers
-    /// win, while newly bundled models, aliases, and long-context metadata remain available to an
-    /// upgraded app whose disk cache predates those fields.
-    func merging(_ overlay: PricingSupplement) -> PricingSupplement {
-        var mergedPricing = pricing
-        for (model, overlayRates) in overlay.pricing {
-            mergedPricing[model] = overlayRates.fillingMissingLongContext(from: pricing[model])
+    /// Returns the newest complete supplement snapshot. Missing keys are intentional removals, so
+    /// snapshots must never be union-merged. Equal revisions prefer `candidate`, which is the
+    /// fetched cache; when neither legacy snapshot has a revision, that preserves prior behavior.
+    func preferringNewer(_ candidate: PricingSupplement) -> PricingSupplement {
+        switch (updatedAt, candidate.updatedAt) {
+        case let (current?, candidateRevision?):
+            return candidateRevision >= current ? candidate : self
+        case (nil, .some):
+            return candidate
+        case (.some, nil):
+            return self
+        case (nil, nil):
+            return candidate
         }
-        var mergedMultipliers = fastMultipliers
-        mergedMultipliers.merge(overlay.fastMultipliers) { _, overlay in overlay }
-
-        var seenRules = Set(overlay.aliasRules.map { "\($0.pattern.pattern)\u{0}\($0.canonical)" })
-        var mergedRules = overlay.aliasRules
-        for rule in aliasRules {
-            let key = "\(rule.pattern.pattern)\u{0}\(rule.canonical)"
-            if seenRules.insert(key).inserted {
-                mergedRules.append(rule)
-            }
-        }
-        return PricingSupplement(
-            pricing: mergedPricing,
-            fastMultipliers: mergedMultipliers,
-            aliasRules: mergedRules,
-            updatedAt: overlay.updatedAt ?? updatedAt
-        )
     }
 
     /// `base` occurs in `part` with nothing after it, or followed by a `-` separator.
@@ -86,28 +75,6 @@ struct PricingSupplement: Sendable {
         guard let range = part.range(of: base, options: .backwards) else { return false }
         let suffix = part[range.upperBound...]
         return suffix.isEmpty || suffix.hasPrefix("-")
-    }
-}
-
-private extension ModelRates {
-    func fillingMissingLongContext(from fallback: ModelRates?) -> ModelRates {
-        guard let fallback else { return self }
-        let hasAnyLongContextRate = inputAbove200kPerMillion != nil
-            || outputAbove200kPerMillion != nil
-            || cacheWriteAbove200kPerMillion != nil
-            || cacheReadAbove200kPerMillion != nil
-
-        var result = self
-        // A legacy overlay with no tier metadata inherits the bundled threshold. A newer partial
-        // overlay keeps its declared threshold while each omitted bucket inherits independently.
-        if !hasAnyLongContextRate {
-            result.longContextThresholdTokens = fallback.longContextThresholdTokens
-        }
-        result.inputAbove200kPerMillion = inputAbove200kPerMillion ?? fallback.inputAbove200kPerMillion
-        result.outputAbove200kPerMillion = outputAbove200kPerMillion ?? fallback.outputAbove200kPerMillion
-        result.cacheWriteAbove200kPerMillion = cacheWriteAbove200kPerMillion ?? fallback.cacheWriteAbove200kPerMillion
-        result.cacheReadAbove200kPerMillion = cacheReadAbove200kPerMillion ?? fallback.cacheReadAbove200kPerMillion
-        return result
     }
 }
 

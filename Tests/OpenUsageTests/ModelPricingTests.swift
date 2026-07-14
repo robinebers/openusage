@@ -137,72 +137,59 @@ final class ModelPricingTests: XCTestCase {
         }
     }
 
-    func testCachedSupplementKeepsNewBundledLongContextMetadata() throws {
+    func testNewerBundledSupplementReplacesOlderCache() throws {
         let bundled = try PricingSupplement.decode(from: Data("""
-        {"pricing": {"gpt-long": {
-          "input_per_million": 5, "output_per_million": 30,
-          "long_context_threshold_tokens": 272000,
-          "input_long_context_per_million": 10,
-          "output_long_context_per_million": 45
-        }}, "alias_rules": []}
+        {"updated_at": "2026-07-14T11:20:13Z", "pricing": {
+          "gpt-long": {
+            "input_per_million": 5, "output_per_million": 30,
+            "long_context_threshold_tokens": 272000,
+            "input_long_context_per_million": 10,
+            "output_long_context_per_million": 45
+          }
+        }, "alias_rules": []}
         """.utf8))
         let olderCache = try PricingSupplement.decode(from: Data("""
-        {"pricing": {"gpt-long": {
-          "input_per_million": 6, "output_per_million": 31
-        }}, "alias_rules": []}
+        {"updated_at": "2026-07-14", "pricing": {
+          "gpt-long": {"input_per_million": 6, "output_per_million": 31},
+          "removed-from-bundle": {"input_per_million": 99, "output_per_million": 99}
+        }, "alias_rules": []}
         """.utf8))
 
-        let merged = try XCTUnwrap(bundled.merging(olderCache).pricing["gpt-long"])
-        XCTAssertEqual(merged.inputPerMillion, 6, "cached base price remains authoritative")
-        XCTAssertEqual(merged.outputPerMillion, 31)
-        XCTAssertEqual(merged.longContextThresholdTokens, 272_000)
-        XCTAssertEqual(merged.inputAbove200kPerMillion, 10)
-        XCTAssertEqual(merged.outputAbove200kPerMillion, 45)
+        let selected = bundled.preferringNewer(olderCache)
+        let current = try XCTUnwrap(selected.pricing["gpt-long"])
+        XCTAssertEqual(current.inputPerMillion, 5)
+        XCTAssertEqual(current.outputPerMillion, 30)
+        XCTAssertEqual(current.longContextThresholdTokens, 272_000)
+        XCTAssertEqual(current.inputAbove200kPerMillion, 10)
+        XCTAssertEqual(current.outputAbove200kPerMillion, 45)
+        XCTAssertNil(selected.pricing["removed-from-bundle"])
     }
 
-    func testCachedSupplementFillsEachMissingLongContextRateIndependently() throws {
+    func testNewerCachedSupplementCanRemoveBundledPrice() throws {
         let bundled = try PricingSupplement.decode(from: Data(#"""
         {
+          "updated_at": "2026-07-14T10:00:00Z",
           "pricing": {
-            "gpt-test": {
-              "input_per_million": 5,
-              "output_per_million": 30,
-              "cache_write_per_million": 6.25,
-              "cache_read_per_million": 0.5,
-              "long_context_threshold_tokens": 272000,
-              "input_long_context_per_million": 10,
-              "output_long_context_per_million": 45,
-              "cache_write_long_context_per_million": 12.5,
-              "cache_read_long_context_per_million": 1
-            }
+            "stale-override": {"input_per_million": 99, "output_per_million": 99},
+            "kept": {"input_per_million": 1, "output_per_million": 2}
           },
           "alias_rules": []
         }
         """#.utf8))
-        let partialOverlay = try PricingSupplement.decode(from: Data(#"""
+        let newerCache = try PricingSupplement.decode(from: Data(#"""
         {
+          "updated_at": "2026-07-14T11:00:00Z",
           "pricing": {
-            "gpt-test": {
-              "input_per_million": 6,
-              "output_per_million": 31,
-              "cache_write_per_million": 7.5,
-              "cache_read_per_million": 0.6,
-              "long_context_threshold_tokens": 300000,
-              "input_long_context_per_million": 11
-            }
+            "kept": {"input_per_million": 3, "output_per_million": 4}
           },
           "alias_rules": []
         }
         """#.utf8))
 
-        let merged = try XCTUnwrap(bundled.merging(partialOverlay).pricing["gpt-test"])
-        XCTAssertEqual(merged.inputPerMillion, 6)
-        XCTAssertEqual(merged.outputPerMillion, 31)
-        XCTAssertEqual(merged.longContextThresholdTokens, 300_000)
-        XCTAssertEqual(merged.inputAbove200kPerMillion, 11)
-        XCTAssertEqual(merged.outputAbove200kPerMillion, 45)
-        XCTAssertEqual(merged.cacheWriteAbove200kPerMillion, 12.5)
-        XCTAssertEqual(merged.cacheReadAbove200kPerMillion, 1)
+        let selected = bundled.preferringNewer(newerCache)
+        XCTAssertNil(selected.pricing["stale-override"])
+        XCTAssertEqual(selected.pricing["kept"]?.inputPerMillion, 3)
+        XCTAssertEqual(selected.pricing["kept"]?.outputPerMillion, 4)
     }
 
     func testAliasRuleRewritesSlug() throws {

@@ -118,7 +118,7 @@ actor ModelPricingStore {
         }
         if let cached = readCache(.supplement) {
             do {
-                return bundled.merging(try PricingSupplement.decode(from: cached))
+                return bundled.preferringNewer(try PricingSupplement.decode(from: cached))
             } catch {
                 AppLog.warn("pricing", "cached supplement unreadable, using bundled: \(error.localizedDescription)")
             }
