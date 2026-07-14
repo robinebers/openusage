@@ -189,6 +189,35 @@ enum CodexLogFixture {
         ])
     }
 
+    /// A `session_meta` line marking the file as a fork (`forked_from_id`, no subagent source).
+    static func forkSessionMeta(timestamp: String) -> String {
+        jsonLine([
+            "timestamp": timestamp,
+            "type": "session_meta",
+            "payload": ["id": "fork-abc", "forked_from_id": "parent-xyz"]
+        ])
+    }
+
+    /// A root session's `session_meta` line (no parent, nothing replayed).
+    static func rootSessionMeta(timestamp: String) -> String {
+        jsonLine([
+            "timestamp": timestamp,
+            "type": "session_meta",
+            "payload": ["id": "root-abc", "source": "vscode"]
+        ])
+    }
+
+    /// An `event_msg`/`task_started` line. `startedAt` is the turn's start as epoch seconds — a
+    /// replayed parent turn keeps its original (older) value; a live turn is at/after the child
+    /// session's creation.
+    static func taskStarted(timestamp: String, startedAt: Int) -> String {
+        jsonLine([
+            "timestamp": timestamp,
+            "type": "event_msg",
+            "payload": ["type": "task_started", "turn_id": "turn-1", "started_at": startedAt]
+        ])
+    }
+
     private static func jsonLine(_ object: [String: Any]) -> String {
         let data = try! JSONSerialization.data(withJSONObject: object)
         return String(decoding: data, as: UTF8.self)

@@ -156,23 +156,30 @@ final class CodexLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(CodexLogUsageScanner.parseFile(Data(lines.utf8)).first?.model, "gpt-5.4")
     }
 
-    // MARK: - Subagent replay
+    // MARK: - Child-session replay (subagents and forks)
+
+    /// Epoch seconds of the child sessions' creation instant used across the replay tests.
+    private var childCreationEpoch: Int {
+        Int(OpenUsageISO8601.date(from: "2026-05-12T08:03:00.000Z")!.timeIntervalSince1970)
+    }
 
     func testSubagentReplayLinesAreSkippedButSeedTheDeltaBaseline() {
-        // Ported from ccusage: a thread_spawn subagent file replays the parent's two token_counts
-        // at its creation second, then logs its own turns. Only the subagent's own turns count.
+        // A thread_spawn subagent file replays the parent's token_counts at spawn, then a live
+        // task_started opens its own turns. Only the subagent's own turns count.
         let lines = [
             CodexLogFixture.subagentSessionMeta(timestamp: "2026-05-12T08:03:00.000Z"),
+            CodexLogFixture.taskStarted(timestamp: "2026-05-12T08:03:00.100Z", startedAt: childCreationEpoch - 900),
             CodexLogFixture.tokenCount(
-                timestamp: "2026-05-12T08:03:00.000Z",
+                timestamp: "2026-05-12T08:03:00.100Z",
                 last: CodexLogFixture.usage(input: 1000, cached: 100, output: 200),
                 totals: CodexLogFixture.usage(input: 1000, cached: 100, output: 200)
             ),
             CodexLogFixture.tokenCount(
-                timestamp: "2026-05-12T08:03:00.000Z",
+                timestamp: "2026-05-12T08:03:00.200Z",
                 last: CodexLogFixture.usage(input: 500, cached: 50, output: 100),
                 totals: CodexLogFixture.usage(input: 1500, cached: 150, output: 300)
             ),
+            CodexLogFixture.taskStarted(timestamp: "2026-05-12T08:03:01.000Z", startedAt: childCreationEpoch + 1),
             CodexLogFixture.tokenCount(
                 timestamp: "2026-05-12T08:04:00.000Z",
                 last: CodexLogFixture.usage(input: 100, cached: 10, output: 20),
@@ -193,19 +200,91 @@ final class CodexLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(events[1].output, 10)
     }
 
-    func testSubagentReplayBaselineMakesTotalsDeltasCorrect() {
-        // Same replay, but the subagent's own lines carry only totals: the replayed totals must
-        // seed the baseline so the first real turn doesn't re-count the parent's cumulative sum.
+    func testMultiSecondReplayIsFullySkipped() {
+        // Regression for the ~20x spend inflation: a large parent history takes several seconds to
+        // replay, so replayed lines land in many distinct timestamp seconds. All of them must be
+        // skipped — only the turns after the live task_started count.
         let lines = [
             CodexLogFixture.subagentSessionMeta(timestamp: "2026-05-12T08:03:00.000Z"),
+            CodexLogFixture.taskStarted(timestamp: "2026-05-12T08:03:00.100Z", startedAt: childCreationEpoch - 900),
             CodexLogFixture.tokenCount(
-                timestamp: "2026-05-12T08:03:00.000Z",
+                timestamp: "2026-05-12T08:03:00.100Z",
+                last: CodexLogFixture.usage(input: 1000, output: 200),
+                totals: CodexLogFixture.usage(input: 1000, output: 200)
+            ),
+            CodexLogFixture.tokenCount(
+                timestamp: "2026-05-12T08:03:01.400Z",
+                last: CodexLogFixture.usage(input: 2000, output: 400),
+                totals: CodexLogFixture.usage(input: 3000, output: 600)
+            ),
+            CodexLogFixture.tokenCount(
+                timestamp: "2026-05-12T08:03:02.800Z",
+                last: CodexLogFixture.usage(input: 4000, output: 800),
+                totals: CodexLogFixture.usage(input: 7000, output: 1400)
+            ),
+            CodexLogFixture.taskStarted(timestamp: "2026-05-12T08:03:03.000Z", startedAt: childCreationEpoch + 3),
+            CodexLogFixture.tokenCount(
+                timestamp: "2026-05-12T08:03:30.000Z",
+                last: CodexLogFixture.usage(input: 100, output: 20)
+            )
+        ].joined(separator: "\n")
+
+        let events = CodexLogUsageScanner.parseFile(Data(lines.utf8))
+
+        XCTAssertEqual(events.count, 1)
+        XCTAssertEqual(events[0].input, 100)
+        XCTAssertEqual(events[0].output, 20)
+    }
+
+    func testForkSessionReplayIsSkippedToo() {
+        // A fork (forked_from_id, no subagent source) replays parent history the same way.
+        let lines = [
+            CodexLogFixture.forkSessionMeta(timestamp: "2026-05-12T08:03:00.000Z"),
+            CodexLogFixture.tokenCount(
+                timestamp: "2026-05-12T08:03:00.100Z",
+                last: CodexLogFixture.usage(input: 1000, output: 200)
+            ),
+            CodexLogFixture.taskStarted(timestamp: "2026-05-12T08:03:05.000Z", startedAt: childCreationEpoch + 5),
+            CodexLogFixture.tokenCount(
+                timestamp: "2026-05-12T08:03:30.000Z",
+                last: CodexLogFixture.usage(input: 50, output: 10)
+            )
+        ].joined(separator: "\n")
+
+        let events = CodexLogUsageScanner.parseFile(Data(lines.utf8))
+
+        XCTAssertEqual(events.map(\.input), [50])
+    }
+
+    func testChildWithoutLiveTurnEmitsNothing() {
+        // A child file that never reaches a live task_started is all replay — nothing counts.
+        let lines = [
+            CodexLogFixture.subagentSessionMeta(timestamp: "2026-05-12T08:03:00.000Z"),
+            CodexLogFixture.taskStarted(timestamp: "2026-05-12T08:03:00.100Z", startedAt: childCreationEpoch - 900),
+            CodexLogFixture.tokenCount(
+                timestamp: "2026-05-12T08:03:00.100Z",
+                last: CodexLogFixture.usage(input: 1000, output: 200)
+            )
+        ].joined(separator: "\n")
+
+        XCTAssertTrue(CodexLogUsageScanner.parseFile(Data(lines.utf8)).isEmpty)
+    }
+
+    func testSubagentReplayBaselineMakesTotalsDeltasCorrect() {
+        // The subagent's own lines carry only totals: the replayed totals must seed the baseline
+        // so the first real turn doesn't re-count the parent's cumulative sum.
+        let lines = [
+            CodexLogFixture.subagentSessionMeta(timestamp: "2026-05-12T08:03:00.000Z"),
+            CodexLogFixture.taskStarted(timestamp: "2026-05-12T08:03:00.100Z", startedAt: childCreationEpoch - 900),
+            CodexLogFixture.tokenCount(
+                timestamp: "2026-05-12T08:03:00.100Z",
                 totals: CodexLogFixture.usage(input: 1000, cached: 100, output: 200)
             ),
             CodexLogFixture.tokenCount(
-                timestamp: "2026-05-12T08:03:00.000Z",
+                timestamp: "2026-05-12T08:03:00.200Z",
                 totals: CodexLogFixture.usage(input: 1500, cached: 150, output: 300)
             ),
+            CodexLogFixture.taskStarted(timestamp: "2026-05-12T08:03:01.000Z", startedAt: childCreationEpoch + 1),
             CodexLogFixture.tokenCount(
                 timestamp: "2026-05-12T08:04:00.000Z",
                 totals: CodexLogFixture.usage(input: 1600, cached: 160, output: 320)
@@ -220,8 +299,27 @@ final class CodexLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(events[0].output, 20)
     }
 
-    func testParentFileWithoutThreadSpawnKeepsAllLines() {
-        // Two token_counts in the same second in a NON-subagent file must both count.
+    func testRootFileKeepsAllLines() {
+        // A root session (no parent in its session_meta) skips nothing, even when lines share a
+        // second and unrelated content mentions "thread_spawn".
+        let lines = [
+            CodexLogFixture.rootSessionMeta(timestamp: "2026-05-12T08:03:00.000Z"),
+            #"{"timestamp":"2026-05-12T08:03:00.000Z","type":"event_msg","payload":{"type":"agent_message","message":"about thread_spawn"}}"#,
+            CodexLogFixture.tokenCount(
+                timestamp: "2026-05-12T08:03:00.000Z",
+                last: CodexLogFixture.usage(input: 100, output: 20)
+            ),
+            CodexLogFixture.tokenCount(
+                timestamp: "2026-05-12T08:03:00.500Z",
+                last: CodexLogFixture.usage(input: 50, output: 10)
+            )
+        ].joined(separator: "\n")
+
+        XCTAssertEqual(CodexLogUsageScanner.parseFile(Data(lines.utf8)).count, 2)
+    }
+
+    func testFileWithoutSessionMetaKeepsAllLines() {
+        // Older fixtures / truncated files with no session_meta at all: treat as a root session.
         let lines = [
             CodexLogFixture.tokenCount(
                 timestamp: "2026-05-12T08:03:00.000Z",
@@ -236,22 +334,32 @@ final class CodexLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(CodexLogUsageScanner.parseFile(Data(lines.utf8)).count, 2)
     }
 
-    func testSubagentWithDistinctFirstSecondsSkipsNothing() {
-        // thread_spawn marker present but the first two usage lines land in different seconds ->
-        // no replay burst detected -> everything counts.
+    func testUnchangedTotalsSnapshotIsSkippedEvenWithLastUsage() {
+        // Codex re-emits stale token_count snapshots: same cumulative totals, repeated
+        // last_token_usage, new timestamp. Only the first counts.
         let lines = [
-            CodexLogFixture.subagentSessionMeta(timestamp: "2026-05-12T08:03:00.000Z"),
             CodexLogFixture.tokenCount(
-                timestamp: "2026-05-12T08:03:00.000Z",
-                last: CodexLogFixture.usage(input: 100, output: 20)
+                timestamp: "2026-05-12T08:01:00.000Z",
+                last: CodexLogFixture.usage(input: 1000, cached: 100, output: 200),
+                totals: CodexLogFixture.usage(input: 1000, cached: 100, output: 200)
             ),
             CodexLogFixture.tokenCount(
-                timestamp: "2026-05-12T08:04:00.000Z",
-                last: CodexLogFixture.usage(input: 50, output: 10)
+                timestamp: "2026-05-12T08:02:00.000Z",
+                last: CodexLogFixture.usage(input: 1000, cached: 100, output: 200),
+                totals: CodexLogFixture.usage(input: 1000, cached: 100, output: 200)
+            ),
+            CodexLogFixture.tokenCount(
+                timestamp: "2026-05-12T08:03:00.000Z",
+                last: CodexLogFixture.usage(input: 500, cached: 50, output: 100),
+                totals: CodexLogFixture.usage(input: 1500, cached: 150, output: 300)
             )
         ].joined(separator: "\n")
 
-        XCTAssertEqual(CodexLogUsageScanner.parseFile(Data(lines.utf8)).count, 2)
+        let events = CodexLogUsageScanner.parseFile(Data(lines.utf8))
+
+        XCTAssertEqual(events.count, 2)
+        XCTAssertEqual(events[0].input, 1000)
+        XCTAssertEqual(events[1].input, 500)
     }
 
     // MARK: - Aggregation

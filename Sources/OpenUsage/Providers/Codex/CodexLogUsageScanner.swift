@@ -11,8 +11,16 @@ import Foundation
 /// - A `turn_context` line updates the session's current model; an `event_msg`/`token_count` line
 ///   carries the turn's usage — `last_token_usage` when present, else the delta against the previous
 ///   cumulative `total_token_usage`.
-/// - Subagent sessions (spawned via `thread_spawn`) replay the parent's token counts in their first
-///   second of `token_count` lines; those replayed lines are skipped, seeding the delta baseline.
+/// - Child sessions (subagents spawned via `thread_spawn`, and forks) replay the parent's entire
+///   `token_count` history at spawn with rewritten timestamps. Those replayed lines are skipped —
+///   they only seed the delta baseline — until the file's first live turn: a `task_started` whose
+///   `started_at` is at or after the child session's own creation time (replayed `task_started`
+///   lines carry the parent's original, older `started_at`). This is deliberately not time-window
+///   based: a large parent history takes multiple seconds to replay, so any "same second" heuristic
+///   undercuts it (that was the cause of a ~20x spend inflation).
+/// - A `token_count` line whose cumulative `total_token_usage` is unchanged from the previous line
+///   is a re-emitted stale snapshot, not new usage, and is skipped even when it carries a
+///   `last_token_usage`.
 /// - Early sessions without model metadata fall back to `gpt-5`; the retired `codex-auto-review`
 ///   slug maps to the codex model that was current at the line's date.
 /// - Identical events (same timestamp + model + token counts) appearing in multiple files (copied
@@ -132,22 +140,28 @@ actor CodexLogUsageScanner {
     // MARK: - File parsing
 
     /// Parse one rollout file: track the current model from `turn_context`, normalize each
-    /// `token_count` into a delta event, and skip a subagent's replayed parent counts.
+    /// `token_count` into a delta event, and skip a child session's replayed parent history
+    /// (everything before the first live `task_started` — see the type doc).
     static func parseFile(_ data: Data) -> [Event] {
-        let subagent = data.prefix(16 * 1024).range(of: Data("thread_spawn".utf8)) != nil
-        let replaySecond = subagent ? detectSubagentReplaySecond(data) : nil
-
         let turnContextMarker = Data(#""type":"turn_context""#.utf8)
         let tokenCountMarker = Data(#""type":"token_count""#.utf8)
+        let sessionMetaMarker = Data(#""type":"session_meta""#.utf8)
+        let taskStartedMarker = Data(#""type":"task_started""#.utf8)
 
         var events: [Event] = []
         var previousTotals: RawUsage?
         var currentModel: String?
-        var skipReplay = replaySecond != nil
+        var sawSessionMeta = false
+        // Non-nil while inside a child session's replayed parent history: the child's creation
+        // epoch (floored to the second, matching `started_at`'s integer resolution).
+        var replayGateEpoch: TimeInterval?
 
         for line in data.split(separator: UInt8(ascii: "\n")) {
             let isTurnContext = line.range(of: turnContextMarker) != nil
-            guard isTurnContext || line.range(of: tokenCountMarker) != nil else { continue }
+            let isSessionMeta = !sawSessionMeta && line.range(of: sessionMetaMarker) != nil
+            let isTaskStarted = replayGateEpoch != nil && line.range(of: taskStartedMarker) != nil
+            guard isTurnContext || isSessionMeta || isTaskStarted || line.range(of: tokenCountMarker) != nil
+            else { continue }
             guard let object = (try? JSONSerialization.jsonObject(with: line)) as? [String: Any] else { continue }
 
             let type = object["type"] as? String
@@ -159,9 +173,30 @@ actor CodexLogUsageScanner {
                 }
                 continue
             }
-            guard type == "event_msg",
-                  let payload,
-                  payload["type"] as? String == "token_count",
+            // Only the file's own (first) session_meta counts: a child file replays the parent's
+            // session_meta lines right after its own.
+            if type == "session_meta", !sawSessionMeta {
+                sawSessionMeta = true
+                if let payload, isChildSessionMeta(payload),
+                   let timestampRaw = (object["timestamp"] as? String)?.trimmingCharacters(in: .whitespaces),
+                   let created = OpenUsageISO8601.date(from: timestampRaw) {
+                    replayGateEpoch = created.timeIntervalSince1970.rounded(.down)
+                }
+                continue
+            }
+            guard type == "event_msg", let payload else { continue }
+
+            // The first task_started at/after the child's creation is the child's first live turn;
+            // replayed task_started lines carry the parent's original, older started_at.
+            if payload["type"] as? String == "task_started" {
+                if let gate = replayGateEpoch,
+                   let startedAt = payload["started_at"] as? NSNumber,
+                   startedAt.doubleValue >= gate {
+                    replayGateEpoch = nil
+                }
+                continue
+            }
+            guard payload["type"] as? String == "token_count",
                   let timestampRaw = (object["timestamp"] as? String)?.trimmingCharacters(in: .whitespaces),
                   let timestamp = OpenUsageISO8601.date(from: timestampRaw)
             else { continue }
@@ -169,14 +204,16 @@ actor CodexLogUsageScanner {
             let info = payload["info"] as? [String: Any]
             let totals = (info?["total_token_usage"] as? [String: Any]).map(RawUsage.init(json:))
 
-            // A subagent's first token_count lines (all within one second) replay the parent's
-            // cumulative counts: seed the delta baseline from them but never emit usage.
-            if skipReplay, let replaySecond {
-                if timestampRaw.prefix(19) == replaySecond {
-                    if let totals { previousTotals = totals }
-                    continue
-                }
-                skipReplay = false
+            // Replayed parent history: seed the delta baseline from it but never emit usage.
+            if replayGateEpoch != nil {
+                if let totals { previousTotals = totals }
+                continue
+            }
+
+            // Unchanged cumulative totals mean a re-emitted stale snapshot (Codex does this), not
+            // new usage — even when the line repeats a last_token_usage.
+            if let totals, let previous = previousTotals, totals.equalCounts(previous) {
+                continue
             }
 
             let usage: RawUsage
@@ -243,6 +280,12 @@ actor CodexLogUsageScanner {
             self.total = total
         }
 
+        /// Same token counts as `other` — an unchanged cumulative snapshot re-emitted by Codex.
+        func equalCounts(_ other: RawUsage) -> Bool {
+            input == other.input && cached == other.cached && output == other.output
+                && reasoning == other.reasoning && total == other.total
+        }
+
         /// Recover a turn delta from cumulative totals (used when `last_token_usage` is absent).
         func subtracting(_ previous: RawUsage?) -> RawUsage {
             RawUsage(
@@ -264,31 +307,14 @@ actor CodexLogUsageScanner {
         return nil
     }
 
-    /// A subagent session replays the parent's counts as `token_count` lines sharing one timestamp
-    /// second. Detected exactly like ccusage: the first two usage-carrying `token_count` lines
-    /// landing in the same second marks that second as the replay burst.
-    static func detectSubagentReplaySecond(_ data: Data) -> String? {
-        let tokenCountMarker = Data(#""type":"token_count""#.utf8)
-        var firstSecond: String?
-        for line in data.split(separator: UInt8(ascii: "\n")) {
-            guard line.range(of: tokenCountMarker) != nil,
-                  let object = (try? JSONSerialization.jsonObject(with: line)) as? [String: Any],
-                  object["type"] as? String == "event_msg",
-                  let payload = object["payload"] as? [String: Any],
-                  payload["type"] as? String == "token_count",
-                  let info = payload["info"] as? [String: Any],
-                  info["last_token_usage"] != nil || info["total_token_usage"] != nil,
-                  let timestamp = (object["timestamp"] as? String)?.trimmingCharacters(in: .whitespaces),
-                  timestamp.count >= 19
-            else { continue }
-            let second = String(timestamp.prefix(19))
-            guard let first = firstSecond else {
-                firstSecond = second
-                continue
-            }
-            return first == second ? second : nil
-        }
-        return nil
+    /// A session_meta payload marking the file as a child session (subagent spawn or fork) whose
+    /// leading `token_count` lines replay the parent's history.
+    static func isChildSessionMeta(_ payload: [String: Any]) -> Bool {
+        if payload["forked_from_id"] != nil { return true }
+        if payload["parent_thread_id"] != nil { return true }
+        if payload["thread_source"] as? String == "subagent" { return true }
+        if let source = payload["source"] as? [String: Any], source["subagent"] != nil { return true }
+        return false
     }
 
     /// ccusage's model resolution: an explicit model on the line updates the session's current
