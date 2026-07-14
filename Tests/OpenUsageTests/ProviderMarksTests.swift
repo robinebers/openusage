@@ -15,6 +15,12 @@ final class ProviderMarksTests: XCTestCase {
         XCTAssertFalse(mark?.path.isEmpty ?? true, "Devin mark must carry SVG path data")
     }
 
+    func testFactoryResolvesToVectorMark() {
+        let mark = ProviderMarks.mark(for: "factory")
+        XCTAssertNotNil(mark)
+        XCTAssertFalse(mark?.path.isEmpty ?? true, "Factory mark must carry SVG path data")
+    }
+
     func testStandardProviderMarksLoad() {
         for id in ["claude", "codex", "cursor"] {
             let mark = ProviderMarks.mark(for: id)

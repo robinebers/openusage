@@ -23,6 +23,9 @@ enum DefaultLayout {
 
         "devin.daily", "devin.weekly", "devin.extra",
 
+        "factory.session", "factory.weekly", "factory.monthly",
+        "factory.extra", "factory.standard", "factory.premium", "factory.droidCore", "factory.managed",
+
         "grok.weekly", "grok.trend",
         "grok.payAsYouGo", "grok.today", "grok.yesterday", "grok.last30",
 
@@ -64,6 +67,7 @@ enum DefaultLayout {
         "codex.session", "codex.weekly",
         "cursor.auto", "cursor.api",
         "copilot.premium",
+        "factory.session", "factory.weekly",
         "openrouter.credits",
         "zai.session", "zai.weekly"
     ]
@@ -92,6 +96,7 @@ enum DefaultLayout {
         // (suppressed), so they read "No data" there.
         "copilot.orgCredits", "copilot.orgSpend", "copilot.chat", "copilot.completions",
         "devin.extra",
+        "factory.monthly", "factory.extra", "factory.standard", "factory.premium", "factory.droidCore", "factory.managed",
         "grok.payAsYouGo", "grok.today", "grok.yesterday", "grok.last30",
         // OpenCode: the three Go caps (Session/Weekly/Monthly) and Usage Trend stay above the fold —
         // matching every other provider — with the spend tiles (Today/Yesterday/Last 30 Days) below.

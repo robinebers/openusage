@@ -152,6 +152,26 @@ extension DevinUsageError: CategorizedError {
     }
 }
 
+extension FactoryAuthError: CategorizedError {
+    var errorCategory: ErrorCategory {
+        switch self {
+        case .notLoggedIn: .notLoggedIn
+        case .invalidCredentialData: .authInvalid
+        case .sessionExpired: .authExpired
+        }
+    }
+}
+
+extension FactoryUsageError: CategorizedError {
+    var errorCategory: ErrorCategory {
+        switch self {
+        case .connectionFailed: .network
+        case .invalidResponse, .usageUnavailable: .decoding
+        case .requestFailed(let status): ErrorCategory.http(status)
+        }
+    }
+}
+
 extension CopilotAuthError: CategorizedError {
     var errorCategory: ErrorCategory {
         switch self {

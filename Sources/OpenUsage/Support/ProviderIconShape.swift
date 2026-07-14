@@ -90,6 +90,7 @@ enum ProviderMarks {
         case "claude": return "sparkle"
         case "codex": return "circle.hexagongrid"
         case "cursor": return "cube"
+        case "factory": return "cpu"
         case "grok": return "bolt.fill"
         case "opencode": return "chevron.left.forwardslash.chevron.right"
         case "openrouter": return "point.3.connected.trianglepath.dotted"
