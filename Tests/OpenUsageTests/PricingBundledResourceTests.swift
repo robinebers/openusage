@@ -173,6 +173,15 @@ final class PricingBundledResourceTests: XCTestCase {
         XCTAssertEqual(gpt55.inputAbove200kPerMillion, 10)
         XCTAssertEqual(gpt55.cacheReadAbove200kPerMillion, 1)
         XCTAssertEqual(gpt55.outputAbove200kPerMillion, 45)
+
+        let gpt55Pro = try XCTUnwrap(pricing.resolve(model: "gpt-5.5-pro-2026-04-23"))
+        XCTAssertEqual(gpt55Pro.inputPerMillion, 30)
+        XCTAssertEqual(gpt55Pro.cacheReadPerMillion, 30)
+        XCTAssertEqual(gpt55Pro.outputPerMillion, 180)
+        XCTAssertEqual(gpt55Pro.longContextThresholdTokens, 272_000)
+        XCTAssertEqual(gpt55Pro.inputAbove200kPerMillion, 60)
+        XCTAssertEqual(gpt55Pro.cacheReadAbove200kPerMillion, 60)
+        XCTAssertEqual(gpt55Pro.outputAbove200kPerMillion, 270)
     }
 
     /// Opus 4.7/4.8 fast modes: Cursor's published rates (supplement overrides) win over the

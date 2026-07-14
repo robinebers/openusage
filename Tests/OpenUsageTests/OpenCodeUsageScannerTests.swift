@@ -131,6 +131,19 @@ final class OpenCodeUsageScannerTests: XCTestCase {
         }
     }
 
+    func testMalformedAggregateCountsAsDatabaseFailure() async {
+        let scanner = OpenCodeUsageScanner(
+            sqlite: FakeSQLite(data: ["/oc/opencode.db": "[[9.0e+999]]"]),
+            databasePaths: { ["/oc/opencode.db"] }
+        )
+        do {
+            _ = try await scanner.scan(now: now)
+            XCTFail("expected databaseUnreadable")
+        } catch {
+            XCTAssertEqual(error as? OpenCodeUsageError, .databaseUnreadable)
+        }
+    }
+
     func testUnreadableDataDirectoryThrowsInsteadOfNil() async {
         // The data dir exists but can't be enumerated → broken access, not "never used OpenCode".
         let scanner = OpenCodeUsageScanner(
@@ -158,6 +171,15 @@ final class OpenCodeUsageScannerTests: XCTestCase {
             databasePaths: { ["/oc/opencode.db"] }
         )
         XCTAssertFalse(empty.hasUsage())
+    }
+
+    func testHasUsageTreatsAllFailingDatabaseProbesAsFootprint() {
+        let scanner = OpenCodeUsageScanner(
+            sqlite: FakeSQLite(failing: ["/oc/opencode.db", "/oc/opencode-next.db"]),
+            databasePaths: { ["/oc/opencode.db", "/oc/opencode-next.db"] }
+        )
+
+        XCTAssertTrue(scanner.hasUsage())
     }
 
     func testAbsurdTokenCountIsClampedNotCrashing() async throws {
@@ -231,6 +253,23 @@ final class OpenCodeUsageScannerTests: XCTestCase {
         XCTAssertEqual(scan.logScan.series.daily.first?.totalTokens, 331_202)
         XCTAssertEqual(scan.logScan.series.daily.first?.costUSD ?? -1, 3.342365, accuracy: 0.0000001)
         XCTAssertEqual(scan.logScan.modelUsage?.daily.first?.models.first?.model, "openai/gpt-5.6-sol")
+        XCTAssertTrue(scan.logScan.unknownModelsByDay.isEmpty)
+    }
+
+    func testGPT55ProOAuthDoesNotDiscountCacheRead() async throws {
+        let db = "[" + row(
+            "2026-07-12T10:00:00.000Z", "0", 100_000, "gpt-5.5-pro-2026-04-23", "openai",
+            input: 0, cacheRead: 100_000
+        ) + "]"
+        let scanner = OpenCodeUsageScanner(
+            sqlite: FakeSQLite(data: ["/oc/opencode.db": db]),
+            databasePaths: { ["/oc/opencode.db"] }
+        )
+        let result = try await scanner.scan(now: now, pricing: TestPricing.bundled)
+        let scan = try XCTUnwrap(result)
+
+        XCTAssertEqual(scan.logScan.series.daily.first?.totalTokens, 100_000)
+        XCTAssertEqual(scan.logScan.series.daily.first?.costUSD ?? -1, 3, accuracy: 0.0001)
         XCTAssertTrue(scan.logScan.unknownModelsByDay.isEmpty)
     }
 
@@ -326,6 +365,27 @@ final class OpenCodeUsageScannerTests: XCTestCase {
         let db = "[" + row(
             "2026-07-12T10:00:00.000Z", "-1", 100, "gpt-test", "openai",
             input: 100
+        ) + "]"
+        let scanner = OpenCodeUsageScanner(
+            sqlite: FakeSQLite(data: ["/oc/opencode.db": db]),
+            databasePaths: { ["/oc/opencode.db"] }
+        )
+        let modelPricing = pricing(["openai/gpt-test": rates(input: 99, output: 99, cacheRead: 99)])
+        let result = try await scanner.scan(now: now, pricing: modelPricing)
+        let scan = try XCTUnwrap(result)
+
+        XCTAssertTrue(scan.logScan.series.daily.isEmpty)
+        XCTAssertEqual(scan.logScan.unknownModelsByDay["2026-07-12"], ["openai/gpt-test"])
+        XCTAssertEqual(
+            scan.warning,
+            "Some completed OpenCode messages have invalid cost data. Affected usage is excluded from totals."
+        )
+    }
+
+    func testNonnumericExternalRecordedCostIsExcludedInsteadOfEstimated() async throws {
+        let db = "[" + row(
+            "2026-07-12T10:00:00.000Z", "\"oops\"", 100, "gpt-test", "openai",
+            input: 100, id: "bad-cost"
         ) + "]"
         let scanner = OpenCodeUsageScanner(
             sqlite: FakeSQLite(data: ["/oc/opencode.db": db]),

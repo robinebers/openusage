@@ -25,6 +25,14 @@ struct OpenCodeUsageDatabaseSnapshot: Sendable {
     var goAnchorMs: Double?
 }
 
+private enum OpenCodeUsageDatabaseReaderError: LocalizedError {
+    case invalidAggregatePayload
+
+    var errorDescription: String? {
+        "OpenCode database returned malformed aggregate usage data."
+    }
+}
+
 /// Owns OpenCode's SQLite boundary: database discovery, querying, row decoding, completion filtering,
 /// and cross-channel deduplication. Higher layers receive normalized rows and do not depend on the
 /// database schema or JSON layout.
@@ -83,7 +91,7 @@ struct OpenCodeUsageDatabaseReader: Sendable {
             checked.insert(path)
             do {
                 if let json = try sqlite.queryValue(path: path, sql: Self.dataSQL(cutoffMs: cutoffMs)) {
-                    rows.append(contentsOf: Self.parseRows(json))
+                    rows.append(contentsOf: try Self.parseRows(json))
                 }
             } catch {
                 failures[path] = error.localizedDescription
@@ -121,24 +129,29 @@ struct OpenCodeUsageDatabaseReader: Sendable {
             AppLog.warn(LogTag.plugin("opencode"), "usage probe: data directory unreadable: \(error.localizedDescription)")
             return true
         }
+        var failedProbeCount = 0
         for path in paths {
             do {
                 if let value = try sqlite.queryValue(path: path, sql: Self.probeSQL), !value.isEmpty {
                     return true
                 }
             } catch {
+                failedProbeCount += 1
                 AppLog.warn(LogTag.plugin("opencode"), "usage probe failed for \(path): \(error.localizedDescription)")
             }
         }
-        return false
+        return !paths.isEmpty && failedProbeCount == paths.count
     }
 
     /// Parse the `json_group_array(json_array(...))` payload. Rows missing a timestamp or provider ID
     /// are rejected at this external-data boundary.
-    private static func parseRows(_ json: String) -> [OpenCodeUsageRow] {
-        guard let data = json.data(using: .utf8),
-              let parsed = (try? JSONSerialization.jsonObject(with: data)) as? [Any]
-        else { return [] }
+    private static func parseRows(_ json: String) throws -> [OpenCodeUsageRow] {
+        guard let data = json.data(using: .utf8) else {
+            throw OpenCodeUsageDatabaseReaderError.invalidAggregatePayload
+        }
+        guard let parsed = try JSONSerialization.jsonObject(with: data) as? [Any] else {
+            throw OpenCodeUsageDatabaseReaderError.invalidAggregatePayload
+        }
 
         var rows: [OpenCodeUsageRow] = []
         rows.reserveCapacity(parsed.count)
@@ -158,8 +171,14 @@ struct OpenCodeUsageDatabaseReader: Sendable {
             let storedTotal = ProviderParse.number(entry[2]).map(clampedTokens) ?? 0
             let tokens = bucketTotal > 0 ? bucketTotal : storedTotal
             let rawRecordedCost = ProviderParse.number(entry[1])
-            let hasInvalidRecordedCost = rawRecordedCost.map { !$0.isFinite || $0 < 0 } ?? false
-            let recordedCost = rawRecordedCost.flatMap { $0.isFinite && $0 >= 0 ? $0 : nil }
+            let hasInvalidRecordedCost = if entry[1] is NSNull {
+                false
+            } else if let rawRecordedCost {
+                rawRecordedCost < 0
+            } else {
+                true
+            }
+            let recordedCost = rawRecordedCost.flatMap { $0 >= 0 ? $0 : nil }
             let model = ((entry[3] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             let messageID = (entry.count > 10 ? entry[10] as? String : nil)?
                 .trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty

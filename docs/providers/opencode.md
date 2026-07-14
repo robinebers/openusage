@@ -65,7 +65,7 @@ used Go). Zen usage is pay-as-you-go credits with no cap, so it appears only in 
   `~/.local/share/opencode`.
 - **"Couldn't read OpenCode's auth.json"** — the file exists but is unreadable or not valid JSON. Check
   its permissions, or log into a provider in OpenCode again to rewrite it.
-- **An invalid-cost warning appears** — one or more completed records have malformed cost data. Affected
+- **An invalid-cost warning appears** — one or more completed records have negative or nonnumeric cost data. Affected
   usage is excluded rather than appearing artificially low. Go meters are hidden only when the malformed
   record falls inside a currently active Go cap window.
 - **A dollar value has an estimate marker** — it is an API-rate value derived by OpenCode or OpenUsage,
