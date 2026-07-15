@@ -250,9 +250,16 @@ final class ClaudeProvider: ProviderRuntime {
         }
 
         // Local spend tiles, scanned natively from Claude Code's session logs and priced through the
-        // shared pricing store. `scan` runs on the scanner actor, off the main actor.
+        // shared pricing store, merged with Claude usage that happened inside pi (attributed back here).
+        // Both scans run on their scanner actors, off the main actor.
+        let pricing = await pricing()
+        let nativeScan = await logUsageScanner.scan(now: now(), pricing: pricing)
+        let piScan = await PiUsageScanner.shared.scan(cardID: provider.id, now: now(), pricing: pricing)
         var usageHistory: ProviderUsageHistory?
-        if let scan = await logUsageScanner.scan(now: now(), pricing: pricing()) {
+        if let scan = DailyUsageAccumulator.merged([nativeScan, piScan]) {
+            let note = piScan == nil
+                ? "From your Claude usage history (estimated)"
+                : "From your Claude usage history and pi (estimated)"
             usageHistory = ProviderUsageHistory(
                 series: scan.series,
                 modelUsage: scan.modelUsage,
@@ -262,12 +269,9 @@ final class ClaudeProvider: ProviderRuntime {
                 scan.series, to: &mapped.lines, now: now(),
                 unknownModelsByDay: scan.unknownModelsByDay,
                 modelUsage: scan.modelUsage,
-                modelSourceNote: "From your Claude usage history (estimated)"
+                modelSourceNote: note
             )
-            SpendTileMapper.appendUsageTrend(
-                scan.series, to: &mapped.lines, now: now(),
-                note: "From your Claude usage history (estimated)"
-            )
+            SpendTileMapper.appendUsageTrend(scan.series, to: &mapped.lines, now: now(), note: note)
         }
 
         MetricLine.appendNoDataIfNeeded(&mapped.lines)
