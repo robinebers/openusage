@@ -31,6 +31,33 @@ struct DailyUsageAccumulator {
         modelsByDay[day, default: [:]][model, default: ModelAccumulator()].add(tokens: tokens, costUSD: cost)
     }
 
+    /// Merge already-built scans (a provider's native log scan plus its pi slice) into one, by replaying
+    /// each scan's per-model daily usage through a fresh accumulator so the combined `series`,
+    /// `modelUsage`, and unknown-model set stay consistent. Every input must be accumulator-built (its
+    /// `series` derived from the same per-model maps), which the native and pi scanners guarantee. Nil
+    /// inputs are skipped; returns nil when they are all nil (the provider then folds in nothing).
+    static func merged(_ scans: [LogUsageScan?]) -> LogUsageScan? {
+        let present = scans.compactMap { $0 }
+        guard !present.isEmpty else { return nil }
+        var accumulator = DailyUsageAccumulator()
+        for scan in present {
+            for day in scan.modelUsage?.daily ?? [] {
+                for model in day.models {
+                    // Skip cost-unknown entries rather than treating nil as $0 — their unknown-model
+                    // metadata is already carried through via unknownModelsByDay below.
+                    guard let cost = model.costUSD else { continue }
+                    accumulator.add(day: day.date, tokens: model.totalTokens, cost: cost, model: model.model)
+                }
+            }
+            for (day, models) in scan.unknownModelsByDay {
+                for model in models {
+                    accumulator.addUnknownModel(day: day, model: model)
+                }
+            }
+        }
+        return accumulator.build()
+    }
+
     /// Note a model that couldn't be priced but still carried tokens — surfaced as the tile's warning
     /// triangle, the only place unpriceable usage appears (it's excluded from every displayed total).
     mutating func addUnknownModel(day: String, model: String) {

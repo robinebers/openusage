@@ -1,6 +1,6 @@
 {
   "$comment": "OpenUsage pricing supplement. Prices Cursor-native models that no public catalog carries, supplies fast-variant multipliers the catalogs omit, and maps provider log/CSV model slugs to canonical pricing keys (LiteLLM keys, models.dev ids, or entries in this file). Published to gh-pages by .github/workflows/pricing-supplement.yml on every change, so installed apps pick edits up within about an hour - no release needed. Rates are USD per million tokens. Sources: https://cursor.com/docs/models-and-pricing.md for Cursor-native entries.",
-  "updated_at": "2026-07-13",
+  "updated_at": "2026-07-14",
   "pricing": {
     "auto": {
       "input_per_million": 1.25,
@@ -135,9 +135,9 @@
     { "pattern": "^composer-2\\.5$", "canonical": "composer-2.5" },
     { "pattern": "^composer-2\\.5-fast$", "canonical": "composer-2.5-fast" },
     { "pattern": "^github_bugbot$", "canonical": "github_bugbot" },
-    { "pattern": "^(?:cursor-)?grok-4\\.5-fast(?:-(?:low|medium|high))?$", "canonical": "grok-4.5-fast" },
-    { "pattern": "^(?:cursor-)?grok-4\\.5(?:-(?:low|medium|high))?-fast$", "canonical": "grok-4.5-fast" },
-    { "pattern": "^(?:cursor-)?grok-4\\.5(?:-(?:low|medium|high))?$", "canonical": "grok-4.5" },
+    { "pattern": "^(?:cursor-)?grok-4\\.5-fast(?:-(?:low|medium|high|xhigh))?$", "canonical": "grok-4.5-fast" },
+    { "pattern": "^(?:cursor-)?grok-4\\.5(?:-(?:low|medium|high|xhigh))?-fast$", "canonical": "grok-4.5-fast" },
+    { "pattern": "^(?:cursor-)?grok-4\\.5(?:-(?:low|medium|high|xhigh))?$", "canonical": "grok-4.5" },
     { "pattern": "^kimi-k2\\.7(?:-code)?$", "canonical": "kimi-k2.7-code" },
     { "pattern": "^kimi-k2p7(?:-code)?$", "canonical": "kimi-k2.7-code" },
     { "pattern": "^claude-4\\.5-haiku(?:-thinking)?$", "canonical": "claude-haiku-4-5" },

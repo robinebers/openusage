@@ -1,5 +1,42 @@
 # Changelog
 
+## v0.7.6-beta.3
+
+### Bug Fixes
+- Fix ~20x Codex spend inflation from subagent replay logs ([#1001](https://github.com/robinebers/openusage/pull/1001)) by @robinebers
+- Make iCloud sync in-flight tests deterministic ([#1000](https://github.com/robinebers/openusage/pull/1000)) by @robinebers
+- Accept xhigh effort suffix on Grok 4.5 alias rules ([#999](https://github.com/robinebers/openusage/pull/999)) by @robinebers
+
+---
+
+### Changelog
+**Full Changelog**: [v0.7.6-beta.2...v0.7.6-beta.3](https://github.com/robinebers/openusage/compare/v0.7.6-beta.2...v0.7.6-beta.3)
+
+- [55dd61f](https://github.com/robinebers/openusage/commit/55dd61f3615ac8fc488e1ac2ba9323652f4b07e3) Fix ~20x Codex spend inflation from subagent replay logs (#1001) by @robinebers
+- [acc032f](https://github.com/robinebers/openusage/commit/acc032f1f77dcef0918092954cbc8975a012b5a9) fix: make iCloud sync in-flight tests deterministic (#1000) by @robinebers
+- [27fb007](https://github.com/robinebers/openusage/commit/27fb0076cefa49b16b9a3982c58977f1b467cf7d) Merge pull request #999 from robinebers/fix/grok-45-xhigh-alias by @robinebers
+- [bd49afa](https://github.com/robinebers/openusage/commit/bd49afa8fc023782ee60ad5c5222a129cce932de) fix(pricing): accept xhigh effort suffix on grok-4.5 alias rules by @robinebers
+
+## v0.7.6-beta.2
+
+### Bug Fixes
+- Fix Claude and Codex token cost calculations, including Codex fast-tier pricing from session logs ([#995](https://github.com/robinebers/openusage/pull/995)) by @validatedev
+
+### Chores
+- Keep inactive issues open for 30 days before warning ([#998](https://github.com/robinebers/openusage/pull/998)) by @robinebers
+
+---
+
+### Changelog
+**Full Changelog**: [v0.7.6-beta.1...v0.7.6-beta.2](https://github.com/robinebers/openusage/compare/v0.7.6-beta.1...v0.7.6-beta.2)
+
+- [be6e3d7](https://github.com/robinebers/openusage/commit/be6e3d733b4e57fa9ff31f6cf453d2ca2b25fedb) Merge pull request #998 from robinebers/cursor/cea9ec49 by @robinebers
+- [e145e7a](https://github.com/robinebers/openusage/commit/e145e7a40f7448bb2722dc7cec225d33e7f871b0) chore(stale): keep inactive issues open for 30 days before warning by @robinebers
+- [a0569bd](https://github.com/robinebers/openusage/commit/a0569bd13222b44e0907bac31897a0348b4ed0a4) Merge pull request #995 from robinebers/fix/token-cost-calculation-disperancies by @validatedev
+- [cfdfdd0](https://github.com/robinebers/openusage/commit/cfdfdd08723bea3e7e4f5ac225b972f331b87771) fix: price Codex fast tier per session from rollout logs, not config.toml by @robinebers
+- [0d0136d](https://github.com/robinebers/openusage/commit/0d0136d089936f381e5675bb468f1506d44838ce) fix: handle persisted Claude print usage and Codex fast aliases by @validatedev
+- [bfb325c](https://github.com/robinebers/openusage/commit/bfb325c802ae018a3f61e35af3e70a3ab3e23fcc) fix: correct token cost calculations by @validatedev
+
 ## v0.7.6-beta.1
 
 ### New Features

@@ -75,7 +75,8 @@ extension PricingSupplement {
                 inputPerMillion: entry.inputPerMillion,
                 outputPerMillion: entry.outputPerMillion,
                 cacheWritePerMillion: entry.cacheWritePerMillion ?? entry.inputPerMillion,
-                cacheReadPerMillion: entry.cacheReadPerMillion ?? entry.inputPerMillion * 0.1
+                cacheReadPerMillion: entry.cacheReadPerMillion ?? entry.inputPerMillion * 0.1,
+                cacheReadIsExplicit: entry.cacheReadPerMillion != nil
             )
         }
         var rules: [AliasRule] = []

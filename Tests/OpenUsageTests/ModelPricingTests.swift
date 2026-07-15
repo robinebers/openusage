@@ -159,6 +159,43 @@ final class ModelPricingTests: XCTestCase {
         XCTAssertEqual(pricing.resolve(model: "gpt-5.5-fast")?.inputPerMillion, 12.5)
     }
 
+    func testCatalogCodecsPreserveSynthesizedCacheReadProvenance() throws {
+        let source = Data(#"""
+        {
+            "explicit": {
+                "input_cost_per_token": 0.000005,
+                "output_cost_per_token": 0.00003,
+                "cache_read_input_token_cost": 0.0000005
+            },
+            "missing": {
+                "input_cost_per_token": 0.000005,
+                "output_cost_per_token": 0.00003
+            }
+        }
+        """#.utf8)
+
+        let decoded = try PricingCatalogCodecs.catalogFromLiteLLM(source)
+        XCTAssertTrue(try XCTUnwrap(decoded.entries["explicit"]).cacheReadIsExplicit)
+        XCTAssertFalse(try XCTUnwrap(decoded.entries["missing"]).cacheReadIsExplicit)
+
+        let restored = try PricingCatalogCodecs.catalogFromCompact(
+            PricingCatalogCodecs.compactData(from: decoded)
+        )
+        XCTAssertTrue(try XCTUnwrap(restored.entries["explicit"]).cacheReadIsExplicit)
+        XCTAssertFalse(try XCTUnwrap(restored.entries["missing"]).cacheReadIsExplicit)
+    }
+
+    func testLegacyCompactCatalogTreatsUnmarkedCacheReadAsExplicit() throws {
+        // Snapshots created before `cre` existed cannot distinguish source and synthesized rates.
+        // Treating omission as explicit preserves their historical behavior; refreshed snapshots
+        // carry `cre: false` whenever a source omits the rate.
+        let legacy = Data(#"{"models":{"gpt-test":{"i":5,"o":30,"cw":5,"cr":0.5}}}"#.utf8)
+
+        let decoded = try PricingCatalogCodecs.catalogFromCompact(legacy)
+
+        XCTAssertTrue(try XCTUnwrap(decoded.entries["gpt-test"]).cacheReadIsExplicit)
+    }
+
     // MARK: - Cost math
 
     func testCostUsesAllTokenBuckets() throws {
@@ -212,6 +249,25 @@ final class ModelPricingTests: XCTestCase {
         let tokens = TokenBreakdown(input: 200_000, output: 10_000)
 
         XCTAssertEqual(pricing.estimatedCostDollars(model: "claude-sonnet-4-5", tokens: tokens)!, 0.75, accuracy: 0.0001)
+    }
+
+    func testCustomLongContextThresholdUsesWholeRequestRates() {
+        var entry = ModelRates(
+            inputPerMillion: 5,
+            outputPerMillion: 30,
+            cacheWritePerMillion: 5,
+            cacheReadPerMillion: 0.5
+        )
+        entry.inputAbove200kPerMillion = 10
+        entry.outputAbove200kPerMillion = 45
+        entry.cacheReadAbove200kPerMillion = 1
+        entry.longContextThresholdTokens = 272_000
+
+        let atThreshold = TokenBreakdown(input: 200_000, cacheRead: 72_000, output: 1_000)
+        let overThreshold = TokenBreakdown(input: 200_001, cacheRead: 72_000, output: 1_000)
+
+        XCTAssertEqual(entry.costDollars(for: atThreshold), 1.066, accuracy: 0.000_001)
+        XCTAssertEqual(entry.costDollars(for: overThreshold), 2.117_01, accuracy: 0.000_001)
     }
 
     func testCostWithoutTierRatesUsesBaseRateThroughout() throws {
