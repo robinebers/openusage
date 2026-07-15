@@ -195,6 +195,8 @@ final class PricingBundledResourceTests: XCTestCase {
         // Cursor CSV uses fast-before-effort (`grok-4.5-fast-high`); also accept effort-before-fast.
         XCTAssertEqual(pricing.resolve(model: "grok-4.5-fast-high"), fast)
         XCTAssertEqual(pricing.resolve(model: "grok-4.5-fast-medium"), fast)
+        XCTAssertEqual(pricing.resolve(model: "grok-4.5-fast-xhigh"), fast)
+        XCTAssertEqual(pricing.resolve(model: "grok-4.5-xhigh"), standard)
         XCTAssertEqual(pricing.resolve(model: "grok-4.5-medium-fast"), fast)
         // Cursor usage export sometimes prefixes first-party Grok with `cursor-`.
         XCTAssertEqual(pricing.resolve(model: "cursor-grok-4.5-high-fast"), fast)
