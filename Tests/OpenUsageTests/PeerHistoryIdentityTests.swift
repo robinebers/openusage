@@ -133,6 +133,49 @@ final class PeerHistoryIdentityTests: XCTestCase {
         XCTAssertEqual(total.slices[0].amountUSD, 42, accuracy: 0.001)
     }
 
+    func testTotalSpendGroupsFamiliesAndKeepsFamilyColors() {
+        let claude = ClaudeProvider.makeProvider(displayName: "Claude 1")
+        let instance = ClaudeProvider.makeProvider(id: "claude@f15456b0", displayName: "Claude 2")
+        let remote = Provider(id: "claude@peer-ab12cd34", displayName: "Claude · Mac mini", icon: claude.icon)
+        let codex = CodexProvider.makeProvider()
+
+        func spendSnapshot(_ provider: Provider, dollars: Double) -> ProviderSnapshot {
+            ProviderSnapshot(
+                providerID: provider.id,
+                displayName: provider.displayName,
+                lines: [.values(
+                    label: "Today",
+                    values: [MetricValue(number: dollars, kind: .dollars, estimated: true)]
+                )],
+                refreshedAt: Date()
+            )
+        }
+
+        // Codex out-earns two of the three Claude slices — it must still not interleave the family.
+        let total = TotalSpendAggregator.total(
+            for: .today,
+            providers: [claude, instance, remote, codex],
+            snapshots: [
+                claude.id: spendSnapshot(claude, dollars: 900),
+                instance.id: spendSnapshot(instance, dollars: 150),
+                remote.id: spendSnapshot(remote, dollars: 40),
+                codex.id: spendSnapshot(codex, dollars: 300)
+            ]
+        )
+        let names = total.projection(for: .cost).slices.map(\.provider.displayName)
+        XCTAssertEqual(names, ["Claude 1", "Claude 2", "Claude · Mac mini", "Codex"])
+
+        // Instances tint within the family hue — stable per id, never the fallback rainbow, and
+        // distinct from the base card's brand color.
+        let base = TotalSpendPalette.color(for: "claude")
+        let tintA = TotalSpendPalette.color(for: "claude@f15456b0")
+        let tintB = TotalSpendPalette.color(for: "claude@peer-ab12cd34")
+        XCTAssertNotEqual(base, tintA)
+        XCTAssertEqual(tintA, TotalSpendPalette.color(for: "claude@f15456b0"), "stable across calls")
+        XCTAssertNotEqual(tintA, TotalSpendPalette.color(for: "codex@x"), "family hues don't cross")
+        _ = tintB
+    }
+
     // MARK: - Fixtures
 
     private func makeRegistry() -> WidgetRegistry {

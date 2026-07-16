@@ -127,8 +127,27 @@ struct TotalSpend: Equatable {
             }
         }
 
+        // Families stay together: a provider's accounts ("Claude 1", "Claude 2", "Claude · Mac mini")
+        // rank as one block by the family's biggest slice, then read in display order inside the block
+        // (base card first, remote-only entries last) — amount-ranking alone would interleave Codex
+        // between two Claude accounts, and the order would differ per machine.
+        var familyMax: [String: Double] = [:]
+        for entry in included {
+            let family = ProviderInstanceID.base(of: entry.slice.provider.id)
+            familyMax[family] = max(familyMax[family] ?? 0, entry.display)
+        }
         let ranked = included.sorted { lhs, rhs in
-            if lhs.display != rhs.display { return lhs.display > rhs.display }
+            let lhsFamily = ProviderInstanceID.base(of: lhs.slice.provider.id)
+            let rhsFamily = ProviderInstanceID.base(of: rhs.slice.provider.id)
+            if lhsFamily != rhsFamily {
+                let lhsMax = familyMax[lhsFamily] ?? 0
+                let rhsMax = familyMax[rhsFamily] ?? 0
+                if lhsMax != rhsMax { return lhsMax > rhsMax }
+                return lhsFamily < rhsFamily
+            }
+            let lhsRemote = lhs.slice.provider.id.contains("@peer-")
+            let rhsRemote = rhs.slice.provider.id.contains("@peer-")
+            if lhsRemote != rhsRemote { return !lhsRemote }
             return lhs.slice.provider.displayName.localizedStandardCompare(rhs.slice.provider.displayName) == .orderedAscending
         }
 

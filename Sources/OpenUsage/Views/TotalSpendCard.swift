@@ -384,21 +384,25 @@ struct TotalSpendRingContent: View {
 /// values; brands whose color is plain black (Cursor, Grok) get adaptive near-black/near-white
 /// dynamic colors so they read on both appearances without both landing on the same gray.
 enum TotalSpendPalette {
-    private static let byProviderID: [String: Color] = [
-        "claude": hex(0xDE7356),                             // Claude terracotta
-        "codex": hex(0x10A37F),                              // OpenAI green (#10A37F)
+    /// Blendable brand hues (used verbatim for the base card, tinted for that family's instances).
+    private static let brandHexByProviderID: [String: UInt32] = [
+        "claude": 0xDE7356,      // Claude terracotta
+        "codex": 0x10A37F,       // OpenAI green (#10A37F)
+        "openrouter": 0x6467F2,  // OpenRouter indigo
+        "antigravity": 0x4285F4, // Google blue
+        "copilot": 0xA855F7,     // Copilot purple
+        "amp": 0xF34E3F,
+        "kimi": 0x0A66FF,
+        "minimax": 0xF5433C
+    ]
+
+    private static let byProviderID: [String: Color] = brandHexByProviderID.mapValues(hex).merging([
         "cursor": dynamic(light: 0x13120A, dark: 0xF5F5F7),  // brand black (#13120A), flipped near-white in dark mode
         "grok": dynamic(light: 0x8E8E93, dark: 0x98989D),    // brand black, offset to gray next to Cursor
         "opencode": dynamic(light: 0x6E6E73, dark: 0xAEAEB2),  // OpenCode — grayscale brand, medium gray
-        "openrouter": hex(0x6467F2),                         // OpenRouter indigo
-        "antigravity": hex(0x4285F4),                        // Google blue
-        "copilot": hex(0xA855F7),                            // Copilot purple
-        "amp": hex(0xF34E3F),
         "factory": dynamic(light: 0x48484A, dark: 0xC7C7CC),
-        "kimi": hex(0x0A66FF),
-        "minimax": hex(0xF5433C),
         "zai": dynamic(light: 0x2D2D2D, dark: 0xD1D1D6)
-    ]
+    ]) { first, _ in first }
 
     /// Deterministic backstop hues for a provider that ships without a palette entry — keyed off the
     /// provider ID (not rank), so the color holds steady across periods and launches.
@@ -408,8 +412,32 @@ enum TotalSpendPalette {
 
     static func color(for providerID: String) -> Color {
         if let brand = byProviderID[providerID] { return brand }
-        let stableHash = providerID.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xFFFF }
-        return fallback[stableHash % fallback.count]
+        // A provider instance ("claude@ab12cd34", incl. remote "claude@peer-…") stays in its family's
+        // hue: the base brand color tinted toward white by an id-keyed step, so every extra account is
+        // recognizably Claude-colored yet distinct from the base card — and, because the id is
+        // identity-derived, the SAME account tints the same on every Mac.
+        let base = ProviderInstanceID.base(of: providerID)
+        if base != providerID, let brandHex = brandHexByProviderID[base] {
+            let steps: [Double] = [0.34, 0.52, 0.68]
+            return hex(brandHex, mixedTowardWhite: steps[stableHash(providerID) % steps.count])
+        }
+        return fallback[stableHash(providerID) % fallback.count]
+    }
+
+    private static func stableHash(_ value: String) -> Int {
+        value.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xFFFF }
+    }
+
+    private static func hex(_ value: UInt32, mixedTowardWhite amount: Double) -> Color {
+        func mix(_ channel: UInt32) -> Double {
+            let base = Double(channel) / 255
+            return base + (1 - base) * amount
+        }
+        return Color(
+            red: mix((value >> 16) & 0xFF),
+            green: mix((value >> 8) & 0xFF),
+            blue: mix(value & 0xFF)
+        )
     }
 
     private static func hex(_ value: UInt32) -> Color {
