@@ -14,9 +14,11 @@ final class PaceTests: XCTestCase {
         now.addingTimeInterval(period * (1 - elapsed))
     }
 
-    func testZeroUsageIsAhead() {
+    func testZeroUsageHasNoPaceSignal() {
+        // Nothing spent → no burn rate to project. Returning a fabricated "ahead" here used to
+        // surface a tautological "~100% left at reset" on untouched meters with pacing shown.
         let reset = resetsAt(elapsed: 0.5, period: week)
-        XCTAssertEqual(Pace.evaluate(used: 0, limit: 100, resetsAt: reset, periodDuration: week, now: now)?.status, .ahead)
+        XCTAssertNil(Pace.evaluate(used: 0, limit: 100, resetsAt: reset, periodDuration: week, now: now))
     }
 
     func testAtOrOverLimitIsBehind() {
@@ -97,8 +99,10 @@ final class PaceTests: XCTestCase {
         XCTAssertEqual(weeklyData(used: 60).meterState(now: now).tooltip, "~20% over limit at reset")
     }
 
-    func testTooltipBlueCushionAtZeroUsage() {
-        XCTAssertEqual(weeklyData(used: 0).meterState(now: now).tooltip, "~100% left at reset")
+    func testZeroUsageFallsBackToPlainLevelBar() {
+        // An untouched meter has no pace story: calm level bar, no projection tooltip.
+        XCTAssertEqual(weeklyData(used: 0).meterState(now: now), .level(.normal))
+        XCTAssertNil(weeklyData(used: 0).meterState(now: now).tooltip)
     }
 
     func testTooltipRedOverageFlooredToOnePercent() {
@@ -268,6 +272,15 @@ final class PaceTests: XCTestCase {
         XCTAssertEqual(tick(pacedData(used: 60, elapsed: 0.5, alwaysShowPacing: true)) ?? -1,
                        0.5, accuracy: 0.001)
         XCTAssertNil(tick(pacedData(used: 100, elapsed: 0.5, alwaysShowPacing: true)))
+    }
+
+    func testAlwaysShowPacingStaysSilentOnUntouchedMeter() {
+        // Regression: an unstarted window (0 used, e.g. a fresh Cursor billing cycle) used to show
+        // "~100% left at reset" plus an even-pace tick when Always Show Pacing was on.
+        let data = pacedData(used: 0, elapsed: 0.03, alwaysShowPacing: true)
+        XCTAssertEqual(data.meterState(now: now), .level(.normal))
+        XCTAssertNil(data.meterState(now: now).tooltip)
+        XCTAssertNil(tick(data))
     }
 
     func testAlwaysShowPacingLeavesRowsWithoutResetWindowPlain() {
