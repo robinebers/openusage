@@ -21,6 +21,20 @@ Settings → Appearance → Icon Style:
 - **Text** — provider icon plus values; two starred metrics from the same provider stack as a labeled pair.
 - **Bars** — a compact glyph containing the first four starred metrics that have a limit (metrics without limits only appear in Text style).
 
+## Hiding usage while screen sharing
+
+Settings → Privacy → **Hide From Screen Share** (off by default). While your screen is being shared or recorded — a Zoom/Meet/Teams share, a screen recording, macOS Screen Sharing — the strip is replaced with the OpenUsage icon and wordmark, so token counts and spend never show up in front of an audience. The moment the capture ends, your starred metrics come right back. Captures you start yourself (a screen recording, for example) count too, so those get the wordmark as well.
+
+Detection rides the system's own "an app is capturing the screen" signal — the same one that lights the capture indicator in the menu bar — checked the instant it changes and re-checked every few seconds while the setting is on.
+
+Normally:
+
+![The menu bar strip showing usage values](assets/menu-bar-privacy-idle.png)
+
+While the screen is shared or recorded:
+
+![The menu bar strip concealed behind the OpenUsage wordmark](assets/menu-bar-privacy-sharing.png)
+
 ## What the strip shows
 
 The strip only renders real data. A starred metric with nothing fetched yet is skipped; a provider whose stars all lack data disappears entirely (icon included). When nothing has data, the strip falls back to the app icon. Stars follow your Customize order — Always Visible metrics first, then On Demand ones. A metric can be starred whether it's Always Visible or On Demand.

@@ -1,5 +1,89 @@
 # Changelog
 
+## v0.7.6
+
+### New Features
+- Hide menu bar usage while the screen is shared ([#1013](https://github.com/robinebers/openusage/pull/1013)) by @robinebers
+- Fold pi coding agent usage into Claude and Codex ([#975](https://github.com/robinebers/openusage/pull/975)) by @jal-co
+- Sync usage history across Macs with iCloud ([#984](https://github.com/robinebers/openusage/pull/984)) by @robinebers
+- Add a machine-readable limits API and global `openusage` command ([#982](https://github.com/robinebers/openusage/pull/982)) by @robinebers
+- Read the existing Claude Desktop login safely as a read-only fallback ([#962](https://github.com/robinebers/openusage/pull/962)) by @robinebers
+- Add hover-revealed screenshot copying to provider headers ([#989](https://github.com/robinebers/openusage/pull/989)) by @robinebers
+
+### Bug Fixes
+- Fix menu-bar icon not closing panel on second click at top of screen ([#1012](https://github.com/robinebers/openusage/pull/1012)) by @robinebers
+- Fix ~20x Codex spend inflation from subagent replay logs ([#1001](https://github.com/robinebers/openusage/pull/1001)) by @robinebers
+- Fix Claude and Codex token cost calculations, including Codex fast-tier pricing from session logs ([#995](https://github.com/robinebers/openusage/pull/995)) by @validatedev
+- Accept xhigh effort suffix on Grok 4.5 alias rules ([#999](https://github.com/robinebers/openusage/pull/999)) by @robinebers
+- Restore Cursor Enterprise included-request and on-demand usage ([#986](https://github.com/robinebers/openusage/pull/986)) by @iicdii
+- Keep Sparkle updater windows in the foreground during manual updates ([#985](https://github.com/robinebers/openusage/pull/985)) by @robinebers
+- Follow symlinked log directories when scanning local usage ([#973](https://github.com/robinebers/openusage/pull/973)) by @robinebers
+- Recognize Cursor Grok 4.5 usage slugs ([#981](https://github.com/robinebers/openusage/pull/981)) by @robinebers
+
+### Chores
+- Update Grok provider logo ([#1005](https://github.com/robinebers/openusage/pull/1005)) by @robinebers
+- Keep inactive issues open for 30 days before warning ([#998](https://github.com/robinebers/openusage/pull/998)) by @robinebers
+- Ignore the `.build-test` directory by @robinebers
+
+---
+
+### Changelog
+**Full Changelog**: [v0.7.5...v0.7.6](https://github.com/robinebers/openusage/compare/v0.7.5...v0.7.6)
+
+- [89e4b82](https://github.com/robinebers/openusage/commit/89e4b82954b2698f16726d863225bc3a6222ec57) Hide menu bar usage while the screen is shared (#1010) (#1013) by @robinebers
+- [0d236d8](https://github.com/robinebers/openusage/commit/0d236d89780d755ac6f7529149db118fd04198ee) Fix menu-bar icon not closing panel on second click at top of screen (#1012) by @robinebers
+- [c3777d5](https://github.com/robinebers/openusage/commit/c3777d5929d14ea4b736939692c2dff7cc9e138e) Update Grok provider logo (#1005) by @robinebers
+- [de0fec9](https://github.com/robinebers/openusage/commit/de0fec90ef10af9a538e625c77488e44793aba37) feat(providers): fold pi coding agent usage into Claude and Codex (#975) by @jal-co
+- [99d1ab3](https://github.com/robinebers/openusage/commit/99d1ab3469514a40bcc098ed38ab17a0f6e0da88) docs: changelog for v0.7.6-beta.3 by @robinebers
+- [55dd61f](https://github.com/robinebers/openusage/commit/55dd61f3615ac8fc488e1ac2ba9323652f4b07e3) Fix ~20x Codex spend inflation from subagent replay logs (#1001) by @robinebers
+- [acc032f](https://github.com/robinebers/openusage/commit/acc032f1f77dcef0918092954cbc8975a012b5a9) fix: make iCloud sync in-flight tests deterministic (#1000) by @robinebers
+- [27fb007](https://github.com/robinebers/openusage/commit/27fb0076cefa49b16b9a3982c58977f1b467cf7d) Merge pull request #999 from robinebers/fix/grok-45-xhigh-alias by @robinebers
+- [bd49afa](https://github.com/robinebers/openusage/commit/bd49afa8fc023782ee60ad5c5222a129cce932de) fix(pricing): accept xhigh effort suffix on grok-4.5 alias rules by @robinebers
+- [f7e1752](https://github.com/robinebers/openusage/commit/f7e175228c8310a263556c2ee414fbc933ae5f18) docs: changelog for v0.7.6-beta.2 by @robinebers
+- [be6e3d7](https://github.com/robinebers/openusage/commit/be6e3d733b4e57fa9ff31f6cf453d2ca2b25fedb) Merge pull request #998 from robinebers/cursor/cea9ec49 by @robinebers
+- [e145e7a](https://github.com/robinebers/openusage/commit/e145e7a40f7448bb2722dc7cec225d33e7f871b0) chore(stale): keep inactive issues open for 30 days before warning by @robinebers
+- [a0569bd](https://github.com/robinebers/openusage/commit/a0569bd13222b44e0907bac31897a0348b4ed0a4) Merge pull request #995 from robinebers/fix/token-cost-calculation-disperancies by @validatedev
+- [cfdfdd0](https://github.com/robinebers/openusage/commit/cfdfdd08723bea3e7e4f5ac225b972f331b87771) fix: price Codex fast tier per session from rollout logs, not config.toml by @robinebers
+- [0d0136d](https://github.com/robinebers/openusage/commit/0d0136d089936f381e5675bb468f1506d44838ce) fix: handle persisted Claude print usage and Codex fast aliases by @validatedev
+- [bfb325c](https://github.com/robinebers/openusage/commit/bfb325c802ae018a3f61e35af3e70a3ab3e23fcc) fix: correct token cost calculations by @validatedev
+- [8674407](https://github.com/robinebers/openusage/commit/8674407258add4c39dcd32444c1a1c5da012506c) docs: changelog for v0.7.6-beta.1 by @robinebers
+- [47cc6c7](https://github.com/robinebers/openusage/commit/47cc6c7f5d47025223c9f865dd3715da8820b02b) Merge pull request #962 from robinebers/cursor/5daa197a by @robinebers
+- [a305236](https://github.com/robinebers/openusage/commit/a305236ea045d3b0296fb6d0eb38dfef3161ac28) Merge pull request #985 from robinebers/codex/fix-sparkle-update-focus by @robinebers
+- [4cb0841](https://github.com/robinebers/openusage/commit/4cb084146cbb6a7932a6accadfa0cb8c28acba3a) fix(claude): try Desktop before environment fallback by @robinebers
+- [09ef91c](https://github.com/robinebers/openusage/commit/09ef91c6c6e2bb74d1f8ce044652d64b580bbfc7) Merge pull request #986 from iicdii/fix/cursor-enterprise-usage by @iicdii
+- [17ec2b9](https://github.com/robinebers/openusage/commit/17ec2b92ec4d7c0b99227d2c737d6aaf66534eab) Merge pull request #989 from robinebers/codex/provider-header-copy-feedback by @robinebers
+- [71c7694](https://github.com/robinebers/openusage/commit/71c76947f8d44f5b4c1187e3743a7d752ce3c949) Refine provider header copy controls by @robinebers
+- [3ac257c](https://github.com/robinebers/openusage/commit/3ac257c6dda8bfcefe21bf71d10e2aa9aac001a6) fix(claude): pick Desktop token by client/scope rank, not max expiry by @robinebers
+- [1e65178](https://github.com/robinebers/openusage/commit/1e65178b60a120d36e0b0304e140831890a8bd73) feat: read Claude Desktop login safely by @robinebers
+- [d514522](https://github.com/robinebers/openusage/commit/d5145223aed723ccfe76f179c05099484da1aec5) docs: add Cursor Enterprise live screenshot by @iicdii
+- [022286f](https://github.com/robinebers/openusage/commit/022286fc317ff25dca19e48badd6007beb71ad86) fix(cursor): show enterprise included and on-demand usage by @iicdii
+- [aa51755](https://github.com/robinebers/openusage/commit/aa517553cb506ff6e8e279aca98bcc1ee1192ae3) Merge remote-tracking branch 'origin/main' into codex/fix-sparkle-update-focus by @robinebers
+- [a8c8fa5](https://github.com/robinebers/openusage/commit/a8c8fa5467f8a6c11b1f5de652388bac9d6904d8) Merge pull request #984 from robinebers/codex/icloud-usage-sync by @robinebers
+- [74ef79f](https://github.com/robinebers/openusage/commit/74ef79f211989a61f1ff36ae4f4d5a3cee5cb008) Stop merging disabled provider history by @robinebers
+- [c1c131c](https://github.com/robinebers/openusage/commit/c1c131c1d810d03deba3226bac7a46186422ae23) Persist iCloud device identity in Keychain by @robinebers
+- [eb71e79](https://github.com/robinebers/openusage/commit/eb71e7948b95f78bd4fc3c6c104bf0b7f4e9236e) Accept team-prefixed iCloud profiles by @robinebers
+- [27d3fec](https://github.com/robinebers/openusage/commit/27d3fec3b1084618865c982a577bb853505fc3a9) Bound synced history to refresh window by @robinebers
+- [7fb7722](https://github.com/robinebers/openusage/commit/7fb7722f7c8baa5e497ed31360a25734a82e6b1d) Fix Sparkle updater window activation by @robinebers
+- [b0c88a0](https://github.com/robinebers/openusage/commit/b0c88a0d2950eea32e1e4d5f7213f684743b0794) Preserve history across scan misses by @robinebers
+- [e4b9fba](https://github.com/robinebers/openusage/commit/e4b9fba2eb81811d2e55fe4c5bb11a4d311dd1ae) add `.build-test/` to `.gitignore` by @robinebers
+- [23e4e77](https://github.com/robinebers/openusage/commit/23e4e77743ad79e4811eee9ea9915a464f27f1fe) Fix iCloud sync update races by @robinebers
+- [ed659c6](https://github.com/robinebers/openusage/commit/ed659c66387d4e0684ec7af4fbe89faf1e910328) Merge pull request #973 from robinebers/claude/github-issue-971-0b9423 by @robinebers
+- [b71b371](https://github.com/robinebers/openusage/commit/b71b37128d6a20daac646d2d438c451a07797d00) Polish iCloud sync settings by @robinebers
+- [ba515c9](https://github.com/robinebers/openusage/commit/ba515c973303c4fa336ab18392c09771a5a77c7a) Auto-detect iCloud development profiles by @robinebers
+- [30cdf85](https://github.com/robinebers/openusage/commit/30cdf85e1fa7f8c30d14d9903882c62fcd96c53d) Fix iCloud provisioning and sync activity state by @robinebers
+- [e68b7c1](https://github.com/robinebers/openusage/commit/e68b7c1035b375bfa51ce1fb776792acee6704aa) Refine iCloud sync status by @robinebers
+- [9f3f8b6](https://github.com/robinebers/openusage/commit/9f3f8b6034717d219f316c54bb8a2229e2bbf3f5) Add iCloud usage sync by @robinebers
+- [6d83bca](https://github.com/robinebers/openusage/commit/6d83bcab416a35f5973027f500c43a5f0529aed9) Merge pull request #982 from robinebers/agent/one-shot-openusage-cli by @robinebers
+- [5292c15](https://github.com/robinebers/openusage/commit/5292c152f334898d885422f077ede8aa819e646f) Share provider ordering across limits surfaces by @robinebers
+- [2b3e7f7](https://github.com/robinebers/openusage/commit/2b3e7f7e7d92432ea28b5f31d743f7b87343e7be) Expose provider refresh errors in limits by @robinebers
+- [fa6ac11](https://github.com/robinebers/openusage/commit/fa6ac11458b04bbf883a8a5acb56cc90ca53b10a) Add machine-readable limits CLI by @robinebers
+- [bd9353d](https://github.com/robinebers/openusage/commit/bd9353d1ebb9cb192355faf617a2dca727d1235b) Add one-shot shared-core usage CLI by @robinebers
+- [b728d6b](https://github.com/robinebers/openusage/commit/b728d6bca30f0c90423477afeae2282ef563852f) Merge pull request #981 from robinebers/fix/pricing-cursor-grok-4.5-prefix by @robinebers
+- [00d2d7e](https://github.com/robinebers/openusage/commit/00d2d7ec26894bd8982e519ef275a2a18154ea0e) fix(pricing): recognize cursor-grok-4.5 usage slugs by @robinebers
+- [b75e329](https://github.com/robinebers/openusage/commit/b75e3296a41955a73dce6810bac6a46bf37f2fef) fix: strip the resolved dir prefix when deduping Codex session files by @robinebers
+- [4d8bbd6](https://github.com/robinebers/openusage/commit/4d8bbd667d20766424d698f9f100b7ce05f3738b) docs: polish the symlink note in the Claude spend-tiles doc by @robinebers
+- [15b0976](https://github.com/robinebers/openusage/commit/15b0976f26716febcb159ed53cae7c7aab737fc1) Follow symlinked log directories when scanning local usage by @Linyxus
+
 ## v0.7.6-beta.3
 
 ### Bug Fixes

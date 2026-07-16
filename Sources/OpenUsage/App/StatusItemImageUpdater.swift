@@ -42,6 +42,14 @@ final class StatusItemImageUpdater {
 
     /// The pinned-metrics strip in the chosen style, or the app icon when nothing is pinned.
     private func renderButtonImage() -> NSImage {
+        // Screen-share privacy: while a capture is active (and the setting is on), the strip is
+        // replaced with the wordmark so a shared screen never carries usage numbers. Read inside the
+        // observation closure so the render re-arms on capture-state changes too.
+        if container.privacy.concealUsage {
+            return MenuBarStripRenderer.privacyImage
+                ?? MenuBarIcon.image
+                ?? MenuBarStripRenderer.fallbackIcon
+        }
         let content = MenuBarContentBuilder.build(
             groups: container.layout.pinnedGroups,
             data: { container.dataStore.data(for: $0) }

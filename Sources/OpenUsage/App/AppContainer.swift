@@ -28,6 +28,10 @@ final class AppContainer {
     /// ephemeral secret-code easter-egg state, and the system accessibility flags it yields to. Read by both
     /// the SwiftUI surface and the AppKit panel (`StatusItemController`).
     let transparency: PopoverTransparencyStore
+    /// The menu bar's screen-share privacy mode: the persisted Hide From Screen Share toggle
+    /// plus the live capture signal. Read by `StatusItemImageUpdater` to swap the strip for the
+    /// wordmark while the screen is shared or recorded.
+    let privacy: MenuBarPrivacyStore
     /// One-time onboarding state (the first-run Customize hint card). Only ever marked pending by
     /// `FirstRunSeeder` on a fresh install, so existing installs never see the card.
     let onboarding: OnboardingStore
@@ -241,6 +245,7 @@ final class AppContainer {
         }
         self.telemetry = telemetry
         self.transparency = PopoverTransparencyStore()
+        self.privacy = MenuBarPrivacyStore()
         self.localAPI = LocalUsageServer(state: { [layout, enablement, dataStore] in
             LocalUsageAPI.State(
                 enabledOrderedIDs: layout.orderedProviderIDs().filter { enablement.isEnabled($0) },
