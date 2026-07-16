@@ -48,4 +48,44 @@ final class PanelOutsideClickPolicyTests: XCTestCase {
     func testUnrelatedWindowDismisses() {
         XCTAssertFalse(PanelOutsideClickPolicy.shouldKeepOpen(.init(eventWindowTypeName: "NSWindow")))
     }
+
+    // MARK: - Status-button hit test (issue #1008)
+
+    /// A menu-bar-height button frame whose top edge sits at the top of a pretend screen.
+    private let buttonFrame = NSRect(x: 100, y: 976, width: 40, height: 24)
+
+    func testClickAtTopOfScreenHitsStatusButton() {
+        // With the cursor pinned to the top of the screen, `NSEvent.mouseLocation.y` reports exactly
+        // the screen's — and the button frame's — maxY. `NSRect.contains` excludes max edges, which
+        // made this dead-center click read as an outside click: the panel dismissed on mouse-down and
+        // the button's mouse-up toggle reopened it, so the second click never closed the panel.
+        XCTAssertTrue(PanelOutsideClickPolicy.pointHitsStatusButton(
+            NSPoint(x: 120, y: buttonFrame.maxY), buttonFrame: buttonFrame
+        ))
+    }
+
+    func testClickInsideStatusButtonHits() {
+        XCTAssertTrue(PanelOutsideClickPolicy.pointHitsStatusButton(
+            NSPoint(x: 120, y: 988), buttonFrame: buttonFrame
+        ))
+    }
+
+    func testClickBesideStatusButtonMisses() {
+        XCTAssertFalse(PanelOutsideClickPolicy.pointHitsStatusButton(
+            NSPoint(x: 99, y: 988), buttonFrame: buttonFrame
+        ))
+        XCTAssertFalse(PanelOutsideClickPolicy.pointHitsStatusButton(
+            NSPoint(x: 141, y: 988), buttonFrame: buttonFrame
+        ))
+    }
+
+    func testClickBelowStatusButtonMisses() {
+        XCTAssertFalse(PanelOutsideClickPolicy.pointHitsStatusButton(
+            NSPoint(x: 120, y: 975), buttonFrame: buttonFrame
+        ))
+    }
+
+    func testEmptyButtonFrameNeverHits() {
+        XCTAssertFalse(PanelOutsideClickPolicy.pointHitsStatusButton(.zero, buttonFrame: .zero))
+    }
 }

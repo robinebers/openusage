@@ -88,7 +88,7 @@ final class PanelOutsideClickMonitor {
     private func isOnStatusButton(_ screenPoint: NSPoint) -> Bool {
         guard let button = statusItem.button, let buttonWindow = button.window else { return false }
         let buttonFrame = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
-        return buttonFrame.contains(screenPoint)
+        return PanelOutsideClickPolicy.pointHitsStatusButton(screenPoint, buttonFrame: buttonFrame)
     }
 }
 
@@ -116,5 +116,17 @@ enum PanelOutsideClickPolicy {
             // the resets "Use" button — otherwise reads as an outside click and tears the panel down
             // before the control's mouse-up fires. Its backing window class is `_NSPopoverWindow`.
             || context.eventWindowTypeName?.localizedCaseInsensitiveContains("popover") == true
+    }
+
+    /// Status-button hit test with *inclusive* frame edges, unlike `NSRect.contains` (which excludes
+    /// the max edges). With the cursor slammed against the top of the screen — the natural way to
+    /// click the menu bar — `NSEvent.mouseLocation.y` is exactly the screen's `maxY`, which is also
+    /// the button frame's `maxY`. The exclusive check misread that dead-center click as an outside
+    /// click, so the panel dismissed on mouse-down and the button's mouse-up action toggled it right
+    /// back open — the second click never closed it (issue #1008).
+    static func pointHitsStatusButton(_ point: NSPoint, buttonFrame: NSRect) -> Bool {
+        guard !buttonFrame.isEmpty else { return false }
+        return point.x >= buttonFrame.minX && point.x <= buttonFrame.maxX
+            && point.y >= buttonFrame.minY && point.y <= buttonFrame.maxY
     }
 }
