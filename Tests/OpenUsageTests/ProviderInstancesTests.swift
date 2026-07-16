@@ -489,6 +489,26 @@ final class ProviderInstancesTests: XCTestCase {
         XCTAssertTrue(runtimes[0].widgetDescriptors.contains { $0.id == "claude.session" })
     }
 
+    func testDisplayNamesNeverShowOrdinalGaps() {
+        // A suppressed record (its account currently the default login — common with swap tools)
+        // must not make the surviving card read "Claude 3": display rank counts VISIBLE cards only,
+        // while persisted ordinals stay the stable sort key underneath.
+        let survivor = ProviderInstanceRecord(
+            id: "claude@b2d3867d", baseProviderID: "claude", ordinal: 3,
+            kind: .claudeSwapSlot, anchorPath: "/Users/x/.claude-swap-backup",
+            keychainLiteral: nil, swapAccountName: "account-2-me@x.com",
+            identityKey: "uuid|org-max", identityLabel: nil
+        )
+        let context = ProviderInstanceContext(records: [survivor])
+        XCTAssertEqual(context.displayName(for: survivor, baseName: "Claude"), "Claude 2")
+
+        let runtimes = ProviderCatalog.make(
+            defaults: makeScratchDefaults("DisplayRank"),
+            instanceContext: context
+        )
+        XCTAssertEqual(runtimes[1].provider.displayName, "Claude 2")
+    }
+
     // MARK: - Fixtures
 
     private func makeScratchDefaults(_ name: String) -> UserDefaults {

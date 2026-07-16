@@ -47,7 +47,7 @@ enum ProviderCatalog {
             )
         ))
         for record in instanceContext?.records(forBase: "codex") ?? [] {
-            runtimes.append(codexInstance(record: record))
+            runtimes.append(codexInstance(record: record, context: instanceContext!))
         }
 
         runtimes += [
@@ -68,7 +68,7 @@ enum ProviderCatalog {
         record: ProviderInstanceRecord,
         context: ProviderInstanceContext
     ) -> ClaudeProvider {
-        let provider = ClaudeProvider.makeProvider(id: record.id, displayName: "Claude \(record.ordinal)")
+        let provider = ClaudeProvider.makeProvider(id: record.id, displayName: context.displayName(for: record, baseName: "Claude"))
         let coworkRoots = context.coworkRootsByInstanceID[record.id] ?? []
         switch record.kind {
         case .claudeDesktop:
@@ -123,10 +123,10 @@ enum ProviderCatalog {
 
     /// A Codex instance runtime: `auth.json` + the home's computed keychain item, logs from that home
     /// only (the scanner's `CODEX_HOME` is pinned via a scoped environment).
-    private static func codexInstance(record: ProviderInstanceRecord) -> CodexProvider {
+    private static func codexInstance(record: ProviderInstanceRecord, context: ProviderInstanceContext) -> CodexProvider {
         let path = expandHome(record.anchorPath ?? "")
         return CodexProvider(
-            provider: CodexProvider.makeProvider(id: record.id, displayName: "Codex \(record.ordinal)"),
+            provider: CodexProvider.makeProvider(id: record.id, displayName: context.displayName(for: record, baseName: "Codex")),
             authStore: CodexAuthStore(scope: .home(path: path)),
             logUsageScanner: CodexLogUsageScanner(
                 environment: ScopedEnvironmentReader(

@@ -156,6 +156,15 @@ struct ProviderInstanceContext {
         records.filter { $0.baseProviderID == baseProviderID }.sorted { $0.ordinal < $1.ordinal }
     }
 
+    /// Display name by rank among the VISIBLE cards ("Claude 2", "Claude 3", …) — persisted ordinals
+    /// stay the stable sort key but never show gaps: a suppressed record (its account currently the
+    /// default login, common with swap tools) must not make the survivors read "Claude 1" + "Claude 3".
+    func displayName(for record: ProviderInstanceRecord, baseName: String) -> String {
+        let siblings = records(forBase: record.baseProviderID)
+        let rank = (siblings.firstIndex { $0.id == record.id } ?? 0) + 2
+        return "\(baseName) \(rank)"
+    }
+
     /// The default card's display name gains its ordinal only when siblings exist ("Claude 1").
     func defaultDisplayName(forBase baseProviderID: String, name: String) -> String {
         records.contains { $0.baseProviderID == baseProviderID } ? "\(name) 1" : name
