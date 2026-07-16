@@ -130,6 +130,97 @@ final class ProviderInstancesTests: XCTestCase {
         XCTAssertEqual(byBase["codex"]?.first?.identityKey.hasPrefix("codex-home:"), true)
     }
 
+    func testKeychainProbeHonorsOAuthEnvSuffix() throws {
+        // Non-prod OAuth setups suffix the keychain service ("Claude Code-staging-oauth-credentials-…").
+        // Discovery must build the same name the scoped store later reads, or staging users' extra
+        // accounts pass discovery without their keychain credential (or miss it entirely).
+        let stagingEnv = FakeEnvironment(["USER_TYPE": "ant", "USE_STAGING_OAUTH": "1"])
+        XCTAssertEqual(
+            ClaudeAuthStore.baseKeychainServiceName(environment: stagingEnv),
+            "Claude Code-staging-oauth-credentials"
+        )
+        XCTAssertEqual(
+            ClaudeAuthStore.baseKeychainServiceName(environment: FakeEnvironment([:])),
+            "Claude Code-credentials"
+        )
+
+        let home = try makeFixtureHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try write(home, ".claude.json", claudeIdentityJSON(uuid: "uuid-default", email: nil))
+        try write(home, ".claude-work/.claude.json", claudeIdentityJSON(uuid: "uuid-work", email: nil))
+
+        let keychain = AccountAwareKeychain()
+        let claudeDir = home.appendingPathComponent(".claude-work").path
+        keychain.existingItems.insert(
+            "\(ClaudeAuthStore.scopedKeychainServiceName(forConfigDirLiteral: claudeDir, environment: stagingEnv))|*"
+        )
+
+        let result = ProviderInstanceDiscovery(
+            environment: stagingEnv,
+            keychain: keychain,
+            homeDirectory: { home }
+        ).run()
+        XCTAssertEqual(result.instances.first?.identityKey, "uuid-work")
+    }
+
+    func testXDGDefaultHomeIsTheDefaultCardNotAnInstance() throws {
+        // A user whose default Claude data lives under $XDG_CONFIG_HOME/claude: that dir supplies the
+        // default identity and is excluded from candidates — it must never appear as "Claude 2".
+        let home = try makeFixtureHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try write(home, ".config/claude/.claude.json", claudeIdentityJSON(uuid: "uuid-default", email: nil))
+        try write(home, ".config/claude/.credentials.json", claudeCredentialsJSON(access: "token-default"))
+        try write(home, ".claude-work/.claude.json", claudeIdentityJSON(uuid: "uuid-work", email: nil))
+        try write(home, ".claude-work/.credentials.json", claudeCredentialsJSON(access: "token-work"))
+
+        let result = ProviderInstanceDiscovery(
+            environment: FakeEnvironment([:]),
+            keychain: AccountAwareKeychain(),
+            homeDirectory: { home }
+        ).run()
+
+        XCTAssertEqual(result.instances.map(\.identityKey), ["uuid-work"])
+        XCTAssertEqual(result.defaultIdentityKeys["claude"], ["uuid-default"])
+    }
+
+    func testSkipsCandidatesWhenDefaultLoginCannotBeNamed() throws {
+        // Default logins exist (keychain/keyring footprint) but their identity files are unreadable:
+        // folding would be blind, so candidates are skipped this launch instead of risking the same
+        // account on two cards. A footprint-free machine (no default login at all) keeps accepting.
+        let home = try makeFixtureHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try write(home, ".claude-work/.claude.json", claudeIdentityJSON(uuid: "uuid-work", email: nil))
+        try write(home, ".claude-work/.credentials.json", claudeCredentialsJSON(access: "token-work"))
+        try write(home, ".codex-work/auth.json", codexAuthJSON(accountID: "acct-work"))
+        try write(home, ".codex/config.toml", "model = \"gpt-5\"")
+
+        let keychain = AccountAwareKeychain()
+        keychain.existingItems.insert("Claude Code-credentials|*")
+        keychain.existingItems.insert(
+            "Codex Auth|\(CodexAuthStore.keychainAccountName(forHome: home.appendingPathComponent(".codex").path))"
+        )
+
+        let blocked = ProviderInstanceDiscovery(
+            environment: FakeEnvironment([:]),
+            keychain: keychain,
+            homeDirectory: { home }
+        ).run()
+        XCTAssertTrue(blocked.instances.isEmpty)
+        XCTAssertTrue(blocked.notes.contains { $0.contains("claude: default login present but its identity is unreadable") })
+        XCTAssertTrue(blocked.notes.contains { $0.contains("codex: default login present but its identity is unreadable") })
+
+        let open = ProviderInstanceDiscovery(
+            environment: FakeEnvironment([:]),
+            keychain: AccountAwareKeychain(),
+            homeDirectory: { home }
+        ).run()
+        XCTAssertEqual(
+            Set(open.instances.map(\.identityKey)),
+            ["uuid-work", "acct-work"],
+            "with no default footprint there is nothing to duplicate — custom-dir-only logins still get cards"
+        )
+    }
+
     func testDiscoveryPartitionsCoworkSandboxesByOrganization() throws {
         // The real-world shape: ONE account (same email/UUID) belonging to two orgs — a personal Max
         // org (the CLI login) and a Team org used through Cowork. Plans are org-scoped, so the Team
@@ -338,7 +429,12 @@ final class ProviderInstancesTests: XCTestCase {
 
         let timeline = try XCTUnwrap(result.claudeSwapTimeline)
         XCTAssertEqual(timeline.periods.count, 2)
-        XCTAssertEqual(result.claudeSharedHomeRoots, [home.appendingPathComponent(".claude")])
+        // Shared roots mirror the scanner's full default resolution — the XDG variant included, so a
+        // cswap machine keeping logs under ~/.config/claude still gets attributed spend.
+        XCTAssertEqual(result.claudeSharedHomeRoots, [
+            home.appendingPathComponent(".config/claude"),
+            home.appendingPathComponent(".claude")
+        ])
         XCTAssertTrue(result.notes.contains { $0.contains("per-account spend attribution active") })
     }
 

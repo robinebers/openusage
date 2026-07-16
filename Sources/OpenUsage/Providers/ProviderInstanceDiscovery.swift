@@ -118,16 +118,32 @@ struct ProviderInstanceDiscovery {
         let codexDefaultHashes = defaultCodex.map(ProviderInstanceID.hash8).sorted().joined(separator: ",")
         result.notes.append("default identities: claude=\(claudeDefaultHash) codex=[\(codexDefaultHashes)]")
 
+        // Same-account folding needs the default card's identity. When the default login clearly
+        // EXISTS (credential footprint) but can't be named, accepting candidates could show the same
+        // account twice — skip them for this launch instead (folding resumes once identity is
+        // readable). A machine with no default login at all keeps accepting: there is nothing to
+        // duplicate, and a custom-dir-only login should still get its card.
+        let claudeCandidatesAllowed = defaultClaude != nil || !defaultClaudeCredentialFootprint()
+        if !claudeCandidatesAllowed {
+            result.notes.append("claude: default login present but its identity is unreadable → skipping extra-account candidates this launch")
+        }
+        let codexCandidatesAllowed = !defaultCodex.isEmpty || !defaultCodexCredentialFootprint()
+        if !codexCandidatesAllowed {
+            result.notes.append("codex: default login present but its identity is unreadable → skipping extra-account candidates this launch")
+        }
+
         for candidate in candidateDirectories(home: home) {
             guard !overBudget() else { break }
             let canonicalPath = canonical(candidate.path)
             guard !excludedPaths.contains(canonicalPath) else { continue }
 
-            if let finding = claudeCandidate(at: candidate, defaultIdentityKey: defaultClaude, notes: &result.notes),
+            if claudeCandidatesAllowed,
+               let finding = claudeCandidate(at: candidate, defaultIdentityKey: defaultClaude, notes: &result.notes),
                seenIdentityKeys.insert("claude|\(finding.identityKey)").inserted {
                 result.instances.append(finding)
             }
-            if let finding = codexCandidate(at: candidate, defaultIdentityKeys: defaultCodex, notes: &result.notes),
+            if codexCandidatesAllowed,
+               let finding = codexCandidate(at: candidate, defaultIdentityKeys: defaultCodex, notes: &result.notes),
                seenIdentityKeys.insert("codex|\(finding.identityKey)").inserted {
                 result.instances.append(finding)
             }
@@ -261,7 +277,14 @@ struct ProviderInstanceDiscovery {
                 .filter { !$0.isEmpty }
             if !dirs.isEmpty { return dirs }
         }
-        return [homeDirectory().appendingPathComponent(".claude").path]
+        // Mirror the spend scanner's default resolution exactly ($XDG_CONFIG_HOME/claude first, then
+        // ~/.claude) — these dirs are the exclusion set, the default-identity source, AND the shared
+        // log roots on swap machines, so dropping the XDG variant would lose its logs from the
+        // timeline-attributed scan.
+        let home = homeDirectory()
+        let xdg = environment.value(for: "XDG_CONFIG_HOME")?.nilIfEmpty.map { expandHome($0) }
+            ?? home.appendingPathComponent(".config").path
+        return [xdg + "/claude", home.appendingPathComponent(".claude").path]
     }
 
     private func defaultClaudeIdentityKey() -> String? {
@@ -272,6 +295,24 @@ struct ProviderInstanceDiscovery {
             }
         }
         return nil
+    }
+
+    /// Whether the DEFAULT Claude login leaves any credential footprint — file or (attributes-only)
+    /// keychain — used solely to decide if a nil default identity means "no login" (safe to accept
+    /// candidates) or "login we can't name" (skip candidates; folding would be blind).
+    private func defaultClaudeCredentialFootprint() -> Bool {
+        if keychain.hasGenericPassword(
+            service: ClaudeAuthStore.baseKeychainServiceName(environment: environment),
+            account: nil
+        ) { return true }
+        for dir in defaultClaudeConfigDirs() {
+            if files.exists(expandHome(dir) + "/.credentials.json") { return true }
+            if keychain.hasGenericPassword(
+                service: ClaudeAuthStore.scopedKeychainServiceName(forConfigDirLiteral: dir, environment: environment),
+                account: nil
+            ) { return true }
+        }
+        return false
     }
 
     private func claudeCandidate(
@@ -307,7 +348,12 @@ struct ProviderInstanceDiscovery {
         var matchedLiteral: String?
         let literals = keychainLiterals(for: url)
         for literal in literals {
-            let service = "Claude Code-credentials-\(ProviderInstanceID.hash8(literal))"
+            // Same construction the scoped store reads with — including the non-prod OAuth env
+            // suffix — so discovery can never probe one service name while refresh targets another.
+            let service = ClaudeAuthStore.scopedKeychainServiceName(
+                forConfigDirLiteral: literal,
+                environment: environment
+            )
             if keychain.hasGenericPassword(service: service, account: nil) {
                 matchedLiteral = literal
                 break
@@ -477,6 +523,20 @@ struct ProviderInstanceDiscovery {
             }
         }
         return keys
+    }
+
+    /// The Codex twin of `defaultClaudeCredentialFootprint()`: a default home in keyring mode has no
+    /// `auth.json` (so no readable identity) but does have its computed keychain item.
+    private func defaultCodexCredentialFootprint() -> Bool {
+        for home in defaultCodexHomes() {
+            let expanded = expandHome(home)
+            if files.exists(expanded + "/auth.json") { return true }
+            if keychain.hasGenericPassword(
+                service: CodexAuthStore.keychainService,
+                account: CodexAuthStore.keychainAccountName(forHome: expanded)
+            ) { return true }
+        }
+        return false
     }
 
     private func codexIdentity(inHome path: String) -> (key: String, email: String?)? {

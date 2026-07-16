@@ -402,36 +402,52 @@ struct ClaudeAuthStore: Sendable {
     }
 
     private func resolveOAuthEndpoints() -> ResolvedOAuthEndpoints {
+        Self.resolveOAuthEndpoints(environment: environment)
+    }
+
+    private static func resolveOAuthEndpoints(environment: EnvironmentReading) -> ResolvedOAuthEndpoints {
         var baseAPI = Self.prodBaseAPIURL
         var refreshURL = Self.prodRefreshURL
         var clientID = Self.prodClientID
         var suffix = ""
 
-        let isAntUser = envText("USER_TYPE") == "ant"
-        if isAntUser, envFlag("USE_LOCAL_OAUTH") {
-            let base = (envText("CLAUDE_LOCAL_OAUTH_API_BASE") ?? "http://localhost:8000").trimmingTrailingSlashes
+        let isAntUser = envText(environment, "USER_TYPE") == "ant"
+        if isAntUser, envFlag(environment, "USE_LOCAL_OAUTH") {
+            let base = (envText(environment, "CLAUDE_LOCAL_OAUTH_API_BASE") ?? "http://localhost:8000").trimmingTrailingSlashes
             baseAPI = base
             refreshURL = "\(base)/v1/oauth/token"
             clientID = Self.nonProdClientID
             suffix = "-local-oauth"
-        } else if isAntUser, envFlag("USE_STAGING_OAUTH") {
+        } else if isAntUser, envFlag(environment, "USE_STAGING_OAUTH") {
             baseAPI = "https://api-staging.anthropic.com"
             refreshURL = "https://platform.staging.ant.dev/v1/oauth/token"
             clientID = Self.nonProdClientID
             suffix = "-staging-oauth"
         }
 
-        if let custom = envText("CLAUDE_CODE_CUSTOM_OAUTH_URL") {
+        if let custom = envText(environment, "CLAUDE_CODE_CUSTOM_OAUTH_URL") {
             let base = custom.trimmingTrailingSlashes
             baseAPI = base
             refreshURL = "\(base)/v1/oauth/token"
             suffix = "-custom-oauth"
         }
-        if let override = envText("CLAUDE_CODE_OAUTH_CLIENT_ID") {
+        if let override = envText(environment, "CLAUDE_CODE_OAUTH_CLIENT_ID") {
             clientID = override
         }
 
         return ResolvedOAuthEndpoints(baseAPI: baseAPI, refreshURL: refreshURL, clientID: clientID, suffix: suffix)
+    }
+
+    /// The keychain service names as this environment's Claude Code writes them — the single source
+    /// both the scoped store and instance DISCOVERY build from, so a non-prod OAuth setup (local/
+    /// staging/custom, which suffixes the service) can never make discovery probe one name while
+    /// refresh reads another.
+    static func baseKeychainServiceName(environment: EnvironmentReading) -> String {
+        "\(keychainServicePrefix)\(resolveOAuthEndpoints(environment: environment).suffix)-credentials"
+    }
+
+    static func scopedKeychainServiceName(forConfigDirLiteral literal: String, environment: EnvironmentReading) -> String {
+        "\(baseKeychainServiceName(environment: environment))-\(hashSuffix(literal))"
     }
 
     // baseAPI/refreshURL can derive from user-set env vars (CLAUDE_CODE_CUSTOM_OAUTH_URL,
@@ -603,6 +619,10 @@ struct ClaudeAuthStore: Sendable {
     }
 
     private func envText(_ name: String) -> String? {
+        Self.envText(environment, name)
+    }
+
+    private static func envText(_ environment: EnvironmentReading, _ name: String) -> String? {
         guard let value = environment.value(for: name)?.trimmingCharacters(in: .whitespacesAndNewlines),
               !value.isEmpty
         else {
@@ -612,11 +632,19 @@ struct ClaudeAuthStore: Sendable {
     }
 
     private func envFlag(_ name: String) -> Bool {
-        guard let value = envText(name)?.lowercased() else { return false }
+        Self.envFlag(environment, name)
+    }
+
+    private static func envFlag(_ environment: EnvironmentReading, _ name: String) -> Bool {
+        guard let value = envText(environment, name)?.lowercased() else { return false }
         return !["0", "false", "no", "off"].contains(value)
     }
 
     private func hashSuffix(_ value: String) -> String {
+        Self.hashSuffix(value)
+    }
+
+    private static func hashSuffix(_ value: String) -> String {
         let normalized = value.precomposedStringWithCanonicalMapping
         let digest = SHA256.hash(data: Data(normalized.utf8))
         return String(digest.map { String(format: "%02x", $0) }.joined().prefix(8))

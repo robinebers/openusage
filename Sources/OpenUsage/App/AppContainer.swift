@@ -115,10 +115,13 @@ final class AppContainer {
         )
         // Card → account identity, for identity-keyed iCloud matching (the same account can be the
         // default card here and an instance card on another Mac). Suppressed records share the default
-        // card's identity, so only visible ones map.
+        // card's identity, so only visible ones map. A default card whose identity is ambiguous
+        // (two default Codex homes with different accounts) publishes NO identity — Set.first would
+        // pick one nondeterministically and mis-route peers' merges; unidentified cards fall back to
+        // the legacy same-card-id match instead.
         var providerIdentityKeys: [String: String] = [:]
-        for (base, keys) in discovered.defaultIdentityKeys {
-            if let key = keys.first { providerIdentityKeys[base] = key }
+        for (base, keys) in discovered.defaultIdentityKeys where keys.count == 1 {
+            providerIdentityKeys[base] = keys.first
         }
         for record in visibleRecords {
             providerIdentityKeys[record.id] = record.identityKey
