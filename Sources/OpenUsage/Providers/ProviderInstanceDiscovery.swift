@@ -551,7 +551,7 @@ struct ProviderInstanceDiscovery {
             return (accountID, email)
         }
         // No account id in the file — key on the canonical home so the instance id stays stable.
-        return ("codex-home:\(canonical(path))", email)
+        return (ProviderInstanceID.pathDerivedIdentityKey(forCanonicalHome: canonical(path)), email)
     }
 
     private func codexCandidate(
@@ -599,7 +599,7 @@ struct ProviderInstanceDiscovery {
             kind: .codexHome,
             anchorPath: url.path,
             keychainLiteral: nil,
-            identityKey: "codex-home:\(canonical(url.path))",
+            identityKey: ProviderInstanceID.pathDerivedIdentityKey(forCanonicalHome: canonical(url.path)),
             identityLabel: nil
         )
     }

@@ -27,6 +27,20 @@ enum ProviderInstanceID {
         return String(digest.map { String(format: "%02x", $0) }.joined().prefix(8))
     }
 
+    /// Identity for a home whose account can't be read without a keychain secret (keyring-mode Codex):
+    /// keyed on the canonical home path until the first refresh reveals the real account. Marked with
+    /// a prefix so reconcile can recognize "same home, identity newly readable (or newly unreadable)"
+    /// and upgrade the record in place instead of minting a duplicate card.
+    static let pathDerivedIdentityPrefix = "codex-home:"
+
+    static func pathDerivedIdentityKey(forCanonicalHome path: String) -> String {
+        pathDerivedIdentityPrefix + path
+    }
+
+    static func isPathDerivedKey(_ identityKey: String) -> Bool {
+        identityKey.hasPrefix(pathDerivedIdentityPrefix)
+    }
+
     /// Home-relative form for log lines: `~/.claude-work` instead of the absolute path. Keeps the
     /// username out AND survives the file log's absolute-path redaction, so a support log still says
     /// WHICH dir a note is about.
@@ -197,15 +211,25 @@ final class ProviderInstancesStore {
         var changed = false
         for finding in discovered {
             let id = ProviderInstanceID.make(baseProviderID: finding.baseProviderID, identityKey: finding.identityKey)
-            if let index = updated.firstIndex(where: { $0.id == id }) {
-                // Known account: keep id + ordinal (layout stability), adopt the latest anchor/label —
-                // the same account may have moved homes or refreshed its profile email.
-                // Known account: id + ordinal are the stable half (layout stability); everything that
-                // describes WHERE the account lives — kind, anchor, vault item, org — adopts the
-                // latest discovery. A login can genuinely migrate sources (a Desktop-only org later
-                // shows up as a cswap slot with a real CLI token; a home moves), and the freshest
-                // source is the one that can actually fetch.
+            if let index = Self.matchIndex(for: finding, id: id, in: updated) {
+                // Known account (or the same anchored home across an identity-readability change):
+                // id + ordinal are the stable half (layout stability); everything that describes
+                // WHERE the account lives — kind, anchor, vault item, org — adopts the latest
+                // discovery. A login can genuinely migrate sources (a Desktop-only org later shows
+                // up as a cswap slot with a real CLI token; a home moves), and the freshest source
+                // is the one that can actually fetch.
                 var record = updated[index]
+                // A path-keyed record whose home now reveals a real account upgrades its identity in
+                // place — one home must never become two cards. The reverse (identity newly
+                // unreadable, keyring mode again) keeps the known identity.
+                let upgradedIdentity: String
+                if ProviderInstanceID.isPathDerivedKey(record.identityKey),
+                   !ProviderInstanceID.isPathDerivedKey(finding.identityKey) {
+                    upgradedIdentity = finding.identityKey
+                    AppLog.info(.config, "instance \(record.id): identity became readable → now keyed to its account")
+                } else {
+                    upgradedIdentity = record.identityKey
+                }
                 let refreshed = ProviderInstanceRecord(
                     id: record.id,
                     baseProviderID: record.baseProviderID,
@@ -215,7 +239,7 @@ final class ProviderInstancesStore {
                     keychainLiteral: finding.keychainLiteral,
                     desktopOrganization: finding.desktopOrganization,
                     swapAccountName: finding.swapAccountName,
-                    identityKey: record.identityKey,
+                    identityKey: upgradedIdentity,
                     identityLabel: finding.identityLabel ?? record.identityLabel
                 )
                 if refreshed != record {
@@ -247,6 +271,33 @@ final class ProviderInstancesStore {
             persist()
         }
         return records
+    }
+
+    /// Match a finding to its record: by identity-derived id first, then — when either side's
+    /// identity is path-derived — by the anchored home itself. A keyring-mode home is path-keyed
+    /// until `auth.json` (re)appears; without the anchor match, each readability flip would mint a
+    /// duplicate card for the same home.
+    private static func matchIndex(
+        for finding: DiscoveredProviderInstance,
+        id: String,
+        in records: [ProviderInstanceRecord]
+    ) -> Int? {
+        if let exact = records.firstIndex(where: { $0.id == id }) { return exact }
+        guard let findingAnchor = finding.anchorPath else { return nil }
+        let findingCanonical = canonicalPath(findingAnchor)
+        return records.firstIndex { record in
+            guard record.baseProviderID == finding.baseProviderID,
+                  record.kind == finding.kind,
+                  ProviderInstanceID.isPathDerivedKey(record.identityKey)
+                      || ProviderInstanceID.isPathDerivedKey(finding.identityKey),
+                  let recordAnchor = record.anchorPath
+            else { return false }
+            return canonicalPath(recordAnchor) == findingCanonical
+        }
+    }
+
+    private static func canonicalPath(_ path: String) -> String {
+        URL(fileURLWithPath: expandHome(path)).resolvingSymlinksInPath().standardizedFileURL.path
     }
 
     private func persist() {

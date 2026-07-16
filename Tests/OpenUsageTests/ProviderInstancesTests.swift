@@ -56,6 +56,51 @@ final class ProviderInstancesTests: XCTestCase {
         XCTAssertEqual(next[2].ordinal, 4)
     }
 
+    func testReconcileUpgradesPathKeyedRecordWhenIdentityBecomesReadable() {
+        // A keyring-mode Codex home is path-keyed until auth.json (re)appears. Both readability
+        // flips must resolve to the SAME record — one home never becomes two cards.
+        let defaults = makeScratchDefaults("PathUpgrade")
+        let store = ProviderInstancesStore(defaults: defaults)
+        let home = "/Users/x/.codex-work"
+
+        let pathKeyed = DiscoveredProviderInstance(
+            baseProviderID: "codex", kind: .codexHome,
+            anchorPath: home, keychainLiteral: nil,
+            identityKey: ProviderInstanceID.pathDerivedIdentityKey(forCanonicalHome: home),
+            identityLabel: nil
+        )
+        let first = store.reconcile(with: [pathKeyed])
+        XCTAssertEqual(first.count, 1)
+
+        // auth.json appears: same home, real account identity → same record, upgraded in place.
+        let identified = DiscoveredProviderInstance(
+            baseProviderID: "codex", kind: .codexHome,
+            anchorPath: home, keychainLiteral: nil,
+            identityKey: "acct-work", identityLabel: "work@example.com"
+        )
+        let upgraded = ProviderInstancesStore(defaults: defaults).reconcile(with: [identified])
+        XCTAssertEqual(upgraded.count, 1, "identity upgrade must not mint a second card for the same home")
+        XCTAssertEqual(upgraded[0].id, first[0].id, "instance id (layout key) survives the upgrade")
+        XCTAssertEqual(upgraded[0].ordinal, first[0].ordinal)
+        XCTAssertEqual(upgraded[0].identityKey, "acct-work")
+        XCTAssertEqual(upgraded[0].identityLabel, "work@example.com")
+
+        // Keyring mode again (auth.json gone): the path-keyed finding matches the same record and
+        // the known identity is kept, not wiped.
+        let downgraded = ProviderInstancesStore(defaults: defaults).reconcile(with: [pathKeyed])
+        XCTAssertEqual(downgraded.count, 1)
+        XCTAssertEqual(downgraded[0].identityKey, "acct-work")
+
+        // A different home stays a different record.
+        let other = DiscoveredProviderInstance(
+            baseProviderID: "codex", kind: .codexHome,
+            anchorPath: "/Users/x/.codex-other", keychainLiteral: nil,
+            identityKey: ProviderInstanceID.pathDerivedIdentityKey(forCanonicalHome: "/Users/x/.codex-other"),
+            identityLabel: nil
+        )
+        XCTAssertEqual(ProviderInstancesStore(defaults: defaults).reconcile(with: [other]).count, 2)
+    }
+
     // MARK: - Discovery
 
     func testDiscoveryFindsRealHomesAndRejectsLookalikes() throws {
