@@ -50,6 +50,11 @@ struct ProviderInstanceDiscovery {
         /// the same account the default card now shows — its runtime is suppressed for this launch so
         /// one account never renders as two cards.
         var defaultIdentityKeys: [String: Set<String>] = [:]
+        /// The support trail: one line per notable decision (near-miss rejections, same-account folds,
+        /// vault/cowork summaries), emitted to the log so a "my account didn't show up" report is
+        /// diagnosable from a default log. Token-free and email-free by construction — identity
+        /// hashes, kinds, and paths only (the log file gets attached to public issues).
+        var notes: [String] = []
     }
 
     private struct ClaudeIdentity: Codable {
@@ -103,16 +108,20 @@ struct ProviderInstanceDiscovery {
             (defaultClaudeConfigDirs() + defaultCodexHomes()).map { canonical($0) }
         )
 
+        let claudeDefaultHash = defaultClaude.map(ProviderInstanceID.hash8) ?? "none"
+        let codexDefaultHashes = defaultCodex.map(ProviderInstanceID.hash8).sorted().joined(separator: ",")
+        result.notes.append("default identities: claude=\(claudeDefaultHash) codex=[\(codexDefaultHashes)]")
+
         for candidate in candidateDirectories(home: home) {
             guard !overBudget() else { break }
             let canonicalPath = canonical(candidate.path)
             guard !excludedPaths.contains(canonicalPath) else { continue }
 
-            if let finding = claudeCandidate(at: candidate, defaultIdentityKey: defaultClaude),
+            if let finding = claudeCandidate(at: candidate, defaultIdentityKey: defaultClaude, notes: &result.notes),
                seenIdentityKeys.insert("claude|\(finding.identityKey)").inserted {
                 result.instances.append(finding)
             }
-            if let finding = codexCandidate(at: candidate, defaultIdentityKeys: defaultCodex),
+            if let finding = codexCandidate(at: candidate, defaultIdentityKeys: defaultCodex, notes: &result.notes),
                seenIdentityKeys.insert("codex|\(finding.identityKey)").inserted {
                 result.instances.append(finding)
             }
@@ -123,7 +132,7 @@ struct ProviderInstanceDiscovery {
         // instance. Runs before the Cowork walk so a same-account Cowork finding upgrades to the
         // swap-vault credential source instead of the borrowed Desktop token.
         if !overBudget() {
-            for finding in claudeSwapSlots(defaultIdentityKey: defaultClaude)
+            for finding in claudeSwapSlots(defaultIdentityKey: defaultClaude, notes: &result.notes)
             where seenIdentityKeys.insert("claude|\(finding.identityKey)").inserted {
                 result.instances.append(finding)
             }
@@ -163,6 +172,10 @@ struct ProviderInstanceDiscovery {
             }
             if foundDistinct {
                 result.defaultClaudeCoworkRoots = defaultRoots
+                let partition = result.coworkRootsByIdentityKey
+                    .map { "\(ProviderInstanceID.hash8($0.key))=\($0.value.count)" }
+                    .sorted().joined(separator: ", ")
+                result.notes.append("cowork partition: default=\(defaultRoots.count) dirs, \(partition)")
             }
         }
 
@@ -174,6 +187,14 @@ struct ProviderInstanceDiscovery {
                 .map { "\($0.baseProviderID)/\($0.kind.rawValue)" }
                 .joined(separator: ", ")
             AppLog.info(.config, "provider-instance discovery: \(result.instances.count) extra login(s) [\(summary)] (\(elapsed)ms)")
+        }
+        // The support trail (bounded): every near-miss and fold, so "my account didn't show up" is
+        // answerable from a default log without a debug build.
+        for note in result.notes.prefix(30) {
+            AppLog.info(.config, "discovery: \(note)")
+        }
+        if result.notes.count > 30 {
+            AppLog.info(.config, "discovery: … and \(result.notes.count - 30) more notes")
         }
         return result
     }
@@ -241,11 +262,27 @@ struct ProviderInstanceDiscovery {
         return nil
     }
 
-    private func claudeCandidate(at url: URL, defaultIdentityKey: String?) -> DiscoveredProviderInstance? {
-        guard let identity = claudeIdentity(inConfigDir: url.path),
-              let key = claudeIdentityKey(identity),
-              key != defaultIdentityKey
-        else { return nil }
+    private func claudeCandidate(
+        at url: URL,
+        defaultIdentityKey: String?,
+        notes: inout [String]
+    ) -> DiscoveredProviderInstance? {
+        // Pre-gate: only dirs that carry an identity file at all enter the trail — everything else
+        // is a random dot-dir and stays out of the log.
+        guard let identityText = try? files.readTextIfPresent(claudeIdentityPath(forConfigDir: url.path)) else {
+            return nil
+        }
+        guard let parsed = try? JSONDecoder().decode(ClaudeIdentity.self, from: Data(identityText.utf8)),
+              let identity = parsed.oauthAccount,
+              let key = claudeIdentityKey(identity)
+        else {
+            notes.append("claude candidate \(url.path): identity file present but unreadable (no oauthAccount/accountUuid) → skipped")
+            return nil
+        }
+        guard key != defaultIdentityKey else {
+            notes.append("claude candidate \(url.path): same account as the default card (\(ProviderInstanceID.hash8(key))) → folded")
+            return nil
+        }
 
         // Credential shape: the dir's own `.credentials.json`, or its *computed* keychain item. Claude
         // Code hashes the literal CLAUDE_CONFIG_DIR string, so both spellings of this path are probed
@@ -256,15 +293,20 @@ struct ProviderInstanceDiscovery {
             .claudeAiOauth?.accessToken?.nilIfEmpty != nil
 
         var matchedLiteral: String?
-        for literal in keychainLiterals(for: url) {
+        let literals = keychainLiterals(for: url)
+        for literal in literals {
             let service = "Claude Code-credentials-\(ProviderInstanceID.hash8(literal))"
             if keychain.hasGenericPassword(service: service, account: nil) {
                 matchedLiteral = literal
                 break
             }
         }
-        guard fileBacked || matchedLiteral != nil else { return nil }
+        guard fileBacked || matchedLiteral != nil else {
+            notes.append("claude candidate \(url.path): identity \(ProviderInstanceID.hash8(key)) but no credential (no .credentials.json, no keychain item for \(literals.count) path spellings) → skipped")
+            return nil
+        }
 
+        notes.append("claude candidate \(url.path): accepted as \(ProviderInstanceID.make(baseProviderID: "claude", identityKey: key)) (\(fileBacked ? "file" : "keychain") credential)")
         return DiscoveredProviderInstance(
             baseProviderID: "claude",
             kind: .claudeConfigDir,
@@ -316,7 +358,7 @@ struct ProviderInstanceDiscovery {
     /// backup (`configs/.claude-config-<N>-<email>.json` — a full `.claude.json` copy, org included);
     /// the credential address is the vault's keychain item (`claude-swap` / `account-<N>-<email>`)
     /// with an `.enc` file fallback. All file reads; nothing here can prompt.
-    private func claudeSwapSlots(defaultIdentityKey: String?) -> [DiscoveredProviderInstance] {
+    private func claudeSwapSlots(defaultIdentityKey: String?, notes: inout [String]) -> [DiscoveredProviderInstance] {
         for root in claudeSwapBackupRoots() {
             let configsDir = root.appendingPathComponent("configs")
             let configs = (try? FileManager.default.contentsOfDirectory(
@@ -324,6 +366,7 @@ struct ProviderInstanceDiscovery {
             )) ?? []
             guard !configs.isEmpty else { continue }
             let activeSlot = claudeSwapActiveSlot(root: root)
+            notes.append("cswap vault \(root.path): \(configs.count) slot config(s), active=\(activeSlot ?? "unknown")")
 
             var findings: [DiscoveredProviderInstance] = []
             for file in configs.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
@@ -334,13 +377,24 @@ struct ProviderInstanceDiscovery {
                 let slot = String(core[..<dash])
                 let email = String(core[core.index(after: dash)...])
                 // The active slot IS the default card; only parked slots become instances.
-                guard Int(slot) != nil, slot != activeSlot else { continue }
+                guard Int(slot) != nil else { continue }
+                guard slot != activeSlot else {
+                    notes.append("cswap slot \(slot): active → it IS the default card, not an instance")
+                    continue
+                }
                 guard let text = try? files.readTextIfPresent(file.path),
                       let parsed = try? JSONDecoder().decode(ClaudeIdentity.self, from: Data(text.utf8)),
                       let account = parsed.oauthAccount,
-                      let key = claudeIdentityKey(account),
-                      key != defaultIdentityKey
-                else { continue }
+                      let key = claudeIdentityKey(account)
+                else {
+                    notes.append("cswap slot \(slot): config backup unreadable (no oauthAccount) → skipped")
+                    continue
+                }
+                guard key != defaultIdentityKey else {
+                    notes.append("cswap slot \(slot): same account as the default card (\(ProviderInstanceID.hash8(key))) → folded")
+                    continue
+                }
+                notes.append("cswap slot \(slot): parked → instance \(ProviderInstanceID.make(baseProviderID: "claude", identityKey: key))")
                 findings.append(DiscoveredProviderInstance(
                     baseProviderID: "claude",
                     kind: .claudeSwapSlot,
@@ -407,9 +461,17 @@ struct ProviderInstanceDiscovery {
         return ("codex-home:\(canonical(path))", email)
     }
 
-    private func codexCandidate(at url: URL, defaultIdentityKeys: Set<String>) -> DiscoveredProviderInstance? {
+    private func codexCandidate(
+        at url: URL,
+        defaultIdentityKeys: Set<String>,
+        notes: inout [String]
+    ) -> DiscoveredProviderInstance? {
         if let identity = codexIdentity(inHome: url.path) {
-            guard !defaultIdentityKeys.contains(identity.key) else { return nil }
+            guard !defaultIdentityKeys.contains(identity.key) else {
+                notes.append("codex candidate \(url.path): same account as the default card (\(ProviderInstanceID.hash8(identity.key))) → folded")
+                return nil
+            }
+            notes.append("codex candidate \(url.path): accepted as \(ProviderInstanceID.make(baseProviderID: "codex", identityKey: identity.key)) (auth.json)")
             return DiscoveredProviderInstance(
                 baseProviderID: "codex",
                 kind: .codexHome,
@@ -420,17 +482,25 @@ struct ProviderInstanceDiscovery {
             )
         }
 
+        if files.exists(url.path + "/auth.json") {
+            notes.append("codex candidate \(url.path): auth.json present but not Codex-shaped (no usable tokens) → skipped")
+            return nil
+        }
+
         // Keyring mode deletes `auth.json` but the home keeps its shape (config/sessions) and its
         // keychain item name is computable from the canonical home path. Identity needs the secret, so
         // it stays path-keyed until the first refresh; the attributes probe never prompts.
         let looksLikeCodexHome = files.exists(url.path + "/config.toml")
             || files.exists(url.path + "/sessions")
-        guard looksLikeCodexHome,
-              keychain.hasGenericPassword(
-                  service: CodexAuthStore.keychainService,
-                  account: CodexAuthStore.keychainAccountName(forHome: url.path)
-              )
-        else { return nil }
+        guard looksLikeCodexHome else { return nil }
+        guard keychain.hasGenericPassword(
+            service: CodexAuthStore.keychainService,
+            account: CodexAuthStore.keychainAccountName(forHome: url.path)
+        ) else {
+            notes.append("codex candidate \(url.path): codex-shaped dir but no auth.json and no keychain item for its home hash → skipped")
+            return nil
+        }
+        notes.append("codex candidate \(url.path): accepted (keyring-mode home, identity pending first refresh)")
         return DiscoveredProviderInstance(
             baseProviderID: "codex",
             kind: .codexHome,

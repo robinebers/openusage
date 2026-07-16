@@ -47,6 +47,31 @@ In addition to the unified log above, the app writes a file log to
 for full detail), then grab the file with **Copy Log Path** or **Reveal in Finder** in that same
 section. See [Logging](logging.md) for the levels, subsystem tags, and the never-log-secrets guarantee.
 
+## Multi-account discovery
+
+When someone reports "my second account didn't show up" (or "shows the wrong data"), the default log
+already contains the whole story — no debug build needed. Look for these lines from launch, in order:
+
+- `provider-instance discovery: …` — the outcome: how many extra logins, of which kinds, and how long
+  the scan took.
+- `discovery: default identities: claude=<hash> codex=[…]` — which account each **default** card
+  resolved to. The 8-char hash matches the instance-id suffix (`claude@<hash>`), so cards and
+  identities correlate directly.
+- `discovery: <provider> candidate <path>: …` — one line per near-miss with the exact reason:
+  `accepted`, `folded` (same account as an existing card — the most common "where is it?" answer),
+  `no credential`, or `identity file present but unreadable`. Random dot-dirs never appear; only
+  candidates that carried identity or credential shape.
+- `discovery: cswap vault …` / `cswap slot N: …` — the claude-swap picture: slot count, which slot is
+  active (that one *is* the default card), which parked slots became instances and why others didn't.
+- `discovery: cowork partition: …` — how Cowork sandboxes split across accounts.
+- `instance registry: <id> ordinal=N kind=… anchor=…` — every persisted account card, every launch,
+  including ones suppressed because they currently match the default login.
+- The per-refresh `refresh start (N sources: …)` line then explains credential selection per card
+  (source kind, `refresh=yes/no`, `expired=yes/no`).
+
+All of it is token-free and email-free by construction — identity hashes, paths, and kinds only — so
+the log stays safe to attach to a public issue.
+
 ## Tips
 
 - **A provider shows an error.** Reproduce with `logs` running, then check that provider's page in

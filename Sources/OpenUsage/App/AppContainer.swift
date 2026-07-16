@@ -81,6 +81,12 @@ final class AppContainer {
             }
             return !isCurrentDefault
         }
+        // The steady-state registry, every launch (the "discovered new" line fires only once per
+        // account) — so a support log always answers "which cards existed, backed by what".
+        for record in records {
+            let suppressed = visibleRecords.contains(record) ? "" : " (suppressed: currently the default login)"
+            AppLog.info(.config, "instance registry: \(record.id) ordinal=\(record.ordinal) kind=\(record.kind.rawValue) anchor=\(record.anchorPath ?? "-")\(suppressed)")
+        }
         let instanceContext = ProviderInstanceContext(
             records: visibleRecords,
             coworkRootsByInstanceID: discovered.coworkRootsByIdentityKey.reduce(into: [:]) { map, entry in

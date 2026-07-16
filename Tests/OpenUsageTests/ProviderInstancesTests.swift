@@ -92,6 +92,12 @@ final class ProviderInstancesTests: XCTestCase {
         let work = result.instances.first { $0.identityKey == "uuid-work" }
         XCTAssertEqual(work?.identityLabel, "work@example.com")
         XCTAssertEqual(work?.kind, .claudeConfigDir)
+
+        // The support trail explains every decision — and never leaks an email (labels stay out;
+        // the log file ends up attached to public issues).
+        XCTAssertTrue(result.notes.contains { $0.contains(".claude-copy") && $0.contains("folded") })
+        XCTAssertTrue(result.notes.contains { $0.contains(".claude-work") && $0.contains("accepted") })
+        XCTAssertFalse(result.notes.contains { $0.contains("work@example.com") })
     }
 
     func testDiscoveryFindsKeychainBackedHomes() throws {
@@ -202,6 +208,9 @@ final class ProviderInstancesTests: XCTestCase {
         XCTAssertEqual(slot.desktopOrganization, "org-team")
         XCTAssertEqual(slot.identityLabel, "me@x.com (Team Org)")
         XCTAssertEqual(slot.anchorPath, home.appendingPathComponent(".claude-swap-backup").path)
+        XCTAssertTrue(result.notes.contains { $0.contains("cswap vault") && $0.contains("active=2") })
+        XCTAssertTrue(result.notes.contains { $0.contains("cswap slot 2") && $0.contains("active") })
+        XCTAssertFalse(result.notes.contains { $0.contains("me@x.com") }, "vault notes must not carry the email")
     }
 
     func testReconcileUpgradesSourceKindForSameIdentity() {
