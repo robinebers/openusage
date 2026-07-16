@@ -130,15 +130,26 @@ struct ProviderInstanceContext {
     /// When a `.claudeDesktop` instance exists, the default Claude card must scan only the Cowork dirs
     /// belonging to the default account (`nil` = no partition; keep the built-in walk untouched).
     var defaultClaudeCoworkRoots: [URL]?
+    /// Swap machines: the account-activity timeline from cswap's switch history, plus the shared home
+    /// roots it partitions and the default card's identity (its side of the partition).
+    var claudeSwapTimeline: ClaudeSwapTimeline?
+    var claudeSharedHomeRoots: [URL]
+    var defaultClaudeIdentityKey: String?
 
     init(
         records: [ProviderInstanceRecord],
         coworkRootsByInstanceID: [String: [URL]] = [:],
-        defaultClaudeCoworkRoots: [URL]? = nil
+        defaultClaudeCoworkRoots: [URL]? = nil,
+        claudeSwapTimeline: ClaudeSwapTimeline? = nil,
+        claudeSharedHomeRoots: [URL] = [],
+        defaultClaudeIdentityKey: String? = nil
     ) {
         self.records = records
         self.coworkRootsByInstanceID = coworkRootsByInstanceID
         self.defaultClaudeCoworkRoots = defaultClaudeCoworkRoots
+        self.claudeSwapTimeline = claudeSwapTimeline
+        self.claudeSharedHomeRoots = claudeSharedHomeRoots
+        self.defaultClaudeIdentityKey = defaultClaudeIdentityKey
     }
 
     func records(forBase baseProviderID: String) -> [ProviderInstanceRecord] {

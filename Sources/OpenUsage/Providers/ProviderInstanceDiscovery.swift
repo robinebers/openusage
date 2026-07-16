@@ -55,6 +55,12 @@ struct ProviderInstanceDiscovery {
         /// diagnosable from a default log. Token-free and email-free by construction — identity
         /// hashes, kinds, and paths only (the log file gets attached to public issues).
         var notes: [String] = []
+        /// Swap machines only: the account-activity timeline from cswap's own switch log, used to
+        /// attribute the SHARED home's spend logs per account (see `ClaudeSwapTimeline`).
+        var claudeSwapTimeline: ClaudeSwapTimeline?
+        /// The default card's config dirs (env override respected) — the shared log roots that swap
+        /// cards partition by time.
+        var claudeSharedHomeRoots: [URL] = []
     }
 
     private struct ClaudeIdentity: Codable {
@@ -132,9 +138,15 @@ struct ProviderInstanceDiscovery {
         // instance. Runs before the Cowork walk so a same-account Cowork finding upgrades to the
         // swap-vault credential source instead of the borrowed Desktop token.
         if !overBudget() {
-            for finding in claudeSwapSlots(defaultIdentityKey: defaultClaude, notes: &result.notes)
+            let swap = claudeSwapContext(defaultIdentityKey: defaultClaude, notes: &result.notes)
+            for finding in swap.findings
             where seenIdentityKeys.insert("claude|\(finding.identityKey)").inserted {
                 result.instances.append(finding)
+            }
+            result.claudeSwapTimeline = swap.timeline
+            if swap.timeline != nil {
+                result.claudeSharedHomeRoots = defaultClaudeConfigDirs()
+                    .map { URL(fileURLWithPath: expandHome($0)) }
             }
         }
 
@@ -358,7 +370,10 @@ struct ProviderInstanceDiscovery {
     /// backup (`configs/.claude-config-<N>-<email>.json` — a full `.claude.json` copy, org included);
     /// the credential address is the vault's keychain item (`claude-swap` / `account-<N>-<email>`)
     /// with an `.enc` file fallback. All file reads; nothing here can prompt.
-    private func claudeSwapSlots(defaultIdentityKey: String?, notes: inout [String]) -> [DiscoveredProviderInstance] {
+    private func claudeSwapContext(
+        defaultIdentityKey: String?,
+        notes: inout [String]
+    ) -> (findings: [DiscoveredProviderInstance], timeline: ClaudeSwapTimeline?) {
         for root in claudeSwapBackupRoots() {
             let configsDir = root.appendingPathComponent("configs")
             let configs = (try? FileManager.default.contentsOfDirectory(
@@ -369,6 +384,7 @@ struct ProviderInstanceDiscovery {
             notes.append("cswap vault \(ProviderInstanceID.logPath(root.path)): \(configs.count) slot config(s), active=\(activeSlot ?? "unknown")")
 
             var findings: [DiscoveredProviderInstance] = []
+            var slotIdentities: [String: String] = [:]
             for file in configs.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
                 let name = file.lastPathComponent
                 guard name.hasPrefix(".claude-config-"), name.hasSuffix(".json") else { continue }
@@ -376,18 +392,21 @@ struct ProviderInstanceDiscovery {
                 guard let dash = core.firstIndex(of: "-") else { continue }
                 let slot = String(core[..<dash])
                 let email = String(core[core.index(after: dash)...])
-                // The active slot IS the default card; only parked slots become instances.
                 guard Int(slot) != nil else { continue }
-                guard slot != activeSlot else {
-                    notes.append("cswap slot \(slot): active → it IS the default card, not an instance")
-                    continue
-                }
                 guard let text = try? files.readTextIfPresent(file.path),
                       let parsed = try? JSONDecoder().decode(ClaudeIdentity.self, from: Data(text.utf8)),
                       let account = parsed.oauthAccount,
                       let key = claudeIdentityKey(account)
                 else {
                     notes.append("cswap slot \(slot): config backup unreadable (no oauthAccount) → skipped")
+                    continue
+                }
+                // Every slot's identity feeds the timeline — including the active one, whose periods
+                // belong to the default card.
+                slotIdentities[slot] = key
+                // The active slot IS the default card; only parked slots become instances.
+                guard slot != activeSlot else {
+                    notes.append("cswap slot \(slot): active → it IS the default card, not an instance")
                     continue
                 }
                 guard key != defaultIdentityKey else {
@@ -406,9 +425,23 @@ struct ProviderInstanceDiscovery {
                     identityLabel: claudeIdentityLabel(account)
                 ))
             }
-            if !findings.isEmpty { return findings }
+
+            // The switch timeline (from cswap's own log) is what lets the SHARED home's spend logs be
+            // attributed per account. No parseable events → no timeline → spend stays on the default
+            // card, as before.
+            var timeline: ClaudeSwapTimeline?
+            if !slotIdentities.isEmpty,
+               let logText = try? files.readTextIfPresent(root.appendingPathComponent("claude-swap.log").path) {
+                timeline = ClaudeSwapTimeline.parse(logText: logText, slotIdentities: slotIdentities)
+                if let timeline {
+                    notes.append("cswap timeline: \(timeline.periods.count) period(s) from switch history → per-account spend attribution active")
+                } else {
+                    notes.append("cswap timeline: no parseable switch events → shared-home spend stays on the default card")
+                }
+            }
+            return (findings, timeline)
         }
-        return []
+        return ([], nil)
     }
 
     private func claudeSwapActiveSlot(root: URL) -> String? {

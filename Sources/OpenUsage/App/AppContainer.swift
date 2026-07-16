@@ -92,7 +92,10 @@ final class AppContainer {
             coworkRootsByInstanceID: discovered.coworkRootsByIdentityKey.reduce(into: [:]) { map, entry in
                 map[ProviderInstanceID.make(baseProviderID: "claude", identityKey: entry.key)] = entry.value
             },
-            defaultClaudeCoworkRoots: discovered.defaultClaudeCoworkRoots
+            defaultClaudeCoworkRoots: discovered.defaultClaudeCoworkRoots,
+            claudeSwapTimeline: discovered.claudeSwapTimeline,
+            claudeSharedHomeRoots: discovered.claudeSharedHomeRoots,
+            defaultClaudeIdentityKey: discovered.defaultIdentityKeys["claude"]?.first
         )
 
         let providers = ProviderCatalog.make(instanceContext: instanceContext)

@@ -278,6 +278,70 @@ final class ProviderInstancesTests: XCTestCase {
 
     private func candidateState(_ state: ClaudeCredentialState) -> ClaudeCredentialState { state }
 
+    // MARK: - Swap timeline (per-account spend attribution)
+
+    func testSwapTimelineParsesAndAttributes() throws {
+        let log = """
+        2026-07-16 10:00:00,123 - INFO - Starting up
+        2026-07-16 11:50:55,324 - INFO - Switched from account 1 to 2
+        2026-07-16 17:06:43,425 - INFO - Switched from account 2 to 1
+        garbage line
+        """
+        let timeline = try XCTUnwrap(ClaudeSwapTimeline.parse(
+            logText: log,
+            slotIdentities: ["1": "uuid|org-team", "2": "uuid|org-max"]
+        ))
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        func at(_ s: String) -> Date { formatter.date(from: s)! }
+
+        // Backfill: slot 1 (the first event's `from`) owns everything before the first switch.
+        XCTAssertEqual(timeline.identityKey(at: at("2026-07-10 09:00:00")), "uuid|org-team")
+        XCTAssertEqual(timeline.identityKey(at: at("2026-07-16 12:00:00")), "uuid|org-max")
+        XCTAssertEqual(timeline.identityKey(at: at("2026-07-16 18:00:00")), "uuid|org-team")
+
+        // Filters: each account keeps its own periods; only the unknown-inclusive filter would take
+        // time the timeline can't attribute (none here, thanks to the backfill).
+        let team = timeline.entryFilter(identityKey: "uuid|org-team", includeUnknown: false)
+        let max = timeline.entryFilter(identityKey: "uuid|org-max", includeUnknown: true)
+        XCTAssertTrue(team(at("2026-07-16 09:00:00")))
+        XCTAssertFalse(team(at("2026-07-16 12:00:00")))
+        XCTAssertTrue(max(at("2026-07-16 12:00:00")))
+        XCTAssertFalse(max(at("2026-07-16 18:00:00")))
+    }
+
+    func testSwapTimelineNilWithoutEvents() {
+        XCTAssertNil(ClaudeSwapTimeline.parse(logText: "no switches here", slotIdentities: ["1": "x"]))
+    }
+
+    func testDiscoveryBuildsSwapTimeline() throws {
+        let home = try makeFixtureHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try write(home, ".claude.json",
+                  claudeIdentityJSON(uuid: "uuid-me", email: "me@x.com", orgUuid: "ORG-MAX", orgName: "Max Org"))
+        try write(home, ".claude-swap-backup/configs/.claude-config-1-me@x.com.json",
+                  claudeIdentityJSON(uuid: "uuid-me", email: "me@x.com", orgUuid: "ORG-TEAM", orgName: "Team Org"))
+        try write(home, ".claude-swap-backup/configs/.claude-config-2-me@x.com.json",
+                  claudeIdentityJSON(uuid: "uuid-me", email: "me@x.com", orgUuid: "ORG-MAX", orgName: "Max Org"))
+        try write(home, ".claude-swap-backup/sequence.json", #"{"activeAccountNumber": 2}"#)
+        try write(home, ".claude-swap-backup/claude-swap.log",
+                  "2026-07-16 11:50:55,324 - INFO - Switched from account 1 to 2\n")
+
+        let result = ProviderInstanceDiscovery(
+            environment: FakeEnvironment([:]),
+            keychain: AccountAwareKeychain(),
+            homeDirectory: { home }
+        ).run()
+
+        let timeline = try XCTUnwrap(result.claudeSwapTimeline)
+        XCTAssertEqual(timeline.periods.count, 2)
+        XCTAssertEqual(result.claudeSharedHomeRoots, [home.appendingPathComponent(".claude")])
+        XCTAssertTrue(result.notes.contains { $0.contains("per-account spend attribution active") })
+    }
+
     // MARK: - Scoped credential stores
 
     func testScopedClaudeStoreReadsOnlyItsOwnLogin() {

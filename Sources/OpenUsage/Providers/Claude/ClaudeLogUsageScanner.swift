@@ -30,17 +30,24 @@ actor ClaudeLogUsageScanner {
     /// (Cowork logs belong to the account that produced them, not this card), the account's partition
     /// for the default card and for `.claudeDesktop` instances. `nil` keeps today's full walk.
     private let coworkRootsOverride: [URL]?
+    /// Per-entry time filter for swap-tool machines, where several accounts share ONE home's logs:
+    /// each card keeps only the entries written while ITS account was active (see
+    /// `ClaudeSwapTimeline`). Applied after parsing (the per-file cache stays whole-file) and before
+    /// dedup/aggregation. `nil` keeps every entry.
+    private let entryFilter: (@Sendable (Date) -> Bool)?
 
     init(
         environment: EnvironmentReading = ProcessEnvironmentReader(),
         homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser },
         rootsOverride: [URL]? = nil,
-        coworkRootsOverride: [URL]? = nil
+        coworkRootsOverride: [URL]? = nil,
+        entryFilter: (@Sendable (Date) -> Bool)? = nil
     ) {
         self.environment = environment
         self.homeDirectory = homeDirectory
         self.rootsOverride = rootsOverride
         self.coworkRootsOverride = coworkRootsOverride
+        self.entryFilter = entryFilter
     }
 
     /// One parsed usage line. Token buckets are pre-normalized into `TokenBreakdown`; dedup fields
@@ -73,7 +80,10 @@ actor ClaudeLogUsageScanner {
 
         let since = JSONLScanning.sinceDate(daysBack: daysBack, now: now)
         // Entries come back concatenated in path-sorted file order, so dedup's keep-first is deterministic.
-        let entries = await scanner.items(from: files, since: since, parse: Self.parseFile)
+        var entries = await scanner.items(from: files, since: since, parse: Self.parseFile)
+        if let entryFilter {
+            entries = entries.filter { entryFilter($0.timestamp) }
+        }
         return Self.aggregate(entries: Self.dedup(entries), since: since, pricing: pricing)
     }
 

@@ -15,13 +15,27 @@ enum ProviderCatalog {
         // then every other provider alphabetically by display name.
         var runtimes: [ProviderRuntime] = []
 
+        // On a swap-tool machine the default card's spend must exclude the periods other accounts were
+        // active — its filter takes its own periods PLUS unknown time (pre-history spend is never
+        // dropped). Without a timeline the scanner is byte-identical to before.
+        let defaultClaudeScanner: ClaudeLogUsageScanner
+        if let context = instanceContext, let timeline = context.claudeSwapTimeline,
+           let defaultKey = context.defaultClaudeIdentityKey, !context.claudeSharedHomeRoots.isEmpty {
+            defaultClaudeScanner = ClaudeLogUsageScanner(
+                rootsOverride: context.claudeSharedHomeRoots,
+                coworkRootsOverride: context.defaultClaudeCoworkRoots,
+                entryFilter: timeline.entryFilter(identityKey: defaultKey, includeUnknown: true)
+            )
+        } else {
+            defaultClaudeScanner = ClaudeLogUsageScanner(
+                coworkRootsOverride: instanceContext?.defaultClaudeCoworkRoots
+            )
+        }
         runtimes.append(ClaudeProvider(
             provider: ClaudeProvider.makeProvider(
                 displayName: instanceContext?.defaultDisplayName(forBase: "claude", name: "Claude") ?? "Claude"
             ),
-            logUsageScanner: ClaudeLogUsageScanner(
-                coworkRootsOverride: instanceContext?.defaultClaudeCoworkRoots
-            )
+            logUsageScanner: defaultClaudeScanner
         ))
         for record in instanceContext?.records(forBase: "claude") ?? [] {
             runtimes.append(claudeInstance(record: record, context: instanceContext!))
@@ -64,9 +78,23 @@ enum ProviderCatalog {
                 logUsageScanner: ClaudeLogUsageScanner(rootsOverride: [], coworkRootsOverride: coworkRoots)
             )
         case .claudeSwapSlot:
-            // A parked cswap slot: read-only vault credential (+ org-pinned Desktop fallback). The
-            // shared default home's logs can't be attributed to one slot, so no log roots — only the
-            // account's own Cowork sandboxes, when it has any.
+            // A parked cswap slot: read-only vault credential (+ org-pinned Desktop fallback). Spend:
+            // this account's time slices of the SHARED home (attributed via the switch timeline) plus
+            // its own Cowork sandboxes. Without a timeline the shared logs stay on the default card.
+            let primaryScanner: ClaudeLogUsageScanner
+            var extraScanners: [ClaudeLogUsageScanner] = []
+            if let timeline = context.claudeSwapTimeline, !context.claudeSharedHomeRoots.isEmpty {
+                primaryScanner = ClaudeLogUsageScanner(
+                    rootsOverride: context.claudeSharedHomeRoots,
+                    coworkRootsOverride: [],
+                    entryFilter: timeline.entryFilter(identityKey: record.identityKey, includeUnknown: false)
+                )
+                if !coworkRoots.isEmpty {
+                    extraScanners.append(ClaudeLogUsageScanner(rootsOverride: [], coworkRootsOverride: coworkRoots))
+                }
+            } else {
+                primaryScanner = ClaudeLogUsageScanner(rootsOverride: [], coworkRootsOverride: coworkRoots)
+            }
             return ClaudeProvider(
                 provider: provider,
                 authStore: ClaudeAuthStore(scope: .swapSlot(
@@ -74,7 +102,8 @@ enum ProviderCatalog {
                     backupRoot: record.anchorPath ?? "",
                     organization: record.desktopOrganization
                 )),
-                logUsageScanner: ClaudeLogUsageScanner(rootsOverride: [], coworkRootsOverride: coworkRoots)
+                logUsageScanner: primaryScanner,
+                extraLogUsageScanners: extraScanners
             )
         default:
             let path = expandHome(record.anchorPath ?? "")

@@ -46,6 +46,8 @@ Discovery is read-only and quiet: it looks for folders that carry a real Claude 
 
 Accounts are organization-aware: a Team org and a personal Max org under the same email are different usage pools, so they get different cards. And if you use [claude-swap](https://github.com/realiti4/claude-swap) (`cswap`), each **parked** slot shows as its own card too — read from cswap's own vault, never modified, never refreshed (a stale parked token shows a re-login notice until cswap next touches it). The active slot is simply what the default Claude card is showing, so one account never appears twice, no matter how often you swap.
 
+On a cswap machine all accounts write into the **same** session logs, so the spend tiles are split by time: OpenUsage reads cswap's own switch history and attributes each log entry to whichever account was active when it was written. That makes per-account spend an estimate at the switch boundaries (a session already running when you swap keeps billing the old account for a few minutes), and usage from before cswap's history began stays on the default card. Without a readable switch history, all shared-home spend stays on the default card.
+
 Don't want a discovered account on the dashboard? Turn its card off in Customize — that choice sticks, like any provider toggle.
 
 ## The spend tiles

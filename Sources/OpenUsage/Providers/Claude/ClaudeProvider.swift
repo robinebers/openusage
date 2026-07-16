@@ -23,6 +23,10 @@ final class ClaudeProvider: ProviderRuntime {
     let authStore: ClaudeAuthStore
     let usageClient: ClaudeUsageClient
     let logUsageScanner: ClaudeLogUsageScanner
+    /// Additional scan sources merged into the spend tiles (no double counting — the accumulator
+    /// replays per-model daily usage). Used on swap-tool machines where a card's spend comes from the
+    /// time-filtered shared home PLUS its own unfiltered Cowork partition.
+    let extraLogUsageScanners: [ClaudeLogUsageScanner]
     let now: @Sendable () -> Date
     let pricing: @Sendable () async -> ModelPricing
 
@@ -41,6 +45,7 @@ final class ClaudeProvider: ProviderRuntime {
         authStore: ClaudeAuthStore = ClaudeAuthStore(),
         usageClient: ClaudeUsageClient = ClaudeUsageClient(),
         logUsageScanner: ClaudeLogUsageScanner = ClaudeLogUsageScanner(),
+        extraLogUsageScanners: [ClaudeLogUsageScanner] = [],
         now: @escaping @Sendable () -> Date = Date.init,
         pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() }
     ) {
@@ -48,6 +53,7 @@ final class ClaudeProvider: ProviderRuntime {
         self.authStore = authStore
         self.usageClient = usageClient
         self.logUsageScanner = logUsageScanner
+        self.extraLogUsageScanners = extraLogUsageScanners
         self.now = now
         self.pricing = pricing
     }
@@ -269,9 +275,14 @@ final class ClaudeProvider: ProviderRuntime {
         // Both scans run on their scanner actors, off the main actor.
         let pricing = await pricing()
         let nativeScan = await logUsageScanner.scan(now: now(), pricing: pricing)
+        var scans: [LogUsageScan?] = [nativeScan]
+        for scanner in extraLogUsageScanners {
+            scans.append(await scanner.scan(now: now(), pricing: pricing))
+        }
         let piScan = await PiUsageScanner.shared.scan(cardID: provider.id, now: now(), pricing: pricing)
+        scans.append(piScan)
         var usageHistory: ProviderUsageHistory?
-        if let scan = DailyUsageAccumulator.merged([nativeScan, piScan]) {
+        if let scan = DailyUsageAccumulator.merged(scans) {
             let note = piScan == nil
                 ? "From your Claude usage history (estimated)"
                 : "From your Claude usage history and pi (estimated)"
