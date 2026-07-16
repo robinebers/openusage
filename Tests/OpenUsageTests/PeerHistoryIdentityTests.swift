@@ -133,7 +133,7 @@ final class PeerHistoryIdentityTests: XCTestCase {
         XCTAssertEqual(total.slices[0].amountUSD, 42, accuracy: 0.001)
     }
 
-    func testTotalSpendGroupsFamiliesAndKeepsFamilyColors() {
+    func testTotalSpendRanksBySizeAndKeepsFamilyColors() {
         let claude = ClaudeProvider.makeProvider(displayName: "Claude 1")
         let instance = ClaudeProvider.makeProvider(id: "claude@f15456b0", displayName: "Claude 2")
         let remote = Provider(id: "claude@peer-ab12cd34", displayName: "Claude · Mac mini", icon: claude.icon)
@@ -151,7 +151,8 @@ final class PeerHistoryIdentityTests: XCTestCase {
             )
         }
 
-        // Codex out-earns two of the three Claude slices — it must still not interleave the family.
+        // Plain size order — family membership is carried by color, not by grouping, and identity-
+        // keyed sync makes the amounts (and therefore this order) identical on every Mac.
         let total = TotalSpendAggregator.total(
             for: .today,
             providers: [claude, instance, remote, codex],
@@ -163,7 +164,7 @@ final class PeerHistoryIdentityTests: XCTestCase {
             ]
         )
         let names = total.projection(for: .cost).slices.map(\.provider.displayName)
-        XCTAssertEqual(names, ["Claude 1", "Claude 2", "Claude · Mac mini", "Codex"])
+        XCTAssertEqual(names, ["Claude 1", "Codex", "Claude 2", "Claude · Mac mini"])
 
         // Instances tint within the family hue — stable per id, never the fallback rainbow, and
         // distinct from the base card's brand color.
