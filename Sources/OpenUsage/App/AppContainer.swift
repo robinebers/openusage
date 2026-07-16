@@ -113,11 +113,23 @@ final class AppContainer {
             defaultExpandedMetricIDs: DefaultLayout.translatedForInstances(DefaultLayout.expandedMetricIDs, providerIDs: registryProviderIDs),
             isProviderEnabled: { [enablement] in enablement.isEnabled($0) }
         )
+        // Card → account identity, for identity-keyed iCloud matching (the same account can be the
+        // default card here and an instance card on another Mac). Suppressed records share the default
+        // card's identity, so only visible ones map.
+        var providerIdentityKeys: [String: String] = [:]
+        for (base, keys) in discovered.defaultIdentityKeys {
+            if let key = keys.first { providerIdentityKeys[base] = key }
+        }
+        for record in visibleRecords {
+            providerIdentityKeys[record.id] = record.identityKey
+        }
+
         let dataStore = WidgetDataStore(
             registry: registry,
             providers: providers,
             isProviderEnabled: { [enablement] in enablement.isEnabled($0) },
             orderedDescriptors: { [layout] in layout.visiblePlaced.compactMap { layout.descriptor(for: $0) } },
+            providerIdentityKeys: providerIdentityKeys,
             notificationSettings: { notificationSettings }
         )
         let iCloudSync = ICloudUsageSyncStore(dataStore: dataStore)

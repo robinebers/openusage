@@ -78,6 +78,12 @@ final class WidgetDataStore {
     /// Wired by `ICloudUsageSyncStore`; debounced there so a concurrent provider batch produces one file.
     @ObservationIgnored var onLocalHistoryChanged: (@MainActor () -> Void)?
     @ObservationIgnored private var peerHistoryDocuments: [UsageHistoryDocument] = []
+    /// Card id → stable account identity (default cards + visible instances), for identity-keyed peer
+    /// matching and for publishing this Mac's own document.
+    @ObservationIgnored private let providerIdentityKeys: [String: String]
+    /// Accounts synced from other Macs that have NO card here: surfaced in Total Spend only (their
+    /// synthesized snapshots carry the usual Today/Yesterday/Last 30 Days lines), never as cards.
+    private(set) var remoteOnlySpend: [(provider: Provider, snapshot: ProviderSnapshot)] = []
 
     /// Global meter style: whether every bounded tile (and the menu-bar value) renders as "used" or
     /// "left/remaining". Persisted so the choice survives relaunch; defaults to `.remaining`.
@@ -105,6 +111,7 @@ final class WidgetDataStore {
         defaults: UserDefaults = .standard,
         isProviderEnabled: @escaping @MainActor (String) -> Bool = { _ in true },
         orderedDescriptors: (@MainActor () -> [WidgetDescriptor])? = nil,
+        providerIdentityKeys: [String: String] = [:],
         now: @escaping () -> Date = Date.init,
         notificationSettings: (@MainActor () -> NotificationSettingsStore)? = nil,
         postNotification: (@MainActor (String, String, String, String) async -> Bool)? = nil
@@ -114,6 +121,7 @@ final class WidgetDataStore {
         self.cache = cache
         self.defaults = defaults
         self.isProviderEnabled = isProviderEnabled
+        self.providerIdentityKeys = providerIdentityKeys
         self.orderedDescriptors = orderedDescriptors ?? { registry.descriptors }
         self.now = now
         self.notificationSettings = notificationSettings
@@ -323,27 +331,32 @@ final class WidgetDataStore {
 
     func localHistoryDocument(deviceID: String, deviceName: String, updatedAt: Date = Date()) -> UsageHistoryDocument {
         var providers: [String: ProviderUsageHistory] = [:]
-        // Provider instances (extra accounts, `claude@…`) stay machine-local: their instance ids are
-        // this machine's discovery artifacts, so publishing them would leak meaningless keys into
-        // peers' merged history. Only default cards sync.
+        var identities: [String: String] = [:]
+        // Every machine-local card syncs — instances included. Instance ids are identity-derived, so
+        // they mean the same account on every Mac; the identities map additionally lets peers match a
+        // default card's history to whatever card that account is over there (see PeerHistoryRemapper).
         for (providerID, descriptor) in registry.historyDescriptorsByProvider
-        where descriptor.scope == .machineLocal && isProviderEnabled(providerID)
-            && !ProviderInstanceID.isInstance(providerID) {
+        where descriptor.scope == .machineLocal && isProviderEnabled(providerID) {
             if let history = localSnapshots[providerID]?.usageHistory {
                 providers[providerID] = history
+                if let identity = providerIdentityKeys[providerID] {
+                    identities[providerID] = identity
+                }
             }
         }
         return UsageHistoryDocument(
             deviceID: deviceID,
             deviceName: deviceName,
             updatedAt: updatedAt,
-            providers: providers
+            providers: providers,
+            identities: identities.isEmpty ? nil : identities
         )
     }
 
     private func rebuildRenderedSnapshots() {
         guard !peerHistoryDocuments.isEmpty else {
             snapshots = localSnapshots
+            remoteOnlySpend = []
             return
         }
         let renderDate = now()
@@ -352,10 +365,22 @@ final class WidgetDataStore {
         ) { result, entry in
             if isProviderEnabled(entry.key) { result[entry.key] = entry.value }
         }
+        // Match peers by account identity, not card id — the same account can be the default card on
+        // one Mac and an instance card on another. Whatever matches no local card at all becomes a
+        // Total Spend-only remote entry below.
+        let remapped = PeerHistoryRemapper.remap(
+            documents: peerHistoryDocuments,
+            localIdentityByCardID: providerIdentityKeys
+        )
         let merged = UsageHistoryAggregator.merged(
             localSnapshots: localSnapshots,
-            peerDocuments: peerHistoryDocuments,
+            peerHistories: remapped.histories,
             descriptors: enabledDescriptors,
+            now: renderDate
+        )
+        remoteOnlySpend = Self.renderRemoteOnlySpend(
+            remapped.remoteOnly,
+            registry: registry,
             now: renderDate
         )
         var rendered = localSnapshots
@@ -377,6 +402,49 @@ final class WidgetDataStore {
             )
         }
         snapshots = rendered
+    }
+
+    /// Synthesize Total Spend entries for accounts that exist only on other Macs: a pseudo provider
+    /// (base icon, "Claude · Mac mini" name) plus a snapshot carrying the standard spend-tile lines,
+    /// rendered from the merged remote history by the same renderer real cards use.
+    private static func renderRemoteOnlySpend(
+        _ remoteOnly: [PeerHistoryRemapper.RemoteOnlyHistory],
+        registry: WidgetRegistry,
+        now: Date
+    ) -> [(provider: Provider, snapshot: ProviderSnapshot)] {
+        remoteOnly.compactMap { entry in
+            guard let baseProvider = registry.provider(id: entry.baseProviderID),
+                  let descriptor = registry.historyDescriptorsByProvider[entry.baseProviderID]
+            else { return nil }
+            let history = UsageHistoryAggregator.mergeHistories(entry.histories, now: now)
+            guard !history.series.daily.isEmpty else { return nil }
+
+            // "Claude", even when the local default card is displayed as "Claude 1".
+            let baseName = baseProvider.displayName.replacingOccurrences(
+                of: #" \d+$"#, with: "", options: .regularExpression
+            )
+            let device = entry.deviceNames.count == 1
+                ? entry.deviceNames[0]
+                : "\(entry.deviceNames.count) other Macs"
+            let provider = Provider(
+                id: "\(entry.baseProviderID)@peer-\(ProviderInstanceID.hash8(entry.identityKey))",
+                displayName: "\(baseName) · \(device)",
+                icon: baseProvider.icon
+            )
+            let empty = ProviderSnapshot(
+                providerID: provider.id,
+                displayName: provider.displayName,
+                lines: [],
+                refreshedAt: now
+            )
+            let snapshot = UsageHistorySnapshotRenderer.render(
+                local: empty,
+                history: history,
+                descriptor: descriptor,
+                now: now
+            )
+            return (provider, snapshot)
+        }
     }
 
     /// The provider's latest refresh error, or `nil` when its last refresh succeeded.
