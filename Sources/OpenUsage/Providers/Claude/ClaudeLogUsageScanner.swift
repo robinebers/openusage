@@ -22,13 +22,25 @@ import Foundation
 actor ClaudeLogUsageScanner {
     private let environment: EnvironmentReading
     private let homeDirectory: @Sendable () -> URL
+    /// When set, the env/XDG root resolution is bypassed and exactly these config dirs are scanned
+    /// (still filtered to ones with `projects/`). Provider instances use this to pin the scan to
+    /// their one home.
+    private let rootsOverride: [URL]?
+    /// When set, replaces the built-in Cowork sandbox walk: `[]` for scoped config-dir instances
+    /// (Cowork logs belong to the account that produced them, not this card), the account's partition
+    /// for the default card and for `.claudeDesktop` instances. `nil` keeps today's full walk.
+    private let coworkRootsOverride: [URL]?
 
     init(
         environment: EnvironmentReading = ProcessEnvironmentReader(),
-        homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser }
+        homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser },
+        rootsOverride: [URL]? = nil,
+        coworkRootsOverride: [URL]? = nil
     ) {
         self.environment = environment
         self.homeDirectory = homeDirectory
+        self.rootsOverride = rootsOverride
+        self.coworkRootsOverride = coworkRootsOverride
     }
 
     /// One parsed usage line. Token buckets are pre-normalized into `TokenBreakdown`; dedup fields
@@ -83,8 +95,10 @@ actor ClaudeLogUsageScanner {
             roots.append(url)
         }
 
-        if let raw = environment.value(for: "CLAUDE_CONFIG_DIR")?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !raw.isEmpty {
+        if let rootsOverride {
+            for url in rootsOverride { addIfValid(url) }
+        } else if let raw = environment.value(for: "CLAUDE_CONFIG_DIR")?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !raw.isEmpty {
             for part in raw.split(separator: ",").map({ $0.trimmingCharacters(in: .whitespaces) }) where !part.isEmpty {
                 var url = URL(fileURLWithPath: expandHome(part))
                 // Accept the `projects/` directory itself as an alias for its parent config dir.
@@ -104,8 +118,12 @@ actor ClaudeLogUsageScanner {
             addIfValid(home.appendingPathComponent(".claude"))
         }
 
-        for sandbox in Self.coworkClaudeDirs(home: homeDirectory()) {
-            addIfValid(sandbox)
+        if let coworkRootsOverride {
+            for sandbox in coworkRootsOverride { addIfValid(sandbox) }
+        } else {
+            for sandbox in Self.coworkClaudeDirs(home: homeDirectory()) {
+                addIfValid(sandbox)
+            }
         }
         return roots
     }
@@ -115,7 +133,7 @@ actor ClaudeLogUsageScanner {
     /// (plus an `agent/local_*` variant one level deeper). Each holds the same `projects/**/*.jsonl`
     /// session logs as `~/.claude`, so they scan as additional roots. The walk is bounded to those
     /// known levels — session dirs contain full sandbox homes we must not recurse into.
-    private static func coworkClaudeDirs(home: URL) -> [URL] {
+    static func coworkClaudeDirs(home: URL) -> [URL] {
         let base = home
             .appendingPathComponent("Library/Application Support/Claude/local-agent-mode-sessions")
 

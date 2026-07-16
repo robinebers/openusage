@@ -1,4 +1,15 @@
+import CryptoKit
 import Foundation
+
+/// Which login a `CodexAuthStore` is allowed to see. `.standard` is the default card — byte-identical
+/// to the store's historical behavior (env `CODEX_HOME`, both default homes, service-only keychain
+/// read). `.home` backs a provider instance pinned to exactly one Codex home: its `auth.json` plus its
+/// per-home keychain item (`Codex Auth`, account `cli|<first 16 hex of SHA-256 of the canonical home
+/// path>` — the CLI's own keyring naming), with no environment fallback.
+enum CodexCredentialScope: Hashable, Sendable {
+    case standard
+    case home(path: String)
+}
 
 struct CodexTokens: Codable, Hashable, Sendable {
     var accessToken: String?
@@ -93,21 +104,51 @@ struct CodexAuthStore: Sendable {
     var files: TextFileAccessing
     var keychain: KeychainAccessing
     var now: @Sendable () -> Date
+    let scope: CodexCredentialScope
 
     init(
         environment: EnvironmentReading = ProcessEnvironmentReader(),
         files: TextFileAccessing = LocalTextFileAccessor(),
         keychain: KeychainAccessing = SecurityKeychainAccessor(),
+        scope: CodexCredentialScope = .standard,
         now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.environment = environment
         self.files = files
         self.keychain = keychain
+        self.scope = scope
         self.now = now
     }
 
     func loadAuthCandidates() -> [CodexAuthState] {
         authPaths().compactMap { loadAuth(at: $0) }
+    }
+
+    /// The keychain account name the Codex CLI's keyring mode uses for a given home: `cli|` plus the
+    /// first 16 hex of SHA-256 of the canonicalized home path. Computable both ways we need it — from
+    /// a discovered dir (existence probe) and from a scoped store (secret read) — so there is never a
+    /// reason to enumerate the service.
+    static func keychainAccountName(forHome path: String) -> String {
+        let canonical = URL(fileURLWithPath: expandHome(path))
+            .resolvingSymlinksInPath().standardizedFileURL.path
+        let digest = SHA256.hash(data: Data(canonical.utf8))
+        let hex = digest.map { String(format: "%02x", $0) }.joined()
+        return "cli|\(hex.prefix(16))"
+    }
+
+    /// Footprint-only credential presence for a scoped instance (file exists, or its computed keychain
+    /// item exists by attributes) — never reads a secret, so seeding can't raise a permission dialog.
+    func hasCredentialFootprint() -> Bool {
+        switch scope {
+        case .standard:
+            return !loadAuthCandidates().isEmpty || loadKeychainAuth() != nil
+        case .home(let path):
+            if files.exists(joinPath(path, Self.authFile)) { return true }
+            return keychain.hasGenericPassword(
+                service: Self.keychainService,
+                account: Self.keychainAccountName(forHome: path)
+            )
+        }
     }
 
     /// Reads the credential from a single on-disk auth file — the targeted counterpart to
@@ -126,7 +167,19 @@ struct CodexAuthStore: Sendable {
     }
 
     func loadKeychainAuth() -> CodexAuthState? {
-        guard let value = try? keychain.readGenericPassword(service: Self.keychainService),
+        let value: String?
+        switch scope {
+        case .standard:
+            value = try? keychain.readGenericPassword(service: Self.keychainService)
+        case .home(let path):
+            // Exactly this home's item — an account-scoped read so another login's item under the
+            // same service can never shadow it.
+            value = try? keychain.readGenericPassword(
+                service: Self.keychainService,
+                account: Self.keychainAccountName(forHome: path)
+            )
+        }
+        guard let value,
               let auth = Self.parseAuth(value),
               Self.hasTokenLikeAuth(auth)
         else {
@@ -147,7 +200,18 @@ struct CodexAuthStore: Sendable {
         case .file(let path):
             try files.writeText(path, text)
         case .keychain:
-            try keychain.writeGenericPassword(service: Self.keychainService, value: text)
+            switch scope {
+            case .standard:
+                try keychain.writeGenericPassword(service: Self.keychainService, value: text)
+            case .home(let path):
+                // Rotate exactly this home's item; a service-only write would clobber whichever item
+                // `security` matches first.
+                try keychain.writeGenericPassword(
+                    service: Self.keychainService,
+                    account: Self.keychainAccountName(forHome: path),
+                    value: text
+                )
+            }
         }
     }
 
@@ -181,6 +245,9 @@ struct CodexAuthStore: Sendable {
     }
 
     func authPaths() -> [String] {
+        if case .home(let path) = scope {
+            return [joinPath(path, Self.authFile)]
+        }
         if let codexHome = codexHome() {
             return [joinPath(codexHome, Self.authFile)]
         }

@@ -68,6 +68,25 @@ enum DefaultLayout {
         "zai.session", "zai.weekly"
     ]
 
+    /// Instance-aware default list: for every provider-instance id in the registry (`claude@ab12cd34`),
+    /// the base provider's entries are re-prefixed onto the instance and appended, so a newly
+    /// discovered account seeds the same metric set (and caret split) as its base provider. Pins are
+    /// deliberately NOT translated — an extra account never claims menu-bar space by default.
+    /// `migrationBaselineMetricIDs` is deliberately NOT translated either: instance ids must always
+    /// read as never-offered so their defaults seed the first time the instance appears.
+    static func translatedForInstances(_ ids: [String], providerIDs: [String]) -> [String] {
+        let instanceIDs = providerIDs.filter(ProviderInstanceID.isInstance)
+        guard !instanceIDs.isEmpty else { return ids }
+        var result = ids
+        for instanceID in instanceIDs {
+            let prefix = ProviderInstanceID.base(of: instanceID) + "."
+            for id in ids where id.hasPrefix(prefix) {
+                result.append("\(instanceID).\(id.dropFirst(prefix.count))")
+            }
+        }
+        return result
+    }
+
     /// Metrics placed in the per-provider On Demand section on a fresh install. This is
     /// membership, not enablement: optional disabled rows like Sonnet or Cursor Requests/Credits are
     /// listed here so if the user enables them later they appear below the caret by default.

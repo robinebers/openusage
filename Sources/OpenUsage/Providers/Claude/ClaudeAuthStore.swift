@@ -155,6 +155,21 @@ struct ClaudeOAuthConfig: Hashable, Sendable {
     var clientID: String
 }
 
+/// Which login a `ClaudeAuthStore` is allowed to see. `.standard` is the default card — byte-identical
+/// to the store's historical behavior. The scoped cases back provider *instances* (extra accounts) and
+/// deliberately have no cross-account, environment-token, or Desktop fallback: an instance can only
+/// ever read the one login it was created for.
+enum ClaudeCredentialScope: Hashable, Sendable {
+    case standard
+    /// One extra `CLAUDE_CONFIG_DIR` home. `keychainLiteral` is the literal string whose hash names
+    /// the keychain item (Claude Code hashes the env value as typed — `~/…` vs absolute differ).
+    case configDir(path: String, keychainLiteral: String)
+    /// Claude Desktop only (a Cowork login distinct from the CLI login). `organization` pins the read
+    /// to that org's cached token — plans are org-scoped (a Team org next to a personal Max org), so
+    /// the instance must never follow Desktop's *active* org. `nil` keeps active-org behavior.
+    case desktopOnly(organization: String?)
+}
+
 struct ClaudeAuthStore: Sendable {
     private static let defaultClaudeHome = "~/.claude"
     private static let credentialFileName = ".credentials.json"
@@ -169,18 +184,21 @@ struct ClaudeAuthStore: Sendable {
     var keychain: KeychainAccessing
     var desktop: ClaudeDesktopAuthStore
     var now: @Sendable () -> Date
+    let scope: ClaudeCredentialScope
 
     init(
         environment: EnvironmentReading = ProcessEnvironmentReader(),
         files: TextFileAccessing = LocalTextFileAccessor(),
         keychain: KeychainAccessing = SecurityKeychainAccessor(),
         desktop: ClaudeDesktopAuthStore? = nil,
+        scope: ClaudeCredentialScope = .standard,
         now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.environment = environment
         self.files = files
         self.keychain = keychain
         self.desktop = desktop ?? ClaudeDesktopAuthStore(files: files, now: now)
+        self.scope = scope
         self.now = now
     }
 
@@ -197,12 +215,25 @@ struct ClaudeAuthStore: Sendable {
         var desktopStatus: ClaudeDesktopCredentialStatus = .notChecked
         // A working CLI login remains the source of truth and avoids a second Keychain prompt. Desktop
         // is a fallback for people who only use the native app (or whose stored CLI login lacks profile
-        // scope), never a competing account source.
+        // scope), never a competing account source. Scoped instances are stricter: a config-dir
+        // instance never consults Desktop (that login belongs to another card), and a desktop-only
+        // instance consults nothing else.
+        let desktopAllowed: Bool
+        var desktopOrganization: String?
+        switch scope {
+        case .standard:
+            desktopAllowed = true
+        case .desktopOnly(let organization):
+            desktopAllowed = true
+            desktopOrganization = organization
+        case .configDir:
+            desktopAllowed = false
+        }
         let hasUsableCLILogin = stored.contains {
             $0.hasUsableAccessToken && liveUsageAvailability($0) == .available
         }
-        if forceDesktopFallback || !hasUsableCLILogin {
-            let result = desktop.load(allowInteraction: allowDesktopInteraction)
+        if desktopAllowed, forceDesktopFallback || !hasUsableCLILogin {
+            let result = desktop.load(allowInteraction: allowDesktopInteraction, organization: desktopOrganization)
             desktopStatus = result.status
             if let oauth = result.oauth {
                 stored.insert(ClaudeCredentialState(
@@ -218,11 +249,32 @@ struct ClaudeAuthStore: Sendable {
         return ClaudeCredentialLoad(candidates: candidates, desktopStatus: desktopStatus)
     }
 
+    /// Whether this scoped instance's login leaves any local footprint, checked without ever reading a
+    /// keychain secret — safe for first-run/new-provider seeding, which must never raise a permission
+    /// dialog. The default card keeps its richer `loadCredentialSet`-based probe.
+    func hasCredentialFootprint() -> Bool {
+        switch scope {
+        case .standard:
+            return !loadCredentialSet().candidates.isEmpty
+        case .configDir:
+            if files.exists(credentialsPath()) { return true }
+            return keychainServiceCandidates().contains {
+                keychain.hasGenericPassword(service: $0, account: nil)
+            }
+        case .desktopOnly(let organization):
+            let status = desktop.load(allowInteraction: false, organization: organization).status
+            return status == .available || status == .permissionRequired || status == .stale
+        }
+    }
+
     func loadCredentialCandidates() -> [ClaudeCredentialState] {
         loadCredentialSet().candidates
     }
 
     private func applyingEnvironmentToken(to stored: [ClaudeCredentialState]) -> [ClaudeCredentialState] {
+        // An ambient env token describes the DEFAULT login's environment; a scoped instance must never
+        // inherit it (that would leak one account's token into another account's card).
+        guard case .standard = scope else { return stored }
         guard let envAccessToken = envText("CLAUDE_CODE_OAUTH_TOKEN") else {
             return stored
         }
@@ -386,10 +438,19 @@ struct ClaudeAuthStore: Sendable {
         // Only needs the file suffix, which never fails — keep this off the throwing URL path so
         // credential loading stays forgiving even when a custom OAuth URL is malformed.
         let base = "\(Self.keychainServicePrefix)\(resolveOAuthEndpoints().suffix)-credentials"
-        if let configDir = claudeHomeOverride() {
-            return ["\(base)-\(hashSuffix(configDir))", base]
+        switch scope {
+        case .configDir(_, let keychainLiteral):
+            // Exactly this instance's item — never the bare default service, which is another
+            // account's login.
+            return ["\(base)-\(hashSuffix(keychainLiteral))"]
+        case .desktopOnly:
+            return []
+        case .standard:
+            if let configDir = claudeHomeOverride() {
+                return ["\(base)-\(hashSuffix(configDir))", base]
+            }
+            return [base]
         }
-        return [base]
     }
 
     static func parseCredentials(_ text: String) -> ClaudeCredentialsFile? {
@@ -405,6 +466,8 @@ struct ClaudeAuthStore: Sendable {
     /// later expiry (the #738 regression from ranking purely by expiry). The source kind (never the
     /// token) is logged so a "locked out" report can be diagnosed from which source was chosen.
     private func orderedStoredCandidates() -> [ClaudeCredentialState] {
+        // A desktop-only instance has no CLI sources at all.
+        if case .desktopOnly = scope { return [] }
         var candidates: [ClaudeCredentialState] = []
         if let keychain = loadKeychainCredentials() { candidates.append(keychain) }
         if let file = loadFileCredentials() { candidates.append(file) }
@@ -471,7 +534,10 @@ struct ClaudeAuthStore: Sendable {
     }
 
     private func credentialsPath() -> String {
-        "\(envText("CLAUDE_CONFIG_DIR") ?? Self.defaultClaudeHome)/\(Self.credentialFileName)"
+        if case .configDir(let path, _) = scope {
+            return "\(path)/\(Self.credentialFileName)"
+        }
+        return "\(envText("CLAUDE_CONFIG_DIR") ?? Self.defaultClaudeHome)/\(Self.credentialFileName)"
     }
 
     private func envText(_ name: String) -> String? {

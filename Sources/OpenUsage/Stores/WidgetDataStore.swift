@@ -323,8 +323,12 @@ final class WidgetDataStore {
 
     func localHistoryDocument(deviceID: String, deviceName: String, updatedAt: Date = Date()) -> UsageHistoryDocument {
         var providers: [String: ProviderUsageHistory] = [:]
+        // Provider instances (extra accounts, `claude@…`) stay machine-local: their instance ids are
+        // this machine's discovery artifacts, so publishing them would leak meaningless keys into
+        // peers' merged history. Only default cards sync.
         for (providerID, descriptor) in registry.historyDescriptorsByProvider
-        where descriptor.scope == .machineLocal && isProviderEnabled(providerID) {
+        where descriptor.scope == .machineLocal && isProviderEnabled(providerID)
+            && !ProviderInstanceID.isInstance(providerID) {
             if let history = localSnapshots[providerID]?.usageHistory {
                 providers[providerID] = history
             }

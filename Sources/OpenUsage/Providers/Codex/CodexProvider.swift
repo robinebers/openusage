@@ -2,15 +2,22 @@ import Foundation
 
 @MainActor
 final class CodexProvider: ProviderRuntime {
-    let provider = Provider(
-        id: "codex",
-        displayName: "Codex",
-        icon: .providerMark("codex"),
-        links: [
-            .init(label: "Status", url: "https://status.openai.com/"),
-            .init(label: "Dashboard", url: "https://chatgpt.com/codex/settings/usage")
-        ]
-    )
+    /// The default card's identity. Provider instances (extra accounts) inject their own `Provider`
+    /// with an `@`-suffixed id and an ordinal display name ("Codex 2"); everything else about the
+    /// runtime is identical.
+    static func makeProvider(id: String = "codex", displayName: String = "Codex") -> Provider {
+        Provider(
+            id: id,
+            displayName: displayName,
+            icon: .providerMark("codex"),
+            links: [
+                .init(label: "Status", url: "https://status.openai.com/"),
+                .init(label: "Dashboard", url: "https://chatgpt.com/codex/settings/usage")
+            ]
+        )
+    }
+
+    let provider: Provider
 
     let authStore: CodexAuthStore
     let usageClient: CodexUsageClient
@@ -19,12 +26,14 @@ final class CodexProvider: ProviderRuntime {
     let pricing: @Sendable () async -> ModelPricing
 
     init(
+        provider: Provider = CodexProvider.makeProvider(),
         authStore: CodexAuthStore = CodexAuthStore(),
         usageClient: CodexUsageClient = CodexUsageClient(),
         logUsageScanner: CodexLogUsageScanner = CodexLogUsageScanner(),
         now: @escaping @Sendable () -> Date = Date.init,
         pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() }
     ) {
+        self.provider = provider
         self.authStore = authStore
         self.usageClient = usageClient
         self.logUsageScanner = logUsageScanner
@@ -34,21 +43,21 @@ final class CodexProvider: ProviderRuntime {
 
     var widgetDescriptors: [WidgetDescriptor] {
         [
-            .percent(id: "codex.session", provider: provider, title: "Session")
+            .percent(id: "\(provider.id).session", provider: provider, title: "Session")
                 .exportingLimit("session", unit: "percent"),
-            .percent(id: "codex.weekly", provider: provider, title: "Weekly")
+            .percent(id: "\(provider.id).weekly", provider: provider, title: "Weekly")
                 .exportingLimit("weekly", unit: "percent"),
             // Model-specific Spark limits (GPT-5.3-Codex-Spark), parsed from `additional_rate_limits`.
             // Declared right after Weekly so they group with the core rate-limit meters; seeded On
             // Demand (below the caret) and unpinned in `DefaultLayout`.
-            .percent(id: "codex.spark", provider: provider, title: "Spark")
+            .percent(id: "\(provider.id).spark", provider: provider, title: "Spark")
                 .exportingLimit("spark", unit: "percent"),
-            .percent(id: "codex.sparkWeekly", provider: provider, title: "Spark Weekly")
+            .percent(id: "\(provider.id).sparkWeekly", provider: provider, title: "Spark Weekly")
                 .exportingLimit("sparkWeekly", unit: "percent"),
-            .combined(id: "codex.credits", provider: provider, title: "Extra Usage", metricLabel: "Credits")
+            .combined(id: "\(provider.id).credits", provider: provider, title: "Extra Usage", metricLabel: "Credits")
                 .exportingLimit("credits", kind: .balance, unit: "credits", source: .value(kind: .count, label: "credits"))
                 .exportingLimit("creditValue", kind: .balance, unit: "usd", source: .value(kind: .dollars)),
-            .values(id: "codex.rateLimitResets", provider: provider, title: "Rate Limit Resets", metricLabel: "Rate Limit Resets", traySuffix: "resets", showsResetExpiries: true)
+            .values(id: "\(provider.id).rateLimitResets", provider: provider, title: "Rate Limit Resets", metricLabel: "Rate Limit Resets", traySuffix: "resets", showsResetExpiries: true)
                 .exportingLimit("rateLimitResets", kind: .balance, unit: "resets", source: .value(kind: .count, label: "available")),
             .usageTrend(provider: provider)
                 .exportingHistory(
@@ -60,6 +69,12 @@ final class CodexProvider: ProviderRuntime {
     }
 
     func hasLocalCredentials() async -> Bool {
+        // Scoped instances answer from footprints only (file existence / keychain attributes) so the
+        // every-launch seeding probe can never raise a keychain dialog for an account the user hasn't
+        // granted yet. The secret read happens on the first refresh.
+        if authStore.scope != .standard {
+            return await loadOffMainActor { [authStore] in authStore.hasCredentialFootprint() }
+        }
         // Same sources as `refresh()`: auth.json candidates first, keychain as the fallback. Only a
         // usable access token counts (see `hasUsableAccessToken`) — an API-key-only auth.json can't
         // serve the usage API, so seeding it on would just show an error row.

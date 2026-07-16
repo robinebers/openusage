@@ -57,6 +57,21 @@ final class LoginShellEnvironment: @unchecked Sendable {
         }
     }
 
+    /// Block (bounded) until the capture kicked off by `prewarm()` has filled the cache. Provider-
+    /// instance discovery calls this once at launch: it must see shell-exported `CLAUDE_CONFIG_DIR`/
+    /// `CODEX_HOME` to resolve which home is the *default* login — missing them would make discovery
+    /// mistake the default account's home for an extra one. Returns whether the cache is warm; on
+    /// timeout discovery proceeds with the process environment only (and self-corrects next launch).
+    @discardableResult
+    func waitForCapture(timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if cachedSnapshot() != nil { return true }
+            Thread.sleep(forTimeInterval: 0.01)
+        }
+        return cachedSnapshot() != nil
+    }
+
     private func cachedSnapshot() -> [String: String]? {
         stateLock.lock()
         defer { stateLock.unlock() }

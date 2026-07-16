@@ -123,7 +123,10 @@ struct ClaudeDesktopAuthStore: Sendable {
         return Self.cookieRelativePaths.contains { files.exists(path($0)) }
     }
 
-    func load(allowInteraction: Bool) -> ClaudeDesktopCredentialResult {
+    /// `organization` pins the read to one org's cached token (a provider instance for a non-active
+    /// Desktop org, e.g. a Team org alongside a personal Max org). `nil` keeps the default behavior:
+    /// resolve the app's currently active organization and use its token.
+    func load(allowInteraction: Bool, organization: String? = nil) -> ClaudeDesktopCredentialResult {
         guard hasCredentialMaterial() else {
             return ClaudeDesktopCredentialResult(oauth: nil, status: .notFound)
         }
@@ -132,14 +135,20 @@ struct ClaudeDesktopAuthStore: Sendable {
             guard let key = try safeStorageKey(allowInteraction: allowInteraction) else {
                 return ClaudeDesktopCredentialResult(oauth: nil, status: .notFound)
             }
-            guard let activeOrg = try loadActiveOrganization(key: key),
-                  let caches = try loadCaches(key: key)
-            else {
+            let targetOrganization: String
+            if let organization {
+                targetOrganization = organization.lowercased()
+            } else if let activeOrg = try loadActiveOrganization(key: key) {
+                targetOrganization = activeOrg
+            } else {
+                return ClaudeDesktopCredentialResult(oauth: nil, status: .invalid)
+            }
+            guard let caches = try loadCaches(key: key) else {
                 return ClaudeDesktopCredentialResult(oauth: nil, status: .invalid)
             }
 
             let selection = Self.selectCredential(
-                activeOrganization: activeOrg,
+                activeOrganization: targetOrganization,
                 v2: caches.v2,
                 v1: caches.v1,
                 now: now()

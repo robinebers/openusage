@@ -57,13 +57,39 @@ final class AppContainer {
         // run from a terminal. Warmed here so the first refresh finds the cache ready.
         LoginShellEnvironment.shared.prewarm()
 
-        let providers = ProviderCatalog.make()
+        // Provider-instance discovery must see shell-exported CLAUDE_CONFIG_DIR/CODEX_HOME to tell the
+        // DEFAULT login's home apart from extra ones, so give the prewarm a bounded moment to land
+        // (typically well under the cap; on timeout discovery self-corrects next launch).
+        LoginShellEnvironment.shared.waitForCapture(timeout: 0.5)
+
+        // Extra logins on this Mac (see docs/research/provider-accounts-ux.md §9): file-and-attribute
+        // discovery only — no keychain secrets, no dialogs — reconciled against persisted records so
+        // "Claude 2" stays the same account across launches. Instances then flow through the registry,
+        // layout, enablement, and refresh machinery as ordinary providers.
+        let instancesStore = ProviderInstancesStore()
+        let discovered = ProviderInstanceDiscovery().run()
+        let records = instancesStore.reconcile(with: discovered.instances)
+        let instanceContext = ProviderInstanceContext(
+            records: records,
+            coworkRootsByInstanceID: discovered.coworkRootsByIdentityKey.reduce(into: [:]) { map, entry in
+                map[ProviderInstanceID.make(baseProviderID: "claude", identityKey: entry.key)] = entry.value
+            },
+            defaultClaudeCoworkRoots: discovered.defaultClaudeCoworkRoots
+        )
+
+        let providers = ProviderCatalog.make(instanceContext: instanceContext)
         let registry = WidgetRegistry.from(providers)
         let apiKeyProviders = providers.compactMap { $0 as? any APIKeyManaging }
         let enablement = ProviderEnablementStore()
         let notificationSettings = NotificationSettingsStore()
+        // Instance ids inherit their base provider's metric/expanded defaults (translated onto the
+        // instance prefix) so a discovered account seeds a full card. Pins deliberately stay
+        // untranslated — an extra account never claims menu-bar space by default.
+        let registryProviderIDs = registry.providers.map(\.id)
         let layout = LayoutStore(
             registry: registry,
+            defaultMetricIDs: DefaultLayout.translatedForInstances(DefaultLayout.metricIDs, providerIDs: registryProviderIDs),
+            defaultExpandedMetricIDs: DefaultLayout.translatedForInstances(DefaultLayout.expandedMetricIDs, providerIDs: registryProviderIDs),
             isProviderEnabled: { [enablement] in enablement.isEnabled($0) }
         )
         let dataStore = WidgetDataStore(

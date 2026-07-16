@@ -17,6 +17,20 @@ struct ProcessEnvironmentReader: EnvironmentReading {
     }
 }
 
+/// An environment view pinned to one provider-instance home: the named keys read as the fixed override
+/// (a `nil` override hides the key entirely), everything else falls through to `base`. Provider-instance
+/// runtimes are scoped with this so a user-exported `CLAUDE_CONFIG_DIR`/`CODEX_HOME`/token env var can
+/// only ever affect the default card, never leak another account into an instance.
+struct ScopedEnvironmentReader: EnvironmentReading {
+    var base: EnvironmentReading
+    var overrides: [String: String?]
+
+    func value(for name: String) -> String? {
+        if let override = overrides[name] { return override }
+        return base.value(for: name)
+    }
+}
+
 protocol TextFileAccessing: Sendable {
     func exists(_ path: String) -> Bool
     /// Read a UTF-8 file when it exists. `nil` means the path is absent; permission, encoding, and
@@ -211,6 +225,14 @@ protocol KeychainAccessing: Sendable {
     /// item under a known account name (e.g. Antigravity's `agy` token under service `gemini`,
     /// account `antigravity`) rather than the current user.
     func readGenericPassword(service: String, account: String) throws -> String?
+    /// Write a generic password scoped to an explicit account (`-a`), so rotating one instance's item
+    /// can never clobber another account's item under the same service (e.g. Codex's per-home
+    /// `Codex Auth` entries).
+    func writeGenericPassword(service: String, account: String, value: String) throws
+    /// Whether an item exists, checked from attributes only — the secret is never requested, so this
+    /// can never raise a keychain permission dialog. Provider-instance discovery and first-run
+    /// detection use this; the actual secret read happens on the instance's first refresh.
+    func hasGenericPassword(service: String, account: String?) -> Bool
 }
 
 extension KeychainAccessing {
@@ -226,6 +248,20 @@ extension KeychainAccessing {
     /// `SecurityKeychainAccessor` overrides this to pass `-a <account>`.
     func readGenericPassword(service: String, account: String) throws -> String? {
         try readGenericPassword(service: service)
+    }
+
+    /// Default for mocks that don't model accounts: fall back to the service-only write.
+    func writeGenericPassword(service: String, account: String, value: String) throws {
+        try writeGenericPassword(service: service, value: value)
+    }
+
+    /// Default for mocks: existence follows the read paths, so a mock seeded with `readGenericPassword`
+    /// values answers correctly. The real accessor overrides this with an attributes-only query.
+    func hasGenericPassword(service: String, account: String?) -> Bool {
+        if let account {
+            return ((try? readGenericPassword(service: service, account: account)) ?? nil) != nil
+        }
+        return ((try? readGenericPassword(service: service)) ?? nil) != nil
     }
 }
 
@@ -279,6 +315,29 @@ struct SecurityKeychainAccessor: KeychainAccessing {
 
     func writeGenericPasswordForCurrentUser(service: String, value: String) throws {
         try writePassword(["add-generic-password", "-U", "-a", currentUserAccount(), "-s", service, "-w", value])
+    }
+
+    func writeGenericPassword(service: String, account: String, value: String) throws {
+        try writePassword(["add-generic-password", "-U", "-a", account, "-s", service, "-w", value])
+    }
+
+    func hasGenericPassword(service: String, account: String?) -> Bool {
+        // No `-w`: attributes only, so the item's ACL is never consulted and no permission dialog can
+        // appear. Exit 44 (errSecItemNotFound) is the clean "no item"; any other failure reads as
+        // absent here — the instance's first refresh does the real (throwing, logged) secret read.
+        var arguments = ["find-generic-password"]
+        if let account { arguments += ["-a", account] }
+        arguments += ["-s", service]
+        guard let result = try? processRunner.run(
+            executable: "/usr/bin/security",
+            arguments: arguments,
+            environment: [:],
+            timeout: 5
+        ) else { return false }
+        if !result.succeeded, result.exitCode != Self.itemNotFoundExitCode {
+            AppLog.warn(.keychain, "attribute probe failed for service '\(service)' (exit \(result.exitCode))")
+        }
+        return result.succeeded
     }
 
     private func writePassword(_ arguments: [String]) throws {
