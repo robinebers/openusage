@@ -88,7 +88,11 @@ final class PanelOutsideClickMonitor {
     private func isOnStatusButton(_ screenPoint: NSPoint) -> Bool {
         guard let button = statusItem.button, let buttonWindow = button.window else { return false }
         let buttonFrame = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
-        return PanelOutsideClickPolicy.pointHitsStatusButton(screenPoint, buttonFrame: buttonFrame)
+        return PanelOutsideClickPolicy.pointHitsStatusButton(
+            screenPoint,
+            buttonFrame: buttonFrame,
+            screenTop: buttonWindow.screen?.frame.maxY
+        )
     }
 }
 
@@ -118,15 +122,23 @@ enum PanelOutsideClickPolicy {
             || context.eventWindowTypeName?.localizedCaseInsensitiveContains("popover") == true
     }
 
-    /// Status-button hit test with *inclusive* frame edges, unlike `NSRect.contains` (which excludes
-    /// the max edges). With the cursor slammed against the top of the screen — the natural way to
-    /// click the menu bar — `NSEvent.mouseLocation.y` is exactly the screen's `maxY`, which is also
-    /// the button frame's `maxY`. The exclusive check misread that dead-center click as an outside
-    /// click, so the panel dismissed on mouse-down and the button's mouse-up action toggled it right
-    /// back open — the second click never closed it (issue #1008).
-    static func pointHitsStatusButton(_ point: NSPoint, buttonFrame: NSRect) -> Bool {
+    /// Status-button hit test. Differs from `NSRect.contains(buttonFrame)` in two ways, both needed
+    /// so a click with the cursor slammed against the top of the screen — the natural way to click
+    /// the menu bar — counts as *on* the button (issue #1008):
+    /// - The hit zone extends from the button frame's top edge to the top of the button's screen:
+    ///   the button is a few points shorter than the menu bar (observed live: a 22pt-tall button
+    ///   frame ending at y=1551 in a menu bar whose screen tops out at y=1555), while macOS still
+    ///   routes a click in that strip to the button.
+    /// - Edges are inclusive, where `contains` excludes max edges: a top-pinned cursor reports
+    ///   exactly the screen's `maxY`.
+    /// Without these, the monitor misread a dead-center click on the icon as an outside click: the
+    /// panel dismissed on mouse-down, then the button's mouse-up action toggled it right back open —
+    /// the second click never closed it. The monitor must agree with how macOS routes the click, or
+    /// its dismissal races the button's toggle.
+    static func pointHitsStatusButton(_ point: NSPoint, buttonFrame: NSRect, screenTop: CGFloat?) -> Bool {
         guard !buttonFrame.isEmpty else { return false }
+        let top = max(buttonFrame.maxY, screenTop ?? buttonFrame.maxY)
         return point.x >= buttonFrame.minX && point.x <= buttonFrame.maxX
-            && point.y >= buttonFrame.minY && point.y <= buttonFrame.maxY
+            && point.y >= buttonFrame.minY && point.y <= top
     }
 }
