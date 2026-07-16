@@ -44,6 +44,8 @@ If you run more than one Claude account on this Mac — say a work login in its 
 
 Discovery is read-only and quiet: it looks for folders that carry a real Claude login *and* can name their account, and it never opens a keychain secret while scanning — so it can't trigger permission dialogs at launch. A folder that authenticates the **same** account you already have is folded in rather than shown twice (that's also why agent-sandbox leftovers never appear). The first time an extra keychain-backed account actually refreshes, macOS may show its usual one-time permission dialog for that account's keychain item — choose "Always Allow" once and it won't ask again.
 
+Accounts are organization-aware: a Team org and a personal Max org under the same email are different usage pools, so they get different cards. And if you use [claude-swap](https://github.com/realiti4/claude-swap) (`cswap`), each **parked** slot shows as its own card too — read from cswap's own vault, never modified, never refreshed (a stale parked token shows a re-login notice until cswap next touches it). The active slot is simply what the default Claude card is showing, so one account never appears twice, no matter how often you swap.
+
 Don't want a discovered account on the dashboard? Turn its card off in Customize — that choice sticks, like any provider toggle.
 
 ## The spend tiles

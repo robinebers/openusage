@@ -45,6 +45,11 @@ struct ProviderInstanceDiscovery {
         /// Set only when a distinct-account Cowork login exists: the default card's partition of the
         /// Cowork walk. `nil` = no partition, keep the scanner's built-in walk byte-identical.
         var defaultClaudeCoworkRoots: [URL]?
+        /// The default card's account identity per base provider, as seen THIS launch. Swap tools
+        /// (cswap) change the default login in place, so a persisted instance record can suddenly name
+        /// the same account the default card now shows — its runtime is suppressed for this launch so
+        /// one account never renders as two cards.
+        var defaultIdentityKeys: [String: Set<String>] = [:]
     }
 
     private struct ClaudeIdentity: Codable {
@@ -92,6 +97,8 @@ struct ProviderInstanceDiscovery {
         let home = homeDirectory()
         let defaultClaude = defaultClaudeIdentityKey()
         let defaultCodex = defaultCodexIdentityKeys()
+        if let defaultClaude { result.defaultIdentityKeys["claude"] = [defaultClaude] }
+        if !defaultCodex.isEmpty { result.defaultIdentityKeys["codex"] = defaultCodex }
         let excludedPaths = Set(
             (defaultClaudeConfigDirs() + defaultCodexHomes()).map { canonical($0) }
         )
@@ -107,6 +114,17 @@ struct ProviderInstanceDiscovery {
             }
             if let finding = codexCandidate(at: candidate, defaultIdentityKeys: defaultCodex),
                seenIdentityKeys.insert("codex|\(finding.identityKey)").inserted {
+                result.instances.append(finding)
+            }
+        }
+
+        // claude-swap (cswap) vault: each PARKED slot's identity comes from the tool's own per-slot
+        // config backup — the active slot is exactly what the default card shows, so it is never an
+        // instance. Runs before the Cowork walk so a same-account Cowork finding upgrades to the
+        // swap-vault credential source instead of the borrowed Desktop token.
+        if !overBudget() {
+            for finding in claudeSwapSlots(defaultIdentityKey: defaultClaude)
+            where seenIdentityKeys.insert("claude|\(finding.identityKey)").inserted {
                 result.instances.append(finding)
             }
         }
@@ -280,6 +298,71 @@ struct ProviderInstanceDiscovery {
         }
         var seen = Set<String>()
         return literals.filter { seen.insert($0).inserted }
+    }
+
+    // MARK: - claude-swap (cswap) vault
+
+    /// The swap tool's backup roots: legacy `~/.claude-swap-backup` (macOS/Windows) and the XDG data
+    /// dir it uses elsewhere. First root with slot configs wins.
+    private func claudeSwapBackupRoots() -> [URL] {
+        let home = homeDirectory()
+        return [
+            home.appendingPathComponent(".claude-swap-backup"),
+            home.appendingPathComponent(".local/share/claude-swap")
+        ]
+    }
+
+    /// Parked cswap slots as instance findings. Identity comes from the vault's own per-slot config
+    /// backup (`configs/.claude-config-<N>-<email>.json` — a full `.claude.json` copy, org included);
+    /// the credential address is the vault's keychain item (`claude-swap` / `account-<N>-<email>`)
+    /// with an `.enc` file fallback. All file reads; nothing here can prompt.
+    private func claudeSwapSlots(defaultIdentityKey: String?) -> [DiscoveredProviderInstance] {
+        for root in claudeSwapBackupRoots() {
+            let configsDir = root.appendingPathComponent("configs")
+            let configs = (try? FileManager.default.contentsOfDirectory(
+                at: configsDir, includingPropertiesForKeys: nil, options: []
+            )) ?? []
+            guard !configs.isEmpty else { continue }
+            let activeSlot = claudeSwapActiveSlot(root: root)
+
+            var findings: [DiscoveredProviderInstance] = []
+            for file in configs.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+                let name = file.lastPathComponent
+                guard name.hasPrefix(".claude-config-"), name.hasSuffix(".json") else { continue }
+                let core = name.dropFirst(".claude-config-".count).dropLast(".json".count)
+                guard let dash = core.firstIndex(of: "-") else { continue }
+                let slot = String(core[..<dash])
+                let email = String(core[core.index(after: dash)...])
+                // The active slot IS the default card; only parked slots become instances.
+                guard Int(slot) != nil, slot != activeSlot else { continue }
+                guard let text = try? files.readTextIfPresent(file.path),
+                      let parsed = try? JSONDecoder().decode(ClaudeIdentity.self, from: Data(text.utf8)),
+                      let account = parsed.oauthAccount,
+                      let key = claudeIdentityKey(account),
+                      key != defaultIdentityKey
+                else { continue }
+                findings.append(DiscoveredProviderInstance(
+                    baseProviderID: "claude",
+                    kind: .claudeSwapSlot,
+                    anchorPath: root.path,
+                    keychainLiteral: nil,
+                    desktopOrganization: account.organizationUuid?.nilIfEmpty?.lowercased(),
+                    swapAccountName: "account-\(slot)-\(email)",
+                    identityKey: key,
+                    identityLabel: claudeIdentityLabel(account)
+                ))
+            }
+            if !findings.isEmpty { return findings }
+        }
+        return []
+    }
+
+    private func claudeSwapActiveSlot(root: URL) -> String? {
+        struct SequenceFile: Codable { var activeAccountNumber: Int? }
+        guard let text = try? files.readTextIfPresent(root.appendingPathComponent("sequence.json").path),
+              let parsed = try? JSONDecoder().decode(SequenceFile.self, from: Data(text.utf8))
+        else { return nil }
+        return parsed.activeAccountNumber.map(String.init)
     }
 
     // MARK: - Codex

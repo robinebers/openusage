@@ -40,6 +40,10 @@ struct ProviderInstanceRecord: Codable, Hashable, Sendable {
         /// A Claude Desktop / Cowork login whose identity differs from the CLI login. Credentials come
         /// from Claude Desktop's Safe Storage; usage logs from its Cowork session sandboxes.
         case claudeDesktop
+        /// A parked claude-swap (`cswap`) slot: identity from the tool's per-slot config backup,
+        /// credentials read-only from its vault (keychain service `claude-swap` / `.enc` file). The
+        /// ACTIVE slot is never an instance — it is what the default card is showing.
+        case claudeSwapSlot
     }
 
     /// The instance provider id (`claude@ab12cd34`) — the primary key everywhere.
@@ -53,10 +57,13 @@ struct ProviderInstanceRecord: Codable, Hashable, Sendable {
     /// For `.claudeConfigDir`: the literal `CLAUDE_CONFIG_DIR` string whose hash names the keychain
     /// item (`~/…` vs absolute matter — Claude Code hashes the literal env value).
     var keychainLiteral: String?
-    /// For `.claudeDesktop`: the organization UUID whose Desktop token this instance reads. Claude
-    /// plans are org-scoped (a Team org can sit next to a personal Max org under one account), so the
-    /// instance pins the org instead of following Desktop's active one.
+    /// For `.claudeDesktop` / `.claudeSwapSlot`: the organization UUID whose Desktop token can back
+    /// this instance. Claude plans are org-scoped (a Team org can sit next to a personal Max org under
+    /// one account), so the instance pins the org instead of following Desktop's active one.
     var desktopOrganization: String?
+    /// For `.claudeSwapSlot`: the vault item's account attribute (`account-<N>-<email>`), which also
+    /// derives the `.enc` file fallback name.
+    var swapAccountName: String?
     /// Stable account identity: Claude `oauthAccount.accountUuid` plus `|organizationUuid` when an org
     /// is recorded (org-scoped plans), Codex `tokens.account_id`, or a path-derived key for
     /// keychain-mode Codex homes whose identity needs a secret read.
@@ -73,6 +80,7 @@ struct ProviderInstanceRecord: Codable, Hashable, Sendable {
         anchorPath: String?,
         keychainLiteral: String?,
         desktopOrganization: String? = nil,
+        swapAccountName: String? = nil,
         identityKey: String,
         identityLabel: String?
     ) {
@@ -83,6 +91,7 @@ struct ProviderInstanceRecord: Codable, Hashable, Sendable {
         self.anchorPath = anchorPath
         self.keychainLiteral = keychainLiteral
         self.desktopOrganization = desktopOrganization
+        self.swapAccountName = swapAccountName
         self.identityKey = identityKey
         self.identityLabel = identityLabel
     }
@@ -96,6 +105,7 @@ struct DiscoveredProviderInstance: Hashable, Sendable {
     var anchorPath: String?
     var keychainLiteral: String?
     var desktopOrganization: String? = nil
+    var swapAccountName: String? = nil
     var identityKey: String
     var identityLabel: String?
 }
@@ -160,15 +170,26 @@ final class ProviderInstancesStore {
             if let index = updated.firstIndex(where: { $0.id == id }) {
                 // Known account: keep id + ordinal (layout stability), adopt the latest anchor/label —
                 // the same account may have moved homes or refreshed its profile email.
+                // Known account: id + ordinal are the stable half (layout stability); everything that
+                // describes WHERE the account lives — kind, anchor, vault item, org — adopts the
+                // latest discovery. A login can genuinely migrate sources (a Desktop-only org later
+                // shows up as a cswap slot with a real CLI token; a home moves), and the freshest
+                // source is the one that can actually fetch.
                 var record = updated[index]
-                if record.anchorPath != finding.anchorPath
-                    || record.identityLabel != finding.identityLabel
-                    || record.keychainLiteral != finding.keychainLiteral
-                    || record.desktopOrganization != finding.desktopOrganization {
-                    record.anchorPath = finding.anchorPath
-                    record.keychainLiteral = finding.keychainLiteral
-                    record.desktopOrganization = finding.desktopOrganization
-                    record.identityLabel = finding.identityLabel
+                let refreshed = ProviderInstanceRecord(
+                    id: record.id,
+                    baseProviderID: record.baseProviderID,
+                    ordinal: record.ordinal,
+                    kind: finding.kind,
+                    anchorPath: finding.anchorPath,
+                    keychainLiteral: finding.keychainLiteral,
+                    desktopOrganization: finding.desktopOrganization,
+                    swapAccountName: finding.swapAccountName,
+                    identityKey: record.identityKey,
+                    identityLabel: finding.identityLabel ?? record.identityLabel
+                )
+                if refreshed != record {
+                    record = refreshed
                     updated[index] = record
                     changed = true
                 }
@@ -183,6 +204,7 @@ final class ProviderInstancesStore {
                     anchorPath: finding.anchorPath,
                     keychainLiteral: finding.keychainLiteral,
                     desktopOrganization: finding.desktopOrganization,
+                    swapAccountName: finding.swapAccountName,
                     identityKey: finding.identityKey,
                     identityLabel: finding.identityLabel
                 ))

@@ -21,6 +21,9 @@ struct ClaudeCredentialState: Hashable, Sendable {
         case keychainLegacy(service: String)
         case desktop
         case environment
+        /// A parked claude-swap slot read from the tool's vault. Read-only like `.desktop`: rotations
+        /// are never written back (that would corrupt cswap's backup).
+        case swapVault
 
         /// Log-safe source kind — NEVER the keychain service name or any token.
         var label: String {
@@ -30,6 +33,7 @@ struct ClaudeCredentialState: Hashable, Sendable {
             case .keychainLegacy: "keychainLegacy"
             case .desktop: "desktop"
             case .environment: "environment"
+            case .swapVault: "swapVault"
             }
         }
     }
@@ -168,6 +172,12 @@ enum ClaudeCredentialScope: Hashable, Sendable {
     /// to that org's cached token — plans are org-scoped (a Team org next to a personal Max org), so
     /// the instance must never follow Desktop's *active* org. `nil` keeps active-org behavior.
     case desktopOnly(organization: String?)
+    /// A parked claude-swap (cswap) slot, read-only from the tool's vault: keychain service
+    /// `claude-swap`, account `account-<N>-<email>`, with a base64 `.enc` file fallback under
+    /// `<backupRoot>/credentials/`. The refresh token is deliberately dropped — rotating a parked
+    /// token would corrupt cswap's backup — so an expired slot shows a re-login notice until cswap
+    /// itself refreshes it. `organization` enables the org-pinned Desktop fallback.
+    case swapSlot(account: String, backupRoot: String, organization: String?)
 }
 
 struct ClaudeAuthStore: Sendable {
@@ -226,6 +236,11 @@ struct ClaudeAuthStore: Sendable {
         case .desktopOnly(let organization):
             desktopAllowed = true
             desktopOrganization = organization
+        case .swapSlot(_, _, let organization):
+            // A parked slot's vault token can be stale (cswap refreshes only the active slot);
+            // the same account's org-pinned Desktop token is the natural fallback when known.
+            desktopAllowed = organization != nil
+            desktopOrganization = organization
         case .configDir:
             desktopAllowed = false
         }
@@ -264,6 +279,9 @@ struct ClaudeAuthStore: Sendable {
         case .desktopOnly(let organization):
             let status = desktop.load(allowInteraction: false, organization: organization).status
             return status == .available || status == .permissionRequired || status == .stale
+        case .swapSlot(let account, let backupRoot, _):
+            if keychain.hasGenericPassword(service: Self.swapVaultService, account: account) { return true }
+            return files.exists(Self.swapVaultEncPath(backupRoot: backupRoot, account: account))
         }
     }
 
@@ -334,6 +352,8 @@ struct ClaudeAuthStore: Sendable {
         case .desktop:
             return false
         case .environment:
+            return false
+        case .swapVault:
             return false
         }
         // NEVER log the credential blob/tokens — only that a rotation was persisted, and to where.
@@ -443,7 +463,7 @@ struct ClaudeAuthStore: Sendable {
             // Exactly this instance's item — never the bare default service, which is another
             // account's login.
             return ["\(base)-\(hashSuffix(keychainLiteral))"]
-        case .desktopOnly:
+        case .desktopOnly, .swapSlot:
             return []
         case .standard:
             if let configDir = claudeHomeOverride() {
@@ -468,6 +488,9 @@ struct ClaudeAuthStore: Sendable {
     private func orderedStoredCandidates() -> [ClaudeCredentialState] {
         // A desktop-only instance has no CLI sources at all.
         if case .desktopOnly = scope { return [] }
+        if case .swapSlot(let account, let backupRoot, _) = scope {
+            return swapVaultCandidates(account: account, backupRoot: backupRoot)
+        }
         var candidates: [ClaudeCredentialState] = []
         if let keychain = loadKeychainCredentials() { candidates.append(keychain) }
         if let file = loadFileCredentials() { candidates.append(file) }
@@ -531,6 +554,45 @@ struct ClaudeAuthStore: Sendable {
         }
         AppLog.debug(.keychain, "read hit service=\(service)")
         return ClaudeCredentialState(oauth: oauth, source: source, fullData: parsed, inferenceOnly: false)
+    }
+
+    /// claude-swap's vault: keychain service for parked per-account backups, and the base64 `.enc`
+    /// file fallback (`account-<N>-<email>` ↔ `.creds-<N>-<email>.enc`).
+    private static let swapVaultService = "claude-swap"
+
+    private static func swapVaultEncPath(backupRoot: String, account: String) -> String {
+        let stem = account.hasPrefix("account-") ? ".creds-\(account.dropFirst("account-".count))" : ".creds-\(account)"
+        return "\(backupRoot)/credentials/\(stem).enc"
+    }
+
+    /// Parked cswap-slot credentials, keychain item first, `.enc` file second — both read-only. The
+    /// refresh token is dropped so this store can never rotate (and thereby corrupt) cswap's backup;
+    /// an expired parked token surfaces as the usual re-login notice (or falls through to the
+    /// org-pinned Desktop token when the scope carries one).
+    private func swapVaultCandidates(account: String, backupRoot: String) -> [ClaudeCredentialState] {
+        var candidates: [ClaudeCredentialState] = []
+
+        func appendState(from text: String) {
+            guard let parsed = Self.parseCredentials(text),
+                  var oauth = parsed.claudeAiOauth,
+                  oauth.accessToken?.isEmpty == false
+            else { return }
+            oauth.refreshToken = nil
+            candidates.append(ClaudeCredentialState(
+                oauth: oauth, source: .swapVault, fullData: nil, inferenceOnly: false
+            ))
+        }
+
+        if let value = try? keychain.readGenericPassword(service: Self.swapVaultService, account: account) {
+            appendState(from: value)
+        }
+        if candidates.isEmpty,
+           let encoded = try? files.readTextIfPresent(Self.swapVaultEncPath(backupRoot: backupRoot, account: account)),
+           let data = Data(base64Encoded: encoded.trimmingCharacters(in: .whitespacesAndNewlines)),
+           let text = String(data: data, encoding: .utf8) {
+            appendState(from: text)
+        }
+        return candidates
     }
 
     private func credentialsPath() -> String {

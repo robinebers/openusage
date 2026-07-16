@@ -63,6 +63,19 @@ enum ProviderCatalog {
                 authStore: ClaudeAuthStore(scope: .desktopOnly(organization: record.desktopOrganization)),
                 logUsageScanner: ClaudeLogUsageScanner(rootsOverride: [], coworkRootsOverride: coworkRoots)
             )
+        case .claudeSwapSlot:
+            // A parked cswap slot: read-only vault credential (+ org-pinned Desktop fallback). The
+            // shared default home's logs can't be attributed to one slot, so no log roots — only the
+            // account's own Cowork sandboxes, when it has any.
+            return ClaudeProvider(
+                provider: provider,
+                authStore: ClaudeAuthStore(scope: .swapSlot(
+                    account: record.swapAccountName ?? "",
+                    backupRoot: record.anchorPath ?? "",
+                    organization: record.desktopOrganization
+                )),
+                logUsageScanner: ClaudeLogUsageScanner(rootsOverride: [], coworkRootsOverride: coworkRoots)
+            )
         default:
             let path = expandHome(record.anchorPath ?? "")
             return ClaudeProvider(

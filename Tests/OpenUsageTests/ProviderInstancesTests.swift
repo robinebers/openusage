@@ -170,7 +170,104 @@ final class ProviderInstancesTests: XCTestCase {
 
         XCTAssertTrue(result.instances.isEmpty)
         XCTAssertNil(result.defaultClaudeCoworkRoots)
+        XCTAssertEqual(result.defaultIdentityKeys["claude"], ["uuid-default"])
+        XCTAssertEqual(result.defaultIdentityKeys["codex"], ["acct-default"])
     }
+
+    func testDiscoveryFindsParkedSwapSlots() throws {
+        // cswap keeps a per-slot copy of `.claude.json` in its vault; the ACTIVE slot is what the
+        // default card shows, so only parked slots become instances — and a parked slot whose
+        // identity happens to equal the default is skipped too.
+        let home = try makeFixtureHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try write(home, ".claude.json",
+                  claudeIdentityJSON(uuid: "uuid-me", email: "me@x.com", orgUuid: "ORG-MAX", orgName: "Max Org"))
+        try write(home, ".claude-swap-backup/configs/.claude-config-1-me@x.com.json",
+                  claudeIdentityJSON(uuid: "uuid-me", email: "me@x.com", orgUuid: "ORG-TEAM", orgName: "Team Org"))
+        try write(home, ".claude-swap-backup/configs/.claude-config-2-me@x.com.json",
+                  claudeIdentityJSON(uuid: "uuid-me", email: "me@x.com", orgUuid: "ORG-MAX", orgName: "Max Org"))
+        try write(home, ".claude-swap-backup/sequence.json", #"{"activeAccountNumber": 2}"#)
+
+        let result = ProviderInstanceDiscovery(
+            environment: FakeEnvironment([:]),
+            keychain: AccountAwareKeychain(),
+            homeDirectory: { home }
+        ).run()
+
+        XCTAssertEqual(result.instances.count, 1)
+        let slot = try XCTUnwrap(result.instances.first)
+        XCTAssertEqual(slot.kind, .claudeSwapSlot)
+        XCTAssertEqual(slot.identityKey, "uuid-me|org-team")
+        XCTAssertEqual(slot.swapAccountName, "account-1-me@x.com")
+        XCTAssertEqual(slot.desktopOrganization, "org-team")
+        XCTAssertEqual(slot.identityLabel, "me@x.com (Team Org)")
+        XCTAssertEqual(slot.anchorPath, home.appendingPathComponent(".claude-swap-backup").path)
+    }
+
+    func testReconcileUpgradesSourceKindForSameIdentity() {
+        // The same account can migrate sources (Desktop-borrowed → cswap vault). The record keeps its
+        // id and ordinal; the source description adopts the latest discovery.
+        let defaults = makeScratchDefaults("KindUpgrade")
+        let desktop = DiscoveredProviderInstance(
+            baseProviderID: "claude", kind: .claudeDesktop,
+            anchorPath: nil, keychainLiteral: nil, desktopOrganization: "org-team",
+            identityKey: "uuid-me|org-team", identityLabel: "me@x.com (Team Org)"
+        )
+        let first = ProviderInstancesStore(defaults: defaults).reconcile(with: [desktop])
+
+        let swap = DiscoveredProviderInstance(
+            baseProviderID: "claude", kind: .claudeSwapSlot,
+            anchorPath: "/Users/x/.claude-swap-backup", keychainLiteral: nil,
+            desktopOrganization: "org-team", swapAccountName: "account-1-me@x.com",
+            identityKey: "uuid-me|org-team", identityLabel: "me@x.com (Team Org)"
+        )
+        let next = ProviderInstancesStore(defaults: defaults).reconcile(with: [swap])
+
+        XCTAssertEqual(next.count, 1)
+        XCTAssertEqual(next[0].id, first[0].id)
+        XCTAssertEqual(next[0].ordinal, first[0].ordinal)
+        XCTAssertEqual(next[0].kind, .claudeSwapSlot)
+        XCTAssertEqual(next[0].swapAccountName, "account-1-me@x.com")
+    }
+
+    func testSwapSlotStoreReadsVaultReadOnly() throws {
+        let keychain = AccountAwareKeychain()
+        keychain.accountValues["claude-swap|account-1-me@x.com"] = claudeCredentialsJSON(access: "parked-token")
+        let store = ClaudeAuthStore(
+            environment: FakeEnvironment([:]),
+            files: FakeFiles(),
+            keychain: keychain,
+            scope: .swapSlot(account: "account-1-me@x.com", backupRoot: "/Users/x/.claude-swap-backup", organization: nil)
+        )
+
+        let load = store.loadCredentialSet()
+        let candidate = try XCTUnwrap(load.candidates.first)
+        XCTAssertEqual(load.candidates.count, 1)
+        XCTAssertEqual(candidate.source.label, "swapVault")
+        XCTAssertEqual(candidate.oauth.accessToken, "parked-token")
+        XCTAssertNil(candidate.oauth.refreshToken, "parked tokens must never be refreshable — rotating would corrupt cswap's backup")
+        XCTAssertEqual(load.desktopStatus, .notChecked)
+        XCTAssertTrue(store.hasCredentialFootprint())
+
+        // Rotations are never written back.
+        XCTAssertFalse(try store.save(candidateState(candidate), ifUnchanged: store.credentialGeneration()))
+    }
+
+    func testSwapSlotStoreFallsBackToEncFile() throws {
+        let account = "account-1-me@x.com"
+        let root = "/Users/x/.claude-swap-backup"
+        let blob = Data(claudeCredentialsJSON(access: "enc-token").utf8).base64EncodedString()
+        let store = ClaudeAuthStore(
+            environment: FakeEnvironment([:]),
+            files: FakeFiles(["\(root)/credentials/.creds-1-me@x.com.enc": blob]),
+            keychain: AccountAwareKeychain(),
+            scope: .swapSlot(account: account, backupRoot: root, organization: nil)
+        )
+        XCTAssertEqual(store.loadCredentialSet().candidates.first?.oauth.accessToken, "enc-token")
+        XCTAssertTrue(store.hasCredentialFootprint())
+    }
+
+    private func candidateState(_ state: ClaudeCredentialState) -> ClaudeCredentialState { state }
 
     // MARK: - Scoped credential stores
 

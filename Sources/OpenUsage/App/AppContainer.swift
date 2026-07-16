@@ -69,8 +69,20 @@ final class AppContainer {
         let instancesStore = ProviderInstancesStore()
         let discovered = ProviderInstanceDiscovery().run()
         let records = instancesStore.reconcile(with: discovered.instances)
+        // Swap tools (cswap) change the default login in place, so a persisted record can name the
+        // account the default card currently shows. Suppress those runtimes for this launch — one
+        // account must never render as two cards — while the record (and its ordinal) persists for
+        // the launch where the swap flips back.
+        let visibleRecords = records.filter { record in
+            let isCurrentDefault = discovered.defaultIdentityKeys[record.baseProviderID]?
+                .contains(record.identityKey) ?? false
+            if isCurrentDefault {
+                AppLog.info(.config, "instance \(record.id) matches the current default login; showing it on the default card only")
+            }
+            return !isCurrentDefault
+        }
         let instanceContext = ProviderInstanceContext(
-            records: records,
+            records: visibleRecords,
             coworkRootsByInstanceID: discovered.coworkRootsByIdentityKey.reduce(into: [:]) { map, entry in
                 map[ProviderInstanceID.make(baseProviderID: "claude", identityKey: entry.key)] = entry.value
             },
