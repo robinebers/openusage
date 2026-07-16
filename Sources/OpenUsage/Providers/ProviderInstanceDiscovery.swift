@@ -276,11 +276,11 @@ struct ProviderInstanceDiscovery {
               let identity = parsed.oauthAccount,
               let key = claudeIdentityKey(identity)
         else {
-            notes.append("claude candidate \(url.path): identity file present but unreadable (no oauthAccount/accountUuid) → skipped")
+            notes.append("claude candidate \(ProviderInstanceID.logPath(url.path)): identity file present but unreadable (no oauthAccount/accountUuid) → skipped")
             return nil
         }
         guard key != defaultIdentityKey else {
-            notes.append("claude candidate \(url.path): same account as the default card (\(ProviderInstanceID.hash8(key))) → folded")
+            notes.append("claude candidate \(ProviderInstanceID.logPath(url.path)): same account as the default card (\(ProviderInstanceID.hash8(key))) → folded")
             return nil
         }
 
@@ -302,11 +302,11 @@ struct ProviderInstanceDiscovery {
             }
         }
         guard fileBacked || matchedLiteral != nil else {
-            notes.append("claude candidate \(url.path): identity \(ProviderInstanceID.hash8(key)) but no credential (no .credentials.json, no keychain item for \(literals.count) path spellings) → skipped")
+            notes.append("claude candidate \(ProviderInstanceID.logPath(url.path)): identity \(ProviderInstanceID.hash8(key)) but no credential (no .credentials.json, no keychain item for \(literals.count) path spellings) → skipped")
             return nil
         }
 
-        notes.append("claude candidate \(url.path): accepted as \(ProviderInstanceID.make(baseProviderID: "claude", identityKey: key)) (\(fileBacked ? "file" : "keychain") credential)")
+        notes.append("claude candidate \(ProviderInstanceID.logPath(url.path)): accepted as \(ProviderInstanceID.make(baseProviderID: "claude", identityKey: key)) (\(fileBacked ? "file" : "keychain") credential)")
         return DiscoveredProviderInstance(
             baseProviderID: "claude",
             kind: .claudeConfigDir,
@@ -366,7 +366,7 @@ struct ProviderInstanceDiscovery {
             )) ?? []
             guard !configs.isEmpty else { continue }
             let activeSlot = claudeSwapActiveSlot(root: root)
-            notes.append("cswap vault \(root.path): \(configs.count) slot config(s), active=\(activeSlot ?? "unknown")")
+            notes.append("cswap vault \(ProviderInstanceID.logPath(root.path)): \(configs.count) slot config(s), active=\(activeSlot ?? "unknown")")
 
             var findings: [DiscoveredProviderInstance] = []
             for file in configs.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
@@ -468,10 +468,10 @@ struct ProviderInstanceDiscovery {
     ) -> DiscoveredProviderInstance? {
         if let identity = codexIdentity(inHome: url.path) {
             guard !defaultIdentityKeys.contains(identity.key) else {
-                notes.append("codex candidate \(url.path): same account as the default card (\(ProviderInstanceID.hash8(identity.key))) → folded")
+                notes.append("codex candidate \(ProviderInstanceID.logPath(url.path)): same account as the default card (\(ProviderInstanceID.hash8(identity.key))) → folded")
                 return nil
             }
-            notes.append("codex candidate \(url.path): accepted as \(ProviderInstanceID.make(baseProviderID: "codex", identityKey: identity.key)) (auth.json)")
+            notes.append("codex candidate \(ProviderInstanceID.logPath(url.path)): accepted as \(ProviderInstanceID.make(baseProviderID: "codex", identityKey: identity.key)) (auth.json)")
             return DiscoveredProviderInstance(
                 baseProviderID: "codex",
                 kind: .codexHome,
@@ -483,7 +483,7 @@ struct ProviderInstanceDiscovery {
         }
 
         if files.exists(url.path + "/auth.json") {
-            notes.append("codex candidate \(url.path): auth.json present but not Codex-shaped (no usable tokens) → skipped")
+            notes.append("codex candidate \(ProviderInstanceID.logPath(url.path)): auth.json present but not Codex-shaped (no usable tokens) → skipped")
             return nil
         }
 
@@ -497,10 +497,10 @@ struct ProviderInstanceDiscovery {
             service: CodexAuthStore.keychainService,
             account: CodexAuthStore.keychainAccountName(forHome: url.path)
         ) else {
-            notes.append("codex candidate \(url.path): codex-shaped dir but no auth.json and no keychain item for its home hash → skipped")
+            notes.append("codex candidate \(ProviderInstanceID.logPath(url.path)): codex-shaped dir but no auth.json and no keychain item for its home hash → skipped")
             return nil
         }
-        notes.append("codex candidate \(url.path): accepted (keyring-mode home, identity pending first refresh)")
+        notes.append("codex candidate \(ProviderInstanceID.logPath(url.path)): accepted (keyring-mode home, identity pending first refresh)")
         return DiscoveredProviderInstance(
             baseProviderID: "codex",
             kind: .codexHome,

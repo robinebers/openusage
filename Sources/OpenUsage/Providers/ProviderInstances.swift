@@ -26,6 +26,16 @@ enum ProviderInstanceID {
         let digest = SHA256.hash(data: Data(value.precomposedStringWithCanonicalMapping.utf8))
         return String(digest.map { String(format: "%02x", $0) }.joined().prefix(8))
     }
+
+    /// Home-relative form for log lines: `~/.claude-work` instead of the absolute path. Keeps the
+    /// username out AND survives the file log's absolute-path redaction, so a support log still says
+    /// WHICH dir a note is about.
+    static func logPath(_ path: String?) -> String {
+        guard let path, !path.isEmpty else { return "-" }
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        if path.hasPrefix(home + "/") { return "~" + path.dropFirst(home.count) }
+        return path
+    }
 }
 
 /// One discovered extra login, persisted so ordinals ("Claude 2") and instance ids stay stable across
