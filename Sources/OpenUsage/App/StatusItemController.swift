@@ -297,6 +297,52 @@ final class StatusItemController: NSObject {
         showPanel()
     }
 
+    /// Routes a widget card click into the existing popover navigation model. Enabled providers with
+    /// at least one visible metric open their expanded dashboard card; disabled providers (or enabled
+    /// providers whose metrics are all hidden) open that provider's Customize detail instead.
+    ///
+    /// The parser allow-lists against the live registry before the id reaches SwiftUI. Calling this
+    /// repeatedly while the panel is open is intentional: `requestDashboardProviderFocus` carries a
+    /// monotonically increasing token so even the same provider scrolls again.
+    func openProviderDeepLink(_ url: URL) {
+        guard let expectedScheme = Bundle.main.object(forInfoDictionaryKey: "OpenUsageURLScheme") as? String else {
+            AppLog.error(.statusItem, "Cannot open provider deep link: OpenUsageURLScheme is missing")
+            return
+        }
+        let knownProviderIDs = Set(container.layout.customizeProviderRows.map(\.provider.id))
+        guard let deepLink = ProviderDeepLink.parse(
+            url,
+            expectedScheme: expectedScheme,
+            knownProviderIDs: knownProviderIDs
+        ) else {
+            AppLog.error(.statusItem, "Ignored invalid provider deep link")
+            return
+        }
+
+        let providerID = deepLink.providerID
+        let hasVisibleMetrics = !WidgetBridgeExporter.enabledMetricDescriptors(
+            for: providerID,
+            layout: container.layout,
+            dataStore: container.dataStore
+        ).isEmpty
+        let destination = ProviderDeepLinkDestination.resolve(
+            isEnabled: container.enablement.isEnabled(providerID),
+            hasVisibleMetrics: hasVisibleMetrics
+        )
+        switch destination {
+        case .dashboard:
+            container.layout.screen = .dashboard
+            _ = container.layout.setProviderExpanded(true, for: providerID)
+            container.layout.requestDashboardProviderFocus(providerID)
+        case .customize:
+            // Set the screen first: entering Customize doesn't clear `customizeProviderID`, while
+            // leaving another screen for dashboard does. Then install the L2 destination.
+            container.layout.screen = .customize
+            container.layout.customizeProviderID = providerID
+        }
+        showPopover()
+    }
+
     private func showPanel() {
         guard let button = statusItem.button, let buttonWindow = button.window else {
             AppLog.error(.statusItem, "Cannot show panel: status item has no button")

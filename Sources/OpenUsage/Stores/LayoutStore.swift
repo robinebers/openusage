@@ -35,6 +35,10 @@ final class LayoutStore {
         get { navigation.customizeProviderID }
         set { navigation.customizeProviderID = newValue }
     }
+    /// A transient, repeatable request to reveal one dashboard provider. The token increments even for
+    /// repeated clicks on the same widget so SwiftUI observes every request. Neither value is persisted.
+    private(set) var dashboardFocusProviderID: String?
+    private(set) var dashboardFocusRequestID = 0
     /// Placed widget being drag-reordered (transient). `PlacedWidget.id`, never persisted.
     var draggingID: UUID?
     /// Persisted provider display order (provider IDs). Drives both the dashboard groups and the
@@ -151,6 +155,21 @@ final class LayoutStore {
         if initial.shouldPersistExpanded { persistExpanded() }
         if let seededDefaults = initial.seededDefaultsToPersist { persistSeededDefaults(seededDefaults) }
         syncPlacedOrder(persistChanges: initial.shouldPersistPlaced)
+    }
+
+    /// Requests dashboard scrolling only for a provider in the live registry.
+    @discardableResult
+    func requestDashboardProviderFocus(_ providerID: String) -> Bool {
+        guard registry.provider(id: providerID) != nil else { return false }
+        dashboardFocusProviderID = providerID
+        dashboardFocusRequestID &+= 1
+        return true
+    }
+
+    /// Clears a focus request only after the dashboard has acted on that exact request.
+    func acknowledgeDashboardProviderFocus(requestID: Int) {
+        guard requestID == dashboardFocusRequestID else { return }
+        dashboardFocusProviderID = nil
     }
 
     func isProviderExpanded(_ providerID: String) -> Bool {

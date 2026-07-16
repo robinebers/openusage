@@ -18,6 +18,11 @@ The script builds a signed app bundle under `dist/` and launches it in place —
 own settings and keychain and never disturbs a released OpenUsage. It ships no update feed, so it never
 checks for updates — test updates with a real signed, notarized release build.
 
+WidgetKit and App Groups require an Apple Development identity and team id. The script normally infers
+the team id from the identity. Without one it still builds the host app, but warns that widgets were
+left out. Set `WIDGETS_REQUIRED=1` to make that condition fail, or set `OPENUSAGE_TEAM_ID` when the
+identity name does not contain the team id.
+
 ## Stream logs
 
 To watch the app's logs live while you reproduce an issue:

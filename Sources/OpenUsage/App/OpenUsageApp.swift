@@ -4,6 +4,9 @@ import AppKit
 public final class AppDelegate: NSObject, NSApplicationDelegate {
     private var container: AppContainer?
     private var statusItemController: StatusItemController?
+    /// Widget clicks can reach the delegate before `applicationDidFinishLaunching` has assembled the
+    /// AppKit-owned status item. Queue them until the controller can validate and route each URL.
+    private var pendingOpenURLs: [URL] = []
     private var singleInstanceLock: SingleInstanceLock.Token?
     private let updater = UpdaterController()
 
@@ -70,9 +73,26 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         AppearanceSetting.applyCurrent()
         let container = AppContainer(isFreshInstall: isFreshInstall)
         self.container = container
-        statusItemController = StatusItemController(container: container, updater: updater)
+        let statusItemController = StatusItemController(container: container, updater: updater)
+        self.statusItemController = statusItemController
+        for url in pendingOpenURLs {
+            statusItemController.openProviderDeepLink(url)
+        }
+        pendingOpenURLs.removeAll()
         // Starts background update checks (release build only; dormant under preview/`swift run`).
         updater.start()
+    }
+
+    /// Handles the channel-specific widget URL scheme. Parsing and known-provider validation live at
+    /// the controller boundary so queued URLs are never used as view identity before validation.
+    public func application(_ application: NSApplication, open urls: [URL]) {
+        guard let statusItemController else {
+            pendingOpenURLs.append(contentsOf: urls)
+            return
+        }
+        for url in urls {
+            statusItemController.openProviderDeepLink(url)
+        }
     }
 
     /// Flush queued telemetry on quit. The SDK's lifecycle autocapture is off (we emit our own daily
@@ -80,5 +100,42 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     /// from being stranded across a clean quit.
     public func applicationWillTerminate(_ notification: Notification) {
         container?.telemetry.flush()
+    }
+}
+
+/// The deliberately small URL surface exposed by widget cards.
+struct ProviderDeepLink: Equatable, Sendable {
+    let providerID: String
+
+    static func parse(
+        _ url: URL,
+        expectedScheme: String,
+        knownProviderIDs: Set<String>
+    ) -> ProviderDeepLink? {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let scheme = components.scheme?.lowercased(),
+              scheme == expectedScheme.lowercased(),
+              scheme == "openusage" || scheme == "openusage-dev",
+              components.host?.lowercased() == "provider",
+              components.user == nil,
+              components.password == nil,
+              components.port == nil,
+              components.query == nil,
+              components.fragment == nil else { return nil }
+
+        let pathComponents = components.path.split(separator: "/", omittingEmptySubsequences: true)
+        guard pathComponents.count == 1 else { return nil }
+        let providerID = String(pathComponents[0])
+        guard knownProviderIDs.contains(providerID) else { return nil }
+        return ProviderDeepLink(providerID: providerID)
+    }
+}
+
+enum ProviderDeepLinkDestination: Equatable, Sendable {
+    case dashboard
+    case customize
+
+    static func resolve(isEnabled: Bool, hasVisibleMetrics: Bool) -> Self {
+        isEnabled && hasVisibleMetrics ? .dashboard : .customize
     }
 }

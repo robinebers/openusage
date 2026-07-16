@@ -61,7 +61,9 @@ factory only when there is no typed error, and never return stale or empty data 
    JSON/number/percent parsing, `OpenUsageISO8601` for timestamps) instead of copying them.
 3. **Declare its widgets.** Expose the provider's metrics as `WidgetDescriptor`s using the factories in
    `WidgetDescriptor+Factories.swift` (`percent`, `boundedDollars`, `spend`, `tokenSpend`, `combined`, `values`, `badge`, and so on).
-4. **Register it.** Add the provider to the list in `AppContainer`.
+4. **Register it.** Add the provider to the list in `AppContainer`. Also add its id and display name to
+   `WidgetProviderCatalog` so it appears in the macOS widget picker, and add its icon mapping to the
+   widget extension. Keep the same display name in both places.
 5. **Test it.** Add focused tests under `Tests/OpenUsageTests/`, including a mapper test that feeds a
    sample API response and checks the resulting metric lines.
 6. **Document it.** Add a page under `docs/providers/` covering what it tracks, where its credentials come

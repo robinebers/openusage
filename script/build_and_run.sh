@@ -13,6 +13,8 @@ set -euo pipefail
 #
 # Usage: script/build_and_run.sh [run|build|logs|verify]
 # Env:   CODESIGN_IDENTITY  override signing identity (exact name or hash)
+#        OPENUSAGE_TEAM_ID  Apple Developer team id (normally inferred from the identity)
+#        WIDGETS_REQUIRED   set to 1 to fail instead of producing a host-only ad-hoc build
 #        CONFIG             "release" (default) or "debug"
 #        ICLOUD_PROVISIONING_PROFILE  optional override for the development provisioning profile;
 #                         otherwise the newest matching installed profile is selected automatically
@@ -41,6 +43,49 @@ INFO_PLIST="$APP_CONTENTS/Info.plist"
 RESOURCE_BUNDLE_NAME="${TARGET_NAME}_${TARGET_NAME}.bundle"
 ENTITLEMENTS="$ROOT_DIR/script/OpenUsage.dev.entitlements.plist"
 SIGN_ENTITLEMENTS="$ROOT_DIR/script/OpenUsage.local.entitlements.plist"
+WIDGET_BUNDLE_ID="$BUNDLE_ID.widgets"
+if [ "$BUNDLE_ID" = "com.robinebers.openusage" ]; then
+  OPENUSAGE_URL_SCHEME="${OPENUSAGE_URL_SCHEME:-openusage}"
+else
+  OPENUSAGE_URL_SCHEME="${OPENUSAGE_URL_SCHEME:-openusage-dev}"
+fi
+
+# WidgetKit/App Groups need a stable team-signed identity. Keep the host-only ad-hoc fallback for
+# contributors without an Apple Development certificate; widget work can require the full path.
+CODESIGN_IDENTITY="${CODESIGN_IDENTITY:-}"
+if [ -z "$CODESIGN_IDENTITY" ]; then
+  CODESIGN_IDENTITY=$(/usr/bin/security find-identity -p codesigning -v 2>/dev/null \
+    | /usr/bin/awk -F\" '/Apple Development:/ { print $2; exit }')
+fi
+OPENUSAGE_TEAM_ID="${OPENUSAGE_TEAM_ID:-}"
+if [ -z "$OPENUSAGE_TEAM_ID" ] && [ -n "$CODESIGN_IDENTITY" ]; then
+  CERTIFICATE_NAME="$CODESIGN_IDENTITY"
+  if printf '%s' "$CODESIGN_IDENTITY" | /usr/bin/grep -Eq '^[[:xdigit:]]{40}$'; then
+    CERTIFICATE_NAME=$(/usr/bin/security find-identity -p codesigning -v 2>/dev/null \
+      | /usr/bin/awk -v wanted="$CODESIGN_IDENTITY" '
+          toupper($2) == toupper(wanted) { split($0, fields, "\""); print fields[2]; exit }
+        ')
+  fi
+  if [ -n "$CERTIFICATE_NAME" ]; then
+    OPENUSAGE_TEAM_ID=$(/usr/bin/security find-certificate -c "$CERTIFICATE_NAME" -p 2>/dev/null \
+      | /usr/bin/openssl x509 -noout -subject -nameopt RFC2253 2>/dev/null \
+      | /usr/bin/tr ',' '\n' \
+      | /usr/bin/sed -n 's/^OU=\([A-Z0-9][A-Z0-9]*\)$/\1/p' \
+      | /usr/bin/head -n 1)
+  fi
+fi
+
+WIDGETS_ENABLED=0
+OPENUSAGE_APP_GROUP=""
+if [ -n "$CODESIGN_IDENTITY" ] && [ -n "$OPENUSAGE_TEAM_ID" ]; then
+  WIDGETS_ENABLED=1
+  OPENUSAGE_APP_GROUP="$OPENUSAGE_TEAM_ID.$BUNDLE_ID.shared"
+elif [ "${WIDGETS_REQUIRED:-0}" = "1" ]; then
+  echo "Widget build requires an Apple Development identity and OPENUSAGE_TEAM_ID." >&2
+  exit 1
+else
+  echo "WARNING: no team-signed identity; building the host app without WidgetKit support." >&2
+fi
 
 pkill -x "$TARGET_NAME" >/dev/null 2>&1 || true
 
@@ -146,6 +191,19 @@ cat >"$INFO_PLIST" <<PLIST
   <string>NSApplication</string>
   <key>NSHighResolutionCapable</key>
   <true/>
+  <key>OpenUsageAppGroupIdentifier</key>
+  <string>$OPENUSAGE_APP_GROUP</string>
+  <key>OpenUsageURLScheme</key>
+  <string>$OPENUSAGE_URL_SCHEME</string>
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key>
+      <string>$BUNDLE_ID.provider</string>
+      <key>CFBundleURLSchemes</key>
+      <array><string>$OPENUSAGE_URL_SCHEME</string></array>
+    </dict>
+  </array>
   <key>NSUbiquitousContainers</key>
   <dict>
     <key>iCloud.com.robinebers.openusage.dev</key>
@@ -183,12 +241,27 @@ else
   echo "WARNING: no matching installed iCloud provisioning profile was found; iCloud Sync will be unavailable in this build." >&2
 fi
 
-# Pick a stable Apple Development identity so ad-hoc cdhash churn doesn't re-trigger
-# permission prompts on every rebuild. Fall back to ad-hoc only if none is found.
-CODESIGN_IDENTITY="${CODESIGN_IDENTITY:-}"
-if [ -z "$CODESIGN_IDENTITY" ]; then
-  CODESIGN_IDENTITY=$(/usr/bin/security find-identity -p codesigning -v 2>/dev/null \
-    | /usr/bin/awk -F\" '/Apple Development:/ { print $2; exit }')
+if [ "$WIDGETS_ENABLED" = "1" ]; then
+  HOST_ENTITLEMENTS="$DIST_DIR/OpenUsage.host.entitlements.plist"
+  cp "$SIGN_ENTITLEMENTS" "$HOST_ENTITLEMENTS"
+  SIGN_ENTITLEMENTS="$HOST_ENTITLEMENTS"
+  /usr/libexec/PlistBuddy \
+    -c 'Add :com.apple.security.application-groups array' \
+    -c "Add :com.apple.security.application-groups:0 string $OPENUSAGE_APP_GROUP" \
+    "$SIGN_ENTITLEMENTS"
+
+  WIDGET_CONFIGURATION=Release
+  [ "$CONFIG" = "debug" ] && WIDGET_CONFIGURATION=Debug
+  APP_BUNDLE="$APP_BUNDLE" \
+  WIDGET_BUNDLE_ID="$WIDGET_BUNDLE_ID" \
+  OPENUSAGE_APP_GROUP="$OPENUSAGE_APP_GROUP" \
+  OPENUSAGE_URL_SCHEME="$OPENUSAGE_URL_SCHEME" \
+  OPENUSAGE_TEAM_ID="$OPENUSAGE_TEAM_ID" \
+  WIDGET_VERSION="$APP_VERSION-dev" \
+  WIDGET_BUILD="$APP_BUILD" \
+  WIDGET_ARCHS="$(uname -m)" \
+  WIDGET_CONFIGURATION="$WIDGET_CONFIGURATION" \
+    "$ROOT_DIR/script/build_widget_extension.sh"
 fi
 
 # Embed + sign Sparkle.framework before sealing the app. The executable links Sparkle, so without the
@@ -198,11 +271,28 @@ fi
 
 if [ -n "$CODESIGN_IDENTITY" ]; then
   /usr/bin/codesign --force --options runtime --sign "$CODESIGN_IDENTITY" "$CLI_BINARY" >/dev/null
+  if [ "$WIDGETS_ENABLED" = "1" ]; then
+    WIDGET_ENTITLEMENTS="$DIST_DIR/OpenUsage.widget.entitlements.plist"
+    cat >"$WIDGET_ENTITLEMENTS" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>com.apple.security.app-sandbox</key><true/>
+  <key>com.apple.security.application-groups</key>
+  <array><string>$OPENUSAGE_APP_GROUP</string></array>
+</dict></plist>
+PLIST
+    /usr/bin/codesign --force --options runtime \
+      --sign "$CODESIGN_IDENTITY" \
+      --entitlements "$WIDGET_ENTITLEMENTS" \
+      "$APP_BUNDLE/Contents/PlugIns/OpenUsageWidgets.appex" >/dev/null
+  fi
   # Not --deep: the Sparkle framework is already signed above and must keep that signature.
   /usr/bin/codesign --force --options runtime \
     --sign "$CODESIGN_IDENTITY" \
     --entitlements "$SIGN_ENTITLEMENTS" \
     "$APP_BUNDLE" >/dev/null
+  /usr/bin/codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
   echo "==> signed with: $CODESIGN_IDENTITY"
 else
   /usr/bin/codesign --force --sign - "$CLI_BINARY" >/dev/null
