@@ -61,6 +61,11 @@ struct ProviderInstanceDiscovery {
         /// The default card's config dirs (env override respected) — the shared log roots that swap
         /// cards partition by time.
         var claudeSharedHomeRoots: [URL] = []
+        /// Bases whose default login has a credential footprint but no readable identity THIS launch.
+        /// Nothing account-scoped is trustworthy for them: no new candidates were accepted, and
+        /// persisted records must not build runtimes either — any record could be the very account
+        /// the default card currently shows.
+        var basesWithUnreadableDefault: Set<String> = []
     }
 
     private struct ClaudeIdentity: Codable {
@@ -125,10 +130,12 @@ struct ProviderInstanceDiscovery {
         // duplicate, and a custom-dir-only login should still get its card.
         let claudeCandidatesAllowed = defaultClaude != nil || !defaultClaudeCredentialFootprint()
         if !claudeCandidatesAllowed {
+            result.basesWithUnreadableDefault.insert("claude")
             result.notes.append("claude: default login present but its identity is unreadable → skipping extra-account candidates this launch")
         }
         let codexCandidatesAllowed = !defaultCodex.isEmpty || !defaultCodexCredentialFootprint()
         if !codexCandidatesAllowed {
+            result.basesWithUnreadableDefault.insert("codex")
             result.notes.append("codex: default login present but its identity is unreadable → skipping extra-account candidates this launch")
         }
 
@@ -152,8 +159,11 @@ struct ProviderInstanceDiscovery {
         // claude-swap (cswap) vault: each PARKED slot's identity comes from the tool's own per-slot
         // config backup — the active slot is exactly what the default card shows, so it is never an
         // instance. Runs before the Cowork walk so a same-account Cowork finding upgrades to the
-        // swap-vault credential source instead of the borrowed Desktop token.
-        if !overBudget() {
+        // swap-vault credential source instead of the borrowed Desktop token. Gated on the same
+        // unreadable-default guard as dot-dir candidates: with a footprint-but-nameless default, slot
+        // folding would be blind AND the timeline's default-card filter couldn't be built — the
+        // unfiltered default scanner next to filtered slot cards would double-count the shared home.
+        if !overBudget(), claudeCandidatesAllowed {
             let swap = claudeSwapContext(defaultIdentityKey: defaultClaude, notes: &result.notes)
             for finding in swap.findings
             where seenIdentityKeys.insert("claude|\(finding.identityKey)").inserted {

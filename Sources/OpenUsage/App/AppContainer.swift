@@ -78,6 +78,14 @@ final class AppContainer {
         // account must never render as two cards — while the record (and its ordinal) persists for
         // the launch where the swap flips back.
         let visibleRecords = records.filter { record in
+            // A base whose default login exists but can't be named this launch suppresses ALL its
+            // instance runtimes: any persisted record could be the very account the default card is
+            // showing, and without an identity the one-account-one-card rule can't be enforced any
+            // other way. Records (and ordinals) persist; visibility returns with readability.
+            if discovered.basesWithUnreadableDefault.contains(record.baseProviderID) {
+                AppLog.info(.config, "instance \(record.id) suppressed: default \(record.baseProviderID) identity unreadable this launch")
+                return false
+            }
             let isCurrentDefault = discovered.defaultIdentityKeys[record.baseProviderID]?
                 .contains(record.identityKey) ?? false
             if isCurrentDefault {

@@ -245,12 +245,23 @@ final class ProviderInstancesTests: XCTestCase {
             "Codex Auth|\(CodexAuthStore.keychainAccountName(forHome: home.appendingPathComponent(".codex").path))"
         )
 
+        // A cswap vault on the same machine: the guard must cover it too — parked slots can't fold
+        // against a nameless default, and a timeline without the default card's filter would make the
+        // unfiltered default scanner double-count the slot cards' shared-home slices.
+        try write(home, ".claude-swap-backup/configs/.claude-config-1-a@x.com.json",
+                  claudeIdentityJSON(uuid: "uuid-a", email: "a@x.com"))
+        try write(home, ".claude-swap-backup/sequence.json", #"{"activeAccountNumber": 2}"#)
+        try write(home, ".claude-swap-backup/claude-swap.log",
+                  "2026-07-16 11:50:55,324 - INFO - Switched from account 1 to 2\n")
+
         let blocked = ProviderInstanceDiscovery(
             environment: FakeEnvironment([:]),
             keychain: keychain,
             homeDirectory: { home }
         ).run()
         XCTAssertTrue(blocked.instances.isEmpty)
+        XCTAssertNil(blocked.claudeSwapTimeline, "no timeline without a nameable default card")
+        XCTAssertEqual(blocked.basesWithUnreadableDefault, ["claude", "codex"])
         XCTAssertTrue(blocked.notes.contains { $0.contains("claude: default login present but its identity is unreadable") })
         XCTAssertTrue(blocked.notes.contains { $0.contains("codex: default login present but its identity is unreadable") })
 
@@ -261,8 +272,8 @@ final class ProviderInstancesTests: XCTestCase {
         ).run()
         XCTAssertEqual(
             Set(open.instances.map(\.identityKey)),
-            ["uuid-work", "acct-work"],
-            "with no default footprint there is nothing to duplicate — custom-dir-only logins still get cards"
+            ["uuid-work", "acct-work", "uuid-a"],
+            "with no default footprint there is nothing to duplicate — custom-dir-only logins (and parked vault slots) still get cards"
         )
     }
 
