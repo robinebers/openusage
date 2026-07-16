@@ -100,6 +100,24 @@ enum MenuBarStripRenderer {
         return image
     }
 
+    /// The screen-share privacy stand-in: the wordmark instead of usage values, shown while
+    /// `MenuBarPrivacyStore.concealUsage` is true so a shared or recorded screen never carries token
+    /// counts or spend. Deterministic, so rendered once; `nil` only if `ImageRenderer` fails entirely
+    /// (caller falls back to the app icon).
+    static let privacyImage: NSImage? = {
+        let renderer = ImageRenderer(content: MenuBarPrivacyLabel())
+        renderer.scale = 2
+        guard let rendered = renderer.cgImage else { return nil }
+        let cgImage = trimmedToVisibleContent(rendered) ?? rendered
+        let image = NSImage(
+            cgImage: cgImage,
+            size: NSSize(width: CGFloat(cgImage.width) / renderer.scale, height: CGFloat(cgImage.height) / renderer.scale)
+        )
+        image.isTemplate = true
+        image.accessibilityDescription = "OpenUsage, usage hidden while the screen is shared"
+        return image
+    }()
+
     /// Last-resort icon if the brand mark fails to load.
     static let fallbackIcon: NSImage = {
         let image = NSImage(
@@ -109,6 +127,29 @@ enum MenuBarStripRenderer {
         image.isTemplate = true
         return image
     }()
+}
+
+/// The brand gauge mark plus wordmark drawn in place of the strip while screen-share privacy is
+/// concealing usage. Same black-on-clear template treatment, glyph box, and type size as a
+/// single-metric Text strip, so the swap doesn't jump the menu bar's rhythm.
+private struct MenuBarPrivacyLabel: View {
+    var body: some View {
+        HStack(spacing: 5) {
+            // The same mark and inset as `MenuBarIcon` (the art carries its own margin), sized to the
+            // strip's glyph box so the swap keeps the provider-glyph scale.
+            if let mark = ProviderMarks.mark(for: "openusage") {
+                ProviderIconShape(pathData: mark.path, inset: 0.08)
+                    .fill(Color.black)
+                    .frame(width: 16, height: 16)
+            }
+            Text("OpenUsage")
+                .font(.system(size: 12, weight: .bold))
+        }
+        .foregroundStyle(.black)
+        .padding(.horizontal, 2)
+        .padding(.vertical, 1)
+        .fixedSize()
+    }
 }
 
 private struct MenuBarTextStrip: View {
