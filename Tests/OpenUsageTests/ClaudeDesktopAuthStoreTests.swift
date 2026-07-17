@@ -175,6 +175,32 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
         XCTAssertEqual(fixture.keyReader.calls, [false])
     }
 
+    func testStandardStorePinsDesktopFallbackInsteadOfFollowingAnotherCardsActiveOrg() throws {
+        let fixture = try makeFixture(
+            activeOrganization: otherOrganization,
+            v2: [
+                cacheKey(organization: organization): tokenEntry("default-org-token", expiresIn: 3_600),
+                cacheKey(organization: otherOrganization): tokenEntry("instance-org-token", expiresIn: 3_600)
+            ]
+        )
+        let now = now
+        let authStore = ClaudeAuthStore(
+            environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": "/tmp/claude"]),
+            files: fixture.files,
+            keychain: FakeKeychain(),
+            desktop: fixture.store,
+            standardDesktopOrganization: organization,
+            allowsUnpinnedStandardDesktopFallback: false,
+            now: { now }
+        )
+
+        let load = authStore.loadCredentialSet()
+
+        XCTAssertEqual(load.candidates.first?.oauth.accessToken, "default-org-token")
+        XCTAssertFalse(load.candidates.contains { $0.oauth.accessToken == "instance-org-token" })
+        XCTAssertEqual(load.desktopStatus, .available)
+    }
+
     @MainActor
     func testDesktopPermissionIsNotMaskedByScopedCLIToken() async throws {
         let fixture = try makeFixture(

@@ -361,6 +361,20 @@ final class ClaudeUsageMapperTests: XCTestCase {
 
 @MainActor
 final class ClaudeProviderTests: XCTestCase {
+    func testRefreshRefusesAnActiveIdentityChangedAfterLaunch() async {
+        let provider = ClaudeProvider(
+            expectedIdentityKey: "uuid-a|org-a",
+            currentIdentityKey: { "uuid-b|org-b" }
+        )
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(
+            badge(snapshot.lines, "Error"),
+            ClaudeAuthError.loginChangedRequiresRestart.localizedDescription
+        )
+    }
+
     func testRefreshFetchesLiveUsageAndScansConfigDirLogs() async throws {
         let now = OpenUsageISO8601.date(from: "2026-02-20T16:00:00.000Z")!
         let httpClient = FakeHTTPClient(response: HTTPResponse(

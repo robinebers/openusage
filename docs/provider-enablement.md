@@ -19,6 +19,8 @@ This check happens **once per provider**. After that, the provider is yours to m
 
 When OpenUsage discovers an extra Claude or Codex login on your Mac (see each provider's "Extra Accounts" section), the new card goes through exactly the same rules: it's checked once, turned on when its login is real, and from then on it's yours — turning "Claude 2" off in Customize sticks the same way turning any provider off does, and no rescan will flip it back.
 
+An extra card can be safely absent for one launch while its default-account identity or shell-defined home is unavailable. OpenUsage keeps that card's layout markers while it is absent, so metrics you turned off do not turn themselves back on when the card returns.
+
 ## Your choices always stick
 
 Everything you set in Customize — providers on or off, metric layout, menu-bar stars — carries across updates untouched. The only thing an update may ever change is turning **on** a provider you have never seen before, and only when you actually have that tool installed.

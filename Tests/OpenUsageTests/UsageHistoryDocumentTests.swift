@@ -43,6 +43,77 @@ final class UsageHistoryDocumentTests: XCTestCase {
         XCTAssertThrowsError(try document.validate())
     }
 
+    func testValidatesV2IdentityMetadataAtTheBoundary() {
+        var document = makeDocument(deviceID: "mac-a", updatedAt: .now)
+        document.identities = ["claude": "account-opaque|org-opaque"]
+        XCTAssertNoThrow(try document.validate())
+
+        document.identities = ["missing-provider": "account-opaque"]
+        XCTAssertThrowsError(try document.validate()) { error in
+            XCTAssertEqual(error as? UsageHistoryDocumentError, .invalidIdentityProvider("missing-provider"))
+        }
+
+        document.identities = ["claude": "  "]
+        XCTAssertThrowsError(try document.validate()) { error in
+            XCTAssertEqual(error as? UsageHistoryDocumentError, .invalidIdentity("claude"))
+        }
+
+        document.identities = ["claude": "alice@example.com"]
+        XCTAssertThrowsError(try document.validate()) { error in
+            XCTAssertEqual(error as? UsageHistoryDocumentError, .invalidIdentity("claude"))
+        }
+
+        document.identities = [
+            "claude": ProviderInstanceID.pathDerivedIdentityKey(forCanonicalHome: "/Users/alice/.claude")
+        ]
+        XCTAssertThrowsError(try document.validate()) { error in
+            XCTAssertEqual(error as? UsageHistoryDocumentError, .invalidIdentity("claude"))
+        }
+    }
+
+    func testV2RequiresIdentitiesForAccountAwareProvidersButNotMachineLocalProviders() {
+        var document = makeDocument(deviceID: "mac-a", updatedAt: .now)
+        let history = document.providers["claude"]!
+        document.identities = nil
+        XCTAssertThrowsError(try document.validate()) { error in
+            XCTAssertEqual(error as? UsageHistoryDocumentError, .missingIdentity("claude"))
+        }
+
+        document.providers = ["codex@abc12345": history]
+        XCTAssertThrowsError(try document.validate()) { error in
+            XCTAssertEqual(error as? UsageHistoryDocumentError, .missingIdentity("codex@abc12345"))
+        }
+
+        document.providers = ["grok": history]
+        XCTAssertNoThrow(try document.validate())
+    }
+
+    func testRejectsDuplicateIdentityWithinOneProviderFamilyButAllowsCrossFamilyValues() {
+        var document = makeDocument(deviceID: "mac-a", updatedAt: .now)
+        let history = document.providers["claude"]!
+        document.providers["claude@abc12345"] = history
+        document.identities = ["claude": "same-account", "claude@abc12345": "same-account"]
+        XCTAssertThrowsError(try document.validate()) { error in
+            XCTAssertEqual(error as? UsageHistoryDocumentError, .duplicateIdentity("claude"))
+        }
+
+        document.providers = ["claude": history, "codex": history]
+        document.identities = ["claude": "same-bytes", "codex": "same-bytes"]
+        XCTAssertNoThrow(try document.validate(), "provider family namespaces unrelated account ids")
+    }
+
+    func testLegacyV1StillDecodesWithoutIdentitiesAndRejectsV2RoutingMetadata() {
+        var document = makeDocument(deviceID: "mac-a", updatedAt: .now)
+        document.schema = UsageHistoryDocument.legacySchemaV1
+        document.identities = nil
+        XCTAssertNoThrow(try document.validate())
+
+        document.identities = ["claude": "opaque-account"]
+        XCTAssertThrowsError(try document.validate()) { error in
+            XCTAssertEqual(error as? UsageHistoryDocumentError, .unexpectedIdentities)
+        }
+    }
+
     func testNewestDocumentWinsForDuplicateMachine() {
         let old = makeDocument(deviceID: "same-mac", updatedAt: Date(timeIntervalSince1970: 100))
         let newest = makeDocument(deviceID: "same-mac", updatedAt: Date(timeIntervalSince1970: 200))
@@ -78,7 +149,8 @@ final class UsageHistoryDocumentTests: XCTestCase {
                     ]),
                     unknownModelsByDay: ["2026-07-13": ["future-model"]]
                 )
-            ]
+            ],
+            identities: ["claude": "account-opaque"]
         )
     }
 }

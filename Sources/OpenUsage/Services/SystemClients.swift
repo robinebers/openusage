@@ -1,3 +1,4 @@
+import CryptoKit
 import Darwin
 import Foundation
 
@@ -231,8 +232,16 @@ protocol KeychainAccessing: Sendable {
     func writeGenericPassword(service: String, account: String, value: String) throws
     /// Whether an item exists, checked from attributes only — the secret is never requested, so this
     /// can never raise a keychain permission dialog. Provider-instance discovery and first-run
-    /// detection use this; the actual secret read happens on the instance's first refresh.
+    /// detection use this; any account-scoped secret read happens later, off the launch path. The
+    /// production accessor answers `true` when the attributes probe itself fails because callers use
+    /// this as a conservative credential-footprint check: unknown must never mean safely absent.
     func hasGenericPassword(service: String, account: String?) -> Bool
+    /// Opaque digest of an account-scoped item's non-secret attributes. The production implementation
+    /// hashes the complete attributes-only `security` output (including `mdat`) so an in-place item
+    /// replacement changes the digest without exposing or persisting any raw keychain metadata.
+    /// `nil` means the item is absent, the probe failed, or this accessor cannot provide a
+    /// version-sensitive fingerprint.
+    func genericPasswordAttributeFingerprint(service: String, account: String) -> String?
 }
 
 extension KeychainAccessing {
@@ -263,13 +272,24 @@ extension KeychainAccessing {
         }
         return ((try? readGenericPassword(service: service)) ?? nil) != nil
     }
+
+    func genericPasswordAttributeFingerprint(service: String, account: String) -> String? {
+        nil
+    }
 }
 
 struct SecurityKeychainAccessor: KeychainAccessing {
     let processRunner: ProcessRunning
+    /// Attribute-only discovery probes run on the launch path. Keep their subprocess bound separate
+    /// from secret reads/writes, which may legitimately wait for Keychain interaction.
+    let attributeProbeTimeout: TimeInterval
 
-    init(processRunner: ProcessRunning = SystemProcessRunner()) {
+    init(
+        processRunner: ProcessRunning = SystemProcessRunner(),
+        attributeProbeTimeout: TimeInterval = 0.25
+    ) {
         self.processRunner = processRunner
+        self.attributeProbeTimeout = attributeProbeTimeout
     }
 
     // `security find-generic-password` exits 44 (errSecItemNotFound) when no item matches — the
@@ -323,21 +343,54 @@ struct SecurityKeychainAccessor: KeychainAccessing {
 
     func hasGenericPassword(service: String, account: String?) -> Bool {
         // No `-w`: attributes only, so the item's ACL is never consulted and no permission dialog can
-        // appear. Exit 44 (errSecItemNotFound) is the clean "no item"; any other failure reads as
-        // absent here — the instance's first refresh does the real (throwing, logged) secret read.
+        // appear. Exit 44 (errSecItemNotFound) is the clean "no item". A timeout or any other failure
+        // is an unknown footprint and therefore returns true: launch discovery must suppress a base
+        // conservatively instead of treating a wedged/locked keychain as proof that no default exists.
         var arguments = ["find-generic-password"]
         if let account { arguments += ["-a", account] }
         arguments += ["-s", service]
+        do {
+            let result = try processRunner.run(
+                executable: "/usr/bin/security",
+                arguments: arguments,
+                environment: [:],
+                timeout: attributeProbeTimeout
+            )
+            if result.succeeded { return true }
+            if result.exitCode == Self.itemNotFoundExitCode { return false }
+            AppLog.warn(.keychain, "attribute probe failed for service '\(service)' (exit \(result.exitCode)); treating its footprint as unknown")
+            return true
+        } catch {
+            AppLog.warn(.keychain, "attribute probe failed for service '\(service)' (\(error)); treating its footprint as unknown")
+            return true
+        }
+    }
+
+    func genericPasswordAttributeFingerprint(service: String, account: String) -> String? {
+        // No `-w`: the subprocess returns metadata only, never the secret. Hash before returning so
+        // callers cannot accidentally persist a keychain path, account, date, or other raw attribute.
+        let arguments = ["find-generic-password", "-a", account, "-s", service]
         guard let result = try? processRunner.run(
             executable: "/usr/bin/security",
             arguments: arguments,
             environment: [:],
-            timeout: 5
-        ) else { return false }
-        if !result.succeeded, result.exitCode != Self.itemNotFoundExitCode {
-            AppLog.warn(.keychain, "attribute probe failed for service '\(service)' (exit \(result.exitCode))")
+            timeout: attributeProbeTimeout
+        ) else { return nil }
+        guard result.succeeded else {
+            if result.exitCode != Self.itemNotFoundExitCode {
+                AppLog.warn(.keychain, "attribute fingerprint probe failed for service '\(service)' (exit \(result.exitCode))")
+            }
+            return nil
         }
-        return result.succeeded
+        let attributes = result.stdout + "\n" + result.stderr
+        guard !attributes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            // A successful but empty response cannot prove item continuity, so treat it as
+            // unverifiable rather than minting the same fingerprint for every keychain item.
+            return nil
+        }
+        return SHA256.hash(data: Data(attributes.precomposedStringWithCanonicalMapping.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
     }
 
     private func writePassword(_ arguments: [String]) throws {

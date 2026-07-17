@@ -58,7 +58,7 @@ extension ClaudeAuthError: CategorizedError {
         case .sessionExpired, .tokenExpired, .desktopTokenExpired: .authExpired
         case .invalidOAuthURL, .desktopCredentialsUnavailable: .authInvalid
         case .desktopPermissionRequired: .credentialAccess
-        case .credentialsChanged: .other
+        case .credentialsChanged, .loginChangedRequiresRestart: .other
         }
     }
 }

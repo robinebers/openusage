@@ -113,8 +113,16 @@ struct TotalSpendCard: View {
     /// hardcoded list, so disabling a provider (or a new spend provider shipping) can't make the
     /// tooltip lie about what the total reflects.
     private var infoTooltip: String {
-        let names = providers.map(\.displayName)
-        return "Only includes \(names.formatted(.list(type: .and)))."
+        Self.contributorTooltip(
+            names: providers.map(\.displayName) + dataStore.remoteOnlySpend.map(\.provider.displayName)
+        )
+    }
+
+    static func contributorTooltip(names: [String]) -> String {
+        var seen = Set<String>()
+        let uniqueNames = names.filter { seen.insert($0).inserted }
+        guard !uniqueNames.isEmpty else { return "No providers currently contribute." }
+        return "Only includes \(uniqueNames.formatted(.list(type: .and)))."
     }
 
     private var shareButton: some View {

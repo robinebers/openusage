@@ -5,8 +5,9 @@ import Foundation
 /// Runs synchronously in `AppContainer.init` before the registry is built, under a small time budget,
 /// and reads **no keychain secrets** — credential presence is checked from file existence and
 /// attributes-only keychain probes, so discovery can never raise a macOS permission dialog or block
-/// launch (the #987 lesson). The one-time keychain prompt for an extra keychain-backed account happens
-/// on that instance's first refresh instead.
+/// launch (the #987 lesson). A keyring-only Codex home whose account binding is unknown stays hidden
+/// for this launch; a retained post-launch task performs one account-scoped read to warm its local
+/// identity cache, which may show the normal one-time Keychain prompt without rendering a duplicate.
 ///
 /// Shape rules (see docs/research/provider-accounts-ux.md §4.3): candidates are dot-dirs at `~` and
 /// dirs under `~/.config`, plus Cowork's session sandboxes. A candidate only counts when it carries the
@@ -17,6 +18,7 @@ struct ProviderInstanceDiscovery {
     var environment: EnvironmentReading
     var files: TextFileAccessing
     var keychain: KeychainAccessing
+    var codexIdentityCache: (any CodexHomeIdentityCaching)?
     var homeDirectory: () -> URL
     /// Wall-clock budget; on overrun the scan returns what it has (and the next launch resumes).
     var timeBudget: TimeInterval
@@ -25,7 +27,8 @@ struct ProviderInstanceDiscovery {
     init(
         environment: EnvironmentReading = ProcessEnvironmentReader(),
         files: TextFileAccessing = LocalTextFileAccessor(),
-        keychain: KeychainAccessing = SecurityKeychainAccessor(),
+        keychain: KeychainAccessing = SecurityKeychainAccessor(attributeProbeTimeout: 0.05),
+        codexIdentityCache: (any CodexHomeIdentityCaching)? = nil,
         homeDirectory: @escaping () -> URL = { FileManager.default.homeDirectoryForCurrentUser },
         timeBudget: TimeInterval = 0.4,
         now: @escaping () -> Date = Date.init
@@ -33,6 +36,7 @@ struct ProviderInstanceDiscovery {
         self.environment = environment
         self.files = files
         self.keychain = keychain
+        self.codexIdentityCache = codexIdentityCache
         self.homeDirectory = homeDirectory
         self.timeBudget = timeBudget
         self.now = now
@@ -40,11 +44,35 @@ struct ProviderInstanceDiscovery {
 
     struct Result {
         var instances: [DiscoveredProviderInstance] = []
-        /// Cowork session `.claude` dirs grouped by the account that produced them (non-default only).
+        /// Additional Claude log roots grouped by account (sibling config homes plus Cowork
+        /// sandboxes). The preferred credential source still owns and scans its primary root; this
+        /// map preserves every other same-account source. The legacy property name is retained because
+        /// Cowork was the first multi-root source.
         var coworkRootsByIdentityKey: [String: [URL]] = [:]
+        /// Codex homes grouped by a verified account identity. `ProviderCatalog` converts this to a
+        /// home→siblings lookup so the credential stays pinned to one selected home while its scanner
+        /// includes every same-account source.
+        var codexLogRootsByIdentityKey: [String: [URL]] = [:]
+        /// Findings folded into another card because their identity matched the current default or a
+        /// previously discovered source. They never create a new card, but an already-persisted
+        /// anchored record may need this current identity during reconciliation after an in-place
+        /// re-login; `AppContainer` forwards only findings whose anchor already has a record.
+        var foldedInstancesForReconciliation: [DiscoveredProviderInstance] = []
+        /// Codex keyring homes whose item exists but whose cached account binding is absent or stale.
+        /// Their records are suppressed for this launch; `AppContainer` performs one retained,
+        /// account-scoped runtime read to warm the fingerprint-bound cache for the next launch.
+        var unverifiedCodexKeyringHomes: Set<String> = []
+        /// Readable identities at homes currently assigned to a default card. These homes are excluded
+        /// from ordinary instance discovery, but an existing anchored record still needs the update
+        /// when a custom home becomes `CODEX_HOME`/`CLAUDE_CONFIG_DIR` or is re-logged in there.
+        var defaultAnchoredInstancesForReconciliation: [DiscoveredProviderInstance] = []
         /// Set only when a distinct-account Cowork login exists: the default card's partition of the
         /// Cowork walk. `nil` = no partition, keep the scanner's built-in walk byte-identical.
         var defaultClaudeCoworkRoots: [URL]?
+        /// When the scanner's implicit XDG and `~/.claude` roots name different accounts, pin the
+        /// default card to the root ClaudeAuthStore can actually authenticate. The other root can then
+        /// become an ordinary instance instead of having its logs published under the default identity.
+        var defaultClaudeLogRoots: [URL]?
         /// The default card's account identity per base provider, as seen THIS launch. Swap tools
         /// (cswap) change the default login in place, so a persisted instance record can suddenly name
         /// the same account the default card now shows — its runtime is suppressed for this launch so
@@ -111,13 +139,57 @@ struct ProviderInstanceDiscovery {
         var seenIdentityKeys = Set<String>()
 
         let home = homeDirectory()
-        let defaultClaude = defaultClaudeIdentityKey()
-        let defaultCodex = defaultCodexIdentityKeys()
+        let defaultClaudeFindings = defaultClaudeIdentityFindings()
+        let defaultClaudeCredentialHome = defaultClaudeCredentialHome()
+        let credentialHomeFinding = defaultClaudeCredentialHome.flatMap { credentialHome in
+            let canonicalCredentialHome = canonical(credentialHome)
+            return defaultClaudeFindings.first {
+                $0.anchorPath.map(canonical) == canonicalCredentialHome
+            }
+        }
+        // Preserve the historical XDG-only setup when it is the sole readable default source. If XDG
+        // and the standard credential home disagree, the credential home wins instead.
+        let defaultClaudeFinding = credentialHomeFinding
+            ?? (Set(defaultClaudeFindings.map(\.identityKey)).count == 1
+                ? defaultClaudeFindings.first
+                : nil)
+        let defaultClaude = defaultClaudeFinding?.identityKey
+        let defaultClaudeIdentities = Set(defaultClaudeFindings.map(\.identityKey))
+        let claudeDefaultRootsDisagree = defaultClaudeIdentities.count > 1
+        if claudeDefaultRootsDisagree, let defaultClaudeCredentialHome {
+            result.defaultClaudeLogRoots = [URL(fileURLWithPath: expandHome(defaultClaudeCredentialHome))]
+            result.notes.append("claude: default log roots name different accounts → pinning the default scanner to its credential home")
+        }
+        result.defaultAnchoredInstancesForReconciliation.append(contentsOf: defaultClaudeFindings)
+        let defaultCodexResolution = defaultCodexIdentityKeysByHome(
+            unverifiedKeyringHomes: &result.unverifiedCodexKeyringHomes
+        )
+        let defaultCodexByHome = defaultCodexResolution.identities
+        let defaultCodex = Set(defaultCodexByHome.values)
         if let defaultClaude { result.defaultIdentityKeys["claude"] = [defaultClaude] }
         if !defaultCodex.isEmpty { result.defaultIdentityKeys["codex"] = defaultCodex }
-        let excludedPaths = Set(
-            (defaultClaudeConfigDirs() + defaultCodexHomes()).map { canonical($0) }
-        )
+        for (path, identityKey) in defaultCodexByHome {
+            result.defaultAnchoredInstancesForReconciliation.append(DiscoveredProviderInstance(
+                baseProviderID: "codex",
+                kind: .codexHome,
+                anchorPath: path,
+                keychainLiteral: nil,
+                identityKey: identityKey,
+                identityLabel: nil
+            ))
+            appendUniqueCodexRoot(
+                URL(fileURLWithPath: path),
+                identityKey: identityKey,
+                to: &result
+            )
+        }
+        let excludedClaudePaths = if claudeDefaultRootsDisagree,
+                                     let defaultClaudeCredentialHome {
+            [defaultClaudeCredentialHome]
+        } else {
+            defaultClaudeConfigDirs()
+        }
+        let excludedPaths = Set((excludedClaudePaths + defaultCodexHomes()).map { canonical($0) })
 
         let claudeDefaultHash = defaultClaude.map(ProviderInstanceID.hash8) ?? "none"
         let codexDefaultHashes = defaultCodex.map(ProviderInstanceID.hash8).sorted().joined(separator: ",")
@@ -133,7 +205,8 @@ struct ProviderInstanceDiscovery {
             result.basesWithUnreadableDefault.insert("claude")
             result.notes.append("claude: default login present but its identity is unreadable → skipping extra-account candidates this launch")
         }
-        let codexCandidatesAllowed = !defaultCodex.isEmpty || !defaultCodexCredentialFootprint()
+        let codexCandidatesAllowed = !defaultCodexResolution.hasUnresolvedFootprint
+            && (!defaultCodex.isEmpty || !defaultCodexCredentialFootprint())
         if !codexCandidatesAllowed {
             result.basesWithUnreadableDefault.insert("codex")
             result.notes.append("codex: default login present but its identity is unreadable → skipping extra-account candidates this launch")
@@ -145,14 +218,37 @@ struct ProviderInstanceDiscovery {
             guard !excludedPaths.contains(canonicalPath) else { continue }
 
             if claudeCandidatesAllowed,
-               let finding = claudeCandidate(at: candidate, defaultIdentityKey: defaultClaude, notes: &result.notes),
-               seenIdentityKeys.insert("claude|\(finding.identityKey)").inserted {
-                result.instances.append(finding)
+               let finding = claudeCandidate(at: candidate, notes: &result.notes) {
+                if finding.identityKey == defaultClaude {
+                    appendUniqueClaudeRoot(candidate, identityKey: finding.identityKey, to: &result)
+                    result.foldedInstancesForReconciliation.append(finding)
+                    result.notes.append("claude candidate \(ProviderInstanceID.logPath(candidate.path)): same account as the default card (\(ProviderInstanceID.hash8(finding.identityKey))) → folded, usage root retained")
+                } else if seenIdentityKeys.insert("claude|\(finding.identityKey)").inserted {
+                    result.instances.append(finding)
+                } else {
+                    appendUniqueClaudeRoot(candidate, identityKey: finding.identityKey, to: &result)
+                    result.foldedInstancesForReconciliation.append(finding)
+                    result.notes.append("claude candidate \(ProviderInstanceID.logPath(candidate.path)): identity already has a card → retained as an additional usage root")
+                }
             }
             if codexCandidatesAllowed,
-               let finding = codexCandidate(at: candidate, defaultIdentityKeys: defaultCodex, notes: &result.notes),
-               seenIdentityKeys.insert("codex|\(finding.identityKey)").inserted {
-                result.instances.append(finding)
+               let finding = codexCandidate(
+                   at: candidate,
+                   unverifiedKeyringHomes: &result.unverifiedCodexKeyringHomes,
+                   notes: &result.notes
+               ) {
+                if !ProviderInstanceID.isPathDerivedKey(finding.identityKey) {
+                    appendUniqueCodexRoot(candidate, identityKey: finding.identityKey, to: &result)
+                }
+                if defaultCodex.contains(finding.identityKey) {
+                    result.foldedInstancesForReconciliation.append(finding)
+                    result.notes.append("codex candidate \(ProviderInstanceID.logPath(candidate.path)): same account as the default card (\(ProviderInstanceID.hash8(finding.identityKey))) → folded, usage root retained")
+                } else if seenIdentityKeys.insert("codex|\(finding.identityKey)").inserted {
+                    result.instances.append(finding)
+                } else {
+                    result.foldedInstancesForReconciliation.append(finding)
+                    result.notes.append("codex candidate \(ProviderInstanceID.logPath(candidate.path)): identity already has a card → retained as an additional usage root")
+                }
             }
         }
 
@@ -164,14 +260,34 @@ struct ProviderInstanceDiscovery {
         // folding would be blind AND the timeline's default-card filter couldn't be built — the
         // unfiltered default scanner next to filtered slot cards would double-count the shared home.
         if !overBudget(), claudeCandidatesAllowed {
-            let swap = claudeSwapContext(defaultIdentityKey: defaultClaude, notes: &result.notes)
-            for finding in swap.findings
-            where seenIdentityKeys.insert("claude|\(finding.identityKey)").inserted {
-                result.instances.append(finding)
+            let swap = claudeSwapContext(
+                defaultIdentityKey: defaultClaude,
+                referenceDate: started,
+                notes: &result.notes
+            )
+            for finding in swap.findings {
+                if seenIdentityKeys.insert("claude|\(finding.identityKey)").inserted {
+                    result.instances.append(finding)
+                    continue
+                }
+
+                // The vault is the preferred credential source for a parked slot because cswap owns
+                // that account's rotation lifecycle. Keep any already-discovered config home as an
+                // additional unfiltered log root instead of dropping either source.
+                guard let index = result.instances.firstIndex(where: {
+                    $0.baseProviderID == "claude" && $0.identityKey == finding.identityKey
+                }) else { continue }
+                let previous = result.instances[index]
+                if previous.kind == .claudeConfigDir, let anchor = previous.anchorPath {
+                    appendUniqueClaudeRoot(URL(fileURLWithPath: anchor), identityKey: finding.identityKey, to: &result)
+                }
+                result.instances[index] = finding
+                result.notes.append("cswap slot: existing identity upgraded to the vault credential source; prior config roots retained for usage")
             }
             result.claudeSwapTimeline = swap.timeline
             if swap.timeline != nil {
-                result.claudeSharedHomeRoots = defaultClaudeConfigDirs()
+                result.claudeSharedHomeRoots = (result.defaultClaudeLogRoots?.map(\.path)
+                    ?? defaultClaudeConfigDirs())
                     .map { URL(fileURLWithPath: expandHome($0)) }
             }
         }
@@ -197,12 +313,16 @@ struct ProviderInstanceDiscovery {
                 foundDistinct = true
                 result.coworkRootsByIdentityKey[key, default: []].append(dir)
                 if seenIdentityKeys.insert("claude|\(key)").inserted {
+                    guard let organization = identity.organizationUuid?.nilIfEmpty?.lowercased() else {
+                        result.notes.append("cowork candidate \(ProviderInstanceID.logPath(dir.path)): distinct identity has no organization pin → skipped Desktop-backed card")
+                        continue
+                    }
                     result.instances.append(DiscoveredProviderInstance(
                         baseProviderID: "claude",
                         kind: .claudeDesktop,
                         anchorPath: nil,
                         keychainLiteral: nil,
-                        desktopOrganization: identity.organizationUuid?.nilIfEmpty?.lowercased(),
+                        desktopOrganization: organization,
                         identityKey: key,
                         identityLabel: claudeIdentityLabel(identity)
                     ))
@@ -215,6 +335,11 @@ struct ProviderInstanceDiscovery {
                     .sorted().joined(separator: ", ")
                 result.notes.append("cowork partition: default=\(defaultRoots.count) dirs, \(partition)")
             }
+        }
+
+        if overBudget() {
+            result.basesWithUnreadableDefault.formUnion(["claude", "codex"])
+            result.notes.append("discovery budget expired before every source was scanned → suppressing account instances this launch")
         }
 
         let elapsed = Int(now().timeIntervalSince(started) * 1000)
@@ -235,6 +360,24 @@ struct ProviderInstanceDiscovery {
             AppLog.info(.config, "discovery: … and \(result.notes.count - 30) more notes")
         }
         return result
+    }
+
+    private func appendUniqueClaudeRoot(_ root: URL, identityKey: String, to result: inout Result) {
+        let canonicalRoot = canonical(root.path)
+        let alreadyPresent = result.coworkRootsByIdentityKey[identityKey, default: []]
+            .contains { canonical($0.path) == canonicalRoot }
+        if !alreadyPresent {
+            result.coworkRootsByIdentityKey[identityKey, default: []].append(root)
+        }
+    }
+
+    private func appendUniqueCodexRoot(_ root: URL, identityKey: String, to result: inout Result) {
+        let canonicalRoot = canonical(root.path)
+        let alreadyPresent = result.codexLogRootsByIdentityKey[identityKey, default: []]
+            .contains { canonical($0.path) == canonicalRoot }
+        if !alreadyPresent {
+            result.codexLogRootsByIdentityKey[identityKey, default: []].append(root)
+        }
     }
 
     // MARK: - Candidates
@@ -297,14 +440,50 @@ struct ProviderInstanceDiscovery {
         return [xdg + "/claude", home.appendingPathComponent(".claude").path]
     }
 
-    private func defaultClaudeIdentityKey() -> String? {
-        for dir in defaultClaudeConfigDirs() {
-            if let identity = claudeIdentity(inConfigDir: dir),
-               let key = claudeIdentityKey(identity) {
-                return key
-            }
+    /// The home standard Claude auth can actually read. XDG roots are valid log sources, but without
+    /// `CLAUDE_CONFIG_DIR` the credential store still targets `~/.claude`.
+    private func defaultClaudeCredentialHome() -> String? {
+        if let raw = environment.value(for: "CLAUDE_CONFIG_DIR")?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !raw.isEmpty {
+            let dirs = raw.split(separator: ",")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+            // ClaudeAuthStore treats the environment value as one credential path. A comma-separated
+            // scanner-only list cannot be assigned one safe account identity.
+            guard dirs.count == 1 else { return nil }
+            return dirs[0]
         }
-        return nil
+        return homeDirectory().appendingPathComponent(".claude").path
+    }
+
+    /// Current default identity, exposed to the long-lived default runtime so an in-process cswap
+    /// change can be refused until the launch-time registry is rebuilt.
+    func defaultClaudeIdentityKey() -> String? {
+        if let home = defaultClaudeCredentialHome(),
+           let identity = claudeIdentity(inConfigDir: home),
+           let key = claudeIdentityKey(identity) {
+            return key
+        }
+        let keys = defaultClaudeIdentityFindings().map(\.identityKey)
+        return Set(keys).count == 1 ? keys.first : nil
+    }
+
+    private func defaultClaudeIdentityFindings() -> [DiscoveredProviderInstance] {
+        defaultClaudeConfigDirs().compactMap { dir in
+            guard let identity = claudeIdentity(inConfigDir: dir),
+                  let key = claudeIdentityKey(identity)
+            else { return nil }
+            return DiscoveredProviderInstance(
+                baseProviderID: "claude",
+                kind: .claudeConfigDir,
+                anchorPath: expandHome(dir),
+                keychainLiteral: dir,
+                desktopOrganization: identity.organizationUuid?.nilIfEmpty?.lowercased(),
+                identityKey: key,
+                identityLabel: claudeIdentityLabel(identity)
+            )
+        }
     }
 
     /// Whether the DEFAULT Claude login leaves any credential footprint — file or (attributes-only)
@@ -327,7 +506,6 @@ struct ProviderInstanceDiscovery {
 
     private func claudeCandidate(
         at url: URL,
-        defaultIdentityKey: String?,
         notes: inout [String]
     ) -> DiscoveredProviderInstance? {
         // Pre-gate: only dirs that carry an identity file at all enter the trail — everything else
@@ -342,11 +520,6 @@ struct ProviderInstanceDiscovery {
             notes.append("claude candidate \(ProviderInstanceID.logPath(url.path)): identity file present but unreadable (no oauthAccount/accountUuid) → skipped")
             return nil
         }
-        guard key != defaultIdentityKey else {
-            notes.append("claude candidate \(ProviderInstanceID.logPath(url.path)): same account as the default card (\(ProviderInstanceID.hash8(key))) → folded")
-            return nil
-        }
-
         // Credential shape: the dir's own `.credentials.json`, or its *computed* keychain item. Claude
         // Code hashes the literal CLAUDE_CONFIG_DIR string, so both spellings of this path are probed
         // (attributes only — no secret, no prompt).
@@ -422,12 +595,20 @@ struct ProviderInstanceDiscovery {
         ]
     }
 
+    private struct ClaudeSwapSlot {
+        var number: String
+        var email: String
+        var account: ClaudeIdentity.OAuthAccount
+        var identityKey: String
+    }
+
     /// Parked cswap slots as instance findings. Identity comes from the vault's own per-slot config
     /// backup (`configs/.claude-config-<N>-<email>.json` — a full `.claude.json` copy, org included);
     /// the credential address is the vault's keychain item (`claude-swap` / `account-<N>-<email>`)
     /// with an `.enc` file fallback. All file reads; nothing here can prompt.
     private func claudeSwapContext(
         defaultIdentityKey: String?,
+        referenceDate: Date,
         notes: inout [String]
     ) -> (findings: [DiscoveredProviderInstance], timeline: ClaudeSwapTimeline?) {
         for root in claudeSwapBackupRoots() {
@@ -436,10 +617,8 @@ struct ProviderInstanceDiscovery {
                 at: configsDir, includingPropertiesForKeys: nil, options: []
             )) ?? []
             guard !configs.isEmpty else { continue }
-            let activeSlot = claudeSwapActiveSlot(root: root)
-            notes.append("cswap vault \(ProviderInstanceID.logPath(root.path)): \(configs.count) slot config(s), active=\(activeSlot ?? "unknown")")
 
-            var findings: [DiscoveredProviderInstance] = []
+            var slots: [ClaudeSwapSlot] = []
             var slotIdentities: [String: String] = [:]
             for file in configs.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
                 let name = file.lastPathComponent
@@ -460,37 +639,82 @@ struct ProviderInstanceDiscovery {
                 // Every slot's identity feeds the timeline — including the active one, whose periods
                 // belong to the default card.
                 slotIdentities[slot] = key
+                slots.append(ClaudeSwapSlot(number: slot, email: email, account: account, identityKey: key))
+            }
+
+            // `sequence.json` is transaction bookkeeping, not authoritative live state: cswap can
+            // leave it one step behind after an interrupted switch. Resolve the active slot from the
+            // identity in the live default `.claude.json`; use sequence only to disambiguate duplicate
+            // vault entries that both name that same live identity.
+            let sequenceSlot = claudeSwapSequenceSlot(root: root)
+            let liveMatches = defaultIdentityKey.map { defaultKey in
+                slots.filter { $0.identityKey == defaultKey }.map(\.number)
+            } ?? []
+            let activeSlot: String?
+            if liveMatches.count == 1 {
+                let resolvedSlot = liveMatches[0]
+                activeSlot = resolvedSlot
+                if let sequenceSlot, sequenceSlot != resolvedSlot {
+                    notes.append("cswap sequence=\(sequenceSlot) disagrees with the live default identity → using slot \(resolvedSlot)")
+                }
+            } else if liveMatches.count > 1,
+                      let sequenceSlot,
+                      liveMatches.contains(sequenceSlot) {
+                activeSlot = sequenceSlot
+                notes.append("cswap live identity appears in multiple slots → sequence safely disambiguated slot \(sequenceSlot)")
+            } else {
+                activeSlot = nil
+                if let sequenceSlot {
+                    notes.append("cswap sequence=\(sequenceSlot) is not consistent with a unique live default identity → ignored")
+                }
+            }
+            notes.append("cswap vault \(ProviderInstanceID.logPath(root.path)): \(slots.count) readable slot config(s), active=\(activeSlot ?? "unknown")")
+
+            var findings: [DiscoveredProviderInstance] = []
+            for slot in slots {
                 // The active slot IS the default card; only parked slots become instances.
-                guard slot != activeSlot else {
-                    notes.append("cswap slot \(slot): active → it IS the default card, not an instance")
+                guard slot.number != activeSlot else {
+                    notes.append("cswap slot \(slot.number): active → it IS the default card, not an instance")
                     continue
                 }
-                guard key != defaultIdentityKey else {
-                    notes.append("cswap slot \(slot): same account as the default card (\(ProviderInstanceID.hash8(key))) → folded")
+                guard slot.identityKey != defaultIdentityKey else {
+                    notes.append("cswap slot \(slot.number): same account as the default card (\(ProviderInstanceID.hash8(slot.identityKey))) → folded")
                     continue
                 }
-                notes.append("cswap slot \(slot): parked → instance \(ProviderInstanceID.make(baseProviderID: "claude", identityKey: key))")
+                notes.append("cswap slot \(slot.number): parked → instance \(ProviderInstanceID.make(baseProviderID: "claude", identityKey: slot.identityKey))")
                 findings.append(DiscoveredProviderInstance(
                     baseProviderID: "claude",
                     kind: .claudeSwapSlot,
                     anchorPath: root.path,
                     keychainLiteral: nil,
-                    desktopOrganization: account.organizationUuid?.nilIfEmpty?.lowercased(),
-                    swapAccountName: "account-\(slot)-\(email)",
-                    identityKey: key,
-                    identityLabel: claudeIdentityLabel(account)
+                    desktopOrganization: slot.account.organizationUuid?.nilIfEmpty?.lowercased(),
+                    swapAccountName: "account-\(slot.number)-\(slot.email)",
+                    identityKey: slot.identityKey,
+                    identityLabel: claudeIdentityLabel(slot.account)
                 ))
             }
 
-            // The switch timeline (from cswap's own log) is what lets the SHARED home's spend logs be
-            // attributed per account. No parseable events → no timeline → spend stays on the default
-            // card, as before.
+            // Read the rotating history oldest → newest. The current file can contain no switch at all
+            // immediately after rotation, while the event needed for attribution lives in `.1`/`.2`.
+            // Presence of `.3` means the fixed archive set may have dropped earlier history, so the
+            // parser must not extend the oldest retained account to distant-past usage.
             var timeline: ClaudeSwapTimeline?
             if !slotIdentities.isEmpty,
-               let logText = try? files.readTextIfPresent(root.appendingPathComponent("claude-swap.log").path) {
-                timeline = ClaudeSwapTimeline.parse(logText: logText, slotIdentities: slotIdentities)
+               let history = claudeSwapLogHistory(root: root, notes: &notes) {
+                timeline = ClaudeSwapTimeline.parse(
+                    logText: history.text,
+                    slotIdentities: slotIdentities,
+                    retentionIsComplete: history.retentionIsComplete
+                )
+                if let currentOwner = timeline?.identityKey(at: referenceDate),
+                   !currentOwner.isEmpty,
+                   let defaultIdentityKey,
+                   currentOwner != defaultIdentityKey {
+                    timeline = nil
+                    notes.append("cswap timeline: newest retained switch disagrees with the live default identity → disabled for this launch")
+                }
                 if let timeline {
-                    notes.append("cswap timeline: \(timeline.periods.count) period(s) from switch history → per-account spend attribution active")
+                    notes.append("cswap timeline: \(timeline.periods.count) period(s) from \(history.fileCount) retained log file(s) → per-account spend attribution active")
                 } else {
                     notes.append("cswap timeline: no parseable switch events → shared-home spend stays on the default card")
                 }
@@ -500,12 +724,57 @@ struct ProviderInstanceDiscovery {
         return ([], nil)
     }
 
-    private func claudeSwapActiveSlot(root: URL) -> String? {
+    private func claudeSwapSequenceSlot(root: URL) -> String? {
         struct SequenceFile: Codable { var activeAccountNumber: Int? }
         guard let text = try? files.readTextIfPresent(root.appendingPathComponent("sequence.json").path),
               let parsed = try? JSONDecoder().decode(SequenceFile.self, from: Data(text.utf8))
         else { return nil }
         return parsed.activeAccountNumber.map(String.init)
+    }
+
+    private func claudeSwapLogHistory(
+        root: URL,
+        notes: inout [String]
+    ) -> (text: String, retentionIsComplete: Bool, fileCount: Int)? {
+        let names = ["claude-swap.log.3", "claude-swap.log.2", "claude-swap.log.1", "claude-swap.log"]
+        var retained: [(name: String, text: String)] = []
+        var everyPresentFileReadable = true
+
+        for name in names {
+            let path = root.appendingPathComponent(name).path
+            guard files.exists(path) else { continue }
+            do {
+                guard let text = try files.readTextIfPresent(path) else {
+                    everyPresentFileReadable = false
+                    continue
+                }
+                retained.append((name, text))
+            } catch {
+                everyPresentFileReadable = false
+                notes.append("cswap timeline: retained log \(name) unreadable → older attribution will stay on the default card")
+            }
+        }
+        guard !retained.isEmpty else { return nil }
+
+        let retainedNames = Set(retained.map(\.name))
+        let currentPresent = retainedNames.contains("claude-swap.log")
+        let archivesContiguous: Bool
+        if retainedNames.contains("claude-swap.log.2") {
+            archivesContiguous = retainedNames.contains("claude-swap.log.1")
+        } else {
+            archivesContiguous = true
+        }
+        // With three backups configured, `.3` is the point at which an older generation may already
+        // have been evicted. Treat that boundary conservatively even if this happens to be its first use.
+        let retentionIsComplete = everyPresentFileReadable
+            && currentPresent
+            && archivesContiguous
+            && !retainedNames.contains("claude-swap.log.3")
+        return (
+            retained.map(\.text).joined(separator: "\n"),
+            retentionIsComplete,
+            retained.count
+        )
     }
 
     // MARK: - Codex
@@ -525,14 +794,39 @@ struct ProviderInstanceDiscovery {
         ]
     }
 
-    private func defaultCodexIdentityKeys() -> Set<String> {
-        var keys = Set<String>()
+    private func defaultCodexIdentityKeysByHome(
+        unverifiedKeyringHomes: inout Set<String>
+    ) -> (identities: [String: String], hasUnresolvedFootprint: Bool) {
+        var identities: [String: String] = [:]
+        var hasUnresolvedFootprint = false
         for home in defaultCodexHomes() {
-            if let key = codexIdentity(inHome: expandHome(home))?.key {
-                keys.insert(key)
+            let expanded = expandHome(home)
+            let fileIdentity = codexIdentity(inHome: expanded)?.key
+            let keychainBinding = codexKeychainBinding(inHome: expanded)
+            guard keychainBinding.hasItem else {
+                if let fileIdentity {
+                    identities[canonical(expanded)] = fileIdentity
+                    continue
+                }
+                if files.exists(expanded + "/auth.json") {
+                    hasUnresolvedFootprint = true
+                }
+                continue
             }
+            guard let keychainIdentity = keychainBinding.identityKey else {
+                hasUnresolvedFootprint = true
+                unverifiedKeyringHomes.insert(canonical(expanded))
+                continue
+            }
+            if let fileIdentity, fileIdentity != keychainIdentity {
+                // Refresh may authenticate either source (file first, keychain after an auth rejection),
+                // so neither identity is safe to publish or use for instance suppression this launch.
+                hasUnresolvedFootprint = true
+                continue
+            }
+            identities[canonical(expanded)] = fileIdentity ?? keychainIdentity
         }
-        return keys
+        return (identities, hasUnresolvedFootprint)
     }
 
     /// The Codex twin of `defaultClaudeCredentialFootprint()`: a default home in keyring mode has no
@@ -564,53 +858,81 @@ struct ProviderInstanceDiscovery {
         return (ProviderInstanceID.pathDerivedIdentityKey(forCanonicalHome: canonical(path)), email)
     }
 
+    private func codexKeychainBinding(inHome path: String) -> (hasItem: Bool, identityKey: String?) {
+        let account = CodexAuthStore.keychainAccountName(forHome: path)
+        guard keychain.hasGenericPassword(
+            service: CodexAuthStore.keychainService,
+            account: account
+        ) else { return (false, nil) }
+        guard let fingerprint = keychain.genericPasswordAttributeFingerprint(
+            service: CodexAuthStore.keychainService,
+            account: account
+        ) else { return (true, nil) }
+        return (
+            true,
+            codexIdentityCache?.identityKey(
+                forHome: path,
+                keychainItemFingerprint: fingerprint
+            )
+        )
+    }
+
     private func codexCandidate(
         at url: URL,
-        defaultIdentityKeys: Set<String>,
+        unverifiedKeyringHomes: inout Set<String>,
         notes: inout [String]
     ) -> DiscoveredProviderInstance? {
-        if let identity = codexIdentity(inHome: url.path) {
-            guard !defaultIdentityKeys.contains(identity.key) else {
-                notes.append("codex candidate \(ProviderInstanceID.logPath(url.path)): same account as the default card (\(ProviderInstanceID.hash8(identity.key))) → folded")
+        let fileIdentity = codexIdentity(inHome: url.path)
+        let authFileExists = files.exists(url.path + "/auth.json")
+        let looksLikeCodexHome = authFileExists
+            || files.exists(url.path + "/config.toml")
+            || files.exists(url.path + "/sessions")
+        guard looksLikeCodexHome else { return nil }
+
+        let keychainBinding = codexKeychainBinding(inHome: url.path)
+        if !keychainBinding.hasItem {
+            guard let fileIdentity else {
+                if authFileExists {
+                    notes.append("codex candidate \(ProviderInstanceID.logPath(url.path)): auth.json present but not Codex-shaped (no usable tokens) → skipped")
+                } else {
+                    notes.append("codex candidate \(ProviderInstanceID.logPath(url.path)): codex-shaped dir but no auth.json and no keychain item for its home hash → skipped")
+                }
                 return nil
             }
-            notes.append("codex candidate \(ProviderInstanceID.logPath(url.path)): accepted as \(ProviderInstanceID.make(baseProviderID: "codex", identityKey: identity.key)) (auth.json)")
+            notes.append("codex candidate \(ProviderInstanceID.logPath(url.path)): accepted as \(ProviderInstanceID.make(baseProviderID: "codex", identityKey: fileIdentity.key)) (auth.json)")
             return DiscoveredProviderInstance(
                 baseProviderID: "codex",
                 kind: .codexHome,
                 anchorPath: url.path,
                 keychainLiteral: nil,
-                identityKey: identity.key,
-                identityLabel: identity.email
+                identityKey: fileIdentity.key,
+                identityLabel: fileIdentity.email
             )
         }
 
-        if files.exists(url.path + "/auth.json") {
-            notes.append("codex candidate \(ProviderInstanceID.logPath(url.path)): auth.json present but not Codex-shaped (no usable tokens) → skipped")
-            return nil
+        let sourcesDisagree = if let fileIdentity, let keychainIdentity = keychainBinding.identityKey {
+            fileIdentity.key != keychainIdentity
+        } else {
+            false
         }
-
-        // Keyring mode deletes `auth.json` but the home keeps its shape (config/sessions) and its
-        // keychain item name is computable from the canonical home path. Identity needs the secret, so
-        // it stays path-keyed until the first refresh; the attributes probe never prompts.
-        let looksLikeCodexHome = files.exists(url.path + "/config.toml")
-            || files.exists(url.path + "/sessions")
-        guard looksLikeCodexHome else { return nil }
-        guard keychain.hasGenericPassword(
-            service: CodexAuthStore.keychainService,
-            account: CodexAuthStore.keychainAccountName(forHome: url.path)
-        ) else {
-            notes.append("codex candidate \(ProviderInstanceID.logPath(url.path)): codex-shaped dir but no auth.json and no keychain item for its home hash → skipped")
-            return nil
+        if keychainBinding.identityKey == nil || sourcesDisagree {
+            unverifiedKeyringHomes.insert(canonical(url.path))
+            let reason = sourcesDisagree ? "file and keyring identities disagree" : "keyring item identity unverified"
+            notes.append("codex candidate \(ProviderInstanceID.logPath(url.path)): \(reason) → suppressing its card while identity selection is unsafe")
+        } else {
+            notes.append("codex candidate \(ProviderInstanceID.logPath(url.path)): accepted (fingerprint-verified keyring identity)")
         }
-        notes.append("codex candidate \(ProviderInstanceID.logPath(url.path)): accepted (keyring-mode home, identity pending first refresh)")
+        let resolvedIdentity = sourcesDisagree
+            ? nil
+            : fileIdentity?.key ?? keychainBinding.identityKey
         return DiscoveredProviderInstance(
             baseProviderID: "codex",
             kind: .codexHome,
             anchorPath: url.path,
             keychainLiteral: nil,
-            identityKey: ProviderInstanceID.pathDerivedIdentityKey(forCanonicalHome: canonical(url.path)),
-            identityLabel: nil
+            identityKey: resolvedIdentity
+                ?? ProviderInstanceID.pathDerivedIdentityKey(forCanonicalHome: canonical(url.path)),
+            identityLabel: sourcesDisagree ? nil : fileIdentity?.email
         )
     }
 

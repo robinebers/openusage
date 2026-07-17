@@ -23,6 +23,14 @@ struct WidgetRowView: View {
     /// their neighbors — the list supplies it — and both densities use it to pull consecutive
     /// one-liners into a single cluster (Compact a step harder).
     var condensedTop: Bool = false
+    /// Claiming a reset credit is an account-scoped, irreversible write. Phase 1 only constructs a
+    /// claim service for the bare/default Codex runtime, so instance rows must stay read-only even
+    /// though they render the same expiry timeline.
+    var codexResetClaimEnabled: Bool = false
+
+    static func allowsCodexResetClaim(for providerID: String) -> Bool {
+        providerID == "codex"
+    }
 
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
     @State private var modelHover = HoverPopoverState()
@@ -376,7 +384,7 @@ struct WidgetRowView: View {
                         // Rows with reset expiries are Codex-only today, so the Codex claim service is
                         // the right backing; absent from the environment (previews, share renders) the
                         // timeline is read-only.
-                        claim: codexResetClaim.map { service in
+                        claim: (codexResetClaimEnabled ? codexResetClaim : nil).map { service in
                             { expiry, redeemRequestID in
                                 await service.claim(creditExpiringAt: expiry, redeemRequestID: redeemRequestID)
                             }

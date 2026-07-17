@@ -16,6 +16,41 @@ final class ProviderInstancesTests: XCTestCase {
         XCTAssertEqual(ProviderInstanceID.base(of: "claude"), "claude")
     }
 
+    func testPathDerivedCodexIdentityIsOpaque() {
+        let path = "/Users/alice/private/.codex-work"
+        let identity = ProviderInstanceID.pathDerivedIdentityKey(forCanonicalHome: path)
+
+        XCTAssertTrue(ProviderInstanceID.isOpaquePathDerivedKey(identity))
+        XCTAssertFalse(identity.contains("alice"))
+        XCTAssertFalse(identity.contains(path))
+    }
+
+    func testPersistedRawCodexHomeIdentityMigratesBeforeItCanSyncAgain() throws {
+        let defaults = makeScratchDefaults("RawCodexPathMigration")
+        let path = "/Users/alice/private/.codex-work"
+        let legacy = ProviderInstanceRecord(
+            id: "codex@legacy01",
+            baseProviderID: "codex",
+            ordinal: 2,
+            kind: .codexHome,
+            anchorPath: path,
+            keychainLiteral: nil,
+            identityKey: ProviderInstanceID.pathDerivedIdentityPrefix + path,
+            identityLabel: nil
+        )
+        defaults.set(try JSONEncoder().encode([legacy]), forKey: ProviderInstancesStore.storageKey)
+
+        let migrated = ProviderInstancesStore(defaults: defaults).records
+        XCTAssertEqual(migrated.count, 1)
+        XCTAssertTrue(ProviderInstanceID.isOpaquePathDerivedKey(migrated[0].identityKey))
+        XCTAssertEqual(migrated[0].id, legacy.id, "privacy migration must not reset the card layout id")
+
+        let persistedData = try XCTUnwrap(defaults.data(forKey: ProviderInstancesStore.storageKey))
+        let persisted = try XCTUnwrap(JSONDecoder().decode([ProviderInstanceRecord].self, from: persistedData).first)
+        XCTAssertFalse(persisted.identityKey.contains("alice"))
+        XCTAssertEqual(persisted.anchorPath, path, "the local runtime still needs its real credential home")
+    }
+
     func testReconcileKeepsIDsAndOrdinalsStableAcrossLaunches() {
         let defaults = makeScratchDefaults("Reconcile")
         let store = ProviderInstancesStore(defaults: defaults)
@@ -85,6 +120,13 @@ final class ProviderInstancesTests: XCTestCase {
         XCTAssertEqual(upgraded[0].identityKey, "acct-work")
         XCTAssertEqual(upgraded[0].identityLabel, "work@example.com")
 
+        // The next readable launch computes its id from acct-work, which deliberately differs from
+        // the path-derived id retained by the record. Identity equality must still find that record.
+        let readableRelaunch = ProviderInstancesStore(defaults: defaults).reconcile(with: [identified])
+        XCTAssertEqual(readableRelaunch.count, 1, "path → account → account must remain one card")
+        XCTAssertEqual(readableRelaunch[0].id, first[0].id)
+        XCTAssertEqual(readableRelaunch[0].ordinal, first[0].ordinal)
+
         // Keyring mode again (auth.json gone): the path-keyed finding matches the same record and
         // the known identity is kept, not wiped.
         let downgraded = ProviderInstancesStore(defaults: defaults).reconcile(with: [pathKeyed])
@@ -99,6 +141,156 @@ final class ProviderInstancesTests: XCTestCase {
             identityLabel: nil
         )
         XCTAssertEqual(ProviderInstancesStore(defaults: defaults).reconcile(with: [other]).count, 2)
+    }
+
+    func testReconcileReplacesIdentityWhenSameHomeRelogsFromAccountAToB() {
+        let defaults = makeScratchDefaults("AnchoredRelogin")
+        let home = "/Users/x/.codex-work"
+        let accountA = DiscoveredProviderInstance(
+            baseProviderID: "codex", kind: .codexHome,
+            anchorPath: home, keychainLiteral: nil,
+            identityKey: "acct-a", identityLabel: "a@example.com"
+        )
+        let first = ProviderInstancesStore(defaults: defaults).reconcile(with: [accountA])
+
+        var accountB = accountA
+        accountB.identityKey = "acct-b"
+        accountB.identityLabel = "b@example.com"
+        let relogged = ProviderInstancesStore(defaults: defaults).reconcile(with: [accountB])
+
+        XCTAssertEqual(relogged.count, 1, "one anchored home must not become two cards after re-login")
+        XCTAssertEqual(relogged[0].id, first[0].id, "card/layout identity remains stable")
+        XCTAssertEqual(relogged[0].ordinal, first[0].ordinal)
+        XCTAssertEqual(relogged[0].identityKey, "acct-b", "sync identity follows the current account")
+        XCTAssertEqual(relogged[0].identityLabel, "b@example.com")
+
+        let nextLaunch = ProviderInstancesStore(defaults: defaults).reconcile(with: [accountB])
+        XCTAssertEqual(nextLaunch, relogged)
+
+        // If A later appears in a different home, B's card still owns the old id. A gets a stable
+        // collision id instead of hijacking B or creating two records with the same primary key.
+        var accountAReturned = accountA
+        accountAReturned.anchorPath = "/Users/x/.codex-a-returned"
+        let both = ProviderInstancesStore(defaults: defaults).reconcile(with: [accountB, accountAReturned])
+        XCTAssertEqual(both.count, 2)
+        XCTAssertEqual(Set(both.map(\.id)).count, 2)
+        XCTAssertEqual(both.first { $0.anchorPath == home }?.identityKey, "acct-b")
+        XCTAssertEqual(both.first { $0.anchorPath == accountAReturned.anchorPath }?.identityKey, "acct-a")
+    }
+
+    func testReconcileSuppressesStaleIdentityPeerAndReusesItsLayoutIDWhenAccountsReturn() {
+        let defaults = makeScratchDefaults("AnchoredReloginExistingIdentity")
+        let homeA = "/Users/x/.codex-a"
+        let homeB = "/Users/x/.codex-b"
+        let accountA = DiscoveredProviderInstance(
+            baseProviderID: "codex", kind: .codexHome,
+            anchorPath: homeA, keychainLiteral: nil,
+            identityKey: "acct-a", identityLabel: "a@example.com"
+        )
+        let accountB = DiscoveredProviderInstance(
+            baseProviderID: "codex", kind: .codexHome,
+            anchorPath: homeB, keychainLiteral: nil,
+            identityKey: "acct-b", identityLabel: "b@example.com"
+        )
+        let original = ProviderInstancesStore(defaults: defaults).reconcile(with: [accountA, accountB])
+        let originalAID = original[0].id
+        let originalBID = original[1].id
+
+        // B moves into A's anchored home while B's old home is absent. The home-A card keeps its
+        // layout id, while B's retained home-B record must not create a second B runtime.
+        var accountBAtHomeA = accountB
+        accountBAtHomeA.anchorPath = homeA
+        let moved = ProviderInstancesStore(defaults: defaults).reconcile(with: [accountBAtHomeA])
+        XCTAssertEqual(moved.count, 1)
+        XCTAssertEqual(moved[0].id, originalAID)
+        XCTAssertEqual(moved[0].identityKey, "acct-b")
+
+        let persistedAfterMove = ProviderInstancesStore(defaults: defaults)
+        XCTAssertEqual(persistedAfterMove.records.count, 2, "the absent anchor stays available for layout-id reuse")
+        XCTAssertEqual(
+            persistedAfterMove.records.first { $0.id == originalBID }?.duplicateOfID,
+            originalAID
+        )
+        XCTAssertEqual(
+            persistedAfterMove.reconcile(with: []).map(\.id),
+            [originalAID],
+            "a no-discovery launch must not resurrect the duplicate runtime"
+        )
+
+        let onlyAReturned = ProviderInstancesStore(defaults: defaults).reconcile(with: [accountA])
+        XCTAssertEqual(onlyAReturned.map(\.id), [originalAID])
+        XCTAssertEqual(onlyAReturned[0].identityKey, "acct-a")
+        XCTAssertEqual(
+            ProviderInstancesStore(defaults: defaults).records.first { $0.id == originalBID }?.duplicateOfID,
+            originalAID,
+            "an absent peer stays suppressed until its own anchor is discovered"
+        )
+
+        // When A and B return to their original homes, both suppressed anchors are discovered,
+        // clear their collision state, and reclaim the exact ids their layouts already use.
+        let returned = ProviderInstancesStore(defaults: defaults).reconcile(with: [accountA, accountB])
+        XCTAssertEqual(returned.count, 2)
+        XCTAssertEqual(Set(returned.map(\.id)), [originalAID, originalBID])
+        XCTAssertEqual(returned.first { $0.identityKey == "acct-a" }?.id, originalAID)
+        XCTAssertEqual(returned.first { $0.identityKey == "acct-b" }?.id, originalBID)
+        XCTAssertTrue(ProviderInstancesStore(defaults: defaults).records.allSatisfy {
+            $0.duplicateOfID == nil
+        })
+    }
+
+    func testCodexHomeIdentityCachePersistsOnlyOpaqueHomeFingerprint() throws {
+        let defaults = makeScratchDefaults("CodexIdentityCache")
+        let path = "/Users/alice/private/.codex-work"
+        let itemFingerprint = String(repeating: "a", count: 64)
+        CodexHomeIdentityCache(defaults: defaults).record(
+            identityKey: "acct-work",
+            forHome: path,
+            keychainItemFingerprint: itemFingerprint
+        )
+
+        let relaunched = CodexHomeIdentityCache(defaults: defaults)
+        XCTAssertEqual(
+            relaunched.identityKey(forHome: path, keychainItemFingerprint: itemFingerprint),
+            "acct-work"
+        )
+        XCTAssertNil(
+            relaunched.identityKey(
+                forHome: path,
+                keychainItemFingerprint: String(repeating: "b", count: 64)
+            ),
+            "replacing the account-scoped item must invalidate the old account binding"
+        )
+
+        let data = try XCTUnwrap(defaults.data(forKey: CodexHomeIdentityCache.storageKey))
+        let persisted = String(decoding: data, as: UTF8.self)
+        XCTAssertFalse(persisted.contains("alice"))
+        XCTAssertFalse(persisted.contains(path))
+        XCTAssertFalse(persisted.contains(itemFingerprint))
+        XCTAssertTrue(persisted.contains("acct-work"))
+    }
+
+    func testLegacyCodexIdentityCacheEntryIsUntrustedUntilRuntimeRefreshAddsFingerprint() throws {
+        let defaults = makeScratchDefaults("LegacyCodexIdentityCache")
+        let path = "/Users/alice/.codex-work"
+        let homeKey = ProviderInstanceID.pathDerivedIdentityKey(forCanonicalHome: path)
+        defaults.set(
+            try JSONEncoder().encode([homeKey: "acct-old"]),
+            forKey: CodexHomeIdentityCache.storageKey
+        )
+        let cache = CodexHomeIdentityCache(defaults: defaults)
+        let fingerprint = String(repeating: "c", count: 64)
+
+        XCTAssertNil(cache.identityKey(forHome: path, keychainItemFingerprint: fingerprint))
+
+        cache.record(
+            identityKey: "acct-current",
+            forHome: path,
+            keychainItemFingerprint: fingerprint
+        )
+        XCTAssertEqual(
+            cache.identityKey(forHome: path, keychainItemFingerprint: fingerprint),
+            "acct-current"
+        )
     }
 
     // MARK: - Discovery
@@ -137,12 +329,170 @@ final class ProviderInstancesTests: XCTestCase {
         let work = result.instances.first { $0.identityKey == "uuid-work" }
         XCTAssertEqual(work?.identityLabel, "work@example.com")
         XCTAssertEqual(work?.kind, .claudeConfigDir)
+        XCTAssertTrue(
+            result.coworkRootsByIdentityKey["uuid-default", default: []]
+                .contains { $0.lastPathComponent == ".claude-copy" },
+            "a folded default-account config source must still contribute its local logs"
+        )
 
         // The support trail explains every decision — and never leaks an email (labels stay out;
         // the log file ends up attached to public issues).
         XCTAssertTrue(result.notes.contains { $0.contains(".claude-copy") && $0.contains("folded") })
         XCTAssertTrue(result.notes.contains { $0.contains(".claude-work") && $0.contains("accepted") })
         XCTAssertFalse(result.notes.contains { $0.contains("work@example.com") })
+    }
+
+    func testDiscoveryRetainsEverySameAccountCodexLogRoot() throws {
+        let home = try makeFixtureHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        // Both historical default homes carry one account; both must feed the default card after
+        // whichever credential wins the standard auth precedence walk.
+        try write(home, ".config/codex/auth.json", codexAuthJSON(accountID: "acct-default"))
+        try write(home, ".codex/auth.json", codexAuthJSON(accountID: "acct-default"))
+
+        // Two extra homes carry one other account. Discovery creates one card and retains both roots.
+        try write(home, ".codex-work-a/auth.json", codexAuthJSON(accountID: "acct-work"))
+        try write(home, ".codex-work-b/auth.json", codexAuthJSON(accountID: "acct-work"))
+
+        let result = ProviderInstanceDiscovery(
+            environment: FakeEnvironment([:]),
+            keychain: AccountAwareKeychain(),
+            homeDirectory: { home }
+        ).run()
+
+        XCTAssertEqual(result.instances.filter { $0.baseProviderID == "codex" }.count, 1)
+        XCTAssertEqual(result.codexLogRootsByIdentityKey["acct-default"]?.count, 2)
+        XCTAssertEqual(result.codexLogRootsByIdentityKey["acct-work"]?.count, 2)
+        XCTAssertTrue(result.notes.contains { $0.contains("identity already has a card") })
+    }
+
+    func testWarmedDuplicateCodexHomeReconcilesItsPendingRecordBeforeSuppression() throws {
+        let home = try makeFixtureHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try write(home, ".codex/auth.json", codexAuthJSON(accountID: "acct-default"))
+        try write(home, ".codex-work-a/auth.json", codexAuthJSON(accountID: "acct-work"))
+        try write(home, ".codex-work-b/config.toml", #"model = "gpt-5""#)
+
+        let pendingHome = home.appendingPathComponent(".codex-work-b").path
+        let keychain = AccountAwareKeychain()
+        let account = CodexAuthStore.keychainAccountName(forHome: pendingHome)
+        let itemKey = "\(CodexAuthStore.keychainService)|\(account)"
+        keychain.existingItems.insert(itemKey)
+        keychain.attributeFingerprints[itemKey] = "item-version"
+        let defaults = makeScratchDefaults("WarmedDuplicateCodex")
+        let cache = CodexHomeIdentityCache(defaults: defaults)
+        let store = ProviderInstancesStore(defaults: defaults)
+
+        let pending = ProviderInstanceDiscovery(
+            environment: FakeEnvironment([:]),
+            keychain: keychain,
+            codexIdentityCache: cache,
+            homeDirectory: { home }
+        ).run()
+        let firstRecords = store.reconcile(with: pending.instances)
+        XCTAssertEqual(firstRecords.filter { $0.baseProviderID == "codex" }.count, 2)
+
+        cache.record(
+            identityKey: "acct-work",
+            forHome: pendingHome,
+            keychainItemFingerprint: "item-version"
+        )
+        let warmed = ProviderInstanceDiscovery(
+            environment: FakeEnvironment([:]),
+            keychain: keychain,
+            codexIdentityCache: cache,
+            homeDirectory: { home }
+        ).run()
+        let foldedUpdates = warmed.foldedInstancesForReconciliation.filter { finding in
+            guard let anchor = finding.anchorPath else { return false }
+            return firstRecords.contains {
+                $0.baseProviderID == finding.baseProviderID
+                    && $0.anchorPath.map(ProviderInstanceID.canonicalHomePath)
+                        == ProviderInstanceID.canonicalHomePath(anchor)
+            }
+        }
+        let reconciled = store.reconcile(with: warmed.instances, anchoredUpdates: foldedUpdates)
+
+        XCTAssertEqual(
+            reconciled.filter { $0.baseProviderID == "codex" && $0.identityKey == "acct-work" }.count,
+            1,
+            "both roots feed one account card after the hidden cache warm"
+        )
+        XCTAssertEqual(warmed.codexLogRootsByIdentityKey["acct-work"]?.count, 2)
+    }
+
+    func testDefaultHomeIdentityReconcilesAnExistingAnchorBeforeVisibilityFiltering() throws {
+        let home = try makeFixtureHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let promotedHome = home.appendingPathComponent(".codex-work")
+        try write(home, ".codex-work/auth.json", codexAuthJSON(accountID: "acct-a"))
+
+        let defaults = makeScratchDefaults("PromotedDefaultAnchor")
+        let store = ProviderInstancesStore(defaults: defaults)
+        let original = store.reconcile(with: [DiscoveredProviderInstance(
+            baseProviderID: "codex",
+            kind: .codexHome,
+            anchorPath: promotedHome.path,
+            keychainLiteral: nil,
+            identityKey: "acct-a",
+            identityLabel: nil
+        )])
+        try write(home, ".codex-work/auth.json", codexAuthJSON(accountID: "acct-b"))
+
+        let discovered = ProviderInstanceDiscovery(
+            environment: FakeEnvironment(["CODEX_HOME": promotedHome.path]),
+            keychain: AccountAwareKeychain(),
+            homeDirectory: { home }
+        ).run()
+        let reconciled = store.reconcile(
+            with: discovered.instances,
+            anchoredUpdates: discovered.defaultAnchoredInstancesForReconciliation
+        )
+
+        XCTAssertEqual(reconciled.count, 1)
+        XCTAssertEqual(reconciled[0].id, original[0].id)
+        XCTAssertEqual(reconciled[0].identityKey, "acct-b")
+        XCTAssertEqual(discovered.defaultIdentityKeys["codex"], ["acct-b"])
+        XCTAssertTrue(discovered.defaultIdentityKeys["codex"]?.contains(reconciled[0].identityKey) == true)
+    }
+
+    func testFoldedAnchoredUpdateCannotDemotePreferredSwapSource() {
+        let defaults = makeScratchDefaults("FoldedSourcePriority")
+        let store = ProviderInstancesStore(defaults: defaults)
+        let identity = "uuid-me|org-team"
+        _ = store.reconcile(with: [DiscoveredProviderInstance(
+            baseProviderID: "claude",
+            kind: .claudeConfigDir,
+            anchorPath: "/Users/x/.claude-team",
+            keychainLiteral: "~/.claude-team",
+            identityKey: identity,
+            identityLabel: nil
+        )])
+        let swap = DiscoveredProviderInstance(
+            baseProviderID: "claude",
+            kind: .claudeSwapSlot,
+            anchorPath: "/Users/x/.claude-swap-backup",
+            keychainLiteral: nil,
+            desktopOrganization: "org-team",
+            swapAccountName: "account-1-me@example.com",
+            identityKey: identity,
+            identityLabel: nil
+        )
+        let foldedConfig = DiscoveredProviderInstance(
+            baseProviderID: "claude",
+            kind: .claudeConfigDir,
+            anchorPath: "/Users/x/.claude-team",
+            keychainLiteral: "~/.claude-team",
+            identityKey: identity,
+            identityLabel: nil
+        )
+
+        let reconciled = store.reconcile(with: [swap], anchoredUpdates: [foldedConfig])
+
+        XCTAssertEqual(reconciled.count, 1)
+        XCTAssertEqual(reconciled[0].kind, .claudeSwapSlot)
+        XCTAssertEqual(reconciled[0].swapAccountName, "account-1-me@example.com")
     }
 
     func testDiscoveryFindsKeychainBackedHomes() throws {
@@ -228,6 +578,31 @@ final class ProviderInstancesTests: XCTestCase {
         XCTAssertEqual(result.defaultIdentityKeys["claude"], ["uuid-default"])
     }
 
+    func testDifferentXDGIdentityBecomesAnInstanceInsteadOfOwningStandardAuth() throws {
+        let home = try makeFixtureHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try write(home, ".config/claude/.claude.json", claudeIdentityJSON(uuid: "uuid-xdg", email: nil))
+        try write(home, ".config/claude/.credentials.json", claudeCredentialsJSON(access: "token-xdg"))
+        try write(home, ".claude.json", claudeIdentityJSON(uuid: "uuid-default", email: nil))
+        try write(home, ".claude/.credentials.json", claudeCredentialsJSON(access: "token-default"))
+
+        let result = ProviderInstanceDiscovery(
+            environment: FakeEnvironment([:]),
+            keychain: AccountAwareKeychain(),
+            homeDirectory: { home }
+        ).run()
+
+        XCTAssertEqual(result.defaultIdentityKeys["claude"], ["uuid-default"])
+        XCTAssertEqual(
+            result.instances.first { $0.baseProviderID == "claude" }?.identityKey,
+            "uuid-xdg"
+        )
+        XCTAssertEqual(
+            result.defaultClaudeLogRoots?.map { ProviderInstanceID.canonicalHomePath($0.path) },
+            [ProviderInstanceID.canonicalHomePath(home.appendingPathComponent(".claude").path)]
+        )
+    }
+
     func testSkipsCandidatesWhenDefaultLoginCannotBeNamed() throws {
         // Default logins exist (keychain/keyring footprint) but their identity files are unreadable:
         // folding would be blind, so candidates are skipped this launch instead of risking the same
@@ -309,6 +684,72 @@ final class ProviderInstancesTests: XCTestCase {
         XCTAssertEqual(result.defaultClaudeCoworkRoots?.first?.path.contains("local_a"), true)
     }
 
+    func testOrglessDistinctCoworkIdentityDoesNotCreateAnUnpinnedDesktopCard() throws {
+        let home = try makeFixtureHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try write(home, ".claude.json", claudeIdentityJSON(uuid: "uuid-default", email: nil))
+        let sessions = "Library/Application Support/Claude/local-agent-mode-sessions"
+        try write(
+            home,
+            "\(sessions)/g1/s1/local_b/.claude/.claude.json",
+            claudeIdentityJSON(uuid: "uuid-other", email: "other@example.com")
+        )
+        try makeDir(home, "\(sessions)/g1/s1/local_b/.claude/projects")
+
+        let result = ProviderInstanceDiscovery(
+            environment: FakeEnvironment([:]),
+            keychain: AccountAwareKeychain(),
+            homeDirectory: { home }
+        ).run()
+
+        XCTAssertFalse(result.instances.contains { $0.kind == .claudeDesktop })
+        XCTAssertTrue(result.notes.contains { $0.contains("no organization pin") })
+    }
+
+    func testDiscoveryBudgetExpirySuppressesBothInstanceBasesForTheLaunch() throws {
+        let home = try makeFixtureHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try write(home, ".claude-work/.claude.json", claudeIdentityJSON(uuid: "uuid-work", email: nil))
+        try write(home, ".claude-work/.credentials.json", claudeCredentialsJSON(access: "token-work"))
+        var tick = 0
+        let start = Date(timeIntervalSince1970: 1_000)
+
+        let result = ProviderInstanceDiscovery(
+            environment: FakeEnvironment([:]),
+            keychain: AccountAwareKeychain(),
+            homeDirectory: { home },
+            timeBudget: 0,
+            now: {
+                defer { tick += 1 }
+                return start.addingTimeInterval(TimeInterval(tick))
+            }
+        ).run()
+
+        XCTAssertEqual(result.basesWithUnreadableDefault, ["claude", "codex"])
+        XCTAssertTrue(result.notes.contains { $0.contains("budget expired") })
+    }
+
+    func testDiscoveryRechecksBudgetAfterTheFinalSource() throws {
+        let home = try makeFixtureHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let start = Date(timeIntervalSince1970: 1_000)
+        var calls = 0
+
+        let result = ProviderInstanceDiscovery(
+            environment: FakeEnvironment([:]),
+            keychain: AccountAwareKeychain(),
+            homeDirectory: { home },
+            timeBudget: 0.5,
+            now: {
+                calls += 1
+                return calls < 4 ? start : start.addingTimeInterval(1)
+            }
+        ).run()
+
+        XCTAssertEqual(result.basesWithUnreadableDefault, ["claude", "codex"])
+        XCTAssertTrue(result.notes.contains { $0.contains("budget expired") })
+    }
+
     func testDiscoveryWithoutExtraLoginsFindsNothing() throws {
         let home = try makeFixtureHome()
         defer { try? FileManager.default.removeItem(at: home) }
@@ -358,6 +799,28 @@ final class ProviderInstancesTests: XCTestCase {
         XCTAssertTrue(result.notes.contains { $0.contains("cswap vault") && $0.contains("active=2") })
         XCTAssertTrue(result.notes.contains { $0.contains("cswap slot 2") && $0.contains("active") })
         XCTAssertFalse(result.notes.contains { $0.contains("me@x.com") }, "vault notes must not carry the email")
+    }
+
+    func testSwapTimelineIsDisabledWhenItsTailDisagreesWithLiveIdentity() throws {
+        let home = try makeFixtureHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        try write(home, ".claude.json", claudeIdentityJSON(uuid: "uuid-two", email: nil))
+        try write(home, ".claude-swap-backup/configs/.claude-config-1-one@x.com.json",
+                  claudeIdentityJSON(uuid: "uuid-one", email: "one@x.com"))
+        try write(home, ".claude-swap-backup/configs/.claude-config-2-two@x.com.json",
+                  claudeIdentityJSON(uuid: "uuid-two", email: "two@x.com"))
+        try write(home, ".claude-swap-backup/claude-swap.log",
+                  "2026-07-16 11:50:55,324 - INFO - Switched from account 2 to 1\n")
+
+        let result = ProviderInstanceDiscovery(
+            environment: FakeEnvironment([:]),
+            keychain: AccountAwareKeychain(),
+            homeDirectory: { home },
+            now: { OpenUsageISO8601.date(from: "2026-07-17T00:00:00.000Z")! }
+        ).run()
+
+        XCTAssertNil(result.claudeSwapTimeline)
+        XCTAssertTrue(result.notes.contains { $0.contains("newest retained switch disagrees") })
     }
 
     func testReconcileUpgradesSourceKindForSameIdentity() {
@@ -559,6 +1022,65 @@ final class ProviderInstancesTests: XCTestCase {
         XCTAssertEqual(keychain.lastAccountWrite?.0, "Codex Auth|\(account)")
     }
 
+    func testStandardCodexStoreTargetsEffectiveHomeKeychainItemAndCachesIdentity() throws {
+        let defaultHome = "/Users/x/.codex-default"
+        let unrelatedHome = "/Users/x/.codex-other"
+        let defaultAccount = CodexAuthStore.keychainAccountName(forHome: defaultHome)
+        let unrelatedAccount = CodexAuthStore.keychainAccountName(forHome: unrelatedHome)
+        let keychain = AccountAwareKeychain()
+        keychain.accountValues["Codex Auth|\(defaultAccount)"] = codexAuthJSON(accountID: "acct-default")
+        keychain.accountValues["Codex Auth|\(unrelatedAccount)"] = codexAuthJSON(accountID: "acct-other")
+        let defaults = makeScratchDefaults("StandardCodexKeychain")
+        let identityCache = CodexHomeIdentityCache(defaults: defaults)
+        let store = CodexAuthStore(
+            environment: FakeEnvironment(["CODEX_HOME": defaultHome]),
+            files: FakeFiles(),
+            keychain: keychain,
+            identityCache: identityCache
+        )
+
+        var loaded = try XCTUnwrap(store.loadKeychainAuth())
+        XCTAssertEqual(loaded.auth.tokens?.accountID, "acct-default")
+        XCTAssertEqual(loaded.keychainAccount, defaultAccount)
+        XCTAssertEqual(keychain.serviceOnlyReads, 0, "the default card must never enumerate Codex Auth")
+        XCTAssertEqual(
+            identityCache.identityKey(
+                forHome: defaultHome,
+                keychainItemFingerprint: try XCTUnwrap(
+                    keychain.genericPasswordAttributeFingerprint(
+                        service: CodexAuthStore.keychainService,
+                        account: defaultAccount
+                    )
+                )
+            ),
+            "acct-default"
+        )
+        XCTAssertEqual(store.recordSelectedIdentity(loaded), "acct-default")
+
+        loaded.auth.tokens?.accessToken = "rotated"
+        try store.save(loaded)
+        XCTAssertEqual(keychain.lastAccountWrite?.0, "Codex Auth|\(defaultAccount)")
+        XCTAssertNil(keychain.lastServiceWrite)
+
+        // Reloading a selected Keychain state stays on that exact item even if another effective
+        // home would win a fresh precedence walk.
+        let secondHome = "/Users/x/.codex-second"
+        let secondAccount = CodexAuthStore.keychainAccountName(forHome: secondHome)
+        keychain.accountValues["Codex Auth|\(secondAccount)"] = codexAuthJSON(accountID: "acct-second")
+        let multiHomeStore = CodexAuthStore(
+            environment: FakeEnvironment(["CODEX_HOME": "\(defaultHome),\(secondHome)"]),
+            files: FakeFiles(),
+            keychain: keychain
+        )
+        let selectedSecond = CodexAuthState(
+            auth: try XCTUnwrap(CodexAuthStore.parseAuth(codexAuthJSON(accountID: "acct-second"))),
+            source: .keychain,
+            keychainAccount: secondAccount,
+            credentialHome: secondHome
+        )
+        XCTAssertEqual(multiHomeStore.reload(selectedSecond)?.auth.tokens?.accountID, "acct-second")
+    }
+
     // MARK: - Defaults translation + ordering
 
     func testDefaultLayoutTranslatesBaseEntriesOntoInstances() {
@@ -717,10 +1239,19 @@ final class ProviderInstancesTests: XCTestCase {
 final class AccountAwareKeychain: KeychainAccessing, @unchecked Sendable {
     var existingItems: Set<String> = []
     var accountValues: [String: String] = [:]
+    var attributeFingerprints: [String: String] = [:]
     var lastAccountWrite: (String, String)?
+    var serviceOnlyReads = 0
+    var lastServiceWrite: (String, String)?
 
-    func readGenericPassword(service: String) throws -> String? { nil }
-    func writeGenericPassword(service: String, value: String) throws {}
+    func readGenericPassword(service: String) throws -> String? {
+        serviceOnlyReads += 1
+        return nil
+    }
+
+    func writeGenericPassword(service: String, value: String) throws {
+        lastServiceWrite = (service, value)
+    }
 
     func readGenericPassword(service: String, account: String) throws -> String? {
         accountValues["\(service)|\(account)"]
@@ -737,5 +1268,11 @@ final class AccountAwareKeychain: KeychainAccessing, @unchecked Sendable {
             return existingItems.contains("\(service)|\(account)") || accountValues["\(service)|\(account)"] != nil
         }
         return existingItems.contains { $0.hasPrefix("\(service)|") } || accountValues.keys.contains { $0.hasPrefix("\(service)|") }
+    }
+
+    func genericPasswordAttributeFingerprint(service: String, account: String) -> String? {
+        let key = "\(service)|\(account)"
+        guard hasGenericPassword(service: service, account: account) else { return nil }
+        return attributeFingerprints[key] ?? "fixture-fingerprint:\(key)"
     }
 }

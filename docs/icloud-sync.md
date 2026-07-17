@@ -10,7 +10,8 @@ The file contains normalized daily tokens and spend, model totals, and unknown-m
 that are local to one Mac: Claude, Codex, Grok, and OpenCode. It does not contain credentials, account
 limits, raw logs, or provider responses. Cursor's history is already account-wide, so it stays local and
 is never added across Macs. Disabling a provider immediately removes its peer contributions from the
-combined view and omits it from this Mac's next iCloud write, while its local cached snapshot remains.
+combined view — including account slices that exist only on another Mac — and omits it from this Mac's
+next iCloud write, while its local cached snapshot remains.
 
 OpenUsage combines the valid files in memory and rebuilds Today, Yesterday, Last 30 Days, Usage Trend,
 unknown-model warnings, and model breakdowns. The same combined spend rows feed the dashboard, Total
@@ -31,6 +32,17 @@ belongs to (an opaque account/organization identifier — never an email), so th
 the same card everywhere even when one Mac shows it as the default card and another as an extra
 "Claude 2" card — common with swap tools, where which login is "default" changes all the time.
 
+OpenUsage only publishes cached history when it can confirm that the history and the card still belong
+to the same account. If a default login changes in place, the old history can remain visible locally
+while the next refresh runs, but it is withheld from that Mac's iCloud file until a fresh local scan
+binds it to the new identity. Keyring-backed Codex homes likewise wait for their first identity-resolving
+refresh; absolute home paths and temporary path fingerprints never enter the synced file.
+
+Downloaded identity maps are treated as routing data and validated before they are merged. Every
+identity must be opaque, belong to a provider row in the same file, and appear at most once per provider
+family. Invalid files are ignored and reported in Settings and the app log, so malformed metadata can't
+route one account's history into another card.
+
 An account you use on another Mac but have no login for here doesn't become a card: it appears as its
 own slice in **Total Spend** ("Claude · Mac mini"), so the number at the top is the whole truth across
 your Macs. The moment you log that account in locally, its card appears with the full cross-machine
@@ -39,10 +51,11 @@ history already attached.
 Macs running an older OpenUsage read their own format but report this Mac's newer file as "update
 OpenUsage" — update both sides to sync multi-account machines.
 
-Settings lists each valid device file with the time that Mac generated it. To remove a Mac from the
-combined summary, turn sync off on that Mac; this deletes its file from iCloud. Turning sync off also
-stops that Mac from reading peers and immediately returns every surface there to local-only spend.
-Malformed files are ignored and reported in Settings and the app log.
+Settings lists each valid device file with the time that Mac generated it. Devices are tracked by their
+private IDs, so two Macs with the same display name still count as two distinct contributors. To remove
+a Mac from the combined summary, turn sync off on that Mac; this deletes its file from iCloud. Turning
+sync off also stops that Mac from reading peers and immediately returns every surface there to
+local-only spend. Malformed files are ignored and reported in Settings and the app log.
 
 ## Development and release setup
 

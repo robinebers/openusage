@@ -54,6 +54,9 @@ already contains the whole story — no debug build needed. Look for these lines
 
 - `provider-instance discovery: …` — the outcome: how many extra logins, of which kinds, and how long
   the scan took.
+- `provider-instance discovery skipped: login-shell environment did not warm before the launch deadline`
+  — the shell-only default homes were not ready in time, so extra-account cards are safely suppressed
+  for this launch and discovery retries next launch instead of mislabeling the default home as an extra.
 - `discovery: default identities: claude=<hash> codex=[…]` — which account each **default** card
   resolved to. The 8-char hash matches the instance-id suffix (`claude@<hash>`), so cards and
   identities correlate directly.
@@ -61,6 +64,9 @@ already contains the whole story — no debug build needed. Look for these lines
   `accepted`, `folded` (same account as an existing card — the most common "where is it?" answer),
   `no credential`, or `identity file present but unreadable`. Random dot-dirs never appear; only
   candidates that carried identity or credential shape.
+- An unverified keyring-only Codex home is hidden for that launch and warmed through one exact,
+  account-scoped read after launch. It appears on the next launch; that warm may show macOS's normal
+  one-time Keychain permission dialog, and a replaced item invalidates the cached account binding.
 - `discovery: cswap vault …` / `cswap slot N: …` — the claude-swap picture: slot count, which slot is
   active (that one *is* the default card), which parked slots became instances and why others didn't.
 - `discovery: cowork partition: …` — how Cowork sandboxes split across accounts.

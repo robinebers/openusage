@@ -654,6 +654,31 @@ final class CodexUsageMapperTests: XCTestCase {
 
 @MainActor
 final class CodexProviderTests: XCTestCase {
+    func testSuccessfulProbePublishesSelectedIdentityBeforeRefreshReturns() async throws {
+        let home = try CodexLogFixture.makeHome(files: [:])
+        let authPath = home.appendingPathComponent("auth.json").path
+        let httpClient = FakeHTTPClient(
+            response: HTTPResponse(statusCode: 200, headers: [:], body: Data("{}".utf8))
+        )
+        var resolvedIdentity: String?
+        let provider = CodexProvider(
+            authStore: CodexAuthStore(
+                environment: FakeEnvironment(["CODEX_HOME": home.path]),
+                files: FakeFiles([
+                    authPath: #"{"tokens":{"access_token":"token","account_id":"acct-selected"}}"#
+                ]),
+                keychain: FakeKeychain()
+            ),
+            identityDidResolve: { resolvedIdentity = $0 },
+            usageClient: CodexUsageClient(http: httpClient),
+            logUsageScanner: CodexLogFixture.scanner(home: home)
+        )
+
+        _ = await provider.refresh()
+
+        XCTAssertEqual(resolvedIdentity, "acct-selected")
+    }
+
     func testNoUsageDataBadgeIsDroppedWhenLocalLogsHaveSpend() async throws {
         let now = OpenUsageISO8601.date(from: "2026-02-20T16:00:00.000Z")!
         // The live usage API returns nothing mappable (empty body -> no metric lines)...
@@ -669,8 +694,8 @@ final class CodexProviderTests: XCTestCase {
         ])
         let provider = CodexProvider(
             authStore: CodexAuthStore(
-                environment: FakeEnvironment(["CODEX_HOME": "/tmp/codex-home"]),
-                files: FakeFiles(["/tmp/codex-home/auth.json": #"{"tokens":{"access_token":"token"}}"#]),
+                environment: FakeEnvironment(["CODEX_HOME": home.path]),
+                files: FakeFiles([home.appendingPathComponent("auth.json").path: #"{"tokens":{"access_token":"token"}}"#]),
                 keychain: FakeKeychain()
             ),
             usageClient: CodexUsageClient(http: httpClient),

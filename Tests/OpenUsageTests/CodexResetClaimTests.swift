@@ -8,6 +8,12 @@ import XCTest
 final class CodexResetClaimTests: XCTestCase {
     private nonisolated static let expiry = Date(timeIntervalSince1970: 1_800_000_000)
 
+    func testOnlyDefaultCodexRowCanClaimAResetCredit() {
+        XCTAssertTrue(WidgetRowView.allowsCodexResetClaim(for: "codex"))
+        XCTAssertFalse(WidgetRowView.allowsCodexResetClaim(for: "codex@abcd1234"))
+        XCTAssertFalse(WidgetRowView.allowsCodexResetClaim(for: "claude"))
+    }
+
     /// Counts refreshAfterClaim invocations from the service's async context.
     private final class RefreshCounter: @unchecked Sendable {
         var count = 0

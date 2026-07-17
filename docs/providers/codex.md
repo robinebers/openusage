@@ -17,13 +17,15 @@ When Codex reports your plan name, OpenUsage shows it beside the provider name.
 
 ## Where credentials come from
 
-Sign in once with the Codex CLI (`codex`); OpenUsage reads the same auth files (`$CODEX_HOME` respected) with a keychain fallback. Tokens refresh automatically and rotate back into the auth file.
+Sign in once with the Codex CLI (`codex`); OpenUsage reads the same `auth.json` files (`$CODEX_HOME` respected), then the exact `Codex Auth` Keychain item the CLI derives for each home. It never asks the Keychain for an arbitrary Codex item, so the default card can't accidentally borrow an extra account's login. Tokens refresh automatically and are written back to the same file or Keychain item they came from, while spend is scanned from that selected credential's home.
 
 ## Extra Accounts
 
 If you run more than one Codex account on this Mac — one `CODEX_HOME` folder per account, the usual setup — OpenUsage finds each home at launch and shows it as its **own card** ("Codex 1", "Codex 2"), with its own meters, its own spend tiles from that home's session logs, and its own toggle in Customize. Each extra account reads exactly its one home: its `auth.json`, or (for the CLI's opt-in keyring mode) the keychain item that belongs to that home.
 
-Discovery is read-only and quiet: a folder only counts when it carries a real Codex login with a distinct account, and no keychain secret is ever read while scanning — so launch can't hit permission dialogs. A home that authenticates the same account you already have is folded in rather than shown twice. The first refresh of an extra keyring-backed account may show macOS's usual one-time permission dialog — "Always Allow" once and it won't ask again.
+Discovery is read-only and quiet: a folder only counts when it carries a real Codex login, and no Keychain secret is ever read while scanning — so launch can't hit permission dialogs. A home that authenticates the same account you already have is folded in rather than shown twice, and signing a home into a different account updates that card instead of creating a duplicate.
+
+Keyring-only homes can't reveal their account identifier during that no-secret launch scan. OpenUsage hides an unverified home for that launch, then performs one account-scoped read after launch to bind its opaque Codex account identifier to the current Keychain item in a local cache; the card appears on the next launch without ever flashing a duplicate. That background read may show macOS's usual one-time permission dialog — choose **Always Allow** once and it won't ask again. Replacing the Keychain item invalidates the cached binding, and absolute home paths or temporary fingerprints are never published as iCloud account identities.
 
 Don't want a discovered account on the dashboard? Turn its card off in Customize — that choice sticks, like any provider toggle.
 
@@ -51,7 +53,7 @@ The "Rate Limit Resets" row shows the on-demand reset-credit count, e.g. `2 avai
 
 ### Using a reset from the popover
 
-You can also spend a reset credit right from that popover — the same claim the Codex CLI's "Usage limit resets" picker performs. Hover a credit in the timeline and a **Use** button appears; clicking it expands that credit into an inline confirmation ("Immediately reset your usage limits. This can't be undone.") with **Reset** / **Cancel**. Confirming claims that exact credit and immediately resets your 5-hour and weekly windows; the app then refreshes Codex so the meters and the remaining count reflect it before the success line ("Reset claimed. Enjoy!") appears.
+You can also spend a reset credit from the default Codex card's popover — the same claim the Codex CLI's "Usage limit resets" picker performs. Extra Codex cards show their reset credits read-only until claims can be routed through a per-account claim service. On the default card, hover a credit in the timeline and a **Use** button appears; clicking it expands that credit into an inline confirmation ("Immediately reset your usage limits. This can't be undone.") with **Reset** / **Cancel**. Confirming claims that exact credit and immediately resets your 5-hour and weekly windows; the app then refreshes Codex so the meters and the remaining count reflect it before the success line ("Reset claimed. Enjoy!") appears.
 
 Safeguards, because a claim is irreversible:
 

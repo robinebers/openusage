@@ -52,6 +52,11 @@ final class AppContainer {
     /// The new-provider credential-detection pass (see `NewProviderSeeder`); `nil` unless this launch is
     /// the first with a provider the install has never seen.
     private let newProviderTask: Task<Void, Never>?
+    /// One-shot account-scoped reads for extra Codex keyring homes whose cached identity binding was
+    /// absent or invalidated by an item-attribute change. Their cards stay hidden this launch; this
+    /// retained post-launch task warms the fingerprint-bound cache so discovery can place them safely
+    /// next launch. The read may show macOS's normal one-time Keychain permission prompt.
+    private let codexIdentityWarmTask: Task<Void, Never>?
 
     /// `isFreshInstall` must be captured by the caller BEFORE `SettingsMigrator.migrate()` runs (the
     /// migrator's schema stamp makes the defaults domain non-empty). See `AppDelegate`.
@@ -62,17 +67,37 @@ final class AppContainer {
         LoginShellEnvironment.shared.prewarm()
 
         // Provider-instance discovery must see shell-exported CLAUDE_CONFIG_DIR/CODEX_HOME to tell the
-        // DEFAULT login's home apart from extra ones, so give the prewarm a bounded moment to land
-        // (typically well under the cap; on timeout discovery self-corrects next launch).
-        LoginShellEnvironment.shared.waitForCapture(timeout: 0.5)
+        // DEFAULT login's home apart from extra ones, so give the prewarm a bounded moment to land.
+        // A timeout cannot safely fall through to partial discovery: a shell-only default home would
+        // be mistaken for an extra and render the same account twice for the whole launch.
+        let shellEnvironmentReady = LoginShellEnvironment.shared.waitForCapture(timeout: 0.5)
 
         // Extra logins on this Mac (see docs/research/provider-accounts-ux.md §9): file-and-attribute
         // discovery only — no keychain secrets, no dialogs — reconciled against persisted records so
         // "Claude 2" stays the same account across launches. Instances then flow through the registry,
         // layout, enablement, and refresh machinery as ordinary providers.
         let instancesStore = ProviderInstancesStore()
-        let discovered = ProviderInstanceDiscovery().run()
-        let records = instancesStore.reconcile(with: discovered.instances)
+        let codexIdentityCache = CodexHomeIdentityCache()
+        let identityUpdateRelay = ProviderIdentityUpdateRelay()
+        let discovered = ProviderInstanceLaunchGate.discover(shellEnvironmentReady: shellEnvironmentReady) {
+            ProviderInstanceDiscovery(codexIdentityCache: codexIdentityCache).run()
+        }
+        // A same-default source normally folds without ever entering the persistent registry. If an
+        // anchored record already exists (for example, a keyring home just warmed from an
+        // unknown path identity to the account currently on the default card), feed that finding
+        // through reconciliation so the record adopts its current identity before visibility checks.
+        let foldedUpdates = discovered.foldedInstancesForReconciliation.filter { finding in
+            guard let findingAnchor = finding.anchorPath else { return false }
+            let canonicalAnchor = ProviderInstanceID.canonicalHomePath(findingAnchor)
+            return instancesStore.records.contains { record in
+                record.baseProviderID == finding.baseProviderID
+                    && record.anchorPath.map(ProviderInstanceID.canonicalHomePath) == canonicalAnchor
+            }
+        }
+        let records = instancesStore.reconcile(
+            with: discovered.instances,
+            anchoredUpdates: foldedUpdates + discovered.defaultAnchoredInstancesForReconciliation
+        )
         // Swap tools (cswap) change the default login in place, so a persisted record can name the
         // account the default card currently shows. Suppress those runtimes for this launch — one
         // account must never render as two cards — while the record (and its ordinal) persists for
@@ -84,6 +109,17 @@ final class AppContainer {
             // other way. Records (and ordinals) persist; visibility returns with readability.
             if discovered.basesWithUnreadableDefault.contains(record.baseProviderID) {
                 AppLog.info(.config, "instance \(record.id) suppressed: default \(record.baseProviderID) identity unreadable this launch")
+                return false
+            }
+            if record.baseProviderID == "codex",
+               let anchorPath = record.anchorPath,
+               discovered.unverifiedCodexKeyringHomes.contains(
+                   ProviderInstanceID.canonicalHomePath(anchorPath)
+               ) {
+                AppLog.info(
+                    .config,
+                    "instance \(record.id) suppressed: its keyring identity binding is unverified this launch"
+                )
                 return false
             }
             let isCurrentDefault = discovered.defaultIdentityKeys[record.baseProviderID]?
@@ -99,18 +135,51 @@ final class AppContainer {
             let suppressed = visibleRecords.contains(record) ? "" : " (suppressed: currently the default login)"
             AppLog.info(.config, "instance registry: \(record.id) ordinal=\(record.ordinal) kind=\(record.kind.rawValue) anchor=\(ProviderInstanceID.logPath(record.anchorPath))\(suppressed)")
         }
+        var codexRelatedLogRootsByHome: [String: [URL]] = [:]
+        for roots in discovered.codexLogRootsByIdentityKey.values {
+            let uniqueRoots = roots.reduce(into: [URL]()) { result, root in
+                let canonicalRoot = ProviderInstanceID.canonicalHomePath(root.path)
+                guard !result.contains(where: {
+                    ProviderInstanceID.canonicalHomePath($0.path) == canonicalRoot
+                }) else { return }
+                result.append(URL(fileURLWithPath: canonicalRoot))
+            }
+            for root in uniqueRoots {
+                codexRelatedLogRootsByHome[
+                    ProviderInstanceID.canonicalHomePath(root.path)
+                ] = uniqueRoots
+            }
+        }
+        let defaultClaudeIdentityKey = discovered.defaultIdentityKeys["claude"]?.first
         let instanceContext = ProviderInstanceContext(
             records: visibleRecords,
-            coworkRootsByInstanceID: discovered.coworkRootsByIdentityKey.reduce(into: [:]) { map, entry in
-                map[ProviderInstanceID.make(baseProviderID: "claude", identityKey: entry.key)] = entry.value
+            coworkRootsByInstanceID: visibleRecords.reduce(into: [:]) { map, record in
+                guard record.baseProviderID == "claude",
+                      let roots = discovered.coworkRootsByIdentityKey[record.identityKey]
+                else { return }
+                // Card ids survive an account change in an anchored home, so they can intentionally
+                // differ from a freshly identity-derived id. Route additional logs through the
+                // reconciled record rather than recomputing an id and silently losing those roots.
+                map[record.id] = roots
             },
+            defaultClaudeAdditionalLogRoots: defaultClaudeIdentityKey.flatMap {
+                discovered.coworkRootsByIdentityKey[$0]
+            } ?? [],
+            defaultClaudeLogRoots: discovered.defaultClaudeLogRoots,
             defaultClaudeCoworkRoots: discovered.defaultClaudeCoworkRoots,
+            codexRelatedLogRootsByHome: codexRelatedLogRootsByHome,
             claudeSwapTimeline: discovered.claudeSwapTimeline,
             claudeSharedHomeRoots: discovered.claudeSharedHomeRoots,
-            defaultClaudeIdentityKey: discovered.defaultIdentityKeys["claude"]?.first
+            defaultClaudeIdentityKey: defaultClaudeIdentityKey
         )
 
-        let providers = ProviderCatalog.make(instanceContext: instanceContext)
+        let providers = ProviderCatalog.make(
+            instanceContext: instanceContext,
+            codexIdentityCache: codexIdentityCache,
+            codexIdentityDidResolve: { providerID, identityKey in
+                identityUpdateRelay.submit(providerID: providerID, identityKey: identityKey)
+            }
+        )
         let registry = WidgetRegistry.from(providers)
         let apiKeyProviders = providers.compactMap { $0 as? any APIKeyManaging }
         let enablement = ProviderEnablementStore()
@@ -147,6 +216,9 @@ final class AppContainer {
             providerIdentityKeys: providerIdentityKeys,
             notificationSettings: { notificationSettings }
         )
+        identityUpdateRelay.install { [weak dataStore] providerID, identityKey in
+            dataStore?.updateProviderIdentityKey(identityKey, for: providerID)
+        }
         let iCloudSync = ICloudUsageSyncStore(dataStore: dataStore)
         // Re-enabling a provider should fetch it promptly, so clear any leftover failure backoff before
         // the enablement wake refreshes. `weak` breaks the cycle (dataStore already captures enablement).
@@ -170,6 +242,10 @@ final class AppContainer {
         self.newProviderTask = NewProviderSeeder.reconcileIfNeeded(
             providers: providers,
             enablement: enablement
+        )
+        self.codexIdentityWarmTask = Self.warmUnverifiedCodexKeyringHomes(
+            discovered.unverifiedCodexKeyringHomes,
+            identityCache: codexIdentityCache
         )
         self.providers = providers
         self.onboarding = onboarding
@@ -275,6 +351,7 @@ final class AppContainer {
         refreshTask.cancel()
         seedTask?.cancel()
         newProviderTask?.cancel()
+        codexIdentityWarmTask?.cancel()
     }
 
     /// Re-runs first-launch credential detection on demand — the enablement half of the Customize
@@ -283,6 +360,29 @@ final class AppContainer {
     @discardableResult
     func reseedEnabledProviders() -> Task<Void, Never> {
         FirstRunSeeder.reseed(providers: providers, enablement: enablement)
+    }
+
+    private static func warmUnverifiedCodexKeyringHomes(
+        _ homes: Set<String>,
+        identityCache: any CodexHomeIdentityCaching
+    ) -> Task<Void, Never>? {
+        guard !homes.isEmpty else { return nil }
+        let orderedHomes = homes.sorted()
+        return Task.detached(priority: .utility) {
+            for home in orderedHomes {
+                guard !Task.isCancelled else { return }
+                let store = CodexAuthStore(
+                    scope: .home(path: home),
+                    identityCache: identityCache
+                )
+                if store.loadKeychainAuth() == nil {
+                    AppLog.warn(
+                        .keychain,
+                        "could not warm one unverified Codex keyring identity; affected account cards will stay conservatively hidden"
+                    )
+                }
+            }
+        }
     }
 
     /// Drives live updates: refresh on launch, then again every refresh interval. Each pass honors the

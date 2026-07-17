@@ -19,8 +19,18 @@ enum PeerHistoryRemapper {
     struct RemoteOnlyHistory {
         var identityKey: String
         var baseProviderID: String
-        var deviceNames: [String]
+        var devices: [PeerDevice]
         var histories: [ProviderUsageHistory]
+    }
+
+    struct PeerDevice: Hashable {
+        var id: String
+        var name: String
+    }
+
+    private struct AccountRoute: Hashable {
+        var baseProviderID: String
+        var identityKey: String
     }
 
     /// `localIdentityByCardID` is this Mac's card → identity map (default cards + visible instances).
@@ -28,37 +38,43 @@ enum PeerHistoryRemapper {
         documents: [UsageHistoryDocument],
         localIdentityByCardID: [String: String]
     ) -> Remapped {
-        // Invert to identity → card, preferring the DEFAULT card when an identity appears twice (a
-        // suppressed instance record and the default card can momentarily share one identity).
-        var localCardByIdentity: [String: String] = [:]
+        // Invert family + identity → card, preferring the DEFAULT card when an identity appears twice (a
+        // suppressed instance record and the default card can momentarily share one identity). The family
+        // namespace prevents equal opaque bytes from ever routing Codex history into Claude or vice versa.
+        var localCardByIdentity: [AccountRoute: String] = [:]
         for (cardID, identity) in localIdentityByCardID.sorted(by: { $0.key < $1.key }) {
-            if let existing = localCardByIdentity[identity], !ProviderInstanceID.isInstance(existing) {
+            let route = AccountRoute(
+                baseProviderID: ProviderInstanceID.base(of: cardID),
+                identityKey: identity
+            )
+            if let existing = localCardByIdentity[route], !ProviderInstanceID.isInstance(existing) {
                 continue
             }
-            if ProviderInstanceID.isInstance(cardID), localCardByIdentity[identity] != nil {
+            if ProviderInstanceID.isInstance(cardID), localCardByIdentity[route] != nil {
                 continue
             }
-            localCardByIdentity[identity] = cardID
+            localCardByIdentity[route] = cardID
         }
 
         var result = Remapped()
-        var remoteByIdentity: [String: RemoteOnlyHistory] = [:]
+        var remoteByIdentity: [AccountRoute: RemoteOnlyHistory] = [:]
 
         for document in UsageHistoryDocument.newestByDevice(documents) {
             for (peerCardID, history) in document.providers.sorted(by: { $0.key < $1.key }) {
                 let base = ProviderInstanceID.base(of: peerCardID)
                 if let identity = document.identities?[peerCardID] {
-                    if let localCard = localCardByIdentity[identity] {
+                    let route = AccountRoute(baseProviderID: base, identityKey: identity)
+                    if let localCard = localCardByIdentity[route] {
                         result.histories.append((localCard, history))
                     } else {
-                        var entry = remoteByIdentity[identity] ?? RemoteOnlyHistory(
-                            identityKey: identity, baseProviderID: base, deviceNames: [], histories: []
+                        var entry = remoteByIdentity[route] ?? RemoteOnlyHistory(
+                            identityKey: identity, baseProviderID: base, devices: [], histories: []
                         )
-                        if !entry.deviceNames.contains(document.deviceName) {
-                            entry.deviceNames.append(document.deviceName)
+                        if !entry.devices.contains(where: { $0.id == document.deviceID }) {
+                            entry.devices.append(PeerDevice(id: document.deviceID, name: document.deviceName))
                         }
                         entry.histories.append(history)
-                        remoteByIdentity[identity] = entry
+                        remoteByIdentity[route] = entry
                     }
                     continue
                 }
@@ -70,19 +86,23 @@ enum PeerHistoryRemapper {
                 } else if localIdentityByCardID[peerCardID] != nil {
                     result.histories.append((peerCardID, history))
                 } else {
-                    var entry = remoteByIdentity[peerCardID] ?? RemoteOnlyHistory(
-                        identityKey: peerCardID, baseProviderID: base, deviceNames: [], histories: []
+                    let route = AccountRoute(baseProviderID: base, identityKey: peerCardID)
+                    var entry = remoteByIdentity[route] ?? RemoteOnlyHistory(
+                        identityKey: peerCardID, baseProviderID: base, devices: [], histories: []
                     )
-                    if !entry.deviceNames.contains(document.deviceName) {
-                        entry.deviceNames.append(document.deviceName)
+                    if !entry.devices.contains(where: { $0.id == document.deviceID }) {
+                        entry.devices.append(PeerDevice(id: document.deviceID, name: document.deviceName))
                     }
                     entry.histories.append(history)
-                    remoteByIdentity[peerCardID] = entry
+                    remoteByIdentity[route] = entry
                 }
             }
         }
 
-        result.remoteOnly = remoteByIdentity.values.sorted { $0.identityKey < $1.identityKey }
+        result.remoteOnly = remoteByIdentity.values.sorted {
+            if $0.baseProviderID != $1.baseProviderID { return $0.baseProviderID < $1.baseProviderID }
+            return $0.identityKey < $1.identityKey
+        }
         return result
     }
 }

@@ -79,6 +79,7 @@ final class ProviderEnablementEnforcementTests: XCTestCase {
             cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots"),
             defaults: defaults,
             isProviderEnabled: { enablement.isEnabled($0) },
+            providerIdentityKeys: [provider.id: "acct-a"],
             now: { now }
         )
         enablement.onChange = { store.providerEnablementDidChange() }
@@ -89,7 +90,8 @@ final class ProviderEnablementEnforcementTests: XCTestCase {
                 deviceID: "peer",
                 deviceName: "Peer Mac",
                 updatedAt: now,
-                providers: [provider.id: history(tokens: 200, cost: 2, now: now)]
+                providers: [provider.id: history(tokens: 200, cost: 2, now: now)],
+                identities: [provider.id: "acct-a"]
             )
         ], ownDeviceID: "this-mac")
         XCTAssertEqual(try spendTokens(store.snapshots[provider.id], label: "Today"), 300)

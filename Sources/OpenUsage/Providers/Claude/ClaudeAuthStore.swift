@@ -113,6 +113,7 @@ enum ClaudeAuthError: Error, LocalizedError, Equatable {
     case sessionExpired
     case tokenExpired
     case credentialsChanged
+    case loginChangedRequiresRestart
     case invalidOAuthURL(String)
 
     var errorDescription: String? {
@@ -131,6 +132,8 @@ enum ClaudeAuthError: Error, LocalizedError, Equatable {
             return "Token expired. Run `claude` to log in again."
         case .credentialsChanged:
             return "Claude login changed during refresh. Refresh again."
+        case .loginChangedRequiresRestart:
+            return "Claude's active account changed. Restart OpenUsage to rebuild the account cards safely."
         case .invalidOAuthURL(let value):
             return "Invalid Claude OAuth URL: \(value). Check CLAUDE_CODE_CUSTOM_OAUTH_URL / CLAUDE_LOCAL_OAUTH_API_BASE."
         }
@@ -147,7 +150,7 @@ enum ClaudeAuthError: Error, LocalizedError, Equatable {
         case .sessionExpired, .tokenExpired, .desktopTokenExpired:
             return true
         case .notLoggedIn, .desktopPermissionRequired, .desktopCredentialsUnavailable,
-             .credentialsChanged, .invalidOAuthURL:
+             .credentialsChanged, .loginChangedRequiresRestart, .invalidOAuthURL:
             return false
         }
     }
@@ -195,6 +198,11 @@ struct ClaudeAuthStore: Sendable {
     var desktop: ClaudeDesktopAuthStore
     var now: @Sendable () -> Date
     let scope: ClaudeCredentialScope
+    /// The default card pins Desktop fallback to its launch-time org once provider instances exist.
+    /// Without an org-scoped identity, fallback is disabled rather than borrowing a Desktop org that
+    /// already belongs to another card.
+    let standardDesktopOrganization: String?
+    let allowsUnpinnedStandardDesktopFallback: Bool
 
     init(
         environment: EnvironmentReading = ProcessEnvironmentReader(),
@@ -202,6 +210,8 @@ struct ClaudeAuthStore: Sendable {
         keychain: KeychainAccessing = SecurityKeychainAccessor(),
         desktop: ClaudeDesktopAuthStore? = nil,
         scope: ClaudeCredentialScope = .standard,
+        standardDesktopOrganization: String? = nil,
+        allowsUnpinnedStandardDesktopFallback: Bool = true,
         now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.environment = environment
@@ -209,6 +219,8 @@ struct ClaudeAuthStore: Sendable {
         self.keychain = keychain
         self.desktop = desktop ?? ClaudeDesktopAuthStore(files: files, now: now)
         self.scope = scope
+        self.standardDesktopOrganization = standardDesktopOrganization?.nilIfEmpty?.lowercased()
+        self.allowsUnpinnedStandardDesktopFallback = allowsUnpinnedStandardDesktopFallback
         self.now = now
     }
 
@@ -232,7 +244,8 @@ struct ClaudeAuthStore: Sendable {
         var desktopOrganization: String?
         switch scope {
         case .standard:
-            desktopAllowed = true
+            desktopAllowed = standardDesktopOrganization != nil || allowsUnpinnedStandardDesktopFallback
+            desktopOrganization = standardDesktopOrganization
         case .desktopOnly(let organization):
             desktopAllowed = true
             desktopOrganization = organization
@@ -243,6 +256,11 @@ struct ClaudeAuthStore: Sendable {
             desktopOrganization = organization
         case .configDir:
             desktopAllowed = false
+        }
+        if forceDesktopFallback, !desktopAllowed {
+            // Tell the provider there is no safe Desktop candidate so it preserves the original CLI
+            // auth error instead of converting it to a generic "not logged in" result.
+            desktopStatus = .notFound
         }
         let hasUsableCLILogin = stored.contains {
             $0.hasUsableAccessToken && liveUsageAvailability($0) == .available
@@ -581,34 +599,42 @@ struct ClaudeAuthStore: Sendable {
         return "\(backupRoot)/credentials/\(stem).enc"
     }
 
-    /// Parked cswap-slot credentials, keychain item first, `.enc` file second — both read-only. The
+    /// Parked cswap-slot credentials, authoritative `.enc` file first, keychain fallback second — both
+    /// read-only. cswap writes the file as the durable/fresh copy and may leave an older keychain item;
+    /// malformed, tokenless, or undecodable files fall back to the keychain rather than masking it. The
     /// refresh token is dropped so this store can never rotate (and thereby corrupt) cswap's backup;
     /// an expired parked token surfaces as the usual re-login notice (or falls through to the
     /// org-pinned Desktop token when the scope carries one).
     private func swapVaultCandidates(account: String, backupRoot: String) -> [ClaudeCredentialState] {
-        var candidates: [ClaudeCredentialState] = []
-
-        func appendState(from text: String) {
+        func state(from text: String) -> ClaudeCredentialState? {
             guard let parsed = Self.parseCredentials(text),
                   var oauth = parsed.claudeAiOauth,
                   oauth.accessToken?.isEmpty == false
-            else { return }
+            else { return nil }
             oauth.refreshToken = nil
-            candidates.append(ClaudeCredentialState(
+            return ClaudeCredentialState(
                 oauth: oauth, source: .swapVault, fullData: nil, inferenceOnly: false
-            ))
+            )
         }
 
-        if let value = try? keychain.readGenericPassword(service: Self.swapVaultService, account: account) {
-            appendState(from: value)
+        let encPath = Self.swapVaultEncPath(backupRoot: backupRoot, account: account)
+        do {
+            if let encoded = try files.readTextIfPresent(encPath) {
+                if let data = Data(base64Encoded: encoded.trimmingCharacters(in: .whitespacesAndNewlines)),
+                   let text = String(data: data, encoding: .utf8),
+                   let state = state(from: text) {
+                    return [state]
+                }
+                AppLog.warn(LogTag.auth("claude"), "cswap .enc credential is malformed or tokenless; trying its keychain fallback")
+            }
+        } catch {
+            AppLog.warn(LogTag.auth("claude"), "cswap .enc credential is unreadable; trying its keychain fallback: \(error.localizedDescription)")
         }
-        if candidates.isEmpty,
-           let encoded = try? files.readTextIfPresent(Self.swapVaultEncPath(backupRoot: backupRoot, account: account)),
-           let data = Data(base64Encoded: encoded.trimmingCharacters(in: .whitespacesAndNewlines)),
-           let text = String(data: data, encoding: .utf8) {
-            appendState(from: text)
+        if let value = try? keychain.readGenericPassword(service: Self.swapVaultService, account: account),
+           let state = state(from: value) {
+            return [state]
         }
-        return candidates
+        return []
     }
 
     private func credentialsPath() -> String {

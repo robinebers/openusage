@@ -29,6 +29,11 @@ final class ClaudeProvider: ProviderRuntime {
     let extraLogUsageScanners: [ClaudeLogUsageScanner]
     let now: @Sendable () -> Date
     let pricing: @Sendable () async -> ModelPricing
+    /// Provider-instance ownership is assembled once at launch. If an external switch tool changes
+    /// the default account in-process, refreshing under the old card identity could duplicate an
+    /// instance and bind the new account's history to the old one. Refuse that refresh until restart.
+    let expectedIdentityKey: String?
+    let currentIdentityKey: (@Sendable () -> String?)?
 
     /// Last successful live-usage result and a rate-limit cooldown, carried across refreshes (the provider
     /// is a long-lived singleton). `/api/oauth/usage` rate-limits aggressively, so on a 429 we serve the
@@ -47,7 +52,9 @@ final class ClaudeProvider: ProviderRuntime {
         logUsageScanner: ClaudeLogUsageScanner = ClaudeLogUsageScanner(),
         extraLogUsageScanners: [ClaudeLogUsageScanner] = [],
         now: @escaping @Sendable () -> Date = Date.init,
-        pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() }
+        pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() },
+        expectedIdentityKey: String? = nil,
+        currentIdentityKey: (@Sendable () -> String?)? = nil
     ) {
         self.provider = provider
         self.authStore = authStore
@@ -56,6 +63,8 @@ final class ClaudeProvider: ProviderRuntime {
         self.extraLogUsageScanners = extraLogUsageScanners
         self.now = now
         self.pricing = pricing
+        self.expectedIdentityKey = expectedIdentityKey
+        self.currentIdentityKey = currentIdentityKey
     }
 
     var widgetDescriptors: [WidgetDescriptor] {
@@ -94,7 +103,20 @@ final class ClaudeProvider: ProviderRuntime {
     }
 
     func refresh() async -> ProviderSnapshot {
-        await refresh(
+        if let expectedIdentityKey, let currentIdentityKey {
+            let current = await loadOffMainActor { currentIdentityKey() }
+            guard current == expectedIdentityKey else {
+                AppLog.warn(
+                    LogTag.auth("claude"),
+                    "active identity changed after provider-instance discovery; refusing refresh until restart"
+                )
+                return ProviderSnapshot.error(
+                    provider: provider,
+                    error: ClaudeAuthError.loginChangedRequiresRestart
+                )
+            }
+        }
+        return await refresh(
             credentialReloadsRemaining: 1,
             forceDesktopFallback: false,
             previousFallbackError: nil

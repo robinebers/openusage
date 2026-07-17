@@ -41,13 +41,19 @@ import Foundation
 actor CodexLogUsageScanner {
     private let environment: EnvironmentReading
     private let homeDirectory: @Sendable () -> URL
+    /// Canonical credential home → every log home verified to carry the same account identity.
+    /// Credential selection remains in `CodexAuthStore`; this map only broadens the local log scan
+    /// after the successful auth state supplies its exact `credentialHome`.
+    private let relatedHomesByCanonicalHome: [String: [URL]]
 
     init(
         environment: EnvironmentReading = ProcessEnvironmentReader(),
-        homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser }
+        homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser },
+        relatedHomesByCanonicalHome: [String: [URL]] = [:]
     ) {
         self.environment = environment
         self.homeDirectory = homeDirectory
+        self.relatedHomesByCanonicalHome = relatedHomesByCanonicalHome
     }
 
     /// One turn's token usage, normalized from a `token_count` line (deltas already applied).
@@ -69,8 +75,24 @@ actor CodexLogUsageScanner {
 
     /// Scan the last `daysBack` days of Codex rollouts. Returns `nil` when no Codex home or no
     /// session files exist (the spend tiles then render "No data").
-    func scan(daysBack: Int = 30, now: Date = Date(), pricing: ModelPricing) async -> LogUsageScan? {
-        let homes = codexHomes()
+    func scan(
+        daysBack: Int = 30,
+        now: Date = Date(),
+        pricing: ModelPricing,
+        credentialHome: String? = nil
+    ) async -> LogUsageScan? {
+        // A standard auth store can fall through from ~/.config/codex to ~/.codex. Once auth has
+        // selected a credential, scan that exact home so live limits and local spend cannot come
+        // from different accounts. Callers without a resolved credential keep the historical
+        // environment/default discovery behavior.
+        let homes: [URL]
+        if let credentialHome {
+            let canonicalHome = ProviderInstanceID.canonicalHomePath(credentialHome)
+            homes = [URL(fileURLWithPath: canonicalHome)]
+                + (relatedHomesByCanonicalHome[canonicalHome] ?? [])
+        } else {
+            homes = codexHomes()
+        }
         let files = Self.sessionFiles(homes: homes)
         guard !files.isEmpty else { return nil }
 

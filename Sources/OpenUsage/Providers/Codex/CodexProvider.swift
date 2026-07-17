@@ -20,6 +20,7 @@ final class CodexProvider: ProviderRuntime {
     let provider: Provider
 
     let authStore: CodexAuthStore
+    let identityDidResolve: (@MainActor @Sendable (_ identityKey: String) -> Void)?
     let usageClient: CodexUsageClient
     let logUsageScanner: CodexLogUsageScanner
     let now: @Sendable () -> Date
@@ -28,6 +29,7 @@ final class CodexProvider: ProviderRuntime {
     init(
         provider: Provider = CodexProvider.makeProvider(),
         authStore: CodexAuthStore = CodexAuthStore(),
+        identityDidResolve: (@MainActor @Sendable (_ identityKey: String) -> Void)? = nil,
         usageClient: CodexUsageClient = CodexUsageClient(),
         logUsageScanner: CodexLogUsageScanner = CodexLogUsageScanner(),
         now: @escaping @Sendable () -> Date = Date.init,
@@ -35,6 +37,7 @@ final class CodexProvider: ProviderRuntime {
     ) {
         self.provider = provider
         self.authStore = authStore
+        self.identityDidResolve = identityDidResolve
         self.usageClient = usageClient
         self.logUsageScanner = logUsageScanner
         self.now = now
@@ -128,7 +131,7 @@ final class CodexProvider: ProviderRuntime {
             // The `codex` CLI may have rotated the token on disk since we loaded it. Re-read the live
             // credential first and adopt its (newer) access token — refreshing our stale copy would send
             // an already-rotated refresh_token and trip `refresh_token_reused` (issue #516).
-            if let live = reloadLiveAuth(source: authState.source),
+            if let live = authStore.reload(authState),
                let liveToken = live.auth.tokens?.accessToken, !liveToken.isEmpty {
                 authState = live
                 accessToken = liveToken
@@ -143,6 +146,15 @@ final class CodexProvider: ProviderRuntime {
         }
 
         let response = try await fetchUsageWithRetry(accessToken: accessToken, authState: &authState)
+        // Candidate enumeration may include both historical default homes. Publish identity only
+        // after one candidate has actually authenticated, so the card and its history bind to the
+        // selected account rather than whichever file happened to be loaded last.
+        if let identityKey = authStore.recordSelectedIdentity(authState) {
+            // Deliver on the provider's MainActor before scanning or returning the snapshot. The data
+            // store can then bind this exact refresh's history to the account that produced it; an
+            // unstructured callback arriving after `refresh()` would withhold the first scan from sync.
+            identityDidResolve?(identityKey)
+        }
         // The access token may have rotated during the usage fetch's refresh-and-retry; read the live one.
         let currentToken = authState.auth.tokens?.accessToken ?? accessToken
         let resetCredits = await fetchResetCreditsBestEffort(
@@ -155,7 +167,11 @@ final class CodexProvider: ProviderRuntime {
         // the shared pricing store, merged with Codex usage that happened inside pi (attributed back
         // here). Both scans run on their scanner actors, off the main actor.
         let pricing = await pricing()
-        let nativeScan = await logUsageScanner.scan(now: now(), pricing: pricing)
+        let nativeScan = await logUsageScanner.scan(
+            now: now(),
+            pricing: pricing,
+            credentialHome: authState.credentialHome
+        )
         let piScan = await PiUsageScanner.shared.scan(cardID: provider.id, now: now(), pricing: pricing)
         var usageHistory: ProviderUsageHistory?
         if let scan = DailyUsageAccumulator.merged([nativeScan, piScan]) {
@@ -220,19 +236,6 @@ final class CodexProvider: ProviderRuntime {
             connectionFailed: CodexUsageError.connectionFailed,
             authExpired: CodexAuthError.tokenExpired
         )
-    }
-
-    /// Re-reads the credential from its original source (the same on-disk file or keychain entry) so a
-    /// token the `codex` CLI rotated out-of-band is picked up before we attempt our own refresh. Reads
-    /// only that one source — matching how `codex` reads the single `auth.json` from `CODEX_HOME` —
-    /// rather than re-scanning every candidate path.
-    private func reloadLiveAuth(source: CodexAuthState.Source) -> CodexAuthState? {
-        switch source {
-        case .file(let path):
-            return authStore.loadAuth(at: path)
-        case .keychain:
-            return authStore.loadKeychainAuth()
-        }
     }
 
     private func refreshAccessToken(authState: inout CodexAuthState, refreshToken: String) async throws -> String {

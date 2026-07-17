@@ -919,6 +919,74 @@ final class CodexLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(second?.series.daily.reduce(0) { $0 + $1.totalTokens }, 200)
     }
 
+    func testCredentialHomeOverridesTheDefaultScannerHome() async throws {
+        let day = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-3600))
+        let environmentHome = try CodexLogFixture.makeHome(files: [
+            "sessions/environment.jsonl": CodexLogFixture.tokenCount(
+                timestamp: day, last: CodexLogFixture.usage(input: 100, output: 50), model: "gpt-5.2"
+            )
+        ])
+        let selectedHome = try CodexLogFixture.makeHome(files: [
+            "sessions/selected.jsonl": CodexLogFixture.tokenCount(
+                timestamp: day, last: CodexLogFixture.usage(input: 20, output: 10), model: "gpt-5.2"
+            )
+        ])
+        defer {
+            try? FileManager.default.removeItem(at: environmentHome)
+            try? FileManager.default.removeItem(at: selectedHome)
+        }
+        let scanner = CodexLogFixture.scanner(home: environmentHome)
+
+        let scan = await scanner.scan(
+            pricing: fixedRates(),
+            credentialHome: selectedHome.path
+        )
+
+        XCTAssertEqual(scan?.series.daily.reduce(0) { $0 + $1.totalTokens }, 30)
+    }
+
+    func testCredentialHomeIncludesOnlyItsVerifiedSameAccountSiblingRoots() async throws {
+        let day = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-3600))
+        let selectedHome = try CodexLogFixture.makeHome(files: [
+            "sessions/selected.jsonl": CodexLogFixture.tokenCount(
+                timestamp: day, last: CodexLogFixture.usage(input: 20, output: 10), model: "gpt-5.2"
+            )
+        ])
+        let siblingHome = try CodexLogFixture.makeHome(files: [
+            "sessions/sibling.jsonl": CodexLogFixture.tokenCount(
+                timestamp: day, last: CodexLogFixture.usage(input: 30, output: 20), model: "gpt-5.2"
+            )
+        ])
+        let unrelatedHome = try CodexLogFixture.makeHome(files: [
+            "sessions/unrelated.jsonl": CodexLogFixture.tokenCount(
+                timestamp: day, last: CodexLogFixture.usage(input: 100, output: 50), model: "gpt-5.2"
+            )
+        ])
+        defer {
+            try? FileManager.default.removeItem(at: selectedHome)
+            try? FileManager.default.removeItem(at: siblingHome)
+            try? FileManager.default.removeItem(at: unrelatedHome)
+        }
+        let selectedKey = ProviderInstanceID.canonicalHomePath(selectedHome.path)
+        let scanner = CodexLogUsageScanner(
+            environment: FakeEnvironment(["CODEX_HOME": unrelatedHome.path]),
+            relatedHomesByCanonicalHome: [
+                selectedKey: [selectedHome, siblingHome]
+            ]
+        )
+
+        let scan = await scanner.scan(
+            pricing: fixedRates(),
+            credentialHome: selectedHome.path
+        )
+
+        XCTAssertEqual(
+            scan?.series.daily.reduce(0) { $0 + $1.totalTokens },
+            80,
+            "selected + same-account sibling count; the unrelated environment home must not"
+        )
+    }
+
     /// Manual parity harness against the real logs on this machine: prints per-day totals to compare
     /// with `ccusage codex daily --json --offline`. Gated like the other live tests.
     func testParityAgainstRealLocalLogs() async throws {

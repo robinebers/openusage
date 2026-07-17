@@ -154,7 +154,7 @@ final class LayoutStore {
     }
 
     func isProviderExpanded(_ providerID: String) -> Bool {
-        expandedProviderIDs.contains(providerID)
+        registry.provider(id: providerID) != nil && expandedProviderIDs.contains(providerID)
     }
 
     @discardableResult
@@ -263,7 +263,9 @@ final class LayoutStore {
     /// column, so a third would not fit the menu bar height.
     static let maxPinsPerProvider = 2
 
-    func isPinned(_ descriptorID: String) -> Bool { pinnedMetricIDs.contains(descriptorID) }
+    func isPinned(_ descriptorID: String) -> Bool {
+        registry.descriptor(id: descriptorID) != nil && pinnedMetricIDs.contains(descriptorID)
+    }
 
     func pinnedCount(forProvider providerID: String) -> Int {
         pinnedMetricIDs.count { registry.descriptor(id: $0)?.providerID == providerID }

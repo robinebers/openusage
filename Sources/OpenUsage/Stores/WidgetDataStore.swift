@@ -36,6 +36,14 @@ final class WidgetDataStore {
     private static let meterStyleKey = "meterStyle"
     private static let resetDisplayModeKey = "resetDisplayMode"
     private static let alwaysShowPacingKey = "alwaysShowPacing"
+    /// Binds each persisted machine-local history to the account identity that produced it. Provider
+    /// snapshot caches are keyed by card id for UI continuity, but a default card can point at a different
+    /// account after a swap; this sidecar prevents that old history from being published under the new id.
+    private static let historyIdentityBindingsKey = "openusage.historyIdentityBindings.v1"
+    /// These families can point the same bare card id at different accounts across launches. If launch
+    /// discovery cannot resolve the current account, publishing by bare id would silently fall back to
+    /// v1 routing and let another Mac merge the history into whichever account is default there.
+    private static let accountAwareHistoryProviderIDs: Set<String> = ["claude", "codex"]
     /// How long a provider that just failed is skipped before the loop will probe it again. A failed
     /// refresh isn't cached, so — unlike a success, which the snapshot cache gates for an interval —
     /// nothing else stops the loop from re-probing a broken provider (logged-out Devin/Grok especially)
@@ -80,7 +88,14 @@ final class WidgetDataStore {
     @ObservationIgnored private var peerHistoryDocuments: [UsageHistoryDocument] = []
     /// Card id → stable account identity (default cards + visible instances), for identity-keyed peer
     /// matching and for publishing this Mac's own document.
-    @ObservationIgnored private let providerIdentityKeys: [String: String]
+    @ObservationIgnored private var providerIdentityKeys: [String: String]
+    /// Provider id → identity that produced the currently cached authoritative history. A mismatch means
+    /// the UI may still show stale-while-revalidate data, but iCloud must not export it.
+    @ObservationIgnored private var historyIdentityBindings: [String: String]
+    /// Exact path-derived identities whose raw refresh returned non-nil history in this process. Keeping
+    /// the path, rather than a provider-only flag, prevents a later home/account change from blessing an
+    /// unrelated cached scan when Codex finally resolves an opaque account id.
+    @ObservationIgnored private var authoritativePathHistoryScans: [String: String] = [:]
     /// Accounts synced from other Macs that have NO card here: surfaced in Total Spend only (their
     /// synthesized snapshots carry the usual Today/Yesterday/Last 30 Days lines), never as cards.
     private(set) var remoteOnlySpend: [(provider: Provider, snapshot: ProviderSnapshot)] = []
@@ -122,6 +137,7 @@ final class WidgetDataStore {
         self.defaults = defaults
         self.isProviderEnabled = isProviderEnabled
         self.providerIdentityKeys = providerIdentityKeys
+        self.historyIdentityBindings = Self.loadHistoryIdentityBindings(from: defaults)
         self.orderedDescriptors = orderedDescriptors ?? { registry.descriptors }
         self.now = now
         self.notificationSettings = notificationSettings
@@ -255,6 +271,7 @@ final class WidgetDataStore {
         refreshingProviderIDs.insert(providerID)
         defer { refreshingProviderIDs.remove(providerID) }
         let start = Date()
+        let identityAtRefreshStart = providerIdentityKeys[providerID]
         var snapshot = await ProviderRefreshContext.$isManual.withValue(force) {
             await provider.refresh()
         }
@@ -274,6 +291,10 @@ final class WidgetDataStore {
         }
         // Recovered: drop any backoff so the provider resumes the normal cadence immediately.
         failureRetryAfter[providerID] = nil
+        // Capture this before last-good preservation: only a non-nil history returned by this refresh
+        // proves that the current runtime actually scanned its account. A preserved prior history must
+        // keep its prior identity binding.
+        let hasAuthoritativeHistory = snapshot.usageHistory != nil
         // A provider can refresh its live limits successfully while its optional local log/CSV scan
         // produces no result. Keep only the last-good normalized history in that case; the new plan,
         // limits, warnings, and timestamp still win. A non-nil empty history remains authoritative and
@@ -294,6 +315,12 @@ final class WidgetDataStore {
         }
         localSnapshots[providerID] = snapshot
         cache.store(snapshot)
+        if hasAuthoritativeHistory {
+            recordAuthoritativeHistory(
+                providerID: providerID,
+                identityAtRefreshStart: identityAtRefreshStart
+            )
+        }
         rebuildRenderedSnapshots()
         if notifyHistoryChange { onLocalHistoryChanged?() }
         AppLog.info(.refresh, "\(providerID) ok (\(durationMs)ms)")
@@ -313,6 +340,47 @@ final class WidgetDataStore {
     /// available to direct API reads, but disabled providers stop receiving peer contributions.
     func providerEnablementDidChange() {
         rebuildRenderedSnapshots()
+    }
+
+    /// Updates the launch-time account map when a default login changes in place. Any cached history
+    /// whose persisted binding no longer matches is immediately withheld from iCloud until the next
+    /// authoritative scan. `AppContainer` owns identity discovery and calls this seam when it can resolve
+    /// a new mapping; ordinary launches continue to pass the initial map through the initializer.
+    func updateProviderIdentityKeys(_ keys: [String: String]) {
+        guard providerIdentityKeys != keys else { return }
+        providerIdentityKeys = keys
+        authoritativePathHistoryScans = authoritativePathHistoryScans.filter { providerID, pathIdentity in
+            keys[providerID] == pathIdentity
+        }
+        rebuildRenderedSnapshots()
+        onLocalHistoryChanged?()
+    }
+
+    /// Upgrades one card's identity without rebuilding the store. Keyring-backed Codex homes start with
+    /// a path-derived placeholder because launch discovery cannot read secrets; the provider calls this
+    /// after credential loading reveals the real account id. A path-to-opaque upgrade may carry an
+    /// authoritative binding because both names refer to the same scoped home. Every other identity
+    /// change invalidates by mismatch and waits for a subsequent raw history scan.
+    func updateProviderIdentityKey(_ identity: String, for providerID: String) {
+        guard UsageHistoryDocument.isOpaqueIdentity(identity) else {
+            AppLog.warn(.config, "refusing non-opaque history identity update for \(providerID)")
+            return
+        }
+        let previous = providerIdentityKeys[providerID]
+        guard previous != identity else { return }
+        providerIdentityKeys[providerID] = identity
+
+        if let previous,
+           ProviderInstanceID.isPathDerivedKey(previous),
+           (historyIdentityBindings[providerID] == previous
+               || authoritativePathHistoryScans[providerID] == previous) {
+            historyIdentityBindings[providerID] = identity
+            authoritativePathHistoryScans[providerID] = nil
+            persistHistoryIdentityBindings()
+        }
+
+        rebuildRenderedSnapshots()
+        onLocalHistoryChanged?()
     }
 
     /// Replaces the downloaded peer set. A conflicted duplicate device file resolves to the newest
@@ -337,7 +405,8 @@ final class WidgetDataStore {
         // default card's history to whatever card that account is over there (see PeerHistoryRemapper).
         for (providerID, descriptor) in registry.historyDescriptorsByProvider
         where descriptor.scope == .machineLocal && isProviderEnabled(providerID) {
-            if let history = localSnapshots[providerID]?.usageHistory {
+            if let history = localSnapshots[providerID]?.usageHistory,
+               isHistorySafeToExport(providerID: providerID) {
                 providers[providerID] = history
                 if let identity = providerIdentityKeys[providerID] {
                     identities[providerID] = identity
@@ -351,6 +420,95 @@ final class WidgetDataStore {
             providers: providers,
             identities: identities.isEmpty ? nil : identities
         )
+    }
+
+    /// Cached history is safe only when it is identityless by design, or when the identity that produced
+    /// it still matches the card's current account. A missing/mismatched binding keeps the stale snapshot
+    /// available to the local UI but removes it from the sync document until a real scan succeeds.
+    private func isHistorySafeToExport(providerID: String) -> Bool {
+        guard let currentIdentity = providerIdentityKeys[providerID] else {
+            if Self.accountAwareHistoryProviderIDs.contains(ProviderInstanceID.base(of: providerID)) {
+                return false
+            }
+            return historyIdentityBindings[providerID] == nil
+        }
+        return UsageHistoryDocument.isOpaqueIdentity(currentIdentity)
+            && historyIdentityBindings[providerID] == currentIdentity
+    }
+
+    private func recordAuthoritativeHistory(providerID: String, identityAtRefreshStart: String?) {
+        let identityAtCompletion = providerIdentityKeys[providerID]
+        let resolvedIdentity: String?
+        if identityAtCompletion == identityAtRefreshStart {
+            resolvedIdentity = identityAtCompletion
+        } else if let identityAtCompletion,
+                  UsageHistoryDocument.isOpaqueIdentity(identityAtCompletion),
+                  identityAtRefreshStart == nil
+                      || identityAtRefreshStart.map(ProviderInstanceID.isPathDerivedKey) == true {
+            // Credential loading resolved the previously unknown/path-scoped account during this exact
+            // refresh. Since the returned raw history belongs to that same runtime, the first scan can
+            // be bound immediately without ever trusting a startup cache.
+            resolvedIdentity = identityAtCompletion
+        } else {
+            authoritativePathHistoryScans[providerID] = nil
+            AppLog.warn(.config, "history identity changed during \(providerID) refresh; withholding it from sync")
+            return
+        }
+        guard let identity = resolvedIdentity else {
+            // Providers that have never been identity-keyed retain legacy provider-id export. If this card
+            // was identity-bound previously but is unreadable now, keep that binding so export remains
+            // withheld instead of silently downgrading to ambiguous same-card matching.
+            authoritativePathHistoryScans[providerID] = nil
+            return
+        }
+        if ProviderInstanceID.isPathDerivedKey(identity) {
+            authoritativePathHistoryScans[providerID] = identity
+            return
+        }
+        guard UsageHistoryDocument.isOpaqueIdentity(identity) else {
+            authoritativePathHistoryScans[providerID] = nil
+            AppLog.warn(.config, "history identity for \(providerID) is not sync-safe; withholding it from sync")
+            return
+        }
+        authoritativePathHistoryScans[providerID] = nil
+        guard historyIdentityBindings[providerID] != identity else { return }
+        historyIdentityBindings[providerID] = identity
+        persistHistoryIdentityBindings()
+    }
+
+    private static func loadHistoryIdentityBindings(from defaults: UserDefaults) -> [String: String] {
+        guard let data = defaults.data(forKey: historyIdentityBindingsKey) else { return [:] }
+        do {
+            return try JSONDecoder().decode([String: String].self, from: data)
+        } catch {
+            AppLog.warn(.config, "history identity bindings unreadable; cached account history will await a fresh scan: \(error.localizedDescription)")
+            return [:]
+        }
+    }
+
+    private func persistHistoryIdentityBindings() {
+        do {
+            defaults.set(try JSONEncoder().encode(historyIdentityBindings), forKey: Self.historyIdentityBindingsKey)
+        } catch {
+            AppLog.warn(.config, "history identity bindings could not be saved: \(error.localizedDescription)")
+        }
+    }
+
+    /// The local cache remains the stale-while-revalidate UI fallback after an account swap, but history
+    /// produced by the prior identity cannot participate in an additive peer merge for the current one.
+    /// Removing only the raw history here lets `rendered` below keep the untouched local snapshot when no
+    /// peer replacement exists, while a matching peer history renders by itself instead of as A + B.
+    private func localSnapshotsSafeForPeerMerge() -> [String: ProviderSnapshot] {
+        var safeSnapshots = localSnapshots
+        for providerID in safeSnapshots.keys {
+            guard var snapshot = safeSnapshots[providerID],
+                  snapshot.usageHistory != nil,
+                  !isHistorySafeToExport(providerID: providerID)
+            else { continue }
+            snapshot.usageHistory = nil
+            safeSnapshots[providerID] = snapshot
+        }
+        return safeSnapshots
     }
 
     private func rebuildRenderedSnapshots() {
@@ -373,7 +531,7 @@ final class WidgetDataStore {
             localIdentityByCardID: providerIdentityKeys
         )
         let merged = UsageHistoryAggregator.merged(
-            localSnapshots: localSnapshots,
+            localSnapshots: localSnapshotsSafeForPeerMerge(),
             peerHistories: remapped.histories,
             descriptors: enabledDescriptors,
             now: renderDate
@@ -381,6 +539,7 @@ final class WidgetDataStore {
         remoteOnlySpend = Self.renderRemoteOnlySpend(
             remapped.remoteOnly,
             registry: registry,
+            isProviderEnabled: isProviderEnabled,
             now: renderDate
         )
         var rendered = localSnapshots
@@ -410,11 +569,14 @@ final class WidgetDataStore {
     private static func renderRemoteOnlySpend(
         _ remoteOnly: [PeerHistoryRemapper.RemoteOnlyHistory],
         registry: WidgetRegistry,
+        isProviderEnabled: @MainActor (String) -> Bool,
         now: Date
     ) -> [(provider: Provider, snapshot: ProviderSnapshot)] {
         remoteOnly.compactMap { entry in
             guard let baseProvider = registry.provider(id: entry.baseProviderID),
-                  let descriptor = registry.historyDescriptorsByProvider[entry.baseProviderID]
+                  let descriptor = registry.historyDescriptorsByProvider[entry.baseProviderID],
+                  descriptor.scope == .machineLocal,
+                  isProviderEnabled(entry.baseProviderID)
             else { return nil }
             let history = UsageHistoryAggregator.mergeHistories(entry.histories, now: now)
             guard !history.series.daily.isEmpty else { return nil }
@@ -423,9 +585,9 @@ final class WidgetDataStore {
             let baseName = baseProvider.displayName.replacingOccurrences(
                 of: #" \d+$"#, with: "", options: .regularExpression
             )
-            let device = entry.deviceNames.count == 1
-                ? entry.deviceNames[0]
-                : "\(entry.deviceNames.count) other Macs"
+            let device = entry.devices.count == 1
+                ? entry.devices[0].name
+                : "\(entry.devices.count) other Macs"
             let provider = Provider(
                 id: "\(entry.baseProviderID)@peer-\(ProviderInstanceID.hash8(entry.identityKey))",
                 displayName: "\(baseName) · \(device)",

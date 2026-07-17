@@ -780,6 +780,24 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertEqual(store.pinnedMetricIDs, expected)
     }
 
+    func testProviderReorderPreservesSuppressedInstanceSlot() {
+        let defaults = makeDefaults("ReorderSuppressedInstance")
+        let storageKey = "layout"
+        let hidden = "claude@hidden"
+        LayoutPersistence(defaults: defaults, storageKey: storageKey).saveProviderOrder([
+            "claude", hidden, "cursor",
+        ])
+        let store = LayoutStore(registry: .mock, defaults: defaults, storageKey: storageKey)
+
+        XCTAssertTrue(store.reorderProvider(dragged: "cursor", target: "claude"))
+
+        XCTAssertEqual(Array(store.providerOrder.prefix(3)), ["cursor", hidden, "claude"])
+        XCTAssertEqual(
+            LayoutPersistence(defaults: defaults, storageKey: storageKey).loadProviderOrder()?.contains(hidden),
+            true
+        )
+    }
+
     func testResetToDefaultRestoresProviderOrderAndMarksDefaultsSeeded() {
         let defaults = makeDefaults("ResetSeeded")
         let store = LayoutStore(
@@ -1010,14 +1028,17 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertTrue(store.expandedMetricIDs.contains("claude.weekly"))
     }
 
-    func testInvalidPersistedExpandedIDsAreDropped() {
+    func testUnknownPersistedExpandedIDsAreRetainedAsInvisibleTombstones() {
         let defaults = makeDefaults("InvalidExpand")
         saveStored([PlacedWidget(descriptorID: "claude.session")], forKey: "layout", in: defaults)
         defaults.set(["claude.session", "missing.metric"], forKey: "layout.expandedMetrics")
 
         let store = LayoutStore(registry: .mock, defaults: defaults, storageKey: "layout")
         XCTAssertTrue(store.expandedMetricIDs.contains("claude.session"))
-        XCTAssertFalse(store.expandedMetricIDs.contains("missing.metric"))
+        XCTAssertTrue(
+            store.expandedMetricIDs.contains("missing.metric"),
+            "unknown state stays persisted so a temporarily suppressed descriptor can recover it"
+        )
     }
 
     func testDisplayGroupsPartitionEnabledMetrics() {

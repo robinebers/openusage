@@ -37,6 +37,9 @@ struct UsageHistoryDocument: Hashable, Sendable, Codable, Identifiable {
         guard schema == Self.currentSchema || schema == Self.legacySchemaV1 else {
             throw UsageHistoryDocumentError.unsupportedSchema
         }
+        if schema == Self.legacySchemaV1, identities != nil {
+            throw UsageHistoryDocumentError.unexpectedIdentities
+        }
         // v1 card ids are bare provider ids; v2 additionally carries instance cards (`claude@ab12cd34`).
         let idPattern = schema == Self.legacySchemaV1
             ? #"^[a-z0-9][a-z0-9-]*$"#
@@ -70,6 +73,51 @@ struct UsageHistoryDocument: Hashable, Sendable, Codable, Identifiable {
                 throw UsageHistoryDocumentError.invalidDay(day)
             }
         }
+
+        // Identity metadata is an external routing key: accepting an orphaned key can route history
+        // that was never published for that card, while accepting the same account twice for one
+        // provider family makes the additive peer merge count a device's history twice. Provider
+        // families namespace identities because Claude and Codex issue unrelated identifiers that may
+        // happen to share the same bytes.
+        var routedIdentities = Set<String>()
+        for (providerID, identity) in identities ?? [:] {
+            guard providers[providerID] != nil else {
+                throw UsageHistoryDocumentError.invalidIdentityProvider(providerID)
+            }
+            guard Self.isOpaqueIdentity(identity) else {
+                throw UsageHistoryDocumentError.invalidIdentity(providerID)
+            }
+            let baseProviderID = ProviderInstanceID.base(of: providerID)
+            guard routedIdentities.insert("\(baseProviderID)\u{0}\(identity)").inserted else {
+                throw UsageHistoryDocumentError.duplicateIdentity(baseProviderID)
+            }
+        }
+
+        if schema == Self.currentSchema {
+            for providerID in providers.keys {
+                let baseProviderID = ProviderInstanceID.base(of: providerID)
+                let requiresIdentity = baseProviderID == "claude" || baseProviderID == "codex"
+                guard !requiresIdentity || identities?[providerID] != nil else {
+                    throw UsageHistoryDocumentError.missingIdentity(providerID)
+                }
+            }
+        }
+    }
+
+    /// Synced identities must be stable account identifiers, never the path fallback used while a
+    /// keyring-backed home is still waiting to reveal its real account id. Keep the check deliberately
+    /// format-agnostic across the providers' UUID/account-id shapes, while bounding it to the ASCII id
+    /// punctuation those shapes use so paths, emails, display names, and controls cannot sync as keys.
+    static func isOpaqueIdentity(_ value: String) -> Bool {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        let opaqueCharacters = CharacterSet(
+            charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.|:"
+        )
+        return value == trimmed
+            && !trimmed.isEmpty
+            && trimmed.utf8.count <= 512
+            && trimmed.unicodeScalars.allSatisfy(opaqueCharacters.contains)
+            && !ProviderInstanceID.isPathDerivedKey(trimmed)
     }
 
     private static func validate(date: String, tokens: Int, cost: Double?) throws {
@@ -119,6 +167,11 @@ enum UsageHistoryDocumentError: Error, LocalizedError, Equatable {
     case invalidDay(String)
     case duplicateDay(String)
     case duplicateModel(String)
+    case unexpectedIdentities
+    case invalidIdentityProvider(String)
+    case invalidIdentity(String)
+    case missingIdentity(String)
+    case duplicateIdentity(String)
     case invalidValue
 
     var errorDescription: String? {
@@ -129,6 +182,11 @@ enum UsageHistoryDocumentError: Error, LocalizedError, Equatable {
         case .invalidDay: "The synced history contains an invalid date."
         case .duplicateDay: "The synced history contains the same date more than once."
         case .duplicateModel: "The synced history contains the same model more than once."
+        case .unexpectedIdentities: "The legacy synced history contains unsupported account identities."
+        case .invalidIdentityProvider: "The synced account identity does not match a history provider."
+        case .invalidIdentity: "The synced account identity is invalid."
+        case .missingIdentity: "The synced account history is missing its account identity."
+        case .duplicateIdentity: "The synced history maps the same account more than once."
         case .invalidValue: "The synced history contains an invalid usage value."
         }
     }

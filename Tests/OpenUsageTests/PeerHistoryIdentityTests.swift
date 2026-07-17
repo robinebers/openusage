@@ -63,7 +63,57 @@ final class PeerHistoryIdentityTests: XCTestCase {
         XCTAssertTrue(remapped.histories.isEmpty)
         XCTAssertEqual(remapped.remoteOnly.count, 1)
         XCTAssertEqual(remapped.remoteOnly.first?.baseProviderID, "claude")
-        XCTAssertEqual(remapped.remoteOnly.first?.deviceNames, ["Mac mini"])
+        XCTAssertEqual(remapped.remoteOnly.first?.devices.map(\.name), ["Mac mini"])
+    }
+
+    func testRemapNamespacesTheSameOpaqueIdentityByProviderFamily() {
+        let codexDoc = makeDocument(
+            providers: ["codex": history(day: "2026-07-16", tokens: 50, cost: 42)],
+            identities: ["codex": maxKey]
+        )
+
+        let remapped = PeerHistoryRemapper.remap(
+            documents: [codexDoc],
+            localIdentityByCardID: ["claude": maxKey]
+        )
+
+        XCTAssertTrue(remapped.histories.isEmpty, "a Codex identity must never route into a Claude card")
+        XCTAssertEqual(remapped.remoteOnly.map(\.baseProviderID), ["codex"])
+    }
+
+    func testRemoteOnlyDevicesStayDistinctWhenTheirNamesMatch() {
+        let identity = "uuid-other|org-x"
+        let first = makeDocument(
+            deviceID: "mac-a",
+            deviceName: "MacBook Pro",
+            providers: ["claude@ab12cd34": history(day: "2026-07-16", tokens: 10, cost: 1)],
+            identities: ["claude@ab12cd34": identity]
+        )
+        let second = makeDocument(
+            deviceID: "mac-b",
+            deviceName: "MacBook Pro",
+            providers: ["claude@ab12cd34": history(day: "2026-07-16", tokens: 20, cost: 2)],
+            identities: ["claude@ab12cd34": identity]
+        )
+
+        let remapped = PeerHistoryRemapper.remap(
+            documents: [first, second],
+            localIdentityByCardID: ["claude": maxKey]
+        )
+
+        XCTAssertEqual(remapped.remoteOnly.count, 1)
+        XCTAssertEqual(Set(remapped.remoteOnly[0].devices.map(\.id)), ["mac-a", "mac-b"])
+        XCTAssertEqual(remapped.remoteOnly[0].devices.map(\.name), ["MacBook Pro", "MacBook Pro"])
+
+        let dataStore = WidgetDataStore(
+            registry: makeRegistry(),
+            providers: [],
+            cache: scratchCache(),
+            defaults: makeScratchDefaults("DuplicateDeviceNames"),
+            providerIdentityKeys: ["claude": maxKey]
+        )
+        dataStore.setPeerHistoryDocuments([first, second], ownDeviceID: "this-mac")
+        XCTAssertEqual(dataStore.remoteOnlySpend.first?.provider.displayName, "Claude · 2 other Macs")
     }
 
     func testRemapLegacyV1DocumentKeepsSameCardMerge() {
@@ -81,19 +131,28 @@ final class PeerHistoryIdentityTests: XCTestCase {
         XCTAssertTrue(remapped.remoteOnly.isEmpty)
     }
 
-    func testLocalDocumentPublishesInstancesWithIdentities() {
+    func testLocalDocumentPublishesInstancesWithIdentitiesAfterAuthoritativeScans() async {
         let registry = makeRegistry()
-        // Preload the cache; the store's init adopts cached snapshots as its local set.
-        let cache = scratchCache()
-        cache.store(snapshot(providerID: "claude", history: history(day: "2026-07-16", tokens: 10, cost: 1)))
-        cache.store(snapshot(providerID: "claude@f15456b0", history: history(day: "2026-07-16", tokens: 20, cost: 2)))
+        let defaults = makeScratchDefaults("PublishDoc")
+        let snapshots = [
+            snapshot(providerID: "claude", history: history(day: "2026-07-16", tokens: 10, cost: 1)),
+            snapshot(providerID: "claude@f15456b0", history: history(day: "2026-07-16", tokens: 20, cost: 2))
+        ]
+        let runtimes = zip(registry.providers, snapshots).map { provider, snapshot in
+            TestProviderRuntime(
+                provider: provider,
+                descriptors: registry.descriptors(for: provider.id),
+                snapshot: snapshot
+            )
+        }
         let dataStore = WidgetDataStore(
             registry: registry,
-            providers: [],
-            cache: cache,
-            defaults: makeScratchDefaults("PublishDoc"),
+            providers: runtimes,
+            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots"),
+            defaults: defaults,
             providerIdentityKeys: ["claude": maxKey, "claude@f15456b0": teamKey]
         )
+        await dataStore.refreshAll(force: true)
 
         let document = dataStore.localHistoryDocument(deviceID: "dev", deviceName: "This Mac")
         XCTAssertEqual(document.schema, UsageHistoryDocument.currentSchema)
@@ -101,6 +160,254 @@ final class PeerHistoryIdentityTests: XCTestCase {
         XCTAssertEqual(document.identities?["claude"], maxKey)
         XCTAssertEqual(document.identities?["claude@f15456b0"], teamKey)
         XCTAssertNoThrow(try document.validate())
+    }
+
+    func testAccountAwareFamiliesWithholdHistoryWhenCurrentIdentityIsUnknown() async {
+        let providers = [
+            Provider(id: "claude", displayName: "Claude", icon: .providerMark("claude")),
+            Provider(id: "codex", displayName: "Codex", icon: .providerMark("codex")),
+            Provider(id: "grok", displayName: "Grok", icon: .providerMark("grok"))
+        ]
+        let descriptors = providers.map {
+            WidgetDescriptor.usageTrend(provider: $0)
+                .exportingHistory(scope: .machineLocal, estimatedCost: true, sourceNote: "test")
+        }
+        let registry = WidgetRegistry(providers: providers, descriptors: descriptors)
+        let runtimes = providers.map { provider in
+            TestProviderRuntime(
+                provider: provider,
+                descriptors: registry.descriptors(for: provider.id),
+                snapshot: snapshot(
+                    providerID: provider.id,
+                    history: history(day: "2026-07-16", tokens: 10, cost: 1)
+                )
+            )
+        }
+        let defaults = makeScratchDefaults("UnknownCurrentIdentity")
+        let dataStore = WidgetDataStore(
+            registry: registry,
+            providers: runtimes,
+            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots"),
+            defaults: defaults,
+            providerIdentityKeys: [:]
+        )
+
+        await dataStore.refreshAll(force: true)
+
+        let document = dataStore.localHistoryDocument(deviceID: "dev", deviceName: "Mac")
+        XCTAssertNil(document.providers["claude"])
+        XCTAssertNil(document.providers["codex"])
+        XCTAssertNotNil(document.providers["grok"], "identityless providers keep legacy same-card export")
+    }
+
+    func testDefaultSwapWithholdsOldCachedHistoryUntilTheNewIdentityHasAnAuthoritativeScan() async {
+        let registry = makeRegistry()
+        let provider = registry.providers[0]
+        let descriptors = registry.descriptors(for: provider.id)
+        let defaults = makeScratchDefaults("SwapBinding")
+        let oldHistory = history(day: "2026-07-16", tokens: 10, cost: 1)
+        let oldRuntime = TestProviderRuntime(
+            provider: provider,
+            descriptors: descriptors,
+            snapshot: snapshot(providerID: provider.id, history: oldHistory)
+        )
+        let oldStore = WidgetDataStore(
+            registry: registry,
+            providers: [oldRuntime],
+            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots"),
+            defaults: defaults,
+            providerIdentityKeys: [provider.id: maxKey]
+        )
+        _ = await oldStore.refresh(providerID: provider.id, force: true)
+        XCTAssertEqual(oldStore.localHistoryDocument(deviceID: "dev", deviceName: "Mac").identities?[provider.id], maxKey)
+
+        let noHistory = ProviderSnapshot(
+            providerID: provider.id,
+            displayName: provider.displayName,
+            lines: [],
+            refreshedAt: Date()
+        )
+        let newHistory = history(day: "2026-07-16", tokens: 20, cost: 2)
+        let swappedRuntime = TogglingProviderRuntime(
+            provider: provider,
+            descriptors: descriptors,
+            first: noHistory,
+            second: snapshot(providerID: provider.id, history: newHistory)
+        )
+        let swappedStore = WidgetDataStore(
+            registry: registry,
+            providers: [swappedRuntime],
+            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots"),
+            defaults: defaults,
+            providerIdentityKeys: [provider.id: teamKey]
+        )
+
+        XCTAssertNil(
+            swappedStore.localHistoryDocument(deviceID: "dev", deviceName: "Mac").providers[provider.id],
+            "the startup cache belongs to the prior identity"
+        )
+        _ = await swappedStore.refresh(providerID: provider.id, force: true)
+        XCTAssertNil(
+            swappedStore.localHistoryDocument(deviceID: "dev", deviceName: "Mac").providers[provider.id],
+            "a live-limits success that preserved old history does not establish a new binding"
+        )
+
+        _ = await swappedStore.refresh(providerID: provider.id, force: true)
+        let freshDocument = swappedStore.localHistoryDocument(deviceID: "dev", deviceName: "Mac")
+        XCTAssertEqual(freshDocument.identities?[provider.id], teamKey)
+        XCTAssertEqual(freshDocument.providers[provider.id]?.series.daily.first?.costUSD, 2)
+
+        swappedStore.updateProviderIdentityKeys([provider.id: "uuid-me|org-third"])
+        XCTAssertNil(
+            swappedStore.localHistoryDocument(deviceID: "dev", deviceName: "Mac").providers[provider.id],
+            "an in-process identity change invalidates the prior binding immediately"
+        )
+    }
+
+    func testDefaultSwapDoesNotAddOldCachedHistoryToMatchingPeerHistory() async throws {
+        let registry = makeRegistry()
+        let provider = registry.providers[0]
+        let descriptors = registry.descriptors(for: provider.id)
+        let defaults = makeScratchDefaults("SwapPeerMerge")
+        let cache = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots")
+        let today = dayKey(Date())
+        let oldHistory = history(day: today, tokens: 10, cost: 1)
+        var oldSnapshot = snapshot(providerID: provider.id, history: oldHistory)
+        oldSnapshot.lines = [
+            .values(label: "Today", values: [MetricValue(number: 1, kind: .dollars, estimated: true)])
+        ]
+        let oldStore = WidgetDataStore(
+            registry: registry,
+            providers: [TestProviderRuntime(
+                provider: provider,
+                descriptors: descriptors,
+                snapshot: oldSnapshot
+            )],
+            cache: cache,
+            defaults: defaults,
+            providerIdentityKeys: [provider.id: maxKey]
+        )
+        _ = await oldStore.refresh(providerID: provider.id, force: true)
+
+        let swappedStore = WidgetDataStore(
+            registry: registry,
+            providers: [],
+            cache: cache,
+            defaults: defaults,
+            providerIdentityKeys: [provider.id: teamKey]
+        )
+        XCTAssertEqual(
+            try todayCost(in: swappedStore.snapshots[provider.id]),
+            1,
+            "without a peer replacement the old account remains visible as stale local UI"
+        )
+
+        let peerHistory = history(day: today, tokens: 20, cost: 2)
+        swappedStore.setPeerHistoryDocuments([
+            makeDocument(
+                providers: [provider.id: peerHistory],
+                identities: [provider.id: teamKey]
+            )
+        ], ownDeviceID: "this-mac")
+
+        XCTAssertEqual(
+            try todayCost(in: swappedStore.snapshots[provider.id]),
+            2,
+            "the matching peer account must replace the unsafe local cache, not add to it"
+        )
+    }
+
+    func testPathIdentityUpgradeBindsOnlyHistoryScannedThisSession() async {
+        let registry = makeRegistry()
+        let provider = registry.providers[0]
+        let descriptors = registry.descriptors(for: provider.id)
+        let pathIdentity = ProviderInstanceID.pathDerivedIdentityKey(forCanonicalHome: "/tmp/codex-home")
+        let realIdentity = "account-real"
+        let currentHistory = history(day: "2026-07-16", tokens: 20, cost: 2)
+
+        let scannedDefaults = makeScratchDefaults("PathUpgradeScanned")
+        let scannedStore = WidgetDataStore(
+            registry: registry,
+            providers: [TestProviderRuntime(
+                provider: provider,
+                descriptors: descriptors,
+                snapshot: snapshot(providerID: provider.id, history: currentHistory)
+            )],
+            cache: ProviderSnapshotCache(userDefaults: scannedDefaults, storageKey: "snapshots"),
+            defaults: scannedDefaults,
+            providerIdentityKeys: [provider.id: pathIdentity]
+        )
+        _ = await scannedStore.refresh(providerID: provider.id, force: true)
+        XCTAssertNil(scannedStore.localHistoryDocument(deviceID: "dev", deviceName: "Mac").providers[provider.id])
+
+        scannedStore.updateProviderIdentityKey(realIdentity, for: provider.id)
+        let upgraded = scannedStore.localHistoryDocument(deviceID: "dev", deviceName: "Mac")
+        XCTAssertEqual(upgraded.identities?[provider.id], realIdentity)
+        XCTAssertEqual(upgraded.providers[provider.id]?.series.daily.first?.costUSD, 2)
+
+        let cachedDefaults = makeScratchDefaults("PathUpgradeCachedOnly")
+        let cache = ProviderSnapshotCache(userDefaults: cachedDefaults, storageKey: "snapshots")
+        cache.store(snapshot(providerID: provider.id, history: currentHistory))
+        let cachedOnlyStore = WidgetDataStore(
+            registry: registry,
+            providers: [],
+            cache: cache,
+            defaults: cachedDefaults,
+            providerIdentityKeys: [provider.id: pathIdentity]
+        )
+        cachedOnlyStore.updateProviderIdentityKey(realIdentity, for: provider.id)
+        XCTAssertNil(
+            cachedOnlyStore.localHistoryDocument(deviceID: "dev", deviceName: "Mac").providers[provider.id],
+            "an identity upgrade cannot bless a cache that was not scanned in this process"
+        )
+    }
+
+    func testIdentityResolvedDuringFirstRefreshBindsOnlyTheReturnedHistory() async {
+        let provider = Provider(id: "codex", displayName: "Codex", icon: .providerMark("codex"))
+        let descriptor = WidgetDescriptor.usageTrend(provider: provider)
+            .exportingHistory(scope: .machineLocal, estimatedCost: true, sourceNote: "test")
+        let registry = WidgetRegistry(providers: [provider], descriptors: [descriptor])
+        let resolvedIdentity = "account-first-refresh"
+        let currentHistory = history(day: "2026-07-16", tokens: 20, cost: 2)
+
+        var dataStore: WidgetDataStore?
+        let runtime = IdentityResolvingProviderRuntime(
+            provider: provider,
+            descriptors: [descriptor],
+            snapshot: snapshot(providerID: provider.id, history: currentHistory)
+        ) {
+            dataStore?.updateProviderIdentityKey(resolvedIdentity, for: provider.id)
+        }
+        let defaults = makeScratchDefaults("FirstRefreshIdentityResolution")
+        dataStore = WidgetDataStore(
+            registry: registry,
+            providers: [runtime],
+            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots"),
+            defaults: defaults,
+            providerIdentityKeys: [:]
+        )
+
+        _ = await dataStore?.refresh(providerID: provider.id, force: true)
+
+        let firstRefresh = dataStore?.localHistoryDocument(deviceID: "dev", deviceName: "Mac")
+        XCTAssertEqual(firstRefresh?.identities?[provider.id], resolvedIdentity)
+        XCTAssertEqual(firstRefresh?.providers[provider.id]?.series.daily.first?.costUSD, 2)
+
+        let cachedDefaults = makeScratchDefaults("CachedNilIdentityResolution")
+        let cache = ProviderSnapshotCache(userDefaults: cachedDefaults, storageKey: "snapshots")
+        cache.store(snapshot(providerID: provider.id, history: currentHistory))
+        let cachedOnlyStore = WidgetDataStore(
+            registry: registry,
+            providers: [],
+            cache: cache,
+            defaults: cachedDefaults,
+            providerIdentityKeys: [:]
+        )
+        cachedOnlyStore.updateProviderIdentityKey(resolvedIdentity, for: provider.id)
+        XCTAssertNil(
+            cachedOnlyStore.localHistoryDocument(deviceID: "dev", deviceName: "Mac").providers[provider.id],
+            "resolving an identity cannot bless history loaded only from the snapshot cache"
+        )
     }
 
     func testRemoteOnlyAccountFeedsTotalSpend() {
@@ -131,6 +438,62 @@ final class PeerHistoryIdentityTests: XCTestCase {
         )
         XCTAssertEqual(total.slices.count, 1)
         XCTAssertEqual(total.slices[0].amountUSD, 42, accuracy: 0.001)
+    }
+
+    func testRemoteOnlySpendRespectsBaseEnablementAndMachineLocalScope() {
+        var claudeEnabled = false
+        let registry = makeRegistry()
+        let dataStore = WidgetDataStore(
+            registry: registry,
+            providers: [],
+            cache: scratchCache(),
+            defaults: makeScratchDefaults("RemoteEnablement"),
+            isProviderEnabled: { providerID in providerID != "claude" || claudeEnabled },
+            providerIdentityKeys: ["claude": maxKey]
+        )
+        let today = dayKey(Date())
+        let remoteClaude = makeDocument(
+            providers: ["claude@ab12cd34": history(day: today, tokens: 10, cost: 1)],
+            identities: ["claude@ab12cd34": "uuid-other|org-x"]
+        )
+        dataStore.setPeerHistoryDocuments([remoteClaude], ownDeviceID: "this-mac")
+        XCTAssertTrue(dataStore.remoteOnlySpend.isEmpty)
+
+        claudeEnabled = true
+        dataStore.providerEnablementDidChange()
+        XCTAssertEqual(dataStore.remoteOnlySpend.count, 1)
+
+        let cursor = Provider(id: "cursor", displayName: "Cursor", icon: .providerMark("cursor"))
+        let accountWideRegistry = WidgetRegistry(
+            providers: [cursor],
+            descriptors: [
+                WidgetDescriptor.usageTrend(provider: cursor)
+                    .exportingHistory(scope: .accountWide, estimatedCost: true, sourceNote: "test")
+            ]
+        )
+        let accountWideStore = WidgetDataStore(
+            registry: accountWideRegistry,
+            providers: [],
+            cache: scratchCache(),
+            defaults: makeScratchDefaults("RemoteScope"),
+            providerIdentityKeys: ["cursor": "cursor-local"]
+        )
+        let remoteCursor = makeDocument(
+            providers: ["cursor@ab12cd34": history(day: today, tokens: 10, cost: 1)],
+            identities: ["cursor@ab12cd34": "cursor-remote"]
+        )
+        accountWideStore.setPeerHistoryDocuments([remoteCursor], ownDeviceID: "this-mac")
+        XCTAssertTrue(accountWideStore.remoteOnlySpend.isEmpty)
+    }
+
+    func testTotalSpendTooltipNamesRemoteOnlyContributors() {
+        let tooltip = TotalSpendCard.contributorTooltip(
+            names: ["Claude", "Codex", "Claude · Mac mini"]
+        )
+
+        XCTAssertTrue(tooltip.contains("Claude"))
+        XCTAssertTrue(tooltip.contains("Codex"))
+        XCTAssertTrue(tooltip.contains("Claude · Mac mini"))
     }
 
     func testTotalSpendRanksBySizeAndKeepsFamilyColors() {
@@ -204,12 +567,13 @@ final class PeerHistoryIdentityTests: XCTestCase {
     }
 
     private func makeDocument(
+        deviceID: String = UUID().uuidString,
         deviceName: String = "Peer",
         providers: [String: ProviderUsageHistory],
         identities: [String: String]?
     ) -> UsageHistoryDocument {
         UsageHistoryDocument(
-            deviceID: UUID().uuidString,
+            deviceID: deviceID,
             deviceName: deviceName,
             updatedAt: Date(),
             providers: providers,
@@ -236,10 +600,44 @@ final class PeerHistoryIdentityTests: XCTestCase {
         return snapshot
     }
 
+    private func todayCost(in snapshot: ProviderSnapshot?) throws -> Double {
+        let line = try XCTUnwrap(snapshot?.line(label: "Today"))
+        guard case .values(_, let values, _, _, _, _) = line else {
+            XCTFail("expected a Today values line")
+            return 0
+        }
+        return try XCTUnwrap(values.first(where: { $0.kind == .dollars })?.number)
+    }
+
     private func dayKey(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.string(from: date)
+    }
+}
+
+@MainActor
+private final class IdentityResolvingProviderRuntime: ProviderRuntime {
+    let provider: Provider
+    let widgetDescriptors: [WidgetDescriptor]
+    private let snapshot: ProviderSnapshot
+    private let resolveIdentity: () -> Void
+
+    init(
+        provider: Provider,
+        descriptors: [WidgetDescriptor],
+        snapshot: ProviderSnapshot,
+        resolveIdentity: @escaping () -> Void
+    ) {
+        self.provider = provider
+        self.widgetDescriptors = descriptors
+        self.snapshot = snapshot
+        self.resolveIdentity = resolveIdentity
+    }
+
+    func refresh() async -> ProviderSnapshot {
+        resolveIdentity()
+        return snapshot
     }
 }

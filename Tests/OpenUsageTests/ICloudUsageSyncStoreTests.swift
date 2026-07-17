@@ -158,6 +158,58 @@ final class ICloudUsageSyncStoreTests: XCTestCase {
         try await waitUntil { !sync.isSyncing }
     }
 
+    func testEnabledStartupDoesNotRelabelPriorAccountCacheBeforeFreshHistoryScan() async throws {
+        let defaults = makeDefaults("identity-swap-startup")
+        let provider = Provider(id: "claude", displayName: "Claude", icon: .providerMark("claude"))
+        let descriptor = WidgetDescriptor.usageTrend(provider: provider)
+            .exportingHistory(scope: .machineLocal, estimatedCost: true, sourceNote: "test")
+        let registry = WidgetRegistry(providers: [provider], descriptors: [descriptor])
+        let oldHistory = ProviderUsageHistory(series: DailyUsageSeries(daily: [
+            DailyUsageEntry(date: "2026-07-16", totalTokens: 10, costUSD: 1)
+        ]))
+        let oldRuntime = TestProviderRuntime(
+            provider: provider,
+            descriptors: [descriptor],
+            snapshot: ProviderSnapshot(
+                providerID: provider.id,
+                displayName: provider.displayName,
+                lines: [],
+                usageHistory: oldHistory
+            )
+        )
+        let oldStore = WidgetDataStore(
+            registry: registry,
+            providers: [oldRuntime],
+            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots"),
+            defaults: defaults,
+            providerIdentityKeys: [provider.id: "account-a"]
+        )
+        _ = await oldStore.refresh(providerID: provider.id, force: true)
+
+        let swappedStore = WidgetDataStore(
+            registry: registry,
+            providers: [],
+            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots"),
+            defaults: defaults,
+            providerIdentityKeys: [provider.id: "account-b"]
+        )
+        defaults.set(true, forKey: "openusage.icloudSync.enabled.v1")
+        let fileStore = RecordingHistoryFileStore()
+        let sync = ICloudUsageSyncStore(
+            dataStore: swappedStore,
+            defaults: defaults,
+            fileStore: fileStore,
+            deviceIDStore: MemoryDeviceIDStore(),
+            observesMetadataChanges: false
+        )
+
+        try await waitUntil { await fileStore.writeCount == 1 }
+        let written = await fileStore.documents.first { $0.deviceID == sync.deviceID }
+        XCTAssertNotNil(written)
+        XCTAssertNil(written?.providers[provider.id])
+        XCTAssertNil(written?.identities?[provider.id])
+    }
+
     func testDeviceIdentitySurvivesPreferencesResetThroughKeychainStore() {
         let expectedID = UUID().uuidString.lowercased()
         let firstDefaults = makeDefaults("identity-first")

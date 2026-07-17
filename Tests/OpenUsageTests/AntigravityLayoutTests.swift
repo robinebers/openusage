@@ -46,10 +46,10 @@ final class AntigravityLayoutTests: XCTestCase {
                        "a metric the user already lived with is never silently tucked away")
     }
 
-    func testSavedGeminiFlashStateIsFilteredEverywhere() {
-        // `antigravity.geminiFlash` no longer exists (owner-approved: its layout state drops with no
-        // migration). Every load path filters unknown IDs against the registry, so stale saved state
-        // self-heals.
+    func testSavedGeminiFlashStateStaysInvisibleWhileItsTombstonesAreRetained() {
+        // `antigravity.geminiFlash` no longer exists, so live registry lookups keep it out of the UI.
+        // Its saved state remains as a harmless tombstone because an unknown descriptor can also be a
+        // temporarily suppressed account instance, whose customization must return on the next launch.
         let defaults = makeDefaults("FlashFilter")
         saveStored([
             PlacedWidget(descriptorID: "antigravity.geminiPro"),
@@ -66,8 +66,12 @@ final class AntigravityLayoutTests: XCTestCase {
 
         XCTAssertFalse(store.isMetricEnabled("antigravity.geminiFlash"))
         XCTAssertFalse(store.orderedSupportedMetrics(for: "antigravity").map(\.id).contains("antigravity.geminiFlash"))
-        // The saved pin set is respected exactly (dead ID dropped, no weekly pin auto-added).
-        XCTAssertEqual(store.pinnedMetricIDs, ["antigravity.geminiPro"])
+        XCTAssertEqual(
+            store.pinnedGroups.flatMap(\.alwaysShownMetrics).map(\.id),
+            ["antigravity.geminiPro"],
+            "the dead pin stays invisible and an existing pin set gains no new defaults"
+        )
+        XCTAssertTrue(store.pinnedMetricIDs.contains("antigravity.geminiFlash"))
     }
 
     func testAbsentPinsKeyAdoptsGeminiWeeklyPinOnUpgrade() {
