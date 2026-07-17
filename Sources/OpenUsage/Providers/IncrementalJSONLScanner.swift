@@ -105,20 +105,21 @@ actor IncrementalJSONLScanner<Item: Codable & Sendable> {
     /// every file's items concatenated in the input order — callers pass a path-sorted list so a
     /// keep-first dedup stays deterministic. Files whose mtime predates `since` are skipped, so a
     /// years-deep tree stays cheap to rescan; an unreadable file is skipped and not cached, so a
-    /// transient read failure doesn't stick.
+    /// transient read failure doesn't stick. `nil` means the scan was canceled; a completed scan with
+    /// no parsed rows returns `[]`, so callers never mistake cancellation for authoritative empty data.
     func items(
         from files: [JSONLScanning.DiscoveredFile],
         since: Date,
         cacheIdentity: String = "default",
         parse: @Sendable @escaping (Data) -> [Item]?
-    ) async -> [Item] {
+    ) async -> [Item]? {
         precondition(!cacheIdentity.isEmpty)
-        guard await acquire(cacheIdentity) else { return [] }
+        guard await acquire(cacheIdentity) else { return nil }
         defer { release(cacheIdentity) }
-        guard !Task.isCancelled else { return [] }
+        guard !Task.isCancelled else { return nil }
 
         await loadCacheIfNeeded(identity: cacheIdentity)
-        guard !Task.isCancelled else { return [] }
+        guard !Task.isCancelled else { return nil }
         let currentCache = caches[cacheIdentity] ?? [:]
         // Keep other same-parser scans' files in the shared partition until they age out of the window.
         // This lets multi-account cards with disjoint roots share one actor safely; only the current
@@ -140,10 +141,11 @@ actor IncrementalJSONLScanner<Item: Codable & Sendable> {
             permitPool: parsePermitPool,
             parse: parse
         )
-        guard !Task.isCancelled else { return [] }
+        guard !Task.isCancelled else { return nil }
         let checkedPaths = Set(parseResults.lazy.map(\.file.path))
         let unreadablePaths = Set(parseResults.lazy.filter(\.readFailed).map(\.file.path))
         await readFailureReporter.update(checkedPaths: checkedPaths, failingPaths: unreadablePaths)
+        guard !Task.isCancelled else { return nil }
         var parsedPaths: Set<String> = []
         for result in parseResults {
             let (file, parsed) = (result.file, result.items)
@@ -172,7 +174,7 @@ actor IncrementalJSONLScanner<Item: Codable & Sendable> {
             guard let cached = nextCache[file.path] else { continue }
             items.append(contentsOf: cached.items)
         }
-        return items
+        return Task.isCancelled ? nil : items
     }
 
     /// Wait for the real debounced tasks rather than bypassing them. Tests configure a tiny debounce,
@@ -186,11 +188,17 @@ actor IncrementalJSONLScanner<Item: Codable & Sendable> {
     /// Commits the latest snapshots immediately. One-shot processes call this before exiting; the
     /// long-lived app keeps the ordinary debounced path so refresh latency is unaffected.
     func flushPendingWrites() async {
-        let identities = Array(writeTasks.keys)
+        var identities = Set(writeTasks.keys)
+        identities.formUnion(dirtyUpsertPaths.compactMap { $0.value.isEmpty ? nil : $0.key })
+        identities.formUnion(dirtyRemovals.compactMap { $0.value.isEmpty ? nil : $0.key })
+        identities.formUnion(invalidPersistenceIdentities)
         for identity in identities {
             writeTasks[identity]?.cancel()
             writeTasks[identity] = nil
-            guard let generation = writeGenerations[identity] else { continue }
+            // Supersede an encoding or writer operation already in flight. Its generation guards then
+            // leave the dirty state for this explicit drain to commit instead of racing to clear it.
+            let generation = writeGenerations[identity, default: 0] + 1
+            writeGenerations[identity] = generation
             await persistCache(identity: identity, generation: generation)
         }
     }

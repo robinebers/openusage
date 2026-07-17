@@ -89,12 +89,12 @@ actor ClaudeLogUsageScanner {
         }
 
         // Entries come back concatenated in path-sorted file order, so dedup's keep-first is deterministic.
-        let entries = await scanner.items(
+        guard let entries = await scanner.items(
             from: files,
             since: since,
             cacheIdentity: cacheIdentity,
             parse: Self.parseFile
-        )
+        ), !Task.isCancelled else { return nil }
         return Self.aggregate(entries: Self.dedup(entries), since: since, pricing: pricing)
     }
 

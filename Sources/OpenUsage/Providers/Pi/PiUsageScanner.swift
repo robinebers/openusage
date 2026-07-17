@@ -68,12 +68,12 @@ actor PiUsageScanner {
             return nil
         }
 
-        let entries = await scanner.items(
+        guard let entries = await scanner.items(
             from: files,
             since: since,
             cacheIdentity: cacheIdentity,
             parse: Self.parseFile
-        )
+        ), !Task.isCancelled else { return nil }
         return Self.aggregate(entries: Self.dedup(entries), cardID: cardID, since: since, pricing: pricing)
     }
 

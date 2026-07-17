@@ -94,12 +94,12 @@ actor CodexLogUsageScanner {
             return nil
         }
 
-        let events = await scanner.items(
+        guard let events = await scanner.items(
             from: files,
             since: since,
             cacheIdentity: identity,
             parse: Self.parseFile
-        )
+        ), !Task.isCancelled else { return nil }
         return Self.aggregate(events: events, since: since, pricing: pricing)
     }
 

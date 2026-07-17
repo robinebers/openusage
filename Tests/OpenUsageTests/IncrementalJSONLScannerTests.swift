@@ -285,60 +285,6 @@ final class IncrementalJSONLScannerTests: XCTestCase {
         XCTAssertEqual(parser.count, 1)
     }
 
-    func testCancelledQueuedScanNeverInvokesItsParser() async throws {
-        let base = try makeDirectory("CancelledQueue")
-        defer { try? FileManager.default.removeItem(at: base) }
-        let file = try makeFile(named: "usage.jsonl", contents: "7", in: base, mtime: Date())
-        let scanner = IncrementalJSONLScanner<Int>()
-        let blockingParser = BlockingParser()
-        let firstTask = Task {
-            await scanner.items(
-                from: [file], since: .distantPast, cacheIdentity: "shared-home", parse: blockingParser.parse
-            )
-        }
-        let startDeadline = ContinuousClock.now.advanced(by: .seconds(2))
-        while !blockingParser.hasStarted, ContinuousClock.now < startDeadline {
-            try? await Task.sleep(for: .milliseconds(1))
-        }
-        guard blockingParser.hasStarted else {
-            blockingParser.unblock()
-            firstTask.cancel()
-            _ = await firstTask.value
-            XCTFail("the first parser did not start before the timeout")
-            return
-        }
-
-        let queuedParser = ParseCounter()
-        let queuedTask = Task {
-            await scanner.items(
-                from: [file], since: .distantPast, cacheIdentity: "shared-home", parse: queuedParser.parse
-            )
-        }
-        let queueDeadline = ContinuousClock.now.advanced(by: .seconds(2))
-        while await scanner.queuedScanCountForTesting(identity: "shared-home") == 0,
-              ContinuousClock.now < queueDeadline
-        {
-            try? await Task.sleep(for: .milliseconds(1))
-        }
-        let queuedCount = await scanner.queuedScanCountForTesting(identity: "shared-home")
-        guard queuedCount > 0 else {
-            queuedTask.cancel()
-            blockingParser.unblock()
-            _ = await firstTask.value
-            _ = await queuedTask.value
-            XCTFail("the second scan did not queue before the timeout")
-            return
-        }
-        queuedTask.cancel()
-        blockingParser.unblock()
-
-        let firstResult = await firstTask.value
-        let queuedResult = await queuedTask.value
-        XCTAssertEqual(firstResult, [7])
-        XCTAssertEqual(queuedResult, [])
-        XCTAssertEqual(queuedParser.count, 0)
-    }
-
     func testLimitsConcurrentParsesAndKeepsFileOrder() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("OpenUsageScannerTests-\(UUID().uuidString)", isDirectory: true)

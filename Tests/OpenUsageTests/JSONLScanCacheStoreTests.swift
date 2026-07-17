@@ -276,6 +276,49 @@ final class JSONLScanCacheStoreTests: XCTestCase {
         XCTAssertEqual(reloadCounter.count, 0)
     }
 
+    func testFlushRetriesDirtyWriteAfterDebouncedFailure() async throws {
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OpenUsageCacheFlushRetryTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        let file = try writeSource(
+            "7",
+            to: base.appendingPathComponent("usage.jsonl"),
+            mtime: Date()
+        )
+        let cacheDirectory = base.appendingPathComponent("cache")
+        try Data("blocks-directory-creation".utf8).write(to: cacheDirectory)
+        let persistence = JSONLScanCachePersistence(
+            namespace: "test",
+            schemaVersion: 1,
+            directory: cacheDirectory,
+            writeDebounce: .milliseconds(1)
+        )
+        let scanner = IncrementalJSONLScanner<Int>(persistence: persistence)
+        _ = await scanner.items(
+            from: [file],
+            since: .distantPast,
+            cacheIdentity: "home",
+            parse: ParseCounter().parse
+        )
+        await scanner.waitForPendingWritesForTesting()
+
+        // The failed debounce has no live task handle now, but its dirty source must still be drained.
+        try FileManager.default.removeItem(at: cacheDirectory)
+        await scanner.flushPendingWrites()
+
+        let reloadCounter = ParseCounter()
+        let reloaded = IncrementalJSONLScanner<Int>(persistence: persistence)
+        let items = await reloaded.items(
+            from: [file],
+            since: .distantPast,
+            cacheIdentity: "home",
+            parse: reloadCounter.parse
+        )
+        XCTAssertEqual(items, [7])
+        XCTAssertEqual(reloadCounter.count, 0)
+    }
+
     func testParseLimitIsSharedAcrossDifferentIdentities() async throws {
         let base = FileManager.default.temporaryDirectory
             .appendingPathComponent("OpenUsageCachePermitTests-\(UUID().uuidString)", isDirectory: true)

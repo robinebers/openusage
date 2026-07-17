@@ -260,6 +260,12 @@ final class WidgetDataStore {
         var snapshot = await ProviderRefreshContext.$isManual.withValue(force) {
             await provider.refresh()
         }
+        // A canceled refresh may still return if a provider's underlying work is non-throwing. Never
+        // publish that potentially partial snapshot; keep the last-good state exactly as it was.
+        guard !Task.isCancelled else {
+            AppLog.debug(.refresh, "cancelled \(providerID) refresh; keeping last-good snapshot")
+            return .skipped
+        }
         let durationMs = durationMilliseconds(since: start)
         if TimeInterval(durationMs) >= slowProviderRefreshThreshold * 1000 {
             AppLog.warn(
