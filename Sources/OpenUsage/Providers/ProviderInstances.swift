@@ -158,9 +158,8 @@ struct DiscoveredProviderInstance: Hashable, Sendable {
     var identityLabel: String?
 }
 
-/// Everything `ProviderCatalog` needs to build instance runtimes alongside the defaults. Assembled in
-/// `AppContainer` from the discovery result; the one-shot CLI passes none and keeps default-only
-/// behavior.
+/// Everything `ProviderCatalog` needs to build instance runtimes alongside the defaults. The shared
+/// `ProviderRuntimeAssembly` creates it from discovery for both the app and one-shot CLI.
 struct ProviderInstanceContext {
     var records: [ProviderInstanceRecord]
     /// Additional Claude usage roots per instance id. These include Cowork sandboxes and same-account

@@ -13,8 +13,12 @@ final class UsageReaderTests: XCTestCase {
         var refreshError: String?
         var refreshedAt = Date()
 
-        init(id: String = "stub") {
-            self.provider = Provider(id: id, displayName: id.capitalized, icon: .providerMark(id))
+        init(id: String = "stub", displayName: String? = nil) {
+            self.provider = Provider(
+                id: id,
+                displayName: displayName ?? id.capitalized,
+                icon: .providerMark(ProviderInstanceID.base(of: id))
+            )
         }
 
         func hasLocalCredentials() async -> Bool { true }
@@ -101,6 +105,52 @@ final class UsageReaderTests: XCTestCase {
 
         XCTAssertEqual(requested.refreshCount, 1)
         XCTAssertEqual(other.refreshCount, 0)
+    }
+
+    func testCollectionIncludesEnabledAccountInstances() async throws {
+        let defaults = defaults()
+        let primary = StubProvider(id: "claude", displayName: "Claude 1")
+        let instanceID = "claude@ab12cd34"
+        let secondary = StubProvider(id: instanceID, displayName: "Claude 2")
+        ProviderEnablementStore(defaults: defaults).seedEnabledProviders(["claude", instanceID])
+        let cache = ProviderSnapshotCache(userDefaults: defaults)
+        cache.store(await primary.refresh())
+        cache.store(await secondary.refresh())
+        primary.refreshCount = 0
+        secondary.refreshCount = 0
+
+        let result = try await UsageReader(
+            userDefaults: defaults,
+            providers: [primary, secondary]
+        ).read()
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: result.data) as? [String: Any])
+        let providers = try XCTUnwrap(root["providers"] as? [String: Any])
+
+        XCTAssertEqual(Set(providers.keys), ["claude", instanceID])
+        XCTAssertEqual(
+            (providers[instanceID] as? [String: Any])?["displayName"] as? String,
+            "Claude 2"
+        )
+        XCTAssertEqual(primary.refreshCount, 0)
+        XCTAssertEqual(secondary.refreshCount, 0)
+    }
+
+    func testForcedInstanceReadRefreshesOnlyRequestedAccount() async throws {
+        let defaults = defaults()
+        let primary = StubProvider(id: "claude", displayName: "Claude 1")
+        let instanceID = "claude@ab12cd34"
+        let secondary = StubProvider(id: instanceID, displayName: "Claude 2")
+
+        let result = try await UsageReader(
+            userDefaults: defaults,
+            providers: [primary, secondary]
+        ).read(providerID: instanceID, force: true)
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: result.data) as? [String: Any])
+        let providers = try XCTUnwrap(root["providers"] as? [String: Any])
+
+        XCTAssertEqual(Set(providers.keys), [instanceID])
+        XCTAssertEqual(primary.refreshCount, 0)
+        XCTAssertEqual(secondary.refreshCount, 1)
     }
 
     func testUnknownProviderFailsBeforeRefresh() async {

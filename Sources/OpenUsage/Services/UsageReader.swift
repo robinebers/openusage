@@ -41,12 +41,22 @@ public struct UsageReader {
 
     public func read(providerID requestedProviderID: String? = nil, force: Bool = false) async throws -> UsageReadResult {
         let providerID = requestedProviderID?.lowercased()
-        let providers = providersOverride ?? ProviderCatalog.make(defaults: defaults)
+        let identityUpdateRelay = ProviderIdentityUpdateRelay()
+        let runtimeAssembly = providersOverride == nil
+            ? ProviderRuntimeAssembly.make(
+                defaults: defaults,
+                codexIdentityDidResolve: { providerID, identityKey in
+                    identityUpdateRelay.submit(providerID: providerID, identityKey: identityKey)
+                }
+            )
+            : nil
+        let providers = providersOverride ?? runtimeAssembly?.providers ?? []
         let registry = WidgetRegistry.from(providers)
         let knownIDs = Set(registry.providers.map(\.id))
         if let providerID, !knownIDs.contains(providerID) {
             throw UsageReaderError.unknownProvider(providerID)
         }
+        let codexIdentityWarmTask = runtimeAssembly?.startCodexIdentityWarmTask()
 
         let enablement = ProviderEnablementStore(defaults: defaults)
         let includesProvider: @MainActor (String) -> Bool = { id in
@@ -73,8 +83,12 @@ public struct UsageReader {
                 providers: providers,
                 cache: cache,
                 defaults: defaults,
-                isProviderEnabled: includesProvider
+                isProviderEnabled: includesProvider,
+                providerIdentityKeys: runtimeAssembly?.providerIdentityKeys ?? [:]
             )
+            identityUpdateRelay.install { [weak dataStore] providerID, identityKey in
+                dataStore?.updateProviderIdentityKey(identityKey, for: providerID)
+            }
             if let providerID {
                 _ = await dataStore.refresh(providerID: providerID, force: force)
             } else {
@@ -96,11 +110,13 @@ public struct UsageReader {
         let path = providerID.map { "/v1/limits/\($0)" } ?? "/v1/limits"
         let response = LocalUsageAPI.respond(method: "GET", path: path, state: state)
         guard let data = response.body else {
+            await codexIdentityWarmTask?.value
             if let warning = warnings.first {
                 throw UsageReaderError.refreshFailed(warning)
             }
             throw UsageReaderError.noCachedSnapshot(providerID ?? "enabled providers")
         }
+        await codexIdentityWarmTask?.value
         return UsageReadResult(data: data, warnings: warnings)
     }
 

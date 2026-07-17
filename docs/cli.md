@@ -8,13 +8,19 @@ charts, or spend-history tiles.
 ```sh
 openusage                 # every enabled provider, refreshing stale cache entries
 openusage codex           # one provider, refreshing when its cache is stale
+openusage codex@ab12cd34  # one discovered additional account, using its stable instance ID
 openusage codex --force   # refresh through the shared provider engine, cache, print, exit
 ```
 
 The command and app import the same providers, authentication stores, pricing, refresh coordinator, and
-snapshot cache. A normal read reuses snapshots less than five minutes old and refreshes missing or stale
-ones. `--force` is the CLI equivalent of the app's manual refresh: it bypasses that freshness gate and
-writes successful results to the same cache. Credentials are used locally and never appear in the output.
+snapshot cache, including the same Claude/Codex account discovery and duplicate-suppression rules.
+Additional accounts appear as separate entries in the `providers` object, keyed by their stable instance
+IDs (for example, `claude@ab12cd34`) and named `Claude 2`, `Codex 2`, and so on. The bare `claude` or
+`codex` ID always selects the default account, preserving the original CLI behavior.
+
+A normal read reuses snapshots less than five minutes old and refreshes missing or stale ones. `--force`
+is the CLI equivalent of the app's manual refresh: it bypasses that freshness gate and writes successful
+results to the same account-scoped cache. Credentials are used locally and never appear in the output.
 
 ## Install on `PATH`
 

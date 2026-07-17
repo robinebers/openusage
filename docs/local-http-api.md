@@ -12,11 +12,15 @@ The server starts automatically with the app. If the port is already in use, the
 
 Returns a machine-facing envelope for all **enabled** providers. Providers and resources are keyed by
 stable IDs; values are raw scalars with explicit units. This is the preferred route for new integrations
-and the exact format printed by the `openusage` CLI.
+and the exact format printed by the `openusage` CLI. Additional Claude/Codex accounts are independent
+providers with stable instance IDs such as `claude@ab12cd34`; their `displayName` values distinguish
+`Claude 1`, `Claude 2`, and so on.
 
 ### `GET /v1/limits/:providerId`
 
 Returns the same envelope containing one provider. It works for disabled providers too.
+The `providerId` can be either a bare default-account ID (`claude`) or an instance ID
+(`claude@ab12cd34`).
 
 - **200 OK** — limits envelope, including an `errors` entry when a refresh failed.
 - **204 No Content** — provider is known but has neither a snapshot nor a recorded refresh failure yet.

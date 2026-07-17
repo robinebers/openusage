@@ -6,7 +6,8 @@ import Foundation
 enum ProviderCatalog {
     /// `instanceContext` carries the discovered extra logins (provider instances). Each becomes an
     /// ordinary runtime inserted right after its base provider, with credentials and usage logs pinned
-    /// to exactly its own home. `nil` (the one-shot CLI, tests) keeps the default-only set.
+    /// to exactly its own home. `nil` keeps the historical default-only set for focused tests and
+    /// callers that intentionally do not perform instance discovery.
     static func make(
         defaults: UserDefaults = .standard,
         instanceContext: ProviderInstanceContext? = nil,
