@@ -11,6 +11,7 @@ struct UsageSparkline: View {
     private let points: [MetricChartPoint]
 
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
+    @Environment(\.reduceAnimations) private var reduceAnimations
     @State private var hover = HoverPopoverState()
 
     /// Widest the bar strip grows to, and a floor so it can't collapse to a sliver next to a long title.
@@ -53,8 +54,10 @@ struct UsageSparkline: View {
                 // Dismissing from outside (click-away) removes the detail view without an `.ended`
                 // hover event, so a plain assignment would strand `overDetail == true` and block
                 // future hides — reset the whole hover state instead.
-                .popover(isPresented: Binding(get: { hover.isPresented }, set: { if !$0 { hover.dismiss() } }),
-                         arrowEdge: .top) {
+                .motionAwareHoverPopover(
+                    isPresented: Binding(get: { hover.isPresented }, set: { if !$0 { hover.dismiss() } }),
+                    reduceAnimations: reduceAnimations
+                ) {
                     UsageTrendDetail(title: data.title, points: points, note: data.chartNote) { inside in
                         hover.detailHover(inside)
                     }

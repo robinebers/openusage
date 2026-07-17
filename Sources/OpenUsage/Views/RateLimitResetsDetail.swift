@@ -328,7 +328,7 @@ struct RateLimitResetsDetail: View {
                 .font(.system(size: density.supportingPointSize))
                 .foregroundStyle(.secondary)
             Spacer(minLength: 8)
-            ProgressView().controlSize(.small)
+            MotionAwareProgressView(controlSize: .small)
         }
         .frame(height: nodeHeight)
     }
