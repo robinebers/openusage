@@ -16,11 +16,12 @@ extension EnvironmentValues {
 }
 
 /// Whether the hosting popover is currently on-screen. The easter-egg animation loops read this to
-/// **mount** their `TimelineView(.animation)` clocks only while the popover is visible and drop to a
-/// static frame when it isn't, so a closed popover with the egg still active runs no display link and
-/// spends no CPU. Default `false`, so the windowless ShareCard export and any non-popover host never
-/// mount the loops. Seeded from `PopoverTransparencyStore.popoverShown`, which `StatusItemController`
-/// flips at its `showPanel`/`hidePanel` chokepoints.
+/// **mount** their `TimelineView(.animation)` clocks only while the popover is visible and motion is
+/// allowed, and drop to a static frame otherwise. A closed popover or reduced-motion preference with
+/// the egg still active therefore runs no display link and spends no animation work. Default `false`,
+/// so the windowless ShareCard export and any non-popover host never mount the loops. Seeded from
+/// `PopoverTransparencyStore.popoverShown`, which `StatusItemController` flips at its
+/// `showPanel`/`hidePanel` chokepoints.
 ///
 /// This is a STRUCTURAL mount gate (`if shown { TimelineView } else { static }`), deliberately NOT the
 /// reverted `TimelineView(.animation(paused: !shown))` overload (commit 1ef9c4e): that overload froze
@@ -40,14 +41,16 @@ extension EnvironmentValues {
 }
 
 /// Renders time-driven `content(t)` under a live `TimelineView(.animation)` while the popover is
-/// on-screen, and at a single static frame (the current instant, matching the live clock's first frame)
-/// when it's hidden — so no display link ticks behind a closed popover, yet the look doesn't snap off on
-/// close. This is the shared home of the STRUCTURAL mount gate every easter-egg loop uses; it is
+/// on-screen and motion is allowed, and at a single static frame otherwise — so no display link ticks
+/// behind a closed popover or under Reduce Animations, yet the look doesn't disappear. Reduced motion
+/// uses the calm baseline (`t == 0`); a merely hidden popover keeps its current-looking phase. This is
+/// the shared home of the STRUCTURAL mount gate every easter-egg loop uses; it is
 /// deliberately NOT the reverted `TimelineView(.animation(paused:))` overload (see `\.popoverIsVisible`).
 /// Both branches carry `.transition(.identity)` so toggling the egg crossfades via the surrounding
 /// `.animation`, never a hard cut. `t` is `timeIntervalSinceReferenceDate`.
 struct VisibilityGatedTimeline<Content: View>: View {
     @Environment(\.popoverIsVisible) private var shown
+    @Environment(\.reduceAnimations) private var reduceAnimations
     private let content: (TimeInterval) -> Content
 
     init(@ViewBuilder content: @escaping (TimeInterval) -> Content) {
@@ -55,15 +58,32 @@ struct VisibilityGatedTimeline<Content: View>: View {
     }
 
     var body: some View {
-        if shown {
+        switch MotionTimelineMode.resolve(popoverShown: shown, reduceAnimations: reduceAnimations) {
+        case .live:
             TimelineView(.animation) { timeline in
                 content(timeline.date.timeIntervalSinceReferenceDate)
             }
             .transition(.identity)
-        } else {
+        case .currentStatic:
             content(Date().timeIntervalSinceReferenceDate)
                 .transition(.identity)
+        case .baselineStatic:
+            content(0)
+                .transition(.identity)
         }
+    }
+}
+
+/// Structural policy for continuous decorative motion. Kept pure so the no-display-link guarantee is
+/// regression-testable without mounting a SwiftUI host.
+enum MotionTimelineMode: Equatable {
+    case live
+    case currentStatic
+    case baselineStatic
+
+    static func resolve(popoverShown: Bool, reduceAnimations: Bool) -> Self {
+        if reduceAnimations { return .baselineStatic }
+        return popoverShown ? .live : .currentStatic
     }
 }
 

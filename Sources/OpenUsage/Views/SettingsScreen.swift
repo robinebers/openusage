@@ -20,6 +20,7 @@ struct SettingsScreen: View {
     @AppStorage(AppearanceSetting.key) private var appearance = AppearanceSetting.system
     @AppStorage(TimeFormatSetting.key) private var timeFormat = TimeFormatSetting.auto
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
+    @AppStorage(ReduceAnimationsSetting.key) private var reduceAnimations = ReduceAnimationsSetting.fallback
     @AppStorage(LogLevelSetting.key) private var logLevel = LogLevelSetting.fallback
     /// Surfaced under the Advanced rows when copying the path or revealing the file fails.
     @State private var logActionError: String?
@@ -39,164 +40,17 @@ struct SettingsScreen: View {
     }
 
     private var content: some View {
-        @Bindable var store = container.dataStore
-        @Bindable var layout = container.layout
-        @Bindable var updater = updater
-        @Bindable var transparency = container.transparency
-        @Bindable var privacy = container.privacy
-        @Bindable var notifications = container.notificationSettings
         // Same section rhythm as the dashboard and Customize (all read the density setting).
-        return VStack(alignment: .leading, spacing: density.sectionSpacing) {
-            section("General") {
-                // The dashboard's cross-provider Total Spend card; at least one enabled spend-capable
-                // provider must exist, so this toggle can't conjure it up alone.
-                row("Show Total Spend") {
-                    Toggle("", isOn: $showTotalSpend)
-                        .settingsSwitchStyle()
-                }
-                row("Launch at Login") {
-                    Toggle("", isOn: Binding(
-                        get: { launchAtLogin.isEnabled },
-                        set: { launchAtLogin.update(to: $0) }
-                    ))
-                        .settingsSwitchStyle()
-                }
-                if let launchAtLoginError = launchAtLogin.errorMessage {
-                    inlineNotice(launchAtLoginError)
-                }
-                // Click-to-record field; its ⓧ clears the combo and disables the shortcut.
-                row("Global Shortcut") {
-                    ShortcutRecorderField(name: .togglePopover)
-                        .hoverTooltip("Open OpenUsage from anywhere")
-                }
-            }
+        VStack(alignment: .leading, spacing: density.sectionSpacing) {
+            generalSection
             ICloudSyncSettingsSection(sync: container.iCloudSync)
-            section("Appearance") {
-                row("Icon Style") {
-                    picker($layout.menuBarStyle, options: MenuBarStyle.allCases, label: \.label)
-                }
-                row("Theme") {
-                    picker($appearance, options: AppearanceSetting.allCases, label: \.label)
-                        // NSApp-level so the popover panel restyles too (it ignores preferredColorScheme).
-                        .onChange(of: appearance) {
-                            AppearanceSetting.applyCurrent()
-                        }
-                }
-                row("Density") {
-                    picker($density, options: DensitySetting.allCases, label: \.label)
-                }
-                row("Time Format") {
-                    picker($timeFormat, options: TimeFormatSetting.allCases, label: \.label)
-                }
-                // Translucent popover the proper way (behind-window vibrancy, text stays legible). It
-                // yields to the system accessibility settings, and to the party easter egg while that's
-                // running (the egg drives the look) — either way, see the paused notice below.
-                row("Increase Transparency") {
-                    Toggle("", isOn: $transparency.increaseTransparency)
-                        .settingsSwitchStyle()
-                        // Party mode owns the look while it's active, so disable (dim) the toggle to show
-                        // it has no effect right now — its stored value resumes once the egg is exited.
-                        .disabled(transparency.secretCodeActive)
-                }
-                // Egg first: while Party runs it overrides the toggle regardless of the system flags, so
-                // its notice takes precedence over the accessibility one.
-                if transparency.secretCodeActive {
-                    inlineNotice("Party mode is on, so this stays paused.")
-                } else if transparency.isPaused {
-                    inlineNotice("macOS Reduce Transparency or Increase Contrast is on, so this stays paused.")
-                }
-                // Both rows surface only after the secret code has been entered. Party Mode is the egg's
-                // own switch: turning it off (like re-typing the code) exits the egg and hides both rows,
-                // dropping back to the base state. Drunk Mode escalates the readable party into the woozy,
-                // barely-readable state and back — turning it off stays in the party (4 → 3), while turning
-                // Party Mode off from there clears Drunk Mode too (4 → base).
-                if transparency.secretCodeActive {
-                    row("Party Mode") {
-                        Toggle("", isOn: $transparency.partyModeActive)
-                            .settingsSwitchStyle()
-                    }
-                    row("Drunk Mode") {
-                        Toggle("", isOn: $transparency.drunkMode)
-                            .settingsSwitchStyle()
-                    }
-                    // The egg yields to the accessibility flags too: when one is on the panel stays
-                    // opaque, so explain why the party looks normal rather than leaving it a mystery.
-                    if transparency.partyPaused {
-                        inlineNotice("macOS Reduce Transparency or Increase Contrast is on, so the party stays paused.")
-                    }
-                }
-            }
-            section("Usage Display") {
-                row("Show Usage As") {
-                    picker($store.meterStyle, options: WidgetDisplayMode.allCases, label: \.label)
-                }
-                row("Reset Times") {
-                    picker($store.resetDisplayMode, options: ResetDisplayMode.allCases, label: \.label)
-                }
-                // Off (default) leaves pacing on yellow and red only. On also surfaces projection
-                // and the even-pace tick on blue rows.
-                row("Always Show Pacing") {
-                    Toggle("", isOn: $store.alwaysShowPacing)
-                        .settingsSwitchStyle()
-                        .hoverTooltip("Show how you're pacing on every metric, not just ones near their limit")
-                }
-            }
+            appearanceSection
+            usageDisplaySection
             notificationsSection
-            section("Privacy") {
-                row("Hide From Screen Share") {
-                    Toggle("", isOn: $privacy.hideUsageWhileScreenSharing)
-                        .settingsSwitchStyle()
-                }
-                Text("While your screen is shared or recorded, the menu bar shows “OpenUsage” instead of your usage.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                row("Share Anonymous Usage") {
-                    Toggle("", isOn: Binding(
-                        get: { container.telemetry.isEnabled },
-                        set: { container.telemetry.setEnabled($0) }
-                    ))
-                    .settingsSwitchStyle()
-                }
-                // Plain-language disclosure of exactly what leaves the machine — coarse counts and
-                // error types only, never account details or usage values.
-                Text("Shares anonymous usage counts and error types to help improve OpenUsage. No account details, credentials, or usage values are sent.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
+            privacySection
             commandLineSection
             advancedSection
-            // Visible whenever the updater is active (only the signed release build ships a feed; the
-            // dev build and a bare `swift run`, with no feed, hide this).
-            if updater.isActive {
-                section("Updates") {
-                    row("Update Automatically") {
-                        Toggle("", isOn: $updater.automaticallyChecksForUpdates)
-                            .settingsSwitchStyle()
-                    }
-                    row("Beta Updates") {
-                        Toggle("", isOn: $updater.betaChannelEnabled)
-                            .settingsSwitchStyle()
-                            .hoverTooltip("Receive pre-release builds before they ship to everyone")
-                    }
-                    // No version label here — the footer already shows it. The frame goes on the label so
-                    // the glass background stretches the full row width instead of hugging the text.
-                    // (Glass on macOS 26+, bordered fallback on macOS 15.)
-                    Button { updater.checkForUpdates() } label: {
-                        Text("Check for Updates…").frame(maxWidth: .infinity)
-                    }
-                    .glassButtonStyle()
-                    .controlSize(.regular)
-                    .disabled(!updater.canCheckForUpdates)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, density.controlRowPadding)
-                }
-            }
+            updatesSection
             // Mirror of the Customize cross-link — the layout controls live on the other screen.
             ScreenCrossLinkRow(
                 systemImage: "slider.horizontal.3",
@@ -207,10 +61,186 @@ struct SettingsScreen: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
-        .task { await refreshNotificationsAuth() }
+        .task {
+            async let launchAtLoginStatus: Void = launchAtLogin.refreshStatus()
+            async let notificationsAuth: Void = refreshNotificationsAuth()
+            _ = await (launchAtLoginStatus, notificationsAuth)
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             commandLineTool.refreshStatus()
             Task { await refreshNotificationsAuth() }
+        }
+    }
+
+    private var generalSection: some View {
+        section("General") {
+            // The dashboard's cross-provider Total Spend card; at least one enabled spend-capable
+            // provider must exist, so this toggle can't conjure it up alone.
+            row("Show Total Spend") {
+                Toggle("", isOn: $showTotalSpend)
+                    .settingsSwitchStyle()
+            }
+            row("Launch at Login") {
+                Toggle("", isOn: Binding(
+                    get: { launchAtLogin.isEnabled },
+                    set: { launchAtLogin.update(to: $0) }
+                ))
+                    .settingsSwitchStyle()
+                    .disabled(launchAtLogin.isLoading)
+            }
+            if let launchAtLoginError = launchAtLogin.errorMessage {
+                inlineNotice(launchAtLoginError)
+            }
+            // Click-to-record field; its ⓧ clears the combo and disables the shortcut.
+            row("Global Shortcut") {
+                ShortcutRecorderField(name: .togglePopover)
+                    .hoverTooltip("Open OpenUsage from anywhere")
+            }
+        }
+    }
+
+    private var appearanceSection: some View {
+        @Bindable var layout = container.layout
+        @Bindable var transparency = container.transparency
+        return section("Appearance") {
+            row("Icon Style") {
+                picker($layout.menuBarStyle, options: MenuBarStyle.allCases, label: \.label)
+            }
+            row("Theme") {
+                picker($appearance, options: AppearanceSetting.allCases, label: \.label)
+                    // NSApp-level so the popover panel restyles too (it ignores preferredColorScheme).
+                    .onChange(of: appearance) {
+                        AppearanceSetting.applyCurrent()
+                    }
+            }
+            row("Density") {
+                picker($density, options: DensitySetting.allCases, label: \.label)
+            }
+            row("Reduce Animations") {
+                Toggle("", isOn: $reduceAnimations)
+                    .settingsSwitchStyle()
+            }
+            row("Time Format") {
+                picker($timeFormat, options: TimeFormatSetting.allCases, label: \.label)
+            }
+            // Translucent popover the proper way (behind-window vibrancy, text stays legible). It
+            // yields to the system accessibility settings, and to the party easter egg while that's
+            // running (the egg drives the look) — either way, see the paused notice below.
+            row("Increase Transparency") {
+                Toggle("", isOn: $transparency.increaseTransparency)
+                    .settingsSwitchStyle()
+                    // Party mode owns the look while it's active, so disable (dim) the toggle to show
+                    // it has no effect right now — its stored value resumes once the egg is exited.
+                    .disabled(transparency.secretCodeActive)
+            }
+            // Egg first: while Party runs it overrides the toggle regardless of the system flags, so
+            // its notice takes precedence over the accessibility one.
+            if transparency.secretCodeActive {
+                inlineNotice("Party mode is on, so this stays paused.")
+            } else if transparency.isPaused {
+                inlineNotice("macOS Reduce Transparency or Increase Contrast is on, so this stays paused.")
+            }
+            // Both rows surface only after the secret code has been entered. Party Mode is the egg's
+            // own switch: turning it off (like re-typing the code) exits the egg and hides both rows,
+            // dropping back to the base state. Drunk Mode escalates the readable party into the woozy,
+            // barely-readable state and back — turning it off stays in the party (4 → 3), while turning
+            // Party Mode off from there clears Drunk Mode too (4 → base).
+            if transparency.secretCodeActive {
+                row("Party Mode") {
+                    Toggle("", isOn: $transparency.partyModeActive)
+                        .settingsSwitchStyle()
+                }
+                row("Drunk Mode") {
+                    Toggle("", isOn: $transparency.drunkMode)
+                        .settingsSwitchStyle()
+                }
+                // The egg yields to the accessibility flags too: when one is on the panel stays
+                // opaque, so explain why the party looks normal rather than leaving it a mystery.
+                if transparency.partyPaused {
+                    inlineNotice("macOS Reduce Transparency or Increase Contrast is on, so the party stays paused.")
+                }
+            }
+        }
+    }
+
+    private var usageDisplaySection: some View {
+        @Bindable var store = container.dataStore
+        return section("Usage Display") {
+            row("Show Usage As") {
+                picker($store.meterStyle, options: WidgetDisplayMode.allCases, label: \.label)
+            }
+            row("Reset Times") {
+                picker($store.resetDisplayMode, options: ResetDisplayMode.allCases, label: \.label)
+            }
+            // Off (default) leaves pacing on yellow and red only. On also surfaces projection
+            // and the even-pace tick on blue rows.
+            row("Always Show Pacing") {
+                Toggle("", isOn: $store.alwaysShowPacing)
+                    .settingsSwitchStyle()
+                    .hoverTooltip("Show how you're pacing on every metric, not just ones near their limit")
+            }
+        }
+    }
+
+    private var privacySection: some View {
+        @Bindable var privacy = container.privacy
+        return section("Privacy") {
+            row("Hide From Screen Share") {
+                Toggle("", isOn: $privacy.hideUsageWhileScreenSharing)
+                    .settingsSwitchStyle()
+            }
+            Text("While your screen is shared or recorded, the menu bar shows “OpenUsage” instead of your usage.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            row("Share Anonymous Usage") {
+                Toggle("", isOn: Binding(
+                    get: { container.telemetry.isEnabled },
+                    set: { container.telemetry.setEnabled($0) }
+                ))
+                .settingsSwitchStyle()
+            }
+            // Plain-language disclosure of exactly what leaves the machine — coarse counts and
+            // error types only, never account details or usage values.
+            Text("Shares anonymous usage counts and error types to help improve OpenUsage. No account details, credentials, or usage values are sent.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder
+    private var updatesSection: some View {
+        @Bindable var updater = updater
+        // Visible whenever the updater is active (only the signed release build ships a feed; the
+        // dev build and a bare `swift run`, with no feed, hide this).
+        if updater.isActive {
+            section("Updates") {
+                row("Update Automatically") {
+                    Toggle("", isOn: $updater.automaticallyChecksForUpdates)
+                        .settingsSwitchStyle()
+                }
+                row("Beta Updates") {
+                    Toggle("", isOn: $updater.betaChannelEnabled)
+                        .settingsSwitchStyle()
+                        .hoverTooltip("Receive pre-release builds before they ship to everyone")
+                }
+                // No version label here — the footer already shows it. The frame goes on the label so
+                // the glass background stretches the full row width instead of hugging the text.
+                // (Glass on macOS 26+, bordered fallback on macOS 15.)
+                Button { updater.checkForUpdates() } label: {
+                    Text("Check for Updates…").frame(maxWidth: .infinity)
+                }
+                .glassButtonStyle()
+                .controlSize(.regular)
+                .disabled(!updater.canCheckForUpdates)
+                .padding(.horizontal, 12)
+                .padding(.vertical, density.controlRowPadding)
+            }
         }
     }
 

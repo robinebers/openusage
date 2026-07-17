@@ -62,6 +62,9 @@ final class StatusItemController: NSObject {
         let hosting = NSHostingController(
             rootView: AnyView(
                 DashboardView()
+                    // Own the preference outside `DashboardView` so the view can read the resolved
+                    // value while deciding whether to mount its two-page transition structure.
+                    .reduceAnimationsWhenRequested()
                     .environment(container)
                     .environment(container.layout)
                     .environment(container.dataStore)
@@ -215,7 +218,9 @@ final class StatusItemController: NSObject {
             }
         }
         let mode: PopoverBackdropView.Mode = style.surfaceTreatment == .opaque ? .opaque : .translucent
-        if hasAppliedTransparency {
+        let shouldAnimate = hasAppliedTransparency && !ReduceAnimationsSetting.isEnabled
+        hasAppliedTransparency = true
+        if shouldAnimate {
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.55
                 context.allowsImplicitAnimation = true
@@ -223,7 +228,6 @@ final class StatusItemController: NSObject {
                 backdrop.setMode(mode, animated: true)
             }
         } else {
-            hasAppliedTransparency = true
             panel.alphaValue = style.windowAlpha
             backdrop.setMode(mode, animated: false)
         }

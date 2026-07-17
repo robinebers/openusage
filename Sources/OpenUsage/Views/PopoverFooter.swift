@@ -74,8 +74,7 @@ struct PopoverFooter: View {
                         .monospacedDigit()
                         .contentTransition(.numericText())
                     if isUpdating {
-                        ProgressView()
-                            .controlSize(.mini)
+                        MotionAwareProgressView(controlSize: .mini)
                     }
                 }
             }

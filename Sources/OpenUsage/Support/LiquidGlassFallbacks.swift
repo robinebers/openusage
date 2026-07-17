@@ -50,20 +50,8 @@ extension View {
     /// as Liquid Glass. In the readable translucent modes, `reinforced` adds that same adaptive frosted
     /// material and hairline under Liquid Glass so a light desktop cannot erase the capsule boundary.
     /// macOS 15 always gets the frosted material shape with a hairline border (no glass there).
-    @ViewBuilder
-    func interactiveGlass(in shape: some InsettableShape, reinforced: Bool = false) -> some View {
-        if #available(macOS 26, *) {
-            if reinforced {
-                background(.regularMaterial, in: shape)
-                    .overlay { shape.strokeBorder(.separator, lineWidth: 0.5) }
-                    .glassEffect(.regular.interactive(), in: shape)
-            } else {
-                glassEffect(.regular.interactive(), in: shape)
-            }
-        } else {
-            background(.regularMaterial, in: shape)
-                .overlay { shape.strokeBorder(.separator, lineWidth: 0.5) }
-        }
+    func interactiveGlass<Shape: InsettableShape>(in shape: Shape, reinforced: Bool = false) -> some View {
+        modifier(MotionAwareInteractiveGlassModifier(shape: shape, reinforced: reinforced))
     }
 
     /// Liquid Glass surface for a full chrome bar (the footer / top bar) on macOS 26+, a frosted
@@ -127,6 +115,41 @@ extension View {
             scrollEdgeEffectStyle(.soft, for: .bottom)
         } else {
             self
+        }
+    }
+}
+
+private struct MotionAwareInteractiveGlassModifier<Shape: InsettableShape>: ViewModifier {
+    let shape: Shape
+    let reinforced: Bool
+    @Environment(\.reduceAnimations) private var reduceAnimations
+
+    /// Liquid Glass owns its hover/press scale and shimmer outside the view's normal transaction. Swap
+    /// only that interactive variant for static system glass when either Reduce Animations source is on.
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(macOS 26, *) {
+            if reinforced {
+                if reduceAnimations {
+                    content
+                        .background(.regularMaterial, in: shape)
+                        .overlay { shape.strokeBorder(.separator, lineWidth: 0.5) }
+                        .glassEffect(.regular, in: shape)
+                } else {
+                    content
+                        .background(.regularMaterial, in: shape)
+                        .overlay { shape.strokeBorder(.separator, lineWidth: 0.5) }
+                        .glassEffect(.regular.interactive(), in: shape)
+                }
+            } else if reduceAnimations {
+                content.glassEffect(.regular, in: shape)
+            } else {
+                content.glassEffect(.regular.interactive(), in: shape)
+            }
+        } else {
+            content
+                .background(.regularMaterial, in: shape)
+                .overlay { shape.strokeBorder(.separator, lineWidth: 0.5) }
         }
     }
 }

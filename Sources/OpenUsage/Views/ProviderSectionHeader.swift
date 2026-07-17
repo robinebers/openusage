@@ -83,8 +83,7 @@ struct ProviderSectionHeader: View {
                 }
             }
             if refreshing {
-                ProgressView()
-                    .controlSize(.mini)
+                MotionAwareProgressView(controlSize: .mini)
                     .accessibilityLabel("Refreshing")
             } else if let warning {
                 Image(systemName: "exclamationmark.triangle.fill")
