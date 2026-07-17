@@ -2,7 +2,7 @@
 
 ## When data updates
 
-- All enabled providers refresh together: once at launch, then every 5 minutes (a fixed cadence — there's no setting for it). Opening the popover does not start a second automatic pass. Providers fetch in parallel — one slow provider doesn't delay the others.
+- All enabled providers refresh together: once at launch, then every 5 minutes (a fixed cadence — there's no setting for it). Opening the popover does not start a second automatic pass. Providers fetch in parallel, so fast cards update without waiting for a slow one. The batch itself still finishes only after every provider returns; notifications, history sync, and the next five-minute wait begin after that point.
 - Turning a provider on (yourself in Customize, or automatically by first-launch/new-provider detection) fetches it promptly instead of waiting out the interval — even when the change lands in the middle of a refresh that's already running.
 - The Dashboard and Settings footer shows `Next update in Nm`. **Clicking it (or pressing ⌘R while that footer is present)** refreshes immediately, skipping the cache.
 - The one-shot `openusage` command reuses this same persisted cache for five minutes, refreshes missing or stale entries without starting the app, and exits. `openusage --force` runs the same forced provider refresh as ⌘R regardless of cache age.
@@ -16,6 +16,14 @@
 Snapshots are cached on disk and load instantly at launch, so you see your last-known values immediately instead of placeholders — even before the first fetch finishes.
 
 A cached value only counts as *fresh* (skip-a-refresh fresh) when it was fetched **during the current running session**. So a value cached in an earlier session always re-fetches on the first pass after launch — you still see it instantly, but the app never waits out the old interval before getting live numbers. This matters after an update: a new app version refreshes right away instead of showing the previous version's data until its interval lapses. Within a session, a freshly fetched value then counts as fresh for one refresh interval before the next pass re-fetches it.
+
+Claude, Codex, and pi spend history has a separate local-log parse cache under
+`~/Library/Application Support/OpenUsage/log-scan-cache/`. It stores parsed usage events before OpenUsage
+applies model-rate estimates, so pricing updates take effect without re-reading unchanged JSONL. On
+relaunch, an entry is reused only when its path, size, modification time, and parser version still match.
+Same-home cards share parsed data, and changing one source file rewrites only that file's record. Old files
+leave the cache as the history window advances, and identities unused for 35 days are removed. App writes
+are debounced until after refresh; the one-shot CLI drains pending writes before it exits.
 
 ## When a fetch fails
 

@@ -72,14 +72,19 @@ enum ClaudeLogFixture {
     static func scanner(home: URL?) -> ClaudeLogUsageScanner {
         ClaudeLogUsageScanner(
             environment: FakeEnvironment(home.map { ["CLAUDE_CONFIG_DIR": $0.path] } ?? [:]),
-            homeDirectory: { FileManager.default.temporaryDirectory.appendingPathComponent("openusage-no-claude-home") }
+            homeDirectory: { FileManager.default.temporaryDirectory.appendingPathComponent("openusage-no-claude-home") },
+            incrementalScanner: IncrementalJSONLScanner<ClaudeLogUsageScanner.Entry>()
         )
     }
 
     /// A scanner whose *user home* is the fixture from `makeUserHome` — exercises the default
     /// `~/.claude` root plus Cowork session discovery, with no `CLAUDE_CONFIG_DIR` override.
     static func scanner(userHome: URL) -> ClaudeLogUsageScanner {
-        ClaudeLogUsageScanner(environment: FakeEnvironment([:]), homeDirectory: { userHome })
+        ClaudeLogUsageScanner(
+            environment: FakeEnvironment([:]),
+            homeDirectory: { userHome },
+            incrementalScanner: IncrementalJSONLScanner<ClaudeLogUsageScanner.Entry>()
+        )
     }
 
     /// One Claude Code usage line in the modern log shape. Pass `nil` to omit a field.
@@ -137,7 +142,8 @@ enum CodexLogFixture {
     static func scanner(home: URL?) -> CodexLogUsageScanner {
         CodexLogUsageScanner(
             environment: FakeEnvironment(home.map { ["CODEX_HOME": $0.path] } ?? [:]),
-            homeDirectory: { FileManager.default.temporaryDirectory.appendingPathComponent("openusage-no-codex-home") }
+            homeDirectory: { FileManager.default.temporaryDirectory.appendingPathComponent("openusage-no-codex-home") },
+            incrementalScanner: IncrementalJSONLScanner<CodexLogUsageScanner.Event>()
         )
     }
 
