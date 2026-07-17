@@ -304,7 +304,9 @@ final class ClaudeProvider: ProviderRuntime {
         let piScan = await PiUsageScanner.shared.scan(cardID: provider.id, now: now(), pricing: pricing)
         scans.append(piScan)
         var usageHistory: ProviderUsageHistory?
-        if let scan = DailyUsageAccumulator.merged(scans) {
+        // Cancellation can land between any account-scoped native scan and pi. Treat the set as one
+        // unit so a partial result cannot replace the last-good combined history in WidgetDataStore.
+        if !Task.isCancelled, let scan = DailyUsageAccumulator.merged(scans) {
             let note = piScan == nil
                 ? "From your Claude usage history (estimated)"
                 : "From your Claude usage history and pi (estimated)"

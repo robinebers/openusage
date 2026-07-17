@@ -10,27 +10,38 @@ import Foundation
 /// Codex log scanners use. Pi's usage shape differs from Claude Code's (`usage.input`/`output`,
 /// nested `usage.cost.total`), so it has its own parser rather than routing through those scanners.
 ///
-/// An actor holding the incremental parse cache (keyed path + size + mtime) so the ~5-minute refreshes
-/// re-parse only changed session files. A single shared instance is used by every consuming provider,
-/// so pi's logs are parsed once per refresh rather than once per card.
+/// An actor holding the versioned incremental parse cache (keyed path + size + mtime) in memory and
+/// Application Support, so refreshes and relaunches parse only changed session files. A single shared
+/// instance is used by every consuming provider, so pi's logs are parsed once rather than once per card.
 actor PiUsageScanner {
     static let shared = PiUsageScanner()
 
     private let environment: EnvironmentReading
     private let homeDirectory: @Sendable () -> URL
-    private let scanner = IncrementalJSONLScanner<Entry>(logTag: LogTag.plugin("pi"))
+    private let scanner: IncrementalJSONLScanner<Entry>
+
+    private static let sharedScanner = IncrementalJSONLScanner<Entry>(
+        logTag: LogTag.plugin("pi"),
+        persistence: JSONLScanCachePersistence(namespace: "pi", schemaVersion: 1)
+    )
+
+    static func flushPersistentCacheWrites() async {
+        await sharedScanner.flushPendingWrites()
+    }
 
     init(
         environment: EnvironmentReading = ProcessEnvironmentReader(),
-        homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser }
+        homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser },
+        incrementalScanner: IncrementalJSONLScanner<Entry>? = nil
     ) {
         self.environment = environment
         self.homeDirectory = homeDirectory
+        self.scanner = incrementalScanner ?? Self.sharedScanner
     }
 
     /// One parsed assistant-message usage line. Raw timestamp is kept so a cached parse stays valid as
     /// the window slides; `cardID` is resolved at parse time so aggregation is a cheap filter.
-    struct Entry: Sendable, Equatable {
+    struct Entry: Codable, Sendable, Equatable {
         var id: String?
         var timestamp: Date
         var cardID: String
@@ -47,11 +58,22 @@ actor PiUsageScanner {
     /// has no log files at all, so a provider with no pi usage folds in nothing.
     func scan(cardID: String, daysBack: Int = 30, now: Date = Date(), pricing: ModelPricing) async -> LogUsageScan? {
         let directory = PiPaths.sessionsDirectory(environment: environment, homeDirectory: homeDirectory())
-        let files = JSONLScanning.jsonlFiles(under: directory)
-        guard !files.isEmpty else { return nil }
-
         let since = JSONLScanning.sinceDate(daysBack: daysBack, now: now)
-        let entries = await scanner.items(from: files, since: since, parse: Self.parseFile)
+        let cacheIdentity = directory.resolvingSymlinksInPath().path
+        let files = JSONLScanning.jsonlFiles(under: directory)
+        guard !files.isEmpty else {
+            _ = await scanner.items(
+                from: [], since: since, cacheIdentity: cacheIdentity, parse: Self.parseFile
+            )
+            return nil
+        }
+
+        guard let entries = await scanner.items(
+            from: files,
+            since: since,
+            cacheIdentity: cacheIdentity,
+            parse: Self.parseFile
+        ), !Task.isCancelled else { return nil }
         return Self.aggregate(entries: Self.dedup(entries), cardID: cardID, since: since, pricing: pricing)
     }
 

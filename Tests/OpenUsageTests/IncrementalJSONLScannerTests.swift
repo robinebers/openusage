@@ -3,6 +3,288 @@ import XCTest
 @testable import OpenUsage
 
 final class IncrementalJSONLScannerTests: XCTestCase {
+    func testPersistedCacheSurvivesFreshScannerInstanceAndIsScopedByIdentity() async throws {
+        let base = try makeDirectory("Persistence")
+        defer { try? FileManager.default.removeItem(at: base) }
+        let file = try makeFile(named: "usage.jsonl", contents: "7", in: base, mtime: Date())
+        let persistence = JSONLScanCachePersistence(
+            namespace: "test", schemaVersion: 1,
+            directory: base.appendingPathComponent("cache"), writeDebounce: .milliseconds(1)
+        )
+
+        let firstCounter = ParseCounter()
+        let first = IncrementalJSONLScanner<Int>(persistence: persistence)
+        let firstItems = await first.items(
+            from: [file], since: .distantPast, cacheIdentity: "home-a", parse: firstCounter.parse
+        )
+        XCTAssertEqual(firstItems, [7])
+        XCTAssertEqual(firstCounter.count, 1)
+        await first.waitForPendingWritesForTesting()
+
+        let relaunchedCounter = ParseCounter()
+        let relaunched = IncrementalJSONLScanner<Int>(persistence: persistence)
+        let relaunchedItems = await relaunched.items(
+            from: [file], since: .distantPast, cacheIdentity: "home-a", parse: relaunchedCounter.parse
+        )
+        XCTAssertEqual(relaunchedItems, [7])
+        XCTAssertEqual(relaunchedCounter.count, 0, "an unchanged file should decode from the persisted cache")
+
+        let otherHomeCounter = ParseCounter()
+        let otherHome = IncrementalJSONLScanner<Int>(persistence: persistence)
+        _ = await otherHome.items(
+            from: [file], since: .distantPast, cacheIdentity: "home-b", parse: otherHomeCounter.parse
+        )
+        XCTAssertEqual(otherHomeCounter.count, 1, "a different home identity must not inherit another home's cache")
+        await otherHome.waitForPendingWritesForTesting()
+    }
+
+    func testPersistedCacheInvalidatesWhenSizeOrMtimeChanges() async throws {
+        let base = try makeDirectory("StatInvalidation")
+        defer { try? FileManager.default.removeItem(at: base) }
+        let now = Date()
+        let firstFile = try makeFile(named: "a.jsonl", contents: "1", in: base, mtime: now)
+        let secondFile = try makeFile(named: "b.jsonl", contents: "2", in: base, mtime: now)
+        let persistence = JSONLScanCachePersistence(
+            namespace: "test", schemaVersion: 1,
+            directory: base.appendingPathComponent("cache"), writeDebounce: .milliseconds(1)
+        )
+
+        let seed = IncrementalJSONLScanner<Int>(persistence: persistence)
+        _ = await seed.items(
+            from: [firstFile, secondFile], since: .distantPast, cacheIdentity: "home", parse: ParseCounter().parse
+        )
+        await seed.waitForPendingWritesForTesting()
+
+        let firstURL = URL(fileURLWithPath: firstFile.path)
+        try Data("11".utf8).write(to: firstURL)
+        try FileManager.default.setAttributes([.modificationDate: now], ofItemAtPath: firstFile.path)
+        let resizedMtime = try XCTUnwrap(
+            firstURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+        )
+        let resized = JSONLScanning.DiscoveredFile(path: firstFile.path, size: 2, mtime: resizedMtime)
+        let sizeCounter = ParseCounter()
+        let afterSizeChange = IncrementalJSONLScanner<Int>(persistence: persistence)
+        let resizedItems = await afterSizeChange.items(
+            from: [resized, secondFile], since: .distantPast, cacheIdentity: "home", parse: sizeCounter.parse
+        )
+        XCTAssertEqual(resizedItems, [11, 2])
+        XCTAssertEqual(sizeCounter.count, 1)
+        await afterSizeChange.waitForPendingWritesForTesting()
+
+        let secondURL = URL(fileURLWithPath: secondFile.path)
+        try FileManager.default.setAttributes(
+            [.modificationDate: now.addingTimeInterval(1)],
+            ofItemAtPath: secondFile.path
+        )
+        let touchedMtime = try XCTUnwrap(
+            secondURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+        )
+        let touched = JSONLScanning.DiscoveredFile(
+            path: secondFile.path, size: secondFile.size, mtime: touchedMtime
+        )
+        let mtimeCounter = ParseCounter()
+        let afterMtimeChange = IncrementalJSONLScanner<Int>(persistence: persistence)
+        let touchedItems = await afterMtimeChange.items(
+            from: [resized, touched], since: .distantPast, cacheIdentity: "home", parse: mtimeCounter.parse
+        )
+        XCTAssertEqual(touchedItems, [11, 2])
+        XCTAssertEqual(mtimeCounter.count, 1)
+        await afterMtimeChange.waitForPendingWritesForTesting()
+    }
+
+    func testPersistedCacheInvalidatesOnSchemaVersionChange() async throws {
+        let base = try makeDirectory("SchemaInvalidation")
+        defer { try? FileManager.default.removeItem(at: base) }
+        let file = try makeFile(named: "usage.jsonl", contents: "7", in: base, mtime: Date())
+        let cacheDirectory = base.appendingPathComponent("cache")
+        let versionOne = JSONLScanCachePersistence(
+            namespace: "test", schemaVersion: 1, directory: cacheDirectory, writeDebounce: .milliseconds(1)
+        )
+        let seed = IncrementalJSONLScanner<Int>(persistence: versionOne)
+        _ = await seed.items(from: [file], since: .distantPast, cacheIdentity: "home", parse: ParseCounter().parse)
+        await seed.waitForPendingWritesForTesting()
+
+        let versionTwo = JSONLScanCachePersistence(
+            namespace: "test", schemaVersion: 2, directory: cacheDirectory, writeDebounce: .milliseconds(1)
+        )
+        let counter = ParseCounter()
+        let rebuilt = IncrementalJSONLScanner<Int>(persistence: versionTwo)
+        let rebuiltItems = await rebuilt.items(
+            from: [file], since: .distantPast, cacheIdentity: "home", parse: counter.parse
+        )
+        XCTAssertEqual(rebuiltItems, [7])
+        XCTAssertEqual(counter.count, 1)
+        await rebuilt.waitForPendingWritesForTesting()
+    }
+
+    func testDebouncedPersistenceWritesLatestPrunedSnapshot() async throws {
+        let base = try makeDirectory("Pruning")
+        defer { try? FileManager.default.removeItem(at: base) }
+        let now = Date()
+        let firstFile = try makeFile(
+            named: "a.jsonl", contents: "1", in: base, mtime: now.addingTimeInterval(-10)
+        )
+        let secondFile = try makeFile(named: "b.jsonl", contents: "2", in: base, mtime: now)
+        let persistence = JSONLScanCachePersistence(
+            namespace: "test", schemaVersion: 1,
+            directory: base.appendingPathComponent("cache"), writeDebounce: .milliseconds(1)
+        )
+        let scanner = IncrementalJSONLScanner<Int>(persistence: persistence)
+        let parser = ParseCounter()
+
+        _ = await scanner.items(
+            from: [firstFile, secondFile], since: .distantPast, cacheIdentity: "home", parse: parser.parse
+        )
+        _ = await scanner.items(
+            from: [secondFile], since: now.addingTimeInterval(-1), cacheIdentity: "home", parse: parser.parse
+        )
+        await scanner.waitForPendingWritesForTesting()
+
+        let relaunchedParser = ParseCounter()
+        let relaunched = IncrementalJSONLScanner<Int>(persistence: persistence)
+        let relaunchedItems = await relaunched.items(
+            from: [firstFile, secondFile],
+            since: .distantPast,
+            cacheIdentity: "home",
+            parse: relaunchedParser.parse
+        )
+        XCTAssertEqual(relaunchedItems, [1, 2])
+        XCTAssertEqual(relaunchedParser.count, 1, "the pruned file should reparse while the retained file stays cached")
+        await relaunched.waitForPendingWritesForTesting()
+    }
+
+    func testChangingOneFileRewritesOnlyItsPersistedRecord() async throws {
+        let base = try makeDirectory("IncrementalWrites")
+        defer { try? FileManager.default.removeItem(at: base) }
+        let now = Date()
+        let firstFile = try makeFile(named: "a.jsonl", contents: "1", in: base, mtime: now)
+        let secondFile = try makeFile(named: "b.jsonl", contents: "2", in: base, mtime: now)
+        let persistence = JSONLScanCachePersistence(
+            namespace: "test", schemaVersion: 1,
+            directory: base.appendingPathComponent("cache"), writeDebounce: .milliseconds(1)
+        )
+        let scanner = IncrementalJSONLScanner<Int>(persistence: persistence)
+        _ = await scanner.items(
+            from: [firstFile, secondFile], since: .distantPast, cacheIdentity: "home", parse: ParseCounter().parse
+        )
+        await scanner.waitForPendingWritesForTesting()
+
+        let firstRecordValue = await scanner.cacheRecordURLForTesting(identity: "home", filePath: firstFile.path)
+        let secondRecordValue = await scanner.cacheRecordURLForTesting(identity: "home", filePath: secondFile.path)
+        let firstRecord = try XCTUnwrap(firstRecordValue)
+        let secondRecord = try XCTUnwrap(secondRecordValue)
+        let sentinel = Date(timeIntervalSince1970: 1_000_000)
+        try FileManager.default.setAttributes([.modificationDate: sentinel], ofItemAtPath: firstRecord.path)
+        try FileManager.default.setAttributes([.modificationDate: sentinel], ofItemAtPath: secondRecord.path)
+
+        let changedURL = URL(fileURLWithPath: firstFile.path)
+        try Data("11".utf8).write(to: changedURL)
+        try FileManager.default.setAttributes(
+            [.modificationDate: now.addingTimeInterval(1)],
+            ofItemAtPath: firstFile.path
+        )
+        let changedMtime = try XCTUnwrap(
+            changedURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+        )
+        let changed = JSONLScanning.DiscoveredFile(
+            path: firstFile.path, size: 2, mtime: changedMtime
+        )
+        _ = await scanner.items(
+            from: [changed, secondFile], since: .distantPast, cacheIdentity: "home", parse: ParseCounter().parse
+        )
+        await scanner.waitForPendingWritesForTesting()
+
+        let firstMtime = try modificationDate(of: firstRecord)
+        let secondMtime = try modificationDate(of: secondRecord)
+        XCTAssertGreaterThan(firstMtime, sentinel)
+        XCTAssertEqual(secondMtime, sentinel, "an unchanged source record must not be rewritten")
+    }
+
+    func testDisjointScansSharingIdentityKeepEachOthersParsedFiles() async throws {
+        let base = try makeDirectory("SharedSubsets")
+        defer { try? FileManager.default.removeItem(at: base) }
+        let now = Date()
+        let firstFile = try makeFile(named: "a.jsonl", contents: "1", in: base, mtime: now)
+        let secondFile = try makeFile(named: "b.jsonl", contents: "2", in: base, mtime: now)
+        let persistence = JSONLScanCachePersistence(
+            namespace: "test", schemaVersion: 1,
+            directory: base.appendingPathComponent("cache"), writeDebounce: .milliseconds(1)
+        )
+        let parser = ParseCounter()
+        let scanner = IncrementalJSONLScanner<Int>(persistence: persistence)
+
+        let firstItems = await scanner.items(
+            from: [firstFile], since: .distantPast, cacheIdentity: "home", parse: parser.parse
+        )
+        let secondItems = await scanner.items(
+            from: [secondFile], since: .distantPast, cacheIdentity: "home", parse: parser.parse
+        )
+        let firstItemsAgain = await scanner.items(
+            from: [firstFile], since: .distantPast, cacheIdentity: "home", parse: parser.parse
+        )
+        XCTAssertEqual(firstItems, [1])
+        XCTAssertEqual(secondItems, [2])
+        XCTAssertEqual(firstItemsAgain, [1])
+        XCTAssertEqual(parser.count, 2)
+        await scanner.waitForPendingWritesForTesting()
+
+        let relaunchedParser = ParseCounter()
+        let relaunched = IncrementalJSONLScanner<Int>(persistence: persistence)
+        let allItems = await relaunched.items(
+            from: [firstFile, secondFile],
+            since: .distantPast,
+            cacheIdentity: "home",
+            parse: relaunchedParser.parse
+        )
+        XCTAssertEqual(allItems, [1, 2])
+        XCTAssertEqual(relaunchedParser.count, 0)
+    }
+
+    func testStaleIdentityDirectoryIsPruned() async throws {
+        let base = try makeDirectory("IdentityPruning")
+        defer { try? FileManager.default.removeItem(at: base) }
+        let persistence = JSONLScanCachePersistence(
+            namespace: "test", schemaVersion: 1,
+            directory: base.appendingPathComponent("cache"), writeDebounce: .milliseconds(1)
+        )
+        let file = try makeFile(named: "usage.jsonl", contents: "7", in: base, mtime: Date())
+        let scanner = IncrementalJSONLScanner<Int>(persistence: persistence)
+        _ = await scanner.items(from: [file], since: .distantPast, cacheIdentity: "old-home", parse: ParseCounter().parse)
+        await scanner.waitForPendingWritesForTesting()
+
+        let identityDirectory = JSONLScanCachePaths.identityDirectory(
+            persistence: persistence,
+            identity: "old-home"
+        )
+        let old = Date().addingTimeInterval(-JSONLScanCachePaths.staleIdentityRetention - 60)
+        try FileManager.default.setAttributes([.modificationDate: old], ofItemAtPath: identityDirectory.path)
+        await JSONLScanCacheWriter.shared.pruneStaleIdentities(
+            persistence: persistence,
+            before: Date().addingTimeInterval(-JSONLScanCachePaths.staleIdentityRetention)
+        )
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: identityDirectory.path))
+    }
+
+    func testConcurrentScansOfSameIdentityParseEachFileOnce() async throws {
+        let base = try makeDirectory("SharedScanner")
+        defer { try? FileManager.default.removeItem(at: base) }
+        let file = try makeFile(named: "usage.jsonl", contents: "7", in: base, mtime: Date())
+        let parser = ParseCounter(delay: 0.03)
+        let scanner = IncrementalJSONLScanner<Int>()
+
+        async let first = scanner.items(
+            from: [file], since: .distantPast, cacheIdentity: "shared-home", parse: parser.parse
+        )
+        async let second = scanner.items(
+            from: [file], since: .distantPast, cacheIdentity: "shared-home", parse: parser.parse
+        )
+
+        let results = await [first, second]
+        XCTAssertEqual(results, [[7], [7]])
+        XCTAssertEqual(parser.count, 1)
+    }
+
     func testLimitsConcurrentParsesAndKeepsFileOrder() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("OpenUsageScannerTests-\(UUID().uuidString)", isDirectory: true)
@@ -127,42 +409,31 @@ final class IncrementalJSONLScannerTests: XCTestCase {
 
         XCTAssertEqual(warnings.counts, [])
     }
-}
 
-private final class ConcurrencyProbe: @unchecked Sendable {
-    private let lock = NSLock()
-    private var active = 0
-    private var maximum = 0
-
-    var maximumActive: Int {
-        lock.withLock { maximum }
+    private func makeDirectory(_ suffix: String) throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OpenUsageScanner\(suffix)-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
     }
 
-    func begin() {
-        lock.withLock {
-            active += 1
-            maximum = max(maximum, active)
-        }
+    private func makeFile(named name: String, contents: String, in directory: URL, mtime: Date) throws
+        -> JSONLScanning.DiscoveredFile
+    {
+        let url = directory.appendingPathComponent(name)
+        let data = Data(contents.utf8)
+        try data.write(to: url)
+        try FileManager.default.setAttributes([.modificationDate: mtime], ofItemAtPath: url.path)
+        let values = try url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+        return JSONLScanning.DiscoveredFile(
+            path: url.path,
+            size: try XCTUnwrap(values.fileSize),
+            mtime: try XCTUnwrap(values.contentModificationDate)
+        )
     }
 
-    func end() {
-        lock.withLock {
-            active -= 1
-        }
-    }
-}
-
-private final class WarningRecorder: @unchecked Sendable {
-    private let lock = NSLock()
-    private var recordedCounts: [Int] = []
-
-    var counts: [Int] {
-        lock.withLock { recordedCounts }
-    }
-
-    func record(_ count: Int) {
-        lock.withLock {
-            recordedCounts.append(count)
-        }
+    private func modificationDate(of url: URL) throws -> Date {
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        return try XCTUnwrap(attributes[.modificationDate] as? Date)
     }
 }

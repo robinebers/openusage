@@ -36,30 +36,21 @@ import Foundation
 ///   272k input tokens use OpenAI's higher rates for the whole request.
 ///
 /// An actor for the same reasons as `ClaudeLogUsageScanner`: scans run off the main actor, and a
-/// per-file parse cache keyed (path, size, mtime) makes the ~5-minute refresh re-parse only files
-/// that changed.
+/// versioned Application Support cache keyed by path + size + mtime makes both refreshes and relaunches
+/// re-parse only files that changed.
 actor CodexLogUsageScanner {
     private let environment: EnvironmentReading
     private let homeDirectory: @Sendable () -> URL
+    private let scanner: IncrementalJSONLScanner<Event>
     /// Canonical credential home → every log home verified to carry the same account identity.
     /// Credential selection remains in `CodexAuthStore`; this map only broadens the local log scan
     /// after the successful auth state supplies its exact `credentialHome`.
     private let relatedHomesByCanonicalHome: [String: [URL]]
 
-    init(
-        environment: EnvironmentReading = ProcessEnvironmentReader(),
-        homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser },
-        relatedHomesByCanonicalHome: [String: [URL]] = [:]
-    ) {
-        self.environment = environment
-        self.homeDirectory = homeDirectory
-        self.relatedHomesByCanonicalHome = relatedHomesByCanonicalHome
-    }
-
     /// One turn's token usage, normalized from a `token_count` line (deltas already applied).
     /// `isFast` records whether the session was on the fast/priority service tier when the turn
     /// ran, tracked from the session's own log; absent tier metadata means standard.
-    struct Event: Sendable, Equatable {
+    struct Event: Codable, Sendable, Equatable {
         var timestamp: Date
         var model: String
         var input: Int
@@ -70,8 +61,28 @@ actor CodexLogUsageScanner {
         var isFast: Bool = false
     }
 
-    /// Off-main-actor incremental parse cache (keyed path + size + mtime), owned by the shared scanner.
-    private let scanner = IncrementalJSONLScanner<Event>(logTag: LogTag.plugin("codex"))
+    /// Multi-account cards that resolve the same Codex homes share this actor and parse each rollout
+    /// once. The version is the parser schema version; bump it when `Event` semantics change.
+    private static let sharedScanner = IncrementalJSONLScanner<Event>(
+        logTag: LogTag.plugin("codex"),
+        persistence: JSONLScanCachePersistence(namespace: "codex", schemaVersion: 1)
+    )
+
+    static func flushPersistentCacheWrites() async {
+        await sharedScanner.flushPendingWrites()
+    }
+
+    init(
+        environment: EnvironmentReading = ProcessEnvironmentReader(),
+        homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser },
+        incrementalScanner: IncrementalJSONLScanner<Event>? = nil,
+        relatedHomesByCanonicalHome: [String: [URL]] = [:]
+    ) {
+        self.environment = environment
+        self.homeDirectory = homeDirectory
+        self.scanner = incrementalScanner ?? Self.sharedScanner
+        self.relatedHomesByCanonicalHome = relatedHomesByCanonicalHome
+    }
 
     /// Scan the last `daysBack` days of Codex rollouts. Returns `nil` when no Codex home or no
     /// session files exist (the spend tiles then render "No data").
@@ -93,11 +104,24 @@ actor CodexLogUsageScanner {
         } else {
             homes = codexHomes()
         }
-        let files = Self.sessionFiles(homes: homes)
-        guard !files.isEmpty else { return nil }
-
         let since = JSONLScanning.sinceDate(daysBack: daysBack, now: now)
-        let events = await scanner.items(from: files, since: since, parse: Self.parseFile)
+        let identityPaths = Set(homes.map { $0.resolvingSymlinksInPath().standardizedFileURL.path })
+            .sorted()
+        let identity = identityPaths.isEmpty ? "no-codex-home" : identityPaths.joined(separator: "\n")
+        let files = Self.sessionFiles(homes: homes)
+        guard !files.isEmpty else {
+            _ = await scanner.items(
+                from: [], since: since, cacheIdentity: identity, parse: Self.parseFile
+            )
+            return nil
+        }
+
+        guard let events = await scanner.items(
+            from: files,
+            since: since,
+            cacheIdentity: identity,
+            parse: Self.parseFile
+        ), !Task.isCancelled else { return nil }
         return Self.aggregate(events: events, since: since, pricing: pricing)
     }
 

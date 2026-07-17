@@ -24,6 +24,10 @@ final class WidgetDataStore {
     private let orderedDescriptors: @MainActor () -> [WidgetDescriptor]
     /// Clock for the failure-backoff window. Injected so tests can advance time deterministically.
     private let now: () -> Date
+    /// Monotonic clock for refresh durations, kept separate from wall time so a clock adjustment cannot
+    /// produce a negative or wildly inflated provider timing. Tests inject exact ticks.
+    private let monotonicNow: () -> TimeInterval
+    private let slowProviderRefreshThreshold: TimeInterval
     /// Quota-notification preferences (three independent triggers). Injected; `nil` disables
     /// notifications entirely (tests and previews that don't wire it).
     private let notificationSettings: (@MainActor () -> NotificationSettingsStore)?
@@ -52,6 +56,7 @@ final class WidgetDataStore {
     /// 5-minute heartbeat always retries; it only suppresses the sub-interval re-probes a wake burst
     /// would cause. The manual `force` refresh (⌘R) always bypasses it.
     private static let failureRetryBackoff: TimeInterval = 60
+    static let defaultSlowProviderRefreshThreshold: TimeInterval = 10
 
     /// Rendered snapshots consumed by every UI/API surface. Equal to `localSnapshots` when iCloud sync
     /// is off; machine-local history rows are rebuilt from the union while sync is on.
@@ -128,9 +133,12 @@ final class WidgetDataStore {
         orderedDescriptors: (@MainActor () -> [WidgetDescriptor])? = nil,
         providerIdentityKeys: [String: String] = [:],
         now: @escaping () -> Date = Date.init,
+        monotonicNow: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+        slowProviderRefreshThreshold: TimeInterval = WidgetDataStore.defaultSlowProviderRefreshThreshold,
         notificationSettings: (@MainActor () -> NotificationSettingsStore)? = nil,
         postNotification: (@MainActor (String, String, String, String) async -> Bool)? = nil
     ) {
+        precondition(slowProviderRefreshThreshold >= 0)
         self.registry = registry
         self.providersByID = Dictionary(uniqueKeysWithValues: providers.map { ($0.provider.id, $0) })
         self.cache = cache
@@ -140,6 +148,8 @@ final class WidgetDataStore {
         self.historyIdentityBindings = Self.loadHistoryIdentityBindings(from: defaults)
         self.orderedDescriptors = orderedDescriptors ?? { registry.descriptors }
         self.now = now
+        self.monotonicNow = monotonicNow
+        self.slowProviderRefreshThreshold = slowProviderRefreshThreshold
         self.notificationSettings = notificationSettings
         self.postNotification = postNotification
             ?? { idPrefix, title, subtitle, body in
@@ -165,7 +175,7 @@ final class WidgetDataStore {
         // `Task {}` from MainActor context inherits the isolation (a task-group child can't capture
         // the non-Sendable store), so: fire one task per provider, then await them all.
         let providerIDs = registry.providers.map(\.id).filter { isProviderEnabled($0) }
-        let start = Date()
+        let start = monotonicNow()
         AppLog.info(.refresh, "batch start (\(providerIDs.count) providers, force=\(force))")
         let tasks = providerIDs.map { providerID in
             Task { await self.refresh(providerID: providerID, force: force, notifyHistoryChange: false) }
@@ -179,7 +189,7 @@ final class WidgetDataStore {
         // (this time + one refresh interval), mirroring the periodic loop that sleeps one interval
         // after each pass.
         lastRefreshAt = Date()
-        let durationMs = Int(Date().timeIntervalSince(start) * 1000)
+        let durationMs = durationMilliseconds(since: start)
         // Count THIS batch's actual outcomes, not the long-lived `providerErrors` map (which persists
         // across passes, so reading it would miscount cache hits and stale earlier failures).
         let refreshed = outcomes.count { $0 == .refreshed }
@@ -270,12 +280,24 @@ final class WidgetDataStore {
         }
         refreshingProviderIDs.insert(providerID)
         defer { refreshingProviderIDs.remove(providerID) }
-        let start = Date()
+        let start = monotonicNow()
         let identityAtRefreshStart = providerIdentityKeys[providerID]
         var snapshot = await ProviderRefreshContext.$isManual.withValue(force) {
             await provider.refresh()
         }
-        let durationMs = Int(Date().timeIntervalSince(start) * 1000)
+        // A canceled refresh may still return if a provider's underlying work is non-throwing. Never
+        // publish that potentially partial snapshot; keep the last-good state exactly as it was.
+        guard !Task.isCancelled else {
+            AppLog.debug(.refresh, "cancelled \(providerID) refresh; keeping last-good snapshot")
+            return .skipped
+        }
+        let durationMs = durationMilliseconds(since: start)
+        if TimeInterval(durationMs) >= slowProviderRefreshThreshold * 1000 {
+            AppLog.warn(
+                .refresh,
+                "\(providerID) slow refresh (\(durationMs)ms, threshold=\(Int(slowProviderRefreshThreshold * 1000))ms)"
+            )
+        }
         if let message = Self.errorMessage(in: snapshot) {
             // Failed refresh: surface the error but keep the last good snapshot on screen rather than
             // collapsing every row to "No data". The provider error string is already user-safe.
@@ -326,6 +348,10 @@ final class WidgetDataStore {
         AppLog.info(.refresh, "\(providerID) ok (\(durationMs)ms)")
         onRefreshOutcome?(providerID, .refreshed, nil, force)
         return .refreshed
+    }
+
+    private func durationMilliseconds(since start: TimeInterval) -> Int {
+        max(0, Int((monotonicNow() - start) * 1000))
     }
 
     /// Clears a provider's failure backoff so the next pass probes it immediately. Called when the user

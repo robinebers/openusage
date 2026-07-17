@@ -571,7 +571,8 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
         // ccusage accepts `CLAUDE_CONFIG_DIR` pointing at the `projects/` dir itself.
         let scanner = ClaudeLogUsageScanner(
             environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": home.appendingPathComponent("projects").path]),
-            homeDirectory: { FileManager.default.temporaryDirectory.appendingPathComponent("openusage-no-claude-home") }
+            homeDirectory: { FileManager.default.temporaryDirectory.appendingPathComponent("openusage-no-claude-home") },
+            incrementalScanner: IncrementalJSONLScanner<Entry>()
         )
 
         let result = await scanner.scan(now: now, pricing: pricing)

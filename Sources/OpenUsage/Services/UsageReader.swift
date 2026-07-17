@@ -94,6 +94,9 @@ public struct UsageReader {
             } else {
                 await dataStore.refreshAll(force: force)
             }
+            if providersOverride == nil {
+                await PersistentJSONLScanCaches.flushPendingWrites()
+            }
             snapshots = dataStore.snapshots
             errors = dataStore.providerErrors
             warnings = orderedIDs
