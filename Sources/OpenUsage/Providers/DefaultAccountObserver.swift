@@ -18,15 +18,18 @@ struct DefaultAccountObserver: Sendable {
 
     var environment: EnvironmentReading
     var files: TextFileAccessing
+    var keychain: KeychainAccessing
     var homeDirectory: @Sendable () -> URL
 
     init(
         environment: EnvironmentReading = ProcessEnvironmentReader(),
         files: TextFileAccessing = LocalTextFileAccessor(),
+        keychain: KeychainAccessing = SecurityKeychainAccessor(),
         homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser }
     ) {
         self.environment = environment
         self.files = files
+        self.keychain = keychain
         self.homeDirectory = homeDirectory
     }
 
@@ -120,6 +123,16 @@ struct DefaultAccountObserver: Sendable {
             homes = [raw]
         } else {
             homes = ["~/.config/codex", "~/.codex"]
+        }
+
+        // `CodexProvider.refresh` falls back to the keychain credential when file auth fails, so
+        // while a keychain item exists the file's identity is not provably the account that will
+        // produce the next snapshot. We never read the keychain secret here (launch path, prompt
+        // risk) — an attributes-only existence probe downgrades the whole family to unresolved,
+        // which just means "behave exactly as before account awareness". A later phase binds
+        // keyring-mode identities properly.
+        if keychain.hasGenericPassword(service: CodexAuthStore.keychainService) {
+            return .unresolved(reason: "keychain credential present — identity unverifiable this launch")
         }
 
         var sawFootprint = false

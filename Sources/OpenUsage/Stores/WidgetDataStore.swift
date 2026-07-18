@@ -36,8 +36,6 @@ final class WidgetDataStore {
     /// producer, and launch loads only paint an entry whose stamp matches. A card absent here has an
     /// unresolved identity this launch (or isn't account-aware) — its cache behaves as it always did.
     private let providerIdentityKeys: [String: String]
-    /// The provider families whose cache entries carry an account stamp (see `ProviderAccountID`).
-    static let accountAwareProviderIDs: Set<String> = ProviderAccountID.families
     /// Where a fired milestone is delivered: `(idPrefix, title, subtitle, body) -> Bool`. The Bool is
     /// whether it was actually delivered (authorized + scheduled); on false the caller leaves the
     /// milestone un-marked so it retries next pass. Injected so tests can record posts without a live
@@ -155,14 +153,11 @@ final class WidgetDataStore {
         // keeps its cache, exactly as before the guard existed. Non-account providers are unaffected.
         let loaded = cache.loadSnapshots(providerIDs: registry.providers.map(\.id))
             .filter { cardID, _ in
-                guard Self.accountAwareProviderIDs.contains(ProviderAccountID.family(of: cardID)),
-                      let currentIdentity = providerIdentityKeys[cardID]
-                else { return true }
-                guard cache.producedByIdentityKey(providerID: cardID) == currentIdentity else {
-                    AppLog.info(.cache, "stale account cache discarded for \(cardID)")
-                    return false
+                guard cache.hasStaleAccountStamp(providerID: cardID, currentIdentityKey: providerIdentityKeys[cardID]) else {
+                    return true
                 }
-                return true
+                AppLog.info(.cache, "stale account cache discarded for \(cardID)")
+                return false
             }
         self.localSnapshots = loaded
         self.snapshots = loaded
@@ -254,7 +249,14 @@ final class WidgetDataStore {
         notifyHistoryChange: Bool = true
     ) async -> RefreshOutcome {
         guard isProviderEnabled(providerID) else { return .skipped }
-        if !force, let cached = cache.snapshot(providerID: providerID) {
+        // A TTL-fresh entry that provably belongs to another account (swap since it was written) must
+        // not short-circuit the refresh — under persisted freshness (the one-shot CLI) it would copy
+        // the previous account's snapshot back in. Treat it as a miss so the fetch overwrites it.
+        let staleAccountStamp = cache.hasStaleAccountStamp(
+            providerID: providerID,
+            currentIdentityKey: providerIdentityKeys[providerID]
+        )
+        if !force, !staleAccountStamp, let cached = cache.snapshot(providerID: providerID) {
             // Skip the no-op write: `@Observable` doesn't compare values, so unconditionally
             // re-assigning an unchanged snapshot would re-render the menu-bar label every pass.
             AppLog.debug(.refresh, "cache hit \(providerID)")

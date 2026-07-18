@@ -6,11 +6,13 @@ final class DefaultAccountObserverTests: XCTestCase {
 
     private func makeObserver(
         environment: [String: String] = [:],
-        files: [String: String] = [:]
+        files: [String: String] = [:],
+        keychainValue: String? = nil
     ) -> DefaultAccountObserver {
         DefaultAccountObserver(
             environment: FakeEnvironment(environment),
             files: FakeFiles(files),
+            keychain: FakeKeychain(keychainValue),
             homeDirectory: { [home] in home }
         )
     }
@@ -172,6 +174,21 @@ final class DefaultAccountObserverTests: XCTestCase {
 
     func testCodexNoFootprintIsAbsent() {
         XCTAssertEqual(makeObserver().observeCodex(), .absent)
+    }
+
+    func testCodexKeychainCredentialMakesTheFamilyUnresolved() {
+        // The provider can fall back to the keychain credential when file auth fails, so while a
+        // keychain item exists, the auth file's identity is not provably the producing account —
+        // and we never read the keychain secret on the launch path to find out.
+        let observer = makeObserver(
+            files: ["/Users/dev/.codex/auth.json": codexAuthJSON()],
+            keychainValue: #"{"tokens": {"access_token": "kc-at"}}"#
+        )
+
+        XCTAssertEqual(
+            observer.observeCodex(),
+            .unresolved(reason: "keychain credential present — identity unverifiable this launch")
+        )
     }
 
     func testCodexXDGConfigHomeOrderMatchesAuthStore() {

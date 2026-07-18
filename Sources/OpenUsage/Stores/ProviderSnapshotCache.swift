@@ -135,6 +135,20 @@ struct ProviderSnapshotCache {
         loadPayload().producedByIdentityKeys[providerID]
     }
 
+    /// Whether this provider's stored entry cannot be attributed to `currentIdentityKey`: the entry
+    /// exists, the card's current identity is known, and the stamp is missing or names another
+    /// account. Every read path must treat such an entry as absent — the launch paint filter
+    /// (`WidgetDataStore.init`), the refresh cache-hit gate (`WidgetDataStore.refresh`), and the
+    /// one-shot CLI's persisted-freshness reads (`UsageReader`) — or a swap at the same home would
+    /// serve the previous account's data. `false` when the identity is unresolved (`nil`): an
+    /// unverifiable entry keeps painting exactly as it did before account stamps existed.
+    func hasStaleAccountStamp(providerID: String, currentIdentityKey: String?) -> Bool {
+        guard let currentIdentityKey else { return false }
+        let payload = loadPayload()
+        guard payload.snapshots[providerID] != nil else { return false }
+        return payload.producedByIdentityKeys[providerID] != currentIdentityKey
+    }
+
     private func loadPayload() -> Payload {
         if let mirror = memo.withLock({ $0 }) { return mirror }
         // First access only: decode the persisted blob once, then mirror it. (Decoding outside the

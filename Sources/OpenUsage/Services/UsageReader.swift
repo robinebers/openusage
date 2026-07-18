@@ -67,14 +67,23 @@ public struct UsageReader {
         }
         let cache = ProviderSnapshotCache(userDefaults: defaults, allowsPersistedFreshness: true)
         let allProviderIDs = registry.providers.map(\.id)
+        // The same account guard the app applies at launch: an entry that provably belongs to another
+        // account (swap since it was written) is never served, and its provider counts as needing a
+        // refresh even while the stale entry is TTL-fresh.
+        let staleAccountStampIDs = Set(allProviderIDs.filter {
+            cache.hasStaleAccountStamp(providerID: $0, currentIdentityKey: accountAssembly.identityKeysByCard[$0])
+        })
         let cachedSnapshots = cache.loadSnapshots(providerIDs: allProviderIDs)
+            .filter { providerID, _ in !staleAccountStampIDs.contains(providerID) }
         let savedOrder = LayoutPersistence(
             defaults: defaults,
             storageKey: "openusage.layout.v1"
         ).loadProviderOrder() ?? []
         let orderedIDs = registry.orderedProviderIDs(savedOrder: savedOrder)
         let enabledOrderedIDs = orderedIDs.filter(includesProvider)
-        let needsRefresh = force || enabledOrderedIDs.contains { cache.snapshot(providerID: $0) == nil }
+        let needsRefresh = force || enabledOrderedIDs.contains {
+            cache.snapshot(providerID: $0) == nil || staleAccountStampIDs.contains($0)
+        }
         var snapshots = cachedSnapshots
         var warnings: [String] = []
         var errors: [String: String] = [:]

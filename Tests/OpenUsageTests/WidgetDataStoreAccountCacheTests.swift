@@ -131,6 +131,52 @@ final class WidgetDataStoreAccountCacheTests: XCTestCase {
         XCTAssertNotNil(store.snapshots["grok"])
     }
 
+    /// A TTL-fresh entry with a mismatched stamp must not short-circuit `refresh` as a cache hit —
+    /// under persisted freshness (the one-shot CLI) that would copy the previous account's snapshot
+    /// back in. A matching stamp keeps the normal cache-hit path.
+    func testRefreshNeverCacheHitsAMismatchedStampEntry() async {
+        let defaults = makeUserDefaults("refresh-gate")
+        let cache = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() })
+        cache.store(snapshot("claude", used: 40), producedByIdentityKey: "acct-OLD")
+
+        let swapped = makeStore(
+            providers: [provider("claude")],
+            cache: cache,
+            defaults: defaults,
+            identityKeys: ["claude": "acct-NEW"]
+        )
+        // No provider runtime is registered, so passing the cache gate surfaces as `.skipped` (a
+        // fetch attempt), while honoring the stale entry would surface as `.cacheHit`.
+        let gated = await swapped.refresh(providerID: "claude")
+        XCTAssertEqual(gated, .skipped, "a mismatched stamp must fall through to a real fetch")
+
+        let sameAccount = makeStore(
+            providers: [provider("claude")],
+            cache: cache,
+            defaults: defaults,
+            identityKeys: ["claude": "acct-OLD"]
+        )
+        let honored = await sameAccount.refresh(providerID: "claude")
+        XCTAssertEqual(honored, .cacheHit)
+    }
+
+    /// The single predicate every read path shares (`hasStaleAccountStamp`): true only when an entry
+    /// exists, the current identity is known, and the stamp fails to name it.
+    func testHasStaleAccountStampSemantics() {
+        let defaults = makeUserDefaults("predicate")
+        let cache = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() })
+
+        XCTAssertFalse(cache.hasStaleAccountStamp(providerID: "claude", currentIdentityKey: "acct-A"), "no entry, nothing to distrust")
+
+        cache.store(snapshot("claude", used: 40), producedByIdentityKey: "acct-A")
+        XCTAssertFalse(cache.hasStaleAccountStamp(providerID: "claude", currentIdentityKey: "acct-A"))
+        XCTAssertFalse(cache.hasStaleAccountStamp(providerID: "claude", currentIdentityKey: nil), "unresolved identity can't prove staleness")
+        XCTAssertTrue(cache.hasStaleAccountStamp(providerID: "claude", currentIdentityKey: "acct-B"))
+
+        cache.store(snapshot("claude", used: 41))
+        XCTAssertTrue(cache.hasStaleAccountStamp(providerID: "claude", currentIdentityKey: "acct-A"), "an unstamped entry is unattributable")
+    }
+
     /// A refresh writes the card's launch-resolved identity as the stamp, and a nil identity CLEARS
     /// any prior stamp — leaving the old account's stamp would falsely bless the new snapshot.
     func testStoreStampsAndClearsProducerIdentity() {

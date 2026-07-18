@@ -54,9 +54,10 @@ short trail in the log file:
 
 - `accounts: claude default identity resolved (claude@<hash>)` — the default login named its account.
   The hash is derived from the account id, so two launches by the same account always match.
-- `accounts: codex default identity unresolved — credentials present but no account identity` — a
-  login exists but nothing names the account (keyring-mode Codex, a legacy auth file). The card works
-  as before; it just can't participate in account-aware features yet.
+- `accounts: codex default identity unresolved — …` — a login exists but its account can't be named
+  with certainty this launch (an auth file without an account id, or a keychain credential whose
+  secret we don't read at launch). The card works as before; it just can't participate in
+  account-aware features yet.
 - `stale account cache discarded for claude` — the account at the default home changed between
   launches, so the previous account's cached snapshot was dropped instead of painting under the new
   login.

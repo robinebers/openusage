@@ -23,6 +23,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
                 "/Users/dev/.claude.json": #"{"oauthAccount": {"accountUuid": "ACCT-1", "emailAddress": "dev@example.com"}}"#,
                 "/Users/dev/.codex/auth.json": #"{"tokens": {"access_token": "at-1"}}"#,
             ]),
+            keychain: FakeKeychain(nil),
             homeDirectory: { URL(fileURLWithPath: "/Users/dev") }
         )
 
@@ -45,6 +46,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
         let observer = DefaultAccountObserver(
             environment: FakeEnvironment([:]),
             files: FakeFiles([:]),
+            keychain: FakeKeychain(nil),
             homeDirectory: { URL(fileURLWithPath: "/Users/dev") }
         )
 
