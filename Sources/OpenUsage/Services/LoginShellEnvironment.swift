@@ -76,21 +76,6 @@ final class LoginShellEnvironment: @unchecked Sendable {
         return capturedSuccessfully
     }
 
-    /// Block (bounded) until the capture kicked off by `prewarm()` has filled the cache. The
-    /// launch-time account-identity read calls this once: it must see shell-exported
-    /// `CLAUDE_CONFIG_DIR`/`CODEX_HOME` to resolve which home is the default login. Returns whether
-    /// the cache is warm; on timeout the caller falls back to the persisted
-    /// `ShellEnvironmentSnapshot` from the last successful capture.
-    @discardableResult
-    func waitForCapture(timeout: TimeInterval) -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if cachedSnapshot() != nil { return true }
-            Thread.sleep(forTimeInterval: 0.01)
-        }
-        return cachedSnapshot() != nil
-    }
-
     private func cachedSnapshot() -> [String: String]? {
         stateLock.lock()
         defer { stateLock.unlock() }

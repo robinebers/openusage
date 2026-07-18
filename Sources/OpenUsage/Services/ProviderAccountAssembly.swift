@@ -26,14 +26,16 @@ struct ProviderAccountAssembly {
             // is exactly what the providers will read. Never pin the snapshot here — its facts could
             // disagree with the environment the auth stores resolve against.
             environment = ProcessEnvironmentReader()
-        } else if LoginShellEnvironment.shared.waitForCapture(timeout: 0.5),
-                  LoginShellEnvironment.shared.capturedSuccessfully {
+        } else if LoginShellEnvironment.shared.capturedSuccessfully {
+            // The prewarmed capture already landed — the live shell environment is readable through
+            // the same layering providers use.
             environment = ProcessEnvironmentReader()
         } else if let snapshot = ShellEnvironmentSnapshotStore(defaults: defaults).load() {
-            // Slow shell: run on the persisted facts of the last successful capture — shell exports
-            // change ~never between launches, and the providers' own reads block until the live
-            // capture lands on the same values. Only a genuinely first launch has nothing to fall
-            // back on.
+            // Capture not warm yet (the usual cold-launch case — this runs on the main thread during
+            // app init and must never wait for it): run on the persisted facts of the last successful
+            // capture. Shell exports change ~never between launches, and the providers' own reads
+            // block until the live capture lands on the same values. Only a genuinely first launch
+            // has nothing to fall back on.
             AppLog.debug(.config, "account identity read is using the shell-environment snapshot captured \(snapshot.capturedAt)")
             environment = snapshot.identityEnvironment()
         } else {

@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import Security
 
 protocol EnvironmentReading: Sendable {
     func value(for name: String) -> String?
@@ -243,10 +244,10 @@ extension KeychainAccessing {
     }
 
     /// Whether an item exists for `service`, without reading its secret. `nil` means the probe
-    /// itself failed (timeout, locked keychain) — the caller picks its own safe side, which is not
+    /// itself failed (locked keychain, denied) — the caller picks its own safe side, which is not
     /// the same for every caller. The default (for mocks) falls back to a read; the real
-    /// `SecurityKeychainAccessor` overrides this with an attributes-only probe, safe for the launch
-    /// path — it can't trigger an unlock prompt and is bounded by a short timeout.
+    /// `SecurityKeychainAccessor` overrides this with an in-process attributes-only probe, safe for
+    /// the launch path — it can't trigger an unlock prompt and returns in microseconds.
     func genericPasswordExists(service: String) -> Bool? {
         do {
             return try readGenericPassword(service: service) != nil
@@ -273,19 +274,23 @@ struct SecurityKeychainAccessor: KeychainAccessing {
         try readPassword(["find-generic-password", "-s", service, "-w"], service: service)
     }
 
-    /// Attributes-only existence probe (no `-w`, so no secret and no unlock prompt), used on the
-    /// launch path. The timeout is deliberately short — a slow keychain must delay launch by at most
-    /// a blink — and a timed-out or otherwise failed probe reports `nil` ("unknown"), never a
-    /// definite answer, so callers can pick their safe side.
+    /// Attributes-only existence probe used on the launch path: an in-process Security-framework
+    /// query (no subprocess, returns in microseconds) that never requests the secret and forbids
+    /// any UI, so it can neither trigger an unlock prompt nor stall launch. A failed probe (locked
+    /// keychain, denied) reports `nil` ("unknown"), never a definite answer, so callers can pick
+    /// their safe side.
     func genericPasswordExists(service: String) -> Bool? {
-        guard let result = try? processRunner.run(
-            executable: "/usr/bin/security",
-            arguments: ["find-generic-password", "-s", service],
-            environment: [:],
-            timeout: 0.25
-        ) else { return nil }
-        if result.succeeded { return true }
-        return result.exitCode == Self.itemNotFoundExitCode ? false : nil
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail,
+        ]
+        switch SecItemCopyMatching(query as CFDictionary, nil) {
+        case errSecSuccess: return true
+        case errSecItemNotFound: return false
+        default: return nil
+        }
     }
 
     func readGenericPasswordForCurrentUser(service: String) throws -> String? {

@@ -131,7 +131,7 @@ struct DefaultAccountObserver: Sendable {
         // risk) — an attributes-only existence probe downgrades the whole family to unresolved,
         // which just means "behave exactly as before account awareness". A later phase binds
         // keyring-mode identities properly. Only a definite "no item" clears the family for file
-        // identity: a failed probe (`nil` — timeout, locked keychain) is treated the same as
+        // identity: a failed probe (`nil` — locked keychain, denied) is treated the same as
         // "item present", because resolving from the file while the fallback is possible is the
         // exact wrong-account stamp this rule exists to prevent.
         if keychain.genericPasswordExists(service: CodexAuthStore.keychainService) != false {
