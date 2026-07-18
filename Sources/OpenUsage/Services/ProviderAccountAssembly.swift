@@ -18,11 +18,11 @@ struct ProviderAccountAssembly {
     static func make(defaults: UserDefaults = .standard, waitsForLoginShell: Bool) -> ProviderAccountAssembly {
         // The identity read needs the login shell's exports (CLAUDE_CONFIG_DIR/CODEX_HOME name the
         // default homes), and it reads them through the very same reader the provider auth stores
-        // use — `ProcessEnvironmentReader`, whose layering (process environment, live login-shell
-        // capture, persisted shell-environment snapshot) guarantees identity and usage resolve the
-        // same homes. The one unreadable state is a genuinely FIRST Finder/Dock launch: capture
-        // still cold and no snapshot persisted yet — an exported override would be invisible, so
-        // skip the pass rather than misread it as "no override".
+        // use — `ProcessEnvironmentReader`, which pins identity-relevant keys to the persisted
+        // shell-environment snapshot for the whole session, so identity and usage resolve the same
+        // homes no matter when the async capture lands. The one unreadable state is a genuinely
+        // FIRST Finder/Dock launch: capture still cold and no snapshot persisted yet — an exported
+        // override would be invisible, so skip the pass rather than misread it as "no override".
         if waitsForLoginShell,
            !LoginShellEnvironment.shared.capturedSuccessfully,
            ShellEnvironmentSnapshotStore.launchSnapshot == nil {

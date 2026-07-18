@@ -48,12 +48,12 @@ public struct UsageReader {
         // account so refreshed snapshots carry the correct account stamp, and feeds the bare-id
         // resolver. Skipped when a test injects its own providers — they have no real homes to read.
         //
-        // Warm the login-shell capture FIRST (off-main, one bounded subprocess) so the identity read
-        // and the provider auth stores resolve `CLAUDE_CONFIG_DIR`/`CODEX_HOME` through the very same
-        // layers — process environment, then captured shell environment. Without this, a CLI spawned
-        // without the user's shell exports could read identity from one home while providers (whose
-        // off-main reads trigger the capture themselves) fetch usage from another, mis-stamping the
-        // shared cache. From an interactive terminal the capture is redundant but harmless.
+        // Warm the login-shell capture FIRST (off-main, one bounded subprocess). Identity-relevant
+        // keys are pinned to the persisted shell-environment snapshot, but a CLI spawned without the
+        // user's shell exports AND without a snapshot (the app never ran here) still needs the live
+        // capture warm before the identity read — a MainActor read never triggers the capture itself,
+        // so identity would read one home while the providers' off-main reads (which do trigger it)
+        // fetch usage from another. From an interactive terminal the capture is redundant but harmless.
         if providersOverride == nil {
             await Task.detached(priority: .userInitiated) {
                 _ = LoginShellEnvironment.shared.ensureCaptured()
