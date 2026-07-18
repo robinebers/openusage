@@ -1,10 +1,10 @@
 import Foundation
 
-/// The login-shell facts account-identity resolution depends on (provider home overrides and OAuth
-/// endpoint switches), persisted after every successful shell capture. Shell exports change ~never
-/// between launches, so when the login shell is too slow to warm before a launch-time read, the
-/// reader can run against the previous launch's snapshot instead of mistaking an exported override
-/// for "not set". Only a genuinely first launch (no snapshot yet) has nothing to fall back on.
+/// The login-shell facts launch-time reads depend on (provider home overrides and OAuth endpoint
+/// switches), persisted after every successful shell capture. Shell exports change ~never between
+/// launches, so while the login shell is too slow to have warmed, `ProcessEnvironmentReader` serves
+/// these persisted facts as its last layer instead of mistaking an exported override for "not set".
+/// Only a genuinely first launch (no snapshot yet) has nothing to fall back on.
 struct ShellEnvironmentSnapshot: Codable, Equatable, Sendable {
     /// Identity-relevant, non-secret configuration variables. Secrets (API keys, tokens) must never
     /// be added here — the snapshot lives in UserDefaults as plain text.
@@ -15,7 +15,7 @@ struct ShellEnvironmentSnapshot: Codable, Equatable, Sendable {
     ]
 
     /// Captured values. A key absent here was verifiably NOT exported at capture time — that absence
-    /// is a cached fact too, and pins "no override" even if a late-finishing warm would disagree.
+    /// is a cached fact too: the reader stops here, so an absent key reads as "no override".
     var values: [String: String]
     var capturedAt: Date
 
@@ -33,34 +33,19 @@ struct ShellEnvironmentSnapshot: Codable, Equatable, Sendable {
         }
         return ShellEnvironmentSnapshot(values: values, capturedAt: capturedAt)
     }
-
-    /// An environment view for launch-time identity reads when the live login shell has not warmed:
-    /// the process environment still wins (a terminal launch exports real values), and the snapshot
-    /// pins every other captured key — including pinning "absent" — so a login shell warming mid-read
-    /// cannot flip facts halfway through.
-    func identityEnvironment(
-        processEnvironment: [String: String] = ProcessInfo.processInfo.environment
-    ) -> EnvironmentReading {
-        var overrides: [String: String?] = [:]
-        for key in Self.capturedKeys {
-            if let live = processEnvironment[key]?.nilIfEmpty {
-                overrides[key] = live
-            } else if let cached = values[key] {
-                overrides[key] = cached
-            } else {
-                // Explicitly pinned absent (`.some(nil)`): the plain subscript would REMOVE the key
-                // here, letting a late-warming login shell leak through mid-read.
-                overrides.updateValue(nil, forKey: key)
-            }
-        }
-        return ScopedEnvironmentReader(base: ProcessEnvironmentReader(), overrides: overrides)
-    }
 }
 
 /// UserDefaults persistence for the snapshot (`openusage.shellEnvSnapshot.v1`). A class so the
 /// post-launch refresh task can carry it across actors; UserDefaults itself is thread-safe.
 final class ShellEnvironmentSnapshotStore: @unchecked Sendable {
     static let storageKey = "openusage.shellEnvSnapshot.v1"
+
+    /// The snapshot as it existed at process start, decoded once and memoized (a `static let` is
+    /// thread-safe lazy). `ProcessEnvironmentReader` consults this on every read that the live
+    /// login-shell layer can't answer yet, so it must not re-hit UserDefaults each time. Deliberately
+    /// frozen for the process lifetime: the refresh task's newer facts apply from the next launch.
+    static let launchSnapshot: ShellEnvironmentSnapshot? =
+        ShellEnvironmentSnapshotStore(defaults: .standard).load()
 
     private let defaults: UserDefaults
 

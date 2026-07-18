@@ -75,6 +75,48 @@ final class ShellEnvironmentSnapshotTests: XCTestCase {
         XCTAssertEqual(store.load(), previous)
     }
 
+    // MARK: - ProcessEnvironmentReader layering (process env → live capture → snapshot)
+
+    func testReaderPrefersTheProcessEnvironment() {
+        let reader = ProcessEnvironmentReader(
+            processEnvironment: ["CODEX_HOME": "/tmp/exported"],
+            shellEnvironment: LoginShellEnvironment(runner: FixedRunner(stdout: "unused")),
+            snapshotFallback: { ShellEnvironmentSnapshot(values: ["CODEX_HOME": "/tmp/persisted"], capturedAt: Date()) }
+        )
+
+        XCTAssertEqual(reader.value(for: "CODEX_HOME"), "/tmp/exported")
+    }
+
+    func testReaderServesSnapshotFactsWhileTheCaptureIsCold() {
+        // A main-thread read never triggers the capture, so this cold shell layer answers "unknown".
+        let cold = LoginShellEnvironment(runner: FixedRunner(stdout: "unused"))
+        let snapshot = ShellEnvironmentSnapshot(values: ["CODEX_HOME": "/tmp/persisted"], capturedAt: Date())
+        let reader = ProcessEnvironmentReader(
+            processEnvironment: [:],
+            shellEnvironment: cold,
+            snapshotFallback: { snapshot }
+        )
+
+        XCTAssertEqual(reader.value(for: "CODEX_HOME"), "/tmp/persisted")
+        // A key the snapshot verifiably lacks reads as "no override" — the snapshot is the last layer.
+        XCTAssertNil(reader.value(for: "CLAUDE_CONFIG_DIR"))
+    }
+
+    func testReaderIgnoresTheSnapshotOnceTheLiveCaptureLanded() {
+        let stdout = ["__OPENUSAGE_ENV_BEGIN__", "PATH=/usr/bin", "__OPENUSAGE_ENV_END__"].joined(separator: "\0")
+        let warm = LoginShellEnvironment(runner: FixedRunner(stdout: stdout))
+        XCTAssertTrue(warm.ensureCapturedForTesting())
+        let reader = ProcessEnvironmentReader(
+            processEnvironment: [:],
+            shellEnvironment: warm,
+            snapshotFallback: { ShellEnvironmentSnapshot(values: ["CODEX_HOME": "/tmp/outdated"], capturedAt: Date()) }
+        )
+
+        // The live capture is definitive: CODEX_HOME was verifiably not exported, so the persisted
+        // snapshot's older claim must not resurrect it.
+        XCTAssertNil(reader.value(for: "CODEX_HOME"))
+    }
+
     private func makeScratchDefaults() -> UserDefaults {
         let suiteName = "OpenUsageTests.ShellEnvironmentSnapshot.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!

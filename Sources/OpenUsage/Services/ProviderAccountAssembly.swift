@@ -12,38 +12,25 @@ struct ProviderAccountAssembly {
     /// The family ids whose default login resolved this launch — the resolver's badge-holder input.
     var resolvedFamilyIDs: Set<String> { Set(identityKeysByCard.keys) }
 
-    /// `waitsForLoginShell`: the menu-bar app (Finder/Dock launch) inherits no shell exports, so it
-    /// briefly waits for the prewarmed login-shell capture. The one-shot CLI runs from a terminal
-    /// whose process environment already carries the user's exports — it must not pay that wait.
+    /// `waitsForLoginShell`: true for the menu-bar app (a Finder/Dock launch inherits no shell
+    /// exports, so the pass leans on the login-shell layers), false for the one-shot CLI (a terminal
+    /// launch's process environment already carries the user's exports).
     static func make(defaults: UserDefaults = .standard, waitsForLoginShell: Bool) -> ProviderAccountAssembly {
         // The identity read needs the login shell's exports (CLAUDE_CONFIG_DIR/CODEX_HOME name the
-        // default homes) — and it must read them through the SAME layering the provider auth stores
-        // use (`ProcessEnvironmentReader`), or identity could be read from one home while usage is
-        // fetched from another, mis-stamping the shared cache.
-        let environment: EnvironmentReading
-        if !waitsForLoginShell {
-            // Terminal launch: the process environment is the user's real shell environment, and it
-            // is exactly what the providers will read. Never pin the snapshot here — its facts could
-            // disagree with the environment the auth stores resolve against.
-            environment = ProcessEnvironmentReader()
-        } else if LoginShellEnvironment.shared.capturedSuccessfully {
-            // The prewarmed capture already landed — the live shell environment is readable through
-            // the same layering providers use.
-            environment = ProcessEnvironmentReader()
-        } else if let snapshot = ShellEnvironmentSnapshotStore(defaults: defaults).load() {
-            // Capture not warm yet (the usual cold-launch case — this runs on the main thread during
-            // app init and must never wait for it): run on the persisted facts of the last successful
-            // capture. Shell exports change ~never between launches, and the providers' own reads
-            // block until the live capture lands on the same values. Only a genuinely first launch
-            // has nothing to fall back on.
-            AppLog.debug(.config, "account identity read is using the shell-environment snapshot captured \(snapshot.capturedAt)")
-            environment = snapshot.identityEnvironment()
-        } else {
+        // default homes), and it reads them through the very same reader the provider auth stores
+        // use — `ProcessEnvironmentReader`, whose layering (process environment, live login-shell
+        // capture, persisted shell-environment snapshot) guarantees identity and usage resolve the
+        // same homes. The one unreadable state is a genuinely FIRST Finder/Dock launch: capture
+        // still cold and no snapshot persisted yet — an exported override would be invisible, so
+        // skip the pass rather than misread it as "no override".
+        if waitsForLoginShell,
+           !LoginShellEnvironment.shared.capturedSuccessfully,
+           ShellEnvironmentSnapshotStore.launchSnapshot == nil {
             AppLog.info(.config, "account identity read skipped: login shell cold and no shell-environment snapshot exists yet")
             return ProviderAccountAssembly(identityKeysByCard: [:])
         }
         return make(
-            observer: DefaultAccountObserver(environment: environment),
+            observer: DefaultAccountObserver(),
             accountsStore: ProviderAccountsStore(defaults: defaults)
         )
     }

@@ -7,28 +7,28 @@ protocol EnvironmentReading: Sendable {
 }
 
 struct ProcessEnvironmentReader: EnvironmentReading {
+    var processEnvironment: [String: String] = ProcessInfo.processInfo.environment
+    var shellEnvironment: LoginShellEnvironment = .shared
+    var snapshotFallback: @Sendable () -> ShellEnvironmentSnapshot? = { ShellEnvironmentSnapshotStore.launchSnapshot }
+
     func value(for name: String) -> String? {
         // The process environment first (set by launchd, `launchctl setenv`, or a terminal launch),
         // then the captured login-shell environment — so keys a user exports in their shell profile
         // still resolve in a packaged app launched from Finder/Dock. See `LoginShellEnvironment`.
-        if let value = ProcessInfo.processInfo.environment[name]?.nilIfEmpty {
+        if let value = processEnvironment[name]?.nilIfEmpty {
             return value
         }
-        return LoginShellEnvironment.shared.value(for: name)
-    }
-}
-
-/// An environment view with fixed per-key overrides: the named keys read as their override (a `nil`
-/// override PINS the key absent — it does not fall through), everything else reads from `base`.
-/// `ShellEnvironmentSnapshot` uses this so a launch with a slow login shell resolves shell-exported
-/// facts from the persisted snapshot, including the fact that a key was NOT exported.
-struct ScopedEnvironmentReader: EnvironmentReading {
-    var base: EnvironmentReading
-    var overrides: [String: String?]
-
-    func value(for name: String) -> String? {
-        if let override = overrides[name] { return override }
-        return base.value(for: name)
+        if let value = shellEnvironment.value(for: name) {
+            return value
+        }
+        // The live login-shell layer answered "unknown" — the capture hasn't landed yet (a
+        // main-thread read never blocks on it) or failed outright. Serve the persisted facts of the
+        // last successful capture (`ShellEnvironmentSnapshot`, identity-relevant keys only) so every
+        // reader — provider auth stores, log scanners, the launch account pass — resolves the same
+        // home overrides during a cold launch instead of misreading an exported override as absent.
+        // Once a capture succeeds, the live layer answers definitively and this is skipped.
+        guard !shellEnvironment.capturedSuccessfully else { return nil }
+        return snapshotFallback()?.values[name]?.nilIfEmpty
     }
 }
 
