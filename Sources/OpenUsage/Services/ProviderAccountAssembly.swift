@@ -21,11 +21,16 @@ struct ProviderAccountAssembly {
         // use — `ProcessEnvironmentReader`, which pins identity-relevant keys to the persisted
         // shell-environment snapshot for the whole session, so identity and usage resolve the same
         // homes no matter when the async capture lands. The one unreadable state is a genuinely
-        // FIRST Finder/Dock launch: capture still cold and no snapshot persisted yet — an exported
-        // override would be invisible, so skip the pass rather than misread it as "no override".
+        // FIRST Finder/Dock launch: capture still cold and no snapshot persisted yet — a
+        // shell-exported override would be invisible, so skip the pass rather than misread it as
+        // "no override". An override already visible in the process environment (a terminal launch,
+        // `launchctl setenv`) doesn't need the shell layers at all — it reads identically for the
+        // identity pass and every provider, so the pass proceeds on it.
         if waitsForLoginShell,
            !LoginShellEnvironment.shared.capturedSuccessfully,
-           ShellEnvironmentSnapshotStore.launchSnapshot == nil {
+           ShellEnvironmentSnapshotStore.launchSnapshot == nil,
+           !ShellEnvironmentSnapshot.capturedKeys
+               .contains(where: { ProcessInfo.processInfo.environment[$0]?.nilIfEmpty != nil }) {
             AppLog.info(.config, "account identity read skipped: login shell cold and no shell-environment snapshot exists yet")
             return ProviderAccountAssembly(identityKeysByCard: [:])
         }
