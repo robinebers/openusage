@@ -40,6 +40,28 @@ final class ProviderAccountAssemblyTests: XCTestCase {
         XCTAssertNil(store.defaultBadgeHolder(family: "codex"))
     }
 
+    /// A family whose home facts aren't readable this launch (first Finder/Dock launch racing a
+    /// slow shell) is left out of the pass entirely: not observed, not reconciled — while a family
+    /// whose home override is already in the process environment still resolves.
+    func testFamiliesOutsideThePassAreNeitherObservedNorReconciled() {
+        let defaults = makeScratchDefaults()
+        let store = ProviderAccountsStore(defaults: defaults)
+        let observer = DefaultAccountObserver(
+            environment: FakeEnvironment([:]),
+            files: FakeFiles([
+                "/Users/dev/.claude.json": #"{"oauthAccount": {"accountUuid": "ACCT-1"}}"#,
+                "/Users/dev/.codex/auth.json": #"{"tokens": {"access_token": "at-1", "account_id": "CODEX-1"}}"#,
+            ]),
+            keychain: FakeKeychain(nil),
+            homeDirectory: { URL(fileURLWithPath: "/Users/dev") }
+        )
+
+        let assembly = ProviderAccountAssembly.make(observer: observer, accountsStore: store, families: ["codex"])
+
+        XCTAssertEqual(assembly.identityKeysByCard, ["codex": "codex-1"])
+        XCTAssertNil(store.defaultBadgeHolder(family: "claude"), "an out-of-pass family must not be reconciled")
+    }
+
     func testNothingObservedLeavesRegistryAndKeysEmpty() {
         let defaults = makeScratchDefaults()
         let store = ProviderAccountsStore(defaults: defaults)

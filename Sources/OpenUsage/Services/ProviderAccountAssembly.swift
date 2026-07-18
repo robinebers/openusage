@@ -22,36 +22,58 @@ struct ProviderAccountAssembly {
         // shell-environment snapshot for the whole session, so identity and usage resolve the same
         // homes no matter when the async capture lands. The one unreadable state is a genuinely
         // FIRST Finder/Dock launch: capture still cold and no snapshot persisted yet — a
-        // shell-exported override would be invisible, so skip the pass rather than misread it as
-        // "no override". An override already visible in the process environment (a terminal launch,
-        // `launchctl setenv`) doesn't need the shell layers at all — it reads identically for the
-        // identity pass and every provider, so the pass proceeds on it.
-        if waitsForLoginShell,
-           !LoginShellEnvironment.shared.capturedSuccessfully,
-           ShellEnvironmentSnapshotStore.launchSnapshot == nil,
-           !ShellEnvironmentSnapshot.capturedKeys
-               .contains(where: { ProcessInfo.processInfo.environment[$0]?.nilIfEmpty != nil }) {
-            AppLog.info(.config, "account identity read skipped: login shell cold and no shell-environment snapshot exists yet")
+        // shell-exported home override would be invisible, so that family's read must be skipped
+        // rather than misread as "no override". The skip is per family: a family whose home override
+        // is already visible in the process environment (a terminal launch, `launchctl setenv`)
+        // doesn't need the shell layers at all and still resolves.
+        let shellFactsReadable = !waitsForLoginShell
+            || LoginShellEnvironment.shared.capturedSuccessfully
+            || ShellEnvironmentSnapshotStore.launchSnapshot != nil
+        let families = shellFactsReadable
+            ? ProviderAccountID.families
+            : ProviderAccountID.families.filter { family in
+                guard let key = Self.homeOverrideKeys[family] else { return false }
+                return ProcessInfo.processInfo.environment[key]?.nilIfEmpty != nil
+            }
+        if families.count < ProviderAccountID.families.count {
+            AppLog.info(.config, "account identity read skipped for \(ProviderAccountID.families.subtracting(families).sorted().joined(separator: ", ")): login shell cold and no shell-environment snapshot exists yet")
+        }
+        guard !families.isEmpty else {
             return ProviderAccountAssembly(identityKeysByCard: [:])
         }
         return make(
             observer: DefaultAccountObserver(),
-            accountsStore: ProviderAccountsStore(defaults: defaults)
+            accountsStore: ProviderAccountsStore(defaults: defaults),
+            families: families
         )
     }
 
-    /// The environment-independent core, separated so tests inject a fixed observer and scratch store.
+    /// The environment variable that relocates each family's default home — the fact whose
+    /// invisibility (shell layers unreadable AND not in the process environment) makes that family's
+    /// identity read unsafe on a first launch.
+    private static let homeOverrideKeys: [String: String] = [
+        "claude": "CLAUDE_CONFIG_DIR",
+        "codex": "CODEX_HOME",
+    ]
+
+    /// The environment-independent core, separated so tests inject a fixed observer and scratch
+    /// store. `families` limits the pass to the families whose home facts are readable this launch
+    /// (see `make(defaults:waitsForLoginShell:)`); a family left out is simply not observed —
+    /// no identity key, no reconciliation, exactly as if the pass never ran for it.
     static func make(
         observer: DefaultAccountObserver,
-        accountsStore: ProviderAccountsStore
+        accountsStore: ProviderAccountsStore,
+        families: Set<String> = ProviderAccountID.families
     ) -> ProviderAccountAssembly {
         var identityKeys: [String: String] = [:]
         var observations: [ProviderAccountsStore.Observation] = []
 
         let outcomes: [(family: String, outcome: DefaultAccountObserver.Outcome)] = [
-            ("claude", observer.observeClaude()),
-            ("codex", observer.observeCodex()),
-        ]
+            ("claude", { observer.observeClaude() }),
+            ("codex", { observer.observeCodex() }),
+        ].compactMap { family, observe in
+            families.contains(family) ? (family, observe()) : nil
+        }
         for (family, outcome) in outcomes {
             switch outcome {
             case .resolved(let identityKey, let label, let anchor):
