@@ -67,7 +67,7 @@ final class AppContainer {
         // even if that launch's own capture is slow (see `ShellEnvironmentSnapshot`).
         self.shellEnvironmentSnapshotTask = ShellEnvironmentSnapshotStore(defaults: .standard).startRefreshTask()
         // The launch account pass: which account is signed in at each family's default home. Feeds
-        // the snapshot cache's account stamp and the bare-id resolver; reconciles the account registry.
+        // the snapshot cache's account stamp and reconciles the account registry.
         let accountAssembly = ProviderAccountAssembly.make(waitsForLoginShell: true)
 
         let providers = ProviderCatalog.make()

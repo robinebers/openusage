@@ -23,9 +23,9 @@ enum ProviderAccountID {
 }
 
 /// One place an account is signed in. "Default" is a badge on a source (`holdsDefaultSource`), never
-/// a key: the bare-id alias and CLI resolution follow whoever holds it, and it never drives sort
-/// order — a swap re-points source edges, cards don't move. Phase 1 only observes the default home;
-/// later phases add config dirs, cswap vault slots, Codex homes, and Desktop logins as more kinds.
+/// a key: it marks who currently occupies the default home, and it never drives ids or sort order —
+/// a swap re-points source edges, cards don't move. Phase 1 only observes the default home; later
+/// phases add config dirs, cswap vault slots, Codex homes, and Desktop logins as more kinds.
 struct ProviderAccountSource: Codable, Equatable, Sendable {
     enum Kind: String, Codable, Sendable {
         /// The provider's standard home for this machine (`~/.claude`, `~/.codex`, env override).

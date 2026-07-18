@@ -61,8 +61,9 @@ short trail in the log file:
 - `stale account cache discarded for claude` — the account at the default home changed between
   launches, so the previous account's cached snapshot was dropped instead of painting under the new
   login.
-- `account identity read skipped: login shell cold and no shell-environment snapshot exists yet` — a
-  first launch raced a slow login shell; every later launch has a persisted snapshot to fall back on.
+- `account identity read skipped for claude, codex: login shell cold and no shell-environment
+  snapshot exists yet` — a first launch raced a slow login shell, so the named families were left
+  unread this launch; every later launch has a persisted snapshot to fall back on.
 
 ## Tips
 

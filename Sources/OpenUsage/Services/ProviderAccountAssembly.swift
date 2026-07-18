@@ -2,8 +2,8 @@ import Foundation
 
 /// The launch-time account pass: read which account is signed in at each family's default home,
 /// reconcile the account registry, and expose the per-card identity map that the snapshot cache's
-/// account stamp and the bare-id resolver consume. Runs once per launch (app) or per invocation
-/// (one-shot CLI); a mid-run swap is caught on the next launch.
+/// account stamp consumes. Runs once per launch (app) or per invocation (one-shot CLI); a mid-run
+/// swap is caught on the next launch.
 @MainActor
 struct ProviderAccountAssembly {
     /// Card id → the account identity signed in there this launch. Phase 1 observes only default

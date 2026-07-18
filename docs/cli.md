@@ -29,5 +29,5 @@ In OpenUsage, open **Settings → Command Line** and click **Install…**. After
 administrator prompt, `openusage` is available globally in new terminal sessions. The installed symlink
 points to the signed helper inside OpenUsage, so in-place app updates also update the command.
 
-Exit codes are `0` for success, `2` for invalid arguments, `3` when a requested provider has no snapshot,
-and `4` when a refresh or local read fails.
+Exit codes are `0` for success, `2` for invalid arguments or an unknown provider, and `4` when a
+refresh or local read fails.
