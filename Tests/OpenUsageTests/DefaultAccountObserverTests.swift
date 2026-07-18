@@ -187,7 +187,23 @@ final class DefaultAccountObserverTests: XCTestCase {
 
         XCTAssertEqual(
             observer.observeCodex(),
-            .unresolved(reason: "keychain credential present — identity unverifiable this launch")
+            .unresolved(reason: "keychain credential present or unverifiable — identity unresolved this launch")
+        )
+    }
+
+    func testCodexUnverifiableKeychainProbeAlsoMakesTheFamilyUnresolved() {
+        // A timed-out/failed probe (`nil`) must land on the same side as "item present": resolving
+        // from the file while a keychain fallback might exist is the wrong-account stamp risk.
+        let observer = DefaultAccountObserver(
+            environment: FakeEnvironment([:]),
+            files: FakeFiles(["/Users/dev/.codex/auth.json": codexAuthJSON()]),
+            keychain: ThrowingKeychain(),
+            homeDirectory: { [home] in home }
+        )
+
+        XCTAssertEqual(
+            observer.observeCodex(),
+            .unresolved(reason: "keychain credential present or unverifiable — identity unresolved this launch")
         )
     }
 
@@ -204,4 +220,10 @@ final class DefaultAccountObserverTests: XCTestCase {
             .resolved(identityKey: "config-home-acct", label: nil, anchor: "/Users/dev/.config/codex")
         )
     }
+}
+
+private final class ThrowingKeychain: KeychainAccessing, @unchecked Sendable {
+    struct Unavailable: Error {}
+    func readGenericPassword(service: String) throws -> String? { throw Unavailable() }
+    func writeGenericPassword(service: String, value: String) throws { throw Unavailable() }
 }

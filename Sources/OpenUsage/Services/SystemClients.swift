@@ -242,12 +242,17 @@ extension KeychainAccessing {
         try readGenericPassword(service: service)
     }
 
-    /// Whether an item exists for `service`, without reading its secret. The default (for mocks)
-    /// falls back to a read; the real `SecurityKeychainAccessor` overrides this with an
-    /// attributes-only probe, safe for the launch path — it can't trigger an unlock prompt and is
-    /// bounded by a short timeout.
-    func hasGenericPassword(service: String) -> Bool {
-        ((try? readGenericPassword(service: service)) ?? nil) != nil
+    /// Whether an item exists for `service`, without reading its secret. `nil` means the probe
+    /// itself failed (timeout, locked keychain) — the caller picks its own safe side, which is not
+    /// the same for every caller. The default (for mocks) falls back to a read; the real
+    /// `SecurityKeychainAccessor` overrides this with an attributes-only probe, safe for the launch
+    /// path — it can't trigger an unlock prompt and is bounded by a short timeout.
+    func genericPasswordExists(service: String) -> Bool? {
+        do {
+            return try readGenericPassword(service: service) != nil
+        } catch {
+            return nil
+        }
     }
 }
 
@@ -269,16 +274,18 @@ struct SecurityKeychainAccessor: KeychainAccessing {
     }
 
     /// Attributes-only existence probe (no `-w`, so no secret and no unlock prompt), used on the
-    /// launch path. The timeout is deliberately short: a slow keychain must delay launch by at most
-    /// a blink, and on timeout the answer degrades to "no item" — the conservative side.
-    func hasGenericPassword(service: String) -> Bool {
+    /// launch path. The timeout is deliberately short — a slow keychain must delay launch by at most
+    /// a blink — and a timed-out or otherwise failed probe reports `nil` ("unknown"), never a
+    /// definite answer, so callers can pick their safe side.
+    func genericPasswordExists(service: String) -> Bool? {
         guard let result = try? processRunner.run(
             executable: "/usr/bin/security",
             arguments: ["find-generic-password", "-s", service],
             environment: [:],
             timeout: 0.25
-        ) else { return false }
-        return result.succeeded
+        ) else { return nil }
+        if result.succeeded { return true }
+        return result.exitCode == Self.itemNotFoundExitCode ? false : nil
     }
 
     func readGenericPasswordForCurrentUser(service: String) throws -> String? {
