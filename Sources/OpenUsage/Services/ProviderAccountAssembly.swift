@@ -17,24 +17,28 @@ struct ProviderAccountAssembly {
     /// whose process environment already carries the user's exports — it must not pay that wait.
     static func make(defaults: UserDefaults = .standard, waitsForLoginShell: Bool) -> ProviderAccountAssembly {
         // The identity read needs the login shell's exports (CLAUDE_CONFIG_DIR/CODEX_HOME name the
-        // default homes). When the capture is slow, fall back to the persisted snapshot of the last
-        // successful capture — shell exports change ~never between launches. Only an app launch with
-        // neither skips the pass entirely (a first launch; the snapshot exists from then on).
-        let shellReady = waitsForLoginShell
-            && LoginShellEnvironment.shared.waitForCapture(timeout: 0.5)
-            && LoginShellEnvironment.shared.capturedSuccessfully
+        // default homes) — and it must read them through the SAME layering the provider auth stores
+        // use (`ProcessEnvironmentReader`), or identity could be read from one home while usage is
+        // fetched from another, mis-stamping the shared cache.
         let environment: EnvironmentReading
-        if shellReady {
+        if !waitsForLoginShell {
+            // Terminal launch: the process environment is the user's real shell environment, and it
+            // is exactly what the providers will read. Never pin the snapshot here — its facts could
+            // disagree with the environment the auth stores resolve against.
+            environment = ProcessEnvironmentReader()
+        } else if LoginShellEnvironment.shared.waitForCapture(timeout: 0.5),
+                  LoginShellEnvironment.shared.capturedSuccessfully {
             environment = ProcessEnvironmentReader()
         } else if let snapshot = ShellEnvironmentSnapshotStore(defaults: defaults).load() {
+            // Slow shell: run on the persisted facts of the last successful capture — shell exports
+            // change ~never between launches, and the providers' own reads block until the live
+            // capture lands on the same values. Only a genuinely first launch has nothing to fall
+            // back on.
             AppLog.debug(.config, "account identity read is using the shell-environment snapshot captured \(snapshot.capturedAt)")
             environment = snapshot.identityEnvironment()
-        } else if waitsForLoginShell {
+        } else {
             AppLog.info(.config, "account identity read skipped: login shell cold and no shell-environment snapshot exists yet")
             return ProviderAccountAssembly(identityKeysByCard: [:])
-        } else {
-            // Terminal launch: the process environment is the user's real shell environment.
-            environment = ProcessEnvironmentReader()
         }
         return make(
             observer: DefaultAccountObserver(environment: environment),

@@ -47,6 +47,18 @@ public struct UsageReader {
         // The launch account pass (see `ProviderAccountAssembly`): resolves each family's default
         // account so refreshed snapshots carry the correct account stamp, and feeds the bare-id
         // resolver. Skipped when a test injects its own providers — they have no real homes to read.
+        //
+        // Warm the login-shell capture FIRST (off-main, one bounded subprocess) so the identity read
+        // and the provider auth stores resolve `CLAUDE_CONFIG_DIR`/`CODEX_HOME` through the very same
+        // layers — process environment, then captured shell environment. Without this, a CLI spawned
+        // without the user's shell exports could read identity from one home while providers (whose
+        // off-main reads trigger the capture themselves) fetch usage from another, mis-stamping the
+        // shared cache. From an interactive terminal the capture is redundant but harmless.
+        if providersOverride == nil {
+            await Task.detached(priority: .userInitiated) {
+                _ = LoginShellEnvironment.shared.ensureCaptured()
+            }.value
+        }
         let accountAssembly = providersOverride == nil
             ? ProviderAccountAssembly.make(defaults: defaults, waitsForLoginShell: false)
             : ProviderAccountAssembly(identityKeysByCard: [:])
