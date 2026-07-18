@@ -52,6 +52,9 @@ final class AppContainer {
     /// The new-provider credential-detection pass (see `NewProviderSeeder`); `nil` unless this launch is
     /// the first with a provider the install has never seen.
     private let newProviderTask: Task<Void, Never>?
+    /// Persists a fresh `ShellEnvironmentSnapshot` once the login-shell capture completes, so the next
+    /// launch can read shell-exported facts (provider home overrides) even when its own capture is slow.
+    private let shellEnvironmentSnapshotTask: Task<Void, Never>
 
     /// `isFreshInstall` must be captured by the caller BEFORE `SettingsMigrator.migrate()` runs (the
     /// migrator's schema stamp makes the defaults domain non-empty). See `AppDelegate`.
@@ -60,6 +63,9 @@ final class AppContainer {
         // profile (e.g. OPENROUTER_API_KEY) resolve in a Finder/Dock-launched build, not only when
         // run from a terminal. Warmed here so the first refresh finds the cache ready.
         LoginShellEnvironment.shared.prewarm()
+        // Once the capture lands, persist its identity-relevant facts so the NEXT launch has them
+        // even if that launch's own capture is slow (see `ShellEnvironmentSnapshot`).
+        self.shellEnvironmentSnapshotTask = ShellEnvironmentSnapshotStore(defaults: .standard).startRefreshTask()
 
         let providers = ProviderCatalog.make()
         let registry = WidgetRegistry.from(providers)
@@ -205,6 +211,7 @@ final class AppContainer {
         refreshTask.cancel()
         seedTask?.cancel()
         newProviderTask?.cancel()
+        shellEnvironmentSnapshotTask.cancel()
     }
 
     /// Re-runs first-launch credential detection on demand — the enablement half of the Customize
