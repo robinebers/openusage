@@ -9,8 +9,6 @@ struct ProviderAccountAssembly {
     /// Card id → the account identity signed in there this launch. Phase 1 observes only default
     /// homes, so the keys are the bare family ids; a family whose identity didn't resolve is absent.
     let identityKeysByCard: [String: String]
-    /// The family ids whose default login resolved this launch — the resolver's badge-holder input.
-    var resolvedFamilyIDs: Set<String> { Set(identityKeysByCard.keys) }
 
     /// `waitsForLoginShell`: true for the menu-bar app (a Finder/Dock launch inherits no shell
     /// exports, so the pass leans on the login-shell layers), false for the one-shot CLI (a terminal

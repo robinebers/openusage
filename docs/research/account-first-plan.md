@@ -32,9 +32,11 @@ as its permanent record id**. Ids are opaque, so nothing is special about the sh
 install migrates by doing nothing: layout keys, pins, history bindings, snapshot cache entries, and
 third-party API consumers keep working untouched. If the user later swaps accounts at the default
 home, the new account mints `claude@<hash8>` and takes the default badge; the old card stays under
-its old id. The bare id doubles as the family **alias**: requests for `claude` resolve through
-`ProviderCardResolver` (badge holder → sole enabled family card → family empty state) and the HTTP
-API echoes the requested id.
+its old id. The bare id doubles as the family id in CLI/API requests, but there is **no alias
+resolution**: an id names providers by plain string matching (exact card id, or family id → every
+card of that family), and every match is returned. The answer never depends on runtime state —
+which login holds the badge, what's enabled — and both surfaces always return the multi-provider
+shape (the limits envelope; a JSON array on `/v1/usage/:id`).
 
 ## Phases
 
@@ -58,7 +60,9 @@ tests land in-slice (repo policy). Estimated source LOC excludes tests.
   family rendering its current state.
 - Cards render from account records. With exactly one account per family this is pixel-identical
   to today, so the structural flip ships invisibly.
-- `ProviderCardResolver` wired through the one-shot CLI and local HTTP API (port from `e052ef9`).
+- CLI + local HTTP API answer ids by plain string matching (family id → all its cards, always the
+  multi-provider shape; unknown id → 404). One deliberate `/v1` break — `/v1/usage/:id` returns an
+  array — made now, before multi-account ships, instead of aliasing forever.
 - Snapshot-cache identity stamp (v9): cached values remember the producing account; a swap between
   launches discards the stale entry instead of painting it under the new account (port `fef9ad0`).
 - Signed-out rendering + "Remove Account…" (context menu, tombstone in the store) — cheap while

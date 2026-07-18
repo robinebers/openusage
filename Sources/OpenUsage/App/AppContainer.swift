@@ -194,23 +194,13 @@ final class AppContainer {
         self.telemetry = telemetry
         self.transparency = PopoverTransparencyStore()
         self.privacy = MenuBarPrivacyStore()
-        // Bare family ids resolve through `ProviderCardResolver` (pass-through today; per-account
-        // routing when multi-account cards land). The default-resolved set is fixed per launch;
-        // enabled cards are read live so the resolver follows Customize toggles.
-        let defaultResolvedFamilyIDs = accountAssembly.resolvedFamilyIDs
         self.localAPI = LocalUsageServer(state: { [layout, enablement, dataStore] in
-            let resolver = ProviderCardResolver.make(
-                registryProviderIDs: registry.providers.map(\.id),
-                defaultResolvedFamilyIDs: defaultResolvedFamilyIDs,
-                isProviderEnabled: { enablement.isEnabled($0) }
-            )
-            return LocalUsageAPI.State(
+            LocalUsageAPI.State(
                 enabledOrderedIDs: layout.orderedProviderIDs().filter { enablement.isEnabled($0) },
                 knownIDs: Set(registry.providers.map(\.id)),
                 snapshots: dataStore.snapshots,
                 limitDescriptors: registry.limitDescriptorsByProvider,
-                errors: dataStore.providerErrors,
-                resolveCard: { resolver.resolve($0) }
+                errors: dataStore.providerErrors
             )
         })
         self.refreshTask = Self.startPeriodicRefresh(dataStore: dataStore, telemetry: telemetry)

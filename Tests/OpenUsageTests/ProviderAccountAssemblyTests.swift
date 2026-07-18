@@ -30,7 +30,6 @@ final class ProviderAccountAssemblyTests: XCTestCase {
         let assembly = ProviderAccountAssembly.make(observer: observer, accountsStore: store)
 
         XCTAssertEqual(assembly.identityKeysByCard, ["claude": "acct-1"])
-        XCTAssertEqual(assembly.resolvedFamilyIDs, ["claude"])
         // The registry recorded the resolved account under the bare id, holding the default badge.
         let record = try XCTUnwrap(store.defaultBadgeHolder(family: "claude"))
         XCTAssertEqual(record.id, "claude")

@@ -62,20 +62,20 @@ public struct UsageReader {
         let accountAssembly = providersOverride == nil
             ? ProviderAccountAssembly.make(defaults: defaults, waitsForLoginShell: false)
             : ProviderAccountAssembly(identityKeysByCard: [:])
-        // A bare family id resolves to the card that should answer for it (`ProviderCardResolver`) —
-        // pass-through today, per-account routing when multi-account cards land.
-        let resolver = ProviderCardResolver.make(
-            registryProviderIDs: registry.providers.map(\.id),
-            defaultResolvedFamilyIDs: accountAssembly.resolvedFamilyIDs,
-            isProviderEnabled: { enablement.isEnabled($0) }
-        )
-        let providerID = requestedProviderID.map { resolver.resolve($0.lowercased()) }
-        if let providerID, !knownIDs.contains(providerID) {
-            throw UsageReaderError.unknownProvider(providerID)
+        // A requested id names cards by plain string matching — an exact card id, or a family id
+        // naming all of that family's cards — mirroring the local HTTP API exactly (see
+        // `LocalUsageAPI.State.matchingCardIDs`). Never resolved from runtime state: the same
+        // request names the same cards no matter who is logged in or what's enabled.
+        let requestedToken = requestedProviderID?.lowercased()
+        let matchedIDs: Set<String>? = requestedToken.map { token in
+            knownIDs.filter { $0 == token || ProviderAccountID.family(of: $0) == token }
+        }
+        if let matchedIDs, matchedIDs.isEmpty {
+            throw UsageReaderError.unknownProvider(requestedToken ?? "")
         }
 
         let includesProvider: @MainActor (String) -> Bool = { id in
-            providerID.map { $0 == id } ?? enablement.isEnabled(id)
+            matchedIDs?.contains(id) ?? enablement.isEnabled(id)
         }
         let cache = ProviderSnapshotCache(userDefaults: defaults, allowsPersistedFreshness: true)
         let allProviderIDs = registry.providers.map(\.id)
@@ -112,8 +112,10 @@ public struct UsageReader {
                 // stamp — an unstamped claude/codex entry would be discarded at the app's next launch.
                 providerIdentityKeys: accountAssembly.identityKeysByCard
             )
-            if let providerID {
-                _ = await dataStore.refresh(providerID: providerID, force: force)
+            if let matchedIDs {
+                for providerID in orderedIDs.filter(matchedIDs.contains) {
+                    _ = await dataStore.refresh(providerID: providerID, force: force)
+                }
             } else {
                 await dataStore.refreshAll(force: force)
             }
@@ -133,13 +135,13 @@ public struct UsageReader {
             limitDescriptors: registry.limitDescriptorsByProvider,
             errors: errors
         )
-        let path = providerID.map { "/v1/limits/\($0)" } ?? "/v1/limits"
+        let path = requestedToken.map { "/v1/limits/\($0)" } ?? "/v1/limits"
         let response = LocalUsageAPI.respond(method: "GET", path: path, state: state)
         guard let data = response.body else {
             if let warning = warnings.first {
                 throw UsageReaderError.refreshFailed(warning)
             }
-            throw UsageReaderError.noCachedSnapshot(providerID ?? "enabled providers")
+            throw UsageReaderError.noCachedSnapshot(requestedToken ?? "enabled providers")
         }
         return UsageReadResult(data: data, warnings: warnings)
     }
