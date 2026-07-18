@@ -19,7 +19,10 @@ struct CursorSpendViewSection: View {
             VStack(spacing: 0) {
                 // Same row shape as a Settings row: label leading, popup picker trailing.
                 HStack(spacing: 10) {
-                    Text("Spend Tiles Show")
+                    // Section header already says "Spend View", so the row label just needs "Show".
+                    // Pin its width so the trailing Spacer can't squeeze it into a wrap.
+                    Text("Show")
+                        .fixedSize(horizontal: true, vertical: false)
                     Spacer(minLength: 8)
                     Picker("", selection: $spendView) {
                         ForEach(CursorSpendViewSetting.allCases, id: \.self) { option in
