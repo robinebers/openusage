@@ -209,6 +209,74 @@ final class CodexResetClaimTests: XCTestCase {
         XCTAssertEqual(refreshes.count, 1)
     }
 
+    // MARK: - Next-to-expire claim (the CLI's pick)
+
+    func testClaimNextAvailableCreditPicksTheEarliestExpiry() async throws {
+        // The stub list carries the target at `expiry` and another credit ~11 days later — the CLI
+        // pick must take the earliest, regardless of list order (the target is listed second).
+        let refreshes = RefreshCounter()
+        let (service, http) = makeService(refreshes: refreshes)
+
+        let claim = await service.claimNextAvailableCredit(redeemRequestID: "redeem-cli")
+
+        XCTAssertEqual(claim.outcome, .success)
+        XCTAssertEqual(claim.creditExpiresAt, Self.expiry, "reports which credit was spent")
+        XCTAssertEqual(refreshes.count, 1, "a successful claim forces a Codex refresh before returning")
+        let consume = try XCTUnwrap(http.requests.last)
+        let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(consume.body)) as? [String: String])
+        XCTAssertEqual(payload["credit_id"], "RateLimitResetCredit_target")
+        XCTAssertEqual(payload["redeem_request_id"], "redeem-cli")
+    }
+
+    func testClaimNextAvailableCreditSkipsUnclaimableCredits() async throws {
+        // The earliest credit is redeemed and another has no expiry at all (unclaimable — expiry is
+        // the identity a claim matches on): the pick must fall through to the later available credit.
+        let listBody = Data("""
+        {"credits": [
+            {"id": "RateLimitResetCredit_redeemed", "status": "redeemed",
+             "expires_at": "\(OpenUsageISO8601.string(from: Self.expiry))"},
+            {"id": "RateLimitResetCredit_bare", "status": "available"},
+            {"id": "RateLimitResetCredit_later", "status": "available",
+             "expires_at": "\(OpenUsageISO8601.string(from: Self.expiry.addingTimeInterval(3600)))"}
+        ], "available_count": 3}
+        """.utf8)
+        let (service, http) = makeService(listBody: listBody)
+
+        let claim = await service.claimNextAvailableCredit(redeemRequestID: "redeem-cli")
+
+        XCTAssertEqual(claim.outcome, .success)
+        XCTAssertEqual(claim.creditExpiresAt, Self.expiry.addingTimeInterval(3600))
+        let consume = try XCTUnwrap(http.requests.last)
+        let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(consume.body)) as? [String: String])
+        XCTAssertEqual(payload["credit_id"], "RateLimitResetCredit_later")
+    }
+
+    func testClaimNextAvailableCreditWithEmptyListIsNoCreditAndRefreshes() async {
+        let refreshes = RefreshCounter()
+        let (service, http) = makeService(
+            listBody: Data(#"{"credits": [], "available_count": 0}"#.utf8),
+            refreshes: refreshes
+        )
+
+        let claim = await service.claimNextAvailableCredit(redeemRequestID: "redeem-cli")
+
+        XCTAssertEqual(claim.outcome, .noCredit)
+        XCTAssertNil(claim.creditExpiresAt)
+        XCTAssertEqual(http.requests.map(\.url), [CodexUsageClient.resetCreditsURL], "no consume POST is ever sent")
+        XCTAssertEqual(refreshes.count, 1, "reconciles a snapshot that may still show credits")
+    }
+
+    func testClaimNextAvailableCreditListFailureIsFailedWithoutRefresh() async {
+        let refreshes = RefreshCounter()
+        let (service, _) = makeService(listStatus: 503, refreshes: refreshes)
+
+        let claim = await service.claimNextAvailableCredit(redeemRequestID: "redeem-cli")
+
+        XCTAssertEqual(claim.outcome, .failed)
+        XCTAssertNil(claim.creditExpiresAt)
+        XCTAssertEqual(refreshes.count, 0, "failures leave the snapshot alone")
+    }
+
     // MARK: - Idempotent replay
 
     func testRetryWithSameKeyReplaysTheConsumeInsteadOfNoCredit() async throws {

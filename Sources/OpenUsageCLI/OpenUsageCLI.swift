@@ -21,6 +21,29 @@ struct OpenUsageCLI {
             guard let defaults = UserDefaults(suiteName: app.bundleIdentifier) else {
                 throw CLIError.appDefaultsUnavailable
             }
+
+            if arguments.claimReset {
+                guard arguments.providerID == "codex" else {
+                    throw CLIError.usage("--claim-reset claims a Codex reset credit: run 'openusage codex --claim-reset'.")
+                }
+                let claim = await CodexResetClaimRunner(userDefaults: defaults).claimNextAvailableCredit()
+                FileHandle.standardOutput.write(claim.data)
+                FileHandle.standardOutput.write(Data("\n".utf8))
+                claim.warnings.forEach { writeError("warning: \($0)") }
+                switch claim.status {
+                case .claimed, .nothingToReset:
+                    // Exit 0 even when the post-claim refresh warned: the claim itself landed, and a
+                    // non-zero exit would invite scripted retries — a new process is a new idempotency
+                    // key, so a retry could spend a second credit.
+                    break
+                case .noCredit:
+                    exit(3)
+                case .failed:
+                    exit(4)
+                }
+                return
+            }
+
             let result = try await UsageReader(userDefaults: defaults).read(
                 providerID: arguments.providerID,
                 force: arguments.force
@@ -54,12 +77,14 @@ struct OpenUsageCLI {
     }
 
     private static let help = """
-    Usage: openusage [provider] [--force]
+    Usage: openusage [provider] [--force] [--claim-reset]
 
     Read limits through OpenUsage's shared five-minute cache and exit. Output is always JSON.
 
     Options:
-      --force      Refresh even when the shared cache is still fresh
+      --force        Refresh even when the shared cache is still fresh
+      --claim-reset  Spend the next-to-expire Codex rate-limit reset credit (codex only).
+                     Claims immediately, without confirmation — see docs/cli.md before scripting retries
       -v, --version
       -h, --help
     """

@@ -12,6 +12,13 @@ enum ResetClaimOutcome: Equatable, Sendable {
     case failed
 }
 
+/// How a claim picks its target from the fresh credit list: the popover carries the exact expiry the
+/// user clicked; the CLI takes whatever claimable credit is next to expire.
+enum ResetCreditPick: Equatable, Sendable {
+    case expiring(at: Date)
+    case nextToExpire
+}
+
 /// Claims a Codex rate-limit reset credit — the app's only provider-API write, so it is deliberately
 /// narrow: one credit per call, always by explicit credit id, guarded by the caller's idempotency key.
 /// The protocol was reverse-engineered from the open-source Codex CLI and verified live once; see
@@ -30,11 +37,11 @@ final class CodexResetClaimService {
     private let usageClient: CodexUsageClient
     private let credentialCandidates: () async -> [Credentials]
     private let refreshAfterClaim: () async -> Void
-    /// The credit id each idempotency key was matched to, kept for the key's retries: if a consume
+    /// The credit each idempotency key was matched to, kept for the key's retries: if a consume
     /// succeeded but its response was lost, the credit is gone from a re-fetched list — a fresh match
     /// would misread the retry as "no longer available" instead of replaying the POST and letting the
-    /// server answer `already_redeemed`. Session-lived, keyed by the popover's per-credit UUIDs.
-    private var matchedCreditIDs: [String: String] = [:]
+    /// server answer `already_redeemed`. Session-lived, keyed by the caller's per-claim UUIDs.
+    private var matchedCredits: [String: (id: String, expiresAt: Date)] = [:]
 
     /// Test seam: injected credential candidates and refresh hook, the same `usageClient` the requests
     /// go through. Candidates are tried in order until one authenticates (see `claim`).
@@ -80,24 +87,38 @@ final class CodexResetClaimService {
     /// Claims the credit expiring at `expiry`. Never throws — every failure mode is logged loudly and
     /// collapsed to an outcome the popover can render.
     func claim(creditExpiringAt expiry: Date, redeemRequestID: String) async -> ResetClaimOutcome {
+        await claim(pick: .expiring(at: expiry), redeemRequestID: redeemRequestID).outcome
+    }
+
+    /// The CLI's entry point (`openusage codex --claim-reset`): claims whatever claimable credit is
+    /// next to expire — the same list fetch, status filter, credential fallback, consume, and refresh
+    /// behavior as the popover's expiry-targeted claim; only the pick differs. Returns the targeted
+    /// credit's expiry so the CLI can report which credit was spent, `nil` when none was targeted.
+    func claimNextAvailableCredit(redeemRequestID: String) async -> (outcome: ResetClaimOutcome, creditExpiresAt: Date?) {
+        await claim(pick: .nextToExpire, redeemRequestID: redeemRequestID)
+    }
+
+    private func claim(
+        pick: ResetCreditPick, redeemRequestID: String
+    ) async -> (outcome: ResetClaimOutcome, creditExpiresAt: Date?) {
         let candidates = await credentialCandidates()
         guard !candidates.isEmpty else {
             AppLog.error(LogTag.plugin("codex"), "reset claim: no usable Codex credentials")
-            return .failed
+            return (.failed, nil)
         }
 
         // A retry of an idempotency key that already matched replays the exact same (key, credit) pair
         // instead of re-matching: after a consume whose response was lost, the credit is no longer in
         // the list, and only the replay lets the server's `already_redeemed` prove the claim landed.
-        let creditID: String
+        let credit: (id: String, expiresAt: Date)
         var preferredCandidates = candidates
-        if let replayID = matchedCreditIDs[redeemRequestID] {
-            creditID = replayID
+        if let replay = matchedCredits[redeemRequestID] {
+            credit = replay
         } else {
-            switch await matchCredit(expiringAt: expiry, candidates: candidates) {
-            case .matched(let id, let authenticated):
-                creditID = id
-                matchedCreditIDs[redeemRequestID] = id
+            switch await matchCredit(pick: pick, candidates: candidates) {
+            case .matched(let matched, let authenticated):
+                credit = matched
+                matchedCredits[redeemRequestID] = matched
                 // Lead with the credential that just authenticated the list fetch. Deduplicate by the
                 // full (token, account) pair — ChatGPT-Account-Id changes what a token is authorized
                 // for, so a same-token candidate with a different account is a distinct fallback.
@@ -105,25 +126,25 @@ final class CodexResetClaimService {
                     $0.accessToken != authenticated.accessToken || $0.accountID != authenticated.accountID
                 }
             case .noCredit:
-                // Not an error: the credit was claimed elsewhere (CLI/web) or expired since the popover
-                // rendered. The refresh reconciles the timeline with reality.
-                AppLog.warn(LogTag.plugin("codex"), "reset claim: no available credit matches the picked expiry")
+                // Not an error: the credit was claimed elsewhere (CLI/web) or expired since it was
+                // listed. The refresh reconciles the timeline with reality.
+                AppLog.warn(LogTag.plugin("codex"), "reset claim: no claimable credit matches the pick")
                 await refreshAfterClaim()
-                return .noCredit
+                return (.noCredit, nil)
             case .failed:
-                return .failed
+                return (.failed, nil)
             }
         }
 
         let outcome = await consume(
-            creditID: creditID, redeemRequestID: redeemRequestID, candidates: preferredCandidates
+            creditID: credit.id, redeemRequestID: redeemRequestID, candidates: preferredCandidates
         )
         if outcome != .failed {
             // The world changed (or turned out different from the snapshot): refresh before returning,
             // so the result banner appears over already-reconciled meters and credit count.
             await refreshAfterClaim()
         }
-        return outcome
+        return (outcome, credit.expiresAt)
     }
 
     /// POSTs the consume, falling back across credential candidates on an auth rejection (401/403).
@@ -165,16 +186,16 @@ final class CodexResetClaimService {
     }
 
     private enum MatchResult {
-        case matched(creditID: String, credentials: Credentials)
+        case matched(credit: (id: String, expiresAt: Date), credentials: Credentials)
         case noCredit
         case failed
     }
 
-    /// Fresh credit list (safe GET) → the id of the credit the user picked, matched by expiry. Tries
-    /// each credential candidate in order, moving on when one is rejected as unauthenticated (401/403)
-    /// — the same fallback the provider's probe applies — so a stale first auth file can't strand the
-    /// claim while the dashboard works off a later one.
-    private func matchCredit(expiringAt expiry: Date, candidates: [Credentials]) async -> MatchResult {
+    /// Fresh credit list (safe GET) → the credit the pick selects. Tries each credential candidate in
+    /// order, moving on when one is rejected as unauthenticated (401/403) — the same fallback the
+    /// provider's probe applies — so a stale first auth file can't strand the claim while the
+    /// dashboard works off a later one.
+    private func matchCredit(pick: ResetCreditPick, candidates: [Credentials]) async -> MatchResult {
         var lastFailure = "no credential candidate authenticated"
         for credentials in candidates {
             let list: HTTPResponse
@@ -194,24 +215,38 @@ final class CodexResetClaimService {
                 AppLog.error(LogTag.plugin("codex"), "reset claim: credit list fetch failed (\(list.statusCode))")
                 return .failed
             }
-            guard let matched = Self.creditID(in: body, expiringAt: expiry) else { return .noCredit }
-            return .matched(creditID: matched, credentials: credentials)
+            guard let matched = Self.credit(in: body, pick: pick) else { return .noCredit }
+            return .matched(credit: matched, credentials: credentials)
         }
         AppLog.error(LogTag.plugin("codex"), "reset claim: \(lastFailure)")
         return .failed
     }
 
-    /// The id of the still-available credit whose `expires_at` matches `expiry` (±1s — the popover's
-    /// dates round-trip through the same ISO-8601 parsing as this list, so a real match is exact; the
-    /// tolerance only absorbs sub-second truncation). Mirrors the mapper's status filter: a credit with
-    /// no `status` counts as available, only an explicit non-"available" state is skipped.
-    static func creditID(in body: [String: Any], expiringAt expiry: Date) -> String? {
+    /// The still-claimable credit the pick selects. Claimable mirrors the mapper's status filter — a
+    /// credit with no `status` counts as available, only an explicit non-"available" state is skipped
+    /// — and requires a parseable `expires_at`, because expiry is the identity a claim matches on.
+    ///
+    /// `.expiring(at:)` matches within ±1s — the popover's dates round-trip through the same ISO-8601
+    /// parsing as this list, so a real match is exact; the tolerance only absorbs sub-second
+    /// truncation. `.nextToExpire` takes the earliest expiry.
+    static func credit(in body: [String: Any], pick: ResetCreditPick) -> (id: String, expiresAt: Date)? {
         guard let credits = body["credits"] as? [[String: Any]] else { return nil }
-        return credits.first { credit in
-            if let status = credit["status"] as? String, status != "available" { return false }
-            guard let date = parseExpiry(credit["expires_at"]) else { return false }
-            return abs(date.timeIntervalSince(expiry)) < 1
-        }?["id"] as? String
+        let claimable: [(id: String, expiresAt: Date)] = credits.compactMap { credit in
+            if let status = credit["status"] as? String, status != "available" { return nil }
+            guard let id = credit["id"] as? String, let date = parseExpiry(credit["expires_at"]) else { return nil }
+            return (id, date)
+        }
+        switch pick {
+        case .expiring(let expiry):
+            return claimable.first { abs($0.expiresAt.timeIntervalSince(expiry)) < 1 }
+        case .nextToExpire:
+            return claimable.min { $0.expiresAt < $1.expiresAt }
+        }
+    }
+
+    /// The expiry-targeted pick, kept as the popover-shaped (and test-covered) surface.
+    static func creditID(in body: [String: Any], expiringAt expiry: Date) -> String? {
+        credit(in: body, pick: .expiring(at: expiry))?.id
     }
 
     /// Collapses a consume response to the popover's outcome. All four protocol codes arrive as HTTP

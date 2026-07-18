@@ -3,6 +3,7 @@ import Foundation
 struct CLIArguments: Equatable, Sendable {
     var providerID: String?
     var force = false
+    var claimReset = false
     var showHelp = false
     var showVersion = false
 
@@ -11,6 +12,7 @@ struct CLIArguments: Equatable, Sendable {
         for argument in arguments {
             switch argument {
             case "--force": parsed.force = true
+            case "--claim-reset": parsed.claimReset = true
             case "-h", "--help": parsed.showHelp = true
             case "-v", "--version": parsed.showVersion = true
             default:
