@@ -103,6 +103,15 @@ final class WidgetDataStore {
         didSet { defaults.set(alwaysShowPacing, forKey: Self.alwaysShowPacingKey) }
     }
 
+    /// Restores the Usage Display preferences (meter style, reset-time format, always-show-pacing) to
+    /// their defaults — the Settings "Reset All Settings" path. Cached usage snapshots are data, not
+    /// settings, and stay untouched.
+    func resetDisplaySettings() {
+        meterStyle = .remaining
+        resetDisplayMode = .relative
+        alwaysShowPacing = false
+    }
+
     init(
         registry: WidgetRegistry,
         providers: [ProviderRuntime],
