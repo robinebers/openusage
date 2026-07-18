@@ -92,6 +92,19 @@ final class LocalUsageAPITests: XCTestCase {
         XCTAssertEqual((try json(unknown.body) as? [String: Any])?["error"] as? String, "provider_not_found")
     }
 
+    func testSingleProviderRoutesResolveThroughTheCardResolver() throws {
+        // Single-provider routes pass the requested id through `resolveCard` before lookup, so a
+        // bare family id can answer with a specific account card once multi-account phases land.
+        var state = makeState()
+        state.resolveCard = { $0 == "claude" ? "cursor" : $0 }
+
+        let response = LocalUsageAPI.respond(method: "GET", path: "/v1/usage/claude", state: state)
+
+        XCTAssertEqual(response.status, 200)
+        let object = try XCTUnwrap(try json(response.body) as? [String: Any])
+        XCTAssertEqual(object["providerId"] as? String, "cursor")
+    }
+
     func testMethodAndRouteErrors() throws {
         let state = makeState()
 

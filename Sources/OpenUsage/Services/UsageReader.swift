@@ -40,15 +40,28 @@ public struct UsageReader {
     }
 
     public func read(providerID requestedProviderID: String? = nil, force: Bool = false) async throws -> UsageReadResult {
-        let providerID = requestedProviderID?.lowercased()
         let providers = providersOverride ?? ProviderCatalog.make(defaults: defaults)
         let registry = WidgetRegistry.from(providers)
         let knownIDs = Set(registry.providers.map(\.id))
+        let enablement = ProviderEnablementStore(defaults: defaults)
+        // The launch account pass (see `ProviderAccountAssembly`): resolves each family's default
+        // account so refreshed snapshots carry the correct account stamp, and feeds the bare-id
+        // resolver. Skipped when a test injects its own providers — they have no real homes to read.
+        let accountAssembly = providersOverride == nil
+            ? ProviderAccountAssembly.make(defaults: defaults, waitsForLoginShell: false)
+            : ProviderAccountAssembly(identityKeysByCard: [:])
+        // A bare family id resolves to the card that should answer for it (`ProviderCardResolver`) —
+        // pass-through today, per-account routing when multi-account cards land.
+        let resolver = ProviderCardResolver.make(
+            registryProviderIDs: registry.providers.map(\.id),
+            defaultResolvedFamilyIDs: accountAssembly.resolvedFamilyIDs,
+            isProviderEnabled: { enablement.isEnabled($0) }
+        )
+        let providerID = requestedProviderID.map { resolver.resolve($0.lowercased()) }
         if let providerID, !knownIDs.contains(providerID) {
             throw UsageReaderError.unknownProvider(providerID)
         }
 
-        let enablement = ProviderEnablementStore(defaults: defaults)
         let includesProvider: @MainActor (String) -> Bool = { id in
             providerID.map { $0 == id } ?? enablement.isEnabled(id)
         }
@@ -73,7 +86,10 @@ public struct UsageReader {
                 providers: providers,
                 cache: cache,
                 defaults: defaults,
-                isProviderEnabled: includesProvider
+                isProviderEnabled: includesProvider,
+                // The CLI shares the app's snapshot cache, so its writes must carry the same account
+                // stamp — an unstamped claude/codex entry would be discarded at the app's next launch.
+                providerIdentityKeys: accountAssembly.identityKeysByCard
             )
             if let providerID {
                 _ = await dataStore.refresh(providerID: providerID, force: force)

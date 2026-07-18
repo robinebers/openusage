@@ -33,6 +33,28 @@ struct ShellEnvironmentSnapshot: Codable, Equatable, Sendable {
         }
         return ShellEnvironmentSnapshot(values: values, capturedAt: capturedAt)
     }
+
+    /// An environment view for launch-time identity reads when the live login shell has not warmed:
+    /// the process environment still wins (a terminal launch exports real values), and the snapshot
+    /// pins every other captured key — including pinning "absent" — so a login shell warming mid-read
+    /// cannot flip facts halfway through.
+    func identityEnvironment(
+        processEnvironment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> EnvironmentReading {
+        var overrides: [String: String?] = [:]
+        for key in Self.capturedKeys {
+            if let live = processEnvironment[key]?.nilIfEmpty {
+                overrides[key] = live
+            } else if let cached = values[key] {
+                overrides[key] = cached
+            } else {
+                // Explicitly pinned absent (`.some(nil)`): the plain subscript would REMOVE the key
+                // here, letting a late-warming login shell leak through mid-read.
+                overrides.updateValue(nil, forKey: key)
+            }
+        }
+        return ScopedEnvironmentReader(base: ProcessEnvironmentReader(), overrides: overrides)
+    }
 }
 
 /// UserDefaults persistence for the snapshot (`openusage.shellEnvSnapshot.v1`). A class so the

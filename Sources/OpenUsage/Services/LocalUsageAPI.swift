@@ -18,6 +18,9 @@ enum LocalUsageAPI {
         var limitDescriptors: [String: [WidgetDescriptor]] = [:]
         var errors: [String: String] = [:]
         var generatedAt = Date()
+        /// Resolves a bare family id to the card that answers for it (`ProviderCardResolver`) —
+        /// identity for direct card ids and non-family providers. Defaults to pass-through.
+        var resolveCard: @Sendable (String) -> String = { $0 }
     }
 
     struct Response: Equatable, Sendable {
@@ -45,7 +48,7 @@ enum LocalUsageAPI {
 
         case (3, "v1", "limits"):
             guard method == "GET" else { return error(405, "method_not_allowed") }
-            let providerID = segments[2]
+            let providerID = state.resolveCard(segments[2])
             guard state.knownIDs.contains(providerID) else { return error(404, "provider_not_found") }
             // A failed refresh without a last-good snapshot still has useful machine-readable output.
             // Only the genuinely untouched state is 204; failures return the normal envelope + error.
@@ -64,7 +67,7 @@ enum LocalUsageAPI {
 
         case (3, "v1", "usage"):
             guard method == "GET" else { return error(405, "method_not_allowed") }
-            let providerID = segments[2]
+            let providerID = state.resolveCard(segments[2])
             guard state.knownIDs.contains(providerID) else { return error(404, "provider_not_found") }
             guard let snapshot = state.snapshots[providerID] else { return Response(status: 204, body: nil) }
             return Response(status: 200, body: encode(WireSnapshot(snapshot)))

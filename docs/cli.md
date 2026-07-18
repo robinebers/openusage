@@ -16,6 +16,11 @@ snapshot cache. A normal read reuses snapshots less than five minutes old and re
 ones. `--force` is the CLI equivalent of the app's manual refresh: it bypasses that freshness gate and
 writes successful results to the same cache. Credentials are used locally and never appear in the output.
 
+The `claude` and `codex` IDs select the account signed in at the provider's default home (the same
+account the app's card shows), so existing usage keeps working unchanged as multi-account support
+arrives. When no default login exists and exactly one card of that family is enabled, the bare ID
+answers with that card instead of an empty result.
+
 ## Install on `PATH`
 
 In OpenUsage, open **Settings → Command Line** and click **Install…**. After the standard macOS

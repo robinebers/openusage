@@ -17,6 +17,20 @@ struct ProcessEnvironmentReader: EnvironmentReading {
     }
 }
 
+/// An environment view with fixed per-key overrides: the named keys read as their override (a `nil`
+/// override PINS the key absent — it does not fall through), everything else reads from `base`.
+/// `ShellEnvironmentSnapshot` uses this so a launch with a slow login shell resolves shell-exported
+/// facts from the persisted snapshot, including the fact that a key was NOT exported.
+struct ScopedEnvironmentReader: EnvironmentReading {
+    var base: EnvironmentReading
+    var overrides: [String: String?]
+
+    func value(for name: String) -> String? {
+        if let override = overrides[name] { return override }
+        return base.value(for: name)
+    }
+}
+
 protocol TextFileAccessing: Sendable {
     func exists(_ path: String) -> Bool
     /// Read a UTF-8 file when it exists. `nil` means the path is absent; permission, encoding, and

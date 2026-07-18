@@ -17,6 +17,8 @@ and the exact format printed by the `openusage` CLI.
 ### `GET /v1/limits/:providerId`
 
 Returns the same envelope containing one provider. It works for disabled providers too.
+A bare `claude`/`codex` ID answers with the account signed in at the provider's default home; when no
+default login exists and exactly one card of that family is enabled, it answers with that card.
 
 - **200 OK** — limits envelope, including an `errors` entry when a refresh failed.
 - **204 No Content** — provider is known but has neither a snapshot nor a recorded refresh failure yet.

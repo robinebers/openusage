@@ -66,6 +66,9 @@ final class AppContainer {
         // Once the capture lands, persist its identity-relevant facts so the NEXT launch has them
         // even if that launch's own capture is slow (see `ShellEnvironmentSnapshot`).
         self.shellEnvironmentSnapshotTask = ShellEnvironmentSnapshotStore(defaults: .standard).startRefreshTask()
+        // The launch account pass: which account is signed in at each family's default home. Feeds
+        // the snapshot cache's account stamp and the bare-id resolver; reconciles the account registry.
+        let accountAssembly = ProviderAccountAssembly.make(waitsForLoginShell: true)
 
         let providers = ProviderCatalog.make()
         let registry = WidgetRegistry.from(providers)
@@ -81,7 +84,8 @@ final class AppContainer {
             providers: providers,
             isProviderEnabled: { [enablement] in enablement.isEnabled($0) },
             orderedDescriptors: { [layout] in layout.visiblePlaced.compactMap { layout.descriptor(for: $0) } },
-            notificationSettings: { notificationSettings }
+            notificationSettings: { notificationSettings },
+            providerIdentityKeys: accountAssembly.identityKeysByCard
         )
         let iCloudSync = ICloudUsageSyncStore(dataStore: dataStore)
         // Re-enabling a provider should fetch it promptly, so clear any leftover failure backoff before
@@ -190,13 +194,23 @@ final class AppContainer {
         self.telemetry = telemetry
         self.transparency = PopoverTransparencyStore()
         self.privacy = MenuBarPrivacyStore()
+        // Bare family ids resolve through `ProviderCardResolver` (pass-through today; per-account
+        // routing when multi-account cards land). The default-resolved set is fixed per launch;
+        // enabled cards are read live so the resolver follows Customize toggles.
+        let defaultResolvedFamilyIDs = accountAssembly.resolvedFamilyIDs
         self.localAPI = LocalUsageServer(state: { [layout, enablement, dataStore] in
-            LocalUsageAPI.State(
+            let resolver = ProviderCardResolver.make(
+                registryProviderIDs: registry.providers.map(\.id),
+                defaultResolvedFamilyIDs: defaultResolvedFamilyIDs,
+                isProviderEnabled: { enablement.isEnabled($0) }
+            )
+            return LocalUsageAPI.State(
                 enabledOrderedIDs: layout.orderedProviderIDs().filter { enablement.isEnabled($0) },
                 knownIDs: Set(registry.providers.map(\.id)),
                 snapshots: dataStore.snapshots,
                 limitDescriptors: registry.limitDescriptorsByProvider,
-                errors: dataStore.providerErrors
+                errors: dataStore.providerErrors,
+                resolveCard: { resolver.resolve($0) }
             )
         })
         self.refreshTask = Self.startPeriodicRefresh(dataStore: dataStore, telemetry: telemetry)

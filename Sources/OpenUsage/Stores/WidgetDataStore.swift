@@ -31,6 +31,13 @@ final class WidgetDataStore {
     /// Quota-notification preferences (three independent triggers). Injected; `nil` disables
     /// notifications entirely (tests and previews that don't wire it).
     private let notificationSettings: (@MainActor () -> NotificationSettingsStore)?
+    /// Card id → the account identity currently signed in there, resolved once at launch by
+    /// `ProviderAccountAssembly`. Drives the snapshot cache's account stamp: writes record the
+    /// producer, and launch loads only paint an entry whose stamp matches. A card absent here has an
+    /// unresolved identity this launch (or isn't account-aware) — its cache behaves as it always did.
+    private let providerIdentityKeys: [String: String]
+    /// The provider families whose cache entries carry an account stamp (see `ProviderAccountID`).
+    static let accountAwareProviderIDs: Set<String> = ProviderAccountID.families
     /// Where a fired milestone is delivered: `(idPrefix, title, subtitle, body) -> Bool`. The Bool is
     /// whether it was actually delivered (authorized + scheduled); on false the caller leaves the
     /// milestone un-marked so it retries next pass. Injected so tests can record posts without a live
@@ -114,7 +121,8 @@ final class WidgetDataStore {
         monotonicNow: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
         slowProviderRefreshThreshold: TimeInterval = WidgetDataStore.defaultSlowProviderRefreshThreshold,
         notificationSettings: (@MainActor () -> NotificationSettingsStore)? = nil,
-        postNotification: (@MainActor (String, String, String, String) async -> Bool)? = nil
+        postNotification: (@MainActor (String, String, String, String) async -> Bool)? = nil,
+        providerIdentityKeys: [String: String] = [:]
     ) {
         precondition(slowProviderRefreshThreshold >= 0)
         self.registry = registry
@@ -131,13 +139,31 @@ final class WidgetDataStore {
             ?? { idPrefix, title, subtitle, body in
                 await AppNotifications.shared.post(idPrefix: idPrefix, title: title, subtitle: subtitle, body: body)
             }
+        self.providerIdentityKeys = providerIdentityKeys
         self.meterStyle = defaults.enumValue(forKey: Self.meterStyleKey, default: .remaining)
         self.resetDisplayMode = defaults.enumValue(forKey: Self.resetDisplayModeKey, default: .relative)
         self.alwaysShowPacing = defaults.bool(forKey: Self.alwaysShowPacingKey)
         // Stale-while-revalidate: load whatever was cached (expired included) so the menu bar and
         // dashboard show last-known values immediately at launch instead of "—"; the refresh loop
         // replaces them as soon as fresh data lands.
+        //
+        // Account swap guard: when a claude/codex card's CURRENT account identity is known, a cached
+        // entry only paints if the account that produced it matches. After a swap at the same home the
+        // card id still matches, so without this check the previous account's limits and plan would
+        // paint under the new account until the first successful refresh. A card whose current
+        // identity is unresolved (logged out, keyring-mode Codex) can't be verified either way — it
+        // keeps its cache, exactly as before the guard existed. Non-account providers are unaffected.
         let loaded = cache.loadSnapshots(providerIDs: registry.providers.map(\.id))
+            .filter { cardID, _ in
+                guard Self.accountAwareProviderIDs.contains(ProviderAccountID.family(of: cardID)),
+                      let currentIdentity = providerIdentityKeys[cardID]
+                else { return true }
+                guard cache.producedByIdentityKey(providerID: cardID) == currentIdentity else {
+                    AppLog.info(.cache, "stale account cache discarded for \(cardID)")
+                    return false
+                }
+                return true
+            }
         self.localSnapshots = loaded
         self.snapshots = loaded
     }
@@ -307,7 +333,9 @@ final class WidgetDataStore {
             AppLog.debug(.refresh, "preserved last-good history for \(providerID) after scan miss")
         }
         localSnapshots[providerID] = snapshot
-        cache.store(snapshot)
+        // Stamp the write with the card's launch-resolved account identity; nil (no stamp) for
+        // non-account providers and for cards whose identity didn't resolve this launch.
+        cache.store(snapshot, producedByIdentityKey: providerIdentityKeys[providerID])
         rebuildRenderedSnapshots()
         if notifyHistoryChange { onLocalHistoryChanged?() }
         AppLog.info(.refresh, "\(providerID) ok (\(durationMs)ms)")
