@@ -1,10 +1,11 @@
 import Foundation
 
-/// The login-shell facts account-identity resolution depends on (provider home overrides and OAuth
-/// endpoint switches), persisted after every successful shell capture. Shell exports change ~never
-/// between launches, so when the login shell is too slow to warm before a launch-time read, the
-/// reader can run against the previous launch's snapshot instead of mistaking an exported override
-/// for "not set". Only a genuinely first launch (no snapshot yet) has nothing to fall back on.
+/// The login-shell facts identity resolution depends on (provider home overrides and OAuth endpoint
+/// switches), persisted after every successful shell capture. Shell exports change ~never between
+/// launches, so `ProcessEnvironmentReader` PINS these keys to the persisted facts for the whole
+/// session: every reader sees the same values no matter when the async login-shell capture lands,
+/// and a slow shell can't make an exported override read as "not set". A changed export applies
+/// from the next launch. Only a genuinely first launch (no snapshot yet) has nothing to pin.
 struct ShellEnvironmentSnapshot: Codable, Equatable, Sendable {
     /// Identity-relevant, non-secret configuration variables. Secrets (API keys, tokens) must never
     /// be added here — the snapshot lives in UserDefaults as plain text.
@@ -15,7 +16,7 @@ struct ShellEnvironmentSnapshot: Codable, Equatable, Sendable {
     ]
 
     /// Captured values. A key absent here was verifiably NOT exported at capture time — that absence
-    /// is a cached fact too, and pins "no override" even if a late-finishing warm would disagree.
+    /// is a cached fact too: the reader stops here, so an absent key reads as "no override".
     var values: [String: String]
     var capturedAt: Date
 
@@ -39,6 +40,13 @@ struct ShellEnvironmentSnapshot: Codable, Equatable, Sendable {
 /// post-launch refresh task can carry it across actors; UserDefaults itself is thread-safe.
 final class ShellEnvironmentSnapshotStore: @unchecked Sendable {
     static let storageKey = "openusage.shellEnvSnapshot.v1"
+
+    /// The snapshot as it existed at process start, decoded once and memoized (a `static let` is
+    /// thread-safe lazy). `ProcessEnvironmentReader` consults this on every identity-key read, so it
+    /// must not re-hit UserDefaults each time. Deliberately frozen for the process lifetime — that
+    /// freeze IS the session pin; the refresh task's newer facts apply from the next launch.
+    static let launchSnapshot: ShellEnvironmentSnapshot? =
+        ShellEnvironmentSnapshotStore(defaults: .standard).load()
 
     private let defaults: UserDefaults
 

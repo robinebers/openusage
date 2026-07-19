@@ -68,6 +68,25 @@ enum DefaultLayout {
         "zai.session", "zai.weekly"
     ]
 
+    /// Account-card-aware default list: for every extra account card in the registry
+    /// (`claude@ab12cd34`), the family's entries are re-prefixed onto the card and appended, so a
+    /// newly discovered account seeds the same metric set (and caret split) as its family's default
+    /// card. Pins are deliberately NOT translated — an extra account never claims menu-bar space by
+    /// default. `migrationBaselineMetricIDs` is deliberately NOT translated either: account-card ids
+    /// must always read as never-offered so their defaults seed the first time the card appears.
+    static func translatedForAccountCards(_ ids: [String], providerIDs: [String]) -> [String] {
+        let accountCardIDs = providerIDs.filter(ProviderAccountID.isAccountCard)
+        guard !accountCardIDs.isEmpty else { return ids }
+        var result = ids
+        for cardID in accountCardIDs {
+            let prefix = ProviderAccountID.family(of: cardID) + "."
+            for id in ids where id.hasPrefix(prefix) {
+                result.append("\(cardID).\(id.dropFirst(prefix.count))")
+            }
+        }
+        return result
+    }
+
     /// Metrics placed in the per-provider On Demand section on a fresh install. This is
     /// membership, not enablement: optional disabled rows like Sonnet or Cursor Requests/Credits are
     /// listed here so if the user enables them later they appear below the caret by default.

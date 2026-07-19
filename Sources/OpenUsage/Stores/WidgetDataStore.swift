@@ -31,6 +31,15 @@ final class WidgetDataStore {
     /// Quota-notification preferences (three independent triggers). Injected; `nil` disables
     /// notifications entirely (tests and previews that don't wire it).
     private let notificationSettings: (@MainActor () -> NotificationSettingsStore)?
+    /// Card id → the account identity currently signed in there, resolved once at launch by
+    /// `ProviderAccountAssembly`. Drives the snapshot cache's account stamp: writes record the
+    /// producer, and launch loads only paint an entry whose stamp matches. A card absent here has an
+    /// unresolved identity this launch (or isn't account-aware) — its cache behaves as it always did.
+    private let providerIdentityKeys: [String: String]
+    /// The live card title for a card id, `nil` for non-account providers — the account-registry
+    /// name resolver, injected by `AppContainer` so notification titles carry renames. `nil`
+    /// (tests, the one-shot CLI) falls back to the baked derived name.
+    private let resolveDisplayName: (@MainActor (String) -> String?)?
     /// Where a fired milestone is delivered: `(idPrefix, title, subtitle, body) -> Bool`. The Bool is
     /// whether it was actually delivered (authorized + scheduled); on false the caller leaves the
     /// milestone un-marked so it retries next pass. Injected so tests can record posts without a live
@@ -83,6 +92,9 @@ final class WidgetDataStore {
     /// Wired by `ICloudUsageSyncStore`; debounced there so a concurrent provider batch produces one file.
     @ObservationIgnored var onLocalHistoryChanged: (@MainActor () -> Void)?
     @ObservationIgnored private var peerHistoryDocuments: [UsageHistoryDocument] = []
+    /// Accounts synced from other Macs that have NO card here: surfaced in Total Spend only (their
+    /// synthesized snapshots carry the usual Today/Yesterday/Last 30 Days lines), never as cards.
+    private(set) var remoteOnlySpend: [(provider: Provider, snapshot: ProviderSnapshot)] = []
 
     /// Global meter style: whether every bounded tile (and the menu-bar value) renders as "used" or
     /// "left/remaining". Persisted so the choice survives relaunch; defaults to `.remaining`.
@@ -123,7 +135,9 @@ final class WidgetDataStore {
         monotonicNow: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
         slowProviderRefreshThreshold: TimeInterval = WidgetDataStore.defaultSlowProviderRefreshThreshold,
         notificationSettings: (@MainActor () -> NotificationSettingsStore)? = nil,
-        postNotification: (@MainActor (String, String, String, String) async -> Bool)? = nil
+        postNotification: (@MainActor (String, String, String, String) async -> Bool)? = nil,
+        providerIdentityKeys: [String: String] = [:],
+        resolveDisplayName: (@MainActor (String) -> String?)? = nil
     ) {
         precondition(slowProviderRefreshThreshold >= 0)
         self.registry = registry
@@ -140,13 +154,29 @@ final class WidgetDataStore {
             ?? { idPrefix, title, subtitle, body in
                 await AppNotifications.shared.post(idPrefix: idPrefix, title: title, subtitle: subtitle, body: body)
             }
+        self.providerIdentityKeys = providerIdentityKeys
+        self.resolveDisplayName = resolveDisplayName
         self.meterStyle = defaults.enumValue(forKey: Self.meterStyleKey, default: .remaining)
         self.resetDisplayMode = defaults.enumValue(forKey: Self.resetDisplayModeKey, default: .relative)
         self.alwaysShowPacing = defaults.bool(forKey: Self.alwaysShowPacingKey)
         // Stale-while-revalidate: load whatever was cached (expired included) so the menu bar and
         // dashboard show last-known values immediately at launch instead of "—"; the refresh loop
         // replaces them as soon as fresh data lands.
+        //
+        // Account swap guard: when a claude/codex card's CURRENT account identity is known, a cached
+        // entry only paints if the account that produced it matches. After a swap at the same home the
+        // card id still matches, so without this check the previous account's limits and plan would
+        // paint under the new account until the first successful refresh. A card whose current
+        // identity is unresolved (logged out, keyring-mode Codex) can't be verified either way — it
+        // keeps its cache, exactly as before the guard existed. Non-account providers are unaffected.
         let loaded = cache.loadSnapshots(providerIDs: registry.providers.map(\.id))
+            .filter { cardID, _ in
+                guard cache.hasStaleAccountStamp(providerID: cardID, currentIdentityKey: providerIdentityKeys[cardID]) else {
+                    return true
+                }
+                AppLog.info(.cache, "stale account cache discarded for \(cardID)")
+                return false
+            }
         self.localSnapshots = loaded
         self.snapshots = loaded
     }
@@ -219,7 +249,9 @@ final class WidgetDataStore {
             metrics: metrics,
             toggles: toggles,
             now: now,
-            providerName: { [providersByID] id in providersByID[id]?.provider.displayName ?? id },
+            providerName: { [providersByID, resolveDisplayName] id in
+                resolveDisplayName?(id) ?? providersByID[id]?.provider.displayName ?? id
+            },
             post: postNotification
         )
     }
@@ -237,7 +269,14 @@ final class WidgetDataStore {
         notifyHistoryChange: Bool = true
     ) async -> RefreshOutcome {
         guard isProviderEnabled(providerID) else { return .skipped }
-        if !force, let cached = cache.snapshot(providerID: providerID) {
+        // A TTL-fresh entry that provably belongs to another account (swap since it was written) must
+        // not short-circuit the refresh — under persisted freshness (the one-shot CLI) it would copy
+        // the previous account's snapshot back in. Treat it as a miss so the fetch overwrites it.
+        let staleAccountStamp = cache.hasStaleAccountStamp(
+            providerID: providerID,
+            currentIdentityKey: providerIdentityKeys[providerID]
+        )
+        if !force, !staleAccountStamp, let cached = cache.snapshot(providerID: providerID) {
             // Skip the no-op write: `@Observable` doesn't compare values, so unconditionally
             // re-assigning an unchanged snapshot would re-render the menu-bar label every pass.
             AppLog.debug(.refresh, "cache hit \(providerID)")
@@ -316,7 +355,9 @@ final class WidgetDataStore {
             AppLog.debug(.refresh, "preserved last-good history for \(providerID) after scan miss")
         }
         localSnapshots[providerID] = snapshot
-        cache.store(snapshot)
+        // Stamp the write with the card's launch-resolved account identity; nil (no stamp) for
+        // non-account providers and for cards whose identity didn't resolve this launch.
+        cache.store(snapshot, producedByIdentityKey: providerIdentityKeys[providerID])
         rebuildRenderedSnapshots()
         if notifyHistoryChange { onLocalHistoryChanged?() }
         AppLog.info(.refresh, "\(providerID) ok (\(durationMs)ms)")
@@ -358,23 +399,33 @@ final class WidgetDataStore {
 
     func localHistoryDocument(deviceID: String, deviceName: String, updatedAt: Date = Date()) -> UsageHistoryDocument {
         var providers: [String: ProviderUsageHistory] = [:]
+        var identities: [String: String] = [:]
+        // Every machine-local card syncs — account cards included. Their ids are identity-derived,
+        // so they mean the same account on every Mac; the identities map additionally lets peers
+        // match a default card's history to whatever card that account is over there (see
+        // `PeerHistoryRemapper`).
         for (providerID, descriptor) in registry.historyDescriptorsByProvider
         where descriptor.scope == .machineLocal && isProviderEnabled(providerID) {
             if let history = localSnapshots[providerID]?.usageHistory {
                 providers[providerID] = history
+                if let identity = providerIdentityKeys[providerID] {
+                    identities[providerID] = identity
+                }
             }
         }
         return UsageHistoryDocument(
             deviceID: deviceID,
             deviceName: deviceName,
             updatedAt: updatedAt,
-            providers: providers
+            providers: providers,
+            identities: identities.isEmpty ? nil : identities
         )
     }
 
     private func rebuildRenderedSnapshots() {
         guard !peerHistoryDocuments.isEmpty else {
             snapshots = localSnapshots
+            remoteOnlySpend = []
             return
         }
         let renderDate = now()
@@ -383,10 +434,22 @@ final class WidgetDataStore {
         ) { result, entry in
             if isProviderEnabled(entry.key) { result[entry.key] = entry.value }
         }
+        // Match peers by account identity, not card id — the same account can be the default card
+        // on one Mac and an extra account card on another. Whatever matches no local card at all
+        // becomes a Total Spend-only remote entry below.
+        let remapped = PeerHistoryRemapper.remap(
+            documents: peerHistoryDocuments,
+            localIdentityByCardID: providerIdentityKeys
+        )
         let merged = UsageHistoryAggregator.merged(
             localSnapshots: localSnapshots,
-            peerDocuments: peerHistoryDocuments,
+            peerHistories: remapped.histories,
             descriptors: enabledDescriptors,
+            now: renderDate
+        )
+        remoteOnlySpend = Self.renderRemoteOnlySpend(
+            remapped.remoteOnly,
+            registry: registry,
             now: renderDate
         )
         var rendered = localSnapshots
@@ -408,6 +471,48 @@ final class WidgetDataStore {
             )
         }
         snapshots = rendered
+    }
+
+    /// Synthesize Total Spend entries for accounts that exist only on other Macs: a pseudo provider
+    /// (family icon, "Claude · Mac mini" name) plus a snapshot carrying the standard spend-tile
+    /// lines, rendered from the merged remote history by the same renderer real cards use.
+    private static func renderRemoteOnlySpend(
+        _ remoteOnly: [PeerHistoryRemapper.RemoteOnlyHistory],
+        registry: WidgetRegistry,
+        now: Date
+    ) -> [(provider: Provider, snapshot: ProviderSnapshot)] {
+        remoteOnly.compactMap { entry in
+            guard let familyProvider = registry.provider(id: entry.family),
+                  let descriptor = registry.historyDescriptorsByProvider[entry.family]
+            else { return nil }
+            let history = UsageHistoryAggregator.mergeHistories(entry.histories, now: now)
+            guard !history.series.daily.isEmpty else { return nil }
+
+            // The slice is named by the account's identity-derived card id ("claude@ab12cd34") —
+            // unique per account, and the exact id the account's card gets the day it's signed in
+            // here (and the id the CLI/API answer to on the Mac that has it). Which Mac the spend
+            // came from is irrelevant to the total, so it's not part of the name. The pseudo
+            // provider id stays distinct from real card ids so a slice can never collide with a
+            // live card.
+            let provider = Provider(
+                id: "\(entry.family)@peer-\(ProviderAccountID.hash8(entry.identityKey))",
+                displayName: entry.cardID,
+                icon: familyProvider.icon
+            )
+            let empty = ProviderSnapshot(
+                providerID: provider.id,
+                displayName: provider.displayName,
+                lines: [],
+                refreshedAt: now
+            )
+            let snapshot = UsageHistorySnapshotRenderer.render(
+                local: empty,
+                history: history,
+                descriptor: descriptor,
+                now: now
+            )
+            return (provider, snapshot)
+        }
     }
 
     /// The provider's latest refresh error, or `nil` when its last refresh succeeded.

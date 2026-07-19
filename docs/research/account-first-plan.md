@@ -22,8 +22,10 @@ Places an account is signed in are **sources** (default home, config dir, cswap 
 Desktop/Cowork, Codex home) attached to its record. "Default" is a badge on a source
 (`holdsDefaultSource`) used for the bare-id alias, CLI resolution, and attribution — never a key,
 never live sort order. A swap re-points source edges; cards, history, layout, and pins never move.
-An unresolved source claims no account. A card whose sources are all absent renders a calm
-signed-out state with a Remove affordance (tombstone; rescans never resurrect it).
+An unresolved source claims no account. A card renders only while at least one of its sources is
+found on this computer; when every source is gone the card stops rendering, and its record, layout,
+and history are retained so the card reattaches if the login reappears (owner decision 4 — no
+Remove affordance yet).
 
 ### The migration-killing decision
 
@@ -32,9 +34,11 @@ as its permanent record id**. Ids are opaque, so nothing is special about the sh
 install migrates by doing nothing: layout keys, pins, history bindings, snapshot cache entries, and
 third-party API consumers keep working untouched. If the user later swaps accounts at the default
 home, the new account mints `claude@<hash8>` and takes the default badge; the old card stays under
-its old id. The bare id doubles as the family **alias**: requests for `claude` resolve through
-`ProviderCardResolver` (badge holder → sole enabled family card → family empty state) and the HTTP
-API echoes the requested id.
+its old id. The bare id doubles as the family id in CLI/API requests, but there is **no alias
+resolution**: an id names providers by plain string matching (exact card id, or family id → every
+card of that family), and every match is returned. The answer never depends on runtime state —
+which login holds the badge, what's enabled — and both surfaces always return the multi-provider
+shape (the limits envelope; a JSON array on `/v1/usage/:id`).
 
 ## Phases
 
@@ -58,12 +62,14 @@ tests land in-slice (repo policy). Estimated source LOC excludes tests.
   family rendering its current state.
 - Cards render from account records. With exactly one account per family this is pixel-identical
   to today, so the structural flip ships invisibly.
-- `ProviderCardResolver` wired through the one-shot CLI and local HTTP API (port from `e052ef9`).
+- CLI + local HTTP API answer ids by plain string matching (family id → all its cards, always the
+  multi-provider shape; unknown id → 404). One deliberate `/v1` break — `/v1/usage/:id` returns an
+  array — made now, before multi-account ships, instead of aliasing forever.
 - Snapshot-cache identity stamp (v9): cached values remember the producing account; a swap between
   launches discards the stale entry instead of painting it under the new account (port `fef9ad0`).
-- Signed-out rendering + "Remove Account…" (context menu, tombstone in the store) — cheap while
-  the model is small.
 - Exit: beta soak; logs confirm identity-resolution rates in the wild; existing users see nothing.
+- *Shipped as #1026 + #1027 (v0.7.7-beta.1). Signed-out rendering and "Remove Account…" were cut
+  entirely per owner decision 4.*
 
 ### Phase 2 — Claude multi-account: config-dir discovery (~1,200 LOC)
 
@@ -71,13 +77,29 @@ tests land in-slice (repo policy). Estimated source LOC excludes tests.
   support-trail log lines. Port the discovery internals; **omit** fold/suppression plumbing — a
   candidate naming a known account just attaches as another source/log root on that record, so
   duplicate cards are structurally impossible.
-- New account → new record → new card named by account label ("Claude — Sunstory"); layout seeded
-  from `DefaultLayout.translatedForInstances` (pins never seeded).
+- New account → new record → new card named by account label ("Claude — Sunstory"), falling back
+  to the short-hash id; user rename in the card's context menu and in Customize. Cards seed
+  enabled; layout seeded from `DefaultLayout.translatedForInstances` (pins never seeded). A card
+  renders only while one of its sources is still found on this computer.
 - Scoped `ClaudeAuthStore` (per-config-dir keychain names), per-account spend from each home's logs.
 - iCloud identity routing: `PeerHistoryRemapper`, account-identity matching, v1-peer histories to a
-  family bucket rendered as device-labeled remote-only slices. Required the moment two accounts can
-  exist.
+  family bucket rendered as remote-only Total Spend slices named by account code (`claude@ab12cd34`).
+  Required the moment two accounts can exist.
 - Exit: beta soak with real multi-config-dir users; lifecycle test suite re-targeted green.
+- *Shipped as #1030.*
+
+### Phase 2b — One name resolver (~150 LOC)
+
+- Follow-up to Phase 2's rename feature: name resolution had no single seam — some surfaces read
+  the rename live from the registry, others (Total Spend legend, share export, menu bar
+  accessibility, notifications, CLI/API) showed the name baked into the `Provider` at launch, so a
+  mid-session rename drifted between surfaces.
+- The rule: `Provider.displayName` only ever carries the *derived* default; a rename lives solely
+  in the account registry (`ProviderAccountRecord.resolvedDisplayName`) and is resolved at render
+  time. Renames are never baked at launch and never persist into the snapshot cache or iCloud.
+- Total Spend slices carry a caller-resolved title (so the live legend and the
+  outside-the-environment share render agree); menu bar VoiceOver text, quota notifications, and
+  the CLI/HTTP API resolve through the same registry at their boundaries.
 
 ### Phase 3 — Claude: Cowork / Desktop accounts (~500 LOC)
 
@@ -112,12 +134,17 @@ tests land in-slice (repo policy). Estimated source LOC excludes tests.
 - Total Spend family grouping/tinting if still wanted (see `c6a63eb` on the old branch for why
   plain size order won before).
 
-## Owner decisions (lock before the phase that needs them)
+## Owner decisions (locked 2026-07-19)
 
-1. **Bare id as the first account's record id** — the plan assumes yes (kills all migration).
-2. Label fallback when an account has no email/org name: short hash vs ordinal ("Claude 2").
-3. Newly discovered accounts seed enabled (PR #1014 behavior) or disabled.
-4. Remove-button placement: context-menu-first (assumed), Customize section later.
+1. **Bare id as the first account's record id** — yes (kills all migration).
+2. Label fallback when an account has no email/org name: the short-hash record id
+   (`claude@ab12cd34`) — paired with a user rename, offered in the card's context menu and in
+   Customize, so an ugly fallback is one click from a good name.
+3. Newly discovered accounts seed **enabled** (PR #1014 behavior).
+4. **No "Remove Account…" yet.** Only accounts found on this computer render as cards; a card whose
+   account is no longer found anywhere simply stops rendering (its record, layout, and history are
+   retained and reattach if the login reappears). Unwanted cards are handled by the existing
+   per-provider disable. Tombstones stay schema-only until a later phase needs true removal.
 
 ## Verification
 

@@ -20,6 +20,10 @@ struct ShareCardView: View {
     /// neighbor-aware condensing treats the expand caret as a hard boundary the way the live dashboard
     /// does. `nil` when the provider is collapsed (no expanded section).
     var expandBoundaryIndex: Int? = nil
+    /// The live card title when it differs from the launch-baked `provider.displayName` (a rename can
+    /// land mid-session). Passed explicitly — this view renders in an `ImageRenderer`, outside the
+    /// app's environment, so it can't read the account registry itself.
+    var displayNameOverride: String? = nil
 
     /// Authored card width in points. The renderer multiplies this by `ShareCardRenderer.scale` for the
     /// PNG's pixel width; the height is whatever the rows add up to (flexible).
@@ -42,7 +46,7 @@ struct ShareCardView: View {
             ProviderIcon(source: provider.icon, inset: 0.04)
                 .frame(width: 22, height: 22)
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(provider.displayName)
+                Text(displayNameOverride ?? provider.displayName)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)

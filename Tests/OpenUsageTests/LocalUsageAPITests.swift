@@ -54,7 +54,9 @@ final class LocalUsageAPITests: XCTestCase {
         let response = LocalUsageAPI.respond(method: "GET", path: "/v1/usage/claude", state: makeState())
 
         XCTAssertEqual(response.status, 200)
-        let object = try XCTUnwrap(try json(response.body) as? [String: Any])
+        let array = try XCTUnwrap(try json(response.body) as? [[String: Any]])
+        let object = try XCTUnwrap(array.first)
+        XCTAssertEqual(array.count, 1)
         let lines = try XCTUnwrap(object["lines"] as? [[String: Any]])
 
         let progress = try XCTUnwrap(lines.first { $0["type"] as? String == "progress" })
@@ -71,25 +73,75 @@ final class LocalUsageAPITests: XCTestCase {
 
     func testCountFormatCarriesSuffix() throws {
         let response = LocalUsageAPI.respond(method: "GET", path: "/v1/usage/cursor", state: makeState())
-        let object = try XCTUnwrap(try json(response.body) as? [String: Any])
+        let object = try XCTUnwrap((try json(response.body) as? [[String: Any]])?.first)
         let line = try XCTUnwrap((object["lines"] as? [[String: Any]])?.first)
 
         XCTAssertEqual((line["format"] as? [String: Any])?["kind"] as? String, "count")
         XCTAssertEqual((line["format"] as? [String: Any])?["suffix"] as? String, "requests")
     }
 
-    func testSingleProviderStatusCodes() throws {
+    func testSingleTokenStatusCodes() throws {
         let state = makeState()
 
-        // Known but never fetched → 204 without a body.
+        // Known but never fetched → 200 with an empty array (the shape never changes; "no data yet"
+        // is just zero elements).
         let pending = LocalUsageAPI.respond(method: "GET", path: "/v1/usage/devin", state: state)
-        XCTAssertEqual(pending.status, 204)
-        XCTAssertNil(pending.body)
+        XCTAssertEqual(pending.status, 200)
+        XCTAssertEqual(try XCTUnwrap(try json(pending.body) as? [Any]).count, 0)
 
-        // Unknown provider → 404 provider_not_found.
+        // A token naming no known card and no family → 404 provider_not_found.
         let unknown = LocalUsageAPI.respond(method: "GET", path: "/v1/usage/nope", state: state)
         XCTAssertEqual(unknown.status, 404)
         XCTAssertEqual((try json(unknown.body) as? [String: Any])?["error"] as? String, "provider_not_found")
+
+        let unknownLimits = LocalUsageAPI.respond(method: "GET", path: "/v1/limits/nope", state: state)
+        XCTAssertEqual(unknownLimits.status, 404)
+    }
+
+    func testFamilyTokenMatchesEveryCardOfTheFamily() throws {
+        // Matching is plain string comparison — a token names an exact card id or, as a family id,
+        // every card of that family. Nothing about the answer depends on runtime state.
+        var state = makeState()
+        let refreshedAt = OpenUsageISO8601.date(from: "2026-03-26T11:16:29.000Z")!
+        state.knownIDs.insert("claude@ab12cd34")
+        state.snapshots["claude@ab12cd34"] = ProviderSnapshot(
+            providerID: "claude@ab12cd34",
+            displayName: "Claude",
+            lines: [.progress(label: "Session", used: 7, limit: 100, format: .percent)],
+            refreshedAt: refreshedAt
+        )
+
+        let family = LocalUsageAPI.respond(method: "GET", path: "/v1/usage/claude", state: state)
+        XCTAssertEqual(family.status, 200)
+        let matched = try XCTUnwrap(try json(family.body) as? [[String: Any]])
+        XCTAssertEqual(matched.compactMap { $0["providerId"] as? String }, ["claude", "claude@ab12cd34"])
+
+        // The exact card id names just that card.
+        let exact = LocalUsageAPI.respond(method: "GET", path: "/v1/usage/claude@ab12cd34", state: state)
+        let single = try XCTUnwrap(try json(exact.body) as? [[String: Any]])
+        XCTAssertEqual(single.compactMap { $0["providerId"] as? String }, ["claude@ab12cd34"])
+
+        // The limits envelope is keyed by card id, so a family token carries every matched card too.
+        let limits = LocalUsageAPI.respond(method: "GET", path: "/v1/limits/claude", state: state)
+        XCTAssertEqual(limits.status, 200)
+        let envelope = try XCTUnwrap(try json(limits.body) as? [String: Any])
+        let providers = try XCTUnwrap(envelope["providers"] as? [String: Any])
+        XCTAssertEqual(Set(providers.keys), ["claude", "claude@ab12cd34"])
+    }
+
+    func testResolvedTitlesOverrideSnapshotDisplayNamesAtTheBoundary() throws {
+        // Snapshots always store the derived name; the boundary re-resolves against the account
+        // registry so API/CLI output carries renames without ever persisting them.
+        let state = makeState().resolvingDisplayNames(["claude": "Claude Team"])
+
+        let response = LocalUsageAPI.respond(method: "GET", path: "/v1/usage", state: state)
+        let array = try XCTUnwrap(try json(response.body) as? [[String: Any]])
+        XCTAssertEqual(array.first { $0["providerId"] as? String == "claude" }?["displayName"] as? String, "Claude Team")
+        XCTAssertEqual(
+            array.first { $0["providerId"] as? String == "cursor" }?["displayName"] as? String,
+            "Cursor",
+            "cards without a record keep their baked name"
+        )
     }
 
     func testMethodAndRouteErrors() throws {

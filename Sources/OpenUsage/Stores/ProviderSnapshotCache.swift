@@ -4,6 +4,11 @@ import os
 struct ProviderSnapshotCache {
     private struct Payload: Codable {
         var snapshots: [String: ProviderSnapshot]
+        /// Card id → the account identity key that produced the stored snapshot. A sidecar map rather
+        /// than a field on `ProviderSnapshot` because that model is serialized verbatim to the local
+        /// HTTP API (`LocalUsageAPI`) — the stamp is cache bookkeeping, not wire data. Absent for
+        /// providers without an account identity (everything outside the claude/codex families).
+        var producedByIdentityKeys: [String: String]
     }
 
     /// In-memory mirror of the persisted blob. Reads (`snapshot`, `loadSnapshots`, and the read inside
@@ -52,7 +57,11 @@ struct ProviderSnapshotCache {
         // decode cleanly without it, but the bump fetches fresh snapshots so hover panels appear right away.
         // v8: provider snapshots gained normalized daily history for iCloud aggregation. Refetch on
         // upgrade so enabling sync can publish a complete first document immediately.
-        storageKey: String = "openusage.providerSnapshots.v8",
+        // v9: entries gained a `producedByIdentityKeys` sidecar (which account produced each snapshot),
+        // so a launch after an account swap at the same home can discard the previous account's cached
+        // limits/plan instead of painting them under the new account's card. Refetch on upgrade so every
+        // retained entry carries a stamp from its first write.
+        storageKey: String = "openusage.providerSnapshots.v9",
         ttl: TimeInterval = RefreshSetting.interval,
         allowsPersistedFreshness: Bool = false,
         now: @escaping () -> Date = Date.init
@@ -99,7 +108,9 @@ struct ProviderSnapshotCache {
         return fresh ? snapshot : nil
     }
 
-    func store(_ snapshot: ProviderSnapshot) {
+    /// `producedByIdentityKey` is the account identity that produced this snapshot (the card's identity
+    /// at write time); `nil` for providers without account identity, or when the identity is unresolved.
+    func store(_ snapshot: ProviderSnapshot, producedByIdentityKey: String? = nil) {
         guard !snapshot.lines.contains(where: \.isError) else {
             AppLog.debug(.cache, "skip write \(snapshot.providerID) (error snapshot)")
             return
@@ -110,7 +121,32 @@ struct ProviderSnapshotCache {
         sessionWrites.withLock { $0.insert(snapshot.providerID) }
         var payload = loadPayload()
         payload.snapshots[snapshot.providerID] = snapshot
+        // Stamp (or clear) the producing account alongside the entry. A nil identity must *clear* any
+        // prior stamp rather than keep it: the new snapshot is unattributable, and leaving the old
+        // account's stamp would falsely bless it at the next launch's identity check.
+        payload.producedByIdentityKeys[snapshot.providerID] = producedByIdentityKey
         save(payload)
+    }
+
+    /// The account identity stamped when this provider's entry was stored, or `nil` when the entry is
+    /// absent or was written without one. Launch filtering compares this against the card's current
+    /// identity before showing a cached snapshot for an account-aware card (see `WidgetDataStore.init`).
+    func producedByIdentityKey(providerID: String) -> String? {
+        loadPayload().producedByIdentityKeys[providerID]
+    }
+
+    /// Whether this provider's stored entry cannot be attributed to `currentIdentityKey`: the entry
+    /// exists, the card's current identity is known, and the stamp is missing or names another
+    /// account. Every read path must treat such an entry as absent — the launch paint filter
+    /// (`WidgetDataStore.init`), the refresh cache-hit gate (`WidgetDataStore.refresh`), and the
+    /// one-shot CLI's persisted-freshness reads (`UsageReader`) — or a swap at the same home would
+    /// serve the previous account's data. `false` when the identity is unresolved (`nil`): an
+    /// unverifiable entry keeps painting exactly as it did before account stamps existed.
+    func hasStaleAccountStamp(providerID: String, currentIdentityKey: String?) -> Bool {
+        guard let currentIdentityKey else { return false }
+        let payload = loadPayload()
+        guard payload.snapshots[providerID] != nil else { return false }
+        return payload.producedByIdentityKeys[providerID] != currentIdentityKey
     }
 
     private func loadPayload() -> Payload {
@@ -130,13 +166,13 @@ struct ProviderSnapshotCache {
         // drop here empties ALL providers' caches at once and feeds the refresh storm. Mirrors the
         // loud `save` path above. Runs at most once per cache instance (then memoized).
         guard let data = userDefaults.data(forKey: storageKey) else {
-            return Payload(snapshots: [:])
+            return Payload(snapshots: [:], producedByIdentityKeys: [:])
         }
         do {
             return try decoder.decode(Payload.self, from: data)
         } catch {
             AppLog.warn(.cache, "cache decode failed, dropping stored snapshots: \(error.localizedDescription)")
-            return Payload(snapshots: [:])
+            return Payload(snapshots: [:], producedByIdentityKeys: [:])
         }
     }
 

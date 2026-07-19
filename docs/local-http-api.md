@@ -14,13 +14,17 @@ Returns a machine-facing envelope for all **enabled** providers. Providers and r
 stable IDs; values are raw scalars with explicit units. This is the preferred route for new integrations
 and the exact format printed by the `openusage` CLI.
 
-### `GET /v1/limits/:providerId`
+### `GET /v1/limits/:id`
 
-Returns the same envelope containing one provider. It works for disabled providers too.
+Returns the same envelope containing every provider the ID names. It works for disabled providers too.
+Matching is plain string comparison: an exact provider ID names that provider, and a family ID
+(`claude`, `codex`) names every account card of that family — with one account that's exactly the one
+card. There is no aliasing or "pick the right account" logic; the same request always names the same
+providers.
 
-- **200 OK** — limits envelope, including an `errors` entry when a refresh failed.
-- **204 No Content** — provider is known but has neither a snapshot nor a recorded refresh failure yet.
-- **404 Not Found** — provider ID is unknown.
+- **200 OK** — limits envelope with every matched provider that has data (an `errors` entry appears
+  when a refresh failed; a matched provider with no data yet simply has no entry).
+- **404 Not Found** — the ID names no known provider and no family.
 
 ### `GET /v1/usage`
 
@@ -33,13 +37,17 @@ the same iCloud-combined usage as the dashboard; `/v1/usage` returns the old UI-
 
 - **200 OK** — JSON array (may be empty `[]` if nothing has been fetched yet).
 
-### `GET /v1/usage/:providerId`
+### `GET /v1/usage/:id`
 
-Returns the latest snapshot for one provider. Works for disabled providers too.
+Returns the latest snapshots for every provider the ID names (same matching as `/v1/limits/:id`).
+Works for disabled providers too.
 
-- **200 OK** — JSON object.
-- **204 No Content** — provider is known but has no snapshot yet.
-- **404 Not Found** — provider ID is unknown.
+- **200 OK** — JSON array, one snapshot per matched provider that has one (`[]` when none do yet).
+- **404 Not Found** — the ID names no known provider and no family.
+
+> **Breaking change:** this route previously returned a single JSON object and `204` when the
+> provider had no snapshot. It now always returns an array, so the shape stays identical whether an
+> ID names one provider or a whole account family.
 
 ### Everything else
 
@@ -159,6 +167,8 @@ contract. Codex's combined Credits UI row becomes two scalar resources: `credits
 Line types are `progress`, `text`, `badge`, and `barChart`. A `barChart` line carries a `points` array — one `{ label, value, valueLabel? }` per day, oldest first — plus an optional `note`; `value` is the day's token count, `valueLabel` its pre-formatted readout, and `label` a localized month/day (e.g. "Mar 25"). `fetchedAt` is when the snapshot was last fetched successfully (ISO 8601).
 
 The in-app model breakdown shown when hovering spend rows is not included in this API yet. Spend rows continue to serialize as the same `text` lines so existing local integrations keep their current shape.
+
+In both response shapes, `displayName` is the card's current name — if you renamed a card in the app, the rename shows here too. Match on `providerId` (or the envelope key), never on the name.
 
 ## Errors
 

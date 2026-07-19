@@ -3,7 +3,11 @@ import Foundation
 /// Latest normalized output for one provider refresh.
 struct ProviderSnapshot: Hashable, Sendable, Codable {
     let providerID: String
-    let displayName: String
+    /// The card title at refresh time — always the baked DERIVED name (renames never reach the
+    /// cache or iCloud). The CLI/API boundary re-resolves it against the account registry at
+    /// respond time (`LocalUsageAPI.State.resolvingDisplayNames`), so human-facing output carries
+    /// renames without persisting them.
+    var displayName: String
     var plan: String?
     var lines: [MetricLine]
     var refreshedAt: Date
