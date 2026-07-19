@@ -83,9 +83,23 @@ tests land in-slice (repo policy). Estimated source LOC excludes tests.
   renders only while one of its sources is still found on this computer.
 - Scoped `ClaudeAuthStore` (per-config-dir keychain names), per-account spend from each home's logs.
 - iCloud identity routing: `PeerHistoryRemapper`, account-identity matching, v1-peer histories to a
-  family bucket rendered as device-labeled remote-only slices. Required the moment two accounts can
-  exist.
+  family bucket rendered as remote-only Total Spend slices named by account code (`claude@ab12cd34`).
+  Required the moment two accounts can exist.
 - Exit: beta soak with real multi-config-dir users; lifecycle test suite re-targeted green.
+- *Shipped as #1030.*
+
+### Phase 2b — One name resolver (~150 LOC)
+
+- Follow-up to Phase 2's rename feature: name resolution had no single seam — some surfaces read
+  the rename live from the registry, others (Total Spend legend, share export, menu bar
+  accessibility, notifications, CLI/API) showed the name baked into the `Provider` at launch, so a
+  mid-session rename drifted between surfaces.
+- The rule: `Provider.displayName` only ever carries the *derived* default; a rename lives solely
+  in the account registry (`ProviderAccountRecord.resolvedDisplayName`) and is resolved at render
+  time. Renames are never baked at launch and never persist into the snapshot cache or iCloud.
+- Total Spend slices carry a caller-resolved title (so the live legend and the
+  outside-the-environment share render agree); menu bar VoiceOver text, quota notifications, and
+  the CLI/HTTP API resolve through the same registry at their boundaries.
 
 ### Phase 3 — Claude: Cowork / Desktop accounts (~500 LOC)
 

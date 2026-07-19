@@ -7,6 +7,9 @@ struct ClaudeAccountCard: Equatable, Sendable {
     /// The account's stable record id (`claude@ab12cd34`) — the card id everywhere: layout, cache,
     /// CLI/API matching.
     var id: String
+    /// The DERIVED card name (`ProviderAccountRecord.derivedDisplayName`) baked into the launch
+    /// `Provider`. Never a rename: renames live only in the account registry and are resolved at
+    /// render time, so a baked name can never be a stale copy of one.
     var displayName: String
     /// The config dir the card's credentials and spend logs are pinned to.
     var configDirPath: String
@@ -14,20 +17,6 @@ struct ClaudeAccountCard: Equatable, Sendable {
     var keychainLiteral: String
     /// Same-account additional config dirs (rare): extra spend-log roots, never extra credentials.
     var extraLogRoots: [URL] = []
-
-    /// The card name: the user's rename, else "Claude — <org or email>" from the account label,
-    /// else the record id itself (owner decision 2: short-hash fallback, one rename away from good).
-    static func displayName(customLabel: String?, label: String?, id: String) -> String {
-        if let customLabel = customLabel?.nilIfEmpty { return customLabel }
-        guard let label = label?.nilIfEmpty else { return id }
-        // Labels are our own "email (Org Name)" format — prefer the org for a short card title.
-        if label.hasSuffix(")"), let open = label.lastIndex(of: "(") {
-            let org = label[label.index(after: open)..<label.index(before: label.endIndex)]
-                .trimmingCharacters(in: .whitespaces)
-            if !org.isEmpty { return "Claude — \(org)" }
-        }
-        return "Claude — \(label)"
-    }
 }
 
 /// The launch-time account pass: read which account is signed in at each family's default home,
@@ -45,8 +34,6 @@ struct ProviderAccountAssembly {
     /// Same-account custom config dirs discovered for the DEFAULT card's login: extra spend-log
     /// roots for the default scanner, never extra credentials.
     var defaultClaudeExtraLogRoots: [URL] = []
-    /// The default Claude card's rename, when the badge-holder record carries one.
-    var defaultClaudeDisplayName: String?
 
     /// `waitsForLoginShell`: true for the menu-bar app (a Finder/Dock launch inherits no shell
     /// exports, so the pass leans on the login-shell layers), false for the one-shot CLI (a terminal
@@ -213,9 +200,7 @@ struct ProviderAccountAssembly {
             guard let primary = account.dirs.first else { continue }
             claudeCards.append(ClaudeAccountCard(
                 id: record.id,
-                displayName: ClaudeAccountCard.displayName(
-                    customLabel: record.customLabel, label: record.label, id: record.id
-                ),
+                displayName: record.derivedDisplayName,
                 configDirPath: primary.anchorPath,
                 keychainLiteral: primary.keychainLiteral,
                 extraLogRoots: account.dirs.dropFirst().map { URL(fileURLWithPath: $0.anchorPath) }
@@ -225,12 +210,10 @@ struct ProviderAccountAssembly {
         }
         claudeCards.sort { $0.id < $1.id }
 
-        let defaultClaudeRename = records.first { $0.id == "claude" }?.customLabel?.nilIfEmpty
         return ProviderAccountAssembly(
             identityKeysByCard: identityKeys,
             claudeCards: claudeCards,
-            defaultClaudeExtraLogRoots: defaultClaudeExtraLogRoots,
-            defaultClaudeDisplayName: defaultClaudeRename
+            defaultClaudeExtraLogRoots: defaultClaudeExtraLogRoots
         )
     }
 }

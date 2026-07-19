@@ -129,6 +129,21 @@ final class LocalUsageAPITests: XCTestCase {
         XCTAssertEqual(Set(providers.keys), ["claude", "claude@ab12cd34"])
     }
 
+    func testResolvedTitlesOverrideSnapshotDisplayNamesAtTheBoundary() throws {
+        // Snapshots always store the derived name; the boundary re-resolves against the account
+        // registry so API/CLI output carries renames without ever persisting them.
+        let state = makeState().resolvingDisplayNames(["claude": "Claude Team"])
+
+        let response = LocalUsageAPI.respond(method: "GET", path: "/v1/usage", state: state)
+        let array = try XCTUnwrap(try json(response.body) as? [[String: Any]])
+        XCTAssertEqual(array.first { $0["providerId"] as? String == "claude" }?["displayName"] as? String, "Claude Team")
+        XCTAssertEqual(
+            array.first { $0["providerId"] as? String == "cursor" }?["displayName"] as? String,
+            "Cursor",
+            "cards without a record keep their baked name"
+        )
+    }
+
     func testMethodAndRouteErrors() throws {
         let state = makeState()
 

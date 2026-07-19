@@ -60,8 +60,7 @@ public struct UsageReader {
         let providers = providersOverride ?? ProviderCatalog.make(
             defaults: defaults,
             claudeCards: accountAssembly.claudeCards,
-            defaultClaudeExtraLogRoots: accountAssembly.defaultClaudeExtraLogRoots,
-            defaultClaudeDisplayName: accountAssembly.defaultClaudeDisplayName
+            defaultClaudeExtraLogRoots: accountAssembly.defaultClaudeExtraLogRoots
         )
         let registry = WidgetRegistry.from(providers)
         let knownIDs = Set(registry.providers.map(\.id))
@@ -132,6 +131,10 @@ public struct UsageReader {
                 .compactMap { id in errors[id].map { "\(id): \($0)" } }
         }
 
+        // CLI output is human-read: resolve card titles against the persisted account registry so
+        // renames show, matching the app's UI and HTTP API. Injected-provider tests use their own
+        // defaults suite, so this is a no-op there.
+        let accountTitles = ProviderAccountsStore(defaults: defaults).resolvedDisplayNamesByCardID
         let state = LocalUsageAPI.State(
             enabledOrderedIDs: enabledOrderedIDs,
             knownIDs: knownIDs,
@@ -139,6 +142,7 @@ public struct UsageReader {
             limitDescriptors: registry.limitDescriptorsByProvider,
             errors: errors
         )
+        .resolvingDisplayNames(accountTitles)
         let path = requestedToken.map { "/v1/limits/\($0)" } ?? "/v1/limits"
         let response = LocalUsageAPI.respond(method: "GET", path: path, state: state)
         guard let data = response.body else {

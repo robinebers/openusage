@@ -52,7 +52,8 @@ final class StatusItemImageUpdater {
         }
         let content = MenuBarContentBuilder.build(
             groups: container.layout.pinnedGroups,
-            data: { container.dataStore.data(for: $0) }
+            data: { container.dataStore.data(for: $0) },
+            title: { container.displayName(for: $0) }
         )
         return MenuBarStripRenderer.image(for: content, style: container.layout.menuBarStyle)
             ?? MenuBarIcon.image

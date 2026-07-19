@@ -78,10 +78,29 @@ struct ProviderAccountRecord: Codable, Equatable, Sendable {
     /// Set by a future "Remove Account…". A tombstoned account is never resurrected by rescans.
     var removedTombstone: Bool = false
 
-    /// The name the card renders under: the user's rename, else the account's own label
-    /// ("email (Org Name)"), else the record id itself (`claude@ab12cd34` — owner decision 2).
-    var displayLabel: String {
-        customLabel?.nilIfEmpty ?? label?.nilIfEmpty ?? id
+    /// The name a card carries without a rename: the stock family name for the bare card, a
+    /// "Claude — <org or email>" derived from the account label for an extra card, or the record id
+    /// itself when the account has no label (owner decision 2: short-hash fallback, one rename away
+    /// from good). Never contains `customLabel` — this is what gets baked into the launch
+    /// `Provider`, and baking a rename there is how stale-name bugs are born.
+    var derivedDisplayName: String {
+        guard ProviderAccountID.isAccountCard(id) else { return family.capitalized }
+        guard let label = label?.nilIfEmpty else { return id }
+        // Labels are our own "email (Org Name)" format — prefer the org for a short card title.
+        if label.hasSuffix(")"), let open = label.lastIndex(of: "(") {
+            let org = label[label.index(after: open)..<label.index(before: label.endIndex)]
+                .trimmingCharacters(in: .whitespaces)
+            if !org.isEmpty { return "\(family.capitalized) — \(org)" }
+        }
+        return "\(family.capitalized) — \(label)"
+    }
+
+    /// THE name resolver — the single place a rename becomes a card title. Everything that shows a
+    /// card name to a human resolves through this at render time (directly or via
+    /// `AppContainer.displayName(for:)`); `Provider.displayName` only ever carries the derived
+    /// default.
+    var resolvedDisplayName: String {
+        customLabel?.nilIfEmpty ?? derivedDisplayName
     }
 }
 
@@ -177,6 +196,19 @@ final class ProviderAccountsStore {
             persist()
         }
         return records
+    }
+
+    /// The resolved card title for a card id, or `nil` when the card has no account record (a
+    /// non-account provider keeps its static `Provider.displayName`). The lookup half of the one
+    /// name resolver — see `ProviderAccountRecord.resolvedDisplayName`.
+    func resolvedDisplayName(cardID: String) -> String? {
+        records.first { $0.id == cardID }?.resolvedDisplayName
+    }
+
+    /// Card id → resolved title for every record — the map the CLI/API boundary applies to its
+    /// snapshots (`LocalUsageAPI.State.resolvingDisplayNames`).
+    var resolvedDisplayNamesByCardID: [String: String] {
+        Dictionary(uniqueKeysWithValues: records.map { ($0.id, $0.resolvedDisplayName) })
     }
 
     /// Stores a user rename for a card; `nil` or blank clears it back to the derived name.

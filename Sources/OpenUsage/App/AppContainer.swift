@@ -78,8 +78,7 @@ final class AppContainer {
 
         let providers = ProviderCatalog.make(
             claudeCards: accountAssembly.claudeCards,
-            defaultClaudeExtraLogRoots: accountAssembly.defaultClaudeExtraLogRoots,
-            defaultClaudeDisplayName: accountAssembly.defaultClaudeDisplayName
+            defaultClaudeExtraLogRoots: accountAssembly.defaultClaudeExtraLogRoots
         )
         let registry = WidgetRegistry.from(providers)
         let apiKeyProviders = providers.compactMap { $0 as? any APIKeyManaging }
@@ -95,7 +94,8 @@ final class AppContainer {
             isProviderEnabled: { [enablement] in enablement.isEnabled($0) },
             orderedDescriptors: { [layout] in layout.visiblePlaced.compactMap { layout.descriptor(for: $0) } },
             notificationSettings: { notificationSettings },
-            providerIdentityKeys: accountAssembly.identityKeysByCard
+            providerIdentityKeys: accountAssembly.identityKeysByCard,
+            resolveDisplayName: { [accounts] in accounts.resolvedDisplayName(cardID: $0) }
         )
         let iCloudSync = ICloudUsageSyncStore(dataStore: dataStore)
         // Re-enabling a provider should fetch it promptly, so clear any leftover failure backoff before
@@ -204,7 +204,7 @@ final class AppContainer {
         self.telemetry = telemetry
         self.transparency = PopoverTransparencyStore()
         self.privacy = MenuBarPrivacyStore()
-        self.localAPI = LocalUsageServer(state: { [layout, enablement, dataStore] in
+        self.localAPI = LocalUsageServer(state: { [layout, enablement, dataStore, accounts] in
             LocalUsageAPI.State(
                 enabledOrderedIDs: layout.orderedProviderIDs().filter { enablement.isEnabled($0) },
                 knownIDs: Set(registry.providers.map(\.id)),
@@ -212,6 +212,9 @@ final class AppContainer {
                 limitDescriptors: registry.limitDescriptorsByProvider,
                 errors: dataStore.providerErrors
             )
+            // API output is human-read too: resolve card titles at respond time so renames show,
+            // exactly like every UI surface.
+            .resolvingDisplayNames(accounts.resolvedDisplayNamesByCardID)
         })
         self.refreshTask = Self.startPeriodicRefresh(dataStore: dataStore, telemetry: telemetry)
         localAPI.start()
@@ -228,26 +231,13 @@ final class AppContainer {
         shellEnvironmentSnapshotTask.cancel()
     }
 
-    /// The name a card renders under right now. Live: a rename in the account registry wins over
-    /// the name baked into the `Provider` at launch, so card titles update without a relaunch.
-    /// Non-account providers (no record) keep their static display name.
+    /// The name a card renders under right now — the app-side face of the one resolver
+    /// (`ProviderAccountRecord.resolvedDisplayName`). Live: a rename in the account registry
+    /// re-titles the card everywhere without a relaunch. Non-account providers (no record) keep
+    /// their static display name; `Provider.displayName` itself only ever carries the derived
+    /// default, so the fallback can never be a stale rename.
     func displayName(for provider: Provider) -> String {
-        guard let record = accounts.records.first(where: { $0.id == provider.id }) else {
-            return provider.displayName
-        }
-        if let custom = record.customLabel?.nilIfEmpty { return custom }
-        // A rename was cleared mid-session: fall back to the derived name rather than the
-        // launch-baked one, which may itself carry the just-cleared rename.
-        return derivedDisplayName(for: record)
-    }
-
-    /// The name a card carries without a rename — the Customize name field's placeholder, and the
-    /// fallback once a rename is cleared: the stock family name for the default card, the
-    /// account-label-derived name for an extra card.
-    func derivedDisplayName(for record: ProviderAccountRecord) -> String {
-        ProviderAccountID.isAccountCard(record.id)
-            ? ClaudeAccountCard.displayName(customLabel: nil, label: record.label, id: record.id)
-            : ProviderAccountID.family(of: record.id).capitalized
+        accounts.resolvedDisplayName(cardID: provider.id) ?? provider.displayName
     }
 
     /// Whether the card has an account record a rename can attach to (accounts-model families only,

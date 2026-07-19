@@ -52,7 +52,7 @@ Rows with a reset date tick every 30 seconds, so countdowns and pace stay live b
 ## Right-click menus
 
 Every row: **Hide · Star for menu bar / Unstar · Refresh \<provider\> · Customize…** (Customize opens straight to that provider's metrics.)
-Provider headers: **Hide \<provider\> · Refresh \<provider\> · Customize…** (Hide turns the whole provider off; turn it back on in Customize. Customize opens straight to that provider's metrics.) plus **Share Screenshot** (see below). Claude and Codex cards also offer **Rename…** — give the card any name you like (handy with multiple accounts); leave the field empty to go back to the default name.
+Provider headers: **Hide \<provider\> · Refresh \<provider\> · Customize…** (Hide turns the whole provider off; turn it back on in Customize. Customize opens straight to that provider's metrics.) plus **Share Screenshot** (see below). Claude and Codex cards also offer **Rename…** — give the card any name you like (handy with multiple accounts); leave the field empty to go back to the default name. The name follows the card everywhere it's shown: the dashboard, the Total Spend legend, share screenshots, notifications, and the CLI/API output.
 
 ## Share
 
