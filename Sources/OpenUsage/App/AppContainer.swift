@@ -1,4 +1,5 @@
 import Foundation
+import KeyboardShortcuts
 import Observation
 
 /// Composition root: owns the (constant) registry and the (mutable) stores, injected
@@ -252,6 +253,40 @@ final class AppContainer {
     @discardableResult
     func reseedEnabledProviders() -> Task<Void, Never> {
         FirstRunSeeder.reseed(providers: providers, enablement: enablement)
+    }
+
+    /// The Settings "Reset All Settings" action: restores every user preference the container owns to
+    /// its default (see `docs/settings.md` § Reset). Composes the Customize reset (`resetToDefault` +
+    /// provider reseed) with the Settings-only preferences. Deliberately untouched: telemetry (the
+    /// opt-out choice and install id stay independent of settings changes — see the `TelemetryStore`
+    /// note above), the iCloud sync device identity, provider credentials, and cached usage snapshots.
+    /// Launch at Login and the Sparkle update preferences live outside the container; the Settings
+    /// screen resets those alongside this call.
+    func resetAllSettings() {
+        layout.resetToDefault()
+        // The menu-bar Icon Style is a Settings preference, not part of the Customize layout reset.
+        layout.menuBarStyle = .text
+        reseedEnabledProviders()
+        dataStore.resetDisplaySettings()
+        notificationSettings.resetToDefaults()
+        transparency.resetToDefaults()
+        privacy.hideUsageWhileScreenSharing = false
+        // Same as flipping the Settings toggle off: stops syncing and removes this Mac's document
+        // from the shared iCloud container (peers keep their own history).
+        iCloudSync.enabled = false
+        // Removing an `@AppStorage` key restores its declared default; the Settings screen's
+        // `@AppStorage` properties observe the change. New settings must be added here.
+        for key in [
+            AppearanceSetting.key, TimeFormatSetting.key, DensitySetting.key,
+            LogLevelSetting.key, TotalSpendSetting.key,
+            TotalSpendSetting.periodKey, TotalSpendSetting.metricKey,
+        ] {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+        KeyboardShortcuts.reset(.togglePopover)
+        AppearanceSetting.applyCurrent()
+        AppLog.reloadLevel()
+        AppLog.info(.config, "All settings reset to defaults")
     }
 
     /// Drives live updates: refresh on launch, then again every refresh interval. Each pass honors the

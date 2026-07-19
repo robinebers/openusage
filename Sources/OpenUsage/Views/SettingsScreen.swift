@@ -29,6 +29,14 @@ struct SettingsScreen: View {
     /// System Settings after re-enabling).
     private enum NotificationsAuthState { case authorized, denied, notDetermined }
     @State private var notificationsAuth: NotificationsAuthState = .authorized
+    /// Gates the destructive Reset All Settings action behind a confirmation alert. View-local state:
+    /// leaving the Settings screen (or the popover closing, which resets the screen to the dashboard)
+    /// unmounts this view and drops a pending confirmation with it.
+    @State private var isPresentingResetConfirm = false
+    /// Remounts `ShortcutRecorderField` after a reset. The field seeds its chip from the
+    /// KeyboardShortcuts store only on appear (the store isn't observable), so without a fresh
+    /// identity the still-mounted Settings screen would keep showing the cleared shortcut.
+    @State private var shortcutFieldGeneration = 0
 
     /// Fills the region the dashboard's pinned footer leaves. Same scroller treatment as Customize:
     /// the overlay scroller stays (the scroll edge effect needs it) but is invisible.
@@ -67,6 +75,7 @@ struct SettingsScreen: View {
                 // Click-to-record field; its ⓧ clears the combo and disables the shortcut.
                 row("Global Shortcut") {
                     ShortcutRecorderField(name: .togglePopover)
+                        .id(shortcutFieldGeneration)
                         .hoverTooltip("Open OpenUsage from anywhere")
                 }
             }
@@ -350,9 +359,9 @@ struct SettingsScreen: View {
 
     // MARK: - Advanced (logging)
 
-    /// Log-level control plus copy/reveal buttons for the file log. The file lives at a fixed path
-    /// (`~/Library/Logs/OpenUsage/OpenUsage.log`); raising the level here applies live (no restart) and
-    /// persists across launches. Default Info, Debug is opt-in.
+    /// Log-level control plus copy/reveal buttons for the file log, and the Reset All Settings row.
+    /// The file lives at a fixed path (`~/Library/Logs/OpenUsage/OpenUsage.log`); raising the level
+    /// here applies live (no restart) and persists across launches. Default Info, Debug is opt-in.
     private var advancedSection: some View {
         section("Advanced") {
             row("Log Level") {
@@ -379,6 +388,32 @@ struct SettingsScreen: View {
             }
             if let logActionError {
                 inlineNotice(logActionError)
+            }
+            // The Settings-wide destructive reset (issue #602). Red label, confirmation alert;
+            // confirming restores every preference to its default — the container-owned stores plus
+            // the two view-scoped ones (Launch at Login lives in the system's login-item registry,
+            // the update preferences on the updater controller).
+            Button {
+                isPresentingResetConfirm = true
+            } label: {
+                Text("Reset All Settings…")
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity)
+            }
+            .glassButtonStyle()
+            .controlSize(.regular)
+            .padding(.horizontal, 12)
+            .padding(.vertical, density.controlRowPadding)
+            .alert("Reset All Settings?", isPresented: $isPresentingResetConfirm) {
+                Button("Reset", role: .destructive) {
+                    withAnimation(Motion.spring) { container.resetAllSettings() }
+                    launchAtLogin.update(to: false)
+                    updater.resetToDefaults()
+                    shortcutFieldGeneration += 1
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Restores every setting and customization to its default and turns providers back on for the tools you have installed. If iCloud sync is on, it turns off and this Mac's synced history is removed. This cannot be undone.")
             }
         }
     }
