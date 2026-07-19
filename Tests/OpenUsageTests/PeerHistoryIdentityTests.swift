@@ -66,6 +66,22 @@ final class PeerHistoryIdentityTests: XCTestCase {
         XCTAssertEqual(remapped.remoteOnly.first?.deviceNames, ["Mac mini"])
     }
 
+    func testUnresolvedLocalIdentityKeepsTheBareCardMergeInsteadOfDoubleCounting() {
+        // The peer named its bare card's account, but this Mac's own bare-card identity didn't
+        // resolve this launch (no local map entry). A mismatch can't be proven, so the history must
+        // stay on the same-id card — going remote-only would ADD a Total Spend slice on top of the
+        // local card's own spend for what is most likely the same account.
+        let doc = makeDocument(
+            deviceName: "Mac mini",
+            providers: ["claude": history(day: "2026-07-16", tokens: 10, cost: 1)],
+            identities: ["claude": teamKey]
+        )
+        let remapped = PeerHistoryRemapper.remap(documents: [doc], localIdentityByCardID: [:])
+
+        XCTAssertEqual(remapped.histories.first?.cardID, "claude")
+        XCTAssertTrue(remapped.remoteOnly.isEmpty)
+    }
+
     func testRemapLegacyV1DocumentKeepsSameCardMerge() {
         let v1 = UsageHistoryDocument(
             schema: UsageHistoryDocument.legacySchemaV1,

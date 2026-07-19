@@ -93,7 +93,11 @@ struct WidgetGroupedListView: View {
             // whose identity has been observed at least once.
             if container.canRename(group.provider.id) {
                 Button("Rename…") {
-                    renameDraft = name
+                    // Seed with the STORED rename (empty when none), not the derived title —
+                    // confirming an untouched field must stay "no rename", not freeze the derived
+                    // name into a custom label that future account-label updates can't refresh.
+                    renameDraft = container.accounts.records
+                        .first { $0.id == group.provider.id }?.customLabel ?? ""
                     renameCardID = group.provider.id
                 }
             }

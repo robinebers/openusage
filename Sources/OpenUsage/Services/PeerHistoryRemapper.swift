@@ -61,6 +61,13 @@ enum PeerHistoryRemapper {
                 if let identity = document.identities?[peerCardID] {
                     if let localCard = localCardByIdentity[identity] {
                         result.histories.append((localCard, history))
+                    } else if !ProviderAccountID.isAccountCard(peerCardID), localIdentityByCardID[peerCardID] == nil {
+                        // The peer named its bare card's account, but this Mac's own bare card has
+                        // an UNRESOLVED identity this launch — we can't prove a mismatch, so keep
+                        // the legacy same-card-id merge rather than splitting what is most likely
+                        // the same account into a separate Total Spend slice. A genuinely different
+                        // account separates on the next launch that resolves the local identity.
+                        result.histories.append((peerCardID, history))
                     } else {
                         collectRemoteOnly(identity: identity, family: family, deviceName: document.deviceName, history: history)
                     }
