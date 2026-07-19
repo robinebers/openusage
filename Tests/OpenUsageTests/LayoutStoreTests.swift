@@ -780,6 +780,71 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertEqual(store.pinnedMetricIDs, expected)
     }
 
+    func testProviderReorderPreservesAnAbsentAccountCardSlot() {
+        let defaults = makeDefaults("ReorderAbsentAccountCard")
+        let storageKey = "layout"
+        let hidden = "claude@hidden"
+        LayoutPersistence(defaults: defaults, storageKey: storageKey).saveProviderOrder([
+            "claude", hidden, "cursor",
+        ])
+        let store = LayoutStore(registry: .mock, defaults: defaults, storageKey: storageKey)
+
+        XCTAssertTrue(store.reorderProvider(dragged: "cursor", target: "claude"))
+
+        XCTAssertEqual(Array(store.providerOrder.prefix(3)), ["cursor", hidden, "claude"])
+        XCTAssertEqual(
+            LayoutPersistence(defaults: defaults, storageKey: storageKey).loadProviderOrder()?.contains(hidden),
+            true,
+            "the absent card keeps its slot for the launch it returns on"
+        )
+    }
+
+    func testTranslatedDefaultsSeedAnAccountCardTheFirstTimeItAppears() {
+        // An existing user's layout predates the account card entirely; when the card first enters
+        // the registry, its family's default metrics seed for it (enabled), because translated ids
+        // are never part of the seeded-defaults baseline.
+        let claude = Provider(id: "claude", displayName: "Claude", icon: .providerMark("claude"))
+        let work = Provider(id: "claude@work", displayName: "Claude — Work", icon: .providerMark("claude"))
+        func descriptor(_ id: String, _ provider: Provider) -> WidgetDescriptor {
+            WidgetDescriptor(
+                id: id,
+                providerID: provider.id,
+                metricLabel: id,
+                sample: WidgetData(title: id, icon: provider.icon, kind: .percent, used: 0, limit: 100)
+            )
+        }
+        let registry = WidgetRegistry(
+            providers: [claude, work],
+            descriptors: [
+                descriptor("claude.session", claude),
+                descriptor("claude.sonnet", claude),
+                descriptor("claude@work.session", work),
+                descriptor("claude@work.sonnet", work),
+            ]
+        )
+        let defaults = makeDefaults("AccountCardSeeding")
+        saveStored([PlacedWidget(descriptorID: "claude.session")], forKey: "layout", in: defaults)
+        defaults.set(["claude.session", "claude.sonnet"], forKey: "layout.seededDefaults")
+
+        let store = LayoutStore(
+            registry: registry,
+            defaults: defaults,
+            storageKey: "layout",
+            defaultMetricIDs: ["claude.session"],
+            defaultExpandedMetricIDs: ["claude.sonnet"]
+        )
+
+        XCTAssertTrue(store.isMetricEnabled("claude@work.session"))
+        XCTAssertFalse(
+            store.isMetricEnabled("claude.sonnet"),
+            "the family's own disabled default stays exactly as the user left it"
+        )
+        XCTAssertTrue(
+            store.defaultExpandedOnEnableIDs.contains("claude@work.sonnet"),
+            "the caret split translates with the metric set"
+        )
+    }
+
     func testResetToDefaultRestoresProviderOrderAndMarksDefaultsSeeded() {
         let defaults = makeDefaults("ResetSeeded")
         let store = LayoutStore(
@@ -1010,14 +1075,17 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertTrue(store.expandedMetricIDs.contains("claude.weekly"))
     }
 
-    func testInvalidPersistedExpandedIDsAreDropped() {
+    func testUnknownPersistedExpandedIDsAreRetainedAsInvisibleTombstones() {
         let defaults = makeDefaults("InvalidExpand")
         saveStored([PlacedWidget(descriptorID: "claude.session")], forKey: "layout", in: defaults)
         defaults.set(["claude.session", "missing.metric"], forKey: "layout.expandedMetrics")
 
         let store = LayoutStore(registry: .mock, defaults: defaults, storageKey: "layout")
         XCTAssertTrue(store.expandedMetricIDs.contains("claude.session"))
-        XCTAssertFalse(store.expandedMetricIDs.contains("missing.metric"))
+        XCTAssertTrue(
+            store.expandedMetricIDs.contains("missing.metric"),
+            "unknown state stays persisted so a temporarily absent account card can recover it"
+        )
     }
 
     func testDisplayGroupsPartitionEnabledMetrics() {

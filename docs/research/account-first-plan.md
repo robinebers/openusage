@@ -22,8 +22,10 @@ Places an account is signed in are **sources** (default home, config dir, cswap 
 Desktop/Cowork, Codex home) attached to its record. "Default" is a badge on a source
 (`holdsDefaultSource`) used for the bare-id alias, CLI resolution, and attribution — never a key,
 never live sort order. A swap re-points source edges; cards, history, layout, and pins never move.
-An unresolved source claims no account. A card whose sources are all absent renders a calm
-signed-out state with a Remove affordance (tombstone; rescans never resurrect it).
+An unresolved source claims no account. A card renders only while at least one of its sources is
+found on this computer; when every source is gone the card stops rendering, and its record, layout,
+and history are retained so the card reattaches if the login reappears (owner decision 4 — no
+Remove affordance yet).
 
 ### The migration-killing decision
 
@@ -65,9 +67,9 @@ tests land in-slice (repo policy). Estimated source LOC excludes tests.
   array — made now, before multi-account ships, instead of aliasing forever.
 - Snapshot-cache identity stamp (v9): cached values remember the producing account; a swap between
   launches discards the stale entry instead of painting it under the new account (port `fef9ad0`).
-- Signed-out rendering + "Remove Account…" (context menu, tombstone in the store) — cheap while
-  the model is small.
 - Exit: beta soak; logs confirm identity-resolution rates in the wild; existing users see nothing.
+- *Shipped as #1026 + #1027 (v0.7.7-beta.1). Signed-out rendering and "Remove Account…" were cut
+  entirely per owner decision 4.*
 
 ### Phase 2 — Claude multi-account: config-dir discovery (~1,200 LOC)
 
@@ -75,8 +77,10 @@ tests land in-slice (repo policy). Estimated source LOC excludes tests.
   support-trail log lines. Port the discovery internals; **omit** fold/suppression plumbing — a
   candidate naming a known account just attaches as another source/log root on that record, so
   duplicate cards are structurally impossible.
-- New account → new record → new card named by account label ("Claude — Sunstory"); layout seeded
-  from `DefaultLayout.translatedForInstances` (pins never seeded).
+- New account → new record → new card named by account label ("Claude — Sunstory"), falling back
+  to the short-hash id; user rename in the card's context menu and in Customize. Cards seed
+  enabled; layout seeded from `DefaultLayout.translatedForInstances` (pins never seeded). A card
+  renders only while one of its sources is still found on this computer.
 - Scoped `ClaudeAuthStore` (per-config-dir keychain names), per-account spend from each home's logs.
 - iCloud identity routing: `PeerHistoryRemapper`, account-identity matching, v1-peer histories to a
   family bucket rendered as device-labeled remote-only slices. Required the moment two accounts can
@@ -116,12 +120,17 @@ tests land in-slice (repo policy). Estimated source LOC excludes tests.
 - Total Spend family grouping/tinting if still wanted (see `c6a63eb` on the old branch for why
   plain size order won before).
 
-## Owner decisions (lock before the phase that needs them)
+## Owner decisions (locked 2026-07-19)
 
-1. **Bare id as the first account's record id** — the plan assumes yes (kills all migration).
-2. Label fallback when an account has no email/org name: short hash vs ordinal ("Claude 2").
-3. Newly discovered accounts seed enabled (PR #1014 behavior) or disabled.
-4. Remove-button placement: context-menu-first (assumed), Customize section later.
+1. **Bare id as the first account's record id** — yes (kills all migration).
+2. Label fallback when an account has no email/org name: the short-hash record id
+   (`claude@ab12cd34`) — paired with a user rename, offered in the card's context menu and in
+   Customize, so an ugly fallback is one click from a good name.
+3. Newly discovered accounts seed **enabled** (PR #1014 behavior).
+4. **No "Remove Account…" yet.** Only accounts found on this computer render as cards; a card whose
+   account is no longer found anywhere simply stops rendering (its record, layout, and history are
+   retained and reattach if the login reappears). Unwanted cards are handled by the existing
+   per-provider disable. Tombstones stay schema-only until a later phase needs true removal.
 
 ## Verification
 

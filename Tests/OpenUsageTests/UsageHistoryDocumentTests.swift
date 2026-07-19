@@ -17,7 +17,7 @@ final class UsageHistoryDocumentTests: XCTestCase {
 
     func testRejectsUnsupportedSchemaInvalidValuesAndImpossibleDates() {
         var document = makeDocument(deviceID: "mac-a", updatedAt: .now)
-        document.schema = "openusage.history.v2"
+        document.schema = "openusage.history.v3"
         XCTAssertThrowsError(try document.validate()) { error in
             XCTAssertEqual(error as? UsageHistoryDocumentError, .unsupportedSchema)
         }

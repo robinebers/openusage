@@ -63,12 +63,15 @@ enum ShareCardRenderer {
     /// rows read density via `@AppStorage`, so the saved value is swapped to `.regular` for the duration
     /// of the render and restored on exit (synchronously), keeping the exported card consistent without
     /// disturbing the live popover.
+    /// `displayName` carries the live card title (a rename can land mid-session, after the
+    /// `Provider`'s own name was baked at launch); `nil` falls back to the baked name.
     @discardableResult
     static func share(
         group: ProviderGroup,
         dataStore: WidgetDataStore,
         layout: LayoutStore,
-        appearance: ColorScheme
+        appearance: ColorScheme,
+        displayName: String? = nil
     ) -> Bool {
         let isExpanded = layout.isProviderExpanded(group.provider.id)
         let alwaysRows = group.alwaysShownWidgets.compactMap { widget -> WidgetData? in
@@ -85,7 +88,8 @@ enum ShareCardRenderer {
             plan: dataStore.plan(for: group.provider.id),
             rows: rows,
             appearance: appearance,
-            expandBoundaryIndex: isExpanded ? alwaysRows.count : nil
+            expandBoundaryIndex: isExpanded ? alwaysRows.count : nil,
+            displayNameOverride: displayName
         )
         return renderAndCopy(view, label: group.provider.id, layout: layout)
     }

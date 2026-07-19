@@ -28,6 +28,9 @@ struct ProviderSectionHeader: View {
     /// Header type and icon track the density setting like the rows do, so Compact shrinks the
     /// whole section anatomy — not just the rows under it.
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
+    /// Read for the live card name: a rename lands in the account registry and re-titles the header
+    /// without a relaunch (the `Provider`'s own name is baked at launch).
+    @Environment(AppContainer.self) private var container
     /// Party easter egg: pulse the provider mark. Off by default everywhere else.
     @Environment(\.popoverPartyMode) private var partyMode
     @State private var isHovered = false
@@ -61,7 +64,7 @@ struct ProviderSectionHeader: View {
                 // Name + plan keep their width and stay on one line; under width pressure (a long plan
                 // name like "Super Grok Heavy") the lower-priority stale tag truncates first instead of
                 // wrapping the name to a second line.
-                Text(provider.displayName)
+                Text(container.displayName(for: provider))
                     .font(.system(size: density.headerPointSize, weight: .semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
@@ -96,7 +99,7 @@ struct ProviderSectionHeader: View {
             Spacer(minLength: 8)
             if let onCopyScreenshot {
                 CopyFeedbackButton(
-                    accessibilityLabel: "Copy \(provider.displayName) Screenshot",
+                    accessibilityLabel: "Copy \(container.displayName(for: provider)) Screenshot",
                     isRevealed: isHovered,
                     action: onCopyScreenshot
                 )

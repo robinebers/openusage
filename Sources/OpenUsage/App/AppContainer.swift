@@ -40,6 +40,9 @@ final class AppContainer {
     /// provider were ever removed from the registry. Injected into the view tree via
     /// `\.codexResetClaim`.
     let codexResetClaim: CodexResetClaimService?
+    /// The account registry the launch pass reconciled. The UI observes it live: a rename
+    /// (`customLabel`) re-titles the card everywhere without a relaunch.
+    let accounts: ProviderAccountsStore
     /// The provider runtimes, kept so on-demand credential detection (the Customize "Reset All" reseed)
     /// can re-probe `hasLocalCredentials()` the same way first-run seeding does.
     private let providers: [ProviderRuntime]
@@ -66,11 +69,18 @@ final class AppContainer {
         // Once the capture lands, persist its identity-relevant facts so the NEXT launch has them
         // even if that launch's own capture is slow (see `ShellEnvironmentSnapshot`).
         self.shellEnvironmentSnapshotTask = ShellEnvironmentSnapshotStore(defaults: .standard).startRefreshTask()
-        // The launch account pass: which account is signed in at each family's default home. Feeds
-        // the snapshot cache's account stamp and reconciles the account registry.
-        let accountAssembly = ProviderAccountAssembly.make(waitsForLoginShell: true)
+        // The launch account pass: which account is signed in at each family's default home, plus
+        // the config-dir scan for extra Claude logins. Feeds the snapshot cache's account stamp,
+        // reconciles the account registry, and hands the catalog its extra-card build plan.
+        let accounts = ProviderAccountsStore()
+        let accountAssembly = ProviderAccountAssembly.make(accountsStore: accounts, waitsForLoginShell: true)
+        self.accounts = accounts
 
-        let providers = ProviderCatalog.make()
+        let providers = ProviderCatalog.make(
+            claudeCards: accountAssembly.claudeCards,
+            defaultClaudeExtraLogRoots: accountAssembly.defaultClaudeExtraLogRoots,
+            defaultClaudeDisplayName: accountAssembly.defaultClaudeDisplayName
+        )
         let registry = WidgetRegistry.from(providers)
         let apiKeyProviders = providers.compactMap { $0 as? any APIKeyManaging }
         let enablement = ProviderEnablementStore()
@@ -216,6 +226,34 @@ final class AppContainer {
         seedTask?.cancel()
         newProviderTask?.cancel()
         shellEnvironmentSnapshotTask.cancel()
+    }
+
+    /// The name a card renders under right now. Live: a rename in the account registry wins over
+    /// the name baked into the `Provider` at launch, so card titles update without a relaunch.
+    /// Non-account providers (no record) keep their static display name.
+    func displayName(for provider: Provider) -> String {
+        guard let record = accounts.records.first(where: { $0.id == provider.id }) else {
+            return provider.displayName
+        }
+        if let custom = record.customLabel?.nilIfEmpty { return custom }
+        // A rename was cleared mid-session: fall back to the derived name rather than the
+        // launch-baked one, which may itself carry the just-cleared rename.
+        return derivedDisplayName(for: record)
+    }
+
+    /// The name a card carries without a rename — the Customize name field's placeholder, and the
+    /// fallback once a rename is cleared: the stock family name for the default card, the
+    /// account-label-derived name for an extra card.
+    func derivedDisplayName(for record: ProviderAccountRecord) -> String {
+        ProviderAccountID.isAccountCard(record.id)
+            ? ClaudeAccountCard.displayName(customLabel: nil, label: record.label, id: record.id)
+            : ProviderAccountID.family(of: record.id).capitalized
+    }
+
+    /// Whether the card has an account record a rename can attach to (accounts-model families only,
+    /// and only once the account's identity has been observed at least once).
+    func canRename(_ providerID: String) -> Bool {
+        accounts.records.contains { $0.id == providerID }
     }
 
     /// Re-runs first-launch credential detection on demand — the enablement half of the Customize
