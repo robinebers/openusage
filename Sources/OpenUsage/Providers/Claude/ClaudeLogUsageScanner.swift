@@ -37,6 +37,12 @@ actor ClaudeLogUsageScanner {
     /// logs belong to the account that produced them, not this card), the account's partition of the
     /// walk otherwise. `nil` keeps the built-in walk byte-identical (a machine where every sandbox
     /// belongs to the default login).
+    ///
+    /// A partition is frozen at launch by design: a sandbox created afterwards routes on the next
+    /// launch. The live-walk alternative (subtract known-foreign roots) would count the OTHER
+    /// account's brand-new sessions on this card until relaunch — the exact bleed the partition
+    /// exists to prevent. Missing-until-relaunch is the safer failure. Files inside known sandboxes
+    /// still update live on every refresh.
     private let coworkRootsOverride: [URL]?
 
     /// One parsed usage line. Token buckets are pre-normalized into `TokenBreakdown`; dedup fields

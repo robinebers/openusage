@@ -56,7 +56,9 @@ config-dir card count on that card. If Claude Desktop is signed into a *differen
 its Cowork sessions become their own card, backed read-only by Desktop's login (same Safe Storage read
 as above, pinned to that account's organization so it never borrows another card's token) — with that
 account's limits, plan, and its Cowork sessions as the card's spend. Signing Desktop out again makes
-the card disappear the same way a deleted config dir does.
+the card disappear the same way a deleted config dir does. Which session belongs to which account is
+decided once at launch; a Cowork session started after that keeps counting live within its card, but a
+session from a *newly appearing* account is sorted onto the right card on the next launch.
 
 Extra cards are named from the account ("Claude — Acme Corp"); right-click a card and choose **Rename…**
 (or use the Name field in Customize) to call it whatever you like. A card only shows while its login is
