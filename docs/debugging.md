@@ -64,6 +64,10 @@ short trail in the log file:
 - `account identity read skipped for claude, codex: login shell cold and no shell-environment
   snapshot exists yet` — a first launch raced a slow login shell, so the named families were left
   unread this launch; every later launch has a persisted snapshot to fall back on.
+- `discovery: …` — the extra-login scan's decision trail: every accepted or skipped config-dir
+  candidate and Cowork sandbox, same-account folds, and the Cowork partition (which sandboxes stay
+  on the default card). Identity hashes and paths only, never emails or tokens — a "my account
+  didn't show up" report is diagnosable from these lines alone.
 
 ## Tips
 

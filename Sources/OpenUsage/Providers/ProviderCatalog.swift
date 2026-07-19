@@ -12,7 +12,9 @@ enum ProviderCatalog {
     static func make(
         defaults: UserDefaults = .standard,
         claudeCards: [ClaudeAccountCard] = [],
-        defaultClaudeExtraLogRoots: [URL] = []
+        defaultClaudeExtraLogRoots: [URL] = [],
+        defaultClaudeCoworkRoots: [URL]? = nil,
+        defaultClaudeOrganization: String? = nil
     ) -> [ProviderRuntime] {
         // Default provider order (see AGENTS.md "## Providers"): the three established providers first,
         // then every other provider alphabetically by display name. Account cards slot in right after
@@ -24,10 +26,17 @@ enum ProviderCatalog {
         var runtimes: [ProviderRuntime] = []
         runtimes.append(ClaudeProvider(
             // Once extra Claude cards exist, an unpinned Desktop fallback could borrow a login that
-            // belongs to one of them — fetching that account's usage onto the default card. Desktop
-            // returns as its own properly-pinned source kind in Phase 3.
-            authStore: ClaudeAuthStore(allowsDesktopFallback: claudeCards.isEmpty),
-            logUsageScanner: ClaudeLogUsageScanner(additionalRoots: defaultClaudeExtraLogRoots)
+            // belongs to one of them — fetching that account's usage onto the default card. With the
+            // default account's own org known, the fallback stays available pinned to that org;
+            // otherwise it is disabled rather than blind.
+            authStore: ClaudeAuthStore(
+                standardDesktopOrganization: defaultClaudeOrganization,
+                allowsUnpinnedStandardDesktopFallback: claudeCards.isEmpty
+            ),
+            logUsageScanner: ClaudeLogUsageScanner(
+                additionalRoots: defaultClaudeExtraLogRoots,
+                coworkRootsOverride: defaultClaudeCoworkRoots
+            )
         ))
         for card in claudeCards {
             runtimes.append(claudeAccountRuntime(card: card))
@@ -47,17 +56,21 @@ enum ProviderCatalog {
     }
 
     /// An extra Claude account card: same provider machinery, credentials and logs pinned to one
-    /// login. The scanner's parse cache is partitioned per card so distinct homes never share
-    /// records.
+    /// login (a config-dir home, or Claude Desktop's org-pinned cache for a Cowork account). The
+    /// scanner's parse cache is partitioned per card so distinct homes never share records.
     private static func claudeAccountRuntime(card: ClaudeAccountCard) -> ClaudeProvider {
-        ClaudeProvider(
+        let scope: ClaudeCredentialScope = switch card.credential {
+        case .configDir(let path, let keychainLiteral):
+            .configDir(path: path, keychainLiteral: keychainLiteral)
+        case .desktop(let organization):
+            .desktopOnly(organization: organization)
+        }
+        return ClaudeProvider(
             provider: ClaudeProvider.makeProvider(id: card.id, displayName: card.displayName),
-            authStore: ClaudeAuthStore(
-                scope: .configDir(path: card.configDirPath, keychainLiteral: card.keychainLiteral)
-            ),
+            authStore: ClaudeAuthStore(scope: scope),
             logUsageScanner: ClaudeLogUsageScanner(
                 cacheIdentityOverride: "claude-account:\(card.id)",
-                rootsOverride: [URL(fileURLWithPath: card.configDirPath)] + card.extraLogRoots
+                rootsOverride: card.logRoots
             )
         )
     }

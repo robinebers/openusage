@@ -75,18 +75,38 @@ final class ClaudeScopedAuthStoreTests: XCTestCase {
         XCTAssertFalse(bare.hasCredentialFootprint())
     }
 
-    func testStandardStoreDropsDesktopFallbackWhileExtraCardsExist() {
-        // With no CLI login and Desktop disallowed (extra Claude cards exist), the load reports
-        // `.notFound` instead of consulting Desktop — the caller keeps the honest CLI error.
+    func testStandardStoreDropsDesktopFallbackWhileExtraCardsExistAndNoOrgPinIsKnown() {
+        // With no CLI login, no org pin, and the unpinned fallback disallowed (extra Claude cards
+        // exist), the load reports `.notFound` instead of consulting Desktop — the caller keeps the
+        // honest CLI error.
         let store = ClaudeAuthStore(
             environment: FakeEnvironment([:]),
             files: FakeFiles([:]),
             keychain: ServiceKeychain(),
-            allowsDesktopFallback: false
+            allowsUnpinnedStandardDesktopFallback: false
         )
 
         let load = store.loadCredentialSet(forceDesktopFallback: true)
         XCTAssertEqual(load.desktopStatus, .notFound)
         XCTAssertTrue(load.candidates.isEmpty)
+    }
+
+    func testDesktopOnlyStoreHasNoCLISourcesAndNeverInheritsTheEnvironmentToken() {
+        let store = ClaudeAuthStore(
+            environment: FakeEnvironment(["CLAUDE_CODE_OAUTH_TOKEN": "ambient-token"]),
+            files: FakeFiles([
+                // Every CLI credential on the machine must stay invisible to a Desktop-backed card.
+                "~/.claude/.credentials.json": #"{"claudeAiOauth": {"accessToken": "default-at"}}"#,
+            ]),
+            keychain: ServiceKeychain(),
+            scope: .desktopOnly(organization: "11111111-2222-3333-4444-555555555555")
+        )
+
+        XCTAssertEqual(store.keychainServiceCandidates(), [])
+        // No Desktop material in this fixture, so the load ends up empty — the point is that no CLI
+        // or environment candidate leaked in, and Desktop WAS consulted (status is not .notChecked).
+        let load = store.loadCredentialSet()
+        XCTAssertTrue(load.candidates.isEmpty)
+        XCTAssertEqual(load.desktopStatus, .notFound)
     }
 }

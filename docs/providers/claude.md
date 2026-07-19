@@ -50,6 +50,14 @@ card, with its own limits, plan, and spend tiles read from that home. A custom d
 account as your main login doesn't become a second card — its session logs simply count into the main
 card's spend tiles.
 
+Cowork sessions are account-aware too. Each Cowork session folder records which account ran it: sessions
+from your main login keep counting on the main card, and sessions from an account that already has a
+config-dir card count on that card. If Claude Desktop is signed into a *different* account than the CLI,
+its Cowork sessions become their own card, backed read-only by Desktop's login (same Safe Storage read
+as above, pinned to that account's organization so it never borrows another card's token) — with that
+account's limits, plan, and its Cowork sessions as the card's spend. Signing Desktop out again makes
+the card disappear the same way a deleted config dir does.
+
 Extra cards are named from the account ("Claude — Acme Corp"); right-click a card and choose **Rename…**
 (or use the Name field in Customize) to call it whatever you like. A card only shows while its login is
 still found on this Mac — log it out or delete the dir and the card disappears, keeping its
