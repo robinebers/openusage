@@ -44,6 +44,22 @@ final class ClaudeCoworkDiscoveryTests: XCTestCase {
         XCTAssertEqual(result.sandboxes.compactMap(\.identityKey), [])
     }
 
+    func testHittingTheTimeBudgetFlagsTheResultTruncated() {
+        let roots = [sandboxA, sandboxB]
+        let discovery = ClaudeCoworkDiscovery(
+            files: FakeFiles([:]),
+            homeDirectory: { URL(fileURLWithPath: "/Users/dev") },
+            listSandboxes: { _ in roots },
+            timeBudget: -1
+        )
+
+        let result = discovery.run()
+
+        XCTAssertTrue(result.truncated, "the assembly needs to know the list is not the whole truth")
+        XCTAssertTrue(result.sandboxes.isEmpty)
+        XCTAssertEqual(result.notes.count, 1)
+    }
+
     func testAnIdentityFileNamingNoAccountCountsAsUnidentified() {
         let discovery = makeDiscovery(
             files: [sandboxA.path + "/.claude.json": #"{"oauthAccount": {}}"#],

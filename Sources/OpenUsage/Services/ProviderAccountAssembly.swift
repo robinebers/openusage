@@ -190,12 +190,12 @@ struct ProviderAccountAssembly {
                         keychainLiteral: $0.keychainLiteral
                     )
                 }
-                if identityKey == defaultKey {
+                if let defaultKey, sameClaudeAccount(identityKey, defaultKey) {
                     // Same account as the default card: its dirs are extra spend-log roots on
                     // that card, never a second card — duplicate cards are structurally
                     // impossible because identity routes the source to the existing record.
                     defaultClaudeExtraLogRoots += findings.map { URL(fileURLWithPath: $0.anchorPath) }
-                    if let index = observations.firstIndex(where: { $0.family == "claude" && $0.identityKey == identityKey }) {
+                    if let index = observations.firstIndex(where: { $0.family == "claude" && $0.identityKey == defaultKey }) {
                         observations[index].sources += sources
                     }
                     AppLog.info(.config, "discovery: \(findings.count) config dir(s) fold onto the default claude card (same account)")
@@ -232,10 +232,15 @@ struct ProviderAccountAssembly {
             var defaultBucket: [URL] = []
             var order: [String] = []
             var grouped: [String: [ClaudeCoworkDiscovery.Sandbox]] = [:]
-            for sandbox in scan.sandboxes {
-                guard let key = sandbox.identityKey, key != defaultKey else {
-                    // An unidentified sandbox counts on the default card, exactly where the
-                    // built-in walk has always put it.
+            // A truncated walk saw only some sandboxes; routing on it could partition away default
+            // spend or miss a non-default sandbox entirely. Skip the pass — the built-in walk stays
+            // byte-identical this launch, and the next launch retries.
+            for sandbox in scan.truncated ? [] : scan.sandboxes {
+                guard let key = sandbox.identityKey,
+                      !(defaultKey.map { sameClaudeAccount(key, $0) } ?? false)
+                else {
+                    // An unidentified or default-account sandbox counts on the default card,
+                    // exactly where the built-in walk has always put it.
                     defaultBucket.append(sandbox.root)
                     continue
                 }
@@ -245,7 +250,7 @@ struct ProviderAccountAssembly {
             for identityKey in order {
                 let sandboxes = grouped[identityKey] ?? []
                 let roots = sandboxes.map(\.root)
-                if let index = plannedCards.firstIndex(where: { $0.identityKey == identityKey }) {
+                if let index = plannedCards.firstIndex(where: { sameClaudeAccount($0.identityKey, identityKey) }) {
                     // The account already has a card from its config dir; its sandboxes are just
                     // more of its spend logs.
                     plannedCards[index].logRoots += roots
@@ -312,6 +317,19 @@ struct ProviderAccountAssembly {
             defaultClaudeExtraLogRoots: defaultClaudeExtraLogRoots,
             defaultClaudeCoworkRoots: defaultClaudeCoworkRoots
         )
+    }
+
+    /// Whether two Claude identity keys (`uuid` or `uuid|org`) name the same login. An identity
+    /// file sometimes omits the org half (older files, files written mid-login), so a bare-uuid
+    /// key still names the same account as a `uuid|org` key with the same uuid — org presence
+    /// must never split one login into two cards. Two keys with DIFFERENT orgs stay distinct:
+    /// same user, separate usage pools.
+    static func sameClaudeAccount(_ lhs: String, _ rhs: String) -> Bool {
+        if lhs == rhs { return true }
+        let lhsParts = lhs.split(separator: "|", maxSplits: 1)
+        let rhsParts = rhs.split(separator: "|", maxSplits: 1)
+        guard lhsParts.first == rhsParts.first else { return false }
+        return lhsParts.count == 1 || rhsParts.count == 1
     }
 
     /// One distinct account's card plan before reconciliation assigns its record id.

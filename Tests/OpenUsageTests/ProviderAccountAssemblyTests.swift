@@ -349,6 +349,99 @@ final class ProviderAccountAssemblyTests: XCTestCase {
         )
     }
 
+    func testASandboxMissingItsOrgHalfStillCountsAsTheDefaultAccount() {
+        // Identity files sometimes omit the org (older files, files written mid-login). Same
+        // account uuid = same login: the sandbox must stay on the default card, not become a
+        // phantom second account that partitions the walk.
+        let store = ProviderAccountsStore(defaults: makeScratchDefaults())
+        let observer = DefaultAccountObserver(
+            environment: FakeEnvironment([:]),
+            files: FakeFiles([
+                "/Users/dev/.claude.json": #"{"oauthAccount": {"accountUuid": "ACCT-1", "organizationUuid": "ORG-1"}}"#,
+            ]),
+            keychain: FakeKeychain(nil),
+            homeDirectory: { URL(fileURLWithPath: "/Users/dev") }
+        )
+        let sandbox = "\(coworkBase)/local_1/.claude"
+        let cowork = makeCoworkDiscovery(
+            files: [sandbox + "/.claude.json": #"{"oauthAccount": {"accountUuid": "ACCT-1"}}"#],
+            sandboxes: [sandbox]
+        )
+
+        let assembly = ProviderAccountAssembly.make(
+            observer: observer, accountsStore: store, coworkDiscovery: cowork
+        )
+
+        XCTAssertTrue(assembly.claudeCards.isEmpty)
+        XCTAssertNil(assembly.defaultClaudeCoworkRoots, "no partition — same login, org half or not")
+    }
+
+    func testASandboxCarryingAnOrgTheBareDefaultKeyLacksStillCountsAsTheDefaultAccount() {
+        // The mirror case: the DEFAULT identity file is the one missing its org half.
+        let store = ProviderAccountsStore(defaults: makeScratchDefaults())
+        let sandbox = "\(coworkBase)/local_1/.claude"
+        let cowork = makeCoworkDiscovery(
+            files: [sandbox + "/.claude.json": #"{"oauthAccount": {"accountUuid": "ACCT-1", "organizationUuid": "ORG-1"}}"#],
+            sandboxes: [sandbox]
+        )
+
+        let assembly = ProviderAccountAssembly.make(
+            observer: makeDefaultResolvedObserver(), accountsStore: store, coworkDiscovery: cowork
+        )
+
+        XCTAssertTrue(assembly.claudeCards.isEmpty)
+        XCTAssertNil(assembly.defaultClaudeCoworkRoots)
+    }
+
+    func testATruncatedCoworkScanSkipsRoutingThisLaunch() {
+        // A partial sandbox list must not drive routing: a missed non-default sandbox would bleed
+        // into the default card, and a partial partition would drop default spend. The pass skips
+        // wholesale and the next launch retries.
+        let store = ProviderAccountsStore(defaults: makeScratchDefaults())
+        let theirs = "\(coworkBase)/local_1/.claude"
+        let cowork = ClaudeCoworkDiscovery(
+            files: FakeFiles([theirs + "/.claude.json": #"{"oauthAccount": {"accountUuid": "ACCT-2", "organizationUuid": "ORG-2"}}"#]),
+            homeDirectory: { URL(fileURLWithPath: "/Users/dev") },
+            listSandboxes: { _ in [URL(fileURLWithPath: theirs)] },
+            timeBudget: -1
+        )
+
+        let assembly = ProviderAccountAssembly.make(
+            observer: makeDefaultResolvedObserver(), accountsStore: store, coworkDiscovery: cowork
+        )
+
+        XCTAssertTrue(assembly.claudeCards.isEmpty)
+        XCTAssertNil(assembly.defaultClaudeCoworkRoots, "no partition from a partial walk — the built-in walk stays byte-identical")
+    }
+
+    func testAConfigDirMissingItsOrgHalfFoldsOntoTheDefaultCard() throws {
+        // The same one-login-two-key-shapes rule applies to config dirs: a dir whose identity file
+        // omits the org must fold onto the default card, never mint a duplicate.
+        let store = ProviderAccountsStore(defaults: makeScratchDefaults())
+        let observer = DefaultAccountObserver(
+            environment: FakeEnvironment([:]),
+            files: FakeFiles([
+                "/Users/dev/.claude.json": #"{"oauthAccount": {"accountUuid": "ACCT-1", "organizationUuid": "ORG-1"}}"#,
+            ]),
+            keychain: FakeKeychain(nil),
+            homeDirectory: { URL(fileURLWithPath: "/Users/dev") }
+        )
+        let discovery = makeDiscovery(
+            files: [
+                "/Users/dev/.claude-side/.claude.json": #"{"oauthAccount": {"accountUuid": "ACCT-1"}}"#,
+                "/Users/dev/.claude-side/.credentials.json": #"{"claudeAiOauth": {"accessToken": "at-1"}}"#,
+            ],
+            subdirectories: ["/Users/dev/.claude-side"]
+        )
+
+        let assembly = ProviderAccountAssembly.make(
+            observer: observer, accountsStore: store, claudeDiscovery: discovery
+        )
+
+        XCTAssertTrue(assembly.claudeCards.isEmpty)
+        XCTAssertEqual(assembly.defaultClaudeExtraLogRoots.map(\.path), ["/Users/dev/.claude-side"])
+    }
+
     func testARenameNeverBakesIntoTheCardOnlyTheResolverCarriesIt() throws {
         let defaults = makeScratchDefaults()
         let store = ProviderAccountsStore(defaults: defaults)

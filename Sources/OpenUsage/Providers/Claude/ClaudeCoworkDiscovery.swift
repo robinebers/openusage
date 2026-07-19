@@ -26,6 +26,11 @@ struct ClaudeCoworkDiscovery {
         var sandboxes: [Sandbox] = []
         /// The support trail (token-free and email-free): identity hashes and paths only.
         var notes: [String] = []
+        /// True when the walk hit its time budget before visiting every sandbox. A partial list
+        /// must not drive routing — a missed non-default sandbox would silently bleed into the
+        /// default card, and a partial partition would drop default spend — so the assembly skips
+        /// the whole cowork pass this launch and retries next launch.
+        var truncated = false
     }
 
     var files: TextFileAccessing
@@ -33,7 +38,8 @@ struct ClaudeCoworkDiscovery {
     /// The sandbox walk, injectable for tests; defaults to the scanner's own walk so discovery and
     /// spend scanning can never see different sandbox sets.
     var listSandboxes: @Sendable (URL) -> [URL]
-    /// Wall-clock budget; on overrun the scan returns what it has (and the next launch resumes).
+    /// Wall-clock budget; on overrun the scan returns what it has, flagged `truncated` so the
+    /// assembly knows the list is not the whole truth (and retries next launch).
     var timeBudget: TimeInterval
     var now: @Sendable () -> Date
 
@@ -56,7 +62,8 @@ struct ClaudeCoworkDiscovery {
         var result = Result()
         for root in listSandboxes(homeDirectory()) {
             if now().timeIntervalSince(started) > timeBudget {
-                result.notes.append("cowork sandbox scan hit its \(Int(timeBudget * 1000))ms budget; finishing with partial results")
+                result.notes.append("cowork sandbox scan hit its \(Int(timeBudget * 1000))ms budget → skipping cowork routing this launch")
+                result.truncated = true
                 break
             }
             result.sandboxes.append(sandbox(at: root, notes: &result.notes))
