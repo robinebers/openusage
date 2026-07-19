@@ -9,20 +9,41 @@ enum UsageHistoryAggregator {
         descriptors: [String: UsageHistoryDescriptor],
         now: Date = Date()
     ) -> [String: ProviderUsageHistory] {
+        var pairs: [(String, ProviderUsageHistory)] = []
+        for document in UsageHistoryDocument.newestByDevice(peerDocuments) {
+            for (providerID, history) in document.providers {
+                pairs.append((providerID, history))
+            }
+        }
+        return merged(localSnapshots: localSnapshots, peerHistories: pairs, descriptors: descriptors, now: now)
+    }
+
+    /// The identity-remapped variant: peers arrive as (LOCAL card id, history) pairs — see
+    /// `PeerHistoryRemapper` — so the same account merges into the same card regardless of which Mac
+    /// calls it the default and which shows it as an extra account card.
+    static func merged(
+        localSnapshots: [String: ProviderSnapshot],
+        peerHistories: [(String, ProviderUsageHistory)],
+        descriptors: [String: UsageHistoryDescriptor],
+        now: Date = Date()
+    ) -> [String: ProviderUsageHistory] {
         var inputs: [String: [ProviderUsageHistory]] = [:]
-        let peerDocuments = UsageHistoryDocument.newestByDevice(peerDocuments)
         for (providerID, descriptor) in descriptors where descriptor.scope == .machineLocal {
             if let local = localSnapshots[providerID]?.usageHistory {
                 inputs[providerID, default: []].append(local)
             }
-            for document in peerDocuments {
-                if let peer = document.providers[providerID] {
-                    inputs[providerID, default: []].append(peer)
-                }
+            for (peerID, history) in peerHistories where peerID == providerID {
+                inputs[providerID, default: []].append(history)
             }
         }
         let includedDays = UsageHistoryWindow.dayKeys(through: now)
         return inputs.mapValues { merge($0, includedDays: includedDays) }
+    }
+
+    /// Day-sum several histories into one — the same merge the per-card path uses, exposed for
+    /// remote-only accounts (histories synced from other Macs with no local card).
+    static func mergeHistories(_ histories: [ProviderUsageHistory], now: Date = Date()) -> ProviderUsageHistory {
+        merge(histories, includedDays: UsageHistoryWindow.dayKeys(through: now))
     }
 
     private static func merge(
