@@ -20,6 +20,9 @@ struct WidgetGroupedListView: View {
     @State private var rowFrames: [String: CGRect] = [:]
     @State private var activeProviderID: String?
     @State private var activeMetricID: String?
+    /// The card the "Rename…" alert is currently editing; `nil` when the alert is closed.
+    @State private var renameCardID: String?
+    @State private var renameDraft = ""
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
 
     var body: some View {
@@ -33,6 +36,25 @@ struct WidgetGroupedListView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .onPreferenceChange(ReorderFramePreferenceKey.self) { rowFrames = $0 }
         .animation(Motion.spring, value: layout.displayGroups.map(\.provider.id))
+        .alert("Rename Card", isPresented: isRenamePresented) {
+            TextField("Name", text: $renameDraft)
+            Button("Rename") {
+                if let renameCardID {
+                    // A cleared field resets the card back to its derived name.
+                    container.accounts.rename(cardID: renameCardID, to: renameDraft)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Leave the name empty to go back to the default.")
+        }
+    }
+
+    private var isRenamePresented: Binding<Bool> {
+        Binding(
+            get: { renameCardID != nil },
+            set: { if !$0 { renameCardID = nil } }
+        )
     }
 
     private func section(_ group: ProviderGroup) -> some View {
@@ -57,14 +79,23 @@ struct WidgetGroupedListView: View {
         .padding(.horizontal, 8)
         .highPriorityGesture(providerDragGesture(for: group))
         .contextMenu {
+            let name = container.displayName(for: group.provider)
             // Hides the whole provider section (the Customize provider list brings it back). Mirrors
             // the per-metric "Hide" but one level up, so the verb order reads the same on a header as a row.
-            Button("Hide \(group.provider.displayName)") {
+            Button("Hide \(name)") {
                 container.enablement.setEnabled(false, for: group.provider.id)
             }
             Divider()
-            Button("Refresh \(group.provider.displayName)") {
+            Button("Refresh \(name)") {
                 Task { await dataStore.refresh(providerID: group.provider.id, force: true) }
+            }
+            // Renaming needs an account record to write to, so it only shows on account-model cards
+            // whose identity has been observed at least once.
+            if container.canRename(group.provider.id) {
+                Button("Rename…") {
+                    renameDraft = name
+                    renameCardID = group.provider.id
+                }
             }
             Button("Customize…") {
                 openCustomize(for: group.provider.id)
@@ -85,7 +116,8 @@ struct WidgetGroupedListView: View {
             group: group,
             dataStore: dataStore,
             layout: layout,
-            appearance: colorScheme
+            appearance: colorScheme,
+            displayName: container.displayName(for: group.provider)
         )
     }
 
@@ -259,7 +291,7 @@ struct WidgetGroupedListView: View {
         }
         Divider()
         if let provider = layout.provider(id: providerID) {
-            Button("Refresh \(provider.displayName)") {
+            Button("Refresh \(container.displayName(for: provider))") {
                 Task { await dataStore.refresh(providerID: providerID, force: true) }
             }
         }

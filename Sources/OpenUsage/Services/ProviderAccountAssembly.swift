@@ -50,8 +50,14 @@ struct ProviderAccountAssembly {
 
     /// `waitsForLoginShell`: true for the menu-bar app (a Finder/Dock launch inherits no shell
     /// exports, so the pass leans on the login-shell layers), false for the one-shot CLI (a terminal
-    /// launch's process environment already carries the user's exports).
-    static func make(defaults: UserDefaults = .standard, waitsForLoginShell: Bool) -> ProviderAccountAssembly {
+    /// launch's process environment already carries the user's exports). The app passes its own
+    /// `accountsStore` so the registry the pass reconciles is the same instance the UI observes for
+    /// renames; the CLI omits it and gets a throwaway.
+    static func make(
+        defaults: UserDefaults = .standard,
+        accountsStore: ProviderAccountsStore? = nil,
+        waitsForLoginShell: Bool
+    ) -> ProviderAccountAssembly {
         // The identity read needs the login shell's exports (CLAUDE_CONFIG_DIR/CODEX_HOME name the
         // default homes), and it reads them through the very same reader the provider auth stores
         // use — `ProcessEnvironmentReader`, which pins identity-relevant keys to the persisted
@@ -79,7 +85,7 @@ struct ProviderAccountAssembly {
         }
         return make(
             observer: DefaultAccountObserver(),
-            accountsStore: ProviderAccountsStore(defaults: defaults),
+            accountsStore: accountsStore ?? ProviderAccountsStore(defaults: defaults),
             families: families,
             claudeDiscovery: ClaudeConfigDirDiscovery()
         )
@@ -105,7 +111,7 @@ struct ProviderAccountAssembly {
         claudeDiscovery: ClaudeConfigDirDiscovery? = nil
     ) -> ProviderAccountAssembly {
         var identityKeys: [String: String] = [:]
-        var observations: [ProviderAccountsStore.Observation] = []
+        var observations: [ProviderAccountsStore.AccountObservation] = []
 
         let outcomes: [(family: String, outcome: DefaultAccountObserver.Outcome)] = [
             ("claude", { observer.observeClaude() }),
@@ -117,7 +123,7 @@ struct ProviderAccountAssembly {
             switch outcome {
             case .resolved(let identityKey, let label, let anchor):
                 identityKeys[family] = identityKey
-                observations.append(ProviderAccountsStore.Observation(
+                observations.append(ProviderAccountsStore.AccountObservation(
                     family: family,
                     identityKey: identityKey,
                     label: label,
@@ -175,7 +181,7 @@ struct ProviderAccountAssembly {
                         }
                         AppLog.info(.config, "discovery: \(findings.count) config dir(s) fold onto the default claude card (same account)")
                     } else {
-                        observations.append(ProviderAccountsStore.Observation(
+                        observations.append(ProviderAccountsStore.AccountObservation(
                             family: "claude",
                             identityKey: identityKey,
                             label: findings.first?.label,
