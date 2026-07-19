@@ -30,6 +30,20 @@ enum NotchGeometry {
         var isEffectivelyHidden: Bool { hiddenFraction >= 0.75 }
     }
 
+    /// Whether the notch-occlusion fallback should run at all. macOS 27 ("Golden Gate") manages
+    /// menu-bar overflow natively — items that don't fit fold behind a chevron left of the notch
+    /// instead of being parked invisibly under it — so on 27+ the fallback is a no-op. Once the
+    /// app's deployment target passes macOS 26, this gate and everything it guards can be deleted.
+    static var fallbackIsNeeded: Bool {
+        fallbackIsNeeded(
+            onMacOSMajorVersion: ProcessInfo.processInfo.operatingSystemVersion.majorVersion
+        )
+    }
+
+    static func fallbackIsNeeded(onMacOSMajorVersion major: Int) -> Bool {
+        major <= 26
+    }
+
     /// The notch rect in screen coordinates, or `nil` when the screen has no notch.
     static func notchRect(of screen: NSScreen) -> NSRect? {
         guard let left = screen.auxiliaryTopLeftArea, let right = screen.auxiliaryTopRightArea else {

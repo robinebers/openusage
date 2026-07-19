@@ -133,7 +133,9 @@ final class StatusItemController: NSObject {
         }
 
         heightController.installBridge()
-        occlusionMonitor.start()
+        if NotchGeometry.fallbackIsNeeded {
+            occlusionMonitor.start()
+        }
 
         AppLog.info(.statusItem, "Status item ready (button: \(self.statusItem.button != nil), shortcut: \(KeyboardShortcuts.getShortcut(for: .togglePopover)?.description ?? "none"))")
     }
@@ -364,7 +366,8 @@ final class StatusItemController: NSObject {
         // A button parked under the notch is no anchor: the panel would open centered below the
         // notch, seemingly out of nowhere. Anchor at the nearest visible notch edge instead.
         var anchorRect = buttonRectOnScreen
-        if let screen = buttonWindow.screen,
+        if NotchGeometry.fallbackIsNeeded,
+           let screen = buttonWindow.screen,
            let notch = NotchGeometry.notchRect(of: screen),
            let occlusion = NotchGeometry.occlusion(of: buttonRectOnScreen, notch: notch),
            occlusion.isEffectivelyHidden {

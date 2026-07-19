@@ -77,6 +77,15 @@ final class NotchGeometryTests: XCTestCase {
         XCTAssertEqual(anchor.minY, 1138)
     }
 
+    func testFallbackIsGatedToMacOS26AndBelow() {
+        // macOS 27 ("Golden Gate") folds overflowing items behind a chevron instead of parking
+        // them under the notch, so the fallback must stay off there and on for 15–26.
+        XCTAssertTrue(NotchGeometry.fallbackIsNeeded(onMacOSMajorVersion: 15))
+        XCTAssertTrue(NotchGeometry.fallbackIsNeeded(onMacOSMajorVersion: 26))
+        XCTAssertFalse(NotchGeometry.fallbackIsNeeded(onMacOSMajorVersion: 27))
+        XCTAssertFalse(NotchGeometry.fallbackIsNeeded(onMacOSMajorVersion: 28))
+    }
+
     func testPanelAnchorRightAlignsAtTheLeftNotchEdge() {
         let occlusion = NotchGeometry.occlusion(
             of: NSRect(x: 767, y: 1138, width: 170, height: 24), notch: notch
