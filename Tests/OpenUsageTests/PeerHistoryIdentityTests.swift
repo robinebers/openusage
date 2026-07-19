@@ -63,7 +63,6 @@ final class PeerHistoryIdentityTests: XCTestCase {
         XCTAssertTrue(remapped.histories.isEmpty)
         XCTAssertEqual(remapped.remoteOnly.count, 1)
         XCTAssertEqual(remapped.remoteOnly.first?.family, "claude")
-        XCTAssertEqual(remapped.remoteOnly.first?.deviceNames, ["Mac mini"])
         XCTAssertEqual(
             remapped.remoteOnly.first?.cardID,
             ProviderAccountID.make(family: "claude", identityKey: "uuid-other|org-x"),
@@ -151,7 +150,7 @@ final class PeerHistoryIdentityTests: XCTestCase {
         XCTAssertEqual(dataStore.remoteOnlySpend.count, 1)
         let entry = dataStore.remoteOnlySpend[0]
         let expectedCardID = ProviderAccountID.make(family: "claude", identityKey: "uuid-other|org-x")
-        XCTAssertEqual(entry.provider.displayName, "\(expectedCardID) · Mac mini")
+        XCTAssertEqual(entry.provider.displayName, expectedCardID, "the slice is named by the account code alone — the source Mac is irrelevant")
 
         let total = TotalSpendAggregator.total(
             for: .today,
@@ -190,7 +189,7 @@ final class PeerHistoryIdentityTests: XCTestCase {
         let names = Set(dataStore.remoteOnlySpend.map(\.provider.displayName))
         XCTAssertEqual(names.count, 2, "every remote-only account carries a unique display name")
         for name in names {
-            XCTAssertTrue(name.hasPrefix("claude@") && name.hasSuffix(" · Mac mini"), "unexpected slice name: \(name)")
+            XCTAssertTrue(name.hasPrefix("claude@"), "unexpected slice name: \(name)")
         }
     }
 

@@ -20,10 +20,9 @@ enum PeerHistoryRemapper {
         var identityKey: String
         var family: String
         /// The account's identity-derived card id (`claude@ab12cd34`) — the same id the account
-        /// gets as a card on any Mac it's signed in on. Names the Total Spend slice, so several
-        /// remote-only accounts from one device stay tellable apart.
+        /// gets as a card on any Mac it's signed in on. Names the Total Spend slice; which Mac the
+        /// spend came from is deliberately not part of the name (irrelevant to the total).
         var cardID: String
-        var deviceNames: [String]
         var histories: [ProviderUsageHistory]
     }
 
@@ -48,13 +47,10 @@ enum PeerHistoryRemapper {
 
         var result = Remapped()
         var remoteByIdentity: [String: RemoteOnlyHistory] = [:]
-        func collectRemoteOnly(identity: String, family: String, cardID: String, deviceName: String, history: ProviderUsageHistory) {
+        func collectRemoteOnly(identity: String, family: String, cardID: String, history: ProviderUsageHistory) {
             var entry = remoteByIdentity[identity] ?? RemoteOnlyHistory(
-                identityKey: identity, family: family, cardID: cardID, deviceNames: [], histories: []
+                identityKey: identity, family: family, cardID: cardID, histories: []
             )
-            if !entry.deviceNames.contains(deviceName) {
-                entry.deviceNames.append(deviceName)
-            }
             entry.histories.append(history)
             remoteByIdentity[identity] = entry
         }
@@ -77,7 +73,6 @@ enum PeerHistoryRemapper {
                             identity: identity,
                             family: family,
                             cardID: ProviderAccountID.make(family: family, identityKey: identity),
-                            deviceName: document.deviceName,
                             history: history
                         )
                     }
@@ -91,13 +86,7 @@ enum PeerHistoryRemapper {
                 if !ProviderAccountID.isAccountCard(peerCardID) || localIdentityByCardID[peerCardID] != nil {
                     result.histories.append((peerCardID, history))
                 } else {
-                    collectRemoteOnly(
-                        identity: peerCardID,
-                        family: family,
-                        cardID: peerCardID,
-                        deviceName: document.deviceName,
-                        history: history
-                    )
+                    collectRemoteOnly(identity: peerCardID, family: family, cardID: peerCardID, history: history)
                 }
             }
         }

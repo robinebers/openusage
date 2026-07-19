@@ -471,17 +471,15 @@ final class WidgetDataStore {
             let history = UsageHistoryAggregator.mergeHistories(entry.histories, now: now)
             guard !history.series.daily.isEmpty else { return nil }
 
-            let device = entry.deviceNames.count == 1
-                ? entry.deviceNames[0]
-                : "\(entry.deviceNames.count) other Macs"
-            // The slice is named by the account's identity-derived card id ("claude@ab12cd34 ·
-            // Mac mini") — unique per account, so several remote-only accounts from one device stay
-            // tellable apart, and it's the exact id the account's card gets the day it's signed in
-            // here (and the id the CLI/API answer to on the Mac that has it). The pseudo provider id
-            // stays distinct from real card ids so a slice can never collide with a live card.
+            // The slice is named by the account's identity-derived card id ("claude@ab12cd34") —
+            // unique per account, and the exact id the account's card gets the day it's signed in
+            // here (and the id the CLI/API answer to on the Mac that has it). Which Mac the spend
+            // came from is irrelevant to the total, so it's not part of the name. The pseudo
+            // provider id stays distinct from real card ids so a slice can never collide with a
+            // live card.
             let provider = Provider(
                 id: "\(entry.family)@peer-\(ProviderAccountID.hash8(entry.identityKey))",
-                displayName: "\(entry.cardID) · \(device)",
+                displayName: entry.cardID,
                 icon: familyProvider.icon
             )
             let empty = ProviderSnapshot(
