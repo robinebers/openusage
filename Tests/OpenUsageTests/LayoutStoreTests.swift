@@ -1010,14 +1010,17 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertTrue(store.expandedMetricIDs.contains("claude.weekly"))
     }
 
-    func testInvalidPersistedExpandedIDsAreDropped() {
+    func testUnknownPersistedExpandedIDsAreRetainedAsInvisibleTombstones() {
         let defaults = makeDefaults("InvalidExpand")
         saveStored([PlacedWidget(descriptorID: "claude.session")], forKey: "layout", in: defaults)
         defaults.set(["claude.session", "missing.metric"], forKey: "layout.expandedMetrics")
 
         let store = LayoutStore(registry: .mock, defaults: defaults, storageKey: "layout")
         XCTAssertTrue(store.expandedMetricIDs.contains("claude.session"))
-        XCTAssertFalse(store.expandedMetricIDs.contains("missing.metric"))
+        XCTAssertTrue(
+            store.expandedMetricIDs.contains("missing.metric"),
+            "unknown state stays persisted so a temporarily absent account card can recover it"
+        )
     }
 
     func testDisplayGroupsPartitionEnabledMetrics() {

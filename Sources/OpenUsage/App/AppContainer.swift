@@ -66,11 +66,16 @@ final class AppContainer {
         // Once the capture lands, persist its identity-relevant facts so the NEXT launch has them
         // even if that launch's own capture is slow (see `ShellEnvironmentSnapshot`).
         self.shellEnvironmentSnapshotTask = ShellEnvironmentSnapshotStore(defaults: .standard).startRefreshTask()
-        // The launch account pass: which account is signed in at each family's default home. Feeds
-        // the snapshot cache's account stamp and reconciles the account registry.
+        // The launch account pass: which account is signed in at each family's default home, plus
+        // the config-dir scan for extra Claude logins. Feeds the snapshot cache's account stamp,
+        // reconciles the account registry, and hands the catalog its extra-card build plan.
         let accountAssembly = ProviderAccountAssembly.make(waitsForLoginShell: true)
 
-        let providers = ProviderCatalog.make()
+        let providers = ProviderCatalog.make(
+            claudeCards: accountAssembly.claudeCards,
+            defaultClaudeExtraLogRoots: accountAssembly.defaultClaudeExtraLogRoots,
+            defaultClaudeDisplayName: accountAssembly.defaultClaudeDisplayName
+        )
         let registry = WidgetRegistry.from(providers)
         let apiKeyProviders = providers.compactMap { $0 as? any APIKeyManaging }
         let enablement = ProviderEnablementStore()
