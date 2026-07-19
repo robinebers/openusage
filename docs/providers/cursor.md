@@ -23,6 +23,18 @@ Just be signed into the Cursor app. OpenUsage reads Cursor's local state databas
 
 Today, Yesterday, Last 30 Days, and Usage Trend come from Cursor's usage export. OpenUsage uses the exported token counts and shared model pricing to estimate the cost locally. Cursor's export may occasionally arrive late, so the newest figures can lag behind current activity. OpenUsage leaves isolated malformed rows out instead of silently counting broken values as zero. A failed download, invalid export schema, or broken CSV structure leaves spend history unavailable for that refresh. Each failure is recorded in the diagnostic log without including the exported usage data.
 
+### Spend View
+
+Cursor's export marks each row as either plan-**included** usage or billed **API** (on-demand) usage. In the Cursor section of Customize, **Spend View** picks which side the spend tiles and Usage Trend add up:
+
+| Mode | Shows |
+|---|---|
+| **All Usage** (default) | Every row — the combined picture, unchanged from before |
+| **Included Usage** | Only rows the plan covers |
+| **API Usage** | Only billed / on-demand rows |
+
+The setting only affects the spend tiles (Today / Yesterday / Last 30 Days) and the Usage Trend. The bounded meters (Total / Auto / API Usage %) always stay as Cursor reports them — they come from Cursor's live API, not the export. Older exports without a Cost column can't be split, so their rows only appear under All Usage. The preference is stored per device and applies on the next refresh.
+
 ## Troubleshooting
 
 - **"Not logged in" / token errors** — open Cursor and make sure you're signed in, then refresh.

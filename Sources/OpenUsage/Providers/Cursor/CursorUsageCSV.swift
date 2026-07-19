@@ -1,5 +1,15 @@
 import Foundation
 
+/// How Cursor billed a CSV row, read from the export's `Cost` column: `Included` marks consumption
+/// covered by the plan; anything else non-empty is a dollar amount for billed / on-demand usage.
+/// `unknown` covers exports that predate the column (or an empty cell) — those rows can't be split
+/// into either side, so only the combined view counts them.
+enum CursorBillingKind: Sendable, Equatable {
+    case included
+    case billed
+    case unknown
+}
+
 /// One parsed row from Cursor's CSV usage export. `imputedCostDollars` is the locally priced dollar
 /// amount (server CSV tokens × the shared model pricing); `nil` when no pricing source knows the
 /// model — those rows contribute tokens but flag the day's cost as incomplete. Ported from
@@ -9,6 +19,7 @@ struct CursorUsageCSVRow: Sendable, Equatable {
     var model: String
     var tokens: TokenBreakdown
     var imputedCostDollars: Double?
+    var billing: CursorBillingKind = .unknown
 }
 
 struct CursorUsageCSVParseResult: Sendable, Equatable {
@@ -29,6 +40,8 @@ enum CursorUsageCSV {
         static let input = "Input (w/o Cache Write)"
         static let cacheRead = "Cache Read"
         static let output = "Output Tokens"
+        /// Optional: exports predating this column still parse, with `billing` left `.unknown`.
+        static let cost = "Cost"
         static let required = [date, model, cacheWrite, input, cacheRead, output]
     }
 
@@ -109,7 +122,8 @@ enum CursorUsageCSV {
                     model: model,
                     tokens: tokens,
                     applyLongContextRates: false
-                )
+                ),
+                billing: parseBillingKind(r[Column.cost])
             ))
         }
         guard summary.isStructurallyComplete, !hasDuplicateColumns else {
@@ -118,6 +132,13 @@ enum CursorUsageCSV {
         guard missingColumns.isEmpty else { throw CursorUsageCSVError.missingColumns(missingColumns) }
         rejectedRowCount += summary.rejectedRecordCount
         return CursorUsageCSVParseResult(rows: rows, rejectedRowCount: rejectedRowCount)
+    }
+
+    private static func parseBillingKind(_ raw: String?) -> CursorBillingKind {
+        guard let value = raw?.trimmingCharacters(in: .whitespaces), !value.isEmpty else {
+            return .unknown
+        }
+        return value.lowercased() == "included" ? .included : .billed
     }
 
     private static func parseDate(_ raw: String) -> Date? {
