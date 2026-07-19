@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.7.7-beta.1
+
+### Bug Fixes
+- Account-first Phase 1: account registry, default identity, cache stamp, plain-matching CLI/API ([#1027](https://github.com/robinebers/openusage/pull/1027)) by @robinebers
+- Account-first Phase 0: shell-environment snapshot + the plan ([#1026](https://github.com/robinebers/openusage/pull/1026)) by @robinebers
+- Cache parsed local usage logs across launches ([#1017](https://github.com/robinebers/openusage/pull/1017)) by @robinebers
+
+---
+
+### Changelog
+**Full Changelog**: [v0.7.6...v0.7.7-beta.1](https://github.com/robinebers/openusage/compare/v0.7.6...v0.7.7-beta.1)
+
+- [7723025](https://github.com/robinebers/openusage/commit/7723025777716bcc3326cea22c890b3f706deb0a) Account-first Phase 1: account registry, default identity, cache stamp, plain-matching CLI/API (#1027) by @robinebers
+- [d785f7e](https://github.com/robinebers/openusage/commit/d785f7e8b85669e840ecb5363443dfbf1a107806) Account-first Phase 0: shell-environment snapshot + the plan (#1026) by @robinebers
+- [6a2d74d](https://github.com/robinebers/openusage/commit/6a2d74d2f277287714376d7549ab1a979a4fc3d1) Cache parsed local usage logs across launches (#1017) by @robinebers
+
 ## v0.7.6
 
 ### New Features
