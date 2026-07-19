@@ -91,6 +91,22 @@ final class ClaudeScopedAuthStoreTests: XCTestCase {
         XCTAssertTrue(load.candidates.isEmpty)
     }
 
+    @MainActor
+    func testACoworkPartitionAloneDisablesTheUnpinnedDesktopFallback() throws {
+        // A distinct Cowork account can exist WITHOUT earning a card (no org pin, so no
+        // Desktop-backed card is safe to build). Another account is still known on the machine,
+        // so the default card's unpinned Desktop fallback must drop all the same — Desktop's
+        // active org may be that account's usage pool.
+        let partitioned = ProviderCatalog.make(defaultClaudeCoworkRoots: [])
+        let claude = try XCTUnwrap(partitioned.compactMap { $0 as? ClaudeProvider }.first)
+        XCTAssertFalse(claude.authStore.allowsUnpinnedStandardDesktopFallback)
+
+        // Control: a machine with no other account known keeps the fallback.
+        let alone = ProviderCatalog.make()
+        let defaultClaude = try XCTUnwrap(alone.compactMap { $0 as? ClaudeProvider }.first)
+        XCTAssertTrue(defaultClaude.authStore.allowsUnpinnedStandardDesktopFallback)
+    }
+
     func testDesktopOnlyStoreHasNoCLISourcesAndNeverInheritsTheEnvironmentToken() {
         let store = ClaudeAuthStore(
             environment: FakeEnvironment(["CLAUDE_CODE_OAUTH_TOKEN": "ambient-token"]),

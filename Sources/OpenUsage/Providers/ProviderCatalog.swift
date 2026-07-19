@@ -25,13 +25,14 @@ enum ProviderCatalog {
         // so a baked name can never be a stale copy of one.
         var runtimes: [ProviderRuntime] = []
         runtimes.append(ClaudeProvider(
-            // Once extra Claude cards exist, an unpinned Desktop fallback could borrow a login that
-            // belongs to one of them — fetching that account's usage onto the default card. With the
-            // default account's own org known, the fallback stays available pinned to that org;
-            // otherwise it is disabled rather than blind.
+            // Once ANOTHER Claude account is known on this machine — an extra card, or a cowork
+            // partition from an account that earned no card (no org pin) — an unpinned Desktop
+            // fallback could follow that account's active org, fetching its usage onto the default
+            // card. With the default account's own org known, the fallback stays available pinned
+            // to that org; otherwise it is disabled rather than blind.
             authStore: ClaudeAuthStore(
                 standardDesktopOrganization: defaultClaudeOrganization,
-                allowsUnpinnedStandardDesktopFallback: claudeCards.isEmpty
+                allowsUnpinnedStandardDesktopFallback: claudeCards.isEmpty && defaultClaudeCoworkRoots == nil
             ),
             logUsageScanner: ClaudeLogUsageScanner(
                 additionalRoots: defaultClaudeExtraLogRoots,
