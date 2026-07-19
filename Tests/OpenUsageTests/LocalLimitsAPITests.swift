@@ -114,14 +114,18 @@ final class LocalLimitsAPITests: XCTestCase {
         XCTAssertEqual(limitsSession["used"] as? Double, 73)
     }
 
-    func testKnownProviderRouteUsesSameEnvelopeAndPreservesMissingSnapshotStatus() throws {
+    func testKnownProviderRouteUsesSameEnvelopeAndReportsMissingSnapshotAsEmpty() throws {
         var state = LocalUsageAPI.State(
             enabledOrderedIDs: [],
             knownIDs: ["codex"],
             snapshots: [:],
             generatedAt: generatedAt
         )
-        XCTAssertEqual(LocalUsageAPI.respond(method: "GET", path: "/v1/limits/codex", state: state).status, 204)
+        // Known but never fetched → the shape never changes: 200 with an empty envelope.
+        let pending = LocalUsageAPI.respond(method: "GET", path: "/v1/limits/codex", state: state)
+        XCTAssertEqual(pending.status, 200)
+        let pendingRoot = try json(pending.body)
+        XCTAssertTrue((pendingRoot["providers"] as? [String: Any])?.isEmpty == true)
         XCTAssertEqual(LocalUsageAPI.respond(method: "GET", path: "/v1/limits/nope", state: state).status, 404)
 
         state.errors["codex"] = "Not logged in"

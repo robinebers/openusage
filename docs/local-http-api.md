@@ -14,13 +14,17 @@ Returns a machine-facing envelope for all **enabled** providers. Providers and r
 stable IDs; values are raw scalars with explicit units. This is the preferred route for new integrations
 and the exact format printed by the `openusage` CLI.
 
-### `GET /v1/limits/:providerId`
+### `GET /v1/limits/:id`
 
-Returns the same envelope containing one provider. It works for disabled providers too.
+Returns the same envelope containing every provider the ID names. It works for disabled providers too.
+Matching is plain string comparison: an exact provider ID names that provider, and a family ID
+(`claude`, `codex`) names every account card of that family — with one account that's exactly the one
+card. There is no aliasing or "pick the right account" logic; the same request always names the same
+providers.
 
-- **200 OK** — limits envelope, including an `errors` entry when a refresh failed.
-- **204 No Content** — provider is known but has neither a snapshot nor a recorded refresh failure yet.
-- **404 Not Found** — provider ID is unknown.
+- **200 OK** — limits envelope with every matched provider that has data (an `errors` entry appears
+  when a refresh failed; a matched provider with no data yet simply has no entry).
+- **404 Not Found** — the ID names no known provider and no family.
 
 ### `GET /v1/usage`
 
@@ -33,13 +37,17 @@ the same iCloud-combined usage as the dashboard; `/v1/usage` returns the old UI-
 
 - **200 OK** — JSON array (may be empty `[]` if nothing has been fetched yet).
 
-### `GET /v1/usage/:providerId`
+### `GET /v1/usage/:id`
 
-Returns the latest snapshot for one provider. Works for disabled providers too.
+Returns the latest snapshots for every provider the ID names (same matching as `/v1/limits/:id`).
+Works for disabled providers too.
 
-- **200 OK** — JSON object.
-- **204 No Content** — provider is known but has no snapshot yet.
-- **404 Not Found** — provider ID is unknown.
+- **200 OK** — JSON array, one snapshot per matched provider that has one (`[]` when none do yet).
+- **404 Not Found** — the ID names no known provider and no family.
+
+> **Breaking change:** this route previously returned a single JSON object and `204` when the
+> provider had no snapshot. It now always returns an array, so the shape stays identical whether an
+> ID names one provider or a whole account family.
 
 ### Everything else
 

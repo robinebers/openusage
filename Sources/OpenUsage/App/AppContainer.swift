@@ -66,6 +66,9 @@ final class AppContainer {
         // Once the capture lands, persist its identity-relevant facts so the NEXT launch has them
         // even if that launch's own capture is slow (see `ShellEnvironmentSnapshot`).
         self.shellEnvironmentSnapshotTask = ShellEnvironmentSnapshotStore(defaults: .standard).startRefreshTask()
+        // The launch account pass: which account is signed in at each family's default home. Feeds
+        // the snapshot cache's account stamp and reconciles the account registry.
+        let accountAssembly = ProviderAccountAssembly.make(waitsForLoginShell: true)
 
         let providers = ProviderCatalog.make()
         let registry = WidgetRegistry.from(providers)
@@ -81,7 +84,8 @@ final class AppContainer {
             providers: providers,
             isProviderEnabled: { [enablement] in enablement.isEnabled($0) },
             orderedDescriptors: { [layout] in layout.visiblePlaced.compactMap { layout.descriptor(for: $0) } },
-            notificationSettings: { notificationSettings }
+            notificationSettings: { notificationSettings },
+            providerIdentityKeys: accountAssembly.identityKeysByCard
         )
         let iCloudSync = ICloudUsageSyncStore(dataStore: dataStore)
         // Re-enabling a provider should fetch it promptly, so clear any leftover failure backoff before

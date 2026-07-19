@@ -16,11 +16,18 @@ snapshot cache. A normal read reuses snapshots less than five minutes old and re
 ones. `--force` is the CLI equivalent of the app's manual refresh: it bypasses that freshness gate and
 writes successful results to the same cache. Credentials are used locally and never appear in the output.
 
+A provider argument names providers by plain string matching, exactly like the
+[local HTTP API](local-http-api.md): an exact provider ID names that provider, and a family ID
+(`claude`, `codex`) names every account card of that family — with one account that's exactly the one
+card, so existing usage keeps working unchanged as multi-account support arrives. The output envelope
+contains every matched provider; an ID that names nothing exits with an error. There is no aliasing
+or account-picking logic.
+
 ## Install on `PATH`
 
 In OpenUsage, open **Settings → Command Line** and click **Install…**. After the standard macOS
 administrator prompt, `openusage` is available globally in new terminal sessions. The installed symlink
 points to the signed helper inside OpenUsage, so in-place app updates also update the command.
 
-Exit codes are `0` for success, `2` for invalid arguments, `3` when a requested provider has no snapshot,
-and `4` when a refresh or local read fails.
+Exit codes are `0` for success, `2` for invalid arguments or an unknown provider, and `4` when a
+refresh or local read fails.

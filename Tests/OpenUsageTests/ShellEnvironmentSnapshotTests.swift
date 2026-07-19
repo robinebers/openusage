@@ -75,6 +75,69 @@ final class ShellEnvironmentSnapshotTests: XCTestCase {
         XCTAssertEqual(store.load(), previous)
     }
 
+    // MARK: - ProcessEnvironmentReader layering (process env → snapshot pin for identity keys → live capture)
+
+    func testReaderPrefersTheProcessEnvironment() {
+        let reader = ProcessEnvironmentReader(
+            processEnvironment: ["CODEX_HOME": "/tmp/exported"],
+            shellEnvironment: LoginShellEnvironment(runner: FixedRunner(stdout: "unused")),
+            launchSnapshot: { ShellEnvironmentSnapshot(values: ["CODEX_HOME": "/tmp/persisted"], capturedAt: Date()) }
+        )
+
+        XCTAssertEqual(reader.value(for: "CODEX_HOME"), "/tmp/exported")
+    }
+
+    func testReaderServesSnapshotFactsWhileTheCaptureIsCold() {
+        // A main-thread read never triggers the capture, so this cold shell layer answers "unknown".
+        let cold = LoginShellEnvironment(runner: FixedRunner(stdout: "unused"))
+        let snapshot = ShellEnvironmentSnapshot(values: ["CODEX_HOME": "/tmp/persisted"], capturedAt: Date())
+        let reader = ProcessEnvironmentReader(
+            processEnvironment: [:],
+            shellEnvironment: cold,
+            launchSnapshot: { snapshot }
+        )
+
+        XCTAssertEqual(reader.value(for: "CODEX_HOME"), "/tmp/persisted")
+        // A key the snapshot verifiably lacks reads as "no override" — pinned absent.
+        XCTAssertNil(reader.value(for: "CLAUDE_CONFIG_DIR"))
+    }
+
+    func testReaderPinsIdentityKeysToTheSnapshotEvenAfterTheCaptureLands() {
+        // The capture lands with a CHANGED export. Identity-relevant keys must keep reading the
+        // launch snapshot for the whole session — otherwise the account identity (read at init from
+        // the snapshot) and later provider refreshes (reading the fresh capture) would resolve
+        // different homes and mis-stamp the shared cache. The new export applies from the next launch.
+        let stdout = [
+            "__OPENUSAGE_ENV_BEGIN__", "CODEX_HOME=/tmp/changed", "MY_API_KEY=sk-live", "PATH=/usr/bin", "__OPENUSAGE_ENV_END__",
+        ].joined(separator: "\0")
+        let warm = LoginShellEnvironment(runner: FixedRunner(stdout: stdout))
+        XCTAssertTrue(warm.ensureCapturedForTesting())
+        let reader = ProcessEnvironmentReader(
+            processEnvironment: [:],
+            shellEnvironment: warm,
+            launchSnapshot: { ShellEnvironmentSnapshot(values: ["CODEX_HOME": "/tmp/pinned"], capturedAt: Date()) }
+        )
+
+        XCTAssertEqual(reader.value(for: "CODEX_HOME"), "/tmp/pinned")
+        // Non-identity keys (API keys and everything else) keep reading the live capture as before.
+        XCTAssertEqual(reader.value(for: "MY_API_KEY"), "sk-live")
+    }
+
+    func testReaderFallsToTheLiveCaptureWhenNoSnapshotExists() {
+        // A genuinely first launch: no snapshot yet, so identity keys read the live capture directly
+        // (consistent for the session — the capture is one-time per process).
+        let stdout = ["__OPENUSAGE_ENV_BEGIN__", "CODEX_HOME=/tmp/live", "__OPENUSAGE_ENV_END__"].joined(separator: "\0")
+        let warm = LoginShellEnvironment(runner: FixedRunner(stdout: stdout))
+        XCTAssertTrue(warm.ensureCapturedForTesting())
+        let reader = ProcessEnvironmentReader(
+            processEnvironment: [:],
+            shellEnvironment: warm,
+            launchSnapshot: { nil }
+        )
+
+        XCTAssertEqual(reader.value(for: "CODEX_HOME"), "/tmp/live")
+    }
+
     private func makeScratchDefaults() -> UserDefaults {
         let suiteName = "OpenUsageTests.ShellEnvironmentSnapshot.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
