@@ -64,6 +64,11 @@ final class PeerHistoryIdentityTests: XCTestCase {
         XCTAssertEqual(remapped.remoteOnly.count, 1)
         XCTAssertEqual(remapped.remoteOnly.first?.family, "claude")
         XCTAssertEqual(remapped.remoteOnly.first?.deviceNames, ["Mac mini"])
+        XCTAssertEqual(
+            remapped.remoteOnly.first?.cardID,
+            ProviderAccountID.make(family: "claude", identityKey: "uuid-other|org-x"),
+            "the slice id is the same id the account's card gets on any Mac it's signed in on"
+        )
     }
 
     func testUnresolvedLocalIdentityKeepsTheBareCardMergeInsteadOfDoubleCounting() {
@@ -145,7 +150,8 @@ final class PeerHistoryIdentityTests: XCTestCase {
 
         XCTAssertEqual(dataStore.remoteOnlySpend.count, 1)
         let entry = dataStore.remoteOnlySpend[0]
-        XCTAssertEqual(entry.provider.displayName, "Claude · Mac mini")
+        let expectedCardID = ProviderAccountID.make(family: "claude", identityKey: "uuid-other|org-x")
+        XCTAssertEqual(entry.provider.displayName, "\(expectedCardID) · Mac mini")
 
         let total = TotalSpendAggregator.total(
             for: .today,
@@ -154,6 +160,38 @@ final class PeerHistoryIdentityTests: XCTestCase {
         )
         XCTAssertEqual(total.slices.count, 1)
         XCTAssertEqual(total.slices[0].amountUSD, 42, accuracy: 0.001)
+    }
+
+    func testSeveralRemoteOnlyAccountsFromOneDeviceStayTellableApart() {
+        // Many accounts on the mini, none on this Mac: each must keep its own slice with its own
+        // identity-derived name — never several identical "Claude · Mac mini" legend rows.
+        let dataStore = WidgetDataStore(
+            registry: makeRegistry(),
+            providers: [],
+            cache: scratchCache(),
+            defaults: makeScratchDefaults("ManyRemote"),
+            providerIdentityKeys: ["claude": maxKey]
+        )
+        let today = dayKey(Date())
+        let doc = makeDocument(
+            deviceName: "Mac mini",
+            providers: [
+                "claude@11111111": history(day: today, tokens: 10, cost: 1),
+                "claude@22222222": history(day: today, tokens: 20, cost: 2),
+            ],
+            identities: [
+                "claude@11111111": "uuid-a|org-a",
+                "claude@22222222": "uuid-b|org-b",
+            ]
+        )
+        dataStore.setPeerHistoryDocuments([doc], ownDeviceID: "this-mac")
+
+        XCTAssertEqual(dataStore.remoteOnlySpend.count, 2)
+        let names = Set(dataStore.remoteOnlySpend.map(\.provider.displayName))
+        XCTAssertEqual(names.count, 2, "every remote-only account carries a unique display name")
+        for name in names {
+            XCTAssertTrue(name.hasPrefix("claude@") && name.hasSuffix(" · Mac mini"), "unexpected slice name: \(name)")
+        }
     }
 
     func testClearingPeersDropsRemoteOnlyEntries() {

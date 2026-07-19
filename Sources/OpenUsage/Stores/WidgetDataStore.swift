@@ -474,11 +474,14 @@ final class WidgetDataStore {
             let device = entry.deviceNames.count == 1
                 ? entry.deviceNames[0]
                 : "\(entry.deviceNames.count) other Macs"
-            // The stock family name, not the local family card's display name — that card is a
-            // DIFFERENT account (possibly renamed), and this slice shouldn't inherit its rename.
+            // The slice is named by the account's identity-derived card id ("claude@ab12cd34 ·
+            // Mac mini") — unique per account, so several remote-only accounts from one device stay
+            // tellable apart, and it's the exact id the account's card gets the day it's signed in
+            // here (and the id the CLI/API answer to on the Mac that has it). The pseudo provider id
+            // stays distinct from real card ids so a slice can never collide with a live card.
             let provider = Provider(
                 id: "\(entry.family)@peer-\(ProviderAccountID.hash8(entry.identityKey))",
-                displayName: "\(entry.family.capitalized) · \(device)",
+                displayName: "\(entry.cardID) · \(device)",
                 icon: familyProvider.icon
             )
             let empty = ProviderSnapshot(

@@ -19,6 +19,10 @@ enum PeerHistoryRemapper {
     struct RemoteOnlyHistory {
         var identityKey: String
         var family: String
+        /// The account's identity-derived card id (`claude@ab12cd34`) — the same id the account
+        /// gets as a card on any Mac it's signed in on. Names the Total Spend slice, so several
+        /// remote-only accounts from one device stay tellable apart.
+        var cardID: String
         var deviceNames: [String]
         var histories: [ProviderUsageHistory]
     }
@@ -44,9 +48,9 @@ enum PeerHistoryRemapper {
 
         var result = Remapped()
         var remoteByIdentity: [String: RemoteOnlyHistory] = [:]
-        func collectRemoteOnly(identity: String, family: String, deviceName: String, history: ProviderUsageHistory) {
+        func collectRemoteOnly(identity: String, family: String, cardID: String, deviceName: String, history: ProviderUsageHistory) {
             var entry = remoteByIdentity[identity] ?? RemoteOnlyHistory(
-                identityKey: identity, family: family, deviceNames: [], histories: []
+                identityKey: identity, family: family, cardID: cardID, deviceNames: [], histories: []
             )
             if !entry.deviceNames.contains(deviceName) {
                 entry.deviceNames.append(deviceName)
@@ -69,17 +73,31 @@ enum PeerHistoryRemapper {
                         // account separates on the next launch that resolves the local identity.
                         result.histories.append((peerCardID, history))
                     } else {
-                        collectRemoteOnly(identity: identity, family: family, deviceName: document.deviceName, history: history)
+                        collectRemoteOnly(
+                            identity: identity,
+                            family: family,
+                            cardID: ProviderAccountID.make(family: family, identityKey: identity),
+                            deviceName: document.deviceName,
+                            history: history
+                        )
                     }
                     continue
                 }
                 // No identity recorded (v1 document, or a card this peer couldn't identify): bare
                 // ids keep the legacy same-card-id merge; account-card ids still match when this Mac
-                // has the same identity-derived card id, else they're remote-only.
+                // has the same identity-derived card id, else they're remote-only. The peer's card
+                // id doubles as both the grouping key and the display id — it IS the account's
+                // identity-derived id, just minted on the peer.
                 if !ProviderAccountID.isAccountCard(peerCardID) || localIdentityByCardID[peerCardID] != nil {
                     result.histories.append((peerCardID, history))
                 } else {
-                    collectRemoteOnly(identity: peerCardID, family: family, deviceName: document.deviceName, history: history)
+                    collectRemoteOnly(
+                        identity: peerCardID,
+                        family: family,
+                        cardID: peerCardID,
+                        deviceName: document.deviceName,
+                        history: history
+                    )
                 }
             }
         }
