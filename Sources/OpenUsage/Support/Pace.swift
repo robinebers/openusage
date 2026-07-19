@@ -28,14 +28,16 @@ enum Pace {
     }
 
     /// Full pace evaluation, or `nil` when there's no signal (window not started yet, already reset,
-    /// or too early in the window for a stable projection). Mirrors `calculatePaceStatus`.
+    /// too early in the window for a stable projection, or nothing spent yet). Mirrors
+    /// `calculatePaceStatus`, minus its zero-usage "ahead": zero usage carries no burn rate to
+    /// project, and the fabricated 0-usage projection surfaced as a tautological "~100% left at
+    /// reset" on every untouched meter once Always Show Pacing was on.
     static func evaluate(used: Double, limit: Double, resetsAt: Date, periodDuration: TimeInterval,
                          now: Date = Date()) -> Result? {
-        guard limit > 0, periodDuration > 0 else { return nil }
+        guard limit > 0, periodDuration > 0, used > 0 else { return nil }
         let elapsed = now.timeIntervalSince(resetsAt.addingTimeInterval(-periodDuration))
         guard elapsed >= minimumElapsed(periodDuration: periodDuration), now < resetsAt else { return nil }
 
-        if used <= 0 { return Result(status: .ahead, projectedUsage: 0) }   // nothing spent → ahead
         let projected = used / elapsed * periodDuration
         if used >= limit { return Result(status: .behind, projectedUsage: projected) } // maxed → behind
 
