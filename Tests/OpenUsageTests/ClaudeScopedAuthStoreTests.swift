@@ -75,18 +75,54 @@ final class ClaudeScopedAuthStoreTests: XCTestCase {
         XCTAssertFalse(bare.hasCredentialFootprint())
     }
 
-    func testStandardStoreDropsDesktopFallbackWhileExtraCardsExist() {
-        // With no CLI login and Desktop disallowed (extra Claude cards exist), the load reports
-        // `.notFound` instead of consulting Desktop — the caller keeps the honest CLI error.
+    func testStandardStoreDropsDesktopFallbackWhileExtraCardsExistAndNoOrgPinIsKnown() {
+        // With no CLI login, no org pin, and the unpinned fallback disallowed (extra Claude cards
+        // exist), the load reports `.notFound` instead of consulting Desktop — the caller keeps the
+        // honest CLI error.
         let store = ClaudeAuthStore(
             environment: FakeEnvironment([:]),
             files: FakeFiles([:]),
             keychain: ServiceKeychain(),
-            allowsDesktopFallback: false
+            allowsUnpinnedStandardDesktopFallback: false
         )
 
         let load = store.loadCredentialSet(forceDesktopFallback: true)
         XCTAssertEqual(load.desktopStatus, .notFound)
         XCTAssertTrue(load.candidates.isEmpty)
+    }
+
+    @MainActor
+    func testACoworkPartitionAloneDisablesTheUnpinnedDesktopFallback() throws {
+        // A distinct Cowork account can exist WITHOUT earning a card (no org pin, so no
+        // Desktop-backed card is safe to build). Another account is still known on the machine,
+        // so the default card's unpinned Desktop fallback must drop all the same — Desktop's
+        // active org may be that account's usage pool.
+        let partitioned = ProviderCatalog.make(defaultClaudeCoworkRoots: [])
+        let claude = try XCTUnwrap(partitioned.compactMap { $0 as? ClaudeProvider }.first)
+        XCTAssertFalse(claude.authStore.allowsUnpinnedStandardDesktopFallback)
+
+        // Control: a machine with no other account known keeps the fallback.
+        let alone = ProviderCatalog.make()
+        let defaultClaude = try XCTUnwrap(alone.compactMap { $0 as? ClaudeProvider }.first)
+        XCTAssertTrue(defaultClaude.authStore.allowsUnpinnedStandardDesktopFallback)
+    }
+
+    func testDesktopOnlyStoreHasNoCLISourcesAndNeverInheritsTheEnvironmentToken() {
+        let store = ClaudeAuthStore(
+            environment: FakeEnvironment(["CLAUDE_CODE_OAUTH_TOKEN": "ambient-token"]),
+            files: FakeFiles([
+                // Every CLI credential on the machine must stay invisible to a Desktop-backed card.
+                "~/.claude/.credentials.json": #"{"claudeAiOauth": {"accessToken": "default-at"}}"#,
+            ]),
+            keychain: ServiceKeychain(),
+            scope: .desktopOnly(organization: "11111111-2222-3333-4444-555555555555")
+        )
+
+        XCTAssertEqual(store.keychainServiceCandidates(), [])
+        // No Desktop material in this fixture, so the load ends up empty — the point is that no CLI
+        // or environment candidate leaked in, and Desktop WAS consulted (status is not .notChecked).
+        let load = store.loadCredentialSet()
+        XCTAssertTrue(load.candidates.isEmpty)
+        XCTAssertEqual(load.desktopStatus, .notFound)
     }
 }

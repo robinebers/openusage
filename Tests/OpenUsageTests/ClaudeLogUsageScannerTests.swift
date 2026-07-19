@@ -561,6 +561,50 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(scan.series.daily[0].costUSD ?? 0, 0.25, accuracy: 1e-9)
     }
 
+    func testCoworkRootsOverrideReplacesTheBuiltInWalk() async throws {
+        // Two sandboxes on disk, but the partition hands this scanner only the first — the other
+        // belongs to a different account's card and must not count here.
+        let now = Date()
+        let timestamp = OpenUsageISO8601.string(from: now)
+        let home = try ClaudeLogFixture.makeUserHome(
+            claudeFiles: [
+                "project-a/terminal.jsonl": ClaudeLogFixture.usageLine(
+                    timestamp: timestamp, input: 100, output: 50, costUSD: 0.25,
+                    messageID: "msg-terminal", requestID: "req-terminal"
+                )
+            ],
+            coworkSessions: [
+                "group-1/sub-1/local_mine": [
+                    "workspace/session.jsonl": ClaudeLogFixture.usageLine(
+                        timestamp: timestamp, input: 10, output: 5, costUSD: 0.05,
+                        messageID: "msg-mine", requestID: "req-mine"
+                    )
+                ],
+                "group-1/sub-1/local_theirs": [
+                    "workspace/session.jsonl": ClaudeLogFixture.usageLine(
+                        timestamp: timestamp, input: 90_000, output: 10, costUSD: 9.99,
+                        messageID: "msg-theirs", requestID: "req-theirs"
+                    )
+                ]
+            ]
+        )
+        let mine = home.appendingPathComponent(
+            "Library/Application Support/Claude/local-agent-mode-sessions/group-1/sub-1/local_mine/.claude"
+        )
+        let scanner = ClaudeLogUsageScanner(
+            environment: FakeEnvironment([:]),
+            homeDirectory: { home },
+            incrementalScanner: IncrementalJSONLScanner<Entry>(),
+            coworkRootsOverride: [mine]
+        )
+
+        let result = await scanner.scan(now: now, pricing: pricing)
+        let scan = try XCTUnwrap(result)
+        XCTAssertEqual(scan.series.daily.count, 1)
+        XCTAssertEqual(scan.series.daily[0].totalTokens, 165, "terminal + own sandbox only; the other account's sandbox is excluded")
+        XCTAssertEqual(scan.series.daily[0].costUSD ?? 0, 0.30, accuracy: 1e-9)
+    }
+
     func testScanAcceptsProjectsDirItselfInConfigDir() async throws {
         let now = Date()
         let home = try ClaudeLogFixture.makeHome(files: [

@@ -44,6 +44,10 @@ struct ProviderAccountSource: Codable, Equatable, Sendable {
         case defaultHome
         /// A custom Claude config dir (a `CLAUDE_CONFIG_DIR` home kept besides the default).
         case configDir
+        /// A Claude Desktop login (a Cowork account distinct from every CLI login), credentialed
+        /// from Desktop's org-pinned Safe Storage cache. No anchor path — the login lives in
+        /// Desktop's own container, and its Cowork sandboxes are log roots, not credential homes.
+        case desktop
     }
 
     var kind: Kind

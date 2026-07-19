@@ -33,6 +33,17 @@ actor ClaudeLogUsageScanner {
     /// Same-account custom config dirs appended to the DEFAULT card's standard roots, so spend the
     /// user's own login produced in a side home still counts on its card.
     private let additionalRoots: [URL]
+    /// When set, replaces the built-in Cowork sandbox walk: `[]` for scoped account cards (Cowork
+    /// logs belong to the account that produced them, not this card), the account's partition of the
+    /// walk otherwise. `nil` keeps the built-in walk byte-identical (a machine where every sandbox
+    /// belongs to the default login).
+    ///
+    /// A partition is frozen at launch by design: a sandbox created afterwards routes on the next
+    /// launch. The live-walk alternative (subtract known-foreign roots) would count the OTHER
+    /// account's brand-new sessions on this card until relaunch — the exact bleed the partition
+    /// exists to prevent. Missing-until-relaunch is the safer failure. Files inside known sandboxes
+    /// still update live on every refresh.
+    private let coworkRootsOverride: [URL]?
 
     /// One parsed usage line. Token buckets are pre-normalized into `TokenBreakdown`; dedup fields
     /// ride along so the global dedup pass can run over cached entries.
@@ -66,7 +77,8 @@ actor ClaudeLogUsageScanner {
         incrementalScanner: IncrementalJSONLScanner<Entry>? = nil,
         cacheIdentityOverride: String? = nil,
         rootsOverride: [URL]? = nil,
-        additionalRoots: [URL] = []
+        additionalRoots: [URL] = [],
+        coworkRootsOverride: [URL]? = nil
     ) {
         precondition(cacheIdentityOverride?.isEmpty != true)
         // A scoped root set must carry its own parse-source identity, or its cache records would
@@ -78,6 +90,7 @@ actor ClaudeLogUsageScanner {
         self.cacheIdentityOverride = cacheIdentityOverride
         self.rootsOverride = rootsOverride
         self.additionalRoots = additionalRoots
+        self.coworkRootsOverride = coworkRootsOverride
     }
 
     /// Scan the last `daysBack` days of Claude logs. Returns `nil` when no Claude data directory or
@@ -143,7 +156,15 @@ actor ClaudeLogUsageScanner {
         let roots = Set(configuredRoots.map { $0.resolvingSymlinksInPath().standardizedFileURL.path })
             .sorted()
             .joined(separator: "\n")
-        return "home=\(home)\nroots=\(roots)"
+        // The built-in Cowork walk deliberately leaves no mark here (session roots come and go; a new
+        // session must extend the same cache, and existing installs keep their warm cache). A cowork
+        // PARTITION does mark it: the same physical roots parsed under a different sandbox split must
+        // not share whole-file records with the unpartitioned identity.
+        guard let coworkRootsOverride else { return "home=\(home)\nroots=\(roots)" }
+        let cowork = Set(coworkRootsOverride.map { $0.resolvingSymlinksInPath().standardizedFileURL.path })
+            .sorted()
+            .joined(separator: ",")
+        return "home=\(home)\nroots=\(roots)\ncowork=\(cowork)"
     }
 
     // MARK: - Root and file discovery
@@ -192,8 +213,14 @@ actor ClaudeLogUsageScanner {
             addIfValid(home.appendingPathComponent(".claude"))
         }
 
-        for sandbox in Self.coworkClaudeDirs(home: homeDirectory()) {
-            addIfValid(sandbox)
+        if let coworkRootsOverride {
+            // The default card's partition of the Cowork walk once another account's sandboxes
+            // exist — that account's sessions must not bleed into this card's spend.
+            for sandbox in coworkRootsOverride { addIfValid(sandbox) }
+        } else {
+            for sandbox in Self.coworkClaudeDirs(home: homeDirectory()) {
+                addIfValid(sandbox)
+            }
         }
         // Same-account custom config dirs (default card only): the user's own spend in a side home.
         for root in additionalRoots {
@@ -207,7 +234,9 @@ actor ClaudeLogUsageScanner {
     /// (plus an `agent/local_*` variant one level deeper). Each holds the same `projects/**/*.jsonl`
     /// session logs as `~/.claude`, so they scan as additional roots. The walk is bounded to those
     /// known levels — session dirs contain full sandbox homes we must not recurse into.
-    private static func coworkClaudeDirs(home: URL) -> [URL] {
+    /// Internal because `ClaudeCoworkDiscovery` walks the very same dirs for per-sandbox identity —
+    /// one walk, so discovery and the scanner can never see different sandbox sets.
+    static func coworkClaudeDirs(home: URL) -> [URL] {
         let base = home
             .appendingPathComponent("Library/Application Support/Claude/local-agent-mode-sessions")
 

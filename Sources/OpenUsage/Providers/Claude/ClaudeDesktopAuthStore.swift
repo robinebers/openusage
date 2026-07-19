@@ -123,7 +123,10 @@ struct ClaudeDesktopAuthStore: Sendable {
         return Self.cookieRelativePaths.contains { files.exists(path($0)) }
     }
 
-    func load(allowInteraction: Bool) -> ClaudeDesktopCredentialResult {
+    /// `organization` pins the read to one org's cached token (a Desktop-backed account card for a
+    /// non-active Desktop org, e.g. a Team org alongside a personal Max org). `nil` keeps the default
+    /// behavior: resolve the app's currently active organization and use its token.
+    func load(allowInteraction: Bool, organization: String? = nil) -> ClaudeDesktopCredentialResult {
         guard hasCredentialMaterial() else {
             return ClaudeDesktopCredentialResult(oauth: nil, status: .notFound)
         }
@@ -132,14 +135,20 @@ struct ClaudeDesktopAuthStore: Sendable {
             guard let key = try safeStorageKey(allowInteraction: allowInteraction) else {
                 return ClaudeDesktopCredentialResult(oauth: nil, status: .notFound)
             }
-            guard let activeOrg = try loadActiveOrganization(key: key),
-                  let caches = try loadCaches(key: key)
-            else {
+            let targetOrganization: String
+            if let organization {
+                targetOrganization = organization.lowercased()
+            } else if let activeOrg = try loadActiveOrganization(key: key) {
+                targetOrganization = activeOrg
+            } else {
+                return ClaudeDesktopCredentialResult(oauth: nil, status: .invalid)
+            }
+            guard let caches = try loadCaches(key: key) else {
                 return ClaudeDesktopCredentialResult(oauth: nil, status: .invalid)
             }
 
             let selection = Self.selectCredential(
-                activeOrganization: activeOrg,
+                activeOrganization: targetOrganization,
                 v2: caches.v2,
                 v1: caches.v1,
                 now: now()
@@ -258,18 +267,21 @@ struct ClaudeDesktopAuthStore: Sendable {
         now: Date
     ) -> Selection {
         let normalizedOrg = activeOrganization.lowercased()
-        let v2Candidates = candidates(in: v2, organization: normalizedOrg, now: now)
-        if let best = v2Candidates.available.max(by: { $0.rank < $1.rank }) {
-            return .available(best.oauth)
-        }
+        let v2Candidates = candidates(in: v2, organization: normalizedOrg, now: now, isCurrentGeneration: true)
 
+        // A v2 key (live or tombstoned) always speaks for its v1 twin, but the two generations
+        // compete in ONE ranked pool. Short-circuiting on "any live v2 entry" once let a
+        // profile-only v2 leftover (carrying stale tier metadata) beat the current full-scope
+        // login whose live token existed only in v1 — token quality must outrank cache
+        // generation, with generation only breaking quality ties.
         let v2Keys = Set(v2?.keys ?? Dictionary<String, Any>().keys)
         let v1Candidates = candidates(
             in: v1?.filter { !v2Keys.contains($0.key) },
             organization: normalizedOrg,
-            now: now
+            now: now,
+            isCurrentGeneration: false
         )
-        if let best = v1Candidates.available.max(by: { $0.rank < $1.rank }) {
+        if let best = (v2Candidates.available + v1Candidates.available).max(by: { $0.rank < $1.rank }) {
             return .available(best.oauth)
         }
         if v2Candidates.sawStale || v1Candidates.sawStale { return .stale }
@@ -288,12 +300,15 @@ struct ClaudeDesktopAuthStore: Sendable {
         var clientID: String
         var scopes: [String]
         var expiresAt: Double
+        /// `true` for the v2 cache, Desktop's current generation.
+        var isCurrentGeneration: Bool
 
         /// Selection order mirrors Desktop's own resolution instead of raw expiry: production client
         /// with full scopes first, then any full-scope entry over bare `user:profile` leftovers, then
-        /// scope richness, with expiry only as the final tiebreak. A stale wrong-tier token with a
-        /// longer TTL must not outrank the current login.
-        var rank: (Int, Int, Int, Double) {
+        /// scope richness, then the newer cache generation, with expiry only as the final tiebreak.
+        /// A stale wrong-tier token with a longer TTL must not outrank the current login, and a
+        /// newer-generation entry must not outrank a better-quality older one.
+        var rank: (Int, Int, Int, Int, Double) {
             let hasFullScope = scopes.contains(ClaudeDesktopAuthStore.usageScope)
                 && scopes.contains(ClaudeDesktopAuthStore.inferenceScope)
             let isProductionClient = clientID == ClaudeDesktopAuthStore.productionClientID
@@ -301,6 +316,7 @@ struct ClaudeDesktopAuthStore: Sendable {
                 isProductionClient && hasFullScope ? 1 : 0,
                 hasFullScope ? 1 : 0,
                 scopes.count,
+                isCurrentGeneration ? 1 : 0,
                 expiresAt
             )
         }
@@ -309,7 +325,8 @@ struct ClaudeDesktopAuthStore: Sendable {
     private static func candidates(
         in cache: [String: Any]?,
         organization: String,
-        now: Date
+        now: Date,
+        isCurrentGeneration: Bool
     ) -> (available: [Candidate], sawStale: Bool, sawInvalid: Bool) {
         guard let cache else { return ([], false, false) }
         var available: [Candidate] = []
@@ -349,7 +366,8 @@ struct ClaudeDesktopAuthStore: Sendable {
                 oauth: oauth,
                 clientID: parsedKey.clientID,
                 scopes: parsedKey.scopes,
-                expiresAt: expiresAt
+                expiresAt: expiresAt,
+                isCurrentGeneration: isCurrentGeneration
             ))
         }
         return (available, sawStale, sawInvalid)

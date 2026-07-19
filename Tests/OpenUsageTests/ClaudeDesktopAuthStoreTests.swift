@@ -103,6 +103,129 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
         XCTAssertEqual(oauth.accessToken, "full-scope-token")
     }
 
+    func testALiveFullScopeV1EntryOutranksAWeakLiveV2Leftover() throws {
+        // The real-world shape that showed a Max 20x account as "Max 5x": v2 holds the current
+        // login only as an EXPIRED entry plus a live profile-only leftover with stale 5x tier
+        // metadata, while v1 still holds the login's live full-scope token. Short-circuiting on
+        // "any live v2 entry" picked the 5x leftover; quality must outrank cache generation.
+        let productionClientID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
+        let selection = ClaudeDesktopAuthStore.selectCredential(
+            activeOrganization: organization,
+            v2: [
+                cacheKey(organization: organization, clientID: productionClientID):
+                    tokenEntry("expired-20x-token", expiresIn: -3_600, rateLimitTier: "default_claude_max_20x"),
+                cacheKey(organization: organization, scopes: "user:profile"):
+                    tokenEntry("stale-5x-token", expiresIn: 86_400, rateLimitTier: "default_claude_max_5x"),
+            ],
+            v1: [
+                cacheKey(
+                    organization: organization,
+                    clientID: productionClientID,
+                    scopes: "user:profile user:inference user:sessions"
+                ):
+                    tokenEntry("current-20x-token", expiresIn: 30_000_000, rateLimitTier: "default_claude_max_20x"),
+            ],
+            now: now
+        )
+
+        guard case .available(let oauth) = selection else {
+            return XCTFail("expected an available credential, got \(selection)")
+        }
+        XCTAssertEqual(oauth.accessToken, "current-20x-token")
+        XCTAssertEqual(oauth.rateLimitTier, "default_claude_max_20x")
+    }
+
+    func testEqualQualityTokensTiebreakToTheNewerCacheGeneration() throws {
+        // Same client, same scope set (different order → distinct cache keys, so the v1 entry is
+        // not filtered as a twin). The v1 entry even lives longer; the newer generation must win
+        // the tie — but only the tie.
+        let selection = ClaudeDesktopAuthStore.selectCredential(
+            activeOrganization: organization,
+            v2: [
+                cacheKey(organization: organization, scopes: "user:profile user:inference"):
+                    tokenEntry("v2-token", expiresIn: 1_800),
+            ],
+            v1: [
+                cacheKey(organization: organization, scopes: "user:inference user:profile"):
+                    tokenEntry("v1-token", expiresIn: 86_400),
+            ],
+            now: now
+        )
+
+        guard case .available(let oauth) = selection else {
+            return XCTFail("expected an available credential, got \(selection)")
+        }
+        XCTAssertEqual(oauth.accessToken, "v2-token")
+    }
+
+    func testOrganizationPinReadsThatOrgsTokenNotTheActiveOrgs() throws {
+        let fixture = try makeFixture(
+            activeOrganization: organization,
+            v2: [
+                cacheKey(organization: organization): tokenEntry("active-org-token", expiresIn: 3_600),
+                cacheKey(organization: otherOrganization): tokenEntry("pinned-org-token", expiresIn: 3_600)
+            ]
+        )
+
+        let result = fixture.store.load(allowInteraction: false, organization: otherOrganization)
+
+        XCTAssertEqual(result.status, .available)
+        XCTAssertEqual(result.oauth?.accessToken, "pinned-org-token")
+    }
+
+    func testDesktopOnlyScopeLoadsExactlyItsPinnedOrg() throws {
+        let fixture = try makeFixture(
+            activeOrganization: organization,
+            v2: [
+                cacheKey(organization: organization): tokenEntry("active-org-token", expiresIn: 3_600),
+                cacheKey(organization: otherOrganization): tokenEntry("cowork-org-token", expiresIn: 3_600)
+            ]
+        )
+        let now = now
+        let authStore = ClaudeAuthStore(
+            environment: FakeEnvironment(),
+            files: fixture.files,
+            keychain: FakeKeychain(),
+            desktop: fixture.store,
+            scope: .desktopOnly(organization: otherOrganization),
+            now: { now }
+        )
+
+        let load = authStore.loadCredentialSet()
+
+        XCTAssertEqual(load.candidates.map(\.oauth.accessToken), ["cowork-org-token"])
+        XCTAssertEqual(load.candidates.first?.source, .desktop)
+        XCTAssertEqual(load.desktopStatus, .available)
+    }
+
+    func testStandardStorePinsDesktopFallbackInsteadOfFollowingAnotherCardsActiveOrg() throws {
+        // Desktop's ACTIVE org is another card's account (a Cowork login). The default card's
+        // fallback must read its own org's token, never follow the active org.
+        let fixture = try makeFixture(
+            activeOrganization: otherOrganization,
+            v2: [
+                cacheKey(organization: organization): tokenEntry("default-org-token", expiresIn: 3_600),
+                cacheKey(organization: otherOrganization): tokenEntry("cowork-card-token", expiresIn: 3_600)
+            ]
+        )
+        let now = now
+        let authStore = ClaudeAuthStore(
+            environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": "/tmp/claude"]),
+            files: fixture.files,
+            keychain: FakeKeychain(),
+            desktop: fixture.store,
+            standardDesktopOrganization: organization,
+            allowsUnpinnedStandardDesktopFallback: false,
+            now: { now }
+        )
+
+        let load = authStore.loadCredentialSet()
+
+        XCTAssertEqual(load.candidates.first?.oauth.accessToken, "default-org-token")
+        XCTAssertFalse(load.candidates.contains { $0.oauth.accessToken == "cowork-card-token" })
+        XCTAssertEqual(load.desktopStatus, .available)
+    }
+
     func testBackgroundReadDoesNotPromptButManualReadCan() throws {
         let fixture = try makeFixture(
             activeOrganization: organization,
