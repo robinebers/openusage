@@ -9,8 +9,10 @@ Tracks [Kimi Code](https://www.kimi.com/code) (Moonshot AI) subscription quotas.
 | Session | 5-hour rolling window usage (percentage) |
 | Weekly | Weekly allowance usage (percentage) |
 
-When Kimi reports your membership level, OpenUsage shows it beside the provider name (e.g.
-"Intermediate").
+When Kimi reports your membership level, OpenUsage shows your plan name beside the provider name (e.g.
+"Allegretto"). Kimi's usage response carries an internal level code rather than the plan name, so
+OpenUsage translates it using Kimi's own plan catalog — Adagio, Moderato, Allegretto, Allegro, and
+Vivace. A tier outside that catalog shows the code in readable form instead.
 
 ## Where credentials come from
 

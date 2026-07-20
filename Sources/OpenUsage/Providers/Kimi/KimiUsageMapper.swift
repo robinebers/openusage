@@ -5,7 +5,8 @@ import Foundation
 /// - `limits[]` entries carry a `window` (`duration` + `timeUnit`) and a `detail` quota — the
 ///   shortest window is the Session meter (300 minutes = the 5-hour window in current payloads),
 /// - the top-level `usage` quota is the long (weekly) allowance,
-/// - `user.membership.level` ("LEVEL_INTERMEDIATE") becomes the plan label ("Intermediate").
+/// - `user.membership.level` ("LEVEL_INTERMEDIATE") becomes the plan label ("Allegretto"), via the
+///   level→plan-name table below.
 ///
 /// Quota numbers arrive as strings ("100"); `ProviderParse.number` reads both shapes. The endpoint is
 /// the one the Kimi Code CLI's own usage view calls; the mapper is pure (no I/O) so it tests cleanly
@@ -127,7 +128,32 @@ enum KimiUsageMapper {
         )
     }
 
-    /// "LEVEL_INTERMEDIATE" → "Intermediate".
+    /// The membership levels Kimi returns, mapped to the plan names users actually see on their
+    /// subscription page ("LEVEL_INTERMEDIATE" → "Allegretto"). Kimi's usage payload carries only the
+    /// internal enum — the tempo name is never in the response — so the table is the only way to show
+    /// the plan a user recognizes.
+    ///
+    /// The levels come from Kimi's own plan catalog, which pairs each plan title with the very enum
+    /// the usage endpoint reports:
+    /// `POST https://www.kimi.com/apiv2/kimi.gateway.order.v1.GoodsService/ListGoods` (no auth) returns
+    /// `{"title": "Vivace", "membershipLevel": "LEVEL_STANDARD", …}` for every tier. That catalog is
+    /// the whole international ladder, and `LEVEL_INTERMEDIATE` → "Allegretto" also matches a live
+    /// account. Note `LEVEL_STANDARD` is the top tier, not a middle one — several third-party readers
+    /// assume an ordering here and get it wrong.
+    ///
+    /// The catalog only serves the international region, so China-only tiers (Andante) are absent:
+    /// nothing first-party says which enum they report, and a guess would print the wrong plan name.
+    /// Unrecognized levels fall through to the readable enum instead ("LEVEL_TRIAL" → "Trial"), which
+    /// is what this provider showed for every level before the table existed.
+    private static let planNamesByLevel: [String: String] = [
+        "LEVEL_FREE": "Adagio",
+        "LEVEL_BASIC": "Moderato",
+        "LEVEL_INTERMEDIATE": "Allegretto",
+        "LEVEL_ADVANCED": "Allegro",
+        "LEVEL_STANDARD": "Vivace"
+    ]
+
+    /// "LEVEL_INTERMEDIATE" → "Allegretto"; an unrecognized level → its readable form ("Premium").
     private static func plan(_ root: [String: Any]) -> String? {
         guard let user = root["user"] as? [String: Any],
               let membership = user["membership"] as? [String: Any],
@@ -135,6 +161,12 @@ enum KimiUsageMapper {
         else {
             return nil
         }
+        let normalized = level.uppercased()
+        if let name = planNamesByLevel[normalized] {
+            return name
+        }
+        // The protobuf zero value means "no level reported", not a tier named "Unspecified".
+        guard normalized != "LEVEL_UNSPECIFIED" else { return nil }
         let cleaned = level
             .replacingOccurrences(of: "^LEVEL_", with: "", options: .regularExpression)
             .replacingOccurrences(of: "_", with: " ")

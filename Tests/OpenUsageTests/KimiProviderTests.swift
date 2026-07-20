@@ -130,7 +130,7 @@ final class KimiUsageMapperTests: XCTestCase {
     func testMapsSessionWeeklyAndPlan() throws {
         let mapped = try KimiUsageMapper.map(data(usageBothJSON))
 
-        XCTAssertEqual(mapped.plan, "Intermediate")
+        XCTAssertEqual(mapped.plan, "Allegretto")
         XCTAssertEqual(mapped.lines.count, 2)
 
         guard case .progress(let label, let used, let limit, let format, let resetsAt, let periodMs, _) = mapped.lines[0] else {
@@ -213,6 +213,46 @@ final class KimiUsageMapperTests: XCTestCase {
         XCTAssertNil(mapped.plan)
     }
 
+    /// Kimi's payload carries only the internal level enum, never the tempo name users see on their
+    /// subscription page, so the plan label depends entirely on the level→name table.
+    func testMembershipLevelsMapToTheirPlanNames() throws {
+        let expected = [
+            "LEVEL_FREE": "Adagio",
+            "LEVEL_BASIC": "Moderato",
+            "LEVEL_INTERMEDIATE": "Allegretto",
+            "LEVEL_ADVANCED": "Allegro",
+            // The top tier, despite the name — worth pinning, since it's the one others get wrong.
+            "LEVEL_STANDARD": "Vivace"
+        ]
+        for (level, name) in expected {
+            let mapped = try KimiUsageMapper.map(data(payload(level: level)))
+            XCTAssertEqual(mapped.plan, name, "level \(level)")
+        }
+    }
+
+    /// A tier outside Kimi's international catalog (its China-only ladder, say) must still render
+    /// something readable rather than the raw enum or a guessed tempo name.
+    func testUnknownMembershipLevelFallsBackToTheReadableEnum() throws {
+        let mapped = try KimiUsageMapper.map(data(payload(level: "LEVEL_TRIAL")))
+
+        XCTAssertEqual(mapped.plan, "Trial")
+    }
+
+    /// The protobuf zero value is "no level reported" — it must not surface as a plan called
+    /// "Unspecified" next to the provider name.
+    func testUnspecifiedMembershipLevelReportsNoPlan() throws {
+        let mapped = try KimiUsageMapper.map(data(payload(level: "LEVEL_UNSPECIFIED")))
+
+        XCTAssertNil(mapped.plan)
+    }
+
+    private func payload(level: String) -> String {
+        """
+        {"user": {"membership": {"level": "\(level)"}},
+         "usage": {"limit": "100", "used": "10", "resetTime": "2026-07-24T09:25:49Z"}}
+        """
+    }
+
     func testQuotaWithoutUsageValuesThrows() {
         let json = """
         {"usage": {"limit": "100", "resetTime": "2026-07-24T09:25:49Z"}}
@@ -261,7 +301,7 @@ final class KimiProviderTests: XCTestCase {
         let snapshot = await provider.refresh()
 
         XCTAssertNil(snapshot.errorCategory)
-        XCTAssertEqual(snapshot.plan, "Intermediate")
+        XCTAssertEqual(snapshot.plan, "Allegretto")
         XCTAssertNotNil(snapshot.line(label: "Session"))
         XCTAssertNotNil(snapshot.line(label: "Weekly"))
         XCTAssertEqual(http.requests.count, 1)
