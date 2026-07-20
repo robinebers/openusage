@@ -21,6 +21,7 @@ struct DashboardView: View {
     @Environment(WidgetDataStore.self) private var dataStore
     @Environment(PopoverTransparencyStore.self) private var transparency
     @Environment(UpdaterController.self) private var updater
+    @Environment(\.reduceAnimations) private var reduceAnimations
     @State private var reorderLift: ReorderLift?
     /// The panel height SwiftUI drives — the single animation clock. `PanelHeightModifier` follows it
     /// frame-by-frame onto the AppKit panel, so the window resize rides the same spring as the screen
@@ -174,6 +175,18 @@ struct DashboardView: View {
             // page offset so the screens slide between modes on one spring.
             .onChange(of: layout.screenSlideID) { _, id in
                 guard id != 0 else { return }
+                if reduceAnimations {
+                    // Snap as one structural update. Mounting the normal two-page pager for even one
+                    // frame would pair the destination header with the outgoing screen; scheduling the
+                    // spring would also keep that stale structure alive until its delayed completion.
+                    animatedSlideID = id
+                    slideProgress = 1
+                    if let target = heightCoordinator.target(for: layout.screen) {
+                        didEstablishHeight = true
+                        animatedHeight = target
+                    }
+                    return
+                }
                 slideProgress = 0
                 animatedSlideID = id
                 let destination = layout.screen
@@ -293,8 +306,25 @@ struct DashboardView: View {
 
     /// True from the moment `layout.screen` changes until the slide reaches the incoming screen.
     private var isSliding: Bool {
-        layout.screenSlideID != 0
-            && (layout.screenSlideID != animatedSlideID || slideProgress < 1)
+        Self.screenTransitionIsActive(
+            reduceAnimations: reduceAnimations,
+            screenSlideID: layout.screenSlideID,
+            animatedSlideID: animatedSlideID,
+            slideProgress: slideProgress
+        )
+    }
+
+    /// Reduced motion never mounts the outgoing + incoming pager together: destination chrome and
+    /// content must replace the old screen atomically instead of exposing the pager's setup frame.
+    static func screenTransitionIsActive(
+        reduceAnimations: Bool,
+        screenSlideID: Int,
+        animatedSlideID: Int,
+        slideProgress: CGFloat
+    ) -> Bool {
+        !reduceAnimations
+            && screenSlideID != 0
+            && (screenSlideID != animatedSlideID || slideProgress < 1)
     }
 
     /// One page at rest (the current screen); the two involved screens in left-to-right rank order
