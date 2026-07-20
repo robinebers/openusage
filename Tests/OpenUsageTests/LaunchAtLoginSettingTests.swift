@@ -7,7 +7,7 @@ final class LaunchAtLoginSettingTests: XCTestCase {
         let systemEnabled = false
         var requestedValues: [Bool] = []
         let setting = LaunchAtLoginSetting(
-            initialStatus: systemEnabled,
+            currentStatus: { systemEnabled },
             setEnabled: { enabled in
                 requestedValues.append(enabled)
                 throw TestError.rejected
@@ -25,7 +25,7 @@ final class LaunchAtLoginSettingTests: XCTestCase {
         var systemEnabled = false
         var shouldFail = true
         let setting = LaunchAtLoginSetting(
-            initialStatus: systemEnabled,
+            currentStatus: { systemEnabled },
             setEnabled: { enabled in
                 if shouldFail { throw TestError.rejected }
                 systemEnabled = enabled
@@ -38,21 +38,6 @@ final class LaunchAtLoginSettingTests: XCTestCase {
 
         XCTAssertTrue(setting.isEnabled)
         XCTAssertNil(setting.errorMessage)
-    }
-
-    func testStatusLoadsAfterInitialization() async {
-        let setting = LaunchAtLoginSetting(
-            loadStatus: { true },
-            setEnabled: { _ in }
-        )
-
-        XCTAssertFalse(setting.isEnabled)
-        XCTAssertTrue(setting.isLoading)
-
-        await setting.refreshStatus()
-
-        XCTAssertTrue(setting.isEnabled)
-        XCTAssertFalse(setting.isLoading)
     }
 
     private enum TestError: Error {

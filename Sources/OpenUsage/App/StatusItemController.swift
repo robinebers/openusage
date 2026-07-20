@@ -337,6 +337,7 @@ final class StatusItemController: NSObject {
         // The Usage Trend hover popover is on the same survives-orderOut footing, so dismiss it too.
         HoverTooltips.dismissAll()
         HoverPopoverState.dismissAll()
+        ReducedMotionPopoverController.dismissAll()
         // Same survival problem for keyboard focus: a clicked plain-styled control (a row's Used/Left
         // or reset toggle) stays first responder, so its focus ring would reopen with the popover as a
         // stray blue outline. Drop it on close so every reopen starts unfocused.

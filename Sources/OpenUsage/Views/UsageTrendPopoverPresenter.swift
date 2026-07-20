@@ -90,6 +90,8 @@ private struct ReducedMotionPopoverPresenter<PopoverContent: View>: NSViewRepres
 /// Owns the AppKit objects and delegate lifecycle outside the generic SwiftUI representable.
 @MainActor
 final class ReducedMotionPopoverController: NSObject, NSPopoverDelegate {
+    private static let live = NSHashTable<ReducedMotionPopoverController>.weakObjects()
+
     var isPresented: Binding<Bool>
     let popover: NSPopover
 
@@ -104,16 +106,29 @@ final class ReducedMotionPopoverController: NSObject, NSPopoverDelegate {
         popover.behavior = .transient
         popover.contentViewController = host
         popover.delegate = self
+        Self.live.add(self)
     }
 
     func update(content: AnyView, reduceAnimations: Bool, anchor: NSView) {
         host.rootView = AnyView(content.animationReduction(reduceAnimations))
+        guard isPresented.wrappedValue else {
+            synchronize(with: anchor)
+            return
+        }
         host.view.layoutSubtreeIfNeeded()
         let size = host.view.fittingSize
         if size.width > 0, size.height > 0 {
             popover.contentSize = size
         }
         synchronize(with: anchor)
+    }
+
+    /// The dashboard tree survives its panel being ordered out, so closing the panel must close the
+    /// AppKit presentation synchronously instead of waiting for another SwiftUI representable update.
+    static func dismissAll() {
+        for controller in live.allObjects where controller.popover.isShown {
+            controller.popover.performClose(nil)
+        }
     }
 
     func synchronize(with anchor: NSView) {

@@ -9,19 +9,13 @@ final class LaunchAtLoginSetting {
     static let failureMessage = "macOS wouldn't update Launch at Login. Check System Settings → Login Items."
 
     private(set) var isEnabled: Bool
-    private(set) var isLoading = true
     private(set) var errorMessage: String?
 
-    private let loadStatus: @Sendable () async -> Bool
+    private let currentStatus: () -> Bool
     private let setSystemEnabled: (Bool) throws -> Void
 
     init(
-        initialStatus: Bool = false,
-        loadStatus: @escaping @Sendable () async -> Bool = {
-            await Task.detached(priority: .userInitiated) {
-                SMAppService.mainApp.status == .enabled
-            }.value
-        },
+        currentStatus: @escaping () -> Bool = { SMAppService.mainApp.status == .enabled },
         setEnabled: @escaping (Bool) throws -> Void = { enabled in
             if enabled {
                 try SMAppService.mainApp.register()
@@ -30,31 +24,23 @@ final class LaunchAtLoginSetting {
             }
         }
     ) {
-        self.loadStatus = loadStatus
+        self.currentStatus = currentStatus
         self.setSystemEnabled = setEnabled
-        self.isEnabled = initialStatus
-    }
-
-    /// `SMAppService.status` is an XPC-backed synchronous call that can take hundreds of milliseconds.
-    /// The loader performs it away from the main actor so opening Settings never waits on that round trip.
-    func refreshStatus() async {
-        isEnabled = await loadStatus()
-        isLoading = false
+        self.isEnabled = currentStatus()
     }
 
     func update(to enabled: Bool) {
         guard enabled != isEnabled else { return }
-        let previousValue = isEnabled
         do {
             try setSystemEnabled(enabled)
-            isEnabled = enabled
+            isEnabled = currentStatus()
             errorMessage = nil
         } catch {
             AppLog.error(
                 .config,
                 "Launch at Login \(enabled ? "register" : "unregister") failed: \(error.localizedDescription)"
             )
-            isEnabled = previousValue
+            isEnabled = currentStatus()
             errorMessage = Self.failureMessage
         }
     }

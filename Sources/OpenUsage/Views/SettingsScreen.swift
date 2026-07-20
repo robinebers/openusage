@@ -61,11 +61,7 @@ struct SettingsScreen: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
-        .task {
-            async let launchAtLoginStatus: Void = launchAtLogin.refreshStatus()
-            async let notificationsAuth: Void = refreshNotificationsAuth()
-            _ = await (launchAtLoginStatus, notificationsAuth)
-        }
+        .task { await refreshNotificationsAuth() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             commandLineTool.refreshStatus()
             Task { await refreshNotificationsAuth() }
@@ -86,7 +82,6 @@ struct SettingsScreen: View {
                     set: { launchAtLogin.update(to: $0) }
                 ))
                     .settingsSwitchStyle()
-                    .disabled(launchAtLogin.isLoading)
             }
             if let launchAtLoginError = launchAtLogin.errorMessage {
                 inlineNotice(launchAtLoginError)
