@@ -12,7 +12,7 @@ enum DefaultLayout {
         "claude.session", "claude.weekly", "claude.trend",
         "claude.extra", "claude.today", "claude.yesterday", "claude.last30",
 
-        "codex.session", "codex.weekly", "codex.spark", "codex.sparkWeekly", "codex.trend",
+        "codex.weekly", "codex.spark", "codex.sparkWeekly", "codex.trend",
         "codex.credits", "codex.rateLimitResets", "codex.today", "codex.yesterday", "codex.last30",
 
         "cursor.usage", "cursor.auto", "cursor.api", "cursor.trend",
@@ -42,7 +42,7 @@ enum DefaultLayout {
         "claude.session", "claude.weekly", "claude.trend",
         "claude.extra", "claude.today", "claude.yesterday", "claude.last30",
 
-        "codex.session", "codex.weekly", "codex.trend",
+        "codex.weekly", "codex.trend",
         "codex.credits", "codex.rateLimitResets", "codex.today", "codex.yesterday", "codex.last30",
 
         "devin.daily", "devin.weekly", "devin.extra",
@@ -61,7 +61,7 @@ enum DefaultLayout {
     static let pinnedMetricIDs: [String] = [
         "antigravity.geminiPro", "antigravity.geminiWeekly",
         "claude.session", "claude.weekly",
-        "codex.session", "codex.weekly",
+        "codex.weekly",
         "cursor.auto", "cursor.api",
         "copilot.premium",
         "openrouter.credits",

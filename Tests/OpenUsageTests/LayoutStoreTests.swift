@@ -642,7 +642,7 @@ final class LayoutStoreTests: XCTestCase {
             "claude.trend", "claude.today", "claude.yesterday", "claude.last30"
         ])
         XCTAssertEqual(store.orderedSupportedMetrics(for: "codex").map(\.id), [
-            "codex.session", "codex.weekly", "codex.spark", "codex.sparkWeekly",
+            "codex.weekly", "codex.spark", "codex.sparkWeekly",
             "codex.credits", "codex.rateLimitResets",
             "codex.trend", "codex.today", "codex.yesterday", "codex.last30"
         ])
@@ -673,7 +673,7 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertEqual(Set(store.placed.map(\.descriptorID)), Set([
             "claude.session", "claude.weekly", "claude.trend",
             "claude.extra", "claude.today", "claude.yesterday", "claude.last30",
-            "codex.session", "codex.weekly", "codex.spark", "codex.sparkWeekly", "codex.trend",
+            "codex.weekly", "codex.spark", "codex.sparkWeekly", "codex.trend",
             "codex.credits", "codex.rateLimitResets", "codex.today", "codex.yesterday", "codex.last30",
             "devin.daily", "devin.weekly", "devin.extra",
             "grok.weekly", "grok.trend",
@@ -697,7 +697,7 @@ final class LayoutStoreTests: XCTestCase {
         // go below the caret — the same "core above, history below" shape as the other providers.
         XCTAssertEqual(primaryByProvider["claude"], ["claude.session", "claude.weekly", "claude.extra", "claude.trend"])
         XCTAssertEqual(expandedByProvider["claude"], ["claude.sonnet", "claude.fable", "claude.today", "claude.yesterday", "claude.last30"])
-        XCTAssertEqual(primaryByProvider["codex"], ["codex.session", "codex.weekly", "codex.trend"])
+        XCTAssertEqual(primaryByProvider["codex"], ["codex.weekly", "codex.trend"])
         // Spark (the optional model-specific limits) leads the On Demand section, before credits.
         XCTAssertEqual(expandedByProvider["codex"], [
             "codex.spark", "codex.sparkWeekly",
@@ -1171,9 +1171,9 @@ final class LayoutStoreTests: XCTestCase {
             registry: .mock,
             defaults: defaults,
             storageKey: "layout",
-            defaultMetricIDs: ["claude.session", "codex.session"],
+            defaultMetricIDs: ["claude.session", "codex.weekly"],
             migrationBaselineMetricIDs: [],
-            defaultPinnedMetricIDs: ["claude.session", "codex.session"],
+            defaultPinnedMetricIDs: ["claude.session", "codex.weekly"],
             defaultExpandedMetricIDs: []
         )
 

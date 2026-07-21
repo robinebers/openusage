@@ -11,8 +11,8 @@ final class LocalLimitsAPITests: XCTestCase {
 
     func testLimitsEnvelopeCarriesRawScalarsAndFreshnessWithoutUIPresentation() throws {
         let provider = Provider(id: "codex", displayName: "Codex", icon: .providerMark("codex"))
-        let session = WidgetDescriptor.percent(id: "codex.session", provider: provider, title: "Session")
-            .exportingLimit("session", unit: "percent")
+        let weekly = WidgetDescriptor.percent(id: "codex.weekly", provider: provider, title: "Weekly")
+            .exportingLimit("weekly", unit: "percent")
         let credits = WidgetDescriptor.combined(
             id: "codex.credits", provider: provider, title: "Extra Usage", metricLabel: "Credits"
         )
@@ -24,9 +24,9 @@ final class LocalLimitsAPITests: XCTestCase {
             plan: "Pro 20x",
             lines: [
                 .progress(
-                    label: "Session", used: 42, limit: 100, format: .percent,
+                    label: "Weekly", used: 42, limit: 100, format: .percent,
                     resetsAt: OpenUsageISO8601.date(from: "2026-07-13T06:00:00.000Z"),
-                    periodDurationMs: 18_000_000,
+                    periodDurationMs: 604_800_000,
                     colorHex: "#ff0000"
                 ),
                 .values(label: "Credits", values: [
@@ -41,7 +41,7 @@ final class LocalLimitsAPITests: XCTestCase {
             enabledOrderedIDs: ["codex"],
             knownIDs: ["codex"],
             snapshots: ["codex": snapshot],
-            limitDescriptors: ["codex": [session, credits]],
+            limitDescriptors: ["codex": [weekly, credits]],
             generatedAt: generatedAt
         )
 
@@ -49,7 +49,7 @@ final class LocalLimitsAPITests: XCTestCase {
         let root = try json(response.body)
         let providerJSON = try XCTUnwrap((root["providers"] as? [String: Any])?["codex"] as? [String: Any])
         let resources = try XCTUnwrap(providerJSON["resources"] as? [String: Any])
-        let sessionJSON = try XCTUnwrap(resources["session"] as? [String: Any])
+        let weeklyJSON = try XCTUnwrap(resources["weekly"] as? [String: Any])
         let creditsJSON = try XCTUnwrap(resources["credits"] as? [String: Any])
 
         XCTAssertEqual(response.status, 200)
@@ -59,20 +59,20 @@ final class LocalLimitsAPITests: XCTestCase {
         XCTAssertEqual(providerJSON["fetchedAt"] as? String, "2026-07-13T01:39:30.000Z")
         XCTAssertEqual(providerJSON["expiresAt"] as? String, "2026-07-13T01:44:30.000Z")
         XCTAssertEqual(providerJSON["stale"] as? Bool, false)
-        XCTAssertEqual(sessionJSON["kind"] as? String, "consumption")
-        XCTAssertEqual(sessionJSON["unit"] as? String, "percent")
-        XCTAssertEqual(sessionJSON["used"] as? Double, 42)
-        XCTAssertEqual(sessionJSON["limit"] as? Double, 100)
-        XCTAssertEqual(sessionJSON["remaining"] as? Double, 58)
-        XCTAssertEqual(try XCTUnwrap(sessionJSON["utilization"] as? Double), 0.42, accuracy: 0.000_001)
-        XCTAssertEqual(sessionJSON["windowSeconds"] as? Double, 18_000)
+        XCTAssertEqual(weeklyJSON["kind"] as? String, "consumption")
+        XCTAssertEqual(weeklyJSON["unit"] as? String, "percent")
+        XCTAssertEqual(weeklyJSON["used"] as? Double, 42)
+        XCTAssertEqual(weeklyJSON["limit"] as? Double, 100)
+        XCTAssertEqual(weeklyJSON["remaining"] as? Double, 58)
+        XCTAssertEqual(try XCTUnwrap(weeklyJSON["utilization"] as? Double), 0.42, accuracy: 0.000_001)
+        XCTAssertEqual(weeklyJSON["windowSeconds"] as? Double, 604_800)
         XCTAssertEqual(creditsJSON["kind"] as? String, "balance")
         XCTAssertEqual(creditsJSON["available"] as? Double, 821)
         XCTAssertNotNil(resources["creditValue"])
         XCTAssertNil(resources["Usage Trend"])
-        XCTAssertNil(sessionJSON["color"])
-        XCTAssertNil(sessionJSON["subtitle"])
-        XCTAssertNil(sessionJSON["label"])
+        XCTAssertNil(weeklyJSON["color"])
+        XCTAssertNil(weeklyJSON["subtitle"])
+        XCTAssertNil(weeklyJSON["label"])
 
         var expiredState = state
         expiredState.generatedAt = fetchedAt.addingTimeInterval(RefreshSetting.interval)
@@ -84,19 +84,19 @@ final class LocalLimitsAPITests: XCTestCase {
 
     func testUsageAndLimitsProjectTheSameRenderedSnapshot() throws {
         let provider = Provider(id: "codex", displayName: "Codex", icon: .providerMark("codex"))
-        let session = WidgetDescriptor.percent(id: "codex.session", provider: provider, title: "Session")
-            .exportingLimit("session", unit: "percent")
+        let weekly = WidgetDescriptor.percent(id: "codex.weekly", provider: provider, title: "Weekly")
+            .exportingLimit("weekly", unit: "percent")
         let snapshot = ProviderSnapshot(
             providerID: "codex",
             displayName: "Codex",
-            lines: [.progress(label: "Session", used: 73, limit: 100, format: .percent)],
+            lines: [.progress(label: "Weekly", used: 73, limit: 100, format: .percent)],
             refreshedAt: fetchedAt
         )
         let state = LocalUsageAPI.State(
             enabledOrderedIDs: ["codex"],
             knownIDs: ["codex"],
             snapshots: ["codex": snapshot],
-            limitDescriptors: ["codex": [session]],
+            limitDescriptors: ["codex": [weekly]],
             generatedAt: generatedAt
         )
 

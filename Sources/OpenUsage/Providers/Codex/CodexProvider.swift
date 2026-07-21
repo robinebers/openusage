@@ -34,8 +34,6 @@ final class CodexProvider: ProviderRuntime {
 
     var widgetDescriptors: [WidgetDescriptor] {
         [
-            .percent(id: "codex.session", provider: provider, title: "Session")
-                .exportingLimit("session", unit: "percent"),
             .percent(id: "codex.weekly", provider: provider, title: "Weekly")
                 .exportingLimit("weekly", unit: "percent"),
             // Model-specific Spark limits (GPT-5.3-Codex-Spark), parsed from `additional_rate_limits`.

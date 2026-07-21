@@ -31,7 +31,7 @@ enum CodexUsageMapper {
         let rateLimit = body["rate_limit"] as? [String: Any]
         lines.append(contentsOf: classifiedWindowLines(
             rateLimit: rateLimit,
-            labels: (session: "Session", weekly: "Weekly"),
+            labels: (session: nil, weekly: "Weekly"),
             headerPercents: (
                 primary: ProviderParse.number(response.header("x-codex-primary-used-percent")),
                 secondary: ProviderParse.number(response.header("x-codex-secondary-used-percent"))
@@ -120,19 +120,25 @@ enum CodexUsageMapper {
     /// compatibility fallback for payloads that omit or introduce an unfamiliar duration.
     private static func classifiedWindowLines(
         rateLimit: [String: Any]?,
-        labels: (session: String, weekly: String),
+        labels: (session: String?, weekly: String),
         headerPercents: (primary: Double?, secondary: Double?) = (nil, nil),
         now: Date
     ) -> [MetricLine] {
+        let primaryFallback: WindowKind = labels.session != nil ? .session : .weekly
         let candidates = [
-            windowCandidate(rateLimit?["primary_window"], headerPercent: headerPercents.primary, fallbackKind: .session),
+            windowCandidate(rateLimit?["primary_window"], headerPercent: headerPercents.primary, fallbackKind: primaryFallback),
             windowCandidate(rateLimit?["secondary_window"], headerPercent: headerPercents.secondary, fallbackKind: .weekly)
         ].compactMap { $0 }
 
-        return [
-            classifiedWindowLine(kind: .session, label: labels.session, candidates: candidates, now: now),
-            classifiedWindowLine(kind: .weekly, label: labels.weekly, candidates: candidates, now: now)
-        ].compactMap { $0 }
+        var lines: [MetricLine] = []
+        if let sessionLabel = labels.session,
+           let sessionLine = classifiedWindowLine(kind: .session, label: sessionLabel, candidates: candidates, now: now) {
+            lines.append(sessionLine)
+        }
+        if let weeklyLine = classifiedWindowLine(kind: .weekly, label: labels.weekly, candidates: candidates, now: now) {
+            lines.append(weeklyLine)
+        }
+        return lines
     }
 
     private static func windowCandidate(

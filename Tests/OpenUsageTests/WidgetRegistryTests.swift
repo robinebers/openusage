@@ -39,10 +39,10 @@ final class WidgetRegistryTests: XCTestCase {
         let codex = provider("codex")
         let session = descriptor("claude.session", provider: claude)
         let weekly = descriptor("claude.weekly", provider: claude)
-        let codexSession = descriptor("codex.session", provider: codex)
+        let codexWeekly = descriptor("codex.weekly", provider: codex)
         let registry = WidgetRegistry(
             providers: [claude, codex],
-            descriptors: [session, weekly, codexSession]
+            descriptors: [session, weekly, codexWeekly]
         )
 
         XCTAssertEqual(registry.descriptor(id: "claude.weekly"), weekly)
@@ -59,9 +59,9 @@ final class WidgetRegistryTests: XCTestCase {
         // Interleave two providers so a naive grouping that didn't preserve order could still pass for a
         // single contiguous run.
         let c1 = descriptor("claude.session", provider: claude)
-        let x1 = descriptor("codex.session", provider: codex)
+        let x1 = descriptor("codex.weekly", provider: codex)
         let c2 = descriptor("claude.weekly", provider: claude)
-        let x2 = descriptor("codex.weekly", provider: codex)
+        let x2 = descriptor("codex.credits", provider: codex)
         let c3 = descriptor("claude.extra", provider: claude)
         let registry = WidgetRegistry(
             providers: [claude, codex],
@@ -74,7 +74,7 @@ final class WidgetRegistryTests: XCTestCase {
         )
         XCTAssertEqual(
             registry.descriptors(for: "codex").map(\.id),
-            ["codex.session", "codex.weekly"]
+            ["codex.weekly", "codex.credits"]
         )
         XCTAssertEqual(registry.descriptors(for: "missing"), [])
     }

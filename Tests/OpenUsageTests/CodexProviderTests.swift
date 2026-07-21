@@ -100,21 +100,22 @@ final class CodexUsageMapperTests: XCTestCase {
           "rate_limit": {
             "primary_window": {
               "used_percent": 1,
-              "limit_window_seconds": 18000,
-              "reset_after_seconds": 18000,
-              "reset_at": \(Int(now.timeIntervalSince1970) + 18000)
+              "limit_window_seconds": 604800,
+              "reset_after_seconds": 604800,
+              "reset_at": \(Int(now.timeIntervalSince1970) + 604800)
             }
           }
         }
         """.utf8)
         let response = HTTPResponse(statusCode: 200, headers: [:], body: body)
         let mapped = try CodexUsageMapper.mapUsageResponse(response, now: now)
-        XCTAssertEqual(progress(mapped.lines, "Session")?.used, 1)
+        XCTAssertEqual(progress(mapped.lines, "Weekly")?.used, 1)
+        XCTAssertNil(progress(mapped.lines, "Session"))
     }
 
     func testFreshSessionWindowUsesDefaultPeriodWhenLimitWindowIsMissing() throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let resetAfterSeconds = CodexUsageMapper.sessionPeriodMs / 1000
+        let resetAfterSeconds = CodexUsageMapper.weeklyPeriodMs / 1000
         let body = Data("""
         {
           "rate_limit": {
@@ -130,8 +131,9 @@ final class CodexUsageMapperTests: XCTestCase {
 
         let mapped = try CodexUsageMapper.mapUsageResponse(response, now: now)
 
-        XCTAssertEqual(progress(mapped.lines, "Session")?.used, 1)
-        XCTAssertEqual(progress(mapped.lines, "Session")?.periodDurationMs, CodexUsageMapper.sessionPeriodMs)
+        XCTAssertEqual(progress(mapped.lines, "Weekly")?.used, 1)
+        XCTAssertEqual(progress(mapped.lines, "Weekly")?.periodDurationMs, CodexUsageMapper.weeklyPeriodMs)
+        XCTAssertNil(progress(mapped.lines, "Session"))
     }
 
     func testMapsLimitWindowSecondsFromAPI() throws {
@@ -141,7 +143,7 @@ final class CodexUsageMapperTests: XCTestCase {
             "primary_window": {
               "reset_after_seconds": 60,
               "used_percent": 1,
-              "limit_window_seconds": 18000
+              "limit_window_seconds": 604800
             }
           }
         }
@@ -151,7 +153,8 @@ final class CodexUsageMapperTests: XCTestCase {
             response,
             now: Date(timeIntervalSince1970: 1_800_000_000)
         )
-        XCTAssertEqual(progress(mapped.lines, "Session")?.periodDurationMs, 18_000_000)
+        XCTAssertEqual(progress(mapped.lines, "Weekly")?.periodDurationMs, 604_800_000)
+        XCTAssertNil(progress(mapped.lines, "Session"))
     }
 
     func testMapsWeeklyOnlyPrimaryWindowByDuration() throws {
@@ -190,8 +193,8 @@ final class CodexUsageMapperTests: XCTestCase {
             HTTPResponse(statusCode: 200, headers: [:], body: body)
         )
 
-        XCTAssertEqual(progress(mapped.lines, "Session")?.used, 11)
-        XCTAssertEqual(progress(mapped.lines, "Weekly")?.used, 22)
+        XCTAssertNil(progress(mapped.lines, "Session"))
+        XCTAssertEqual(progress(mapped.lines, "Weekly")?.used, 11)
     }
 
     func testMapsWindowsCreditsAndPlan() throws {
@@ -199,8 +202,7 @@ final class CodexUsageMapperTests: XCTestCase {
         {
           "plan_type": "prolite",
           "rate_limit": {
-            "primary_window": { "reset_after_seconds": 60, "used_percent": 10 },
-            "secondary_window": { "reset_after_seconds": 120, "used_percent": 20 }
+            "primary_window": { "reset_after_seconds": 60, "used_percent": 10 }
           },
           "credits": { "balance": "100" }
         }
@@ -220,14 +222,14 @@ final class CodexUsageMapperTests: XCTestCase {
         )
 
         XCTAssertEqual(mapped.plan, "Pro 5x")
-        XCTAssertEqual(progress(mapped.lines, "Session")?.used, 10)
-        XCTAssertEqual(progress(mapped.lines, "Weekly")?.used, 20)
+        XCTAssertNil(progress(mapped.lines, "Session"))
+        XCTAssertEqual(progress(mapped.lines, "Weekly")?.used, 10)
         // Credits lead with the dollar value (4¢/credit), then the raw count — no inverted fake cap.
         XCTAssertNil(progress(mapped.lines, "Credits"))
         XCTAssertEqual(values(mapped.lines, "Credits"),
                        [MetricValue(number: 4.0, kind: .dollars), MetricValue(number: 100, kind: .count, label: "credits")])
-        XCTAssertNotNil(progress(mapped.lines, "Session")?.resetsAt)
-        XCTAssertEqual(progress(mapped.lines, "Session")?.periodDurationMs, CodexUsageMapper.sessionPeriodMs)
+        XCTAssertNotNil(progress(mapped.lines, "Weekly")?.resetsAt)
+        XCTAssertEqual(progress(mapped.lines, "Weekly")?.periodDurationMs, CodexUsageMapper.weeklyPeriodMs)
     }
 
     func testHeadersFillMissingWindows() throws {
@@ -250,8 +252,8 @@ final class CodexUsageMapperTests: XCTestCase {
             now: Date(timeIntervalSince1970: 1_800_000_000)
         )
 
-        XCTAssertEqual(progress(mapped.lines, "Session")?.used, 25)
-        XCTAssertEqual(progress(mapped.lines, "Weekly")?.used, 50)
+        XCTAssertNil(progress(mapped.lines, "Session"))
+        XCTAssertEqual(progress(mapped.lines, "Weekly")?.used, 25)
     }
 
     func testSessionWindowBeatsStaleHeader() throws {
@@ -277,8 +279,8 @@ final class CodexUsageMapperTests: XCTestCase {
             now: Date(timeIntervalSince1970: 1_800_000_000)
         )
 
-        XCTAssertEqual(progress(mapped.lines, "Session")?.used, 0)
-        XCTAssertEqual(progress(mapped.lines, "Weekly")?.used, 7)
+        XCTAssertNil(progress(mapped.lines, "Session"))
+        XCTAssertEqual(progress(mapped.lines, "Weekly")?.used, 0)
     }
 
     func testSurfacesSparkLinesFromAdditionalRateLimits() throws {
@@ -290,8 +292,7 @@ final class CodexUsageMapperTests: XCTestCase {
         let body = Data("""
         {
           "rate_limit": {
-            "primary_window": { "used_percent": 5, "reset_after_seconds": 60 },
-            "secondary_window": { "used_percent": 10, "reset_after_seconds": 120 }
+            "primary_window": { "used_percent": 5, "reset_after_seconds": 60 }
           },
           "additional_rate_limits": [
             {
@@ -325,9 +326,9 @@ final class CodexUsageMapperTests: XCTestCase {
                        Date(timeIntervalSince1970: TimeInterval(nowSec + 3600)))
         XCTAssertEqual(progress(mapped.lines, "Spark Weekly")?.used, 40)
         XCTAssertEqual(progress(mapped.lines, "Spark Weekly")?.periodDurationMs, 604_800_000)
-        // The core Session/Weekly windows are unaffected by the new parsing.
-        XCTAssertEqual(progress(mapped.lines, "Session")?.used, 5)
-        XCTAssertEqual(progress(mapped.lines, "Weekly")?.used, 10)
+        // The core Session window is gone; core Weekly window is present.
+        XCTAssertNil(progress(mapped.lines, "Session"))
+        XCTAssertEqual(progress(mapped.lines, "Weekly")?.used, 5)
     }
 
     func testMapsWeeklyOnlySparkPrimaryWindowByDuration() throws {

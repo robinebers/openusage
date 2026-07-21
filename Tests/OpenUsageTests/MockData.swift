@@ -21,7 +21,6 @@ enum MockData {
         amount(id: "claude.today", provider: claude, title: "Today", used: 64.20),
 
         // Codex — percent limits (donuts), credits as a counted limit (donut), dollars (number)
-        percent(id: "codex.session", provider: codex, title: "Session", used: 80),
         percent(id: "codex.weekly", provider: codex, title: "Weekly", used: 20),
         countBounded(id: "codex.credits", provider: codex, title: "Extra Usage", used: 320, limit: 1000, suffix: "credits"),
         amount(id: "codex.today", provider: codex, title: "Today", used: 569.09),
