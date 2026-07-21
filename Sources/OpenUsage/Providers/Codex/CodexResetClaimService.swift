@@ -22,7 +22,7 @@ enum ResetClaimOutcome: Equatable, Sendable {
 /// safe GET, the id is guaranteed fresh, and a credit that raced away (claimed from the CLI or web in
 /// the meantime) simply fails to match → `.noCredit`, exactly the truth. A successful claim awaits a
 /// forced Codex refresh before returning, so by the time the popover shows its result banner the
-/// Session/Weekly meters and the credit count already tell the post-reset story.
+/// Weekly meter and the credit count already tell the post-reset story.
 @MainActor
 final class CodexResetClaimService {
     typealias Credentials = (accessToken: String, accountID: String?)

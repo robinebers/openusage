@@ -34,8 +34,6 @@ final class CodexProvider: ProviderRuntime {
 
     var widgetDescriptors: [WidgetDescriptor] {
         [
-            .percent(id: "codex.session", provider: provider, title: "Session")
-                .exportingLimit("session", unit: "percent"),
             .percent(id: "codex.weekly", provider: provider, title: "Weekly")
                 .exportingLimit("weekly", unit: "percent"),
             // Model-specific Spark limits (GPT-5.3-Codex-Spark), parsed from `additional_rate_limits`.
@@ -176,7 +174,7 @@ final class CodexProvider: ProviderRuntime {
     /// Fetches the on-demand reset-credit balance (and per-credit expiry) without ever failing the
     /// refresh: this is supplementary to the usage metrics, so a network error, timeout, or non-2xx just
     /// yields `nil` and the mapper falls back to the count embedded in the usage body. Logged, not thrown —
-    /// the user still gets Session/Weekly/Credits even if this endpoint is down.
+    /// the user still gets Weekly/Credits even if this endpoint is down.
     private func fetchResetCreditsBestEffort(accessToken: String, accountID: String?) async -> HTTPResponse? {
         do {
             return try await usageClient.fetchResetCredits(accessToken: accessToken, accountID: accountID)

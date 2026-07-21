@@ -5,7 +5,7 @@ Track your AI coding subscriptions from the macOS menu bar — native Swift edit
 OpenUsage shows how much of your AI coding plans you've used: session and weekly limits, credits, and spend, all in one popover. Pin your most important metrics straight into the menu bar.
 
 <p align="center">
-  <img src="assets/screenshot.jpg?v=20260706" alt="OpenUsage menu bar tracker showing Claude and Codex session, weekly, and spend usage" width="900">
+  <img src="assets/screenshot.jpg?v=20260706" alt="OpenUsage menu bar tracker showing Claude limits and combined AI spend" width="900">
 </p>
 
 ## Installation
@@ -24,7 +24,7 @@ Either way, the app updates itself in place via signed, notarized [Sparkle](docs
 
 - **[Antigravity](docs/providers/antigravity.md)** — shared Gemini and Claude pool quotas, 5-hour and weekly windows
 - **[Claude](docs/providers/claude.md)** — session, weekly, model-specific limits, extra usage, local daily spend
-- **[Codex](docs/providers/codex.md)** — session, weekly, credits, local daily spend
+- **[Codex](docs/providers/codex.md)** — weekly limit, credits, local daily spend
 - **[Copilot](docs/providers/copilot.md)** — AI credits, extra usage, organization billing, chat and completions
 - **[Cursor](docs/providers/cursor.md)** — credits, total/auto/API usage, requests, on-demand, per-day spend
 - **[Devin](docs/providers/devin.md)** — weekly and daily quota, extra usage balance

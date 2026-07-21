@@ -16,7 +16,7 @@ final class AntigravityLayoutTests: XCTestCase {
             "antigravity.claude", "antigravity.claudeWeekly"
         ])
 
-        // The Gemini pair is pinned (2-per-provider cap), mirroring Claude/Codex Session+Weekly.
+        // The Gemini pair is pinned (2-per-provider cap), mirroring Claude's Session/Weekly pair.
         XCTAssertEqual(store.pinnedMetricIDs, ["antigravity.geminiPro", "antigravity.geminiWeekly"])
 
         // Gemini pair above the fold; the Claude pool pair below the caret.
