@@ -54,7 +54,7 @@ final class ResetDisplayTests: XCTestCase {
         let period: TimeInterval = 5 * 3600
         for id in ["claude.session",
                    "antigravity.geminiPro", "antigravity.claude"] {
-            var data = WidgetData(title: "Session", icon: .providerMark("codex"), kind: .percent, used: 0, limit: 100)
+            var data = WidgetData(title: "Session", icon: .providerMark("claude"), kind: .percent, used: 0, limit: 100)
             data.isSessionWindow = true   // descriptor opt-in the session tiles now carry
             data.periodDurationMs = Int(period * 1000)
             // Half the window has elapsed on the clock, so pace would otherwise project — but usage is
@@ -288,7 +288,7 @@ final class ResetDisplayTests: XCTestCase {
         // Halfway through a 10h window with 90/100 used → behind pace, projected run-out ~34m away,
         // safely before the reset 5h out. The label carries its own "Limit" verb (no flame in tests),
         // so the copy reads "Limit in 34m" / "Limit today at …".
-        var data = WidgetData(title: "Session", icon: .providerMark("codex"),
+        var data = WidgetData(title: "Session", icon: .providerMark("claude"),
                               kind: .percent, used: 90, limit: 100)
         data.resetsAt = Date().addingTimeInterval(5 * 3600)
         data.periodDurationMs = 10 * 3600 * 1000

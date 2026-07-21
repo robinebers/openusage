@@ -42,10 +42,10 @@ final class WidgetDataStorePlanTests: XCTestCase {
     func testPlanIsNilWhenSnapshotHasNoPlan() async {
         let provider = Provider(id: "codex", displayName: "Codex", icon: .providerMark("codex"))
         let descriptor = WidgetDescriptor(
-            id: "codex.session",
+            id: "codex.weekly",
             providerID: "codex",
-            metricLabel: "Session",
-            sample: WidgetData(title: "Session", icon: provider.icon, kind: .percent, used: 50, limit: 100)
+            metricLabel: "Weekly",
+            sample: WidgetData(title: "Weekly", icon: provider.icon, kind: .percent, used: 50, limit: 100)
         )
         let runtime = TestProviderRuntime(
             provider: provider,
@@ -53,7 +53,7 @@ final class WidgetDataStorePlanTests: XCTestCase {
             snapshot: ProviderSnapshot(
                 providerID: "codex",
                 displayName: "Codex",
-                lines: [.progress(label: "Session", used: 50, limit: 100, format: .percent)]
+                lines: [.progress(label: "Weekly", used: 50, limit: 100, format: .percent)]
             )
         )
         let defaults = makeDefaults("no-plan")

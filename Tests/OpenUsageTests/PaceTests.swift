@@ -174,7 +174,7 @@ final class PaceTests: XCTestCase {
     func testPlentyRemainingSuppressesFalseRunOutFlame() {
         let session: TimeInterval = 5 * 3600
         let elapsed = 240 / session // four minutes into a five-hour window
-        var data = WidgetData(title: "Session", icon: .providerMark("codex"), kind: .percent,
+        var data = WidgetData(title: "Session", icon: .providerMark("claude"), kind: .percent,
                               used: 2, limit: 100)
         data.resetsAt = resetsAt(elapsed: elapsed, period: session)
         data.periodDurationMs = Int(session * 1000)
@@ -187,7 +187,7 @@ final class PaceTests: XCTestCase {
 
     func testOnePercentAtProjectionGateDoesNotBecomeRed() {
         let session: TimeInterval = 5 * 3600
-        var data = WidgetData(title: "Session", icon: .providerMark("codex"), kind: .percent,
+        var data = WidgetData(title: "Session", icon: .providerMark("claude"), kind: .percent,
                               used: 1, limit: 100)
         data.resetsAt = resetsAt(elapsed: 0.01, period: session)
         data.periodDurationMs = Int(session * 1000)
@@ -200,7 +200,7 @@ final class PaceTests: XCTestCase {
     func testRunOutFlameShowsOnceFivePercentUsedDespiteHighRemaining() {
         let session: TimeInterval = 5 * 3600
         let elapsed = 240 / session
-        var data = WidgetData(title: "Session", icon: .providerMark("codex"), kind: .percent,
+        var data = WidgetData(title: "Session", icon: .providerMark("claude"), kind: .percent,
                               used: 6, limit: 100)
         data.resetsAt = resetsAt(elapsed: elapsed, period: session)
         data.periodDurationMs = Int(session * 1000)

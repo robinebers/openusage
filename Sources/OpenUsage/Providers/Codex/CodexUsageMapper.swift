@@ -6,7 +6,7 @@ struct CodexMappedUsage: Equatable, Sendable {
 }
 
 enum CodexUsageMapper {
-    static let sessionPeriodMs = MetricPeriod.sessionMs
+    static let fiveHourPeriodMs = MetricPeriod.sessionMs
     static let weeklyPeriodMs = MetricPeriod.weekMs
     /// Codex flex credits are worth 4¢ each; the credits line leads with the dollar value
     /// (mirrors the JS plugin's `CREDIT_USD_RATE`).
@@ -29,15 +29,16 @@ enum CodexUsageMapper {
 
         var lines: [MetricLine] = []
         let rateLimit = body["rate_limit"] as? [String: Any]
-        lines.append(contentsOf: classifiedWindowLines(
+        if let weekly = coreWeeklyLine(
             rateLimit: rateLimit,
-            labels: (session: "Session", weekly: "Weekly"),
             headerPercents: (
                 primary: ProviderParse.number(response.header("x-codex-primary-used-percent")),
                 secondary: ProviderParse.number(response.header("x-codex-secondary-used-percent"))
             ),
             now: now
-        ))
+        ) {
+            lines.append(weekly)
+        }
 
         // Model-specific limits (e.g. GPT-5.3-Codex-Spark) ride in a separate `additional_rate_limits`
         // array, each entry reusing the primary/secondary window shape. Surfaced as their own Spark /
@@ -84,7 +85,7 @@ enum CodexUsageMapper {
 
     /// One rate-limit window → a percent-used meter, or `nil` when `usedPercent` is absent. Resolves the
     /// window's own period (falling back to `defaultPeriodMs`) while preserving the percentage reported
-    /// by Codex, so all Session/Weekly/Spark paths share one construction.
+    /// by Codex, so the core Weekly and model-specific Spark paths share one construction.
     private static func windowLine(
         label: String,
         usedPercent: Double?,
@@ -104,7 +105,7 @@ enum CodexUsageMapper {
     }
 
     private enum WindowKind {
-        case session
+        case fiveHour
         case weekly
     }
 
@@ -114,23 +115,56 @@ enum CodexUsageMapper {
         var fallbackKind: WindowKind
     }
 
-    /// Codex normally returns the five-hour window as `primary_window` and the weekly window as
-    /// `secondary_window`, but it can move a temporarily sole weekly limit into the primary slot.
+    /// Codex now exposes only a core weekly limit. The API can put that sole window in the primary
+    /// slot, while older two-window responses used the secondary slot for Weekly. Prefer an explicitly
+    /// seven-day window; without a recognized duration, accept the sole unknown window or retain the
+    /// historical secondary-slot fallback. An explicitly five-hour window is never relabeled Weekly.
+    private static func coreWeeklyLine(
+        rateLimit: [String: Any]?,
+        headerPercents: (primary: Double?, secondary: Double?),
+        now: Date
+    ) -> MetricLine? {
+        let candidates = [
+            windowCandidate(rateLimit?["primary_window"], headerPercent: headerPercents.primary, fallbackKind: .fiveHour),
+            windowCandidate(rateLimit?["secondary_window"], headerPercent: headerPercents.secondary, fallbackKind: .weekly)
+        ].compactMap { $0 }.filter { $0.usedPercent != nil }
+
+        let exact = candidates.first { exactKind(for: $0.window) == .weekly }
+        let unknown = candidates.filter { exactKind(for: $0.window) == nil }
+        let fallback: WindowCandidate?
+        if unknown.count == 1 {
+            fallback = unknown[0]
+        } else {
+            fallback = unknown.first { $0.fallbackKind == .weekly }
+        }
+        guard let candidate = exact ?? fallback else { return nil }
+
+        return windowLine(
+            label: "Weekly",
+            usedPercent: candidate.usedPercent,
+            window: candidate.window,
+            defaultPeriodMs: weeklyPeriodMs,
+            now: now
+        )
+    }
+
+    /// Model-specific limits normally return the five-hour window as `primary_window` and the weekly
+    /// window as `secondary_window`, but can move a temporarily sole weekly limit into the primary slot.
     /// Classify by the explicit duration when present; keep the historical slot mapping only as a
     /// compatibility fallback for payloads that omit or introduce an unfamiliar duration.
     private static func classifiedWindowLines(
         rateLimit: [String: Any]?,
-        labels: (session: String, weekly: String),
+        labels: (fiveHour: String, weekly: String),
         headerPercents: (primary: Double?, secondary: Double?) = (nil, nil),
         now: Date
     ) -> [MetricLine] {
         let candidates = [
-            windowCandidate(rateLimit?["primary_window"], headerPercent: headerPercents.primary, fallbackKind: .session),
+            windowCandidate(rateLimit?["primary_window"], headerPercent: headerPercents.primary, fallbackKind: .fiveHour),
             windowCandidate(rateLimit?["secondary_window"], headerPercent: headerPercents.secondary, fallbackKind: .weekly)
         ].compactMap { $0 }
 
         return [
-            classifiedWindowLine(kind: .session, label: labels.session, candidates: candidates, now: now),
+            classifiedWindowLine(kind: .fiveHour, label: labels.fiveHour, candidates: candidates, now: now),
             classifiedWindowLine(kind: .weekly, label: labels.weekly, candidates: candidates, now: now)
         ].compactMap { $0 }
     }
@@ -157,7 +191,7 @@ enum CodexUsageMapper {
         let exact = candidates.first { exactKind(for: $0.window) == kind }
         let fallback = candidates.first { exactKind(for: $0.window) == nil && $0.fallbackKind == kind }
         guard let candidate = exact ?? fallback else { return nil }
-        let defaultPeriodMs = kind == .session ? sessionPeriodMs : weeklyPeriodMs
+        let defaultPeriodMs = kind == .fiveHour ? fiveHourPeriodMs : weeklyPeriodMs
         return windowLine(
             label: label,
             usedPercent: candidate.usedPercent,
@@ -170,7 +204,7 @@ enum CodexUsageMapper {
     private static func exactKind(for window: [String: Any]) -> WindowKind? {
         guard let periodMs = readPeriodMs(window) else { return nil }
         switch periodMs {
-        case sessionPeriodMs: return .session
+        case fiveHourPeriodMs: return .fiveHour
         case weeklyPeriodMs: return .weekly
         default: return nil
         }
@@ -178,7 +212,7 @@ enum CodexUsageMapper {
 
     /// Spark (and any future model-specific) limits from `additional_rate_limits`. Each array entry is a
     /// named limit whose `rate_limit` reuses the primary (5-hour) / secondary (weekly) window shape, so
-    /// the parsing mirrors the core Session/Weekly path exactly. We surface the entry whose
+    /// the parsing keeps the model-specific five-hour/weekly pair distinct. We surface the entry whose
     /// `limit_name`/`metered_feature` names Spark as the
     /// `Spark` and `Spark Weekly` meters; a non-dictionary or null array element is skipped rather than
     /// discarding its valid siblings. Returns an empty list when the field is absent or carries no Spark
@@ -194,7 +228,7 @@ enum CodexUsageMapper {
 
         return classifiedWindowLines(
             rateLimit: rateLimit,
-            labels: (session: "Spark", weekly: "Spark Weekly"),
+            labels: (fiveHour: "Spark", weekly: "Spark Weekly"),
             now: now
         )
     }

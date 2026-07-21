@@ -1,9 +1,13 @@
 # Codex Rate-Limit Reset Credits: How Claiming Works
 
 Research + live verification of the Codex "reset credit" claim flow, done 2026-07-12.
-OpenUsage already lists these credits (the "Resets" surface on the Codex provider); this
-documents what it would take to *claim* one from the app. No implementation yet — this is
-the protocol reference.
+OpenUsage lists these credits and can claim one from the Codex provider; this is the
+protocol reference behind that implementation.
+
+> **Historical quota note:** the live verification below predates Codex's removal of its
+> core five-hour limit. OpenUsage now exposes only the core Weekly meter. References to two
+> core windows and `windows_reset: 2` record the API behavior observed on 2026-07-12; the
+> model-specific Spark limit can still carry its own five-hour and weekly windows.
 
 Sources: the open-source Codex CLI (`openai/codex`, `codex-rs/backend-client/src/client/rate_limit_resets.rs`,
 `codex-rs/tui/src/chatwidget/reset_credits.rs`, `codex-rs/tui/src/chatwidget/usage.rs`,
@@ -123,7 +127,7 @@ soonest-expiring one, only if it expired within 4 h, explicit `credit_id`).
   the `additional_rate_limits` entry (the model-specific limit was already 0%, so this is
   suggestive, not proven).
 
-## Implementation notes for OpenUsage (when we build it)
+## Implementation notes used by OpenUsage
 
 - The claim is a single POST on infrastructure OpenUsage already talks to; auth, headers,
   and account id handling are identical to `CodexUsageClient`'s existing calls.
@@ -138,5 +142,5 @@ soonest-expiring one, only if it expired within 4 h, explicit `credit_id`).
 - This is an irreversible, user-visible spend of a scarce grant — the UI must be an
   explicit, deliberate user action (the CLI uses a picker + confirmation flow), never
   automatic.
-- After a successful claim, refresh usage + the credit list immediately: both windows drop
-  to 0% and the count decrements, which the widgets should reflect right away.
+- After a successful claim, refresh usage + the credit list immediately: the current Weekly
+  meter and the decremented credit count should reflect the result right away.

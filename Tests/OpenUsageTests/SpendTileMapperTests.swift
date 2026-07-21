@@ -5,7 +5,7 @@ import XCTest
 ///
 /// A period with no usage (an idle day the source didn't report, or a day it reported as zero) is left
 /// unbacked so the tile reads "No data" rather than a fabricated "$0.00 · 0 tokens" that contradicts a
-/// live Session/Weekly meter proving otherwise. This holds for every source — the Claude/Codex/Grok
+/// live quota meter proving otherwise. This holds for every source — the Claude/Codex/Grok
 /// log scanners, Cursor's CSV — with no per-source branching. The Usage Trend is unaffected; it
 /// still zero-fills the window (see `UsageTrendTests`).
 final class SpendTileMapperTests: XCTestCase {
