@@ -11,6 +11,10 @@ import Observation
 final class StatusItemImageUpdater {
     private let container: AppContainer
     private let apply: (NSImage) -> Void
+    /// Last image handed to `apply`; the renderer memoizes by content, so an identical instance means
+    /// the button already shows this render — skip the set (an unconditional set still costs a full
+    /// status-item redraw round-trip through WindowServer on macOS 26+).
+    private var lastApplied: NSImage?
 
     /// - Parameter apply: sets the rendered image onto the status-item button.
     init(container: AppContainer, apply: @escaping (NSImage) -> Void) {
@@ -27,14 +31,18 @@ final class StatusItemImageUpdater {
                 self?.scheduleDelayedUpdate()
             }
         }
+        guard image !== lastApplied else { return }
+        lastApplied = image
         apply(image)
     }
 
     /// The observation callback fires only once until `update()` reads and re-arms it. Waiting here lets
-    /// any immediately-following writes land first; the eventual render then reads their latest values.
+    /// any immediately-following writes land first and caps the loop at ~4 Hz — the old 50ms window
+    /// let bursty observation churn drive it at up to 20 Hz, which macOS 27 beta's status-item redraw
+    /// path amplified into sustained CPU burn.
     private func scheduleDelayedUpdate() {
         Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(50))
+            try? await Task.sleep(for: .milliseconds(250))
             guard !Task.isCancelled else { return }
             self?.update()
         }
