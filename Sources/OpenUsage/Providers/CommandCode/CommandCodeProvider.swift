@@ -28,50 +28,19 @@ final class CommandCodeProvider: ProviderRuntime {
 
     var widgetDescriptors: [WidgetDescriptor] {
         [
-            .boundedDollars(
-                id: "commandcode.fiveHour",
-                provider: provider,
-                title: "5-Hour",
-                limit: 3,
-                menuBarShowsPercentage: true,
-                isSessionWindow: true
-            )
+            .boundedDollars(id: "commandcode.fiveHour", provider: provider, title: "5-Hour", limit: 3,
+                            menuBarShowsPercentage: true, isSessionWindow: true)
             .exportingLimit("fiveHour", unit: "usd"),
-            .boundedDollars(
-                id: "commandcode.weekly",
-                provider: provider,
-                title: "Weekly",
-                limit: 6,
-                menuBarShowsPercentage: true
-            )
+            .boundedDollars(id: "commandcode.weekly", provider: provider, title: "Weekly", limit: 6,
+                            menuBarShowsPercentage: true)
             .exportingLimit("weekly", unit: "usd"),
-            .boundedDollars(
-                id: "commandcode.monthly",
-                provider: provider,
-                title: "Monthly",
-                limit: 10,
-                menuBarShowsPercentage: true
-            )
+            .boundedDollars(id: "commandcode.monthly", provider: provider, title: "Monthly", limit: 10,
+                            menuBarShowsPercentage: true)
             .exportingLimit("monthly", unit: "usd"),
-            .dollarBalance(
-                id: "commandcode.balance",
-                provider: provider,
-                title: "Balance",
-                valueWord: "left"
-            )
-            .exportingLimit(
-                "balance",
-                kind: .balance,
-                unit: "usd",
-                source: .value(kind: .dollars)
-            ),
-            .values(
-                id: "commandcode.requests",
-                provider: provider,
-                title: "Requests",
-                selection: .kind(.count),
-                isUsagePeriod: true
-            )
+            .dollarBalance(id: "commandcode.balance", provider: provider, title: "Balance", valueWord: "left")
+            .exportingLimit("balance", kind: .balance, unit: "usd", source: .value(kind: .dollars)),
+            .values(id: "commandcode.requests", provider: provider, title: "Requests",
+                    selection: .kind(.count), isUsagePeriod: true)
             .exportingLimit("requests", unit: "requests", source: .value(kind: .count))
         ]
     }
@@ -111,17 +80,10 @@ final class CommandCodeProvider: ProviderRuntime {
                     since: subscription?.currentPeriodStart
                 )
             }
-            let mapped = try CommandCodeUsageMapper.map(
-                creditsBody: creditsBody,
-                summaryBody: summaryBody,
-                subscription: subscription
-            )
-            return ProviderSnapshot.make(
-                provider: provider,
-                plan: mapped.plan,
-                lines: mapped.lines,
-                refreshedAt: now()
-            )
+            let mapped = try CommandCodeUsageMapper.map(creditsBody: creditsBody, summaryBody: summaryBody,
+                                                        subscription: subscription)
+            return ProviderSnapshot.make(provider: provider, plan: mapped.plan, lines: mapped.lines,
+                                         refreshedAt: now())
         } catch {
             return ProviderSnapshot.error(provider: provider, error: error)
         }
@@ -130,15 +92,11 @@ final class CommandCodeProvider: ProviderRuntime {
     private func load(_ request: () async throws -> HTTPResponse) async throws -> Data {
         do {
             let response = try await request()
-            if response.statusCode == 401 {
-                throw CommandCodeAuthError.sessionExpired
-            }
+            if response.statusCode == 401 { throw CommandCodeAuthError.sessionExpired }
             guard (200..<300).contains(response.statusCode) else {
                 throw CommandCodeUsageError.requestFailed(response.statusCode)
             }
-            guard !response.body.isEmpty else {
-                throw CommandCodeUsageError.invalidResponse
-            }
+            guard !response.body.isEmpty else { throw CommandCodeUsageError.invalidResponse }
             return response.body
         } catch let error as CommandCodeAuthError {
             throw error

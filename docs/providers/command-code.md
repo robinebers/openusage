@@ -15,7 +15,7 @@ Tracks [Command Code](https://commandcode.ai/) plan limits, balance, and request
 Rows only appear when they apply to the account. Accounts without rolling caps or a usable subscription
 still show their available Balance and Requests data.
 
-Limit rows keep dollars in the dashboard but use percentages in the menu bar. Tooltips project where usage will land at reset, not the current amount.
+Limit rows keep dollars in the dashboard but use percentages in the menu bar. Pace projection tooltips begin with `Projected` and follow the active Used/Left mode; spent meters read `Limit reached`.
 
 OpenUsage also shows the plan reported by Command Code. This includes **Go**, the $1/month entry plan;
 its credits and limits come from the account response rather than being hardcoded in the app.

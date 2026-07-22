@@ -14,7 +14,8 @@ final class WidgetDataStoreTests: XCTestCase {
         let month = TimeInterval(31 * 24 * 60 * 60)
         data.resetsAt = now.addingTimeInterval(month * 0.97)
         data.periodDurationMs = Int(month * 1000)
-        XCTAssertEqual(data.meterState(now: now).tooltip, "~11% over limit at reset")
+        XCTAssertEqual(data.meterState(now: now).tooltip(displayMode: data.displayMode),
+                       "Projected ~11% over limit at reset")
     }
 
     func testResolvesProgressSnapshotIntoWidgetData() async {

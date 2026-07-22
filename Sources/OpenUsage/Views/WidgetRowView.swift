@@ -149,13 +149,13 @@ struct WidgetRowView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
-                .hoverTooltip(state.tooltip)
+                .hoverTooltip(state.tooltip(displayMode: data.displayMode))
         case .healthy where data.alwaysShowPacing:
             // "Always show pacing" surfaces the projection on the otherwise-silent on-track row: the
-            // same quiet secondary note as the amber case, but the cushion ("~33% left at reset")
-            // rather than the spare. No flame (blue isn't a warning) and no hover tooltip — the copy
+            // same quiet secondary note as the amber case, following the active Used/Remaining mode.
+            // No flame (blue isn't a warning) and no hover tooltip — the copy
             // already *is* the projection the amber case hides in its tooltip.
-            if let projection = state.tooltip {
+            if let projection = state.tooltip(displayMode: data.displayMode) {
                 Spacer(minLength: 8)
                 Text(projection)
                     .font(supportingFont)
@@ -189,7 +189,7 @@ struct WidgetRowView: View {
             }
         }
         .foregroundStyle(.secondary)
-        .hoverTooltip(state.tooltip)
+        .hoverTooltip(state.tooltip(displayMode: data.displayMode))
         .accessibilityLabel(accessibility)
 
         if let action {
@@ -446,7 +446,7 @@ struct WidgetRowView: View {
     /// Empty + colorless without data. A thin tick marks the even-pace line — where usage would sit
     /// if it burned evenly across the reset window — on yellow and red bars always, and on blue when
     /// "always show pacing" is on. The tick rides in an overlay so it pokes out top and bottom without
-    /// changing the bar's height. Hovering shows the pace projection (`MeterState.tooltip`).
+    /// changing the bar's height. Hovering shows the mode-aware pace projection.
     private func meter(_ state: WidgetData.MeterState) -> some View {
         let tick = data.paceTick(for: state)
         return GeometryReader { proxy in
@@ -473,7 +473,7 @@ struct WidgetRowView: View {
         .frame(height: density.meterHeight)
         .animation(Motion.spring, value: data.fraction)
         .accessibilityHidden(true)
-        .hoverTooltip(state.tooltip)
+        .hoverTooltip(state.tooltip(displayMode: data.displayMode))
     }
 
     private static let paceTickWidth: CGFloat = 2

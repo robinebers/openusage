@@ -1,16 +1,10 @@
 import Foundation
 
-struct CommandCodeMappedUsage: Equatable, Sendable {
-    var plan: String?
-    var lines: [MetricLine]
-}
+struct CommandCodeMappedUsage: Equatable, Sendable { var plan: String?; var lines: [MetricLine] }
 
 struct CommandCodeSubscriptionContext: Equatable, Sendable {
-    var planID: String
-    var planName: String
-    var currentPeriodStart: String
-    var currentPeriodEnd: Date
-    var periodDurationMs: Int
+    var planID: String; var planName: String; var currentPeriodStart: String
+    var currentPeriodEnd: Date; var periodDurationMs: Int
 }
 
 /// Maps Command Code's account-wide billing APIs into the same dollar meters shown by its CLI.
@@ -190,47 +184,28 @@ enum CommandCodeUsageMapper {
 
 private struct WhoamiPayload: Decodable {
     struct Organization: Decodable { var id: String? }
-
-    var success: Bool
-    var org: Organization?
+    var success: Bool; var org: Organization?
 }
 
 private struct SubscriptionPayload: Decodable {
     struct Details: Decodable {
-        var status: String
-        var currentPeriodStart: String?
-        var currentPeriodEnd: String?
-        var planId: String?
+        var status: String; var currentPeriodStart: String?; var currentPeriodEnd: String?; var planId: String?
     }
-
-    var success: Bool
-    var data: Details?
+    var success: Bool; var data: Details?
 }
-
 private struct CreditsPayload: Decodable {
     struct Credits: Decodable {
-        var monthlyCredits: Double
-        var purchasedCredits: Double
-        var freeCredits: Double
+        var monthlyCredits: Double; var purchasedCredits: Double; var freeCredits: Double
     }
-
-    var credits: Credits
-    var windowLimits: WindowLimitsPayload?
+    var credits: Credits; var windowLimits: WindowLimitsPayload?
 }
 
 private struct WindowLimitsPayload: Decodable {
-    var limited: Bool
-    var fiveHour: WindowPayload?
-    var weekly: WindowPayload?
+    var limited: Bool; var fiveHour: WindowPayload?; var weekly: WindowPayload?
 }
-
 private struct WindowPayload: Decodable {
-    var used: Double
-    var cap: Double
-    var resetAt: Double
+    var used: Double; var cap: Double; var resetAt: Double
 }
-
 private struct UsageSummaryPayload: Decodable {
-    var totalCount: Int
-    var totalMonthlyCredits: Double
+    var totalCount: Int; var totalMonthlyCredits: Double
 }

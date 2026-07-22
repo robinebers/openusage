@@ -68,7 +68,7 @@ final class ResetDisplayTests: XCTestCase {
             data.alwaysShowPacing = true
             let state = data.meterState(now: now)
             XCTAssertEqual(state, .level(.normal), id)
-            XCTAssertNil(state.tooltip, id)
+            XCTAssertNil(state.tooltip(displayMode: data.displayMode), id)
             XCTAssertNil(data.paceTick(for: state, now: now), id)
         }
     }
