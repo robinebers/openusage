@@ -34,7 +34,7 @@ enum LogRedaction {
     private static let urlSensitiveParams = [
         "key", "api_key", "apikey", "token", "access_token", "secret", "password",
         "auth", "authorization", "bearer", "credential", "user", "user_id", "userid",
-        "account_id", "accountid", "profilearn", "profile_arn", "email", "login"
+        "account_id", "accountid", "org_id", "orgid", "profilearn", "profile_arn", "email", "login"
     ]
 
     /// Redact sensitive query parameters in a URL. Only the query string is touched; the path is

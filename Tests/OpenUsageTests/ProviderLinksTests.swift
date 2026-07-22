@@ -78,7 +78,7 @@ final class ProviderLinksTests: XCTestCase {
         let allowed = Set(["Status", "Dashboard", "API Keys", "Usage", "Activity", "Credits"])
         let providers: [ProviderRuntime] = [
             ClaudeProvider(), CodexProvider(), CursorProvider(),
-            AntigravityProvider(), CopilotProvider(), DevinProvider(),
+            AntigravityProvider(), CommandCodeProvider(), CopilotProvider(), DevinProvider(),
             GrokProvider(), OpenCodeProvider(), OpenRouterProvider(), ZAIProvider()
         ]
         for runtime in providers {
