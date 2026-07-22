@@ -77,6 +77,8 @@ struct WidgetData: Hashable {
     /// Rate Limit Resets → "2 resets"). Set by the descriptor, so renaming the tile can't silently drop
     /// the suffix — replaces matching on the tile's title. `nil` for tiles that show the bare value.
     var traySuffix: String?
+    /// Bounded non-percent meters can still show their limit share in the compact menu bar.
+    var menuBarShowsPercentage: Bool = false
     /// Session-window meters (Claude/Antigravity 5-hour pools) that read "Not started" when unused.
     /// Set by those descriptors and carried through `WidgetDataStore.resolve`, so the "fresh window"
     /// treatment is a descriptor opt-in rather than a hardcoded widget-ID list in the model.
@@ -145,12 +147,12 @@ struct WidgetData: Hashable {
         case runningOut(eta: String?, projectedFraction: Double)
         /// Projected to land inside the last 10% — cutting it close — but still with a cushion of at
         /// least 1%. (A cushion that rounds to 0% promotes to `runningOut` instead, so amber never
-        /// shows "~0% spare".) Amber, a "~N% spare" note. `projectedFraction` backs the tooltip's
-        /// "% used at reset" copy.
+        /// shows "~0% spare".) Amber, a "~N% spare" note. `projectedFraction` backs the mode-aware
+        /// projected usage/remaining tooltip.
         case closeToLimit(spare: String, projectedFraction: Double)
         /// On course to finish with ≥10% to spare. Blue. By default it carries no decoration; when
-        /// "always show pacing" is on it surfaces the projection copy ("~N% left at reset").
-        /// `projectedFraction` backs the tooltip's "% left at reset" cushion copy.
+        /// "always show pacing" is on it surfaces the mode-aware projection copy.
+        /// `projectedFraction` backs the projected usage/remaining tooltip.
         case healthy(projectedFraction: Double)
         /// No reset window to pace against: color from absolute level bands on the share used, no copy.
         case level(MeterSeverity)
@@ -166,28 +168,25 @@ struct WidgetData: Hashable {
             }
         }
 
-        /// Hover-tooltip detail shared by the bar, the spare note, and the flame: a short numeric
-        /// projection of where pace lands at reset, adding the one figure the row doesn't already
-        /// show. Blue → the projected cushion ("~35% left at reset"); amber → projected usage
-        /// ("~92% used at reset"), the complement of the visible "~N% spare"; red → the overage
-        /// ("~12% over limit at reset"), or "~100% used at reset" when projected to land right at
-        /// the limit (the promoted-onTrack case, ≤ limit, so there's no overage). `nil` where there's
-        /// no pace story (no data, or a plain absolute-band level); terminal "Limit reached" when spent.
-        var tooltip: String? {
+        /// Hover detail shared by the bar, spare note, and flame. Healthy/close projections follow
+        /// the active Used/Remaining mode; over-limit projections stay an overage in either mode.
+        /// `nil` means there is no pace story; spent meters read "Limit reached".
+        func tooltip(displayMode: WidgetDisplayMode) -> String? {
             switch self {
             case .noData, .level: return nil
             case .spent: return "Limit reached"
-            case .healthy(let projectedFraction):
-                let left = Int(((1 - projectedFraction) * 100).rounded())
-                return "~\(left)% left at reset"
-            case .closeToLimit(_, let projectedFraction):
+            case .healthy(let projectedFraction), .closeToLimit(_, let projectedFraction):
                 let used = Int((projectedFraction * 100).rounded())
-                return "~\(used)% used at reset"
+                if displayMode == .used { return "Projected ~\(used)% used at reset" }
+                let left = Int(((1 - projectedFraction) * 100).rounded())
+                return "Projected ~\(left)% left at reset"
             case .runningOut(_, let projectedFraction):
-                guard projectedFraction > 1 else { return "~100% used at reset" }
+                guard projectedFraction > 1 else {
+                    return displayMode == .used ? "Projected ~100% used at reset" : "Projected ~0% left at reset"
+                }
                 // Floored to 1% so a bar projected even slightly over never reads "~0% over limit".
                 let over = max(1, Int(((projectedFraction - 1) * 100).rounded()))
-                return "~\(over)% over limit at reset"
+                return "Projected ~\(over)% over limit at reset"
             }
         }
 
@@ -223,7 +222,7 @@ struct WidgetData: Hashable {
         return (valuePrefix ?? "") + format(displayedValue)
     }
 
-    /// The menu-bar (tray) reading: bounded metrics stay unit-aware (percent meters as %, dollar meters
+    /// The menu-bar (tray) reading: bounded metrics stay unit-aware by default (percent meters as %, dollar meters
     /// as compact dollars, count meters as compact counts) while still honoring the global Used/Left
     /// mode through `displayedValue`. Unbounded rows show their selected value compacted through the same
     /// formatter the popover uses. A status badge with no number (e.g. Grok "Disabled") shows its text
@@ -231,9 +230,9 @@ struct WidgetData: Hashable {
     var menuBarValue: String {
         guard hasData else { return valueText }
         if let limit, limit > 0 {
-            if kind == .percent {
-                // Percent is the only bounded unit that should collapse to a tray percentage. Clamp both
-                // ends so a provider sample can never print "-5%" or "105%" beside the icon.
+            if kind == .percent || menuBarShowsPercentage {
+                // Percent meters and explicit provider opt-ins collapse to a tray percentage. Clamp
+                // both ends so a provider sample can never print "-5%" or "105%" beside the icon.
                 let percent = min(100, max(0, Int((displayedValue / limit * 100).rounded())))
                 return "\(percent)%"
             }
@@ -495,7 +494,7 @@ extension WidgetData {
             case .onTrack:
                 // A whole-percent 1% reading at the projection gate can land exactly on the limit.
                 // Keep the same near-empty safeguard as `.behind` so it never becomes a red alarm.
-                guard used / ctx.limit >= 0.05 else { return absoluteLevelState(used: used, limit: limit) }
+                guard kind == .dollars || used / ctx.limit >= 0.05 else { return absoluteLevelState(used: used, limit: limit) }
                 let projected = result.projectedUsage / ctx.limit
                 let spare = Int(((1 - projected) * 100).rounded())
                 guard spare >= 1 else { return .runningOut(eta: nil, projectedFraction: projected) }
@@ -506,7 +505,7 @@ extension WidgetData {
                 // left. When >95% of the quota clearly remains (used below
                 // 5%), distrust the projection entirely and use the absolute level bands instead — a
                 // calm bar with no projection copy, never a fabricated "~N% left at reset" cushion.
-                guard used / ctx.limit >= 0.05 else { return absoluteLevelState(used: used, limit: limit) }
+                guard kind == .dollars || used / ctx.limit >= 0.05 else { return absoluteLevelState(used: used, limit: limit) }
                 let eta = Pace.secondsToRunOut(used: used, limit: ctx.limit, resetsAt: ctx.resetsAt,
                                                periodDuration: ctx.period, now: now)
                     .flatMap { Formatters.deadlineLabel("Limit", at: now.addingTimeInterval($0),

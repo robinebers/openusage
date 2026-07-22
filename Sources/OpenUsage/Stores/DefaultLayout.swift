@@ -9,6 +9,9 @@ enum DefaultLayout {
     static let metricIDs: [String] = [
         "antigravity.geminiPro", "antigravity.geminiWeekly", "antigravity.claude", "antigravity.claudeWeekly",
 
+        "commandcode.fiveHour", "commandcode.weekly", "commandcode.monthly",
+        "commandcode.balance", "commandcode.requests",
+
         "claude.session", "claude.weekly", "claude.trend",
         "claude.extra", "claude.today", "claude.yesterday", "claude.last30",
 
@@ -55,11 +58,12 @@ enum DefaultLayout {
     ]
 
     /// Metrics pinned to the menu bar on first launch, so the app shows real numbers out of the box
-    /// instead of a lone icon. Two per provider for Antigravity, Claude, Codex, and Cursor — the
+    /// instead of a lone icon. Two per provider for Antigravity, Command Code, Claude, Codex, and Cursor — the
     /// per-provider cap (`LayoutStore.maxPinsPerProvider`). Filtered to the active
     /// registry by `LayoutStore`, like `metricIDs`.
     static let pinnedMetricIDs: [String] = [
         "antigravity.geminiPro", "antigravity.geminiWeekly",
+        "commandcode.fiveHour", "commandcode.weekly",
         "claude.session", "claude.weekly",
         "codex.session", "codex.weekly",
         "cursor.auto", "cursor.api",
@@ -96,6 +100,9 @@ enum DefaultLayout {
         // Antigravity: the Gemini pool pair (5h + weekly) stays above the fold; the non-Gemini
         // (Claude) pool pair sits below the caret.
         "antigravity.claude", "antigravity.claudeWeekly",
+        // Command Code: rolling and monthly limits stay above the fold; the raw balance and request
+        // count mirror the CLI's secondary cycle details below the caret.
+        "commandcode.balance", "commandcode.requests",
         // Claude's core meters (Session, Weekly, Extra, Usage Trend) stay above the fold; spend-history
         // rows sit below the caret. Matches every other provider's "core above, history below" shape.
         "claude.sonnet", "claude.fable", "claude.today", "claude.yesterday", "claude.last30",

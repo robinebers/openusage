@@ -35,6 +35,20 @@ final class LogRedactionTests: XCTestCase {
         XCTAssertTrue(redacted.contains("limit=10"), redacted)
     }
 
+    func testRedactURLOrganizationIDs() {
+        let camelCase = LogRedaction.redactURL(
+            "https://api.commandcode.ai/alpha/billing/credits?orgId=org-abcdefghijklmnopqrstuvwxyz"
+        )
+        let snakeCase = LogRedaction.redactURL(
+            "https://api.example.com/v1?org_id=org-abcdefghijklmnopqrstuvwxyz&limit=10"
+        )
+
+        XCTAssertFalse(camelCase.contains("org-abcdefghijklmnopqrstuvwxyz"), camelCase)
+        XCTAssertTrue(camelCase.contains("orgId=org-...wxyz"), camelCase)
+        XCTAssertFalse(snakeCase.contains("org-abcdefghijklmnopqrstuvwxyz"), snakeCase)
+        XCTAssertTrue(snakeCase.contains("limit=10"), snakeCase)
+    }
+
     func testRedactURLPreservesNonSensitiveParams() {
         let url = "https://api.example.com/v1?limit=10&offset=20"
         XCTAssertEqual(LogRedaction.redactURL(url), url)

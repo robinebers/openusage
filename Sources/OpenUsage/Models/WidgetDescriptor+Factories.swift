@@ -21,6 +21,8 @@ extension WidgetDescriptor {
     }
 
     /// Bounded dollar meter whose subtitle reads "$<limit> <limitNoun>" (noun defaults to "limit").
+    /// `isSessionWindow` gives rolling dollar windows the same fresh-window "Not started" treatment
+    /// as percentage-based session meters.
     /// `valueWord` is the trailing word for the *uncapped* fallback: a tile like Claude's Extra Usage is a
     /// meter when the provider reports a monthly cap (`.progress`) but an unbounded "$1.2K spent" row
     /// (`.values`) when it doesn't, and that row needs a word. It's inert for the bounded rendering.
@@ -31,12 +33,22 @@ extension WidgetDescriptor {
         metricLabel: String? = nil,
         limit: Double,
         limitNoun: String? = nil,
-        valueWord: String? = nil
+        valueWord: String? = nil,
+        menuBarShowsPercentage: Bool = false,
+        isSessionWindow: Bool = false
     ) -> WidgetDescriptor {
-        make(id: id, provider: provider, metricLabel: metricLabel ?? title,
-             sample: WidgetData(title: title, icon: provider.icon,
-                                kind: .dollars, used: 0, limit: limit, limitNoun: limitNoun,
-                                unboundedValueWord: valueWord))
+        var sample = WidgetData(
+            title: title,
+            icon: provider.icon,
+            kind: .dollars,
+            used: 0,
+            limit: limit,
+            limitNoun: limitNoun,
+            unboundedValueWord: valueWord
+        )
+        sample.menuBarShowsPercentage = menuBarShowsPercentage
+        sample.isSessionWindow = isSessionWindow
+        return make(id: id, provider: provider, metricLabel: metricLabel ?? title, sample: sample)
     }
 
     /// Bounded count meter (e.g. requests per billing cycle). `periodDurationMs` lets the subtitle

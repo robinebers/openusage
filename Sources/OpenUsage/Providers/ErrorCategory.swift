@@ -94,6 +94,27 @@ extension CodexUsageError: CategorizedError {
     }
 }
 
+extension CommandCodeAuthError: CategorizedError {
+    var errorCategory: ErrorCategory {
+        switch self {
+        case .notLoggedIn: .notLoggedIn
+        case .credentialsUnreadable: .credentialAccess
+        case .invalidCredentials: .authInvalid
+        case .sessionExpired: .authExpired
+        }
+    }
+}
+
+extension CommandCodeUsageError: CategorizedError {
+    var errorCategory: ErrorCategory {
+        switch self {
+        case .connectionFailed: .network
+        case .invalidResponse: .decoding
+        case .requestFailed(let status): ErrorCategory.http(status)
+        }
+    }
+}
+
 extension CursorAuthError: CategorizedError {
     var errorCategory: ErrorCategory {
         switch self {

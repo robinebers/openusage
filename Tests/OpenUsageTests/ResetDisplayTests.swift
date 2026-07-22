@@ -68,7 +68,7 @@ final class ResetDisplayTests: XCTestCase {
             data.alwaysShowPacing = true
             let state = data.meterState(now: now)
             XCTAssertEqual(state, .level(.normal), id)
-            XCTAssertNil(state.tooltip, id)
+            XCTAssertNil(state.tooltip(displayMode: data.displayMode), id)
             XCTAssertNil(data.paceTick(for: state, now: now), id)
         }
     }
@@ -80,13 +80,14 @@ final class ResetDisplayTests: XCTestCase {
         // provider dropping (or spuriously gaining) the flag must fail here, not ship silently.
         let providers: [ProviderRuntime] = [
             ClaudeProvider(), CodexProvider(), CursorProvider(),
-            AntigravityProvider(), CopilotProvider(), DevinProvider(),
+            AntigravityProvider(), CommandCodeProvider(), CopilotProvider(), DevinProvider(),
             GrokProvider(), OpenRouterProvider(), ZAIProvider()
         ]
         let descriptors = providers.flatMap(\.widgetDescriptors)
         let sessionIDs = Set(descriptors.filter(\.sample.isSessionWindow).map(\.id))
         XCTAssertEqual(sessionIDs, ["claude.session",
-                                    "antigravity.geminiPro", "antigravity.claude"])
+                                    "antigravity.geminiPro", "antigravity.claude",
+                                    "commandcode.fiveHour"])
 
         // Same wiring pin for the menu-bar tray suffix (it replaced a title-string match).
         let suffixed = descriptors.filter { $0.sample.traySuffix != nil }
