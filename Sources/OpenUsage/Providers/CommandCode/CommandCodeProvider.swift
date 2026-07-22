@@ -33,6 +33,7 @@ final class CommandCodeProvider: ProviderRuntime {
                 provider: provider,
                 title: "5-Hour",
                 limit: 3,
+                menuBarShowsPercentage: true,
                 isSessionWindow: true
             )
             .exportingLimit("fiveHour", unit: "usd"),
@@ -40,14 +41,16 @@ final class CommandCodeProvider: ProviderRuntime {
                 id: "commandcode.weekly",
                 provider: provider,
                 title: "Weekly",
-                limit: 6
+                limit: 6,
+                menuBarShowsPercentage: true
             )
             .exportingLimit("weekly", unit: "usd"),
             .boundedDollars(
                 id: "commandcode.monthly",
                 provider: provider,
                 title: "Monthly",
-                limit: 10
+                limit: 10,
+                menuBarShowsPercentage: true
             )
             .exportingLimit("monthly", unit: "usd"),
             .dollarBalance(

@@ -34,6 +34,7 @@ extension WidgetDescriptor {
         limit: Double,
         limitNoun: String? = nil,
         valueWord: String? = nil,
+        menuBarShowsPercentage: Bool = false,
         isSessionWindow: Bool = false
     ) -> WidgetDescriptor {
         var sample = WidgetData(
@@ -45,6 +46,7 @@ extension WidgetDescriptor {
             limitNoun: limitNoun,
             unboundedValueWord: valueWord
         )
+        sample.menuBarShowsPercentage = menuBarShowsPercentage
         sample.isSessionWindow = isSessionWindow
         return make(id: id, provider: provider, metricLabel: metricLabel ?? title, sample: sample)
     }

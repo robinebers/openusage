@@ -3,13 +3,30 @@ import XCTest
 
 @MainActor
 final class WidgetDataStoreTests: XCTestCase {
+    func testBoundedDollarMenuBarPercentageAndPrecisePacing() {
+        var data = WidgetData(title: "5-Hour", icon: .providerMark("commandcode"), kind: .dollars, used: 0.10, limit: 3)
+        data.menuBarShowsPercentage = true
+        XCTAssertEqual(data.valueText, "$0.10")
+        XCTAssertEqual(data.menuBarValue, "3%")
+        data.displayMode = .remaining
+        XCTAssertEqual(data.menuBarValue, "97%")
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let month = TimeInterval(31 * 24 * 60 * 60)
+        data.resetsAt = now.addingTimeInterval(month * 0.97)
+        data.periodDurationMs = Int(month * 1000)
+        XCTAssertEqual(data.meterState(now: now).tooltip, "~11% over limit at reset")
+    }
+
     func testResolvesProgressSnapshotIntoWidgetData() async {
         let provider = Provider(id: "test", displayName: "Test", icon: .providerMark("codex"))
+        var sample = WidgetData(title: "Session", icon: provider.icon, kind: .percent, used: 0, limit: 100,
+                                displayMode: .remaining)
+        sample.menuBarShowsPercentage = true
         let descriptor = WidgetDescriptor(
             id: "test.session",
             providerID: provider.id,
             metricLabel: "Session",
-            sample: WidgetData(title: "Session", icon: provider.icon, kind: .percent, used: 0, limit: 100, displayMode: .remaining)
+            sample: sample
         )
         let runtime = TestProviderRuntime(
             provider: provider,
@@ -38,6 +55,7 @@ final class WidgetDataStoreTests: XCTestCase {
         XCTAssertEqual(data.used, 42)
         XCTAssertEqual(data.displayedValue, 58)
         XCTAssertEqual(data.valueText, "58%")
+        XCTAssertTrue(data.menuBarShowsPercentage)
         XCTAssertEqual(data.boundedHeadline, "58% left")
         XCTAssertEqual(data.boundedSubtitle?.hasPrefix("Resets in "), true)
     }

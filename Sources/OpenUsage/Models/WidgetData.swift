@@ -77,6 +77,8 @@ struct WidgetData: Hashable {
     /// Rate Limit Resets → "2 resets"). Set by the descriptor, so renaming the tile can't silently drop
     /// the suffix — replaces matching on the tile's title. `nil` for tiles that show the bare value.
     var traySuffix: String?
+    /// Bounded non-percent meters can still show their limit share in the compact menu bar.
+    var menuBarShowsPercentage: Bool = false
     /// Session-window meters (Claude/Antigravity 5-hour pools) that read "Not started" when unused.
     /// Set by those descriptors and carried through `WidgetDataStore.resolve`, so the "fresh window"
     /// treatment is a descriptor opt-in rather than a hardcoded widget-ID list in the model.
@@ -223,7 +225,7 @@ struct WidgetData: Hashable {
         return (valuePrefix ?? "") + format(displayedValue)
     }
 
-    /// The menu-bar (tray) reading: bounded metrics stay unit-aware (percent meters as %, dollar meters
+    /// The menu-bar (tray) reading: bounded metrics stay unit-aware by default (percent meters as %, dollar meters
     /// as compact dollars, count meters as compact counts) while still honoring the global Used/Left
     /// mode through `displayedValue`. Unbounded rows show their selected value compacted through the same
     /// formatter the popover uses. A status badge with no number (e.g. Grok "Disabled") shows its text
@@ -231,9 +233,9 @@ struct WidgetData: Hashable {
     var menuBarValue: String {
         guard hasData else { return valueText }
         if let limit, limit > 0 {
-            if kind == .percent {
-                // Percent is the only bounded unit that should collapse to a tray percentage. Clamp both
-                // ends so a provider sample can never print "-5%" or "105%" beside the icon.
+            if kind == .percent || menuBarShowsPercentage {
+                // Percent meters and explicit provider opt-ins collapse to a tray percentage. Clamp
+                // both ends so a provider sample can never print "-5%" or "105%" beside the icon.
                 let percent = min(100, max(0, Int((displayedValue / limit * 100).rounded())))
                 return "\(percent)%"
             }
@@ -495,7 +497,7 @@ extension WidgetData {
             case .onTrack:
                 // A whole-percent 1% reading at the projection gate can land exactly on the limit.
                 // Keep the same near-empty safeguard as `.behind` so it never becomes a red alarm.
-                guard used / ctx.limit >= 0.05 else { return absoluteLevelState(used: used, limit: limit) }
+                guard kind == .dollars || used / ctx.limit >= 0.05 else { return absoluteLevelState(used: used, limit: limit) }
                 let projected = result.projectedUsage / ctx.limit
                 let spare = Int(((1 - projected) * 100).rounded())
                 guard spare >= 1 else { return .runningOut(eta: nil, projectedFraction: projected) }
@@ -506,7 +508,7 @@ extension WidgetData {
                 // left. When >95% of the quota clearly remains (used below
                 // 5%), distrust the projection entirely and use the absolute level bands instead — a
                 // calm bar with no projection copy, never a fabricated "~N% left at reset" cushion.
-                guard used / ctx.limit >= 0.05 else { return absoluteLevelState(used: used, limit: limit) }
+                guard kind == .dollars || used / ctx.limit >= 0.05 else { return absoluteLevelState(used: used, limit: limit) }
                 let eta = Pace.secondsToRunOut(used: used, limit: ctx.limit, resetsAt: ctx.resetsAt,
                                                periodDuration: ctx.period, now: now)
                     .flatMap { Formatters.deadlineLabel("Limit", at: now.addingTimeInterval($0),

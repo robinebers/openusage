@@ -33,6 +33,12 @@ final class CommandCodeLayoutTests: XCTestCase {
         XCTAssertEqual(CommandCodeProvider().widgetDescriptors.map(\.id), orderedMetricIDs)
     }
 
+    func testBoundedDollarMetersShowLimitPercentageInMenuBar() {
+        let samples = CommandCodeProvider().widgetDescriptors.prefix(3).map(\.sample)
+        XCTAssertTrue(samples.allSatisfy(\.menuBarShowsPercentage))
+        XCTAssertTrue(samples.allSatisfy { $0.menuBarValue == "0%" })
+    }
+
     func testProviderUsesCanonicalTailOrder() {
         let defaults = UserDefaults(suiteName: "CommandCodeLayoutTests.\(UUID().uuidString)")!
         let providerNames = ProviderCatalog.make(defaults: defaults).map(\.provider.displayName)
