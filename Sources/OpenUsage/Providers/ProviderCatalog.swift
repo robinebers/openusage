@@ -37,8 +37,10 @@ enum ProviderCatalog {
             CursorProvider(),
             AntigravityProvider(),
             CopilotProvider(defaults: defaults),
+            DeepSeekProvider(),
             DevinProvider(),
             GrokProvider(),
+            OllamaProvider(),
             OpenCodeProvider(),
             OpenRouterProvider(),
             ZAIProvider()

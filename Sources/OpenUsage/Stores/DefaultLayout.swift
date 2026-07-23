@@ -32,7 +32,11 @@ enum DefaultLayout {
         "openrouter.credits", "openrouter.balance",
         "openrouter.today", "openrouter.week", "openrouter.month", "openrouter.keyLimit",
 
-        "zai.session", "zai.weekly", "zai.webSearches"
+        "zai.session", "zai.weekly", "zai.webSearches",
+
+        "deepseek.balance",
+
+        "ollama.session", "ollama.weekly"
     ]
 
     /// Frozen snapshot of the default-on metrics from the release that introduced default seeding.
@@ -119,6 +123,9 @@ enum DefaultLayout {
         // sit below the caret.
         "openrouter.today", "openrouter.week", "openrouter.month", "openrouter.keyLimit",
         // Z.ai: Session meter stays above the fold; Web Searches (monthly count) sits below the caret.
-        "zai.webSearches"
+        "zai.webSearches",
+
+        // Ollama: Session stays above the fold; Weekly sits below the caret.
+        "ollama.weekly"
     ]
 }
