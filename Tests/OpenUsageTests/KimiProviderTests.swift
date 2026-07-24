@@ -122,6 +122,52 @@ final class KimiAuthStoreTests: XCTestCase {
         XCTAssertEqual(persisted.credentials.accessToken, "rotated-access")
         XCTAssertEqual(persisted.credentials.refreshToken, "rotated-refresh")
     }
+
+    func testSavePreservesFieldsOpenUsageDoesNotKnow() throws {
+        let files = FakeFiles([
+            currentOAuthPath: #"{"access_token":"old","refresh_token":"old-r","expires_at":1,"id_token":"keep-me","future_field":{"nested":true}}"#
+        ])
+        let store = makeAuthStore(files: files)
+        var state = try XCTUnwrap(store.loadOAuthState())
+        state.credentials.accessToken = "rotated-access"
+
+        try store.save(state)
+
+        let raw = try XCTUnwrap(files.files[currentOAuthPath])
+        let object = try XCTUnwrap((try? JSONSerialization.jsonObject(with: Data(raw.utf8))) as? [String: Any])
+        XCTAssertEqual(object["access_token"] as? String, "rotated-access")
+        XCTAssertEqual(object["id_token"] as? String, "keep-me")
+        XCTAssertEqual((object["future_field"] as? [String: Any])?["nested"] as? Bool, true)
+    }
+
+    func testToleratesUnexpectedFieldTypesInCredentialFile() {
+        // The file belongs to the CLI: a field with an unexpected type must not misreport a
+        // signed-in user as "Not logged in". String-typed numbers are read permissively.
+        let files = FakeFiles([
+            currentOAuthPath: #"{"access_token":"kimi-access","refresh_token":"kimi-refresh","expires_at":"1784378900","expires_in":900,"scope":7}"#
+        ])
+        let state = makeAuthStore(files: files).loadOAuthState()
+
+        XCTAssertEqual(state?.credentials.accessToken, "kimi-access")
+        XCTAssertEqual(state?.credentials.refreshToken, "kimi-refresh")
+        XCTAssertEqual(state?.credentials.expiresAt, 1_784_378_900)
+        XCTAssertEqual(state?.credentials.expiresIn, 900)
+        XCTAssertNil(state?.credentials.scope)
+    }
+
+    func testFractionalExpiresAtDecodes() {
+        let files = FakeFiles([
+            currentOAuthPath: #"{"access_token":"kimi-access","expires_at":1784378900.5}"#
+        ])
+        let state = makeAuthStore(files: files).loadOAuthState()
+
+        XCTAssertEqual(state?.credentials.expiresAt, 1_784_378_900.5)
+    }
+
+    func testNonJSONCredentialFileIsTreatedAsAbsent() {
+        let files = FakeFiles([currentOAuthPath: "{"])
+        XCTAssertNil(makeAuthStore(files: files).loadOAuthState())
+    }
 }
 
 // MARK: - Mapper
@@ -269,6 +315,59 @@ final class KimiUsageMapperTests: XCTestCase {
         XCTAssertThrowsError(try KimiUsageMapper.map(data("not-json"))) { error in
             XCTAssertEqual(error as? KimiUsageError, .invalidResponse)
         }
+    }
+
+    /// A known container with the wrong shape is a malformed response — it must not collapse into
+    /// the "No usage data" badge an account without quotas legitimately gets.
+    func testWronglyTypedContainersThrow() {
+        XCTAssertThrowsError(try KimiUsageMapper.map(data(#"{"limits": {"nope": true}}"#))) { error in
+            XCTAssertEqual(error as? KimiUsageError, .invalidResponse)
+        }
+        XCTAssertThrowsError(try KimiUsageMapper.map(data(#"{"usage": "nope"}"#))) { error in
+            XCTAssertEqual(error as? KimiUsageError, .invalidResponse)
+        }
+    }
+
+    func testMalformedResetTimeStillProducesLine() throws {
+        let json = """
+        {"usage": {"limit": "100", "used": "10", "resetTime": "not-a-date"}}
+        """
+        let mapped = try KimiUsageMapper.map(data(json))
+
+        guard case .progress(let label, _, _, _, let resetsAt, _, _) = mapped.lines[0] else {
+            return XCTFail("expected a progress line, got \(mapped.lines[0])")
+        }
+        XCTAssertEqual(label, "Weekly")
+        XCTAssertNil(resetsAt)
+    }
+
+    /// Sub-second units must not match the plain "SECOND" case (a 1000x+ period error): the window
+    /// degrades to "no cadence" instead.
+    func testSubSecondWindowUnitsAreUnknown() throws {
+        let json = """
+        {
+          "limits": [
+            {
+              "window": {"duration": 500, "timeUnit": "TIME_UNIT_MILLISECOND"},
+              "detail": {"limit": "100", "used": "10"}
+            }
+          ]
+        }
+        """
+        let mapped = try KimiUsageMapper.map(data(json))
+
+        guard case .progress(let label, _, _, _, _, let periodMs, _) = mapped.lines[0] else {
+            return XCTFail("expected a progress line, got \(mapped.lines[0])")
+        }
+        XCTAssertEqual(label, "Session")
+        XCTAssertNil(periodMs)
+    }
+
+    /// The readable-enum fallback strips the prefix case-insensitively, like the table lookup above it.
+    func testLowercaseLevelFallsBackToReadableForm() throws {
+        let mapped = try KimiUsageMapper.map(data(payload(level: "level_trial")))
+
+        XCTAssertEqual(mapped.plan, "Trial")
     }
 }
 
@@ -440,6 +539,108 @@ final class KimiProviderTests: XCTestCase {
         XCTAssertTrue(oauthHas)
         XCTAssertTrue(keyHas)
     }
+
+    /// 400 is the OAuth `invalid_grant` status — the case that actually occurs when a refresh token
+    /// is rejected; it must surface as session-expired, same as 401/403.
+    func testRejectedRefresh400ReportsSessionExpired() async {
+        let files = FakeFiles([
+            currentOAuthPath: oauthFileJSON(expiresAt: testNow.timeIntervalSince1970 - 60)
+        ])
+        let (provider, _) = makeProvider(files: files) { request in
+            HTTPResponse(statusCode: 400, headers: [:], body: data(#"{"error": "invalid_grant"}"#))
+        }
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(snapshot.errorCategory, .authExpired)
+    }
+
+    /// A 2xx refresh body without an access token is a dead session, not a retryable failure.
+    func testRefreshResponseWithoutAccessTokenReportsSessionExpired() async {
+        let files = FakeFiles([
+            currentOAuthPath: oauthFileJSON(expiresAt: testNow.timeIntervalSince1970 - 60)
+        ])
+        let (provider, _) = makeProvider(files: files) { request in
+            jsonResponse(#"{"scope": "kimi-code"}"#)
+        }
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(snapshot.errorCategory, .authExpired)
+    }
+
+    /// A rejected API key must read as "invalid key", never as "session expired" — the remedies differ.
+    func testAPIKeyRejectedReportsInvalidKey() async {
+        let files = FakeFiles([keyConfigPath: #"{"apiKey":"kimi-key"}"#])
+        let (provider, _) = makeProvider(files: files) { request in
+            HTTPResponse(statusCode: 401, headers: [:], body: Data())
+        }
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(snapshot.errorCategory, .authInvalid)
+        XCTAssertEqual(snapshot.lines.first, .badge(
+            label: MetricLine.errorBadgeLabel,
+            text: KimiAuthError.invalidKey.localizedDescription,
+            colorHex: "#EF4444"
+        ))
+    }
+
+    func testUsageServerErrorReportsRequestFailed() async {
+        let files = FakeFiles([
+            currentOAuthPath: oauthFileJSON(expiresAt: testNow.timeIntervalSince1970 + 600)
+        ])
+        let (provider, _) = makeProvider(files: files) { request in
+            HTTPResponse(statusCode: 500, headers: [:], body: Data())
+        }
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(snapshot.errorCategory, .http5xx)
+    }
+
+    /// No refresh token on file, but the access token may still be valid: send it and let the usage
+    /// endpoint be the judge instead of declaring the session dead early.
+    func testNearExpiryAccessTokenWithoutRefreshTokenStillProbes() async {
+        let files = FakeFiles([
+            currentOAuthPath: #"{"access_token":"lone-access","expires_at":\#(testNow.timeIntervalSince1970 + 60),"token_type":"Bearer"}"#
+        ])
+        let (provider, http) = makeProvider(files: files) { request in
+            XCTAssertEqual(request.headers["Authorization"], "Bearer lone-access")
+            return jsonResponse(usageBothJSON)
+        }
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertNil(snapshot.errorCategory)
+        XCTAssertEqual(http.requests.map(\.url), [KimiUsageClient.usageURL])
+    }
+
+    /// The CLI may rotate its tokens on disk between OpenUsage's first load and the pre-refresh
+    /// re-read: the newer on-disk token must win, and no refresh call must burn the old one.
+    func testLiveFileRereadAdoptsRotatedToken() async throws {
+        let files = RotatingFiles(contents: [
+            oauthFileJSON(accessToken: "stale-access", refreshToken: "stale-refresh",
+                          expiresAt: testNow.timeIntervalSince1970 - 60),
+            oauthFileJSON(accessToken: "rotated-access", refreshToken: "rotated-refresh",
+                          expiresAt: testNow.timeIntervalSince1970 + 600)
+        ])
+        let http = RoutingHTTPClient { request in
+            XCTAssertEqual(request.url, KimiUsageClient.usageURL)
+            XCTAssertEqual(request.headers["Authorization"], "Bearer rotated-access")
+            return jsonResponse(usageBothJSON)
+        }
+        let provider = KimiProvider(
+            authStore: KimiAuthStore(files: files, environment: FakeEnvironment([:]), now: { testNow }),
+            usageClient: KimiUsageClient(http: http),
+            now: { testNow }
+        )
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertNil(snapshot.errorCategory)
+        XCTAssertEqual(http.requests.map(\.url), [KimiUsageClient.usageURL])
+    }
 }
 
 /// A tiny async-safe call counter for routing handlers that must vary by attempt.
@@ -450,4 +651,29 @@ private actor Counter {
         value += 1
         return value
     }
+}
+
+/// Serves different credential-file contents on successive reads of the OAuth path, simulating the
+/// CLI rotating its tokens on disk between OpenUsage's first load and its pre-refresh re-read.
+/// `exists` answers true only for the OAuth path so the API-key config lookup stays absent.
+private final class RotatingFiles: TextFileAccessing, @unchecked Sendable {
+    private var contents: [String]
+    private var reads = 0
+
+    init(contents: [String]) {
+        self.contents = contents
+    }
+
+    func exists(_ path: String) -> Bool {
+        path == currentOAuthPath
+    }
+
+    func readText(_ path: String) throws -> String {
+        defer { reads += 1 }
+        return contents[min(reads, contents.count - 1)]
+    }
+
+    func writeText(_ path: String, _ text: String) throws {}
+
+    func remove(_ path: String) throws {}
 }

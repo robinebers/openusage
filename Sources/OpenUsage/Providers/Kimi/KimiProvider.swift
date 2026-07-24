@@ -85,10 +85,14 @@ final class KimiProvider: ProviderRuntime {
         }
 
         if authStore.needsRefresh(state.credentials) {
-            guard let refreshToken = state.credentials.refreshToken, !refreshToken.isEmpty else {
-                throw KimiAuthError.sessionExpired
+            if let refreshToken = state.credentials.refreshToken, !refreshToken.isEmpty {
+                accessToken = try await refreshAccessToken(state: &state, refreshToken: refreshToken)
+            } else if !accessToken.isEmpty {
+                // No refresh token to renew with, but the access token may still be valid — send it
+                // and let the 401-retry path be the judge instead of declaring the session dead
+                // while the credential could still serve.
+                AppLog.warn(LogTag.auth("kimi"), "access token near expiry with no refresh token on file; trying it as-is")
             }
-            accessToken = try await refreshAccessToken(state: &state, refreshToken: refreshToken)
         }
         guard !accessToken.isEmpty else {
             throw KimiAuthError.sessionExpired

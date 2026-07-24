@@ -23,6 +23,14 @@ enum KimiUsageMapper {
         guard root["limits"] != nil || root["usage"] != nil else {
             throw KimiUsageError.invalidResponse
         }
+        // A known container with the wrong shape is a malformed response, not an account without
+        // quotas — the two must not both collapse into the "No usage data" badge.
+        if let limits = root["limits"], !(limits is [[String: Any]]) {
+            throw KimiUsageError.invalidResponse
+        }
+        if let usageObject = root["usage"], !(usageObject is [String: Any]) {
+            throw KimiUsageError.invalidResponse
+        }
 
         var lines: [MetricLine] = []
         // The shortest declared window is the session meter; entries without a readable window sort last.
@@ -105,6 +113,9 @@ enum KimiUsageMapper {
         }
         let unitMs: Double
         switch unit.uppercased() {
+        // Sub-second units must not fall into the plain "SECOND" match (a 1000x+ period error).
+        case let u where u.contains("MILLISECOND") || u.contains("MICROSECOND") || u.contains("NANOSECOND"):
+            return nil
         case let u where u.contains("SECOND"): unitMs = 1000
         case let u where u.contains("MINUTE"): unitMs = 60 * 1000
         case let u where u.contains("HOUR"): unitMs = 60 * 60 * 1000
@@ -167,7 +178,7 @@ enum KimiUsageMapper {
         }
         // The protobuf zero value means "no level reported", not a tier named "Unspecified".
         guard normalized != "LEVEL_UNSPECIFIED" else { return nil }
-        let cleaned = level
+        let cleaned = normalized
             .replacingOccurrences(of: "^LEVEL_", with: "", options: .regularExpression)
             .replacingOccurrences(of: "_", with: " ")
         let label = cleaned.titleCased(separator: { $0 == " " }, lowercasingTail: true)

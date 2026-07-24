@@ -125,23 +125,55 @@ struct KimiAuthStore: Sendable {
 
     /// Reads the credential from a single on-disk file — used when re-reading the exact source we
     /// already loaded from (the CLI may have rotated the token since), so we don't re-scan every path.
+    ///
+    /// The strict `Codable` decode runs first; a file it rejects (e.g. one field with an unexpected
+    /// type) falls back to a tolerant per-field read, because the file belongs to the CLI — a single
+    /// surprising field must not misreport a signed-in user as "Not logged in". A file that isn't
+    /// JSON at all is logged loudly before being treated as absent.
     func loadOAuth(at path: String) -> KimiOAuthState? {
-        guard files.exists(path),
-              let text = try? files.readText(path),
-              let credentials = ProviderParse.decodeJSONWithHexFallback(text, as: KimiOAuthCredentials.self)
-        else {
+        guard files.exists(path) else { return nil }
+        guard let text = try? files.readText(path) else {
+            AppLog.warn(LogTag.auth("kimi"), "credential file unreadable at \(path); treating as not logged in")
             return nil
         }
+        if let credentials = ProviderParse.decodeJSONWithHexFallback(text, as: KimiOAuthCredentials.self) {
+            let state = KimiOAuthState(credentials: credentials, path: path)
+            return state.isUsable ? state : nil
+        }
+        guard let object = (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [String: Any] else {
+            AppLog.warn(LogTag.auth("kimi"), "credential file at \(path) is not valid JSON; treating as not logged in")
+            return nil
+        }
+        var credentials = KimiOAuthCredentials()
+        credentials.accessToken = object["access_token"] as? String
+        credentials.refreshToken = object["refresh_token"] as? String
+        credentials.expiresAt = ProviderParse.number(object["expires_at"])
+        credentials.expiresIn = ProviderParse.number(object["expires_in"])
+        credentials.scope = object["scope"] as? String
+        credentials.tokenType = object["token_type"] as? String
         let state = KimiOAuthState(credentials: credentials, path: path)
         return state.isUsable ? state : nil
     }
 
     /// Persist rotated tokens back to the file they came from, in the CLI's own field names, so the
-    /// CLI picks up the new refresh token on its next run.
+    /// CLI picks up the new refresh token on its next run. The known fields are merged into the
+    /// existing file object rather than rewritten from scratch: keys OpenUsage doesn't know about
+    /// (today, or after a CLI update) survive the rewrite — the file belongs to the CLI, not to us.
     func save(_ state: KimiOAuthState) throws {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try encoder.encode(state.credentials)
+        var object: [String: Any] = [:]
+        if let text = try? files.readText(state.path),
+           let existing = (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [String: Any] {
+            object = existing
+        }
+        let credentials = state.credentials
+        if let accessToken = credentials.accessToken { object["access_token"] = accessToken }
+        if let refreshToken = credentials.refreshToken { object["refresh_token"] = refreshToken }
+        if let expiresAt = credentials.expiresAt { object["expires_at"] = expiresAt }
+        if let expiresIn = credentials.expiresIn { object["expires_in"] = expiresIn }
+        if let scope = credentials.scope { object["scope"] = scope }
+        if let tokenType = credentials.tokenType { object["token_type"] = tokenType }
+
+        let data = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
         guard let text = String(data: data, encoding: .utf8) else {
             throw KimiAuthError.saveFailed
         }
