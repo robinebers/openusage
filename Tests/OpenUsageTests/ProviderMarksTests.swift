@@ -22,4 +22,21 @@ final class ProviderMarksTests: XCTestCase {
             XCTAssertFalse(mark?.path.isEmpty ?? true, "\(id) mark must carry SVG path data")
         }
     }
+
+    /// Kimi's mark is hand-authored from lines and cubics because `SVGPath` has no arc support, so this
+    /// pins that it still parses into real geometry rather than silently degrading to the SF Symbol
+    /// fallback or an empty shape.
+    func testKimiResolvesToVectorMarkWithRenderableGeometry() throws {
+        let mark = try XCTUnwrap(
+            ProviderMarks.mark(for: "kimi"),
+            "Kimi must load a real vector mark instead of the moon.stars fallback"
+        )
+        XCTAssertFalse(mark.path.isEmpty)
+
+        let bounds = ProviderIconShape(pathData: mark.path)
+            .path(in: CGRect(x: 0, y: 0, width: 100, height: 100))
+            .boundingRect
+        XCTAssertGreaterThan(bounds.width, 0)
+        XCTAssertGreaterThan(bounds.height, 0)
+    }
 }

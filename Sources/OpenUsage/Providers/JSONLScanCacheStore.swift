@@ -397,14 +397,19 @@ actor JSONLScanCacheWriter {
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 
+    // The cache directory is OpenUsage's own, so the lock asserts 0700 on it. See `FileLock` for the
+    // implementation shared with the Kimi credentials rotation.
+    private static let lockDirectoryMode = NSNumber(value: 0o700)
+
     private static func withExclusiveLock<Result>(
         at url: URL,
         nonblocking: Bool = false,
         _ body: () throws -> Result
     ) throws -> Result {
-        try withLock(
+        try FileLock.withExclusive(
             at: url,
-            operation: LOCK_EX | (nonblocking ? LOCK_NB : 0),
+            nonblocking: nonblocking,
+            directoryMode: lockDirectoryMode,
             body
         )
     }
@@ -413,34 +418,6 @@ actor JSONLScanCacheWriter {
         at url: URL,
         _ body: () throws -> Result
     ) throws -> Result {
-        try withLock(at: url, operation: LOCK_SH, body)
-    }
-
-    private static func withLock<Result>(
-        at url: URL,
-        operation: Int32,
-        _ body: () throws -> Result
-    ) throws -> Result {
-        try FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        try FileManager.default.setAttributes(
-            [.posixPermissions: 0o700],
-            ofItemAtPath: url.deletingLastPathComponent().path
-        )
-        let fd = Darwin.open(url.path, O_CREAT | O_RDWR | O_CLOEXEC, mode_t(S_IRUSR | S_IWUSR))
-        guard fd >= 0 else { throw POSIXError(.init(rawValue: errno) ?? .EIO) }
-        defer {
-            flock(fd, LOCK_UN)
-            Darwin.close(fd)
-        }
-        guard Darwin.fchmod(fd, mode_t(S_IRUSR | S_IWUSR)) == 0 else {
-            throw POSIXError(.init(rawValue: errno) ?? .EIO)
-        }
-        guard flock(fd, operation) == 0 else {
-            throw POSIXError(.init(rawValue: errno) ?? .EIO)
-        }
-        return try body()
+        try FileLock.withShared(at: url, directoryMode: lockDirectoryMode, body)
     }
 }

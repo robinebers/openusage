@@ -81,11 +81,11 @@ final class ResetDisplayTests: XCTestCase {
         let providers: [ProviderRuntime] = [
             ClaudeProvider(), CodexProvider(), CursorProvider(),
             AntigravityProvider(), CopilotProvider(), DevinProvider(),
-            GrokProvider(), OpenRouterProvider(), ZAIProvider()
+            GrokProvider(), KimiProvider(), OpenRouterProvider(), ZAIProvider()
         ]
         let descriptors = providers.flatMap(\.widgetDescriptors)
         let sessionIDs = Set(descriptors.filter(\.sample.isSessionWindow).map(\.id))
-        XCTAssertEqual(sessionIDs, ["claude.session",
+        XCTAssertEqual(sessionIDs, ["claude.session", "kimi.session",
                                     "antigravity.geminiPro", "antigravity.claude"])
 
         // Same wiring pin for the menu-bar tray suffix (it replaced a title-string match).

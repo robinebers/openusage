@@ -152,6 +152,27 @@ extension DevinUsageError: CategorizedError {
     }
 }
 
+extension KimiAuthError: CategorizedError {
+    var errorCategory: ErrorCategory {
+        switch self {
+        case .notLoggedIn: .notLoggedIn
+        case .invalidCredentials: .authInvalid
+        case .sessionExpired, .tokenExpired: .authExpired
+        }
+    }
+}
+
+extension KimiUsageError: CategorizedError {
+    var errorCategory: ErrorCategory {
+        switch self {
+        case .connectionFailed: .network
+        case .invalidResponse: .decoding
+        case .requestFailed(let status): ErrorCategory.http(status)
+        case .quotaUnavailable: .notAvailable
+        }
+    }
+}
+
 extension CopilotAuthError: CategorizedError {
     var errorCategory: ErrorCategory {
         switch self {
