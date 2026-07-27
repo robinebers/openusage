@@ -19,7 +19,7 @@ final class AntigravityProvider: ProviderRuntime {
     let authStore: AntigravityAuthStore
     let usageClient: AntigravityUsageClient
     let discovery: LanguageServerDiscovery
-    let logUsageScanner: AntigravityLogUsageScanner
+    let dbUsageScanner: AntigravityDbUsageScanner
     let now: @Sendable () -> Date
     let pricing: @Sendable () async -> ModelPricing
 
@@ -27,14 +27,14 @@ final class AntigravityProvider: ProviderRuntime {
         authStore: AntigravityAuthStore = AntigravityAuthStore(),
         usageClient: AntigravityUsageClient = AntigravityUsageClient(),
         discovery: LanguageServerDiscovery = LanguageServerDiscovery(),
-        logUsageScanner: AntigravityLogUsageScanner = AntigravityLogUsageScanner(),
+        dbUsageScanner: AntigravityDbUsageScanner = AntigravityDbUsageScanner(),
         now: @escaping @Sendable () -> Date = Date.init,
         pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() }
     ) {
         self.authStore = authStore
         self.usageClient = usageClient
         self.discovery = discovery
-        self.logUsageScanner = logUsageScanner
+        self.dbUsageScanner = dbUsageScanner
         self.now = now
         self.pricing = pricing
     }
@@ -80,7 +80,7 @@ final class AntigravityProvider: ProviderRuntime {
         do {
             var result = try await probe()
             var usageHistory: ProviderUsageHistory?
-            if let scan = await logUsageScanner.scan(daysBack: 30, now: now(), pricing: await pricing()) {
+            if let scan = await dbUsageScanner.scan(daysBack: 30, now: now(), pricing: await pricing()) {
                 usageHistory = ProviderUsageHistory(
                     series: scan.series,
                     modelUsage: scan.modelUsage,

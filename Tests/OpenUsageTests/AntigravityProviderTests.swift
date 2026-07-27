@@ -5,6 +5,12 @@ final class AntigravityProviderTests: XCTestCase {
 
     // MARK: - Helpers
 
+    /// Points at a directory that can't hold `.db` files, so `refresh()` never picks up whatever real
+    /// Antigravity usage happens to exist on the machine running these tests.
+    private func noOpDbUsageScanner() -> AntigravityDbUsageScanner {
+        AntigravityDbUsageScanner(conversationsDirectory: { "/nonexistent-\(UUID().uuidString)" })
+    }
+
     private func used(_ line: MetricLine?) -> Double? {
         guard case .progress(_, let used, _, _, _, _, _)? = line else { return nil }
         return used
@@ -322,7 +328,8 @@ final class AntigravityProviderTests: XCTestCase {
         let provider = AntigravityProvider(
             authStore: AntigravityAuthStore(keychain: FakeKeychain(wrapped), files: FakeFiles()),
             usageClient: AntigravityUsageClient(lsHTTP: routing, http: routing),
-            discovery: LanguageServerDiscovery(processRunner: EmptyProcessRunner())
+            discovery: LanguageServerDiscovery(processRunner: EmptyProcessRunner()),
+            dbUsageScanner: noOpDbUsageScanner()
         )
 
         let snapshot = await provider.refresh()
@@ -339,7 +346,8 @@ final class AntigravityProviderTests: XCTestCase {
         let provider = AntigravityProvider(
             authStore: AntigravityAuthStore(keychain: FakeKeychain(nil), files: FakeFiles()),
             usageClient: AntigravityUsageClient(lsHTTP: routing, http: routing),
-            discovery: LanguageServerDiscovery(processRunner: EmptyProcessRunner())
+            discovery: LanguageServerDiscovery(processRunner: EmptyProcessRunner()),
+            dbUsageScanner: noOpDbUsageScanner()
         )
         let snapshot = await provider.refresh()
         XCTAssertTrue(snapshot.lines.contains { $0.isError })
@@ -356,7 +364,8 @@ final class AntigravityProviderTests: XCTestCase {
         let provider = AntigravityProvider(
             authStore: AntigravityAuthStore(keychain: FakeKeychain(wrapped), files: FakeFiles()),
             usageClient: AntigravityUsageClient(lsHTTP: routing, http: routing),
-            discovery: LanguageServerDiscovery(processRunner: EmptyProcessRunner())
+            discovery: LanguageServerDiscovery(processRunner: EmptyProcessRunner()),
+            dbUsageScanner: noOpDbUsageScanner()
         )
         let snapshot = await provider.refresh()
         XCTAssertTrue(snapshot.lines.contains { $0.isError })
@@ -378,7 +387,8 @@ final class AntigravityProviderTests: XCTestCase {
         let provider = AntigravityProvider(
             authStore: AntigravityAuthStore(keychain: FakeKeychain(wrapped), files: FakeFiles()),
             usageClient: AntigravityUsageClient(lsHTTP: routing, http: routing),
-            discovery: LanguageServerDiscovery(processRunner: EmptyProcessRunner())
+            discovery: LanguageServerDiscovery(processRunner: EmptyProcessRunner()),
+            dbUsageScanner: noOpDbUsageScanner()
         )
         let snapshot = await provider.refresh()
         XCTAssertEqual(snapshot.errorCategory, .authExpired)
@@ -400,7 +410,8 @@ final class AntigravityProviderTests: XCTestCase {
         let provider = AntigravityProvider(
             authStore: AntigravityAuthStore(keychain: FakeKeychain(wrapped), files: FakeFiles()),
             usageClient: AntigravityUsageClient(lsHTTP: routing, http: routing),
-            discovery: LanguageServerDiscovery(processRunner: EmptyProcessRunner())
+            discovery: LanguageServerDiscovery(processRunner: EmptyProcessRunner()),
+            dbUsageScanner: noOpDbUsageScanner()
         )
         let snapshot = await provider.refresh()
         XCTAssertEqual(snapshot.errorCategory, .network)
@@ -421,7 +432,8 @@ final class AntigravityProviderTests: XCTestCase {
         let provider = AntigravityProvider(
             authStore: AntigravityAuthStore(keychain: FakeKeychain(wrapped), files: FakeFiles()),
             usageClient: AntigravityUsageClient(lsHTTP: routing, http: routing),
-            discovery: LanguageServerDiscovery(processRunner: EmptyProcessRunner())
+            discovery: LanguageServerDiscovery(processRunner: EmptyProcessRunner()),
+            dbUsageScanner: noOpDbUsageScanner()
         )
         let snapshot = await provider.refresh()
         XCTAssertEqual(snapshot.errorCategory, .network)
@@ -447,7 +459,8 @@ final class AntigravityProviderTests: XCTestCase {
         let provider = AntigravityProvider(
             authStore: AntigravityAuthStore(keychain: FakeKeychain(wrapped), files: FakeFiles()),
             usageClient: AntigravityUsageClient(lsHTTP: routing, http: routing),
-            discovery: LanguageServerDiscovery(processRunner: EmptyProcessRunner())
+            discovery: LanguageServerDiscovery(processRunner: EmptyProcessRunner()),
+            dbUsageScanner: noOpDbUsageScanner()
         )
         let snapshot = await provider.refresh()
         XCTAssertEqual(snapshot.errorCategory, .network)

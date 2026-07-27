@@ -19,9 +19,14 @@ final class AntigravityLayoutTests: XCTestCase {
         // The Gemini pair is pinned (2-per-provider cap), mirroring Claude/Codex Session+Weekly.
         XCTAssertEqual(store.pinnedMetricIDs, ["antigravity.geminiPro", "antigravity.geminiWeekly"])
 
-        // Gemini pair above the fold; the Claude pool pair below the caret.
+        // Gemini pair above the fold, alongside the non-pinnable log-derived spend tiles / usage
+        // trend (always shown, never tucked behind the customize caret); the Claude pool pair is
+        // the only pair below the caret.
         let group = store.customizeGroups.first { $0.provider.id == "antigravity" }
-        XCTAssertEqual(group?.alwaysShownMetrics.map(\.id), ["antigravity.geminiPro", "antigravity.geminiWeekly"])
+        XCTAssertEqual(group?.alwaysShownMetrics.map(\.id), [
+            "antigravity.geminiPro", "antigravity.geminiWeekly",
+            "antigravity.trend", "antigravity.today", "antigravity.yesterday", "antigravity.last30"
+        ])
         XCTAssertEqual(group?.expandedMetrics.map(\.id), ["antigravity.claude", "antigravity.claudeWeekly"])
     }
 
