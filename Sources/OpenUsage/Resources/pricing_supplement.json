@@ -109,6 +109,42 @@
       "cache_write_per_million": 1.25,
       "cache_read_per_million": 0.1,
       "output_per_million": 6.0
+    },
+    "gemini-2.5-flash": {
+      "input_per_million": 0.075,
+      "cache_write_per_million": 0.075,
+      "cache_read_per_million": 0.01875,
+      "output_per_million": 0.30
+    },
+    "gemini-3-flash-preview": {
+      "input_per_million": 0.10,
+      "cache_write_per_million": 0.10,
+      "cache_read_per_million": 0.025,
+      "output_per_million": 0.40
+    },
+    "gemini-3.5-flash": {
+      "input_per_million": 0.10,
+      "cache_write_per_million": 0.10,
+      "cache_read_per_million": 0.025,
+      "output_per_million": 0.40
+    },
+    "gemini-3.6-flash": {
+      "input_per_million": 0.10,
+      "cache_write_per_million": 0.10,
+      "cache_read_per_million": 0.025,
+      "output_per_million": 0.40
+    },
+    "gemini-3-pro-preview": {
+      "input_per_million": 1.25,
+      "cache_write_per_million": 1.25,
+      "cache_read_per_million": 0.3125,
+      "output_per_million": 5.0
+    },
+    "gemini-3.1-pro-preview": {
+      "input_per_million": 1.25,
+      "cache_write_per_million": 1.25,
+      "cache_read_per_million": 0.3125,
+      "output_per_million": 5.0
     }
   },
   "fast_multipliers": {
@@ -159,6 +195,9 @@
     { "pattern": "^gemini-2\\.5-flash$", "canonical": "gemini-2.5-flash" },
     { "pattern": "^gemini-3-flash(?:-preview)?$", "canonical": "gemini-3-flash-preview" },
     { "pattern": "^gemini-3\\.5-flash(?:-preview)?$", "canonical": "gemini-3.5-flash" },
+    { "pattern": "^gemini-3\\.6-flash(?:-preview)?$", "canonical": "gemini-3.6-flash" },
+    { "pattern": "^gemini-flash$", "canonical": "gemini-2.5-flash" },
+    { "pattern": "^gemini-pro$", "canonical": "gemini-3.1-pro-preview" },
     { "pattern": "^gemini-3-pro-preview$", "canonical": "gemini-3-pro-preview" },
     { "pattern": "^gemini-3\\.1-pro$", "canonical": "gemini-3.1-pro-preview" },
     { "pattern": "^gemini-3\\.1-pro-preview$", "canonical": "gemini-3.1-pro-preview" },

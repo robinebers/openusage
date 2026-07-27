@@ -19,18 +19,24 @@ final class AntigravityProvider: ProviderRuntime {
     let authStore: AntigravityAuthStore
     let usageClient: AntigravityUsageClient
     let discovery: LanguageServerDiscovery
+    let logUsageScanner: AntigravityLogUsageScanner
     let now: @Sendable () -> Date
+    let pricing: @Sendable () async -> ModelPricing
 
     init(
         authStore: AntigravityAuthStore = AntigravityAuthStore(),
         usageClient: AntigravityUsageClient = AntigravityUsageClient(),
         discovery: LanguageServerDiscovery = LanguageServerDiscovery(),
-        now: @escaping @Sendable () -> Date = Date.init
+        logUsageScanner: AntigravityLogUsageScanner = AntigravityLogUsageScanner(),
+        now: @escaping @Sendable () -> Date = Date.init,
+        pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() }
     ) {
         self.authStore = authStore
         self.usageClient = usageClient
         self.discovery = discovery
+        self.logUsageScanner = logUsageScanner
         self.now = now
+        self.pricing = pricing
     }
 
     var widgetDescriptors: [WidgetDescriptor] {
@@ -42,8 +48,14 @@ final class AntigravityProvider: ProviderRuntime {
             .percent(id: AntigravityMetric.claudeID, provider: provider, title: AntigravityMetric.claudeLabel, isSessionWindow: true)
                 .exportingLimit("nonGeminiSession", unit: "percent"),
             .percent(id: AntigravityMetric.claudeWeeklyID, provider: provider, title: AntigravityMetric.claudeWeeklyLabel)
-                .exportingLimit("nonGeminiWeekly", unit: "percent")
-        ]
+                .exportingLimit("nonGeminiWeekly", unit: "percent"),
+            .usageTrend(provider: provider)
+                .exportingHistory(
+                    scope: .machineLocal,
+                    estimatedCost: true,
+                    sourceNote: "From your Antigravity logs (estimated)"
+                )
+        ] + WidgetDescriptor.spendTiles(provider: provider)
     }
 
     func hasLocalCredentials() async -> Bool {
@@ -66,8 +78,32 @@ final class AntigravityProvider: ProviderRuntime {
 
     func refresh() async -> ProviderSnapshot {
         do {
-            let result = try await probe()
-            return ProviderSnapshot.make(provider: provider, plan: result.plan, lines: result.lines, refreshedAt: now())
+            var result = try await probe()
+            var usageHistory: ProviderUsageHistory?
+            if let scan = await logUsageScanner.scan(daysBack: 30, now: now(), pricing: await pricing()) {
+                usageHistory = ProviderUsageHistory(
+                    series: scan.series,
+                    modelUsage: scan.modelUsage,
+                    unknownModelsByDay: scan.unknownModelsByDay
+                )
+                SpendTileMapper.appendTokenUsage(
+                    scan.series,
+                    to: &result.lines,
+                    now: now(),
+                    unknownModelsByDay: scan.unknownModelsByDay,
+                    modelUsage: scan.modelUsage,
+                    modelSourceNote: "From your Antigravity logs (estimated)"
+                )
+                SpendTileMapper.appendUsageTrend(scan.series, to: &result.lines, now: now(),
+                                                 note: "From your Antigravity logs (estimated)")
+            }
+            return ProviderSnapshot.make(
+                provider: provider,
+                plan: result.plan,
+                lines: result.lines,
+                refreshedAt: now(),
+                usageHistory: usageHistory
+            )
         } catch {
             return ProviderSnapshot.error(provider: provider, error: error)
         }
