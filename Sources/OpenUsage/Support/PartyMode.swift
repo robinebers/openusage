@@ -15,12 +15,15 @@ extension EnvironmentValues {
     }
 }
 
-/// Whether the hosting popover is currently on-screen. The easter-egg animation loops read this to
-/// **mount** their `TimelineView(.animation)` clocks only while the popover is visible and drop to a
-/// static frame when it isn't, so a closed popover with the egg still active runs no display link and
-/// spends no CPU. Default `false`, so the windowless ShareCard export and any non-popover host never
-/// mount the loops. Seeded from `PopoverTransparencyStore.popoverShown`, which `StatusItemController`
-/// flips at its `showPanel`/`hidePanel` chokepoints.
+/// Whether the hosting popover is currently on-screen. The easter-egg animation loops, plus any clock-
+/// driven text (footer countdown, per-row reset ticks, iCloud "Updated Xm ago" labels), read this to
+/// **mount** their `TimelineView` clocks only while the popover is visible and drop to a static frame
+/// when it isn't. This matters because `NSHostingView` drives `TimelineView` with a plain `NSTimer`, not
+/// a display link tied to on-screen state — hiding the panel via `orderOut` alone never pauses it, so an
+/// ungated clock ticks (and re-lays-out the whole hosted tree) forever in the background. Default
+/// `false`, so the windowless ShareCard export and any non-popover host never mount the loops. Seeded
+/// from `PopoverTransparencyStore.popoverShown`, which `StatusItemController` flips at its
+/// `showPanel`/`hidePanel` chokepoints.
 ///
 /// This is a STRUCTURAL mount gate (`if shown { TimelineView } else { static }`), deliberately NOT the
 /// reverted `TimelineView(.animation(paused: !shown))` overload (commit 1ef9c4e): that overload froze
@@ -63,6 +66,32 @@ struct VisibilityGatedTimeline<Content: View>: View {
         } else {
             content(Date().timeIntervalSinceReferenceDate)
                 .transition(.identity)
+        }
+    }
+}
+
+/// The `.periodic(from:by:)` counterpart to `VisibilityGatedTimeline`, for countdown/tick text (footer
+/// "next update in", per-row reset countdowns, "Updated Xm ago" labels) rather than continuous animation.
+/// Same STRUCTURAL mount gate and the same reason it exists: `NSHostingView` schedules `.periodic` via a
+/// plain `NSTimer`, so nothing about hiding the panel with `orderOut` stops it on its own — unmounting is
+/// what actually silences the timer. Shows a single static frame (now) while hidden.
+struct VisibilityGatedPeriodicTimeline<Content: View>: View {
+    @Environment(\.popoverIsVisible) private var shown
+    private let interval: TimeInterval
+    private let content: (Date) -> Content
+
+    init(every interval: TimeInterval, @ViewBuilder content: @escaping (Date) -> Content) {
+        self.interval = interval
+        self.content = content
+    }
+
+    var body: some View {
+        if shown {
+            TimelineView(.periodic(from: .now, by: interval)) { timeline in
+                content(timeline.date)
+            }
+        } else {
+            content(Date())
         }
     }
 }

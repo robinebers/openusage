@@ -89,8 +89,8 @@ struct ICloudSyncSettingsSection: View {
                             .fixedSize()
                     }
                 }
-                TimelineView(.periodic(from: .now, by: 60)) { context in
-                    Text("Updated \(relativeAge(document.updatedAt, now: context.date))")
+                VisibilityGatedPeriodicTimeline(every: 60) { now in
+                    Text("Updated \(relativeAge(document.updatedAt, now: now))")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)

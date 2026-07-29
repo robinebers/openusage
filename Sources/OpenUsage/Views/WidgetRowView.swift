@@ -48,11 +48,14 @@ struct WidgetRowView: View {
     var body: some View {
         // A row with a concrete reset date derives time-sensitive state (reset countdown, pace marker,
         // "Runs out in …") from the current clock, so it re-renders on a 30s tick — the cadence the
-        // original app uses — instead of waiting for the next data refresh. TimelineView only schedules
-        // ticks while the popover is actually visible. Rows without a reset date are static.
+        // original app uses — instead of waiting for the next data refresh.
+        // `VisibilityGatedPeriodicTimeline` only mounts that tick while the popover is on-screen (see
+        // `PartyMode.swift`); a plain `TimelineView` here would keep ticking, and re-laying-out this row,
+        // forever after the panel is hidden, since `orderOut` alone doesn't pause it. Rows without a
+        // reset date are static.
         Group {
             if data.resetsAt != nil || !data.expiriesAt.isEmpty {
-                TimelineView(.periodic(from: .now, by: 30)) { _ in
+                VisibilityGatedPeriodicTimeline(every: 30) { _ in
                     rowContent
                 }
             } else {

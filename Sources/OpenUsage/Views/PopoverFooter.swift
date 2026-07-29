@@ -68,9 +68,9 @@ struct PopoverFooter: View {
         Button {
             refreshNow()
         } label: {
-            TimelineView(.periodic(from: .now, by: 1)) { context in
+            VisibilityGatedPeriodicTimeline(every: 1) { now in
                 HStack(spacing: 5) {
-                    Text(updateStatusText(now: context.date))
+                    Text(updateStatusText(now: now))
                         .monospacedDigit()
                         .contentTransition(.numericText())
                     if isUpdating {
