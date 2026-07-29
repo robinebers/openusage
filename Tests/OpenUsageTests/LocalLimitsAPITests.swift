@@ -220,6 +220,7 @@ final class LocalLimitsAPITests: XCTestCase {
             "grok": ["weekly"],
             "opencode": ["session", "weekly", "monthly"],
             "openrouter": ["credits", "balance", "keyLimit"],
+            "qwen": ["session", "weekly"],
             "zai": ["session", "weekly", "webSearches"]
         ]
 

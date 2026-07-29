@@ -32,6 +32,8 @@ enum DefaultLayout {
         "openrouter.credits", "openrouter.balance",
         "openrouter.today", "openrouter.week", "openrouter.month", "openrouter.keyLimit",
 
+        "qwen.session", "qwen.weekly",
+
         "zai.session", "zai.weekly", "zai.webSearches"
     ]
 
@@ -65,6 +67,7 @@ enum DefaultLayout {
         "cursor.auto", "cursor.api",
         "copilot.premium",
         "openrouter.credits",
+        "qwen.session", "qwen.weekly",
         "zai.session", "zai.weekly"
     ]
 

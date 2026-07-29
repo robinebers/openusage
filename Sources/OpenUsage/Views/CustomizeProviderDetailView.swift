@@ -36,6 +36,9 @@ struct CustomizeProviderDetailView: View {
                 if let keyProvider = container.apiKeyProviders.first(where: { $0.provider.id == providerID }) {
                     APIKeysSection(provider: keyProvider)
                 }
+                if let sessionProvider = container.sessionProviders.first(where: { $0.provider.id == providerID }) {
+                    SessionSection(provider: sessionProvider)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .animation(Motion.spring, value: layout.expandedMetricIDs)

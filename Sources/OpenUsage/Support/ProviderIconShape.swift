@@ -93,6 +93,7 @@ enum ProviderMarks {
         case "grok": return "bolt.fill"
         case "opencode": return "chevron.left.forwardslash.chevron.right"
         case "openrouter": return "point.3.connected.trianglepath.dotted"
+        case "qwen": return "sparkles"
         case "zai": return "z.signal"
         default: return "app.dashed"
         }

@@ -18,6 +18,10 @@ final class AppContainer {
     /// `APIKeyManaging`. Each matching Customize provider detail shows an API Key section and writes
     /// changes through the capability. Empty when no installed provider needs a user key.
     let apiKeyProviders: [any APIKeyManaging]
+    /// Providers whose credential is a captured web session (currently Qwen Cloud), conforming to
+    /// `SessionManaging`. Each matching Customize provider detail shows a session card (Sign In /
+    /// Sign Out) beside the API Key card's slot. Empty when no installed provider uses sessions.
+    let sessionProviders: [any SessionManaging]
     /// Quota pace notification preferences (three independent triggers). Drives the Settings section
     /// and is read by `WidgetDataStore.evaluateNotifications`.
     let notificationSettings: NotificationSettingsStore
@@ -82,6 +86,7 @@ final class AppContainer {
         )
         let registry = WidgetRegistry.from(providers)
         let apiKeyProviders = providers.compactMap { $0 as? any APIKeyManaging }
+        let sessionProviders = providers.compactMap { $0 as? any SessionManaging }
         let enablement = ProviderEnablementStore()
         let notificationSettings = NotificationSettingsStore()
         let layout = LayoutStore(
@@ -126,6 +131,7 @@ final class AppContainer {
         self.registry = registry
         self.enablement = enablement
         self.apiKeyProviders = apiKeyProviders
+        self.sessionProviders = sessionProviders
         self.notificationSettings = notificationSettings
         self.layout = layout
         self.dataStore = dataStore

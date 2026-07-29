@@ -41,6 +41,7 @@ enum ProviderCatalog {
             GrokProvider(),
             OpenCodeProvider(),
             OpenRouterProvider(),
+            QwenProvider(),
             ZAIProvider()
         ]
         return runtimes

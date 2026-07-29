@@ -241,3 +241,24 @@ extension AntigravityError: CategorizedError {
         }
     }
 }
+
+extension QwenAuthError: CategorizedError {
+    var errorCategory: ErrorCategory {
+        switch self {
+        case .notSignedIn: .notLoggedIn
+        case .saveFailed, .deleteFailed: .other
+        case .signInCancelled: .other
+        }
+    }
+}
+
+extension QwenUsageError: CategorizedError {
+    var errorCategory: ErrorCategory {
+        switch self {
+        case .connectionFailed: .network
+        case .invalidResponse: .decoding
+        case .requestFailed(let status): ErrorCategory.http(status)
+        case .sessionExpired: .authExpired
+        }
+    }
+}
