@@ -11,7 +11,9 @@ import Foundation
 enum CursorSpendViewSetting: String, Hashable, Sendable, CaseIterable, UserDefaultsBacked {
     case all
     case included
-    case api
+    /// Named for the billing side, not the API: "API Usage" is already the bounded meter Cursor
+    /// reports, and reusing it here would read as if the picker filtered that meter.
+    case billed
 
     static let key = "cursor.spendView"
     static var fallback: CursorSpendViewSetting { .all }
@@ -22,7 +24,7 @@ enum CursorSpendViewSetting: String, Hashable, Sendable, CaseIterable, UserDefau
         switch self {
         case .all: return "All Usage"
         case .included: return "Included Usage"
-        case .api: return "API Usage"
+        case .billed: return "Billed"
         }
     }
 
@@ -31,7 +33,7 @@ enum CursorSpendViewSetting: String, Hashable, Sendable, CaseIterable, UserDefau
         switch self {
         case .all: return true
         case .included: return billing == .included
-        case .api: return billing == .billed
+        case .billed: return billing == .billed
         }
     }
 }

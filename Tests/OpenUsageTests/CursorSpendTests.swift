@@ -283,7 +283,7 @@ final class CursorSpendRangeTests: XCTestCase {
         XCTAssertEqual(values(includedLines, "Today"), [MetricValue(number: 1.00, kind: .dollars, estimated: true), MetricValue(number: 100, kind: .count, label: "tokens")])
 
         var apiLines: [MetricLine] = []
-        CursorUsageMapper.appendSpendLines(rows: rows, now: now, pricing: TestPricing.bundled, view: .api, to: &apiLines)
+        CursorUsageMapper.appendSpendLines(rows: rows, now: now, pricing: TestPricing.bundled, view: .billed, to: &apiLines)
         XCTAssertEqual(values(apiLines, "Today"), [MetricValue(number: 2.00, kind: .dollars, estimated: true), MetricValue(number: 200, kind: .count, label: "tokens")])
     }
 
@@ -293,7 +293,7 @@ final class CursorSpendRangeTests: XCTestCase {
         let rows = [makeRow(date: now, cost: 1.00, tokens: 100, billing: .included)]
 
         var lines: [MetricLine] = []
-        CursorUsageMapper.appendSpendLines(rows: rows, now: now, pricing: TestPricing.bundled, view: .api, to: &lines)
+        CursorUsageMapper.appendSpendLines(rows: rows, now: now, pricing: TestPricing.bundled, view: .billed, to: &lines)
 
         XCTAssertNil(values(lines, "Today"))
         XCTAssertNil(lines.first(where: { $0.label == "Usage Trend" }))

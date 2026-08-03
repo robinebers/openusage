@@ -36,7 +36,7 @@ Cursor's export marks each row as either plan-**included** usage or billed **API
 |---|---|
 | **All Usage** (default) | Every row — the combined picture, unchanged from before |
 | **Included Usage** | Only rows the plan covers |
-| **API Usage** | Only billed / on-demand rows |
+| **Billed** | Only billed / on-demand rows |
 
 The setting only affects the spend tiles (Today / Yesterday / Last 30 Days) and the Usage Trend. The bounded meters (Total / Auto / API Usage %) always stay as Cursor reports them — they come from Cursor's live API, not the export. Older exports without a Cost column can't be split, so their rows only appear under All Usage. The preference is stored per device and applies on the next refresh.
 
