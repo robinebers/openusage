@@ -210,7 +210,7 @@ final class CodexLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(CodexLogUsageScanner.autoReviewFallback(at: "garbage"), "gpt-5")
     }
 
-    func testAutoReviewLinesResolveByLineDate() {
+    func testAutoReviewLinesKeepSlugAndResolvePricingByLineDate() {
         let lines = [
             CodexLogFixture.turnContext(timestamp: "2026-03-10T08:00:00.000Z", model: "codex-auto-review"),
             CodexLogFixture.tokenCount(
@@ -219,7 +219,9 @@ final class CodexLogUsageScannerTests: XCTestCase {
             )
         ].joined(separator: "\n")
 
-        XCTAssertEqual(CodexLogUsageScanner.parseFile(Data(lines.utf8)).first?.model, "gpt-5.4")
+        let event = CodexLogUsageScanner.parseFile(Data(lines.utf8)).first
+        XCTAssertEqual(event?.model, "codex-auto-review")
+        XCTAssertEqual(event?.pricingModel, "gpt-5.4")
     }
 
     // MARK: - Child-session replay (subagents and forks)
@@ -479,11 +481,11 @@ final class CodexLogUsageScannerTests: XCTestCase {
 
     private func makeEvent(
         _ timestamp: String, model: String = "gpt-5.2", input: Int = 100, cached: Int = 0,
-        output: Int = 50, reasoning: Int = 0, isFast: Bool = false
+        output: Int = 50, reasoning: Int = 0, isFast: Bool = false, pricingModel: String? = nil
     ) -> CodexLogUsageScanner.Event {
         CodexLogUsageScanner.Event(
             timestamp: OpenUsageISO8601.date(from: timestamp)!,
-            model: model, input: input, cached: cached, output: output, reasoning: reasoning,
+            model: model, pricingModel: pricingModel, input: input, cached: cached, output: output, reasoning: reasoning,
             total: input + output, isFast: isFast
         )
     }
@@ -506,6 +508,22 @@ final class CodexLogUsageScannerTests: XCTestCase {
         XCTAssertTrue(scan.unknownModelsByDay.isEmpty)
         let may12Models = scan.modelUsage?.daily.first { $0.date == "2026-05-12" }?.models ?? []
         XCTAssertEqual(may12Models, [ModelUsageEntry(model: "gpt-5.2", totalTokens: 300, costUSD: 0.5)])
+    }
+
+    func testAggregateAttributesAutoReviewUsageToSlugWhileUsingFallbackPrice() {
+        let scan = CodexLogUsageScanner.aggregate(
+            events: [makeEvent(
+                "2026-05-12T08:00:00.000Z", model: "codex-auto-review",
+                pricingModel: "gpt-5.2"
+            )],
+            since: .distantPast, pricing: fixedRates()
+        )
+
+        XCTAssertEqual(scan.series.daily.first?.costUSD ?? 0, 0.25, accuracy: 0.0001)
+        XCTAssertEqual(
+            scan.modelUsage?.daily.first?.models,
+            [ModelUsageEntry(model: "codex-auto-review", totalTokens: 150, costUSD: 0.25)]
+        )
     }
 
     func testAggregateFeedsSingleModelTodayBreakdown() throws {
