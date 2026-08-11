@@ -55,6 +55,7 @@ final class PricingBundledResourceTests: XCTestCase {
         XCTAssertEqual(pricing.resolve(model: "kimi-k2p5")?.inputPerMillion, 0.6)
         XCTAssertEqual(pricing.resolve(model: "kimi-k2.7-code")?.inputPerMillion, 0.95)
         XCTAssertEqual(pricing.resolve(model: "kimi-k2p7")?.inputPerMillion, 0.95)
+        XCTAssertEqual(pricing.resolve(model: "kimi-k3-max")?.inputPerMillion, 3)
         XCTAssertEqual(pricing.resolve(model: "claude-4.7-opus-high-thinking")?.inputPerMillion, 5)
         XCTAssertEqual(pricing.resolve(model: "claude-4.7-opus-max-thinking-fast")?.inputPerMillion, 30)
         XCTAssertEqual(pricing.resolve(model: "glm-5.2-max")?.inputPerMillion, 1.4)
@@ -134,6 +135,60 @@ final class PricingBundledResourceTests: XCTestCase {
         var fastTokens = tokens
         fastTokens.isFast = true
         XCTAssertEqual(opus5.costDollars(for: fastTokens), opus5.costDollars(for: tokens) * 2, accuracy: 0.000_001)
+    }
+
+    /// Kimi K3: Cursor's published rates. Cursor lists no separate cache-write fee, so cache writes
+    /// bill at the input rate, and the effort suffixes Cursor's CSV uses fold into the one entry.
+    func testKimiK3PricingAndAliases() throws {
+        let pricing = Self.pricing
+        let k3 = try XCTUnwrap(pricing.resolve(model: "kimi-k3"))
+        XCTAssertEqual(k3.inputPerMillion, 3.0)
+        XCTAssertEqual(k3.cacheWritePerMillion, 3.0)
+        XCTAssertEqual(k3.cacheReadPerMillion, 0.3)
+        XCTAssertEqual(k3.outputPerMillion, 15.0)
+        XCTAssertEqual(pricing.resolve(model: "kimi-k3-max"), k3)
+        XCTAssertEqual(pricing.resolve(model: "kimi-k3-high"), k3)
+        XCTAssertEqual(pricing.resolve(model: "kimi-k3-code"), k3)
+        // K3 must not collapse into the cheaper K2.7 entry.
+        XCTAssertNotEqual(pricing.resolve(model: "kimi-k2.7-code"), k3)
+    }
+
+    /// Cursor Router rows name the routed model in prose ("Opus 5 (Auto Balanced)") instead of a
+    /// slug, so each label needs its own alias. The mode inside the parentheses is free-form: Cursor
+    /// has shipped plain `(Auto)` and `(Auto Balanced)`, and the docs also name Cost and Intelligence.
+    func testCursorRouterLabelsPriceAsTheRoutedModel() throws {
+        let pricing = Self.pricing
+        let expected: [String: String] = [
+            "Opus 5 (Auto Balanced)": "claude-opus-5",
+            "Claude Opus 5 (Auto)": "claude-opus-5",
+            "Opus 4.8 (Auto)": "claude-opus-4-8",
+            "Sonnet 5 (Auto Intelligence)": "claude-sonnet-5",
+            "Fable 5 (Auto Balanced)": "claude-fable-5",
+            "Haiku 4.5 (Auto Cost)": "claude-haiku-4-5",
+            "Composer 2.5 (Auto)": "composer-2.5",
+            "Composer 2.5 Fast (Auto)": "composer-2.5-fast",
+            "Composer 2 (Auto Balanced)": "composer-2",
+            "Grok 4.5 (Auto Intelligence)": "grok-4.5",
+            "Cursor Grok 4.5 Fast (Auto)": "grok-4.5-fast",
+            "GPT-5.5 (Auto)": "gpt-5.5",
+            "GPT-5.6 Sol (Auto Cost)": "gpt-5.6-sol",
+            "GPT-5.6 Luna (Auto)": "gpt-5.6-luna",
+            "Gemini 3.1 Pro (Auto Balanced)": "gemini-3.1-pro-preview",
+            "GLM 5.2 (Auto)": "glm-5.2",
+            "Kimi K3 (Auto Intelligence)": "kimi-k3"
+        ]
+        for (label, canonical) in expected {
+            XCTAssertEqual(
+                pricing.supplement.canonicalName(for: label), canonical,
+                "router label '\(label)' should canonicalize to \(canonical)"
+            )
+            XCTAssertEqual(
+                pricing.resolve(model: label), pricing.resolve(model: canonical),
+                "router label '\(label)' should price exactly like \(canonical)"
+            )
+        }
+        // A directly picked model keeps its own slug: the router alias must not swallow plain names.
+        XCTAssertNil(pricing.supplement.canonicalName(for: "Opus 5"))
     }
 
     func testGPT56PricingAndAliases() throws {

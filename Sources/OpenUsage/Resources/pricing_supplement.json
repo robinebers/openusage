@@ -1,6 +1,6 @@
 {
-  "$comment": "OpenUsage pricing supplement. Prices Cursor-native models that no public catalog carries, supplies fast-variant multipliers the catalogs omit, and maps provider log/CSV model slugs to canonical pricing keys (LiteLLM keys, models.dev ids, or entries in this file). Published to gh-pages by .github/workflows/pricing-supplement.yml on every change, so installed apps pick edits up within about an hour - no release needed. Rates are USD per million tokens. Sources: https://cursor.com/docs/models-and-pricing.md for Cursor-native entries.",
-  "updated_at": "2026-07-24",
+  "$comment": "OpenUsage pricing supplement. Prices Cursor-native models that no public catalog carries, supplies fast-variant multipliers the catalogs omit, and maps provider log/CSV model slugs to canonical pricing keys (LiteLLM keys, models.dev ids, or entries in this file). Cursor Router rows name the routed model in prose instead of a slug ('Opus 5 (Auto Balanced)'), so those labels get alias rules too. Published to gh-pages by .github/workflows/pricing-supplement.yml on every change, so installed apps pick edits up within about an hour - no release needed. Rates are USD per million tokens. Sources: https://cursor.com/docs/models-and-pricing.md for Cursor-native entries.",
+  "updated_at": "2026-08-11",
   "pricing": {
     "auto": {
       "input_per_million": 1.25,
@@ -69,6 +69,13 @@
       "cache_write_per_million": 0.95,
       "cache_read_per_million": 0.19,
       "output_per_million": 4.0
+    },
+    "kimi-k3": {
+      "$comment": "Cursor's published Kimi K3 rates (Moonshot). Cursor lists no separate cache-write fee, so cache writes bill at the input rate, same as the Kimi K2.7 Code entry. Neither LiteLLM nor models.dev carries the model.",
+      "input_per_million": 3.0,
+      "cache_write_per_million": 3.0,
+      "cache_read_per_million": 0.3,
+      "output_per_million": 15.0
     },
     "claude-opus-4-7-fast": {
       "$comment": "Cursor bills Opus 4.7 fast mode at these rates; the models.dev entry carries higher (stale) numbers, so this override wins.",
@@ -155,6 +162,7 @@
     { "pattern": "^(?:cursor-)?grok-4\\.5(?:-(?:low|medium|high|xhigh))?$", "canonical": "grok-4.5" },
     { "pattern": "^kimi-k2\\.7(?:-code)?$", "canonical": "kimi-k2.7-code" },
     { "pattern": "^kimi-k2p7(?:-code)?$", "canonical": "kimi-k2.7-code" },
+    { "pattern": "^kimi-k3(?:-code)?(?:-(?:low|medium|high|xhigh|max))?$", "canonical": "kimi-k3" },
     { "pattern": "^claude-4\\.5-haiku(?:-thinking)?$", "canonical": "claude-haiku-4-5" },
     { "pattern": "^claude-4\\.5-opus-(?:low|medium|high)(?:-thinking)?$", "canonical": "claude-opus-4-5" },
     { "pattern": "^claude-4-sonnet-1m(?:-thinking)?$", "canonical": "claude-4-sonnet-1m" },
@@ -218,6 +226,24 @@
     { "pattern": "^kimi-k2\\.5$", "canonical": "moonshot/kimi-k2.5" },
     { "pattern": "^kimi-k2p5$", "canonical": "moonshot/kimi-k2.5" },
     { "pattern": "^glm-5\\.2(?:-(?:high|max))?$", "canonical": "glm-5.2" },
-    { "pattern": "^[Pp]remium \\((?:[Gg][Pp][Tt]-5\\.3-[Cc]odex|[Cc]odex 5\\.3)\\)$", "canonical": "gpt-5.3-codex" }
+    { "pattern": "^[Pp]remium \\((?:[Gg][Pp][Tt]-5\\.3-[Cc]odex|[Cc]odex 5\\.3)\\)$", "canonical": "gpt-5.3-codex" },
+    { "pattern": "(?i)^Composer 2\\.5 Fast \\(Auto[^)]*\\)$", "canonical": "composer-2.5-fast" },
+    { "pattern": "(?i)^Composer 2\\.5 \\(Auto[^)]*\\)$", "canonical": "composer-2.5" },
+    { "pattern": "(?i)^Composer 2 Fast \\(Auto[^)]*\\)$", "canonical": "composer-2-fast" },
+    { "pattern": "(?i)^Composer 2 \\(Auto[^)]*\\)$", "canonical": "composer-2" },
+    { "pattern": "(?i)^(?:Cursor )?Grok 4\\.5 Fast \\(Auto[^)]*\\)$", "canonical": "grok-4.5-fast" },
+    { "pattern": "(?i)^(?:Cursor )?Grok 4\\.5 \\(Auto[^)]*\\)$", "canonical": "grok-4.5" },
+    { "pattern": "(?i)^(?:Claude )?Haiku 4\\.5 \\(Auto[^)]*\\)$", "canonical": "claude-haiku-4-5" },
+    { "pattern": "(?i)^(?:Claude )?Opus 4\\.8 \\(Auto[^)]*\\)$", "canonical": "claude-opus-4-8" },
+    { "pattern": "(?i)^(?:Claude )?Opus 5 \\(Auto[^)]*\\)$", "canonical": "claude-opus-5" },
+    { "pattern": "(?i)^(?:Claude )?Sonnet 5 \\(Auto[^)]*\\)$", "canonical": "claude-sonnet-5" },
+    { "pattern": "(?i)^(?:Claude )?Fable 5 \\(Auto[^)]*\\)$", "canonical": "claude-fable-5" },
+    { "pattern": "(?i)^GPT-5\\.5 \\(Auto[^)]*\\)$", "canonical": "gpt-5.5" },
+    { "pattern": "(?i)^GPT-5\\.6 Sol \\(Auto[^)]*\\)$", "canonical": "gpt-5.6-sol" },
+    { "pattern": "(?i)^GPT-5\\.6 Terra \\(Auto[^)]*\\)$", "canonical": "gpt-5.6-terra" },
+    { "pattern": "(?i)^GPT-5\\.6 Luna \\(Auto[^)]*\\)$", "canonical": "gpt-5.6-luna" },
+    { "pattern": "(?i)^Gemini 3\\.1 Pro \\(Auto[^)]*\\)$", "canonical": "gemini-3.1-pro-preview" },
+    { "pattern": "(?i)^GLM 5\\.2 \\(Auto[^)]*\\)$", "canonical": "glm-5.2" },
+    { "pattern": "(?i)^Kimi K3 \\(Auto[^)]*\\)$", "canonical": "kimi-k3" }
   ]
 }
