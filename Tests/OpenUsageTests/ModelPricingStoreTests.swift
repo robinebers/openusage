@@ -154,6 +154,64 @@ final class ModelPricingStoreTests: XCTestCase {
         XCTAssertEqual(pricing.resolve(model: "fetched-model")?.inputPerMillion, 5)
     }
 
+    /// An app update ships a newer bundled supplement while the cache from the previous version is
+    /// still on disk. The shipped rates must win until the feed catches up — otherwise a fix that
+    /// merged and shipped stays invisible, permanently for anyone who can't reach the feed.
+    func testNewerBundledSupplementBeatsOlderCache() async throws {
+        try writeSupplementCache(updatedAt: "2026-01-01", autoInput: 9)
+
+        let store = makeStoreWithBundledSupplement(updatedAt: "2026-06-01", autoInput: 4)
+        let pricing = await store.current()
+        XCTAssertEqual(pricing.resolve(model: "auto")?.inputPerMillion, 4)
+    }
+
+    /// The usual case: the feed runs ahead of the shipped file, so the cache keeps winning.
+    func testNewerCachedSupplementBeatsOlderBundled() async throws {
+        try writeSupplementCache(updatedAt: "2026-06-01", autoInput: 9)
+
+        let store = makeStoreWithBundledSupplement(updatedAt: "2026-01-01", autoInput: 4)
+        let pricing = await store.current()
+        XCTAssertEqual(pricing.resolve(model: "auto")?.inputPerMillion, 9)
+    }
+
+    /// An undated file never displaces a dated one, in either direction.
+    func testUndatedSupplementNeverDisplacesDatedOne() async throws {
+        try writeSupplementCache(updatedAt: nil, autoInput: 9)
+
+        let datedBundle = await makeStoreWithBundledSupplement(updatedAt: "2026-06-01", autoInput: 4).current()
+        XCTAssertEqual(datedBundle.resolve(model: "auto")?.inputPerMillion, 4)
+
+        try writeSupplementCache(updatedAt: "2026-06-01", autoInput: 9)
+        let undatedBundle = await makeStoreWithBundledSupplement(updatedAt: nil, autoInput: 4).current()
+        XCTAssertEqual(undatedBundle.resolve(model: "auto")?.inputPerMillion, 9)
+    }
+
+    private static func supplementJSON(updatedAt: String?, autoInput: Double) -> String {
+        let dateField = updatedAt.map { "\"updated_at\": \"\($0)\", " } ?? ""
+        return """
+        {\(dateField)"pricing": {"auto": {"input_per_million": \(autoInput), "output_per_million": 6.0}},
+         "fast_multipliers": {}, "alias_rules": []}
+        """
+    }
+
+    private func writeSupplementCache(updatedAt: String?, autoInput: Double) throws {
+        try Data(Self.supplementJSON(updatedAt: updatedAt, autoInput: autoInput).utf8)
+            .write(to: tempDir.appendingPathComponent("supplement.json"), options: .atomic)
+    }
+
+    /// A store whose bundled supplement carries `updatedAt`, with the network dead so only the
+    /// cache-vs-bundled choice is under test.
+    private func makeStoreWithBundledSupplement(updatedAt: String?, autoInput: Double) -> ModelPricingStore {
+        let json = Self.supplementJSON(updatedAt: updatedAt, autoInput: autoInput)
+        return ModelPricingStore(
+            http: RoutingHTTPClient(handler: { _ in throw URLError(.notConnectedToInternet) }),
+            cacheDirectory: tempDir,
+            bundledData: { name in
+                name == "pricing_supplement" ? Data(json.utf8) : Self.bundledFixtures(name)
+            }
+        )
+    }
+
     func testFailureRetryIntervalPreventsHammering() async throws {
         let counter = OSAllocatedUnfairLockedCounter()
         let (store, _) = makeStore(handler: { _ in
