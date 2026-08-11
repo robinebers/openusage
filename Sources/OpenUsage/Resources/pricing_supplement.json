@@ -150,6 +150,7 @@
     { "pattern": "^agent_review$", "canonical": "gpt-5.4" },
     { "pattern": "^default$", "canonical": "auto" },
     { "pattern": "^auto$", "canonical": "auto" },
+    { "pattern": "^composer$", "canonical": "composer-2.5" },
     { "pattern": "^composer-1$", "canonical": "composer-1" },
     { "pattern": "^composer-1\\.5$", "canonical": "composer-1.5" },
     { "pattern": "^composer-2$", "canonical": "composer-2" },

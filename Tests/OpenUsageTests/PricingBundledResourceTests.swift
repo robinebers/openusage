@@ -153,6 +153,16 @@ final class PricingBundledResourceTests: XCTestCase {
         XCTAssertNotEqual(pricing.resolve(model: "kimi-k2.7-code"), k3)
     }
 
+    /// Cursor's CSV still carries a bare, unversioned `composer` slug from before the model was
+    /// numbered. It maps to the current non-fast Composer so those rows price instead of tripping
+    /// the unknown-model warning, and must not pick up the fast variant's higher rates.
+    func testBareComposerSlugPricesAsCurrentComposer() throws {
+        let pricing = Self.pricing
+        let composer = try XCTUnwrap(pricing.resolve(model: "composer"))
+        XCTAssertEqual(composer, pricing.resolve(model: "composer-2.5"))
+        XCTAssertNotEqual(composer, pricing.resolve(model: "composer-2.5-fast"))
+    }
+
     /// Cursor Router rows name the routed model in prose ("Opus 5 (Auto Balanced)") instead of a
     /// slug, so each label needs its own alias. The mode inside the parentheses is free-form: Cursor
     /// has shipped plain `(Auto)` and `(Auto Balanced)`, and the docs also name Cost and Intelligence.
