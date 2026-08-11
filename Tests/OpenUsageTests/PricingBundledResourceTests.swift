@@ -69,6 +69,8 @@ final class PricingBundledResourceTests: XCTestCase {
         XCTAssertEqual(pricing.resolve(model: "claude-sonnet-4-5-20250929")?.inputPerMillion, 3)
         XCTAssertEqual(pricing.resolve(model: "claude-opus-4-1-20250805")?.inputPerMillion, 15)
         XCTAssertNotNil(pricing.resolve(model: "gpt-5.1-codex"))
+        XCTAssertEqual(pricing.resolve(model: "gpt-daybreak-blue-latest"), pricing.resolve(model: "gpt-5.6-sol"))
+        XCTAssertEqual(pricing.resolve(model: "daybreak-blue-latest"), pricing.resolve(model: "gpt-5.6-sol"))
         XCTAssertEqual(pricing.resolve(model: "grok-build-0.1")?.inputPerMillion, 1)
         XCTAssertEqual(pricing.resolve(model: "grok-4.3")?.inputPerMillion, 1.25)
     }

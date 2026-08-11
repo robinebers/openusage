@@ -165,6 +165,16 @@ final class ModelPricingStoreTests: XCTestCase {
         XCTAssertEqual(pricing.resolve(model: "auto")?.inputPerMillion, 4)
     }
 
+    /// Multiple supplement changes can land on one day. A precise bundled timestamp must beat a
+    /// legacy date-only cache from that day, or the cache hides newly shipped aliases and rates.
+    func testTimestampedBundledSupplementBeatsSameDayDateOnlyCache() async throws {
+        try writeSupplementCache(updatedAt: "2026-08-11", autoInput: 9)
+
+        let store = makeStoreWithBundledSupplement(updatedAt: "2026-08-11T07:01:30Z", autoInput: 4)
+        let pricing = await store.current()
+        XCTAssertEqual(pricing.resolve(model: "auto")?.inputPerMillion, 4)
+    }
+
     /// The usual case: the feed runs ahead of the shipped file, so the cache keeps winning.
     func testNewerCachedSupplementBeatsOlderBundled() async throws {
         try writeSupplementCache(updatedAt: "2026-06-01", autoInput: 9)

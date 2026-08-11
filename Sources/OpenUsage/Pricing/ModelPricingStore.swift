@@ -124,8 +124,9 @@ actor ModelPricingStore {
         }
     }
 
-    /// `updated_at` is a zero-padded ISO date, so lexicographic order is chronological. A missing
-    /// date counts as oldest — an undated file never displaces a dated one.
+    /// `updated_at` is a zero-padded ISO-8601 timestamp, so lexicographic order is chronological.
+    /// Legacy date-only values remain comparable and sort before a timestamp from the same day.
+    /// A missing value counts as oldest — an undated file never displaces a dated one.
     private static func isNewer(_ lhs: String?, than rhs: String?) -> Bool {
         guard let lhs else { return false }
         guard let rhs else { return true }
