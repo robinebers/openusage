@@ -23,7 +23,6 @@ import SwiftUI
 /// and fire while the menu is open, so the monitor and the items never double-fire. ⌘Q (Quit) is
 /// unowned elsewhere, so it rides its menu item directly.
 struct HeaderView: View {
-    @Environment(AppContainer.self) private var container
     @Environment(LayoutStore.self) private var layout
     @Environment(WidgetDataStore.self) private var dataStore
     @Environment(UpdaterController.self) private var updater
@@ -133,7 +132,7 @@ struct HeaderView: View {
                     .disabled(true)
             } else {
                 ForEach(groups) { group in
-                    Button(container.displayName(for: group.provider)) { shareCard(group) }
+                    Button(group.provider.displayName) { shareCard(group) }
                 }
             }
         } label: {
@@ -151,8 +150,7 @@ struct HeaderView: View {
             group: group,
             dataStore: dataStore,
             layout: layout,
-            appearance: colorScheme,
-            displayName: container.displayName(for: group.provider)
+            appearance: colorScheme
         )
     }
 

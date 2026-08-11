@@ -15,8 +15,6 @@ struct ProviderListRow<Handle: View>: View {
     var onOpen: () -> Void = {}
 
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
-    /// Read for the live card name, so a rename re-titles the Customize row without a relaunch.
-    @Environment(AppContainer.self) private var container
 
     var body: some View {
         HStack(spacing: 10) {
@@ -31,7 +29,7 @@ struct ProviderListRow<Handle: View>: View {
                 ProviderIcon(source: provider.icon)
                     .frame(width: 18, height: 18)
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(container.displayName(for: provider))
+                    Text(provider.displayName)
                         .font(.system(size: density.headerPointSize, weight: .semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
@@ -56,7 +54,7 @@ struct ProviderListRow<Handle: View>: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Open \(container.displayName(for: provider))")
+            .accessibilityLabel("Open \(provider.displayName)")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, density.controlRowPadding)

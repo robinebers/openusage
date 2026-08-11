@@ -10,9 +10,6 @@ struct PopoverTopBar: View {
 
     @Binding var isPresentingResetAllConfirm: Bool
 
-    /// Read for the live card name, so a renamed card's Customize detail title follows the rename.
-    @Environment(AppContainer.self) private var container
-
     @ViewBuilder
     var body: some View {
         switch layout.screen {
@@ -46,9 +43,7 @@ struct PopoverTopBar: View {
     }
 
     private var customizeTitle: String {
-        layout.customizeProviderID.flatMap { id in
-            layout.provider(id: id).map { container.displayName(for: $0) }
-        } ?? "Customize"
+        layout.customizeProviderID.flatMap { layout.provider(id: $0)?.displayName } ?? "Customize"
     }
 
     private func customizeBack() {
@@ -107,7 +102,7 @@ struct PopoverTopBar: View {
         .glassButtonStyle()
         .buttonBorderShape(.circle)
         .controlSize(.large)
-        .hoverTooltip("Reset \(layout.provider(id: providerID).map { container.displayName(for: $0) } ?? providerID)")
+        .hoverTooltip("Reset \(layout.provider(id: providerID)?.displayName ?? providerID)")
         .accessibilityLabel("Reset")
     }
 

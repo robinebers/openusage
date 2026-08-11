@@ -123,24 +123,19 @@ final class LayoutStore {
         self.registry = registry
         let persistence = LayoutPersistence(defaults: defaults, storageKey: storageKey)
         self.persistence = persistence
-        // Extra account cards seed their family's default metric set (and caret split); pins and the
-        // migration baseline are deliberately never translated (see `translatedForAccountCards`).
-        let registryProviderIDs = registry.providers.map(\.id)
-        let translatedMetricIDs = DefaultLayout.translatedForAccountCards(defaultMetricIDs, providerIDs: registryProviderIDs)
-        let translatedExpandedIDs = DefaultLayout.translatedForAccountCards(defaultExpandedMetricIDs, providerIDs: registryProviderIDs)
-        self.defaultMetricIDs = translatedMetricIDs
+        self.defaultMetricIDs = defaultMetricIDs
         self.defaultPinnedMetricIDs = defaultPinnedMetricIDs
-        self.defaultExpandedMetricIDs = translatedExpandedIDs
+        self.defaultExpandedMetricIDs = defaultExpandedMetricIDs
         self.isProviderEnabled = isProviderEnabled
 
         let initial = LayoutBootstrap.load(
             registry: registry,
             persistence: persistence,
             defaults: LayoutDefaultSet(
-                metricIDs: translatedMetricIDs,
+                metricIDs: defaultMetricIDs,
                 migrationBaselineMetricIDs: migrationBaselineMetricIDs,
                 pinnedMetricIDs: defaultPinnedMetricIDs,
-                expandedMetricIDs: translatedExpandedIDs
+                expandedMetricIDs: defaultExpandedMetricIDs
             )
         )
         placed = initial.placed
@@ -159,7 +154,7 @@ final class LayoutStore {
     }
 
     func isProviderExpanded(_ providerID: String) -> Bool {
-        registry.provider(id: providerID) != nil && expandedProviderIDs.contains(providerID)
+        expandedProviderIDs.contains(providerID)
     }
 
     @discardableResult
@@ -268,9 +263,7 @@ final class LayoutStore {
     /// column, so a third would not fit the menu bar height.
     static let maxPinsPerProvider = 2
 
-    func isPinned(_ descriptorID: String) -> Bool {
-        registry.descriptor(id: descriptorID) != nil && pinnedMetricIDs.contains(descriptorID)
-    }
+    func isPinned(_ descriptorID: String) -> Bool { pinnedMetricIDs.contains(descriptorID) }
 
     func pinnedCount(forProvider providerID: String) -> Int {
         pinnedMetricIDs.count { registry.descriptor(id: $0)?.providerID == providerID }
