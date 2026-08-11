@@ -65,6 +65,10 @@ enum TotalSpendMetric: String, CaseIterable, Identifiable, Sendable {
 /// plus whether the dollars are a local estimate (log-scanned providers) or measured (Cursor's CSV).
 struct TotalSpendSlice: Identifiable, Equatable {
     let provider: Provider
+    /// The card title, resolved by the aggregation's caller through the one name resolver — so the
+    /// legend, the ranking tie-break, and the share-card export (which renders outside the SwiftUI
+    /// environment and can't resolve for itself) all show the same live name.
+    let title: String
     let amountUSD: Double
     let tokenCount: Double
     let estimated: Bool
@@ -82,6 +86,8 @@ struct TotalSpendSlice: Identifiable, Equatable {
 /// and ranks the legend, plus the formatted value surfaces read through `MetricFormatter`.
 struct TotalSpendProjectedSlice: Identifiable, Equatable {
     let provider: Provider
+    /// The already-resolved card title (see `TotalSpendSlice.title`) — what the legend renders.
+    let title: String
     let displayAmount: Double
     let estimated: Bool
 
@@ -129,11 +135,16 @@ struct TotalSpend: Equatable {
 
         let ranked = included.sorted { lhs, rhs in
             if lhs.display != rhs.display { return lhs.display > rhs.display }
-            return lhs.slice.provider.displayName.localizedStandardCompare(rhs.slice.provider.displayName) == .orderedAscending
+            return lhs.slice.title.localizedStandardCompare(rhs.slice.title) == .orderedAscending
         }
 
         let projected = ranked.map {
-            TotalSpendProjectedSlice(provider: $0.slice.provider, displayAmount: $0.display, estimated: $0.slice.estimated)
+            TotalSpendProjectedSlice(
+                provider: $0.slice.provider,
+                title: $0.slice.title,
+                displayAmount: $0.display,
+                estimated: $0.slice.estimated
+            )
         }
 
         let center: Double
@@ -163,10 +174,14 @@ struct TotalSpend: Equatable {
 enum TotalSpendAggregator {
     /// The total for one period across `providers` (pass them in display order; ties keep it).
     /// Slices keep provider display order input only as a stable traversal; metric projection re-ranks.
+    /// `title` resolves each provider's card title — the live card passes the account-registry
+    /// resolver so slices carry renames; the default is the baked derived name for callers without
+    /// registry access (tests).
     static func total(
         for period: TotalSpendPeriod,
         providers: [Provider],
-        snapshots: [String: ProviderSnapshot]
+        snapshots: [String: ProviderSnapshot],
+        title: (Provider) -> String = { $0.displayName }
     ) -> TotalSpend {
         let slices = providers.compactMap { provider -> TotalSpendSlice? in
             guard let snapshot = snapshots[provider.id],
@@ -182,6 +197,7 @@ enum TotalSpendAggregator {
 
             return TotalSpendSlice(
                 provider: provider,
+                title: title(provider),
                 amountUSD: max(amount, 0),
                 tokenCount: max(tokens, 0),
                 estimated: dollars.contains(where: \.estimated)

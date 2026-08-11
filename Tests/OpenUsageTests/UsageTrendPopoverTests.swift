@@ -47,6 +47,9 @@ final class UsageTrendPopoverTests: XCTestCase {
             backing: .buffered,
             defer: false
         )
+        // A programmatically created NSWindow releases itself on close, which over-releases it under
+        // ARC and crashes the test's autorelease pool drain.
+        window.isReleasedWhenClosed = false
         window.contentView = anchor
         window.orderFront(nil)
         defer { window.close() }

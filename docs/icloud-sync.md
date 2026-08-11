@@ -24,6 +24,23 @@ This Mac updates its file after a five-minute refresh batch, a manual refresh, o
 change. iCloud delivery is eventually consistent, so another Mac can take longer than five minutes to
 receive it, especially while offline. Downloaded changes reload immediately when macOS reports them.
 
+## Multiple accounts across Macs
+
+Histories match by **account**, not by card name. Each Mac's file records which account every card
+belongs to (an opaque account/organization identifier — never an email), so the same account merges into
+the same card everywhere, even when one Mac shows it as the main card and another as an extra account
+card.
+
+An account you use on another Mac but have no login for here doesn't become a card: it appears as its
+own slice in **Total Spend**, named by its account code ("claude@ab12cd34") — so the number at the top
+is the whole truth across your Macs, and several such accounts stay tellable apart. That code is the
+same id the account's card carries on any Mac it's signed in on (the synced file holds no emails or
+names to label it with). The moment you log that account in locally, its card appears — under that
+same id — with the full cross-machine history already attached.
+
+Macs running an older OpenUsage read their own format but report this Mac's newer file as "update
+OpenUsage" — update both sides to sync multi-account machines.
+
 Settings lists each valid device file with the time that Mac generated it. To remove a Mac from the
 combined summary, turn sync off on that Mac; this deletes its file from iCloud. Turning sync off also
 stops that Mac from reading peers and immediately returns every surface there to local-only spend.

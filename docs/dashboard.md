@@ -52,7 +52,7 @@ Rows with a reset date tick every 30 seconds, so countdowns and pace stay live b
 ## Right-click menus
 
 Every row: **Hide · Star for menu bar / Unstar · Refresh \<provider\> · Customize…** (Customize opens straight to that provider's metrics.)
-Provider headers: **Hide \<provider\> · Refresh \<provider\> · Customize…** (Hide turns the whole provider off; turn it back on in Customize. Customize opens straight to that provider's metrics.) plus **Share Screenshot** (see below).
+Provider headers: **Hide \<provider\> · Refresh \<provider\> · Customize…** (Hide turns the whole provider off; turn it back on in Customize. Customize opens straight to that provider's metrics.) plus **Share Screenshot** (see below). Claude and Codex cards also offer **Rename…** — give the card any name you like (handy with multiple accounts); leave the field empty to go back to the default name. The name follows the card everywhere it's shown: the dashboard, the Total Spend legend, share screenshots, notifications, and the CLI/API output.
 
 ## Share
 
@@ -73,7 +73,7 @@ Open Customize from the footer's **Options** menu (or press **Return**). It's a 
 
 The **provider list** shows every provider with a switch to turn it on or off, a count of its metrics, and a chevron into its detail. Turn a provider off and it stays in the list, greyed — its metrics hide from the dashboard and menu bar but keep their setup for when you turn it back on. Drag enabled providers by their grip to reorder; tap a row to open its detail. On a fresh install only the providers detected on your Mac start on (see "First launch" above); this list is where you add the rest.
 
-A provider's **detail** has a back button and provider-specific Reset control in its top bar, followed by two metric sections: **Always Visible** (shown on the dashboard card) and **On Demand** (tucked behind the card's caret). Each metric row has a drag grip, its name, an always-visible star for the menu bar, and an on/off switch. Drag a metric into the other card—or onto one of that card's rows—to move it between Always Visible and On Demand. An empty card shows a dashed **Drag metrics here** target. You can star up to two metrics per provider. OpenRouter and Z.ai also show an **API Key** section here, where you can add, replace, reveal, or clear that provider's key.
+A provider's **detail** has a back button and provider-specific Reset control in its top bar. Claude and Codex cards start with a **Name** field — the same rename the card's right-click menu offers; clear it to go back to the default name. Then come two metric sections: **Always Visible** (shown on the dashboard card) and **On Demand** (tucked behind the card's caret). Each metric row has a drag grip, its name, an always-visible star for the menu bar, and an on/off switch. Drag a metric into the other card—or onto one of that card's rows—to move it between Always Visible and On Demand. An empty card shows a dashed **Drag metrics here** target. You can star up to two metrics per provider. OpenRouter and Z.ai also show an **API Key** section here, where you can add, replace, reveal, or clear that provider's key.
 
 Drag-reorder also works directly on the dashboard — drag a row within its provider, drag it across the caret boundary while the card is open, or drag a provider header to reorder sections. On a Force Touch trackpad you'll feel a light tap each time the dragged item snaps into a new slot.
 

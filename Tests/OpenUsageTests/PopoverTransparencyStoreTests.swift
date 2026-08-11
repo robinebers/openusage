@@ -245,4 +245,20 @@ final class PopoverTransparencyStoreTests: XCTestCase {
         XCTAssertTrue(store.popoverShown)
         XCTAssertFalse(PopoverTransparencyStore(defaults: defaults).popoverShown, "not persisted")
     }
+
+    func testResetToDefaultsTurnsOffTransparencyAndExitsTheEgg() {
+        let defaults = makeDefaults("reset")
+        let store = PopoverTransparencyStore(defaults: defaults)
+        store.increaseTransparency = true
+        store.toggleSecretCode()
+        store.drunkMode = true
+
+        store.resetToDefaults()
+
+        XCTAssertFalse(store.increaseTransparency)
+        XCTAssertFalse(store.secretCodeActive, "reset exits the egg so it can't override the reset look")
+        XCTAssertFalse(store.drunkMode)
+        // A fresh store reading the same defaults sees the reset value.
+        XCTAssertFalse(PopoverTransparencyStore(defaults: defaults).increaseTransparency)
+    }
 }

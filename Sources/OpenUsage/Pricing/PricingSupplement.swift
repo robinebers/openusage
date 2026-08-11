@@ -8,6 +8,8 @@ struct PricingSupplement: Sendable {
     /// Models priced directly by the supplement (highest-precedence source).
     let pricing: [String: ModelRates]
     /// Base-model -> fast-variant multiplier, for `-fast` slugs whose catalogs carry no `fast` field.
+    /// Also applied to the base model's own rates, so requests flagged fast by the scanner (rather
+    /// than by a `-fast` slug) bill at the fast rate.
     let fastMultipliers: [String: Double]
     let aliasRules: [AliasRule]
     let updatedAt: String?
@@ -76,7 +78,10 @@ extension PricingSupplement {
                 outputPerMillion: entry.outputPerMillion,
                 cacheWritePerMillion: entry.cacheWritePerMillion ?? entry.inputPerMillion,
                 cacheReadPerMillion: entry.cacheReadPerMillion ?? entry.inputPerMillion * 0.1,
-                cacheReadIsExplicit: entry.cacheReadPerMillion != nil
+                cacheReadIsExplicit: entry.cacheReadPerMillion != nil,
+                // Carry the declared multiplier onto the entry itself: scanners that flag fast mode
+                // on the request (Claude's `speed` field) price the base slug, never a `-fast` one.
+                fastMultiplier: file.fastMultipliers?[model] ?? 1
             )
         }
         var rules: [AliasRule] = []

@@ -15,6 +15,11 @@
 
 Snapshots are cached on disk and load instantly at launch, so you see your last-known values immediately instead of placeholders — even before the first fetch finishes.
 
+Claude and Codex cache entries also remember which account produced them. If you swap the account
+signed in at the provider's default home between launches, the previous account's cached values are
+discarded at the next launch (the card starts empty and fills on its first fetch) instead of briefly
+showing the old account's limits and plan under the new login.
+
 A cached value only counts as *fresh* (skip-a-refresh fresh) when it was fetched **during the current running session**. So a value cached in an earlier session always re-fetches on the first pass after launch — you still see it instantly, but the app never waits out the old interval before getting live numbers. This matters after an update: a new app version refreshes right away instead of showing the previous version's data until its interval lapses. Within a session, a freshly fetched value then counts as fresh for one refresh interval before the next pass re-fetches it.
 
 Claude, Codex, and pi spend history has a separate local-log parse cache under

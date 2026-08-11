@@ -669,6 +669,27 @@ final class WidgetDataStoreTests: XCTestCase {
         XCTAssertEqual(store.data(for: descriptor).valueText, "20%")
     }
 
+    func testResetDisplaySettingsRestoresDefaultsAndPersists() {
+        let provider = Provider(id: "test", displayName: "Test", icon: .providerMark("codex"))
+        let registry = WidgetRegistry(providers: [provider], descriptors: [])
+        let defaults = makeUserDefaults("reset-display-settings")
+        let store = WidgetDataStore(registry: registry, providers: [], defaults: defaults)
+        store.meterStyle = .used
+        store.resetDisplayMode = .absolute
+        store.alwaysShowPacing = true
+
+        store.resetDisplaySettings()
+
+        XCTAssertEqual(store.meterStyle, .remaining)
+        XCTAssertEqual(store.resetDisplayMode, .relative)
+        XCTAssertFalse(store.alwaysShowPacing)
+        // A second store on the same suite must load the defaults back, not the pre-reset values.
+        let reloaded = WidgetDataStore(registry: registry, providers: [], defaults: defaults)
+        XCTAssertEqual(reloaded.meterStyle, .remaining)
+        XCTAssertEqual(reloaded.resetDisplayMode, .relative)
+        XCTAssertFalse(reloaded.alwaysShowPacing)
+    }
+
     private func makeUserDefaults(_ name: String) -> UserDefaults {
         let suiteName = "OpenUsageTests.\(name).\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!

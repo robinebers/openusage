@@ -1,5 +1,5 @@
 {
-  "originHash" : "3f2b5267cbea9e06e813ae20b994ab4956484c192f5f2783dac32b3d4fbf1884",
+  "originHash" : "a273b2d311de403ccbf02fe5a371d9cd0b856e226bc685d49be524ee076a41d2",
   "pins" : [
     {
       "identity" : "keyboardshortcuts",
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/PostHog/posthog-ios.git",
       "state" : {
-        "revision" : "52cd4c985c3f951fd7ac4b8e71cb3b49c9af010a",
-        "version" : "3.64.5"
+        "revision" : "1c9b3178746c8102c854c2569047aedcfdec8a0c",
+        "version" : "3.69.0"
       }
     },
     {
@@ -24,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/sparkle-project/Sparkle",
       "state" : {
-        "revision" : "b6496a74a087257ef5e6da1c5b29a447a60f5bd7",
-        "version" : "2.9.4"
+        "revision" : "79bc9e872948e47877e76f194cb0c8e0412b0b90",
+        "version" : "2.9.5"
       }
     }
   ],

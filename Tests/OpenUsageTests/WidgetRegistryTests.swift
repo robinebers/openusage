@@ -15,6 +15,25 @@ final class WidgetRegistryTests: XCTestCase {
         )
     }
 
+    func testNewAccountCardsSlotInAfterTheirFamilyGroup() {
+        let registry = WidgetRegistry(
+            providers: [provider("claude"), provider("claude@ab12cd34"), provider("codex"), provider("cursor")],
+            descriptors: []
+        )
+
+        // The saved order predates the account card: it appears right after the claude group, not
+        // at the end of the dashboard; a genuinely new provider still appends.
+        XCTAssertEqual(
+            registry.orderedProviderIDs(savedOrder: ["codex", "claude"]),
+            ["codex", "claude", "claude@ab12cd34", "cursor"]
+        )
+        // With no family sibling in the saved order, the card appends like any new provider.
+        XCTAssertEqual(
+            registry.orderedProviderIDs(savedOrder: ["codex"]),
+            ["codex", "claude", "claude@ab12cd34", "cursor"]
+        )
+    }
+
     func testLookupsReturnExpectedEntries() {
         let claude = provider("claude")
         let codex = provider("codex")

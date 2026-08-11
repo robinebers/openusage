@@ -47,6 +47,24 @@ In addition to the unified log above, the app writes a file log to
 for full detail), then grab the file with **Copy Log Path** or **Reveal in Finder** in that same
 section. See [Logging](logging.md) for the levels, subsystem tags, and the never-log-secrets guarantee.
 
+## Account log lines
+
+The launch-time account pass (which account is signed in at the Claude/Codex default home) leaves a
+short trail in the log file:
+
+- `accounts: claude default identity resolved (claude@<hash>)` — the default login named its account.
+  The hash is derived from the account id, so two launches by the same account always match.
+- `accounts: codex default identity unresolved — …` — a login exists but its account can't be named
+  with certainty this launch (an auth file without an account id, or a keychain credential whose
+  secret we don't read at launch). The card works as before; it just can't participate in
+  account-aware features yet.
+- `stale account cache discarded for claude` — the account at the default home changed between
+  launches, so the previous account's cached snapshot was dropped instead of painting under the new
+  login.
+- `account identity read skipped for claude, codex: login shell cold and no shell-environment
+  snapshot exists yet` — a first launch raced a slow login shell, so the named families were left
+  unread this launch; every later launch has a persisted snapshot to fall back on.
+
 ## Tips
 
 - **A provider shows an error.** Reproduce with `logs` running, then check that provider's page in

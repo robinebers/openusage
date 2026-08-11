@@ -17,7 +17,8 @@ extension LayoutStore {
     }
 
     func isMetricEnabled(_ descriptorID: String) -> Bool {
-        placed.contains { $0.descriptorID == descriptorID }
+        registry.descriptor(id: descriptorID) != nil
+            && placed.contains { $0.descriptorID == descriptorID }
     }
 
     /// Whether any enabled provider ships the local spend tiles — the capability gate for the
@@ -159,8 +160,25 @@ extension LayoutStore {
         recordingUndoStep {
             let shown = customizeGroups.map(\.provider.id)
             guard let next = Self.reordered(shown, dragged: dragged, target: target) else { return false }
-            let rest = orderedProviderIDs().filter { !next.contains($0) }
-            providerOrder = next + rest
+            // Reorder only the visible slots in the raw persisted sequence. Unknown ids may be
+            // account cards absent from this launch's registry, and disabled providers are hidden
+            // from `customizeGroups`; both keep their exact positions while the visible ids move
+            // around them.
+            let shownSet = Set(shown)
+            var replacements = next.makeIterator()
+            var rebuilt: [String] = []
+            for providerID in providerOrder {
+                if shownSet.contains(providerID) {
+                    if let replacement = replacements.next() { rebuilt.append(replacement) }
+                } else {
+                    rebuilt.append(providerID)
+                }
+            }
+            while let replacement = replacements.next() { rebuilt.append(replacement) }
+            for providerID in orderedProviderIDs() where !rebuilt.contains(providerID) {
+                rebuilt.append(providerID)
+            }
+            providerOrder = rebuilt
             persistProviderOrder()
             syncPlacedOrder()
             return true

@@ -11,13 +11,14 @@ import SwiftUI
 struct TotalSpendCard: View {
     @Environment(LayoutStore.self) private var layout
     @Environment(WidgetDataStore.self) private var dataStore
+    @Environment(AppContainer.self) private var container
     @Environment(\.colorScheme) private var colorScheme
     @Namespace private var pickerNamespace
 
     /// The selected period survives popover closes and relaunches, like the meter-style toggles.
-    @AppStorage("openusage.totalSpend.period") private var periodRawValue = TotalSpendPeriod.today.rawValue
+    @AppStorage(TotalSpendSetting.periodKey) private var periodRawValue = TotalSpendPeriod.today.rawValue
     /// The selected metric (Cost / Cost/MTok / Tokens) survives the same way.
-    @AppStorage("openusage.totalSpend.metric") private var metricRawValue = TotalSpendMetric.cost.rawValue
+    @AppStorage(TotalSpendSetting.metricKey) private var metricRawValue = TotalSpendMetric.cost.rawValue
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
 
     private var period: TotalSpendPeriod {
@@ -36,7 +37,23 @@ struct TotalSpendCard: View {
     }
 
     private var total: TotalSpend {
-        TotalSpendAggregator.total(for: period, providers: providers, snapshots: dataStore.snapshots)
+        // Accounts that live only on other Macs (synced, no card here) count toward the total and
+        // get their own legend slice ("claude@ab12cd34") — the number should be the whole truth
+        // even when a login isn't set up on this machine.
+        var aggregatedProviders = providers
+        var aggregatedSnapshots = dataStore.snapshots
+        for entry in dataStore.remoteOnlySpend {
+            aggregatedProviders.append(entry.provider)
+            aggregatedSnapshots[entry.provider.id] = entry.snapshot
+        }
+        // Titles resolve here — the one place with registry access — so the legend AND the share
+        // export (rendered outside the environment) carry live renames.
+        return TotalSpendAggregator.total(
+            for: period,
+            providers: aggregatedProviders,
+            snapshots: aggregatedSnapshots,
+            title: { container.displayName(for: $0) }
+        )
     }
 
     private var projection: TotalSpendProjection {
@@ -104,7 +121,7 @@ struct TotalSpendCard: View {
     /// hardcoded list, so disabling a provider (or a new spend provider shipping) can't make the
     /// tooltip lie about what the total reflects.
     private var infoTooltip: String {
-        let names = providers.map(\.displayName)
+        let names = providers.map { container.displayName(for: $0) }
         return "Only includes \(names.formatted(.list(type: .and)))."
     }
 
@@ -332,7 +349,7 @@ struct TotalSpendRingContent: View {
             Circle()
                 .fill(TotalSpendPalette.color(for: slice.provider.id))
                 .frame(width: 8, height: 8)
-            Text(slice.provider.displayName)
+            Text(slice.title)
                 .font(.system(size: density.supportingPointSize))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
