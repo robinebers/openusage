@@ -205,7 +205,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
         )
     }
 
-    func testARenameNeverBakesIntoTheCardOnlyTheResolverCarriesIt() throws {
+    func testARenamedRecordDrivesTheCardDisplayName() throws {
         let defaults = makeScratchDefaults()
         let store = ProviderAccountsStore(defaults: defaults)
         let observer = DefaultAccountObserver(
@@ -230,16 +230,12 @@ final class ProviderAccountAssemblyTests: XCTestCase {
         XCTAssertEqual(first.claudeCards.first?.displayName, cardID, "no label → the short-hash id fallback")
         store.rename(cardID: cardID, to: "Work Max")
 
-        let reloadedStore = ProviderAccountsStore(defaults: defaults)
         let second = ProviderAccountAssembly.make(
             observer: observer,
-            accountsStore: reloadedStore,
+            accountsStore: ProviderAccountsStore(defaults: defaults),
             claudeDiscovery: discovery
         )
-        // The baked card name stays the DERIVED default — a rename lives only in the registry and
-        // is resolved at render time, so a baked name can never be a stale copy of it.
-        XCTAssertEqual(second.claudeCards.first?.displayName, cardID)
-        XCTAssertEqual(reloadedStore.resolvedDisplayName(cardID: cardID), "Work Max")
+        XCTAssertEqual(second.claudeCards.first?.displayName, "Work Max")
     }
 
     func testNothingObservedLeavesRegistryAndKeysEmpty() {

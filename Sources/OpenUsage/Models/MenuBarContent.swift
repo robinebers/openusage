@@ -58,19 +58,13 @@ enum MenuBarContentBuilder {
     /// The strip is dynamic: a pinned metric without data is dropped (one of two pins renders alone at
     /// full size), and a provider with no data-carrying pins contributes no icon at all. Pins are
     /// membership; the strip shows whatever subset is real right now.
-    /// `title` resolves each provider's card title (the VoiceOver summary is a human-facing name, so
-    /// the caller passes the account-registry resolver); defaults to the baked derived name.
-    static func build(
-        groups: [ProviderMetrics],
-        data: (WidgetDescriptor) -> WidgetData,
-        title: (Provider) -> String = { $0.displayName }
-    ) -> MenuBarContent {
+    static func build(groups: [ProviderMetrics], data: (WidgetDescriptor) -> WidgetData) -> MenuBarContent {
         let resolvedGroups = groups.compactMap { group -> MenuBarContent.Group? in
             let metrics = group.metrics.map { resolve($0, data($0)) }.filter(\.hasData)
             guard !metrics.isEmpty else { return nil }
             return MenuBarContent.Group(
                 providerID: group.provider.id,
-                displayName: title(group.provider),
+                displayName: group.provider.displayName,
                 icon: group.provider.icon,
                 metrics: metrics
             )
