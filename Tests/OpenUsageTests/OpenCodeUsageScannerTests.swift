@@ -116,6 +116,17 @@ final class OpenCodeUsageScannerTests: XCTestCase {
         XCTAssertFalse(empty.hasHostedUsage())
     }
 
+    func testSQLCutoffMatchesCalendarTileWindow() async throws {
+        let now = d("2026-07-12T18:00:00.000Z")
+        let sqlite = FakeSQLite(data: ["/oc/opencode.db": "[]"])
+        let scanner = OpenCodeUsageScanner(sqlite: sqlite, databasePaths: { ["/oc/opencode.db"] })
+        _ = try await scanner.scan(now: now)
+
+        let tileSinceMs = Int(JSONLScanning.sinceDate(daysBack: 30, now: now).timeIntervalSince1970 * 1000)
+        guard let sql = sqlite.lastDataSQL else { return XCTFail("expected a data query") }
+        XCTAssertTrue(sql.contains("time_created >= \(tileSinceMs)"), sql)
+    }
+
     func testAbsurdTokenCountIsClampedNotCrashing() async throws {
         let db = "[[\(epochMs("2026-07-12T10:00:00.000Z")),1.0,1e19,\"glm-5.2\",\"opencode-go\"]]"
         let scanner = OpenCodeUsageScanner(
@@ -132,6 +143,7 @@ final class OpenCodeUsageScannerTests: XCTestCase {
 private final class FakeSQLite: SQLiteAccessing, @unchecked Sendable {
     var data: [String: String]
     var failing: Set<String>
+    var lastDataSQL: String?
 
     init(data: [String: String] = [:], failing: Set<String> = []) {
         self.data = data
@@ -140,7 +152,10 @@ private final class FakeSQLite: SQLiteAccessing, @unchecked Sendable {
 
     func queryValue(path: String, sql: String) throws -> String? {
         if failing.contains(path) { throw SQLiteError.queryFailed("boom") }
-        if sql.contains("json_group_array") { return data[path] }
+        if sql.contains("json_group_array") {
+            lastDataSQL = sql
+            return data[path]
+        }
         if sql.contains("SELECT 1") {
             let payload = data[path]
             return (payload != nil && payload != "[]" && !(payload ?? "").isEmpty) ? "1" : nil

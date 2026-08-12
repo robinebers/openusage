@@ -64,7 +64,10 @@ struct OpenCodeUsageScanner: Sendable {
             return nil
         }
 
-        let cutoffMs = Int((now.timeIntervalSince1970 - Double(daysBack) * 86_400) * 1000)
+        // Same calendar bound the tiles/trend use. A wall-clock `now - daysBack×86400` cutoff sits
+        // later the same day, so morning rows on the oldest day never leave SQLite.
+        let tileSince = JSONLScanning.sinceDate(daysBack: daysBack, now: now)
+        let cutoffMs = Int(tileSince.timeIntervalSince1970 * 1000)
         var rows: [Row] = []
         var checked: Set<String> = []
         var failures: [String: String] = [:]
@@ -90,7 +93,6 @@ struct OpenCodeUsageScanner: Sendable {
             throw OpenCodeUsageError.databaseUnreadable
         }
 
-        let tileSince = JSONLScanning.sinceDate(daysBack: 30, now: now)
         var accumulator = DailyUsageAccumulator()
         for row in rows {
             let date = Date(timeIntervalSince1970: row.ms / 1000)
