@@ -177,6 +177,11 @@ extension OpenCodeUsageError: CategorizedError {
         switch self {
         case .notLoggedIn: .notLoggedIn
         case .credentialsUnreadable, .databaseUnreadable: .credentialAccess
+        case .unauthorized: .authExpired
+        case .noGoSubscription: .notAvailable
+        case .connectionFailed: .network
+        case .invalidResponse: .decoding
+        case .requestFailed(let status): ErrorCategory.http(status)
         }
     }
 }
