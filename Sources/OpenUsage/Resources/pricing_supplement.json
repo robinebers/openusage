@@ -1,6 +1,6 @@
 {
   "$comment": "OpenUsage pricing supplement. Prices Cursor-native models that no public catalog carries, supplies fast-variant multipliers the catalogs omit, and maps provider log/CSV model slugs to canonical pricing keys (LiteLLM keys, models.dev ids, or entries in this file). Cursor Router rows name the routed model in prose instead of a slug ('Opus 5 (Auto Balanced)'), so those labels get alias rules too. Published to gh-pages by .github/workflows/pricing-supplement.yml on every change, so installed apps pick edits up within about an hour - no release needed. Rates are USD per million tokens. Sources: https://cursor.com/docs/models-and-pricing.md for Cursor-native entries.",
-  "updated_at": "2026-08-11",
+  "updated_at": "2026-08-13",
   "pricing": {
     "auto": {
       "input_per_million": 1.25,
@@ -61,7 +61,20 @@
       "input_per_million": 4.0,
       "cache_write_per_million": 4.0,
       "cache_read_per_million": 1.0,
-      "output_per_million": 18.0
+      "output_per_million": 12.0
+    },
+    "grok-4.6": {
+      "$comment": "Cursor + SpaceXAI first-party model. Cache write not published separately; defaults to input. Cursor lists a 50% launch discount for one week starting 2026-08-12; rates below are the numbers on the pricing table as of 2026-08-13.",
+      "input_per_million": 2.0,
+      "cache_write_per_million": 2.0,
+      "cache_read_per_million": 0.5,
+      "output_per_million": 6.0
+    },
+    "grok-4.6-fast": {
+      "input_per_million": 4.0,
+      "cache_write_per_million": 4.0,
+      "cache_read_per_million": 1.0,
+      "output_per_million": 12.0
     },
     "kimi-k2.7-code": {
       "$comment": "Cursor's published Kimi K2.7 Code rates. Public catalogs disagree (some bare keys are $0), so this override wins.",
@@ -158,6 +171,9 @@
     { "pattern": "^composer-2\\.5$", "canonical": "composer-2.5" },
     { "pattern": "^composer-2\\.5-fast$", "canonical": "composer-2.5-fast" },
     { "pattern": "^github_bugbot$", "canonical": "github_bugbot" },
+    { "pattern": "^(?:cursor-)?grok-4\\.6-fast(?:-(?:low|medium|high|xhigh))?$", "canonical": "grok-4.6-fast" },
+    { "pattern": "^(?:cursor-)?grok-4\\.6(?:-(?:low|medium|high|xhigh))?-fast$", "canonical": "grok-4.6-fast" },
+    { "pattern": "^(?:cursor-)?grok-4\\.6(?:-(?:low|medium|high|xhigh))?$", "canonical": "grok-4.6" },
     { "pattern": "^(?:cursor-)?grok-4\\.5-fast(?:-(?:low|medium|high|xhigh))?$", "canonical": "grok-4.5-fast" },
     { "pattern": "^(?:cursor-)?grok-4\\.5(?:-(?:low|medium|high|xhigh))?-fast$", "canonical": "grok-4.5-fast" },
     { "pattern": "^(?:cursor-)?grok-4\\.5(?:-(?:low|medium|high|xhigh))?$", "canonical": "grok-4.5" },
@@ -232,6 +248,8 @@
     { "pattern": "(?i)^Composer 2\\.5 \\(Auto[^)]*\\)$", "canonical": "composer-2.5" },
     { "pattern": "(?i)^Composer 2 Fast \\(Auto[^)]*\\)$", "canonical": "composer-2-fast" },
     { "pattern": "(?i)^Composer 2 \\(Auto[^)]*\\)$", "canonical": "composer-2" },
+    { "pattern": "(?i)^(?:Cursor )?Grok 4\\.6 Fast \\(Auto[^)]*\\)$", "canonical": "grok-4.6-fast" },
+    { "pattern": "(?i)^(?:Cursor )?Grok 4\\.6 \\(Auto[^)]*\\)$", "canonical": "grok-4.6" },
     { "pattern": "(?i)^(?:Cursor )?Grok 4\\.5 Fast \\(Auto[^)]*\\)$", "canonical": "grok-4.5-fast" },
     { "pattern": "(?i)^(?:Cursor )?Grok 4\\.5 \\(Auto[^)]*\\)$", "canonical": "grok-4.5" },
     { "pattern": "(?i)^(?:Claude )?Haiku 4\\.5 \\(Auto[^)]*\\)$", "canonical": "claude-haiku-4-5" },
