@@ -2,8 +2,10 @@ import Foundation
 
 /// Builds metric lines from the Z.ai `/api/monitor/usage/quota/limit` payload and the plan name from
 /// `/api/biz/subscription/list`. Ports and extends the legacy Tauri plugin's mapping:
-/// - a `TOKENS_LIMIT` entry whose window is sub-daily (`unit: 3`, hours) is the 5-hour session meter,
-/// - a `TOKENS_LIMIT` entry whose window is multi-day (`unit: 6`, weeks) is the weekly meter,
+/// - a `CREDIT_LIMIT` (or legacy `TOKENS_LIMIT`) entry whose window is sub-daily (`unit: 3`, hours)
+///   is the 5-hour session meter,
+/// - a `CREDIT_LIMIT` (or legacy `TOKENS_LIMIT`) entry whose window is multi-day (`unit: 6`, weeks)
+///   is the weekly meter,
 /// - a `TIME_LIMIT` entry (`unit: 5`, monthly) is the web-search/reader count meter (used / limit).
 ///
 /// Both endpoints are undocumented internal APIs used by Z.ai's own subscription UI; the response
@@ -61,10 +63,14 @@ enum ZAIUsageMapper {
         var lines: [MetricLine] = []
         var sawRecognizedLimit = false
 
-        // Split the TOKENS_LIMIT entries by window length: a sub-daily window is the session meter,
-        // a multi-day window is the weekly meter. Z.ai reports both, and both are percentage meters.
-        let tokenLimits = limits.filter { ($0["type"] as? String) == "TOKENS_LIMIT" || ($0["name"] as? String) == "TOKENS_LIMIT" }
-        for entry in tokenLimits {
+        // Split the percentage quota entries by window length: a sub-daily window is the session
+        // meter, and a multi-day window is the weekly meter. Current responses call these
+        // CREDIT_LIMIT; older plans used TOKENS_LIMIT for the same shape.
+        let percentageLimits = limits.filter {
+            let type = ($0["type"] as? String) ?? ($0["name"] as? String)
+            return type == "CREDIT_LIMIT" || type == "TOKENS_LIMIT"
+        }
+        for entry in percentageLimits {
             guard let window = try classifyTokenWindow(entry) else { continue }
             sawRecognizedLimit = true
             switch window {
@@ -100,10 +106,11 @@ enum ZAIUsageMapper {
 
     // MARK: - Private
 
-    /// How a `TOKENS_LIMIT` entry's window maps to a meter. Z.ai encodes the window as a `(unit, number)`
-    /// pair: `unit: 3` is hours (session), `unit: 6` is weeks (weekly), `unit: 5` is months. A sub-daily
-    /// window is the session meter; a multi-day window is the weekly meter. Unknown units are ignored
-    /// so a future Z.ai window cannot hide meters whose units OpenUsage still understands.
+    /// How a percentage quota entry's window maps to a meter. Z.ai encodes the window as a
+    /// `(unit, number)` pair: `unit: 3` is hours (session), `unit: 6` is weeks (weekly), `unit: 5` is
+    /// months. A sub-daily window is the session meter; a multi-day window is the weekly meter.
+    /// Unknown units are ignored so a future Z.ai window cannot hide meters whose units OpenUsage
+    /// still understands.
     private enum TokenWindow {
         case session(periodMs: Int)
         case weekly(periodMs: Int)
@@ -136,7 +143,7 @@ enum ZAIUsageMapper {
         return .weekly(periodMs: periodMs)
     }
 
-    /// A percentage meter (Session or Weekly) from a `TOKENS_LIMIT` entry.
+    /// A percentage meter (Session or Weekly) from a credit/token quota entry.
     private static func percentLine(_ entry: [String: Any], label: String, periodMs: Int) throws -> MetricLine {
         guard let rawPercentage = ProviderParse.number(entry["percentage"]) else {
             throw ZAIUsageError.invalidResponse
