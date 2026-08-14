@@ -97,7 +97,9 @@ the app and CLI; `stale` says whether that instant has passed. Refresh failures 
 `{"providerId":"…","message":"…"}` while a last-good provider snapshot remains available.
 For bounded progress resources, `unit` follows the provider's live metric format. For example, Cursor
 `totalUsage` is `percent` on percentage-based plans, `requests` on request-based Enterprise plans, and
-`usd` when Cursor reports a dollar pool. OpenCode `session`, `weekly`, and `monthly` are `percent`.
+`usd` when Cursor reports a dollar pool. Copilot `premiumCredits` is `percent` on paid plans and a
+`credits` count on org-managed seats that only report personal `credits_used`. OpenCode `session`,
+`weekly`, and `monthly` are `percent`.
 
 ### Public resources
 

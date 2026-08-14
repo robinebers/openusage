@@ -170,6 +170,50 @@ final class LocalLimitsAPITests: XCTestCase {
         XCTAssertNil(resource["utilization"])
     }
 
+    @MainActor
+    func testCopilotPremiumCreditsExportsPersonalCountAndPaidPercent() throws {
+        let credits = CopilotProvider().widgetDescriptors.first { $0.id == "copilot.premium" }!
+        let personal = ProviderSnapshot(
+            providerID: "copilot",
+            displayName: "Copilot",
+            plan: "Business",
+            lines: [.values(label: "Credits", values: [MetricValue(number: 2111, kind: .count)])],
+            refreshedAt: fetchedAt
+        )
+        let paid = ProviderSnapshot(
+            providerID: "copilot",
+            displayName: "Copilot",
+            plan: "Pro",
+            lines: [.progress(label: "Credits", used: 59, limit: 100, format: .percent)],
+            refreshedAt: fetchedAt
+        )
+
+        func resource(in snapshot: ProviderSnapshot) throws -> [String: Any] {
+            let state = LocalUsageAPI.State(
+                enabledOrderedIDs: ["copilot"],
+                knownIDs: ["copilot"],
+                snapshots: ["copilot": snapshot],
+                limitDescriptors: ["copilot": [credits]],
+                generatedAt: generatedAt
+            )
+            let root = try json(LocalUsageAPI.respond(method: "GET", path: "/v1/limits", state: state).body)
+            let providers = try XCTUnwrap(root["providers"] as? [String: Any])
+            let copilot = try XCTUnwrap(providers["copilot"] as? [String: Any])
+            let resources = try XCTUnwrap(copilot["resources"] as? [String: Any])
+            return try XCTUnwrap(resources["premiumCredits"] as? [String: Any])
+        }
+
+        let count = try resource(in: personal)
+        XCTAssertEqual(count["used"] as? Double, 2111)
+        XCTAssertEqual(count["unit"] as? String, "credits")
+        XCTAssertNil(count["limit"])
+
+        let percent = try resource(in: paid)
+        XCTAssertEqual(percent["used"] as? Double, 59)
+        XCTAssertEqual(percent["unit"] as? String, "percent")
+        XCTAssertEqual(percent["limit"] as? Double, 100)
+    }
+
     func testProgressResourceUnitFollowsRuntimeMetricFormat() throws {
         let provider = Provider(id: "cursor", displayName: "Cursor", icon: .providerMark("cursor"))
         let total = WidgetDescriptor.percent(

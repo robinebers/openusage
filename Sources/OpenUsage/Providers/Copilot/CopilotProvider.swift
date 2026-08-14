@@ -39,7 +39,7 @@ final class CopilotProvider: ProviderRuntime {
     var widgetDescriptors: [WidgetDescriptor] {
         [
             .percent(id: "copilot.premium", provider: provider, title: "Credits")
-                .exportingLimit("premiumCredits", unit: "percent"),
+                .exportingLimit("premiumCredits", unit: "credits", source: .progressOrValue(kind: .count)),
             .values(id: "copilot.extra", provider: provider, title: "Extra Usage", selection: .kind(.count))
                 .exportingLimit("extraUsage", unit: "count", source: .value(kind: .count)),
             .values(id: "copilot.orgCredits", provider: provider, title: "Org Credits", selection: .kind(.count))
