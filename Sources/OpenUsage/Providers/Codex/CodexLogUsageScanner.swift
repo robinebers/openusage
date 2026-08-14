@@ -578,8 +578,8 @@ actor CodexLogUsageScanner {
         case "gpt-5.5": return (10, 45, 1)
         case "gpt-5.5-pro": return (60, 270, 60)
         case "gpt-5.6-sol": return (10, 45, 1)
-        case "gpt-5.6-terra": return (5, 22.5, 0.5)
-        case "gpt-5.6-luna": return (2, 9, 0.2)
+        case "gpt-5.6-terra": return (4, 18, 0.4)
+        case "gpt-5.6-luna": return (0.4, 1.8, 0.04)
         default: return nil
         }
     }

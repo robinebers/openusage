@@ -42,11 +42,14 @@ final class PricingBundledResourceTests: XCTestCase {
         XCTAssertEqual(pricing.resolve(model: "claude-4.6-opus-max-thinking-fast")?.inputPerMillion, 30)
         XCTAssertEqual(pricing.resolve(model: "gpt-5.5-xhigh-fast")?.inputPerMillion, 12.5)
         XCTAssertEqual(pricing.resolve(model: "gpt-5.6-sol-ultra")?.inputPerMillion, 5)
-        XCTAssertEqual(pricing.resolve(model: "gpt-5.6-sol-ultra-fast")?.inputPerMillion, 12.5)
-        XCTAssertEqual(pricing.resolve(model: "gpt-5.6-terra-high")?.inputPerMillion, 2.5)
-        XCTAssertEqual(pricing.resolve(model: "gpt-5.6-terra-high-fast")?.inputPerMillion, 6.25)
-        XCTAssertEqual(pricing.resolve(model: "gpt-5.6-luna")?.inputPerMillion, 1)
-        XCTAssertEqual(pricing.resolve(model: "gpt-5.6-luna-fast")?.inputPerMillion, 2.5)
+        XCTAssertEqual(pricing.resolve(model: "gpt-5.6-sol-ultra-fast")?.inputPerMillion, 10)
+        XCTAssertEqual(pricing.resolve(model: "gpt-5.6-terra-high")?.inputPerMillion, 2)
+        XCTAssertEqual(pricing.resolve(model: "gpt-5.6-terra-high-fast")?.inputPerMillion, 4)
+        XCTAssertEqual(pricing.resolve(model: "gpt-5.6-luna")?.inputPerMillion, 0.2)
+        XCTAssertEqual(pricing.resolve(model: "gpt-5.6-luna-fast")?.inputPerMillion, 0.4)
+        XCTAssertEqual(pricing.resolve(model: "gemini-3.6-flash-high")?.inputPerMillion, 1.5)
+        XCTAssertEqual(pricing.resolve(model: "gemini-3.7-flash-high")?.inputPerMillion, 0.75)
+        XCTAssertEqual(pricing.resolve(model: "gemini-3.7-flash-high")?.outputPerMillion, 3.75)
         XCTAssertEqual(pricing.resolve(model: "grok-4-20-thinking")?.inputPerMillion, 2)
         XCTAssertEqual(pricing.resolve(model: "grok-4.5")?.inputPerMillion, 2)
         XCTAssertEqual(pricing.resolve(model: "grok-4.5-fast-high")?.inputPerMillion, 4)
@@ -192,6 +195,8 @@ final class PricingBundledResourceTests: XCTestCase {
             "GPT-5.6 Sol (Auto Cost)": "gpt-5.6-sol",
             "GPT-5.6 Luna (Auto)": "gpt-5.6-luna",
             "Gemini 3.1 Pro (Auto Balanced)": "gemini-3.1-pro-preview",
+            "Gemini 3.6 Flash (Auto)": "gemini-3.6-flash",
+            "Gemini 3.7 Flash (Auto Balanced)": "gemini-3.7-flash",
             "GLM 5.2 (Auto)": "glm-5.2",
             "Kimi K3 (Auto Intelligence)": "kimi-k3"
         ]
@@ -217,32 +222,32 @@ final class PricingBundledResourceTests: XCTestCase {
         XCTAssertEqual(sol.cacheReadPerMillion, 0.5)
         XCTAssertEqual(sol.outputPerMillion, 30.0)
         let solFast = try XCTUnwrap(pricing.resolve(model: "gpt-5.6-sol-ultra-fast"))
-        XCTAssertEqual(solFast.inputPerMillion, 12.5)
-        XCTAssertEqual(solFast.cacheWritePerMillion, 15.625)
-        XCTAssertEqual(solFast.cacheReadPerMillion, 1.25)
-        XCTAssertEqual(solFast.outputPerMillion, 75.0)
+        XCTAssertEqual(solFast.inputPerMillion, 10.0)
+        XCTAssertEqual(solFast.cacheWritePerMillion, 12.5)
+        XCTAssertEqual(solFast.cacheReadPerMillion, 1.0)
+        XCTAssertEqual(solFast.outputPerMillion, 60.0)
 
         let terra = try XCTUnwrap(pricing.resolve(model: "gpt-5.6-terra-high"))
-        XCTAssertEqual(terra.inputPerMillion, 2.5)
-        XCTAssertEqual(terra.cacheWritePerMillion, 3.125)
-        XCTAssertEqual(terra.cacheReadPerMillion, 0.25)
-        XCTAssertEqual(terra.outputPerMillion, 15.0)
+        XCTAssertEqual(terra.inputPerMillion, 2.0)
+        XCTAssertEqual(terra.cacheWritePerMillion, 2.5)
+        XCTAssertEqual(terra.cacheReadPerMillion, 0.2)
+        XCTAssertEqual(terra.outputPerMillion, 12.0)
         let terraFast = try XCTUnwrap(pricing.resolve(model: "gpt-5.6-terra-high-fast"))
-        XCTAssertEqual(terraFast.inputPerMillion, 6.25)
-        XCTAssertEqual(terraFast.cacheWritePerMillion, 7.8125)
-        XCTAssertEqual(terraFast.cacheReadPerMillion, 0.625)
-        XCTAssertEqual(terraFast.outputPerMillion, 37.5)
+        XCTAssertEqual(terraFast.inputPerMillion, 4.0)
+        XCTAssertEqual(terraFast.cacheWritePerMillion, 5.0)
+        XCTAssertEqual(terraFast.cacheReadPerMillion, 0.4)
+        XCTAssertEqual(terraFast.outputPerMillion, 24.0)
 
         let luna = try XCTUnwrap(pricing.resolve(model: "gpt-5.6-luna"))
-        XCTAssertEqual(luna.inputPerMillion, 1.0)
-        XCTAssertEqual(luna.cacheWritePerMillion, 1.25)
-        XCTAssertEqual(luna.cacheReadPerMillion, 0.1)
-        XCTAssertEqual(luna.outputPerMillion, 6.0)
+        XCTAssertEqual(luna.inputPerMillion, 0.2)
+        XCTAssertEqual(luna.cacheWritePerMillion, 0.25)
+        XCTAssertEqual(luna.cacheReadPerMillion, 0.02)
+        XCTAssertEqual(luna.outputPerMillion, 1.2)
         let lunaFast = try XCTUnwrap(pricing.resolve(model: "gpt-5.6-luna-fast"))
-        XCTAssertEqual(lunaFast.inputPerMillion, 2.5)
-        XCTAssertEqual(lunaFast.cacheWritePerMillion, 3.125)
-        XCTAssertEqual(lunaFast.cacheReadPerMillion, 0.25)
-        XCTAssertEqual(lunaFast.outputPerMillion, 15.0)
+        XCTAssertEqual(lunaFast.inputPerMillion, 0.4)
+        XCTAssertEqual(lunaFast.cacheWritePerMillion, 0.5)
+        XCTAssertEqual(lunaFast.cacheReadPerMillion, 0.04)
+        XCTAssertEqual(lunaFast.outputPerMillion, 2.4)
     }
 
     /// Opus 4.7/4.8 fast modes: Cursor's published rates (supplement overrides) win over the
