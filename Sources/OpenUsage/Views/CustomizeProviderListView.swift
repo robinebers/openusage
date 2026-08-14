@@ -10,7 +10,7 @@ struct CustomizeProviderListView: View {
     @Environment(AppContainer.self) private var container
     let reorderSpaceName: String
     @Binding var reorderLift: ReorderLift?
-    let rowFrames: [String: CGRect]
+    let frameStore: ReorderFrameStore
 
     @State private var activeProviderID: String?
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
@@ -63,7 +63,7 @@ struct CustomizeProviderListView: View {
         reorderDragGesture(
             id: row.id,
             coordinateSpaceName: reorderSpaceName,
-            rowFrames: rowFrames,
+            frameStore: frameStore,
             active: $activeProviderID,
             lift: $reorderLift,
             makeLift: { makeProviderLift(for: row, value: $0) },
@@ -79,7 +79,7 @@ struct CustomizeProviderListView: View {
             id: row.id,
             payload: .customizeProviderRow(provider: row.provider, isEnabled: row.isEnabled, metricCount: row.metricCount),
             value: value,
-            frames: rowFrames
+            frames: frameStore.frames
         )
     }
 }

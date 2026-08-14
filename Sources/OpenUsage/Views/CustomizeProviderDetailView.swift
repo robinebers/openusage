@@ -20,7 +20,7 @@ struct CustomizeProviderDetailView: View {
     let providerID: String
     let reorderSpaceName: String
     @Binding var reorderLift: ReorderLift?
-    let rowFrames: [String: CGRect]
+    let frameStore: ReorderFrameStore
 
     @State private var activeMetricID: String?
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
@@ -134,7 +134,12 @@ struct CustomizeProviderDetailView: View {
                 reorderLift?.location = value.location
                 let divider = expandedDividerID(for: providerID)
                 let ordered = reorderTargetIDs(for: providerID)
-                guard let target = reorderTarget(at: value.location, in: rowFrames, excluding: id, orderedIDs: ordered),
+                guard let target = reorderTarget(
+                    at: value.location,
+                    in: frameStore.frames,
+                    excluding: id,
+                    orderedIDs: ordered
+                ),
                       let next = LayoutStore.reordered(ordered, dragged: id, target: target) else { return }
                 withAnimation(Motion.spring) {
                     _ = layout.applyMetricDividerOrder(next, dragged: id, dividerID: divider, in: providerID)
@@ -147,9 +152,9 @@ struct CustomizeProviderDetailView: View {
     }
 
     /// The metric a drag started on, by hit-testing the drag start against the grip frames
-    /// ("grip:<metric>" entries in `rowFrames`). Nil when the drag didn't start on a grip.
+    /// ("grip:<metric>" entries in the frame store). Nil when the drag didn't start on a grip.
     private func metricID(at point: CGPoint) -> String? {
-        for (key, frame) in rowFrames {
+        for (key, frame) in frameStore.frames {
             guard key.hasPrefix("grip:"), frame.insetBy(dx: 0, dy: -2).contains(point) else { continue }
             return String(key.dropFirst("grip:".count))
         }
@@ -166,7 +171,12 @@ struct CustomizeProviderDetailView: View {
 
     private func makeLift(metricID: String, value: DragGesture.Value) -> ReorderLift? {
         let title = layout.customizeDetail(for: providerID)?.metrics.first { $0.id == metricID }?.title ?? ""
-        return ReorderLift.make(id: metricID, payload: .customizeMetric(title: title), value: value, frames: rowFrames)
+        return ReorderLift.make(
+            id: metricID,
+            payload: .customizeMetric(title: title),
+            value: value,
+            frames: frameStore.frames
+        )
     }
 }
 
