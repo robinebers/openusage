@@ -7,10 +7,11 @@ import SwiftUI
 /// outside the `label:` view builder (an `ImageRenderer` inline there throws obscure errors).
 @MainActor
 enum MenuBarStripRenderer {
-    /// Last render, memoized on (content, style). The label view re-evaluates on every snapshot
+    /// Last render, memoized on (content, style). The observation loop re-renders on every snapshot
     /// write — several times per refresh pass — but the strip's visible content rarely changes.
-    /// Returning the same `NSImage` instance lets SwiftUI skip the status-item update, and keeps
-    /// `ImageRenderer` (which retains a little memory per run on macOS) to actual visual changes.
+    /// Returning the same `NSImage` instance lets `StatusItemImageUpdater` skip the status-item set
+    /// (an unconditional set still costs a WindowServer redraw), and keeps `ImageRenderer` (which
+    /// retains a little memory per run on macOS) to actual visual changes.
     private static var lastRender: (content: MenuBarContent, style: MenuBarStyle, image: NSImage?)?
 
     /// The strip image for the given content and style, or `nil` when the content renders nothing
