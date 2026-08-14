@@ -11,7 +11,7 @@ Tracks your [OpenRouter](https://openrouter.ai) credit balance and spend from yo
 | Today | Spend so far today |
 | This Week | Spend so far this week |
 | This Month | Spend so far this month |
-| Key Limit | Spend against this key's cap — shown only when the key has one configured |
+| Key Limit | Spend in the current limit window against this key's cap — shown only when the key has one configured |
 
 OpenUsage shows the reported tier (such as "Pay as you go" or "Free tier") beside the provider name.
 
@@ -52,8 +52,9 @@ Two REST calls with a `Bearer` token against `https://openrouter.ai/api/v1`:
 
 - `GET /credits` — account-wide `total_credits` and `total_usage`; the Credits meter and Balance come
   from these. Required for a usable snapshot.
-- `GET /key` — best-effort: the tier, daily/weekly/monthly spend, and an optional per-key cap. If this
-  call fails, the balance still renders from `/credits`.
+- `GET /key` — best-effort: the tier, daily/weekly/monthly spend, and an optional per-key cap
+  (`limit` minus `limit_remaining` for the current window). If this call fails, the balance still
+  renders from `/credits`.
 
 A period spend of `$0.00` is shown as a real, measured zero (the API reports it directly) rather than
 "No data". Credit values may be up to ~60 seconds stale on OpenRouter's side.

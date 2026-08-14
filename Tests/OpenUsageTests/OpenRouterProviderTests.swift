@@ -209,7 +209,8 @@ final class OpenRouterUsageMapperTests: XCTestCase {
             "usage_weekly": 1.25,
             "usage_monthly": 4.5,
             "usage": 2,
-            "limit": 5
+            "limit": 5,
+            "limit_remaining": 3
         ])
 
         XCTAssertEqual(mapped.plan, "Pay as you go")
@@ -217,6 +218,20 @@ final class OpenRouterUsageMapperTests: XCTestCase {
         XCTAssertEqual(dollars(mapped.lines, "Today"), 0)
         XCTAssertEqual(dollars(mapped.lines, "This Week"), 1.25)
         XCTAssertEqual(dollars(mapped.lines, "This Month"), 4.5)
+        let keyLimit = try XCTUnwrap(progress(mapped.lines, "Key Limit"))
+        XCTAssertEqual(keyLimit.used, 2)
+        XCTAssertEqual(keyLimit.limit, 5)
+    }
+
+    func testKeyLimitUsesCurrentWindowNotLifetimeUsage() throws {
+        // After a daily/weekly/monthly reset, lifetime `usage` still includes prior windows.
+        // `limit_remaining` is the current window, so used is limit - remaining — not lifetime.
+        let mapped = OpenRouterUsageMapper.keyMetrics(from: [
+            "usage": 12,
+            "limit": 5,
+            "limit_remaining": 3
+        ])
+
         let keyLimit = try XCTUnwrap(progress(mapped.lines, "Key Limit"))
         XCTAssertEqual(keyLimit.used, 2)
         XCTAssertEqual(keyLimit.limit, 5)
