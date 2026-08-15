@@ -1,6 +1,6 @@
 {
   "$comment": "OpenUsage pricing supplement. Prices Cursor-native models that no public catalog carries, supplies fast-variant multipliers the catalogs omit, and maps provider log/CSV model slugs to canonical pricing keys (LiteLLM keys, models.dev ids, or entries in this file). Cursor Router rows name the routed model in prose instead of a slug ('Opus 5 (Auto Balanced)'), so those labels get alias rules too. Published to gh-pages by .github/workflows/pricing-supplement.yml on every change, so installed apps pick edits up within about an hour - no release needed. Rates are USD per million tokens. Sources: https://cursor.com/docs/models-and-pricing.md for Cursor-native entries; https://developers.openai.com/api/docs/models/daybreak-blue-latest and https://developers.openai.com/api/docs/pricing for Daybreak aliases and rates.",
-  "updated_at": "2026-08-13T08:06:24Z",
+  "updated_at": "2026-08-14T12:55:21Z",
   "pricing": {
     "auto": {
       "input_per_million": 1.25,
@@ -126,23 +126,37 @@
       "output_per_million": 22.5
     },
     "gpt-5.6-sol": {
-      "$comment": "OpenAI's GPT-5.6 preview pricing. Its public catalogs have not added these models yet.",
+      "$comment": "OpenAI GPT-5.6 official rates (developers.openai.com/api/docs/pricing) and Cursor's Other Models table. Public catalogs have not added these models yet.",
       "input_per_million": 5.0,
       "cache_write_per_million": 6.25,
       "cache_read_per_million": 0.5,
       "output_per_million": 30.0
     },
     "gpt-5.6-terra": {
-      "input_per_million": 2.5,
-      "cache_write_per_million": 3.125,
-      "cache_read_per_million": 0.25,
-      "output_per_million": 15.0
+      "input_per_million": 2.0,
+      "cache_write_per_million": 2.5,
+      "cache_read_per_million": 0.2,
+      "output_per_million": 12.0
     },
     "gpt-5.6-luna": {
-      "input_per_million": 1.0,
-      "cache_write_per_million": 1.25,
-      "cache_read_per_million": 0.1,
-      "output_per_million": 6.0
+      "input_per_million": 0.2,
+      "cache_write_per_million": 0.25,
+      "cache_read_per_million": 0.02,
+      "output_per_million": 1.2
+    },
+    "gemini-3.6-flash": {
+      "$comment": "Google Gemini 3.6 Flash. Bundled LiteLLM/models.dev snapshots do not carry it yet; Cursor and LiteLLM agree on these API rates. Cache write is unpublished, so it defaults to input.",
+      "input_per_million": 1.5,
+      "cache_write_per_million": 1.5,
+      "cache_read_per_million": 0.15,
+      "output_per_million": 7.5
+    },
+    "gemini-3.7-flash": {
+      "$comment": "Google Gemini 3.7 Flash introductory API rate. Cursor's table lists output at $3.50; Google and LiteLLM publish $3.75, which is the API rate Cursor bills. Cache write is unpublished, so it defaults to input.",
+      "input_per_million": 0.75,
+      "cache_write_per_million": 0.75,
+      "cache_read_per_million": 0.075,
+      "output_per_million": 3.75
     }
   },
   "fast_multipliers": {
@@ -155,9 +169,9 @@
     "gpt-5.3-codex": 2.0,
     "gpt-5.4": 2.0,
     "gpt-5.5": 2.5,
-    "gpt-5.6-sol": 2.5,
-    "gpt-5.6-terra": 2.5,
-    "gpt-5.6-luna": 2.5
+    "gpt-5.6-sol": 2.0,
+    "gpt-5.6-terra": 2.0,
+    "gpt-5.6-luna": 2.0
   },
   "alias_rules": [
     { "pattern": "^agent_review$", "canonical": "gpt-5.4" },
@@ -198,12 +212,13 @@
     { "pattern": "^claude-opus-5(?:\\[1m\\])?(?:-thinking)?(?:-(?:low|medium|high|xhigh|max))?$", "canonical": "claude-opus-5" },
     { "pattern": "^claude-fable-5(?:-thinking)?(?:-(?:low|medium|high|xhigh|max))?$", "canonical": "claude-fable-5" },
     { "pattern": "^claude-sonnet-5(?:-thinking)?(?:-(?:low|medium|high|xhigh|max))?$", "canonical": "claude-sonnet-5" },
-    { "pattern": "^gemini-2\\.5-flash$", "canonical": "gemini-2.5-flash" },
-    { "pattern": "^gemini-3-flash(?:-preview)?$", "canonical": "gemini-3-flash-preview" },
-    { "pattern": "^gemini-3\\.5-flash(?:-preview)?$", "canonical": "gemini-3.5-flash" },
-    { "pattern": "^gemini-3-pro-preview$", "canonical": "gemini-3-pro-preview" },
-    { "pattern": "^gemini-3\\.1-pro$", "canonical": "gemini-3.1-pro-preview" },
-    { "pattern": "^gemini-3\\.1-pro-preview$", "canonical": "gemini-3.1-pro-preview" },
+    { "pattern": "^gemini-2\\.5-flash(?:-(?:low|medium|high|xhigh))?$", "canonical": "gemini-2.5-flash" },
+    { "pattern": "^gemini-3-flash(?:-preview)?(?:-(?:low|medium|high|xhigh))?$", "canonical": "gemini-3-flash-preview" },
+    { "pattern": "^gemini-3\\.5-flash(?:-preview)?(?:-(?:low|medium|high|xhigh))?$", "canonical": "gemini-3.5-flash" },
+    { "pattern": "^gemini-3\\.6-flash(?:-preview)?(?:-(?:low|medium|high|xhigh))?$", "canonical": "gemini-3.6-flash" },
+    { "pattern": "^gemini-3\\.7-flash(?:-preview)?(?:-(?:low|medium|high|xhigh))?$", "canonical": "gemini-3.7-flash" },
+    { "pattern": "^gemini-3-pro-preview(?:-(?:low|medium|high|xhigh))?$", "canonical": "gemini-3-pro-preview" },
+    { "pattern": "^gemini-3\\.1-pro(?:-preview)?(?:-(?:low|medium|high|xhigh))?$", "canonical": "gemini-3.1-pro-preview" },
     { "pattern": "^gpt-5(?:-(?:low|high))?-fast$", "canonical": "gpt-5-fast" },
     { "pattern": "^gpt-5(?:-(?:low|high))?$", "canonical": "gpt-5" },
     { "pattern": "^gpt-5\\.1(?:-(?:low|high))?-fast$", "canonical": "gpt-5-fast" },
@@ -263,6 +278,8 @@
     { "pattern": "(?i)^GPT-5\\.6 Terra \\(Auto[^)]*\\)$", "canonical": "gpt-5.6-terra" },
     { "pattern": "(?i)^GPT-5\\.6 Luna \\(Auto[^)]*\\)$", "canonical": "gpt-5.6-luna" },
     { "pattern": "(?i)^Gemini 3\\.1 Pro \\(Auto[^)]*\\)$", "canonical": "gemini-3.1-pro-preview" },
+    { "pattern": "(?i)^Gemini 3\\.6 Flash \\(Auto[^)]*\\)$", "canonical": "gemini-3.6-flash" },
+    { "pattern": "(?i)^Gemini 3\\.7 Flash \\(Auto[^)]*\\)$", "canonical": "gemini-3.7-flash" },
     { "pattern": "(?i)^GLM 5\\.2 \\(Auto[^)]*\\)$", "canonical": "glm-5.2" },
     { "pattern": "(?i)^Kimi K3 \\(Auto[^)]*\\)$", "canonical": "kimi-k3" }
   ]

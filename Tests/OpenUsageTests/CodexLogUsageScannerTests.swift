@@ -637,8 +637,8 @@ final class CodexLogUsageScannerTests: XCTestCase {
             ("gpt-5.5", 2.55),
             ("gpt-5.5-pro-20260423", 20.7),
             ("gpt-5.6-sol", 2.55),
-            ("gpt-5.6-terra", 1.275),
-            ("gpt-5.6-luna", 0.51)
+            ("gpt-5.6-terra", 1.02),
+            ("gpt-5.6-luna", 0.102)
         ]
 
         for (model, expected) in expectedCosts {

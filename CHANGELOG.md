@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.7.10-beta.1
+
+### Bug Fixes
+- Price Gemini 3.7 Flash slugs and refresh GPT-5.6 rates ([#1112](https://github.com/robinebers/openusage/pull/1112)) by @robinebers
+- Add 30s timeout to provider refresh to prevent infinite spinner ([#1059](https://github.com/robinebers/openusage/pull/1059)) by @manelpb
+- Show personal credits on org-managed Copilot seats ([#1108](https://github.com/robinebers/openusage/pull/1108)) by @robinebers
+- Skip status-item apply when the strip image is unchanged ([#1110](https://github.com/robinebers/openusage/pull/1110)) by @robinebers
+- Use current-window spend for OpenRouter Key Limit ([#1109](https://github.com/robinebers/openusage/pull/1109)) by @robinebers
+- Improve translucent card scroll performance ([#1106](https://github.com/robinebers/openusage/pull/1106)) by @davidarny
+- Support Z.ai credit quota limits ([#1105](https://github.com/robinebers/openusage/pull/1105)) by @davidarny
+- Accept dashed grok-4-6 CSV slugs ([#1103](https://github.com/robinebers/openusage/pull/1103)) by @robinebers
+
+---
+
+### Changelog
+**Full Changelog**: [v0.7.9...v0.7.10-beta.1](https://github.com/robinebers/openusage/compare/v0.7.9...v0.7.10-beta.1)
+
+- [feb1de9](https://github.com/robinebers/openusage/commit/feb1de926c63f89740f9c69145a2cc2807c77420) fix(pricing): price Gemini 3.7 Flash slugs and refresh GPT-5.6 rates (#1112) by @robinebers
+- [af99b68](https://github.com/robinebers/openusage/commit/af99b6812f2eb34845a95ef538ce1ee9c996a16f) fix: add 30s timeout to provider refresh to prevent infinite spinner (#1059) by @manelpb
+- [41d1bd1](https://github.com/robinebers/openusage/commit/41d1bd1754d3d972e62b4d931179afd7bf620beb) fix(copilot): show personal credits on org-managed seats (#1108) by @robinebers
+- [86b5af4](https://github.com/robinebers/openusage/commit/86b5af40ec9d54b3e793b526f576104e61692d5a) fix: skip status-item apply when the strip image is unchanged (#1110) by @robinebers
+- [dc2d3cb](https://github.com/robinebers/openusage/commit/dc2d3cb5812f432902d7e1b79caf2c64f8d0a66a) fix(openrouter): use current-window spend for Key Limit (#1109) by @robinebers
+- [57053e2](https://github.com/robinebers/openusage/commit/57053e265f7c68b9b26c8e97e35a89e09148d368) fix: improve translucent card scroll performance (#1106) by @davidarny
+- [d989c4a](https://github.com/robinebers/openusage/commit/d989c4a4c48678d9ea83013e588599a99ad168db) fix: support Z.ai credit quota limits (#1105) by @davidarny
+- [b2af5eb](https://github.com/robinebers/openusage/commit/b2af5ebdbe9362b34a03ab86d22a0361f484389e) fix(pricing): accept dashed grok-4-6 CSV slugs (#1103) by @robinebers
+
 ## v0.7.9
 
 ### New Features
