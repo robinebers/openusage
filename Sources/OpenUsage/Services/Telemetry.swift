@@ -31,21 +31,24 @@ enum TelemetryConfig {
 @MainActor
 protocol TelemetrySink: AnyObject {
     func capture(_ event: String, _ properties: [String: Any])
-    /// Mirror the user's opt-out choice onto the underlying SDK at runtime.
-    func setEnabled(_ enabled: Bool)
+    /// Mirror the optional-analytics preference (crash autocapture). Must not disable the transport:
+    /// `app_daily_active` is always sent.
+    func setOptionalAnalyticsEnabled(_ enabled: Bool)
     func flush()
 }
 
-/// Anonymous, opt-out PostHog sink. No `identify()`/`group()`/`alias()`, `personProfiles = .never`,
-/// and only IDs/counts/enums are ever sent — never the free-form error message (the file log's
-/// `LogRedaction` does not cover a network transport). When no real project token is configured the
-/// sink is inert (the app still builds and the toggle still works), so dev builds never phone home.
+/// Anonymous PostHog sink. The transport stays opted in so the mandatory daily ping can send.
+/// Optional events are gated in `TelemetryRecorder`; crash autocapture is gated on the same
+/// optional-analytics flag. No `identify()`/`group()`/`alias()`, `personProfiles = .never`, and only
+/// IDs/counts/enums are ever sent — never the free-form error message (the file log's `LogRedaction`
+/// does not cover a network transport). When no real project token is configured the sink is inert
+/// (the app still builds and the toggle still works), so token-less builds never phone home.
 @MainActor
 final class PostHogTelemetrySink: TelemetrySink {
-    /// Crash / uncaught-exception autocapture is gated on the SAME opt-out as usage telemetry, decided
-    /// here so the opt-out contract is unit-testable without touching the `PostHogSDK.shared` singleton.
-    /// Gating *install* (not just sending) on the opt-out means an opted-out launch installs no signal/
-    /// exception handler and writes no crash report to disk — honoring privacy.md's "nothing while off".
+    /// Crash / uncaught-exception autocapture follows the optional-analytics toggle (not the daily
+    /// ping). Decided here so the contract is unit-testable without touching `PostHogSDK.shared`.
+    /// Gating *install* (not just sending) means an analytics-off launch installs no signal/exception
+    /// handler and writes no crash report to disk.
     nonisolated static func errorAutocaptureEnabled(telemetryEnabled: Bool) -> Bool { telemetryEnabled }
 
     private let configured: Bool
@@ -65,15 +68,16 @@ final class PostHogTelemetrySink: TelemetrySink {
         config.preloadFeatureFlags = false
         config.captureApplicationLifecycleEvents = false
         config.captureScreenViews = false
-        // Start in the user's chosen state before any event can fire.
-        config.optOut = !enabled
-        // Crash / uncaught-exception autocapture, gated on the SAME opt-out (anonymous `$exception`
+        // Daily ping is mandatory, so the transport is never opted out — including installs that
+        // persisted an SDK opt-out from older builds where the Settings toggle was a hard stop.
+        config.optOut = false
+        // Crash / uncaught-exception autocapture, gated on optional analytics (anonymous `$exception`
         // events, sent on the NEXT launch after a crash). It captures Mach exceptions, POSIX signals,
         // and uncaught NSExceptions; Swift traps may surface as a bare `SIGTRAP` without the message —
         // the symbolicated stack (dSYMs uploaded from release.yml) is what makes them actionable.
-        // Gating install on `enabled` (not relying on `optOut` alone) means an opted-out launch wires
-        // up no handler and writes nothing to disk. A runtime opt-IN therefore activates crash capture
-        // from the next launch; `optOut` (mirrored by `setEnabled`) still hard-stops sending in-session.
+        // Gating install on the analytics flag (not relying on SDK `optOut`, which would also block
+        // the daily ping) means an analytics-off launch wires up no handler and writes nothing to disk.
+        // A runtime opt-IN therefore activates crash capture from the next launch.
         // NOTE: this local flag is necessary but NOT sufficient — posthog-ios also gates the integration
         // on a SERVER-side switch (remote config `errorTracking.autocaptureExceptions`). "Exception
         // autocapture" must be enabled in the PostHog project settings, and because the SDK reads it from
@@ -82,13 +86,15 @@ final class PostHogTelemetrySink: TelemetrySink {
         // they do not exist on a macOS target.
         config.errorTrackingConfig.autoCapture = Self.errorAutocaptureEnabled(telemetryEnabled: enabled)
         PostHogSDK.shared.setup(config)
+        // Clear a persisted SDK opt-out from older builds so the mandatory daily ping can send.
+        PostHogSDK.shared.optIn()
 
         // Super properties ride on every subsequent event (anonymous, non-PII).
         PostHogSDK.shared.register([
             "app_version": AppInfo.version,
             "os_version": ProcessInfo.processInfo.operatingSystemVersionString
         ])
-        AppLog.info(.config, "telemetry initialized (enabled=\(enabled))")
+        AppLog.info(.config, "telemetry initialized (optionalAnalytics=\(enabled))")
     }
 
     func capture(_ event: String, _ properties: [String: Any]) {
@@ -96,9 +102,12 @@ final class PostHogTelemetrySink: TelemetrySink {
         PostHogSDK.shared.capture(event, properties: properties)
     }
 
-    func setEnabled(_ enabled: Bool) {
+    func setOptionalAnalyticsEnabled(_ enabled: Bool) {
         guard configured else { return }
-        if enabled { PostHogSDK.shared.optIn() } else { PostHogSDK.shared.optOut() }
+        // Never opt the SDK out — that would swallow `app_daily_active`. Crash autocapture is
+        // decided at setup; a runtime opt-in arms on the next launch.
+        PostHogSDK.shared.optIn()
+        AppLog.info(.config, "optional analytics sink preference=\(enabled)")
     }
 
     func flush() {

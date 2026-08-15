@@ -14,10 +14,10 @@ struct TelemetryConfigSnapshot: Sendable {
 /// without flooding the pipeline from the 5-minute refresh timer (~1,440 outcomes/user/day).
 ///
 /// - `app_daily_active`: emitted once per local day (DAU + the config snapshot), driven by `tick()`.
+///   This ping is always sent — the Settings toggle does not gate it.
 /// - `provider_refresh_daily`: one per provider per day, accumulated in the persisted store and emitted
-///   when the day rolls over (so counts are complete and survive app restarts within a day).
-///
-/// All work is skipped while telemetry is disabled, so opting out is a hard stop, not just a no-op sink.
+///   when the day rolls over (so counts are complete and survive app restarts within a day). Gated on
+///   the optional-analytics toggle, along with crash reports.
 @MainActor
 final class TelemetryRecorder {
     private let sink: TelemetrySink
@@ -37,23 +37,27 @@ final class TelemetryRecorder {
         self.now = now
     }
 
+    /// Whether optional usage analytics (provider rollups, error categories, crash reports) are on.
+    /// Independent of the mandatory daily ping.
     var isEnabled: Bool { store.enabled }
 
-    /// Toggle the user's opt-out choice: persist it (in the beta-wipe-proof store) and mirror it onto
-    /// the SDK. A no-op when unchanged.
+    /// Toggle optional analytics: persist the choice (in the beta-wipe-proof store) and tell the sink
+    /// so crash autocapture can follow it. Does not stop `app_daily_active`. A no-op when unchanged.
     func setEnabled(_ enabled: Bool) {
         guard store.enabled != enabled else { return }
         store.enabled = enabled
-        sink.setEnabled(enabled)
-        AppLog.info(.config, "telemetry \(enabled ? "enabled" : "disabled") by user")
+        sink.setOptionalAnalyticsEnabled(enabled)
+        AppLog.info(.config, "optional analytics \(enabled ? "enabled" : "disabled") by user")
     }
 
     /// Run on every refresh pass (launch + each interval): flush any provider counters left over from a
-    /// previous day, then emit `app_daily_active` once per local day.
+    /// previous day (only while optional analytics are on), then emit `app_daily_active` once per local
+    /// day regardless of the analytics toggle.
     func tick() {
-        guard store.enabled else { return }
         let today = Self.dayString(now())
-        flushStaleCounters(today: today)
+        if store.enabled {
+            flushStaleCounters(today: today)
+        }
         if store.activeDay != today {
             store.activeDay = today
             emitDailyActive()
@@ -61,7 +65,7 @@ final class TelemetryRecorder {
     }
 
     /// Record one provider refresh outcome. Only `.refreshed` / `.failed` count — cache hits, skips, and
-    /// backoffs are timer noise, not usage, and are dropped.
+    /// backoffs are timer noise, not usage, and are dropped. Skipped while optional analytics are off.
     func record(providerID: String, outcome: WidgetDataStore.RefreshOutcome, category: ErrorCategory?, manual: Bool) {
         guard store.enabled else { return }
         guard outcome == .refreshed || outcome == .failed else { return }
@@ -89,7 +93,6 @@ final class TelemetryRecorder {
     }
 
     func flush() {
-        guard store.enabled else { return }
         sink.flush()
     }
 

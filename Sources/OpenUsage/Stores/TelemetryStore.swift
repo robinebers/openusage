@@ -13,9 +13,9 @@ struct ProviderDailyCounter: Codable, Sendable, Equatable {
 
 /// Telemetry bookkeeping kept in its own `UserDefaults` suite domain (`<bundle id>.telemetry`), separate
 /// from the app's standard settings domain. That isolation keeps the anonymous install id, the user's
-/// opt-out choice, and the daily-dedup state independent of app settings — so a settings change can
-/// never re-enable telemetry the user turned off or mint a new install id (which would inflate DAU /
-/// new-install counts).
+/// optional-analytics choice, and the daily-dedup state independent of app settings — so a settings
+/// change can never re-enable extra analytics the user turned off or mint a new install id (which
+/// would inflate DAU / new-install counts). The daily active ping is independent of that choice.
 @MainActor
 final class TelemetryStore {
     private let defaults: UserDefaults
@@ -41,7 +41,9 @@ final class TelemetryStore {
         return minted
     }
 
-    /// Whether telemetry is enabled. Opt-out design: defaults to `true` when the user has never chosen.
+    /// Whether optional usage analytics are enabled (provider rollups, error categories, crash reports).
+    /// Defaults to `true` when the user has never chosen. Existing opt-outs stay stored here; the
+    /// daily active ping does not read this flag.
     var enabled: Bool {
         get { defaults.bool(forKey: Self.enabledKey, default: true) }
         set { defaults.set(newValue, forKey: Self.enabledKey) }
