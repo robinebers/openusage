@@ -18,13 +18,9 @@ struct WidgetGroupedListView: View {
     @Binding var reorderLift: ReorderLift?
 
     @State private var frameStore = ReorderFrameStore()
-    @State private var activeDrag: DashboardDragSource?
+    @State private var activeProviderID: String?
+    @State private var activeMetricID: String?
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
-
-    private enum DashboardDragSource: Equatable {
-        case provider(String)
-        case metric(id: String, providerID: String)
-    }
 
     var body: some View {
         // Provider-section spacing is noticeably wider than the in-card row rhythm (so groups
@@ -35,7 +31,6 @@ struct WidgetGroupedListView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .simultaneousGesture(dashboardDragGesture())
         .onPreferenceChange(ReorderFramePreferenceKey.self) { frameStore.frames = $0 }
         .animation(Motion.spring, value: layout.displayGroups.map(\.provider.id))
     }
@@ -45,7 +40,7 @@ struct WidgetGroupedListView: View {
             header(group)
             container(group)
         }
-        .opacity(reorderLift?.id == group.provider.id ? 0 : 1)
+        .opacity(activeProviderID == group.provider.id ? 0 : 1)
         .reorderFrame(id: group.provider.id, in: .named(reorderSpaceName))
     }
 
@@ -60,7 +55,7 @@ struct WidgetGroupedListView: View {
         )
         // Keep the provider mark and hover-revealed copy control aligned with the card's content edges.
         .padding(.horizontal, 8)
-        .reorderFrame(id: providerSourceFrameID(for: group.provider.id), in: .named(reorderSpaceName))
+        .highPriorityGesture(providerDragGesture(for: group))
         .contextMenu {
             // Hides the whole provider section (the Customize provider list brings it back). Mirrors
             // the per-metric "Hide" but one level up, so the verb order reads the same on a header as a row.
@@ -239,7 +234,8 @@ struct WidgetGroupedListView: View {
             condensedTop: condensedTop
         )
             .contentShape(Rectangle())
-            .opacity(reorderLift?.id == descriptor.id ? 0 : 1)
+            .opacity(activeMetricID == descriptor.id ? 0 : 1)
+            .highPriorityGesture(metricDragGesture(for: descriptor, providerID: providerID))
             .contextMenu { rowMenu(descriptor, providerID: providerID) }
             .reorderFrame(id: descriptor.id, in: .named(reorderSpaceName))
     }
@@ -282,104 +278,44 @@ struct WidgetGroupedListView: View {
         }
     }
 
-    private func dashboardDragGesture() -> some Gesture {
-        DragGesture(minimumDistance: 4, coordinateSpace: .named(reorderSpaceName))
-            .onChanged { value in
-                if activeDrag == nil {
-                    activeDrag = dragSource(at: value.startLocation)
-                    if let activeDrag {
-                        reorderLift = makeLift(for: activeDrag, value: value)
+    private func providerDragGesture(for group: ProviderGroup) -> some Gesture {
+        reorderDragGesture(
+            id: group.provider.id,
+            coordinateSpaceName: reorderSpaceName,
+            frameStore: frameStore,
+            active: $activeProviderID,
+            lift: $reorderLift,
+            makeLift: { makeProviderLift(for: group, value: $0) },
+            orderedIDs: { layout.displayGroups.map(\.provider.id) },
+            reorder: { layout.reorderProvider(dragged: group.provider.id, target: $0) }
+        )
+    }
+
+    private func metricDragGesture(for descriptor: WidgetDescriptor, providerID: String) -> some Gesture {
+        reorderDragGesture(
+            id: descriptor.id,
+            coordinateSpaceName: reorderSpaceName,
+            frameStore: frameStore,
+            active: $activeMetricID,
+            lift: $reorderLift,
+            makeLift: { makeMetricLift(for: descriptor, value: $0) },
+            orderedIDs: { metricTargetIDs(for: providerID) },
+            reorder: { target in
+                let current = metricTargetIDs(for: providerID)
+                if current.contains(expandedDividerID(for: providerID)) {
+                    guard let next = LayoutStore.reordered(current, dragged: descriptor.id, target: target) else {
+                        return false
                     }
+                    return layout.applyMetricDividerOrder(
+                        next,
+                        dragged: descriptor.id,
+                        dividerID: expandedDividerID(for: providerID),
+                        in: providerID
+                    )
                 }
-                guard let activeDrag else { return }
-                reorderLift?.location = value.location
-
-                let draggedID: String
-                let orderedIDs: [String]
-                switch activeDrag {
-                case .provider(let providerID):
-                    draggedID = providerID
-                    orderedIDs = layout.displayGroups.map(\.provider.id)
-                case .metric(let id, let providerID):
-                    draggedID = id
-                    orderedIDs = metricTargetIDs(for: providerID)
-                }
-
-                guard let target = reorderTarget(
-                    at: value.location,
-                    in: frameStore.frames,
-                    excluding: draggedID,
-                    orderedIDs: orderedIDs
-                ) else { return }
-
-                var moved = false
-                withAnimation(Motion.spring) {
-                    moved = reorder(activeDrag, target: target)
-                }
-                if moved { Haptics.snap() }
+                return layout.reorderMetric(dragged: descriptor.id, target: target, in: providerID)
             }
-            .onEnded { _ in
-                activeDrag = nil
-                reorderLift = nil
-            }
-    }
-
-    private func dragSource(at point: CGPoint) -> DashboardDragSource? {
-        for group in layout.displayGroups {
-            let widgets = layout.isProviderExpanded(group.provider.id) ? group.widgets : group.alwaysShownWidgets
-            for widget in widgets {
-                guard let descriptor = layout.descriptor(for: widget),
-                      frameStore.frames[descriptor.id]?.insetBy(dx: 0, dy: -2).contains(point) == true
-                else { continue }
-                return .metric(id: descriptor.id, providerID: group.provider.id)
-            }
-        }
-        for group in layout.displayGroups
-        where frameStore.frames[providerSourceFrameID(for: group.provider.id)]?.insetBy(dx: 0, dy: -2).contains(point) == true {
-            return .provider(group.provider.id)
-        }
-        return nil
-    }
-
-    private func makeLift(for source: DashboardDragSource, value: DragGesture.Value) -> ReorderLift? {
-        switch source {
-        case .provider(let providerID):
-            guard let group = layout.displayGroups.first(where: { $0.provider.id == providerID }) else { return nil }
-            return makeProviderLift(for: group, value: value)
-        case .metric(let id, let providerID):
-            guard let descriptor = metricDescriptor(id: id, providerID: providerID) else { return nil }
-            return makeMetricLift(for: descriptor, value: value)
-        }
-    }
-
-    private func reorder(_ source: DashboardDragSource, target: String) -> Bool {
-        switch source {
-        case .provider(let providerID):
-            return layout.reorderProvider(dragged: providerID, target: target)
-        case .metric(let id, let providerID):
-            let current = metricTargetIDs(for: providerID)
-            if current.contains(expandedDividerID(for: providerID)) {
-                guard let next = LayoutStore.reordered(current, dragged: id, target: target) else { return false }
-                return layout.applyMetricDividerOrder(
-                    next,
-                    dragged: id,
-                    dividerID: expandedDividerID(for: providerID),
-                    in: providerID
-                )
-            }
-            return layout.reorderMetric(dragged: id, target: target, in: providerID)
-        }
-    }
-
-    private func metricDescriptor(id: String, providerID: String) -> WidgetDescriptor? {
-        guard let group = layout.displayGroups.first(where: { $0.provider.id == providerID }),
-              let widget = group.widgets.first(where: { layout.descriptor(for: $0)?.id == id })
-        else { return nil }
-        return layout.descriptor(for: widget)
-    }
-
-    private func providerSourceFrameID(for providerID: String) -> String {
-        "\(providerID)::dashboard-provider-source"
+        )
     }
 
     private func metricTargetIDs(for providerID: String) -> [String] {
