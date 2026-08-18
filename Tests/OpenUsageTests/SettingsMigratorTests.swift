@@ -238,6 +238,130 @@ final class SettingsMigratorTests: XCTestCase {
         XCTAssertEqual(defaults.stringArray(forKey: "openusage.enabledProviders.v1"), enabledAfterFirst)
     }
 
+    // MARK: - v3: dead metric-ID remaps
+
+    /// Dead label-shaped pin IDs rewrite to the live registry IDs, preserving order and dropping a
+    /// duplicate that appears only after remap (e.g. both `session` and `geminiPro` → one pin).
+    func testV3RemapsDeadMenuBarPins() {
+        let (defaults, domain) = makeDefaults("V3DeadPins")
+        defer { defaults.removePersistentDomain(forName: domain) }
+        defaults.set(2, forKey: SettingsMigrator.schemaVersionKey)
+        defaults.set(
+            ["antigravity.session", "claude.session", "antigravity.weekly", "copilot.credits", "antigravity.geminiPro"],
+            forKey: "openusage.layout.v1.menuBarPins"
+        )
+
+        let result = SettingsMigrator.migrate(defaults: defaults, domainName: domain)
+
+        XCTAssertEqual(result, SettingsSchema.current)
+        XCTAssertEqual(
+            defaults.stringArray(forKey: "openusage.layout.v1.menuBarPins"),
+            ["antigravity.geminiPro", "claude.session", "antigravity.geminiWeekly", "copilot.premium"]
+        )
+    }
+
+    /// Pins already on live registry IDs are left alone.
+    func testV3LeavesAlreadyCorrectPinsUnchanged() {
+        let (defaults, domain) = makeDefaults("V3CorrectPins")
+        defer { defaults.removePersistentDomain(forName: domain) }
+        defaults.set(2, forKey: SettingsMigrator.schemaVersionKey)
+        let pins = ["antigravity.geminiPro", "antigravity.geminiWeekly", "copilot.premium"]
+        defaults.set(pins, forKey: "openusage.layout.v1.menuBarPins")
+
+        SettingsMigrator.migrate(defaults: defaults, domainName: domain)
+
+        XCTAssertEqual(defaults.stringArray(forKey: "openusage.layout.v1.menuBarPins"), pins)
+    }
+
+    /// Unknown / tombstone IDs (e.g. retired `geminiFlash`) are kept — only the known-dead aliases remap.
+    func testV3KeepsUnknownPinIDs() {
+        let (defaults, domain) = makeDefaults("V3UnknownPins")
+        defer { defaults.removePersistentDomain(forName: domain) }
+        defaults.set(2, forKey: SettingsMigrator.schemaVersionKey)
+        defaults.set(
+            ["antigravity.session", "antigravity.geminiFlash", "ghost.metric"],
+            forKey: "openusage.layout.v1.menuBarPins"
+        )
+
+        SettingsMigrator.migrate(defaults: defaults, domainName: domain)
+
+        XCTAssertEqual(
+            defaults.stringArray(forKey: "openusage.layout.v1.menuBarPins"),
+            ["antigravity.geminiPro", "antigravity.geminiFlash", "ghost.metric"]
+        )
+    }
+
+    /// Same remaps apply to the other layout keys that store metric IDs as strings.
+    func testV3RemapsMetricIDsAcrossLayoutKeys() throws {
+        let (defaults, domain) = makeDefaults("V3LayoutKeys")
+        defer { defaults.removePersistentDomain(forName: domain) }
+        defaults.set(2, forKey: SettingsMigrator.schemaVersionKey)
+        defaults.set(["antigravity.session", "copilot.credits"], forKey: "openusage.layout.v1.expandedMetrics")
+        defaults.set(["antigravity.weekly"], forKey: "openusage.layout.v1.expandOnEnable")
+        defaults.set(
+            try JSONEncoder().encode(["antigravity.session", "claude.session"]),
+            forKey: "openusage.layout.v1.seededDefaults"
+        )
+        defaults.set(
+            try JSONEncoder().encode([
+                "antigravity": ["antigravity.session", "antigravity.weekly", "antigravity.claude"],
+                "copilot": ["copilot.credits", "copilot.extra"],
+            ] as [String: [String]]),
+            forKey: "openusage.layout.v1.metricOrderByProvider"
+        )
+        let placed = [
+            PlacedWidget(descriptorID: "antigravity.session"),
+            PlacedWidget(descriptorID: "antigravity.geminiPro"),
+            PlacedWidget(descriptorID: "copilot.credits"),
+        ]
+        defaults.set(try JSONEncoder().encode(placed), forKey: "openusage.layout.v1")
+
+        SettingsMigrator.migrate(defaults: defaults, domainName: domain)
+
+        XCTAssertEqual(
+            defaults.stringArray(forKey: "openusage.layout.v1.expandedMetrics"),
+            ["antigravity.geminiPro", "copilot.premium"]
+        )
+        XCTAssertEqual(
+            defaults.stringArray(forKey: "openusage.layout.v1.expandOnEnable"),
+            ["antigravity.geminiWeekly"]
+        )
+        XCTAssertEqual(
+            try JSONDecoder().decode([String].self, from: try XCTUnwrap(defaults.data(forKey: "openusage.layout.v1.seededDefaults"))),
+            ["antigravity.geminiPro", "claude.session"]
+        )
+        XCTAssertEqual(
+            try JSONDecoder().decode([String: [String]].self, from: try XCTUnwrap(defaults.data(forKey: "openusage.layout.v1.metricOrderByProvider"))),
+            [
+                "antigravity": ["antigravity.geminiPro", "antigravity.geminiWeekly", "antigravity.claude"],
+                "copilot": ["copilot.premium", "copilot.extra"],
+            ]
+        )
+        let remappedPlaced = try JSONDecoder().decode(
+            [PlacedWidget].self, from: try XCTUnwrap(defaults.data(forKey: "openusage.layout.v1"))
+        )
+        XCTAssertEqual(remappedPlaced.map(\.descriptorID), ["antigravity.geminiPro", "copilot.premium"])
+    }
+
+    /// Re-running v3 (interrupted upgrade) is a no-op once IDs are already remapped.
+    func testV3IsIdempotent() {
+        let (defaults, domain) = makeDefaults("V3Idempotent")
+        defer { defaults.removePersistentDomain(forName: domain) }
+        defaults.set(2, forKey: SettingsMigrator.schemaVersionKey)
+        defaults.set(
+            ["antigravity.session", "copilot.credits", "ghost.metric"],
+            forKey: "openusage.layout.v1.menuBarPins"
+        )
+
+        SettingsMigrator.migrate(defaults: defaults, domainName: domain)
+        let pinsAfterFirst = defaults.stringArray(forKey: "openusage.layout.v1.menuBarPins")
+        defaults.set(2, forKey: SettingsMigrator.schemaVersionKey)
+        SettingsMigrator.migrate(defaults: defaults, domainName: domain)
+
+        XCTAssertEqual(defaults.stringArray(forKey: "openusage.layout.v1.menuBarPins"), pinsAfterFirst)
+        XCTAssertEqual(pinsAfterFirst, ["antigravity.geminiPro", "copilot.premium", "ghost.metric"])
+    }
+
     // MARK: - Schema integrity
 
     /// Guards against editing the migration list without bumping `current` (or vice versa): every
