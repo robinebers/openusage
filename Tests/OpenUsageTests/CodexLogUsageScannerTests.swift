@@ -203,6 +203,9 @@ final class CodexLogUsageScannerTests: XCTestCase {
     // MARK: - Auto-review fallbacks
 
     func testAutoReviewSlugMapsToDatedCodexModel() {
+        XCTAssertEqual(CodexLogUsageScanner.autoReviewFallback(at: "2026-08-20T00:00:00Z"), "gpt-5.6-luna")
+        XCTAssertEqual(CodexLogUsageScanner.autoReviewFallback(at: "2026-07-09T00:00:00Z"), "gpt-5.6-luna")
+        XCTAssertEqual(CodexLogUsageScanner.autoReviewFallback(at: "2026-07-08T23:59:59Z"), "gpt-5.5")
         XCTAssertEqual(CodexLogUsageScanner.autoReviewFallback(at: "2026-05-01T00:00:00Z"), "gpt-5.5")
         XCTAssertEqual(CodexLogUsageScanner.autoReviewFallback(at: "2026-03-10T00:00:00Z"), "gpt-5.4")
         XCTAssertEqual(CodexLogUsageScanner.autoReviewFallback(at: "2025-12-25T00:00:00Z"), "gpt-5.2-codex")
