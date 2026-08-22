@@ -211,8 +211,8 @@ struct SettingsScreen: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, density.controlRowPadding)
-            // Daily ping is always on; the toggle only gates extra anonymous analytics.
-            Text("A daily anonymous active ping is always sent. This toggle shares extra anonymous usage analytics — provider refreshes, error types, and crash reports. No account details, credentials, or usage values are sent.")
+            // Daily activity and crash reports are always on; the toggle only gates extra analytics.
+            Text("A daily anonymous active ping and crash reports are always sent. This toggle shares extra anonymous usage analytics — provider refreshes and error types. No account details, credentials, or usage values are sent.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 12)

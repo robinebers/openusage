@@ -58,7 +58,7 @@ All three alerts default off. The first time you turn one on, OpenUsage asks for
 | Setting | Options | What it does |
 |---|---|---|
 | Hide From Screen Share | On / Off | Off (default). On replaces the menu bar strip with the OpenUsage icon and wordmark while your screen is being shared or recorded, and restores your starred metrics the moment the capture ends. See [Menu bar](menu-bar.md#hiding-usage-while-screen-sharing). |
-| Help make OpenUsage better by sharing anonymous usage analytics | On / Off | On (default) shares extra anonymous usage analytics — provider-refresh summaries, error categories, and crash reports. Off stops that extra sharing. A daily anonymous active ping is always sent. See [Privacy & Usage Data](privacy.md) for exactly what is and isn't sent. |
+| Help make OpenUsage better by sharing anonymous usage analytics | On / Off | On (default) shares extra anonymous usage analytics — provider-refresh summaries and error categories. Off stops that extra sharing. Daily activity and crash reports are always sent. See [Privacy & Usage Data](privacy.md) for exactly what is and isn't sent. |
 
 ## Advanced
 

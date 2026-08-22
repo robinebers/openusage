@@ -17,7 +17,7 @@ struct TelemetryConfigSnapshot: Sendable {
 ///   This ping is always sent — the Settings toggle does not gate it.
 /// - `provider_refresh_daily`: one per provider per day, accumulated in the persisted store and emitted
 ///   when the day rolls over (so counts are complete and survive app restarts within a day). Gated on
-///   the optional-analytics toggle, along with crash reports.
+///   the optional-analytics toggle. Crash reporting is handled separately and always remains enabled.
 @MainActor
 final class TelemetryRecorder {
     private let sink: TelemetrySink
@@ -37,12 +37,11 @@ final class TelemetryRecorder {
         self.now = now
     }
 
-    /// Whether optional usage analytics (provider rollups, error categories, crash reports) are on.
-    /// Independent of the mandatory daily ping.
+    /// Whether optional provider rollups and error categories are on.
+    /// Independent of the mandatory daily ping and crash reports.
     var isEnabled: Bool { store.enabled }
 
-    /// Toggle optional analytics: persist the choice (in the beta-wipe-proof store) and tell the sink
-    /// so crash autocapture can follow it. Does not stop `app_daily_active`. A no-op when unchanged.
+    /// Toggle optional provider analytics without stopping daily activity or crash reporting.
     func setEnabled(_ enabled: Bool) {
         guard store.enabled != enabled else { return }
         store.enabled = enabled

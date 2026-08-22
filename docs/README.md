@@ -11,7 +11,7 @@ What the app does and how it behaves. These pages describe **behavior, not visua
 - [iCloud Sync](icloud-sync.md) — how spend history is combined across Macs
 - [Model pricing](pricing.md) — how spend tiles price tokens, and where the rates come from
 - [Updates](updates.md) — automatic updates, manual checks, and the beta channel
-- [Privacy & usage data](privacy.md) — the daily active ping, extra analytics, and how to turn extra analytics off
+- [Privacy & usage data](privacy.md) — daily activity, crash reports, and optional usage analytics
 
 ## Integrations
 

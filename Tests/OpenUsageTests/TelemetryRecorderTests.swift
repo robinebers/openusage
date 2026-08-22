@@ -133,7 +133,7 @@ final class TelemetryRecorderTests: XCTestCase {
         XCTAssertEqual(sink.events(named: "app_daily_active").count, 2)
     }
 
-    func testAnalyticsOffDoesNotEmitProviderRefreshOrCrashEvents() {
+    func testAnalyticsOffDoesNotEmitProviderRefreshEvents() {
         let sink = FakeSink()
         let store = makeStore("analytics-off-optional")
         var clock = day(25)
@@ -154,7 +154,7 @@ final class TelemetryRecorderTests: XCTestCase {
         XCTAssertEqual(
             sink.events.map(\.name).filter { $0 != "app_daily_active" },
             [],
-            "analytics-off must not emit non-daily events"
+            "the recorder must not emit optional analytics while disabled"
         )
         XCTAssertFalse(store.enabled, "optional-analytics opt-out must persist")
     }
