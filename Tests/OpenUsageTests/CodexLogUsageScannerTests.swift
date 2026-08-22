@@ -227,6 +227,20 @@ final class CodexLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(event?.pricingModel, "gpt-5.4")
     }
 
+    func testRecentAutoReviewLinesUseLunaPricing() {
+        let lines = [
+            CodexLogFixture.turnContext(timestamp: "2026-08-20T08:00:00.000Z", model: "codex-auto-review"),
+            CodexLogFixture.tokenCount(
+                timestamp: "2026-08-20T08:01:00.000Z",
+                last: CodexLogFixture.usage(input: 10, output: 5)
+            )
+        ].joined(separator: "\n")
+
+        let event = CodexLogUsageScanner.parseFile(Data(lines.utf8)).first
+        XCTAssertEqual(event?.model, "codex-auto-review")
+        XCTAssertEqual(event?.pricingModel, "gpt-5.6-luna")
+    }
+
     // MARK: - Child-session replay (subagents and forks)
 
     /// Epoch seconds of the child sessions' creation instant used across the replay tests.

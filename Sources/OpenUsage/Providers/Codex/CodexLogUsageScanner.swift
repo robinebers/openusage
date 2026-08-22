@@ -62,7 +62,7 @@ actor CodexLogUsageScanner {
     /// once. The version is the parser schema version; bump it when `Event` semantics change.
     private static let sharedScanner = IncrementalJSONLScanner<Event>(
         logTag: LogTag.plugin("codex"),
-        persistence: JSONLScanCachePersistence(namespace: "codex", schemaVersion: 2)
+        persistence: JSONLScanCachePersistence(namespace: "codex", schemaVersion: 3)
     )
 
     static func flushPersistentCacheWrites() async {
