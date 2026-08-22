@@ -16,17 +16,21 @@ final class CursorProvider: ProviderRuntime {
     let usageClient: CursorUsageClient
     let now: @Sendable () -> Date
     let pricing: @Sendable () async -> ModelPricing
+    /// Read at each refresh so a toggle flip applies on the next snapshot without a restart.
+    let spendView: @Sendable () -> CursorSpendViewSetting
 
     init(
         authStore: CursorAuthStore = CursorAuthStore(),
         usageClient: CursorUsageClient = CursorUsageClient(),
         now: @escaping @Sendable () -> Date = Date.init,
-        pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() }
+        pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() },
+        spendView: @escaping @Sendable () -> CursorSpendViewSetting = { .current }
     ) {
         self.authStore = authStore
         self.usageClient = usageClient
         self.now = now
         self.pricing = pricing
+        self.spendView = spendView
     }
 
     var widgetDescriptors: [WidgetDescriptor] {
@@ -186,7 +190,15 @@ final class CursorProvider: ProviderRuntime {
                     "usage CSV ignored \(parsed.rejectedRowCount) malformed row\(parsed.rejectedRowCount == 1 ? "" : "s")"
                 )
             }
-            return CursorUsageMapper.appendSpendLines(rows: parsed.rows, now: end, pricing: pricing, to: &lines)
+            let view = spendView()
+            if view != .all, !parsed.rows.isEmpty, parsed.rows.allSatisfy({ $0.billing == .unknown }) {
+                // An export without a Cost column can't be split; say so instead of a silent "No data".
+                AppLog.warn(
+                    LogTag.plugin("cursor"),
+                    "usage CSV carries no Cost column; the \(view.label) spend view has nothing to show"
+                )
+            }
+            return CursorUsageMapper.appendSpendLines(rows: parsed.rows, now: end, pricing: pricing, view: view, to: &lines)
         } catch let error as CursorUsageCSVError {
             switch error {
             case .missingColumns(let columns):
