@@ -8,6 +8,7 @@ import Foundation
 enum DefaultLayout {
     static let metricIDs: [String] = [
         "antigravity.geminiPro", "antigravity.geminiWeekly", "antigravity.claude", "antigravity.claudeWeekly",
+        "antigravity.trend", "antigravity.today", "antigravity.yesterday", "antigravity.last30",
 
         "claude.session", "claude.weekly", "claude.trend",
         "claude.extra", "claude.today", "claude.yesterday", "claude.last30",
@@ -74,9 +75,10 @@ enum DefaultLayout {
     /// Filtered to the active registry by `LayoutStore`, and only seeded on a genuinely fresh launch
     /// (existing layouts keep everything always-shown unless they reset customization).
     static let expandedMetricIDs: [String] = [
-        // Antigravity: the Gemini pool pair (5h + weekly) stays above the fold; the non-Gemini
-        // (Claude) pool pair sits below the caret.
+        // Antigravity: the Gemini pool pair and usage trend stay above the fold; the non-Gemini
+        // pool pair and spend-history rows sit below the caret, matching the other local scanners.
         "antigravity.claude", "antigravity.claudeWeekly",
+        "antigravity.today", "antigravity.yesterday", "antigravity.last30",
         // Claude's core meters (Session, Weekly, Extra, Usage Trend) stay above the fold; spend-history
         // rows sit below the caret. Matches every other provider's "core above, history below" shape.
         "claude.sonnet", "claude.fable", "claude.today", "claude.yesterday", "claude.last30",

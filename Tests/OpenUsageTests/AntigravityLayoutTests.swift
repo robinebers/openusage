@@ -1,28 +1,34 @@
 import XCTest
 @testable import OpenUsage
 
-/// Layout defaults and migration behavior for Antigravity's four metrics (merged quota pools +
-/// weekly limits fix). Uses the real provider's registry — `MockData` carries no Antigravity
-/// fixtures — with the real `DefaultLayout` seeds.
+/// Layout defaults and migration behavior for Antigravity's quota meters, usage trend, and local
+/// spend history. Uses the real provider's registry with the real `DefaultLayout` seeds.
 @MainActor
 final class AntigravityLayoutTests: XCTestCase {
 
-    func testFreshDefaultsSeedFourMetricsTwoPinsAndClaudePairSecondary() {
+    func testFreshDefaultsSeedQuotaTrendAndSpendMetricsWithOnlyQuotaPins() {
         let store = makeStore("FreshDefaults")
 
-        // All four metrics enabled, in declaration order.
+        // Every quota, trend, and spend metric is enabled in provider declaration order.
         XCTAssertEqual(store.placed.map(\.descriptorID), [
             "antigravity.geminiPro", "antigravity.geminiWeekly",
-            "antigravity.claude", "antigravity.claudeWeekly"
+            "antigravity.claude", "antigravity.claudeWeekly", "antigravity.trend",
+            "antigravity.today", "antigravity.yesterday", "antigravity.last30"
         ])
 
         // The Gemini pair is pinned (2-per-provider cap), mirroring Claude/Codex Session+Weekly.
         XCTAssertEqual(store.pinnedMetricIDs, ["antigravity.geminiPro", "antigravity.geminiWeekly"])
 
-        // Gemini pair above the fold; the Claude pool pair below the caret.
+        // Gemini pair and trend above the fold; the Claude pool and spend rows below the caret.
         let group = store.customizeGroups.first { $0.provider.id == "antigravity" }
-        XCTAssertEqual(group?.alwaysShownMetrics.map(\.id), ["antigravity.geminiPro", "antigravity.geminiWeekly"])
-        XCTAssertEqual(group?.expandedMetrics.map(\.id), ["antigravity.claude", "antigravity.claudeWeekly"])
+        XCTAssertEqual(group?.alwaysShownMetrics.map(\.id), [
+            "antigravity.geminiPro", "antigravity.geminiWeekly", "antigravity.trend"
+        ])
+        XCTAssertEqual(group?.expandedMetrics.map(\.id), [
+            "antigravity.claude", "antigravity.claudeWeekly",
+            "antigravity.today", "antigravity.yesterday", "antigravity.last30"
+        ])
+        XCTAssertEqual(store.spendCapableProviders.map(\.id), ["antigravity"])
     }
 
     func testExistingUserLayoutAutoSeedsWeeklyMetricsBelowCaretForClaudePool() {
@@ -40,8 +46,16 @@ final class AntigravityLayoutTests: XCTestCase {
 
         XCTAssertTrue(store.isMetricEnabled("antigravity.geminiWeekly"))
         XCTAssertTrue(store.isMetricEnabled("antigravity.claudeWeekly"))
+        XCTAssertTrue(store.isMetricEnabled("antigravity.trend"))
+        XCTAssertTrue(store.isMetricEnabled("antigravity.today"))
+        XCTAssertTrue(store.isMetricEnabled("antigravity.yesterday"))
+        XCTAssertTrue(store.isMetricEnabled("antigravity.last30"))
         XCTAssertTrue(store.expandedMetricIDs.contains("antigravity.claudeWeekly"))
+        XCTAssertTrue(store.expandedMetricIDs.contains("antigravity.today"))
+        XCTAssertTrue(store.expandedMetricIDs.contains("antigravity.yesterday"))
+        XCTAssertTrue(store.expandedMetricIDs.contains("antigravity.last30"))
         XCTAssertFalse(store.expandedMetricIDs.contains("antigravity.geminiWeekly"))
+        XCTAssertFalse(store.expandedMetricIDs.contains("antigravity.trend"))
         XCTAssertFalse(store.expandedMetricIDs.contains("antigravity.claude"),
                        "a metric the user already lived with is never silently tucked away")
     }
@@ -113,8 +127,7 @@ final class AntigravityLayoutTests: XCTestCase {
 }
 
 private extension WidgetRegistry {
-    /// A registry with just the live Antigravity provider, so `DefaultLayout`'s seeds filter down to
-    /// its four metrics.
+    /// A registry with just the live Antigravity provider, so `DefaultLayout` seeds its metrics only.
     @MainActor
     static var antigravityOnly: WidgetRegistry { .from([AntigravityProvider()]) }
 }

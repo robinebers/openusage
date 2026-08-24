@@ -82,6 +82,27 @@ final class PricingBundledResourceTests: XCTestCase {
         XCTAssertEqual(pricing.resolve(model: "grok-4.3")?.inputPerMillion, 1.25)
     }
 
+    func testAntigravityGeminiModelVariantsReuseExistingCatalogRates() {
+        let pricing = Self.pricing
+        let expected: [String: String] = [
+            "gemini-2.5-flash-none": "gemini-2.5-flash",
+            "gemini-3-flash-a": "gemini-3-flash-preview",
+            "gemini-3-flash-b-high": "gemini-3-flash-preview",
+            "gemini-3-flash-none-preview": "gemini-3-flash-preview",
+            "gemini-3.5-flash-high-preview": "gemini-3.5-flash",
+            "gemini-3.6-flash-none": "gemini-3.6-flash",
+            "gemini-3.7-flash-xhigh-preview": "gemini-3.7-flash",
+            "gemini-3-pro-low": "gemini-3-pro-preview",
+            "gemini-3-pro-high-preview": "gemini-3-pro-preview",
+            "gemini-3.1-pro-none-preview": "gemini-3.1-pro-preview"
+        ]
+
+        for (variant, canonical) in expected {
+            XCTAssertEqual(pricing.supplement.canonicalName(for: variant), canonical, "wrong alias for '\(variant)'")
+            XCTAssertEqual(pricing.resolve(model: variant), pricing.resolve(model: canonical), "wrong rates for '\(variant)'")
+        }
+    }
+
     /// Claude Fable 5 (carried over from the old manifest tests): priced at 2x standard Claude 4.8
     /// Opus, with thinking/effort slug variants resolving to the same rates.
     func testClaudeFable5PricingAndAliases() throws {

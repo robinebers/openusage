@@ -322,7 +322,8 @@ final class AntigravityProviderTests: XCTestCase {
         let provider = AntigravityProvider(
             authStore: AntigravityAuthStore(keychain: FakeKeychain(wrapped), files: FakeFiles()),
             usageClient: AntigravityUsageClient(lsHTTP: routing, http: routing),
-            discovery: LanguageServerDiscovery(processRunner: EmptyProcessRunner())
+            discovery: LanguageServerDiscovery(processRunner: EmptyProcessRunner()),
+            dbUsageScanner: AntigravityDbUsageScanner(conversationsDirectory: { "/nonexistent-antigravity-tests" })
         )
 
         let snapshot = await provider.refresh()
