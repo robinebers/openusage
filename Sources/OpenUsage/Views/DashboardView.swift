@@ -45,6 +45,9 @@ struct DashboardView: View {
     @State private var animatedSlideID = 0
     /// Reset to the top whenever the popover closes, so it never reopens mid-scroll.
     @State private var dashboardScrollPosition = ScrollPosition(edge: .top)
+    /// Settings is expensive to mount because each menu picker creates an `NSPopUpButton`. Keep its
+    /// view tree alive after the first visit so later screen switches don't rebuild those controls.
+    @State private var hasVisitedSettings = false
     /// Drives the macOS-native confirmation sheet for the Customize "reset all" button. The alert
     /// attaches to this panel as a sheet (see `StatusItemController`'s attached-sheet guard), so a
     /// click on its buttons can't be misread as an outside click that dismisses the popover.
@@ -157,9 +160,10 @@ struct DashboardView: View {
             // A screen switch can tear the list down mid-drag, in which case the gesture's
             // `onEnded` never fires — clear the lift here or its overlay survives onto the new
             // screen.
-            .onChange(of: layout.screen) {
+            .onChange(of: layout.screen) { _, screen in
                 reorderLift = nil
                 layout.cancelDrag()
+                if screen == .settings { hasVisitedSettings = true }
             }
             // The Reset All alert attaches to the Customize L1 nav bar. Leaving the list — back to the
             // dashboard or into a provider's L2 detail — unmounts that host, which dismisses the alert
@@ -287,21 +291,77 @@ struct DashboardView: View {
     /// white flash across the grey cards (the regression this removes; it has no clean SwiftUI fix).
     /// A pure offset never touches opacity, so the glass keeps sampling the live popover backdrop. The
     /// pages are a `ForEach` keyed by screen, so the incoming page keeps its identity (and scroll
-    /// position) when the slide collapses back to one page. `.animation(nil, value:)` stops the
+    /// position) when the slide collapses back to one page. Settings lives in a sibling overlay after
+    /// its first visit so its expensive native controls survive navigation; an empty pager slot keeps
+    /// its slide geometry unchanged. `.animation(nil, value:)` stops the
     /// one-frame structural re-layout at the start of a switch from inheriting the footer buttons'
     /// mode-switch animation — only `slideProgress` animates the offset.
     private var modeBody: some View {
         let pages = slidePages
-        return HStack(alignment: .top, spacing: 0) {
-            ForEach(pages, id: \.self) { screen in
-                screenView(screen)
+        let pagerOffset = slideOffset(pages)
+        let keepSettings = isSettingsKeptAlive
+        return ZStack(alignment: .topLeading) {
+            HStack(alignment: .top, spacing: 0) {
+                ForEach(pages, id: \.self) { screen in
+                    pagerPage(screen, settingsKeptAlive: keepSettings)
+                        .frame(width: Self.popoverWidth)
+                        .frame(maxHeight: .infinity, alignment: .top)
+                }
+            }
+            .frame(width: Self.popoverWidth, alignment: .leading)
+            .offset(x: pagerOffset)
+
+            if keepSettings {
+                screenView(.settings, includeChrome: Self.settingsChromeIsVisible(pages: pages))
                     .frame(width: Self.popoverWidth)
                     .frame(maxHeight: .infinity, alignment: .top)
+                    .offset(x: Self.settingsOverlayOffset(
+                        pages: pages,
+                        slideOffset: pagerOffset,
+                        pageWidth: Self.popoverWidth
+                    ))
+                    .allowsHitTesting(layout.screen == .settings && !isSliding)
+                    .accessibilityHidden(layout.screen != .settings)
             }
         }
         .frame(width: Self.popoverWidth, alignment: .leading)
-        .offset(x: slideOffset(pages))
         .animation(nil, value: layout.screenSlideID)
+    }
+
+    /// Include the first render targeting Settings so it mounts directly in its permanent overlay,
+    /// never first inside the pager and then again when the visit flag catches up.
+    private var isSettingsKeptAlive: Bool {
+        hasVisitedSettings || layout.screen == .settings
+    }
+
+    /// Preserve Settings' pager slot without mounting a duplicate of its kept-alive view tree.
+    @ViewBuilder
+    private func pagerPage(_ screen: PopoverScreen, settingsKeptAlive: Bool) -> some View {
+        if screen == .settings && settingsKeptAlive {
+            Color.clear
+                .allowsHitTesting(false)
+        } else {
+            screenView(screen)
+        }
+    }
+
+    /// Follow the Settings pager slot during its slide, or park safely beyond a Dashboard ↔ Customize
+    /// transition when Settings isn't one of the visible pages.
+    static func settingsOverlayOffset(
+        pages: [PopoverScreen],
+        slideOffset: CGFloat,
+        pageWidth: CGFloat
+    ) -> CGFloat {
+        if let index = pages.firstIndex(of: .settings) {
+            return CGFloat(index) * pageWidth + slideOffset
+        }
+        return pageWidth * 2
+    }
+
+    /// Parked Settings must not keep a second footer, keyboard shortcuts, or alert presenter alive.
+    /// Restore its chrome whenever Settings is the current page or participates in a transition.
+    static func settingsChromeIsVisible(pages: [PopoverScreen]) -> Bool {
+        pages.contains(.settings)
     }
 
     /// True from the moment `layout.screen` changes until the slide reaches the incoming screen.
@@ -355,7 +415,7 @@ struct DashboardView: View {
     /// pinned bars attach to each page's scroll view (`PopoverScrollView`), the documented place for
     /// them. Identity stays stable across the slide via the `ForEach` key in `modeBody`.
     @ViewBuilder
-    private func screenView(_ screen: PopoverScreen) -> some View {
+    private func screenView(_ screen: PopoverScreen, includeChrome: Bool = true) -> some View {
         scrollBody(for: screen)
             // Auto-fit: the scroll content publishes its intrinsic height (invariant to the viewport),
             // which we sum with the chrome into this screen's ideal window height. Keyed by the per-page
@@ -366,25 +426,29 @@ struct DashboardView: View {
             .softTopScrollEdge()
             .softBottomScrollEdge()
             .pinnedTopBar(spacing: 0) {
-                PopoverTopBar(
-                    layout: layout,
-                    height: Self.topBarHeight,
-                    horizontalPadding: Self.footerHorizontalPadding,
-                    onResetAll: {
-                        layout.resetToDefault()
-                        container.reseedEnabledProviders()
-                    },
-                    isPresentingResetAllConfirm: $isPresentingResetAllConfirm
-                )
+                if includeChrome {
+                    PopoverTopBar(
+                        layout: layout,
+                        height: Self.topBarHeight,
+                        horizontalPadding: Self.footerHorizontalPadding,
+                        onResetAll: {
+                            layout.resetToDefault()
+                            container.reseedEnabledProviders()
+                        },
+                        isPresentingResetAllConfirm: $isPresentingResetAllConfirm
+                    )
+                }
             }
             .pinnedFooter(spacing: 0) {
-                PopoverFooter(
-                    screen: layout.screen,
-                    layout: layout,
-                    dataStore: dataStore,
-                    horizontalPadding: Self.footerHorizontalPadding
-                ) { screen, height in
-                    heightCoordinator.setFooter(height, for: screen)
+                if includeChrome {
+                    PopoverFooter(
+                        screen: layout.screen,
+                        layout: layout,
+                        dataStore: dataStore,
+                        horizontalPadding: Self.footerHorizontalPadding
+                    ) { screen, height in
+                        heightCoordinator.setFooter(height, for: screen)
+                    }
                 }
             }
     }

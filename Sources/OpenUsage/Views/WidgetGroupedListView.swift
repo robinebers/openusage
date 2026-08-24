@@ -17,7 +17,7 @@ struct WidgetGroupedListView: View {
     let reorderSpaceName: String
     @Binding var reorderLift: ReorderLift?
 
-    @State private var rowFrames: [String: CGRect] = [:]
+    @State private var frameStore = ReorderFrameStore()
     @State private var activeProviderID: String?
     @State private var activeMetricID: String?
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
@@ -31,7 +31,7 @@ struct WidgetGroupedListView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .onPreferenceChange(ReorderFramePreferenceKey.self) { rowFrames = $0 }
+        .onPreferenceChange(ReorderFramePreferenceKey.self) { frameStore.frames = $0 }
         .animation(Motion.spring, value: layout.displayGroups.map(\.provider.id))
     }
 
@@ -280,7 +280,7 @@ struct WidgetGroupedListView: View {
         reorderDragGesture(
             id: group.provider.id,
             coordinateSpaceName: reorderSpaceName,
-            rowFrames: rowFrames,
+            frameStore: frameStore,
             active: $activeProviderID,
             lift: $reorderLift,
             makeLift: { makeProviderLift(for: group, value: $0) },
@@ -293,7 +293,7 @@ struct WidgetGroupedListView: View {
         reorderDragGesture(
             id: descriptor.id,
             coordinateSpaceName: reorderSpaceName,
-            rowFrames: rowFrames,
+            frameStore: frameStore,
             active: $activeMetricID,
             lift: $reorderLift,
             makeLift: { makeMetricLift(for: descriptor, value: $0) },
@@ -346,7 +346,7 @@ struct WidgetGroupedListView: View {
                 rows: rows
             ),
             value: value,
-            frames: rowFrames
+            frames: frameStore.frames
         )
     }
 
@@ -355,7 +355,7 @@ struct WidgetGroupedListView: View {
             id: descriptor.id,
             payload: .dashboardMetric(data: dataStore.data(for: descriptor)),
             value: value,
-            frames: rowFrames
+            frames: frameStore.frames
         )
     }
 }

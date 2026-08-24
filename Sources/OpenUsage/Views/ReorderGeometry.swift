@@ -130,6 +130,13 @@ struct ReorderFramePreferenceKey: PreferenceKey {
     }
 }
 
+/// Keeps continuously changing row geometry outside SwiftUI's observed state. Scrolling and screen
+/// slides update these frames continuously, but only drag gestures need their latest values; publishing
+/// every update as view state would invalidate the entire dashboard or Customize screen each frame.
+final class ReorderFrameStore {
+    var frames: [String: CGRect] = [:]
+}
+
 extension View {
     func reorderFrame(id: String, in coordinateSpace: CoordinateSpace, yOutset: CGFloat = 0) -> some View {
         background(
@@ -151,7 +158,7 @@ extension View {
 func reorderDragGesture(
     id: String,
     coordinateSpaceName: String,
-    rowFrames: [String: CGRect],
+    frameStore: ReorderFrameStore,
     active: Binding<String?>,
     lift: Binding<ReorderLift?>,
     makeLift: @escaping (DragGesture.Value) -> ReorderLift?,
@@ -167,7 +174,7 @@ func reorderDragGesture(
             lift.wrappedValue?.location = value.location
             guard let target = reorderTarget(
                 at: value.location,
-                in: rowFrames,
+                in: frameStore.frames,
                 excluding: id,
                 orderedIDs: orderedIDs()
             ) else { return }

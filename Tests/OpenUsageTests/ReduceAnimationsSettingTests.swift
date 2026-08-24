@@ -48,6 +48,61 @@ final class ReduceAnimationsSettingTests: XCTestCase {
         ))
     }
 
+    func testSettingsOverlayFollowsItsPagerSlotDuringASlide() {
+        XCTAssertEqual(
+            DashboardView.settingsOverlayOffset(
+                pages: [.dashboard, .settings],
+                slideOffset: 0,
+                pageWidth: 320
+            ),
+            320
+        )
+        XCTAssertEqual(
+            DashboardView.settingsOverlayOffset(
+                pages: [.dashboard, .settings],
+                slideOffset: -320,
+                pageWidth: 320
+            ),
+            0
+        )
+        XCTAssertEqual(
+            DashboardView.settingsOverlayOffset(
+                pages: [.settings],
+                slideOffset: 0,
+                pageWidth: 320
+            ),
+            0
+        )
+    }
+
+    func testSettingsOverlayParksOffscreenWhenNotInThePager() {
+        XCTAssertEqual(
+            DashboardView.settingsOverlayOffset(
+                pages: [.dashboard],
+                slideOffset: 0,
+                pageWidth: 320
+            ),
+            640
+        )
+        XCTAssertEqual(
+            DashboardView.settingsOverlayOffset(
+                pages: [.dashboard, .customize],
+                slideOffset: -160,
+                pageWidth: 320
+            ),
+            640
+        )
+    }
+
+    func testSettingsChromeOnlyMountsWhileItsPageIsVisibleOrSliding() {
+        XCTAssertTrue(DashboardView.settingsChromeIsVisible(pages: [.settings]))
+        XCTAssertTrue(DashboardView.settingsChromeIsVisible(pages: [.dashboard, .settings]))
+        XCTAssertTrue(DashboardView.settingsChromeIsVisible(pages: [.customize, .settings]))
+        XCTAssertFalse(DashboardView.settingsChromeIsVisible(pages: [.dashboard]))
+        XCTAssertFalse(DashboardView.settingsChromeIsVisible(pages: [.customize]))
+        XCTAssertFalse(DashboardView.settingsChromeIsVisible(pages: [.dashboard, .customize]))
+    }
+
     func testNormalMotionKeepsScreenTransitionPagerUntilCompletion() {
         XCTAssertTrue(DashboardView.screenTransitionIsActive(
             reduceAnimations: false,

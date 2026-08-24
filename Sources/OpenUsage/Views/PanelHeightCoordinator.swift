@@ -27,6 +27,7 @@ final class PanelHeightCoordinator {
     /// Record a screen's measured scroll-content height (from the view's geometry action) and recompose
     /// its ideal.
     func setScrollContent(_ height: CGFloat, for screen: PopoverScreen) {
+        guard measuredScrollContent[screen] != height else { return }
         measuredScrollContent[screen] = height
         recomposeIdeal(for: screen)
     }
@@ -34,6 +35,7 @@ final class PanelHeightCoordinator {
     /// Record a screen's measured footer height (Dashboard and Settings have different content) and
     /// recompose.
     func setFooter(_ height: CGFloat, for screen: PopoverScreen) {
+        guard measuredFooter[screen] != height else { return }
         measuredFooter[screen] = height
         recomposeIdeal(for: screen)
     }
@@ -45,7 +47,9 @@ final class PanelHeightCoordinator {
         guard let content = measuredScrollContent[screen], content > 0 else { return }
         let topBar: CGFloat = screen == .dashboard ? 0 : topBarHeight
         let footer = measuredFooter[screen] ?? 0
-        measuredIdeal[screen] = topBar + footer + content
+        let ideal = topBar + footer + content
+        guard measuredIdeal[screen] != ideal else { return }
+        measuredIdeal[screen] = ideal
     }
 
     /// The clamped target height for a screen, or `nil` until it's been measured.

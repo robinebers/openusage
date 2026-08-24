@@ -12,6 +12,7 @@ import UserNotifications
 /// (auto-check, beta channel, and a full-width manual check button).
 struct SettingsScreen: View {
     @Environment(AppContainer.self) private var container
+    @Environment(LayoutStore.self) private var layout
     @Environment(UpdaterController.self) private var updater
 
     @State private var launchAtLogin = LaunchAtLoginSetting()
@@ -30,14 +31,15 @@ struct SettingsScreen: View {
     /// System Settings after re-enabling).
     private enum NotificationsAuthState { case authorized, denied, notDetermined }
     @State private var notificationsAuth: NotificationsAuthState = .authorized
-    /// Gates the destructive Reset All Settings action behind a confirmation alert. View-local state:
-    /// leaving the Settings screen (or the popover closing, which resets the screen to the dashboard)
-    /// unmounts this view and drops a pending confirmation with it.
+    /// Gates the destructive Reset All Settings action behind a confirmation alert. Settings remains
+    /// mounted after its first visit, so leaving the screen must explicitly dismiss a pending alert.
     @State private var isPresentingResetConfirm = false
     /// Remounts `ShortcutRecorderField` after a reset. The field seeds its chip from the
     /// KeyboardShortcuts store only on appear (the store isn't observable), so without a fresh
     /// identity the still-mounted Settings screen would keep showing the cleared shortcut.
     @State private var shortcutFieldGeneration = 0
+    /// Settings stays mounted between visits, so explicitly restore its previous scroll-to-top behavior.
+    @State private var scrollPosition = ScrollPosition(edge: .top)
 
     /// Fills the region the dashboard's pinned footer leaves. Same scroller treatment as Customize:
     /// the overlay scroller stays (the scroll edge effect needs it) but is invisible.
@@ -45,6 +47,7 @@ struct SettingsScreen: View {
         PopoverScrollView {
             content
         }
+        .scrollPosition($scrollPosition)
     }
 
     private var content: some View {
@@ -70,7 +73,17 @@ struct SettingsScreen: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .task { await refreshNotificationsAuth() }
+        .onChange(of: layout.screen) { _, screen in
+            if screen == .settings {
+                scrollPosition.scrollTo(edge: .top)
+                commandLineTool.refreshStatus()
+                Task { await refreshNotificationsAuth() }
+            } else {
+                isPresentingResetConfirm = false
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            guard layout.screen == .settings else { return }
             commandLineTool.refreshStatus()
             Task { await refreshNotificationsAuth() }
         }
@@ -96,7 +109,7 @@ struct SettingsScreen: View {
             }
             // Click-to-record field; its ⓧ clears the combo and disables the shortcut.
             row("Global Shortcut") {
-                ShortcutRecorderField(name: .togglePopover)
+                ShortcutRecorderField(name: .togglePopover, isVisible: layout.screen == .settings)
                     .id(shortcutFieldGeneration)
                     .hoverTooltip("Open OpenUsage from anywhere")
             }

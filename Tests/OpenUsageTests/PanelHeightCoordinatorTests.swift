@@ -1,3 +1,5 @@
+import Observation
+import os
 import XCTest
 @testable import OpenUsage
 
@@ -69,5 +71,41 @@ final class PanelHeightCoordinatorTests: XCTestCase {
         XCTAssertEqual(c.measuredIdeal[.dashboard], 300)
         c.setScrollContent(500, for: .dashboard)   // content grew (rows loaded)
         XCTAssertEqual(c.measuredIdeal[.dashboard], 500)
+    }
+
+    func testRepeatedMeasurementsDoNotInvalidateHeightObservers() {
+        let coordinator = PanelHeightCoordinator(topBarHeight: topBar)
+        coordinator.setScrollContent(300, for: .dashboard)
+        coordinator.setFooter(40, for: .dashboard)
+
+        let invalidated = OSAllocatedUnfairLock(initialState: false)
+        withObservationTracking {
+            _ = coordinator.measuredIdeal
+        } onChange: {
+            invalidated.withLock { $0 = true }
+        }
+
+        coordinator.setScrollContent(300, for: .dashboard)
+        coordinator.setFooter(40, for: .dashboard)
+
+        XCTAssertFalse(invalidated.withLock { $0 })
+        XCTAssertEqual(coordinator.measuredIdeal[.dashboard], 340)
+    }
+
+    func testChangedMeasurementStillInvalidatesHeightObservers() {
+        let coordinator = PanelHeightCoordinator(topBarHeight: topBar)
+        coordinator.setScrollContent(300, for: .dashboard)
+
+        let invalidated = OSAllocatedUnfairLock(initialState: false)
+        withObservationTracking {
+            _ = coordinator.measuredIdeal
+        } onChange: {
+            invalidated.withLock { $0 = true }
+        }
+
+        coordinator.setScrollContent(420, for: .dashboard)
+
+        XCTAssertTrue(invalidated.withLock { $0 })
+        XCTAssertEqual(coordinator.measuredIdeal[.dashboard], 420)
     }
 }

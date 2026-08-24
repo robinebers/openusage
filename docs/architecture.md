@@ -82,6 +82,11 @@ ends up unable to receive keystrokes until a second click. A non-activating `NSP
 shortcut recorder just work. `App/` owns that AppKit layer and hosts the SwiftUI views inside it, so
 the bulk of the UI can stay plain SwiftUI.
 
+SwiftUI measures each screen's content and drives panel resizing on the same animation clock as screen
+navigation. Row positions used for drag reordering stay outside observable view state, so scrolling and
+screen transitions don't rebuild their entire lists, and the panel's shadow updates once its size settles.
+Settings stays mounted after its first visit so returning to it reuses its native controls.
+
 ## Platform support
 
 OpenUsage runs on macOS 15 (Sequoia) and later. It is built against the latest SDK and back-deploys:
