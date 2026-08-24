@@ -219,7 +219,7 @@ private struct CardNameSection: View {
     }
 
     private var placeholder: String {
-        record.map { container.derivedDisplayName(for: $0) } ?? ""
+        record?.derivedDisplayName ?? ""
     }
 
     private func commit() {

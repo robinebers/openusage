@@ -87,6 +87,17 @@ final class MenuBarContentTests: XCTestCase {
         XCTAssertEqual(content.accessibilityText, "A Session 41%, Weekly 12%")
     }
 
+    func testAccessibilityTextUsesTheResolvedTitle() {
+        // The VoiceOver summary is a human-facing name, so it goes through the caller's resolver
+        // (the account registry) instead of the baked provider name.
+        let content = MenuBarContentBuilder.build(
+            groups: [group("a", percent("a.m1", "Session", 41))],
+            data: { $0.sample },
+            title: { _ in "Claude Team" }
+        )
+        XCTAssertEqual(content.accessibilityText, "Claude Team Session 41%")
+    }
+
     func testTrayLabelsShortenLongTimeWindows() {
         let content = MenuBarContentBuilder.build(
             groups: [group("a", percent("a.today", "Today", 5), percent("a.month", "Last 30 Days", 80))],

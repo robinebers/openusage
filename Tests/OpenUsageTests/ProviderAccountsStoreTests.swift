@@ -126,11 +126,12 @@ final class ProviderAccountsStoreTests: XCTestCase {
 
         store.rename(cardID: "claude", to: "  Work  ")
         XCTAssertEqual(store.records[0].customLabel, "Work", "renames are trimmed")
+        XCTAssertEqual(store.records[0].resolvedDisplayName, "Work", "the resolver surfaces the rename")
         XCTAssertEqual(ProviderAccountsStore(defaults: defaults).records[0].customLabel, "Work", "renames persist")
 
         store.rename(cardID: "claude", to: "   ")
         XCTAssertNil(store.records[0].customLabel, "a blank rename clears back to the derived name")
-        XCTAssertEqual(store.records[0].displayLabel, "a@example.com")
+        XCTAssertEqual(store.records[0].resolvedDisplayName, "Claude", "the bare card derives the stock family name")
 
         store.rename(cardID: "missing", to: "X")
         XCTAssertEqual(store.records.count, 1, "renaming an unknown card is a no-op")

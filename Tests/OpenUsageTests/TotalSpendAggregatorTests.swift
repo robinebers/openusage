@@ -50,6 +50,25 @@ final class TotalSpendAggregatorTests: XCTestCase {
         XCTAssertEqual(spend.centerValue, 9.75, accuracy: 0.0001)
     }
 
+    func testSlicesCarryTheCallerResolvedTitleThroughProjection() {
+        // The caller (the live card, with registry access) resolves each slice's title once; the
+        // legend and the share export both read that resolved string, so a mid-session rename can
+        // never show on one and not the other.
+        let snapshots = [
+            "claude": snapshot(claude, lines: [spendLine("Today", dollars: 2.50)]),
+            "cursor": snapshot(cursor, lines: [spendLine("Today", dollars: 7.25)])
+        ]
+
+        let total = TotalSpendAggregator.total(
+            for: .today,
+            providers: [claude, cursor],
+            snapshots: snapshots,
+            title: { $0.id == "claude" ? "Claude Team" : $0.displayName }
+        )
+
+        XCTAssertEqual(total.projection(for: .cost).slices.map(\.title), ["Cursor", "Claude Team"])
+    }
+
     func testProviderWithoutPeriodLineIsExcludedNotZero() {
         let snapshots = [
             "claude": snapshot(claude, lines: [spendLine("Today", dollars: 1.00)]),
