@@ -51,6 +51,101 @@ final class CursorOptionalEndpointTests: XCTestCase {
         XCTAssertTrue(logs.contains("optional prepaid-balance request could not be prepared from the current session"), logs)
     }
 
+    func testGrokBotRequestFailureDoesNotDiscardPrimaryUsage() async throws {
+        let provider = makeProvider { request in
+            switch request.url {
+            case CursorUsageClient.usageURL:
+                return Self.primaryUsageResponse
+            case CursorUsageClient.planURL:
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"planInfo":{"planName":"Ultra"}}"#.utf8))
+            case CursorUsageClient.grokBotUsageURL:
+                return HTTPResponse(statusCode: 503, headers: [:], body: Data())
+            default:
+                return HTTPResponse(statusCode: 404, headers: [:], body: Data())
+            }
+        }
+
+        let (snapshot, logs) = try await captureLogs { await provider.refresh() }
+
+        XCTAssertNil(snapshot.errorCategory)
+        XCTAssertEqual(progress(snapshot.lines, "Total usage")?.used, 20)
+        XCTAssertNil(snapshot.lines.first { $0.label == "Grok Bot usage" })
+        XCTAssertTrue(logs.contains("optional Grok Bot usage request returned HTTP 503"), logs)
+    }
+
+    func testInvalidGrokBotUsageIsLoggedWithoutDiscardingPrimaryUsage() async throws {
+        let provider = makeProvider { request in
+            switch request.url {
+            case CursorUsageClient.usageURL:
+                return Self.primaryUsageResponse
+            case CursorUsageClient.planURL:
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"planInfo":{"planName":"Ultra"}}"#.utf8))
+            case CursorUsageClient.grokBotUsageURL:
+                return HTTPResponse(
+                    statusCode: 200,
+                    headers: [:],
+                    body: Data(#"{"usagePercent":true,"hasNonZeroIncludedLimit":true}"#.utf8)
+                )
+            default:
+                return HTTPResponse(statusCode: 404, headers: [:], body: Data())
+            }
+        }
+
+        let (snapshot, logs) = try await captureLogs { await provider.refresh() }
+
+        XCTAssertNil(snapshot.errorCategory)
+        XCTAssertEqual(progress(snapshot.lines, "Total usage")?.used, 20)
+        XCTAssertNil(snapshot.lines.first { $0.label == "Grok Bot usage" })
+        XCTAssertTrue(logs.contains("optional Grok Bot usage response contained invalid usage metadata"), logs)
+    }
+
+    func testIneligibleGrokBotAccountDoesNotLogAnInvalidUsageError() async throws {
+        let provider = makeProvider { request in
+            switch request.url {
+            case CursorUsageClient.usageURL:
+                return Self.primaryUsageResponse
+            case CursorUsageClient.planURL:
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"planInfo":{"planName":"Pro"}}"#.utf8))
+            case CursorUsageClient.grokBotUsageURL:
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"includedLimitZero":true}"#.utf8))
+            default:
+                return HTTPResponse(statusCode: 404, headers: [:], body: Data())
+            }
+        }
+
+        let (snapshot, logs) = try await captureLogs { await provider.refresh() }
+
+        XCTAssertNil(snapshot.errorCategory)
+        XCTAssertNil(snapshot.lines.first { $0.label == "Grok Bot usage" })
+        XCTAssertFalse(logs.contains("Grok Bot usage response contained invalid usage metadata"), logs)
+    }
+
+    func testGrokBotZeroUsageWithoutIncludedAllowanceIsHiddenWithoutWarning() async throws {
+        let provider = makeProvider { request in
+            switch request.url {
+            case CursorUsageClient.usageURL:
+                return Self.primaryUsageResponse
+            case CursorUsageClient.planURL:
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"planInfo":{"planName":"Pro"}}"#.utf8))
+            case CursorUsageClient.grokBotUsageURL:
+                return HTTPResponse(
+                    statusCode: 200,
+                    headers: [:],
+                    body: Data(#"{"usagePercent":0,"hasNonZeroIncludedLimit":false}"#.utf8)
+                )
+            default:
+                return HTTPResponse(statusCode: 404, headers: [:], body: Data())
+            }
+        }
+
+        let (snapshot, logs) = try await captureLogs { await provider.refresh() }
+
+        XCTAssertNil(snapshot.errorCategory)
+        XCTAssertEqual(progress(snapshot.lines, "Total usage")?.used, 20)
+        XCTAssertNil(snapshot.lines.first { $0.label == "Grok Bot usage" })
+        XCTAssertFalse(logs.contains("Grok Bot usage response contained invalid usage metadata"), logs)
+    }
+
     func testInvalidPlanMetadataStillEnablesRequestBasedFallback() async throws {
         let provider = makeProvider { request in
             if request.url.absoluteString.hasPrefix(CursorUsageClient.restUsageURL.absoluteString) {

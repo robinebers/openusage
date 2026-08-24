@@ -34,6 +34,48 @@ final class CursorAuthStoreTests: XCTestCase {
 }
 
 final class CursorUsageMapperTests: XCTestCase {
+    func testMapsGrokBotWeeklyUsageAndItsOwnResetWindow() throws {
+        let line = try XCTUnwrap(CursorUsageMapper.mapGrokBotUsage([
+            "usagePercent": 37.5,
+            "currentPeriodStart": "2026-08-20T00:00:00Z",
+            "nextResetTimestampUtc": "2026-08-27T00:00:00Z",
+            "hasNonZeroIncludedLimit": true
+        ]))
+
+        let usage = try XCTUnwrap(progress([line], "Grok Bot usage"))
+        XCTAssertEqual(usage.used, 37.5)
+        XCTAssertEqual(usage.limit, 100)
+        XCTAssertEqual(usage.resetsAt, OpenUsageISO8601.date(from: "2026-08-27T00:00:00Z"))
+        XCTAssertEqual(usage.periodDurationMs, MetricPeriod.weekMs)
+    }
+
+    func testGrokBotUsageAllowsZeroAndClampsOverages() throws {
+        let zero = try XCTUnwrap(CursorUsageMapper.mapGrokBotUsage(["usagePercent": 0]))
+        let overage = try XCTUnwrap(CursorUsageMapper.mapGrokBotUsage(["usagePercent": 125]))
+
+        XCTAssertEqual(progress([zero], "Grok Bot usage")?.used, 0)
+        XCTAssertEqual(progress([zero], "Grok Bot usage")?.periodDurationMs, MetricPeriod.weekMs)
+        XCTAssertEqual(progress([overage], "Grok Bot usage")?.used, 100)
+    }
+
+    func testGrokBotUsageRejectsPooledAndInvalidPersonalMeters() {
+        XCTAssertNil(CursorUsageMapper.mapGrokBotUsage([
+            "usagePercent": 42,
+            "usesPooledEnterpriseAllowance": true
+        ]))
+        XCTAssertNil(CursorUsageMapper.mapGrokBotUsage([
+            "usagePercent": 0,
+            "hasNonZeroIncludedLimit": false
+        ]))
+        XCTAssertNil(CursorUsageMapper.mapGrokBotUsage([
+            "usagePercent": 0,
+            "includedLimitZero": true
+        ]))
+        XCTAssertNil(CursorUsageMapper.mapGrokBotUsage(["usagePercent": true]))
+        XCTAssertNil(CursorUsageMapper.mapGrokBotUsage(["usagePercent": -1]))
+        XCTAssertNil(CursorUsageMapper.mapGrokBotUsage(["hasNonZeroIncludedLimit": true]))
+    }
+
     func testMapsCreditsUsageBreakdownAndOnDemand() throws {
         let mapped = try CursorUsageMapper.mapUsage(
             usage: [
@@ -64,8 +106,8 @@ final class CursorUsageMapperTests: XCTestCase {
         XCTAssertEqual(mapped.plan, "Pro Plan")
         XCTAssertEqual(try XCTUnwrap(dollarValue(mapped.lines, "Credits")), 17268.15, accuracy: 0.001)
         XCTAssertEqual(progress(mapped.lines, "Total usage")?.used, 20)
-        XCTAssertEqual(progress(mapped.lines, "Auto usage")?.used, 12.5)
-        XCTAssertEqual(progress(mapped.lines, "API usage")?.used, 7.5)
+        XCTAssertEqual(progress(mapped.lines, "Cursor Models")?.used, 12.5)
+        XCTAssertEqual(progress(mapped.lines, "Other Models")?.used, 7.5)
         XCTAssertEqual(progress(mapped.lines, "On-demand")?.used, 40)
     }
 
@@ -189,6 +231,27 @@ final class CursorUsageMapperTests: XCTestCase {
 
 @MainActor
 final class CursorProviderTests: XCTestCase {
+    func testModelCategoryDescriptorsMatchDashboardAndKeepStableIdentifiers() throws {
+        let descriptors = CursorProvider().widgetDescriptors
+
+        let totalUsage = try XCTUnwrap(descriptors.first { $0.id == "cursor.usage" })
+        XCTAssertEqual(totalUsage.title, "Total Usage")
+
+        let grokBot = try XCTUnwrap(descriptors.first { $0.id == "cursor.grokBot" })
+        XCTAssertEqual(grokBot.title, "Grok Bot")
+        XCTAssertEqual(grokBot.limitResources.map(\.key), ["grokBot"])
+
+        let cursorModels = try XCTUnwrap(descriptors.first { $0.id == "cursor.auto" })
+        XCTAssertEqual(cursorModels.title, "Cursor Models")
+        XCTAssertEqual(cursorModels.metricLabel, "Cursor Models")
+        XCTAssertEqual(cursorModels.limitResources.map(\.key), ["autoUsage"])
+
+        let otherModels = try XCTUnwrap(descriptors.first { $0.id == "cursor.api" })
+        XCTAssertEqual(otherModels.title, "Other Models")
+        XCTAssertEqual(otherModels.metricLabel, "Other Models")
+        XCTAssertEqual(otherModels.limitResources.map(\.key), ["apiUsage"])
+    }
+
     func testRefreshFetchesLiveCursorUsage() async {
         let accessToken = makeCursorJWT(sub: "google-oauth2|user_abc123")
         let http = RoutingHTTPClient { request in
@@ -215,6 +278,19 @@ final class CursorProviderTests: XCTestCase {
             if url.contains("GetPlanInfo") {
                 return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"planInfo":{"planName":"pro plan"}}"#.utf8))
             }
+            if url.contains("GetSandUsageStatus") {
+                XCTAssertEqual(request.method, "POST")
+                XCTAssertEqual(request.headers["Authorization"], "Bearer \(accessToken)")
+                XCTAssertEqual(request.headers["Connect-Protocol-Version"], "1")
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data("""
+                {
+                  "usagePercent": 37.5,
+                  "currentPeriodStart": "2026-08-20T00:00:00Z",
+                  "nextResetTimestampUtc": "2026-08-27T00:00:00Z",
+                  "hasNonZeroIncludedLimit": true
+                }
+                """.utf8))
+            }
             if url.contains("GetCreditGrantsBalance") {
                 return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"hasCreditGrants":false}"#.utf8))
             }
@@ -238,8 +314,13 @@ final class CursorProviderTests: XCTestCase {
         XCTAssertEqual(snapshot.plan, "Pro Plan")
         XCTAssertEqual(dollarValue(snapshot.lines, "Credits") ?? -1, 500)
         XCTAssertEqual(progress(snapshot.lines, "Total usage")?.used, 20)
-        XCTAssertEqual(progress(snapshot.lines, "Auto usage")?.used, 12.5)
-        XCTAssertEqual(progress(snapshot.lines, "API usage")?.used, 7.5)
+        XCTAssertEqual(progress(snapshot.lines, "Grok Bot usage")?.used, 37.5)
+        XCTAssertEqual(
+            progress(snapshot.lines, "Grok Bot usage")?.resetsAt,
+            OpenUsageISO8601.date(from: "2026-08-27T00:00:00Z")
+        )
+        XCTAssertEqual(progress(snapshot.lines, "Cursor Models")?.used, 12.5)
+        XCTAssertEqual(progress(snapshot.lines, "Other Models")?.used, 7.5)
         XCTAssertEqual(progress(snapshot.lines, "On-demand")?.used, 40)
     }
 }

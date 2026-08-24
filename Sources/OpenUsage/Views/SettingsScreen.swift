@@ -199,16 +199,20 @@ struct SettingsScreen: View {
                 .padding(.horizontal, 12)
                 .padding(.bottom, 8)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            row("Share Anonymous Usage") {
+            HStack(alignment: .center, spacing: 10) {
+                Text("Help make OpenUsage better by sharing anonymous usage analytics")
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 Toggle("", isOn: Binding(
                     get: { container.telemetry.isEnabled },
                     set: { container.telemetry.setEnabled($0) }
                 ))
                 .settingsSwitchStyle()
             }
-            // Plain-language disclosure of exactly what leaves the machine — coarse counts and
-            // error types only, never account details or usage values.
-            Text("Shares anonymous usage counts and error types to help improve OpenUsage. No account details, credentials, or usage values are sent.")
+            .padding(.horizontal, 12)
+            .padding(.vertical, density.controlRowPadding)
+            // Daily activity and crash reports are always on; the toggle only gates extra analytics.
+            Text("A daily anonymous active ping and crash reports are always sent. This toggle shares extra anonymous usage analytics — provider refreshes and error types. No account details, credentials, or usage values are sent.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 12)

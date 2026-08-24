@@ -22,7 +22,7 @@ struct ProviderIcon: View {
 
     var body: some View {
         if let mark = ProviderMarks.mark(for: source.providerID) {
-            ProviderIconShape(pathData: mark.path, inset: inset)
+            ProviderIconShape(mark: mark, inset: inset)
                 .fill(Theme.iconGray)
         } else {
             Image(systemName: ProviderMarks.symbolFallback(for: source.providerID))
@@ -38,13 +38,13 @@ struct ProviderIcon: View {
 /// run edge-to-edge (Devin, Grok). Fitting the real path bounds gives every provider mark the same
 /// optical weight, then a single shared `inset` adds consistent breathing room so none touch the edge.
 struct ProviderIconShape: Shape {
-    let pathData: String
+    let mark: ProviderMark
     /// Fraction of the frame kept as margin on every side, so normalized marks have uniform padding.
     var inset: CGFloat = 0.14
 
     func path(in rect: CGRect) -> Path {
-        let raw = SVGPath.parse(pathData)
-        let bounds = raw.cgPath.boundingBoxOfPath
+        let raw = mark.parsedPath
+        let bounds = mark.bounds
         guard bounds.width > 0, bounds.height > 0 else { return raw }
         let target = rect.insetBy(dx: rect.width * inset, dy: rect.height * inset)
         let scale = min(target.width / bounds.width, target.height / bounds.height)
@@ -58,8 +58,17 @@ struct ProviderIconShape: Shape {
 
 /// A provider vector mark: the combined SVG path data. `ProviderIconShape` normalizes by the path's
 /// true bounding box, so the source `viewBox` isn't needed.
-struct ProviderMark: Hashable {
+struct ProviderMark {
     let path: String
+    let parsedPath: Path
+    let bounds: CGRect
+
+    init(path: String) {
+        self.path = path
+        let parsedPath = SVGPath.parse(path)
+        self.parsedPath = parsedPath
+        self.bounds = parsedPath.cgPath.boundingBoxOfPath
+    }
 }
 
 /// Loads copied provider SVGs from the bundle and extracts their path data (cached).

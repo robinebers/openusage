@@ -1,203 +1,426 @@
+import Foundation
 import XCTest
 @testable import OpenUsage
 
 final class GrokLogUsageScannerTests: XCTestCase {
     private let since = OpenUsageISO8601.date(from: "2026-06-01T00:00:00.000Z")!
 
-    func testAttributesTokensToPerProcessModelAndPrices() {
-        // pid 100 is on grok-build, pid 200 on grok-composer-2.5-fast; each token row prices against
-        // its own process's current model.
-        let log = """
-        {"ts":"2026-06-10T09:00:00.000Z","pid":100,"msg":"model catalog: notifying clients","ctx":{"current_model_id":"grok-build"}}
-        {"ts":"2026-06-10T09:00:00.000Z","pid":200,"msg":"model changed","ctx":{"model":"grok-composer-2.5-fast"}}
-        {"ts":"2026-06-10T10:00:00.000Z","pid":100,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":1000000,"cached_prompt_tokens":0,"completion_tokens":1000000,"reasoning_tokens":0}}
-        {"ts":"2026-06-10T11:00:00.000Z","pid":200,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":1000000,"cached_prompt_tokens":0,"completion_tokens":1000000,"reasoning_tokens":0}}
-        """
+    func testUsesRecordedPerModelCostAndDoesNotCountReasoningTwice() throws {
+        let line = GrokLogFixture.completedTurn(
+            timestamp: "2026-06-10T10:00:00.000Z",
+            model: "grok-4.6-build",
+            input: 1_000_000,
+            cached: 700_000,
+            output: 50_000,
+            reasoning: 20_000,
+            costUsdTicks: 2_357_158_800,
+            eventID: "turn-1"
+        )
 
-        let usage = GrokLogUsageScanner.parse(log, since: since, pricing: TestPricing.bundled)
+        let usage = scan(line)
+        let day = try XCTUnwrap(usage.series.daily.first)
 
-        let day = usage.series.daily.first { $0.date == "2026-06-10" }
-        XCTAssertEqual(day?.totalTokens, 4_000_000)
-        // grok-build: 1M input @ $1 + 1M output @ $2 = $3. composer-2.5-fast: 1M @ $3 + 1M @ $15 = $18.
-        XCTAssertEqual(day?.costUSD ?? 0, 21.0, accuracy: 0.0001)
-        let models = usage.modelUsage?.daily.first { $0.date == "2026-06-10" }?.models ?? []
-        XCTAssertEqual(Set(models.map(\.model)), Set(["grok-build", "grok-composer-2.5-fast"]))
+        XCTAssertEqual(day.totalTokens, 1_050_000)
+        XCTAssertEqual(try XCTUnwrap(day.costUSD), 0.23571588, accuracy: 0.00000001)
+        XCTAssertEqual(usage.modelUsage?.daily.first?.models.map(\.model), ["grok-4.6-build"])
     }
 
-    func testTracksMidProcessModelSwitch() {
-        let log = """
-        {"ts":"2026-06-12T08:00:00.000Z","pid":7,"msg":"model changed","ctx":{"model":"grok-build"}}
-        {"ts":"2026-06-12T09:00:00.000Z","pid":7,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":1000000,"cached_prompt_tokens":0,"completion_tokens":0,"reasoning_tokens":0}}
-        {"ts":"2026-06-12T10:00:00.000Z","pid":7,"msg":"model changed","ctx":{"model":"grok-composer-2.5-fast"}}
-        {"ts":"2026-06-12T11:00:00.000Z","pid":7,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":1000000,"cached_prompt_tokens":0,"completion_tokens":0,"reasoning_tokens":0}}
-        """
+    func testFallsBackToSharedPricingAndSeparatesCacheBuckets() throws {
+        let line = GrokLogFixture.completedTurn(
+            timestamp: "2026-06-10T10:00:00.000Z",
+            model: "grok-4.5-build",
+            input: 1_000_000,
+            cached: 700_000,
+            cacheWrite: 100_000,
+            output: 250_000
+        )
 
-        let usage = GrokLogUsageScanner.parse(log, since: since, pricing: TestPricing.bundled)
+        let day = try XCTUnwrap(scan(line).series.daily.first)
 
-        // First row priced as grok-build ($1/M input), second after the switch as composer-2.5-fast ($3/M).
-        XCTAssertEqual(usage.series.daily.first?.costUSD ?? 0, 4.0, accuracy: 0.0001)
+        // 200k input + 100k cache write at $2/M, 700k cache read at $0.5/M, 250k output at $6/M.
+        XCTAssertEqual(day.totalTokens, 1_250_000)
+        XCTAssertEqual(try XCTUnwrap(day.costUSD), 2.45, accuracy: 0.0001)
     }
 
-    func testUsesCachedReadRateForCachedPromptTokens() {
-        // 800k of the 1M prompt tokens are cache reads (grok-build: $0.2/M read vs $1/M input).
-        let log = """
-        {"ts":"2026-06-12T08:00:00.000Z","pid":1,"msg":"model changed","ctx":{"model":"grok-build"}}
-        {"ts":"2026-06-12T09:00:00.000Z","pid":1,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":1000000,"cached_prompt_tokens":800000,"completion_tokens":0,"reasoning_tokens":0}}
-        """
+    func testSplitsCompletedTurnAcrossModelsWithoutDuplicatingTheEvent() throws {
+        let line = GrokLogFixture.completedTurn(
+            timestamp: "2026-06-10T10:00:00.000Z",
+            model: "grok-4.5-build",
+            input: 100,
+            output: 20,
+            costUsdTicks: 1_000_000_000,
+            eventID: "shared-turn",
+            additionalModels: [
+                "grok-4.6-build": [
+                    "inputTokens": 200,
+                    "outputTokens": 30,
+                    "costUsdTicks": 2_000_000_000
+                ]
+            ]
+        )
 
-        let usage = GrokLogUsageScanner.parse(log, since: since, pricing: TestPricing.bundled)
+        let usage = scan(line)
+        let day = try XCTUnwrap(usage.series.daily.first)
 
-        // 200k input @ $1/M ($0.2) + 800k cache read @ $0.2/M ($0.16) = $0.36.
-        XCTAssertEqual(usage.series.daily.first?.costUSD ?? 0, 0.36, accuracy: 0.0001)
+        XCTAssertEqual(day.totalTokens, 350)
+        XCTAssertEqual(try XCTUnwrap(day.costUSD), 0.3, accuracy: 0.0001)
+        XCTAssertEqual(
+            Set(usage.modelUsage?.daily.first?.models.map(\.model) ?? []),
+            ["grok-4.5-build", "grok-4.6-build"]
+        )
     }
 
-    func testSkipsRowsWithoutTokenFieldsAndOutsideWindow() {
-        let log = """
-        {"ts":"2026-06-10T09:00:00.000Z","pid":1,"msg":"model changed","ctx":{"model":"grok-build"}}
-        {"ts":"2026-05-30T09:00:00.000Z","pid":1,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":1000000,"completion_tokens":0,"reasoning_tokens":0}}
-        {"ts":"2026-06-10T10:00:00.000Z","pid":1,"msg":"shell.turn.inference_done","ctx":{"loop_index":3,"model_elapsed_ms":10}}
-        {"ts":"2026-06-10T11:00:00.000Z","pid":1,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":500000,"completion_tokens":0,"reasoning_tokens":0}}
-        """
+    func testSingleModelFallsBackToTurnLevelRecordedCost() throws {
+        let line = GrokLogFixture.completedTurn(
+            timestamp: "2026-06-10T10:00:00.000Z",
+            model: "grok-4.6-build",
+            input: 1_000_000,
+            costUsdTicks: 1_250_000_000,
+            includePerModelCost: false
+        )
 
-        let usage = GrokLogUsageScanner.parse(log, since: since, pricing: TestPricing.bundled)
-
-        // Only the in-window, token-bearing row counts (the pre-window row and the token-less row drop).
-        XCTAssertEqual(usage.series.daily.count, 1)
-        XCTAssertEqual(usage.series.daily.first?.totalTokens, 500_000)
+        let day = try XCTUnwrap(scan(line).series.daily.first)
+        XCTAssertEqual(try XCTUnwrap(day.costUSD), 0.125, accuracy: 0.0001)
     }
 
-    func testUnpricedModelIsExcludedFromTotalsButWarns() {
-        let log = """
-        {"ts":"2026-06-10T09:00:00.000Z","pid":1,"msg":"model changed","ctx":{"model":"grok-unknown-model"}}
-        {"ts":"2026-06-10T10:00:00.000Z","pid":1,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":1000000,"completion_tokens":0,"reasoning_tokens":0}}
-        {"ts":"2026-06-10T11:00:00.000Z","pid":2,"msg":"model changed","ctx":{"model":"grok-build"}}
-        {"ts":"2026-06-10T12:00:00.000Z","pid":2,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":500000,"completion_tokens":0,"reasoning_tokens":0}}
-        """
+    func testRecordedCostAllowsUnknownModelWithoutPricingWarning() throws {
+        let line = GrokLogFixture.completedTurn(
+            timestamp: "2026-06-10T10:00:00.000Z",
+            model: "grok-future-model",
+            input: 500_000,
+            costUsdTicks: 3_000_000_000
+        )
 
-        let usage = GrokLogUsageScanner.parse(log, since: since, pricing: TestPricing.bundled)
+        let usage = scan(line)
 
-        // Unpriceable tokens never enter the displayed totals — they surface only through the
-        // warning triangle, so the tile's tokens and dollars stay coherent.
-        XCTAssertEqual(usage.series.daily.first?.totalTokens, 500_000)
-        XCTAssertNotNil(usage.series.daily.first?.costUSD)
-        XCTAssertEqual(usage.unknownModelsByDay["2026-06-10"], ["grok-unknown-model"])
-        XCTAssertEqual(usage.modelUsage?.daily.first?.models.map(\.model), ["grok-build"])
-    }
-
-    func testUnpricedModelOnlyLeavesDayUnbacked() {
-        let log = """
-        {"ts":"2026-06-10T09:00:00.000Z","pid":1,"msg":"model changed","ctx":{"model":"grok-unknown-model"}}
-        {"ts":"2026-06-10T10:00:00.000Z","pid":1,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":1000000,"completion_tokens":0,"reasoning_tokens":0}}
-        """
-
-        let usage = GrokLogUsageScanner.parse(log, since: since, pricing: TestPricing.bundled)
-
-        // A day with nothing priceable produces no series entry at all (→ "No data"), but the
-        // unknown-model warning still names what was excluded.
-        XCTAssertTrue(usage.series.daily.isEmpty)
-        XCTAssertEqual(usage.unknownModelsByDay["2026-06-10"], ["grok-unknown-model"])
-        XCTAssertEqual(usage.modelUsage?.daily ?? [], [])
-    }
-
-    func testUnattributedRowsAreExcludedWithoutWarning() {
-        let log = """
-        {"ts":"2026-06-10T10:00:00.000Z","pid":1,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":1000000,"completion_tokens":0,"reasoning_tokens":0}}
-        """
-
-        let usage = GrokLogUsageScanner.parse(log, since: since, pricing: TestPricing.bundled)
-
-        // Tokens with no attributable model can't be priced, so they're excluded from every total —
-        // and with no model name to warn about, no unknown-model entry either.
-        XCTAssertTrue(usage.series.daily.isEmpty)
+        let day = try XCTUnwrap(usage.series.daily.first)
+        XCTAssertEqual(try XCTUnwrap(day.costUSD), 0.3, accuracy: 0.0001)
         XCTAssertTrue(usage.unknownModelsByDay.isEmpty)
-        XCTAssertEqual(usage.modelUsage?.daily ?? [], [])
     }
 
-    func testScanReadsGrokHomeOverride() async {
-        let files = FakeFiles([
-            "/custom/grok/logs/unified.jsonl": """
-            {"ts":"2026-06-10T09:00:00.000Z","pid":1,"msg":"model changed","ctx":{"model":"grok-build"}}
-            {"ts":"2026-06-10T10:00:00.000Z","pid":1,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":1000000,"completion_tokens":0,"reasoning_tokens":0}}
-            """
+    func testUnknownModelWithoutRecordedCostIsExcludedAndWarns() {
+        let line = GrokLogFixture.completedTurn(
+            timestamp: "2026-06-10T10:00:00.000Z",
+            model: "grok-future-model",
+            input: 500_000
+        )
+
+        let usage = scan(line)
+
+        XCTAssertTrue(usage.series.daily.isEmpty)
+        XCTAssertEqual(usage.unknownModelsByDay["2026-06-10"], ["grok-future-model"])
+    }
+
+    func testZeroRecordedCostStillCountsMeasuredTokens() throws {
+        let line = GrokLogFixture.completedTurn(
+            timestamp: "2026-06-10T10:00:00.000Z",
+            model: "grok-future-model",
+            input: 500,
+            costUsdTicks: 0
+        )
+
+        let day = try XCTUnwrap(scan(line).series.daily.first)
+
+        XCTAssertEqual(day.totalTokens, 500)
+        XCTAssertEqual(day.costUSD, 0)
+    }
+
+    func testPrefersMillisecondAgentTimestampOverCoarseOuterTimestamp() throws {
+        let line = GrokLogFixture.completedTurn(
+            timestamp: "2026-06-09T10:00:00.000Z",
+            model: "grok-build",
+            input: 1_000,
+            agentTimestampMs: 1_781_089_200_456
+        )
+
+        let entry = try XCTUnwrap(GrokLogUsageScanner.parseFile(Data(line.utf8)).first)
+
+        XCTAssertEqual(entry.timestamp.timeIntervalSince1970, 1_781_089_200.456, accuracy: 0.0001)
+    }
+
+    func testParsesUnixSecondTimestamps() throws {
+        let line = GrokLogFixture.completedTurn(
+            timestamp: "2026-06-10T10:00:00.000Z",
+            model: "grok-build",
+            input: 1_000,
+            numericTimestamp: true
+        )
+
+        XCTAssertEqual(try XCTUnwrap(scan(line).series.daily.first).date, "2026-06-10")
+    }
+
+    func testParsesTopLevelUpdateEnvelope() throws {
+        let line = GrokLogFixture.completedTurn(
+            timestamp: "2026-06-10T10:00:00.000Z",
+            model: "grok-build",
+            input: 1_000,
+            nested: false
+        )
+
+        XCTAssertEqual(try XCTUnwrap(scan(line).series.daily.first).totalTokens, 1_000)
+    }
+
+    func testSkipsIncompleteMalformedAndOutOfWindowTurns() throws {
+        let incomplete = GrokLogFixture.completedTurn(
+            timestamp: "2026-06-10T10:00:00.000Z",
+            model: "grok-build",
+            input: 1_000,
+            sessionUpdate: "turn_started"
+        )
+        let stale = GrokLogFixture.completedTurn(
+            timestamp: "2026-05-30T10:00:00.000Z",
+            model: "grok-build",
+            input: 2_000
+        )
+        let completed = GrokLogFixture.completedTurn(
+            timestamp: "2026-06-10T10:00:00.000Z",
+            model: "grok-build",
+            input: 3_000
+        )
+
+        let usage = scan([incomplete, "{broken turn_completed", stale, completed].joined(separator: "\n"))
+
+        XCTAssertEqual(try XCTUnwrap(usage.series.daily.first).totalTokens, 3_000)
+    }
+
+    func testCopiedEventIDsAreCountedOnce() throws {
+        let line = GrokLogFixture.completedTurn(
+            timestamp: "2026-06-10T10:00:00.000Z",
+            model: "grok-build",
+            input: 1_000,
+            eventID: "duplicate-event"
+        )
+
+        let usage = scan([line, line].joined(separator: "\n"))
+
+        XCTAssertEqual(try XCTUnwrap(usage.series.daily.first).totalTokens, 1_000)
+    }
+
+    func testRecursivelyScansSessionLedgersAndIgnoresOtherJSONLFiles() async throws {
+        let first = GrokLogFixture.completedTurn(
+            timestamp: "2026-06-10T10:00:00.000Z", model: "grok-build", input: 100, eventID: "copied-turn"
+        )
+        let second = GrokLogFixture.completedTurn(
+            timestamp: "2026-06-11T10:00:00.000Z", model: "grok-build", input: 200
+        )
+        let ignored = GrokLogFixture.completedTurn(
+            timestamp: "2026-06-12T10:00:00.000Z", model: "grok-build", input: 300
+        )
+        let home = try GrokLogFixture.makeHome(files: [
+            "project-a/session-a/updates.jsonl": first,
+            "project-b/session-b/updates.jsonl": second,
+            "project-b/session-b/debug.jsonl": ignored,
+            "project-c/copied-session/updates.jsonl": first
         ])
-        let scanner = GrokLogUsageScanner(
-            files: files,
-            environment: FakeEnvironment(["GROK_HOME": "/custom/grok"]),
-            homeDirectory: { URL(fileURLWithPath: "/home/ignored") }
+        defer { try? FileManager.default.removeItem(at: home) }
+        let scanner = GrokLogFixture.scanner(home: home)
+
+        let usage = await scanner.scan(
+            daysBack: 30,
+            now: OpenUsageISO8601.date(from: "2026-06-18T12:00:00.000Z")!,
+            pricing: TestPricing.bundled
         )
 
-        let usage = await scanner.scan(daysBack: 30, now: OpenUsageISO8601.date(from: "2026-06-18T00:00:00.000Z")!, pricing: TestPricing.bundled)
-
-        XCTAssertEqual(usage?.series.daily.first?.totalTokens, 1_000_000)
+        XCTAssertEqual(usage?.series.daily.map(\.date), ["2026-06-11", "2026-06-10"])
+        XCTAssertEqual(usage?.series.daily.map(\.totalTokens), [200, 100])
     }
 
-    func testScanReturnsNilWhenLogMissing() async {
-        let warnings = GrokWarningRecorder()
-        let scanner = GrokLogUsageScanner(
-            files: FakeFiles(),
-            environment: FakeEnvironment(),
-            homeDirectory: { URL(fileURLWithPath: "/home/none") },
-            readFailureWarning: warnings.record
+    func testSkipsSubagentSessionsAlreadyIncludedInCoordinatorTotals() async throws {
+        let coordinator = GrokLogFixture.completedTurn(
+            timestamp: "2026-06-10T10:00:00.000Z",
+            model: "grok-4.6-build",
+            input: 300,
+            costUsdTicks: 30_000_000_000,
+            eventID: "coordinator-turn"
         )
+        let subagent = GrokLogFixture.completedTurn(
+            timestamp: "2026-06-10T10:01:00.000Z",
+            model: "grok-4.6-build",
+            input: 100,
+            costUsdTicks: 10_000_000_000,
+            eventID: "subagent-turn"
+        )
+        let fork = GrokLogFixture.completedTurn(
+            timestamp: "2026-06-10T10:02:00.000Z",
+            model: "grok-4.6-build",
+            input: 200,
+            costUsdTicks: 20_000_000_000,
+            eventID: "fork-turn"
+        )
+        let legacy = GrokLogFixture.completedTurn(
+            timestamp: "2026-06-10T11:00:00.000Z",
+            model: "grok-4.6-build",
+            input: 50,
+            costUsdTicks: 5_000_000_000,
+            eventID: "legacy-turn"
+        )
+        let home = try GrokLogFixture.makeHome(files: [
+            "project/coordinator/updates.jsonl": coordinator,
+            "project/coordinator/summary.json": #"{"session_kind":"coordinator"}"#,
+            "project/coordinator/subagents/worker/updates.jsonl": subagent,
+            "project/coordinator/subagents/worker/summary.json": #"{"session_kind":"subagent"}"#,
+            "project/fork/updates.jsonl": fork,
+            "project/fork/summary.json": #"{"session_kind":"subagent_fork"}"#,
+            "project/legacy/updates.jsonl": legacy
+        ])
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let usage = await GrokLogFixture.scanner(home: home).scan(
+            daysBack: 30,
+            now: OpenUsageISO8601.date(from: "2026-06-18T12:00:00.000Z")!,
+            pricing: TestPricing.bundled
+        )
+        let day = try XCTUnwrap(usage?.series.daily.first)
+
+        XCTAssertEqual(day.totalTokens, 350, "subagent and fork tokens are already included in their coordinator")
+        XCTAssertEqual(try XCTUnwrap(day.costUSD), 3.5, accuracy: 0.0001)
+    }
+
+    func testSkipsSessionWithMalformedSummaryInsteadOfGuessingItsKind() async throws {
+        let line = GrokLogFixture.completedTurn(
+            timestamp: "2026-06-10T10:00:00.000Z", model: "grok-build", input: 1_000
+        )
+        let home = try GrokLogFixture.makeHome(files: [
+            "project/session/updates.jsonl": line,
+            "project/session/summary.json": "{invalid"
+        ])
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let usage = await GrokLogFixture.scanner(home: home).scan(pricing: TestPricing.bundled)
+
+        XCTAssertNil(usage)
+    }
+
+    func testReadsWhitespaceTrimmedGrokHomeOverride() async throws {
+        let line = GrokLogFixture.completedTurn(
+            timestamp: "2026-06-10T10:00:00.000Z", model: "grok-build", input: 1_000
+        )
+        let home = try GrokLogFixture.makeHome(files: ["project/session/updates.jsonl": line])
+        defer { try? FileManager.default.removeItem(at: home) }
+        let scanner = GrokLogUsageScanner(
+            environment: FakeEnvironment(["GROK_HOME": "  \(home.path)  "]),
+            homeDirectory: { URL(fileURLWithPath: "/home/ignored") },
+            incrementalScanner: IncrementalJSONLScanner<GrokLogUsageScanner.Entry>()
+        )
+
+        let usage = await scanner.scan(
+            daysBack: 30,
+            now: OpenUsageISO8601.date(from: "2026-06-18T12:00:00.000Z")!,
+            pricing: TestPricing.bundled
+        )
+
+        XCTAssertEqual(usage?.series.daily.first?.totalTokens, 1_000)
+    }
+
+    func testReturnsNilWhenSessionLedgersAreMissing() async {
+        let scanner = GrokLogFixture.scanner(home: nil)
 
         let usage = await scanner.scan(pricing: TestPricing.bundled)
+
         XCTAssertNil(usage)
-        XCTAssertEqual(warnings.counts, [])
     }
 
-    func testUnreadableLogWarnsOnceUntilItRecovers() async {
-        let path = "/custom/grok/logs/unified.jsonl"
-        let files = FailingTextFiles(path: path)
-        let warnings = GrokWarningRecorder()
-        let scanner = GrokLogUsageScanner(
-            files: files,
-            environment: FakeEnvironment(["GROK_HOME": "/custom/grok"]),
-            homeDirectory: { URL(fileURLWithPath: "/home/ignored") },
-            readFailureWarning: warnings.record
+    func testDoesNotFallBackToTheDebugLogWhenSessionsAreMissing() async throws {
+        let home = try GrokLogFixture.makeHome(files: [:])
+        defer { try? FileManager.default.removeItem(at: home) }
+        let logs = home.appendingPathComponent("logs", isDirectory: true)
+        try FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
+        try "debug log content".write(
+            to: logs.appendingPathComponent("unified.jsonl"),
+            atomically: true,
+            encoding: .utf8
         )
 
-        _ = await scanner.scan(pricing: TestPricing.bundled)
-        _ = await scanner.scan(pricing: TestPricing.bundled)
-        XCTAssertEqual(warnings.counts, [1])
+        let usage = await GrokLogFixture.scanner(home: home).scan(pricing: TestPricing.bundled)
 
-        files.shouldFail = false
-        _ = await scanner.scan(pricing: TestPricing.bundled)
-        files.shouldFail = true
-        _ = await scanner.scan(pricing: TestPricing.bundled)
-        XCTAssertEqual(warnings.counts, [1, 1])
+        XCTAssertNil(usage)
+    }
+
+    private func scan(_ text: String) -> LogUsageScan {
+        let entries = GrokLogUsageScanner.parseFile(Data(text.utf8))
+        return GrokLogUsageScanner.aggregate(
+            entries: GrokLogUsageScanner.dedup(entries),
+            since: since,
+            pricing: TestPricing.bundled
+        )
     }
 }
 
-private final class GrokWarningRecorder: @unchecked Sendable {
-    private let lock = NSLock()
-    private var recordedCounts: [Int] = []
-
-    var counts: [Int] { lock.withLock { recordedCounts } }
-
-    func record(_ count: Int) {
-        lock.withLock { recordedCounts.append(count) }
-    }
-}
-
-private final class FailingTextFiles: TextFileAccessing, @unchecked Sendable {
-    let path: String
-    var shouldFail = true
-
-    init(path: String) {
-        self.path = path
+enum GrokLogFixture {
+    static func makeHome(files: [String: String]) throws -> URL {
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openusage-grok-\(UUID().uuidString)", isDirectory: true)
+        let sessions = home.appendingPathComponent("sessions", isDirectory: true)
+        try FileManager.default.createDirectory(at: sessions, withIntermediateDirectories: true)
+        for (relativePath, contents) in files {
+            let file = sessions.appendingPathComponent(relativePath)
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try contents.write(to: file, atomically: true, encoding: .utf8)
+        }
+        return home
     }
 
-    func exists(_ path: String) -> Bool { path == self.path }
-
-    func readText(_ path: String) throws -> String {
-        if shouldFail { throw TestError.unreadable }
-        return ""
+    static func scanner(home: URL?) -> GrokLogUsageScanner {
+        GrokLogUsageScanner(
+            environment: FakeEnvironment(home.map { ["GROK_HOME": $0.path] } ?? [:]),
+            homeDirectory: {
+                FileManager.default.temporaryDirectory.appendingPathComponent("openusage-no-grok-home")
+            },
+            incrementalScanner: IncrementalJSONLScanner<GrokLogUsageScanner.Entry>()
+        )
     }
 
-    func writeText(_ path: String, _ text: String) throws {}
-    func remove(_ path: String) throws {}
+    static func completedTurn(
+        timestamp: String,
+        model: String,
+        input: Int,
+        cached: Int = 0,
+        cacheWrite: Int = 0,
+        output: Int = 0,
+        reasoning: Int = 0,
+        costUsdTicks: Int? = nil,
+        eventID: String? = nil,
+        agentTimestampMs: Int? = nil,
+        numericTimestamp: Bool = false,
+        nested: Bool = true,
+        includePerModelCost: Bool = true,
+        additionalModels: [String: [String: Int]] = [:],
+        sessionUpdate: String = "turn_completed"
+    ) -> String {
+        var modelValues: [String: Int] = [
+            "inputTokens": input,
+            "cachedReadTokens": cached,
+            "cacheCreationTokens": cacheWrite,
+            "outputTokens": output,
+            "reasoningTokens": reasoning
+        ]
+        if let costUsdTicks, includePerModelCost {
+            modelValues["costUsdTicks"] = costUsdTicks
+        }
+        var models = additionalModels
+        models[model] = modelValues
 
-    private enum TestError: Error {
-        case unreadable
+        var usage: [String: Any] = ["inputTokens": input, "outputTokens": output, "modelUsage": models]
+        if let costUsdTicks { usage["costUsdTicks"] = costUsdTicks }
+        let update: [String: Any] = ["sessionUpdate": sessionUpdate, "usage": usage]
+        var metadata: [String: Any] = [:]
+        if let eventID { metadata["eventId"] = eventID }
+        if let agentTimestampMs { metadata["agentTimestampMs"] = agentTimestampMs }
+
+        let parsedTimestamp = OpenUsageISO8601.date(from: timestamp)!
+        var object: [String: Any] = [
+            "timestamp": numericTimestamp ? Int(parsedTimestamp.timeIntervalSince1970) : timestamp
+        ]
+        if nested {
+            var params: [String: Any] = ["sessionId": "session-1", "update": update]
+            if !metadata.isEmpty { params["_meta"] = metadata }
+            object["params"] = params
+            object["method"] = "session/update"
+        } else {
+            object["update"] = update
+            if !metadata.isEmpty { object["_meta"] = metadata }
+        }
+
+        return String(decoding: try! JSONSerialization.data(withJSONObject: object), as: UTF8.self)
     }
 }

@@ -33,9 +33,11 @@ final class CursorProvider: ProviderRuntime {
         [
             .percent(id: "cursor.usage", provider: provider, title: "Total Usage", metricLabel: "Total usage")
                 .exportingLimit("totalUsage", unit: "percent"),
-            .percent(id: "cursor.auto", provider: provider, title: "Auto Usage", metricLabel: "Auto usage")
+            .percent(id: "cursor.grokBot", provider: provider, title: "Grok Bot", metricLabel: "Grok Bot usage")
+                .exportingLimit("grokBot", unit: "percent"),
+            .percent(id: "cursor.auto", provider: provider, title: "Cursor Models")
                 .exportingLimit("autoUsage", unit: "percent"),
-            .percent(id: "cursor.api", provider: provider, title: "API Usage", metricLabel: "API usage")
+            .percent(id: "cursor.api", provider: provider, title: "Other Models")
                 .exportingLimit("apiUsage", unit: "percent"),
             .boundedDollars(id: "cursor.onDemand", provider: provider, title: "Extra Usage", metricLabel: "On-demand", limit: 100, valueWord: "spent")
                 .exportingLimit("onDemand", unit: "usd", source: .progressOrValue(kind: .dollars)),
@@ -120,17 +122,19 @@ final class CursorProvider: ProviderRuntime {
                 planName: planName,
                 unavailableMessage: fallback.message
             )
+            await appendGrokBotUsage(to: &mapped.lines, accessToken: currentToken)
             let history = await appendSpendLines(to: &mapped.lines, accessToken: currentToken)
             return snapshot(mapped, usageHistory: history)
         }
 
         if shouldTryGenericRequestFallback(usage: usage) {
             do {
-                let mapped = try await requestBasedResult(
+                var mapped = try await requestBasedResult(
                     accessToken: currentToken,
                     planName: planName,
                     unavailableMessage: "Cursor request-based usage data unavailable. Try again later."
                 )
+                await appendGrokBotUsage(to: &mapped.lines, accessToken: currentToken)
                 return snapshot(mapped)
             } catch {
                 AppLog.warn(LogTag.plugin("cursor"), "optional request-based usage fallback failed")
@@ -145,8 +149,33 @@ final class CursorProvider: ProviderRuntime {
             creditGrants: creditGrants,
             stripeBalanceCents: stripeBalanceCents
         )
+        await appendGrokBotUsage(to: &mapped.lines, accessToken: currentToken)
         let history = await appendSpendLines(to: &mapped.lines, accessToken: currentToken)
         return snapshot(mapped, usageHistory: history)
+    }
+
+    /// Grok Bot uses the same Cursor account but keeps a separate weekly allowance. Missing access is
+    /// normal for ineligible accounts; malformed data and request failures remain visible in diagnostics.
+    private func appendGrokBotUsage(to lines: inout [MetricLine], accessToken: String) async {
+        guard let usage = await fetchOptionalJSONObject(label: "Grok Bot usage", request: {
+            try await self.usageClient.fetchGrokBotUsage(accessToken: accessToken)
+        }) else {
+            return
+        }
+        guard usage["usesPooledEnterpriseAllowance"] as? Bool != true,
+              usage["hasNonZeroIncludedLimit"] as? Bool != false,
+              usage["includedLimitZero"] as? Bool != true
+        else {
+            return
+        }
+        guard let line = CursorUsageMapper.mapGrokBotUsage(usage) else {
+            if usage["usagePercent"] != nil || usage["hasNonZeroIncludedLimit"] as? Bool == true ||
+                usage["hasAvailableUsage"] as? Bool == true {
+                AppLog.warn(LogTag.plugin("cursor"), "optional Grok Bot usage response contained invalid usage metadata")
+            }
+            return
+        }
+        lines.append(line)
     }
 
     /// Strictly additive: fetch the usage CSV and append the three per-day spend tiles. Any failure

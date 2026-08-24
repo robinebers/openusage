@@ -211,25 +211,30 @@ final class GrokProviderTests: XCTestCase {
         XCTAssertNil(snapshot.errorCategory)
     }
 
-    func testRefreshAppendsLocalSpendTilesFromLog() async {
+    func testRefreshAppendsLocalSpendTilesFromSessions() async throws {
         let now = OpenUsageISO8601.date(from: "2026-06-18T12:00:00.000Z")!
-        // grok-build: 1M input @ $1 = $1.00 today; composer-2.5-fast: 1M output @ $15 = $15.00 yesterday.
-        let log = """
-        {"ts":"2026-06-18T09:00:00.000Z","pid":1,"msg":"model changed","ctx":{"model":"grok-build"}}
-        {"ts":"2026-06-18T10:00:00.000Z","pid":1,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":1000000,"cached_prompt_tokens":0,"completion_tokens":0,"reasoning_tokens":0}}
-        {"ts":"2026-06-17T09:00:00.000Z","pid":2,"msg":"model changed","ctx":{"model":"grok-composer-2.5-fast"}}
-        {"ts":"2026-06-17T10:00:00.000Z","pid":2,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":0,"cached_prompt_tokens":0,"completion_tokens":1000000,"reasoning_tokens":0}}
-        """
-        let scanner = GrokLogUsageScanner(
-            files: FakeFiles(["/home/test/.grok/logs/unified.jsonl": log]),
-            environment: FakeEnvironment(),
-            homeDirectory: { URL(fileURLWithPath: "/home/test") }
-        )
+        let home = try GrokLogFixture.makeHome(files: [
+            "project/today/updates.jsonl": GrokLogFixture.completedTurn(
+                timestamp: "2026-06-18T10:00:00.000Z",
+                model: "grok-4.6-build",
+                input: 1_000_000,
+                costUsdTicks: 10_000_000_000
+            ),
+            "project/yesterday/updates.jsonl": GrokLogFixture.completedTurn(
+                timestamp: "2026-06-17T10:00:00.000Z",
+                model: "grok-4.5-build",
+                input: 0,
+                output: 1_000_000,
+                costUsdTicks: 150_000_000_000
+            )
+        ])
+        defer { try? FileManager.default.removeItem(at: home) }
+        let scanner = GrokLogFixture.scanner(home: home)
         let provider = makeProvider(httpClient: RecordingHTTPClient(handler: Self.defaultRoutes), scanner: scanner, now: now)
 
         let snapshot = await provider.refresh()
 
-        // Existing credit lines stay; the three spend tiles are appended from the local log.
+        // Existing credit lines stay; the three spend tiles use Grok's recorded session costs.
         XCTAssertEqual(progress(snapshot.lines, "Weekly limit")?.used, 99)
         XCTAssertEqual(values(snapshot.lines, "Today"),
                        [MetricValue(number: 1.0, kind: .dollars, estimated: true), MetricValue(number: 1_000_000, kind: .count, label: "tokens")])
@@ -239,22 +244,23 @@ final class GrokProviderTests: XCTestCase {
                        [MetricValue(number: 16.0, kind: .dollars, estimated: true), MetricValue(number: 2_000_000, kind: .count, label: "tokens")])
     }
 
-    func testPeriodWithoutUsageLeavesTileUnbacked() async {
-        // Regression for the reported "Today 0" bug: the log exists and has yesterday's usage, but no
-        // inference ran today. An idle today is "No data" (no backing line), never a fabricated
+    func testPeriodWithoutUsageLeavesTileUnbacked() async throws {
+        // Regression for the reported "Today 0" bug: a session has yesterday's usage, but no
+        // turn completed today. An idle today is "No data" (no backing line), never a fabricated
         // "$0.00 · 0 tokens" that contradicts a live session. "No data" is also what a missing/unreadable
-        // log produces — the two cases collapse to the same honest read.
+        // session produces — the two cases collapse to the same honest read.
         let now = OpenUsageISO8601.date(from: "2026-06-18T12:00:00.000Z")!
-        // Only yesterday (06-17) has an inference row; today (06-18) has none.
-        let log = """
-        {"ts":"2026-06-17T09:00:00.000Z","pid":2,"msg":"model changed","ctx":{"model":"grok-composer-2.5-fast"}}
-        {"ts":"2026-06-17T10:00:00.000Z","pid":2,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":0,"cached_prompt_tokens":0,"completion_tokens":1000000,"reasoning_tokens":0}}
-        """
-        let scanner = GrokLogUsageScanner(
-            files: FakeFiles(["/home/test/.grok/logs/unified.jsonl": log]),
-            environment: FakeEnvironment(),
-            homeDirectory: { URL(fileURLWithPath: "/home/test") }
-        )
+        let home = try GrokLogFixture.makeHome(files: [
+            "project/session/updates.jsonl": GrokLogFixture.completedTurn(
+                timestamp: "2026-06-17T10:00:00.000Z",
+                model: "grok-4.5-build",
+                input: 0,
+                output: 1_000_000,
+                costUsdTicks: 150_000_000_000
+            )
+        ])
+        defer { try? FileManager.default.removeItem(at: home) }
+        let scanner = GrokLogFixture.scanner(home: home)
         let provider = makeProvider(httpClient: RecordingHTTPClient(handler: Self.defaultRoutes), scanner: scanner, now: now)
 
         let snapshot = await provider.refresh()
@@ -265,20 +271,19 @@ final class GrokProviderTests: XCTestCase {
         XCTAssertNotNil(values(snapshot.lines, "Last 30 Days"))
     }
 
-    func testRefreshAppendsUsageTrendFromLog() async {
+    func testRefreshAppendsUsageTrendFromSessions() async throws {
         let now = OpenUsageISO8601.date(from: "2026-06-18T12:00:00.000Z")!
-        // 1M input today (06-18), 1M output yesterday (06-17).
-        let log = """
-        {"ts":"2026-06-18T09:00:00.000Z","pid":1,"msg":"model changed","ctx":{"model":"grok-build"}}
-        {"ts":"2026-06-18T10:00:00.000Z","pid":1,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":1000000,"cached_prompt_tokens":0,"completion_tokens":0,"reasoning_tokens":0}}
-        {"ts":"2026-06-17T09:00:00.000Z","pid":2,"msg":"model changed","ctx":{"model":"grok-composer-2.5-fast"}}
-        {"ts":"2026-06-17T10:00:00.000Z","pid":2,"msg":"shell.turn.inference_done","ctx":{"prompt_tokens":0,"cached_prompt_tokens":0,"completion_tokens":1000000,"reasoning_tokens":0}}
-        """
-        let scanner = GrokLogUsageScanner(
-            files: FakeFiles(["/home/test/.grok/logs/unified.jsonl": log]),
-            environment: FakeEnvironment(),
-            homeDirectory: { URL(fileURLWithPath: "/home/test") }
+        let today = GrokLogFixture.completedTurn(
+            timestamp: "2026-06-18T10:00:00.000Z", model: "grok-build", input: 1_000_000
         )
+        let yesterday = GrokLogFixture.completedTurn(
+            timestamp: "2026-06-17T10:00:00.000Z", model: "grok-composer-2.5-fast", input: 0, output: 1_000_000
+        )
+        let home = try GrokLogFixture.makeHome(files: [
+            "project/session/updates.jsonl": [today, yesterday].joined(separator: "\n")
+        ])
+        defer { try? FileManager.default.removeItem(at: home) }
+        let scanner = GrokLogFixture.scanner(home: home)
         let provider = makeProvider(httpClient: RecordingHTTPClient(handler: Self.defaultRoutes), scanner: scanner, now: now)
 
         let snapshot = await provider.refresh()
@@ -292,11 +297,11 @@ final class GrokProviderTests: XCTestCase {
         XCTAssertEqual(points[29].value, 1_000_000, "yesterday's tokens land on the second-to-last bar")
     }
 
-    func testRefreshWithoutLogAppendsNoUsageTrend() async {
+    func testRefreshWithoutSessionsAppendsNoUsageTrend() async {
         let provider = makeProvider(httpClient: RecordingHTTPClient(handler: Self.defaultRoutes))
 
         let snapshot = await provider.refresh()
-        XCTAssertNil(snapshot.lines.first(where: { $0.label == "Usage Trend" }), "no log means no trend chart")
+        XCTAssertNil(snapshot.lines.first(where: { $0.label == "Usage Trend" }), "no sessions means no trend chart")
     }
 
     /// The stock happy-path routes: the captured weekly credits config and the plan name.
@@ -328,7 +333,7 @@ final class GrokProviderTests: XCTestCase {
     }
 
     private func noLogScanner() -> GrokLogUsageScanner {
-        GrokLogUsageScanner(files: FakeFiles(), environment: FakeEnvironment(), homeDirectory: { URL(fileURLWithPath: "/home/none") })
+        GrokLogFixture.scanner(home: nil)
     }
 
     private func values(_ lines: [MetricLine], _ label: String) -> [MetricValue]? {

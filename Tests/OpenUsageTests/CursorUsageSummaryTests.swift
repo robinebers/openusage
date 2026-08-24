@@ -42,8 +42,8 @@ final class CursorUsageSummaryMapperTests: XCTestCase {
         let requests = try XCTUnwrap(progress(mapped.lines, "Requests"))
         XCTAssertEqual(requests.used, 37)
         XCTAssertEqual(requests.limit, 750)
-        XCTAssertEqual(progress(mapped.lines, "Auto usage")?.used, 0)
-        XCTAssertEqual(progress(mapped.lines, "API usage")?.used, 6.25)
+        XCTAssertEqual(progress(mapped.lines, "Cursor Models")?.used, 0)
+        XCTAssertEqual(progress(mapped.lines, "Other Models")?.used, 6.25)
 
         let onDemand = try XCTUnwrap(progress(mapped.lines, "On-demand"))
         XCTAssertEqual(onDemand.used, 0)
@@ -199,6 +199,13 @@ final class CursorEnterpriseProviderTests: XCTestCase {
                 }
                 """.utf8))
             }
+            if request.url == CursorUsageClient.grokBotUsageURL {
+                return HTTPResponse(
+                    statusCode: 200,
+                    headers: [:],
+                    body: Data(#"{"usagePercent":18,"hasNonZeroIncludedLimit":true}"#.utf8)
+                )
+            }
             if request.url.absoluteString.hasPrefix(CursorUsageClient.restUsageURL.absoluteString) {
                 return HTTPResponse(statusCode: 200, headers: [:], body: Data("""
                 {
@@ -228,6 +235,7 @@ final class CursorEnterpriseProviderTests: XCTestCase {
         XCTAssertEqual(snapshot.plan, "Enterprise")
         XCTAssertEqual(progress(snapshot.lines, "Total usage")?.used, 37)
         XCTAssertEqual(progress(snapshot.lines, "Total usage")?.limit, 750)
+        XCTAssertEqual(progress(snapshot.lines, "Grok Bot usage")?.used, 18)
         XCTAssertEqual(progress(snapshot.lines, "On-demand")?.limit, 250)
         XCTAssertNotNil(snapshot.lines.first { $0.label == "Usage Trend" })
         XCTAssertNotNil(snapshot.lines.first { $0.label == "Today" })

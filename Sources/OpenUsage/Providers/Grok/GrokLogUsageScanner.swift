@@ -1,148 +1,203 @@
 import Foundation
 
-/// Builds daily token/cost estimates for Grok from the Grok CLI's local log.
-///
-/// Like the Claude/Codex scanners but simpler: Grok's token data lives in a single global
-/// append-only log, `~/.grok/logs/unified.jsonl`, on `shell.turn.inference_done` lines.
-/// Those lines carry token counts but no model id, so the scanner attributes each row to a model by
-/// tracking the "current model" per CLI process (`pid`) from the model-change events the CLI also
-/// logs. The output is the same `DailyUsageSeries` shape the Claude/Codex spend tiles consume, so it
-/// flows straight through `SpendTileMapper`.
-struct GrokLogUsageScanner: Sendable {
-    var files: TextFileAccessing
-    var environment: EnvironmentReading
-    var homeDirectory: @Sendable () -> URL
-    private let readFailureReporter: UsageLogReadFailureReporter
+/// Builds Grok's daily usage from completed turns in the CLI's durable session transcripts.
+/// `logs/unified.jsonl` is a capped debug log, so it cannot back historical spend or reliable model
+/// attribution. Session `updates.jsonl` files carry both per-model token counts and Grok's own costs.
+actor GrokLogUsageScanner {
+    private let environment: EnvironmentReading
+    private let homeDirectory: @Sendable () -> URL
+    private let scanner: IncrementalJSONLScanner<Entry>
+
+    /// One model's contribution to a completed turn. Event identifiers let copied session transcripts
+    /// deduplicate the same notification without collapsing multiple models within that notification.
+    struct Entry: Codable, Sendable, Equatable {
+        var eventID: String?
+        var timestamp: Date
+        var model: String
+        var tokens: TokenBreakdown
+        var carriedCost: Double?
+    }
+
+    private static let sharedScanner = IncrementalJSONLScanner<Entry>(
+        logTag: LogTag.plugin("grok"),
+        persistence: JSONLScanCachePersistence(namespace: "grok", schemaVersion: 1)
+    )
+
+    static func flushPersistentCacheWrites() async {
+        await sharedScanner.flushPendingWrites()
+    }
 
     init(
-        files: TextFileAccessing = LocalTextFileAccessor(),
         environment: EnvironmentReading = ProcessEnvironmentReader(),
         homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser },
-        readFailureWarning: UsageLogReadFailureReporter.Warning? = nil
+        incrementalScanner: IncrementalJSONLScanner<Entry>? = nil
     ) {
-        self.files = files
         self.environment = environment
         self.homeDirectory = homeDirectory
-        self.readFailureReporter = UsageLogReadFailureReporter(
-            logTag: LogTag.plugin("grok"),
-            warning: readFailureWarning
-        )
+        self.scanner = incrementalScanner ?? Self.sharedScanner
     }
 
-    /// `~/.grok/logs/unified.jsonl`, or `$GROK_HOME/logs/unified.jsonl` when that env var is set.
-    var logPath: String {
+    /// Scan completed turns under `$GROK_HOME/sessions`, or `~/.grok/sessions` by default.
+    /// Missing transcripts leave the spend tiles unbacked instead of falling back to the debug log.
+    func scan(daysBack: Int = 30, now: Date = Date(), pricing: ModelPricing) async -> LogUsageScan? {
+        let directory = grokHome().appendingPathComponent("sessions", isDirectory: true)
+        let identity = directory.resolvingSymlinksInPath().standardizedFileURL.path
+        let since = JSONLScanning.sinceDate(daysBack: daysBack, now: now)
+        let files = JSONLScanning.jsonlFiles(under: directory)
+            .filter(Self.isCoordinatorSession)
+
+        guard !files.isEmpty else {
+            _ = await scanner.items(from: [], since: since, cacheIdentity: identity, parse: Self.parseFile)
+            return nil
+        }
+
+        guard let entries = await scanner.items(
+            from: files,
+            since: since,
+            cacheIdentity: identity,
+            parse: Self.parseFile
+        ), !Task.isCancelled else { return nil }
+        return Self.aggregate(entries: Self.dedup(entries), since: since, pricing: pricing)
+    }
+
+    private func grokHome() -> URL {
         if let raw = environment.value(for: "GROK_HOME")?.trimmingCharacters(in: .whitespacesAndNewlines),
            !raw.isEmpty {
-            return expandHome(raw).trimmingTrailingSlashes + "/logs/unified.jsonl"
+            return URL(fileURLWithPath: expandHome(raw))
         }
-        return homeDirectory().appendingPathComponent(".grok/logs/unified.jsonl").path
+        return homeDirectory().appendingPathComponent(".grok", isDirectory: true)
     }
 
-    /// Scan the last `daysBack` days of the log. Returns `nil` when the log is missing/unreadable (the
-    /// spend tiles then render "No data"); returns an empty `daily` when the log exists but has no
-    /// usable token rows in the window.
-    ///
-    /// `async` and nonisolated (this is a plain `Sendable` struct, not `@MainActor`), so the whole-file
-    /// read + parse runs off the main actor when a `@MainActor` provider `await`s it.
-    func scan(daysBack: Int = 30, now: Date = Date(), pricing: ModelPricing) async -> LogUsageScan? {
-        let path = logPath
-        guard files.exists(path) else {
-            await readFailureReporter.update(checkedPaths: [path], failingPaths: [])
-            return nil
-        }
-        let text: String
+    /// Coordinator turns already include their subagents, so reading both ledgers would charge every
+    /// child task twice. Older sessions without a summary remain eligible because their kind is unknown.
+    private static func isCoordinatorSession(_ file: JSONLScanning.DiscoveredFile) -> Bool {
+        let fileURL = URL(fileURLWithPath: file.path)
+        guard fileURL.lastPathComponent == "updates.jsonl" else { return false }
+
+        let summaryURL = fileURL.deletingLastPathComponent().appendingPathComponent("summary.json")
+        guard FileManager.default.fileExists(atPath: summaryURL.path) else { return true }
+
         do {
-            text = try files.readText(path)
-            await readFailureReporter.update(checkedPaths: [path], failingPaths: [])
+            let data = try Data(contentsOf: summaryURL)
+            guard let summary = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                AppLog.warn(LogTag.plugin("grok"), "Session summary is not a JSON object; skipped session")
+                return false
+            }
+            guard let kind = summary["session_kind"] as? String else { return true }
+            return !kind.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().hasPrefix("subagent")
         } catch {
-            await readFailureReporter.update(checkedPaths: [path], failingPaths: [path])
-            return nil
+            AppLog.warn(LogTag.plugin("grok"), "Could not read session summary; skipped session: \(error.localizedDescription)")
+            return false
         }
-        return Self.parse(text, since: JSONLScanning.sinceDate(daysBack: daysBack, now: now), pricing: pricing)
     }
 
-    /// Single chronological pass over the append-only log. Model-carrying events update a per-`pid`
-    /// "current model" (tracked regardless of date, so a session straddling the `since` boundary stays
-    /// attributed); each in-window `inference_done` row is priced against its `pid`'s current model and
-    /// bucketed by local calendar day.
-    static func parse(_ text: String, since: Date, pricing: ModelPricing) -> LogUsageScan {
-        var modelByPID: [Int: String] = [:]
-        var accumulator = DailyUsageAccumulator()
+    // MARK: - Session parsing
 
-        text.enumerateLines { line, _ in
-            // Cheap pre-filter before JSON parsing: only model-carrying events and token rows matter
-            // (token rows contain "inference_done"; every model event's `msg` contains "model").
-            guard line.contains("inference_done") || line.contains("model") else { return }
-            guard let data = line.data(using: .utf8),
-                  let object = ProviderParse.jsonObject(data),
-                  let msg = object["msg"] as? String
-            else { return }
+    static func parseFile(_ data: Data) -> [Entry] {
+        let completedTurnMarker = Data("turn_completed".utf8)
+        var entries: [Entry] = []
+        for line in data.split(separator: UInt8(ascii: "\n")) {
+            guard line.range(of: completedTurnMarker) != nil,
+                  let object = (try? JSONSerialization.jsonObject(with: line)) as? [String: Any]
+            else { continue }
+            entries.append(contentsOf: parseCompletedTurn(object))
+        }
+        return entries
+    }
 
-            let ctx = object["ctx"] as? [String: Any] ?? [:]
-            let pid = ProviderParse.number(object["pid"]).map { Int($0) }
+    private static func parseCompletedTurn(_ object: [String: Any]) -> [Entry] {
+        let params = object["params"] as? [String: Any]
+        let update = (params?["update"] as? [String: Any]) ?? (object["update"] as? [String: Any])
+        guard let update,
+              update["sessionUpdate"] as? String == "turn_completed",
+              let usage = update["usage"] as? [String: Any],
+              let modelUsage = usage["modelUsage"] as? [String: Any],
+              let timestamp = timestamp(in: object, params: params)
+        else { return [] }
 
-            if let model = modelID(msg: msg, ctx: ctx) {
-                if let pid { modelByPID[pid] = model }
-                return
-            }
+        let metadata = (params?["_meta"] as? [String: Any]) ?? (object["_meta"] as? [String: Any])
+        let eventID = (metadata?["eventId"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let topLevelTicks = ProviderParse.number(usage["costUsdTicks"])
+        var entries: [Entry] = []
 
-            guard msg == "shell.turn.inference_done",
-                  let promptTokens = ProviderParse.number(ctx["prompt_tokens"]),
-                  let timestamp = (object["ts"] as? String).flatMap(OpenUsageISO8601.date(from:)),
-                  timestamp >= since
-            else { return }
+        for (rawModel, rawUsage) in modelUsage.sorted(by: { $0.key < $1.key }) {
+            let model = rawModel.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !model.isEmpty,
+                  let values = rawUsage as? [String: Any],
+                  let inputValue = ProviderParse.number(values["inputTokens"]),
+                  inputValue >= 0
+            else { continue }
 
-            let completion = Int(ProviderParse.number(ctx["completion_tokens"]) ?? 0)
-            let reasoning = Int(ProviderParse.number(ctx["reasoning_tokens"]) ?? 0)
-            // `cached_prompt_tokens` is a subset of `prompt_tokens`, so total counts prompt once.
-            let cached = min(ProviderParse.number(ctx["cached_prompt_tokens"]) ?? 0, promptTokens)
-            let cacheRead = Int(cached)
-            let inputNoCache = Int(max(0, promptTokens - cached))
-            let output = completion + reasoning
+            let input = Int(inputValue)
+            let cacheRead = min(max(Int(ProviderParse.number(values["cachedReadTokens"]) ?? 0), 0), input)
+            let cacheWrite = min(
+                max(Int(ProviderParse.number(values["cacheCreationTokens"]) ?? 0), 0),
+                input - cacheRead
+            )
+            // Grok reports reasoning as a subset of outputTokens, so it must never be added again.
+            let output = max(Int(ProviderParse.number(values["outputTokens"]) ?? 0), 0)
+            let ticks = ProviderParse.number(values["costUsdTicks"])
+                ?? (modelUsage.count == 1 ? topLevelTicks : nil)
+            let carriedCost = ticks.flatMap { $0 >= 0 ? $0 / 10_000_000_000 : nil }
 
-            let day = DailyUsageAccumulator.dayKey(from: timestamp)
-            let totalTokens = Int(promptTokens) + output
+            entries.append(Entry(
+                eventID: eventID?.isEmpty == false ? eventID : nil,
+                timestamp: timestamp,
+                model: model,
+                tokens: TokenBreakdown(
+                    input: input - cacheRead - cacheWrite,
+                    cacheWrite5m: cacheWrite,
+                    cacheRead: cacheRead,
+                    output: output
+                ),
+                carriedCost: carriedCost
+            ))
+        }
+        return entries
+    }
 
-            // Grok's token rows lack a model id; attribute via the row's process. Rows that can't be
-            // priced (no attributable model, or a model no source can price) are excluded from every
-            // displayed total — tokens, dollars, the trend, and the model breakdown — because mixing
-            // measured tokens with unpriceable ones makes the figures incoherent. An unknown model's
-            // name lands in `unknownModelsByDay` (the tile's warning triangle), the only place
-            // unpriceable usage surfaces; unattributed rows have no name to warn about.
-            guard let model = pid.flatMap({ modelByPID[$0] }) else { return }
-            let tokenBreakdown = TokenBreakdown(input: inputNoCache, cacheRead: cacheRead, output: output)
-            guard let cost = pricing.estimatedCostDollars(model: model, tokens: tokenBreakdown) else {
-                if totalTokens > 0 {
-                    accumulator.addUnknownModel(day: day, model: model)
-                }
-                return
-            }
-            accumulator.add(day: day, tokens: totalTokens, cost: cost, model: model)
+    private static func timestamp(in object: [String: Any], params: [String: Any]?) -> Date? {
+        for metadata in [params?["_meta"], object["_meta"]] {
+            guard let values = metadata as? [String: Any],
+                  let milliseconds = ProviderParse.number(values["agentTimestampMs"]),
+                  milliseconds > 0
+            else { continue }
+            return Date(timeIntervalSince1970: milliseconds / 1_000)
         }
 
+        if let seconds = ProviderParse.number(object["timestamp"]), seconds > 0 {
+            return Date(timeIntervalSince1970: seconds)
+        }
+        if let value = object["timestamp"] as? String {
+            return OpenUsageISO8601.date(from: value)
+        }
+        return nil
+    }
+
+    // MARK: - Deduplication and aggregation
+
+    static func dedup(_ entries: [Entry]) -> [Entry] {
+        var seen: Set<String> = []
+        return entries.filter { entry in
+            guard let eventID = entry.eventID else { return true }
+            return seen.insert(eventID + "\0" + entry.model).inserted
+        }
+    }
+
+    static func aggregate(entries: [Entry], since: Date, pricing: ModelPricing) -> LogUsageScan {
+        var accumulator = DailyUsageAccumulator()
+        for entry in entries where entry.timestamp >= since {
+            let day = DailyUsageAccumulator.dayKey(from: entry.timestamp)
+            guard let cost = entry.carriedCost
+                ?? pricing.estimatedCostDollars(model: entry.model, tokens: entry.tokens)
+            else {
+                if entry.tokens.totalTokens > 0 {
+                    accumulator.addUnknownModel(day: day, model: entry.model)
+                }
+                continue
+            }
+            accumulator.add(day: day, tokens: entry.tokens.totalTokens, cost: cost, model: entry.model)
+        }
         return accumulator.build()
     }
-
-    /// The model id carried by a model-change event, or `nil` for any other line. The Grok CLI signals
-    /// the active model through several event shapes, all keyed by `pid`.
-    private static func modelID(msg: String, ctx: [String: Any]) -> String? {
-        let raw: Any?
-        switch msg {
-        case "model changed":
-            raw = ctx["model"]
-        case "model catalog: notifying clients":
-            raw = ctx["current_model_id"]
-        case "backend_search: model switch":
-            raw = ctx["model"] ?? ctx["current_model_id"] ?? ctx["model_id"]
-        case "subagent model resolved":
-            raw = ctx["model_id"] ?? ctx["model"]
-        default:
-            return nil
-        }
-        guard let model = (raw as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !model.isEmpty
-        else { return nil }
-        return model
-    }
-
 }
