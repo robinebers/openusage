@@ -436,6 +436,7 @@ final class LayoutStoreTests: XCTestCase {
         let defaults = makeDefaults("SeedNewAlwaysVisible")
         saveStored([PlacedWidget(descriptorID: "claude.session")], forKey: "layout", in: defaults)
         defaults.set(["claude.today"], forKey: "layout.expandedMetrics")
+        defaults.set(["claude.today", "cursor.requests"], forKey: "layout.expandOnEnable")
 
         let makeStore = {
             LayoutStore(
@@ -444,14 +445,23 @@ final class LayoutStoreTests: XCTestCase {
                 storageKey: "layout",
                 defaultMetricIDs: ["claude.session", "claude.today"],
                 migrationBaselineMetricIDs: ["claude.session"],
-                defaultExpandedMetricIDs: []
+                defaultExpandedMetricIDs: ["cursor.requests"]
             )
         }
 
         let store = makeStore()
         XCTAssertTrue(store.isMetricEnabled("claude.today"))
         XCTAssertFalse(store.expandedMetricIDs.contains("claude.today"))
-        XCTAssertFalse(makeStore().expandedMetricIDs.contains("claude.today"))
+        XCTAssertEqual(store.defaultExpandedOnEnableIDs, ["cursor.requests"])
+        XCTAssertEqual(defaults.stringArray(forKey: "layout.expandOnEnable"), ["cursor.requests"])
+
+        store.setMetricEnabled("claude.today", false)
+
+        let reloaded = makeStore()
+        XCTAssertFalse(reloaded.expandedMetricIDs.contains("claude.today"))
+        reloaded.setMetricEnabled("claude.today", true)
+        XCTAssertFalse(reloaded.expandedMetricIDs.contains("claude.today"))
+        XCTAssertEqual(reloaded.defaultExpandedOnEnableIDs, ["cursor.requests"])
     }
 
     func testMigrationPersistKeepsLegacyOptionalMetricExpandOnEnableAfterReload() {

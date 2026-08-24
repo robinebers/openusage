@@ -106,6 +106,7 @@ enum LayoutBootstrap {
         let defaultExpandedOnEnableIDs = Set(
             (savedOnEnable ?? defaults.expandedMetricIDs).filter(isExpandOnEnableCandidate)
         )
+        let promotedQueuedIDs = Set(savedOnEnable ?? []).intersection(newlyAlwaysShown)
 
         return LayoutInitialState(
             placed: seededResult.placed,
@@ -118,7 +119,7 @@ enum LayoutBootstrap {
             menuBarStyle: persistence.loadMenuBarStyle(),
             shouldPersistPlaced: seededResult.shouldPersistPlaced,
             shouldPersistExpanded: shouldPersistExpanded,
-            shouldPersistExpandOnEnable: savedOnEnable == nil,
+            shouldPersistExpandOnEnable: savedOnEnable == nil || !promotedQueuedIDs.isEmpty,
             seededDefaultsToPersist: seededResult.shouldPersistSeededDefaults
                 ? seededResult.seededDefaults
                 : nil
