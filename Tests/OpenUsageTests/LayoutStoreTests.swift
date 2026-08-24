@@ -655,7 +655,7 @@ final class LayoutStoreTests: XCTestCase {
         ])
         // Cursor's spend tiles + usage trend are enabled, so they trail the live meters in declaration order.
         XCTAssertEqual(store.orderedSupportedMetrics(for: "cursor").map(\.id), [
-            "cursor.usage", "cursor.auto", "cursor.api", "cursor.onDemand", "cursor.requests",
+            "cursor.usage", "cursor.grokBot", "cursor.auto", "cursor.api", "cursor.onDemand", "cursor.requests",
             "cursor.credits", "cursor.trend", "cursor.today", "cursor.yesterday", "cursor.last30"
         ])
     }
@@ -679,12 +679,14 @@ final class LayoutStoreTests: XCTestCase {
             "grok.weekly", "grok.trend",
             "grok.payAsYouGo", "grok.today", "grok.yesterday", "grok.last30",
             // Cursor spend tiles + usage trend are enabled, joining its live meters in the default layout.
-            "cursor.usage", "cursor.auto", "cursor.api", "cursor.trend",
+            "cursor.usage", "cursor.grokBot", "cursor.auto", "cursor.api", "cursor.trend",
             "cursor.onDemand", "cursor.today", "cursor.yesterday", "cursor.last30"
         ]))
         XCTAssertFalse(store.isMetricEnabled("claude.sonnet"))
+        XCTAssertTrue(store.isMetricEnabled("cursor.grokBot"))
         XCTAssertFalse(store.isMetricEnabled("cursor.requests"))
         XCTAssertFalse(store.isMetricEnabled("cursor.credits"))
+        XCTAssertFalse(store.isPinned("cursor.grokBot"))
 
         let primaryByProvider = Dictionary(uniqueKeysWithValues: store.customizeGroups.map {
             ($0.provider.id, $0.alwaysShownMetrics.map(\.id))
@@ -713,7 +715,7 @@ final class LayoutStoreTests: XCTestCase {
         // today/yesterday/last30 rows sit below the caret alongside the other secondary metrics.
         XCTAssertEqual(primaryByProvider["cursor"], ["cursor.usage", "cursor.auto", "cursor.api", "cursor.trend"])
         XCTAssertEqual(expandedByProvider["cursor"], [
-            "cursor.onDemand", "cursor.requests", "cursor.credits",
+            "cursor.grokBot", "cursor.onDemand", "cursor.requests", "cursor.credits",
             "cursor.today", "cursor.yesterday", "cursor.last30"
         ])
     }
