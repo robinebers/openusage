@@ -56,6 +56,7 @@ enum PersistentJSONLScanCaches {
     static func flushPendingWrites() async {
         await ClaudeLogUsageScanner.flushPersistentCacheWrites()
         await CodexLogUsageScanner.flushPersistentCacheWrites()
+        await GrokLogUsageScanner.flushPersistentCacheWrites()
         await PiUsageScanner.flushPersistentCacheWrites()
     }
 }

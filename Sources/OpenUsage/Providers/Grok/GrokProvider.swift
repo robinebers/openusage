@@ -42,7 +42,7 @@ final class GrokProvider: ProviderRuntime {
                     estimatedCost: true,
                     sourceNote: "From your Grok logs (estimated)"
                 )
-            // Local spend tiles, estimated from the Grok CLI log (see GrokLogUsageScanner).
+            // Local spend tiles from completed turns in the Grok CLI's session transcripts.
         ] + WidgetDescriptor.spendTiles(provider: provider)
     }
 
@@ -93,8 +93,8 @@ final class GrokProvider: ProviderRuntime {
 
         let plan = await fetchPlanName(accessToken: state.token)
 
-        // Local spend tiles, read natively from the Grok CLI log and priced via the shared pricing
-        // store. `scan` is awaited so its whole-file read + parse runs off the main actor.
+        // Local spend tiles from completed session turns. Recorded Grok costs win when available;
+        // older turns without a carried cost use the shared pricing store.
         var usageHistory: ProviderUsageHistory?
         if let scan = await logUsageScanner.scan(daysBack: 30, now: now(), pricing: await pricing()) {
             usageHistory = ProviderUsageHistory(

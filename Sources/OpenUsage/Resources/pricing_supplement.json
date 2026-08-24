@@ -1,6 +1,6 @@
 {
   "$comment": "OpenUsage pricing supplement. Prices Cursor-native models that no public catalog carries, supplies fast-variant multipliers the catalogs omit, and maps provider log/CSV model slugs to canonical pricing keys (LiteLLM keys, models.dev ids, or entries in this file). Cursor Router rows name the routed model in prose instead of a slug ('Opus 5 (Auto Balanced)'), so those labels get alias rules too. Published to gh-pages by .github/workflows/pricing-supplement.yml on every change, so installed apps pick edits up within about an hour - no release needed. Rates are USD per million tokens. Sources: https://cursor.com/docs/models-and-pricing.md for Cursor-native entries; https://developers.openai.com/api/docs/models/daybreak-blue-latest and https://developers.openai.com/api/docs/pricing for Daybreak aliases and rates.",
-  "updated_at": "2026-08-19T10:51:18Z",
+  "updated_at": "2026-08-24T04:32:07Z",
   "pricing": {
     "auto": {
       "input_per_million": 1.25,
@@ -187,10 +187,10 @@
     { "pattern": "^github_bugbot$", "canonical": "github_bugbot" },
     { "pattern": "^(?:cursor-)?grok-4[.-]6-fast(?:-(?:low|medium|high|xhigh))?$", "canonical": "grok-4.6-fast" },
     { "pattern": "^(?:cursor-)?grok-4[.-]6(?:-(?:low|medium|high|xhigh))?-fast$", "canonical": "grok-4.6-fast" },
-    { "pattern": "^(?:cursor-)?grok-4[.-]6(?:-(?:low|medium|high|xhigh))?$", "canonical": "grok-4.6" },
+    { "pattern": "^(?:cursor-)?grok-4[.-]6(?:-(?:build|low|medium|high|xhigh))?$", "canonical": "grok-4.6" },
     { "pattern": "^(?:cursor-)?grok-4[.-]5-fast(?:-(?:low|medium|high|xhigh))?$", "canonical": "grok-4.5-fast" },
     { "pattern": "^(?:cursor-)?grok-4[.-]5(?:-(?:low|medium|high|xhigh))?-fast$", "canonical": "grok-4.5-fast" },
-    { "pattern": "^(?:cursor-)?grok-4[.-]5(?:-(?:low|medium|high|xhigh))?$", "canonical": "grok-4.5" },
+    { "pattern": "^(?:cursor-)?grok-4[.-]5(?:-(?:build|low|medium|high|xhigh))?$", "canonical": "grok-4.5" },
     { "pattern": "^kimi-k2\\.7(?:-code)?$", "canonical": "kimi-k2.7-code" },
     { "pattern": "^kimi-k2p7(?:-code)?$", "canonical": "kimi-k2.7-code" },
     { "pattern": "^kimi-k3(?:-code)?(?:-(?:low|medium|high|xhigh|max))?$", "canonical": "kimi-k3" },

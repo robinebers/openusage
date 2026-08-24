@@ -300,6 +300,7 @@ final class PricingBundledResourceTests: XCTestCase {
         XCTAssertEqual(standard.cacheReadPerMillion, 0.5)
         XCTAssertEqual(standard.outputPerMillion, 6.0)
         XCTAssertEqual(pricing.resolve(model: "grok-4.5"), standard)
+        XCTAssertEqual(pricing.resolve(model: "grok-4.5-build"), standard)
         XCTAssertEqual(pricing.resolve(model: "grok-4.5-low"), standard)
 
         let fast = try XCTUnwrap(pricing.resolve(model: "grok-4.5-fast"))
@@ -331,6 +332,7 @@ final class PricingBundledResourceTests: XCTestCase {
         XCTAssertEqual(standard.cacheReadPerMillion, 0.5)
         XCTAssertEqual(standard.outputPerMillion, 6.0)
         XCTAssertEqual(pricing.resolve(model: "grok-4.6"), standard)
+        XCTAssertEqual(pricing.resolve(model: "grok-4.6-build"), standard)
         XCTAssertEqual(pricing.resolve(model: "grok-4.6-low"), standard)
 
         let fast = try XCTUnwrap(pricing.resolve(model: "grok-4.6-fast"))

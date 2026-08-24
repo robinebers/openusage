@@ -1,9 +1,8 @@
 import Foundation
 
 /// The `Item`-independent half of the incremental scan machinery: file discovery and the scan-window
-/// lower bound. A non-generic namespace so providers that only need the window math (Grok) share it
-/// without dragging in the generic actor, and so call sites read `JSONLScanning.sinceDate(...)` instead
-/// of `IncrementalJSONLScanner<Entry>.sinceDate(...)`.
+/// lower bound. A non-generic namespace keeps file discovery independent of each provider's parsed
+/// row type and lets call sites read `JSONLScanning.sinceDate(...)`.
 enum JSONLScanning {
     /// A discovered log file plus the stat fields the parse cache is keyed on.
     struct DiscoveredFile: Sendable {
@@ -44,8 +43,8 @@ enum JSONLScanning {
     }
 }
 
-/// The incremental, off-main-actor scan machinery shared by the Claude, Codex, and pi log scanners: discover
-/// `*.jsonl` files, re-parse only those changed since the last scan (a per-file cache keyed by path +
+/// The incremental, off-main-actor scan machinery shared by the Claude, Codex, Grok, and pi log scanners:
+/// discover `*.jsonl` files, re-parse only those changed since the last scan (a per-file cache keyed by path +
 /// size + mtime), and return the parsed items concatenated in file order. Each provider supplies its own
 /// file discovery, per-file parser, and post-parse dedup/aggregation; this owns the cache, the parallel
 /// parse, the mtime-window skip, and (via `JSONLScanning`) the jsonl enumeration so that scaffolding
