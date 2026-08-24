@@ -139,7 +139,14 @@ final class ClaudeProvider: ProviderRuntime {
                 break
             }
             AppLog.info(LogTag.auth("claude"), "no access token, not logged in")
-            return ProviderSnapshot.error(provider: provider, error: ClaudeAuthError.notLoggedIn)
+            let error = ClaudeAuthError.notLoggedIn
+            let snapshot = await snapshotWithLocalUsage(
+                mapped: ClaudeMappedUsage(plan: nil, lines: []),
+                warning: error.localizedDescription
+            )
+            return snapshot.usageHistory == nil
+                ? ProviderSnapshot.error(provider: provider, error: error)
+                : snapshot
         }
 
         // Per-source diagnostics at info level (token-free: source kind + refresh-token-present + expired
@@ -249,9 +256,17 @@ final class ClaudeProvider: ProviderRuntime {
             warning = fallbackWarning
         }
 
+        return await snapshotWithLocalUsage(mapped: mapped, warning: warning)
+    }
+
+    private func snapshotWithLocalUsage(
+        mapped initialUsage: ClaudeMappedUsage,
+        warning: String?
+    ) async -> ProviderSnapshot {
+        var mapped = initialUsage
         // Local spend tiles, scanned natively from Claude Code's session logs and priced through the
         // shared pricing store, merged with Claude usage that happened inside pi (attributed back here).
-        // Both scans run on their scanner actors, off the main actor.
+        // Both scans run on their scanner actors, off the main actor, and do not require an OAuth login.
         let pricing = await pricing()
         let nativeScan = await logUsageScanner.scan(now: now(), pricing: pricing)
         let piScan = await PiUsageScanner.shared.scan(cardID: provider.id, now: now(), pricing: pricing)

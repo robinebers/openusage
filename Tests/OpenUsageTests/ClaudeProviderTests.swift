@@ -400,6 +400,53 @@ final class ClaudeProviderTests: XCTestCase {
         XCTAssertTrue(httpClient.requests.contains { $0.url.absoluteString == "https://api.anthropic.com/api/oauth/usage" })
     }
 
+    func testNoCredentialsStillScansLocalSpendAndPreservesNotLoggedInWarning() async throws {
+        let now = OpenUsageISO8601.date(from: "2026-02-20T16:00:00.000Z")!
+        let home = try ClaudeLogFixture.makeHome(files: [
+            "project-a/today.jsonl": ClaudeLogFixture.usageLine(
+                timestamp: "2026-02-20T16:00:00.000Z", input: 100, output: 50, costUSD: 0.25
+            ),
+            "project-a/yesterday.jsonl": ClaudeLogFixture.usageLine(
+                timestamp: "2026-02-19T16:00:00.000Z", input: 40, output: 20, costUSD: 0.40,
+                messageID: "msg_yesterday", requestID: "req_yesterday"
+            )
+        ])
+        let httpClient = FakeHTTPClient(response: HTTPResponse(statusCode: 200, headers: [:], body: Data()))
+        let provider = ClaudeProvider(
+            authStore: ClaudeAuthStore(
+                environment: FakeEnvironment(),
+                files: FakeFiles(),
+                keychain: FakeKeychain(),
+                now: { now }
+            ),
+            usageClient: ClaudeUsageClient(httpClient: httpClient),
+            logUsageScanner: ClaudeLogFixture.scanner(home: home),
+            now: { now },
+            pricing: { TestPricing.bundled }
+        )
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(snapshot.warning, ClaudeAuthError.notLoggedIn.localizedDescription)
+        XCTAssertNil(badge(snapshot.lines, "Error"))
+        XCTAssertNil(snapshot.line(label: "Session"))
+        XCTAssertNil(snapshot.plan)
+        XCTAssertNotNil(snapshot.usageHistory)
+        XCTAssertEqual(values(snapshot.lines, "Today"), [
+            MetricValue(number: 0.25, kind: .dollars, estimated: true),
+            MetricValue(number: 150, kind: .count, label: "tokens")
+        ])
+        XCTAssertEqual(values(snapshot.lines, "Yesterday"), [
+            MetricValue(number: 0.40, kind: .dollars, estimated: true),
+            MetricValue(number: 60, kind: .count, label: "tokens")
+        ])
+        XCTAssertEqual(values(snapshot.lines, "Last 30 Days"), [
+            MetricValue(number: 0.65, kind: .dollars, estimated: true),
+            MetricValue(number: 210, kind: .count, label: "tokens")
+        ])
+        XCTAssertTrue(httpClient.requests.isEmpty)
+    }
+
     func testInferenceOnlyScopeSurfacesReloginWarningAndSkipsUsageCallButKeepsSpendTiles() async throws {
         // A credential that authenticates for inference but lacks the `user:profile` scope (e.g. a
         // `claude setup-token` token) can't read the usage endpoint. The provider must NOT silently leave
