@@ -45,13 +45,25 @@ struct WidgetRegistry: Sendable {
     }
 
     /// Saved order filtered to installed providers, with newly introduced providers appended in the
-    /// canonical registry order. Shared by the dashboard, local API, and one-shot CLI.
+    /// canonical registry order — except account cards (`claude@ab12cd34`), which slot in right
+    /// after their family's group so a newly discovered account appears next to its siblings
+    /// instead of at the end of the dashboard. Shared by the dashboard, local API, and one-shot CLI.
     func orderedProviderIDs(savedOrder: [String]) -> [String] {
         let defaults = providers.map(\.id)
         let known = Set(defaults)
         let saved = savedOrder.filter { known.contains($0) }
         let savedIDs = Set(saved)
-        return saved + defaults.filter { !savedIDs.contains($0) }
+        var result = saved
+        for id in defaults where !savedIDs.contains(id) {
+            let family = ProviderAccountID.family(of: id)
+            if ProviderAccountID.isAccountCard(id),
+               let anchor = result.lastIndex(where: { ProviderAccountID.family(of: $0) == family }) {
+                result.insert(id, at: result.index(after: anchor))
+            } else {
+                result.append(id)
+            }
+        }
+        return result
     }
 
     var limitDescriptorsByProvider: [String: [WidgetDescriptor]] {

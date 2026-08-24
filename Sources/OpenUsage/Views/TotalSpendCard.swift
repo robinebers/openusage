@@ -36,7 +36,16 @@ struct TotalSpendCard: View {
     }
 
     private var total: TotalSpend {
-        TotalSpendAggregator.total(for: period, providers: providers, snapshots: dataStore.snapshots)
+        // Accounts that live only on other Macs (synced, no card here) count toward the total and
+        // get their own legend slice ("Claude · Mac mini") — the number should be the whole truth
+        // even when a login isn't set up on this machine.
+        var aggregatedProviders = providers
+        var aggregatedSnapshots = dataStore.snapshots
+        for entry in dataStore.remoteOnlySpend {
+            aggregatedProviders.append(entry.provider)
+            aggregatedSnapshots[entry.provider.id] = entry.snapshot
+        }
+        return TotalSpendAggregator.total(for: period, providers: aggregatedProviders, snapshots: aggregatedSnapshots)
     }
 
     private var projection: TotalSpendProjection {

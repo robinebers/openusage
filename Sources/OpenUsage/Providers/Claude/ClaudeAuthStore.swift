@@ -155,6 +155,17 @@ struct ClaudeOAuthConfig: Hashable, Sendable {
     var clientID: String
 }
 
+/// Which login a `ClaudeAuthStore` is allowed to see. `.standard` is the default card —
+/// byte-identical to the store's historical behavior. `.configDir` backs an extra account card and
+/// deliberately has no cross-account, environment-token, or Desktop fallback: the card can only ever
+/// read the one login it was created for.
+enum ClaudeCredentialScope: Hashable, Sendable {
+    case standard
+    /// One extra `CLAUDE_CONFIG_DIR` home. `keychainLiteral` is the literal string whose hash names
+    /// the keychain item (Claude Code hashes the env value as typed — `~/…` vs absolute differ).
+    case configDir(path: String, keychainLiteral: String)
+}
+
 struct ClaudeAuthStore: Sendable {
     private static let defaultClaudeHome = "~/.claude"
     private static let credentialFileName = ".credentials.json"
@@ -169,18 +180,28 @@ struct ClaudeAuthStore: Sendable {
     var keychain: KeychainAccessing
     var desktop: ClaudeDesktopAuthStore
     var now: @Sendable () -> Date
+    let scope: ClaudeCredentialScope
+    /// Whether the `.standard` store may fall back to Claude Desktop's credentials. On by default
+    /// (the historical behavior); the catalog turns it OFF once extra Claude account cards exist,
+    /// because the Desktop login could belong to any of them — borrowing it unpinned could fetch one
+    /// account's usage onto another account's card. Desktop-backed cards return properly in Phase 3.
+    let allowsDesktopFallback: Bool
 
     init(
         environment: EnvironmentReading = ProcessEnvironmentReader(),
         files: TextFileAccessing = LocalTextFileAccessor(),
         keychain: KeychainAccessing = SecurityKeychainAccessor(),
         desktop: ClaudeDesktopAuthStore? = nil,
+        scope: ClaudeCredentialScope = .standard,
+        allowsDesktopFallback: Bool = true,
         now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.environment = environment
         self.files = files
         self.keychain = keychain
         self.desktop = desktop ?? ClaudeDesktopAuthStore(files: files, now: now)
+        self.scope = scope
+        self.allowsDesktopFallback = allowsDesktopFallback
         self.now = now
     }
 
@@ -197,11 +218,18 @@ struct ClaudeAuthStore: Sendable {
         var desktopStatus: ClaudeDesktopCredentialStatus = .notChecked
         // A working CLI login remains the source of truth and avoids a second Keychain prompt. Desktop
         // is a fallback for people who only use the native app (or whose stored CLI login lacks profile
-        // scope), never a competing account source.
+        // scope), never a competing account source. A `.configDir` card never consults Desktop at all —
+        // that login belongs to another card.
+        let desktopAllowed = scope == .standard && allowsDesktopFallback
+        if forceDesktopFallback, !desktopAllowed {
+            // Tell the provider there is no safe Desktop candidate so it preserves the original CLI
+            // auth error instead of converting it to a generic "not logged in" result.
+            desktopStatus = .notFound
+        }
         let hasUsableCLILogin = stored.contains {
             $0.hasUsableAccessToken && liveUsageAvailability($0) == .available
         }
-        if forceDesktopFallback || !hasUsableCLILogin {
+        if desktopAllowed, forceDesktopFallback || !hasUsableCLILogin {
             let result = desktop.load(allowInteraction: allowDesktopInteraction)
             desktopStatus = result.status
             if let oauth = result.oauth {
@@ -222,7 +250,26 @@ struct ClaudeAuthStore: Sendable {
         loadCredentialSet().candidates
     }
 
+    /// Whether this scoped card's login leaves any local footprint, checked without ever reading a
+    /// keychain secret — safe for the every-launch seeding probe (`NewProviderSeeder`), which must
+    /// never raise a permission dialog. The `.standard` card keeps its richer
+    /// `loadCredentialSet`-based probe in `ClaudeProvider.hasLocalCredentials`.
+    func hasCredentialFootprint() -> Bool {
+        switch scope {
+        case .standard:
+            return !loadCredentialSet().candidates.isEmpty
+        case .configDir:
+            if files.exists(credentialsPath()) { return true }
+            return keychainServiceCandidates().contains {
+                keychain.genericPasswordExists(service: $0) == true
+            }
+        }
+    }
+
     private func applyingEnvironmentToken(to stored: [ClaudeCredentialState]) -> [ClaudeCredentialState] {
+        // An ambient env token describes the DEFAULT login's environment; a scoped card must never
+        // inherit it (that would leak one account's token into another account's card).
+        guard case .standard = scope else { return stored }
         guard let envAccessToken = envText("CLAUDE_CODE_OAUTH_TOKEN") else {
             return stored
         }
@@ -330,36 +377,52 @@ struct ClaudeAuthStore: Sendable {
     }
 
     private func resolveOAuthEndpoints() -> ResolvedOAuthEndpoints {
+        Self.resolveOAuthEndpoints(environment: environment)
+    }
+
+    private static func resolveOAuthEndpoints(environment: EnvironmentReading) -> ResolvedOAuthEndpoints {
         var baseAPI = Self.prodBaseAPIURL
         var refreshURL = Self.prodRefreshURL
         var clientID = Self.prodClientID
         var suffix = ""
 
-        let isAntUser = envText("USER_TYPE") == "ant"
-        if isAntUser, envFlag("USE_LOCAL_OAUTH") {
-            let base = (envText("CLAUDE_LOCAL_OAUTH_API_BASE") ?? "http://localhost:8000").trimmingTrailingSlashes
+        let isAntUser = envText(environment, "USER_TYPE") == "ant"
+        if isAntUser, envFlag(environment, "USE_LOCAL_OAUTH") {
+            let base = (envText(environment, "CLAUDE_LOCAL_OAUTH_API_BASE") ?? "http://localhost:8000").trimmingTrailingSlashes
             baseAPI = base
             refreshURL = "\(base)/v1/oauth/token"
             clientID = Self.nonProdClientID
             suffix = "-local-oauth"
-        } else if isAntUser, envFlag("USE_STAGING_OAUTH") {
+        } else if isAntUser, envFlag(environment, "USE_STAGING_OAUTH") {
             baseAPI = "https://api-staging.anthropic.com"
             refreshURL = "https://platform.staging.ant.dev/v1/oauth/token"
             clientID = Self.nonProdClientID
             suffix = "-staging-oauth"
         }
 
-        if let custom = envText("CLAUDE_CODE_CUSTOM_OAUTH_URL") {
+        if let custom = envText(environment, "CLAUDE_CODE_CUSTOM_OAUTH_URL") {
             let base = custom.trimmingTrailingSlashes
             baseAPI = base
             refreshURL = "\(base)/v1/oauth/token"
             suffix = "-custom-oauth"
         }
-        if let override = envText("CLAUDE_CODE_OAUTH_CLIENT_ID") {
+        if let override = envText(environment, "CLAUDE_CODE_OAUTH_CLIENT_ID") {
             clientID = override
         }
 
         return ResolvedOAuthEndpoints(baseAPI: baseAPI, refreshURL: refreshURL, clientID: clientID, suffix: suffix)
+    }
+
+    /// The keychain service names as this environment's Claude Code writes them — the single source
+    /// both the scoped store and config-dir DISCOVERY build from, so a non-prod OAuth setup (local/
+    /// staging/custom, which suffixes the service) can never make discovery probe one name while
+    /// refresh reads another.
+    static func baseKeychainServiceName(environment: EnvironmentReading) -> String {
+        "\(keychainServicePrefix)\(resolveOAuthEndpoints(environment: environment).suffix)-credentials"
+    }
+
+    static func scopedKeychainServiceName(forConfigDirLiteral literal: String, environment: EnvironmentReading) -> String {
+        "\(baseKeychainServiceName(environment: environment))-\(hashSuffix(literal))"
     }
 
     // baseAPI/refreshURL can derive from user-set env vars (CLAUDE_CODE_CUSTOM_OAUTH_URL,
@@ -386,10 +449,17 @@ struct ClaudeAuthStore: Sendable {
         // Only needs the file suffix, which never fails — keep this off the throwing URL path so
         // credential loading stays forgiving even when a custom OAuth URL is malformed.
         let base = "\(Self.keychainServicePrefix)\(resolveOAuthEndpoints().suffix)-credentials"
-        if let configDir = claudeHomeOverride() {
-            return ["\(base)-\(hashSuffix(configDir))", base]
+        switch scope {
+        case .configDir(_, let keychainLiteral):
+            // Exactly this card's item — never the bare default service, which is another account's
+            // login.
+            return ["\(base)-\(hashSuffix(keychainLiteral))"]
+        case .standard:
+            if let configDir = claudeHomeOverride() {
+                return ["\(base)-\(hashSuffix(configDir))", base]
+            }
+            return [base]
         }
-        return [base]
     }
 
     static func parseCredentials(_ text: String) -> ClaudeCredentialsFile? {
@@ -471,10 +541,17 @@ struct ClaudeAuthStore: Sendable {
     }
 
     private func credentialsPath() -> String {
-        "\(envText("CLAUDE_CONFIG_DIR") ?? Self.defaultClaudeHome)/\(Self.credentialFileName)"
+        if case .configDir(let path, _) = scope {
+            return "\(path)/\(Self.credentialFileName)"
+        }
+        return "\(envText("CLAUDE_CONFIG_DIR") ?? Self.defaultClaudeHome)/\(Self.credentialFileName)"
     }
 
     private func envText(_ name: String) -> String? {
+        Self.envText(environment, name)
+    }
+
+    private static func envText(_ environment: EnvironmentReading, _ name: String) -> String? {
         guard let value = environment.value(for: name)?.trimmingCharacters(in: .whitespacesAndNewlines),
               !value.isEmpty
         else {
@@ -484,11 +561,19 @@ struct ClaudeAuthStore: Sendable {
     }
 
     private func envFlag(_ name: String) -> Bool {
-        guard let value = envText(name)?.lowercased() else { return false }
+        Self.envFlag(environment, name)
+    }
+
+    private static func envFlag(_ environment: EnvironmentReading, _ name: String) -> Bool {
+        guard let value = envText(environment, name)?.lowercased() else { return false }
         return !["0", "false", "no", "off"].contains(value)
     }
 
     private func hashSuffix(_ value: String) -> String {
+        Self.hashSuffix(value)
+    }
+
+    private static func hashSuffix(_ value: String) -> String {
         let normalized = value.precomposedStringWithCanonicalMapping
         let digest = SHA256.hash(data: Data(normalized.utf8))
         return String(digest.map { String(format: "%02x", $0) }.joined().prefix(8))

@@ -44,6 +44,22 @@ Today / Yesterday / Last 30 Days are computed **locally**: OpenUsage reads the C
 
 Local spend does not require a Claude OAuth login. If Claude Code uses an API-key gateway instead, the spend tiles and usage trend still load from its session logs; the Claude header shows **Not logged in** because the live Session and Weekly meters still require a Claude subscription login.
 
+## Multiple accounts
+
+If you keep more than one Claude login on this Mac using custom config dirs (separate `CLAUDE_CONFIG_DIR`
+homes, each with its own sign-in), OpenUsage finds them at launch and gives each **account** its own
+card, with its own limits, plan, and spend tiles read from that home. A custom dir signed into the same
+account as your main login doesn't become a second card — its session logs simply count into the main
+card's spend tiles.
+
+Extra cards are named from the account ("Claude — Acme Corp"); right-click a card and choose **Rename…**
+(or use the Name field in Customize) to call it whatever you like. A card only shows while its login is
+still found on this Mac — log it out or delete the dir and the card disappears, keeping its
+customization and history for if it returns. Turn a card off like any provider in Customize.
+
+In the [CLI](../cli.md) and [local API](../local-http-api.md), extra cards appear under ids like
+`claude@ab12cd34`; requesting `claude` returns every Claude card.
+
 ## Troubleshooting
 
 - **"Not logged in"** — run `claude` and sign in to enable live subscription limits, then refresh. If you use an API-key gateway, local spend still appears whenever Claude Code has written session logs.
