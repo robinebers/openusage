@@ -10,7 +10,7 @@ enum DefaultLayout {
         "antigravity.geminiPro", "antigravity.geminiWeekly", "antigravity.claude", "antigravity.claudeWeekly",
         "antigravity.trend", "antigravity.today", "antigravity.yesterday", "antigravity.last30",
 
-        "claude.session", "claude.weekly", "claude.trend",
+        "claude.session", "claude.weekly", "claude.fable", "claude.trend",
         "claude.extra", "claude.today", "claude.yesterday", "claude.last30",
 
         "codex.weekly", "codex.spark", "codex.sparkWeekly", "codex.trend",
@@ -79,9 +79,9 @@ enum DefaultLayout {
         // pool pair and spend-history rows sit below the caret, matching the other local scanners.
         "antigravity.claude", "antigravity.claudeWeekly",
         "antigravity.today", "antigravity.yesterday", "antigravity.last30",
-        // Claude's core meters (Session, Weekly, Extra, Usage Trend) stay above the fold; spend-history
-        // rows sit below the caret. Matches every other provider's "core above, history below" shape.
-        "claude.sonnet", "claude.fable", "claude.today", "claude.yesterday", "claude.last30",
+        // Claude's core meters (Session, Weekly, Fable, Extra, Usage Trend) stay above the fold;
+        // optional Sonnet and spend-history rows sit below the caret.
+        "claude.sonnet", "claude.today", "claude.yesterday", "claude.last30",
         // Codex's core Session/Weekly meters and Usage Trend stay above the fold; Spark (the optional
         // model-specific limits), credits, reset details, and spend rows sit below the caret.
         "codex.spark", "codex.sparkWeekly",

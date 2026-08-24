@@ -8,12 +8,13 @@ Tracks your Claude subscription limits using the login you already have from Cla
 |---|---|
 | Session | 5-hour rolling window usage |
 | Weekly | 7-day window usage |
-| Sonnet | Separate weekly Sonnet limit (plan-dependent) |
 | Fable | Separate weekly Fable limit (model-scoped window from the `limits` array) |
+| Sonnet | Separate weekly Sonnet limit (plan-dependent) |
 | Extra Usage | Extra-usage credits spent against your monthly cap |
 | Today / Yesterday / Last 30 Days | Local spend, as cost, tokens, or both (see below) |
 
-When Claude reports your plan name, OpenUsage shows it beside the provider name.
+Fable is enabled and always visible directly below Weekly by default. Sonnet stays off until you
+enable it in Customize. When Claude reports your plan name, OpenUsage shows it beside the provider name.
 
 ## Where credentials come from
 
