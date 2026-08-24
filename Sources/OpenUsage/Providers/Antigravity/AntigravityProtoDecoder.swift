@@ -10,7 +10,7 @@ enum AntigravityProtoDecoder {
         case fixed32
     }
 
-    struct GenerationEvent: Equatable {
+    struct GenerationEvent: Equatable, Sendable {
         static let unknownModel = "Unknown Antigravity Model"
 
         var model: String
@@ -110,10 +110,15 @@ enum AntigravityProtoDecoder {
         guard let usageBytes = bytesField(4, in: wrapped) else { return nil }
         let usage = fields(in: usageBytes)
 
-        guard let inputTokens = Int(exactly: varintField(2, in: usage) ?? 0),
+        guard let systemPromptTokens = Int(exactly: varintField(1, in: usage) ?? 0),
+              let inputTokens = Int(exactly: varintField(2, in: usage) ?? 0),
               let outputTokens = Int(exactly: varintField(3, in: usage) ?? 0),
-              let cacheReadTokens = Int(exactly: varintField(5, in: usage) ?? 0),
-              inputTokens != 0 || outputTokens != 0 || cacheReadTokens != 0,
+              let cacheReadTokens = Int(exactly: varintField(5, in: usage) ?? 0)
+        else { return nil }
+
+        let billableInputTokens = systemPromptTokens.addingReportingOverflow(inputTokens)
+        guard !billableInputTokens.overflow,
+              billableInputTokens.partialValue != 0 || outputTokens != 0 || cacheReadTokens != 0,
               let timingBytes = bytesField(9, in: wrapped),
               let wallClockBytes = bytesField(4, in: fields(in: timingBytes)),
               let timestamp = varintField(1, in: fields(in: wallClockBytes)),
@@ -122,7 +127,7 @@ enum AntigravityProtoDecoder {
 
         return GenerationEvent(
             model: model.flatMap { $0.isEmpty ? nil : $0 } ?? GenerationEvent.unknownModel,
-            inputTokens: inputTokens,
+            inputTokens: billableInputTokens.partialValue,
             outputTokens: outputTokens,
             cacheReadTokens: cacheReadTokens,
             timestampSeconds: timestampSeconds

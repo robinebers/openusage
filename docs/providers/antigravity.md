@@ -32,7 +32,7 @@ If neither is available you'll see *Start Antigravity or run `agy` and try again
 
 ## Spend and usage history
 
-OpenUsage reads generation token counts from `~/.gemini/antigravity-cli/conversations/*.db` and estimates their API-equivalent cost using the shared [model pricing](../pricing.md). Today, Yesterday, and Last 30 Days contribute to the Total Spend card alongside the other providers. These are estimates, not charges from your Antigravity subscription, and conversation data never leaves your Mac.
+OpenUsage reads generation token counts, including the fixed system prompt, from `~/.gemini/antigravity-cli/conversations/*.db` and estimates their API-equivalent cost using the shared [model pricing](../pricing.md). Today, Yesterday, and Last 30 Days contribute to the Total Spend card alongside the other providers. These are estimates, not charges from your Antigravity subscription, and conversation data never leaves your Mac. Previously scanned conversations are reused on refresh, so only new generation records need to be read.
 
 The transcript logs don't include token accounting, so they aren't used. Missing or unpriced models aren't assigned an invented price, and unusually large generation records are skipped with a warning to keep memory usage bounded.
 

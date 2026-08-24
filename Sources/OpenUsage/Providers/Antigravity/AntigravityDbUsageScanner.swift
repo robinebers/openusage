@@ -14,6 +14,7 @@ struct AntigravityDbUsageScanner: Sendable {
 
     private let readFailureReporter: UsageLogReadFailureReporter
     private let oversizedBlobReporter: UsageLogReadFailureReporter
+    private let scanCache: AntigravityDbScanCache
 
     init(
         sqlite: SQLiteAccessing = SQLiteCLIAccessor(),
@@ -23,6 +24,7 @@ struct AntigravityDbUsageScanner: Sendable {
     ) {
         self.sqlite = sqlite
         self.conversationsDirectory = conversationsDirectory
+        self.scanCache = AntigravityDbScanCache()
         self.readFailureReporter = UsageLogReadFailureReporter(
             logTag: LogTag.plugin("antigravity"),
             warning: readFailureWarning
@@ -60,6 +62,8 @@ struct AntigravityDbUsageScanner: Sendable {
         }
 
         let since = JSONLScanning.sinceDate(daysBack: daysBack, now: now)
+        let checkedPaths = Set(paths)
+        await scanCache.prune(keeping: checkedPaths)
         var accumulator = DailyUsageAccumulator()
         var failingPaths: [String: String] = [:]
         var oversizedPaths: Set<String> = []
@@ -67,7 +71,39 @@ struct AntigravityDbUsageScanner: Sendable {
         for path in paths {
             guard !Task.isCancelled else { return nil }
             do {
-                if try readDatabase(path: path, since: since, pricing: pricing, into: &accumulator) {
+                let fingerprint = try AntigravityDbScanCache.Fingerprint(path: path)
+                guard fingerprint.latestModification >= since else { continue }
+
+                var cached = await scanCache.entry(for: path)
+                if cached?.fingerprint != fingerprint || (cached?.windowStart ?? since) > since {
+                    if cached?.fingerprint.databaseIdentifier != fingerprint.databaseIdentifier
+                        || (cached?.fingerprint.databaseSize ?? 0) > fingerprint.databaseSize
+                        || (cached?.windowStart ?? since) > since
+                    {
+                        cached = nil
+                    }
+
+                    let existingEvents = cached?.events.filter {
+                        Date(timeIntervalSince1970: TimeInterval($0.timestampSeconds)) >= since
+                    } ?? []
+                    let update = try readDatabase(path: path, after: cached?.lastIndex ?? -1, since: since)
+                    guard !Task.isCancelled else { return nil }
+                    let refreshed = AntigravityDbScanCache.Entry(
+                        fingerprint: fingerprint,
+                        windowStart: since,
+                        lastIndex: update.lastIndex ?? cached?.lastIndex ?? -1,
+                        events: existingEvents + update.events,
+                        sawOversizedBlob: (cached?.sawOversizedBlob ?? false) || update.sawOversizedBlob
+                    )
+                    cached = refreshed
+                    await scanCache.store(refreshed, for: path)
+                }
+
+                guard let cached else { continue }
+                for event in cached.events {
+                    Self.accumulate(event, since: since, pricing: pricing, into: &accumulator)
+                }
+                if cached.sawOversizedBlob {
                     oversizedPaths.insert(path)
                 }
             } catch {
@@ -75,7 +111,6 @@ struct AntigravityDbUsageScanner: Sendable {
             }
         }
 
-        let checkedPaths = Set(paths)
         let newlyFailing = await readFailureReporter.update(
             checkedPaths: checkedPaths,
             failingPaths: Set(failingPaths.keys)
@@ -111,14 +146,13 @@ struct AntigravityDbUsageScanner: Sendable {
         """
     }
 
-    @discardableResult
     private func readDatabase(
         path: String,
-        since: Date,
-        pricing: ModelPricing,
-        into accumulator: inout DailyUsageAccumulator
-    ) throws -> Bool {
-        var lastIndex = -1
+        after index: Int,
+        since: Date
+    ) throws -> (lastIndex: Int?, events: [AntigravityProtoDecoder.GenerationEvent], sawOversizedBlob: Bool) {
+        var lastIndex = index
+        var events: [AntigravityProtoDecoder.GenerationEvent] = []
         var sawOversizedBlob = false
 
         while !Task.isCancelled {
@@ -136,13 +170,17 @@ struct AntigravityDbUsageScanner: Sendable {
                     sawOversizedBlob = true
                     continue
                 }
-                Self.accumulate(hex, since: since, pricing: pricing, into: &accumulator)
+                guard let blob = Self.bytes(fromHex: hex),
+                      let event = AntigravityProtoDecoder.generationEvent(from: blob),
+                      Date(timeIntervalSince1970: TimeInterval(event.timestampSeconds)) >= since
+                else { continue }
+                events.append(event)
             }
 
             if rows.count < Self.batchSize { break }
         }
 
-        return sawOversizedBlob
+        return (lastIndex == index ? nil : lastIndex, events, sawOversizedBlob)
     }
 
     private struct Row {
@@ -176,15 +214,11 @@ struct AntigravityDbUsageScanner: Sendable {
     }
 
     private static func accumulate(
-        _ hex: String,
+        _ event: AntigravityProtoDecoder.GenerationEvent,
         since: Date,
         pricing: ModelPricing,
         into accumulator: inout DailyUsageAccumulator
     ) {
-        guard let blob = bytes(fromHex: hex),
-              let event = AntigravityProtoDecoder.generationEvent(from: blob)
-        else { return }
-
         let date = Date(timeIntervalSince1970: TimeInterval(event.timestampSeconds))
         guard date >= since else { return }
 
@@ -234,4 +268,48 @@ struct AntigravityDbUsageScanner: Sendable {
             .sorted()
             .map { directory.trimmingTrailingSlashes + "/" + $0 }
     }
+}
+
+private actor AntigravityDbScanCache {
+    struct Fingerprint: Equatable, Sendable {
+        let databaseIdentifier: UInt64
+        let databaseSize: Int64
+        let databaseModification: Date
+        let walSize: Int64?
+        let walModification: Date?
+
+        init(path: String) throws {
+            let attributes = try FileManager.default.attributesOfItem(atPath: path)
+            databaseIdentifier = (attributes[.systemFileNumber] as? NSNumber)?.uint64Value ?? 0
+            databaseSize = (attributes[.size] as? NSNumber)?.int64Value ?? 0
+            databaseModification = attributes[.modificationDate] as? Date ?? .distantPast
+
+            do {
+                let walAttributes = try FileManager.default.attributesOfItem(atPath: path + "-wal")
+                walSize = (walAttributes[.size] as? NSNumber)?.int64Value ?? 0
+                walModification = walAttributes[.modificationDate] as? Date ?? .distantPast
+            } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+                walSize = nil
+                walModification = nil
+            }
+        }
+
+        var latestModification: Date {
+            max(databaseModification, walModification ?? .distantPast)
+        }
+    }
+
+    struct Entry: Sendable {
+        let fingerprint: Fingerprint
+        let windowStart: Date
+        let lastIndex: Int
+        let events: [AntigravityProtoDecoder.GenerationEvent]
+        let sawOversizedBlob: Bool
+    }
+
+    private var entries: [String: Entry] = [:]
+
+    func entry(for path: String) -> Entry? { entries[path] }
+    func store(_ entry: Entry, for path: String) { entries[path] = entry }
+    func prune(keeping paths: Set<String>) { entries = entries.filter { paths.contains($0.key) } }
 }
