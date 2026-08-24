@@ -76,6 +76,7 @@ struct SettingsScreen: View {
         .onChange(of: layout.screen) { _, screen in
             if screen == .settings {
                 scrollPosition.scrollTo(edge: .top)
+                launchAtLogin.refreshStatus()
                 commandLineTool.refreshStatus()
                 Task { await refreshNotificationsAuth() }
             } else {
@@ -84,6 +85,7 @@ struct SettingsScreen: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             guard layout.screen == .settings else { return }
+            launchAtLogin.refreshStatus()
             commandLineTool.refreshStatus()
             Task { await refreshNotificationsAuth() }
         }

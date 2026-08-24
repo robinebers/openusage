@@ -29,6 +29,14 @@ final class LaunchAtLoginSetting {
         self.isEnabled = currentStatus()
     }
 
+    /// Reconcile changes made in System Settings without registering or unregistering the login item.
+    func refreshStatus() {
+        let enabled = currentStatus()
+        guard enabled != isEnabled else { return }
+        isEnabled = enabled
+        errorMessage = nil
+    }
+
     func update(to enabled: Bool) {
         guard enabled != isEnabled else { return }
         do {
