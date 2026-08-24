@@ -217,7 +217,7 @@
     { "pattern": "^gemini-3\\.5-flash(?:-preview)?(?:-(?:none|low|medium|high|xhigh))?(?:-preview)?$", "canonical": "gemini-3.5-flash" },
     { "pattern": "^gemini-3\\.6-flash(?:-preview)?(?:-(?:none|low|medium|high|xhigh))?(?:-preview)?$", "canonical": "gemini-3.6-flash" },
     { "pattern": "^gemini-3\\.7-flash(?:-preview)?(?:-(?:none|low|medium|high|xhigh))?(?:-preview)?$", "canonical": "gemini-3.7-flash" },
-    { "pattern": "^gemini-3-pro(?:-preview)?(?:-(?:none|low|medium|high|xhigh))?(?:-preview)?$", "canonical": "gemini-3-pro-preview" },
+    { "pattern": "^gemini-3-pro(?=-)(?:-preview)?(?:-(?:none|low|medium|high|xhigh))?(?:-preview)?$", "canonical": "gemini-3-pro-preview" },
     { "pattern": "^gemini-3\\.1-pro(?:-preview)?(?:-(?:none|low|medium|high|xhigh))?(?:-preview)?$", "canonical": "gemini-3.1-pro-preview" },
     { "pattern": "^gpt-5(?:-(?:low|high))?-fast$", "canonical": "gpt-5-fast" },
     { "pattern": "^gpt-5(?:-(?:low|high))?$", "canonical": "gpt-5" },

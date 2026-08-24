@@ -375,7 +375,7 @@ final class AntigravityDbUsageScannerTests: XCTestCase {
     func testBatchSQLBoundsRowsAndSkipsOversizedBlobsBeforeHexExpansion() {
         let sql = AntigravityDbUsageScanner.dataSQL(after: 42)
 
-        XCTAssertTrue(sql.contains("WHERE idx > 42"))
+        XCTAssertTrue(sql.contains("WHERE idx > 42 AND data IS NOT NULL"))
         XCTAssertTrue(sql.contains("LIMIT \(AntigravityDbUsageScanner.batchSize)"))
         XCTAssertTrue(sql.contains("length(data) <= \(AntigravityDbUsageScanner.maximumBlobBytes)"))
         XCTAssertTrue(sql.contains("THEN hex(data) ELSE NULL"))

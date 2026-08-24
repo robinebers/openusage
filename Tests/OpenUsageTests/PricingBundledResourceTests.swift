@@ -101,6 +101,7 @@ final class PricingBundledResourceTests: XCTestCase {
             XCTAssertEqual(pricing.supplement.canonicalName(for: variant), canonical, "wrong alias for '\(variant)'")
             XCTAssertEqual(pricing.resolve(model: variant), pricing.resolve(model: canonical), "wrong rates for '\(variant)'")
         }
+        XCTAssertNil(pricing.supplement.canonicalName(for: "gemini-3-pro"))
     }
 
     /// Claude Fable 5 (carried over from the old manifest tests): priced at 2x standard Claude 4.8

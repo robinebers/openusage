@@ -114,7 +114,7 @@ actor AntigravityDbUsageScanner {
             CASE WHEN length(data) <= \(maximumBlobBytes) THEN hex(data) ELSE NULL END))
         FROM (
             SELECT idx, data FROM gen_metadata
-            WHERE idx > \(index)
+            WHERE idx > \(index) AND data IS NOT NULL
             ORDER BY idx
             LIMIT \(batchSize)
         )
