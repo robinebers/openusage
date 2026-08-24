@@ -447,6 +447,50 @@ final class ClaudeProviderTests: XCTestCase {
         XCTAssertTrue(httpClient.requests.isEmpty)
     }
 
+    func testNoCredentialsWithLogsThatContainNoSpendStillReportsNotLoggedIn() async throws {
+        let now = OpenUsageISO8601.date(from: "2026-02-20T16:00:00.000Z")!
+        let fixtures = [
+            (
+                name: "out-of-window usage",
+                line: ClaudeLogFixture.usageLine(
+                    timestamp: "2025-12-20T16:00:00.000Z", input: 100, output: 50, costUSD: 0.25
+                )
+            ),
+            (
+                name: "zero-token, zero-cost usage",
+                line: ClaudeLogFixture.usageLine(
+                    timestamp: "2026-02-20T16:00:00.000Z", input: 0, output: 0, costUSD: 0
+                )
+            )
+        ]
+
+        for fixture in fixtures {
+            let home = try ClaudeLogFixture.makeHome(files: ["project-a/session.jsonl": fixture.line])
+            let provider = ClaudeProvider(
+                authStore: ClaudeAuthStore(
+                    environment: FakeEnvironment(),
+                    files: FakeFiles(),
+                    keychain: FakeKeychain(),
+                    now: { now }
+                ),
+                logUsageScanner: ClaudeLogFixture.scanner(home: home),
+                now: { now },
+                pricing: { TestPricing.bundled }
+            )
+
+            let snapshot = await provider.refresh()
+
+            XCTAssertEqual(
+                badge(snapshot.lines, "Error"),
+                ClaudeAuthError.notLoggedIn.localizedDescription,
+                fixture.name
+            )
+            XCTAssertEqual(snapshot.errorCategory, .notLoggedIn, fixture.name)
+            XCTAssertNil(snapshot.warning, fixture.name)
+            XCTAssertNil(snapshot.usageHistory, fixture.name)
+        }
+    }
+
     func testInferenceOnlyScopeSurfacesReloginWarningAndSkipsUsageCallButKeepsSpendTiles() async throws {
         // A credential that authenticates for inference but lacks the `user:profile` scope (e.g. a
         // `claude setup-token` token) can't read the usage endpoint. The provider must NOT silently leave

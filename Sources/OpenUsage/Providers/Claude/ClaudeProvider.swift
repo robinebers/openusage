@@ -144,9 +144,14 @@ final class ClaudeProvider: ProviderRuntime {
                 mapped: ClaudeMappedUsage(plan: nil, lines: []),
                 warning: error.localizedDescription
             )
-            return snapshot.usageHistory == nil
-                ? ProviderSnapshot.error(provider: provider, error: error)
-                : snapshot
+            guard let history = snapshot.usageHistory,
+                  history.series.daily.contains(where: {
+                      $0.totalTokens > 0 || ($0.costUSD ?? 0) > 0
+                  })
+            else {
+                return ProviderSnapshot.error(provider: provider, error: error)
+            }
+            return snapshot
         }
 
         // Per-source diagnostics at info level (token-free: source kind + refresh-token-present + expired
