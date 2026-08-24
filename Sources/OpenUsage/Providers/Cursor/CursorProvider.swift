@@ -162,7 +162,10 @@ final class CursorProvider: ProviderRuntime {
         }) else {
             return
         }
-        guard usage["usesPooledEnterpriseAllowance"] as? Bool != true else {
+        guard usage["usesPooledEnterpriseAllowance"] as? Bool != true,
+              usage["hasNonZeroIncludedLimit"] as? Bool != false,
+              usage["includedLimitZero"] as? Bool != true
+        else {
             return
         }
         guard let line = CursorUsageMapper.mapGrokBotUsage(usage) else {

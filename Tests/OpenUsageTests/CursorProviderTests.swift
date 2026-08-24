@@ -63,6 +63,14 @@ final class CursorUsageMapperTests: XCTestCase {
             "usagePercent": 42,
             "usesPooledEnterpriseAllowance": true
         ]))
+        XCTAssertNil(CursorUsageMapper.mapGrokBotUsage([
+            "usagePercent": 0,
+            "hasNonZeroIncludedLimit": false
+        ]))
+        XCTAssertNil(CursorUsageMapper.mapGrokBotUsage([
+            "usagePercent": 0,
+            "includedLimitZero": true
+        ]))
         XCTAssertNil(CursorUsageMapper.mapGrokBotUsage(["usagePercent": true]))
         XCTAssertNil(CursorUsageMapper.mapGrokBotUsage(["usagePercent": -1]))
         XCTAssertNil(CursorUsageMapper.mapGrokBotUsage(["hasNonZeroIncludedLimit": true]))

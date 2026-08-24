@@ -81,9 +81,11 @@ enum CursorUsageMapper {
     static let billingPeriodMs = MetricPeriod.monthMs
 
     /// Grok Bot is Cursor's "Sand" product, with its own weekly allowance and reset window. Pooled
-    /// enterprise accounts have no separate personal meter, matching the desktop app's own behavior.
+    /// enterprise accounts and accounts without an included allowance have no separate personal meter.
     static func mapGrokBotUsage(_ usage: [String: Any]) -> MetricLine? {
         guard usage["usesPooledEnterpriseAllowance"] as? Bool != true,
+              usage["hasNonZeroIncludedLimit"] as? Bool != false,
+              usage["includedLimitZero"] as? Bool != true,
               let percent = ProviderParse.number(usage["usagePercent"]),
               percent >= 0
         else {
