@@ -25,6 +25,54 @@ final class MenuBarContentTests: XCTestCase {
         XCTAssertEqual(content.groups[1].metrics.map(\.id), ["b.m1"])
     }
 
+    func testSameMetricAcrossAccountCardsStacksInCardOrder() {
+        let personal = percent("codex.weekly", "Weekly", 31)
+        let work = percent("codex@work.weekly", "Weekly", 72)
+
+        let content = MenuBarContentBuilder.build(
+            groups: [group("codex", personal), group("codex@work", work)],
+            data: { $0.sample }
+        )
+
+        XCTAssertEqual(content.groups.count, 1)
+        XCTAssertEqual(content.groups[0].displayName, "Codex")
+        XCTAssertEqual(
+            content.groups[0].metrics.map(\.id),
+            ["codex.weekly", "codex@work.weekly"]
+        )
+        XCTAssertEqual(content.groups[0].metrics.map(\.value), ["31%", "72%"])
+        XCTAssertEqual(
+            content.accessibilityText,
+            "Codex accounts: CODEX Weekly 31%, CODEX@WORK Weekly 72%"
+        )
+
+        let reordered = MenuBarContentBuilder.build(
+            groups: [group("codex@work", work), group("codex", personal)],
+            data: { $0.sample }
+        )
+        XCTAssertEqual(
+            reordered.groups[0].metrics.map(\.id),
+            ["codex@work.weekly", "codex.weekly"]
+        )
+    }
+
+    func testAccountCardsWithTwoPinnedMetricKindsKeepSeparateSegments() {
+        let content = MenuBarContentBuilder.build(
+            groups: [
+                group("codex", percent("codex.session", "Session", 21), percent("codex.weekly", "Weekly", 31)),
+                group(
+                    "codex@work",
+                    percent("codex@work.session", "Session", 62),
+                    percent("codex@work.weekly", "Weekly", 72)
+                ),
+            ],
+            data: { $0.sample }
+        )
+
+        XCTAssertEqual(content.groups.map(\.providerID), ["codex", "codex@work"])
+        XCTAssertEqual(content.groups.map { $0.metrics.count }, [2, 2])
+    }
+
     func testBarsIncludeBoundedMetricsAndDropUnbounded() {
         // A bounded dollar metric has a fill, so it belongs in Bars. An unbounded value (raw spend,
         // no limit) has no fill and is dropped.

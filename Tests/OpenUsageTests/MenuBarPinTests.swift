@@ -95,6 +95,72 @@ final class MenuBarPinTests: XCTestCase {
         XCTAssertEqual(store.pinnedGroups.map(\.provider.id), ["a", "b"])
     }
 
+    func testAccountCardsShareFamilyPinsAndFollowProviderDragOrder() {
+        let defaults = makeDefaults("accountFamilyOrder")
+        let store = LayoutStore(
+            registry: makeAccountRegistry(),
+            defaults: defaults,
+            storageKey: "layout",
+            defaultMetricIDs: ["codex.session", "codex.weekly", "codex.credits"],
+            migrationBaselineMetricIDs: [],
+            defaultPinnedMetricIDs: ["codex.weekly"],
+            defaultExpandedMetricIDs: []
+        )
+
+        XCTAssertTrue(store.isPinned("codex.weekly"))
+        XCTAssertTrue(store.isPinned("codex@work.weekly"))
+        XCTAssertEqual(store.pinnedCount(forProvider: "codex@work"), 1)
+        XCTAssertEqual(store.pinnedGroups.map(\.provider.id), ["codex", "codex@work"])
+        XCTAssertEqual(
+            store.pinnedGroups.flatMap { $0.metrics.map(\.id) },
+            ["codex.weekly", "codex@work.weekly"]
+        )
+
+        XCTAssertTrue(store.reorderProvider(dragged: "codex@work", target: "codex"))
+        XCTAssertEqual(store.pinnedGroups.map(\.provider.id), ["codex@work", "codex"])
+        XCTAssertEqual(
+            store.pinnedGroups.flatMap { $0.metrics.map(\.id) },
+            ["codex@work.weekly", "codex.weekly"]
+        )
+    }
+
+    func testUnpinningEitherAccountClearsTheSharedFamilyMetric() {
+        let store = LayoutStore(
+            registry: makeAccountRegistry(),
+            defaults: makeDefaults("accountFamilyUnpin"),
+            storageKey: "layout",
+            defaultMetricIDs: ["codex.session", "codex.weekly", "codex.credits"],
+            migrationBaselineMetricIDs: [],
+            defaultPinnedMetricIDs: ["codex.weekly"],
+            defaultExpandedMetricIDs: []
+        )
+
+        store.setPinned(false, for: "codex@work.weekly")
+
+        XCTAssertFalse(store.isPinned("codex.weekly"))
+        XCTAssertFalse(store.isPinned("codex@work.weekly"))
+        XCTAssertTrue(store.pinnedGroups.isEmpty)
+    }
+
+    func testPinCapCountsMetricKindsAcrossAccountFamily() {
+        let store = LayoutStore(
+            registry: makeAccountRegistry(),
+            defaults: makeDefaults("accountFamilyCap"),
+            storageKey: "layout",
+            defaultMetricIDs: ["codex.session", "codex.weekly", "codex.credits"],
+            migrationBaselineMetricIDs: [],
+            defaultPinnedMetricIDs: [],
+            defaultExpandedMetricIDs: []
+        )
+
+        store.setPinned(true, for: "codex.session")
+        store.setPinned(true, for: "codex@work.weekly")
+
+        XCTAssertEqual(store.pinnedCount(forProvider: "codex"), 2)
+        XCTAssertEqual(store.pinnedCount(forProvider: "codex@work"), 2)
+        XCTAssertFalse(store.canPin("codex@work.credits"))
+    }
+
     func testDisabledProviderPinsExcludedFromGroupsButKept() {
         let store = LayoutStore(
             registry: makeRegistry(),
@@ -147,6 +213,23 @@ final class MenuBarPinTests: XCTestCase {
         }
         let descriptors = providers.flatMap { provider in
             (1...3).map { n in metric(provider, id: "\(provider.id).m\(n)", label: "M\(n)") }
+        }
+        return WidgetRegistry(providers: providers, descriptors: descriptors)
+    }
+
+    private func makeAccountRegistry() -> WidgetRegistry {
+        let providers = [
+            Provider(id: "codex", displayName: "Codex Personal", icon: .providerMark("codex")),
+            Provider(id: "codex@work", displayName: "Codex Work", icon: .providerMark("codex")),
+        ]
+        let descriptors = providers.flatMap { provider in
+            ["session", "weekly", "credits"].map { metricID in
+                metric(
+                    provider,
+                    id: "\(provider.id).\(metricID)",
+                    label: metricID.capitalized
+                )
+            }
         }
         return WidgetRegistry(providers: providers, descriptors: descriptors)
     }

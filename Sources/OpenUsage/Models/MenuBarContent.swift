@@ -13,6 +13,27 @@ struct MenuBarContent: Equatable {
         let fraction: Double     // 0...1 fill, meaningful for bounded metrics (drives the bars)
         let isBounded: Bool      // has a limit → has a fill, so it can render as a bar
         let hasData: Bool
+        /// Resolved account-card title. Used only when several account values share one visual stack,
+        /// so VoiceOver can name which value belongs to which account.
+        let accountDisplayName: String?
+
+        init(
+            id: String,
+            label: String,
+            value: String,
+            fraction: Double,
+            isBounded: Bool,
+            hasData: Bool,
+            accountDisplayName: String? = nil
+        ) {
+            self.id = id
+            self.label = label
+            self.value = value
+            self.fraction = fraction
+            self.isBounded = isBounded
+            self.hasData = hasData
+            self.accountDisplayName = accountDisplayName
+        }
     }
 
     /// A provider and its pinned metrics, in order. One segment of the Text strip.
@@ -38,6 +59,14 @@ struct MenuBarContent: Equatable {
     /// "Claude Session 41%, Weekly 12%; Cursor Credits $12".
     var accessibilityText: String {
         groups.map { group in
+            let accountNames = Set(group.metrics.compactMap(\.accountDisplayName))
+            if accountNames.count > 1 {
+                let metrics = group.metrics.map { metric in
+                    "\(metric.accountDisplayName ?? group.displayName) \(metric.label) \(metric.value)"
+                }
+                .joined(separator: ", ")
+                return "\(group.displayName) accounts: \(metrics)"
+            }
             let metrics = group.metrics.map { "\($0.label) \($0.value)" }.joined(separator: ", ")
             return "\(group.displayName) \(metrics)"
         }
@@ -66,33 +95,92 @@ enum MenuBarContentBuilder {
         title: (Provider) -> String = { $0.displayName }
     ) -> MenuBarContent {
         let resolvedGroups = groups.compactMap { group -> MenuBarContent.Group? in
-            let metrics = group.metrics.map { resolve($0, data($0)) }.filter(\.hasData)
+            let displayName = title(group.provider)
+            let metrics = group.metrics.map {
+                resolve($0, data($0), accountDisplayName: displayName)
+            }
+            .filter(\.hasData)
             guard !metrics.isEmpty else { return nil }
             return MenuBarContent.Group(
                 providerID: group.provider.id,
-                displayName: title(group.provider),
+                displayName: displayName,
                 icon: group.provider.icon,
                 metrics: metrics
             )
         }
+        let textGroups = coalescingSingleMetricAccountGroups(resolvedGroups)
         // Bars show any *bounded* metric (it has a fill), not just percentages. Unbounded values (raw
         // spend/credits, no limit) have no fill and are dropped.
-        let bars = resolvedGroups
+        let bars = textGroups
             .flatMap(\.metrics)
             .filter(\.isBounded)
             .prefix(maxBars)
-        return MenuBarContent(groups: resolvedGroups, bars: Array(bars))
+        return MenuBarContent(groups: textGroups, bars: Array(bars))
     }
 
-    private static func resolve(_ descriptor: WidgetDescriptor, _ data: WidgetData) -> MenuBarContent.Metric {
+    private static func resolve(
+        _ descriptor: WidgetDescriptor,
+        _ data: WidgetData,
+        accountDisplayName: String
+    ) -> MenuBarContent.Metric {
         MenuBarContent.Metric(
             id: descriptor.id,
             label: trayLabel(descriptor.metricLabel),
             value: data.menuBarValue,
             fraction: data.fraction,
             isBounded: data.isBounded,
-            hasData: data.hasData
+            hasData: data.hasData,
+            accountDisplayName: accountDisplayName
         )
+    }
+
+    /// When several account cards expose the same single pinned metric, render their values as one
+    /// two-line provider segment instead of repeating the provider icon. Match order is input order,
+    /// which is the live drag-and-drop card order from `LayoutStore.pinnedGroups`.
+    private static func coalescingSingleMetricAccountGroups(
+        _ groups: [MenuBarContent.Group]
+    ) -> [MenuBarContent.Group] {
+        var consumed = Set<Int>()
+        var result: [MenuBarContent.Group] = []
+
+        for (index, group) in groups.enumerated() where !consumed.contains(index) {
+            guard group.metrics.count == 1,
+                  let kind = metricKind(in: group.metrics[0].id, providerID: group.providerID)
+            else {
+                result.append(group)
+                continue
+            }
+            let family = ProviderAccountID.family(of: group.providerID)
+            let matches = groups.indices.filter { candidateIndex in
+                guard !consumed.contains(candidateIndex) else { return false }
+                let candidate = groups[candidateIndex]
+                guard ProviderAccountID.family(of: candidate.providerID) == family,
+                      candidate.metrics.count == 1
+                else { return false }
+                return metricKind(in: candidate.metrics[0].id, providerID: candidate.providerID) == kind
+            }
+            guard matches.count > 1,
+                  matches.contains(where: { ProviderAccountID.isAccountCard(groups[$0].providerID) })
+            else {
+                result.append(group)
+                continue
+            }
+
+            consumed.formUnion(matches)
+            result.append(MenuBarContent.Group(
+                providerID: group.providerID,
+                displayName: family.capitalized,
+                icon: group.icon,
+                metrics: matches.map { groups[$0].metrics[0] }
+            ))
+        }
+        return result
+    }
+
+    private static func metricKind(in descriptorID: String, providerID: String) -> String? {
+        let prefix = providerID + "."
+        guard descriptorID.hasPrefix(prefix) else { return nil }
+        return String(descriptorID.dropFirst(prefix.count))
     }
 
     /// Tray-only label shortening (the dashboard keeps the full names): the long time-window metrics

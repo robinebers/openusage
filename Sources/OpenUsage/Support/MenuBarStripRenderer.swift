@@ -172,17 +172,22 @@ private struct MenuBarTextStrip: View {
         .fixedSize()
     }
 
-    /// A provider's pinned values, no labels: one metric as a single large number, two stacked on two
-    /// tight lines (much narrower than side-by-side), read positionally.
+    /// A provider's pinned values, no labels: one metric as a single large number, pairs stacked on
+    /// tight lines (much narrower than side-by-side), read positionally. More than two account cards
+    /// continue in another narrow column so the status-item image never grows taller than the menu bar.
     @ViewBuilder
     private func metricsView(_ metrics: [MenuBarContent.Metric]) -> some View {
         if metrics.count <= 1 {
             Text(metrics.first?.value ?? "")
                 .font(.system(size: 12, weight: .bold))
         } else {
-            VStack(alignment: .trailing, spacing: -2) {
-                ForEach(metrics, id: \.id) { metric in
-                    Text(metric.value)
+            HStack(spacing: 3) {
+                ForEach(Array(stride(from: 0, to: metrics.count, by: 2)), id: \.self) { start in
+                    VStack(alignment: .trailing, spacing: -2) {
+                        ForEach(Array(metrics[start..<min(start + 2, metrics.count)]), id: \.id) { metric in
+                            Text(metric.value)
+                        }
+                    }
                 }
             }
             .font(.system(size: 9, weight: .semibold))

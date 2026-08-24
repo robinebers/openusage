@@ -71,9 +71,10 @@ enum DefaultLayout {
     /// Account-card-aware default list: for every extra account card in the registry
     /// (`claude@ab12cd34`), the family's entries are re-prefixed onto the card and appended, so a
     /// newly discovered account seeds the same metric set (and caret split) as its family's default
-    /// card. Pins are deliberately NOT translated — an extra account never claims menu-bar space by
-    /// default. `migrationBaselineMetricIDs` is deliberately NOT translated either: account-card ids
-    /// must always read as never-offered so their defaults seed the first time the card appears.
+    /// card. Stored pin ids are deliberately NOT duplicated: `LayoutStore` treats a pin as a shared
+    /// family metric and resolves it across every live account card. `migrationBaselineMetricIDs` is
+    /// deliberately NOT translated either: account-card ids must always read as never-offered so
+    /// their defaults seed the first time the card appears.
     static func translatedForAccountCards(_ ids: [String], providerIDs: [String]) -> [String] {
         let accountCardIDs = providerIDs.filter(ProviderAccountID.isAccountCard)
         guard !accountCardIDs.isEmpty else { return ids }

@@ -136,14 +136,19 @@ extension LayoutStore {
             + ordered.filter { expandedMetricIDs.contains($0) }
     }
 
-    /// Pinned metrics grouped by provider, in the user's Customize order (provider order, then each
-    /// provider's metric order). A temporarily disabled provider is excluded from the rendered groups
-    /// but keeps its pins. Drives the menu-bar strip.
+    /// Pinned metric kinds grouped by provider card, in the user's Customize order (provider order,
+    /// then each provider's metric order). Account cards share their family's stars, so one Codex
+    /// Weekly star contributes Weekly from every enabled Codex account. A temporarily disabled card
+    /// is excluded from the rendered groups but keeps the family pin. Drives the menu-bar strip.
     var pinnedGroups: [ProviderMetrics] {
-        orderedProviders().compactMap { provider in
+        let activeKeys = pinnedMenuBarKeys
+        return orderedProviders().compactMap { provider -> ProviderMetrics? in
             guard isProviderEnabled(provider.id) else { return nil }
             // Keep the strip order matching Customize: always-shown pins first, then expanded ones.
-            let metrics = orderedSupportedMetrics(for: provider.id).filter { pinnedMetricIDs.contains($0.id) }
+            let metrics = orderedSupportedMetrics(for: provider.id).filter { descriptor in
+                guard let key = menuBarPinKey(forDescriptorID: descriptor.id) else { return false }
+                return activeKeys.contains(key)
+            }
             return metrics.isEmpty ? nil : ProviderMetrics(
                 provider: provider,
                 alwaysShownMetrics: metrics.filter { !expandedMetricIDs.contains($0.id) },
