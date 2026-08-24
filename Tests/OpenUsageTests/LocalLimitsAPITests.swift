@@ -37,13 +37,7 @@ final class LocalLimitsAPITests: XCTestCase {
             ],
             refreshedAt: fetchedAt
         )
-        let state = LocalUsageAPI.State(
-            enabledOrderedIDs: ["codex"],
-            knownIDs: ["codex"],
-            snapshots: ["codex": snapshot],
-            limitDescriptors: ["codex": [session, credits]],
-            generatedAt: generatedAt
-        )
+        let state = makeState(snapshot: snapshot, descriptors: [session, credits])
 
         let response = LocalUsageAPI.respond(method: "GET", path: "/v1/limits", state: state)
         let root = try json(response.body)
@@ -92,13 +86,7 @@ final class LocalLimitsAPITests: XCTestCase {
             lines: [.progress(label: "Session", used: 73, limit: 100, format: .percent)],
             refreshedAt: fetchedAt
         )
-        let state = LocalUsageAPI.State(
-            enabledOrderedIDs: ["codex"],
-            knownIDs: ["codex"],
-            snapshots: ["codex": snapshot],
-            limitDescriptors: ["codex": [session]],
-            generatedAt: generatedAt
-        )
+        let state = makeState(snapshot: snapshot, descriptors: [session])
 
         let usage = try XCTUnwrap(
             JSONSerialization.jsonObject(
@@ -150,19 +138,7 @@ final class LocalLimitsAPITests: XCTestCase {
             lines: [.values(label: "Extra usage spent", values: [MetricValue(number: 12.5, kind: .dollars)])],
             refreshedAt: fetchedAt
         )
-        let state = LocalUsageAPI.State(
-            enabledOrderedIDs: ["claude"],
-            knownIDs: ["claude"],
-            snapshots: ["claude": snapshot],
-            limitDescriptors: ["claude": [extra]],
-            generatedAt: generatedAt
-        )
-
-        let root = try json(LocalUsageAPI.respond(method: "GET", path: "/v1/limits", state: state).body)
-        let providers = try XCTUnwrap(root["providers"] as? [String: Any])
-        let claude = try XCTUnwrap(providers["claude"] as? [String: Any])
-        let resources = try XCTUnwrap(claude["resources"] as? [String: Any])
-        let resource = try XCTUnwrap(resources["extraUsage"] as? [String: Any])
+        let resource = try limitResource("extraUsage", snapshot: snapshot, descriptors: [extra])
 
         XCTAssertEqual(resource["used"] as? Double, 12.5)
         XCTAssertNil(resource["limit"])
@@ -188,27 +164,12 @@ final class LocalLimitsAPITests: XCTestCase {
             refreshedAt: fetchedAt
         )
 
-        func resource(in snapshot: ProviderSnapshot) throws -> [String: Any] {
-            let state = LocalUsageAPI.State(
-                enabledOrderedIDs: ["copilot"],
-                knownIDs: ["copilot"],
-                snapshots: ["copilot": snapshot],
-                limitDescriptors: ["copilot": [credits]],
-                generatedAt: generatedAt
-            )
-            let root = try json(LocalUsageAPI.respond(method: "GET", path: "/v1/limits", state: state).body)
-            let providers = try XCTUnwrap(root["providers"] as? [String: Any])
-            let copilot = try XCTUnwrap(providers["copilot"] as? [String: Any])
-            let resources = try XCTUnwrap(copilot["resources"] as? [String: Any])
-            return try XCTUnwrap(resources["premiumCredits"] as? [String: Any])
-        }
-
-        let count = try resource(in: personal)
+        let count = try limitResource("premiumCredits", snapshot: personal, descriptors: [credits])
         XCTAssertEqual(count["used"] as? Double, 2111)
         XCTAssertEqual(count["unit"] as? String, "credits")
         XCTAssertNil(count["limit"])
 
-        let percent = try resource(in: paid)
+        let percent = try limitResource("premiumCredits", snapshot: paid, descriptors: [credits])
         XCTAssertEqual(percent["used"] as? Double, 59)
         XCTAssertEqual(percent["unit"] as? String, "percent")
         XCTAssertEqual(percent["limit"] as? Double, 100)
@@ -228,19 +189,7 @@ final class LocalLimitsAPITests: XCTestCase {
             )],
             refreshedAt: fetchedAt
         )
-        let state = LocalUsageAPI.State(
-            enabledOrderedIDs: ["cursor"],
-            knownIDs: ["cursor"],
-            snapshots: ["cursor": snapshot],
-            limitDescriptors: ["cursor": [total]],
-            generatedAt: generatedAt
-        )
-
-        let root = try json(LocalUsageAPI.respond(method: "GET", path: "/v1/limits", state: state).body)
-        let providers = try XCTUnwrap(root["providers"] as? [String: Any])
-        let cursor = try XCTUnwrap(providers["cursor"] as? [String: Any])
-        let resources = try XCTUnwrap(cursor["resources"] as? [String: Any])
-        let resource = try XCTUnwrap(resources["totalUsage"] as? [String: Any])
+        let resource = try limitResource("totalUsage", snapshot: snapshot, descriptors: [total])
 
         XCTAssertEqual(resource["unit"] as? String, "requests")
         XCTAssertEqual(resource["used"] as? Double, 37)
@@ -268,5 +217,26 @@ final class LocalLimitsAPITests: XCTestCase {
         ]
 
         XCTAssertEqual(actual, expected)
+    }
+
+    private func makeState(snapshot: ProviderSnapshot, descriptors: [WidgetDescriptor]) -> LocalUsageAPI.State {
+        LocalUsageAPI.State(
+            enabledOrderedIDs: [snapshot.providerID],
+            knownIDs: [snapshot.providerID],
+            snapshots: [snapshot.providerID: snapshot],
+            limitDescriptors: [snapshot.providerID: descriptors],
+            generatedAt: generatedAt
+        )
+    }
+
+    private func limitResource(
+        _ key: String,
+        snapshot: ProviderSnapshot,
+        descriptors: [WidgetDescriptor]
+    ) throws -> [String: Any] {
+        let state = makeState(snapshot: snapshot, descriptors: descriptors)
+        let root = try json(LocalUsageAPI.respond(method: "GET", path: "/v1/limits", state: state).body)
+        let provider = try XCTUnwrap((root["providers"] as? [String: Any])?[snapshot.providerID] as? [String: Any])
+        return try XCTUnwrap((provider["resources"] as? [String: Any])?[key] as? [String: Any])
     }
 }

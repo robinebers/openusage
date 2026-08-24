@@ -10,18 +10,12 @@ import XCTest
 final class StalenessLabelTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
 
-    func testFreshSnapshotHasNoStalenessLabel() {
-        let store = makeStore()
-        store.snapshots["devin"] = snapshot(refreshedAt: now)
-        XCTAssertNil(store.stalenessHint(for: "devin"))
-    }
-
-    func testSnapshotWithinThresholdHasNoStalenessLabel() {
-        // One refresh interval old is normal right before the next pass — must not flicker a hint on
-        // healthy providers, so the threshold sits above a single interval.
-        let store = makeStore()
-        store.snapshots["devin"] = snapshot(refreshedAt: now.addingTimeInterval(-RefreshSetting.interval))
-        XCTAssertNil(store.stalenessHint(for: "devin"))
+    func testFreshSnapshotsAndFutureClockSkewHaveNoStalenessLabel() {
+        for offset in [0, -RefreshSetting.interval, -(WidgetDataStore.stalenessThreshold - 1), 3_600] {
+            let store = makeStore()
+            store.snapshots["devin"] = snapshot(refreshedAt: now.addingTimeInterval(offset))
+            XCTAssertNil(store.stalenessHint(for: "devin"), "offset: \(offset)")
+        }
     }
 
     func testStaleSnapshotSurfacesOutdatedHint() {
@@ -38,24 +32,10 @@ final class StalenessLabelTests: XCTestCase {
         XCTAssertNotNil(store.stalenessHint(for: "devin"))
     }
 
-    func testSnapshotJustBelowThresholdIsNotStale() {
-        // One second under the threshold must stay clean — locks the boundary against drift.
-        let store = makeStore()
-        store.snapshots["devin"] = snapshot(refreshedAt: now.addingTimeInterval(-(WidgetDataStore.stalenessThreshold - 1)))
-        XCTAssertNil(store.stalenessHint(for: "devin"))
-    }
-
     func testVeryStaleSnapshotFormatsTooltipInDays() {
         let store = makeStore()
         store.snapshots["devin"] = snapshot(refreshedAt: now.addingTimeInterval(-3 * 24 * 60 * 60))
         XCTAssertEqual(store.stalenessHint(for: "devin")?.tooltip, "Last updated 3d 0h ago")
-    }
-
-    func testFutureRefreshedAtHasNoStalenessLabel() {
-        // Clock skew can stamp a snapshot in the future; a negative age must never render a hint.
-        let store = makeStore()
-        store.snapshots["devin"] = snapshot(refreshedAt: now.addingTimeInterval(60 * 60))
-        XCTAssertNil(store.stalenessHint(for: "devin"))
     }
 
     func testMissingSnapshotHasNoStalenessLabel() {

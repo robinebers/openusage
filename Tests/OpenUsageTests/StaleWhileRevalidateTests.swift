@@ -15,21 +15,12 @@ final class StaleWhileRevalidateTests: XCTestCase {
         let cache = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() })
 
         // Persist a snapshot that is well past the TTL (a relaunch hours later).
-        cache.store(ProviderSnapshot(
-            providerID: provider.id,
-            displayName: provider.displayName,
-            lines: [.progress(label: "Alpha", used: 40, limit: 100, format: .percent)],
-            refreshedAt: Date(timeIntervalSinceNow: -7200)
-        ))
+        cache.store(snapshot(used: 40, refreshedAt: Date(timeIntervalSinceNow: -7200)))
 
         let runtime = CountingProviderRuntime(
             provider: provider,
             descriptors: [descriptor],
-            snapshot: ProviderSnapshot(
-                providerID: provider.id,
-                displayName: provider.displayName,
-                lines: [.progress(label: "Alpha", used: 55, limit: 100, format: .percent)]
-            )
+            snapshot: snapshot(used: 55)
         )
         let store = WidgetDataStore(
             registry: WidgetRegistry(providers: [provider], descriptors: [descriptor]),
@@ -55,11 +46,7 @@ final class StaleWhileRevalidateTests: XCTestCase {
         let runtime = MutableProviderRuntime(
             provider: provider,
             descriptors: [descriptor],
-            snapshot: ProviderSnapshot(
-                providerID: provider.id,
-                displayName: provider.displayName,
-                lines: [.progress(label: "Alpha", used: 40, limit: 100, format: .percent)]
-            )
+            snapshot: snapshot(used: 40)
         )
         let store = WidgetDataStore(
             registry: WidgetRegistry(providers: [provider], descriptors: [descriptor]),
@@ -80,11 +67,7 @@ final class StaleWhileRevalidateTests: XCTestCase {
         XCTAssertEqual(store.data(for: descriptor).used, 40)
 
         // A later successful refresh clears the error again.
-        runtime.snapshot = ProviderSnapshot(
-            providerID: provider.id,
-            displayName: provider.displayName,
-            lines: [.progress(label: "Alpha", used: 60, limit: 100, format: .percent)]
-        )
+        runtime.snapshot = snapshot(used: 60)
         await store.refreshAll(force: true)
         XCTAssertNil(store.errorMessage(for: provider.id))
         XCTAssertEqual(store.data(for: descriptor).used, 60)
@@ -122,14 +105,7 @@ final class StaleWhileRevalidateTests: XCTestCase {
                 )
             ])
         )
-        var firstSnapshot = ProviderSnapshot(
-            providerID: provider.id,
-            displayName: provider.displayName,
-            plan: "Original",
-            lines: [.progress(label: "Alpha", used: 40, limit: 100, format: .percent)],
-            refreshedAt: fixedNow,
-            usageHistory: history
-        )
+        var firstSnapshot = snapshot(used: 40, plan: "Original", refreshedAt: fixedNow, usageHistory: history)
         firstSnapshot = UsageHistorySnapshotRenderer.render(
             local: firstSnapshot,
             history: history,
@@ -151,13 +127,7 @@ final class StaleWhileRevalidateTests: XCTestCase {
         )
 
         await store.refreshAll(force: true)
-        runtime.snapshot = ProviderSnapshot(
-            providerID: provider.id,
-            displayName: provider.displayName,
-            plan: "Current",
-            lines: [.progress(label: "Alpha", used: 60, limit: 100, format: .percent)],
-            refreshedAt: fixedNow.addingTimeInterval(300)
-        )
+        runtime.snapshot = snapshot(used: 60, plan: "Current", refreshedAt: fixedNow.addingTimeInterval(300))
         await store.refreshAll(force: true)
 
         let refreshed = try XCTUnwrap(store.localSnapshots[provider.id])
@@ -180,20 +150,12 @@ final class StaleWhileRevalidateTests: XCTestCase {
         let cache = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() })
 
         // A fresh (within-TTL) cached snapshot, also loaded into `snapshots` by the store's init.
-        cache.store(ProviderSnapshot(
-            providerID: provider.id,
-            displayName: provider.displayName,
-            lines: [.progress(label: "Alpha", used: 40, limit: 100, format: .percent)]
-        ))
+        cache.store(snapshot(used: 40))
 
         let runtime = CountingProviderRuntime(
             provider: provider,
             descriptors: [descriptor],
-            snapshot: ProviderSnapshot(
-                providerID: provider.id,
-                displayName: provider.displayName,
-                lines: [.progress(label: "Alpha", used: 55, limit: 100, format: .percent)]
-            )
+            snapshot: snapshot(used: 55)
         )
         let store = WidgetDataStore(
             registry: WidgetRegistry(providers: [provider], descriptors: [descriptor]),
@@ -253,13 +215,7 @@ final class StaleWhileRevalidateTests: XCTestCase {
         let runtime = BlockingProviderRuntime(
             provider: provider,
             descriptors: [descriptor],
-            snapshot: ProviderSnapshot(
-                providerID: provider.id,
-                displayName: provider.displayName,
-                plan: "Last good",
-                lines: [.progress(label: "Alpha", used: 40, limit: 100, format: .percent)],
-                usageHistory: history
-            )
+            snapshot: snapshot(used: 40, plan: "Last good", usageHistory: history)
         )
         let cache = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots")
         let store = WidgetDataStore(
@@ -272,11 +228,8 @@ final class StaleWhileRevalidateTests: XCTestCase {
         var historyChangeCount = 0
         store.onLocalHistoryChanged = { historyChangeCount += 1 }
 
-        runtime.snapshot = ProviderSnapshot(
-            providerID: provider.id,
-            displayName: provider.displayName,
-            plan: "Partial cancelled result",
-            lines: [.progress(label: "Alpha", used: 0, limit: 100, format: .percent)],
+        runtime.snapshot = snapshot(
+            used: 0, plan: "Partial cancelled result",
             usageHistory: ProviderUsageHistory(series: DailyUsageSeries(daily: []))
         )
         runtime.blockNextRefresh = true
@@ -315,16 +268,11 @@ final class StaleWhileRevalidateTests: XCTestCase {
         let runtime = MutableProviderRuntime(
             provider: provider,
             descriptors: [descriptor],
-            snapshot: ProviderSnapshot(
-                providerID: provider.id,
-                displayName: provider.displayName,
-                plan: "With history",
-                lines: [.progress(label: "Alpha", used: 40, limit: 100, format: .percent)],
-                usageHistory: ProviderUsageHistory(
-                    series: DailyUsageSeries(daily: [
-                        DailyUsageEntry(date: "2026-07-17", totalTokens: 400, costUSD: 4)
-                    ])
-                )
+            snapshot: snapshot(
+                used: 40, plan: "With history",
+                usageHistory: ProviderUsageHistory(series: DailyUsageSeries(daily: [
+                    DailyUsageEntry(date: "2026-07-17", totalTokens: 400, costUSD: 4)
+                ]))
             )
         )
         let store = WidgetDataStore(
@@ -335,11 +283,8 @@ final class StaleWhileRevalidateTests: XCTestCase {
         )
         _ = await store.refresh(providerID: provider.id, force: true)
 
-        runtime.snapshot = ProviderSnapshot(
-            providerID: provider.id,
-            displayName: provider.displayName,
-            plan: "Completed empty scan",
-            lines: [.progress(label: "Alpha", used: 50, limit: 100, format: .percent)],
+        runtime.snapshot = snapshot(
+            used: 50, plan: "Completed empty scan",
             usageHistory: ProviderUsageHistory(series: DailyUsageSeries(daily: []))
         )
         _ = await store.refresh(providerID: provider.id, force: true)
@@ -369,6 +314,22 @@ final class StaleWhileRevalidateTests: XCTestCase {
                 used: 10,
                 limit: 100
             )
+        )
+    }
+
+    private func snapshot(
+        used: Double,
+        plan: String? = nil,
+        refreshedAt: Date = Date(),
+        usageHistory: ProviderUsageHistory? = nil
+    ) -> ProviderSnapshot {
+        ProviderSnapshot(
+            providerID: Self.testProvider.id,
+            displayName: Self.testProvider.displayName,
+            plan: plan,
+            lines: [.progress(label: "Alpha", used: used, limit: 100, format: .percent)],
+            refreshedAt: refreshedAt,
+            usageHistory: usageHistory
         )
     }
 

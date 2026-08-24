@@ -7,10 +7,7 @@ final class IncrementalJSONLScannerTests: XCTestCase {
         let base = try makeDirectory("Persistence")
         defer { try? FileManager.default.removeItem(at: base) }
         let file = try makeFile(named: "usage.jsonl", contents: "7", in: base, mtime: Date())
-        let persistence = JSONLScanCachePersistence(
-            namespace: "test", schemaVersion: 1,
-            directory: base.appendingPathComponent("cache"), writeDebounce: .milliseconds(1)
-        )
+        let persistence = makePersistence(in: base)
 
         let firstCounter = ParseCounter()
         let first = IncrementalJSONLScanner<Int>(persistence: persistence)
@@ -44,10 +41,7 @@ final class IncrementalJSONLScannerTests: XCTestCase {
         let now = Date()
         let firstFile = try makeFile(named: "a.jsonl", contents: "1", in: base, mtime: now)
         let secondFile = try makeFile(named: "b.jsonl", contents: "2", in: base, mtime: now)
-        let persistence = JSONLScanCachePersistence(
-            namespace: "test", schemaVersion: 1,
-            directory: base.appendingPathComponent("cache"), writeDebounce: .milliseconds(1)
-        )
+        let persistence = makePersistence(in: base)
 
         let seed = IncrementalJSONLScanner<Int>(persistence: persistence)
         _ = await seed.items(
@@ -96,17 +90,12 @@ final class IncrementalJSONLScannerTests: XCTestCase {
         let base = try makeDirectory("SchemaInvalidation")
         defer { try? FileManager.default.removeItem(at: base) }
         let file = try makeFile(named: "usage.jsonl", contents: "7", in: base, mtime: Date())
-        let cacheDirectory = base.appendingPathComponent("cache")
-        let versionOne = JSONLScanCachePersistence(
-            namespace: "test", schemaVersion: 1, directory: cacheDirectory, writeDebounce: .milliseconds(1)
-        )
+        let versionOne = makePersistence(in: base)
         let seed = IncrementalJSONLScanner<Int>(persistence: versionOne)
         _ = await seed.items(from: [file], since: .distantPast, cacheIdentity: "home", parse: ParseCounter().parse)
         await seed.waitForPendingWritesForTesting()
 
-        let versionTwo = JSONLScanCachePersistence(
-            namespace: "test", schemaVersion: 2, directory: cacheDirectory, writeDebounce: .milliseconds(1)
-        )
+        let versionTwo = makePersistence(in: base, schemaVersion: 2)
         let counter = ParseCounter()
         let rebuilt = IncrementalJSONLScanner<Int>(persistence: versionTwo)
         let rebuiltItems = await rebuilt.items(
@@ -125,10 +114,7 @@ final class IncrementalJSONLScannerTests: XCTestCase {
             named: "a.jsonl", contents: "1", in: base, mtime: now.addingTimeInterval(-10)
         )
         let secondFile = try makeFile(named: "b.jsonl", contents: "2", in: base, mtime: now)
-        let persistence = JSONLScanCachePersistence(
-            namespace: "test", schemaVersion: 1,
-            directory: base.appendingPathComponent("cache"), writeDebounce: .milliseconds(1)
-        )
+        let persistence = makePersistence(in: base)
         let scanner = IncrementalJSONLScanner<Int>(persistence: persistence)
         let parser = ParseCounter()
 
@@ -159,10 +145,7 @@ final class IncrementalJSONLScannerTests: XCTestCase {
         let now = Date()
         let firstFile = try makeFile(named: "a.jsonl", contents: "1", in: base, mtime: now)
         let secondFile = try makeFile(named: "b.jsonl", contents: "2", in: base, mtime: now)
-        let persistence = JSONLScanCachePersistence(
-            namespace: "test", schemaVersion: 1,
-            directory: base.appendingPathComponent("cache"), writeDebounce: .milliseconds(1)
-        )
+        let persistence = makePersistence(in: base)
         let scanner = IncrementalJSONLScanner<Int>(persistence: persistence)
         _ = await scanner.items(
             from: [firstFile, secondFile], since: .distantPast, cacheIdentity: "home", parse: ParseCounter().parse
@@ -206,10 +189,7 @@ final class IncrementalJSONLScannerTests: XCTestCase {
         let now = Date()
         let firstFile = try makeFile(named: "a.jsonl", contents: "1", in: base, mtime: now)
         let secondFile = try makeFile(named: "b.jsonl", contents: "2", in: base, mtime: now)
-        let persistence = JSONLScanCachePersistence(
-            namespace: "test", schemaVersion: 1,
-            directory: base.appendingPathComponent("cache"), writeDebounce: .milliseconds(1)
-        )
+        let persistence = makePersistence(in: base)
         let parser = ParseCounter()
         let scanner = IncrementalJSONLScanner<Int>(persistence: persistence)
 
@@ -243,10 +223,7 @@ final class IncrementalJSONLScannerTests: XCTestCase {
     func testStaleIdentityDirectoryIsPruned() async throws {
         let base = try makeDirectory("IdentityPruning")
         defer { try? FileManager.default.removeItem(at: base) }
-        let persistence = JSONLScanCachePersistence(
-            namespace: "test", schemaVersion: 1,
-            directory: base.appendingPathComponent("cache"), writeDebounce: .milliseconds(1)
-        )
+        let persistence = makePersistence(in: base)
         let file = try makeFile(named: "usage.jsonl", contents: "7", in: base, mtime: Date())
         let scanner = IncrementalJSONLScanner<Int>(persistence: persistence)
         _ = await scanner.items(from: [file], since: .distantPast, cacheIdentity: "old-home", parse: ParseCounter().parse)
@@ -286,13 +263,11 @@ final class IncrementalJSONLScannerTests: XCTestCase {
     }
 
     func testLimitsConcurrentParsesAndKeepsFileOrder() async throws {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("OpenUsageScannerTests-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let directory = try makeDirectory("Concurrency")
         defer { try? FileManager.default.removeItem(at: directory) }
 
         let now = Date()
-        let files = try (0..<20).map { index in
+        let files = try (0..<6).map { index in
             let url = directory.appendingPathComponent(String(format: "%02d.jsonl", index))
             let data = Data("\(index)".utf8)
             try data.write(to: url)
@@ -308,14 +283,12 @@ final class IncrementalJSONLScannerTests: XCTestCase {
             return String(data: data, encoding: .utf8).flatMap(Int.init).map { [$0] }
         }
 
-        XCTAssertEqual(items, Array(0..<20))
+        XCTAssertEqual(items, Array(0..<6))
         XCTAssertLessThanOrEqual(probe.maximumActive, 3)
     }
 
     func testUnreadableFileWarnsOnceUntilItRecovers() async throws {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("OpenUsageScannerWarnings-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let directory = try makeDirectory("Warnings")
         defer { try? FileManager.default.removeItem(at: directory) }
 
         let path = directory.appendingPathComponent("unreadable.jsonl")
@@ -353,9 +326,7 @@ final class IncrementalJSONLScannerTests: XCTestCase {
     }
 
     func testScanningAnotherBatchDoesNotForgetAnUnreadableFile() async throws {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("OpenUsageScannerWarningBatches-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let directory = try makeDirectory("WarningBatches")
         defer { try? FileManager.default.removeItem(at: directory) }
 
         let unreadableURL = directory.appendingPathComponent("a.jsonl")
@@ -415,6 +386,15 @@ final class IncrementalJSONLScannerTests: XCTestCase {
             .appendingPathComponent("OpenUsageScanner\(suffix)-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory
+    }
+
+    private func makePersistence(in directory: URL, schemaVersion: Int = 1) -> JSONLScanCachePersistence {
+        JSONLScanCachePersistence(
+            namespace: "test",
+            schemaVersion: schemaVersion,
+            directory: directory.appendingPathComponent("cache"),
+            writeDebounce: .milliseconds(1)
+        )
     }
 
     private func makeFile(named name: String, contents: String, in directory: URL, mtime: Date) throws

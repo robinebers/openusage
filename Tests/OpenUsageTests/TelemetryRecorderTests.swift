@@ -11,10 +11,9 @@ final class TelemetryRecorderTests: XCTestCase {
     private final class FakeSink: TelemetrySink {
         var events: [(name: String, properties: [String: Any])] = []
         var enabledCalls: [Bool] = []
-        var flushCount = 0
         func capture(_ event: String, _ properties: [String: Any]) { events.append((event, properties)) }
         func setOptionalAnalyticsEnabled(_ enabled: Bool) { enabledCalls.append(enabled) }
-        func flush() { flushCount += 1 }
+        func flush() {}
         func events(named name: String) -> [[String: Any]] {
             events.filter { $0.name == name }.map(\.properties)
         }
@@ -70,26 +69,34 @@ final class TelemetryRecorderTests: XCTestCase {
         XCTAssertEqual(props["unexpected_failure_count"] as? Int, 1)
     }
 
-    func testTickEmitsDailyActiveOncePerDayWithConfigSnapshot() {
-        let sink = FakeSink()
-        let store = makeStore("daily-active")
-        var clock = day(25)
-        let recorder = TelemetryRecorder(sink: sink, store: store, snapshot: { self.snapshot }, now: { clock })
+    func testDailyActiveEmitsOncePerDayRegardlessOfAnalyticsOptOut() {
+        for analyticsEnabled in [true, false] {
+            let sink = FakeSink()
+            let store = makeStore("daily-active-\(analyticsEnabled)")
+            var clock = day(25)
+            let recorder = TelemetryRecorder(sink: sink, store: store, snapshot: { self.snapshot }, now: { clock })
 
-        recorder.tick()
-        recorder.tick() // same day → must not emit twice
+            if !analyticsEnabled {
+                recorder.setEnabled(false)
+                XCTAssertEqual(sink.enabledCalls, [false])
+                XCTAssertFalse(store.enabled, "optional-analytics opt-out must persist")
+            }
 
-        let active = sink.events(named: "app_daily_active")
-        XCTAssertEqual(active.count, 1)
-        XCTAssertEqual(active[0]["install_id"] as? String, store.installID)
-        XCTAssertEqual(active[0]["enabled_providers"] as? [String], ["claude", "codex"])
-        XCTAssertEqual(active[0]["pinned_metric_ids"] as? [String], ["claude.session"])
-        XCTAssertEqual(active[0]["expanded_metric_ids"] as? [String], ["codex.weekly"])
-        XCTAssertEqual(active[0]["menu_bar_style"] as? String, "text")
+            recorder.tick()
+            recorder.tick()
 
-        clock = day(26)
-        recorder.tick() // new day → emit again
-        XCTAssertEqual(sink.events(named: "app_daily_active").count, 2)
+            let active = sink.events(named: "app_daily_active")
+            XCTAssertEqual(active.count, 1)
+            XCTAssertEqual(active[0]["install_id"] as? String, store.installID)
+            XCTAssertEqual(active[0]["enabled_providers"] as? [String], ["claude", "codex"])
+            XCTAssertEqual(active[0]["pinned_metric_ids"] as? [String], ["claude.session"])
+            XCTAssertEqual(active[0]["expanded_metric_ids"] as? [String], ["codex.weekly"])
+            XCTAssertEqual(active[0]["menu_bar_style"] as? String, "text")
+
+            clock = day(26)
+            recorder.tick()
+            XCTAssertEqual(sink.events(named: "app_daily_active").count, 2)
+        }
     }
 
     func testTickFlushesStalePriorDayCounterEvenWithoutNewOutcomes() {
@@ -108,29 +115,6 @@ final class TelemetryRecorderTests: XCTestCase {
         XCTAssertEqual(rollups.count, 1)
         XCTAssertEqual(rollups[0]["provider_id"] as? String, "grok")
         XCTAssertEqual(rollups[0]["success_count"] as? Int, 1)
-    }
-
-    func testAnalyticsOffStillEmitsDailyActiveOncePerLocalDay() {
-        let sink = FakeSink()
-        let store = makeStore("analytics-off-daily")
-        var clock = day(25)
-        let recorder = TelemetryRecorder(sink: sink, store: store, snapshot: { self.snapshot }, now: { clock })
-
-        recorder.setEnabled(false)
-        XCTAssertEqual(sink.enabledCalls, [false])
-        XCTAssertFalse(store.enabled, "optional-analytics opt-out must persist")
-
-        recorder.tick()
-        recorder.tick() // same day → must not emit twice
-
-        let active = sink.events(named: "app_daily_active")
-        XCTAssertEqual(active.count, 1, "daily ping must still fire while analytics are off")
-        XCTAssertEqual(active[0]["install_id"] as? String, store.installID)
-        XCTAssertEqual(active[0]["enabled_providers"] as? [String], ["claude", "codex"])
-
-        clock = day(26)
-        recorder.tick()
-        XCTAssertEqual(sink.events(named: "app_daily_active").count, 2)
     }
 
     func testAnalyticsOffDoesNotEmitProviderRefreshEvents() {

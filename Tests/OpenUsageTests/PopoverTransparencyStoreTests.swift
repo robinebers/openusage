@@ -21,24 +21,14 @@ final class PopoverTransparencyStoreTests: XCTestCase {
                                  increaseContrast: increaseContrast)
     }
 
-    func testIncreaseTransparencyDefaultsOff() {
-        let store = PopoverTransparencyStore(defaults: makeDefaults("default"))
-        XCTAssertFalse(store.increaseTransparency)
-    }
-
-    func testIncreaseTransparencyPersists() {
+    func testIncreaseTransparencyDefaultsOffAndPersistsBothTransitions() {
         let defaults = makeDefaults("persist")
-        PopoverTransparencyStore(defaults: defaults).increaseTransparency = true
-        // A fresh store reading the same defaults sees the saved value.
-        XCTAssertTrue(PopoverTransparencyStore(defaults: defaults).increaseTransparency)
-    }
-
-    func testIncreaseTransparencyTogglesBackOffAndPersists() {
-        // The normal 2 -> 1 direction: turning the base off again writes through (exercises the no-op
-        // didSet guard in both directions) and a relaunch reads it back as off.
-        let defaults = makeDefaults("toggleBack")
         let store = PopoverTransparencyStore(defaults: defaults)
+        XCTAssertFalse(store.increaseTransparency)
+
         store.increaseTransparency = true
+        XCTAssertTrue(PopoverTransparencyStore(defaults: defaults).increaseTransparency)
+
         store.increaseTransparency = false
         XCTAssertFalse(PopoverTransparencyStore(defaults: defaults).increaseTransparency)
     }
@@ -66,23 +56,21 @@ final class PopoverTransparencyStoreTests: XCTestCase {
 
     // MARK: - Party Mode toggle / state machine (Normal 1, Increase Transparency 2, Party 3, Drunk 4)
 
-    func testPartyModeToggleMirrorsTheEgg() {
-        let store = makeStore("partyMirror")
-        XCTAssertFalse(store.partyModeActive)
-        store.toggleSecretCode()                    // cheat code in
-        XCTAssertTrue(store.partyModeActive, "Party Mode reads the egg state")
-        store.partyModeActive = false               // toggle off == exit
-        XCTAssertFalse(store.secretCodeActive)
-    }
+    func testPartyModeReturnsToEitherPriorBaseStyle() {
+        for increased in [false, true] {
+            let store = makeStore(increased ? "partyIncreased" : "partyOpaque")
+            store.increaseTransparency = increased
+            XCTAssertFalse(store.partyModeActive)
 
-    func testPartyToggleOffFromState3ReturnsToBase() {
-        // Base 1 (Increase Transparency off): 1 -> 3 -> 1. Egg off + base off is opaque on any host.
-        let store = makeStore("p3base1")
-        store.toggleSecretCode()                    // 1 -> 3
-        XCTAssertEqual(store.effectiveStyle, .party)
-        store.partyModeActive = false               // 3 -> 1
-        XCTAssertFalse(store.secretCodeActive)
-        XCTAssertEqual(store.effectiveStyle, .opaque)
+            store.toggleSecretCode()
+            XCTAssertTrue(store.partyModeActive)
+            XCTAssertEqual(store.effectiveStyle, .party)
+
+            store.partyModeActive = false
+            XCTAssertFalse(store.secretCodeActive)
+            XCTAssertEqual(store.increaseTransparency, increased)
+            XCTAssertEqual(store.effectiveStyle, increased ? .increased : .opaque)
+        }
     }
 
     func testPartyToggleOffFromState4ClearsDrunkAndReturnsToBase() {
@@ -105,18 +93,6 @@ final class PopoverTransparencyStoreTests: XCTestCase {
         store.drunkMode = false                      // 4 -> 3
         XCTAssertTrue(store.secretCodeActive, "still in the party")
         XCTAssertEqual(store.effectiveStyle, .party)
-    }
-
-    func testBase2PartyRendersAndReturnsToIncreaseTransparency() {
-        // Direct 2 -> 3 -> 2: the egg renders the readable party with base 2 (deterministic here because
-        // the store pins the accessibility flags off), and exiting restores base 2.
-        let store = makeStore("base2party")
-        store.increaseTransparency = true            // base 2
-        store.toggleSecretCode()                     // 2 -> 3
-        XCTAssertEqual(store.effectiveStyle, .party)
-        store.partyModeActive = false                // 3 -> 2
-        XCTAssertFalse(store.secretCodeActive)
-        XCTAssertTrue(store.increaseTransparency, "base 2 restored")
     }
 
     func testBaseStateIsRememberedAcrossTheEgg() {
@@ -147,22 +123,19 @@ final class PopoverTransparencyStoreTests: XCTestCase {
 
     // MARK: - Accessibility clamp (the egg yields to Reduce Transparency / Increase Contrast)
 
-    func testEggYieldsToReduceTransparency() {
-        // With Reduce Transparency on, entering the code keeps the panel opaque — the egg may not turn it
-        // translucent — and escalating to Drunk Mode doesn't change that.
-        let store = makeStore("eggA11yReduce", reduceTransparency: true)
-        store.toggleSecretCode()
-        XCTAssertTrue(store.secretCodeActive, "the egg is active as state")
-        XCTAssertEqual(store.effectiveStyle, .opaque, "but it renders opaque, yielding to the flag")
-        XCTAssertEqual(store.surfaceTreatment, .opaque)
-        store.drunkMode = true
-        XCTAssertEqual(store.effectiveStyle, .opaque, "drunk is clamped too — no window fade")
-    }
+    func testEggYieldsToEitherAccessibilitySetting() {
+        for store in [
+            makeStore("eggA11yReduce", reduceTransparency: true),
+            makeStore("eggA11yContrast", increaseContrast: true)
+        ] {
+            store.toggleSecretCode()
+            XCTAssertTrue(store.secretCodeActive)
+            XCTAssertEqual(store.effectiveStyle, .opaque)
+            XCTAssertEqual(store.surfaceTreatment, .opaque)
 
-    func testEggYieldsToIncreaseContrast() {
-        let store = makeStore("eggA11yContrast", increaseContrast: true)
-        store.toggleSecretCode()
-        XCTAssertEqual(store.effectiveStyle, .opaque)
+            store.drunkMode = true
+            XCTAssertEqual(store.effectiveStyle, .opaque)
+        }
     }
 
     func testPartyPausedReflectsAccessibility() {

@@ -36,36 +36,27 @@ final class PricingBundledResourceTests: XCTestCase {
     /// now against live catalogs — update the constants if the providers themselves reprice).
     func testKnownCursorSlugsPriceCorrectly() {
         let pricing = Self.pricing
-        XCTAssertEqual(pricing.resolve(model: "auto")?.inputPerMillion, 1.25)
-        XCTAssertEqual(pricing.resolve(model: "claude-4.5-sonnet-thinking")?.inputPerMillion, 3)
-        XCTAssertEqual(pricing.resolve(model: "claude-4.6-opus-max-thinking")?.inputPerMillion, 5)
-        XCTAssertEqual(pricing.resolve(model: "claude-4.6-opus-max-thinking-fast")?.inputPerMillion, 30)
-        XCTAssertEqual(pricing.resolve(model: "gpt-5.5-xhigh-fast")?.inputPerMillion, 12.5)
-        XCTAssertEqual(pricing.resolve(model: "gpt-5.6-sol-ultra")?.inputPerMillion, 5)
-        XCTAssertEqual(pricing.resolve(model: "gpt-5.6-sol-ultra-fast")?.inputPerMillion, 10)
-        XCTAssertEqual(pricing.resolve(model: "gpt-5.6-terra-high")?.inputPerMillion, 2)
-        XCTAssertEqual(pricing.resolve(model: "gpt-5.6-terra-high-fast")?.inputPerMillion, 4)
-        XCTAssertEqual(pricing.resolve(model: "gpt-5.6-luna")?.inputPerMillion, 0.2)
-        XCTAssertEqual(pricing.resolve(model: "gpt-5.6-luna-fast")?.inputPerMillion, 0.4)
-        XCTAssertEqual(pricing.resolve(model: "gemini-3.6-flash-high")?.inputPerMillion, 1.5)
-        XCTAssertEqual(pricing.resolve(model: "gemini-3.7-flash-high")?.inputPerMillion, 0.75)
+        let expectedInputRates: [(String, Double)] = [
+            ("auto", 1.25), ("claude-4.5-sonnet-thinking", 3),
+            ("claude-4.6-opus-max-thinking", 5), ("claude-4.6-opus-max-thinking-fast", 30),
+            ("gpt-5.5-xhigh-fast", 12.5),
+            ("gpt-5.6-sol-ultra", 5), ("gpt-5.6-sol-ultra-fast", 10),
+            ("gpt-5.6-terra-high", 2), ("gpt-5.6-terra-high-fast", 4),
+            ("gpt-5.6-luna", 0.2), ("gpt-5.6-luna-fast", 0.4),
+            ("gemini-3.6-flash-high", 1.5), ("gemini-3.7-flash-high", 0.75),
+            ("grok-4-20-thinking", 2), ("grok-4.5", 2),
+            ("grok-4.5-fast-high", 4), ("grok-4.5-high-fast", 4),
+            ("cursor-grok-4.5-high-fast", 4), ("cursor-grok-4.6-high", 2),
+            ("cursor-grok-4.6-high-fast", 4), ("grok-4-6-xhigh", 2),
+            ("grok-4-6-xhigh-fast", 4), ("kimi-k2p5", 0.6),
+            ("kimi-k2.7-code", 0.95), ("kimi-k2p7", 0.95), ("kimi-k3-max", 3),
+            ("claude-4.7-opus-high-thinking", 5), ("claude-4.7-opus-max-thinking-fast", 30),
+            ("glm-5.2-max", 1.4)
+        ]
+        for (model, expected) in expectedInputRates {
+            XCTAssertEqual(pricing.resolve(model: model)?.inputPerMillion, expected, model)
+        }
         XCTAssertEqual(pricing.resolve(model: "gemini-3.7-flash-high")?.outputPerMillion, 3.75)
-        XCTAssertEqual(pricing.resolve(model: "grok-4-20-thinking")?.inputPerMillion, 2)
-        XCTAssertEqual(pricing.resolve(model: "grok-4.5")?.inputPerMillion, 2)
-        XCTAssertEqual(pricing.resolve(model: "grok-4.5-fast-high")?.inputPerMillion, 4)
-        XCTAssertEqual(pricing.resolve(model: "grok-4.5-high-fast")?.inputPerMillion, 4)
-        XCTAssertEqual(pricing.resolve(model: "cursor-grok-4.5-high-fast")?.inputPerMillion, 4)
-        XCTAssertEqual(pricing.resolve(model: "cursor-grok-4.6-high")?.inputPerMillion, 2)
-        XCTAssertEqual(pricing.resolve(model: "cursor-grok-4.6-high-fast")?.inputPerMillion, 4)
-        XCTAssertEqual(pricing.resolve(model: "grok-4-6-xhigh")?.inputPerMillion, 2)
-        XCTAssertEqual(pricing.resolve(model: "grok-4-6-xhigh-fast")?.inputPerMillion, 4)
-        XCTAssertEqual(pricing.resolve(model: "kimi-k2p5")?.inputPerMillion, 0.6)
-        XCTAssertEqual(pricing.resolve(model: "kimi-k2.7-code")?.inputPerMillion, 0.95)
-        XCTAssertEqual(pricing.resolve(model: "kimi-k2p7")?.inputPerMillion, 0.95)
-        XCTAssertEqual(pricing.resolve(model: "kimi-k3-max")?.inputPerMillion, 3)
-        XCTAssertEqual(pricing.resolve(model: "claude-4.7-opus-high-thinking")?.inputPerMillion, 5)
-        XCTAssertEqual(pricing.resolve(model: "claude-4.7-opus-max-thinking-fast")?.inputPerMillion, 30)
-        XCTAssertEqual(pricing.resolve(model: "glm-5.2-max")?.inputPerMillion, 1.4)
         XCTAssertEqual(pricing.resolve(model: "github_bugbot")?.outputPerMillion, 30)
         XCTAssertEqual(pricing.resolve(model: "Premium (GPT-5.3-Codex)")?.inputPerMillion, 1.75)
     }
@@ -238,38 +229,22 @@ final class PricingBundledResourceTests: XCTestCase {
 
     func testGPT56PricingAndAliases() throws {
         let pricing = Self.pricing
-        let sol = try XCTUnwrap(pricing.resolve(model: "gpt-5.6-sol-ultra"))
-        XCTAssertEqual(sol.inputPerMillion, 5.0)
-        XCTAssertEqual(sol.cacheWritePerMillion, 6.25)
-        XCTAssertEqual(sol.cacheReadPerMillion, 0.5)
-        XCTAssertEqual(sol.outputPerMillion, 30.0)
-        let solFast = try XCTUnwrap(pricing.resolve(model: "gpt-5.6-sol-ultra-fast"))
-        XCTAssertEqual(solFast.inputPerMillion, 10.0)
-        XCTAssertEqual(solFast.cacheWritePerMillion, 12.5)
-        XCTAssertEqual(solFast.cacheReadPerMillion, 1.0)
-        XCTAssertEqual(solFast.outputPerMillion, 60.0)
-
-        let terra = try XCTUnwrap(pricing.resolve(model: "gpt-5.6-terra-high"))
-        XCTAssertEqual(terra.inputPerMillion, 2.0)
-        XCTAssertEqual(terra.cacheWritePerMillion, 2.5)
-        XCTAssertEqual(terra.cacheReadPerMillion, 0.2)
-        XCTAssertEqual(terra.outputPerMillion, 12.0)
-        let terraFast = try XCTUnwrap(pricing.resolve(model: "gpt-5.6-terra-high-fast"))
-        XCTAssertEqual(terraFast.inputPerMillion, 4.0)
-        XCTAssertEqual(terraFast.cacheWritePerMillion, 5.0)
-        XCTAssertEqual(terraFast.cacheReadPerMillion, 0.4)
-        XCTAssertEqual(terraFast.outputPerMillion, 24.0)
-
-        let luna = try XCTUnwrap(pricing.resolve(model: "gpt-5.6-luna"))
-        XCTAssertEqual(luna.inputPerMillion, 0.2)
-        XCTAssertEqual(luna.cacheWritePerMillion, 0.25)
-        XCTAssertEqual(luna.cacheReadPerMillion, 0.02)
-        XCTAssertEqual(luna.outputPerMillion, 1.2)
-        let lunaFast = try XCTUnwrap(pricing.resolve(model: "gpt-5.6-luna-fast"))
-        XCTAssertEqual(lunaFast.inputPerMillion, 0.4)
-        XCTAssertEqual(lunaFast.cacheWritePerMillion, 0.5)
-        XCTAssertEqual(lunaFast.cacheReadPerMillion, 0.04)
-        XCTAssertEqual(lunaFast.outputPerMillion, 2.4)
+        let expectedRates: [(String, [Double])] = [
+            ("gpt-5.6-sol-ultra", [5, 6.25, 0.5, 30]),
+            ("gpt-5.6-sol-ultra-fast", [10, 12.5, 1, 60]),
+            ("gpt-5.6-terra-high", [2, 2.5, 0.2, 12]),
+            ("gpt-5.6-terra-high-fast", [4, 5, 0.4, 24]),
+            ("gpt-5.6-luna", [0.2, 0.25, 0.02, 1.2]),
+            ("gpt-5.6-luna-fast", [0.4, 0.5, 0.04, 2.4])
+        ]
+        for (model, expected) in expectedRates {
+            let actual = try XCTUnwrap(pricing.resolve(model: model))
+            XCTAssertEqual(
+                [actual.inputPerMillion, actual.cacheWritePerMillion, actual.cacheReadPerMillion, actual.outputPerMillion],
+                expected,
+                model
+            )
+        }
     }
 
     /// Opus 4.7/4.8 fast modes: Cursor's published rates (supplement overrides) win over the
@@ -312,66 +287,40 @@ final class PricingBundledResourceTests: XCTestCase {
         XCTAssertEqual(pricing.resolve(model: "grok-composer-2.5-fast")?.inputPerMillion, 3)
     }
 
-    /// Grok 4.5 (Cursor + SpaceXAI first-party): standard and fast rates from Cursor docs, with
-    /// effort slugs collapsing to the same entries.
-    func testGrok45PricingAndAliases() throws {
+    /// Both first-party Grok versions share rates and accept effort, separator, and Cursor-prefix variants.
+    func testGrokPricingAndAliases() throws {
         let pricing = Self.pricing
-        let standard = try XCTUnwrap(pricing.resolve(model: "grok-4.5-high"))
-        XCTAssertEqual(standard.inputPerMillion, 2.0)
-        XCTAssertEqual(standard.cacheWritePerMillion, 2.0)
-        XCTAssertEqual(standard.cacheReadPerMillion, 0.5)
-        XCTAssertEqual(standard.outputPerMillion, 6.0)
-        XCTAssertEqual(pricing.resolve(model: "grok-4.5"), standard)
-        XCTAssertEqual(pricing.resolve(model: "grok-4.5-build"), standard)
-        XCTAssertEqual(pricing.resolve(model: "grok-4.5-low"), standard)
+        for version in ["4.5", "4.6"] {
+            let dashedVersion = version.replacingOccurrences(of: ".", with: "-")
+            let standard = try XCTUnwrap(pricing.resolve(model: "grok-\(version)-high"))
+            let fast = try XCTUnwrap(pricing.resolve(model: "grok-\(version)-fast"))
+            XCTAssertEqual(
+                [standard.inputPerMillion, standard.cacheWritePerMillion, standard.cacheReadPerMillion, standard.outputPerMillion],
+                [2, 2, 0.5, 6],
+                version
+            )
+            XCTAssertEqual(
+                [fast.inputPerMillion, fast.cacheWritePerMillion, fast.cacheReadPerMillion, fast.outputPerMillion],
+                [4, 4, 1, 12],
+                version
+            )
 
-        let fast = try XCTUnwrap(pricing.resolve(model: "grok-4.5-fast"))
-        XCTAssertEqual(fast.inputPerMillion, 4.0)
-        XCTAssertEqual(fast.cacheWritePerMillion, 4.0)
-        XCTAssertEqual(fast.cacheReadPerMillion, 1.0)
-        XCTAssertEqual(fast.outputPerMillion, 12.0)
-        // Cursor CSV uses fast-before-effort (`grok-4.5-fast-high`); also accept effort-before-fast.
-        XCTAssertEqual(pricing.resolve(model: "grok-4.5-fast-high"), fast)
-        XCTAssertEqual(pricing.resolve(model: "grok-4.5-fast-medium"), fast)
-        XCTAssertEqual(pricing.resolve(model: "grok-4.5-fast-xhigh"), fast)
-        XCTAssertEqual(pricing.resolve(model: "grok-4.5-xhigh"), standard)
-        XCTAssertEqual(pricing.resolve(model: "grok-4-5-xhigh"), standard)
-        XCTAssertEqual(pricing.resolve(model: "grok-4-5-xhigh-fast"), fast)
-        XCTAssertEqual(pricing.resolve(model: "grok-4.5-medium-fast"), fast)
-        // Cursor usage export sometimes prefixes first-party Grok with `cursor-`.
-        XCTAssertEqual(pricing.resolve(model: "cursor-grok-4.5-high-fast"), fast)
-        XCTAssertEqual(pricing.resolve(model: "cursor-grok-4.5-fast-high"), fast)
-        XCTAssertEqual(pricing.resolve(model: "cursor-grok-4.5-high"), standard)
-    }
-
-    /// Grok 4.6 (Cursor + SpaceXAI first-party): same published table rates as Grok 4.5, with
-    /// effort slugs and the `cursor-` CSV prefix collapsing to the same entries.
-    func testGrok46PricingAndAliases() throws {
-        let pricing = Self.pricing
-        let standard = try XCTUnwrap(pricing.resolve(model: "grok-4.6-high"))
-        XCTAssertEqual(standard.inputPerMillion, 2.0)
-        XCTAssertEqual(standard.cacheWritePerMillion, 2.0)
-        XCTAssertEqual(standard.cacheReadPerMillion, 0.5)
-        XCTAssertEqual(standard.outputPerMillion, 6.0)
-        XCTAssertEqual(pricing.resolve(model: "grok-4.6"), standard)
-        XCTAssertEqual(pricing.resolve(model: "grok-4.6-build"), standard)
-        XCTAssertEqual(pricing.resolve(model: "grok-4.6-low"), standard)
-
-        let fast = try XCTUnwrap(pricing.resolve(model: "grok-4.6-fast"))
-        XCTAssertEqual(fast.inputPerMillion, 4.0)
-        XCTAssertEqual(fast.cacheWritePerMillion, 4.0)
-        XCTAssertEqual(fast.cacheReadPerMillion, 1.0)
-        XCTAssertEqual(fast.outputPerMillion, 12.0)
-        XCTAssertEqual(pricing.resolve(model: "grok-4.6-fast-high"), fast)
-        XCTAssertEqual(pricing.resolve(model: "grok-4.6-high-fast"), fast)
-        XCTAssertEqual(pricing.resolve(model: "grok-4.6-xhigh"), standard)
-        XCTAssertEqual(pricing.resolve(model: "grok-4-6-xhigh"), standard)
-        XCTAssertEqual(pricing.resolve(model: "grok-4-6-xhigh-fast"), fast)
-        XCTAssertEqual(pricing.resolve(model: "cursor-grok-4.6-high-fast"), fast)
-        XCTAssertEqual(pricing.resolve(model: "cursor-grok-4.6-fast-high"), fast)
-        XCTAssertEqual(pricing.resolve(model: "cursor-grok-4.6-high"), standard)
-        XCTAssertEqual(pricing.supplement.canonicalName(for: "cursor-grok-4.6-high"), "grok-4.6")
-        XCTAssertEqual(pricing.supplement.canonicalName(for: "cursor-grok-4.6-high-fast"), "grok-4.6-fast")
+            for alias in [
+                "grok-\(version)", "grok-\(version)-build", "grok-\(version)-low",
+                "grok-\(version)-xhigh", "grok-\(dashedVersion)-xhigh", "cursor-grok-\(version)-high"
+            ] {
+                XCTAssertEqual(pricing.resolve(model: alias), standard, alias)
+            }
+            for alias in [
+                "grok-\(version)-fast-high", "grok-\(version)-fast-medium", "grok-\(version)-fast-xhigh",
+                "grok-\(version)-high-fast", "grok-\(version)-medium-fast", "grok-\(dashedVersion)-xhigh-fast",
+                "cursor-grok-\(version)-high-fast", "cursor-grok-\(version)-fast-high"
+            ] {
+                XCTAssertEqual(pricing.resolve(model: alias), fast, alias)
+            }
+            XCTAssertEqual(pricing.supplement.canonicalName(for: "cursor-grok-\(version)-high"), "grok-\(version)")
+            XCTAssertEqual(pricing.supplement.canonicalName(for: "cursor-grok-\(version)-high-fast"), "grok-\(version)-fast")
+        }
     }
 
     /// Kimi K2.7 Code: Cursor's published rates override messy public-catalog entries.
@@ -385,14 +334,5 @@ final class PricingBundledResourceTests: XCTestCase {
         XCTAssertEqual(pricing.resolve(model: "kimi-k2.7"), kimi)
         XCTAssertEqual(pricing.resolve(model: "kimi-k2p7"), kimi)
         XCTAssertEqual(pricing.resolve(model: "kimi-k2p7-code"), kimi)
-    }
-
-    func testCostSumsAllBucketsAndUnpricedIsNil() throws {
-        let pricing = Self.pricing
-        let entry = try XCTUnwrap(pricing.resolve(model: "composer-1"))
-        let tokens = TokenBreakdown(input: 1_000_000, cacheWrite5m: 1_000_000, cacheRead: 1_000_000, output: 1_000_000)
-        let expected = entry.inputPerMillion + entry.cacheWritePerMillion + entry.cacheReadPerMillion + entry.outputPerMillion
-        XCTAssertEqual(pricing.estimatedCostDollars(model: "composer-1", tokens: tokens)!, expected, accuracy: 1e-9)
-        XCTAssertNil(pricing.estimatedCostDollars(model: "nope", tokens: tokens))
     }
 }

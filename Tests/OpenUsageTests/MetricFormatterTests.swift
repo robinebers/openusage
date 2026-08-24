@@ -58,28 +58,20 @@ final class MetricFormatterTests: XCTestCase {
     }
 
     func testTotalSpendRingCenterSplitsValueAndUnit() {
-        let spend = MetricFormatter.totalSpendRingCenter(533, metric: .cost)
-        XCTAssertEqual(spend.primary, "$533")
-        XCTAssertEqual(spend.unit, "dollars")
+        let cases: [(value: Double, metric: TotalSpendMetric, primary: String, unit: String)] = [
+            (533, .cost, "$533", "dollars"),
+            (2059.07, .cost, "$2.1K", "dollars"),
+            (12_400_000, .tokens, "12.4", "million"),
+            (1_500_000_000, .tokens, "1.5", "billion"),
+            (820.6, .tokens, "820.6", "tokens"),
+            (1.37, .costPerMtok, "$1.37", "MTok")
+        ]
 
-        let spendAbbrev = MetricFormatter.totalSpendRingCenter(2059.07, metric: .cost)
-        XCTAssertEqual(spendAbbrev.primary, "$2.1K")
-        XCTAssertEqual(spendAbbrev.unit, "dollars")
-
-        let tokens = MetricFormatter.totalSpendRingCenter(12_400_000, metric: .tokens)
-        XCTAssertEqual(tokens.primary, "12.4")
-        XCTAssertEqual(tokens.unit, "million")
-
-        let billions = MetricFormatter.totalSpendRingCenter(1_500_000_000, metric: .tokens)
-        XCTAssertEqual(billions.primary, "1.5")
-        XCTAssertEqual(billions.unit, "billion")
-
-        let smallTokens = MetricFormatter.totalSpendRingCenter(820.6, metric: .tokens)
-        XCTAssertEqual(smallTokens.primary, "820.6")
-        XCTAssertEqual(smallTokens.unit, "tokens")
-
-        let rate = MetricFormatter.totalSpendRingCenter(1.37, metric: .costPerMtok)
-        XCTAssertEqual(rate.primary, "$1.37")
-        XCTAssertEqual(rate.unit, "MTok")
+        for testCase in cases {
+            XCTAssertEqual(
+                MetricFormatter.totalSpendRingCenter(testCase.value, metric: testCase.metric),
+                .init(primary: testCase.primary, unit: testCase.unit)
+            )
+        }
     }
 }

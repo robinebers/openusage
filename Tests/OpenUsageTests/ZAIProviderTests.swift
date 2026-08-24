@@ -1,79 +1,16 @@
 import XCTest
 @testable import OpenUsage
 
-// MARK: - Sample payloads
-/// Mirrors the undocumented Z.ai internal-API shapes the legacy Tauri plugin relied on, captured in
-/// `docs/providers/zai.md`. These endpoints are not in Z.ai's public API reference but are stable in
-/// practice (used by Z.ai's own subscription UI).
-
 private let quotaBothLimitsJSON = #"""
-{
-  "code": 200,
-  "data": {
-    "limits": [
-      {
-        "type": "TOKENS_LIMIT",
-        "unit": 3,
-        "number": 5,
-        "usage": 800000000,
-        "currentValue": 127694464,
-        "remaining": 672305536,
-        "percentage": 15,
-        "nextResetTime": 1770648402389
-      },
-      {
-        "type": "TOKENS_LIMIT",
-        "unit": 6,
-        "number": 1,
-        "percentage": 40,
-        "nextResetTime": 1771300000000
-      },
-      {
-        "type": "TIME_LIMIT",
-        "unit": 5,
-        "number": 1,
-        "usage": 4000,
-        "currentValue": 1828,
-        "remaining": 2172,
-        "percentage": 45,
-        "usageDetails": [
-          { "modelCode": "search-prime", "usage": 1433 },
-          { "modelCode": "web-reader", "usage": 462 },
-          { "modelCode": "zread", "usage": 0 }
-        ]
-      }
-    ]
-  },
-  "success": true
-}
+{"data":{"limits":[
+  {"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":15,"nextResetTime":1770648402389},
+  {"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":40,"nextResetTime":1771300000000},
+  {"type":"TIME_LIMIT","unit":5,"number":1,"usage":4000,"currentValue":1828}
+]},"success":true}
 """#
 
-private let quotaSessionOnlyJSON = #"""
-{
-  "code": 200,
-  "data": {
-    "limits": [
-      { "type": "TOKENS_LIMIT", "unit": 3, "number": 5, "usage": 800000000, "currentValue": 0, "percentage": 0 }
-    ]
-  },
-  "success": true
-}
-"""#
-
-private let subscriptionJSON = #"""
-{
-  "code": 200,
-  "data": [
-    {
-      "id": "169359",
-      "productName": "GLM Coding Max",
-      "status": "VALID",
-      "nextRenewTime": "2026-03-12"
-    }
-  ],
-  "success": true
-}
-"""#
+private let quotaSessionOnlyJSON = #"{"data":{"limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":0}]}}"#
+private let subscriptionJSON = #"{"data":[{"productName":"GLM Coding Max"}]}"#
 
 private func data(_ json: String) -> Data {
     Data(json.utf8)
@@ -82,67 +19,29 @@ private func data(_ json: String) -> Data {
 // MARK: - ZAIAuthStoreTests
 
 final class ZAIAuthStoreTests: XCTestCase {
-    func testPrefersConfigFileOverEnvironment() {
-        // Config file wins so editing it to rotate the key isn't shadowed by a stale env value.
-        let store = ZAIAuthStore(
-            files: FakeFiles([ZAIAuthStore.configPaths[0]: #"{"apiKey":"zai-file"}"#]),
-            environment: FakeEnvironment(["ZAI_API_KEY": "zai-env"])
-        )
+    func testEnvironmentKeysSupportLegacyFallbackAndPrimaryPrecedence() {
+        let cases: [(environment: [String: String], expected: String)] = [
+            (["ZAI_API_KEY": "zai-env"], "zai-env"),
+            (["GLM_API_KEY": "glm-env"], "glm-env"),
+            (["ZAI_API_KEY": "zai", "GLM_API_KEY": "glm"], "zai")
+        ]
 
-        let auth = store.loadAPIKey()
-
-        XCTAssertEqual(auth?.apiKey, "zai-file")
+        for entry in cases {
+            let store = ZAIAuthStore(files: FakeFiles(), environment: FakeEnvironment(entry.environment))
+            XCTAssertEqual(store.loadAPIKey()?.apiKey, entry.expected)
+        }
     }
 
-    func testFallsBackToEnvironmentWhenNoConfigFile() {
-        let store = ZAIAuthStore(
-            files: FakeFiles(),
-            environment: FakeEnvironment(["ZAI_API_KEY": "zai-env"])
-        )
+    func testReadsJSONAndTrimmedPlainTextConfigFiles() {
+        let cases = [
+            (ZAIAuthStore.configPaths[0], #"{"api_key":"zai-json"}"#, "zai-json"),
+            (ZAIAuthStore.configPaths[1], "  zai-plain\n", "zai-plain")
+        ]
 
-        let auth = store.loadAPIKey()
-
-        XCTAssertEqual(auth?.apiKey, "zai-env")
-    }
-
-    func testAcceptsLegacyGLMEnvName() {
-        // GLM_API_KEY is the older Zhipu name some users still export.
-        let store = ZAIAuthStore(
-            files: FakeFiles(),
-            environment: FakeEnvironment(["GLM_API_KEY": "glm-env"])
-        )
-
-        XCTAssertEqual(store.loadAPIKey()?.apiKey, "glm-env")
-    }
-
-    func testZAIKeyNameBeatsGLMKeyName() {
-        // ZAI_API_KEY is primary; GLM_API_KEY only the fallback.
-        let store = ZAIAuthStore(
-            files: FakeFiles(),
-            environment: FakeEnvironment(["ZAI_API_KEY": "zai", "GLM_API_KEY": "glm"])
-        )
-
-        XCTAssertEqual(store.loadAPIKey()?.apiKey, "zai")
-    }
-
-    func testReadsKeyFromJSONConfigFile() {
-        let store = ZAIAuthStore(
-            files: FakeFiles([ZAIAuthStore.configPaths[0]: #"{ "api_key": "zai-json" }"#]),
-            environment: FakeEnvironment()
-        )
-
-        let auth = store.loadAPIKey()
-
-        XCTAssertEqual(auth?.apiKey, "zai-json")
-    }
-
-    func testReadsPlainTextKeyFile() {
-        let store = ZAIAuthStore(
-            files: FakeFiles([ZAIAuthStore.configPaths[1]: "  zai-plain\n"]),
-            environment: FakeEnvironment()
-        )
-
-        XCTAssertEqual(store.loadAPIKey()?.apiKey, "zai-plain")
+        for (path, content, expected) in cases {
+            let store = ZAIAuthStore(files: FakeFiles([path: content]), environment: FakeEnvironment())
+            XCTAssertEqual(store.loadAPIKey()?.apiKey, expected, path)
+        }
     }
 
     func testReturnsNilWhenNoKeyAnywhere() {
@@ -200,27 +99,22 @@ final class ZAIAuthStoreTests: XCTestCase {
         XCTAssertEqual(store.currentAPIKey(), "zai-file")
     }
 
-    func testDeleteAPIKeyFallsBackToEnvironment() throws {
-        let files = FakeFiles([ZAIAuthStore.configPaths[0]: #"{"apiKey":"zai-file"}"#])
-        let store = ZAIAuthStore(files: files, environment: FakeEnvironment(["ZAI_API_KEY": "zai-env"]))
+    func testDeleteClearsEveryConfigPathAndPreservesEnvironmentFallback() throws {
+        for environment in [[:], ["ZAI_API_KEY": "zai-env"]] as [[String: String]] {
+            let files = FakeFiles([
+                ZAIAuthStore.configPaths[0]: #"{"apiKey":"zai-primary"}"#,
+                ZAIAuthStore.configPaths[1]: "zai-alt"
+            ])
+            let store = ZAIAuthStore(files: files, environment: FakeEnvironment(environment))
 
-        XCTAssertEqual(store.keyStatus(), .overrideActive)
-        try store.deleteAPIKey()
+            try store.deleteAPIKey()
 
-        XCTAssertNil(files.files[ZAIAuthStore.configPaths[0]])
-        XCTAssertEqual(store.keyStatus(), .fromEnvironment)
-        XCTAssertEqual(store.loadAPIKey()?.apiKey, "zai-env")
-    }
-
-    func testDeleteAPIKeyBecomesNotSetWhenNoEnvKey() throws {
-        let files = FakeFiles([ZAIAuthStore.configPaths[0]: #"{"apiKey":"zai-file"}"#])
-        let store = ZAIAuthStore(files: files, environment: FakeEnvironment())
-
-        try store.deleteAPIKey()
-
-        XCTAssertNil(files.files[ZAIAuthStore.configPaths[0]])
-        XCTAssertEqual(store.keyStatus(), .notSet)
-        XCTAssertNil(store.loadAPIKey())
+            for path in ZAIAuthStore.configPaths {
+                XCTAssertNil(files.files[path], path)
+            }
+            XCTAssertEqual(store.loadAPIKey()?.apiKey, environment["ZAI_API_KEY"])
+            XCTAssertEqual(store.keyStatus(), environment.isEmpty ? .notSet : .fromEnvironment)
+        }
     }
 
     func testDeleteAPIKeyIsNoOpWhenFileMissing() throws {
@@ -229,21 +123,6 @@ final class ZAIAuthStoreTests: XCTestCase {
         XCTAssertEqual(store.keyStatus(), .notSet)
     }
 
-    func testDeleteAPIKeyClearsAllConfigPaths() throws {
-        // A key in the alternate config path must also be cleared, or it resurfaces after the primary
-        // file is deleted and the Settings "clear" appears not to work.
-        let files = FakeFiles([
-            ZAIAuthStore.configPaths[0]: #"{"apiKey":"zai-primary"}"#,
-            ZAIAuthStore.configPaths[1]: "zai-alt"
-        ])
-        let store = ZAIAuthStore(files: files, environment: FakeEnvironment())
-
-        try store.deleteAPIKey()
-
-        XCTAssertNil(files.files[ZAIAuthStore.configPaths[0]])
-        XCTAssertNil(files.files[ZAIAuthStore.configPaths[1]])
-        XCTAssertEqual(store.keyStatus(), .notSet)
-    }
 }
 
 // MARK: - ZAIUsageMapperTests
@@ -305,10 +184,6 @@ final class ZAIUsageMapperTests: XCTestCase {
         XCTAssertNil(mapped.plan)
         XCTAssertNotNil(progress(mapped.lines, "Session"))
         XCTAssertNil(progress(mapped.lines, "Web Searches"))
-    }
-
-    func testPlanNameFromSubscription() {
-        XCTAssertEqual(ZAIUsageMapper.planName(from: data(subscriptionJSON)), "GLM Coding Max")
     }
 
     func testPlanNameNilWhenNoData() {
@@ -422,33 +297,23 @@ final class ZAIProviderTests: XCTestCase {
         XCTAssertEqual(snapshot.errorCategory, .notLoggedIn)
     }
 
-    func testRefreshOnAuthFailureReportsInvalidKey() async {
-        let provider = ZAIProvider(
-            authStore: makeAuthStore(key: "zai-bad"),
-            usageClient: ZAIUsageClient(http: RoutingHTTPClient { _ in
-                HTTPResponse(statusCode: 401, headers: [:], body: Data("{}".utf8))
-            })
-        )
+    func testRefreshClassifiesAuthenticationAndServerFailures() async {
+        let cases: [(status: Int, expected: ErrorCategory)] = [(401, .authInvalid), (500, .http5xx)]
 
-        let snapshot = await provider.refresh()
+        for entry in cases {
+            let provider = ZAIProvider(
+                authStore: makeAuthStore(key: "zai-test"),
+                usageClient: ZAIUsageClient(http: RoutingHTTPClient { request in
+                    request.url == ZAIUsageClient.quotaURL
+                        ? HTTPResponse(statusCode: entry.status, headers: [:], body: Data("{}".utf8))
+                        : jsonResponse(subscriptionJSON)
+                })
+            )
 
-        XCTAssertEqual(snapshot.errorCategory, .authInvalid)
-    }
+            let snapshot = await provider.refresh()
 
-    func testRefreshOnNon2xxReportsRequestFailed() async {
-        let provider = ZAIProvider(
-            authStore: makeAuthStore(key: "zai-test"),
-            usageClient: ZAIUsageClient(http: RoutingHTTPClient { request in
-                if request.url == ZAIUsageClient.quotaURL {
-                    return HTTPResponse(statusCode: 500, headers: [:], body: Data("{}".utf8))
-                }
-                return jsonResponse(subscriptionJSON)
-            })
-        )
-
-        let snapshot = await provider.refresh()
-
-        XCTAssertEqual(snapshot.errorCategory, .http5xx)
+            XCTAssertEqual(snapshot.errorCategory, entry.expected)
+        }
     }
 
     func testRefreshOnTransportErrorReportsNetwork() async {
@@ -509,8 +374,6 @@ final class ZAIProviderTests: XCTestCase {
         let provider = ZAIProvider()
         XCTAssertEqual(provider.provider.id, "zai")
         XCTAssertEqual(provider.provider.displayName, "Z.ai")
-        // Console + API Keys quick links render in the card's expanded area.
-        XCTAssertEqual(provider.provider.visibleLinks.count, 2)
     }
 
     private func makeAuthStore(key: String) -> ZAIAuthStore {

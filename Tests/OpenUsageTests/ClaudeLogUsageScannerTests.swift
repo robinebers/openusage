@@ -69,26 +69,16 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
     }
 
     func testRejectsLinesTheCcusageSchemaRejects() {
-        // Missing usage.input_tokens / output_tokens.
-        XCTAssertNil(ClaudeLogUsageScanner.parseLine(Data(
-            #"{"timestamp":"2026-02-20T12:00:00Z","message":{"usage":{"output_tokens":5}}}"#.utf8
-        )))
-        // Unparseable timestamp.
-        XCTAssertNil(ClaudeLogUsageScanner.parseLine(Data(
-            #"{"timestamp":"not-a-date","message":{"usage":{"input_tokens":1,"output_tokens":2}}}"#.utf8
-        )))
-        // Unknown speed value (ccusage's lowercase enum parse fails the line).
-        XCTAssertNil(ClaudeLogUsageScanner.parseLine(Data(
-            #"{"timestamp":"2026-02-20T12:00:00Z","message":{"usage":{"input_tokens":1,"output_tokens":2,"speed":"turbo"}}}"#.utf8
-        )))
-        // Non-semver version marks a foreign log shape.
-        XCTAssertNil(ClaudeLogUsageScanner.parseLine(Data(
-            ClaudeLogFixture.usageLine(timestamp: "2026-02-20T12:00:00Z", version: "unknown").utf8
-        )))
-        // Present-but-empty model.
-        XCTAssertNil(ClaudeLogUsageScanner.parseLine(Data(
-            ClaudeLogFixture.usageLine(timestamp: "2026-02-20T12:00:00Z", model: "").utf8
-        )))
+        let invalidLines = [
+            #"{"timestamp":"2026-02-20T12:00:00Z","message":{"usage":{"output_tokens":5}}}"#,
+            #"{"timestamp":"not-a-date","message":{"usage":{"input_tokens":1,"output_tokens":2}}}"#,
+            #"{"timestamp":"2026-02-20T12:00:00Z","message":{"usage":{"input_tokens":1,"output_tokens":2,"speed":"turbo"}}}"#,
+            ClaudeLogFixture.usageLine(timestamp: "2026-02-20T12:00:00Z", model: "")
+        ]
+
+        for line in invalidLines {
+            XCTAssertNil(ClaudeLogUsageScanner.parseLine(Data(line.utf8)), line)
+        }
     }
 
     func testSyntheticModelKeepsEntryWithoutModel() throws {
@@ -100,29 +90,25 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(entry.tokens.totalTokens, 10)
     }
 
-    func testSemverPrefix() {
-        XCTAssertTrue(ClaudeLogUsageScanner.isSemverPrefix("1.0.24"))
-        XCTAssertTrue(ClaudeLogUsageScanner.isSemverPrefix("1.0.24-beta.1"))
-        XCTAssertFalse(ClaudeLogUsageScanner.isSemverPrefix("unknown"))
-        XCTAssertFalse(ClaudeLogUsageScanner.isSemverPrefix("1.0"))
-        XCTAssertFalse(ClaudeLogUsageScanner.isSemverPrefix("1.0."))
+    func testLogParsingAcceptsSemverPrefixesAndRejectsIncompleteVersions() {
+        for (version, accepted) in [("1.0.24", true), ("1.0.24-beta.1", true),
+                                     ("unknown", false), ("1.0", false), ("1.0.", false)] {
+            let line = ClaudeLogFixture.usageLine(timestamp: "2026-02-20T12:00:00Z", version: version)
+            XCTAssertEqual(ClaudeLogUsageScanner.parseLine(Data(line.utf8)) != nil, accepted, version)
+        }
     }
 
-    // Ported from ccusage `rejects_null_schema_fields_like_typescript_loader`.
-    func testRejectsNullSchemaFields() {
-        XCTAssertTrue(ClaudeLogUsageScanner.hasUnsupportedNullField(Data(
-            #"{"message":{"usage":{"speed":null}}}"#.utf8
-        )))
-        XCTAssertTrue(ClaudeLogUsageScanner.hasUnsupportedNullField(Data(
-            #"{"message":{"model":null,"usage":{"input_tokens":0}}}"#.utf8
-        )))
-        XCTAssertTrue(ClaudeLogUsageScanner.hasUnsupportedNullField(Data(
-            #"{"sessionId":null,"message":{"usage":{"input_tokens":0}}}"#.utf8
-        )))
-        // `content: null` is fine — only the known schema fields reject nulls.
-        XCTAssertFalse(ClaudeLogUsageScanner.hasUnsupportedNullField(Data(
-            #"{"message":{"content":null,"usage":{"input_tokens":0}}}"#.utf8
-        )))
+    func testLogParsingRejectsNullSchemaFieldsButAllowsNullContent() {
+        let cases: [(line: String, accepted: Bool)] = [
+            (#"{"timestamp":"2026-02-20T12:00:00Z","message":{"usage":{"input_tokens":1,"output_tokens":2,"speed":null}}}"#, false),
+            (#"{"timestamp":"2026-02-20T12:00:00Z","message":{"model":null,"usage":{"input_tokens":1,"output_tokens":2}}}"#, false),
+            (#"{"timestamp":"2026-02-20T12:00:00Z","sessionId":null,"message":{"usage":{"input_tokens":1,"output_tokens":2}}}"#, false),
+            (#"{"timestamp":"2026-02-20T12:00:00Z","message":{"content":null,"usage":{"input_tokens":1,"output_tokens":2}}}"#, true)
+        ]
+
+        for entry in cases {
+            XCTAssertEqual(!ClaudeLogUsageScanner.parseFile(Data(entry.line.utf8)).isEmpty, entry.accepted, entry.line)
+        }
     }
 
     func testParseFileSkipsNonUsageAndMalformedLines() {
@@ -156,14 +142,14 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
     }
 
     func testParseFileExpandsOnlyAdvisorIterationsWithoutRecountingMainUsage() {
-        let line = #"{"timestamp":"2026-02-20T12:00:00.000Z","requestId":"req_1","costUSD":1.23,"message":{"id":"msg_1","model":"main-model","usage":{"input_tokens":2,"output_tokens":491,"cache_creation_input_tokens":7853,"cache_read_input_tokens":226584,"iterations":[{"type":"message","input_tokens":1,"output_tokens":200},{"type":"advisor_message","model":"claude-test-model","input_tokens":10,"output_tokens":2,"cache_creation_input_tokens":3,"cache_read_input_tokens":4},{"type":"message","input_tokens":1,"output_tokens":291}]}}}"#
+        let line = #"{"timestamp":"2026-02-20T12:00:00.000Z","requestId":"req_1","costUSD":1.23,"message":{"id":"msg_1","model":"main-model","usage":{"input_tokens":2,"output_tokens":5,"cache_creation_input_tokens":8,"cache_read_input_tokens":20,"iterations":[{"type":"message","input_tokens":1,"output_tokens":3},{"type":"advisor_message","model":"claude-test-model","input_tokens":10,"output_tokens":2,"cache_creation_input_tokens":3,"cache_read_input_tokens":4}]}}}"#
 
         let entries = ClaudeLogUsageScanner.parseFile(Data(line.utf8))
 
         XCTAssertEqual(entries.count, 2)
         XCTAssertEqual(entries[0].model, "main-model")
         XCTAssertEqual(entries[0].tokens, TokenBreakdown(
-            input: 2, cacheWrite5m: 7853, cacheRead: 226584, output: 491
+            input: 2, cacheWrite5m: 8, cacheRead: 20, output: 5
         ))
         XCTAssertEqual(entries[0].costUSD, 1.23)
         XCTAssertEqual(entries[1].model, "claude-test-model")
@@ -218,11 +204,8 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
             entry(messageID: "msg-parent", requestID: "req-sidechain-replay", isSidechain: true, cacheRead: 50_000, output: 10),
             entry(messageID: "msg-sidechain-answer", requestID: "req-sidechain-answer", isSidechain: true, cacheRead: 700, output: 30)
         ])
-        XCTAssertEqual(deduped.count, 2)
-        XCTAssertEqual(deduped[0].requestID, "req-parent")
-        XCTAssertEqual(deduped[0].tokens.cacheRead, 20)
-        XCTAssertEqual(deduped[1].messageID, "msg-sidechain-answer")
-        XCTAssertEqual(deduped[1].tokens.cacheRead, 700)
+        XCTAssertEqual(deduped.map(\.requestID), ["req-parent", "req-sidechain-answer"])
+        XCTAssertEqual(deduped.map(\.tokens.cacheRead), [20, 700])
     }
 
     // Ported from `refreshes_dedupe_indexes_when_parent_replaces_sidechain_replay`.
@@ -232,9 +215,8 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
             entry(messageID: "msg-parent", requestID: "req-parent", isSidechain: false, cacheRead: 20, output: 10),
             entry(messageID: "msg-parent", requestID: "req-parent", isSidechain: false, cacheRead: 5, output: 5)
         ])
-        XCTAssertEqual(deduped.count, 1)
-        XCTAssertEqual(deduped[0].requestID, "req-parent")
-        XCTAssertEqual(deduped[0].tokens.cacheRead, 20)
+        XCTAssertEqual(deduped.map(\.requestID), ["req-parent"])
+        XCTAssertEqual(deduped.first?.tokens.cacheRead, 20)
     }
 
     func testDistinctRequestIDsWithoutSidechainAreBothKept() {
@@ -327,33 +309,20 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
         ])
     }
 
-    func testAggregateUnknownModelOnlyLeavesDayUnbacked() {
+    func testUnpriceableModelsStayUnbackedAndOnlyNamedModelsWarn() {
         let day = localDay("2026-02-20T12:00:00.000Z")
-        var unknown = entry(messageID: "m1", requestID: "r1", isSidechain: false, cacheRead: 0, output: 0)
-        unknown.model = "mystery-model"
-        unknown.tokens = TokenBreakdown(input: 10, output: 5)
 
-        let scan = ClaudeLogUsageScanner.aggregate(entries: [unknown], since: .distantPast, pricing: pricing)
+        for model in ["mystery-model", nil] as [String?] {
+            var unpriced = entry(messageID: "m1", requestID: "r1", isSidechain: false, cacheRead: 0, output: 0)
+            unpriced.model = model
+            unpriced.tokens = TokenBreakdown(input: 10, output: 5)
 
-        // A day with nothing priceable produces no series entry at all (→ "No data"), but the
-        // unknown-model warning still names what was excluded.
-        XCTAssertTrue(scan.series.daily.isEmpty)
-        XCTAssertEqual(scan.unknownModelsByDay[day], ["mystery-model"])
-        XCTAssertEqual(scan.modelUsage?.daily ?? [], [])
-    }
+            let scan = ClaudeLogUsageScanner.aggregate(entries: [unpriced], since: .distantPast, pricing: pricing)
 
-    func testAggregateSyntheticModelIsExcludedWithoutWarning() {
-        var synthetic = entry(messageID: "m1", requestID: "r1", isSidechain: false, cacheRead: 0, output: 0)
-        synthetic.model = nil
-        synthetic.tokens = TokenBreakdown(input: 10, output: 5)
-
-        let scan = ClaudeLogUsageScanner.aggregate(entries: [synthetic], since: .distantPast, pricing: pricing)
-
-        // No model and no carried cost: unpriceable, so excluded from totals — and with no name to
-        // warn about, no unknown-model entry either.
-        XCTAssertTrue(scan.series.daily.isEmpty)
-        XCTAssertTrue(scan.unknownModelsByDay.isEmpty)
-        XCTAssertEqual(scan.modelUsage?.daily ?? [], [])
+            XCTAssertTrue(scan.series.daily.isEmpty)
+            XCTAssertEqual(scan.unknownModelsByDay[day], model.map { [$0] })
+            XCTAssertEqual(scan.modelUsage?.daily ?? [], [])
+        }
     }
 
     func testAggregateSyntheticModelWithCarriedCostStillCounts() {

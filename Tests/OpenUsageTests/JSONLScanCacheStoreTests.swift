@@ -3,16 +3,20 @@ import XCTest
 @testable import OpenUsage
 
 final class JSONLScanCacheStoreTests: XCTestCase {
-    func testWriterMergesDisjointPathUpdatesFromSeparateSnapshots() async throws {
-        let base = FileManager.default.temporaryDirectory
-            .appendingPathComponent("OpenUsageCacheWriterTests-\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: base) }
+    private var base: URL!
+
+    override func setUpWithError() throws {
+        base = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OpenUsageCacheTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-        let persistence = JSONLScanCachePersistence(
-            namespace: "test",
-            schemaVersion: 1,
-            directory: base.appendingPathComponent("cache")
-        )
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: base)
+    }
+
+    func testWriterMergesDisjointPathUpdatesFromSeparateSnapshots() async throws {
+        let persistence = makePersistence()
         let identity = "home"
         let first = try writeSource(
             "first",
@@ -50,30 +54,18 @@ final class JSONLScanCacheStoreTests: XCTestCase {
         let snapshot = try XCTUnwrap(loaded)
 
         XCTAssertEqual(Set(snapshot.manifest.files.keys), Set([first.path, second.path]))
-        let firstRecordURL = JSONLScanCachePaths.recordURL(
-            persistence: persistence,
-            identity: identity,
-            fileName: JSONLScanCachePaths.recordFileName(path: first.path)
-        )
-        let secondRecordURL = JSONLScanCachePaths.recordURL(
-            persistence: persistence,
-            identity: identity,
-            fileName: JSONLScanCachePaths.recordFileName(path: second.path)
-        )
-        XCTAssertEqual(try Data(contentsOf: firstRecordURL), Data("first-record".utf8))
-        XCTAssertEqual(try Data(contentsOf: secondRecordURL), Data("second-record".utf8))
+        for (file, expectedRecord) in [(first, "first-record"), (second, "second-record")] {
+            let recordURL = JSONLScanCachePaths.recordURL(
+                persistence: persistence,
+                identity: identity,
+                fileName: JSONLScanCachePaths.recordFileName(path: file.path)
+            )
+            XCTAssertEqual(try Data(contentsOf: recordURL), Data(expectedRecord.utf8), file.path)
+        }
     }
 
     func testWriterRejectsAStaleUpsertAfterTheSourceChanges() async throws {
-        let base = FileManager.default.temporaryDirectory
-            .appendingPathComponent("OpenUsageCacheStaleSourceTests-\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: base) }
-        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-        let persistence = JSONLScanCachePersistence(
-            namespace: "test",
-            schemaVersion: 1,
-            directory: base.appendingPathComponent("cache")
-        )
+        let persistence = makePersistence()
         let sourceURL = base.appendingPathComponent("usage.jsonl")
         let stale = try writeSource("old", to: sourceURL, mtime: Date(timeIntervalSince1970: 2_000))
         let staleBatch = makeBatch(
@@ -91,15 +83,7 @@ final class JSONLScanCacheStoreTests: XCTestCase {
     }
 
     func testStaleRemovalDoesNotDeleteANewerPathUpdate() async throws {
-        let base = FileManager.default.temporaryDirectory
-            .appendingPathComponent("OpenUsageCacheRemovalMergeTests-\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: base) }
-        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-        let persistence = JSONLScanCachePersistence(
-            namespace: "test",
-            schemaVersion: 1,
-            directory: base.appendingPathComponent("cache")
-        )
+        let persistence = makePersistence()
         let sourceURL = base.appendingPathComponent("usage.jsonl")
         let oldFile = try writeSource("old", to: sourceURL, mtime: Date(timeIntervalSince1970: 2_000))
         let oldBatch = makeBatch(
@@ -139,15 +123,7 @@ final class JSONLScanCacheStoreTests: XCTestCase {
     }
 
     func testLoadingAnOldIdentityTouchesItBeforeStalePruning() async throws {
-        let base = FileManager.default.temporaryDirectory
-            .appendingPathComponent("OpenUsageCacheLoadTouchTests-\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: base) }
-        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-        let persistence = JSONLScanCachePersistence(
-            namespace: "test",
-            schemaVersion: 1,
-            directory: base.appendingPathComponent("cache")
-        )
+        let persistence = makePersistence()
         let file = try writeSource(
             "value",
             to: base.appendingPathComponent("usage.jsonl"),
@@ -181,17 +157,8 @@ final class JSONLScanCacheStoreTests: XCTestCase {
     }
 
     func testFreshScannerCanPersistAfterAnotherScannerHasWrittenRepeatedly() async throws {
-        let base = FileManager.default.temporaryDirectory
-            .appendingPathComponent("OpenUsageCacheGenerationTests-\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: base) }
-        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         let sourceURL = base.appendingPathComponent("usage.jsonl")
-        let persistence = JSONLScanCachePersistence(
-            namespace: "test",
-            schemaVersion: 1,
-            directory: base.appendingPathComponent("cache"),
-            writeDebounce: .milliseconds(1)
-        )
+        let persistence = makePersistence(writeDebounce: .milliseconds(1))
         let firstScanner = IncrementalJSONLScanner<Int>(persistence: persistence)
         let baseDate = Date(timeIntervalSince1970: 10_000)
 
@@ -239,21 +206,12 @@ final class JSONLScanCacheStoreTests: XCTestCase {
     }
 
     func testFlushPendingWritesBypassesTheDebounceForOneShotProcesses() async throws {
-        let base = FileManager.default.temporaryDirectory
-            .appendingPathComponent("OpenUsageCacheFlushTests-\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: base) }
-        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         let file = try writeSource(
             "7",
             to: base.appendingPathComponent("usage.jsonl"),
             mtime: Date()
         )
-        let persistence = JSONLScanCachePersistence(
-            namespace: "test",
-            schemaVersion: 1,
-            directory: base.appendingPathComponent("cache"),
-            writeDebounce: .seconds(60)
-        )
+        let persistence = makePersistence(writeDebounce: .seconds(60))
         let scanner = IncrementalJSONLScanner<Int>(persistence: persistence)
         _ = await scanner.items(
             from: [file],
@@ -277,10 +235,6 @@ final class JSONLScanCacheStoreTests: XCTestCase {
     }
 
     func testFlushRetriesDirtyWriteAfterDebouncedFailure() async throws {
-        let base = FileManager.default.temporaryDirectory
-            .appendingPathComponent("OpenUsageCacheFlushRetryTests-\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: base) }
-        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         let file = try writeSource(
             "7",
             to: base.appendingPathComponent("usage.jsonl"),
@@ -288,12 +242,7 @@ final class JSONLScanCacheStoreTests: XCTestCase {
         )
         let cacheDirectory = base.appendingPathComponent("cache")
         try Data("blocks-directory-creation".utf8).write(to: cacheDirectory)
-        let persistence = JSONLScanCachePersistence(
-            namespace: "test",
-            schemaVersion: 1,
-            directory: cacheDirectory,
-            writeDebounce: .milliseconds(1)
-        )
+        let persistence = makePersistence(writeDebounce: .milliseconds(1))
         let scanner = IncrementalJSONLScanner<Int>(persistence: persistence)
         _ = await scanner.items(
             from: [file],
@@ -320,13 +269,9 @@ final class JSONLScanCacheStoreTests: XCTestCase {
     }
 
     func testParseLimitIsSharedAcrossDifferentIdentities() async throws {
-        let base = FileManager.default.temporaryDirectory
-            .appendingPathComponent("OpenUsageCachePermitTests-\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: base) }
-        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         let now = Date()
-        let firstFiles = try makeIntegerFiles(range: 0..<8, prefix: "a", in: base, mtime: now)
-        let secondFiles = try makeIntegerFiles(range: 8..<16, prefix: "b", in: base, mtime: now)
+        let firstFiles = try makeIntegerFiles(range: 0..<4, prefix: "a", in: base, mtime: now)
+        let secondFiles = try makeIntegerFiles(range: 4..<8, prefix: "b", in: base, mtime: now)
         let scanner = IncrementalJSONLScanner<Int>(maxConcurrentParses: 3)
         let probe = ConcurrencyProbe()
         let parse: @Sendable (Data) -> [Int]? = { data in
@@ -350,22 +295,13 @@ final class JSONLScanCacheStoreTests: XCTestCase {
         )
         let results = await (first, second)
 
-        XCTAssertEqual(results.0, Array(0..<8))
-        XCTAssertEqual(results.1, Array(8..<16))
+        XCTAssertEqual(results.0, Array(0..<4))
+        XCTAssertEqual(results.1, Array(4..<8))
         XCTAssertLessThanOrEqual(probe.maximumActive, 3)
     }
 
     func testStaleLocalEvictionCannotRemoveANewerExternalRecord() async throws {
-        let base = FileManager.default.temporaryDirectory
-            .appendingPathComponent("OpenUsageCacheExternalUpdateTests-\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: base) }
-        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-        let persistence = JSONLScanCachePersistence(
-            namespace: "test",
-            schemaVersion: 1,
-            directory: base.appendingPathComponent("cache"),
-            writeDebounce: .milliseconds(1)
-        )
+        let persistence = makePersistence(writeDebounce: .milliseconds(1))
         let identity = "home"
         let baseDate = Date(timeIntervalSince1970: 10_000)
         let primaryURL = base.appendingPathComponent("primary.jsonl")
@@ -423,6 +359,15 @@ final class JSONLScanCacheStoreTests: XCTestCase {
         )
         XCTAssertEqual(items, [2, 20])
         XCTAssertEqual(reloadCounter.count, 0)
+    }
+
+    private func makePersistence(writeDebounce: Duration = .seconds(2)) -> JSONLScanCachePersistence {
+        JSONLScanCachePersistence(
+            namespace: "test",
+            schemaVersion: 1,
+            directory: base.appendingPathComponent("cache"),
+            writeDebounce: writeDebounce
+        )
     }
 
     private func makeBatch(

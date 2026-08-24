@@ -38,7 +38,7 @@ final class RefreshSettingTests: XCTestCase {
     }
 
     func testWithinSessionPassServedFromCacheUntilInterval() async {
-        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        var now = Date(timeIntervalSince1970: 1_800_000_000)
         let suite = makeDefaults("within-session")
 
         // One cache instance shared between the seeding write and the store models a single running
@@ -62,20 +62,10 @@ final class RefreshSettingTests: XCTestCase {
 
         XCTAssertEqual(runtime.refreshCount, 0) // fetched this session, within interval => no refetch
         XCTAssertNotNil(store.snapshots["test"])
-    }
 
-    func testCacheExpiresPastInterval() async {
-        let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let suite = makeDefaults("restart-expired")
-
-        // A prior session left a snapshot 6 minutes ago — older than the 5-minute interval.
-        storeSnapshot(used: 20, age: 360, into: suite, now: now)
-
-        let runtime = makeRuntime(used: 80)
-        let store = makeStore(runtime: runtime, suite: suite, now: now)
+        now = now.addingTimeInterval(61)
         await store.refreshAll()
-
-        XCTAssertEqual(runtime.refreshCount, 1) // past interval => refetched
+        XCTAssertEqual(runtime.refreshCount, 1, "the same-session cache expires after the refresh interval")
     }
 
     // MARK: - Helpers

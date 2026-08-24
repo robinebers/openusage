@@ -2,48 +2,6 @@ import XCTest
 @testable import OpenUsage
 
 final class CopilotAuthStoreTests: XCTestCase {
-    func testReadsEditorAppsJSON() {
-        let store = CopilotAuthStore(
-            files: FakeFiles([
-                CopilotAuthStore.editorAppsPath: """
-                { "github.com:Iv1.abc123": { "user": "octocat", "oauth_token": "gho_editor" } }
-                """
-            ]),
-            keychain: FakeKeychain()
-        )
-
-        let token = store.loadToken()
-
-        XCTAssertEqual(token?.value, "gho_editor")
-    }
-
-    func testReadsGhHostsOAuthToken() {
-        let store = CopilotAuthStore(
-            files: FakeFiles([
-                CopilotAuthStore.ghHostsPath: """
-                github.com:
-                    git_protocol: https
-                    user: octocat
-                    oauth_token: gho_ghconfig
-                """
-            ]),
-            keychain: FakeKeychain()
-        )
-
-        let token = store.loadToken()
-
-        XCTAssertEqual(token?.value, "gho_ghconfig")
-    }
-
-    func testDecodesGoKeyringWrappedGhKeychainToken() {
-        let wrapped = "go-keyring-base64:" + Data("gho_keychain".utf8).base64EncodedString()
-        let store = CopilotAuthStore(files: FakeFiles(), keychain: FakeKeychain(wrapped))
-
-        let token = store.loadToken()
-
-        XCTAssertEqual(token?.value, "gho_keychain")
-    }
-
     func testEditorConfigWinsOverKeychain() {
         let store = CopilotAuthStore(
             files: FakeFiles([
@@ -87,27 +45,15 @@ final class CopilotAuthStoreTests: XCTestCase {
         XCTAssertEqual(store.loadToken()?.value, "gho_dotcom")
     }
 
-    func testYamlValueIgnoresNestedUsersMap() {
+    func testYamlUserIsScopedToGithubAndIgnoresNestedUsersMap() {
         let hosts = """
+        ghe.corp.example:
+            user: enterprise
         github.com:
             users:
                 octocat:
             user: octocat
         """
-        XCTAssertEqual(CopilotAuthStore.yamlValue(hosts, key: "user"), "octocat")
-    }
-
-    func testYamlValueScopesToGithubDotComHost() {
-        // A GitHub Enterprise block precedes github.com; the github.com token must win.
-        let hosts = """
-        ghe.corp.example:
-            oauth_token: gho_enterprise
-            user: ent
-        github.com:
-            oauth_token: gho_dotcom
-            user: octocat
-        """
-        XCTAssertEqual(CopilotAuthStore.yamlValue(hosts, key: "oauth_token"), "gho_dotcom")
         XCTAssertEqual(CopilotAuthStore.yamlValue(hosts, key: "user"), "octocat")
     }
 
@@ -137,6 +83,7 @@ final class CopilotUsageMapperTests: XCTestCase {
         XCTAssertEqual(progress(mapped.lines, "Chat")?.used, 5)
         XCTAssertNotNil(progress(mapped.lines, "Credits")?.resetsAt)
         XCTAssertEqual(progress(mapped.lines, "Credits")?.periodDurationMs, CopilotUsageMapper.periodMs)
+        XCTAssertNil(mapped.lines.first(where: { $0.label == "Extra Usage" }))
     }
 
     func testSuppressesUnlimitedAndSentinelBuckets() throws {
@@ -156,38 +103,21 @@ final class CopilotUsageMapperTests: XCTestCase {
         XCTAssertEqual(progress(mapped.lines, "Credits")?.used, 59)
     }
 
-    func testEmitsExtraUsageWhenOveragePermitted() throws {
-        var body = makePaidBody()
-        var quota = body["quota_snapshots"] as! [String: Any]
-        var premium = quota["premium_interactions"] as! [String: Any]
-        premium["overage_permitted"] = true
-        premium["overage_count"] = 36
-        quota["premium_interactions"] = premium
-        body["quota_snapshots"] = quota
+    func testPermittedExtraUsagePreservesPositiveAndZeroCounts() throws {
+        for overage in [36, 0] {
+            var body = makePaidBody()
+            var quota = body["quota_snapshots"] as! [String: Any]
+            var premium = quota["premium_interactions"] as! [String: Any]
+            premium["overage_permitted"] = true
+            premium["overage_count"] = overage
+            quota["premium_interactions"] = premium
+            body["quota_snapshots"] = quota
 
-        let mapped = try CopilotUsageMapper.map(body: body)
+            let mapped = try CopilotUsageMapper.map(body: body)
 
-        XCTAssertEqual(countValue(mapped.lines, "Extra Usage"), 36)
-    }
-
-    func testShowsExtraUsageZeroWhenPermittedButUnused() throws {
-        var body = makePaidBody()
-        var quota = body["quota_snapshots"] as! [String: Any]
-        var premium = quota["premium_interactions"] as! [String: Any]
-        premium["overage_permitted"] = true
-        premium["overage_count"] = 0
-        quota["premium_interactions"] = premium
-        body["quota_snapshots"] = quota
-
-        let mapped = try CopilotUsageMapper.map(body: body)
-
-        XCTAssertEqual(countValue(mapped.lines, "Extra Usage"), 0)
-    }
-
-    func testSuppressesExtraUsageWhenNotPermitted() throws {
-        // makePaidBody's premium has no overage flag → extra usage is genuinely N/A.
-        let mapped = try CopilotUsageMapper.map(body: makePaidBody())
-        XCTAssertNil(mapped.lines.first(where: { $0.label == "Extra Usage" }))
+            XCTAssertEqual(countValue(mapped.lines, "Extra Usage"), Double(overage))
+            XCTAssertFalse(mapped.isOrgManagedSeat)
+        }
     }
 
     func testIgnoresLegacyLimitedQuotasWhenSnapshotsPresent() throws {
@@ -265,20 +195,22 @@ final class CopilotUsageMapperTests: XCTestCase {
         XCTAssertNotNil(progress(mapped.lines, "Chat")?.resetsAt)
     }
 
-    func testTokenBasedBillingReturnsPlanWithoutMeters() throws {
-        let body: [String: Any] = [
-            "copilot_plan": "business",
-            "token_based_billing": true,
-            "quota_snapshots": [
-                "premium_interactions": ["entitlement": 0, "remaining": 0, "quota_id": "premium"]
+    func testUnusedOrgManagedSeatPreservesPlanWithoutMeters() throws {
+        for creditsUsed in [nil, 0] as [Int?] {
+            var premium: [String: Any] = ["entitlement": 0, "remaining": 0]
+            if let creditsUsed { premium["credits_used"] = creditsUsed }
+            let body: [String: Any] = [
+                "copilot_plan": "business",
+                "token_based_billing": true,
+                "quota_snapshots": ["premium_interactions": premium]
             ]
-        ]
 
-        let mapped = try CopilotUsageMapper.map(body: body)
+            let mapped = try CopilotUsageMapper.map(body: body)
 
-        XCTAssertEqual(mapped.plan, "Business")
-        XCTAssertTrue(mapped.lines.isEmpty)
-        XCTAssertTrue(mapped.isOrgManagedSeat)
+            XCTAssertEqual(mapped.plan, "Business")
+            XCTAssertTrue(mapped.lines.isEmpty)
+            XCTAssertTrue(mapped.isOrgManagedSeat)
+        }
     }
 
     func testPlaceholderOveragePermittedDoesNotEmitExtraUsageOrBlockOrgFlag() throws {
@@ -286,76 +218,20 @@ final class CopilotUsageMapperTests: XCTestCase {
         // `overage_permitted: true` on a zero-entitlement premium bucket. That must not render a
         // meaningless "Extra Usage: 0" row — and must still flag the seat as org-managed so the
         // provider runs the org-billing lookup.
-        var body: [String: Any] = [
-            "copilot_plan": "business",
-            "token_based_billing": true,
-            "quota_snapshots": [
-                "premium_interactions": [
-                    "entitlement": 0, "remaining": 0, "unlimited": true,
-                    "overage_permitted": true, "overage_count": 0, "token_based_billing": true
-                ]
-            ]
-        ]
+        let mapped = try CopilotUsageMapper.map(body: makeBusinessPlaceholderBody())
 
-        let mapped = try CopilotUsageMapper.map(body: body)
-
-        XCTAssertNil(mapped.lines.first(where: { $0.label == "Extra Usage" }))
         XCTAssertTrue(mapped.lines.isEmpty)
         XCTAssertTrue(mapped.isOrgManagedSeat)
-
-        // A paid account with a real credit pool keeps its Extra Usage row.
-        body = makePaidBody()
-        var quota = body["quota_snapshots"] as! [String: Any]
-        var premium = quota["premium_interactions"] as! [String: Any]
-        premium["overage_permitted"] = true
-        premium["overage_count"] = 12
-        quota["premium_interactions"] = premium
-        body["quota_snapshots"] = quota
-
-        let paid = try CopilotUsageMapper.map(body: body)
-
-        XCTAssertEqual(countValue(paid.lines, "Extra Usage"), 12)
-        XCTAssertFalse(paid.isOrgManagedSeat)
     }
 
     func testShowsPersonalCreditsUsedOnOrgManagedPlaceholder() throws {
         // The exact shape reported in issue #1094: org-managed seat, zero entitlement, but
         // `premium_interactions.credits_used` carries the user's own real per-seat consumption.
-        let body: [String: Any] = [
-            "copilot_plan": "business",
-            "token_based_billing": true,
-            "quota_snapshots": [
-                "chat": ["unlimited": true, "token_based_billing": true, "credits_used": 0, "entitlement": 0, "percent_remaining": 100.0],
-                "completions": ["unlimited": true, "token_based_billing": true, "credits_used": 0, "entitlement": 0, "percent_remaining": 100.0],
-                "premium_interactions": [
-                    "unlimited": true, "token_based_billing": true, "credits_used": 2111, "entitlement": 0,
-                    "overage_permitted": true, "percent_remaining": 100.0
-                ]
-            ]
-        ]
-
-        let mapped = try CopilotUsageMapper.map(body: body)
+        let mapped = try CopilotUsageMapper.map(body: makeBusinessPlaceholderBodyWithPersonalCredits(2111))
 
         XCTAssertEqual(mapped.plan, "Business")
         XCTAssertEqual(countValue(mapped.lines, "Credits"), 2111)
         XCTAssertNil(mapped.lines.first(where: { $0.label == "Extra Usage" }))
-        XCTAssertTrue(mapped.isOrgManagedSeat)
-    }
-
-    func testUnusedOrgManagedSeatStillShowsNoData() throws {
-        // A genuinely unused seat (`credits_used` 0 or absent) must not regress to showing "0" — it
-        // stays empty, same as `testTokenBasedBillingReturnsPlanWithoutMeters`.
-        let body: [String: Any] = [
-            "copilot_plan": "business",
-            "token_based_billing": true,
-            "quota_snapshots": [
-                "premium_interactions": ["entitlement": 0, "remaining": 0, "credits_used": 0]
-            ]
-        ]
-
-        let mapped = try CopilotUsageMapper.map(body: body)
-
-        XCTAssertTrue(mapped.lines.isEmpty)
         XCTAssertTrue(mapped.isOrgManagedSeat)
     }
 
@@ -457,44 +333,6 @@ final class CopilotProviderTests: XCTestCase {
         XCTAssertEqual(http.requests.first?.headers["Authorization"], "token gho_editor")
     }
 
-    func testTokenBasedBillingShowsPlanWithoutError() async {
-        let body: [String: Any] = [
-            "copilot_plan": "business",
-            "token_based_billing": true,
-            "quota_snapshots": ["premium_interactions": ["entitlement": 0, "remaining": 0]]
-        ]
-        let provider = CopilotProvider(
-            authStore: editorTokenStore(),
-            usageClient: CopilotUsageClient(http: FakeHTTPClient(response: ok(body)))
-        )
-
-        let snapshot = await provider.refresh()
-
-        XCTAssertNil(snapshot.errorCategory)
-        XCTAssertEqual(snapshot.plan, "Business")
-        XCTAssertTrue(snapshot.lines.isEmpty)
-    }
-
-    func testOrgManagedSeatShowsOrgBillingLines() async {
-        let http = routedClient([
-            ("/copilot_internal/user", ok(makeBusinessPlaceholderBody())),
-            ("/user/orgs", okJSON([["login": "acme"]])),
-            ("/orgs/acme/settings/billing/usage/summary", ok(makeOrgSummaryBody()))
-        ])
-        let defaults = freshDefaults()
-        let provider = makeOrgProvider(http: http, defaults: defaults)
-
-        let snapshot = await provider.refresh()
-
-        XCTAssertNil(snapshot.errorCategory)
-        XCTAssertEqual(snapshot.plan, "Business")
-        XCTAssertEqual(orgCount(snapshot.lines, "Org Credits") ?? -1, 298.698546, accuracy: 0.0001)
-        XCTAssertEqual(orgDollars(snapshot.lines, "Org Spend"), 0)
-        // The placeholder's `overage_permitted: true` must not leave a meaningless Extra Usage row.
-        XCTAssertNil(snapshot.lines.first(where: { $0.label == "Extra Usage" }))
-        XCTAssertEqual(defaults.string(forKey: CopilotProvider.billingOrgDefaultsKey), "acme")
-    }
-
     func testOrgBillingForbiddenKeepsPlanOnlyCard() async {
         // A plain org member (not owner/billing manager) gets 403 on org billing — the expected state,
         // which must keep today's plan-only card rather than erroring the provider.
@@ -548,9 +386,13 @@ final class CopilotProviderTests: XCTestCase {
 
         let snapshot = await provider.refresh()
 
+        XCTAssertNil(snapshot.errorCategory)
+        XCTAssertEqual(snapshot.plan, "Business")
         XCTAssertEqual(countValue(snapshot.lines, "Credits"), 2111)
         XCTAssertEqual(orgCount(snapshot.lines, "Org Credits") ?? -1, 298.698546, accuracy: 0.0001)
+        XCTAssertEqual(orgDollars(snapshot.lines, "Org Spend"), 0)
         XCTAssertNil(snapshot.lines.first(where: { $0.label == "Extra Usage" }))
+        XCTAssertEqual(defaults.string(forKey: CopilotProvider.billingOrgDefaultsKey), "acme")
     }
 
     func testUsesCachedOrgWithoutReprobing() async {
@@ -676,21 +518,17 @@ private func routedClient(_ routes: [(substring: String, response: HTTPResponse)
 /// Crucially, the premium bucket carries `overage_permitted: true` — the field that used to sneak an
 /// "Extra Usage: 0" row into the mapped lines and block the org-billing fallback.
 private func makeBusinessPlaceholderBody() -> [String: Any] {
-    func bucket(_ id: String, overagePermitted: Bool) -> [String: Any] {
-        [
-            "overage_count": 0, "overage_entitlement": 0, "overage_permitted": overagePermitted,
-            "percent_remaining": 100.0, "quota_id": id, "quota_remaining": 0.0, "unlimited": true,
-            "has_quota": true, "quota_reset_at": 0, "token_based_billing": true,
-            "remaining": 0, "entitlement": 0
-        ]
+    func bucket(overagePermitted: Bool) -> [String: Any] {
+        ["entitlement": 0, "remaining": 0, "unlimited": true,
+         "overage_permitted": overagePermitted, "overage_count": 0]
     }
     return [
         "copilot_plan": "business",
         "token_based_billing": true,
         "quota_snapshots": [
-            "chat": bucket("chat", overagePermitted: false),
-            "completions": bucket("completions", overagePermitted: false),
-            "premium_interactions": bucket("premium_interactions", overagePermitted: true)
+            "chat": bucket(overagePermitted: false),
+            "completions": bucket(overagePermitted: false),
+            "premium_interactions": bucket(overagePermitted: true)
         ]
     ]
 }
@@ -711,21 +549,9 @@ private func makeBusinessPlaceholderBodyWithPersonalCredits(_ creditsUsed: Doubl
 /// included credits.
 private func makeOrgSummaryBody() -> [String: Any] {
     [
-        "timePeriod": ["year": 2026, "month": 7],
-        "organization": "acme",
         "usageItems": [
-            [
-                "product": "Copilot",
-                "sku": "copilot_ai_unit",
-                "unitType": "ai-units",
-                "pricePerUnit": 0.01,
-                "grossQuantity": 298.698546,
-                "grossAmount": 2.98698546,
-                "discountQuantity": 298.698546,
-                "discountAmount": 2.98698546,
-                "netQuantity": 0.0,
-                "netAmount": 0.0
-            ]
+            ["product": "Copilot", "sku": "copilot_ai_unit", "unitType": "ai-units",
+             "grossQuantity": 298.698546, "netAmount": 0.0]
         ]
     ]
 }

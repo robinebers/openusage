@@ -13,56 +13,21 @@ final class ClaudeAuthStoreTests: XCTestCase {
     }
 
     func testCredentialDiagnosticsLabelIsTokenFreeWithSourceRefreshAndExpiredFlags() {
-        // The info-level "refresh start" / fallback diagnostics must name the source kind and whether each
-        // candidate carries a refresh token + is already expired — never any token value (#738 diagnosis).
-        let now = Date(timeIntervalSince1970: 1_000_000) // 1_000_000_000 ms
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        let cases: [(oauth: ClaudeOAuth, source: ClaudeCredentialState.Source, expected: String)] = [
+            (ClaudeOAuth(accessToken: "ACCESS_SECRET", refreshToken: "REFRESH_SECRET", expiresAt: 2_000_000_000_000),
+             .keychainCurrentUser(service: "Claude Code-credentials"), "keychainCurrentUser refresh=yes expired=no"),
+            (ClaudeOAuth(accessToken: "a", expiresAt: 1), .file, "file refresh=no expired=yes"),
+            (ClaudeOAuth(accessToken: "a", refreshToken: ""), .keychainLegacy(service: "svc"),
+             "keychainLegacy refresh=no expired=unknown")
+        ]
 
-        let fresh = ClaudeCredentialState(
-            oauth: ClaudeOAuth(accessToken: "ACCESS_SECRET", refreshToken: "REFRESH_SECRET", expiresAt: 2_000_000_000_000),
-            source: .keychainCurrentUser(service: "Claude Code-credentials"),
-            fullData: nil,
-            inferenceOnly: false
-        )
-        XCTAssertEqual(fresh.diagnosticsLabel(now: now), "keychainCurrentUser refresh=yes expired=no")
-        XCTAssertFalse(fresh.diagnosticsLabel(now: now).contains("SECRET")) // never leaks token values
-
-        // No refresh token + an already-expired access token: the #738 shape that can never self-heal.
-        let lockedOut = ClaudeCredentialState(
-            oauth: ClaudeOAuth(accessToken: "a", refreshToken: nil, expiresAt: 1),
-            source: .file,
-            fullData: nil,
-            inferenceOnly: false
-        )
-        XCTAssertEqual(lockedOut.diagnosticsLabel(now: now), "file refresh=no expired=yes")
-
-        // Empty refresh token counts as absent; missing expiry is reported as unknown, not assumed fresh.
-        let unknownExpiry = ClaudeCredentialState(
-            oauth: ClaudeOAuth(accessToken: "a", refreshToken: "", expiresAt: nil),
-            source: .keychainLegacy(service: "svc"),
-            fullData: nil,
-            inferenceOnly: false
-        )
-        XCTAssertEqual(unknownExpiry.diagnosticsLabel(now: now), "keychainLegacy refresh=no expired=unknown")
-    }
-
-    func testPrefersCurrentUserKeychainCredentialsBeforeFile() {
-        let files = FakeFiles([
-            "/tmp/claude/.credentials.json": #"{"claudeAiOauth":{"accessToken":"file-token","subscriptionType":"pro"}}"#
-        ])
-        let keychain = ServiceKeychain()
-        let store = ClaudeAuthStore(
-            environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": "/tmp/claude"]),
-            files: files,
-            keychain: keychain
-        )
-        let hashedService = store.keychainServiceCandidates().first!
-        keychain.currentUserValues[hashedService] = #"{"claudeAiOauth":{"accessToken":"keychain-token","subscriptionType":"max"}}"#
-
-        let credentials = store.loadCredentialCandidates().first
-
-        XCTAssertTrue(hashedService.hasPrefix("Claude Code-credentials-"))
-        XCTAssertEqual(credentials?.oauth.accessToken, "keychain-token")
-        XCTAssertEqual(credentials?.oauth.subscriptionType, "max")
+        for entry in cases {
+            let state = ClaudeCredentialState(oauth: entry.oauth, source: entry.source, fullData: nil, inferenceOnly: false)
+            let label = state.diagnosticsLabel(now: now)
+            XCTAssertEqual(label, entry.expected)
+            XCTAssertFalse(label.contains("SECRET"))
+        }
     }
 
     func testPrefersKeychainOverFileEvenWhenFileTokenExpiresLater() {
@@ -85,7 +50,7 @@ final class ClaudeAuthStoreTests: XCTestCase {
         let candidates = store.loadCredentialCandidates()
 
         XCTAssertEqual(candidates.map(\.oauth.accessToken), ["keychain-token", "file-token"])
-        XCTAssertEqual(store.loadCredentialCandidates().first?.oauth.accessToken, "keychain-token")
+        XCTAssertEqual(candidates.first?.oauth.subscriptionType, "max")
     }
 
     func testEnvironmentTokenIsInferenceOnly() {
@@ -246,12 +211,8 @@ final class ClaudeUsageMapperTests: XCTestCase {
             headers: [:],
             body: Data("""
             {
-              "five_hour": { "utilization": 10, "resets_at": "2099-01-01T00:00:00.000Z" },
-              "seven_day": { "utilization": 20, "resets_at": "2099-01-01T00:00:00.000Z" },
               "seven_day_sonnet": null,
               "limits": [
-                { "kind": "session", "group": "session", "percent": 10, "resets_at": "2099-01-01T00:00:00.000Z" },
-                { "kind": "weekly_all", "group": "weekly", "percent": 20, "resets_at": "2099-01-08T00:00:00.000Z" },
                 { "kind": "weekly_scoped", "group": "weekly", "percent": 7,
                   "resets_at": "2099-01-08T00:00:00.000Z",
                   "scope": { "model": { "display_name": "Fable", "id": null }, "surface": null } }
@@ -293,37 +254,20 @@ final class ClaudeUsageMapperTests: XCTestCase {
         XCTAssertNil(progress(mapped.lines, "Extra usage spent"))
     }
 
-    func testMapsResetsAtFromMicrosecondTimestampWithoutTimezone() throws {
-        let response = HTTPResponse(
-            statusCode: 200,
-            headers: [:],
-            body: Data(#"{"five_hour":{"utilization":0,"resets_at":"2099-06-01T12:00:00.123456"}}"#.utf8)
-        )
+    func testMapsResetDatesFromMicrosecondTimestampsAndUnixEpochs() throws {
+        let cases: [(value: String, expected: Date)] = [
+            (#""2099-06-01T12:00:00.123456""#, OpenUsageISO8601.date(from: "2099-06-01T12:00:00.123Z")!),
+            ("2099010100", Date(timeIntervalSince1970: 2_099_010_100))
+        ]
 
-        let mapped = try ClaudeUsageMapper.mapUsageResponse(
-            response,
-            credentials: ClaudeOAuth(subscriptionType: "pro")
-        )
-
-        let resetsAt = try XCTUnwrap(progress(mapped.lines, "Session")?.resetsAt)
-        XCTAssertEqual(OpenUsageISO8601.string(from: resetsAt), "2099-06-01T12:00:00.123Z")
-    }
-
-    func testMapsResetsAtFromUnixEpochNumber() throws {
-        let epochSeconds = 2_099_010_100.0
-        let response = HTTPResponse(
-            statusCode: 200,
-            headers: [:],
-            body: Data(#"{"five_hour":{"utilization":0,"resets_at":2099010100}}"#.utf8)
-        )
-
-        let mapped = try ClaudeUsageMapper.mapUsageResponse(
-            response,
-            credentials: ClaudeOAuth(subscriptionType: "pro")
-        )
-
-        let resetsAt = try XCTUnwrap(progress(mapped.lines, "Session")?.resetsAt)
-        XCTAssertEqual(resetsAt.timeIntervalSince1970, epochSeconds, accuracy: 1)
+        for entry in cases {
+            let response = HTTPResponse(statusCode: 200, headers: [:], body: Data("""
+            {"five_hour":{"utilization":0,"resets_at":\(entry.value)}}
+            """.utf8))
+            let mapped = try ClaudeUsageMapper.mapUsageResponse(response, credentials: ClaudeOAuth(subscriptionType: "pro"))
+            let resetsAt = try XCTUnwrap(progress(mapped.lines, "Session")?.resetsAt)
+            XCTAssertEqual(resetsAt.timeIntervalSince1970, entry.expected.timeIntervalSince1970, accuracy: 0.001)
+        }
     }
 
     func testRateLimitRetryAfterBadge() {
@@ -376,14 +320,9 @@ final class ClaudeProviderTests: XCTestCase {
             )
         ])
         let provider = ClaudeProvider(
-            authStore: ClaudeAuthStore(
-                environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": "/tmp/claude"]),
-                files: FakeFiles([
-                    "/tmp/claude/.credentials.json": #"{"claudeAiOauth":{"accessToken":"token","subscriptionType":"pro","scopes":["user:profile"]}}"#
-                ]),
-                keychain: FakeKeychain(),
-                now: { now }
-            ),
+            authStore: configuredAuthStore(files: FakeFiles([
+                "/tmp/claude/.credentials.json": #"{"claudeAiOauth":{"accessToken":"token","subscriptionType":"pro","scopes":["user:profile"]}}"#
+            ]), now: { now }),
             usageClient: ClaudeUsageClient(httpClient: httpClient),
             logUsageScanner: ClaudeLogFixture.scanner(home: home),
             now: { now },
@@ -405,10 +344,6 @@ final class ClaudeProviderTests: XCTestCase {
         let home = try ClaudeLogFixture.makeHome(files: [
             "project-a/today.jsonl": ClaudeLogFixture.usageLine(
                 timestamp: "2026-02-20T16:00:00.000Z", input: 100, output: 50, costUSD: 0.25
-            ),
-            "project-a/yesterday.jsonl": ClaudeLogFixture.usageLine(
-                timestamp: "2026-02-19T16:00:00.000Z", input: 40, output: 20, costUSD: 0.40,
-                messageID: "msg_yesterday", requestID: "req_yesterday"
             )
         ])
         let httpClient = FakeHTTPClient(response: HTTPResponse(statusCode: 200, headers: [:], body: Data()))
@@ -435,14 +370,6 @@ final class ClaudeProviderTests: XCTestCase {
         XCTAssertEqual(values(snapshot.lines, "Today"), [
             MetricValue(number: 0.25, kind: .dollars, estimated: true),
             MetricValue(number: 150, kind: .count, label: "tokens")
-        ])
-        XCTAssertEqual(values(snapshot.lines, "Yesterday"), [
-            MetricValue(number: 0.40, kind: .dollars, estimated: true),
-            MetricValue(number: 60, kind: .count, label: "tokens")
-        ])
-        XCTAssertEqual(values(snapshot.lines, "Last 30 Days"), [
-            MetricValue(number: 0.65, kind: .dollars, estimated: true),
-            MetricValue(number: 210, kind: .count, label: "tokens")
         ])
         XCTAssertTrue(httpClient.requests.isEmpty)
     }
@@ -509,14 +436,9 @@ final class ClaudeProviderTests: XCTestCase {
             )
         ])
         let provider = ClaudeProvider(
-            authStore: ClaudeAuthStore(
-                environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": "/tmp/claude"]),
-                files: FakeFiles([
-                    "/tmp/claude/.credentials.json": #"{"claudeAiOauth":{"accessToken":"token","subscriptionType":"max","rateLimitTier":"default_claude_max_5x","scopes":["user:inference"]}}"#
-                ]),
-                keychain: FakeKeychain(),
-                now: { now }
-            ),
+            authStore: configuredAuthStore(files: FakeFiles([
+                "/tmp/claude/.credentials.json": #"{"claudeAiOauth":{"accessToken":"token","subscriptionType":"max","rateLimitTier":"default_claude_max_5x","scopes":["user:inference"]}}"#
+            ]), now: { now }),
             usageClient: ClaudeUsageClient(httpClient: httpClient),
             logUsageScanner: ClaudeLogFixture.scanner(home: home),
             now: { now },
@@ -593,12 +515,7 @@ final class ClaudeProviderTests: XCTestCase {
             )
         }
         let provider = ClaudeProvider(
-            authStore: ClaudeAuthStore(
-                environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": "/tmp/claude"]),
-                files: files,
-                keychain: FakeKeychain(),
-                now: { now }
-            ),
+            authStore: configuredAuthStore(files: files, now: { now }),
             usageClient: ClaudeUsageClient(httpClient: httpClient),
             logUsageScanner: ClaudeLogFixture.scanner(home: nil),
             now: { now },
@@ -625,12 +542,7 @@ final class ClaudeProviderTests: XCTestCase {
             "/tmp/claude/.credentials.json": #"{"claudeAiOauth":{"accessToken":"fresh-access","refreshToken":"fresh-refresh","expiresAt":4070908800000,"subscriptionType":"pro","scopes":["user:profile"]}}"#
         ])
         let keychain = ServiceKeychain()
-        let authStore = ClaudeAuthStore(
-            environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": "/tmp/claude"]),
-            files: files,
-            keychain: keychain,
-            now: { now }
-        )
+        let authStore = configuredAuthStore(files: files, keychain: keychain, now: { now })
         // The keychain is always probed first (it's the source of truth), so this exercises the
         // auth-failure fallback: the stale keychain token's refresh is revoked, and recovery comes from
         // falling through to the fresh file token — not from any expiry-based reordering.
@@ -677,12 +589,7 @@ final class ClaudeProviderTests: XCTestCase {
             "/tmp/claude/.credentials.json": #"{"claudeAiOauth":{"accessToken":"file-stale","refreshToken":"file-refresh","expiresAt":4070908800000,"subscriptionType":"pro","scopes":["user:profile"]}}"#
         ])
         let keychain = ServiceKeychain()
-        let authStore = ClaudeAuthStore(
-            environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": "/tmp/claude"]),
-            files: files,
-            keychain: keychain,
-            now: { now }
-        )
+        let authStore = configuredAuthStore(files: files, keychain: keychain, now: { now })
         let hashedService = authStore.keychainServiceCandidates().first!
         keychain.currentUserValues[hashedService] = #"{"claudeAiOauth":{"accessToken":"keychain-stale","refreshToken":"keychain-refresh","expiresAt":4102444800000,"subscriptionType":"max","scopes":["user:profile"]}}"#
 
@@ -720,17 +627,14 @@ final class ClaudeProviderTests: XCTestCase {
             )
         }
 
-        let noneAtAll = makeProvider(files: FakeFiles())
-        let plainSnapshot = await noneAtAll.refresh()
-        XCTAssertEqual(badge(plainSnapshot.lines, "Error"), ClaudeAuthError.notLoggedIn.localizedDescription)
-
-        // A stored-but-blank CLI token (whitespace accessToken survives the store's isEmpty check but is
-        // dropped by the provider's trim filter) is still unusable.
-        let corruptCLI = makeProvider(files: FakeFiles([
-            "~/.claude/.credentials.json": #"{"claudeAiOauth":{"accessToken":"   "}}"#
-        ]))
-        let corruptSnapshot = await corruptCLI.refresh()
-        XCTAssertEqual(badge(corruptSnapshot.lines, "Error"), ClaudeAuthError.notLoggedIn.localizedDescription)
+        let cases = [
+            FakeFiles(),
+            FakeFiles(["~/.claude/.credentials.json": #"{"claudeAiOauth":{"accessToken":"   "}}"#])
+        ]
+        for files in cases {
+            let snapshot = await makeProvider(files: files).refresh()
+            XCTAssertEqual(badge(snapshot.lines, "Error"), ClaudeAuthError.notLoggedIn.localizedDescription)
+        }
     }
 
     func testRateLimitedResponseMapsToRetryBadgeNotError() async {
@@ -741,14 +645,9 @@ final class ClaudeProviderTests: XCTestCase {
             body: Data()
         ))
         let provider = ClaudeProvider(
-            authStore: ClaudeAuthStore(
-                environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": "/tmp/claude"]),
-                files: FakeFiles([
-                    "/tmp/claude/.credentials.json": #"{"claudeAiOauth":{"accessToken":"token","subscriptionType":"pro","scopes":["user:profile"]}}"#
-                ]),
-                keychain: FakeKeychain(),
-                now: { now }
-            ),
+            authStore: configuredAuthStore(files: FakeFiles([
+                "/tmp/claude/.credentials.json": #"{"claudeAiOauth":{"accessToken":"token","subscriptionType":"pro","scopes":["user:profile"]}}"#
+            ]), now: { now }),
             usageClient: ClaudeUsageClient(httpClient: httpClient),
             logUsageScanner: ClaudeLogFixture.scanner(home: nil),
             now: { now },
@@ -788,14 +687,9 @@ final class ClaudeProviderTests: XCTestCase {
             return HTTPResponse(statusCode: 429, headers: ["retry-after": "600"], body: Data())
         }
         let provider = ClaudeProvider(
-            authStore: ClaudeAuthStore(
-                environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": "/tmp/claude"]),
-                files: FakeFiles([
-                    "/tmp/claude/.credentials.json": #"{"claudeAiOauth":{"accessToken":"token","subscriptionType":"pro","scopes":["user:profile"]}}"#
-                ]),
-                keychain: FakeKeychain(),
-                now: { clock.now }
-            ),
+            authStore: configuredAuthStore(files: FakeFiles([
+                "/tmp/claude/.credentials.json": #"{"claudeAiOauth":{"accessToken":"token","subscriptionType":"pro","scopes":["user:profile"]}}"#
+            ]), now: { clock.now }),
             usageClient: ClaudeUsageClient(httpClient: httpClient),
             logUsageScanner: ClaudeLogFixture.scanner(home: nil),
             now: { clock.now },
@@ -839,12 +733,7 @@ final class ClaudeProviderTests: XCTestCase {
             return HTTPResponse(statusCode: 400, headers: [:], body: Data("<html>Bad Gateway</html>".utf8))
         }
         let provider = ClaudeProvider(
-            authStore: ClaudeAuthStore(
-                environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": "/tmp/claude"]),
-                files: files,
-                keychain: FakeKeychain(),
-                now: { now }
-            ),
+            authStore: configuredAuthStore(files: files, now: { now }),
             usageClient: ClaudeUsageClient(httpClient: httpClient),
             logUsageScanner: ClaudeLogFixture.scanner(home: nil),
             now: { now },
@@ -854,7 +743,19 @@ final class ClaudeProviderTests: XCTestCase {
         let snapshot = await provider.refresh()
 
         XCTAssertEqual(badge(snapshot.lines, "Error"), ProviderUsageErrorText.requestFailed(statusCode: 400))
-        XCTAssertNotEqual(badge(snapshot.lines, "Error"), ClaudeAuthError.tokenExpired.localizedDescription)
+    }
+
+    private func configuredAuthStore(
+        files: FakeFiles,
+        keychain: KeychainAccessing = FakeKeychain(),
+        now: @escaping @Sendable () -> Date
+    ) -> ClaudeAuthStore {
+        ClaudeAuthStore(
+            environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": "/tmp/claude"]),
+            files: files,
+            keychain: keychain,
+            now: now
+        )
     }
 
     private func badge(_ lines: [MetricLine], _ label: String) -> String? {

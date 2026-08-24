@@ -158,37 +158,22 @@ final class GrokProviderTests: XCTestCase {
         XCTAssertNil(snapshot.warning)
     }
 
-    func testCreditsFetchFailureFailsTheProvider() async {
-        // The credits config is the provider's only remote meter now — its failure is a provider
-        // error, not a partial degrade.
-        let httpClient = RecordingHTTPClient { request in
-            if request.url == GrokUsageClient.creditsConfigURL {
-                return HTTPResponse(statusCode: 503, headers: [:], body: Data())
+    func testCreditsTransportAndSchemaFailuresFailTheProvider() async {
+        let cases = [(503, ""), (200, #"{"config":{}}"#)]
+
+        for (status, body) in cases {
+            let httpClient = RecordingHTTPClient { request in
+                if request.url == GrokUsageClient.creditsConfigURL {
+                    return HTTPResponse(statusCode: status, headers: [:], body: Data(body.utf8))
+                }
+                return Self.defaultRoutes(request)
             }
-            return Self.defaultRoutes(request)
+
+            let snapshot = await makeProvider(httpClient: httpClient).refresh()
+
+            XCTAssertNotNil(snapshot.errorCategory)
+            XCTAssertNil(progress(snapshot.lines, "Weekly limit"))
         }
-        let provider = makeProvider(httpClient: httpClient)
-
-        let snapshot = await provider.refresh()
-
-        XCTAssertNotNil(snapshot.errorCategory)
-        XCTAssertNil(progress(snapshot.lines, "Weekly limit"))
-    }
-
-    func testMalformedBodyInsideHTTP200FailsTheProvider() async {
-        // An HTTP 200 whose body isn't the shape we know is schema drift — fail loudly rather than
-        // render a blank dashboard silently.
-        let httpClient = RecordingHTTPClient { request in
-            if request.url == GrokUsageClient.creditsConfigURL {
-                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"config":{}}"#.utf8))
-            }
-            return Self.defaultRoutes(request)
-        }
-        let provider = makeProvider(httpClient: httpClient)
-
-        let snapshot = await provider.refresh()
-
-        XCTAssertNotNil(snapshot.errorCategory)
     }
 
     func testNonWeeklyPeriodShowsNoWeeklyLineAndNoWarning() async {
@@ -242,6 +227,14 @@ final class GrokProviderTests: XCTestCase {
                        [MetricValue(number: 15.0, kind: .dollars, estimated: true), MetricValue(number: 1_000_000, kind: .count, label: "tokens")])
         XCTAssertEqual(values(snapshot.lines, "Last 30 Days"),
                        [MetricValue(number: 16.0, kind: .dollars, estimated: true), MetricValue(number: 2_000_000, kind: .count, label: "tokens")])
+
+        guard case .chart(_, let points, let note) = snapshot.lines.first(where: { $0.label == "Usage Trend" }) else {
+            return XCTFail("expected a Usage Trend chart line")
+        }
+        XCTAssertEqual(note, "From your Grok logs (estimated)")
+        XCTAssertEqual(points.count, 31)
+        XCTAssertEqual(points.last?.value, 1_000_000)
+        XCTAssertEqual(points[29].value, 1_000_000)
     }
 
     func testPeriodWithoutUsageLeavesTileUnbacked() async throws {
@@ -269,32 +262,6 @@ final class GrokProviderTests: XCTestCase {
         XCTAssertNil(values(snapshot.lines, "Today"))
         XCTAssertNotNil(values(snapshot.lines, "Yesterday"))
         XCTAssertNotNil(values(snapshot.lines, "Last 30 Days"))
-    }
-
-    func testRefreshAppendsUsageTrendFromSessions() async throws {
-        let now = OpenUsageISO8601.date(from: "2026-06-18T12:00:00.000Z")!
-        let today = GrokLogFixture.completedTurn(
-            timestamp: "2026-06-18T10:00:00.000Z", model: "grok-build", input: 1_000_000
-        )
-        let yesterday = GrokLogFixture.completedTurn(
-            timestamp: "2026-06-17T10:00:00.000Z", model: "grok-composer-2.5-fast", input: 0, output: 1_000_000
-        )
-        let home = try GrokLogFixture.makeHome(files: [
-            "project/session/updates.jsonl": [today, yesterday].joined(separator: "\n")
-        ])
-        defer { try? FileManager.default.removeItem(at: home) }
-        let scanner = GrokLogFixture.scanner(home: home)
-        let provider = makeProvider(httpClient: RecordingHTTPClient(handler: Self.defaultRoutes), scanner: scanner, now: now)
-
-        let snapshot = await provider.refresh()
-
-        guard case .chart(_, let points, let note) = snapshot.lines.first(where: { $0.label == "Usage Trend" }) else {
-            return XCTFail("expected a Usage Trend chart line")
-        }
-        XCTAssertEqual(note, "From your Grok logs (estimated)")
-        XCTAssertEqual(points.count, 31)
-        XCTAssertEqual(points.last?.value, 1_000_000, "today's tokens land on the last bar")
-        XCTAssertEqual(points[29].value, 1_000_000, "yesterday's tokens land on the second-to-last bar")
     }
 
     func testRefreshWithoutSessionsAppendsNoUsageTrend() async {

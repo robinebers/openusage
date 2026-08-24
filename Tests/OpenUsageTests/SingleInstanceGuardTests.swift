@@ -7,29 +7,22 @@ import XCTest
 /// thin glue over this pure function and aren't unit-testable (they need a second running process).
 @MainActor
 final class SingleInstanceGuardTests: XCTestCase {
-    func testSoloLaunchYieldsToNobody() {
-        // Only our own process is running — nothing to defer to.
-        XCTAssertNil(SingleInstanceGuard.instanceToYieldTo(myPID: 42, runningPIDs: [42]))
-    }
+    func testOnlyTheLowestRunningPIDOwnsTheInstance() {
+        let scenarios: [(name: String, running: [pid_t], expected: pid_t?)] = [
+            ("solo launch", [42], nil),
+            ("empty workspace", [], nil),
+            ("lower PID owns the instance", [7, 42], 7),
+            ("lowest of several PIDs owns the instance", [20, 9, 42], 9),
+            ("higher PID yields to us", [42, 99], nil)
+        ]
 
-    func testNoRunningAppsYieldsToNobody() {
-        // Defensive: an empty workspace result must never make us yield.
-        XCTAssertNil(SingleInstanceGuard.instanceToYieldTo(myPID: 42, runningPIDs: []))
-    }
-
-    func testYieldsToALowerPIDInstance() {
-        // A copy with a lower PID (7) already owns the slot — we yield to it.
-        XCTAssertEqual(SingleInstanceGuard.instanceToYieldTo(myPID: 42, runningPIDs: [7, 42]), 7)
-    }
-
-    func testYieldsToTheLowestWhenSeveralAreLower() {
-        // The survivor is the single lowest PID, not just any lower one.
-        XCTAssertEqual(SingleInstanceGuard.instanceToYieldTo(myPID: 42, runningPIDs: [20, 9, 42]), 9)
-    }
-
-    func testSurvivesWhenWeAreTheLowestPID() {
-        // A higher-PID peer (99) yields to us, not the other way around — we keep running.
-        XCTAssertNil(SingleInstanceGuard.instanceToYieldTo(myPID: 42, runningPIDs: [42, 99]))
+        for scenario in scenarios {
+            XCTAssertEqual(
+                SingleInstanceGuard.instanceToYieldTo(myPID: 42, runningPIDs: scenario.running),
+                scenario.expected,
+                scenario.name
+            )
+        }
     }
 
     /// The headline regression test for the reboot race (cubic P1 / Bugbot): two launches that both

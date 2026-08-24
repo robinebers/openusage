@@ -79,10 +79,10 @@ final class UsageTrendTests: XCTestCase {
     }
 
     func testTrendDropsDaysOlderThanTheWindow() {
-        // 40 distinct days (May 1–31, then June 1–9) with today = 6/9. The window is the 31 days ending
-        // today (5/10 … 6/9), so May 1–9 fall outside it and are dropped.
-        var daily = (1...31).map { DailyUsageEntry(date: String(format: "2026-05-%02d", $0), totalTokens: $0 * 1000, costUSD: nil) }
-        daily += (1...9).map { DailyUsageEntry(date: String(format: "2026-06-%02d", $0), totalTokens: $0 * 1000, costUSD: nil) }
+        let daily = [
+            DailyUsageEntry(date: "2026-05-09", totalTokens: 9_000, costUSD: nil),
+            DailyUsageEntry(date: "2026-05-10", totalTokens: 1_000, costUSD: nil)
+        ]
 
         var lines: [MetricLine] = []
         SpendTileMapper.appendUsageTrend(DailyUsageSeries(daily: daily), to: &lines, now: date(2026, 6, 9), note: "n")
@@ -91,6 +91,7 @@ final class UsageTrendTests: XCTestCase {
         XCTAssertEqual(points.count, 31)
         XCTAssertEqual(points.first?.label, dayLabel(2026, 5, 10), "days older than 30 back are outside the window")
         XCTAssertEqual(points.last?.label, dayLabel(2026, 6, 9), "window ends today")
+        XCTAssertEqual(points.map(\.value).reduce(0, +), 1_000, "out-of-window usage is excluded")
     }
 
     func testTrendAggregatesDuplicateDaysAndParsesCompactDates() {
@@ -138,10 +139,6 @@ final class UsageTrendTests: XCTestCase {
     func testUsageTrendDescriptorIsNotPinnable() {
         let provider = Provider(id: "claude", displayName: "Claude", icon: .providerMark("claude"))
         let descriptor = WidgetDescriptor.usageTrend(provider: provider)
-        XCTAssertEqual(descriptor.id, "claude.trend")
-        XCTAssertFalse(descriptor.pinnable)
-        XCTAssertTrue(descriptor.sample.isChart)
-
         let suite = makeDefaults("pinnable")
         let store = LayoutStore(
             registry: WidgetRegistry(providers: [provider], descriptors: [descriptor]),

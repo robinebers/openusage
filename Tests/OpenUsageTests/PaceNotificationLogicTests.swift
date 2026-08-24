@@ -42,13 +42,7 @@ final class PaceNotificationLogicTests: XCTestCase {
         XCTAssertTrue(first.fire.isEmpty)
         let second = step(close, from: first.newState)
         XCTAssertEqual(second.fire, [.healthyToClose])
-    }
-
-    func testStayingYellowDoesNotRefire() {
-        var state = step(healthy).newState
-        state = step(close, from: state).newState   // fires
-        let again = step(close, from: state)        // still yellow
-        XCTAssertTrue(again.fire.isEmpty)
+        XCTAssertTrue(step(close, from: second.newState).fire.isEmpty)
     }
 
     func testCloseToRunningOutFires() {
@@ -81,6 +75,8 @@ final class PaceNotificationLogicTests: XCTestCase {
         // shouldn't spam alerts the moment the app opens.
         let first = step(running, fraction: 0.02)
         XCTAssertTrue(first.fire.isEmpty, "cold start primes, it doesn't fire")
+        XCTAssertTrue(step(.level(.critical), fraction: 0.01).fire.isEmpty)
+        XCTAssertTrue(step(.level(.normal), fraction: 0.99).fire.isEmpty)
         // A later worsening (after recovery) still fires normally.
         let recovered = step(healthy, fraction: 0.50, from: first.newState).newState
         let red = step(running, fraction: 0.02, from: recovered)
@@ -102,28 +98,13 @@ final class PaceNotificationLogicTests: XCTestCase {
         XCTAssertEqual(refired.fire, [.healthyToClose])
     }
 
-    func testResetJitterDoesNotRearmRunningOutAlert() {
-        var state = step(healthy).newState
-        state = step(running, from: state).newState   // fires closeToRunningOut this window
-
+    func testResetJitterDoesNotRearmExistingAlerts() {
         let jitteredReset = reset.addingTimeInterval(0.09)
-        let stillRunningOut = step(running, resetsAt: jitteredReset, from: state)
-
-        XCTAssertTrue(stillRunningOut.fire.isEmpty)
-        XCTAssertEqual(stillRunningOut.newState.previousBucket, .runningOut)
-        XCTAssertEqual(stillRunningOut.newState.resetsAt, jitteredReset)
-    }
-
-    func testResetJitterDoesNotRearmCloseAlert() {
-        var state = step(healthy).newState
-        state = step(close, from: state).newState   // fires healthyToClose this window
-
-        let jitteredReset = reset.addingTimeInterval(0.09)
-        let stillClose = step(close, resetsAt: jitteredReset, from: state)
-
-        XCTAssertTrue(stillClose.fire.isEmpty)
-        XCTAssertEqual(stillClose.newState.previousBucket, .close)
-        XCTAssertEqual(stillClose.newState.resetsAt, jitteredReset)
+        for meterState in [close, running] {
+            let primed = step(healthy).newState
+            let fired = step(meterState, from: primed).newState
+            XCTAssertTrue(step(meterState, resetsAt: jitteredReset, from: fired).fire.isEmpty)
+        }
     }
 
     // MARK: - Recovery re-arms
@@ -158,13 +139,6 @@ final class PaceNotificationLogicTests: XCTestCase {
         XCTAssertTrue(result.fire.isEmpty)
     }
 
-    func testLevelPrimesWithoutFiringOnFirstObservation() {
-        // `.level` has used/limit data but no pace projection. The first observation primes (records the
-        // under-10% baseline) without firing — like any other first observation.
-        let result = step(.level(.critical), fraction: 0.01)
-        XCTAssertTrue(result.fire.isEmpty)
-    }
-
     func testLevelFiresAlmostOutUnderTenPercent() {
         // `.level` metrics still fire "Almost Out" on the under-10% edge — it's a remaining-based
         // trigger, not a pace one. No pace milestone fires for `.level`.
@@ -186,9 +160,7 @@ final class PaceNotificationLogicTests: XCTestCase {
 
     // MARK: - Toggle gates
 
-    func testMasterOffSuppressionIsCallerSide() {
-        // The pure logic has no master flag; the caller gates it. With all per-triggers off, nothing
-        // fires even on a clear worsening — this stands in for the per-trigger-off path.
+    func testDisabledTriggersDoNotFire() {
         let off = PaceNotificationToggles(underTenPercent: false, healthyToClose: false, closeToRunningOut: false)
         let state = step(healthy, toggles: off).newState
         let close = step(self.close, fraction: 0.05, from: state, toggles: off)
@@ -218,15 +190,5 @@ final class PaceNotificationLogicTests: XCTestCase {
         let on = PaceNotificationToggles(underTenPercent: false, healthyToClose: true, closeToRunningOut: true)
         let refired = step(self.close, fraction: 0.20, from: state, toggles: on)
         XCTAssertTrue(refired.fire.contains(.healthyToClose))
-    }
-
-    // MARK: - Fresh session window (treated as .level by the caller)
-
-    func testFreshSessionLevelPrimesWithoutFiring() {
-        // A fresh session window resolves to an absolute-level state (`.level`) with plenty of quota
-        // left, so it primes without firing. (A `.level` metric can still fire "Almost Out" later if it
-        // drops under 10% — see testLevelFiresAlmostOutUnderTenPercent.)
-        let result = step(.level(.normal), fraction: 0.99)
-        XCTAssertTrue(result.fire.isEmpty)
     }
 }

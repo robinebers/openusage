@@ -6,87 +6,32 @@ import XCTest
 /// tiles untouched, and persists across launches.
 @MainActor
 final class WidgetMeterStyleTests: XCTestCase {
-    func testMeterStyleFlipsBoundedPercentTile() async {
-        let (store, descriptor) = await makeRefreshedStore(
-            format: .percent,
-            used: 80,
-            limit: 100,
-            suite: "percent"
-        )
+    func testMeterStyleFlipsEveryBoundedFormat() async {
+        let cases: [(name: String, format: ProgressFormat, used: Double, limit: Double,
+                     remaining: String, consumed: String, subtitle: String?)] = [
+            ("percent", .percent, 80, 100, "20%", "80%", nil),
+            ("dollars", .dollars, 80, 100, "$20.00", "$80.00", "$100 limit"),
+            ("count", .count(suffix: "credits"), 320, 1_000, "680", "320", "credits")
+        ]
 
-        XCTAssertEqual(store.meterStyle, .remaining) // empty suite default
-        let remaining = store.data(for: descriptor)
-        XCTAssertEqual(remaining.valueText, "20%")
-        XCTAssertEqual(remaining.boundedHeadline, "20% left")
-        XCTAssertNil(remaining.boundedSubtitle)
-        XCTAssertEqual(remaining.fraction, 0.20, accuracy: 0.0001)
+        for item in cases {
+            let (store, descriptor) = await makeRefreshedStore(
+                format: item.format, used: item.used, limit: item.limit, suite: item.name
+            )
 
-        store.meterStyle = .used
-        let used = store.data(for: descriptor)
-        XCTAssertEqual(used.valueText, "80%")
-        XCTAssertEqual(used.boundedHeadline, "80% used")
-        XCTAssertNil(used.boundedSubtitle)
-        XCTAssertEqual(used.fraction, 0.80, accuracy: 0.0001)
-    }
+            let remaining = store.data(for: descriptor)
+            XCTAssertEqual(remaining.valueText, item.remaining, item.name)
+            XCTAssertEqual(remaining.boundedHeadline, "\(item.remaining) left", item.name)
+            XCTAssertEqual(remaining.boundedSubtitle, item.subtitle, item.name)
+            XCTAssertEqual(remaining.fraction, 1 - item.used / item.limit, accuracy: 0.0001, item.name)
 
-    func testMeterStyleFlipsBoundedDollarsTile() async {
-        let (store, descriptor) = await makeRefreshedStore(
-            format: .dollars,
-            used: 80,
-            limit: 100,
-            suite: "dollars"
-        )
-
-        let remaining = store.data(for: descriptor)
-        XCTAssertEqual(remaining.valueText, "$20.00")
-        XCTAssertEqual(remaining.boundedHeadline, "$20.00 left")
-        XCTAssertEqual(remaining.boundedSubtitle, "$100 limit")
-        XCTAssertEqual(remaining.fraction, 0.20, accuracy: 0.0001)
-
-        store.meterStyle = .used
-        let used = store.data(for: descriptor)
-        XCTAssertEqual(used.valueText, "$80.00")
-        XCTAssertEqual(used.boundedHeadline, "$80.00 used")
-        XCTAssertEqual(used.boundedSubtitle, "$100 limit")
-        XCTAssertEqual(used.fraction, 0.80, accuracy: 0.0001)
-    }
-
-    func testMeterStyleFlipsBoundedCountTile() async {
-        let (store, descriptor) = await makeRefreshedStore(
-            format: .count(suffix: "credits"),
-            used: 320,
-            limit: 1000,
-            suite: "count"
-        )
-
-        let remaining = store.data(for: descriptor)
-        XCTAssertEqual(remaining.valueText, "680")
-        XCTAssertEqual(remaining.boundedHeadline, "680 left")
-        XCTAssertEqual(remaining.boundedSubtitle, "credits")
-        XCTAssertEqual(remaining.fraction, 0.68, accuracy: 0.0001)
-
-        store.meterStyle = .used
-        let used = store.data(for: descriptor)
-        XCTAssertEqual(used.valueText, "320")
-        XCTAssertEqual(used.boundedHeadline, "320 used")
-        XCTAssertEqual(used.boundedSubtitle, "credits")
-        XCTAssertEqual(used.fraction, 0.32, accuracy: 0.0001)
-    }
-
-    func testBoundedHeadlineWordFlipsSymmetricallyWithMeterStyle() async {
-        // The same tile must carry the mode word in BOTH modes (regression: "Used" mode had dropped it).
-        let (store, descriptor) = await makeRefreshedStore(
-            format: .percent,
-            used: 80,
-            limit: 100,
-            suite: "symmetry"
-        )
-
-        store.meterStyle = .remaining
-        XCTAssertEqual(store.data(for: descriptor).boundedHeadline, "20% left")
-
-        store.meterStyle = .used
-        XCTAssertEqual(store.data(for: descriptor).boundedHeadline, "80% used")
+            store.meterStyle = .used
+            let used = store.data(for: descriptor)
+            XCTAssertEqual(used.valueText, item.consumed, item.name)
+            XCTAssertEqual(used.boundedHeadline, "\(item.consumed) used", item.name)
+            XCTAssertEqual(used.boundedSubtitle, item.subtitle, item.name)
+            XCTAssertEqual(used.fraction, item.used / item.limit, accuracy: 0.0001, item.name)
+        }
     }
 
     func testGlobalModeOverridesDescriptorSampleDisplayMode() async {

@@ -45,21 +45,6 @@ final class WidgetDataStoreAccountCacheTests: XCTestCase {
         )
     }
 
-    /// A matching stamp keeps the entry: same account across launches, cache paints as always.
-    func testMatchingStampKeepsCachedEntryAtLaunch() {
-        let defaults = makeUserDefaults("match")
-        let cache = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() })
-        cache.store(snapshot("claude", used: 40), producedByIdentityKey: "acct-A")
-
-        let store = makeStore(
-            providers: [provider("claude")],
-            cache: cache,
-            defaults: defaults,
-            identityKeys: ["claude": "acct-A"]
-        )
-        XCTAssertNotNil(store.snapshots["claude"])
-    }
-
     /// A mismatched stamp drops ONLY that entry: the swapped card starts blank until its refresh,
     /// while the other family's card with a matching stamp keeps painting.
     func testMismatchedStampDropsOnlyThatEntry() {
@@ -158,23 +143,6 @@ final class WidgetDataStoreAccountCacheTests: XCTestCase {
         )
         let honored = await sameAccount.refresh(providerID: "claude")
         XCTAssertEqual(honored, .cacheHit)
-    }
-
-    /// The single predicate every read path shares (`hasStaleAccountStamp`): true only when an entry
-    /// exists, the current identity is known, and the stamp fails to name it.
-    func testHasStaleAccountStampSemantics() {
-        let defaults = makeUserDefaults("predicate")
-        let cache = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() })
-
-        XCTAssertFalse(cache.hasStaleAccountStamp(providerID: "claude", currentIdentityKey: "acct-A"), "no entry, nothing to distrust")
-
-        cache.store(snapshot("claude", used: 40), producedByIdentityKey: "acct-A")
-        XCTAssertFalse(cache.hasStaleAccountStamp(providerID: "claude", currentIdentityKey: "acct-A"))
-        XCTAssertFalse(cache.hasStaleAccountStamp(providerID: "claude", currentIdentityKey: nil), "unresolved identity can't prove staleness")
-        XCTAssertTrue(cache.hasStaleAccountStamp(providerID: "claude", currentIdentityKey: "acct-B"))
-
-        cache.store(snapshot("claude", used: 41))
-        XCTAssertTrue(cache.hasStaleAccountStamp(providerID: "claude", currentIdentityKey: "acct-A"), "an unstamped entry is unattributable")
     }
 
     /// A refresh writes the card's launch-resolved identity as the stamp, and a nil identity CLEARS

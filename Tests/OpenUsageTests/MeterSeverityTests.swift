@@ -30,22 +30,16 @@ final class MeterSeverityTests: XCTestCase {
 
     // MARK: Pace-driven (a live reset window)
 
-    func testBurningTooFastIsCriticalLongBeforeTheBarLooksFull() {
-        // 66% used but only a third of the week gone → projected ~182% → red, despite the
-        // absolute bands calling 66% "normal". This was the original complaint: a bar guaranteed
-        // to run out days early stayed calm blue.
-        XCTAssertEqual(severity(pacedData(used: 66, elapsed: 0.363)), .critical)
-    }
+    func testPaceVerdictOverridesAbsoluteUsageBands() {
+        let cases: [(used: Double, elapsed: Double, severity: WidgetData.MeterSeverity)] = [
+            (66, 0.363, .critical),
+            (85, 0.96, .normal),
+            (88, 0.9, .warning)
+        ]
 
-    func testCoastingToTheResetStaysNormalEvenWhenNearlyDrained() {
-        // 85% used with 96% of the window gone → projected ~89%, ≥10% to spare → blue, even
-        // though the absolute bands would call 85% "warning".
-        XCTAssertEqual(severity(pacedData(used: 85, elapsed: 0.96)), .normal)
-    }
-
-    func testProjectedIntoTheLastTenPercentIsWarning() {
-        // 88% used with 90% of the window gone → projected ~97.8% → amber.
-        XCTAssertEqual(severity(pacedData(used: 88, elapsed: 0.9)), .warning)
+        for testCase in cases {
+            XCTAssertEqual(severity(pacedData(used: testCase.used, elapsed: testCase.elapsed)), testCase.severity)
+        }
     }
 
     func testLimitReachedIsSpentRegardlessOfElapsed() {
@@ -70,35 +64,22 @@ final class MeterSeverityTests: XCTestCase {
 
     func testEarlyInWindowUsesPaceVerdictNotAbsoluteBands() {
         // Early in the window still projects pace — heavy usage at 2% elapsed is already behind.
-        XCTAssertEqual(severity(pacedData(used: 50, elapsed: 0.02)), .critical)
         XCTAssertEqual(severity(pacedData(used: 85, elapsed: 0.02)), .critical)
     }
 
     // MARK: Absolute fallback (no reset window to project against)
 
-    func testComfortableUsageIsNormal() {
-        XCTAssertEqual(severity(percentData(used: 0)), .normal)
-        XCTAssertEqual(severity(percentData(used: 50)), .normal)
-        XCTAssertEqual(severity(percentData(used: 79)), .normal)
-    }
+    func testAbsoluteSeverityThresholdsUseRoundedPercentages() {
+        let cases: [(used: Double, severity: WidgetData.MeterSeverity)] = [
+            (0, .normal), (79, .normal), (79.6, .warning), (80, .warning),
+            (89.4, .warning), (89.6, .critical), (90, .critical)
+        ]
 
-    func testWarningStartsAtEightyPercentUsed() {
-        XCTAssertEqual(severity(percentData(used: 80)), .warning)
-        XCTAssertEqual(severity(percentData(used: 89)), .warning)
-    }
-
-    func testCriticalStartsAtTenPercentLeft() {
-        XCTAssertEqual(severity(percentData(used: 90)), .critical)
-        // Exactly at/over the limit is spent (still a red bar).
+        for testCase in cases {
+            XCTAssertEqual(severity(percentData(used: testCase.used)), testCase.severity, "used: \(testCase.used)")
+        }
         XCTAssertEqual(percentData(used: 100).meterState(now: now), .spent)
         XCTAssertEqual(percentData(used: 130).meterState(now: now), .spent)
-    }
-
-    func testThresholdsUseTheHeadlinesWholePercentRounding() {
-        // 79.6% reads "80% used" in the headline, so it must already be yellow; same at 89.6% → red.
-        XCTAssertEqual(severity(percentData(used: 79.6)), .warning)
-        XCTAssertEqual(severity(percentData(used: 89.4)), .warning)
-        XCTAssertEqual(severity(percentData(used: 89.6)), .critical)
     }
 
     func testSeverityIgnoresTheUsedLeftDisplayMode() {

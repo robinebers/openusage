@@ -4,16 +4,10 @@ import SwiftUI
 
 @MainActor
 final class ReduceAnimationsSettingTests: XCTestCase {
-    func testMotionStaysEnabledWithoutEitherPreference() {
-        XCTAssertFalse(ReduceAnimationsSetting.resolve(appPreference: false, systemReduceMotion: false))
-    }
-
-    func testAppPreferenceReducesAnimations() {
-        XCTAssertTrue(ReduceAnimationsSetting.resolve(appPreference: true, systemReduceMotion: false))
-    }
-
-    func testSystemPreferenceReducesAnimations() {
-        XCTAssertTrue(ReduceAnimationsSetting.resolve(appPreference: false, systemReduceMotion: true))
+    func testEitherPreferenceReducesAnimations() {
+        for (app, system, expected) in [(false, false, false), (true, false, true), (false, true, true)] {
+            XCTAssertEqual(ReduceAnimationsSetting.resolve(appPreference: app, systemReduceMotion: system), expected)
+        }
     }
 
     func testPersistenceKeyAndFallbackStayStable() {
@@ -21,22 +15,14 @@ final class ReduceAnimationsSettingTests: XCTestCase {
         XCTAssertFalse(ReduceAnimationsSetting.fallback)
     }
 
-    func testReducedAnimationsClearsAndLocksTheRootTransaction() {
-        var transaction = Transaction(animation: .linear(duration: 1))
+    func testRootTransactionOnlyDisablesAnimationsWhenReduced() {
+        for reduced in [false, true] {
+            var transaction = Transaction(animation: .linear(duration: 1))
+            Motion.applyReduction(to: &transaction, enabled: reduced)
 
-        Motion.applyReduction(to: &transaction, enabled: true)
-
-        XCTAssertNil(transaction.animation)
-        XCTAssertTrue(transaction.disablesAnimations)
-    }
-
-    func testNormalMotionLeavesTheRootTransactionUntouched() {
-        var transaction = Transaction(animation: .linear(duration: 1))
-
-        Motion.applyReduction(to: &transaction, enabled: false)
-
-        XCTAssertNotNil(transaction.animation)
-        XCTAssertFalse(transaction.disablesAnimations)
+            XCTAssertEqual(transaction.animation == nil, reduced)
+            XCTAssertEqual(transaction.disablesAnimations, reduced)
+        }
     }
 
     func testReducedAnimationsNeverMountsScreenTransitionPager() {
@@ -48,50 +34,21 @@ final class ReduceAnimationsSettingTests: XCTestCase {
         ))
     }
 
-    func testSettingsOverlayFollowsItsPagerSlotDuringASlide() {
-        XCTAssertEqual(
-            DashboardView.settingsOverlayOffset(
-                pages: [.dashboard, .settings],
-                slideOffset: 0,
-                pageWidth: 320
-            ),
-            320
-        )
-        XCTAssertEqual(
-            DashboardView.settingsOverlayOffset(
-                pages: [.dashboard, .settings],
-                slideOffset: -320,
-                pageWidth: 320
-            ),
-            0
-        )
-        XCTAssertEqual(
-            DashboardView.settingsOverlayOffset(
-                pages: [.settings],
-                slideOffset: 0,
-                pageWidth: 320
-            ),
-            0
-        )
-    }
+    func testSettingsOverlayFollowsItsPagerSlotOrParksOffscreen() {
+        let cases: [(pages: [PopoverScreen], offset: CGFloat, expected: CGFloat)] = [
+            ([.dashboard, .settings], 0, 320),
+            ([.dashboard, .settings], -320, 0),
+            ([.settings], 0, 0),
+            ([.dashboard], 0, 640),
+            ([.dashboard, .customize], -160, 640)
+        ]
 
-    func testSettingsOverlayParksOffscreenWhenNotInThePager() {
-        XCTAssertEqual(
-            DashboardView.settingsOverlayOffset(
-                pages: [.dashboard],
-                slideOffset: 0,
-                pageWidth: 320
-            ),
-            640
-        )
-        XCTAssertEqual(
-            DashboardView.settingsOverlayOffset(
-                pages: [.dashboard, .customize],
-                slideOffset: -160,
-                pageWidth: 320
-            ),
-            640
-        )
+        for item in cases {
+            XCTAssertEqual(
+                DashboardView.settingsOverlayOffset(pages: item.pages, slideOffset: item.offset, pageWidth: 320),
+                item.expected
+            )
+        }
     }
 
     func testSettingsChromeOnlyMountsWhileItsPageIsVisibleOrSliding() {

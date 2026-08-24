@@ -154,46 +154,20 @@ final class ModelPricingStoreTests: XCTestCase {
         XCTAssertEqual(pricing.resolve(model: "fetched-model")?.inputPerMillion, 5)
     }
 
-    /// An app update ships a newer bundled supplement while the cache from the previous version is
-    /// still on disk. The shipped rates must win until the feed catches up — otherwise a fix that
-    /// merged and shipped stays invisible, permanently for anyone who can't reach the feed.
-    func testNewerBundledSupplementBeatsOlderCache() async throws {
-        try writeSupplementCache(updatedAt: "2026-01-01", autoInput: 9)
+    func testSupplementSelectionPrefersTheMostRecentDatedSource() async throws {
+        let scenarios: [(name: String, bundled: String?, cached: String?, expected: Double)] = [
+            ("newer bundle", "2026-06-01", "2026-01-01", 4),
+            ("same-day precise bundle", "2026-08-11T07:01:30Z", "2026-08-11", 4),
+            ("newer cache", "2026-01-01", "2026-06-01", 9),
+            ("undated cache", "2026-06-01", nil, 4),
+            ("undated bundle", nil, "2026-06-01", 9)
+        ]
 
-        let store = makeStoreWithBundledSupplement(updatedAt: "2026-06-01", autoInput: 4)
-        let pricing = await store.current()
-        XCTAssertEqual(pricing.resolve(model: "auto")?.inputPerMillion, 4)
-    }
-
-    /// Multiple supplement changes can land on one day. A precise bundled timestamp must beat a
-    /// legacy date-only cache from that day, or the cache hides newly shipped aliases and rates.
-    func testTimestampedBundledSupplementBeatsSameDayDateOnlyCache() async throws {
-        try writeSupplementCache(updatedAt: "2026-08-11", autoInput: 9)
-
-        let store = makeStoreWithBundledSupplement(updatedAt: "2026-08-11T07:01:30Z", autoInput: 4)
-        let pricing = await store.current()
-        XCTAssertEqual(pricing.resolve(model: "auto")?.inputPerMillion, 4)
-    }
-
-    /// The usual case: the feed runs ahead of the shipped file, so the cache keeps winning.
-    func testNewerCachedSupplementBeatsOlderBundled() async throws {
-        try writeSupplementCache(updatedAt: "2026-06-01", autoInput: 9)
-
-        let store = makeStoreWithBundledSupplement(updatedAt: "2026-01-01", autoInput: 4)
-        let pricing = await store.current()
-        XCTAssertEqual(pricing.resolve(model: "auto")?.inputPerMillion, 9)
-    }
-
-    /// An undated file never displaces a dated one, in either direction.
-    func testUndatedSupplementNeverDisplacesDatedOne() async throws {
-        try writeSupplementCache(updatedAt: nil, autoInput: 9)
-
-        let datedBundle = await makeStoreWithBundledSupplement(updatedAt: "2026-06-01", autoInput: 4).current()
-        XCTAssertEqual(datedBundle.resolve(model: "auto")?.inputPerMillion, 4)
-
-        try writeSupplementCache(updatedAt: "2026-06-01", autoInput: 9)
-        let undatedBundle = await makeStoreWithBundledSupplement(updatedAt: nil, autoInput: 4).current()
-        XCTAssertEqual(undatedBundle.resolve(model: "auto")?.inputPerMillion, 9)
+        for scenario in scenarios {
+            try writeSupplementCache(updatedAt: scenario.cached, autoInput: 9)
+            let pricing = await makeStoreWithBundledSupplement(updatedAt: scenario.bundled, autoInput: 4).current()
+            XCTAssertEqual(pricing.resolve(model: "auto")?.inputPerMillion, scenario.expected, scenario.name)
+        }
     }
 
     private static func supplementJSON(updatedAt: String?, autoInput: Double) -> String {

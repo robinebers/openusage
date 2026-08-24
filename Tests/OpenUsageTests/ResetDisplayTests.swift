@@ -49,28 +49,23 @@ final class ResetDisplayTests: XCTestCase {
         XCTAssertEqual(data.resetTooltip()?.hasPrefix("Resets in "), true)      // opposite = relative
     }
 
-    func testFreshSessionWindowShowsNotStartedForClaudeAndAntigravity() {
+    func testFreshSessionWindowShowsNotStartedAndSuppressesPacing() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let period: TimeInterval = 5 * 3600
-        for id in ["claude.session",
-                   "antigravity.geminiPro", "antigravity.claude"] {
-            var data = WidgetData(title: "Session", icon: .providerMark("codex"), kind: .percent, used: 0, limit: 100)
-            data.isSessionWindow = true   // descriptor opt-in the session tiles now carry
-            data.periodDurationMs = Int(period * 1000)
-            // Half the window has elapsed on the clock, so pace would otherwise project — but usage is
-            // still zero, which is what "Not started" keys off (see `isFreshSessionWindow`).
-            data.resetsAt = now.addingTimeInterval(period / 2)
-            XCTAssertEqual(data.boundedTrailingText(now: now), "Not started", id)
-            XCTAssertFalse(data.hasResetLabel(now: now), id)
-            XCTAssertEqual(data.resetTooltip(now: now), WidgetData.freshSessionTooltip, id)
-            // The bar and its hover must not contradict "Not started": a calm level state, no pace
-            // projection and no tick — even with pacing forced on and the window well past minimumElapsed.
-            data.alwaysShowPacing = true
-            let state = data.meterState(now: now)
-            XCTAssertEqual(state, .level(.normal), id)
-            XCTAssertNil(state.tooltip, id)
-            XCTAssertNil(data.paceTick(for: state, now: now), id)
-        }
+        var data = WidgetData(title: "Session", icon: .providerMark("codex"), kind: .percent, used: 0, limit: 100)
+        data.isSessionWindow = true
+        data.periodDurationMs = Int(period * 1000)
+        data.resetsAt = now.addingTimeInterval(period / 2)
+
+        XCTAssertEqual(data.boundedTrailingText(now: now), "Not started")
+        XCTAssertFalse(data.hasResetLabel(now: now))
+        XCTAssertEqual(data.resetTooltip(now: now), WidgetData.freshSessionTooltip)
+
+        data.alwaysShowPacing = true
+        let state = data.meterState(now: now)
+        XCTAssertEqual(state, .level(.normal))
+        XCTAssertNil(state.tooltip)
+        XCTAssertNil(data.paceTick(for: state, now: now))
     }
 
     @MainActor
@@ -94,19 +89,15 @@ final class ResetDisplayTests: XCTestCase {
         XCTAssertEqual(suffixed.first?.sample.traySuffix, "resets")
     }
 
-    func testAntigravityWeeklyRowsNeverReadNotStarted() {
-        // Antigravity's weekly meters are calendar windows, not rolling sessions — like Claude,
-        // only the 5h rows get the "Not started" treatment (fix: merged pools + weekly limits).
+    func testNonSessionWindowNeverReadsNotStarted() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let period: TimeInterval = 7 * 24 * 3600
-        for id in ["antigravity.geminiWeekly", "antigravity.claudeWeekly"] {
-            var data = WidgetData(title: "Weekly", icon: .providerMark("codex"), kind: .percent, used: 0, limit: 100)
-            data.periodDurationMs = Int(period * 1000)
-            data.resetsAt = now.addingTimeInterval(period / 2)
-            XCTAssertFalse(data.isFreshSessionWindow(now: now), id)
-            XCTAssertNotEqual(data.boundedTrailingText(now: now), "Not started", id)
-            XCTAssertEqual(data.boundedTrailingText(now: now)?.hasPrefix("Resets"), true, id)
-        }
+        var data = WidgetData(title: "Weekly", icon: .providerMark("codex"), kind: .percent, used: 0, limit: 100)
+        data.periodDurationMs = Int(period * 1000)
+        data.resetsAt = now.addingTimeInterval(period / 2)
+
+        XCTAssertFalse(data.isFreshSessionWindow(now: now))
+        XCTAssertEqual(data.boundedTrailingText(now: now)?.hasPrefix("Resets"), true)
     }
 
     func testExpiryTooltipSingleCreditFollowsTimeSetting() {
@@ -200,29 +191,16 @@ final class ResetDisplayTests: XCTestCase {
         XCTAssertEqual(entries[1].countdown, "12d 18h")        // countdown trails
     }
 
-    func testResetsPopoverPastDueEntryReadsSoonWithNoCountdown() {
-        // A past-due credit (still "available" until the next refresh drops it) can't print a useful
-        // wall-clock time or countdown, so it collapses to "Expiring soon" with no trailing countdown —
-        // matching Formatters.imminent. Its dot stays red.
+    func testResetsPopoverPastDueAndImminentEntriesReadSoonWithNoCountdown() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let entries = RateLimitResetsDetail.entries(from: [now.addingTimeInterval(-60)], now: now)
+        for offset in [-60.0, 180.0] {
+            let entries = RateLimitResetsDetail.entries(from: [now.addingTimeInterval(offset)], now: now)
 
-        XCTAssertEqual(entries.count, 1)
-        XCTAssertEqual(entries[0].time, "Expiring soon")
-        XCTAssertNil(entries[0].countdown)
-        XCTAssertEqual(entries[0].severity, .critical)
-    }
-
-    func testResetsPopoverImminentFutureCreditCollapsesToSoon() {
-        // A credit ≤5 minutes out (but not yet past-due): relative mode already reads "soon", so the
-        // exact time must not print a wall-clock while the countdown vanishes — both collapse to
-        // "Expiring soon" with no countdown.
-        let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let entries = RateLimitResetsDetail.entries(from: [now.addingTimeInterval(180)], now: now)
-
-        XCTAssertEqual(entries.count, 1)
-        XCTAssertEqual(entries[0].time, "Expiring soon")
-        XCTAssertNil(entries[0].countdown)
+            XCTAssertEqual(entries.count, 1)
+            XCTAssertEqual(entries[0].time, "Expiring soon")
+            XCTAssertNil(entries[0].countdown)
+            XCTAssertEqual(entries[0].severity, .critical)
+        }
     }
 
     func testResetsPopoverEmptyWhenNoCredits() {
