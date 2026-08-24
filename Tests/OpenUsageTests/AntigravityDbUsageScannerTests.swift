@@ -323,6 +323,33 @@ final class AntigravityDbUsageScannerTests: XCTestCase {
         XCTAssertEqual(sqlite.queriedCursors, [-1, 0])
     }
 
+    func testEvictsConversationHistoryAfterDatabaseAgesOutOfScanWindow() async throws {
+        let fixture = try makeDatabaseDirectory()
+        defer { try? FileManager.default.removeItem(at: fixture.url) }
+
+        let timestamp = UInt64(now.timeIntervalSince1970) - 3_600
+        let original = antigravityGenerationBlob(model: "gemini-3.6-flash", input: 10, output: 5, timestamp: timestamp)
+        let sqlite = AntigravityFakeSQLite(rowsByPath: [fixture.paths[0]: [.init(index: 0, blob: original)]])
+        let scanner = AntigravityDbUsageScanner(sqlite: sqlite, conversationsDirectory: { fixture.url.path })
+        try FileManager.default.setAttributes([.modificationDate: now], ofItemAtPath: fixture.paths[0])
+
+        _ = await scanner.scan(now: now, pricing: pricing)
+        let future = now.addingTimeInterval(31 * 86_400)
+        let expired = await scanner.scan(now: future, pricing: pricing)
+        XCTAssertNil(expired)
+
+        let recent = antigravityGenerationBlob(
+            model: "gemini-3.6-flash", input: 10, output: 5,
+            timestamp: UInt64(future.timeIntervalSince1970) - 3_600
+        )
+        sqlite.append(.init(index: 1, blob: recent), to: fixture.paths[0])
+        try FileManager.default.setAttributes([.modificationDate: future], ofItemAtPath: fixture.paths[0])
+        let refreshed = await scanner.scan(now: future, pricing: pricing)
+
+        XCTAssertEqual(try XCTUnwrap(refreshed).series.daily.first?.totalTokens, 15)
+        XCTAssertEqual(sqlite.queriedCursors, [-1, -1])
+    }
+
     func testUnpricedAndMissingModelsRemainVisibleAsUnknown() async throws {
         let fixture = try makeDatabaseDirectory()
         defer { try? FileManager.default.removeItem(at: fixture.url) }

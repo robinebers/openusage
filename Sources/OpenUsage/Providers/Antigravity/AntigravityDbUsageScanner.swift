@@ -63,7 +63,7 @@ struct AntigravityDbUsageScanner: Sendable {
 
         let since = JSONLScanning.sinceDate(daysBack: daysBack, now: now)
         let checkedPaths = Set(paths)
-        await scanCache.prune(keeping: checkedPaths)
+        await scanCache.prune(keeping: checkedPaths, since: since)
         var accumulator = DailyUsageAccumulator()
         var failingPaths: [String: String] = [:]
         var oversizedPaths: Set<String> = []
@@ -311,5 +311,9 @@ private actor AntigravityDbScanCache {
 
     func entry(for path: String) -> Entry? { entries[path] }
     func store(_ entry: Entry, for path: String) { entries[path] = entry }
-    func prune(keeping paths: Set<String>) { entries = entries.filter { paths.contains($0.key) } }
+    func prune(keeping paths: Set<String>, since: Date) {
+        entries = entries.filter {
+            paths.contains($0.key) && $0.value.fingerprint.latestModification >= since
+        }
+    }
 }
