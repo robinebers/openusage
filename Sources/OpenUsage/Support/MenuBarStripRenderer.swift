@@ -139,7 +139,7 @@ private struct MenuBarPrivacyLabel: View {
             // The same mark and inset as `MenuBarIcon` (the art carries its own margin), sized to the
             // strip's glyph box so the swap keeps the provider-glyph scale.
             if let mark = ProviderMarks.mark(for: "openusage") {
-                ProviderIconShape(pathData: mark.path, inset: 0.08)
+                ProviderIconShape(mark: mark, inset: 0.08)
                     .fill(Color.black)
                     .frame(width: 16, height: 16)
             }
@@ -199,7 +199,7 @@ private struct MenuBarTextStrip: View {
     @ViewBuilder
     private func glyph(_ icon: IconSource) -> some View {
         if let mark = ProviderMarks.mark(for: icon.providerID) {
-            ProviderIconShape(pathData: mark.path, inset: 0.04)
+            ProviderIconShape(mark: mark, inset: 0.04)
                 .fill(Color.black)
                 .frame(width: Self.glyphSide, height: Self.glyphSide)
         } else {

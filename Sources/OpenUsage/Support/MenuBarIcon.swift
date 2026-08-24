@@ -17,7 +17,7 @@ enum MenuBarIcon {
         let renderer = ImageRenderer(
             // Smaller inset than the provider default so the brand gauge keeps its prior menu-bar size
             // (its art already carries ~8% margin inside the source viewBox).
-            content: ProviderIconShape(pathData: mark.path, inset: 0.08)
+            content: ProviderIconShape(mark: mark, inset: 0.08)
                 .fill(Color.black)
                 .frame(width: side, height: side)
         )

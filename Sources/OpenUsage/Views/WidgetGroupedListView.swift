@@ -200,7 +200,10 @@ struct WidgetGroupedListView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .reorderFrame(id: expandedDividerID(for: providerID), in: .named(reorderSpaceName))
+        .reorderFrame(
+            id: expandedDividerID(for: providerID),
+            in: .named(reorderSpaceName)
+        )
         .accessibilityLabel(isExpanded ? "Show less" : "Show more")
     }
 
@@ -224,7 +227,6 @@ struct WidgetGroupedListView: View {
 
     private func row(_ descriptor: WidgetDescriptor, data: WidgetData, in providerID: String,
                      condensedTop: Bool) -> some View {
-        let isActive = activeMetricID == descriptor.id
         return WidgetRowView(
             data: data,
             onToggleResetDisplay: { dataStore.resetDisplayMode.toggle() },
@@ -232,7 +234,7 @@ struct WidgetGroupedListView: View {
             condensedTop: condensedTop
         )
             .contentShape(Rectangle())
-            .opacity(isActive ? 0 : 1)
+            .opacity(activeMetricID == descriptor.id ? 0 : 1)
             .highPriorityGesture(metricDragGesture(for: descriptor, providerID: providerID))
             .contextMenu { rowMenu(descriptor, providerID: providerID) }
             .reorderFrame(id: descriptor.id, in: .named(reorderSpaceName))

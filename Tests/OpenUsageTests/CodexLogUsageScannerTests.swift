@@ -203,6 +203,9 @@ final class CodexLogUsageScannerTests: XCTestCase {
     // MARK: - Auto-review fallbacks
 
     func testAutoReviewSlugMapsToDatedCodexModel() {
+        XCTAssertEqual(CodexLogUsageScanner.autoReviewFallback(at: "2026-08-20T00:00:00Z"), "gpt-5.6-luna")
+        XCTAssertEqual(CodexLogUsageScanner.autoReviewFallback(at: "2026-07-09T00:00:00Z"), "gpt-5.6-luna")
+        XCTAssertEqual(CodexLogUsageScanner.autoReviewFallback(at: "2026-07-08T23:59:59Z"), "gpt-5.5")
         XCTAssertEqual(CodexLogUsageScanner.autoReviewFallback(at: "2026-05-01T00:00:00Z"), "gpt-5.5")
         XCTAssertEqual(CodexLogUsageScanner.autoReviewFallback(at: "2026-03-10T00:00:00Z"), "gpt-5.4")
         XCTAssertEqual(CodexLogUsageScanner.autoReviewFallback(at: "2025-12-25T00:00:00Z"), "gpt-5.2-codex")
@@ -222,6 +225,20 @@ final class CodexLogUsageScannerTests: XCTestCase {
         let event = CodexLogUsageScanner.parseFile(Data(lines.utf8)).first
         XCTAssertEqual(event?.model, "codex-auto-review")
         XCTAssertEqual(event?.pricingModel, "gpt-5.4")
+    }
+
+    func testRecentAutoReviewLinesUseLunaPricing() {
+        let lines = [
+            CodexLogFixture.turnContext(timestamp: "2026-08-20T08:00:00.000Z", model: "codex-auto-review"),
+            CodexLogFixture.tokenCount(
+                timestamp: "2026-08-20T08:01:00.000Z",
+                last: CodexLogFixture.usage(input: 10, output: 5)
+            )
+        ].joined(separator: "\n")
+
+        let event = CodexLogUsageScanner.parseFile(Data(lines.utf8)).first
+        XCTAssertEqual(event?.model, "codex-auto-review")
+        XCTAssertEqual(event?.pricingModel, "gpt-5.6-luna")
     }
 
     // MARK: - Child-session replay (subagents and forks)

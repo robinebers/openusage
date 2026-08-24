@@ -130,15 +130,19 @@ struct ReorderFramePreferenceKey: PreferenceKey {
     }
 }
 
-/// Keeps continuously changing row geometry outside SwiftUI's observed state. Scrolling and screen
-/// slides update these frames continuously, but only drag gestures need their latest values; publishing
-/// every update as view state would invalidate the entire dashboard or Customize screen each frame.
+/// Keeps continuously changing scroll geometry out of SwiftUI state. The preference updates on every
+/// scroll frame; storing it in `@State` invalidates the whole widget list even though only drag gestures
+/// need the latest values.
 final class ReorderFrameStore {
     var frames: [String: CGRect] = [:]
 }
 
 extension View {
-    func reorderFrame(id: String, in coordinateSpace: CoordinateSpace, yOutset: CGFloat = 0) -> some View {
+    func reorderFrame(
+        id: String,
+        in coordinateSpace: CoordinateSpace,
+        yOutset: CGFloat = 0
+    ) -> some View {
         background(
             GeometryReader { proxy in
                 Color.clear.preference(

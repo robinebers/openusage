@@ -62,7 +62,7 @@ actor CodexLogUsageScanner {
     /// once. The version is the parser schema version; bump it when `Event` semantics change.
     private static let sharedScanner = IncrementalJSONLScanner<Event>(
         logTag: LogTag.plugin("codex"),
-        persistence: JSONLScanCachePersistence(namespace: "codex", schemaVersion: 2)
+        persistence: JSONLScanCachePersistence(namespace: "codex", schemaVersion: 3)
     )
 
     static func flushPersistentCacheWrites() async {
@@ -424,7 +424,14 @@ actor CodexLogUsageScanner {
 
     /// `codex-auto-review` release timeline (newest first), from ccusage's embedded snapshot: a
     /// line dated on/after a release prices as that codex model.
+    ///
+    /// The `gpt-5.6-luna` entry is ours; ccusage's snapshot still stops at gpt-5.5. OpenAI moved
+    /// auto-review onto the GPT-5.6 family when it shipped on 2026-07-09, and the Codex model
+    /// catalog (`~/.codex/models_cache.json`) lists `codex-auto-review` with Luna's exact profile.
+    /// Without this entry every auto-review event since July prices at gpt-5.5 rates, which are 25x
+    /// Luna's across input, cache reads and output alike.
     private static let autoReviewFallbacks: [(releasedOn: String, model: String)] = [
+        ("2026-07-09", "gpt-5.6-luna"),
         ("2026-04-23", "gpt-5.5"),
         ("2026-03-05", "gpt-5.4"),
         ("2026-02-05", "gpt-5.3-codex"),
