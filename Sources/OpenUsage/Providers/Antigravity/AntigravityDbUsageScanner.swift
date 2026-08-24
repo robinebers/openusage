@@ -72,7 +72,9 @@ actor AntigravityDbUsageScanner {
         for path in paths {
             guard !Task.isCancelled else { return nil }
             do {
-                guard let cached = try cachedDatabase(path: path, since: since) else { continue }
+                let cached = try cachedDatabase(path: path, since: since)
+                guard !Task.isCancelled else { return nil }
+                guard let cached else { continue }
                 for event in cached.events {
                     Self.accumulate(event, since: since, pricing: pricing, into: &accumulator)
                 }

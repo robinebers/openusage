@@ -464,7 +464,7 @@ struct EmptyProcessRunner: ProcessRunning {
 }
 
 /// Serial call counter for routing handlers that must vary their response across requests.
-private final class Counter: @unchecked Sendable {
+final class Counter: @unchecked Sendable {
     private let lock = NSLock()
     private var value = 0
     func next() -> Int {

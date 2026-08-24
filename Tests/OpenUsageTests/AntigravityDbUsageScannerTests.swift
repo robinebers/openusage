@@ -58,13 +58,12 @@ private final class AntigravityFakeSQLite: SQLiteAccessing, @unchecked Sendable 
     private var rowsByPath: [String: [AntigravityFixtureRow]]
     private var cursors: [Int] = []
     let failingPaths: Set<String>
+    let cancellingPath: String?
 
-    init(
-        rowsByPath: [String: [AntigravityFixtureRow]] = [:],
-        failingPaths: Set<String> = []
-    ) {
+    init(rowsByPath: [String: [AntigravityFixtureRow]] = [:], failingPaths: Set<String> = [], cancellingPath: String? = nil) {
         self.rowsByPath = rowsByPath
         self.failingPaths = failingPaths
+        self.cancellingPath = cancellingPath
     }
 
     func queryValue(path: String, sql: String) throws -> String? {
@@ -74,6 +73,7 @@ private final class AntigravityFakeSQLite: SQLiteAccessing, @unchecked Sendable 
         if failingPaths.contains(path) {
             throw SQLiteError.queryFailed("database locked")
         }
+        if path == cancellingPath { withUnsafeCurrentTask { $0?.cancel() } }
         let marker = "WHERE idx > "
         guard let markerRange = sql.range(of: marker),
               let cursor = Int(sql[markerRange.upperBound...].split(whereSeparator: \.isWhitespace).first ?? "")
@@ -106,19 +106,6 @@ private final class AntigravityFakeSQLite: SQLiteAccessing, @unchecked Sendable 
     }
 
     func execute(path: String, sql: String) throws {}
-}
-
-private final class AntigravityWarningRecorder: @unchecked Sendable {
-    private let lock = NSLock()
-    private var values: [Int] = []
-
-    func record(_ count: Int) {
-        lock.withLock { values.append(count) }
-    }
-
-    var recorded: [Int] {
-        lock.withLock { values }
-    }
 }
 
 final class AntigravityProtoDecoderTests: XCTestCase {
@@ -326,7 +313,7 @@ final class AntigravityDbUsageScannerTests: XCTestCase {
 
     func testOversizedBlobsAreSkippedAndWarnOnlyOnce() async throws {
         let fixture = try makeDatabaseDirectory()
-        let recorder = AntigravityWarningRecorder()
+        let recorder = Counter()
         let timestamp = UInt64(now.timeIntervalSince1970) - 3_600
         let valid = antigravityGenerationBlob(model: "gemini-3.6-flash", input: 10, output: 5, timestamp: timestamp)
         let sqlite = AntigravityFakeSQLite(rowsByPath: [fixture.paths[0]: [
@@ -336,7 +323,7 @@ final class AntigravityDbUsageScannerTests: XCTestCase {
         let scanner = AntigravityDbUsageScanner(
             sqlite: sqlite,
             conversationsDirectory: { fixture.url.path },
-            oversizedBlobWarning: { recorder.record($0) }
+            oversizedBlobWarning: { _ in _ = recorder.next() }
         )
 
         let firstResult = await scanner.scan(now: now, pricing: pricing)
@@ -346,12 +333,12 @@ final class AntigravityDbUsageScannerTests: XCTestCase {
 
         XCTAssertEqual(first.series.daily.first?.totalTokens, 15)
         XCTAssertEqual(second.series.daily.first?.totalTokens, 15)
-        XCTAssertEqual(recorder.recorded, [1])
+        XCTAssertEqual(recorder.next(), 1)
     }
 
-    func testUnreadableDatabaseDoesNotHideReadableDatabaseAndWarnsOnce() async throws {
+    func testUnreadableOrCancelledDatabaseCannotPublishPartialHistory() async throws {
         let fixture = try makeDatabaseDirectory(fileNames: ["a.db", "b.db"])
-        let recorder = AntigravityWarningRecorder()
+        let recorder = Counter()
         let timestamp = UInt64(now.timeIntervalSince1970) - 3_600
         let blob = antigravityGenerationBlob(model: "gemini-3.6-flash", input: 10, output: 5, timestamp: timestamp)
         let sqlite = AntigravityFakeSQLite(
@@ -361,7 +348,7 @@ final class AntigravityDbUsageScannerTests: XCTestCase {
         let scanner = AntigravityDbUsageScanner(
             sqlite: sqlite,
             conversationsDirectory: { fixture.url.path },
-            readFailureWarning: { recorder.record($0) }
+            readFailureWarning: { _ in _ = recorder.next() }
         )
 
         let firstResult = await scanner.scan(now: now, pricing: pricing)
@@ -371,7 +358,18 @@ final class AntigravityDbUsageScannerTests: XCTestCase {
 
         XCTAssertEqual(first.series.daily.first?.totalTokens, 15)
         XCTAssertEqual(second.series.daily.first?.totalTokens, 15)
-        XCTAssertEqual(recorder.recorded, [1])
+        XCTAssertEqual(recorder.next(), 1)
+
+        let cancellableSQLite = AntigravityFakeSQLite(
+            rowsByPath: fixture.paths.reduce(into: [:]) { $0[$1] = [.init(index: 0, blob: blob)] },
+            cancellingPath: fixture.paths[1]
+        )
+        let cancellableScanner = AntigravityDbUsageScanner(
+            sqlite: cancellableSQLite, conversationsDirectory: { fixture.url.path }
+        )
+        let (fixedNow, fixedPricing) = (now, pricing)
+        let cancelled = await Task { await cancellableScanner.scan(now: fixedNow, pricing: fixedPricing) }.value
+        XCTAssertNil(cancelled)
     }
 
     func testBatchSQLBoundsRowsAndSkipsOversizedBlobsBeforeHexExpansion() {
