@@ -5,16 +5,15 @@ import Foundation
 ///
 /// SQLite batches are bounded, and oversized protobufs are skipped before `hex(data)` runs: real
 /// Antigravity sessions can contain generation blobs hundreds of megabytes in size.
-struct AntigravityDbUsageScanner: Sendable {
+actor AntigravityDbUsageScanner {
     static let maximumBlobBytes = 1_048_576
     static let batchSize = 8
 
-    var sqlite: SQLiteAccessing
-    var conversationsDirectory: @Sendable () -> String
-
+    private let sqlite: SQLiteAccessing
+    private let conversationsDirectory: @Sendable () -> String
     private let readFailureReporter: UsageLogReadFailureReporter
     private let oversizedBlobReporter: UsageLogReadFailureReporter
-    private let scanCache: AntigravityDbScanCache
+    private var scanCache: [String: CachedDatabase] = [:]
 
     init(
         sqlite: SQLiteAccessing = SQLiteCLIAccessor(),
@@ -24,7 +23,6 @@ struct AntigravityDbUsageScanner: Sendable {
     ) {
         self.sqlite = sqlite
         self.conversationsDirectory = conversationsDirectory
-        self.scanCache = AntigravityDbScanCache()
         self.readFailureReporter = UsageLogReadFailureReporter(
             logTag: LogTag.plugin("antigravity"),
             warning: readFailureWarning
@@ -56,14 +54,17 @@ struct AntigravityDbUsageScanner: Sendable {
             return nil
         }
 
+        let since = JSONLScanning.sinceDate(daysBack: daysBack, now: now)
+        let checkedPaths = Set(paths)
+        scanCache = scanCache.filter {
+            checkedPaths.contains($0.key) && $0.value.fingerprint.latestModification >= since
+        }
+
         guard !paths.isEmpty else {
             await readFailureReporter.update(checkedPaths: [directory], failingPaths: [])
             return nil
         }
 
-        let since = JSONLScanning.sinceDate(daysBack: daysBack, now: now)
-        let checkedPaths = Set(paths)
-        await scanCache.prune(keeping: checkedPaths, since: since)
         var accumulator = DailyUsageAccumulator()
         var failingPaths: [String: String] = [:]
         var oversizedPaths: Set<String> = []
@@ -71,35 +72,7 @@ struct AntigravityDbUsageScanner: Sendable {
         for path in paths {
             guard !Task.isCancelled else { return nil }
             do {
-                let fingerprint = try AntigravityDbScanCache.Fingerprint(path: path)
-                guard fingerprint.latestModification >= since else { continue }
-
-                var cached = await scanCache.entry(for: path)
-                if cached?.fingerprint != fingerprint || (cached?.windowStart ?? since) > since {
-                    if cached?.fingerprint.databaseIdentifier != fingerprint.databaseIdentifier
-                        || (cached?.fingerprint.databaseSize ?? 0) > fingerprint.databaseSize
-                        || (cached?.windowStart ?? since) > since
-                    {
-                        cached = nil
-                    }
-
-                    let existingEvents = cached?.events.filter {
-                        Date(timeIntervalSince1970: TimeInterval($0.timestampSeconds)) >= since
-                    } ?? []
-                    let update = try readDatabase(path: path, after: cached?.lastIndex ?? -1, since: since)
-                    guard !Task.isCancelled else { return nil }
-                    let refreshed = AntigravityDbScanCache.Entry(
-                        fingerprint: fingerprint,
-                        windowStart: since,
-                        lastIndex: update.lastIndex ?? cached?.lastIndex ?? -1,
-                        events: existingEvents + update.events,
-                        sawOversizedBlob: (cached?.sawOversizedBlob ?? false) || update.sawOversizedBlob
-                    )
-                    cached = refreshed
-                    await scanCache.store(refreshed, for: path)
-                }
-
-                guard let cached else { continue }
+                guard let cached = try cachedDatabase(path: path, since: since) else { continue }
                 for event in cached.events {
                     Self.accumulate(event, since: since, pricing: pricing, into: &accumulator)
                 }
@@ -135,7 +108,7 @@ struct AntigravityDbUsageScanner: Sendable {
     /// maximum hex payload returned by any subprocess to roughly `batchSize * maximumBlobBytes * 2`.
     static func dataSQL(after index: Int) -> String {
         """
-        SELECT json_group_array(json_array(idx,
+        SELECT json_group_array(json_object('index', idx, 'hex',
             CASE WHEN length(data) <= \(maximumBlobBytes) THEN hex(data) ELSE NULL END))
         FROM (
             SELECT idx, data FROM gen_metadata
@@ -146,71 +119,64 @@ struct AntigravityDbUsageScanner: Sendable {
         """
     }
 
-    private func readDatabase(
-        path: String,
-        after index: Int,
-        since: Date
-    ) throws -> (lastIndex: Int?, events: [AntigravityProtoDecoder.GenerationEvent], sawOversizedBlob: Bool) {
-        var lastIndex = index
-        var events: [AntigravityProtoDecoder.GenerationEvent] = []
-        var sawOversizedBlob = false
+    private func cachedDatabase(path: String, since: Date) throws -> CachedDatabase? {
+        let fingerprint = try DatabaseFingerprint(path: path)
+        guard fingerprint.latestModification >= since else { return nil }
 
+        if let cached = scanCache[path], cached.fingerprint == fingerprint, cached.windowStart <= since {
+            return cached
+        }
+
+        var cached = scanCache[path]
+        if cached?.fingerprint.databaseIdentifier != fingerprint.databaseIdentifier
+            || (cached?.fingerprint.databaseSize ?? 0) > fingerprint.databaseSize
+            || (cached?.windowStart ?? since) > since
+        {
+            cached = nil
+        }
+
+        var refreshed = cached ?? CachedDatabase(fingerprint: fingerprint, windowStart: since)
+        refreshed.fingerprint = fingerprint
+        refreshed.windowStart = since
+        refreshed.events.removeAll {
+            Date(timeIntervalSince1970: TimeInterval($0.timestampSeconds)) < since
+        }
+        try readDatabase(path: path, since: since, into: &refreshed)
+        guard !Task.isCancelled else { return nil }
+        scanCache[path] = refreshed
+        return refreshed
+    }
+
+    private func readDatabase(path: String, since: Date, into cached: inout CachedDatabase) throws {
         while !Task.isCancelled {
-            guard let payload = try sqlite.queryValue(path: path, sql: Self.dataSQL(after: lastIndex)) else { break }
-            let rows = try Self.rows(from: payload)
+            guard let payload = try sqlite.queryValue(path: path, sql: Self.dataSQL(after: cached.lastIndex)) else { break }
+            let rows = try JSONDecoder().decode([Row].self, from: Data(payload.utf8))
             guard !rows.isEmpty else { break }
 
             for row in rows {
-                guard row.index > lastIndex else {
+                guard row.index > cached.lastIndex else {
                     throw SQLiteError.queryFailed("Antigravity generation indices are not strictly increasing")
                 }
-                lastIndex = row.index
+                cached.lastIndex = row.index
 
                 guard let hex = row.hex else {
-                    sawOversizedBlob = true
+                    cached.sawOversizedBlob = true
                     continue
                 }
                 guard let blob = Self.bytes(fromHex: hex),
                       let event = AntigravityProtoDecoder.generationEvent(from: blob),
                       Date(timeIntervalSince1970: TimeInterval(event.timestampSeconds)) >= since
                 else { continue }
-                events.append(event)
+                cached.events.append(event)
             }
 
             if rows.count < Self.batchSize { break }
         }
-
-        return (lastIndex == index ? nil : lastIndex, events, sawOversizedBlob)
     }
 
-    private struct Row {
-        var index: Int
-        var hex: String?
-    }
-
-    private static func rows(from payload: String) throws -> [Row] {
-        guard let data = payload.data(using: .utf8),
-              let entries = try JSONSerialization.jsonObject(with: data) as? [[Any]]
-        else {
-            throw SQLiteError.queryFailed("Antigravity generation query returned malformed JSON")
-        }
-
-        return try entries.map { entry in
-            guard entry.count == 2,
-                  let indexNumber = entry[0] as? NSNumber,
-                  let index = Int(exactly: indexNumber.int64Value)
-            else {
-                throw SQLiteError.queryFailed("Antigravity generation query returned a malformed row")
-            }
-
-            if entry[1] is NSNull {
-                return Row(index: index, hex: nil)
-            }
-            guard let hex = entry[1] as? String else {
-                throw SQLiteError.queryFailed("Antigravity generation query returned a malformed protobuf")
-            }
-            return Row(index: index, hex: hex)
-        }
+    private struct Row: Decodable {
+        let index: Int
+        let hex: String?
     }
 
     private static func accumulate(
@@ -268,10 +234,8 @@ struct AntigravityDbUsageScanner: Sendable {
             .sorted()
             .map { directory.trimmingTrailingSlashes + "/" + $0 }
     }
-}
 
-private actor AntigravityDbScanCache {
-    struct Fingerprint: Equatable, Sendable {
+    private struct DatabaseFingerprint: Equatable {
         let databaseIdentifier: UInt64
         let databaseSize: Int64
         let databaseModification: Date
@@ -299,21 +263,11 @@ private actor AntigravityDbScanCache {
         }
     }
 
-    struct Entry: Sendable {
-        let fingerprint: Fingerprint
-        let windowStart: Date
-        let lastIndex: Int
-        let events: [AntigravityProtoDecoder.GenerationEvent]
-        let sawOversizedBlob: Bool
-    }
-
-    private var entries: [String: Entry] = [:]
-
-    func entry(for path: String) -> Entry? { entries[path] }
-    func store(_ entry: Entry, for path: String) { entries[path] = entry }
-    func prune(keeping paths: Set<String>, since: Date) {
-        entries = entries.filter {
-            paths.contains($0.key) && $0.value.fingerprint.latestModification >= since
-        }
+    private struct CachedDatabase {
+        var fingerprint: DatabaseFingerprint
+        var windowStart: Date
+        var lastIndex = -1
+        var events: [AntigravityProtoDecoder.GenerationEvent] = []
+        var sawOversizedBlob = false
     }
 }

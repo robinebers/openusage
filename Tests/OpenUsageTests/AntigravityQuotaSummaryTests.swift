@@ -146,15 +146,9 @@ final class AntigravityQuotaSummaryTests: XCTestCase {
 
     @MainActor
     func testDescriptorLabelsMatchMapperEmittedLabels() {
-        let quotaMeterIDs: Set<String> = [
-            AntigravityMetric.geminiID,
-            AntigravityMetric.geminiWeeklyID,
-            AntigravityMetric.claudeID,
-            AntigravityMetric.claudeWeeklyID
-        ]
         let descriptorLabels = Set(
             AntigravityProvider().widgetDescriptors
-                .filter { quotaMeterIDs.contains($0.id) }
+                .filter { !$0.limitResources.isEmpty }
                 .map(\.metricLabel)
         )
         XCTAssertEqual(Set(AntigravityUsageMapper.summaryBuckets.map(\.label)), descriptorLabels)

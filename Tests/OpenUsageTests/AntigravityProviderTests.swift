@@ -457,7 +457,7 @@ final class AntigravityProviderTests: XCTestCase {
 
 /// Returns empty output for every subprocess — makes language-server discovery find nothing, so a
 /// provider test exercises the Cloud Code path deterministically.
-private struct EmptyProcessRunner: ProcessRunning {
+struct EmptyProcessRunner: ProcessRunning {
     func run(executable: String, arguments: [String], environment: [String: String], timeout: TimeInterval) throws -> ProcessResult {
         ProcessResult(exitCode: 0, stdout: "", stderr: "")
     }
