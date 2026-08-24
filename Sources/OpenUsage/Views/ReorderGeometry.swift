@@ -130,8 +130,19 @@ struct ReorderFramePreferenceKey: PreferenceKey {
     }
 }
 
+/// Keeps continuously changing scroll geometry out of SwiftUI state. The preference updates on every
+/// scroll frame; storing it in `@State` invalidates the whole widget list even though only drag gestures
+/// need the latest values.
+final class ReorderFrameStore {
+    var frames: [String: CGRect] = [:]
+}
+
 extension View {
-    func reorderFrame(id: String, in coordinateSpace: CoordinateSpace, yOutset: CGFloat = 0) -> some View {
+    func reorderFrame(
+        id: String,
+        in coordinateSpace: CoordinateSpace,
+        yOutset: CGFloat = 0
+    ) -> some View {
         background(
             GeometryReader { proxy in
                 Color.clear.preference(
@@ -151,7 +162,7 @@ extension View {
 func reorderDragGesture(
     id: String,
     coordinateSpaceName: String,
-    rowFrames: [String: CGRect],
+    frameStore: ReorderFrameStore,
     active: Binding<String?>,
     lift: Binding<ReorderLift?>,
     makeLift: @escaping (DragGesture.Value) -> ReorderLift?,
@@ -167,7 +178,7 @@ func reorderDragGesture(
             lift.wrappedValue?.location = value.location
             guard let target = reorderTarget(
                 at: value.location,
-                in: rowFrames,
+                in: frameStore.frames,
                 excluding: id,
                 orderedIDs: orderedIDs()
             ) else { return }
