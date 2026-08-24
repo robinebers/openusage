@@ -154,14 +154,12 @@ struct DefaultAccountObserver: Sendable {
             guard let auth = CodexAuthStore.parseAuth(text),
                   auth.tokens?.accessToken?.nilIfEmpty != nil
             else { continue }
-            let payload = auth.tokens?.idToken.flatMap { ProviderParse.jwtPayload($0) }
-            let email = (payload?["email"] as? String)?.nilIfEmpty
-            if let accountID = auth.tokens?.accountID?
-                .trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
-                return .resolved(identityKey: accountID.lowercased(), label: email, anchor: anchor)
-            }
-            if let claimID = Self.chatGPTAccountID(inIDTokenPayload: payload) {
-                return .resolved(identityKey: claimID.lowercased(), label: email, anchor: anchor)
+            if let identity = Self.codexIdentity(auth) {
+                return .resolved(
+                    identityKey: identity.identityKey,
+                    label: identity.label,
+                    anchor: anchor
+                )
             }
         }
         return sawFootprint
@@ -177,5 +175,19 @@ struct DefaultAccountObserver: Sendable {
         let authClaim = payload["https://api.openai.com/auth"] as? [String: Any]
         let raw = (authClaim?["chatgpt_account_id"] ?? payload["chatgpt_account_id"]) as? String
         return raw?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+    }
+
+    /// Strict account identity shared by the default-home observer and extra-home discovery.
+    /// The account id is provider-owned metadata, never inferred from a path or token hash; the
+    /// optional email is display-only and never participates in routing.
+    static func codexIdentity(_ auth: CodexAuth) -> (identityKey: String, label: String?)? {
+        guard auth.tokens?.accessToken?.nilIfEmpty != nil else { return nil }
+        let payload = auth.tokens?.idToken.flatMap { ProviderParse.jwtPayload($0) }
+        let email = (payload?["email"] as? String)?.nilIfEmpty
+        let accountID = auth.tokens?.accountID?
+            .trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            ?? chatGPTAccountID(inIDTokenPayload: payload)
+        guard let accountID else { return nil }
+        return (accountID.lowercased(), email)
     }
 }

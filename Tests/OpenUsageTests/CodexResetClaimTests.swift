@@ -152,6 +152,52 @@ final class CodexResetClaimTests: XCTestCase {
         XCTAssertEqual(payload["redeem_request_id"], "redeem-1", "the caller's idempotency key, verbatim")
     }
 
+    func testRouterClaimsWithTheSelectedAccountCardsCredentials() async throws {
+        func service(token: String, accountID: String) -> (CodexResetClaimService, RoutingHTTPClient) {
+            let http = RoutingHTTPClient { request in
+                switch request.url {
+                case CodexUsageClient.resetCreditsURL:
+                    return HTTPResponse(statusCode: 200, headers: [:], body: Self.listBody())
+                case CodexUsageClient.consumeResetCreditURL:
+                    return HTTPResponse(
+                        statusCode: 200,
+                        headers: [:],
+                        body: Self.consumeBody(code: "reset")
+                    )
+                default:
+                    return HTTPResponse(statusCode: 500, headers: [:], body: Data())
+                }
+            }
+            return (
+                CodexResetClaimService(
+                    usageClient: CodexUsageClient(http: http),
+                    credentialCandidates: { [(token, accountID)] }
+                ),
+                http
+            )
+        }
+
+        let (personal, personalHTTP) = service(token: "personal-token", accountID: "personal")
+        let (work, workHTTP) = service(token: "work-token", accountID: "work")
+        let router = CodexResetClaimRouter(servicesByCardID: [
+            "codex": personal,
+            "codex@work": work,
+        ])
+
+        let outcome = await router.claim(
+            cardID: "codex@work",
+            creditExpiringAt: Self.expiry,
+            redeemRequestID: "redeem-work"
+        )
+
+        XCTAssertEqual(outcome, .success)
+        XCTAssertTrue(personalHTTP.requests.isEmpty)
+        XCTAssertEqual(workHTTP.requests.count, 2)
+        let consume = try XCTUnwrap(workHTTP.requests.last)
+        XCTAssertEqual(consume.headers["Authorization"], "Bearer work-token")
+        XCTAssertEqual(consume.headers["ChatGPT-Account-Id"], "work")
+    }
+
     func testClaimWithNoMatchingCreditIsNoCreditWithoutConsuming() async {
         let refreshes = RefreshCounter()
         let (service, http) = makeService(

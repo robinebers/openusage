@@ -4,15 +4,17 @@ import Foundation
 /// their runtimes here so credentials, refresh behavior, pricing, and normalization can never drift.
 @MainActor
 enum ProviderCatalog {
-    /// `claudeCards` carries the extra Claude account cards found by the launch account pass
-    /// (`ProviderAccountAssembly`). Each becomes an ordinary runtime inserted right after the default
-    /// Claude card, with credentials and usage logs pinned to exactly its own config dir. The empty
-    /// default keeps the historical single-card set for focused tests and callers that intentionally
-    /// skip the account pass.
+    /// Account-card plans come from the launch account pass (`ProviderAccountAssembly`). Each becomes
+    /// an ordinary runtime immediately after its family's bare card, with credentials and usage logs
+    /// pinned to its own homes. Empty defaults keep the historical single-card set for focused tests
+    /// and callers that intentionally skip the account pass.
     static func make(
         defaults: UserDefaults = .standard,
         claudeCards: [ClaudeAccountCard] = [],
-        defaultClaudeExtraLogRoots: [URL] = []
+        defaultClaudeExtraLogRoots: [URL] = [],
+        codexCards: [CodexAccountCard] = [],
+        defaultCodexHome: String? = nil,
+        defaultCodexExtraLogRoots: [URL] = []
     ) -> [ProviderRuntime] {
         // Default provider order (see AGENTS.md "## Providers"): the three established providers first,
         // then every other provider alphabetically by display name. Account cards slot in right after
@@ -32,8 +34,24 @@ enum ProviderCatalog {
         for card in claudeCards {
             runtimes.append(claudeAccountRuntime(card: card))
         }
+
+        let defaultCodexAuthStore = defaultCodexHome.map {
+            CodexAuthStore(scope: .home(path: $0))
+        } ?? CodexAuthStore()
+        let defaultCodexScanner = defaultCodexHome.map {
+            CodexLogUsageScanner(
+                homesOverride: [URL(fileURLWithPath: $0)] + defaultCodexExtraLogRoots
+            )
+        } ?? CodexLogUsageScanner(additionalHomes: defaultCodexExtraLogRoots)
+        runtimes.append(CodexProvider(
+            authStore: defaultCodexAuthStore,
+            logUsageScanner: defaultCodexScanner
+        ))
+        for card in codexCards {
+            runtimes.append(codexAccountRuntime(card: card))
+        }
+
         runtimes += [
-            CodexProvider(),
             CursorProvider(),
             AntigravityProvider(),
             CopilotProvider(defaults: defaults),
@@ -58,6 +76,16 @@ enum ProviderCatalog {
             logUsageScanner: ClaudeLogUsageScanner(
                 cacheIdentityOverride: "claude-account:\(card.id)",
                 rootsOverride: [URL(fileURLWithPath: card.configDirPath)] + card.extraLogRoots
+            )
+        )
+    }
+
+    private static func codexAccountRuntime(card: CodexAccountCard) -> CodexProvider {
+        CodexProvider(
+            provider: CodexProvider.makeProvider(id: card.id, displayName: card.displayName),
+            authStore: CodexAuthStore(scope: .home(path: card.homePath)),
+            logUsageScanner: CodexLogUsageScanner(
+                homesOverride: [URL(fileURLWithPath: card.homePath)] + card.extraLogRoots
             )
         )
     }

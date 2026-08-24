@@ -265,6 +265,7 @@ struct WidgetGroupedListView: View {
                      condensedTop: Bool) -> some View {
         return WidgetRowView(
             data: data,
+            providerID: providerID,
             onToggleResetDisplay: { dataStore.resetDisplayMode.toggle() },
             onToggleMeterStyle: { dataStore.meterStyle.toggle() },
             condensedTop: condensedTop

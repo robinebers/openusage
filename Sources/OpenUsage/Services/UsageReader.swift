@@ -39,7 +39,7 @@ public struct UsageReader {
     public func read(providerID requestedProviderID: String? = nil, force: Bool = false) async throws -> UsageReadResult {
         // The launch account pass (see `ProviderAccountAssembly`): resolves each family's default
         // account so cached snapshots are guarded — and refreshed ones stamped — with the correct
-        // account, and finds the extra Claude cards the catalog must build (the CLI must know the
+        // account, and finds the extra Claude/Codex cards the catalog must build (the CLI must know the
         // same card set as the app, or family matching would answer differently between the two).
         // Skipped when a test injects its own providers — they have no real homes to read.
         //
@@ -60,7 +60,10 @@ public struct UsageReader {
         let providers = providersOverride ?? ProviderCatalog.make(
             defaults: defaults,
             claudeCards: accountAssembly.claudeCards,
-            defaultClaudeExtraLogRoots: accountAssembly.defaultClaudeExtraLogRoots
+            defaultClaudeExtraLogRoots: accountAssembly.defaultClaudeExtraLogRoots,
+            codexCards: accountAssembly.codexCards,
+            defaultCodexHome: accountAssembly.defaultCodexHome,
+            defaultCodexExtraLogRoots: accountAssembly.defaultCodexExtraLogRoots
         )
         let registry = WidgetRegistry.from(providers)
         let knownIDs = Set(registry.providers.map(\.id))

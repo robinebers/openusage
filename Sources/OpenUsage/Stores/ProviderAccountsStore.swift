@@ -44,6 +44,8 @@ struct ProviderAccountSource: Codable, Equatable, Sendable {
         case defaultHome
         /// A custom Claude config dir (a `CLAUDE_CONFIG_DIR` home kept besides the default).
         case configDir
+        /// A file-backed Codex home kept beside the home feeding the bare Codex card.
+        case codexHome
     }
 
     var kind: Kind
@@ -105,7 +107,7 @@ struct ProviderAccountRecord: Codable, Equatable, Sendable {
 }
 
 /// The account-first registry (`openusage.providerAccounts.v1`). Reconciled at every launch from the
-/// default-home identity reads and the config-dir scan; authoritative from day one — there is no
+/// default-home identity reads and the bounded provider-home scans; authoritative from day one — there is no
 /// parallel card model to drift from. Extra account cards render straight from these records, and
 /// the UI observes it live for renames (`customLabel`).
 @MainActor
@@ -139,7 +141,7 @@ final class ProviderAccountsStore {
         var sources: [ProviderAccountSource]
     }
 
-    /// Merges this launch's observations into the persisted set. Phase 1 semantics: an observation
+    /// Merges this launch's observations into the persisted set. An observation
     /// updates its account's label and sources, or creates the record; the first account of a family
     /// gets the bare family id, a later one mints `family@<hash8>`. Records never move or vanish here
     /// — an account that went unobserved (logged out, unreadable identity) is simply left as it was,

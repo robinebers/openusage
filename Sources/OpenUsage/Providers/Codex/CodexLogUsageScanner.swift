@@ -42,6 +42,11 @@ actor CodexLogUsageScanner {
     private let environment: EnvironmentReading
     private let homeDirectory: @Sendable () -> URL
     private let scanner: IncrementalJSONLScanner<Event>
+    /// A scoped account card scans exactly these homes. The default card leaves this `nil` and can
+    /// attach same-account sibling homes through `additionalHomes` without mixing another account's
+    /// rollout history into its spend tiles.
+    private let homesOverride: [URL]?
+    private let additionalHomes: [URL]
 
     /// One turn's token usage, normalized from a `token_count` line (deltas already applied).
     /// `isFast` records whether the session was on the fast/priority service tier when the turn
@@ -72,11 +77,15 @@ actor CodexLogUsageScanner {
     init(
         environment: EnvironmentReading = ProcessEnvironmentReader(),
         homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser },
-        incrementalScanner: IncrementalJSONLScanner<Event>? = nil
+        incrementalScanner: IncrementalJSONLScanner<Event>? = nil,
+        homesOverride: [URL]? = nil,
+        additionalHomes: [URL] = []
     ) {
         self.environment = environment
         self.homeDirectory = homeDirectory
         self.scanner = incrementalScanner ?? Self.sharedScanner
+        self.homesOverride = homesOverride
+        self.additionalHomes = additionalHomes
     }
 
     /// Scan the last `daysBack` days of Codex rollouts. Returns `nil` when no Codex home or no
@@ -106,16 +115,29 @@ actor CodexLogUsageScanner {
 
     // MARK: - Discovery
 
-    /// `CODEX_HOME` entries (comma-separated) when set, else `~/.codex` — same as ccusage.
+    /// A scoped card's exact homes, otherwise `CODEX_HOME` entries (comma-separated) or `~/.codex`,
+    /// plus any same-account sibling homes attached by discovery.
     private func codexHomes() -> [URL] {
+        if let homesOverride { return deduplicated(homesOverride) }
+        let primary: [URL]
         if let raw = environment.value(for: "CODEX_HOME")?.trimmingCharacters(in: .whitespacesAndNewlines),
            !raw.isEmpty {
-            return raw.split(separator: ",")
+            primary = raw.split(separator: ",")
                 .map { $0.trimmingCharacters(in: .whitespaces) }
                 .filter { !$0.isEmpty }
                 .map { URL(fileURLWithPath: expandHome($0)) }
+        } else {
+            primary = [homeDirectory().appendingPathComponent(".codex")]
         }
-        return [homeDirectory().appendingPathComponent(".codex")]
+        return deduplicated(primary + additionalHomes)
+    }
+
+    private func deduplicated(_ homes: [URL]) -> [URL] {
+        var seen = Set<String>()
+        return homes.filter {
+            let path = $0.resolvingSymlinksInPath().standardizedFileURL.path
+            return seen.insert(path).inserted
+        }
     }
 
     /// Every rollout `*.jsonl` under each home's `sessions/` and `archived_sessions/` (a home with

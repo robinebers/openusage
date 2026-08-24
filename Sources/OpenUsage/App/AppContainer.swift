@@ -36,11 +36,9 @@ final class AppContainer {
     /// One-time onboarding state (the first-run Customize hint card). Only ever marked pending by
     /// `FirstRunSeeder` on a fresh install, so existing installs never see the card.
     let onboarding: OnboardingStore
-    /// Claims Codex rate-limit reset credits from the resets popover (the app's only provider-API
-    /// write). Shares the Codex provider's auth store and usage client; `nil` only if the Codex
-    /// provider were ever removed from the registry. Injected into the view tree via
-    /// `\.codexResetClaim`.
-    let codexResetClaim: CodexResetClaimService?
+    /// Routes Codex rate-limit reset claims to the account card whose popover opened. Each route
+    /// shares that card runtime's scoped auth store and usage client.
+    let codexResetClaim: CodexResetClaimRouter?
     /// The account registry the launch pass reconciled. The UI observes it live: a rename
     /// (`customLabel`) re-titles the card everywhere without a relaunch.
     let accounts: ProviderAccountsStore
@@ -71,7 +69,7 @@ final class AppContainer {
         // even if that launch's own capture is slow (see `ShellEnvironmentSnapshot`).
         self.shellEnvironmentSnapshotTask = ShellEnvironmentSnapshotStore(defaults: .standard).startRefreshTask()
         // The launch account pass: which account is signed in at each family's default home, plus
-        // the config-dir scan for extra Claude logins. Feeds the snapshot cache's account stamp,
+        // bounded scans for extra Claude and Codex homes. Feeds the snapshot cache's account stamp,
         // reconciles the account registry, and hands the catalog its extra-card build plan.
         let accounts = ProviderAccountsStore()
         let accountAssembly = ProviderAccountAssembly.make(accountsStore: accounts, waitsForLoginShell: true)
@@ -79,7 +77,10 @@ final class AppContainer {
 
         let providers = ProviderCatalog.make(
             claudeCards: accountAssembly.claudeCards,
-            defaultClaudeExtraLogRoots: accountAssembly.defaultClaudeExtraLogRoots
+            defaultClaudeExtraLogRoots: accountAssembly.defaultClaudeExtraLogRoots,
+            codexCards: accountAssembly.codexCards,
+            defaultCodexHome: accountAssembly.defaultCodexHome,
+            defaultCodexExtraLogRoots: accountAssembly.defaultCodexExtraLogRoots
         )
         let registry = WidgetRegistry.from(providers)
         let apiKeyProviders = providers.compactMap { $0 as? any APIKeyManaging }
@@ -132,47 +133,10 @@ final class AppContainer {
         self.dataStore = dataStore
         self.iCloudSync = iCloudSync
 
-        // The resets popover's claim service, sharing the Codex provider's credential loading and HTTP
-        // client so the claim's auth can't drift from the provider's. A successful claim forces a Codex
-        // refresh so the meters and credit count reconcile before the popover shows its result. The
-        // forced refresh returns `.skipped` when another refresh already owns the provider — and that
-        // in-flight probe may carry *pre-claim* usage — so retry until this refresh actually runs
-        // (bounded; the racing probe finishes in seconds).
-        self.codexResetClaim = providers.compactMap { $0 as? CodexProvider }.first.map { codex in
-            CodexResetClaimService(
-                authStore: codex.authStore,
-                usageClient: codex.usageClient,
-                refreshAfterClaim: { [weak dataStore] in
-                    // The bound must outlast the provider's slowest refresh: usage fetch (10s timeout)
-                    // + token refresh (15s) + usage retry (10s) + reset-credit fetch (10s) ≈ 45s. The
-                    // common race (the periodic timer's probe) clears in a couple of seconds; the
-                    // pathological one keeps the popover's honest "Resetting…" up rather than showing
-                    // a success banner over pre-claim meters. A `.failed` probe is retried a few times
-                    // too — a transient flake right after the claim must not strand pre-claim meters
-                    // behind a success banner — before giving up loudly (the provider error already
-                    // shows on the card, so the staleness isn't silent).
-                    var failures = 0
-                    for attempt in 0..<45 {
-                        guard let dataStore else { return }
-                        switch await dataStore.refresh(providerID: codex.provider.id, force: true) {
-                        case .refreshed, .cacheHit, .backedOff:
-                            return
-                        case .failed:
-                            failures += 1
-                            guard failures < 3 else {
-                                AppLog.error(LogTag.plugin("codex"), "post-claim refresh failed \(failures) times; meters may lag until the next cycle")
-                                return
-                            }
-                            try? await Task.sleep(for: .seconds(2))
-                        case .skipped:
-                            AppLog.info(LogTag.plugin("codex"), "post-claim refresh waiting out an in-flight refresh (attempt \(attempt + 1))")
-                            try? await Task.sleep(for: .seconds(1))
-                        }
-                    }
-                    AppLog.error(LogTag.plugin("codex"), "post-claim refresh kept being skipped; meters may lag until the next cycle")
-                }
-            )
-        }
+        self.codexResetClaim = Self.makeCodexResetClaimRouter(
+            providers: providers,
+            dataStore: dataStore
+        )
 
         // Anonymous usage telemetry (mandatory daily activity and crashes, optional provider rollups).
         // Its state lives in a dedicated UserDefaults suite, kept separate from app settings so the user's
@@ -289,6 +253,59 @@ final class AppContainer {
         AppearanceSetting.applyCurrent()
         AppLog.reloadLevel()
         AppLog.info(.config, "All settings reset to defaults")
+    }
+
+    /// One irreversible-claim service per Codex card. A successful claim refreshes only the card
+    /// whose credentials made the write, waiting out a racing periodic refresh so the success banner
+    /// never sits over pre-claim meters.
+    private static func makeCodexResetClaimRouter(
+        providers: [ProviderRuntime],
+        dataStore: WidgetDataStore
+    ) -> CodexResetClaimRouter? {
+        let codexProviders = providers.compactMap { $0 as? CodexProvider }
+        guard !codexProviders.isEmpty else { return nil }
+
+        var services: [String: CodexResetClaimService] = [:]
+        for codex in codexProviders {
+            let cardID = codex.provider.id
+            services[cardID] = CodexResetClaimService(
+                authStore: codex.authStore,
+                usageClient: codex.usageClient,
+                refreshAfterClaim: { [weak dataStore] in
+                    // The bound outlasts the slowest provider refresh. The normal race clears in a
+                    // few seconds; transient post-claim failures get a small bounded retry too.
+                    var failures = 0
+                    for attempt in 0..<45 {
+                        guard let dataStore else { return }
+                        switch await dataStore.refresh(providerID: cardID, force: true) {
+                        case .refreshed, .cacheHit, .backedOff:
+                            return
+                        case .failed:
+                            failures += 1
+                            guard failures < 3 else {
+                                AppLog.error(
+                                    LogTag.plugin("codex"),
+                                    "post-claim refresh for \(cardID) failed \(failures) times; meters may lag until the next cycle"
+                                )
+                                return
+                            }
+                            try? await Task.sleep(for: .seconds(2))
+                        case .skipped:
+                            AppLog.info(
+                                LogTag.plugin("codex"),
+                                "post-claim refresh for \(cardID) waiting out an in-flight refresh (attempt \(attempt + 1))"
+                            )
+                            try? await Task.sleep(for: .seconds(1))
+                        }
+                    }
+                    AppLog.error(
+                        LogTag.plugin("codex"),
+                        "post-claim refresh for \(cardID) kept being skipped; meters may lag until the next cycle"
+                    )
+                }
+            )
+        }
+        return CodexResetClaimRouter(servicesByCardID: services)
     }
 
     /// Drives live updates: refresh on launch, then again every refresh interval. Each pass honors the

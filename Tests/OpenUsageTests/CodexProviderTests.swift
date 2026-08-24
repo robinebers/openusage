@@ -90,6 +90,22 @@ final class CodexAuthStoreTests: XCTestCase {
         XCTAssertEqual(candidates.count, 1)
         XCTAssertEqual(candidates.first?.auth.tokens?.accessToken, "token")
     }
+
+    func testScopedAuthStoreReadsOnlyItsAccountHomeAndNeverSharedKeychain() {
+        let store = CodexAuthStore(
+            environment: FakeEnvironment(["CODEX_HOME": "/tmp/default-codex"]),
+            files: FakeFiles([
+                "/tmp/work-codex/auth.json": #"{"tokens":{"access_token":"work","account_id":"work-account"}}"#,
+                "/tmp/default-codex/auth.json": #"{"tokens":{"access_token":"default"}}"#,
+            ]),
+            keychain: FakeKeychain(#"{"tokens":{"access_token":"keychain"}}"#),
+            scope: .home(path: "/tmp/work-codex")
+        )
+
+        XCTAssertEqual(store.authPaths(), ["/tmp/work-codex/auth.json"])
+        XCTAssertEqual(store.loadAuthCandidates().first?.auth.tokens?.accessToken, "work")
+        XCTAssertNil(store.loadKeychainAuth())
+    }
 }
 
 final class CodexUsageMapperTests: XCTestCase {

@@ -14,6 +14,10 @@ When you expand a card, the tucked-away metrics open below the caret as a single
 
 A provider card can also show **quick-link buttons** pinned at the bottom of its expanded section — Status, Console, Dashboard, and the like — that open the provider's own pages in your default browser. They're part of the expander, so collapsing the caret hides them along with the tucked-away metrics. Buttons lay out up to three across, wrapping to a second row when there are more.
 
+## Multiple accounts
+
+Claude and Codex can show more than one account from the same provider. Each discovered login gets its own ordinary provider card, usage snapshot, cache, local history, layout, and enablement switch; cards for the same account are folded together by provider-owned account identity. Extra cards sit immediately after their provider's main card and can be renamed independently. Discovery runs at launch, so restart OpenUsage after adding or removing a supported account home. See the [Claude](providers/claude.md) and [Codex](providers/codex.md) provider pages for the home layouts each provider supports.
+
 ## Total Spend
 
 When any enabled provider tracks daily spend (Claude, Codex, Cursor, Grok, or OpenCode), a card sits above the provider sections. The title is a pull-down menu for **Cost**, **Cost/MTok**, or **Tokens** (Cost is the default; the choice sticks across restarts). A capsule switcher flips the period between **Today**, **Yesterday**, and **30 Days**. The ring, center total, and ranked legend follow the selected metric:

@@ -78,6 +78,21 @@ final class ProviderAccountAssemblyTests: XCTestCase {
         )
     }
 
+    private func makeCodexDiscovery(
+        files: [String: String],
+        subdirectories: [String]
+    ) -> CodexHomeDiscovery {
+        CodexHomeDiscovery(
+            files: FakeFiles(files),
+            homeDirectory: { URL(fileURLWithPath: "/Users/dev") },
+            listSubdirectories: { url in
+                subdirectories
+                    .map { URL(fileURLWithPath: $0) }
+                    .filter { $0.deletingLastPathComponent().path == url.path }
+            }
+        )
+    }
+
     func testADistinctConfigDirAccountMintsAHashedRecordAndAnExtraCard() throws {
         let defaults = makeScratchDefaults()
         let store = ProviderAccountsStore(defaults: defaults)
@@ -202,6 +217,130 @@ final class ProviderAccountAssemblyTests: XCTestCase {
         XCTAssertTrue(
             card.id.hasPrefix("claude@"),
             "the bare id stays reserved for a future default-home login even when it is free"
+        )
+    }
+
+    func testDistinctCodexHomeBuildsScopedAccountCard() throws {
+        let defaults = makeScratchDefaults()
+        let store = ProviderAccountsStore(defaults: defaults)
+        let observer = DefaultAccountObserver(
+            environment: FakeEnvironment([:]),
+            files: FakeFiles([
+                "/Users/dev/.config/codex/auth.json": #"{"tokens":{"access_token":"work","account_id":"WORK","id_token":"e30.eyJlbWFpbCI6IndvcmtAZXhhbXBsZS5jb20ifQ.sig"}}"#,
+            ]),
+            keychain: FakeKeychain(nil),
+            homeDirectory: { URL(fileURLWithPath: "/Users/dev") }
+        )
+        let discovery = makeCodexDiscovery(
+            files: [
+                "/Users/dev/.codex/auth.json": #"{"tokens":{"access_token":"personal","account_id":"PERSONAL"}}"#,
+            ],
+            subdirectories: ["/Users/dev/.config/codex", "/Users/dev/.codex"]
+        )
+
+        let assembly = ProviderAccountAssembly.make(
+            observer: observer,
+            accountsStore: store,
+            codexDiscovery: discovery
+        )
+
+        let card = try XCTUnwrap(assembly.codexCards.first)
+        XCTAssertEqual(assembly.codexCards.count, 1)
+        XCTAssertTrue(card.id.hasPrefix("codex@"))
+        XCTAssertEqual(card.homePath, "/Users/dev/.codex")
+        XCTAssertEqual(assembly.defaultCodexHome, "/Users/dev/.config/codex")
+        XCTAssertEqual(assembly.identityKeysByCard["codex"], "work")
+        XCTAssertEqual(assembly.identityKeysByCard[card.id], "personal")
+        let record = try XCTUnwrap(store.records.first { $0.id == card.id })
+        XCTAssertEqual(record.sources.map(\.kind), [.codexHome])
+    }
+
+    func testSameCodexAccountAcrossHomesFoldsLogsOntoBareCard() throws {
+        let defaults = makeScratchDefaults()
+        let store = ProviderAccountsStore(defaults: defaults)
+        let observer = DefaultAccountObserver(
+            environment: FakeEnvironment([:]),
+            files: FakeFiles([
+                "/Users/dev/.config/codex/auth.json": #"{"tokens":{"access_token":"a","account_id":"SAME"}}"#,
+            ]),
+            keychain: FakeKeychain(nil),
+            homeDirectory: { URL(fileURLWithPath: "/Users/dev") }
+        )
+        let discovery = makeCodexDiscovery(
+            files: [
+                "/Users/dev/.codex/auth.json": #"{"tokens":{"access_token":"b","account_id":"SAME"}}"#,
+            ],
+            subdirectories: ["/Users/dev/.config/codex", "/Users/dev/.codex"]
+        )
+
+        let assembly = ProviderAccountAssembly.make(
+            observer: observer,
+            accountsStore: store,
+            codexDiscovery: discovery
+        )
+
+        XCTAssertTrue(assembly.codexCards.isEmpty)
+        XCTAssertEqual(assembly.defaultCodexExtraLogRoots.map(\.path), ["/Users/dev/.codex"])
+        let record = try XCTUnwrap(store.defaultBadgeHolder(family: "codex"))
+        XCTAssertEqual(Set(record.sources.map(\.kind)), [.defaultHome, .codexHome])
+    }
+
+    func testUnresolvedCodexDefaultSkipsExtraHomes() {
+        let defaults = makeScratchDefaults()
+        let store = ProviderAccountsStore(defaults: defaults)
+        let observer = DefaultAccountObserver(
+            environment: FakeEnvironment([:]),
+            files: FakeFiles([:]),
+            keychain: FakeKeychain(#"{"tokens":{"access_token":"keyring"}}"#),
+            homeDirectory: { URL(fileURLWithPath: "/Users/dev") }
+        )
+        let discovery = makeCodexDiscovery(
+            files: [
+                "/Users/dev/.codex-work/auth.json": #"{"tokens":{"access_token":"work","account_id":"WORK"}}"#,
+            ],
+            subdirectories: ["/Users/dev/.codex-work"]
+        )
+
+        let assembly = ProviderAccountAssembly.make(
+            observer: observer,
+            accountsStore: store,
+            codexDiscovery: discovery
+        )
+
+        XCTAssertTrue(assembly.codexCards.isEmpty)
+        XCTAssertNil(assembly.defaultCodexHome)
+        XCTAssertTrue(store.records.isEmpty)
+    }
+
+    func testCatalogBuildsCodexAccountImmediatelyAfterBareCardWithTranslatedMetrics() {
+        let card = CodexAccountCard(
+            id: "codex@1234abcd",
+            displayName: "Codex — Work",
+            homePath: "/Users/dev/.codex-work"
+        )
+
+        let runtimes = ProviderCatalog.make(codexCards: [card])
+
+        XCTAssertEqual(
+            Array(runtimes.map(\.provider.id).prefix(4)),
+            ["claude", "codex", "codex@1234abcd", "cursor"]
+        )
+        let account = runtimes[2]
+        XCTAssertEqual(account.provider.displayName, "Codex — Work")
+        XCTAssertEqual(
+            account.widgetDescriptors.map(\.id),
+            [
+                "codex@1234abcd.session",
+                "codex@1234abcd.weekly",
+                "codex@1234abcd.spark",
+                "codex@1234abcd.sparkWeekly",
+                "codex@1234abcd.credits",
+                "codex@1234abcd.rateLimitResets",
+                "codex@1234abcd.trend",
+                "codex@1234abcd.today",
+                "codex@1234abcd.yesterday",
+                "codex@1234abcd.last30",
+            ]
         )
     }
 

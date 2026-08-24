@@ -246,14 +246,41 @@ final class CodexResetClaimService {
     }
 }
 
+/// Routes the reset-credit write to the Codex account card whose row opened the popover. Each
+/// service owns that card's scoped credentials and idempotency matches, so an irreversible claim can
+/// never borrow the default account merely because it appears first in the provider catalog.
+@MainActor
+final class CodexResetClaimRouter {
+    private let servicesByCardID: [String: CodexResetClaimService]
+
+    init(servicesByCardID: [String: CodexResetClaimService]) {
+        self.servicesByCardID = servicesByCardID
+    }
+
+    func claim(
+        cardID: String,
+        creditExpiringAt expiry: Date,
+        redeemRequestID: String
+    ) async -> ResetClaimOutcome {
+        guard let service = servicesByCardID[cardID] else {
+            AppLog.error(LogTag.plugin("codex"), "reset claim: no service for card \(cardID)")
+            return .failed
+        }
+        return await service.claim(
+            creditExpiringAt: expiry,
+            redeemRequestID: redeemRequestID
+        )
+    }
+}
+
 /// Hands the claim service to the resets popover through the environment: `nil` (the default — previews,
 /// share-card renders, reorder previews) renders the timeline read-only with no "Use" affordance.
 private struct CodexResetClaimServiceKey: EnvironmentKey {
-    static let defaultValue: CodexResetClaimService? = nil
+    static let defaultValue: CodexResetClaimRouter? = nil
 }
 
 extension EnvironmentValues {
-    var codexResetClaim: CodexResetClaimService? {
+    var codexResetClaim: CodexResetClaimRouter? {
         get { self[CodexResetClaimServiceKey.self] }
         set { self[CodexResetClaimServiceKey.self] = newValue }
     }
