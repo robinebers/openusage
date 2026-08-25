@@ -662,7 +662,7 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertEqual(Set(store.placed.map(\.descriptorID)), Set([
             "claude.session", "claude.weekly", "claude.fable", "claude.trend",
             "claude.extra", "claude.today", "claude.yesterday", "claude.last30",
-            "codex.weekly", "codex.spark", "codex.sparkWeekly", "codex.trend",
+            "codex.session", "codex.weekly", "codex.spark", "codex.sparkWeekly", "codex.trend",
             "codex.credits", "codex.rateLimitResets", "codex.today", "codex.yesterday", "codex.last30",
             "devin.daily", "devin.weekly", "devin.extra",
             "grok.weekly", "grok.trend",
@@ -674,8 +674,8 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertTrue(store.isMetricEnabled("claude.fable"))
         XCTAssertFalse(store.isPinned("claude.fable"))
         XCTAssertFalse(store.isMetricEnabled("claude.sonnet"))
-        XCTAssertFalse(store.isMetricEnabled("codex.session"))
-        XCTAssertFalse(store.isPinned("codex.session"))
+        XCTAssertTrue(store.isMetricEnabled("codex.session"))
+        XCTAssertTrue(store.isPinned("codex.session"))
         XCTAssertTrue(store.isPinned("codex.weekly"))
         XCTAssertTrue(store.isMetricEnabled("cursor.grokBot"))
         XCTAssertFalse(store.isMetricEnabled("cursor.requests"))

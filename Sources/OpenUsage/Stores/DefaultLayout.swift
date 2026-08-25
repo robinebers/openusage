@@ -13,7 +13,7 @@ enum DefaultLayout {
         "claude.session", "claude.weekly", "claude.fable", "claude.trend",
         "claude.extra", "claude.today", "claude.yesterday", "claude.last30",
 
-        "codex.weekly", "codex.spark", "codex.sparkWeekly", "codex.trend",
+        "codex.session", "codex.weekly", "codex.spark", "codex.sparkWeekly", "codex.trend",
         "codex.credits", "codex.rateLimitResets", "codex.today", "codex.yesterday", "codex.last30",
 
         "cursor.usage", "cursor.auto", "cursor.api", "cursor.grokBot", "cursor.trend",
@@ -56,13 +56,13 @@ enum DefaultLayout {
     ]
 
     /// Metrics pinned to the menu bar on first launch, so the app shows real numbers out of the box
-    /// instead of a lone icon. Antigravity, Claude, and Cursor start at the two-pin per-provider cap
-    /// (`LayoutStore.maxPinsPerProvider`); Codex starts with its Weekly meter. Filtered to the active
-    /// registry by `LayoutStore`, like `metricIDs`.
+    /// instead of a lone icon. Two per provider for Antigravity, Claude, Codex, and Cursor — the
+    /// per-provider cap (`LayoutStore.maxPinsPerProvider`). Filtered to the active registry by
+    /// `LayoutStore`, like `metricIDs`.
     static let pinnedMetricIDs: [String] = [
         "antigravity.geminiPro", "antigravity.geminiWeekly",
         "claude.session", "claude.weekly",
-        "codex.weekly",
+        "codex.session", "codex.weekly",
         "cursor.auto", "cursor.api",
         "copilot.premium",
         "openrouter.credits",
