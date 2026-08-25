@@ -1,11 +1,12 @@
 <!-- OpenUsage has a strict, issue-first PR policy. External pull requests are closed
 automatically unless they link an issue a maintainer has approved with the `approved`
-label, stay under 1,000 changed lines, and include screenshots for visual changes.
+label and assigned to the PR author. PRs adding more than 1,000 lines receive a warning.
+Visual changes require screenshots during maintainer review.
 See CONTRIBUTING.md. Maintainers and collaborators may open PRs directly. -->
 
 ## Approved issue
 
-<!-- External PRs require an open issue approved with the `approved` label. -->
+<!-- External PRs require an open issue labeled `approved` and assigned to their author. -->
 Fixes #
 
 ## TL;DR
