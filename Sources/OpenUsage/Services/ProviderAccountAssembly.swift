@@ -111,6 +111,11 @@ struct ProviderAccountAssembly {
             }
         }
 
+        guard families.contains("claude") else {
+            accountsStore.reconcile(with: observations)
+            return ProviderAccountAssembly(identityKeysByCard: identityKeys)
+        }
+
         if let claudeIdentity = identityKeys["claude"], !claudeIdentity.contains("|") {
             accountsStore.reconcile(with: observations)
             return ProviderAccountAssembly(identityKeysByCard: identityKeys)

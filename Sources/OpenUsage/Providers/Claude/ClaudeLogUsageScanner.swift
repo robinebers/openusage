@@ -238,9 +238,9 @@ actor ClaudeLogUsageScanner {
             .sorted { $0.path < $1.path }
     }
 
-    /// Desktop roots already carry their organization in the verified directory layout. Terminal
-    /// sessions identify theirs in a separate bridge event; subagent files inherit that event from
-    /// their parent session. Keep this outside the parsed-entry cache so all cards still share it.
+    /// Cowork roots carry their organization in the directory layout. Other sessions identify theirs
+    /// in a bridge event or Desktop's account-and-organization-scoped session index; subagent files
+    /// inherit their parent session's ownership. Keep this outside the shared parsed-entry cache.
     private func ownedUsageFiles(
         _ files: [JSONLScanning.DiscoveredFile],
         organizationID: String
@@ -251,6 +251,7 @@ actor ClaudeLogUsageScanner {
         let filesByPath = Dictionary(files.map { ($0.path, $0) }, uniquingKeysWith: { first, _ in first })
         var seenPaths: Set<String> = []
         var ownedFiles: [JSONLScanning.DiscoveredFile] = []
+        var desktopSessionIDs: Set<String>?
 
         for file in files {
             guard !Task.isCancelled else { return [] }
@@ -275,15 +276,50 @@ actor ClaudeLogUsageScanner {
             } else {
                 sessionFile = file
             }
-            if let sessionFile,
-               let ownership = sessionIdentity(sessionFile),
-               ownership.organizationID == organizationID,
-               accountID == nil || ownership.accountID == accountID
-            {
-                ownedFiles.append(file)
+            guard let sessionFile, let ownership = sessionIdentity(sessionFile) else { continue }
+            if let owner = ownership.organizationID {
+                if owner == organizationID, accountID == nil || ownership.accountID == accountID {
+                    ownedFiles.append(file)
+                }
+            } else if let accountID {
+                if desktopSessionIDs == nil {
+                    desktopSessionIDs = indexedDesktopSessionIDs(accountID: accountID, organizationID: organizationID)
+                }
+                let sessionID = URL(fileURLWithPath: sessionFile.path)
+                    .deletingPathExtension().lastPathComponent.lowercased()
+                if desktopSessionIDs?.contains(sessionID) == true {
+                    ownedFiles.append(file)
+                }
             }
         }
         return ownedFiles
+    }
+
+    private func indexedDesktopSessionIDs(accountID: String, organizationID: String) -> Set<String> {
+        let directory = homeDirectory()
+            .appendingPathComponent("Library/Application Support/Claude/claude-code-sessions")
+            .appendingPathComponent(accountID)
+            .appendingPathComponent(organizationID)
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
+            options: [.skipsHiddenFiles]
+        )) ?? []
+
+        return Set(files.compactMap { file in
+            guard file.lastPathComponent.hasPrefix("local_"), file.pathExtension == "json",
+                  let values = try? file.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey]),
+                  values.isRegularFile == true, values.isSymbolicLink != true,
+                  let handle = try? FileHandle(forReadingFrom: file)
+            else { return nil }
+            defer { try? handle.close() }
+            guard let prefix = try? handle.read(upToCount: 512),
+                  let header = String(data: prefix, encoding: .utf8),
+                  let field = header.range(of: #""cliSessionId"\s*:\s*""#, options: .regularExpression),
+                  let end = header[field.upperBound...].firstIndex(of: "\""),
+                  let sessionID = UUID(uuidString: String(header[field.upperBound..<end]))
+            else { return nil }
+            return sessionID.uuidString.lowercased()
+        })
     }
 
     private func sessionIdentity(

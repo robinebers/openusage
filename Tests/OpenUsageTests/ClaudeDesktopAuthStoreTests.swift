@@ -88,6 +88,37 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testUnreadableClaudeEnvironmentSkipsDesktopDiscoveryWhileReconcilingCodex() throws {
+        let fixture = try makeFixture(
+            activeOrganization: organization,
+            v2: [cacheKey(organization: organization): tokenEntry("desktop-token", expiresIn: 3_600)],
+            accountUUID: accountUUID
+        )
+        fixture.files.files["\(home.path)/.codex/auth.json"] =
+            #"{"tokens":{"access_token":"codex-token","account_id":"CODEX-1"}}"#
+        let suite = "OpenUsageTests.UnreadableClaudeEnvironment.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let fixtureHome = home
+        let observer = DefaultAccountObserver(
+            environment: FakeEnvironment(), files: fixture.files, keychain: FakeKeychain(),
+            homeDirectory: { fixtureHome }
+        )
+        let accountsStore = ProviderAccountsStore(defaults: defaults)
+        let organizations = [organization]
+
+        let assembly = ProviderAccountAssembly.make(
+            observer: observer, accountsStore: accountsStore, families: ["codex"],
+            desktop: fixture.store, listDesktopOrganizationDirectories: { _ in organizations }
+        )
+
+        XCTAssertTrue(assembly.claudeCards.isEmpty)
+        XCTAssertEqual(assembly.identityKeysByCard, ["codex": "codex-1"])
+        XCTAssertEqual(accountsStore.records.map(\.family), ["codex"])
+        XCTAssertTrue(fixture.keyReader.calls.isEmpty)
+    }
+
+    @MainActor
     func testOrganizationSwitchKeepsPersistedCardIDsAndDistinctScopedRuntimes() throws {
         let fixture = try makeFixture(
             activeOrganization: organization,

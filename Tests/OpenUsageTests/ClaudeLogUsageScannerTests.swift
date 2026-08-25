@@ -508,6 +508,98 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
         XCTAssertNil(second)
     }
 
+    func testOrganizationScanRecoversOnlyMatchingIndexedDesktopSessionsAndSubagents() async throws {
+        let now = Date()
+        let timestamp = OpenUsageISO8601.string(from: now)
+        let owned = "11111111-1111-4111-8111-111111111111"
+        let foreignOrganization = "22222222-2222-4222-8222-222222222222"
+        let foreignAccount = "33333333-3333-4333-8333-333333333333"
+        let conflictingOrganization = "44444444-4444-4444-8444-444444444444"
+        let conflictingAccount = "55555555-5555-4555-8555-555555555555"
+        let ambiguous = "66666666-6666-4666-8666-666666666666"
+        let unindexed = "77777777-7777-4777-8777-777777777777"
+
+        func line(_ id: String, input: Int, output: Int, cost: Double) -> String {
+            ClaudeLogFixture.usageLine(
+                timestamp: timestamp, input: input, output: output, costUSD: cost,
+                messageID: id, requestID: id
+            )
+        }
+
+        let home = try ClaudeLogFixture.makeUserHome(claudeFiles: [
+            "workspace/\(owned).jsonl": line(owned, input: 100, output: 50, cost: 0.25),
+            "workspace/\(owned)/subagents/agent.jsonl": line("agent", input: 10, output: 5, cost: 0.05),
+            "workspace/\(foreignOrganization).jsonl": line(foreignOrganization, input: 1000, output: 500, cost: 9),
+            "workspace/\(foreignAccount).jsonl": line(foreignAccount, input: 2000, output: 500, cost: 10),
+            "workspace/\(conflictingOrganization).jsonl":
+                #"{"ownerOrganizationUuid":"org-b","ownerAccountUuid":"user-a"}"# + "\n" +
+                line(conflictingOrganization, input: 3000, output: 500, cost: 11),
+            "workspace/\(conflictingAccount).jsonl":
+                #"{"ownerOrganizationUuid":"org-a","ownerAccountUuid":"user-b"}"# + "\n" +
+                line(conflictingAccount, input: 4000, output: 500, cost: 12),
+            "workspace/\(ambiguous).jsonl":
+                #"{"ownerOrganizationUuid":"org-a"}"# + "\n" +
+                #"{"ownerOrganizationUuid":"org-b"}"# + "\n" +
+                line(ambiguous, input: 5000, output: 500, cost: 13),
+            "workspace/\(unindexed).jsonl": line(unindexed, input: 6000, output: 500, cost: 14),
+            "workspace/not-a-uuid.jsonl": line("not-a-uuid", input: 7000, output: 500, cost: 15)
+        ])
+        let desktopRoot = home.appendingPathComponent("Library/Application Support/Claude/claude-code-sessions")
+
+        func index(_ sessionID: String, account: String, organization: String) throws -> URL {
+            let directory = desktopRoot.appendingPathComponent(account).appendingPathComponent(organization)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let file = directory.appendingPathComponent("local_\(sessionID).json")
+            try #"{"sessionId":"local_session", "cliSessionId" : "\#(sessionID)"}"#
+                .write(to: file, atomically: true, encoding: .utf8)
+            return file
+        }
+
+        for sessionID in [owned, conflictingOrganization, conflictingAccount, ambiguous, "not-a-uuid"] {
+            _ = try index(sessionID, account: "user-a", organization: "org-a")
+        }
+        _ = try index(foreignOrganization, account: "user-a", organization: "org-b")
+        let foreignFile = try index(foreignAccount, account: "user-b", organization: "org-a")
+        try FileManager.default.createSymbolicLink(
+            at: desktopRoot.appendingPathComponent("user-a/org-a/local_foreign-link.json"),
+            withDestinationURL: foreignFile
+        )
+
+        let scanner = ClaudeLogUsageScanner(
+            environment: FakeEnvironment([:]), homeDirectory: { home },
+            incrementalScanner: IncrementalJSONLScanner<Entry>(), accountUUID: "user-a", organizationUUID: "org-a"
+        )
+        let result = await scanner.scan(now: now, pricing: pricing)
+        let scan = try XCTUnwrap(result)
+
+        XCTAssertEqual(scan.series.daily.first?.totalTokens, 165)
+        XCTAssertEqual(scan.series.daily.first?.costUSD ?? 0, 0.30, accuracy: 1e-9)
+    }
+
+    func testOrganizationScanDoesNotRecoverIndexedDesktopSessionsWithoutAccount() async throws {
+        let now = Date()
+        let sessionID = "11111111-1111-4111-8111-111111111111"
+        let home = try ClaudeLogFixture.makeUserHome(claudeFiles: [
+            "workspace/\(sessionID).jsonl": ClaudeLogFixture.usageLine(
+                timestamp: OpenUsageISO8601.string(from: now), input: 100, output: 50
+            )
+        ])
+        let directory = home.appendingPathComponent(
+            "Library/Application Support/Claude/claude-code-sessions/user-a/org-a"
+        )
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try #"{"cliSessionId":"\#(sessionID)"}"#
+            .write(to: directory.appendingPathComponent("local_session.json"), atomically: true, encoding: .utf8)
+
+        let scanner = ClaudeLogUsageScanner(
+            environment: FakeEnvironment([:]), homeDirectory: { home },
+            incrementalScanner: IncrementalJSONLScanner<Entry>(), organizationUUID: "org-a"
+        )
+        let result = await scanner.scan(now: now, pricing: pricing)
+
+        XCTAssertNil(result)
+    }
+
     func testOrganizationScanCombinesOwnedDesktopAndTerminalLogsWithoutForeignSpending() async throws {
         let now = Date()
         let timestamp = OpenUsageISO8601.string(from: now)
