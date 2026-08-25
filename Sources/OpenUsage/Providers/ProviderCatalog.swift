@@ -27,7 +27,8 @@ enum ProviderCatalog {
                     authStore: ClaudeAuthStore(
                         desktopOrganization: card.organizationID,
                         expectedIdentityKey: identity,
-                        desktopOnly: card.usesDesktopCredentials
+                        desktopOnly: card.usesDesktopCredentials,
+                        preferOrganizationScopedDesktop: claudeCards.count > 1 && !card.usesDesktopCredentials
                     ),
                     logUsageScanner: scanner,
                     allowsUnattributedPiUsage: card.allowsUnattributedPiUsage

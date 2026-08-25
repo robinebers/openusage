@@ -172,6 +172,7 @@ struct ClaudeAuthStore: Sendable {
     let desktopOrganization: String?
     let expectedIdentityKey: String?
     let desktopOnly: Bool
+    let preferOrganizationScopedDesktop: Bool
 
     init(
         environment: EnvironmentReading = ProcessEnvironmentReader(),
@@ -181,6 +182,7 @@ struct ClaudeAuthStore: Sendable {
         desktopOrganization: String? = nil,
         expectedIdentityKey: String? = nil,
         desktopOnly: Bool = false,
+        preferOrganizationScopedDesktop: Bool = false,
         now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.environment = environment
@@ -190,6 +192,7 @@ struct ClaudeAuthStore: Sendable {
         self.desktopOrganization = desktopOrganization?.lowercased()
         self.expectedIdentityKey = expectedIdentityKey?.lowercased()
         self.desktopOnly = desktopOnly
+        self.preferOrganizationScopedDesktop = preferOrganizationScopedDesktop
         self.now = now
     }
 
@@ -204,13 +207,14 @@ struct ClaudeAuthStore: Sendable {
     ) -> ClaudeCredentialLoad {
         var stored = desktopOnly ? [] : orderedStoredCandidates()
         var desktopStatus: ClaudeDesktopCredentialStatus = .notChecked
-        // A working CLI login remains the source of truth and avoids a second Keychain prompt. Desktop
-        // is a fallback for people who only use the native app (or whose stored CLI login lacks profile
-        // scope), never a competing account source.
+        // A working CLI login normally remains the source of truth and avoids a second Keychain prompt.
+        // When several organizations have cards, though, its global Keychain token can belong to a
+        // different organization than the CLI state file, so prefer the Desktop token pinned to this
+        // card's organization while retaining the CLI credential as a fallback.
         let hasUsableCLILogin = stored.contains {
             $0.hasUsableAccessToken && liveUsageAvailability($0) == .available
         }
-        if forceDesktopFallback || !hasUsableCLILogin {
+        if forceDesktopFallback || !hasUsableCLILogin || preferOrganizationScopedDesktop {
             let expectedUser = expectedIdentityKey?.split(separator: "|").first.map(String.init)
             let result = desktop.load(
                 allowInteraction: allowDesktopInteraction,

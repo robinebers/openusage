@@ -130,6 +130,7 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
         ).compactMap { $0 as? ClaudeProvider }
         XCTAssertEqual(providers.map { $0.provider.id }, [workID, "claude"])
         XCTAssertEqual(providers.map { $0.authStore.desktopOnly }, [false, true])
+        XCTAssertEqual(providers.map { $0.authStore.preferOrganizationScopedDesktop }, [true, false])
         XCTAssertFalse(providers.contains { $0.allowsUnattributedPiUsage })
 
         let withoutDesktop = ProviderAccountAssembly.make(
@@ -248,6 +249,34 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
         XCTAssertEqual(load.candidates.first?.oauth.accessToken, "cli-token")
         XCTAssertEqual(load.desktopStatus, .notChecked)
         XCTAssertTrue(fixture.keyReader.calls.isEmpty)
+    }
+
+    func testMultiOrganizationCLICardPrefersItsOwnScopedDesktopCredential() throws {
+        let fixture = try makeFixture(
+            activeOrganization: organization,
+            v2: [
+                cacheKey(organization: organization): tokenEntry("personal-token", expiresIn: 3_600),
+                cacheKey(organization: otherOrganization): tokenEntry("work-token", expiresIn: 3_600),
+            ],
+            accountUUID: accountUUID
+        )
+        let fixtureNow = now
+        let authStore = ClaudeAuthStore(
+            environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": "/tmp/claude"]),
+            files: fixture.files,
+            keychain: FakeKeychain(cliCredentials(token: "personal-token")),
+            desktop: fixture.store,
+            desktopOrganization: otherOrganization,
+            expectedIdentityKey: "\(accountUUID)|\(otherOrganization)",
+            preferOrganizationScopedDesktop: true,
+            now: { fixtureNow }
+        )
+
+        let load = authStore.loadCredentialSet()
+
+        XCTAssertEqual(load.desktopStatus, .available)
+        XCTAssertEqual(load.candidates.map(\.oauth.accessToken), ["work-token", "personal-token"])
+        XCTAssertEqual(load.candidates.first?.source, .desktop)
     }
 
     func testWhitespaceOnlyCLIEntryDoesNotBlockDesktop() throws {
