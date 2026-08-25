@@ -71,13 +71,28 @@ final class AppContainer {
         // the snapshot cache's account stamp and reconciles the account registry.
         let accountAssembly = ProviderAccountAssembly.make(waitsForLoginShell: true)
 
-        let providers = ProviderCatalog.make()
+        let providers = ProviderCatalog.make(
+            claudeCards: accountAssembly.claudeCards,
+            claudeIdentityKeys: accountAssembly.identityKeysByCard
+        )
         let registry = WidgetRegistry.from(providers)
         let apiKeyProviders = providers.compactMap { $0 as? any APIKeyManaging }
         let enablement = ProviderEnablementStore()
         let notificationSettings = NotificationSettingsStore()
+        let additionalClaudeIDs = providers.map(\.provider.id).filter {
+            $0 != "claude" && ProviderAccountID.family(of: $0) == "claude"
+        }
+        let claudeAccountDefaults: ([String]) -> [String] = { metricIDs in
+            metricIDs.flatMap { metricID -> [String] in
+                guard metricID.hasPrefix("claude.") else { return [metricID] }
+                let suffix = metricID.dropFirst("claude".count)
+                return [metricID] + additionalClaudeIDs.map { "\($0)\(suffix)" }
+            }
+        }
         let layout = LayoutStore(
             registry: registry,
+            defaultMetricIDs: claudeAccountDefaults(DefaultLayout.metricIDs),
+            defaultExpandedMetricIDs: claudeAccountDefaults(DefaultLayout.expandedMetricIDs),
             isProviderEnabled: { [enablement] in enablement.isEnabled($0) }
         )
         let dataStore = WidgetDataStore(
