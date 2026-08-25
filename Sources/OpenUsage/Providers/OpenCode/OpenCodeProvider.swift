@@ -83,7 +83,7 @@ final class OpenCodeProvider: ProviderRuntime {
         // Go plan windows from `/zen/go/v1/usage` (Session/Weekly/Monthly + trend above the fold);
         // the spend tiles below sum combined OpenCode-hosted (Go + Zen) spend from local logs.
         [
-            .percent(id: "opencode.session", provider: provider, title: "Session", isSessionWindow: true)
+            .percent(id: "opencode.session", provider: provider, title: "Session", sessionStartSignal: .zeroUsage)
                 .exportingLimit("session", unit: "percent"),
             .percent(id: "opencode.weekly", provider: provider, title: "Weekly")
                 .exportingLimit("weekly", unit: "percent"),

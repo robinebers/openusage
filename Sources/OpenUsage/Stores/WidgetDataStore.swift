@@ -599,8 +599,8 @@ final class WidgetDataStore {
                 infoNote: descriptor.sample.infoNote
             )
             // Descriptor opt-in (session-window meters read "Not started" when unused); the fresh
-            // `.progress` result doesn't start from the sample, so carry the flag explicitly.
-            result.isSessionWindow = descriptor.sample.isSessionWindow
+            // `.progress` result doesn't start from the sample, so carry the signal explicitly.
+            result.sessionStartSignal = descriptor.sample.sessionStartSignal
             return result
         case .text:
             // Text lines carry provider notices for the local API; no dashboard descriptor consumes

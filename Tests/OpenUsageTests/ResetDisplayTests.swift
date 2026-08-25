@@ -53,7 +53,7 @@ final class ResetDisplayTests: XCTestCase {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let period: TimeInterval = 5 * 3600
         var data = WidgetData(title: "Session", icon: .providerMark("codex"), kind: .percent, used: 0, limit: 100)
-        data.isSessionWindow = true
+        data.sessionStartSignal = .zeroUsage
         data.periodDurationMs = Int(period * 1000)
         data.resetsAt = now.addingTimeInterval(period / 2)
 
@@ -69,24 +69,50 @@ final class ResetDisplayTests: XCTestCase {
     }
 
     @MainActor
-    func testSessionWindowFlagIsWiredOnExactlyTheShippingSessionDescriptors() {
-        // The test above hand-sets `isSessionWindow`, so it pins the mechanism but not the wiring.
-        // This one pins the wiring: the descriptor opt-in replaced a model-level widget-ID set, so a
-        // provider dropping (or spuriously gaining) the flag must fail here, not ship silently.
+    func testSessionWindowSignalIsWiredOnExactlyTheShippingSessionDescriptors() {
+        // The tests around this hand-set `sessionStartSignal`, so they pin the mechanism but not the
+        // wiring. This one pins the wiring: the descriptor opt-in replaced a model-level widget-ID set,
+        // so a provider dropping (or spuriously gaining) the signal — or flipping which signal it uses —
+        // must fail here, not ship silently. Claude must stay on `.missingResetDate`: its whole-percent
+        // utilization reads 0 for an in-flight window under 1%, so `.zeroUsage` would regress #1160.
         let providers: [ProviderRuntime] = [
             ClaudeProvider(), CodexProvider(), CursorProvider(),
             AntigravityProvider(), CopilotProvider(), DevinProvider(),
-            GrokProvider(), OpenRouterProvider(), ZAIProvider()
+            GrokProvider(), OpenRouterProvider(), ZAIProvider(), OpenCodeProvider()
         ]
         let descriptors = providers.flatMap(\.widgetDescriptors)
-        let sessionIDs = Set(descriptors.filter(\.sample.isSessionWindow).map(\.id))
-        XCTAssertEqual(sessionIDs, ["claude.session",
-                                    "antigravity.geminiPro", "antigravity.claude"])
+        let signals = Dictionary(uniqueKeysWithValues: descriptors
+            .compactMap { d in d.sample.sessionStartSignal.map { (d.id, $0) } })
+        XCTAssertEqual(signals, ["claude.session": .missingResetDate,
+                                 "antigravity.geminiPro": .zeroUsage,
+                                 "antigravity.claude": .zeroUsage,
+                                 "opencode.session": .zeroUsage])
 
         // Same wiring pin for the menu-bar tray suffix (it replaced a title-string match).
         let suffixed = descriptors.filter { $0.sample.traySuffix != nil }
         XCTAssertEqual(suffixed.map(\.id), ["codex.rateLimitResets"])
         XCTAssertEqual(suffixed.first?.sample.traySuffix, "resets")
+    }
+
+    func testMissingResetDateSignalKeepsCountdownForSubOnePercentSession() {
+        // #1160: Claude reports utilization in whole percents, so an in-flight session under 1% reads
+        // used == 0 — but its reset date exists precisely because the window started. The row must show
+        // the normal countdown, never "Not started".
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        var data = WidgetData(title: "Session", icon: .providerMark("claude"), kind: .percent, used: 0, limit: 100)
+        data.sessionStartSignal = .missingResetDate
+        data.periodDurationMs = 5 * 3600 * 1000
+        data.resetsAt = now.addingTimeInterval(2 * 3600)
+
+        XCTAssertFalse(data.isFreshSessionWindow(now: now))
+        XCTAssertTrue(data.hasResetLabel(now: now))
+        XCTAssertEqual(data.boundedTrailingText(now: now)?.hasPrefix("Resets in"), true)
+
+        // A genuinely fresh session carries no reset date — that is this signal's "Not started" state.
+        data.resetsAt = nil
+        XCTAssertTrue(data.isFreshSessionWindow(now: now))
+        XCTAssertEqual(data.boundedTrailingText(now: now), "Not started")
+        XCTAssertEqual(data.resetTooltip(now: now), WidgetData.freshSessionTooltip)
     }
 
     func testNonSessionWindowNeverReadsNotStarted() {
