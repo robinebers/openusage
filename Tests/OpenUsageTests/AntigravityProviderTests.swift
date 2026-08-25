@@ -290,6 +290,25 @@ final class AntigravityProviderTests: XCTestCase {
 
     // MARK: - Provider integration (Cloud Code path, no language server)
 
+    /// A provider on the Cloud Code path (no language server), signed in via a wrapped keychain
+    /// token. Pass `keychainExpiry: nil` for a signed-out provider (empty keychain).
+    @MainActor
+    private func makeCloudCodeProvider(
+        routing: RoutingHTTPClient,
+        keychainExpiry: String? = "2099-01-01T00:00:00Z"
+    ) -> AntigravityProvider {
+        let wrapped = keychainExpiry.map { expiry in
+            let inner = #"{"token":{"access_token":"ya29.kc","refresh_token":"1//r","expiry":"\#(expiry)"}}"#
+            return "go-keyring-base64:" + Data(inner.utf8).base64EncodedString()
+        }
+        return AntigravityProvider(
+            authStore: AntigravityAuthStore(keychain: FakeKeychain(wrapped), files: FakeFiles()),
+            usageClient: AntigravityUsageClient(lsHTTP: routing, http: routing),
+            discovery: LanguageServerDiscovery(processRunner: EmptyProcessRunner()),
+            dbUsageScanner: AntigravityDbUsageScanner(conversationsDirectory: { "/nonexistent-antigravity-tests" })
+        )
+    }
+
     @MainActor
     func testRefreshUsesCloudCodeWhenNoLanguageServer() async {
         let modelsJSON = """
@@ -316,15 +335,7 @@ final class AntigravityProviderTests: XCTestCase {
             return HTTPResponse(statusCode: 404, headers: [:], body: Data())
         }
 
-        let inner = #"{"token":{"access_token":"ya29.kc","refresh_token":"1//r","expiry":"2099-01-01T00:00:00Z"}}"#
-        let wrapped = "go-keyring-base64:" + Data(inner.utf8).base64EncodedString()
-
-        let provider = AntigravityProvider(
-            authStore: AntigravityAuthStore(keychain: FakeKeychain(wrapped), files: FakeFiles()),
-            usageClient: AntigravityUsageClient(lsHTTP: routing, http: routing),
-            discovery: LanguageServerDiscovery(processRunner: EmptyProcessRunner()),
-            dbUsageScanner: AntigravityDbUsageScanner(conversationsDirectory: { "/nonexistent-antigravity-tests" })
-        )
+        let provider = makeCloudCodeProvider(routing: routing)
 
         let snapshot = await provider.refresh()
         XCTAssertEqual(snapshot.plan, "Pro")
@@ -337,11 +348,7 @@ final class AntigravityProviderTests: XCTestCase {
     @MainActor
     func testRefreshErrorsWhenNothingAvailable() async {
         let routing = RoutingHTTPClient { _ in HTTPResponse(statusCode: 500, headers: [:], body: Data()) }
-        let provider = AntigravityProvider(
-            authStore: AntigravityAuthStore(keychain: FakeKeychain(nil), files: FakeFiles()),
-            usageClient: AntigravityUsageClient(lsHTTP: routing, http: routing),
-            discovery: LanguageServerDiscovery(processRunner: EmptyProcessRunner())
-        )
+        let provider = makeCloudCodeProvider(routing: routing, keychainExpiry: nil)
         let snapshot = await provider.refresh()
         XCTAssertTrue(snapshot.lines.contains { $0.isError })
         XCTAssertEqual(snapshot.errorCategory, .notLoggedIn)
@@ -352,13 +359,7 @@ final class AntigravityProviderTests: XCTestCase {
         // Valid keychain token, but every Cloud Code endpoint is down. A signed-in user should see a
         // transient failure (.network), not "not signed in" (.notLoggedIn).
         let routing = RoutingHTTPClient { _ in HTTPResponse(statusCode: 503, headers: [:], body: Data()) }
-        let inner = #"{"token":{"access_token":"ya29.kc","refresh_token":"1//r","expiry":"2099-01-01T00:00:00Z"}}"#
-        let wrapped = "go-keyring-base64:" + Data(inner.utf8).base64EncodedString()
-        let provider = AntigravityProvider(
-            authStore: AntigravityAuthStore(keychain: FakeKeychain(wrapped), files: FakeFiles()),
-            usageClient: AntigravityUsageClient(lsHTTP: routing, http: routing),
-            discovery: LanguageServerDiscovery(processRunner: EmptyProcessRunner())
-        )
+        let provider = makeCloudCodeProvider(routing: routing)
         let snapshot = await provider.refresh()
         XCTAssertTrue(snapshot.lines.contains { $0.isError })
         XCTAssertEqual(snapshot.errorCategory, .network)
@@ -374,13 +375,7 @@ final class AntigravityProviderTests: XCTestCase {
             }
             return HTTPResponse(statusCode: 503, headers: [:], body: Data())
         }
-        let inner = #"{"token":{"access_token":"ya29.old","refresh_token":"1//dead","expiry":"2000-01-01T00:00:00Z"}}"#
-        let wrapped = "go-keyring-base64:" + Data(inner.utf8).base64EncodedString()
-        let provider = AntigravityProvider(
-            authStore: AntigravityAuthStore(keychain: FakeKeychain(wrapped), files: FakeFiles()),
-            usageClient: AntigravityUsageClient(lsHTTP: routing, http: routing),
-            discovery: LanguageServerDiscovery(processRunner: EmptyProcessRunner())
-        )
+        let provider = makeCloudCodeProvider(routing: routing, keychainExpiry: "2000-01-01T00:00:00Z")
         let snapshot = await provider.refresh()
         XCTAssertEqual(snapshot.errorCategory, .authExpired)
     }
@@ -396,13 +391,7 @@ final class AntigravityProviderTests: XCTestCase {
             }
             return HTTPResponse(statusCode: 401, headers: [:], body: Data())
         }
-        let inner = #"{"token":{"access_token":"ya29.kc","refresh_token":"1//r","expiry":"2099-01-01T00:00:00Z"}}"#
-        let wrapped = "go-keyring-base64:" + Data(inner.utf8).base64EncodedString()
-        let provider = AntigravityProvider(
-            authStore: AntigravityAuthStore(keychain: FakeKeychain(wrapped), files: FakeFiles()),
-            usageClient: AntigravityUsageClient(lsHTTP: routing, http: routing),
-            discovery: LanguageServerDiscovery(processRunner: EmptyProcessRunner())
-        )
+        let provider = makeCloudCodeProvider(routing: routing)
         let snapshot = await provider.refresh()
         XCTAssertEqual(snapshot.errorCategory, .network)
     }
@@ -417,13 +406,7 @@ final class AntigravityProviderTests: XCTestCase {
             }
             return HTTPResponse(statusCode: 503, headers: [:], body: Data())
         }
-        let inner = #"{"token":{"access_token":"ya29.old","refresh_token":"1//r","expiry":"2000-01-01T00:00:00Z"}}"#
-        let wrapped = "go-keyring-base64:" + Data(inner.utf8).base64EncodedString()
-        let provider = AntigravityProvider(
-            authStore: AntigravityAuthStore(keychain: FakeKeychain(wrapped), files: FakeFiles()),
-            usageClient: AntigravityUsageClient(lsHTTP: routing, http: routing),
-            discovery: LanguageServerDiscovery(processRunner: EmptyProcessRunner())
-        )
+        let provider = makeCloudCodeProvider(routing: routing, keychainExpiry: "2000-01-01T00:00:00Z")
         let snapshot = await provider.refresh()
         XCTAssertEqual(snapshot.errorCategory, .network)
     }
@@ -443,13 +426,7 @@ final class AntigravityProviderTests: XCTestCase {
             }
             return HTTPResponse(statusCode: 503, headers: [:], body: Data())
         }
-        let inner = #"{"token":{"access_token":"ya29.kc","refresh_token":"1//r","expiry":"2099-01-01T00:00:00Z"}}"#
-        let wrapped = "go-keyring-base64:" + Data(inner.utf8).base64EncodedString()
-        let provider = AntigravityProvider(
-            authStore: AntigravityAuthStore(keychain: FakeKeychain(wrapped), files: FakeFiles()),
-            usageClient: AntigravityUsageClient(lsHTTP: routing, http: routing),
-            discovery: LanguageServerDiscovery(processRunner: EmptyProcessRunner())
-        )
+        let provider = makeCloudCodeProvider(routing: routing)
         let snapshot = await provider.refresh()
         XCTAssertEqual(snapshot.errorCategory, .network)
     }

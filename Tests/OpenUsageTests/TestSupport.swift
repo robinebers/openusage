@@ -405,28 +405,74 @@ final class HangingProviderRuntime: ProviderRuntime {
     }
 }
 
-/// A runtime that returns `first` on the first refresh and `second` on every refresh after — for
-/// sequences like a success that later turns into a failure (e.g. testing that a hard error takes
-/// precedence over a stale soft warning from the prior success).
+/// A runtime that returns a different snapshot per refresh (then repeats the last), counting calls —
+/// for sequences like a success that later turns into a failure, or a failure that recovers, which
+/// `CountingProviderRuntime` (one fixed snapshot) can't express.
 @MainActor
-final class TogglingProviderRuntime: ProviderRuntime {
+final class SequenceProviderRuntime: ProviderRuntime {
     let provider: Provider
     let widgetDescriptors: [WidgetDescriptor]
-    private let first: ProviderSnapshot
-    private let second: ProviderSnapshot
-    private var refreshed = false
+    private let snapshots: [ProviderSnapshot]
+    private(set) var refreshCount = 0
 
-    init(provider: Provider, descriptors: [WidgetDescriptor], first: ProviderSnapshot, second: ProviderSnapshot) {
+    init(provider: Provider, descriptors: [WidgetDescriptor], snapshots: [ProviderSnapshot]) {
         self.provider = provider
         self.widgetDescriptors = descriptors
-        self.first = first
-        self.second = second
+        self.snapshots = snapshots
     }
 
     func refresh() async -> ProviderSnapshot {
-        if refreshed { return second }
-        refreshed = true
-        return first
+        let snapshot = snapshots[min(refreshCount, snapshots.count - 1)]
+        refreshCount += 1
+        return snapshot
+    }
+}
+
+/// An unsigned Cursor-style JWT whose payload carries the `sub`/`exp` claims the auth store parses.
+/// Pass `sub: nil` for a token without a subject claim.
+func makeCursorJWT(sub: String? = "google-oauth2|user", exp: Double = 9_999_999_999) -> String {
+    let payload = sub.map { #"{"sub":"\#($0)","exp":\#(exp)}"# } ?? #"{"exp":\#(exp)}"#
+    let encoded = Data(payload.utf8).base64EncodedString()
+        .replacingOccurrences(of: "=", with: "")
+        .replacingOccurrences(of: "+", with: "-")
+        .replacingOccurrences(of: "/", with: "_")
+    return "a.\(encoded).c"
+}
+
+/// A key/value-table SQLite stand-in (Cursor's `state.vscdb` shape): `queryValue` returns the value
+/// whose key appears in the SQL, and `execute` records `(key, value) VALUES (…)` upserts so tests
+/// can assert what was persisted.
+final class KeyValueSQLite: SQLiteAccessing, @unchecked Sendable {
+    var values: [String: String]
+    var writtenValues: [String: String] = [:]
+
+    init(values: [String: String] = [:]) {
+        self.values = values
+    }
+
+    func queryValue(path: String, sql: String) throws -> String? {
+        for (key, value) in values where sql.contains(key) {
+            return value
+        }
+        return nil
+    }
+
+    func execute(path: String, sql: String) throws {
+        guard let key = sqlValue(after: "(key, value) VALUES ('", in: sql),
+              let value = sqlValue(after: "', '", in: sql)
+        else {
+            return
+        }
+        writtenValues[key] = value
+    }
+
+    private func sqlValue(after marker: String, in sql: String) -> String? {
+        guard let start = sql.range(of: marker)?.upperBound,
+              let end = sql[start...].range(of: "'")?.lowerBound
+        else {
+            return nil
+        }
+        return String(sql[start..<end]).replacingOccurrences(of: "''", with: "'")
     }
 }
 

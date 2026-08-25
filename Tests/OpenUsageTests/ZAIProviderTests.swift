@@ -190,11 +190,7 @@ final class ZAIUsageMapperTests: XCTestCase {
         XCTAssertNil(ZAIUsageMapper.planName(from: data(#"{"data":[]}"#)))
     }
 
-    func testEmptyLimitsYieldNoUsageData() throws {
-        let mapped = try ZAIUsageMapper.map(quotaBody: data(#"{"data":{"limits":[]}}"#), subscriptionBody: nil)
-        // No usable limits → the shared "No usage data" placeholder, not a blank tile.
-        XCTAssertTrue(mapped.lines.contains { $0.label == "Status" })
-    }
+    // Empty-limits → "No usage data" Status placeholder is covered in ZAIQuotaValidationTests.
 
     func testDetectsNoCodingPlanBody() {
         // A valid key on an account with no GLM Coding Plan: the live quota endpoint answers 2xx with

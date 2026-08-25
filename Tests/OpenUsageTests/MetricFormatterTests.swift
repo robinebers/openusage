@@ -6,8 +6,9 @@ import XCTest
 /// behavior the old `WidgetData.format`, `MenuBarContent.compactValue`, and `formatTokens` each had.
 final class MetricFormatterTests: XCTestCase {
     func testDollarsAbbreviateAboveAThousandPerStyle() {
-        // Tray: whole dollars under $1k, abbreviated above.
+        // Tray: whole dollars under $1k (decimals round away), abbreviated above.
         XCTAssertEqual(MetricFormatter.number(42, kind: .dollars, style: .tray), "$42")
+        XCTAssertEqual(MetricFormatter.number(129.81, kind: .dollars, style: .tray), "$130")
         XCTAssertEqual(MetricFormatter.number(2059.07, kind: .dollars, style: .tray), "$2.1K")
         // Row: full cents under $1k, abbreviated with one decimal above (matching token counts).
         XCTAssertEqual(MetricFormatter.number(40.76, kind: .dollars, style: .row), "$40.76")

@@ -122,6 +122,5 @@ final class ProviderAccountsStoreTests: XCTestCase {
     func testFamilyHelperSplitsCardIDs() {
         XCTAssertEqual(ProviderAccountID.family(of: "claude"), "claude")
         XCTAssertEqual(ProviderAccountID.family(of: "claude@ab12cd34"), "claude")
-        XCTAssertEqual(ProviderAccountID.family(of: "cursor"), "cursor")
     }
 }

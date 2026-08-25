@@ -3,18 +3,8 @@ import XCTest
 
 @MainActor
 final class ShellEnvironmentSnapshotTests: XCTestCase {
-    func testStoreRoundtripsSnapshot() {
-        let defaults = makeScratchDefaults()
-        let store = ShellEnvironmentSnapshotStore(defaults: defaults)
-        let snapshot = ShellEnvironmentSnapshot(
-            values: ["CLAUDE_CONFIG_DIR": "~/.claude-work", "XDG_CONFIG_HOME": "~/.config"],
-            capturedAt: Date(timeIntervalSince1970: 1_752_800_000)
-        )
-
-        store.save(snapshot)
-
-        XCTAssertEqual(store.load(), snapshot)
-    }
+    // The store's save → load roundtrip is asserted by
+    // testRefreshTaskKeepsPreviousSnapshotWhenCaptureFails below.
 
     func testUndecodableSnapshotIsDiscarded() {
         let defaults = makeScratchDefaults()

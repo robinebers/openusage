@@ -87,16 +87,18 @@ final class WidgetDataStoreTests: XCTestCase {
             metricLabel: "Session",
             sample: WidgetData(title: "Session", icon: provider.icon, kind: .percent, used: 0, limit: 100)
         )
-        let runtime = TogglingProviderRuntime(
+        let runtime = SequenceProviderRuntime(
             provider: provider,
             descriptors: [meter],
-            first: ProviderSnapshot(
-                providerID: provider.id,
-                displayName: provider.displayName,
-                lines: [.progress(label: "Session", used: 42, limit: 100, format: .percent)],
-                warning: "Re-login for live usage."
-            ),
-            second: ProviderSnapshot.error(provider: provider, message: "Token expired. Run `claude` to log in again.")
+            snapshots: [
+                ProviderSnapshot(
+                    providerID: provider.id,
+                    displayName: provider.displayName,
+                    lines: [.progress(label: "Session", used: 42, limit: 100, format: .percent)],
+                    warning: "Re-login for live usage."
+                ),
+                ProviderSnapshot.error(provider: provider, message: "Token expired. Run `claude` to log in again.")
+            ]
         )
         let store = WidgetDataStore(
             registry: WidgetRegistry(providers: [provider], descriptors: [meter]),

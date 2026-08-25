@@ -58,22 +58,36 @@ final class ParseCounter: @unchecked Sendable {
     }
 }
 
-final class BlockingParser: @unchecked Sendable {
+/// Blocks its first parse until `unblock()`, then delegates to `finish`. Generic over the scanner's
+/// item type so the integer fixtures and the Claude-entry cancellation test share one blocker.
+final class BlockingParser<Item>: @unchecked Sendable {
     private let lock = NSLock()
     private var started = false
     private let release = DispatchSemaphore(value: 0)
+    private let finish: @Sendable (Data) -> [Item]?
+
+    init(finish: @escaping @Sendable (Data) -> [Item]?) {
+        self.finish = finish
+    }
 
     var hasStarted: Bool {
         lock.withLock { started }
     }
 
-    func parse(_ data: Data) -> [Int]? {
+    func parse(_ data: Data) -> [Item]? {
         lock.withLock { started = true }
         release.wait()
-        return String(data: data, encoding: .utf8).flatMap(Int.init).map { [$0] }
+        return finish(data)
     }
 
     func unblock() {
         release.signal()
+    }
+}
+
+extension BlockingParser where Item == Int {
+    /// The one-integer-per-file shape the scanner fixtures write.
+    convenience init() {
+        self.init { String(data: $0, encoding: .utf8).flatMap(Int.init).map { [$0] } }
     }
 }

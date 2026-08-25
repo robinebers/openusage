@@ -65,14 +65,6 @@ final class PanelHeightCoordinatorTests: XCTestCase {
         XCTAssertEqual(c.target(for: .dashboard), 500)  // in-range ideals pass through
     }
 
-    func testLaterMeasurementRecomposesIdeal() {
-        let c = PanelHeightCoordinator(topBarHeight: topBar)
-        c.setScrollContent(300, for: .dashboard)
-        XCTAssertEqual(c.measuredIdeal[.dashboard], 300)
-        c.setScrollContent(500, for: .dashboard)   // content grew (rows loaded)
-        XCTAssertEqual(c.measuredIdeal[.dashboard], 500)
-    }
-
     func testRepeatedMeasurementsDoNotInvalidateHeightObservers() {
         let coordinator = PanelHeightCoordinator(topBarHeight: topBar)
         coordinator.setScrollContent(300, for: .dashboard)

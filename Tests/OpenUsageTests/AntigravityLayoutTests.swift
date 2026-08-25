@@ -98,15 +98,8 @@ final class AntigravityLayoutTests: XCTestCase {
         XCTAssertEqual(store.pinnedMetricIDs, ["antigravity.geminiPro", "antigravity.geminiWeekly"])
     }
 
-    func testSavedPinsKeyIsRespectedExactly() {
-        let defaults = makeDefaults("PinsPresent")
-        saveStored([PlacedWidget(descriptorID: "antigravity.geminiPro")], forKey: "layout", in: defaults)
-        defaults.set(["antigravity.claude"], forKey: "layout.menuBarPins")
-
-        let store = LayoutStore(registry: .antigravityOnly, defaults: defaults, storageKey: "layout")
-        XCTAssertEqual(store.pinnedMetricIDs, ["antigravity.claude"],
-                       "a user-saved pin set must not gain the new default pins")
-    }
+    // A saved pins key never gains new default pins — asserted above in
+    // testSavedGeminiFlashStateIsFilteredEverywhere (the exact-pin-set check).
 
     // MARK: - Fixtures
 

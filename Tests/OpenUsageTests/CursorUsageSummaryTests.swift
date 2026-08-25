@@ -158,7 +158,7 @@ final class CursorUsageSummaryMapperTests: XCTestCase {
 final class CursorEnterpriseProviderTests: XCTestCase {
     func testRefreshCombinesEnterpriseMetersAndStillAppendsUsageHistory() async throws {
         let now = try XCTUnwrap(OpenUsageISO8601.date(from: "2026-07-13T12:00:00.000Z"))
-        let accessToken = makeSummaryCursorJWT(sub: "google-oauth2|enterprise-user")
+        let accessToken = makeCursorJWT(sub: "google-oauth2|enterprise-user")
         let csv = """
         Date,Model,Max Mode,Input (w/ Cache Write),Input (w/o Cache Write),Cache Read,Output Tokens,Cost
         2026-07-13T10:00:00Z,composer-1,No,0,1000,0,100,Included
@@ -221,7 +221,7 @@ final class CursorEnterpriseProviderTests: XCTestCase {
         }
         let provider = CursorProvider(
             authStore: CursorAuthStore(
-                sqlite: SummaryCursorSQLite(values: [CursorAuthStore.accessTokenKey: accessToken]),
+                sqlite: KeyValueSQLite(values: [CursorAuthStore.accessTokenKey: accessToken]),
                 keychain: FakeKeychain()
             ),
             usageClient: CursorUsageClient(http: http),
@@ -306,28 +306,4 @@ final class CursorEnterpriseProviderTests: XCTestCase {
     }
 }
 
-private func makeSummaryCursorJWT(sub: String, exp: Double = 9_999_999_999) -> String {
-    let payload = #"{"sub":"\#(sub)","exp":\#(exp)}"#
-    let encoded = Data(payload.utf8).base64EncodedString()
-        .replacingOccurrences(of: "=", with: "")
-        .replacingOccurrences(of: "+", with: "-")
-        .replacingOccurrences(of: "/", with: "_")
-    return "a.\(encoded).c"
-}
-
-private final class SummaryCursorSQLite: SQLiteAccessing, @unchecked Sendable {
-    private let values: [String: String]
-
-    init(values: [String: String]) {
-        self.values = values
-    }
-
-    func queryValue(path: String, sql: String) throws -> String? {
-        for (key, value) in values where sql.contains(key) {
-            return value
-        }
-        return nil
-    }
-
-    func execute(path: String, sql: String) throws {}
-}
+// makeCursorJWT and KeyValueSQLite live in TestSupport.swift.

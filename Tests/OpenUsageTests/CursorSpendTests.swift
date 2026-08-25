@@ -299,7 +299,7 @@ final class CursorSpendProviderTests: XCTestCase {
         }
         let provider = CursorProvider(
             authStore: CursorAuthStore(
-                sqlite: FakeSQLite(values: [CursorAuthStore.accessTokenKey: accessToken]),
+                sqlite: KeyValueSQLite(values: [CursorAuthStore.accessTokenKey: accessToken]),
                 keychain: FakeKeychain()
             ),
             usageClient: CursorUsageClient(http: http),
@@ -428,25 +428,4 @@ final class CursorUsageClientRequestTests: XCTestCase {
     }
 }
 
-// MARK: - Shared test helpers (file-private; mirror CursorProviderTests)
-
-private func makeCursorJWT(sub: String = "google-oauth2|user", exp: Double = 9_999_999_999) -> String {
-    let payload = #"{"sub":"\#(sub)","exp":\#(exp)}"#
-    let encoded = Data(payload.utf8).base64EncodedString()
-        .replacingOccurrences(of: "=", with: "")
-        .replacingOccurrences(of: "+", with: "-")
-        .replacingOccurrences(of: "/", with: "_")
-    return "a.\(encoded).c"
-}
-
-private final class FakeSQLite: SQLiteAccessing, @unchecked Sendable {
-    var values: [String: String]
-    init(values: [String: String] = [:]) { self.values = values }
-    func queryValue(path: String, sql: String) throws -> String? {
-        for (key, value) in values where sql.contains(key) { return value }
-        return nil
-    }
-    func execute(path: String, sql: String) throws {}
-}
-
-// RoutingHTTPClient lives in TestSupport.swift (shared, records requests).
+// makeCursorJWT, KeyValueSQLite, and RoutingHTTPClient live in TestSupport.swift.
