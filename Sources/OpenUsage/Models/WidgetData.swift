@@ -84,14 +84,11 @@ struct WidgetData: Hashable {
     /// than a hardcoded widget-ID list in the model. `nil` for every other row.
     var sessionStartSignal: SessionStartSignal?
 
-    /// True for rows opted into the session-window "Not started" treatment (any `sessionStartSignal`).
-    var isSessionWindow: Bool { sessionStartSignal != nil }
-
     /// How a session-window meter tells a not-yet-started window from an in-flight one.
     enum SessionStartSignal: Hashable {
-        /// Zero usage is the fresh signal. For providers whose payload carries a reset instant even
-        /// for an untouched window (Antigravity rounds to whole percents on purpose so a fresh pool
-        /// reads 0; OpenCode reports 0 directly), so `used == 0` is what distinguishes fresh.
+        /// Zero usage is the fresh signal. These providers report a reset instant even for an
+        /// untouched window (Antigravity's mapper rounds a fresh pool's fraction-derived percent
+        /// to 0; OpenCode reports 0 directly), so `used == 0` is what marks the window as fresh.
         case zeroUsage
         /// A missing reset date is the fresh signal. Claude's five-hour block only exists once the
         /// first message is sent, so a reported `resets_at` proves the window started. Zero usage is
@@ -580,17 +577,14 @@ extension WidgetData {
     }
 
     /// Session meters only (Claude/Antigravity/OpenCode): a "Not started" state for the current window
-    /// when nothing has been spent in it yet, detected through the descriptor's `sessionStartSignal`.
-    /// Both signals read frozen snapshot fields, not a `resetsAt - now ≈ full period` window-timing
-    /// test — that test is only valid the instant the snapshot is captured, then drifts every second
-    /// until the next refresh, which split the headline from the label (headline "100% left" while the
-    /// label fell back to "Resets in 5h").
-    /// - `.zeroUsage` trusts `used == 0` (the provider reports a reset instant for fresh windows too),
-    ///   gated on `now < resetsAt`: once the reset has passed the snapshot is stale, so we drop the
-    ///   "Not started" claim and let the row fall back to the normal "Resets soon"/countdown formatting.
-    /// - `.missingResetDate` trusts the absence of `resetsAt` (the provider only reports one once the
-    ///   window exists). `used == 0` mustn't decide there: Claude reports whole-percent utilization, so
-    ///   an in-flight window under 1% also reads 0 (#1160) and must keep its reset countdown.
+    /// when nothing has been spent in it yet, detected through the descriptor's `sessionStartSignal`
+    /// (see `SessionStartSignal` for why each provider trusts its signal). Both signals read frozen
+    /// snapshot fields, not a `resetsAt - now ≈ full period` window-timing test — that test is only
+    /// valid the instant the snapshot is captured, then drifts every second until the next refresh,
+    /// which split the headline from the label (headline "100% left" while the label fell back to
+    /// "Resets in 5h"). `.zeroUsage` is additionally gated on `now < resetsAt`: once the reset has
+    /// passed the snapshot is stale, so we drop the "Not started" claim and let the row fall back to
+    /// the normal "Resets soon"/countdown formatting.
     func isFreshSessionWindow(now: Date = Date()) -> Bool {
         guard let signal = sessionStartSignal, hasData, limit != nil, used <= 0 else { return false }
         switch signal {
