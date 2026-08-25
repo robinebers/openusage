@@ -3,19 +3,23 @@ import Foundation
 
 @MainActor
 final class ClaudeProvider: ProviderRuntime {
-    let provider = Provider(
-        id: "claude",
-        displayName: "Claude",
-        icon: .providerMark("claude"),
-        links: [
-            .init(label: "Status", url: "https://status.anthropic.com/"),
-            .init(label: "Dashboard", url: "https://claude.ai/settings/usage")
-        ]
-    )
+    static func makeProvider(id: String = "claude", displayName: String = "Claude") -> Provider {
+        Provider(
+            id: id,
+            displayName: displayName,
+            icon: .providerMark("claude"),
+            links: [
+                .init(label: "Status", url: "https://status.anthropic.com/"),
+                .init(label: "Dashboard", url: "https://claude.ai/settings/usage")
+            ]
+        )
+    }
 
+    let provider: Provider
     let authStore: ClaudeAuthStore
     let usageClient: ClaudeUsageClient
     let logUsageScanner: ClaudeLogUsageScanner
+    let allowsUnattributedPiUsage: Bool
     let now: @Sendable () -> Date
     let pricing: @Sendable () async -> ModelPricing
 
@@ -30,30 +34,34 @@ final class ClaudeProvider: ProviderRuntime {
     private static let rateLimitCooldown: TimeInterval = 5 * 60
 
     init(
+        provider: Provider = ClaudeProvider.makeProvider(),
         authStore: ClaudeAuthStore = ClaudeAuthStore(),
         usageClient: ClaudeUsageClient = ClaudeUsageClient(),
         logUsageScanner: ClaudeLogUsageScanner = ClaudeLogUsageScanner(),
+        allowsUnattributedPiUsage: Bool = true,
         now: @escaping @Sendable () -> Date = Date.init,
         pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() }
     ) {
+        self.provider = provider
         self.authStore = authStore
         self.usageClient = usageClient
         self.logUsageScanner = logUsageScanner
+        self.allowsUnattributedPiUsage = allowsUnattributedPiUsage
         self.now = now
         self.pricing = pricing
     }
 
     var widgetDescriptors: [WidgetDescriptor] {
         [
-            .percent(id: "claude.session", provider: provider, title: "Session", isSessionWindow: true)
+            .percent(id: "\(provider.id).session", provider: provider, title: "Session", isSessionWindow: true)
                 .exportingLimit("session", unit: "percent"),
-            .percent(id: "claude.weekly", provider: provider, title: "Weekly")
+            .percent(id: "\(provider.id).weekly", provider: provider, title: "Weekly")
                 .exportingLimit("weekly", unit: "percent"),
-            .percent(id: "claude.fable", provider: provider, title: "Fable")
+            .percent(id: "\(provider.id).fable", provider: provider, title: "Fable")
                 .exportingLimit("fable", unit: "percent"),
-            .percent(id: "claude.sonnet", provider: provider, title: "Sonnet")
+            .percent(id: "\(provider.id).sonnet", provider: provider, title: "Sonnet")
                 .exportingLimit("sonnet", unit: "percent"),
-            .boundedDollars(id: "claude.extra", provider: provider, title: "Extra Usage", metricLabel: "Extra usage spent", limit: 100, valueWord: "spent")
+            .boundedDollars(id: "\(provider.id).extra", provider: provider, title: "Extra Usage", metricLabel: "Extra usage spent", limit: 100, valueWord: "spent")
                 .exportingLimit("extraUsage", unit: "usd", source: .progressOrValue(kind: .dollars)),
             .usageTrend(provider: provider)
                 .exportingHistory(
@@ -274,7 +282,9 @@ final class ClaudeProvider: ProviderRuntime {
         // Both scans run on their scanner actors, off the main actor, and do not require an OAuth login.
         let pricing = await pricing()
         let nativeScan = await logUsageScanner.scan(now: now(), pricing: pricing)
-        let piScan = await PiUsageScanner.shared.scan(cardID: provider.id, now: now(), pricing: pricing)
+        let piScan = allowsUnattributedPiUsage
+            ? await PiUsageScanner.shared.scan(cardID: provider.id, now: now(), pricing: pricing)
+            : nil
         var usageHistory: ProviderUsageHistory?
         // Cancellation can land between the native and pi scans. Treat the pair as one unit so a
         // partial result cannot replace the last-good combined history in WidgetDataStore.

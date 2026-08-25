@@ -16,6 +16,7 @@ enum ClaudeDesktopCredentialStatus: Sendable, Equatable {
 struct ClaudeDesktopCredentialResult: Sendable {
     var oauth: ClaudeOAuth?
     var status: ClaudeDesktopCredentialStatus
+    var organization: String? = nil
 }
 
 protocol ClaudeDesktopSafeStorageKeyReading: Sendable {
@@ -120,10 +121,34 @@ struct ClaudeDesktopAuthStore: Sendable {
         else {
             return false
         }
-        return Self.cookieRelativePaths.contains { files.exists(path($0)) }
+        let sql = "SELECT 1 FROM cookies WHERE name = 'lastActiveOrg' AND host_key IN ('.claude.ai', 'claude.ai') LIMIT 1"
+        return Self.cookieRelativePaths.contains { relativePath in
+            let databasePath = path(relativePath)
+            return files.exists(databasePath)
+                && (try? sqlite.queryValue(path: databasePath, sql: sql)) != nil
+        }
     }
 
-    func load(allowInteraction: Bool) -> ClaudeDesktopCredentialResult {
+    func lastKnownAccountUUID() -> String? {
+        guard let text = try? files.readTextIfPresent(path(Self.configRelativePath)),
+              let data = text.data(using: .utf8),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let user = root["lastKnownAccountUuid"] as? String,
+              UUID(uuidString: user) != nil
+        else { return nil }
+        return user.lowercased()
+    }
+
+    func load(
+        allowInteraction: Bool,
+        organization: String? = nil,
+        expectedAccountUUID: String? = nil
+    ) -> ClaudeDesktopCredentialResult {
+        if let expectedAccountUUID,
+           lastKnownAccountUUID()?.caseInsensitiveCompare(expectedAccountUUID) != .orderedSame
+        {
+            return ClaudeDesktopCredentialResult(oauth: nil, status: .notFound)
+        }
         guard hasCredentialMaterial() else {
             return ClaudeDesktopCredentialResult(oauth: nil, status: .notFound)
         }
@@ -138,15 +163,18 @@ struct ClaudeDesktopAuthStore: Sendable {
                 return ClaudeDesktopCredentialResult(oauth: nil, status: .invalid)
             }
 
+            let targetOrganization = organization?.lowercased() ?? activeOrg
             let selection = Self.selectCredential(
-                activeOrganization: activeOrg,
+                activeOrganization: targetOrganization,
                 v2: caches.v2,
                 v1: caches.v1,
                 now: now()
             )
             switch selection {
             case .available(let oauth):
-                return ClaudeDesktopCredentialResult(oauth: oauth, status: .available)
+                return ClaudeDesktopCredentialResult(
+                    oauth: oauth, status: .available, organization: targetOrganization
+                )
             case .stale:
                 return ClaudeDesktopCredentialResult(oauth: nil, status: .stale)
             case .notFound:
