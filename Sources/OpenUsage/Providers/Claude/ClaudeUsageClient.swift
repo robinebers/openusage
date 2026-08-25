@@ -80,27 +80,39 @@ struct ClaudeUsageClient: Sendable {
         )
     }
 
-    func verifyAccount(accessToken: String, expectedIdentityKey: String, config: ClaudeOAuthConfig) async throws {
+    func verifyAccount(
+        accessToken: String,
+        expectedIdentityKey: String,
+        config: ClaudeOAuthConfig
+    ) async throws -> HTTPResponse? {
         let expected = expectedIdentityKey.split(separator: "|", omittingEmptySubsequences: false)
         guard expected.count == 2 else { throw ClaudeAuthError.sessionExpired }
 
-        let response = try await httpClient.send(HTTPRequest(
-            method: "GET",
-            url: config.usageURL.deletingLastPathComponent().appendingPathComponent("profile"),
-            headers: [
-                "Authorization": "Bearer \(accessToken.trimmingCharacters(in: .whitespacesAndNewlines))",
-                "Accept": "application/json",
-                "anthropic-beta": "oauth-2025-04-20"
-            ],
-            timeout: 10
-        ))
-        guard (200..<300).contains(response.statusCode),
-              let profile = try? JSONDecoder().decode(AccountProfile.self, from: response.body),
-              profile.account.uuid.caseInsensitiveCompare(String(expected[0])) == .orderedSame,
+        let response: HTTPResponse
+        do {
+            response = try await httpClient.send(HTTPRequest(
+                method: "GET",
+                url: config.usageURL.deletingLastPathComponent().appendingPathComponent("profile"),
+                headers: [
+                    "Authorization": "Bearer \(accessToken.trimmingCharacters(in: .whitespacesAndNewlines))",
+                    "Accept": "application/json",
+                    "anthropic-beta": "oauth-2025-04-20"
+                ],
+                timeout: 10
+            ))
+        } catch {
+            throw ClaudeUsageError.connectionFailed
+        }
+        guard (200..<300).contains(response.statusCode) else { return response }
+        guard let profile = try? JSONDecoder().decode(AccountProfile.self, from: response.body) else {
+            throw ClaudeUsageError.invalidResponse
+        }
+        guard profile.account.uuid.caseInsensitiveCompare(String(expected[0])) == .orderedSame,
               profile.organization?.uuid.caseInsensitiveCompare(String(expected[1])) == .orderedSame
         else {
             AppLog.warn(LogTag.auth("claude"), "Claude credential does not match its account or organization")
             throw ClaudeAuthError.sessionExpired
         }
+        return nil
     }
 }

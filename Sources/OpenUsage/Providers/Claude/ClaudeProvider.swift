@@ -347,10 +347,20 @@ final class ClaudeProvider: ProviderRuntime {
 
         var working = state
         defer { state = working }
-        try await verifyAccountIfNeeded(accessToken: working.oauth.accessToken ?? "")
+        var verificationResponse = try await verifyAccountIfNeeded(
+            accessToken: working.oauth.accessToken ?? ""
+        )
         let response = try await ProviderAuthRetry.fetch(
             token: working.oauth.accessToken ?? "",
-            attempt: { try await self.usageClient.fetchUsage(accessToken: $0, config: self.authStore.oauthConfig()) },
+            attempt: { accessToken in
+                if let response = verificationResponse {
+                    verificationResponse = nil
+                    return response
+                }
+                return try await self.usageClient.fetchUsage(
+                    accessToken: accessToken, config: self.authStore.oauthConfig()
+                )
+            },
             refreshAccessToken: {
                 if working.source == .desktop {
                     throw ClaudeAuthError.desktopTokenExpired
@@ -366,7 +376,9 @@ final class ClaudeProvider: ProviderRuntime {
                 if refreshed.persisted {
                     expectedGeneration = expectedGeneration.replacing(working)
                 }
-                try await self.verifyAccountIfNeeded(accessToken: refreshed.accessToken)
+                verificationResponse = try await self.verifyAccountIfNeeded(
+                    accessToken: refreshed.accessToken
+                )
                 return refreshed.accessToken
             },
             connectionFailed: ClaudeUsageError.connectionFailed,
@@ -394,16 +406,19 @@ final class ClaudeProvider: ProviderRuntime {
         return mapped
     }
 
-    private func verifyAccountIfNeeded(accessToken: String) async throws {
+    private func verifyAccountIfNeeded(accessToken: String) async throws -> HTTPResponse? {
         guard let identity = authStore.expectedIdentityKey,
               identity.split(separator: "|").count == 2
-        else { return }
+        else { return nil }
         let fingerprint = Data(SHA256.hash(data: Data("\(identity)\u{0}\(accessToken)".utf8)))
-        guard verifiedCredentialFingerprint != fingerprint else { return }
-        try await usageClient.verifyAccount(
+        guard verifiedCredentialFingerprint != fingerprint else { return nil }
+        if let response = try await usageClient.verifyAccount(
             accessToken: accessToken, expectedIdentityKey: identity, config: authStore.oauthConfig()
-        )
+        ) {
+            return response
+        }
         verifiedCredentialFingerprint = fingerprint
+        return nil
     }
 
     /// Last-good usage with an appended staleness note when we have it; otherwise the plain rate-limited

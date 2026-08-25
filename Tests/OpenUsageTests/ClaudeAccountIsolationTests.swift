@@ -232,6 +232,88 @@ final class ClaudeAccountIsolationTests: XCTestCase {
         )
     }
 
+    func testAccountVerificationRefreshesExpiredTokenBeforeFetchingUsage() async {
+        let fixture = makeFixture(
+            credentials: credentials(access: "expired", refresh: "refresh-token", plan: "pro"),
+            expectedIdentityKey: "account|organization"
+        ) { request in
+            switch request.url.path {
+            case "/api/oauth/profile":
+                guard request.headers["Authorization"] == "Bearer fresh" else {
+                    return HTTPResponse(statusCode: 401, headers: [:], body: Data())
+                }
+                return HTTPResponse(
+                    statusCode: 200, headers: [:],
+                    body: Data(#"{"account":{"uuid":"account"},"organization":{"uuid":"organization"}}"#.utf8)
+                )
+            case "/v1/oauth/token":
+                return HTTPResponse(
+                    statusCode: 200, headers: [:],
+                    body: Data(#"{"access_token":"fresh","refresh_token":"rotated","expires_in":3600}"#.utf8)
+                )
+            case "/api/oauth/usage":
+                XCTAssertEqual(request.headers["Authorization"], "Bearer fresh")
+                return Self.usageResponse(percent: 42)
+            default:
+                XCTFail("Unexpected request: \(request.url.path)")
+                return HTTPResponse(statusCode: 404, headers: [:], body: Data())
+            }
+        }
+
+        let snapshot = await fixture.provider.refresh()
+
+        XCTAssertEqual(sessionUsage(snapshot), 42)
+        XCTAssertEqual(fixture.http.requests.map(\.url.path), [
+            "/api/oauth/profile", "/v1/oauth/token", "/api/oauth/profile", "/api/oauth/usage"
+        ])
+        XCTAssertTrue(fixture.files.files[path]?.contains("rotated") == true)
+    }
+
+    func testAccountVerificationRateLimitUsesExistingCooldown() async {
+        let fixture = makeFixture(
+            credentials: credentials(access: "token", refresh: "refresh", plan: "pro"),
+            expectedIdentityKey: "account|organization"
+        ) { request in
+            XCTAssertEqual(request.url.path, "/api/oauth/profile")
+            return HTTPResponse(statusCode: 429, headers: ["retry-after": "600"], body: Data())
+        }
+
+        let first = await fixture.provider.refresh()
+        let second = await fixture.provider.refresh()
+
+        XCTAssertEqual(status(first)?.hasPrefix("Rate limited"), true)
+        XCTAssertEqual(second.warning?.contains("Retrying in ~10m"), true)
+        XCTAssertEqual(fixture.http.requests.count, 1)
+        XCTAssertTrue(usageRequests(fixture.http).isEmpty)
+    }
+
+    func testAccountVerificationOutagesAndMalformedResponsesDoNotClaimLogout() async {
+        let cases = [
+            (status: 503, body: "", expected: ClaudeUsageError.requestFailed(503).localizedDescription),
+            (status: 200, body: "not-json", expected: ClaudeUsageError.invalidResponse.localizedDescription)
+        ]
+        for scenario in cases {
+            let fixture = makeFixture(
+                credentials: credentials(access: "token", refresh: "refresh", plan: "pro"),
+                expectedIdentityKey: "account|organization"
+            ) { request in
+                XCTAssertEqual(request.url.path, "/api/oauth/profile")
+                return HTTPResponse(
+                    statusCode: scenario.status, headers: [:], body: Data(scenario.body.utf8)
+                )
+            }
+
+            let snapshot = await fixture.provider.refresh()
+
+            if case let .badge(_, message, _, _)? = snapshot.line(label: "Error") {
+                XCTAssertEqual(message, scenario.expected)
+            } else {
+                XCTFail("Missing error for profile status \(scenario.status)")
+            }
+            XCTAssertTrue(usageRequests(fixture.http).isEmpty)
+        }
+    }
+
     private struct Fixture {
         var provider: ClaudeProvider
         var files: FakeFiles
@@ -240,14 +322,20 @@ final class ClaudeAccountIsolationTests: XCTestCase {
 
     private func makeFixture(
         credentials: String,
+        expectedIdentityKey: String? = nil,
         handler: @escaping @Sendable (HTTPRequest) async throws -> HTTPResponse
     ) -> Fixture {
-        makeFixture(files: FakeFiles([path: credentials]), handler: handler)
+        makeFixture(
+            files: FakeFiles([path: credentials]),
+            expectedIdentityKey: expectedIdentityKey,
+            handler: handler
+        )
     }
 
     private func makeFixture(
         files: FakeFiles,
         keychain: any KeychainAccessing = FakeKeychain(),
+        expectedIdentityKey: String? = nil,
         handler: @escaping @Sendable (HTTPRequest) async throws -> HTTPResponse
     ) -> Fixture {
         let http = RoutingHTTPClient(handler: handler)
@@ -258,6 +346,7 @@ final class ClaudeAccountIsolationTests: XCTestCase {
                     environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": "/tmp/claude"]),
                     files: files,
                     keychain: keychain,
+                    expectedIdentityKey: expectedIdentityKey,
                     now: { now }
                 ),
                 usageClient: ClaudeUsageClient(httpClient: http),
