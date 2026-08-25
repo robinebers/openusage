@@ -39,7 +39,7 @@ jobs:
             const references = [
               ...new Set(
                 [...(pullRequest.body ?? "").matchAll(
-                  /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b/gi
+                  /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\s+#(\d+)\b/gi
                 )].map(match => Number(match[1]))
               )
             ];
