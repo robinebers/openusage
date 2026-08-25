@@ -432,6 +432,15 @@ final class WidgetDataStore {
                 providers[providerID] = history
             }
         }
+        let exportedClaudeIDs = providers.keys.filter {
+            ProviderAccountID.family(of: $0) == "claude"
+        }
+        if let onlyClaudeID = exportedClaudeIDs.first,
+           exportedClaudeIDs.count == 1, onlyClaudeID != "claude"
+        {
+            providers["claude"] = providers.removeValue(forKey: onlyClaudeID)
+            identities["claude"] = identities.removeValue(forKey: onlyClaudeID)
+        }
         let hasClaudeAccountCards = providers.keys.contains {
             ProviderAccountID.family(of: $0) == "claude" && $0 != "claude"
         }

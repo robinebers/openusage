@@ -131,6 +131,22 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
         XCTAssertEqual(providers.map { $0.provider.id }, [workID, "claude"])
         XCTAssertEqual(providers.map { $0.authStore.desktopOnly }, [false, true])
         XCTAssertFalse(providers.contains { $0.allowsUnattributedPiUsage })
+
+        let withoutDesktop = ProviderAccountAssembly.make(
+            observer: observer, accountsStore: ProviderAccountsStore(defaults: defaults), families: ["claude"],
+            desktop: ClaudeDesktopAuthStore(files: FakeFiles(), homeDirectory: { fixtureHome })
+        )
+        XCTAssertEqual(withoutDesktop.claudeCards.count, 1)
+        XCTAssertFalse(try XCTUnwrap(withoutDesktop.claudeCards.first).allowsUnattributedPiUsage)
+
+        fixture.files.files["\(home.path)/.claude.json"] =
+            #"{"oauthAccount":{"accountUuid":"\#(accountUUID)"}}"#
+        let legacy = ProviderAccountAssembly.make(
+            observer: observer, accountsStore: ProviderAccountsStore(defaults: defaults), families: ["claude"],
+            desktop: fixture.store, listDesktopOrganizationDirectories: { _ in organizations }
+        )
+        XCTAssertTrue(legacy.claudeCards.isEmpty)
+        XCTAssertEqual(legacy.identityKeysByCard["claude"], accountUUID)
     }
 
     func testV1FallbackDoesNotOverrideTombstonedV2Key() throws {

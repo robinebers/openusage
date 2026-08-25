@@ -6,6 +6,7 @@ struct ClaudeAccountCard: Equatable, Sendable {
     let organizationID: String
     let displayName: String
     let usesDesktopCredentials: Bool
+    let allowsUnattributedPiUsage: Bool
 }
 
 /// The launch-time account pass: read which account is signed in at each family's default home,
@@ -110,6 +111,11 @@ struct ProviderAccountAssembly {
             }
         }
 
+        if let claudeIdentity = identityKeys["claude"], !claudeIdentity.contains("|") {
+            accountsStore.reconcile(with: observations)
+            return ProviderAccountAssembly(identityKeysByCard: identityKeys)
+        }
+
         let desktop = desktop ?? ClaudeDesktopAuthStore(
             files: observer.files, homeDirectory: observer.homeDirectory
         )
@@ -138,6 +144,7 @@ struct ProviderAccountAssembly {
 
         let defaultClaudeIdentity = identityKeys["claude"]
         let records = accountsStore.reconcile(with: observations)
+        let allowsUnattributedPiUsage = records.count { $0.family == "claude" } == 1
         var cards: [ClaudeAccountCard] = []
         if let defaultIdentity = defaultClaudeIdentity,
            let organization = defaultIdentity.split(separator: "|").last,
@@ -152,7 +159,8 @@ struct ProviderAccountAssembly {
             } ?? "Organization"
             cards.append(ClaudeAccountCard(
                 id: record.id, identityKey: defaultIdentity, organizationID: String(organization),
-                displayName: "Claude — \(label)", usesDesktopCredentials: false
+                displayName: "Claude — \(label)", usesDesktopCredentials: false,
+                allowsUnattributedPiUsage: allowsUnattributedPiUsage
             ))
             identityKeys.removeValue(forKey: "claude")
             identityKeys[record.id] = defaultIdentity
@@ -166,7 +174,7 @@ struct ProviderAccountAssembly {
             cards.append(ClaudeAccountCard(
                 id: cardID, identityKey: organization.identityKey, organizationID: organization.id,
                 displayName: "Claude — \(organizationLabel(record.label) ?? organization.label)",
-                usesDesktopCredentials: true
+                usesDesktopCredentials: true, allowsUnattributedPiUsage: allowsUnattributedPiUsage
             ))
             identityKeys[cardID] = organization.identityKey
         }

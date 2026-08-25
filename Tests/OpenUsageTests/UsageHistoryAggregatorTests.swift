@@ -247,6 +247,19 @@ final class UsageHistoryAggregatorTests: XCTestCase {
         XCTAssertNotNil(single.providers["codex"])
         XCTAssertNoThrow(try single.validate())
 
+        let switched = WidgetDataStore(
+            registry: WidgetRegistry(providers: [work, codex], descriptors: descriptors.filter {
+                $0.providerID != personal.id
+            }),
+            providers: [], cache: cache, defaults: defaults,
+            providerIdentityKeys: identities
+        ).localHistoryDocument(deviceID: "this-mac", deviceName: "This Mac")
+
+        XCTAssertEqual(switched.schema, UsageHistoryDocument.currentSchema)
+        XCTAssertEqual(switched.identities, ["claude": "user|work"])
+        XCTAssertEqual(Set(switched.providers.keys), ["claude", "codex"])
+        XCTAssertNoThrow(try switched.validate())
+
         let multiple = WidgetDataStore(
             registry: WidgetRegistry(providers: providers, descriptors: descriptors),
             providers: [], cache: cache, defaults: defaults,
