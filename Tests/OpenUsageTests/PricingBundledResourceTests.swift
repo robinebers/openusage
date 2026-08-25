@@ -51,7 +51,7 @@ final class PricingBundledResourceTests: XCTestCase {
             ("grok-4-6-xhigh-fast", 4), ("kimi-k2p5", 0.6),
             ("kimi-k2.7-code", 0.95), ("kimi-k2p7", 0.95), ("kimi-k3-max", 3),
             ("claude-4.7-opus-high-thinking", 5), ("claude-4.7-opus-max-thinking-fast", 30),
-            ("glm-5.2-max", 1.4)
+            ("glm-5.2-max", 1.4), ("glm-5.3-max", 1.4)
         ]
         for (model, expected) in expectedInputRates {
             XCTAssertEqual(pricing.resolve(model: model)?.inputPerMillion, expected, model)
@@ -211,6 +211,7 @@ final class PricingBundledResourceTests: XCTestCase {
             "Gemini 3.6 Flash (Auto)": "gemini-3.6-flash",
             "Gemini 3.7 Flash (Auto Balanced)": "gemini-3.7-flash",
             "GLM 5.2 (Auto)": "glm-5.2",
+            "GLM 5.3 (Auto Intelligence)": "glm-5.3",
             "Kimi K3 (Auto Intelligence)": "kimi-k3"
         ]
         for (label, canonical) in expected {
@@ -276,6 +277,29 @@ final class PricingBundledResourceTests: XCTestCase {
         let outputOnly = TokenBreakdown(output: 1_000_000)
         XCTAssertEqual(pricing.estimatedCostDollars(model: "glm-5.2-high", tokens: outputOnly)!, 4.4, accuracy: 1e-9)
         XCTAssertNil(pricing.estimatedCostDollars(model: "glm-5.2-bogus", tokens: outputOnly))
+    }
+
+    /// GLM 5.3 has its own identity and Z.ai's published rates; its three supported effort levels
+    /// and provider-prefixed API identifiers all resolve to that same distinct model.
+    func testGLM53PricingAndAliases() throws {
+        let pricing = Self.pricing
+        let glm = try XCTUnwrap(pricing.resolve(model: "glm-5.3"))
+        XCTAssertEqual(glm.inputPerMillion, 1.4)
+        XCTAssertEqual(glm.cacheWritePerMillion, 1.4)
+        XCTAssertEqual(glm.cacheReadPerMillion, 0.26)
+        XCTAssertEqual(glm.outputPerMillion, 4.4)
+
+        for model in [
+            "glm-5.3-low", "glm-5.3-high", "glm-5.3-max",
+            "z-ai/glm-5.3", "zai/glm-5.3-max", "ZHIPU/GLM-5.3"
+        ] {
+            XCTAssertEqual(pricing.supplement.canonicalName(for: model), "glm-5.3", model)
+            XCTAssertEqual(pricing.resolve(model: model), glm, model)
+        }
+
+        let outputOnly = TokenBreakdown(output: 1_000_000)
+        XCTAssertEqual(pricing.estimatedCostDollars(model: "glm-5.3-low", tokens: outputOnly)!, 4.4, accuracy: 1e-9)
+        XCTAssertNil(pricing.estimatedCostDollars(model: "glm-5.3-medium", tokens: outputOnly))
     }
 
     /// Grok CLI model ids route through the alias rules to their catalog entries.

@@ -1,6 +1,6 @@
 {
-  "$comment": "OpenUsage pricing supplement. Prices Cursor-native models that no public catalog carries, supplies fast-variant multipliers the catalogs omit, and maps provider log/CSV model slugs to canonical pricing keys (LiteLLM keys, models.dev ids, or entries in this file). Cursor Router rows name the routed model in prose instead of a slug ('Opus 5 (Auto Balanced)'), so those labels get alias rules too. Published to gh-pages by .github/workflows/pricing-supplement.yml on every change, so installed apps pick edits up within about an hour - no release needed. Rates are USD per million tokens. Sources: https://cursor.com/docs/models-and-pricing.md for Cursor-native entries; https://developers.openai.com/api/docs/models/daybreak-blue-latest and https://developers.openai.com/api/docs/pricing for Daybreak aliases and rates.",
-  "updated_at": "2026-08-24T05:18:50Z",
+  "$comment": "OpenUsage pricing supplement. Prices Cursor-native models that no public catalog carries, supplies fast-variant multipliers the catalogs omit, and maps provider log/CSV model slugs to canonical pricing keys (LiteLLM keys, models.dev ids, or entries in this file). Cursor Router rows name the routed model in prose instead of a slug ('Opus 5 (Auto Balanced)'), so those labels get alias rules too. Published to gh-pages by .github/workflows/pricing-supplement.yml on every change, so installed apps pick edits up within about an hour - no release needed. Rates are USD per million tokens. Sources: https://cursor.com/docs/models-and-pricing.md for Cursor-native entries; https://developers.openai.com/api/docs/models/daybreak-blue-latest and https://developers.openai.com/api/docs/pricing for Daybreak aliases and rates; https://docs.z.ai/guides/overview/pricing for GLM 5.3.",
+  "updated_at": "2026-08-25T12:25:52Z",
   "pricing": {
     "auto": {
       "input_per_million": 1.25,
@@ -49,6 +49,13 @@
       "cache_write_per_million": 5.0,
       "cache_read_per_million": 0.5,
       "output_per_million": 30.0
+    },
+    "glm-5.3": {
+      "$comment": "Z.ai's official GLM 5.3 API rates. Cache storage has no separate charge, so cache writes bill at the input rate. Neither bundled public catalog carries the model yet.",
+      "input_per_million": 1.4,
+      "cache_write_per_million": 1.4,
+      "cache_read_per_million": 0.26,
+      "output_per_million": 4.4
     },
     "grok-4.5": {
       "$comment": "Cursor + SpaceXAI first-party model. Cache write not published separately; defaults to input.",
@@ -260,6 +267,7 @@
     { "pattern": "^kimi-k2\\.5$", "canonical": "moonshot/kimi-k2.5" },
     { "pattern": "^kimi-k2p5$", "canonical": "moonshot/kimi-k2.5" },
     { "pattern": "^glm-5\\.2(?:-(?:high|max))?$", "canonical": "glm-5.2" },
+    { "pattern": "(?i)^(?:(?:z-ai|zai|zhipu)/)?glm-5\\.3(?:-(?:low|high|max))?$", "canonical": "glm-5.3" },
     { "pattern": "^[Pp]remium \\((?:[Gg][Pp][Tt]-5\\.3-[Cc]odex|[Cc]odex 5\\.3)\\)$", "canonical": "gpt-5.3-codex" },
     { "pattern": "(?i)^Composer 2\\.5 Fast \\(Auto[^)]*\\)$", "canonical": "composer-2.5-fast" },
     { "pattern": "(?i)^Composer 2\\.5 \\(Auto[^)]*\\)$", "canonical": "composer-2.5" },
@@ -282,6 +290,7 @@
     { "pattern": "(?i)^Gemini 3\\.6 Flash \\(Auto[^)]*\\)$", "canonical": "gemini-3.6-flash" },
     { "pattern": "(?i)^Gemini 3\\.7 Flash \\(Auto[^)]*\\)$", "canonical": "gemini-3.7-flash" },
     { "pattern": "(?i)^GLM 5\\.2 \\(Auto[^)]*\\)$", "canonical": "glm-5.2" },
+    { "pattern": "(?i)^GLM 5\\.3 \\(Auto[^)]*\\)$", "canonical": "glm-5.3" },
     { "pattern": "(?i)^Kimi K3 \\(Auto[^)]*\\)$", "canonical": "kimi-k3" }
   ]
 }
