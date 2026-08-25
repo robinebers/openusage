@@ -434,6 +434,128 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
         XCTAssertNil(scan)
     }
 
+    func testOrganizationScanSeparatesTerminalSessionsAndTheirSubagents() async throws {
+        let now = Date()
+        let timestamp = OpenUsageISO8601.string(from: now)
+        let home = try ClaudeLogFixture.makeUserHome(claudeFiles: [
+            "workspace/session-a.jsonl": #"{"type":"bridge-session","ownerOrganizationUuid":"ORG-A","ownerAccountUuid":"USER-A"}"# + "\n" +
+                ClaudeLogFixture.usageLine(timestamp: timestamp, input: 100, output: 50, costUSD: 0.25,
+                                           messageID: "main-a", requestID: "main-a"),
+            "workspace/session-a/subagents/agent-a.jsonl": ClaudeLogFixture.usageLine(
+                timestamp: timestamp, input: 10, output: 5, costUSD: 0.05,
+                messageID: "agent-a", requestID: "agent-a"
+            ),
+            "workspace/session-b.jsonl": #"{"type":"bridge-session","ownerOrganizationUuid":"org-b","ownerAccountUuid":"user-a"}"# + "\n" +
+                ClaudeLogFixture.usageLine(timestamp: timestamp, input: 200, output: 20, costUSD: 0.40,
+                                           messageID: "main-b", requestID: "main-b"),
+            "workspace/session-b/subagents/agent-b.jsonl": ClaudeLogFixture.usageLine(
+                timestamp: timestamp, input: 20, output: 2, costUSD: 0.06,
+                messageID: "agent-b", requestID: "agent-b"
+            ),
+            "workspace/unowned.jsonl": ClaudeLogFixture.usageLine(
+                timestamp: timestamp, input: 1000, output: 500, costUSD: 9,
+                messageID: "unowned", requestID: "unowned"
+            ),
+            "workspace/foreign-user.jsonl": #"{"ownerOrganizationUuid":"org-a","ownerAccountUuid":"user-b"}"# +
+                "\n" + ClaudeLogFixture.usageLine(
+                    timestamp: timestamp, input: 3000, output: 500, costUSD: 11,
+                    messageID: "foreign-user", requestID: "foreign-user"
+                ),
+            "workspace/ambiguous.jsonl": #"{"ownerOrganizationUuid":"org-a"}"# + "\n" +
+                #"{"ownerOrganizationUuid":"org-b"}"# + "\n" + ClaudeLogFixture.usageLine(
+                    timestamp: timestamp, input: 2000, output: 500, costUSD: 10,
+                    messageID: "ambiguous", requestID: "ambiguous"
+            )
+        ])
+        let sharedCache = IncrementalJSONLScanner<Entry>()
+
+        for (organizationID, expectedTokens, expectedCost) in [("org-a", 165, 0.30), ("ORG-B", 242, 0.46)] {
+            let scanner = ClaudeLogUsageScanner(
+                environment: FakeEnvironment([:]), homeDirectory: { home },
+                incrementalScanner: sharedCache, accountUUID: "user-a", organizationUUID: organizationID
+            )
+            let result = await scanner.scan(now: now, pricing: pricing)
+            let scan = try XCTUnwrap(result)
+            XCTAssertEqual(scan.series.daily.first?.totalTokens, expectedTokens, organizationID)
+            XCTAssertEqual(scan.series.daily.first?.costUSD ?? 0, expectedCost, accuracy: 1e-9, organizationID)
+        }
+    }
+
+    func testOrganizationScanRefreshesChangedSessionOwnership() async throws {
+        let now = Date()
+        let timestamp = OpenUsageISO8601.string(from: now)
+        let line = ClaudeLogFixture.usageLine(
+            timestamp: timestamp, input: 100, output: 50, costUSD: 0.25
+        )
+        let home = try ClaudeLogFixture.makeUserHome(claudeFiles: [
+            "workspace/session.jsonl": #"{"ownerOrganizationUuid":"org-a","ownerAccountUuid":"user-a"}"# +
+                "\n" + line
+        ])
+        let scanner = ClaudeLogUsageScanner(
+            environment: FakeEnvironment([:]), homeDirectory: { home },
+            incrementalScanner: IncrementalJSONLScanner<Entry>(), accountUUID: "user-a", organizationUUID: "org-a"
+        )
+
+        let firstResult = await scanner.scan(now: now, pricing: pricing)
+        let first = try XCTUnwrap(firstResult)
+        XCTAssertEqual(first.series.daily.first?.totalTokens, 150)
+
+        let session = home.appendingPathComponent(".claude/projects/workspace/session.jsonl")
+        try (#"{"ownerOrganizationUuid":"organization-b","ownerAccountUuid":"user-a"}"# + "\n" + line)
+            .write(to: session, atomically: true, encoding: .utf8)
+
+        let second = await scanner.scan(now: now, pricing: pricing)
+        XCTAssertNil(second)
+    }
+
+    func testOrganizationScanCombinesOwnedDesktopAndTerminalLogsWithoutForeignSpending() async throws {
+        let now = Date()
+        let timestamp = OpenUsageISO8601.string(from: now)
+        let home = try ClaudeLogFixture.makeUserHome(
+            claudeFiles: [
+                "workspace/session.jsonl": #"{"ownerOrganizationUuid":"org-a","ownerAccountUuid":"user-a"}"# +
+                    "\n" +
+                    ClaudeLogFixture.usageLine(
+                        timestamp: timestamp, input: 100, output: 50, costUSD: 0.25,
+                        messageID: "shared", requestID: "terminal"
+                    )
+            ],
+            coworkSessions: [
+                "user-a/ORG-A/local_owned": [
+                    "workspace/replay.jsonl": ClaudeLogFixture.usageLine(
+                        timestamp: timestamp, input: 90_000, output: 10, costUSD: 9.99,
+                        messageID: "shared", requestID: "desktop", isSidechain: true
+                    ),
+                    "workspace/unique.jsonl": ClaudeLogFixture.usageLine(
+                        timestamp: timestamp, input: 10, output: 5, costUSD: 0.05,
+                        messageID: "desktop-owned", requestID: "desktop-owned"
+                    )
+                ],
+                "user-a/org-b/local_foreign": [
+                    "workspace/session.jsonl": ClaudeLogFixture.usageLine(
+                        timestamp: timestamp, input: 5000, output: 500, costUSD: 20,
+                        messageID: "desktop-foreign", requestID: "desktop-foreign"
+                    )
+                ],
+                "user-b/org-a/local_foreign_user": [
+                    "workspace/session.jsonl": ClaudeLogFixture.usageLine(
+                        timestamp: timestamp, input: 6000, output: 500, costUSD: 30,
+                        messageID: "desktop-foreign-user", requestID: "desktop-foreign-user"
+                    )
+                ]
+            ]
+        )
+        let scanner = ClaudeLogUsageScanner(
+            environment: FakeEnvironment([:]), homeDirectory: { home },
+            incrementalScanner: IncrementalJSONLScanner<Entry>(), accountUUID: "user-a", organizationUUID: "org-a"
+        )
+
+        let result = await scanner.scan(now: now, pricing: pricing)
+        let scan = try XCTUnwrap(result)
+        XCTAssertEqual(scan.series.daily.first?.totalTokens, 165)
+        XCTAssertEqual(scan.series.daily.first?.costUSD ?? 0, 0.30, accuracy: 1e-9)
+    }
+
     /// Manual parity harness against the real logs on this machine: prints per-day totals to compare
     /// with `ccusage daily --json --offline`. Gated like the other live tests.
     func testParityAgainstRealLocalLogs() async throws {
