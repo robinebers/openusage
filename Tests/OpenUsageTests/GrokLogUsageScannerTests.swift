@@ -125,6 +125,37 @@ final class GrokLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(day.costUSD, 0)
     }
 
+    func testImplausibleTokenCountsAreCappedBeforeIntegerConversion() throws {
+        let line = GrokLogFixture.completedTurn(
+            timestamp: "2026-06-10T10:00:00.000Z",
+            model: "grok-4.6-build",
+            input: 1,
+            cached: 1,
+            cacheWrite: 1,
+            output: 1
+        ).replacingOccurrences(of: ":1", with: ":1e300")
+
+        let entry = try XCTUnwrap(GrokLogUsageScanner.parseFile(Data(line.utf8)).first)
+
+        XCTAssertEqual(entry.tokens.input, 0)
+        XCTAssertEqual(entry.tokens.cacheRead, 1_000_000_000_000)
+        XCTAssertEqual(entry.tokens.cacheWrite5m, 0)
+        XCTAssertEqual(entry.tokens.output, 1_000_000_000_000)
+        XCTAssertEqual(entry.tokens.totalTokens, 2_000_000_000_000)
+    }
+
+    func testSeveralImplausibleRowsCannotOverflowDailyTokenTotals() throws {
+        let line = GrokLogFixture.completedTurn(
+            timestamp: "2026-06-10T10:00:00.000Z",
+            model: "grok-4.6-build",
+            input: 4_000_000_000_000_000_000
+        )
+
+        let usage = scan(Array(repeating: line, count: 3).joined(separator: "\n"))
+
+        XCTAssertEqual(try XCTUnwrap(usage.series.daily.first).totalTokens, 3_000_000_000_000)
+    }
+
     func testPrefersMillisecondAgentTimestampOverCoarseOuterTimestamp() throws {
         let line = GrokLogFixture.completedTurn(
             timestamp: "2026-06-09T10:00:00.000Z",

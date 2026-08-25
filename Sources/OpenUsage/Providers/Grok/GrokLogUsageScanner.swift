@@ -4,6 +4,8 @@ import Foundation
 /// `logs/unified.jsonl` is a capped debug log, so it cannot back historical spend or reliable model
 /// attribution. Session `updates.jsonl` files carry both per-model token counts and Grok's own costs.
 actor GrokLogUsageScanner {
+    private static let maximumPlausibleTokens = 1_000_000_000_000
+
     private let environment: EnvironmentReading
     private let homeDirectory: @Sendable () -> URL
     private let scanner: IncrementalJSONLScanner<Entry>
@@ -128,14 +130,14 @@ actor GrokLogUsageScanner {
                   inputValue >= 0
             else { continue }
 
-            let input = Int(inputValue)
-            let cacheRead = min(max(Int(ProviderParse.number(values["cachedReadTokens"]) ?? 0), 0), input)
+            let input = Self.boundedTokenCount(inputValue)
+            let cacheRead = min(Self.boundedTokenCount(values["cachedReadTokens"]), input)
             let cacheWrite = min(
-                max(Int(ProviderParse.number(values["cacheCreationTokens"]) ?? 0), 0),
+                Self.boundedTokenCount(values["cacheCreationTokens"]),
                 input - cacheRead
             )
             // Grok reports reasoning as a subset of outputTokens, so it must never be added again.
-            let output = max(Int(ProviderParse.number(values["outputTokens"]) ?? 0), 0)
+            let output = Self.boundedTokenCount(values["outputTokens"])
             let ticks = ProviderParse.number(values["costUsdTicks"])
                 ?? (modelUsage.count == 1 ? topLevelTicks : nil)
             let carriedCost = ticks.flatMap { $0 >= 0 ? $0 / 10_000_000_000 : nil }
@@ -154,6 +156,16 @@ actor GrokLogUsageScanner {
             ))
         }
         return entries
+    }
+
+    /// External JSON numbers can exceed `Int.max`; cap corrupt counts before conversion or aggregation.
+    private static func boundedTokenCount(_ value: Any?) -> Int {
+        guard let number = ProviderParse.number(value), number > 0 else { return 0 }
+        if number > Double(maximumPlausibleTokens) {
+            AppLog.warn(LogTag.plugin("grok"), "Clamped an implausible token count in a Grok session transcript")
+            return maximumPlausibleTokens
+        }
+        return Int(number)
     }
 
     private static func timestamp(in object: [String: Any], params: [String: Any]?) -> Date? {

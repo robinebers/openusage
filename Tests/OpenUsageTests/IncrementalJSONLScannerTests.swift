@@ -287,6 +287,55 @@ final class IncrementalJSONLScannerTests: XCTestCase {
         XCTAssertLessThanOrEqual(probe.maximumActive, 3)
     }
 
+    func testStreamsLargeFilesInBoundedBatchesAndKeepsTheTrailingRecord() async throws {
+        let directory = try makeDirectory("StreamingBatches")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let padding = String(repeating: "x", count: JSONLStreamingReader.readChunkBytes + 17)
+        let records = (0..<6).map { "\($0),\(padding)" }
+        let file = try makeFile(
+            named: "large.jsonl",
+            contents: records.joined(separator: "\n"),
+            in: directory,
+            mtime: Date()
+        )
+        let probe = BatchSizeProbe()
+        let scanner = IncrementalJSONLScanner<Int>()
+
+        let items = await scanner.items(from: [file], since: .distantPast) { data in
+            probe.record(data.count)
+            guard let text = String(data: data, encoding: .utf8) else { return nil }
+            return text.split(separator: "\n").compactMap {
+                $0.split(separator: ",", maxSplits: 1).first.flatMap { Int(String($0)) }
+            }
+        }
+
+        XCTAssertEqual(items, Array(0..<6))
+        XCTAssertGreaterThan(probe.batchCount, 1)
+        XCTAssertLessThan(probe.maximumBytes, file.size)
+        XCTAssertLessThanOrEqual(probe.maximumBytes, JSONLStreamingReader.maximumRecordBytes + 1)
+    }
+
+    func testSkipsOversizedRecordAndKeepsFollowingRecords() async throws {
+        let directory = try makeDirectory("OversizedRecords")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let oversized = String(repeating: "x", count: JSONLStreamingReader.maximumRecordBytes + 1)
+        let file = try makeFile(
+            named: "oversized.jsonl",
+            contents: "1\n\(oversized)\n2",
+            in: directory,
+            mtime: Date()
+        )
+        let scanner = IncrementalJSONLScanner<Int>()
+
+        let items = await scanner.items(from: [file], since: .distantPast) { data in
+            String(data: data, encoding: .utf8)?.split(separator: "\n").compactMap { Int(String($0)) }
+        }
+
+        XCTAssertEqual(items, [1, 2])
+    }
+
     func testUnreadableFileWarnsOnceUntilItRecovers() async throws {
         let directory = try makeDirectory("Warnings")
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -415,5 +464,17 @@ final class IncrementalJSONLScannerTests: XCTestCase {
     private func modificationDate(of url: URL) throws -> Date {
         let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
         return try XCTUnwrap(attributes[.modificationDate] as? Date)
+    }
+}
+
+private final class BatchSizeProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var sizes: [Int] = []
+
+    var batchCount: Int { lock.withLock { sizes.count } }
+    var maximumBytes: Int { lock.withLock { sizes.max() ?? 0 } }
+
+    func record(_ count: Int) {
+        lock.withLock { sizes.append(count) }
     }
 }
