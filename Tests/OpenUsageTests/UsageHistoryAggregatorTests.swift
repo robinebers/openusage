@@ -186,6 +186,15 @@ final class UsageHistoryAggregatorTests: XCTestCase {
         )
         XCTAssertEqual(try XCTUnwrap(single["claude"]).series.daily.first?.totalTokens, 90)
 
+        let switched = UsageHistoryAggregator.merged(
+            localSnapshots: [:],
+            peerDocuments: [peer],
+            descriptors: ["claude@1234abcd": descriptor],
+            providerIdentityKeys: ["claude@1234abcd": "user|personal"],
+            now: localDay(2026, 7, 13)
+        )
+        XCTAssertEqual(try XCTUnwrap(switched["claude@1234abcd"]).series.daily.first?.totalTokens, 90)
+
         let multiple = UsageHistoryAggregator.merged(
             localSnapshots: [:],
             peerDocuments: [peer],

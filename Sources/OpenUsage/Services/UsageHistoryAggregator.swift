@@ -63,7 +63,7 @@ enum UsageHistoryAggregator {
         guard document.schema == UsageHistoryDocument.currentSchema,
               allowsUnattributedHistory
         else { return nil }
-        return document.providers[providerID]
+        return document.providers["claude"]
     }
 
     private static func merge(
