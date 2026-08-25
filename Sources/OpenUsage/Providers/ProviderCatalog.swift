@@ -18,7 +18,10 @@ enum ProviderCatalog {
             providers = claudeCards.map { card in
                 let identity = claudeIdentityKeys[card.id] ?? card.identityKey
                 let user = identity.split(separator: "|").first.map(String.init)
-                let scanner = ClaudeLogUsageScanner(accountUUID: user, organizationUUID: card.organizationID)
+                let scanner = ClaudeLogUsageScanner(
+                    accountUUID: user, organizationUUID: card.organizationID,
+                    allowsUnattributedSessions: card.allowsUnattributedPiUsage
+                )
                 return ClaudeProvider(
                     provider: ClaudeProvider.makeProvider(
                         id: card.id,

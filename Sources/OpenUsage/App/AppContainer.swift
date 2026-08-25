@@ -92,6 +92,7 @@ final class AppContainer {
         let layout = LayoutStore(
             registry: registry,
             defaultMetricIDs: claudeAccountDefaults(DefaultLayout.metricIDs),
+            defaultPinnedMetricIDs: claudeAccountDefaults(DefaultLayout.pinnedMetricIDs),
             defaultExpandedMetricIDs: claudeAccountDefaults(DefaultLayout.expandedMetricIDs),
             isProviderEnabled: { [enablement] in enablement.isEnabled($0) }
         )

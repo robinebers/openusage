@@ -28,6 +28,7 @@ actor ClaudeLogUsageScanner {
     private let cacheIdentityOverride: String?
     private let organizationID: String?
     private let accountID: String?
+    private let allowsUnattributedSessions: Bool
     private var sessionOwnership: [String: (
         size: Int, mtime: Date, organizationID: String?, accountID: String?
     )] = [:]
@@ -64,7 +65,8 @@ actor ClaudeLogUsageScanner {
         incrementalScanner: IncrementalJSONLScanner<Entry>? = nil,
         cacheIdentityOverride: String? = nil,
         accountUUID: String? = nil,
-        organizationUUID: String? = nil
+        organizationUUID: String? = nil,
+        allowsUnattributedSessions: Bool = false
     ) {
         precondition(cacheIdentityOverride?.isEmpty != true)
         self.environment = environment
@@ -73,6 +75,7 @@ actor ClaudeLogUsageScanner {
         self.cacheIdentityOverride = cacheIdentityOverride
         self.organizationID = organizationUUID?.lowercased()
         self.accountID = accountUUID?.lowercased()
+        self.allowsUnattributedSessions = allowsUnattributedSessions
     }
 
     /// Scan the last `daysBack` days of Claude logs. Returns `nil` when no Claude data directory or
@@ -281,6 +284,8 @@ actor ClaudeLogUsageScanner {
                 if owner == organizationID, accountID == nil || ownership.accountID == accountID {
                     ownedFiles.append(file)
                 }
+            } else if allowsUnattributedSessions {
+                ownedFiles.append(file)
             } else if let accountID {
                 if desktopSessionIDs == nil {
                     desktopSessionIDs = indexedDesktopSessionIDs(accountID: accountID, organizationID: organizationID)

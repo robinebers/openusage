@@ -456,6 +456,10 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
                 timestamp: timestamp, input: 1000, output: 500, costUSD: 9,
                 messageID: "unowned", requestID: "unowned"
             ),
+            "workspace/unowned/subagents/agent-unowned.jsonl": ClaudeLogFixture.usageLine(
+                timestamp: timestamp, input: 10, output: 5, costUSD: 0.05,
+                messageID: "agent-unowned", requestID: "agent-unowned"
+            ),
             "workspace/foreign-user.jsonl": #"{"ownerOrganizationUuid":"org-a","ownerAccountUuid":"user-b"}"# +
                 "\n" + ClaudeLogFixture.usageLine(
                     timestamp: timestamp, input: 3000, output: 500, costUSD: 11,
@@ -479,6 +483,15 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
             XCTAssertEqual(scan.series.daily.first?.totalTokens, expectedTokens, organizationID)
             XCTAssertEqual(scan.series.daily.first?.costUSD ?? 0, expectedCost, accuracy: 1e-9, organizationID)
         }
+
+        let singleAccountScanner = ClaudeLogUsageScanner(
+            environment: FakeEnvironment([:]), homeDirectory: { home }, incrementalScanner: sharedCache,
+            accountUUID: "user-a", organizationUUID: "org-a", allowsUnattributedSessions: true
+        )
+        let singleAccountResult = await singleAccountScanner.scan(now: now, pricing: pricing)
+        let singleAccountScan = try XCTUnwrap(singleAccountResult)
+        XCTAssertEqual(singleAccountScan.series.daily.first?.totalTokens, 1680)
+        XCTAssertEqual(singleAccountScan.series.daily.first?.costUSD ?? 0, 9.35, accuracy: 1e-9)
     }
 
     func testOrganizationScanRefreshesChangedSessionOwnership() async throws {
