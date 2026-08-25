@@ -3,12 +3,15 @@ import Foundation
 /// One Mac's presentation-free usage history in the private iCloud container.
 struct UsageHistoryDocument: Hashable, Sendable, Codable, Identifiable {
     static let currentSchema = "openusage.history.v1"
+    static let accountSchema = "openusage.history.v2"
 
     var schema: String = currentSchema
     var deviceID: String
     var deviceName: String
     var updatedAt: Date
     var providers: [String: ProviderUsageHistory]
+    /// Claude card ownership, when known. Older clients ignore this optional v1 field.
+    var identities: [String: String]? = nil
 
     var id: String { deviceID }
 
@@ -24,14 +27,42 @@ struct UsageHistoryDocument: Hashable, Sendable, Codable, Identifiable {
     }
 
     func validate() throws {
-        guard schema == Self.currentSchema else { throw UsageHistoryDocumentError.unsupportedSchema }
+        guard schema == Self.currentSchema || schema == Self.accountSchema else {
+            throw UsageHistoryDocumentError.unsupportedSchema
+        }
         guard !deviceID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               !deviceName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else { throw UsageHistoryDocumentError.invalidDevice }
 
+        var seenIdentities = Set<String>()
+        for (providerID, identity) in identities ?? [:] {
+            guard providers[providerID] != nil,
+                  ProviderAccountID.family(of: providerID) == "claude",
+                  !identity.isEmpty,
+                  identity.rangeOfCharacter(from: .whitespacesAndNewlines.union(.controlCharacters)) == nil,
+                  !identity.contains("/"), !identity.contains("\\")
+            else { throw UsageHistoryDocumentError.invalidIdentity(providerID) }
+            guard seenIdentities.insert(identity.lowercased()).inserted else {
+                throw UsageHistoryDocumentError.duplicateIdentity(providerID)
+            }
+        }
+
+        let providerPattern = schema == Self.currentSchema
+            ? #"^[a-z0-9][a-z0-9-]*$"#
+            : #"^[a-z0-9][a-z0-9-]*(?:@[a-f0-9]{8})?$"#
         for (providerID, history) in providers {
-            guard providerID.range(of: #"^[a-z0-9][a-z0-9-]*$"#, options: .regularExpression) != nil else {
+            guard providerID.range(of: providerPattern, options: .regularExpression) != nil else {
                 throw UsageHistoryDocumentError.invalidProvider(providerID)
+            }
+            if providerID.contains("@") {
+                guard ProviderAccountID.family(of: providerID) == "claude",
+                      identities?[providerID] != nil
+                else { throw UsageHistoryDocumentError.invalidIdentity(providerID) }
+            }
+            if schema == Self.accountSchema, ProviderAccountID.family(of: providerID) == "claude" {
+                guard identities?[providerID] != nil else {
+                    throw UsageHistoryDocumentError.invalidIdentity(providerID)
+                }
             }
             var seriesDays: Set<String> = []
             for day in history.series.daily {
@@ -100,6 +131,8 @@ enum UsageHistoryDocumentError: Error, LocalizedError, Equatable {
     case unsupportedSchema
     case invalidDevice
     case invalidProvider(String)
+    case invalidIdentity(String)
+    case duplicateIdentity(String)
     case invalidDay(String)
     case duplicateDay(String)
     case duplicateModel(String)
@@ -110,6 +143,8 @@ enum UsageHistoryDocumentError: Error, LocalizedError, Equatable {
         case .unsupportedSchema: "This Mac wrote a newer usage-history format. Update OpenUsage."
         case .invalidDevice: "The synced Mac identity is invalid."
         case .invalidProvider: "The synced provider identifier is invalid."
+        case .invalidIdentity: "The synced Claude account identity is invalid."
+        case .duplicateIdentity: "The synced Claude account appears more than once."
         case .invalidDay: "The synced history contains an invalid date."
         case .duplicateDay: "The synced history contains the same date more than once."
         case .duplicateModel: "The synced history contains the same model more than once."

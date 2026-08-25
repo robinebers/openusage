@@ -414,17 +414,34 @@ final class WidgetDataStore {
 
     func localHistoryDocument(deviceID: String, deviceName: String, updatedAt: Date = Date()) -> UsageHistoryDocument {
         var providers: [String: ProviderUsageHistory] = [:]
+        var identities: [String: String] = [:]
+        let hasMultipleClaudeCards = registry.providers.count {
+            ProviderAccountID.family(of: $0.id) == "claude"
+        } > 1
         for (providerID, descriptor) in registry.historyDescriptorsByProvider
         where descriptor.scope == .machineLocal && isProviderEnabled(providerID) {
             if let history = localSnapshots[providerID]?.usageHistory {
+                if ProviderAccountID.family(of: providerID) == "claude" {
+                    if let identity = providerIdentityKeys[providerID] {
+                        identities[providerID] = identity.lowercased()
+                    } else if hasMultipleClaudeCards || providerID != "claude" {
+                        AppLog.warn(.config, "sync: omitting Claude history without account ownership")
+                        continue
+                    }
+                }
                 providers[providerID] = history
             }
         }
+        let hasClaudeAccountCards = providers.keys.contains {
+            ProviderAccountID.family(of: $0) == "claude" && $0 != "claude"
+        }
         return UsageHistoryDocument(
+            schema: hasClaudeAccountCards ? UsageHistoryDocument.accountSchema : UsageHistoryDocument.currentSchema,
             deviceID: deviceID,
             deviceName: deviceName,
             updatedAt: updatedAt,
-            providers: providers
+            providers: providers,
+            identities: identities.isEmpty ? nil : identities
         )
     }
 
@@ -443,6 +460,7 @@ final class WidgetDataStore {
             localSnapshots: localSnapshots,
             peerDocuments: peerHistoryDocuments,
             descriptors: enabledDescriptors,
+            providerIdentityKeys: providerIdentityKeys,
             now: renderDate
         )
         var rendered = localSnapshots
