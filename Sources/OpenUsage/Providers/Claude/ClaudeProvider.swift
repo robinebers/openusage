@@ -29,6 +29,7 @@ final class ClaudeProvider: ProviderRuntime {
     /// entirely until the cooldown expires so we don't keep hammering an endpoint that's already limiting
     /// us. Mirrors the legacy plugin's `cachedUsageData` + `rateLimitedUntilMs`.
     private var cachedCredentialFingerprint: Data?
+    private var verifiedCredentialFingerprint: Data?
     private var lastGoodUsage: ClaudeMappedUsage?
     private var rateLimitedUntil: Date?
     private static let rateLimitCooldown: TimeInterval = 5 * 60
@@ -346,6 +347,7 @@ final class ClaudeProvider: ProviderRuntime {
 
         var working = state
         defer { state = working }
+        try await verifyAccountIfNeeded(accessToken: working.oauth.accessToken ?? "")
         let response = try await ProviderAuthRetry.fetch(
             token: working.oauth.accessToken ?? "",
             attempt: { try await self.usageClient.fetchUsage(accessToken: $0, config: self.authStore.oauthConfig()) },
@@ -364,6 +366,7 @@ final class ClaudeProvider: ProviderRuntime {
                 if refreshed.persisted {
                     expectedGeneration = expectedGeneration.replacing(working)
                 }
+                try await self.verifyAccountIfNeeded(accessToken: refreshed.accessToken)
                 return refreshed.accessToken
             },
             connectionFailed: ClaudeUsageError.connectionFailed,
@@ -389,6 +392,18 @@ final class ClaudeProvider: ProviderRuntime {
         lastGoodUsage = mapped
         rateLimitedUntil = nil
         return mapped
+    }
+
+    private func verifyAccountIfNeeded(accessToken: String) async throws {
+        guard let identity = authStore.expectedIdentityKey,
+              identity.split(separator: "|").count == 2
+        else { return }
+        let fingerprint = Data(SHA256.hash(data: Data("\(identity)\u{0}\(accessToken)".utf8)))
+        guard verifiedCredentialFingerprint != fingerprint else { return }
+        try await usageClient.verifyAccount(
+            accessToken: accessToken, expectedIdentityKey: identity, config: authStore.oauthConfig()
+        )
+        verifiedCredentialFingerprint = fingerprint
     }
 
     /// Last-good usage with an appended staleness note when we have it; otherwise the plain rate-limited

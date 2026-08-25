@@ -32,6 +32,12 @@ enum ClaudeUsageError: Error, LocalizedError, Equatable {
 struct ClaudeUsageClient: Sendable {
     private static let scopes = "user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload"
 
+    private struct AccountProfile: Decodable {
+        struct Identity: Decodable { var uuid: String }
+        var account: Identity
+        var organization: Identity?
+    }
+
     var httpClient: HTTPClient
 
     init(httpClient: HTTPClient = URLSessionHTTPClient()) {
@@ -73,5 +79,28 @@ struct ClaudeUsageClient: Sendable {
             )
         )
     }
-}
 
+    func verifyAccount(accessToken: String, expectedIdentityKey: String, config: ClaudeOAuthConfig) async throws {
+        let expected = expectedIdentityKey.split(separator: "|", omittingEmptySubsequences: false)
+        guard expected.count == 2 else { throw ClaudeAuthError.sessionExpired }
+
+        let response = try await httpClient.send(HTTPRequest(
+            method: "GET",
+            url: config.usageURL.deletingLastPathComponent().appendingPathComponent("profile"),
+            headers: [
+                "Authorization": "Bearer \(accessToken.trimmingCharacters(in: .whitespacesAndNewlines))",
+                "Accept": "application/json",
+                "anthropic-beta": "oauth-2025-04-20"
+            ],
+            timeout: 10
+        ))
+        guard (200..<300).contains(response.statusCode),
+              let profile = try? JSONDecoder().decode(AccountProfile.self, from: response.body),
+              profile.account.uuid.caseInsensitiveCompare(String(expected[0])) == .orderedSame,
+              profile.organization?.uuid.caseInsensitiveCompare(String(expected[1])) == .orderedSame
+        else {
+            AppLog.warn(LogTag.auth("claude"), "Claude credential does not match its account or organization")
+            throw ClaudeAuthError.sessionExpired
+        }
+    }
+}

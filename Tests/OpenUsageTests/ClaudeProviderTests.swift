@@ -580,6 +580,53 @@ final class ClaudeProviderTests: XCTestCase {
         XCTAssertNil(badge(snapshot.lines, "Error"))
     }
 
+    func testOrganizationBoundProviderRejectsForeignTokensBeforeFetchingUsage() async {
+        let account = "11111111-1111-4111-8111-111111111111"
+        let organization = "22222222-2222-4222-8222-222222222222"
+        let wrongOrganization = "33333333-3333-4333-8333-333333333333"
+        let files = FakeFiles([
+            "/tmp/claude/.credentials.json":
+                #"{"claudeAiOauth":{"accessToken":"owned-token","expiresAt":4102444800000,"subscriptionType":"team","scopes":["user:profile"]}}"#
+        ])
+        let keychain = ServiceKeychain()
+        let authStore = ClaudeAuthStore(
+            environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": "/tmp/claude"]),
+            files: files, keychain: keychain, expectedIdentityKey: "\(account)|\(organization)"
+        )
+        keychain.currentUserValues[authStore.keychainServiceCandidates().first!] =
+            #"{"claudeAiOauth":{"accessToken":"foreign-token","expiresAt":4102444800000,"subscriptionType":"max","scopes":["user:profile"]}}"#
+        let httpClient = RoutingHTTPClient { request in
+            let authorization = request.headers["Authorization"] ?? ""
+            if request.url.path == "/api/oauth/profile" {
+                let tokenOrganization = authorization == "Bearer foreign-token" ? wrongOrganization : organization
+                return HTTPResponse(
+                    statusCode: 200, headers: [:],
+                    body: Data(#"{"account":{"uuid":"\#(account)"},"organization":{"uuid":"\#(tokenOrganization)"}}"#.utf8)
+                )
+            }
+            XCTAssertEqual(request.url.path, "/api/oauth/usage")
+            XCTAssertEqual(authorization, "Bearer owned-token")
+            return HTTPResponse(
+                statusCode: 200, headers: [:],
+                body: Data(#"{"five_hour":{"utilization":42,"resets_at":"2099-01-01T00:00:00.000Z"}}"#.utf8)
+            )
+        }
+        let provider = ClaudeProvider(
+            authStore: authStore, usageClient: ClaudeUsageClient(httpClient: httpClient),
+            logUsageScanner: ClaudeLogFixture.scanner(home: nil), pricing: { TestPricing.bundled }
+        )
+
+        let first = await provider.refresh()
+        let second = await provider.refresh()
+
+        XCTAssertEqual(Self.progress(first.lines, "Session")?.used, 42)
+        XCTAssertEqual(Self.progress(second.lines, "Session")?.used, 42)
+        XCTAssertEqual(httpClient.requests.filter {
+            $0.url.path == "/api/oauth/profile" && $0.headers["Authorization"] == "Bearer owned-token"
+        }.count, 1)
+        XCTAssertEqual(httpClient.requests.filter { $0.url.path == "/api/oauth/usage" }.count, 2)
+    }
+
     func testSurfacesAuthErrorWhenAllCredentialSourcesAreExpired() async {
         // The fallback must not mask a genuine all-sources-expired state: when both keychain and file
         // tokens are revoked, the refresh fails loudly with the auth error rather than silently
