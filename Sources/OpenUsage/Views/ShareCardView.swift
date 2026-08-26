@@ -85,7 +85,7 @@ struct ShareCardView: View {
 
     /// Flat indices of text-only rows that condense under another text-only row — the neighbor-aware rule
     /// the live dashboard applies (shared via `WidgetData.condensedTextRowOffsets`), so a run of one-liners
-    /// (Today / Yesterday / Month to Date / Last 30 Days) clusters in the export the same way it does in the popover. The
+    /// (Today / Yesterday / Last 30 Days / Month to Date) clusters in the export the same way it does in the popover. The
     /// expand caret is a hard boundary: each segment (always-shown, then expanded) is scanned separately,
     /// never across, and its segment-local offsets are mapped back to flat `rows` indices.
     static func condensedTextRowIndices(_ rows: [WidgetData], boundary: Int? = nil) -> Set<Int> {

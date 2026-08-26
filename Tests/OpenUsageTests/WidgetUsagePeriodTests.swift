@@ -2,7 +2,7 @@ import XCTest
 @testable import OpenUsage
 
 /// The "No usage in this period" note is scoped to spend-period rows — Today / Yesterday /
-/// Month to Date / Last 30 Days — through `WidgetData.isUsagePeriod`. A balance/availability row that happens to read
+/// Last 30 Days / Month to Date — through `WidgetData.isUsagePeriod`. A balance/availability row that happens to read
 /// zero (Codex "Rate Limit Resets" with none available, an exhausted "Extra Usage" credit) is depleted,
 /// not idle, so it stays off the note even though every selected value is zero.
 @MainActor
@@ -14,7 +14,7 @@ final class WidgetUsagePeriodTests: XCTestCase {
         XCTAssertEqual(tiles.count, 4)
         XCTAssertTrue(tiles.allSatisfy { $0.sample.isUsagePeriod })
         XCTAssertEqual(tiles.map(\.id), [
-            "codex.today", "codex.yesterday", "codex.monthToDate", "codex.last30"
+            "codex.today", "codex.yesterday", "codex.last30", "codex.monthToDate"
         ])
     }
 
@@ -32,8 +32,8 @@ final class WidgetUsagePeriodTests: XCTestCase {
         )
 
         XCTAssertEqual(MonthToDateSpendSetting.metricIDs(in: registry), ["codex.monthToDate"])
-        XCTAssertNotNil(registry.descriptor(id: "openrouter.monthToDate"),
-                        "OpenRouter keeps its API-backed MTD row outside the local-history master switch")
+        XCTAssertNotNil(registry.descriptor(id: "openrouter.month"),
+                        "OpenRouter keeps its established API-backed MTD row outside the local-history master switch")
     }
 
     func testValuesAndCombinedDefaultToNotUsagePeriod() {

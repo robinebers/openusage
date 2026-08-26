@@ -96,15 +96,15 @@ extension WidgetDescriptor {
                isUsagePeriod: isUsagePeriod)
     }
 
-    /// The four local-spend tiles every spend-tracking provider exposes — Today / Yesterday / Month to Date /
-    /// Last 30 Days — each a combined "cost · tokens" row, backed by `SpendTileMapper`. Ids are
-    /// `<provider>.today|yesterday|monthToDate|last30`, so the set is identical across providers.
+    /// The four local-spend tiles every spend-tracking provider exposes — Today / Yesterday / Last 30 Days /
+    /// Month to Date — each a combined "cost · tokens" row, backed by `SpendTileMapper`. Ids are
+    /// `<provider>.today|yesterday|last30|monthToDate`, so the set is identical across providers.
     static func spendTiles(provider: Provider, valueTooltipNote: String? = nil) -> [WidgetDescriptor] {
         let descriptors: [WidgetDescriptor] = [
             .combined(id: "\(provider.id).today", provider: provider, title: "Today", isUsagePeriod: true),
             .combined(id: "\(provider.id).yesterday", provider: provider, title: "Yesterday", isUsagePeriod: true),
-            .combined(id: "\(provider.id).monthToDate", provider: provider, title: "Month to Date", isUsagePeriod: true),
-            .combined(id: "\(provider.id).last30", provider: provider, title: "Last 30 Days", isUsagePeriod: true)
+            .combined(id: "\(provider.id).last30", provider: provider, title: "Last 30 Days", isUsagePeriod: true),
+            .combined(id: "\(provider.id).monthToDate", provider: provider, title: "Month to Date", isUsagePeriod: true)
         ]
         // Mark the whole set as the local spend tiles — the Total Spend card's capability and
         // contribution signal.

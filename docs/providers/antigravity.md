@@ -13,7 +13,7 @@ Antigravity has two shared quota pools, and each pool has two windows — a roll
 | Claude | The shared non-Gemini pool (Claude, GPT-OSS, …), rolling 5-hour window |
 | Claude Weekly | The same non-Gemini pool's weekly window |
 | Usage Trend | Daily token usage from local Antigravity conversations |
-| Today / Yesterday / Month to Date / Last 30 Days | Local token usage and estimated API-equivalent spend |
+| Today / Yesterday / Last 30 Days / Month to Date | Local token usage and estimated API-equivalent spend |
 
 When Antigravity reports your subscription tier (such as `Pro` or `Ultra`), OpenUsage shows it beside the provider name.
 

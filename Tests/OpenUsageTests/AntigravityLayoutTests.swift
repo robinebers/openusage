@@ -26,7 +26,7 @@ final class AntigravityLayoutTests: XCTestCase {
         ])
         XCTAssertEqual(group?.expandedMetrics.map(\.id), [
             "antigravity.claude", "antigravity.claudeWeekly",
-            "antigravity.today", "antigravity.yesterday", "antigravity.monthToDate", "antigravity.last30"
+            "antigravity.today", "antigravity.yesterday", "antigravity.last30", "antigravity.monthToDate"
         ])
         XCTAssertEqual(store.spendCapableProviders.map(\.id), ["antigravity"])
     }

@@ -31,7 +31,7 @@ enum DefaultLayout {
         "opencode.today", "opencode.yesterday", "opencode.last30",
 
         "openrouter.credits", "openrouter.balance",
-        "openrouter.today", "openrouter.week", "openrouter.monthToDate", "openrouter.keyLimit",
+        "openrouter.today", "openrouter.week", "openrouter.month", "openrouter.keyLimit",
 
         "zai.session", "zai.weekly", "zai.webSearches"
     ]
@@ -78,29 +78,29 @@ enum DefaultLayout {
         // Antigravity: the Gemini pool pair and usage trend stay above the fold; the non-Gemini
         // pool pair and spend-history rows sit below the caret, matching the other local scanners.
         "antigravity.claude", "antigravity.claudeWeekly",
-        "antigravity.today", "antigravity.yesterday", "antigravity.monthToDate", "antigravity.last30",
+        "antigravity.today", "antigravity.yesterday", "antigravity.last30", "antigravity.monthToDate",
         // Claude's core meters (Session, Weekly, Fable, Extra, Usage Trend) stay above the fold;
         // optional Sonnet and spend-history rows sit below the caret.
-        "claude.sonnet", "claude.today", "claude.yesterday", "claude.monthToDate", "claude.last30",
+        "claude.sonnet", "claude.today", "claude.yesterday", "claude.last30", "claude.monthToDate",
         // Codex's core Session/Weekly meters and Usage Trend stay above the fold; Spark (the optional
         // model-specific limits), credits, reset details, and spend rows sit below the caret.
         "codex.spark", "codex.sparkWeekly",
-        "codex.credits", "codex.rateLimitResets", "codex.today", "codex.yesterday", "codex.monthToDate", "codex.last30",
+        "codex.credits", "codex.rateLimitResets", "codex.today", "codex.yesterday", "codex.last30", "codex.monthToDate",
         "cursor.grokBot", "cursor.onDemand", "cursor.requests", "cursor.credits",
-        "cursor.today", "cursor.yesterday", "cursor.monthToDate", "cursor.last30",
+        "cursor.today", "cursor.yesterday", "cursor.last30", "cursor.monthToDate",
         // Copilot: Credits (the metered premium pool) + Extra Usage stay above the fold; the org
         // billing pair (org-managed Business/Enterprise seats) and Chat + Completions sit below the
         // caret. Chat/Completions carry real counts on free only — on paid they're unlimited
         // (suppressed), so they read "No data" there.
         "copilot.orgCredits", "copilot.orgSpend", "copilot.chat", "copilot.completions",
         "devin.extra",
-        "grok.payAsYouGo", "grok.today", "grok.yesterday", "grok.monthToDate", "grok.last30",
+        "grok.payAsYouGo", "grok.today", "grok.yesterday", "grok.last30", "grok.monthToDate",
         // OpenCode: the three Go caps (Session/Weekly/Monthly) and Usage Trend stay above the fold —
-        // matching every other provider — with the spend tiles (Today/Yesterday/Month to Date/Last 30 Days) below.
-        "opencode.today", "opencode.yesterday", "opencode.monthToDate", "opencode.last30",
+        // matching every other provider — with the spend tiles (Today/Yesterday/Last 30 Days/Month to Date) below.
+        "opencode.today", "opencode.yesterday", "opencode.last30", "opencode.monthToDate",
         // OpenRouter: Credits meter + Balance stay above the fold; period spend and the per-key cap
         // sit below the caret.
-        "openrouter.today", "openrouter.week", "openrouter.monthToDate", "openrouter.keyLimit",
+        "openrouter.today", "openrouter.week", "openrouter.month", "openrouter.keyLimit",
         // Z.ai: Session meter stays above the fold; Web Searches (monthly count) sits below the caret.
         "zai.webSearches"
     ]

@@ -330,7 +330,7 @@ struct WidgetRowView: View {
             // A quaternary chip behind the value — the app's subtle-fill token, in the shared 6pt
             // continuous corner — signals the value is interactive before the breakdown even opens.
             // Negative-inset so it hugs the figure without changing the row's height (the text-row
-            // rhythm that clusters Today / Yesterday / Month to Date / Last 30 Days must not shift), and a quick
+            // rhythm that clusters Today / Yesterday / Last 30 Days / Month to Date must not shift), and a quick
             // opacity fade in/out matches macOS hover states.
             .background {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -423,7 +423,7 @@ struct WidgetRowView: View {
         }
     }
 
-    /// Amber warning triangle shown just after a spend tile's label (Today / Yesterday / Month to Date / Last 30 Days)
+    /// Amber warning triangle shown just after a spend tile's label (Today / Yesterday / Last 30 Days / Month to Date)
     /// when the period used a model the pricing manifest can't price, so its cost is incomplete. Hovering
     /// lists the unknown model names. Renders nothing otherwise.
     @ViewBuilder

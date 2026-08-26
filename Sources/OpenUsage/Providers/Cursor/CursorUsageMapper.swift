@@ -282,7 +282,7 @@ enum CursorUsageMapper {
         return (false, "")
     }
 
-    /// Append the shared Today / Yesterday / Month to Date / Last 30 Days spend tiles from Cursor's CSV rows. The rows
+    /// Append the shared Today / Yesterday / Last 30 Days / Month to Date spend tiles from Cursor's CSV rows. The rows
     /// are aggregated into one local-calendar-day `DailyUsageSeries` and handed to `SpendTileMapper`
     /// — the same builder the Claude/Codex/Grok tiles use — so the output is identical apart from the
     /// source note. Cursor's costs are calculated locally from the exported token counts, so the dollar

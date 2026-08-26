@@ -11,7 +11,7 @@ OpenCode's logs already on your Mac.
 | Session | Go usage in the rolling 5-hour window, as a percent, with the reset countdown |
 | Weekly | Go usage this week, as a percent (resets Monday UTC) |
 | Monthly | Go usage this billing cycle, as a percent |
-| Today / Yesterday / Month to Date / Last 30 Days | Local cost and tokens across all your OpenCode-hosted usage (Go + Zen) |
+| Today / Yesterday / Last 30 Days / Month to Date | Local cost and tokens across all your OpenCode-hosted usage (Go + Zen) |
 | Usage Trend | A day-by-day sparkline of tokens over the last month |
 
 When you have the Go subscription, OpenUsage shows "Go" beside the provider name.

@@ -238,56 +238,6 @@ final class SettingsMigratorTests: XCTestCase {
         XCTAssertEqual(defaults.stringArray(forKey: "openusage.enabledProviders.v1"), enabledAfterFirst)
     }
 
-    // MARK: - v3: month-to-date metric identifier rename
-
-    func testV3RenamesMonthToDateIDsAcrossEveryPersistedLayoutSurface() throws {
-        let (defaults, domain) = makeDefaults("V3MonthToDate")
-        defer { defaults.removePersistentDomain(forName: domain) }
-        defaults.set(2, forKey: SettingsMigrator.schemaVersionKey)
-
-        let dataValues: [String: Any] = [
-            "openusage.layout.v1": [[
-                "id": UUID().uuidString,
-                "descriptorID": "cursor.thisMonth",
-            ]],
-            "openusage.layout.v1.metricOrderByProvider": [
-                "cursor": ["cursor.today", "cursor.thisMonth"],
-                "openrouter": ["openrouter.month"],
-            ],
-            "openusage.layout.v1.seededDefaults": ["codex.thisMonth", "openrouter.month"],
-        ]
-        for (key, value) in dataValues {
-            defaults.set(try JSONSerialization.data(withJSONObject: value), forKey: key)
-        }
-        for key in [
-            "openusage.layout.v1.menuBarPins",
-            "openusage.layout.v1.expandedMetrics",
-            "openusage.layout.v1.expandOnEnable",
-        ] {
-            defaults.set(["cursor.thisMonth", "openrouter.month", "cursor.today"], forKey: key)
-        }
-
-        XCTAssertEqual(SettingsMigrator.migrate(defaults: defaults, domainName: domain), 3)
-
-        for key in dataValues.keys {
-            let data = try XCTUnwrap(defaults.data(forKey: key))
-            let json = String(decoding: data, as: UTF8.self)
-            XCTAssertFalse(json.contains("thisMonth"), "\(key) must drop the short-lived ID")
-            XCTAssertFalse(json.contains("openrouter.month\""), "\(key) must drop the legacy OpenRouter ID")
-            XCTAssertTrue(json.contains("monthToDate"))
-        }
-        for key in [
-            "openusage.layout.v1.menuBarPins",
-            "openusage.layout.v1.expandedMetrics",
-            "openusage.layout.v1.expandOnEnable",
-        ] {
-            XCTAssertEqual(
-                defaults.stringArray(forKey: key),
-                ["cursor.monthToDate", "openrouter.monthToDate", "cursor.today"]
-            )
-        }
-    }
-
     // MARK: - Schema integrity
 
     /// Guards against editing the migration list without bumping `current` (or vice versa): every

@@ -1,12 +1,12 @@
 import Foundation
 
-/// Turns local daily token/cost data into the shared Today / Yesterday / Month to Date / Last 30 Days spend tiles.
+/// Turns local daily token/cost data into the shared Today / Yesterday / Last 30 Days / Month to Date spend tiles.
 /// Every spend-tracking provider funnels through here so the tiles render identically regardless of
 /// source: Claude / Codex / Grok feed token/cost from their CLI logs, while Cursor feeds token/cost
 /// derived from its CSV export. The data shape
 /// (`DailyUsageSeries`) is a provider-neutral per-day carrier shared by every source.
 enum SpendTileMapper {
-    /// Append the four spend tiles (Today / Yesterday / Month to Date / Last 30 Days). A period with no usage is left
+    /// Append the four spend tiles (Today / Yesterday / Last 30 Days / Month to Date). A period with no usage is left
     /// unbacked so the tile reads "No data" — a zero here is indistinguishable from "the source hasn't
     /// accounted for this day yet," and a confident `$0.00 · 0 tokens` contradicts a live session meter
     /// that proves otherwise. This holds for every source (the Claude/Codex/Grok log scanners,
@@ -52,6 +52,23 @@ enum SpendTileMapper {
                                       )))
         }
 
+        let totalTokens = usage.daily.reduce(0) { $0 + $1.totalTokens }
+        let costSamples = usage.daily.compactMap(\.costUSD)
+        let totalCost = costSamples.isEmpty ? nil : costSamples.reduce(0, +)
+        if totalTokens > 0 || (totalCost ?? 0) > 0 {
+            let allUnknown = unknownModelsByDay.values.reduce(into: Set<String>()) { $0.formUnion($1) }
+            lines.append(.values(label: "Last 30 Days",
+                                 values: spendValues(tokens: totalTokens, costUSD: totalCost, estimated: estimated),
+                                 unknownModels: sortedModels(allUnknown),
+                                 modelBreakdown: modelBreakdown(
+                                    modelUsage,
+                                    days: Set(usage.daily.compactMap { dayKey(fromUsageDate: $0.date) }),
+                                    totalTokens: totalTokens,
+                                    totalCostUSD: totalCost,
+                                    sourceNote: modelSourceNote
+                                 )))
+        }
+
         let calendar = Calendar.current
         if let monthStart = calendar.dateInterval(of: .month, for: now)?.start {
             let monthStartKey = dayKey(from: monthStart)
@@ -80,23 +97,6 @@ enum SpendTileMapper {
                     )
                 ))
             }
-        }
-
-        let totalTokens = usage.daily.reduce(0) { $0 + $1.totalTokens }
-        let costSamples = usage.daily.compactMap(\.costUSD)
-        let totalCost = costSamples.isEmpty ? nil : costSamples.reduce(0, +)
-        if totalTokens > 0 || (totalCost ?? 0) > 0 {
-            let allUnknown = unknownModelsByDay.values.reduce(into: Set<String>()) { $0.formUnion($1) }
-            lines.append(.values(label: "Last 30 Days",
-                                 values: spendValues(tokens: totalTokens, costUSD: totalCost, estimated: estimated),
-                                 unknownModels: sortedModels(allUnknown),
-                                 modelBreakdown: modelBreakdown(
-                                    modelUsage,
-                                    days: Set(usage.daily.compactMap { dayKey(fromUsageDate: $0.date) }),
-                                    totalTokens: totalTokens,
-                                    totalCostUSD: totalCost,
-                                    sourceNote: modelSourceNote
-                                 )))
         }
     }
 
