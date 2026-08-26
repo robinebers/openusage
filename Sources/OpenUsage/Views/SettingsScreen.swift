@@ -18,6 +18,7 @@ struct SettingsScreen: View {
     @State private var launchAtLogin = LaunchAtLoginSetting()
     @State private var commandLineTool = CommandLineToolInstaller()
     @AppStorage(TotalSpendSetting.key) private var showTotalSpend = true
+    @AppStorage(MonthToDateSpendSetting.key) private var showMonthToDateSpend = false
     @AppStorage(AppearanceSetting.key) private var appearance = AppearanceSetting.system
     @AppStorage(TimeFormatSetting.key) private var timeFormat = TimeFormatSetting.auto
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
@@ -98,6 +99,16 @@ struct SettingsScreen: View {
             row("Show Total Spend") {
                 Toggle("", isOn: $showTotalSpend)
                     .settingsSwitchStyle()
+            }
+            row("Show Month-to-Date Spending") {
+                Toggle("", isOn: $showMonthToDateSpend)
+                    .settingsSwitchStyle()
+                    .onChange(of: showMonthToDateSpend) { _, isShown in
+                        layout.setMetricsEnabled(
+                            MonthToDateSpendSetting.metricIDs(in: container.registry),
+                            isShown
+                        )
+                    }
             }
             row("Launch at Login") {
                 Toggle("", isOn: Binding(

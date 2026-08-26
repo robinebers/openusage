@@ -473,14 +473,17 @@ final class CodexUsageMapperTests: XCTestCase {
 @MainActor
 final class CodexProviderTests: XCTestCase {
     func testNoUsageDataBadgeIsDroppedWhenLocalLogsHaveSpend() async throws {
-        let now = OpenUsageISO8601.date(from: "2026-02-20T16:00:00.000Z")!
+        let now = Calendar.current.date(from: DateComponents(year: 2026, month: 2, day: 20, hour: 12))!
+        let formatter = ISO8601DateFormatter()
+        let turnTime = Calendar.current.date(byAdding: .hour, value: -2, to: now)!
+        let tokenTime = Calendar.current.date(byAdding: .minute, value: 1, to: turnTime)!
         // The live usage API returns nothing mappable (empty body -> no metric lines)...
         let httpClient = FakeHTTPClient(response: HTTPResponse(statusCode: 200, headers: [:], body: Data("{}".utf8)))
         let home = try CodexLogFixture.makeHome(files: [
             "sessions/rollout-1.jsonl": [
-                CodexLogFixture.turnContext(timestamp: "2026-02-20T14:00:00.000Z", model: "gpt-5.2"),
+                CodexLogFixture.turnContext(timestamp: formatter.string(from: turnTime), model: "gpt-5.2"),
                 CodexLogFixture.tokenCount(
-                    timestamp: "2026-02-20T14:01:00.000Z",
+                    timestamp: formatter.string(from: tokenTime),
                     last: CodexLogFixture.usage(input: 100, output: 50)
                 )
             ].joined(separator: "\n")

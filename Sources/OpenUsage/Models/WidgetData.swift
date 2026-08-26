@@ -43,7 +43,7 @@ struct WidgetData: Hashable {
     /// left out of the displayed total, so the period's figures can be understated.
     /// Drives the label warning triangle and its hover list. Empty for every other row.
     var unknownModels: [String] = []
-    /// Period-scoped model spend/tokens for the Today / Yesterday / Last 30 Days hover popover. Nil for
+    /// Period-scoped model spend/tokens for the Today / Yesterday / Month to Date / Last 30 Days hover popover. Nil for
     /// non-spend rows and for periods where the provider has no model-level data.
     var modelBreakdown: ModelUsageBreakdown?
     var periodDurationMs: Int?
@@ -67,7 +67,7 @@ struct WidgetData: Hashable {
     /// Which of `values` this widget renders — cost-only, tokens-only, or the combined `.all`. Set by
     /// the descriptor factory, so one provider row can back several tiles and the mapper stays oblivious.
     var selection: ValueSelection = .all
-    /// True only for the Today / Yesterday / Last 30 Days spend tiles, where the row's values accumulate
+    /// True only for the Today / Yesterday / Month to Date / Last 30 Days spend tiles, where the row's values accumulate
     /// over a time window so an all-zero reading means "nothing was used." Balance/availability rows
     /// (Codex Rate Limit Resets, an exhausted Extra Usage credit) read zero when *depleted*, not idle, so
     /// they leave this false and never get the "No usage in this period" note. Set by the spend-tile
@@ -420,7 +420,7 @@ struct WidgetData: Hashable {
         if let figures = unboundedTooltip {
             return ([figures] + [unboundedTooltipNote].compactMap { $0 }).joined(separator: "\n")
         }
-        // The "no usage" note only fits a spend period (Today / Yesterday / Last 30 Days), where a zero
+        // The "no usage" note only fits a spend period (Today / Yesterday / Month to Date / Last 30 Days), where a zero
         // genuinely means nothing was used. A balance row that reads 0 (Codex Rate Limit Resets, an
         // exhausted Extra Usage credit) is depleted, not idle, so it gets no note.
         return nil
@@ -617,7 +617,7 @@ extension WidgetData {
     /// The neighbor-aware condensing rule, in one place: within a single run of rows (a run never spans
     /// the expand caret — callers segment at that boundary and scan each segment separately), the offsets
     /// of text-only rows that sit directly under another text-only row. A text-only row has no meter fill
-    /// (`!isBounded`); a run of them (Today / Yesterday / Last 30 Days) pulls up into one cluster. The
+    /// (`!isBounded`); a run of them (Today / Yesterday / Month to Date / Last 30 Days) pulls up into one cluster. The
     /// dashboard maps these offsets back to descriptor IDs; the share-card export maps them to flat indices.
     static func condensedTextRowOffsets(in rows: [WidgetData]) -> Set<Int> {
         var offsets = Set<Int>()

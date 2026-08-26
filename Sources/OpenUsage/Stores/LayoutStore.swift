@@ -189,6 +189,15 @@ final class LayoutStore {
         }
     }
 
+    /// Applies one Settings-level master switch to a family of metrics as a single undoable layout edit.
+    func setMetricsEnabled(_ descriptorIDs: [String], _ enabled: Bool) {
+        recordingUndoStep {
+            for descriptorID in descriptorIDs {
+                setMetricEnabled(descriptorID, enabled)
+            }
+        }
+    }
+
     // MARK: - Undo (#603)
 
     /// Whether there's at least one customization step to walk back. Drives the Customize Undo button's

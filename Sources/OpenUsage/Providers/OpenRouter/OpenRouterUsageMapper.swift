@@ -38,7 +38,7 @@ enum OpenRouterUsageMapper {
         // Period spend straight from the API (not a local log scan), so a real zero is a measured zero.
         appendSpend(data["usage_daily"], label: "Today", into: &lines)
         appendSpend(data["usage_weekly"], label: "This Week", into: &lines)
-        appendSpend(data["usage_monthly"], label: "This Month", into: &lines)
+        appendSpend(data["usage_monthly"], label: "Month to Date", into: &lines)
 
         // Per-key spend cap, when this key is configured with one. `usage` is lifetime spend on
         // the key; `limit_remaining` is what's left in the current window (daily/weekly/monthly

@@ -219,7 +219,7 @@ final class GrokProviderTests: XCTestCase {
 
         let snapshot = await provider.refresh()
 
-        // Existing credit lines stay; the three spend tiles use Grok's recorded session costs.
+        // Existing credit lines stay; the four spend tiles use Grok's recorded session costs.
         XCTAssertEqual(progress(snapshot.lines, "Weekly limit")?.used, 99)
         XCTAssertEqual(values(snapshot.lines, "Today"),
                        [MetricValue(number: 1.0, kind: .dollars, estimated: true), MetricValue(number: 1_000_000, kind: .count, label: "tokens")])

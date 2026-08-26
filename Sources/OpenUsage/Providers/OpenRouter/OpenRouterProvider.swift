@@ -38,8 +38,8 @@ final class OpenRouterProvider: ProviderRuntime {
                     metricLabel: "Today", selection: .kind(.dollars), isUsagePeriod: true),
             .values(id: "openrouter.week", provider: provider, title: "This Week",
                     metricLabel: "This Week", selection: .kind(.dollars), isUsagePeriod: true),
-            .values(id: "openrouter.month", provider: provider, title: "This Month",
-                    metricLabel: "This Month", selection: .kind(.dollars), isUsagePeriod: true),
+            .values(id: "openrouter.monthToDate", provider: provider, title: "Month to Date",
+                    metricLabel: "Month to Date", selection: .kind(.dollars), isUsagePeriod: true),
             .boundedDollars(id: "openrouter.keyLimit", provider: provider, title: "Key Limit",
                             metricLabel: "Key Limit", limit: 100, valueWord: "spent")
                 .exportingLimit("keyLimit", unit: "usd")

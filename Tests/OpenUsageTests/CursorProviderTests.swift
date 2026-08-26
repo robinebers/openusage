@@ -108,7 +108,9 @@ final class CursorUsageMapperTests: XCTestCase {
         XCTAssertEqual(progress(mapped.lines, "Total usage")?.used, 20)
         XCTAssertEqual(progress(mapped.lines, "Cursor Models")?.used, 12.5)
         XCTAssertEqual(progress(mapped.lines, "Other Models")?.used, 7.5)
-        XCTAssertEqual(progress(mapped.lines, "On-demand")?.used, 40)
+        let memberSpend = try XCTUnwrap(progress(mapped.lines, "On-demand"))
+        XCTAssertEqual(memberSpend.used, 40)
+        XCTAssertEqual(memberSpend.limit, 50, "individualLimit is the effective per-member spend cap")
     }
 
     func testBoundedOnDemandDoesNotLetZeroSpendMaskPositiveUsage() throws {

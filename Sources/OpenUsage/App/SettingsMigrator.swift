@@ -18,7 +18,7 @@ struct SettingsMigration: Sendable {
 enum SettingsSchema {
     /// Current schema version. Keep equal to the highest migration `version` below (or the baseline when
     /// there are none). This is NOT the app version — bump it only alongside a migration you add.
-    static let current = 2
+    static let current = 3
 
     /// The provider IDs that existed when the v2 migration shipped, frozen forever. A migration is a
     /// point-in-time transform: any future build with more providers also contains this migration, so a
@@ -49,8 +49,53 @@ enum SettingsSchema {
             if defaults.stringArray(forKey: "openusage.knownProviders.v1") == nil {
                 defaults.set(v2ProviderIDs, forKey: "openusage.knownProviders.v1")
             }
+        },
+        // v3 gives the month-to-date metric one consistent public/internal name. Preserve every saved
+        // layout surface — enabled rows, ordering, menu-bar stars, section placement, and optional-row
+        // queues — including the pre-existing OpenRouter `month` ID and short-lived dev-build
+        // `thisMonth` IDs.
+        SettingsMigration(version: 3) { defaults in
+            let dataKeys = [
+                "openusage.layout.v1",
+                "openusage.layout.v1.metricOrderByProvider",
+                "openusage.layout.v1.seededDefaults",
+            ]
+            for key in dataKeys {
+                guard let data = defaults.data(forKey: key),
+                      let value = try? JSONSerialization.jsonObject(with: data)
+                else { continue }
+                let renamed = renameMonthToDateMetricIDs(in: value)
+                if let encoded = try? JSONSerialization.data(withJSONObject: renamed) {
+                    defaults.set(encoded, forKey: key)
+                }
+            }
+
+            let arrayKeys = [
+                "openusage.layout.v1.menuBarPins",
+                "openusage.layout.v1.expandedMetrics",
+                "openusage.layout.v1.expandOnEnable",
+            ]
+            for key in arrayKeys {
+                guard let ids = defaults.stringArray(forKey: key) else { continue }
+                defaults.set(ids.map(renameMonthToDateMetricID), forKey: key)
+            }
         }
     ]
+
+    private static func renameMonthToDateMetricID(_ id: String) -> String {
+        if id == "openrouter.month" { return "openrouter.monthToDate" }
+        guard id.hasSuffix(".thisMonth") else { return id }
+        return String(id.dropLast("thisMonth".count)) + "monthToDate"
+    }
+
+    private static func renameMonthToDateMetricIDs(in value: Any) -> Any {
+        if let id = value as? String { return renameMonthToDateMetricID(id) }
+        if let array = value as? [Any] { return array.map(renameMonthToDateMetricIDs) }
+        if let object = value as? [String: Any] {
+            return object.mapValues(renameMonthToDateMetricIDs)
+        }
+        return value
+    }
 }
 
 /// Versioned, cascading settings migration — the replacement for the beta-era domain wipe. Runs once at

@@ -2,7 +2,7 @@ import XCTest
 @testable import OpenUsage
 
 /// The "No usage in this period" note is scoped to spend-period rows — Today / Yesterday /
-/// Last 30 Days — through `WidgetData.isUsagePeriod`. A balance/availability row that happens to read
+/// Month to Date / Last 30 Days — through `WidgetData.isUsagePeriod`. A balance/availability row that happens to read
 /// zero (Codex "Rate Limit Resets" with none available, an exhausted "Extra Usage" credit) is depleted,
 /// not idle, so it stays off the note even though every selected value is zero.
 @MainActor
@@ -11,8 +11,29 @@ final class WidgetUsagePeriodTests: XCTestCase {
 
     func testSpendTilesAreUsagePeriods() {
         let tiles = WidgetDescriptor.spendTiles(provider: provider)
-        XCTAssertEqual(tiles.count, 3)
+        XCTAssertEqual(tiles.count, 4)
         XCTAssertTrue(tiles.allSatisfy { $0.sample.isUsagePeriod })
+        XCTAssertEqual(tiles.map(\.id), [
+            "codex.today", "codex.yesterday", "codex.monthToDate", "codex.last30"
+        ])
+    }
+
+    func testMonthToDateMetricsAreOptionalAndStartBelowTheCaret() {
+        XCTAssertFalse(DefaultLayout.metricIDs.contains("codex.monthToDate"))
+        XCTAssertTrue(DefaultLayout.expandedMetricIDs.contains("codex.monthToDate"))
+    }
+
+    func testMonthToDateMasterSwitchOnlyTargetsLocalSpendTiles() {
+        let openRouter = OpenRouterProvider()
+        let localTiles = WidgetDescriptor.spendTiles(provider: provider)
+        let registry = WidgetRegistry(
+            providers: [provider, openRouter.provider],
+            descriptors: localTiles + openRouter.widgetDescriptors
+        )
+
+        XCTAssertEqual(MonthToDateSpendSetting.metricIDs(in: registry), ["codex.monthToDate"])
+        XCTAssertNotNil(registry.descriptor(id: "openrouter.monthToDate"),
+                        "OpenRouter keeps its API-backed MTD row outside the local-history master switch")
     }
 
     func testValuesAndCombinedDefaultToNotUsagePeriod() {

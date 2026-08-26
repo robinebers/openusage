@@ -149,7 +149,7 @@ final class OpenRouterUsageMapperTests: XCTestCase {
         // A real, measured zero is shown — not collapsed to "No data".
         XCTAssertEqual(dollars(mapped.lines, "Today"), 0)
         XCTAssertEqual(dollars(mapped.lines, "This Week"), 1.25)
-        XCTAssertEqual(dollars(mapped.lines, "This Month"), 4.5)
+        XCTAssertEqual(dollars(mapped.lines, "Month to Date"), 4.5)
         let keyLimit = try XCTUnwrap(progress(mapped.lines, "Key Limit"))
         XCTAssertEqual(keyLimit.used, 2)
         XCTAssertEqual(keyLimit.limit, 5)

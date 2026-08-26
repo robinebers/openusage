@@ -5,11 +5,15 @@ import XCTest
 /// the three Go caps and the Usage Trend above the fold, the spend tiles below the caret, nothing pinned.
 final class OpenCodeLayoutTests: XCTestCase {
     private let aboveFold = ["opencode.session", "opencode.weekly", "opencode.monthly", "opencode.trend"]
-    private let belowCaret = ["opencode.today", "opencode.yesterday", "opencode.last30"]
+    private let defaultBelowCaret = ["opencode.today", "opencode.yesterday", "opencode.last30"]
+    private let optionalBelowCaret = ["opencode.monthToDate"]
 
     func testAllMetricsEnabledByDefault() {
-        for id in aboveFold + belowCaret {
+        for id in aboveFold + defaultBelowCaret {
             XCTAssertTrue(DefaultLayout.metricIDs.contains(id), "\(id) should be enabled by default")
+        }
+        for id in optionalBelowCaret {
+            XCTAssertFalse(DefaultLayout.metricIDs.contains(id), "\(id) should be opt-in")
         }
     }
 
@@ -20,7 +24,7 @@ final class OpenCodeLayoutTests: XCTestCase {
     }
 
     func testSpendTilesSitBelowTheCaret() {
-        for id in belowCaret {
+        for id in defaultBelowCaret + optionalBelowCaret {
             XCTAssertTrue(DefaultLayout.expandedMetricIDs.contains(id), "\(id) should sit below the caret")
         }
     }

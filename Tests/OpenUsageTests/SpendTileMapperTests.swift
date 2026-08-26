@@ -1,7 +1,7 @@
 import XCTest
 @testable import OpenUsage
 
-/// Covers `SpendTileMapper.appendTokenUsage`'s no-usage handling.
+/// Covers `SpendTileMapper.appendTokenUsage`'s period aggregation and no-usage handling.
 ///
 /// A period with no usage (an idle day the source didn't report, or a day it reported as zero) is left
 /// unbacked so the tile reads "No data" rather than a fabricated "$0.00 · 0 tokens" that contradicts a
@@ -116,6 +116,41 @@ final class SpendTileMapperTests: XCTestCase {
             MetricValue(number: 10, kind: .dollars, estimated: true),
             MetricValue(number: 1000, kind: .count, label: "tokens")
         ])
+    }
+
+    func testMonthToDateStartsAtLocalCalendarMonthBoundary() throws {
+        let lines = mappedLines(
+            [
+                DailyUsageEntry(date: "2026-05-31", totalTokens: 900, costUSD: 9),
+                DailyUsageEntry(date: "2026-06-01", totalTokens: 100, costUSD: 1),
+                DailyUsageEntry(date: "2026-06-02", totalTokens: 200, costUSD: 2)
+            ],
+            models: [
+                DailyModelUsageEntry(date: "2026-05-31", models: [
+                    ModelUsageEntry(model: "old", totalTokens: 900, costUSD: 9)
+                ]),
+                DailyModelUsageEntry(date: "2026-06-01", models: [
+                    ModelUsageEntry(model: "alpha", totalTokens: 100, costUSD: 1)
+                ]),
+                DailyModelUsageEntry(date: "2026-06-02", models: [
+                    ModelUsageEntry(model: "beta", totalTokens: 200, costUSD: 2)
+                ])
+            ],
+            now: day(2026, 6, 2)
+        )
+
+        XCTAssertEqual(values(lines, "Month to Date"), [
+            MetricValue(number: 3, kind: .dollars, estimated: true),
+            MetricValue(number: 300, kind: .count, label: "tokens")
+        ])
+        XCTAssertEqual(values(lines, "Last 30 Days"), [
+            MetricValue(number: 12, kind: .dollars, estimated: true),
+            MetricValue(number: 1_200, kind: .count, label: "tokens")
+        ], "the rolling window includes May 31 while Month to Date starts at June 1")
+        XCTAssertNotEqual(values(lines, "Month to Date"), values(lines, "Last 30 Days"))
+        let breakdown = try XCTUnwrap(modelBreakdown(lines, "Month to Date"))
+        XCTAssertEqual(breakdown.models.map(\.model), ["beta", "alpha"])
+        XCTAssertNil(breakdown.models.first { $0.model == "old" })
     }
 
     func testModelBreakdownSortsFoldsOtherAndKeepsUnpricedNamed() throws {

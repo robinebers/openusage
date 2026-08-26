@@ -695,26 +695,26 @@ final class LayoutStoreTests: XCTestCase {
             "claude.session", "claude.weekly", "claude.fable", "claude.extra", "claude.trend"
         ])
         XCTAssertEqual(expandedByProvider["claude"], [
-            "claude.sonnet", "claude.today", "claude.yesterday", "claude.last30"
+            "claude.sonnet", "claude.today", "claude.yesterday", "claude.monthToDate", "claude.last30"
         ])
         XCTAssertEqual(primaryByProvider["codex"], ["codex.session", "codex.weekly", "codex.trend"])
         // Spark (the optional model-specific limits) leads the On Demand section, before credits.
         XCTAssertEqual(expandedByProvider["codex"], [
             "codex.spark", "codex.sparkWeekly",
-            "codex.credits", "codex.rateLimitResets", "codex.today", "codex.yesterday", "codex.last30"
+            "codex.credits", "codex.rateLimitResets", "codex.today", "codex.yesterday", "codex.monthToDate", "codex.last30"
         ])
         XCTAssertEqual(primaryByProvider["devin"], ["devin.daily", "devin.weekly"])
         XCTAssertEqual(expandedByProvider["devin"], ["devin.extra"])
         XCTAssertEqual(primaryByProvider["grok"], ["grok.weekly", "grok.trend"])
         XCTAssertEqual(expandedByProvider["grok"], [
-            "grok.payAsYouGo", "grok.today", "grok.yesterday", "grok.last30"
+            "grok.payAsYouGo", "grok.today", "grok.yesterday", "grok.monthToDate", "grok.last30"
         ])
         // Cursor spend tiles + usage trend are enabled: the trend joins the primary rows, and the
-        // today/yesterday/last30 rows sit below the caret alongside the other secondary metrics.
+        // today/yesterday/month-to-date/last30 rows sit below the caret alongside the other secondary metrics.
         XCTAssertEqual(primaryByProvider["cursor"], ["cursor.usage", "cursor.auto", "cursor.api", "cursor.trend"])
         XCTAssertEqual(expandedByProvider["cursor"], [
             "cursor.grokBot", "cursor.onDemand", "cursor.requests", "cursor.credits",
-            "cursor.today", "cursor.yesterday", "cursor.last30"
+            "cursor.today", "cursor.yesterday", "cursor.monthToDate", "cursor.last30"
         ])
     }
 

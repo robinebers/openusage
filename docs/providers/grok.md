@@ -8,7 +8,7 @@ Tracks Grok Build credit usage using the login from the Grok CLI.
 |---|---|
 | Weekly | The shared weekly pool's usage percent (the limit Grok's unified billing enforces), with the weekly reset countdown |
 | Extra Usage | Pay-as-you-go cap as a status (e.g. `2500 cap` or `Disabled`) |
-| Today / Yesterday / Last 30 Days | Local cost and tokens from completed Grok CLI sessions |
+| Today / Yesterday / Month to Date / Last 30 Days | Local cost and tokens from completed Grok CLI sessions |
 
 When Grok reports your subscription tier, OpenUsage shows it beside the provider name.
 
@@ -20,7 +20,7 @@ Sign in once with the Grok CLI (`grok login`); OpenUsage reads the same `~/.grok
 
 ## The spend tiles
 
-Today / Yesterday / Last 30 Days are computed **locally** from completed Grok CLI sessions under `~/.grok/sessions/` (or `$GROK_HOME/sessions/`). Subagent usage is counted through its parent session, so parallel tasks do not inflate the totals. OpenUsage uses the cost Grok recorded for each completed turn when available; older turns without a recorded cost are estimated using the shared [model pricing](../pricing.md). Days follow your Mac's local time zone, and each period shows cost and tokens together (`$4.08 · 1.2M tokens`). These amounts are separate from the credits reported by Grok's billing API, and no session data leaves your Mac. A period with no completed usage reads "No data" rather than `$0.00 · 0 tokens`.
+Today / Yesterday / Month to Date / Last 30 Days are computed **locally** from completed Grok CLI sessions under `~/.grok/sessions/` (or `$GROK_HOME/sessions/`). Subagent usage is counted through its parent session, so parallel tasks do not inflate the totals. OpenUsage uses the cost Grok recorded for each completed turn when available; older turns without a recorded cost are estimated using the shared [model pricing](../pricing.md). Days follow your Mac's local time zone, and each period shows cost and tokens together (`$4.08 · 1.2M tokens`). These amounts are separate from the credits reported by Grok's billing API, and no session data leaves your Mac. A period with no completed usage reads "No data" rather than `$0.00 · 0 tokens`.
 
 ## Troubleshooting
 

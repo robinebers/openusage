@@ -1,7 +1,7 @@
 import Foundation
 
 /// A provider-neutral per-day token/cost series — the shared carrier every spend-tracking provider
-/// funnels through `SpendTileMapper` (the Today / Yesterday / Last 30 Days tiles and the Usage Trend
+/// funnels through `SpendTileMapper` (the Today / Yesterday / Month to Date / Last 30 Days tiles and the Usage Trend
 /// chart).
 ///
 /// Sources build it from very different inputs and hand `SpendTileMapper` the same shape so the tiles
@@ -35,7 +35,7 @@ enum UsageHistoryWindow {
 }
 
 /// Token/cost totals for one model before a period collapses it into a spend row. Costs stay unrounded
-/// here; `SpendTileMapper` snaps them to cents once for the displayed Today / Yesterday / Last 30 Days
+/// here; `SpendTileMapper` snaps them to cents once for the displayed Today / Yesterday / Month to Date / Last 30 Days
 /// breakdown, matching the spend-row totals.
 ///
 /// `variants` carries the raw slugs folded into this entry when a provider groups by base model —

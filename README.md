@@ -61,7 +61,7 @@ For working on the code, see the developer docs: [architecture](docs/architectur
 - macOS 15 (Sequoia) or later
 - Universal binary — runs natively on both Apple Silicon and Intel Macs
 
-The Today / Yesterday / Last 30 Days spend tiles are computed natively from local CLI logs (Claude,
+The Today / Yesterday / optional Month to Date / Last 30 Days spend tiles are computed natively from local CLI logs (Claude,
 Codex, and Grok) or Cursor's usage export — no Node.js or other runtime needed. Dollars are estimated
 with [dynamically refreshed model pricing](docs/pricing.md).
 

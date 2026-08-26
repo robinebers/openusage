@@ -259,7 +259,7 @@ final class CursorSpendRangeTests: XCTestCase {
 final class CursorSpendProviderTests: XCTestCase {
     func testSpendTrackingDownloadsCSVExposesSpendTilesAndFlagsUnknownModels() async {
         // The provider downloads the usage CSV, exposes the spend-tile + trend descriptors, and emits
-        // Today / Yesterday / Last 30 Days / Usage Trend lines
+        // Today / Yesterday / Month to Date / Last 30 Days / Usage Trend lines
         // alongside the live quota meters. A row that used a model no pricing source can price carries
         // that model's name so the tile can warn its cost is incomplete.
         let now = Date(timeIntervalSince1970: 1_800_000_000)
@@ -313,11 +313,11 @@ final class CursorSpendProviderTests: XCTestCase {
                       "Cursor refresh must download the usage CSV for spend metrics")
         // Live quota meter survives; spend tiles + trend are present.
         XCTAssertTrue(snapshot.lines.contains { $0.label == "Total usage" })
-        for label in ["Today", "Yesterday", "Last 30 Days", "Usage Trend"] {
+        for label in ["Today", "Yesterday", "Month to Date", "Last 30 Days", "Usage Trend"] {
             XCTAssertNotNil(snapshot.lines.first { $0.label == label }, "\(label) line must be present")
         }
         let ids = Set(provider.widgetDescriptors.map(\.id))
-        for id in ["cursor.today", "cursor.yesterday", "cursor.last30", "cursor.trend"] {
+        for id in ["cursor.today", "cursor.yesterday", "cursor.monthToDate", "cursor.last30", "cursor.trend"] {
             XCTAssertTrue(ids.contains(id), "\(id) descriptor must be present")
         }
 
