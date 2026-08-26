@@ -38,7 +38,7 @@ final class CodexFallbackPricingTests: XCTestCase {
         XCTAssertNil(result.fallbackPricingModels)
     }
 
-    func testFallbackPricesTokensAndPreservesModelAttribution() throws {
+    func testFallbackPricesTokensAndPreservesModelAttributionAndWarning() throws {
         let result = CodexLogUsageScanner.aggregate(
             events: [event()], since: .distantPast, pricing: pricing(), fallbackModel: reference
         )
@@ -46,8 +46,33 @@ final class CodexFallbackPricingTests: XCTestCase {
         XCTAssertEqual(day.totalTokens, 1_100)
         XCTAssertEqual(try XCTUnwrap(day.costUSD), 0.0062, accuracy: 0.000_001)
         XCTAssertEqual(result.modelUsage?.daily.first?.models.first?.model, "unlisted-model-a")
-        XCTAssertTrue(result.unknownModelsByDay.isEmpty)
+        XCTAssertEqual(Set(result.unknownModelsByDay.values.flatMap { $0 }), ["unlisted-model-a"])
         XCTAssertEqual(result.fallbackPricingModels, [reference])
+    }
+
+    func testFallbackWarningReachesTheSpendTileTooltip() throws {
+        let usage = event(input: 1_000_000, cached: 400_000, output: 100_000)
+        let scan = CodexLogUsageScanner.aggregate(
+            events: [usage], since: .distantPast, pricing: pricing(), fallbackModel: reference
+        )
+        var lines: [MetricLine] = []
+        SpendTileMapper.appendTokenUsage(
+            scan.series, to: &lines, now: usage.timestamp,
+            unknownModelsByDay: scan.unknownModelsByDay, modelUsage: scan.modelUsage
+        )
+
+        for label in ["Today", "Last 30 Days"] {
+            guard case .values(_, let values, _, _, let unknownModels, _) = lines.first(where: { $0.label == label }) else {
+                return XCTFail("Missing spend row")
+            }
+            XCTAssertGreaterThan(try XCTUnwrap(values.first(where: { $0.kind == .dollars })?.number), 0)
+            var tile = WidgetData(title: label, icon: .providerMark("codex"), kind: .dollars, used: 0)
+            tile.values = values
+            tile.hasData = true
+            tile.unknownModels = unknownModels
+            XCTAssertTrue(tile.hasUnknownModels)
+            XCTAssertEqual(tile.unknownModelTooltip, "Unknown model found\n- unlisted-model-a")
+        }
     }
 
     func testKnownPricesAndExplicitPricingModelsWin() {
@@ -60,6 +85,7 @@ final class CodexFallbackPricingTests: XCTestCase {
         )
         XCTAssertEqual(fallback.series, normal.series)
         XCTAssertEqual(fallback.modelUsage, normal.modelUsage)
+        XCTAssertTrue(fallback.unknownModelsByDay.isEmpty)
         XCTAssertNil(fallback.fallbackPricingModels)
     }
 
@@ -115,6 +141,7 @@ final class CodexFallbackPricingTests: XCTestCase {
         let noneAgain = await scanner.scan(now: now, pricing: pricing())
         XCTAssertTrue(try XCTUnwrap(none).series.daily.isEmpty)
         XCTAssertEqual(estimated?.series.daily.first?.totalTokens, 1_100)
+        XCTAssertEqual(estimated?.unknownModelsByDay, none?.unknownModelsByDay)
         XCTAssertEqual(noneAgain?.series, none?.series)
         XCTAssertNil(noneAgain?.fallbackPricingModels)
     }
@@ -137,5 +164,6 @@ final class CodexFallbackPricingTests: XCTestCase {
         let merged = try XCTUnwrap(DailyUsageAccumulator.merged([scan, nil]))
         XCTAssertEqual(merged.fallbackPricingModels, [reference])
         XCTAssertEqual(merged.series, scan.series)
+        XCTAssertEqual(merged.unknownModelsByDay, scan.unknownModelsByDay)
     }
 }

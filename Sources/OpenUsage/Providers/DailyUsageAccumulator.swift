@@ -61,8 +61,8 @@ struct DailyUsageAccumulator {
         return accumulator.build()
     }
 
-    /// Note a model that couldn't be priced but still carried tokens — surfaced as the tile's warning
-    /// triangle, the only place unpriceable usage appears (it's excluded from every displayed total).
+    /// Note a model with no known price that carried tokens. The warning remains even when an
+    /// explicitly selected reference lets the caller include a fallback estimate in the totals.
     mutating func addUnknownModel(day: String, model: String) {
         unknownModelsByDay[day, default: []].insert(model)
     }

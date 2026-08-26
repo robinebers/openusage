@@ -55,18 +55,18 @@ extension CodexLogUsageScanner {
             var resolvedRates = baseRates ?? pricing.resolve(model: pricingModel)
             var appliesCodexFastTier = isFastAlias ? baseRates != nil : event.isFast
             var usedFallback: String?
+            // A reference can estimate the cost without making the model's own price known.
+            // Keep the existing warning independently of whether an estimate can be included.
+            if resolvedRates == nil, event.total > 0 {
+                accumulator.addUnknownModel(day: day, model: model)
+            }
             if resolvedRates == nil, let fallbackModel, let fallbackRates {
                 resolvedRates = fallbackRates
                 rateModel = fallbackModel
                 appliesCodexFastTier = isFastAlias || event.isFast
                 usedFallback = fallbackModel
             }
-            guard let rates = resolvedRates else {
-                if event.total > 0 {
-                    accumulator.addUnknownModel(day: day, model: model)
-                }
-                continue
-            }
+            guard let rates = resolvedRates else { continue }
             let eventCost = cost(
                 rates: rates,
                 event: event,

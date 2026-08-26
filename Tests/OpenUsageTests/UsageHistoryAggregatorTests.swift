@@ -3,9 +3,9 @@ import XCTest
 
 final class UsageHistoryAggregatorTests: XCTestCase {
     func testFallbackProvenanceSurvivesHistoryCodingMergingAndRendering() throws {
-        var localHistory = history(tokens: 100, cost: 1, model: "unlisted-model-a")
+        var localHistory = history(tokens: 100, cost: 1, model: "unlisted-model-a", unknown: ["unlisted-model-a"])
         localHistory.fallbackPricingModels = ["gpt-5.6-sol"]
-        var peerHistory = history(tokens: 200, cost: 2, model: "unlisted-model-b")
+        var peerHistory = history(tokens: 200, cost: 2, model: "unlisted-model-b", unknown: ["unlisted-model-b"])
         peerHistory.fallbackPricingModels = ["gpt-5.5"]
         let local = ProviderSnapshot(
             providerID: "codex", displayName: "Codex", lines: [],
@@ -22,9 +22,10 @@ final class UsageHistoryAggregatorTests: XCTestCase {
         let rendered = UsageHistorySnapshotRenderer.render(
             local: local, history: merged, descriptor: descriptor, now: localDay(2026, 7, 13)
         )
-        guard case .values(_, _, _, _, _, let breakdown) = rendered.lines.first(where: { $0.label == "Today" }) else {
+        guard case .values(_, _, _, _, let unknownModels, let breakdown) = rendered.lines.first(where: { $0.label == "Today" }) else {
             return XCTFail("missing spend row")
         }
+        XCTAssertEqual(unknownModels, ["unlisted-model-a", "unlisted-model-b"])
         XCTAssertEqual(breakdown?.sourceNote, "Across your Macs · logs · Fallback estimates: GPT 5.5, GPT 5.6 Sol")
 
         let legacy = Data(#"{"series":{"daily":[]},"unknownModelsByDay":{}}"#.utf8)

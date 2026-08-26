@@ -39,8 +39,8 @@ struct WidgetData: Hashable {
     /// state when none are available) and lights up like the spend rows — so it stays reachable even
     /// at "0 available", where `expiriesAt` is empty. Off for every other row.
     var showsResetExpiries: Bool = false
-    /// Names of models this period's spend used that the pricing sources can't price. Their usage is
-    /// left out of the displayed total, so the period's figures can be understated.
+    /// Names of models this period's spend used that have no known price. Their usage is excluded
+    /// unless a fallback estimate is enabled; either way the missing-price warning stays visible.
     /// Drives the label warning triangle and its hover list. Empty for every other row.
     var unknownModels: [String] = []
     /// Period-scoped model spend/tokens for the Today / Yesterday / Last 30 Days hover popover. Nil for
@@ -391,15 +391,15 @@ struct WidgetData: Hashable {
         return ([header] + entries).joined(separator: "\n")
     }
 
-    /// True when this period's spend used at least one model the pricing manifest can't price, so its
-    /// dollar figure is incomplete. Drives the label warning triangle on the Cursor spend tiles.
+    /// True when this period used at least one model without known pricing, even if its cost was
+    /// estimated with a fallback. Drives the spend tile's label warning triangle.
     var hasUnknownModels: Bool {
         hasData && !unknownModels.isEmpty
     }
 
     /// Hover copy for the unknown-model warning triangle: a header naming the problem, then each unpriced
-    /// model on its own line. Singular/plural header to read naturally. `nil` when the period priced every
-    /// model it used (the common case), so the triangle and its tooltip stay off.
+    /// model on its own line. Singular/plural header to read naturally. `nil` when every model has
+    /// known pricing, so the triangle and its tooltip stay off.
     var unknownModelTooltip: String? {
         guard hasUnknownModels else { return nil }
         let header = unknownModels.count == 1 ? "Unknown model found" : "Unknown models found"
