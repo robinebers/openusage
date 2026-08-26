@@ -187,6 +187,51 @@ final class ModelPricingTests: XCTestCase {
 
     // MARK: - Cost math
 
+    func testFallbackChoicesUseOnlyListedModelsWithUsableExactPrices() throws {
+        let supplement = """
+        {"pricing": {}, "alias_rules": [],
+         "fallback_models": {"codex": ["gpt-5.6-sol", "missing", "gpt-5.6-sol", "free-model", "gpt-8"]}}
+        """
+        let pricing = try makePricing(
+            supplementJSON: supplement,
+            primary: ["gpt-5.6-sol": rates(5, 30), "free-model": rates(0, 0),
+                      "gpt-8-20260801": rates(1, 2), "unlisted-model": rates(1, 2)]
+        )
+
+        XCTAssertEqual(pricing.fallbackOptions(for: "codex"), [
+            PricingFallbackOption(id: "gpt-5.6-sol", title: "GPT 5.6 Sol")
+        ])
+        XCTAssertTrue(pricing.fallbackOptions(for: "claude").isEmpty)
+        XCTAssertNil(pricing.fallbackRates(model: "unlisted-model", providerID: "codex"))
+        XCTAssertNotNil(pricing.resolve(model: "gpt-8"), "regular fuzzy pricing still works")
+    }
+
+    func testFallbackChoicesPreserveSupplementOrderAndSecondaryPrices() throws {
+        let pricing = try makePricing(
+            supplementJSON: """
+            {"pricing": {}, "alias_rules": [], "fallback_models": {"codex": ["gpt-5.5", "gpt-5.4"]}}
+            """,
+            primary: ["gpt-5.4": rates(2.5, 15)],
+            secondary: ["gpt-5.5": rates(5, 30)]
+        )
+        XCTAssertEqual(pricing.fallbackOptions(for: "codex").map(\.id), ["gpt-5.5", "gpt-5.4"])
+    }
+
+    func testBundledFallbackChoicesHaveExactPricesAndNoDuplicates() {
+        let pricing = TestPricing.bundled
+        let listed = pricing.supplement.fallbackModels["codex"] ?? []
+        XCTAssertFalse(listed.isEmpty)
+        XCTAssertEqual(Set(listed).count, listed.count)
+        XCTAssertEqual(pricing.fallbackOptions(for: "codex").map(\.id), listed)
+    }
+
+    func testSupplementFallbackChoicesPreserveExplicitEmptyLists() {
+        let bundled = PricingSupplement(fallbackModels: ["codex": ["gpt-5.5"]])
+        XCTAssertEqual(PricingSupplement().fillingMissingFallbackModels(from: bundled).fallbackModels, bundled.fallbackModels)
+        let disabled = PricingSupplement(fallbackModels: ["codex": []])
+        XCTAssertEqual(disabled.fillingMissingFallbackModels(from: bundled).fallbackModels["codex"], [])
+    }
+
     func testCostUsesAllTokenBuckets() throws {
         let entry = ModelRates(
             inputPerMillion: 3, outputPerMillion: 15,

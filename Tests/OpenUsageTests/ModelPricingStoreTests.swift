@@ -82,6 +82,30 @@ final class ModelPricingStoreTests: XCTestCase {
         XCTAssertEqual(pricing.resolve(model: "auto")?.inputPerMillion, 1.25)
     }
 
+    func testNewerLegacyFeedKeepsBundledFallbackChoices() async throws {
+        try Data("""
+        {"updated_at": "2099-01-01T00:00:00Z", "pricing": {}, "alias_rules": []}
+        """.utf8).write(to: tempDir.appendingPathComponent("supplement.json"))
+        let store = ModelPricingStore(
+            http: RoutingHTTPClient(handler: { _ in throw URLError(.notConnectedToInternet) }),
+            cacheDirectory: tempDir,
+            bundledData: { name in
+                if name == "pricing_supplement" {
+                    return Data("""
+                    {"updated_at": "2026-08-01T00:00:00Z", "pricing": {}, "alias_rules": [],
+                     "fallback_models": {"codex": ["gpt-5.6-sol"]}}
+                    """.utf8)
+                }
+                return Self.bundledFixtures(name)
+            }
+        )
+
+        let pricing = await store.current()
+        XCTAssertEqual(pricing.supplement.updatedAt, "2099-01-01T00:00:00Z")
+        XCTAssertEqual(pricing.supplement.fallbackModels["codex"], ["gpt-5.6-sol"])
+        await store.refreshNow()
+    }
+
     func testRefreshFetchesAllSourcesAndAppliesData() async throws {
         let (store, http) = makeStore(handler: { Self.respond(to: $0) })
         await store.refreshNow()

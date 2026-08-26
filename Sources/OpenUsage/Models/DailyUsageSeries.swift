@@ -76,15 +76,19 @@ struct ProviderUsageHistory: Hashable, Sendable, Codable {
     var series: DailyUsageSeries
     var modelUsage: ModelUsageSeries?
     var unknownModelsByDay: [String: Set<String>]
+    /// Optional for compatibility with histories saved before fallback estimation existed.
+    var fallbackPricingModels: Set<String>?
 
     init(
         series: DailyUsageSeries,
         modelUsage: ModelUsageSeries? = nil,
-        unknownModelsByDay: [String: Set<String>] = [:]
+        unknownModelsByDay: [String: Set<String>] = [:],
+        fallbackPricingModels: Set<String>? = nil
     ) {
         self.series = series
         self.modelUsage = modelUsage
         self.unknownModelsByDay = unknownModelsByDay
+        self.fallbackPricingModels = fallbackPricingModels
     }
 }
 
@@ -105,10 +109,15 @@ struct LogUsageScan: Sendable {
     var modelUsage: ModelUsageSeries?
     /// `yyyy-MM-dd` day key → models used that day whose usage was left out because no price was available.
     var unknownModelsByDay: [String: Set<String>]
+    var fallbackPricingModels: Set<String>?
 
-    init(series: DailyUsageSeries, modelUsage: ModelUsageSeries? = nil, unknownModelsByDay: [String: Set<String>]) {
+    init(
+        series: DailyUsageSeries, modelUsage: ModelUsageSeries? = nil,
+        unknownModelsByDay: [String: Set<String>], fallbackPricingModels: Set<String>? = nil
+    ) {
         self.series = series
         self.modelUsage = modelUsage
         self.unknownModelsByDay = unknownModelsByDay
+        self.fallbackPricingModels = fallbackPricingModels
     }
 }

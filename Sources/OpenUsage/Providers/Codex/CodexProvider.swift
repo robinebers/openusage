@@ -17,19 +17,22 @@ final class CodexProvider: ProviderRuntime {
     let logUsageScanner: CodexLogUsageScanner
     let now: @Sendable () -> Date
     let pricing: @Sendable () async -> ModelPricing
+    let fallbackModel: @MainActor () -> String?
 
     init(
         authStore: CodexAuthStore = CodexAuthStore(),
         usageClient: CodexUsageClient = CodexUsageClient(),
         logUsageScanner: CodexLogUsageScanner = CodexLogUsageScanner(),
         now: @escaping @Sendable () -> Date = Date.init,
-        pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() }
+        pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() },
+        fallbackModel: @escaping @MainActor () -> String? = { CodexFallbackModelSetting.current() }
     ) {
         self.authStore = authStore
         self.usageClient = usageClient
         self.logUsageScanner = logUsageScanner
         self.now = now
         self.pricing = pricing
+        self.fallbackModel = fallbackModel
     }
 
     var widgetDescriptors: [WidgetDescriptor] {
@@ -140,19 +143,21 @@ final class CodexProvider: ProviderRuntime {
         // the shared pricing store, merged with Codex usage that happened inside pi (attributed back
         // here). Both scans run on their scanner actors, off the main actor.
         let pricing = await pricing()
-        let nativeScan = await logUsageScanner.scan(now: now(), pricing: pricing)
+        let nativeScan = await logUsageScanner.scan(now: now(), pricing: pricing, fallbackModel: fallbackModel())
         let piScan = await PiUsageScanner.shared.scan(cardID: provider.id, now: now(), pricing: pricing)
         var usageHistory: ProviderUsageHistory?
         // Cancellation can land between the native and pi scans. Treat the pair as one unit so a
         // partial result cannot replace the last-good combined history in WidgetDataStore.
         if !Task.isCancelled, let scan = DailyUsageAccumulator.merged([nativeScan, piScan]) {
-            let note = piScan == nil
+            let baseNote = piScan == nil
                 ? "From your Codex logs (estimated)"
                 : "From your Codex logs and pi (estimated)"
+            let note = PricingFallbackOption.sourceNote(baseNote, models: scan.fallbackPricingModels)
             usageHistory = ProviderUsageHistory(
                 series: scan.series,
                 modelUsage: scan.modelUsage,
-                unknownModelsByDay: scan.unknownModelsByDay
+                unknownModelsByDay: scan.unknownModelsByDay,
+                fallbackPricingModels: scan.fallbackPricingModels
             )
             SpendTileMapper.appendTokenUsage(
                 scan.series, to: &mapped.lines, now: now(),

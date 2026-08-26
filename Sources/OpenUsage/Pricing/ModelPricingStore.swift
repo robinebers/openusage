@@ -114,7 +114,8 @@ actor ModelPricingStore {
         case (let cached?, let bundled?):
             // Bundled wins only when strictly newer, so the usual case (a feed ahead of the shipped
             // file, or the two in step) keeps serving the cache.
-            return Self.isNewer(bundled.updatedAt, than: cached.updatedAt) ? bundled : cached
+            let preferred = Self.isNewer(bundled.updatedAt, than: cached.updatedAt) ? bundled : cached
+            return preferred.fillingMissingFallbackModels(from: bundled)
         case (let cached?, nil):
             return cached
         case (nil, let bundled?):

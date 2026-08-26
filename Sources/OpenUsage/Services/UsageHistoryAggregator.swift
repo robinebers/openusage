@@ -73,8 +73,12 @@ enum UsageHistoryAggregator {
         var days: [String: (tokens: Int, cost: Double?, sawCost: Bool)] = [:]
         var models: [String: [String: ModelAccumulator]] = [:]
         var unknown: [String: Set<String>] = [:]
+        var fallbackModels = Set<String>()
 
         for history in histories {
+            if history.series.daily.contains(where: { includedDays.contains($0.date) }) {
+                fallbackModels.formUnion(history.fallbackPricingModels ?? [])
+            }
             for day in history.series.daily where includedDays.contains(day.date) {
                 var value = days[day.date] ?? (0, nil, false)
                 value.tokens += day.totalTokens
@@ -113,7 +117,8 @@ enum UsageHistoryAggregator {
         return ProviderUsageHistory(
             series: series,
             modelUsage: modelDays.isEmpty ? nil : ModelUsageSeries(daily: modelDays),
-            unknownModelsByDay: unknown
+            unknownModelsByDay: unknown,
+            fallbackPricingModels: fallbackModels.isEmpty ? nil : fallbackModels
         )
     }
 
@@ -181,7 +186,8 @@ enum UsageHistorySnapshotRenderer {
     ) -> ProviderSnapshot {
         var result = snapshot
         result.lines.removeAll { historyLabels.contains($0.label) }
-        let sourceNote = combined ? "Across your Macs · \(descriptor.sourceNote)" : descriptor.sourceNote
+        let baseNote = combined ? "Across your Macs · \(descriptor.sourceNote)" : descriptor.sourceNote
+        let sourceNote = PricingFallbackOption.sourceNote(baseNote, models: history.fallbackPricingModels)
         SpendTileMapper.appendTokenUsage(
             history.series,
             to: &result.lines,

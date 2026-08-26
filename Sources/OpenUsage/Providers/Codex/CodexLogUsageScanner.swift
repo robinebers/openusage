@@ -81,7 +81,9 @@ actor CodexLogUsageScanner {
 
     /// Scan the last `daysBack` days of Codex rollouts. Returns `nil` when no Codex home or no
     /// session files exist (the spend tiles then render "No data").
-    func scan(daysBack: Int = 30, now: Date = Date(), pricing: ModelPricing) async -> LogUsageScan? {
+    func scan(
+        daysBack: Int = 30, now: Date = Date(), pricing: ModelPricing, fallbackModel: String? = nil
+    ) async -> LogUsageScan? {
         let homes = codexHomes()
         let since = JSONLScanning.sinceDate(daysBack: daysBack, now: now)
         let identityPaths = Set(homes.map { $0.resolvingSymlinksInPath().standardizedFileURL.path })
@@ -101,7 +103,7 @@ actor CodexLogUsageScanner {
             cacheIdentity: identity,
             parse: Self.parseFile
         ), !Task.isCancelled else { return nil }
-        return Self.aggregate(events: events, since: since, pricing: pricing)
+        return Self.aggregate(events: events, since: since, pricing: pricing, fallbackModel: fallbackModel)
     }
 
     // MARK: - Discovery
@@ -449,151 +451,4 @@ actor CodexLogUsageScanner {
         return autoReviewFallbacks.first(where: { date >= $0.releasedOn })?.model ?? "gpt-5"
     }
 
-    // MARK: - Aggregation
-
-    private struct EventKey: Hashable {
-        var timestamp: Date
-        var model: String
-        var pricingModel: String?
-        var input: Int
-        var cached: Int
-        var output: Int
-        var reasoning: Int
-        var total: Int
-    }
-
-    /// Bucket events into local calendar days. Identical events across files (copied session logs)
-    /// count once. Cost is per-event codex math (see type doc).
-    ///
-    /// Events that can't be priced (an unknown model, or a blank slug) are excluded from every displayed
-    /// total — tokens, dollars, the trend, and the model breakdown — because mixing measured tokens with
-    /// unpriceable ones makes the figures incoherent. An unknown model's name lands in
-    /// `unknownModelsByDay` (the tile's warning triangle), the only place unpriceable usage surfaces.
-    /// A blank slug is unattributed, not unknown — there is no name to warn about.
-    static func aggregate(
-        events: [Event], since: Date, pricing: ModelPricing
-    ) -> LogUsageScan {
-        var seen: Set<EventKey> = []
-        var accumulator = DailyUsageAccumulator()
-
-        for event in events where event.timestamp >= since {
-            let key = EventKey(
-                timestamp: event.timestamp, model: event.model, pricingModel: event.pricingModel, input: event.input,
-                cached: event.cached, output: event.output, reasoning: event.reasoning, total: event.total
-            )
-            guard seen.insert(key).inserted else { continue }
-
-            let day = DailyUsageAccumulator.dayKey(from: event.timestamp)
-            // One trimmed slug for pricing, the unknown-model warning, and the breakdown key alike —
-            // diverging spellings would let the warning triangle and the hover panel disagree.
-            let trimmedModel = event.model.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
-
-            guard let model = trimmedModel else {
-                continue
-            }
-            let pricingModel = event.pricingModel ?? model
-            let canonicalModel = pricing.supplement.canonicalName(for: pricingModel) ?? pricingModel
-            let isFastAlias = canonicalModel.hasSuffix("-fast")
-            let rateModel = isFastAlias ? String(canonicalModel.dropLast("-fast".count)) : canonicalModel
-
-            // Codex speed is a provider tier, not Cursor's `-fast` price variant. Resolve a fast
-            // alias through its unscaled base rates, then apply the Codex multiplier exactly once.
-            // If a third-party fast-only model has no base entry, retain its already-scaled rate
-            // and do not apply a second speed multiplier.
-            let baseRates = pricing.resolve(model: rateModel)
-            let resolvedRates = baseRates ?? pricing.resolve(model: pricingModel)
-            guard let rates = resolvedRates else {
-                if event.total > 0 {
-                    accumulator.addUnknownModel(day: day, model: model)
-                }
-                continue
-            }
-            let appliesCodexFastTier = isFastAlias ? baseRates != nil : event.isFast
-            let eventCost = cost(
-                rates: rates,
-                event: event,
-                model: rateModel,
-                fastTier: appliesCodexFastTier,
-                fastMultiplier: codexPriorityMultiplier(for: rateModel, rates: rates)
-            )
-            accumulator.add(day: day, tokens: event.total, cost: eventCost, model: model)
-        }
-
-        return accumulator.build()
-    }
-
-    /// Codex cost math (ccusage's): non-cached input at the input rate, cached input at the explicit
-    /// cache-read rate (or full input when the source publishes no discount), and output (reasoning
-    /// included) at the output rate. Supported OpenAI models switch the whole request above 272k.
-    static func cost(
-        rates: ModelRates,
-        event: Event,
-        model: String,
-        fastTier: Bool,
-        fastMultiplier: Double
-    ) -> Double {
-        var effectiveRates = rates
-        if let longContext = codexLongContextRates(for: model) {
-            effectiveRates.inputAbove200kPerMillion = longContext.input
-            effectiveRates.outputAbove200kPerMillion = longContext.output
-            effectiveRates.cacheReadAbove200kPerMillion = longContext.cacheRead
-            effectiveRates.longContextThresholdTokens = 272_000
-        }
-        if codexModelHasNoCacheDiscount(model) {
-            effectiveRates.cacheReadPerMillion = effectiveRates.inputPerMillion
-            effectiveRates.cacheReadAbove200kPerMillion = effectiveRates.inputAbove200kPerMillion
-        } else if !rates.cacheReadIsExplicit {
-            effectiveRates.cacheReadPerMillion = effectiveRates.inputPerMillion
-            effectiveRates.cacheReadAbove200kPerMillion = effectiveRates.inputAbove200kPerMillion
-        }
-        effectiveRates.fastMultiplier = fastMultiplier
-
-        let nonCached = max(0, event.input - event.cached)
-        return effectiveRates.costDollars(for: TokenBreakdown(
-            input: nonCached,
-            cacheRead: event.cached,
-            output: event.output,
-            isFast: fastTier
-        ))
-    }
-
-    /// Codex priority service-tier multipliers are provider-specific and intentionally do not use
-    /// the supplement's Cursor `-fast` multipliers. Unknown models retain the catalog/fallback rule.
-    private static func codexPriorityMultiplier(for model: String, rates: ModelRates) -> Double {
-        let base = datedBaseModel(model)
-        switch base {
-        case "gpt-5.5", "gpt-5.5-pro": return 2.5
-        case "gpt-5.4", "gpt-5.4-pro",
-             "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna": return 2
-        default: return rates.fastMultiplier == 1 ? 2 : rates.fastMultiplier
-        }
-    }
-
-    /// OpenAI explicitly publishes no cached-input discount for these Pro models. Keep this
-    /// provider rule even while an older bundled catalog lacks cache-rate provenance.
-    private static func codexModelHasNoCacheDiscount(_ model: String) -> Bool {
-        switch datedBaseModel(model) {
-        case "gpt-5.4-pro", "gpt-5.5-pro": return true
-        default: return false
-        }
-    }
-
-    private static func codexLongContextRates(for model: String) -> (input: Double, output: Double, cacheRead: Double)? {
-        switch datedBaseModel(model) {
-        case "gpt-5.4": return (5, 22.5, 0.5)
-        case "gpt-5.4-pro": return (60, 270, 60)
-        case "gpt-5.5": return (10, 45, 1)
-        case "gpt-5.5-pro": return (60, 270, 60)
-        case "gpt-5.6-sol": return (10, 45, 1)
-        case "gpt-5.6-terra": return (4, 18, 0.4)
-        case "gpt-5.6-luna": return (0.4, 1.8, 0.04)
-        default: return nil
-        }
-    }
-
-    private static func datedBaseModel(_ model: String) -> String {
-        model
-            .replacingOccurrences(of: #"-\d{4}-\d{2}-\d{2}$"#, with: "", options: .regularExpression)
-            .replacingOccurrences(of: #"-\d{8}$"#, with: "", options: .regularExpression)
-    }
 }

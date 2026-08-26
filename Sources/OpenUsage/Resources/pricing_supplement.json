@@ -1,6 +1,6 @@
 {
   "$comment": "OpenUsage pricing supplement. Prices Cursor-native models that no public catalog carries, supplies fast-variant multipliers the catalogs omit, and maps provider log/CSV model slugs to canonical pricing keys (LiteLLM keys, models.dev ids, or entries in this file). Cursor Router rows name the routed model in prose instead of a slug ('Opus 5 (Auto Balanced)'), so those labels get alias rules too. Published to gh-pages by .github/workflows/pricing-supplement.yml on every change, so installed apps pick edits up within about an hour - no release needed. Rates are USD per million tokens. Sources: https://cursor.com/docs/models-and-pricing.md for Cursor-native entries; https://developers.openai.com/api/docs/models/daybreak-blue-latest and https://developers.openai.com/api/docs/pricing for Daybreak aliases and rates; https://docs.z.ai/guides/overview/pricing for GLM 5.3.",
-  "updated_at": "2026-08-25T12:25:52Z",
+  "updated_at": "2026-08-26T12:39:17Z",
   "pricing": {
     "auto": {
       "input_per_million": 1.25,
@@ -292,5 +292,51 @@
     { "pattern": "(?i)^GLM 5\\.2 \\(Auto[^)]*\\)$", "canonical": "glm-5.2" },
     { "pattern": "(?i)^GLM 5\\.3 \\(Auto[^)]*\\)$", "canonical": "glm-5.3" },
     { "pattern": "(?i)^Kimi K3 \\(Auto[^)]*\\)$", "canonical": "kimi-k3" }
-  ]
+  ],
+  "fallback_models": {
+    "codex": [
+      "gpt-5.6-sol",
+      "gpt-5.6-terra",
+      "gpt-5.6-luna",
+      "gpt-5.5",
+      "gpt-5.5-pro",
+      "gpt-5.4",
+      "gpt-5.4-pro",
+      "gpt-5.4-mini",
+      "gpt-5.4-nano",
+      "gpt-5.3-codex",
+      "gpt-5.3-chat-latest",
+      "gpt-5.2",
+      "gpt-5.2-pro",
+      "gpt-5.2-codex",
+      "gpt-5.2-chat-latest",
+      "gpt-5.1",
+      "gpt-5.1-codex",
+      "gpt-5.1-codex-max",
+      "gpt-5.1-codex-mini",
+      "gpt-5.1-chat-latest",
+      "gpt-5",
+      "gpt-5-pro",
+      "gpt-5-mini",
+      "gpt-5-nano",
+      "gpt-5-codex",
+      "gpt-5-chat-latest",
+      "gpt-4.1",
+      "gpt-4.1-mini",
+      "gpt-4.1-nano",
+      "gpt-4o",
+      "gpt-4o-mini",
+      "gpt-4-turbo",
+      "gpt-4",
+      "gpt-3.5-turbo",
+      "o4-mini",
+      "o3",
+      "o3-pro",
+      "o3-mini",
+      "o1",
+      "o1-pro",
+      "o1-mini",
+      "codex-mini-latest"
+    ]
+  }
 }
