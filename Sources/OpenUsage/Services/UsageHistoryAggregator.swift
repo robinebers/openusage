@@ -73,13 +73,13 @@ enum UsageHistoryAggregator {
         var days: [String: (tokens: Int, cost: Double?, sawCost: Bool)] = [:]
         var models: [String: [String: ModelAccumulator]] = [:]
         var unknown: [String: Set<String>] = [:]
-        var fallbackModels = Set<String>()
+        var fallbackModelsByDay: [String: Set<String>] = [:]
 
         for history in histories {
-            if history.series.daily.contains(where: { includedDays.contains($0.date) }) {
-                fallbackModels.formUnion(history.fallbackPricingModels ?? [])
-            }
             for day in history.series.daily where includedDays.contains(day.date) {
+                if let fallbackModels = history.fallbackPricingModelsByDay?[day.date] {
+                    fallbackModelsByDay[day.date, default: []].formUnion(fallbackModels)
+                }
                 var value = days[day.date] ?? (0, nil, false)
                 value.tokens += day.totalTokens
                 if let cost = day.costUSD {
@@ -118,7 +118,7 @@ enum UsageHistoryAggregator {
             series: series,
             modelUsage: modelDays.isEmpty ? nil : ModelUsageSeries(daily: modelDays),
             unknownModelsByDay: unknown,
-            fallbackPricingModels: fallbackModels.isEmpty ? nil : fallbackModels
+            fallbackPricingModelsByDay: fallbackModelsByDay.isEmpty ? nil : fallbackModelsByDay
         )
     }
 
@@ -187,7 +187,6 @@ enum UsageHistorySnapshotRenderer {
         var result = snapshot
         result.lines.removeAll { historyLabels.contains($0.label) }
         let baseNote = combined ? "Across your Macs · \(descriptor.sourceNote)" : descriptor.sourceNote
-        let sourceNote = PricingFallbackOption.sourceNote(baseNote, models: history.fallbackPricingModels)
         SpendTileMapper.appendTokenUsage(
             history.series,
             to: &result.lines,
@@ -195,13 +194,15 @@ enum UsageHistorySnapshotRenderer {
             estimated: descriptor.estimatedCost,
             unknownModelsByDay: history.unknownModelsByDay,
             modelUsage: history.modelUsage,
-            modelSourceNote: sourceNote
+            modelSourceNote: baseNote,
+            fallbackPricingModelsByDay: history.fallbackPricingModelsByDay
         )
         SpendTileMapper.appendUsageTrend(
             history.series,
             to: &result.lines,
             now: now,
-            note: sourceNote
+            note: baseNote,
+            fallbackPricingModelsByDay: history.fallbackPricingModelsByDay
         )
         return result
     }

@@ -35,7 +35,7 @@ final class CodexFallbackPricingTests: XCTestCase {
         let result = CodexLogUsageScanner.aggregate(events: [event()], since: .distantPast, pricing: pricing())
         XCTAssertTrue(result.series.daily.isEmpty)
         XCTAssertEqual(Set(result.unknownModelsByDay.values.flatMap { $0 }), ["unlisted-model-a"])
-        XCTAssertNil(result.fallbackPricingModels)
+        XCTAssertNil(result.fallbackPricingModelsByDay)
     }
 
     func testFallbackPricesTokensAndPreservesModelAttributionAndWarning() throws {
@@ -47,7 +47,7 @@ final class CodexFallbackPricingTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(day.costUSD), 0.0062, accuracy: 0.000_001)
         XCTAssertEqual(result.modelUsage?.daily.first?.models.first?.model, "unlisted-model-a")
         XCTAssertEqual(Set(result.unknownModelsByDay.values.flatMap { $0 }), ["unlisted-model-a"])
-        XCTAssertEqual(result.fallbackPricingModels, [reference])
+        XCTAssertEqual(result.fallbackPricingModelsByDay, [day.date: [reference]])
     }
 
     func testFallbackWarningReachesTheSpendTileTooltip() throws {
@@ -86,7 +86,7 @@ final class CodexFallbackPricingTests: XCTestCase {
         XCTAssertEqual(fallback.series, normal.series)
         XCTAssertEqual(fallback.modelUsage, normal.modelUsage)
         XCTAssertTrue(fallback.unknownModelsByDay.isEmpty)
-        XCTAssertNil(fallback.fallbackPricingModels)
+        XCTAssertNil(fallback.fallbackPricingModelsByDay)
     }
 
     func testFallbackUsesReferenceContextAndPriorityRulesExactlyOnce() throws {
@@ -125,7 +125,7 @@ final class CodexFallbackPricingTests: XCTestCase {
         )
         XCTAssertTrue(result.series.daily.isEmpty)
         XCTAssertFalse(result.unknownModelsByDay.isEmpty)
-        XCTAssertNil(result.fallbackPricingModels)
+        XCTAssertNil(result.fallbackPricingModelsByDay)
     }
 
     func testChangingPreferenceRepricesCachedEventsAndCanReturnToNone() async throws {
@@ -143,7 +143,7 @@ final class CodexFallbackPricingTests: XCTestCase {
         XCTAssertEqual(estimated?.series.daily.first?.totalTokens, 1_100)
         XCTAssertEqual(estimated?.unknownModelsByDay, none?.unknownModelsByDay)
         XCTAssertEqual(noneAgain?.series, none?.series)
-        XCTAssertNil(noneAgain?.fallbackPricingModels)
+        XCTAssertNil(noneAgain?.fallbackPricingModelsByDay)
     }
 
     func testPreferenceDefaultsToNoneAndPersistsAnExplicitChoice() throws {
@@ -157,13 +157,74 @@ final class CodexFallbackPricingTests: XCTestCase {
         XCTAssertNil(CodexFallbackModelSetting.current(defaults: defaults))
     }
 
+    func testRefreshTracksChoiceAndAvailabilityWithoutRepeatingUnchangedOptions() {
+        var state = CodexFallbackPricingRefreshState()
+        let options = pricing().fallbackOptions(for: "codex")
+        XCTAssertFalse(state.update(model: "", options: []))
+        XCTAssertFalse(state.update(model: "", options: options))
+        XCTAssertTrue(state.update(model: reference, options: options))
+        XCTAssertFalse(state.update(model: reference, options: options.reversed()))
+        XCTAssertTrue(state.update(model: reference, options: []), "losing pricing must clear stale estimates")
+        XCTAssertFalse(state.update(model: reference, options: []))
+        XCTAssertTrue(state.update(model: reference, options: options), "restored pricing must restore estimates")
+        XCTAssertTrue(state.update(model: "unavailable-model", options: options))
+        XCTAssertTrue(state.update(model: "", options: options))
+        XCTAssertFalse(state.update(model: "", options: []))
+    }
+
+    func testOpeningSettingsRecalculatesASavedChoiceEvenIfAlreadyUnavailable() {
+        for options in [[], pricing().fallbackOptions(for: "codex")] {
+            var state = CodexFallbackPricingRefreshState()
+            XCTAssertTrue(state.update(model: reference, options: options))
+            XCTAssertFalse(state.update(model: reference, options: options))
+        }
+    }
+
+    func testFallbackSourceNotesOnlyDescribeTheirOwnPeriod() throws {
+        let now = try XCTUnwrap(Calendar.current.date(from: DateComponents(year: 2026, month: 8, day: 20, hour: 12)))
+        let yesterday = try XCTUnwrap(Calendar.current.date(byAdding: .day, value: -1, to: now))
+        var known = event(model: "known-model")
+        known.timestamp = now
+        var unpriced = event()
+        unpriced.timestamp = yesterday
+        let scan = CodexLogUsageScanner.aggregate(
+            events: [known, unpriced], since: .distantPast, pricing: pricing(), fallbackModel: reference
+        )
+        XCTAssertEqual(scan.fallbackPricingModelsByDay, [DailyUsageAccumulator.dayKey(from: yesterday): [reference]])
+        let history = ProviderUsageHistory(
+            series: scan.series, modelUsage: scan.modelUsage, unknownModelsByDay: scan.unknownModelsByDay,
+            fallbackPricingModelsByDay: scan.fallbackPricingModelsByDay
+        )
+        let local = ProviderSnapshot(providerID: "codex", displayName: "Codex", lines: [])
+        let descriptor = UsageHistoryDescriptor(scope: .machineLocal, estimatedCost: true, sourceNote: "logs")
+        for combined in [false, true] {
+            let rendered = UsageHistorySnapshotRenderer.render(
+                local: local, history: history, descriptor: descriptor, now: now, combined: combined
+            )
+            let baseNote = combined ? "Across your Macs · logs" : "logs"
+            for label in ["Today", "Yesterday", "Last 30 Days"] {
+                guard case .values(_, _, _, _, _, let breakdown) = rendered.lines.first(where: { $0.label == label }) else {
+                    return XCTFail("Missing spend row")
+                }
+                XCTAssertEqual(breakdown?.sourceNote, label == "Today" ? baseNote : baseNote + " · Fallback estimates: GPT 5.6 Sol")
+            }
+            guard case .chart(_, _, let note) = rendered.lines.first(where: { $0.label == "Usage Trend" }) else {
+                return XCTFail("Missing usage trend")
+            }
+            XCTAssertEqual(note, baseNote + " · Fallback estimates: GPT 5.6 Sol")
+        }
+    }
+
     func testMergedScansKeepFallbackProvenance() throws {
         let scan = CodexLogUsageScanner.aggregate(
             events: [event()], since: .distantPast, pricing: pricing(), fallbackModel: reference
         )
-        let merged = try XCTUnwrap(DailyUsageAccumulator.merged([scan, nil]))
-        XCTAssertEqual(merged.fallbackPricingModels, [reference])
-        XCTAssertEqual(merged.series, scan.series)
+        let day = try XCTUnwrap(scan.series.daily.first?.date)
+        var other = DailyUsageAccumulator()
+        other.add(day: day, tokens: 20, cost: 1, model: "unlisted-model-b", fallbackPricingModel: "gpt-5.5")
+        other.add(day: "2026-01-01", tokens: 10, cost: 1, model: "unlisted-model-b", fallbackPricingModel: "gpt-5.5")
+        let merged = try XCTUnwrap(DailyUsageAccumulator.merged([scan, other.build(), nil]))
+        XCTAssertEqual(merged.fallbackPricingModelsByDay, [day: [reference, "gpt-5.5"], "2026-01-01": ["gpt-5.5"]])
         XCTAssertEqual(merged.unknownModelsByDay, scan.unknownModelsByDay)
     }
 }

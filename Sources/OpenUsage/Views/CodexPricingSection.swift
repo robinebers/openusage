@@ -8,6 +8,8 @@ struct CodexPricingSection: View {
     @State private var options: [PricingFallbackOption] = []
     @State private var isLoading = true
     @State private var isApplying = false
+    @State private var refreshState = CodexFallbackPricingRefreshState()
+    @State private var needsRecalculation = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: density.headerToCardSpacing) {
@@ -64,23 +66,37 @@ struct CodexPricingSection: View {
         }
         .task {
             options = await ModelPricingStore.shared.current().fallbackOptions(for: "codex")
+            guard !Task.isCancelled else { return }
             isLoading = false
+            recalculateIfNeeded()
             await ModelPricingStore.shared.refreshNow()
             guard !Task.isCancelled else { return }
             options = await ModelPricingStore.shared.current().fallbackOptions(for: "codex")
+            recalculateIfNeeded()
         }
         .onChange(of: selectedModel) {
-            isApplying = true
-            dataStore.clearFailureBackoff(for: "codex")
-            Task {
+            guard !isLoading else { return }
+            recalculateIfNeeded()
+        }
+    }
+
+    private func recalculateIfNeeded() {
+        guard refreshState.update(model: selectedModel, options: options) else { return }
+        needsRecalculation = true
+        guard !isApplying else { return }
+        isApplying = true
+        Task {
+            defer { isApplying = false }
+            while needsRecalculation {
+                needsRecalculation = false
                 // A refresh already in flight may have captured the previous preference.
                 // Wait for it before requesting a new pass instead of having that pass skipped.
                 while dataStore.refreshingProviderIDs.contains("codex") {
                     try? await Task.sleep(for: .milliseconds(100))
-                    guard !Task.isCancelled else { isApplying = false; return }
+                    guard !Task.isCancelled else { return }
                 }
+                dataStore.clearFailureBackoff(for: "codex")
                 await dataStore.refresh(providerID: "codex", force: true)
-                isApplying = false
             }
         }
     }

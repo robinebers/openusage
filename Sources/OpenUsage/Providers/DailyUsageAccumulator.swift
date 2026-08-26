@@ -15,7 +15,7 @@ struct DailyUsageAccumulator {
     private var costByDay: [String: Double] = [:]
     private var unknownModelsByDay: [String: Set<String>] = [:]
     private var modelsByDay: [String: [String: ModelAccumulator]] = [:]
-    private var fallbackPricingModels = Set<String>()
+    private var fallbackPricingModelsByDay: [String: Set<String>] = [:]
 
     /// Local calendar day as `yyyy-MM-dd`. The single day-key contract shared by the accumulator,
     /// `SpendTileMapper`, and the Cursor CSV aggregation. `calendar` is injectable for tests; production
@@ -30,7 +30,7 @@ struct DailyUsageAccumulator {
         tokensByDay[day, default: 0] += tokens
         costByDay[day, default: 0] += cost
         modelsByDay[day, default: [:]][model, default: ModelAccumulator()].add(tokens: tokens, costUSD: cost)
-        if let fallbackPricingModel { fallbackPricingModels.insert(fallbackPricingModel) }
+        if let fallbackPricingModel { fallbackPricingModelsByDay[day, default: []].insert(fallbackPricingModel) }
     }
 
     /// Merge already-built scans (a provider's native log scan plus its pi slice) into one, by replaying
@@ -43,7 +43,9 @@ struct DailyUsageAccumulator {
         guard !present.isEmpty else { return nil }
         var accumulator = DailyUsageAccumulator()
         for scan in present {
-            accumulator.fallbackPricingModels.formUnion(scan.fallbackPricingModels ?? [])
+            for (day, models) in scan.fallbackPricingModelsByDay ?? [:] {
+                accumulator.fallbackPricingModelsByDay[day, default: []].formUnion(models)
+            }
             for day in scan.modelUsage?.daily ?? [] {
                 for model in day.models {
                     // Skip cost-unknown entries rather than treating nil as $0 — their unknown-model
@@ -83,7 +85,7 @@ struct DailyUsageAccumulator {
             series: DailyUsageSeries(daily: days),
             modelUsage: modelUsage,
             unknownModelsByDay: unknownModelsByDay,
-            fallbackPricingModels: fallbackPricingModels.isEmpty ? nil : fallbackPricingModels
+            fallbackPricingModelsByDay: fallbackPricingModelsByDay.isEmpty ? nil : fallbackPricingModelsByDay
         )
     }
 

@@ -14,8 +14,9 @@ struct PricingFallbackOption: Identifiable, Sendable, Equatable {
         }.joined(separator: " ")
     }
 
-    static func sourceNote(_ note: String, models: Set<String>?) -> String {
-        guard let models, !models.isEmpty else { return note }
+    static func sourceNote(_ note: String, modelsByDay: [String: Set<String>]?, days: Set<String>) -> String {
+        let models = days.reduce(into: Set<String>()) { $0.formUnion(modelsByDay?[$1] ?? []) }
+        guard !models.isEmpty else { return note }
         let names = models.sorted().map { title(for: $0) }.joined(separator: ", ")
         return "\(note) · Fallback estimates: \(names)"
     }

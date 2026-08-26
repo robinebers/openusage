@@ -4,9 +4,9 @@ import XCTest
 final class UsageHistoryAggregatorTests: XCTestCase {
     func testFallbackProvenanceSurvivesHistoryCodingMergingAndRendering() throws {
         var localHistory = history(tokens: 100, cost: 1, model: "unlisted-model-a", unknown: ["unlisted-model-a"])
-        localHistory.fallbackPricingModels = ["gpt-5.6-sol"]
+        localHistory.fallbackPricingModelsByDay = ["2026-07-13": ["gpt-5.6-sol"]]
         var peerHistory = history(tokens: 200, cost: 2, model: "unlisted-model-b", unknown: ["unlisted-model-b"])
-        peerHistory.fallbackPricingModels = ["gpt-5.5"]
+        peerHistory.fallbackPricingModelsByDay = ["2026-07-13": ["gpt-5.5"]]
         let local = ProviderSnapshot(
             providerID: "codex", displayName: "Codex", lines: [],
             usageHistory: try JSONDecoder().decode(ProviderUsageHistory.self, from: JSONEncoder().encode(localHistory))
@@ -18,7 +18,7 @@ final class UsageHistoryAggregatorTests: XCTestCase {
             descriptors: ["codex": descriptor], now: localDay(2026, 7, 13)
         )["codex"])
 
-        XCTAssertEqual(merged.fallbackPricingModels, ["gpt-5.6-sol", "gpt-5.5"])
+        XCTAssertEqual(merged.fallbackPricingModelsByDay, ["2026-07-13": ["gpt-5.6-sol", "gpt-5.5"]])
         let rendered = UsageHistorySnapshotRenderer.render(
             local: local, history: merged, descriptor: descriptor, now: localDay(2026, 7, 13)
         )
@@ -29,7 +29,7 @@ final class UsageHistoryAggregatorTests: XCTestCase {
         XCTAssertEqual(breakdown?.sourceNote, "Across your Macs · logs · Fallback estimates: GPT 5.5, GPT 5.6 Sol")
 
         let legacy = Data(#"{"series":{"daily":[]},"unknownModelsByDay":{}}"#.utf8)
-        XCTAssertNil(try JSONDecoder().decode(ProviderUsageHistory.self, from: legacy).fallbackPricingModels)
+        XCTAssertNil(try JSONDecoder().decode(ProviderUsageHistory.self, from: legacy).fallbackPricingModelsByDay)
     }
 
     func testAggregationAddsMachineLocalHistoryAndIgnoresAccountWideHistory() throws {
@@ -102,7 +102,8 @@ final class UsageHistoryAggregatorTests: XCTestCase {
             unknownModelsByDay: [
                 "2026-07-13": ["current-unknown"],
                 "2026-06-12": ["stale-unknown"]
-            ]
+            ],
+            fallbackPricingModelsByDay: ["2026-06-12": ["gpt-5.6-sol"]]
         )
 
         let merged = UsageHistoryAggregator.merged(
@@ -119,6 +120,22 @@ final class UsageHistoryAggregatorTests: XCTestCase {
         XCTAssertEqual(claude.series.daily.reduce(0) { $0 + $1.totalTokens }, 30)
         XCTAssertEqual(claude.modelUsage?.daily.flatMap(\.models).map(\.model), ["Current"])
         XCTAssertEqual(claude.unknownModelsByDay, ["2026-07-13": ["current-unknown"]])
+        XCTAssertNil(claude.fallbackPricingModelsByDay, "expired estimates must not affect in-window source notes")
+        let rendered = UsageHistorySnapshotRenderer.render(
+            local: ProviderSnapshot(providerID: "claude", displayName: "Claude", lines: []),
+            history: claude,
+            descriptor: UsageHistoryDescriptor(scope: .machineLocal, estimatedCost: true, sourceNote: "logs"),
+            now: localDay(2026, 7, 13)
+        )
+        for line in rendered.lines {
+            switch line {
+            case .values(_, _, _, _, _, let breakdown):
+                XCTAssertEqual(breakdown?.sourceNote, "Across your Macs · logs")
+            case .chart(_, _, let note):
+                XCTAssertEqual(note, "Across your Macs · logs")
+            default: break
+            }
+        }
     }
 
     func testClaudeOrganizationsMatchByIdentityInsteadOfCardID() throws {

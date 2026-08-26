@@ -152,20 +152,23 @@ final class CodexProvider: ProviderRuntime {
             let baseNote = piScan == nil
                 ? "From your Codex logs (estimated)"
                 : "From your Codex logs and pi (estimated)"
-            let note = PricingFallbackOption.sourceNote(baseNote, models: scan.fallbackPricingModels)
             usageHistory = ProviderUsageHistory(
                 series: scan.series,
                 modelUsage: scan.modelUsage,
                 unknownModelsByDay: scan.unknownModelsByDay,
-                fallbackPricingModels: scan.fallbackPricingModels
+                fallbackPricingModelsByDay: scan.fallbackPricingModelsByDay
             )
             SpendTileMapper.appendTokenUsage(
                 scan.series, to: &mapped.lines, now: now(),
                 unknownModelsByDay: scan.unknownModelsByDay,
                 modelUsage: scan.modelUsage,
-                modelSourceNote: note
+                modelSourceNote: baseNote,
+                fallbackPricingModelsByDay: scan.fallbackPricingModelsByDay
             )
-            SpendTileMapper.appendUsageTrend(scan.series, to: &mapped.lines, now: now(), note: note)
+            SpendTileMapper.appendUsageTrend(
+                scan.series, to: &mapped.lines, now: now(), note: baseNote,
+                fallbackPricingModelsByDay: scan.fallbackPricingModelsByDay
+            )
         }
 
         MetricLine.appendNoDataIfNeeded(&mapped.lines)
