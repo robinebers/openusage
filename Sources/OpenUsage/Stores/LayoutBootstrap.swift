@@ -35,9 +35,26 @@ enum LayoutBootstrap {
         persistence: LayoutPersistence,
         defaults: LayoutDefaultSet
     ) -> LayoutInitialState {
+        func resolveDescriptorID(_ id: String) -> String {
+            if registry.descriptor(id: id) != nil { return id }
+            let family = ProviderAccountID.family(of: id)
+            let matching = registry.providers.filter { ProviderAccountID.family(of: $0.id) == family }
+            if matching.count == 1 {
+                let suffix = id.dropFirst(family.count)
+                let candidate = "\(matching[0].id)\(suffix)"
+                if registry.descriptor(id: candidate) != nil {
+                    return candidate
+                }
+            }
+            return id
+        }
+
         let hasStoredLayout = persistence.hasStoredLayout
-        let savedPlaced = persistence.loadPlaced()?.filter { registry.descriptor(id: $0.descriptorID) != nil }
+        let savedPlaced = persistence.loadPlaced()?.map { widget in
+            PlacedWidget(id: widget.id, descriptorID: resolveDescriptorID(widget.descriptorID))
+        }.filter { registry.descriptor(id: $0.descriptorID) != nil }
         let startingPlaced = savedPlaced ?? defaults.metricIDs
+            .map(resolveDescriptorID)
             .filter { registry.descriptor(id: $0) != nil }
             .map { PlacedWidget(descriptorID: $0) }
         let seededResult = seedNewDefaultMetrics(
@@ -54,21 +71,19 @@ enum LayoutBootstrap {
         } ?? LayoutOrdering.defaultMetricOrder(registry: registry)
 
         // An existing value — including an empty array from a user who unpinned everything — wins.
-        let pinnedMetricIDs = Set(
-            (persistence.loadPins() ?? defaults.pinnedMetricIDs)
-                .filter { registry.descriptor(id: $0) != nil }
-        )
+        let rawPins = (persistence.loadPins() ?? defaults.pinnedMetricIDs).map(resolveDescriptorID)
+        let pinnedMetricIDs = Set(rawPins.filter { registry.descriptor(id: $0) != nil })
 
         // Expanded membership is a fresh-install default only. Existing layouts that predate the feature
         // keep every familiar metric above the caret unless the user later moves one.
         var shouldPersistExpanded = false
         var expandedMetricIDs: Set<String>
-        if let savedExpanded = persistence.loadExpandedMetrics() {
+        if let savedExpanded = persistence.loadExpandedMetrics()?.map(resolveDescriptorID) {
             expandedMetricIDs = Set(savedExpanded.filter { registry.descriptor(id: $0) != nil })
         } else if hasStoredLayout {
             expandedMetricIDs = []
         } else {
-            expandedMetricIDs = Set(defaults.expandedMetricIDs.filter { registry.descriptor(id: $0) != nil })
+            expandedMetricIDs = Set(defaults.expandedMetricIDs.map(resolveDescriptorID).filter { registry.descriptor(id: $0) != nil })
             shouldPersistExpanded = true
         }
 

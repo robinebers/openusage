@@ -153,7 +153,9 @@ final class AntigravityProtoDecoderTests: XCTestCase {
             systemPrompt: 1, timestamp: 1_800_000_000
         )
 
-        XCTAssertNil(AntigravityProtoDecoder.generationEvent(from: missingTimestamp))
+        let event = AntigravityProtoDecoder.generationEvent(from: missingTimestamp)
+        XCTAssertNotNil(event)
+        XCTAssertEqual(event?.timestampSeconds, 0)
         XCTAssertNil(AntigravityProtoDecoder.generationEvent(from: zeroUsage))
         XCTAssertNil(AntigravityProtoDecoder.generationEvent(from: overflowingTokens))
         XCTAssertNil(AntigravityProtoDecoder.generationEvent(from: overflowingSystemPrompt))

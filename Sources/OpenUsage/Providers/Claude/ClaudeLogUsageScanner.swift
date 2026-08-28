@@ -66,7 +66,7 @@ actor ClaudeLogUsageScanner {
         cacheIdentityOverride: String? = nil,
         accountUUID: String? = nil,
         organizationUUID: String? = nil,
-        allowsUnattributedSessions: Bool = false
+        allowsUnattributedSessions: Bool? = nil
     ) {
         precondition(cacheIdentityOverride?.isEmpty != true)
         self.environment = environment
@@ -75,7 +75,7 @@ actor ClaudeLogUsageScanner {
         self.cacheIdentityOverride = cacheIdentityOverride
         self.organizationID = organizationUUID?.lowercased()
         self.accountID = accountUUID?.lowercased()
-        self.allowsUnattributedSessions = allowsUnattributedSessions
+        self.allowsUnattributedSessions = allowsUnattributedSessions ?? (organizationUUID == nil)
     }
 
     /// Scan the last `daysBack` days of Claude logs. Returns `nil` when no Claude data directory or

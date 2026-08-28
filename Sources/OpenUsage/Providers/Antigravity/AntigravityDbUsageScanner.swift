@@ -166,8 +166,12 @@ actor AntigravityDbUsageScanner {
                     continue
                 }
                 guard let blob = Self.bytes(fromHex: hex),
-                      let event = AntigravityProtoDecoder.generationEvent(from: blob),
-                      Date(timeIntervalSince1970: TimeInterval(event.timestampSeconds)) >= since
+                      var event = AntigravityProtoDecoder.generationEvent(from: blob)
+                else { continue }
+                if event.timestampSeconds <= 0 {
+                    event.timestampSeconds = Int64(cached.fingerprint.latestModification.timeIntervalSince1970)
+                }
+                guard Date(timeIntervalSince1970: TimeInterval(event.timestampSeconds)) >= since
                 else { continue }
                 cached.events.append(event)
             }

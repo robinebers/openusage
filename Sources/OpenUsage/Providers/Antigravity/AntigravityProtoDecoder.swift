@@ -102,12 +102,13 @@ enum AntigravityProtoDecoder {
 
         let billableInputTokens = systemPromptTokens.addingReportingOverflow(inputTokens)
         guard !billableInputTokens.overflow,
-              billableInputTokens.partialValue != 0 || outputTokens != 0 || cacheReadTokens != 0,
-              let timingBytes = bytesField(9, in: wrapped),
-              let wallClockBytes = bytesField(4, in: timingBytes),
-              let timestamp = varintField(1, in: wallClockBytes),
-              let timestampSeconds = Int64(exactly: timestamp), timestampSeconds > 0
+              billableInputTokens.partialValue != 0 || outputTokens != 0 || cacheReadTokens != 0
         else { return nil }
+
+        let timingBytes = bytesField(9, in: wrapped)
+        let wallClockBytes = timingBytes.flatMap { bytesField(4, in: $0) }
+        let timestamp = wallClockBytes.flatMap { varintField(1, in: $0) }
+        let timestampSeconds = timestamp.flatMap { Int64(exactly: $0) } ?? 0
 
         return GenerationEvent(
             model: model.flatMap { $0.isEmpty ? nil : $0 } ?? GenerationEvent.unknownModel,
