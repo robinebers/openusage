@@ -222,11 +222,11 @@ final class GrokProviderTests: XCTestCase {
         // Existing credit lines stay; the three spend tiles use Grok's recorded session costs.
         XCTAssertEqual(progress(snapshot.lines, "Weekly limit")?.used, 99)
         XCTAssertEqual(values(snapshot.lines, "Today"),
-                       [MetricValue(number: 1.0, kind: .dollars, estimated: true), MetricValue(number: 1_000_000, kind: .count, label: "tokens")])
+                       [MetricValue(number: 10.0, kind: .dollars, estimated: true), MetricValue(number: 1_000_000, kind: .count, label: "tokens")])
         XCTAssertEqual(values(snapshot.lines, "Yesterday"),
-                       [MetricValue(number: 15.0, kind: .dollars, estimated: true), MetricValue(number: 1_000_000, kind: .count, label: "tokens")])
+                       [MetricValue(number: 150.0, kind: .dollars, estimated: true), MetricValue(number: 1_000_000, kind: .count, label: "tokens")])
         XCTAssertEqual(values(snapshot.lines, "Last 30 Days"),
-                       [MetricValue(number: 16.0, kind: .dollars, estimated: true), MetricValue(number: 2_000_000, kind: .count, label: "tokens")])
+                       [MetricValue(number: 160.0, kind: .dollars, estimated: true), MetricValue(number: 2_000_000, kind: .count, label: "tokens")])
 
         guard case .chart(_, let points, let note) = snapshot.lines.first(where: { $0.label == "Usage Trend" }) else {
             return XCTFail("expected a Usage Trend chart line")

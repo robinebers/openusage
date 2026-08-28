@@ -21,7 +21,7 @@ final class GrokLogUsageScannerTests: XCTestCase {
         let day = try XCTUnwrap(usage.series.daily.first)
 
         XCTAssertEqual(day.totalTokens, 1_050_000)
-        XCTAssertEqual(try XCTUnwrap(day.costUSD), 0.23571588, accuracy: 0.00000001)
+        XCTAssertEqual(try XCTUnwrap(day.costUSD), 2.3571588, accuracy: 0.00000001)
         XCTAssertEqual(usage.modelUsage?.daily.first?.models.map(\.model), ["grok-4.6-build"])
     }
 
@@ -63,7 +63,7 @@ final class GrokLogUsageScannerTests: XCTestCase {
         let day = try XCTUnwrap(usage.series.daily.first)
 
         XCTAssertEqual(day.totalTokens, 350)
-        XCTAssertEqual(try XCTUnwrap(day.costUSD), 0.3, accuracy: 0.0001)
+        XCTAssertEqual(try XCTUnwrap(day.costUSD), 3.0, accuracy: 0.0001)
         XCTAssertEqual(
             Set(usage.modelUsage?.daily.first?.models.map(\.model) ?? []),
             ["grok-4.5-build", "grok-4.6-build"]
@@ -80,7 +80,7 @@ final class GrokLogUsageScannerTests: XCTestCase {
         )
 
         let day = try XCTUnwrap(scan(line).series.daily.first)
-        XCTAssertEqual(try XCTUnwrap(day.costUSD), 0.125, accuracy: 0.0001)
+        XCTAssertEqual(try XCTUnwrap(day.costUSD), 1.25, accuracy: 0.0001)
     }
 
     func testRecordedCostAllowsUnknownModelWithoutPricingWarning() throws {
@@ -94,7 +94,7 @@ final class GrokLogUsageScannerTests: XCTestCase {
         let usage = scan(line)
 
         let day = try XCTUnwrap(usage.series.daily.first)
-        XCTAssertEqual(try XCTUnwrap(day.costUSD), 0.3, accuracy: 0.0001)
+        XCTAssertEqual(try XCTUnwrap(day.costUSD), 3.0, accuracy: 0.0001)
         XCTAssertTrue(usage.unknownModelsByDay.isEmpty)
     }
 
@@ -256,7 +256,7 @@ final class GrokLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(usage?.series.daily.map(\.totalTokens), [200, 100])
     }
 
-    func testSkipsSubagentSessionsAlreadyIncludedInCoordinatorTotals() async throws {
+    func testScansSubagentAndForkSessionsAsDistinctTurns() async throws {
         let coordinator = GrokLogFixture.completedTurn(
             timestamp: "2026-06-10T10:00:00.000Z",
             model: "grok-4.6-build",
@@ -303,11 +303,11 @@ final class GrokLogUsageScannerTests: XCTestCase {
         )
         let day = try XCTUnwrap(usage?.series.daily.first)
 
-        XCTAssertEqual(day.totalTokens, 350, "subagent and fork tokens are already included in their coordinator")
-        XCTAssertEqual(try XCTUnwrap(day.costUSD), 3.5, accuracy: 0.0001)
+        XCTAssertEqual(day.totalTokens, 650)
+        XCTAssertEqual(try XCTUnwrap(day.costUSD), 65.0, accuracy: 0.0001)
     }
 
-    func testSkipsSessionWithMalformedSummaryInsteadOfGuessingItsKind() async throws {
+    func testParsesSessionEvenIfSummaryJsonIsMalformed() async throws {
         let line = GrokLogFixture.completedTurn(
             timestamp: "2026-06-10T10:00:00.000Z", model: "grok-build", input: 1_000
         )
@@ -317,9 +317,14 @@ final class GrokLogUsageScannerTests: XCTestCase {
         ])
         defer { try? FileManager.default.removeItem(at: home) }
 
-        let usage = await GrokLogFixture.scanner(home: home).scan(pricing: TestPricing.bundled)
+        let usage = await GrokLogFixture.scanner(home: home).scan(
+            daysBack: 30,
+            now: OpenUsageISO8601.date(from: "2026-06-18T12:00:00.000Z")!,
+            pricing: TestPricing.bundled
+        )
 
-        XCTAssertNil(usage)
+        let day = try XCTUnwrap(usage?.series.daily.first)
+        XCTAssertEqual(day.totalTokens, 1_000)
     }
 
     func testReadsWhitespaceTrimmedGrokHomeOverride() async throws {
