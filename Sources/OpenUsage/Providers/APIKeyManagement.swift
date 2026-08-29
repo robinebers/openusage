@@ -20,7 +20,7 @@ enum APIKeyStatus: Sendable, Equatable {
     case overrideActive
 }
 
-/// A `ProviderRuntime` that needs a user-supplied API key (currently OpenRouter and Z.ai). The
+/// A `ProviderRuntime` that needs a user-supplied API key (currently OpenRouter, OrcaRouter, and Z.ai). The
 /// provider's Customize detail renders `apiKeyStatus` and writes changes through `saveAPIKey` /
 /// `deleteAPIKey`. The provider delegates to its auth store, so the UI stays provider-agnostic and
 /// writes the same config file the auth store already reads — no parallel credential storage.

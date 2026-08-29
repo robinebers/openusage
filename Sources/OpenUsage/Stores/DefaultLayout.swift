@@ -33,6 +33,8 @@ enum DefaultLayout {
         "openrouter.credits", "openrouter.balance",
         "openrouter.today", "openrouter.week", "openrouter.month", "openrouter.keyLimit",
 
+        "orcarouter.totalUsage", "orcarouter.balance", "orcarouter.freeCredit",
+
         "zai.session", "zai.weekly", "zai.webSearches"
     ]
 
@@ -66,6 +68,7 @@ enum DefaultLayout {
         "cursor.auto", "cursor.api",
         "copilot.premium",
         "openrouter.credits",
+        "orcarouter.totalUsage",
         "zai.session", "zai.weekly"
     ]
 
@@ -101,6 +104,9 @@ enum DefaultLayout {
         // OpenRouter: Credits meter + Balance stay above the fold; period spend and the per-key cap
         // sit below the caret.
         "openrouter.today", "openrouter.week", "openrouter.month", "openrouter.keyLimit",
+        // OrcaRouter: Total Usage stays above the fold; the wallet Balance and Free Credit sit below
+        // the caret, mirroring OpenRouter's period rows.
+        "orcarouter.balance", "orcarouter.freeCredit",
         // Z.ai: Session meter stays above the fold; Web Searches (monthly count) sits below the caret.
         "zai.webSearches"
     ]

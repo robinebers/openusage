@@ -382,6 +382,7 @@ enum TotalSpendPalette {
         "grok": dynamic(light: 0x8E8E93, dark: 0x98989D),    // brand black, offset to gray next to Cursor
         "opencode": dynamic(light: 0x6E6E73, dark: 0xAEAEB2),  // OpenCode — grayscale brand, medium gray
         "openrouter": hex(0x6467F2),                         // OpenRouter indigo
+        "orcarouter": hex(0x0EA5E9),                         // OrcaRouter sky blue
         "antigravity": hex(0x4285F4),                        // Google blue
         "copilot": hex(0xA855F7),                            // Copilot purple
         "amp": hex(0xF34E3F),
