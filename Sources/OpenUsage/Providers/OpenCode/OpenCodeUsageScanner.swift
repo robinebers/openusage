@@ -173,24 +173,40 @@ struct OpenCodeUsageScanner: Sendable {
         SELECT json_group_array(json_array(
                  time_created,
                  json_extract(data,'$.cost'),
-                 COALESCE(json_extract(data,'$.tokens.total'),0),
-                 json_extract(data,'$.modelID'),
-                 json_extract(data,'$.providerID')))
-        FROM message
-        WHERE time_created >= \(cutoffMs)
-          AND json_valid(data)
-          AND json_extract(data,'$.role') = 'assistant'
-          AND json_extract(data,'$.providerID') IN \(providerFilter)
-          AND json_type(data,'$.cost') IN ('integer','real');
+                 COALESCE(json_extract(data,'$.tokens.total'), COALESCE(json_extract(data,'$.tokens.input'),0)+COALESCE(json_extract(data,'$.tokens.output'),0)+COALESCE(json_extract(data,'$.tokens.reasoning'),0)+COALESCE(json_extract(data,'$.tokens.cache.read'),0)+COALESCE(json_extract(data,'$.tokens.cache.write'),0)),
+                 COALESCE(json_extract(data,'$.model.id'), json_extract(data,'$.modelID')),
+                 COALESCE(json_extract(data,'$.model.providerID'), json_extract(data,'$.providerID'))))
+        FROM (
+          SELECT time_created, data FROM message
+          WHERE time_created >= \(cutoffMs)
+            AND json_valid(data)
+            AND json_extract(data,'$.role') = 'assistant'
+            AND COALESCE(json_extract(data,'$.model.providerID'), json_extract(data,'$.providerID')) IN \(providerFilter)
+            AND json_type(data,'$.cost') IN ('integer','real')
+          UNION ALL
+          SELECT time_created, data FROM session_message
+          WHERE time_created >= \(cutoffMs)
+            AND type = 'assistant'
+            AND json_valid(data)
+            AND COALESCE(json_extract(data,'$.model.providerID'), json_extract(data,'$.providerID')) IN \(providerFilter)
+            AND json_type(data,'$.cost') IN ('integer','real')
+        );
         """
     }
 
     static let probeSQL = """
-        SELECT 1 FROM message
-        WHERE json_valid(data)
-          AND json_extract(data,'$.role') = 'assistant'
-          AND json_extract(data,'$.providerID') IN \(providerFilter)
-          AND json_type(data,'$.cost') IN ('integer','real')
-        LIMIT 1;
+        SELECT 1 FROM (
+          SELECT 1 as x FROM message
+          WHERE json_valid(data)
+            AND json_extract(data,'$.role') = 'assistant'
+            AND COALESCE(json_extract(data,'$.model.providerID'), json_extract(data,'$.providerID')) IN \(providerFilter)
+            AND json_type(data,'$.cost') IN ('integer','real')
+          UNION ALL
+          SELECT 1 FROM session_message
+          WHERE type = 'assistant'
+            AND json_valid(data)
+            AND COALESCE(json_extract(data,'$.model.providerID'), json_extract(data,'$.providerID')) IN \(providerFilter)
+            AND json_type(data,'$.cost') IN ('integer','real')
+        ) LIMIT 1;
         """
 }

@@ -23,9 +23,14 @@ subscription), the cap meters are hidden and you'll just see the spend tiles.
 ## Where credentials come from
 
 Use OpenCode as usual. OpenUsage reads the `opencode-go` API key from OpenCode's local data directory
-(`~/.local/share/opencode/auth.json`, or `$OPENCODE_DATA_DIR` / `$XDG_DATA_HOME` if you've set them) and
-sends it as a Bearer token to the usage API. There's no login prompt and no token to paste. Spend tiles
-still read the local SQLite logs in that same directory.
+(`~/.local/share/opencode`, or `$OPENCODE_DATA_DIR` / `$XDG_DATA_HOME` if you've set them) and
+sends it as a Bearer token to the usage API. There's no login prompt and no token to paste.
+
+OpenCode 1 stored the key in `auth.json` (`{"opencode-go":{"key":"sk-..."}}`); OpenCode 2 (beta)
+stores it in the SQLite `credential` table (`integration_id='opencode-go'`, `value` JSON
+`{"type":"key","key":"sk-..."}`). OpenUsage tries `auth.json` first, then falls back to the
+`credential` table so fresh installs after 2026 still get Go meters. Spend tiles still read the
+local SQLite logs in that same directory.
 
 ## The meters and spend tiles
 
@@ -38,14 +43,15 @@ usage reads "No data" rather than a misleading `$0.00`. No log data leaves your 
 ## Troubleshooting
 
 - **No Session / Weekly / Monthly meters** — those are Go-plan windows. You'll see them when you're
-  logged into OpenCode Go (`opencode-go` in `auth.json`) and the key has an active subscription.
-  Zen-only users see the spend tiles instead.
+  logged into OpenCode Go (`opencode-go` in `auth.json` or the `credential` table) and the key has an
+  active subscription. Zen-only users see the spend tiles instead.
 - **"OpenCode Go key was rejected"** — the local key was not accepted. Log into OpenCode Go again so
-  `auth.json` is rewritten.
+  the credential is rewritten (either `auth.json` or the `credential` table).
 - **"No OpenCode Go subscription on this key"** — the key is valid but this account isn't on Go. The
   spend tiles still work if you use Zen locally.
 - **"Couldn't read OpenCode's auth.json"** — the file exists but is unreadable or not valid JSON. Check
-  its permissions, or log into OpenCode Go again to rewrite it.
+  its permissions, or log into OpenCode Go again to rewrite it. On OpenCode 2 the key may live in
+  `opencode.db`'s `credential` table instead, so this error only appears when `auth.json` is present but broken.
 - **Spend tiles show "No data"** — OpenUsage needs OpenCode's local database at
   `~/.local/share/opencode/opencode*.db`. Run an OpenCode session, then refresh.
 - **"Couldn't read OpenCode's local database"** — the database (or data directory) exists but couldn't be
@@ -60,5 +66,8 @@ Bearer …`. The response is `{ usage: { rolling, weekly, monthly } }`, each wit
 
 Spend tiles and trend: assistant-message `cost` and token fields from every `opencode*.db` in the data
 directory (OpenCode partitions its database by release channel — stable is `opencode.db`, the preview
-line is `opencode-next.db` — so all channels are unioned). Both `opencode-go` (Go) and `opencode` (Zen)
-count. Read-only.
+line is `opencode-next.db` — so all channels are unioned). OpenCode 1 logged to the `message` table
+(`$.role`, `$.providerID`, `$.modelID`, `$.tokens.total`); OpenCode 2 logs to `session_message`
+(`type='assistant'`, `$.model.providerID`, `$.model.id`, `$.tokens.input/output/reasoning/cache.*`). The
+query unions both tables with coalesced JSON paths so either schema (or both during migration) works.
+Both `opencode-go` (Go) and `opencode` (Zen) count. Read-only.
