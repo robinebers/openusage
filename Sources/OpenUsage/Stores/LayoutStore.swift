@@ -44,10 +44,10 @@ final class LayoutStore {
     /// or off never makes rows jump around in Customize.
     var metricOrderByProvider: [String: [String]]
 
-    /// Descriptor ids pinned to the menu bar. Membership is normalized by provider family + metric:
-    /// starring Codex Weekly on either account makes Weekly active for every Codex account card.
-    /// Display order is still derived from the provider + metric order above. Capped via `canPin` to
-    /// at most `maxPinsPerProvider` distinct metric kinds per provider family.
+    /// Descriptor ids pinned to the menu bar. Membership is per card: each account card stars its own
+    /// metrics, so one Codex account can show Weekly while another shows Session. Display order is
+    /// derived from the provider + metric order above. Capped via `canPin` to at most
+    /// `maxPinsPerProvider` metrics per card.
     private(set) var pinnedMetricIDs: Set<String>
 
     /// Descriptor ids that sit below the per-provider "Shown on expand" divider: the dashboard hides
@@ -124,14 +124,15 @@ final class LayoutStore {
         self.registry = registry
         let persistence = LayoutPersistence(defaults: defaults, storageKey: storageKey)
         self.persistence = persistence
-        // Extra account cards seed their family's default metric set (and caret split). Pin storage
-        // and the migration baseline are not duplicated; menu-bar pin behavior expands the family's
-        // stored metric kind across live account cards instead.
+        // Extra account cards seed their family's default metric set, caret split, and menu-bar pins,
+        // so a newly discovered account starts like its family's default card. The migration baseline
+        // is deliberately not duplicated.
         let registryProviderIDs = registry.providers.map(\.id)
         let translatedMetricIDs = DefaultLayout.translatedForAccountCards(defaultMetricIDs, providerIDs: registryProviderIDs)
         let translatedExpandedIDs = DefaultLayout.translatedForAccountCards(defaultExpandedMetricIDs, providerIDs: registryProviderIDs)
+        let translatedPinnedIDs = DefaultLayout.translatedForAccountCards(defaultPinnedMetricIDs, providerIDs: registryProviderIDs)
         self.defaultMetricIDs = translatedMetricIDs
-        self.defaultPinnedMetricIDs = defaultPinnedMetricIDs
+        self.defaultPinnedMetricIDs = translatedPinnedIDs
         self.defaultExpandedMetricIDs = translatedExpandedIDs
         self.isProviderEnabled = isProviderEnabled
 
@@ -141,7 +142,7 @@ final class LayoutStore {
             defaults: LayoutDefaultSet(
                 metricIDs: translatedMetricIDs,
                 migrationBaselineMetricIDs: migrationBaselineMetricIDs,
-                pinnedMetricIDs: defaultPinnedMetricIDs,
+                pinnedMetricIDs: translatedPinnedIDs,
                 expandedMetricIDs: translatedExpandedIDs
             )
         )
@@ -266,18 +267,16 @@ final class LayoutStore {
 
     // MARK: - Menu bar pins
 
-    /// Per-family cap is a rendering constraint — the Text strip stacks at most two metric kinds for
-    /// one provider. Account cards share those kinds rather than claiming independent menu-bar slots.
+    /// Per-card cap is a rendering constraint — the Text strip stacks at most two metrics under one
+    /// icon. Each account card gets its own two slots.
     static let maxPinsPerProvider = 2
 
     func isPinned(_ descriptorID: String) -> Bool {
-        guard let key = menuBarPinKey(forDescriptorID: descriptorID) else { return false }
-        return pinnedMenuBarKeys.contains(key)
+        pinnedMetricIDs.contains(descriptorID) && registry.descriptor(id: descriptorID) != nil
     }
 
     func pinnedCount(forProvider providerID: String) -> Int {
-        let family = ProviderAccountID.family(of: providerID)
-        return pinnedMenuBarKeys.count { $0.family == family }
+        pinnedMetricIDs.count { registry.descriptor(id: $0)?.providerID == providerID }
     }
 
     /// Whether `descriptorID` can be newly pinned without breaking a cap. Already-pinned ids return
@@ -339,17 +338,12 @@ final class LayoutStore {
     /// actions — the no-op guards mean a denied or redundant pin records no step.
     func setPinned(_ pinned: Bool, for descriptorID: String) {
         recordingUndoStep {
-            guard let key = menuBarPinKey(forDescriptorID: descriptorID) else { return }
+            guard registry.descriptor(id: descriptorID) != nil else { return }
             if pinned {
                 guard canPin(descriptorID) else { return }
-                guard !pinnedMenuBarKeys.contains(key) else { return }
                 guard pinnedMetricIDs.insert(descriptorID).inserted else { return }
             } else {
-                let equivalentIDs = pinnedMetricIDs.filter {
-                    menuBarPinKey(forDescriptorID: $0) == key
-                }
-                guard !equivalentIDs.isEmpty else { return }
-                pinnedMetricIDs.subtract(equivalentIDs)
+                guard pinnedMetricIDs.remove(descriptorID) != nil else { return }
             }
             persistPins()
         }
@@ -361,27 +355,6 @@ final class LayoutStore {
 
     func persistPins() {
         persistence.savePins(pinnedMetricIDs)
-    }
-
-    /// Stable menu-bar identity for one metric kind across account cards. The concrete descriptor id
-    /// stays persisted for backward compatibility; this normalized key drives behavior at runtime.
-    struct MenuBarPinKey: Hashable {
-        var family: String
-        var metric: String
-    }
-
-    var pinnedMenuBarKeys: Set<MenuBarPinKey> {
-        Set(pinnedMetricIDs.compactMap { menuBarPinKey(forDescriptorID: $0) })
-    }
-
-    func menuBarPinKey(forDescriptorID descriptorID: String) -> MenuBarPinKey? {
-        guard let descriptor = registry.descriptor(id: descriptorID) else { return nil }
-        let prefix = descriptor.providerID + "."
-        guard descriptor.id.hasPrefix(prefix) else { return nil }
-        return MenuBarPinKey(
-            family: ProviderAccountID.family(of: descriptor.providerID),
-            metric: String(descriptor.id.dropFirst(prefix.count))
-        )
     }
 
     func persistExpanded() {

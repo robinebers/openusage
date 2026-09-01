@@ -11,6 +11,7 @@ final class PanelOutsideClickPolicyTests: XCTestCase {
             .init(isMorphing: true),
             .init(hasAttachedSheet: true),
             .init(isOnStatusButton: true),
+            .init(isOnAlternateAnchor: true),
             .init(isPanelWindow: true),
             .init(isStatusItemWindow: true),
             .init(eventWindowTypeName: "NSMenuWindow"),

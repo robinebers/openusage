@@ -1,4 +1,5 @@
 import XCTest
+import OpenUsageWidgetSupport
 @testable import OpenUsage
 
 /// Covers the local HTTP API's routing and wire format (ported from the original's
@@ -157,6 +158,30 @@ final class LocalUsageAPITests: XCTestCase {
         let unknownRoute = LocalUsageAPI.respond(method: "GET", path: "/v2/everything", state: state)
         XCTAssertEqual(unknownRoute.status, 404)
         XCTAssertEqual((try json(unknownRoute.body) as? [String: Any])?["error"] as? String, "not_found")
+    }
+
+    func testWidgetRouteReturnsPresentationReadyPinnedMetrics() throws {
+        var state = makeState()
+        state.desktopWidgetSnapshot = DesktopWidgetSnapshot(
+            updatedAt: OpenUsageISO8601.date(from: "2026-03-26T11:16:29.000Z"),
+            metrics: [
+                DesktopWidgetMetric(
+                    id: "claude.session",
+                    providerName: "Claude Team",
+                    title: "Session",
+                    value: "58% left",
+                    subtitle: "Resets in 1h 43m",
+                    progress: 0.58,
+                    status: .normal
+                )
+            ]
+        )
+
+        let response = LocalUsageAPI.respond(method: "GET", path: "/v1/widget", state: state)
+
+        XCTAssertEqual(response.status, 200)
+        let decoded = try JSONDecoder().decode(DesktopWidgetSnapshot.self, from: XCTUnwrap(response.body))
+        XCTAssertEqual(decoded, state.desktopWidgetSnapshot)
     }
 }
 

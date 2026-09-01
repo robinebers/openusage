@@ -95,7 +95,7 @@ final class MenuBarPinTests: XCTestCase {
         XCTAssertEqual(store.pinnedGroups.map(\.provider.id), ["a", "b"])
     }
 
-    func testAccountCardsShareFamilyPinsAndFollowProviderDragOrder() {
+    func testAccountCardsSeedTheirOwnPinsAndFollowProviderDragOrder() {
         let defaults = makeDefaults("accountFamilyOrder")
         let store = LayoutStore(
             registry: makeAccountRegistry(),
@@ -124,7 +124,7 @@ final class MenuBarPinTests: XCTestCase {
         )
     }
 
-    func testUnpinningEitherAccountClearsTheSharedFamilyMetric() {
+    func testUnpinningOneAccountLeavesTheOtherStarred() {
         let store = LayoutStore(
             registry: makeAccountRegistry(),
             defaults: makeDefaults("accountFamilyUnpin"),
@@ -137,12 +137,36 @@ final class MenuBarPinTests: XCTestCase {
 
         store.setPinned(false, for: "codex@work.weekly")
 
-        XCTAssertFalse(store.isPinned("codex.weekly"))
+        XCTAssertTrue(store.isPinned("codex.weekly"))
         XCTAssertFalse(store.isPinned("codex@work.weekly"))
-        XCTAssertTrue(store.pinnedGroups.isEmpty)
+        XCTAssertEqual(store.pinnedGroups.flatMap { $0.metrics.map(\.id) }, ["codex.weekly"])
     }
 
-    func testPinCapCountsMetricKindsAcrossAccountFamily() {
+    /// The reported bug: each Codex account keeps its own stars, so one card can show Weekly while
+    /// the other shows Session.
+    func testAccountsCanStarDifferentMetrics() {
+        let store = LayoutStore(
+            registry: makeAccountRegistry(),
+            defaults: makeDefaults("accountFamilyIndependent"),
+            storageKey: "layout",
+            defaultMetricIDs: ["codex.session", "codex.weekly", "codex.credits"],
+            migrationBaselineMetricIDs: [],
+            defaultPinnedMetricIDs: [],
+            defaultExpandedMetricIDs: []
+        )
+
+        store.setPinned(true, for: "codex.weekly")
+        store.setPinned(true, for: "codex@work.session")
+
+        XCTAssertFalse(store.isPinned("codex@work.weekly"))
+        XCTAssertFalse(store.isPinned("codex.session"))
+        XCTAssertEqual(
+            store.pinnedGroups.flatMap { $0.metrics.map(\.id) },
+            ["codex.weekly", "codex@work.session"]
+        )
+    }
+
+    func testPinCapIsPerAccountCard() {
         let store = LayoutStore(
             registry: makeAccountRegistry(),
             defaults: makeDefaults("accountFamilyCap"),
@@ -154,11 +178,13 @@ final class MenuBarPinTests: XCTestCase {
         )
 
         store.setPinned(true, for: "codex.session")
-        store.setPinned(true, for: "codex@work.weekly")
+        store.setPinned(true, for: "codex.weekly")
 
         XCTAssertEqual(store.pinnedCount(forProvider: "codex"), 2)
-        XCTAssertEqual(store.pinnedCount(forProvider: "codex@work"), 2)
-        XCTAssertFalse(store.canPin("codex@work.credits"))
+        XCTAssertFalse(store.canPin("codex.credits"))
+        // The other account still has both of its own slots.
+        XCTAssertEqual(store.pinnedCount(forProvider: "codex@work"), 0)
+        XCTAssertTrue(store.canPin("codex@work.credits"))
     }
 
     func testDisabledProviderPinsExcludedFromGroupsButKept() {

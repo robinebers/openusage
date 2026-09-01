@@ -134,9 +134,11 @@ enum MenuBarContentBuilder {
         )
     }
 
-    /// When several account cards expose the same single pinned metric, render their values as one
-    /// two-line provider segment instead of repeating the provider icon. Match order is input order,
-    /// which is the live drag-and-drop card order from `LayoutStore.pinnedGroups`.
+    /// When several account cards of one provider each expose a single pinned metric, render their
+    /// values as one two-line provider segment instead of repeating the provider icon. The metrics
+    /// need not be the same kind — an account starring Weekly stacks with one starring Session, read
+    /// positionally in card order. Match order is input order, which is the live drag-and-drop card
+    /// order from `LayoutStore.pinnedGroups`.
     private static func coalescingSingleMetricAccountGroups(
         _ groups: [MenuBarContent.Group]
     ) -> [MenuBarContent.Group] {
@@ -144,9 +146,7 @@ enum MenuBarContentBuilder {
         var result: [MenuBarContent.Group] = []
 
         for (index, group) in groups.enumerated() where !consumed.contains(index) {
-            guard group.metrics.count == 1,
-                  let kind = metricKind(in: group.metrics[0].id, providerID: group.providerID)
-            else {
+            guard group.metrics.count == 1 else {
                 result.append(group)
                 continue
             }
@@ -154,10 +154,8 @@ enum MenuBarContentBuilder {
             let matches = groups.indices.filter { candidateIndex in
                 guard !consumed.contains(candidateIndex) else { return false }
                 let candidate = groups[candidateIndex]
-                guard ProviderAccountID.family(of: candidate.providerID) == family,
-                      candidate.metrics.count == 1
-                else { return false }
-                return metricKind(in: candidate.metrics[0].id, providerID: candidate.providerID) == kind
+                return ProviderAccountID.family(of: candidate.providerID) == family
+                    && candidate.metrics.count == 1
             }
             guard matches.count > 1,
                   matches.contains(where: { ProviderAccountID.isAccountCard(groups[$0].providerID) })
@@ -175,12 +173,6 @@ enum MenuBarContentBuilder {
             ))
         }
         return result
-    }
-
-    private static func metricKind(in descriptorID: String, providerID: String) -> String? {
-        let prefix = providerID + "."
-        guard descriptorID.hasPrefix(prefix) else { return nil }
-        return String(descriptorID.dropFirst(prefix.count))
     }
 
     /// Tray-only label shortening (the dashboard keeps the full names): the long time-window metrics

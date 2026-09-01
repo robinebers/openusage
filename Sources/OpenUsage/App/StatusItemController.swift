@@ -32,9 +32,13 @@ final class StatusItemController: NSObject {
     private let imageUpdater: StatusItemImageUpdater
     private let panel: MenuBarPanel
     private let heightController: PanelHeightController
+    /// Optional replacement for the status item. It owns only the screen-edge surface; this controller
+    /// keeps owning the full dashboard panel so shortcuts, deep links, and navigation stay unified.
+    private var sideNotchController: SideNotchController?
     private lazy var outsideClickMonitor = PanelOutsideClickMonitor(
         panel: panel,
         statusItem: statusItem,
+        alternateAnchorFrame: { [weak self] in self?.sideNotchController?.interactiveFrame },
         isMorphing: { [weak self] in self?.heightController.isMorphing ?? false },
         onInsidePanelClick: { [weak self] in self?.clearStrayFocus() },
         onDismiss: { [weak self] in self?.hidePanel() }
@@ -45,6 +49,8 @@ final class StatusItemController: NSObject {
     private let backdrop = PopoverBackdropView(cornerRadius: StatusItemController.cornerRadius)
     /// Token for the appearance-change observer; held to follow the documented removal pattern.
     private var appearanceObserver: NSObjectProtocol?
+    /// Swaps the always-available surface immediately when the Settings picker changes.
+    private var surfaceModeObserver: NSObjectProtocol?
     /// Corner radius of the panel surface; tuned to read like a system menu-bar popover.
     private static let cornerRadius: CGFloat = 13
 
@@ -93,6 +99,17 @@ final class StatusItemController: NSObject {
 
         super.init()
 
+        self.sideNotchController = SideNotchController(
+            container: container,
+            openDashboard: { [weak self] in
+                self?.container.layout.screen = .dashboard
+                self?.showPopover()
+            },
+            openSettings: { [weak self] in
+                self?.openSettings()
+            }
+        )
+
         configurePanel()
         configureStatusItem()
         imageUpdater.update()
@@ -105,6 +122,15 @@ final class StatusItemController: NSObject {
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.panel.appearance = AppearanceSetting.current.nsAppearance
+            }
+        }
+        surfaceModeObserver = NotificationCenter.default.addObserver(
+            forName: AppSurfaceModeSetting.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.applySurfaceMode()
             }
         }
         // Registered once here; the controller lives for the app's whole life.
@@ -123,6 +149,7 @@ final class StatusItemController: NSObject {
         }
 
         heightController.installBridge()
+        applySurfaceMode()
 
         AppLog.info(.statusItem, "Status item ready (button: \(self.statusItem.button != nil), shortcut: \(KeyboardShortcuts.getShortcut(for: .togglePopover)?.description ?? "none"))")
     }
@@ -295,22 +322,26 @@ final class StatusItemController: NSObject {
     func showPopover() {
         if panel.isVisible {
             panel.makeKeyAndOrderFront(nil)
-            statusItem.button?.highlight(true)
+            if AppSurfaceModeSetting.current == .menuBar {
+                statusItem.button?.highlight(true)
+            }
             return
         }
         showPanel()
     }
 
     private func showPanel() {
-        guard let button = statusItem.button, let buttonWindow = button.window else {
-            AppLog.error(.statusItem, "Cannot show panel: status item has no button")
+        guard let anchor = dashboardAnchor else {
+            AppLog.error(.statusItem, "Cannot show panel: active surface has no anchor")
             return
         }
-        let buttonRectOnScreen = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
         // Record the display before changing the visibility signal. That signal makes SwiftUI
         // immediately clamp the measured height; without the display anchor the clamp falls back to
         // the fixed opening guess, making large and small displays open at the same height.
-        heightController.prepareForOpening(below: buttonRectOnScreen)
+        switch anchor.placement {
+        case .below: heightController.prepareForOpening(below: anchor.rect)
+        case .left: heightController.prepareForOpening(leftOf: anchor.rect)
+        }
         // Mark the popover on-screen before laying out, so the egg's animation loops mount their
         // `TimelineView` clocks in time for the first displayed frame. Read by the SwiftUI egg via
         // `\.popoverIsVisible`; a closed popover keeps the loops unmounted, so a left-on egg costs no CPU.
@@ -327,7 +358,9 @@ final class StatusItemController: NSObject {
         // stray focus ring nobody asked for. Drop it; keyboard nav still works (it rides a local key
         // monitor, not first responder), and Tab from here focuses the first control as expected.
         clearStrayFocus()
-        button.highlight(true)
+        if AppSurfaceModeSetting.current == .menuBar {
+            statusItem.button?.highlight(true)
+        }
         outsideClickMonitor.start()
     }
 
@@ -353,6 +386,37 @@ final class StatusItemController: NSObject {
         outsideClickMonitor.stop()
         statusItem.button?.highlight(false)
         heightController.finishClosing()
+    }
+
+    // MARK: - Surface mode
+
+    private enum DashboardAnchorPlacement { case below, left }
+    private typealias DashboardAnchor = (rect: NSRect, placement: DashboardAnchorPlacement)
+
+    private var dashboardAnchor: DashboardAnchor? {
+        switch AppSurfaceModeSetting.current {
+        case .menuBar:
+            guard let button = statusItem.button, let window = button.window else { return nil }
+            return (window.convertToScreen(button.convert(button.bounds, to: nil)), .below)
+        case .sideNotch:
+            guard let frame = sideNotchController?.interactiveFrame else { return nil }
+            return (frame, .left)
+        }
+    }
+
+    /// Keep exactly one glance surface alive. Changing the setting closes the full dashboard first so
+    /// its previous anchor cannot linger on screen, then swaps the status item and side-notch panel.
+    private func applySurfaceMode() {
+        if panel.isVisible { hidePanel() }
+        switch AppSurfaceModeSetting.current {
+        case .menuBar:
+            sideNotchController?.hide()
+            statusItem.isVisible = true
+        case .sideNotch:
+            statusItem.isVisible = false
+            sideNotchController?.show()
+        }
+        AppLog.info(.statusItem, "Surface mode: \(AppSurfaceModeSetting.current.rawValue)")
     }
 
     /// Drops keyboard focus inside the panel so a clicked plain-styled control (a metric row's

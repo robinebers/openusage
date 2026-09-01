@@ -21,8 +21,11 @@ MODE="${1:-run}"
 CONFIG="${CONFIG:-release}"
 
 TARGET_NAME="OpenUsage"                 # SwiftPM target / binary name
+WIDGET_TARGET_NAME="OpenUsageWidgetExtension"
 APP_DISPLAY="OpenUsage"                 # user-facing app name
 BUNDLE_ID="${BUNDLE_ID:-com.robinebers.openusage.dev}"
+WIDGET_BUNDLE_ID="$BUNDLE_ID.widget"
+if [[ "$BUNDLE_ID" == *.dev ]]; then URL_SCHEME="openusage-dev"; else URL_SCHEME="openusage"; fi
 ICLOUD_CONTAINER_ID="iCloud.com.robinebers.openusage.dev"
 MIN_SYSTEM_VERSION="15.0"
 APP_VERSION="0.7.0"
@@ -36,16 +39,21 @@ APP_MACOS="$APP_CONTENTS/MacOS"
 APP_HELPERS="$APP_CONTENTS/Helpers"
 APP_RESOURCES="$APP_CONTENTS/Resources"
 APP_BINARY="$APP_MACOS/$TARGET_NAME"
+WIDGET_BUNDLE="$APP_CONTENTS/PlugIns/$WIDGET_TARGET_NAME.appex"
+WIDGET_BINARY="$WIDGET_BUNDLE/Contents/MacOS/$WIDGET_TARGET_NAME"
 CLI_BINARY="$APP_HELPERS/openusage"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 RESOURCE_BUNDLE_NAME="${TARGET_NAME}_${TARGET_NAME}.bundle"
 ENTITLEMENTS="$ROOT_DIR/script/OpenUsage.dev.entitlements.plist"
 SIGN_ENTITLEMENTS="$ROOT_DIR/script/OpenUsage.local.entitlements.plist"
+WIDGET_ENTITLEMENTS="$ROOT_DIR/script/OpenUsageWidget.dev.entitlements.plist"
 
 pkill -x "$TARGET_NAME" >/dev/null 2>&1 || true
+pkill -x "$WIDGET_TARGET_NAME" >/dev/null 2>&1 || true
 
 echo "==> swift build ($CONFIG)"
-swift build -c "$CONFIG"
+swift build -c "$CONFIG" --product OpenUsage
+swift build -c "$CONFIG" --product openusage-cli
 BUILD_DIR="$(swift build -c "$CONFIG" --show-bin-path)"
 BUILD_BINARY="$BUILD_DIR/$TARGET_NAME"
 BUILD_CLI_BINARY="$BUILD_DIR/openusage-cli"
@@ -89,15 +97,14 @@ for bundle in "$BUILD_DIR"/*.bundle; do
 done
 shopt -u nullglob
 
-# Compile the Icon Composer source (assets/AppIcon.icon) into Assets.car so
-# Tahoe renders the real Liquid Glass icon. CFBundleIconName below must match
-# the .icon file stem ("AppIcon"). The app floor is macOS 15, so a classic .icns
-# fallback is relevant there (the release build supplies one); this dev build only
-# stages the Assets.car and runs on the maintainer's current OS.
-echo "==> compiling app icon (actool)"
-PREBUILT_ICON_DIR="$ROOT_DIR/assets/AppIcon.prebuilt"
-if xcrun actool "$ROOT_DIR/assets/AppIcon.icon" --compile "$APP_RESOURCES" \
-  --app-icon AppIcon \
+# Compile the opaque black development icon. It deliberately differs from the release app's blue
+# Liquid Glass icon so both copies are easy to distinguish when they are running together.
+DEV_ICON_NAME="AppIconDev"
+DEV_ICON_SOURCE="$ROOT_DIR/assets/$DEV_ICON_NAME.icon"
+PREBUILT_ICON_DIR="$ROOT_DIR/assets/$DEV_ICON_NAME.prebuilt"
+echo "==> compiling development app icon (actool)"
+if xcrun actool "$DEV_ICON_SOURCE" --compile "$APP_RESOURCES" \
+  --app-icon "$DEV_ICON_NAME" \
   --enable-on-demand-resources NO \
   --development-region en \
   --target-device mac \
@@ -107,15 +114,22 @@ if xcrun actool "$ROOT_DIR/assets/AppIcon.icon" --compile "$APP_RESOURCES" \
   --output-format human-readable-text --errors --warnings; then
   : # compiled the icon fresh
 elif [ -f "$PREBUILT_ICON_DIR/Assets.car" ]; then
-  # actool is broken on some toolchains; commit 08863d7 ships a prebuilt icon so release CI bypasses
-  # it. Reuse the same prebuilt here, so a failed actool doesn't abort the dev build under set -e and
-  # the app still gets its real icon.
-  echo "==> actool failed; using prebuilt icon (assets/AppIcon.prebuilt)"
+  echo "==> actool failed; using prebuilt development icon (assets/$DEV_ICON_NAME.prebuilt)"
   cp "$PREBUILT_ICON_DIR/Assets.car" "$APP_RESOURCES/Assets.car"
-  [ -f "$PREBUILT_ICON_DIR/AppIcon.icns" ] && cp "$PREBUILT_ICON_DIR/AppIcon.icns" "$APP_RESOURCES/AppIcon.icns"
+  [ -f "$PREBUILT_ICON_DIR/$DEV_ICON_NAME.icns" ] \
+    && cp "$PREBUILT_ICON_DIR/$DEV_ICON_NAME.icns" "$APP_RESOURCES/$DEV_ICON_NAME.icns"
 else
-  echo "WARNING: actool failed and no prebuilt icon found; continuing without an icon" >&2
+  echo "ERROR: actool failed and no prebuilt development icon was found" >&2
+  exit 1
 fi
+
+echo "==> staging WidgetKit extension"
+BUILD_WIDGET_APPEX=$("$ROOT_DIR/script/build_widget_extension.sh" \
+  "$CONFIG" "$WIDGET_BUNDLE_ID" "$APP_VERSION-dev" "$APP_BUILD" \
+  "$MIN_SYSTEM_VERSION" "$(uname -m)")
+"$ROOT_DIR/script/stage_widget_extension.sh" \
+  "$BUILD_WIDGET_APPEX" "$APP_BUNDLE" "$WIDGET_BUNDLE_ID" \
+  "$APP_VERSION-dev" "$APP_BUILD" "$MIN_SYSTEM_VERSION" "$DEV_ICON_NAME" >/dev/null
 
 cat >"$INFO_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -139,13 +153,22 @@ cat >"$INFO_PLIST" <<PLIST
   <key>LSMinimumSystemVersion</key>
   <string>$MIN_SYSTEM_VERSION</string>
   <key>CFBundleIconName</key>
-  <string>AppIcon</string>
+  <string>$DEV_ICON_NAME</string>
+  <key>CFBundleIconFile</key>
+  <string>$DEV_ICON_NAME</string>
   <key>LSUIElement</key>
   <true/>
   <key>NSPrincipalClass</key>
   <string>NSApplication</string>
   <key>NSHighResolutionCapable</key>
   <true/>
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key><string>$BUNDLE_ID.dashboard</string>
+      <key>CFBundleURLSchemes</key><array><string>$URL_SCHEME</string></array>
+    </dict>
+  </array>
   <key>NSUbiquitousContainers</key>
   <dict>
     <key>iCloud.com.robinebers.openusage.dev</key>
@@ -197,6 +220,10 @@ fi
 "$ROOT_DIR/script/embed_sparkle.sh" "$APP_BUNDLE" "$APP_BINARY" "$CODESIGN_IDENTITY" "--options runtime"
 
 if [ -n "$CODESIGN_IDENTITY" ]; then
+  /usr/bin/codesign --force --options runtime \
+    --sign "$CODESIGN_IDENTITY" \
+    --entitlements "$WIDGET_ENTITLEMENTS" \
+    "$WIDGET_BUNDLE" >/dev/null
   /usr/bin/codesign --force --options runtime --sign "$CODESIGN_IDENTITY" "$CLI_BINARY" >/dev/null
   # Not --deep: the Sparkle framework is already signed above and must keep that signature.
   /usr/bin/codesign --force --options runtime \
@@ -205,6 +232,7 @@ if [ -n "$CODESIGN_IDENTITY" ]; then
     "$APP_BUNDLE" >/dev/null
   echo "==> signed with: $CODESIGN_IDENTITY"
 else
+  /usr/bin/codesign --force --sign - --entitlements "$WIDGET_ENTITLEMENTS" "$WIDGET_BUNDLE" >/dev/null
   /usr/bin/codesign --force --sign - "$CLI_BINARY" >/dev/null
   /usr/bin/codesign --force --sign - --entitlements "$SIGN_ENTITLEMENTS" "$APP_BUNDLE" >/dev/null
   echo "WARNING: no Apple Development identity found; ad-hoc signed." >&2

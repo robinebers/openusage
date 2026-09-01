@@ -5,7 +5,8 @@ What the app does and how it behaves. These pages describe **behavior, not visua
 ## The app
 
 - [Dashboard](dashboard.md) — the popover: rows, toggles, reordering, keyboard shortcuts
-- [Menu bar](menu-bar.md) — pinning metrics into the menu bar
+- [Menu bar and side notch](menu-bar.md) — choosing a glance surface and starring metrics
+- [Desktop widgets](widgets.md) — showing pinned metrics on the macOS desktop
 - [Settings](settings.md) — every option, what it changes
 - [Refreshing & caching](refreshing.md) — when data updates and what happens when a fetch fails
 - [iCloud Sync](icloud-sync.md) — how spend history is combined across Macs

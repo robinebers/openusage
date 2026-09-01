@@ -16,7 +16,9 @@ The project script owns the build/run loop. From the repo root:
 The script builds a signed app bundle under `dist/` and launches it in place — nothing is installed to
 `/Applications`. The dev build uses its own bundle id (`com.robinebers.openusage.dev`), so it keeps its
 own settings and keychain and never disturbs a released OpenUsage. It ships no update feed, so it never
-checks for updates — test updates with a real signed, notarized release build.
+checks for updates — test updates with a real signed, notarized release build. Its icon has a solid
+black background; the installed release uses the blue translucent icon, so open the black
+`dist/OpenUsage.app` when you want the locally built code.
 
 ## Stream logs
 

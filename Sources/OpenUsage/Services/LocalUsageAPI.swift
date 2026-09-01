@@ -1,4 +1,5 @@
 import Foundation
+import OpenUsageWidgetSupport
 
 /// Routing + JSON for the read-only local usage API, kept pure so it's unit-testable —
 /// `LocalUsageServer` is just the transport. The wire format follows docs/local-http-api.md
@@ -19,6 +20,9 @@ enum LocalUsageAPI {
         /// Only descriptors explicitly opted into the stable limits contract.
         var limitDescriptors: [String: [WidgetDescriptor]] = [:]
         var errors: [String: String] = [:]
+        /// Presentation-ready menu-bar pins for the WidgetKit extension. Kept separate from the public
+        /// provider wire models so the extension never needs app-internal rendering or auth state.
+        var desktopWidgetSnapshot: DesktopWidgetSnapshot = .empty
         var generatedAt = Date()
 
         /// Every known card the request token names — an exact card id, or a family id naming all of
@@ -62,6 +66,10 @@ enum LocalUsageAPI {
             .map(String.init)
 
         switch (segments.count, segments.first, segments.dropFirst().first) {
+        case (2, "v1", "widget"):
+            guard method == "GET" else { return error(405, "method_not_allowed") }
+            return Response(status: 200, body: encode(state.desktopWidgetSnapshot))
+
         case (2, "v1", "limits"):
             guard method == "GET" else { return error(405, "method_not_allowed") }
             return Response(

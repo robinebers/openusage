@@ -19,6 +19,7 @@ struct SettingsScreen: View {
     @State private var commandLineTool = CommandLineToolInstaller()
     @AppStorage(TotalSpendSetting.key) private var showTotalSpend = true
     @AppStorage(AppearanceSetting.key) private var appearance = AppearanceSetting.system
+    @AppStorage(AppSurfaceModeSetting.key) private var surfaceMode = AppSurfaceModeSetting.fallback
     @AppStorage(TimeFormatSetting.key) private var timeFormat = TimeFormatSetting.auto
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
     @AppStorage(ReduceAnimationsSetting.key) private var reduceAnimations = ReduceAnimationsSetting.fallback
@@ -122,8 +123,20 @@ struct SettingsScreen: View {
         @Bindable var layout = container.layout
         @Bindable var transparency = container.transparency
         return section("Appearance") {
-            row("Icon Style") {
-                picker($layout.menuBarStyle, options: MenuBarStyle.allCases, label: \.label)
+            row("Display Mode") {
+                picker($surfaceMode, options: AppSurfaceModeSetting.allCases, label: \.label)
+                    .onChange(of: surfaceMode) {
+                        // Let the picker's update pass unwind before its own host panel is moved out.
+                        Task { @MainActor in
+                            await Task.yield()
+                            AppSurfaceModeSetting.notifyDidChange()
+                        }
+                    }
+            }
+            if surfaceMode == .menuBar {
+                row("Icon Style") {
+                    picker($layout.menuBarStyle, options: MenuBarStyle.allCases, label: \.label)
+                }
             }
             row("Theme") {
                 picker($appearance, options: AppearanceSetting.allCases, label: \.label)
@@ -208,7 +221,7 @@ struct SettingsScreen: View {
                 Toggle("", isOn: $privacy.hideUsageWhileScreenSharing)
                     .settingsSwitchStyle()
             }
-            Text("While your screen is shared or recorded, the menu bar shows “OpenUsage” instead of your usage.")
+            Text("While your screen is shared or recorded, the menu bar or side notch hides your usage.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 12)

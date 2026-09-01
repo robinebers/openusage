@@ -5,6 +5,7 @@ import AppKit
 final class PanelOutsideClickMonitor {
     private let panel: MenuBarPanel
     private let statusItem: NSStatusItem
+    private let alternateAnchorFrame: () -> NSRect?
     private let isMorphing: () -> Bool
     private let onInsidePanelClick: () -> Void
     private let onDismiss: () -> Void
@@ -13,12 +14,14 @@ final class PanelOutsideClickMonitor {
     init(
         panel: MenuBarPanel,
         statusItem: NSStatusItem,
+        alternateAnchorFrame: @escaping () -> NSRect?,
         isMorphing: @escaping () -> Bool,
         onInsidePanelClick: @escaping () -> Void,
         onDismiss: @escaping () -> Void
     ) {
         self.panel = panel
         self.statusItem = statusItem
+        self.alternateAnchorFrame = alternateAnchorFrame
         self.isMorphing = isMorphing
         self.onInsidePanelClick = onInsidePanelClick
         self.onDismiss = onDismiss
@@ -72,6 +75,7 @@ final class PanelOutsideClickMonitor {
             isMorphing: isMorphing(),
             hasAttachedSheet: panel.attachedSheet != nil,
             isOnStatusButton: isOnStatusButton(screenPoint),
+            isOnAlternateAnchor: alternateAnchorFrame()?.contains(screenPoint) == true,
             isInsidePanel: isInsidePanel,
             isPanelWindow: hasWindowContext && windowID == ObjectIdentifier(panel),
             isStatusItemWindow: hasWindowContext && windowID == buttonWindowID,
@@ -100,6 +104,7 @@ struct PanelOutsideClickContext {
     var isMorphing = false
     var hasAttachedSheet = false
     var isOnStatusButton = false
+    var isOnAlternateAnchor = false
     var isInsidePanel = false
     var isPanelWindow = false
     var isStatusItemWindow = false
@@ -111,6 +116,7 @@ enum PanelOutsideClickPolicy {
         context.isMorphing
             || context.hasAttachedSheet
             || context.isOnStatusButton
+            || context.isOnAlternateAnchor
             || context.isInsidePanel
             || context.isPanelWindow
             || context.isStatusItemWindow

@@ -1,4 +1,5 @@
 import AppKit
+import OpenUsageWidgetSupport
 
 @MainActor
 public final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -6,6 +7,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItemController: StatusItemController?
     private var singleInstanceLock: SingleInstanceLock.Token?
     private let updater = UpdaterController()
+    private var showsDashboardAfterLaunch = false
 
     public override init() {
         super.init()
@@ -71,8 +73,23 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         let container = AppContainer(isFreshInstall: isFreshInstall)
         self.container = container
         statusItemController = StatusItemController(container: container, updater: updater)
+        if showsDashboardAfterLaunch {
+            showsDashboardAfterLaunch = false
+            container.layout.screen = .dashboard
+            statusItemController?.showPopover()
+        }
         // Starts background update checks (release build only; dormant under preview/`swift run`).
         updater.start()
+    }
+
+    public func application(_ application: NSApplication, open urls: [URL]) {
+        guard urls.contains(where: DesktopWidgetDeepLink.isDashboardURL) else { return }
+        guard let container, let statusItemController else {
+            showsDashboardAfterLaunch = true
+            return
+        }
+        container.layout.screen = .dashboard
+        statusItemController.showPopover()
     }
 
     /// Flush queued telemetry on quit. The SDK's lifecycle autocapture is off (we emit our own daily

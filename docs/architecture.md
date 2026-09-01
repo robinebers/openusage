@@ -5,8 +5,10 @@ A high-level map of how OpenUsage is put together, for people working on the cod
 
 ## The shape of the app
 
-OpenUsage is a SwiftPM package with a shared module and two thin executables — there is no Xcode project.
-The main executable is a menu-bar app: a SwiftUI interface hosted inside an AppKit status item and panel.
+OpenUsage is primarily a SwiftPM package with a shared module and app/CLI executables. The main executable
+is a menu-bar app: a SwiftUI interface hosted inside an AppKit status item and panel. A small Xcode project
+under `WidgetExtension/` compiles the widget sources as a real WidgetKit app extension; the release and
+development scripts embed that signed `.appex` inside the app bundle.
 The code is grouped by role:
 
 - `App/` — startup and the AppKit bridge (status item, panel, the app entry point).
@@ -16,6 +18,9 @@ The code is grouped by role:
 - `Services/` — shared infrastructure (HTTP, the local API, process running).
 - `Support/` — small shared helpers (formatting, parsing, animations).
 - `Views/` — the SwiftUI screens (dashboard, customize, settings, menu-bar strip).
+- `OpenUsageWidgetSupport/` — the small, credential-free wire contract shared with the extension.
+- `OpenUsageWidgetExtension/` — the WidgetKit timeline provider and size-adaptive SwiftUI view.
+- `WidgetExtension/` — the Xcode app-extension wrapper that packages those sources for WidgetKit.
 
 ## Composition root
 
@@ -103,3 +108,8 @@ only — a universal dev build just doubles compile time on the maintainer's own
 
 A small loopback server exposes the current usage as JSON on `127.0.0.1:6736` for other local tools. See
 [Local HTTP API](local-http-api.md) for the endpoints and the privacy tradeoff.
+
+The WidgetKit extension reads a presentation-ready projection from `/v1/widget`. `AppContainer` builds it
+from the user's ordered menu-bar pins, and `DesktopWidgetReloader` observes that exact projection so a
+provider refresh or pin change invalidates the WidgetKit timeline. The extension receives no provider
+credentials, account identities, pricing catalogs, or app-internal snapshot models.

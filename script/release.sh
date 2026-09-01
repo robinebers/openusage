@@ -30,7 +30,9 @@ cd "$ROOT_DIR"
 : "${OPENUSAGE_VERSION:?set OPENUSAGE_VERSION, e.g. 0.7.0}"
 
 APP_NAME="OpenUsage"
+WIDGET_NAME="OpenUsageWidgetExtension"
 BUNDLE_ID="com.robinebers.openusage"
+WIDGET_BUNDLE_ID="$BUNDLE_ID.widget"
 MIN_SYSTEM_VERSION="15.0"
 VERSION="$OPENUSAGE_VERSION"
 # CFBundleShortVersionString carries the full version, including any pre-release suffix (e.g.
@@ -49,14 +51,18 @@ APP_MACOS="$APP_CONTENTS/MacOS"
 APP_HELPERS="$APP_CONTENTS/Helpers"
 APP_RESOURCES="$APP_CONTENTS/Resources"
 APP_BINARY="$APP_MACOS/$APP_NAME"
+WIDGET_BUNDLE="$APP_CONTENTS/PlugIns/$WIDGET_NAME.appex"
+WIDGET_BINARY="$WIDGET_BUNDLE/Contents/MacOS/$WIDGET_NAME"
 CLI_BINARY="$APP_HELPERS/openusage"
 DMG_PATH="$DIST_DIR/$DMG_NAME"
 # dSYMs for crash symbolication (uploaded to PostHog by release.yml). A folder, since posthog-cli's
 # `dsym upload --directory` and Sparkle both want a directory of bundles, not a single path.
 DSYM_DIR="$DIST_DIR/dSYMs"
 APP_DSYM="$DSYM_DIR/$APP_NAME.app.dSYM"
+WIDGET_DSYM="$DSYM_DIR/$WIDGET_NAME.appex.dSYM"
 ENTITLEMENTS_TEMPLATE="$ROOT_DIR/script/OpenUsage.release.entitlements.plist"
 ENTITLEMENTS="$DIST_DIR/OpenUsage.release.resolved.entitlements.plist"
+WIDGET_ENTITLEMENTS="$ROOT_DIR/script/OpenUsageWidget.release.entitlements.plist"
 
 # Decide notarization up front. CI always supplies the notarization login; a local dry run can
 # opt out with ALLOW_UNNOTARIZED=1 (the build will then be Gatekeeper-blocked on other Macs). Missing
@@ -89,8 +95,12 @@ swift build -c release --arch arm64 --arch x86_64 -Xswiftc -g --product openusag
 BUILD_DIR="$(swift build -c release --arch arm64 --arch x86_64 -Xswiftc -g --show-bin-path)"
 BUILD_BINARY="$BUILD_DIR/$APP_NAME"
 BUILD_CLI_BINARY="$BUILD_DIR/openusage-cli"
+BUILD_WIDGET_APPEX=$("$ROOT_DIR/script/build_widget_extension.sh" \
+  release "$WIDGET_BUNDLE_ID" "$VERSION" "$BUILD" "$MIN_SYSTEM_VERSION" "arm64 x86_64")
+BUILD_WIDGET_BINARY="$BUILD_WIDGET_APPEX/Contents/MacOS/$WIDGET_NAME"
 [ -x "$BUILD_BINARY" ] || { echo "missing built binary: $BUILD_BINARY" >&2; exit 1; }
 [ -x "$BUILD_CLI_BINARY" ] || { echo "missing built CLI: $BUILD_CLI_BINARY" >&2; exit 1; }
+[ -x "$BUILD_WIDGET_BINARY" ] || { echo "missing Xcode-built widget extension: $BUILD_WIDGET_BINARY" >&2; exit 1; }
 
 echo "==> staging $APP_BUNDLE"
 rm -rf "$APP_BUNDLE"
@@ -131,13 +141,19 @@ echo "==> generating dSYM (crash symbolication)"
 rm -rf "$DSYM_DIR"
 mkdir -p "$DSYM_DIR"
 dsymutil "$APP_BINARY" -o "$APP_DSYM"
+dsymutil "$BUILD_WIDGET_BINARY" -o "$WIDGET_DSYM"
 # Guard the symbolication contract: every arch UUID in the shipped binary must be present in the dSYM,
 # else uploaded symbols would never match a crash report (a silent miss that looks like "no symbols").
 for uuid in $(dwarfdump --uuid "$APP_BINARY" | awk '{print $2}'); do
   dwarfdump --uuid "$APP_DSYM" | grep -q "$uuid" \
     || { echo "dSYM UUID mismatch: $uuid (binary) absent from $APP_DSYM — symbolication would fail." >&2; exit 1; }
 done
+for uuid in $(dwarfdump --uuid "$BUILD_WIDGET_BINARY" | awk '{print $2}'); do
+  dwarfdump --uuid "$WIDGET_DSYM" | grep -q "$uuid" \
+    || { echo "dSYM UUID mismatch: $uuid (widget binary) absent from $WIDGET_DSYM." >&2; exit 1; }
+done
 echo "    dSYM: $APP_DSYM"
+echo "    dSYM: $WIDGET_DSYM"
 
 shopt -s nullglob
 for bundle in "$BUILD_DIR"/*.bundle; do
@@ -162,6 +178,14 @@ else
     --output-partial-info-plist /dev/null --output-format human-readable-text --errors --warnings
 fi
 
+echo "==> staging WidgetKit extension"
+"$ROOT_DIR/script/stage_widget_extension.sh" \
+  "$BUILD_WIDGET_APPEX" "$APP_BUNDLE" "$WIDGET_BUNDLE_ID" \
+  "$VERSION" "$BUILD" "$MIN_SYSTEM_VERSION" >/dev/null
+
+lipo -archs "$WIDGET_BINARY" | grep -q "x86_64" && lipo -archs "$WIDGET_BINARY" | grep -q "arm64" \
+  || { echo "Expected a universal widget extension, got: $(lipo -archs "$WIDGET_BINARY")" >&2; exit 1; }
+
 cat >"$APP_CONTENTS/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -180,6 +204,13 @@ cat >"$APP_CONTENTS/Info.plist" <<PLIST
   <key>LSUIElement</key><true/>
   <key>NSPrincipalClass</key><string>NSApplication</string>
   <key>NSHighResolutionCapable</key><true/>
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key><string>$BUNDLE_ID.dashboard</string>
+      <key>CFBundleURLSchemes</key><array><string>openusage</string></array>
+    </dict>
+  </array>
   <key>SUFeedURL</key><string>$FEED_URL</string>
   <key>SUPublicEDKey</key><string>$SPARKLE_PUBLIC_KEY</string>
   <key>SUEnableAutomaticChecks</key><true/>
@@ -204,6 +235,8 @@ cp "$ICLOUD_PROVISIONING_PROFILE" "$APP_CONTENTS/embedded.provisionprofile"
 
 # Embed + sign Sparkle (Developer ID, hardened runtime, secure timestamp).
 "$ROOT_DIR/script/embed_sparkle.sh" "$APP_BUNDLE" "$APP_BINARY" "$CODESIGN_IDENTITY" "--options runtime --timestamp"
+codesign --force --options runtime --timestamp --entitlements "$WIDGET_ENTITLEMENTS" \
+  --sign "$CODESIGN_IDENTITY" "$WIDGET_BUNDLE"
 codesign --force --options runtime --timestamp --sign "$CODESIGN_IDENTITY" "$CLI_BINARY"
 
 echo "==> signing app (Developer ID, hardened runtime)"

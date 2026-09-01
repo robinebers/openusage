@@ -47,6 +47,8 @@ final class AppContainer {
     private let providers: [ProviderRuntime]
     /// Read-only usage API on 127.0.0.1:6736 for other local apps (silently off when the port is taken).
     private let localAPI: LocalUsageServer
+    /// Observes the pinned-metric projection and invalidates WidgetKit timelines when it changes.
+    private let desktopWidgetReloader: DesktopWidgetReloader
     // A `let` of a `Sendable` `Task` is implicitly nonisolated, so the nonisolated `deinit` can cancel it.
     private let refreshTask: Task<Void, Never>
     /// The fresh-install credential-detection pass (see `FirstRunSeeder`); `nil` on every later launch.
@@ -169,19 +171,34 @@ final class AppContainer {
         }
         self.telemetry = telemetry
         self.transparency = PopoverTransparencyStore()
-        self.privacy = MenuBarPrivacyStore()
-        self.localAPI = LocalUsageServer(state: { [layout, enablement, dataStore, accounts] in
+        let privacy = MenuBarPrivacyStore()
+        self.privacy = privacy
+        self.localAPI = LocalUsageServer(state: { [layout, enablement, dataStore, accounts, privacy] in
             LocalUsageAPI.State(
                 enabledOrderedIDs: layout.orderedProviderIDs().filter { enablement.isEnabled($0) },
                 knownIDs: Set(registry.providers.map(\.id)),
                 snapshots: dataStore.snapshots,
                 limitDescriptors: registry.limitDescriptorsByProvider,
-                errors: dataStore.providerErrors
+                errors: dataStore.providerErrors,
+                desktopWidgetSnapshot: DesktopWidgetSnapshotBuilder.make(
+                    layout: layout,
+                    dataStore: dataStore,
+                    displayName: { accounts.resolvedDisplayName(cardID: $0.id) ?? $0.displayName },
+                    concealsUsage: privacy.concealUsage
+                )
             )
             // API output is human-read too: resolve card titles at respond time so renames show,
             // exactly like every UI surface.
             .resolvingDisplayNames(accounts.resolvedDisplayNamesByCardID)
         })
+        self.desktopWidgetReloader = DesktopWidgetReloader { [layout, dataStore, accounts, privacy] in
+            DesktopWidgetSnapshotBuilder.make(
+                layout: layout,
+                dataStore: dataStore,
+                displayName: { accounts.resolvedDisplayName(cardID: $0.id) ?? $0.displayName },
+                concealsUsage: privacy.concealUsage
+            )
+        }
         self.refreshTask = Self.startPeriodicRefresh(dataStore: dataStore, telemetry: telemetry)
         localAPI.start()
         // Become the notification-center delegate so banners show while frontmost — a menu-bar accessory
@@ -244,13 +261,14 @@ final class AppContainer {
         // `@AppStorage` properties observe the change. New settings must be added here.
         for key in [
             AppearanceSetting.key, TimeFormatSetting.key, DensitySetting.key,
-            ReduceAnimationsSetting.key, LogLevelSetting.key, TotalSpendSetting.key,
+            AppSurfaceModeSetting.key, ReduceAnimationsSetting.key, LogLevelSetting.key, TotalSpendSetting.key,
             TotalSpendSetting.periodKey, TotalSpendSetting.metricKey,
         ] {
             UserDefaults.standard.removeObject(forKey: key)
         }
         KeyboardShortcuts.reset(.togglePopover)
         AppearanceSetting.applyCurrent()
+        AppSurfaceModeSetting.notifyDidChange()
         AppLog.reloadLevel()
         AppLog.info(.config, "All settings reset to defaults")
     }

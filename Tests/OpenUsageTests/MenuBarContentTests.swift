@@ -56,7 +56,27 @@ final class MenuBarContentTests: XCTestCase {
         )
     }
 
-    func testAccountCardsWithTwoPinnedMetricKindsKeepSeparateSegments() {
+    func testDifferentSingleMetricsAcrossAccountCardsStillStack() {
+        let content = MenuBarContentBuilder.build(
+            groups: [
+                group("codex", percent("codex.weekly", "Weekly", 31)),
+                group("codex@work", percent("codex@work.session", "Session", 72)),
+            ],
+            data: { $0.sample }
+        )
+
+        XCTAssertEqual(content.groups.count, 1)
+        XCTAssertEqual(
+            content.groups[0].metrics.map(\.id),
+            ["codex.weekly", "codex@work.session"]
+        )
+        XCTAssertEqual(
+            content.accessibilityText,
+            "Codex accounts: CODEX Weekly 31%, CODEX@WORK Session 72%"
+        )
+    }
+
+    func testAccountCardsWithTwoPinnedMetricsEachKeepSeparateSegments() {
         let content = MenuBarContentBuilder.build(
             groups: [
                 group("codex", percent("codex.session", "Session", 21), percent("codex.weekly", "Weekly", 31)),

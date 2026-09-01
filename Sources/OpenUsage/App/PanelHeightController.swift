@@ -42,20 +42,43 @@ final class PanelHeightController {
     /// happen before SwiftUI sees the popover as shown, because that signal immediately asks the clamp
     /// hook for this display's real maximum height.
     func prepareForOpening(below buttonRect: NSRect) {
+        prepareForOpening(relativeTo: buttonRect, placement: .below)
+    }
+
+    /// Side-notch presentation: open the regular dashboard immediately to the left of the edge strip,
+    /// vertically centered on it where the display has room. The dashboard stays the same panel and
+    /// SwiftUI tree; only its anchor policy changes.
+    func prepareForOpening(leftOf notchRect: NSRect) {
+        prepareForOpening(relativeTo: notchRect, placement: .left)
+    }
+
+    private enum Placement { case below, left }
+
+    private func prepareForOpening(relativeTo anchorRect: NSRect, placement: Placement) {
         morphSettleTask?.cancel()
         isMorphing = false
         PanelHeightBridge.invalidate()
 
-        let screen = NSScreen.screens.first { $0.frame.intersects(buttonRect) } ?? NSScreen.main
+        let screen = NSScreen.screens.first { $0.frame.intersects(anchorRect) } ?? NSScreen.main
         anchorScreen = screen
-        let topLeft = PanelGeometry.clampedTopLeft(
-            below: buttonRect,
-            width: Self.panelWidth,
-            visibleFrame: screen?.visibleFrame
-        )
+        let remembered = loadHeight(for: currentScreen()) ?? Self.defaultHeight
+        let topLeft = switch placement {
+        case .below:
+            PanelGeometry.clampedTopLeft(
+                below: anchorRect,
+                width: Self.panelWidth,
+                visibleFrame: screen?.visibleFrame
+            )
+        case .left:
+            PanelGeometry.clampedTopLeft(
+                leftOf: anchorRect,
+                width: Self.panelWidth,
+                height: remembered,
+                visibleFrame: screen?.visibleFrame
+            )
+        }
         anchorTopLeft = topLeft
 
-        let remembered = loadHeight(for: currentScreen()) ?? Self.defaultHeight
         let height = clampedHeight(remembered)
         panel.setFrame(
             PanelGeometry.frame(topLeft: topLeft, width: Self.panelWidth, height: height),
@@ -152,6 +175,31 @@ enum PanelGeometry {
             )
         }
         return NSPoint(x: x, y: buttonRect.minY - topGap)
+    }
+
+    /// Top-left origin for a panel opening beside a screen-edge anchor. Both axes clamp to the display:
+    /// external displays may sit at negative coordinates, and a tall remembered panel may not fit
+    /// centered on a short edge strip.
+    static func clampedTopLeft(
+        leftOf anchorRect: NSRect,
+        width: CGFloat,
+        height: CGFloat,
+        visibleFrame: NSRect?
+    ) -> NSPoint {
+        var x = anchorRect.minX - width - topGap
+        var y = anchorRect.midY + height / 2
+        if let visibleFrame {
+            x = min(
+                max(x, visibleFrame.minX + screenMargin),
+                visibleFrame.maxX - width - screenMargin
+            )
+            let fittedHeight = min(max(height, minimumHeight), visibleFrame.height - screenMargin * 2)
+            y = min(
+                max(y, visibleFrame.minY + fittedHeight + screenMargin),
+                visibleFrame.maxY - screenMargin
+            )
+        }
+        return NSPoint(x: x, y: y)
     }
 
     static func maximumHeight(topLeft: NSPoint, visibleFrame: NSRect) -> CGFloat {

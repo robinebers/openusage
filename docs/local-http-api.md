@@ -49,6 +49,13 @@ Works for disabled providers too.
 > provider had no snapshot. It now always returns an array, so the shape stays identical whether an
 > ID names one provider or a whole account family.
 
+### `GET /v1/widget`
+
+Returns the presentation-ready menu-bar pins consumed by the bundled macOS widget. Metrics follow the
+user's provider and metric order and already contain their formatted value, optional subtitle, 0–1 meter
+progress, and status band. This route is intended for the bundled extension; other integrations should
+prefer `/v1/limits`, whose raw scalar contract is more stable.
+
 ### Everything else
 
 Methods other than `GET`/`OPTIONS` return **405**; unknown routes return **404**. When the server is already handling its maximum of 16 concurrent connections, requests get **503** — back off and retry.

@@ -1,8 +1,8 @@
 # OpenUsage
 
-Track your AI coding subscriptions from the macOS menu bar — native Swift edition.
+Track your AI coding subscriptions from the macOS menu bar or an optional side notch — native Swift edition.
 
-OpenUsage shows how much of your AI coding plans you've used: session and weekly limits, credits, and spend, all in one popover. Pin your most important metrics straight into the menu bar.
+OpenUsage shows how much of your AI coding plans you've used: session and weekly limits, credits, and spend, all in one popover. Keep your most important metrics in the menu bar or on the edge of your screen.
 
 <p align="center">
   <img src="assets/screenshot.jpg?v=20260706" alt="OpenUsage menu bar tracker showing Claude and Codex session, weekly, and spend usage" width="900">
@@ -37,7 +37,8 @@ Most providers read the credentials already on your machine (keychain, auth file
 
 ## Features
 
-- **Menu bar pins.** Pin metrics to the menu bar (up to 2 per provider); render as compact text or mini bars. The strip hides metrics with no data instead of showing placeholders.
+- **Menu bar or Side Notch.** Choose the standard menu bar strip or a compact right-edge handle in Settings → Appearance → Display Mode. Hover the side notch to reveal starred providers, hover a provider for its usage recap, or click one to open the full dashboard.
+- **Starred metrics.** Star up to 2 metrics per provider. Menu Bar mode renders them as compact text or mini bars; Side Notch mode turns them into provider rings and hover recaps. Both surfaces hide metrics with no data instead of showing placeholders.
 - **Dashboard popover.** Provider-grouped meters with live reset countdowns and pace indicators. Click usage or reset values to flip their display everywhere; right-click a row to hide or star it, refresh its provider, or open Customize.
 - **Global shortcut.** Toggle the popover from anywhere — record any combo in Settings.
 - **Customize.** Turn providers and metrics on or off, choose which rows stay Always Visible or On Demand, and drag-reorder both.
@@ -52,7 +53,7 @@ Most providers read the credentials already on your machine (keychain, auth file
 
 ## Documentation
 
-Behavior docs live in [docs/](docs/README.md): the [dashboard](docs/dashboard.md), [menu bar pins](docs/menu-bar.md), [settings](docs/settings.md), [refresh & caching](docs/refreshing.md), the [CLI](docs/cli.md), the [local HTTP API](docs/local-http-api.md), the [proxy](docs/proxy.md), and one page per provider.
+Behavior docs live in [docs/](docs/README.md): the [dashboard](docs/dashboard.md), [menu bar and side notch](docs/menu-bar.md), [desktop widgets](docs/widgets.md), [settings](docs/settings.md), [refresh & caching](docs/refreshing.md), the [CLI](docs/cli.md), the [local HTTP API](docs/local-http-api.md), the [proxy](docs/proxy.md), and one page per provider.
 
 For working on the code, see the developer docs: [architecture](docs/architecture.md), [adding a provider](docs/adding-a-provider.md), and [debugging & capturing logs](docs/debugging.md).
 
@@ -74,6 +75,13 @@ swift build            # debug build
 swift test             # run the test suite
 ./script/build_and_run.sh   # build and launch the dev app from dist/ (no install)
 ```
+
+The local app is staged at `dist/OpenUsage.app` with its own bundle identifier, settings, and keychain data, so it can run beside an installed release. The icon is the quickest way to tell them apart:
+
+- **Solid black background:** local development build — click this one to open the code you just built.
+- **Blue translucent background:** installed release build from Homebrew or the DMG.
+
+When both copies are present, open the black `dist/OpenUsage.app`; the blue `/Applications/OpenUsage.app` is the installed release.
 
 
 
