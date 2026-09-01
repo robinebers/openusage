@@ -8,24 +8,40 @@ enum OpenCodeUsageError: Error, LocalizedError, Equatable {
     /// carries the underlying cause for the log file; the user-facing description stays friendly.
     case credentialsUnreadable(detail: String)
     /// OpenCode databases exist on disk but none could be read this refresh. Failing loudly here beats
-    /// rendering authoritative-looking $0 meters from an empty scan.
+    /// rendering authoritative-looking $0 tiles from an empty scan.
     case databaseUnreadable
+    case connectionFailed
+    case invalidResponse
+    case requestFailed(Int)
+    /// The local Go key was rejected (HTTP 401 / `AuthError`).
+    case unauthorized
+    /// Valid key, but this account has no Go subscription (HTTP 403 / `EntitlementError`).
+    case noGoSubscription
 
     var errorDescription: String? {
         switch self {
         case .notLoggedIn:
-            return "OpenCode not detected. Log in with a provider in OpenCode or use OpenCode locally first."
+            return "OpenCode not detected. Log in with OpenCode Go or use OpenCode locally first."
         case .credentialsUnreadable:
-            return "Couldn't read OpenCode's auth.json. Check its file permissions or log into OpenCode again."
+            return "Couldn't read OpenCode's auth.json. Check its file permissions or log into OpenCode Go again."
         case .databaseUnreadable:
             return "Couldn't read OpenCode's local database. Quit OpenCode and refresh, or check the data directory's permissions."
+        case .connectionFailed:
+            return ProviderUsageErrorText.connectionFailed
+        case .invalidResponse:
+            return ProviderUsageErrorText.invalidResponse
+        case .requestFailed(let status):
+            return ProviderUsageErrorText.requestFailed(statusCode: status)
+        case .unauthorized:
+            return "OpenCode Go key was rejected. Log into OpenCode Go again."
+        case .noGoSubscription:
+            return "No OpenCode Go subscription on this key."
         }
     }
 }
 
-/// Tracks every model used through OpenCode from its local SQLite logs. Cookie-free and network-free —
-/// see `OpenCodeUsageScanner`. The card shows Go-only plan caps plus all-provider token/spend tiles and
-/// a usage trend; zero-cost external rows are priced through the shared catalog when possible.
+/// Tracks OpenCode-hosted usage: Go plan windows from the official usage API, plus local spend tiles
+/// and a usage trend from OpenCode's SQLite logs (Go + Zen).
 @MainActor
 final class OpenCodeProvider: ProviderRuntime {
     let provider = Provider(
@@ -38,12 +54,14 @@ final class OpenCodeProvider: ProviderRuntime {
     )
 
     let authStore: OpenCodeAuthStore
+    let usageClient: OpenCodeUsageClient
     let usageScanner: OpenCodeUsageScanner
     let now: @Sendable () -> Date
-    let pricing: @Sendable () async -> ModelPricing
 
-    /// OpenCode derives per-message costs from model metadata; they are API-rate values, not charges.
-    private let sourceNote = "From your OpenCode logs (API-rate estimate)"
+    /// Names the local source on hover (the dollars can only undercount true account usage — this
+    /// machine only). No "(estimated)": OpenCode records its own per-message cost, so the values are
+    /// measured, not imputed.
+    private let sourceNote = "From your OpenCode logs"
 
     /// Edge-triggers the auth-read-failure log so a persistently unreadable `auth.json` warns once per
     /// run, not once per 5-minute refresh.
@@ -51,47 +69,46 @@ final class OpenCodeProvider: ProviderRuntime {
 
     init(
         authStore: OpenCodeAuthStore = OpenCodeAuthStore(),
+        usageClient: OpenCodeUsageClient = OpenCodeUsageClient(),
         usageScanner: OpenCodeUsageScanner = OpenCodeUsageScanner(),
-        now: @escaping @Sendable () -> Date = Date.init,
-        pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() }
+        now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.authStore = authStore
+        self.usageClient = usageClient
         self.usageScanner = usageScanner
         self.now = now
-        self.pricing = pricing
     }
 
     var widgetDescriptors: [WidgetDescriptor] {
-        // Go plan caps read from local `opencode-go` spend (Session/Weekly above the fold, Monthly on
-        // demand); the spend tiles + trend below sum every provider used through OpenCode.
+        // Go plan windows from `/zen/go/v1/usage` (Session/Weekly/Monthly + trend above the fold);
+        // the spend tiles below sum combined OpenCode-hosted (Go + Zen) spend from local logs.
         [
-            .boundedDollars(id: "opencode.session", provider: provider, title: "Session", limit: OpenCodeUsageMapper.sessionCap)
-                .exportingLimit("session", unit: "usd", estimated: true),
-            .boundedDollars(id: "opencode.weekly", provider: provider, title: "Weekly", limit: OpenCodeUsageMapper.weeklyCap)
-                .exportingLimit("weekly", unit: "usd", estimated: true),
-            .boundedDollars(id: "opencode.monthly", provider: provider, title: "Monthly", limit: OpenCodeUsageMapper.monthlyCap)
-                .exportingLimit("monthly", unit: "usd", estimated: true),
+            .percent(id: "opencode.session", provider: provider, title: "Session", sessionStartSignal: .zeroUsage)
+                .exportingLimit("session", unit: "percent"),
+            .percent(id: "opencode.weekly", provider: provider, title: "Weekly")
+                .exportingLimit("weekly", unit: "percent"),
+            .percent(id: "opencode.monthly", provider: provider, title: "Monthly")
+                .exportingLimit("monthly", unit: "percent"),
             .usageTrend(provider: provider)
                 .exportingHistory(
                     scope: .machineLocal,
-                    estimatedCost: true,
+                    estimatedCost: false,
                     sourceNote: sourceNote
                 )
         ] + WidgetDescriptor.spendTiles(provider: provider)
     }
 
     func hasLocalCredentials() async -> Bool {
-        // Same sources as `refresh()`: any provider login or any usage already in the local database.
-        // Local-only, off the main actor. An unreadable auth.json is itself an
+        // Same sources as `refresh()`: the local `opencode-go` auth key, or any hosted usage already in
+        // the local database. Local-only, off the main actor. An unreadable auth.json is itself an
         // OpenCode footprint — enable the provider so `refresh()` can surface the actionable error.
         await loadOffMainActor { [authStore, usageScanner] in
             do {
-                let auth = try authStore.loadState()
-                if auth.hasAnyProviderLogin || auth.goAPIKey != nil { return true }
+                if try authStore.goAPIKey() != nil { return true }
             } catch {
                 return true
             }
-            return usageScanner.hasUsage()
+            return usageScanner.hasHostedUsage()
         }
     }
 
@@ -100,12 +117,10 @@ final class OpenCodeProvider: ProviderRuntime {
         // can't straddle a midnight boundary.
         let refreshedAt = now()
 
-        // An unreadable auth.json must not kill a refresh that can still read the database (a Zen user
-        // stays live), but it stays distinguishable from "not logged in" when nothing else loads.
-        var authState = OpenCodeAuthState(hasAnyProviderLogin: false, goAPIKey: nil)
+        var goKey: String?
         var authReadError: OpenCodeUsageError?
         do {
-            authState = try await loadOffMainActor { [authStore] in try authStore.loadState() }
+            goKey = try await loadOffMainActor { [authStore] in try authStore.goAPIKey() }
             loggedAuthReadFailure = false
         } catch let error as OpenCodeUsageError {
             authReadError = error
@@ -117,66 +132,102 @@ final class OpenCodeProvider: ProviderRuntime {
             authReadError = .credentialsUnreadable(detail: error.localizedDescription)
         }
 
+        var meterLines: [MetricLine] = []
+        var plan: String?
+        if let goKey {
+            switch await fetchGoMeters(apiKey: goKey) {
+            case .meters(let lines):
+                meterLines = lines
+                plan = "Go"
+            case .noSubscription:
+                AppLog.info(LogTag.plugin("opencode"), "Go usage endpoint: no active subscription")
+            case .failed(let error):
+                return ProviderSnapshot.error(provider: provider, error: error)
+            }
+        }
+
         let scan: OpenCodeUsageScan?
         do {
-            scan = try await usageScanner.scan(
-                now: refreshedAt,
-                hasGoKey: authState.goAPIKey != nil,
-                pricing: pricing
-            )
+            scan = try await usageScanner.scan(now: refreshedAt)
         } catch {
-            return ProviderSnapshot.error(provider: provider, error: error)
+            if meterLines.isEmpty {
+                return ProviderSnapshot.error(provider: provider, error: error)
+            }
+            AppLog.warn(
+                LogTag.plugin("opencode"),
+                "local database unreadable; showing Go meters only: \(error.localizedDescription)"
+            )
+            scan = nil
         }
 
-        guard let scan else {
-            // No OpenCode database on disk at all.
-            if authState.goAPIKey != nil {
-                // Freshly logged into Go, before the first local message: the key alone establishes the
-                // plan, so show the published caps at $0 rather than a bare "No usage data".
-                let windows = OpenCodeGoWindowMath.compute(costs: [], anchorMs: nil, now: refreshedAt)
-                return ProviderSnapshot.make(
-                    provider: provider, plan: "Go",
-                    lines: OpenCodeUsageMapper.meterLines(windows), refreshedAt: refreshedAt
+        var lines = meterLines
+        if let scan {
+            SpendTileMapper.appendTokenUsage(
+                scan.logScan.series, to: &lines, now: refreshedAt,
+                estimated: false,
+                unknownModelsByDay: scan.logScan.unknownModelsByDay,
+                modelUsage: scan.logScan.modelUsage,
+                modelSourceNote: sourceNote
+            )
+            SpendTileMapper.appendUsageTrend(scan.logScan.series, to: &lines, now: refreshedAt, note: sourceNote)
+        }
+
+        if lines.isEmpty {
+            if goKey != nil {
+                return ProviderSnapshot.error(provider: provider, error: OpenCodeUsageError.noGoSubscription)
+            }
+            if scan == nil {
+                return ProviderSnapshot.error(
+                    provider: provider, error: authReadError ?? OpenCodeUsageError.notLoggedIn
                 )
             }
-            if authState.hasAnyProviderLogin {
-                var lines: [MetricLine] = []
-                MetricLine.appendNoDataIfNeeded(&lines)
-                return ProviderSnapshot.make(provider: provider, plan: nil, lines: lines, refreshedAt: refreshedAt)
-            }
-            return ProviderSnapshot.error(
-                provider: provider, error: authReadError ?? OpenCodeUsageError.notLoggedIn
-            )
         }
-
-        var lines: [MetricLine] = []
-        if let windows = scan.goWindows {
-            lines.append(contentsOf: OpenCodeUsageMapper.meterLines(windows))
-        }
-        SpendTileMapper.appendTokenUsage(
-            scan.logScan.series, to: &lines, now: refreshedAt,
-            estimated: true,
-            unknownModelsByDay: scan.logScan.unknownModelsByDay,
-            modelUsage: scan.logScan.modelUsage,
-            modelSourceNote: sourceNote
-        )
-        SpendTileMapper.appendUsageTrend(scan.logScan.series, to: &lines, now: refreshedAt, note: sourceNote)
         MetricLine.appendNoDataIfNeeded(&lines)
 
-        // `goWindows` is present only on a current Go signal (key or recent spend), never a stale anchor,
-        // so it's the honest source for the plan badge too.
-        let plan: String? = scan.goWindows != nil ? "Go" : nil
         return ProviderSnapshot.make(
             provider: provider,
             plan: plan,
             lines: lines,
             refreshedAt: refreshedAt,
-            usageHistory: ProviderUsageHistory(
-                series: scan.logScan.series,
-                modelUsage: scan.logScan.modelUsage,
-                unknownModelsByDay: scan.logScan.unknownModelsByDay
-            ),
-            warning: scan.warning
+            usageHistory: scan.map {
+                ProviderUsageHistory(
+                    series: $0.logScan.series,
+                    modelUsage: $0.logScan.modelUsage,
+                    unknownModelsByDay: $0.logScan.unknownModelsByDay
+                )
+            }
         )
+    }
+
+    private enum GoFetch {
+        case meters([MetricLine])
+        case noSubscription
+        case failed(OpenCodeUsageError)
+    }
+
+    private func fetchGoMeters(apiKey: String) async -> GoFetch {
+        let response: HTTPResponse
+        do {
+            response = try await usageClient.fetchUsage(apiKey: apiKey)
+        } catch {
+            return .failed(.connectionFailed)
+        }
+
+        if response.statusCode == 401 {
+            return .failed(.unauthorized)
+        }
+        if response.statusCode == 403, OpenCodeUsageMapper.errorType(in: response) == "EntitlementError" {
+            return .noSubscription
+        }
+        guard (200..<300).contains(response.statusCode) else {
+            return .failed(.requestFailed(response.statusCode))
+        }
+        do {
+            return .meters(try OpenCodeUsageMapper.meterLines(response))
+        } catch let error as OpenCodeUsageError {
+            return .failed(error)
+        } catch {
+            return .failed(.invalidResponse)
+        }
     }
 }

@@ -24,9 +24,20 @@ final class WidgetDataStore {
     private let orderedDescriptors: @MainActor () -> [WidgetDescriptor]
     /// Clock for the failure-backoff window. Injected so tests can advance time deterministically.
     private let now: () -> Date
+    /// Monotonic clock for refresh durations, kept separate from wall time so a clock adjustment cannot
+    /// produce a negative or wildly inflated provider timing. Tests inject exact ticks.
+    private let monotonicNow: () -> TimeInterval
+    private let slowProviderRefreshThreshold: TimeInterval
+    /// See `defaultProviderRefreshTimeout`. Injected so tests can drive the deadline in milliseconds.
+    private let providerRefreshTimeout: TimeInterval
     /// Quota-notification preferences (three independent triggers). Injected; `nil` disables
     /// notifications entirely (tests and previews that don't wire it).
     private let notificationSettings: (@MainActor () -> NotificationSettingsStore)?
+    /// Card id → the account identity currently signed in there, resolved once at launch by
+    /// `ProviderAccountAssembly`. Drives the snapshot cache's account stamp: writes record the
+    /// producer, and launch loads only paint an entry whose stamp matches. A card absent here has an
+    /// unresolved identity this launch (or isn't account-aware) — its cache behaves as it always did.
+    private let providerIdentityKeys: [String: String]
     /// Where a fired milestone is delivered: `(idPrefix, title, subtitle, body) -> Bool`. The Bool is
     /// whether it was actually delivered (authorized + scheduled); on false the caller leaves the
     /// milestone un-marked so it retries next pass. Injected so tests can record posts without a live
@@ -44,6 +55,18 @@ final class WidgetDataStore {
     /// 5-minute heartbeat always retries; it only suppresses the sub-interval re-probes a wake burst
     /// would cause. The manual `force` refresh (⌘R) always bypasses it.
     private static let failureRetryBackoff: TimeInterval = 60
+    static let defaultSlowProviderRefreshThreshold: TimeInterval = 10
+    /// Hard deadline for a single provider's `refresh()` call. If the provider hasn't returned by then
+    /// the refresh is cancelled, the spinner stops, and the failure is surfaced like any other error.
+    ///
+    /// This is a last-resort backstop for a provider that hangs (a subprocess that never exits, a
+    /// credential read that blocks) — not a latency budget. It must therefore sit well above the sum of
+    /// the per-request timeouts a healthy provider can legitimately spend, or a slow network would turn
+    /// working providers into errors. The worst legitimate case is Cursor, whose probe is sequential:
+    /// token refresh (15s) → usage (10s, plus a 401 refresh-and-retry of another 25s) → plan (10s) →
+    /// usage summary (10s) → credits (10s) → usage CSV (30s), i.e. up to ~110s. Slowness short of the
+    /// deadline is already reported separately by `slowProviderRefreshThreshold`.
+    static let defaultProviderRefreshTimeout: TimeInterval = 120
 
     /// Rendered snapshots consumed by every UI/API surface. Equal to `localSnapshots` when iCloud sync
     /// is off; machine-local history rows are rebuilt from the union while sync is on.
@@ -98,6 +121,15 @@ final class WidgetDataStore {
         didSet { defaults.set(alwaysShowPacing, forKey: Self.alwaysShowPacingKey) }
     }
 
+    /// Restores the Usage Display preferences (meter style, reset-time format, always-show-pacing) to
+    /// their defaults — the Settings "Reset All Settings" path. Cached usage snapshots are data, not
+    /// settings, and stay untouched.
+    func resetDisplaySettings() {
+        meterStyle = .remaining
+        resetDisplayMode = .relative
+        alwaysShowPacing = false
+    }
+
     init(
         registry: WidgetRegistry,
         providers: [ProviderRuntime],
@@ -106,9 +138,15 @@ final class WidgetDataStore {
         isProviderEnabled: @escaping @MainActor (String) -> Bool = { _ in true },
         orderedDescriptors: (@MainActor () -> [WidgetDescriptor])? = nil,
         now: @escaping () -> Date = Date.init,
+        monotonicNow: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+        slowProviderRefreshThreshold: TimeInterval = WidgetDataStore.defaultSlowProviderRefreshThreshold,
+        providerRefreshTimeout: TimeInterval = WidgetDataStore.defaultProviderRefreshTimeout,
         notificationSettings: (@MainActor () -> NotificationSettingsStore)? = nil,
-        postNotification: (@MainActor (String, String, String, String) async -> Bool)? = nil
+        postNotification: (@MainActor (String, String, String, String) async -> Bool)? = nil,
+        providerIdentityKeys: [String: String] = [:]
     ) {
+        precondition(slowProviderRefreshThreshold >= 0)
+        precondition(providerRefreshTimeout > 0)
         self.registry = registry
         self.providersByID = Dictionary(uniqueKeysWithValues: providers.map { ($0.provider.id, $0) })
         self.cache = cache
@@ -116,18 +154,36 @@ final class WidgetDataStore {
         self.isProviderEnabled = isProviderEnabled
         self.orderedDescriptors = orderedDescriptors ?? { registry.descriptors }
         self.now = now
+        self.monotonicNow = monotonicNow
+        self.slowProviderRefreshThreshold = slowProviderRefreshThreshold
+        self.providerRefreshTimeout = providerRefreshTimeout
         self.notificationSettings = notificationSettings
         self.postNotification = postNotification
             ?? { idPrefix, title, subtitle, body in
                 await AppNotifications.shared.post(idPrefix: idPrefix, title: title, subtitle: subtitle, body: body)
             }
+        self.providerIdentityKeys = providerIdentityKeys
         self.meterStyle = defaults.enumValue(forKey: Self.meterStyleKey, default: .remaining)
         self.resetDisplayMode = defaults.enumValue(forKey: Self.resetDisplayModeKey, default: .relative)
         self.alwaysShowPacing = defaults.bool(forKey: Self.alwaysShowPacingKey)
         // Stale-while-revalidate: load whatever was cached (expired included) so the menu bar and
         // dashboard show last-known values immediately at launch instead of "—"; the refresh loop
         // replaces them as soon as fresh data lands.
+        //
+        // Account swap guard: when a claude/codex card's CURRENT account identity is known, a cached
+        // entry only paints if the account that produced it matches. After a swap at the same home the
+        // card id still matches, so without this check the previous account's limits and plan would
+        // paint under the new account until the first successful refresh. A card whose current
+        // identity is unresolved (logged out, keyring-mode Codex) can't be verified either way — it
+        // keeps its cache, exactly as before the guard existed. Non-account providers are unaffected.
         let loaded = cache.loadSnapshots(providerIDs: registry.providers.map(\.id))
+            .filter { cardID, _ in
+                guard cache.hasStaleAccountStamp(providerID: cardID, currentIdentityKey: providerIdentityKeys[cardID]) else {
+                    return true
+                }
+                AppLog.info(.cache, "stale account cache discarded for \(cardID)")
+                return false
+            }
         self.localSnapshots = loaded
         self.snapshots = loaded
     }
@@ -141,7 +197,7 @@ final class WidgetDataStore {
         // `Task {}` from MainActor context inherits the isolation (a task-group child can't capture
         // the non-Sendable store), so: fire one task per provider, then await them all.
         let providerIDs = registry.providers.map(\.id).filter { isProviderEnabled($0) }
-        let start = Date()
+        let start = monotonicNow()
         AppLog.info(.refresh, "batch start (\(providerIDs.count) providers, force=\(force))")
         let tasks = providerIDs.map { providerID in
             Task { await self.refresh(providerID: providerID, force: force, notifyHistoryChange: false) }
@@ -155,7 +211,7 @@ final class WidgetDataStore {
         // (this time + one refresh interval), mirroring the periodic loop that sleeps one interval
         // after each pass.
         lastRefreshAt = Date()
-        let durationMs = Int(Date().timeIntervalSince(start) * 1000)
+        let durationMs = durationMilliseconds(since: start)
         // Count THIS batch's actual outcomes, not the long-lived `providerErrors` map (which persists
         // across passes, so reading it would miscount cache hits and stale earlier failures).
         let refreshed = outcomes.count { $0 == .refreshed }
@@ -218,7 +274,14 @@ final class WidgetDataStore {
         notifyHistoryChange: Bool = true
     ) async -> RefreshOutcome {
         guard isProviderEnabled(providerID) else { return .skipped }
-        if !force, let cached = cache.snapshot(providerID: providerID) {
+        // A TTL-fresh entry that provably belongs to another account (swap since it was written) must
+        // not short-circuit the refresh — under persisted freshness (the one-shot CLI) it would copy
+        // the previous account's snapshot back in. Treat it as a miss so the fetch overwrites it.
+        let staleAccountStamp = cache.hasStaleAccountStamp(
+            providerID: providerID,
+            currentIdentityKey: providerIdentityKeys[providerID]
+        )
+        if !force, !staleAccountStamp, let cached = cache.snapshot(providerID: providerID) {
             // Skip the no-op write: `@Observable` doesn't compare values, so unconditionally
             // re-assigning an unchanged snapshot would re-render the menu-bar label every pass.
             AppLog.debug(.refresh, "cache hit \(providerID)")
@@ -246,11 +309,33 @@ final class WidgetDataStore {
         }
         refreshingProviderIDs.insert(providerID)
         defer { refreshingProviderIDs.remove(providerID) }
-        let start = Date()
-        var snapshot = await ProviderRefreshContext.$isManual.withValue(force) {
-            await provider.refresh()
+        let start = monotonicNow()
+        // A provider that never returns would otherwise hold the in-flight entry — and the spinner —
+        // forever. Past the deadline, stop waiting and treat it as any other failed refresh.
+        guard var snapshot = await ProviderRefreshDeadline.snapshot(
+            from: provider,
+            force: force,
+            timeout: providerRefreshTimeout
+        ) else {
+            providerErrors[providerID] = "Refresh timed out after \(Int(providerRefreshTimeout))s"
+            failureRetryAfter[providerID] = now().addingTimeInterval(Self.failureRetryBackoff)
+            AppLog.warn(.refresh, "\(providerID) timed out after \(Int(providerRefreshTimeout))s")
+            onRefreshOutcome?(providerID, .failed, .network, force)
+            return .failed
         }
-        let durationMs = Int(Date().timeIntervalSince(start) * 1000)
+        // A canceled refresh may still return if a provider's underlying work is non-throwing. Never
+        // publish that potentially partial snapshot; keep the last-good state exactly as it was.
+        guard !Task.isCancelled else {
+            AppLog.debug(.refresh, "cancelled \(providerID) refresh; keeping last-good snapshot")
+            return .skipped
+        }
+        let durationMs = durationMilliseconds(since: start)
+        if TimeInterval(durationMs) >= slowProviderRefreshThreshold * 1000 {
+            AppLog.warn(
+                .refresh,
+                "\(providerID) slow refresh (\(durationMs)ms, threshold=\(Int(slowProviderRefreshThreshold * 1000))ms)"
+            )
+        }
         if let message = Self.errorMessage(in: snapshot) {
             // Failed refresh: surface the error but keep the last good snapshot on screen rather than
             // collapsing every row to "No data". The provider error string is already user-safe.
@@ -285,12 +370,18 @@ final class WidgetDataStore {
             AppLog.debug(.refresh, "preserved last-good history for \(providerID) after scan miss")
         }
         localSnapshots[providerID] = snapshot
-        cache.store(snapshot)
+        // Stamp the write with the card's launch-resolved account identity; nil (no stamp) for
+        // non-account providers and for cards whose identity didn't resolve this launch.
+        cache.store(snapshot, producedByIdentityKey: providerIdentityKeys[providerID])
         rebuildRenderedSnapshots()
         if notifyHistoryChange { onLocalHistoryChanged?() }
         AppLog.info(.refresh, "\(providerID) ok (\(durationMs)ms)")
         onRefreshOutcome?(providerID, .refreshed, nil, force)
         return .refreshed
+    }
+
+    private func durationMilliseconds(since start: TimeInterval) -> Int {
+        max(0, Int((monotonicNow() - start) * 1000))
     }
 
     /// Clears a provider's failure backoff so the next pass probes it immediately. Called when the user
@@ -323,17 +414,43 @@ final class WidgetDataStore {
 
     func localHistoryDocument(deviceID: String, deviceName: String, updatedAt: Date = Date()) -> UsageHistoryDocument {
         var providers: [String: ProviderUsageHistory] = [:]
+        var identities: [String: String] = [:]
+        let hasMultipleClaudeCards = registry.providers.count {
+            ProviderAccountID.family(of: $0.id) == "claude"
+        } > 1
         for (providerID, descriptor) in registry.historyDescriptorsByProvider
         where descriptor.scope == .machineLocal && isProviderEnabled(providerID) {
             if let history = localSnapshots[providerID]?.usageHistory {
+                if ProviderAccountID.family(of: providerID) == "claude" {
+                    if let identity = providerIdentityKeys[providerID] {
+                        identities[providerID] = identity.lowercased()
+                    } else if hasMultipleClaudeCards || providerID != "claude" {
+                        AppLog.warn(.config, "sync: omitting Claude history without account ownership")
+                        continue
+                    }
+                }
                 providers[providerID] = history
             }
         }
+        let exportedClaudeIDs = providers.keys.filter {
+            ProviderAccountID.family(of: $0) == "claude"
+        }
+        if let onlyClaudeID = exportedClaudeIDs.first,
+           exportedClaudeIDs.count == 1, onlyClaudeID != "claude"
+        {
+            providers["claude"] = providers.removeValue(forKey: onlyClaudeID)
+            identities["claude"] = identities.removeValue(forKey: onlyClaudeID)
+        }
+        let hasClaudeAccountCards = providers.keys.contains {
+            ProviderAccountID.family(of: $0) == "claude" && $0 != "claude"
+        }
         return UsageHistoryDocument(
+            schema: hasClaudeAccountCards ? UsageHistoryDocument.accountSchema : UsageHistoryDocument.currentSchema,
             deviceID: deviceID,
             deviceName: deviceName,
             updatedAt: updatedAt,
-            providers: providers
+            providers: providers,
+            identities: identities.isEmpty ? nil : identities
         )
     }
 
@@ -352,6 +469,7 @@ final class WidgetDataStore {
             localSnapshots: localSnapshots,
             peerDocuments: peerHistoryDocuments,
             descriptors: enabledDescriptors,
+            providerIdentityKeys: providerIdentityKeys,
             now: renderDate
         )
         var rendered = localSnapshots
@@ -481,8 +599,8 @@ final class WidgetDataStore {
                 infoNote: descriptor.sample.infoNote
             )
             // Descriptor opt-in (session-window meters read "Not started" when unused); the fresh
-            // `.progress` result doesn't start from the sample, so carry the flag explicitly.
-            result.isSessionWindow = descriptor.sample.isSessionWindow
+            // `.progress` result doesn't start from the sample, so carry the signal explicitly.
+            result.sessionStartSignal = descriptor.sample.sessionStartSignal
             return result
         case .text:
             // Text lines carry provider notices for the local API; no dashboard descriptor consumes

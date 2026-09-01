@@ -13,7 +13,7 @@ final class ProviderEnablementStoreTests: XCTestCase {
         XCTAssertTrue(store.isEnabled("a-provider-that-ships-next-year"))
     }
 
-    func testDisablingPersistsAcrossInstances() {
+    func testDisablingAndReenablingPersistAcrossInstances() {
         let defaults = makeDefaults("persist")
         let store = ProviderEnablementStore(defaults: defaults)
 
@@ -26,21 +26,15 @@ final class ProviderEnablementStoreTests: XCTestCase {
         XCTAssertEqual(reloaded.disabledIDs, ["codex"])
         XCTAssertFalse(reloaded.isEnabled("codex"))
         XCTAssertTrue(reloaded.isEnabled("claude"))
-    }
 
-    func testReEnablingClearsDisabledStateAndPersists() {
-        let defaults = makeDefaults("re-enable")
-        let store = ProviderEnablementStore(defaults: defaults)
-
-        store.setEnabled(false, for: "grok")
-        store.setEnabled(true, for: "grok")
+        store.setEnabled(true, for: "codex")
 
         XCTAssertTrue(store.disabledIDs.isEmpty)
-        XCTAssertTrue(store.isEnabled("grok"))
+        XCTAssertTrue(store.isEnabled("codex"))
 
-        let reloaded = ProviderEnablementStore(defaults: defaults)
-        XCTAssertTrue(reloaded.disabledIDs.isEmpty)
-        XCTAssertTrue(reloaded.isEnabled("grok"))
+        let reenabled = ProviderEnablementStore(defaults: defaults)
+        XCTAssertTrue(reenabled.disabledIDs.isEmpty)
+        XCTAssertTrue(reenabled.isEnabled("codex"))
     }
 
     // MARK: - Early-refresh signal

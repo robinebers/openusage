@@ -7,10 +7,26 @@ import Observation
 /// `withObservationTracking`'s `onChange` is one-shot, so each render re-arms it. After the first change,
 /// the next render waits briefly so a burst of snapshot writes collapses into one render with the latest
 /// values — avoiding enough repeated work to make the menu-bar item disappear during a busy refresh.
+/// Unchanged memoized images are not re-applied: setting the same `NSImage` still costs a WindowServer
+/// redraw.
 @MainActor
 final class StatusItemImageUpdater {
+    /// Applies a status-item image only when the instance changed. The renderer memoizes by content,
+    /// so an identical instance means the button already shows this render — an unconditional set
+    /// still costs a full status-item redraw through WindowServer on macOS 26+.
+    struct ApplyGate {
+        private var lastApplied: NSImage?
+
+        mutating func apply(_ image: NSImage, using apply: (NSImage) -> Void) {
+            guard image !== lastApplied else { return }
+            lastApplied = image
+            apply(image)
+        }
+    }
+
     private let container: AppContainer
     private let apply: (NSImage) -> Void
+    private var applyGate = ApplyGate()
 
     /// - Parameter apply: sets the rendered image onto the status-item button.
     init(container: AppContainer, apply: @escaping (NSImage) -> Void) {
@@ -27,7 +43,7 @@ final class StatusItemImageUpdater {
                 self?.scheduleDelayedUpdate()
             }
         }
-        apply(image)
+        applyGate.apply(image, using: apply)
     }
 
     /// The observation callback fires only once until `update()` reads and re-arms it. Waiting here lets

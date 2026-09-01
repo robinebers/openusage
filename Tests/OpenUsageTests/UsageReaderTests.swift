@@ -66,13 +66,7 @@ final class UsageReaderTests: XCTestCase {
         XCTAssertEqual(provider.refreshCount, 1)
         XCTAssertNotNil((object["providers"] as? [String: Any])?["stub"])
         XCTAssertEqual(cached["stub"]?.line(label: "Weekly"), .progress(
-            label: "Weekly",
-            used: 20,
-            limit: 100,
-            format: .percent,
-            resetsAt: nil,
-            periodDurationMs: nil,
-            colorHex: nil
+            label: "Weekly", used: 20, limit: 100, format: .percent
         ))
     }
 

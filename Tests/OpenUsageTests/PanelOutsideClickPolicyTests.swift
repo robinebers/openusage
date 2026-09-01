@@ -13,6 +13,8 @@ final class PanelOutsideClickPolicyTests: XCTestCase {
             .init(isOnStatusButton: true),
             .init(isPanelWindow: true),
             .init(isStatusItemWindow: true),
+            .init(isInsidePanel: true),
+            .init(isMorphing: true, isInsidePanel: true),
             .init(eventWindowTypeName: "NSMenuWindow"),
             .init(eventWindowTypeName: "_NSPopoverWindow"),
         ]
@@ -22,27 +24,10 @@ final class PanelOutsideClickPolicyTests: XCTestCase {
         }
     }
 
-    func testPopoverWindowMatchIsCaseInsensitive() {
-        // A click inside a hover popover (its own `_NSPopoverWindow`, floating outside the panel frame)
-        // must keep the panel open so interactive controls in it — the resets "Use" button — receive
-        // the click instead of being dismissed as an outside click.
-        XCTAssertTrue(
-            PanelOutsideClickPolicy.shouldKeepOpen(.init(eventWindowTypeName: "myPOPOVERwindow"))
-        )
-    }
-
-    func testInsidePanelKeepsOpenWithoutAnEventWindow() {
-        XCTAssertTrue(PanelOutsideClickPolicy.shouldKeepOpen(.init(isInsidePanel: true)))
-    }
-
-    func testInsidePanelStillKeepsOpenWhenAnotherReasonAlsoApplies() {
-        XCTAssertTrue(PanelOutsideClickPolicy.shouldKeepOpen(.init(isMorphing: true, isInsidePanel: true)))
-    }
-
-    func testMenuWindowMatchIsCaseInsensitive() {
-        XCTAssertTrue(
-            PanelOutsideClickPolicy.shouldKeepOpen(.init(eventWindowTypeName: "privateMENUwindow"))
-        )
+    func testMenuAndPopoverWindowMatchesAreCaseInsensitive() {
+        for windowType in ["myPOPOVERwindow", "privateMENUwindow"] {
+            XCTAssertTrue(PanelOutsideClickPolicy.shouldKeepOpen(.init(eventWindowTypeName: windowType)))
+        }
     }
 
     func testUnrelatedWindowDismisses() {
@@ -55,17 +40,6 @@ final class PanelOutsideClickPolicyTests: XCTestCase {
     /// screen tops out at y=1000 but the 24pt button frame ends at y=996.
     private let buttonFrame = NSRect(x: 100, y: 972, width: 40, height: 24)
     private let screenTop: CGFloat = 1000
-
-    func testClickAtTopOfScreenHitsStatusButton() {
-        // The issue #1008 geometry, live-captured: with the cursor pinned to the top of the screen,
-        // `NSEvent.mouseLocation.y` reports exactly the screen's maxY — a few points *above* the
-        // button frame's top, in the menu-bar strip macOS still routes to the button. Reading it as
-        // an outside click dismissed the panel on mouse-down, and the button's mouse-up toggle
-        // reopened it, so the second click never closed the panel.
-        XCTAssertTrue(PanelOutsideClickPolicy.pointHitsStatusButton(
-            NSPoint(x: 120, y: screenTop), buttonFrame: buttonFrame, screenTop: screenTop
-        ))
-    }
 
     func testClickAtTopOfScreenWithRealCapturedGeometryHits() {
         // Verbatim from the diagnostic log that pinned the bug down: point {4122.98, 1555},
@@ -89,27 +63,17 @@ final class PanelOutsideClickPolicyTests: XCTestCase {
         ))
     }
 
-    func testClickBesideStatusButtonMisses() {
-        XCTAssertFalse(PanelOutsideClickPolicy.pointHitsStatusButton(
-            NSPoint(x: 99, y: 984), buttonFrame: buttonFrame, screenTop: screenTop
-        ))
-        XCTAssertFalse(PanelOutsideClickPolicy.pointHitsStatusButton(
-            NSPoint(x: 141, y: 984), buttonFrame: buttonFrame, screenTop: screenTop
-        ))
-    }
-
-    func testClickInTopStripBesideStatusButtonMisses() {
-        // The upward extension widens the hit zone only vertically — a top-edge click next to the
-        // button (over a neighboring status item) must still dismiss.
-        XCTAssertFalse(PanelOutsideClickPolicy.pointHitsStatusButton(
-            NSPoint(x: 150, y: screenTop), buttonFrame: buttonFrame, screenTop: screenTop
-        ))
-    }
-
-    func testClickBelowStatusButtonMisses() {
-        XCTAssertFalse(PanelOutsideClickPolicy.pointHitsStatusButton(
-            NSPoint(x: 120, y: 971), buttonFrame: buttonFrame, screenTop: screenTop
-        ))
+    func testClicksOutsideButtonEdgesAndTopStripMiss() {
+        for point in [
+            NSPoint(x: 99, y: 984),
+            NSPoint(x: 141, y: 984),
+            NSPoint(x: 150, y: screenTop),
+            NSPoint(x: 120, y: 971)
+        ] {
+            XCTAssertFalse(PanelOutsideClickPolicy.pointHitsStatusButton(
+                point, buttonFrame: buttonFrame, screenTop: screenTop
+            ))
+        }
     }
 
     func testEmptyButtonFrameNeverHits() {

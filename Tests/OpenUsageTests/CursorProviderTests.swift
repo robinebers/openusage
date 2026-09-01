@@ -5,7 +5,7 @@ final class CursorAuthStoreTests: XCTestCase {
     func testPrefersKeychainWhenSQLiteLooksFreeAndSubjectsDiffer() {
         let sqliteToken = makeCursorJWT(sub: "google-oauth2|sqlite-user")
         let keychainToken = makeCursorJWT(sub: "auth0|keychain-user")
-        let sqlite = FakeSQLite(values: [
+        let sqlite = KeyValueSQLite(values: [
             CursorAuthStore.accessTokenKey: sqliteToken,
             CursorAuthStore.refreshTokenKey: "sqlite-refresh",
             CursorAuthStore.membershipTypeKey: "free"
@@ -24,7 +24,7 @@ final class CursorAuthStoreTests: XCTestCase {
     }
 
     func testPersistsSQLiteAccessToken() throws {
-        let sqlite = FakeSQLite()
+        let sqlite = KeyValueSQLite()
         let store = CursorAuthStore(sqlite: sqlite, keychain: FakeKeychain())
 
         try store.saveAccessToken("fresh-token", source: .sqlite)
@@ -34,6 +34,48 @@ final class CursorAuthStoreTests: XCTestCase {
 }
 
 final class CursorUsageMapperTests: XCTestCase {
+    func testMapsGrokBotWeeklyUsageAndItsOwnResetWindow() throws {
+        let line = try XCTUnwrap(CursorUsageMapper.mapGrokBotUsage([
+            "usagePercent": 37.5,
+            "currentPeriodStart": "2026-08-20T00:00:00Z",
+            "nextResetTimestampUtc": "2026-08-27T00:00:00Z",
+            "hasNonZeroIncludedLimit": true
+        ]))
+
+        let usage = try XCTUnwrap(progress([line], "Grok Bot usage"))
+        XCTAssertEqual(usage.used, 37.5)
+        XCTAssertEqual(usage.limit, 100)
+        XCTAssertEqual(usage.resetsAt, OpenUsageISO8601.date(from: "2026-08-27T00:00:00Z"))
+        XCTAssertEqual(usage.periodDurationMs, MetricPeriod.weekMs)
+    }
+
+    func testGrokBotUsageAllowsZeroAndClampsOverages() throws {
+        let zero = try XCTUnwrap(CursorUsageMapper.mapGrokBotUsage(["usagePercent": 0]))
+        let overage = try XCTUnwrap(CursorUsageMapper.mapGrokBotUsage(["usagePercent": 125]))
+
+        XCTAssertEqual(progress([zero], "Grok Bot usage")?.used, 0)
+        XCTAssertEqual(progress([zero], "Grok Bot usage")?.periodDurationMs, MetricPeriod.weekMs)
+        XCTAssertEqual(progress([overage], "Grok Bot usage")?.used, 100)
+    }
+
+    func testGrokBotUsageRejectsPooledAndInvalidPersonalMeters() {
+        XCTAssertNil(CursorUsageMapper.mapGrokBotUsage([
+            "usagePercent": 42,
+            "usesPooledEnterpriseAllowance": true
+        ]))
+        XCTAssertNil(CursorUsageMapper.mapGrokBotUsage([
+            "usagePercent": 0,
+            "hasNonZeroIncludedLimit": false
+        ]))
+        XCTAssertNil(CursorUsageMapper.mapGrokBotUsage([
+            "usagePercent": 0,
+            "includedLimitZero": true
+        ]))
+        XCTAssertNil(CursorUsageMapper.mapGrokBotUsage(["usagePercent": true]))
+        XCTAssertNil(CursorUsageMapper.mapGrokBotUsage(["usagePercent": -1]))
+        XCTAssertNil(CursorUsageMapper.mapGrokBotUsage(["hasNonZeroIncludedLimit": true]))
+    }
+
     func testMapsCreditsUsageBreakdownAndOnDemand() throws {
         let mapped = try CursorUsageMapper.mapUsage(
             usage: [
@@ -64,8 +106,8 @@ final class CursorUsageMapperTests: XCTestCase {
         XCTAssertEqual(mapped.plan, "Pro Plan")
         XCTAssertEqual(try XCTUnwrap(dollarValue(mapped.lines, "Credits")), 17268.15, accuracy: 0.001)
         XCTAssertEqual(progress(mapped.lines, "Total usage")?.used, 20)
-        XCTAssertEqual(progress(mapped.lines, "Auto usage")?.used, 12.5)
-        XCTAssertEqual(progress(mapped.lines, "API usage")?.used, 7.5)
+        XCTAssertEqual(progress(mapped.lines, "Cursor Models")?.used, 12.5)
+        XCTAssertEqual(progress(mapped.lines, "Other Models")?.used, 7.5)
         XCTAssertEqual(progress(mapped.lines, "On-demand")?.used, 40)
     }
 
@@ -189,6 +231,30 @@ final class CursorUsageMapperTests: XCTestCase {
 
 @MainActor
 final class CursorProviderTests: XCTestCase {
+    func testModelCategoryDescriptorsMatchDashboardAndKeepStableIdentifiers() throws {
+        let descriptors = CursorProvider().widgetDescriptors
+        XCTAssertEqual(Array(descriptors.prefix(4).map(\.id)), [
+            "cursor.usage", "cursor.auto", "cursor.api", "cursor.grokBot"
+        ])
+
+        let totalUsage = try XCTUnwrap(descriptors.first { $0.id == "cursor.usage" })
+        XCTAssertEqual(totalUsage.title, "Total Usage")
+
+        let grokBot = try XCTUnwrap(descriptors.first { $0.id == "cursor.grokBot" })
+        XCTAssertEqual(grokBot.title, "Grok Bot")
+        XCTAssertEqual(grokBot.limitResources.map(\.key), ["grokBot"])
+
+        let cursorModels = try XCTUnwrap(descriptors.first { $0.id == "cursor.auto" })
+        XCTAssertEqual(cursorModels.title, "Cursor Models")
+        XCTAssertEqual(cursorModels.metricLabel, "Cursor Models")
+        XCTAssertEqual(cursorModels.limitResources.map(\.key), ["autoUsage"])
+
+        let otherModels = try XCTUnwrap(descriptors.first { $0.id == "cursor.api" })
+        XCTAssertEqual(otherModels.title, "Other Models")
+        XCTAssertEqual(otherModels.metricLabel, "Other Models")
+        XCTAssertEqual(otherModels.limitResources.map(\.key), ["apiUsage"])
+    }
+
     func testRefreshFetchesLiveCursorUsage() async {
         let accessToken = makeCursorJWT(sub: "google-oauth2|user_abc123")
         let http = RoutingHTTPClient { request in
@@ -215,6 +281,19 @@ final class CursorProviderTests: XCTestCase {
             if url.contains("GetPlanInfo") {
                 return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"planInfo":{"planName":"pro plan"}}"#.utf8))
             }
+            if url.contains("GetSandUsageStatus") {
+                XCTAssertEqual(request.method, "POST")
+                XCTAssertEqual(request.headers["Authorization"], "Bearer \(accessToken)")
+                XCTAssertEqual(request.headers["Connect-Protocol-Version"], "1")
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data("""
+                {
+                  "usagePercent": 37.5,
+                  "currentPeriodStart": "2026-08-20T00:00:00Z",
+                  "nextResetTimestampUtc": "2026-08-27T00:00:00Z",
+                  "hasNonZeroIncludedLimit": true
+                }
+                """.utf8))
+            }
             if url.contains("GetCreditGrantsBalance") {
                 return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"hasCreditGrants":false}"#.utf8))
             }
@@ -226,7 +305,7 @@ final class CursorProviderTests: XCTestCase {
         }
         let provider = CursorProvider(
             authStore: CursorAuthStore(
-                sqlite: FakeSQLite(values: [CursorAuthStore.accessTokenKey: accessToken]),
+                sqlite: KeyValueSQLite(values: [CursorAuthStore.accessTokenKey: accessToken]),
                 keychain: FakeKeychain()
             ),
             usageClient: CursorUsageClient(http: http),
@@ -238,8 +317,13 @@ final class CursorProviderTests: XCTestCase {
         XCTAssertEqual(snapshot.plan, "Pro Plan")
         XCTAssertEqual(dollarValue(snapshot.lines, "Credits") ?? -1, 500)
         XCTAssertEqual(progress(snapshot.lines, "Total usage")?.used, 20)
-        XCTAssertEqual(progress(snapshot.lines, "Auto usage")?.used, 12.5)
-        XCTAssertEqual(progress(snapshot.lines, "API usage")?.used, 7.5)
+        XCTAssertEqual(progress(snapshot.lines, "Grok Bot usage")?.used, 37.5)
+        XCTAssertEqual(
+            progress(snapshot.lines, "Grok Bot usage")?.resetsAt,
+            OpenUsageISO8601.date(from: "2026-08-27T00:00:00Z")
+        )
+        XCTAssertEqual(progress(snapshot.lines, "Cursor Models")?.used, 12.5)
+        XCTAssertEqual(progress(snapshot.lines, "Other Models")?.used, 7.5)
         XCTAssertEqual(progress(snapshot.lines, "On-demand")?.used, 40)
     }
 }
@@ -258,47 +342,4 @@ private func dollarValue(_ lines: [MetricLine], _ label: String) -> Double? {
     return values.first { $0.kind == .dollars }?.number
 }
 
-private func makeCursorJWT(sub: String = "google-oauth2|user", exp: Double = 9_999_999_999) -> String {
-    let payload = #"{"sub":"\#(sub)","exp":\#(exp)}"#
-    let encoded = Data(payload.utf8).base64EncodedString()
-        .replacingOccurrences(of: "=", with: "")
-        .replacingOccurrences(of: "+", with: "-")
-        .replacingOccurrences(of: "/", with: "_")
-    return "a.\(encoded).c"
-}
-
-private final class FakeSQLite: SQLiteAccessing, @unchecked Sendable {
-    var values: [String: String]
-    var writtenValues: [String: String] = [:]
-
-    init(values: [String: String] = [:]) {
-        self.values = values
-    }
-
-    func queryValue(path: String, sql: String) throws -> String? {
-        for (key, value) in values where sql.contains(key) {
-            return value
-        }
-        return nil
-    }
-
-    func execute(path: String, sql: String) throws {
-        guard let key = sqlValue(after: "(key, value) VALUES ('", in: sql),
-              let value = sqlValue(after: "', '", in: sql)
-        else {
-            return
-        }
-        writtenValues[key] = value
-    }
-
-    private func sqlValue(after marker: String, in sql: String) -> String? {
-        guard let start = sql.range(of: marker)?.upperBound,
-              let end = sql[start...].range(of: "'")?.lowerBound
-        else {
-            return nil
-        }
-        return String(sql[start..<end]).replacingOccurrences(of: "''", with: "'")
-    }
-}
-
-// RoutingHTTPClient lives in TestSupport.swift (shared, records requests).
+// makeCursorJWT, KeyValueSQLite, and RoutingHTTPClient live in TestSupport.swift.

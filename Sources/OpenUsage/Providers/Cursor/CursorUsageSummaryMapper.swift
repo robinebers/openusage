@@ -131,7 +131,7 @@ enum CursorUsageSummaryMapper {
         to lines: inout [MetricLine]
     ) {
         let plan = ((summary?["individualUsage"] as? [String: Any])?["plan"] as? [String: Any])
-        for (key, label) in [("autoPercentUsed", "Auto usage"), ("apiPercentUsed", "API usage")] {
+        for (key, label) in [("autoPercentUsed", "Cursor Models"), ("apiPercentUsed", "Other Models")] {
             guard let percent = ProviderParse.number(plan?[key]) else { continue }
             lines.append(.progress(
                 label: label,

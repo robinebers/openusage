@@ -35,8 +35,6 @@ struct OpenUsageCLI {
             fail("\(message)\nRun 'openusage --help' for usage.", code: 2)
         } catch CLIError.appDefaultsUnavailable {
             fail("Could not open the OpenUsage settings domain.", code: 4)
-        } catch UsageReaderError.noCachedSnapshot(let providerID) {
-            fail("No cached usage for \(providerID). Run with --force to fetch it.", code: 3)
         } catch UsageReaderError.unknownProvider(let providerID) {
             fail("Unknown provider: \(providerID)", code: 2)
         } catch {

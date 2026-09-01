@@ -45,6 +45,15 @@ Because every provider produces the same normalized `MetricLine` shapes, the UI 
 way and doesn't need to know provider-specific details. To add one, see
 [Adding a provider](adding-a-provider.md).
 
+Claude, Codex, Grok, and pi share `IncrementalJSONLScanner` for local JSONL history. Its per-file parsed events
+are cached by path, size, and modification time in a versioned Application Support store, partitioned by
+provider/home identity. Provider instances reading the same home share one scanner actor, which avoids
+duplicate parsing across cards; the disk store provides the reuse across process launches. Scans drop
+source-file records as their modification dates leave the requested history window, while aggregation and
+pricing still run on every refresh from the cached events. Files are read in small bounded batches;
+unusually large individual records are skipped and logged so media-heavy or malformed histories cannot
+exhaust memory.
+
 ## Stores
 
 The UI reads from a few observable stores:
@@ -74,6 +83,11 @@ ends up unable to receive keystrokes until a second click. A non-activating `NSP
 `canBecomeKey` is `true` takes key focus the instant it opens, so keyboard navigation and the Settings
 shortcut recorder just work. `App/` owns that AppKit layer and hosts the SwiftUI views inside it, so
 the bulk of the UI can stay plain SwiftUI.
+
+SwiftUI measures each screen's content and drives panel resizing on the same animation clock as screen
+navigation. Row positions used for drag reordering stay outside observable view state, so scrolling and
+screen transitions don't rebuild their entire lists, and the panel's shadow updates once its size settles.
+Settings stays mounted after its first visit so returning to it reuses its native controls.
 
 ## Platform support
 

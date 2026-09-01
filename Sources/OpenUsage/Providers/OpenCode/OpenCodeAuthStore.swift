@@ -1,13 +1,8 @@
 import Foundation
 
-struct OpenCodeAuthState: Sendable, Equatable {
-    var hasAnyProviderLogin: Bool
-    var goAPIKey: String?
-}
-
-/// Reads OpenCode's credential footprint already on the machine. Local-only — never the network. The
-/// loader exposes only whether any provider login exists plus the `opencode-go` key needed to identify
-/// the Go plan; it never returns or logs external-provider secrets.
+/// Reads the OpenCode Go credential already on the machine. Local-only — never the network. The
+/// `opencode-go` key is both the first-run detection signal and the Bearer token for
+/// `GET /zen/go/v1/usage`, so it lives behind one loader.
 struct OpenCodeAuthStore: Sendable {
     var files: TextFileAccessing
     var environment: EnvironmentReading
@@ -31,40 +26,27 @@ struct OpenCodeAuthStore: Sendable {
         OpenCodePaths.authFilePath(dataDirectory: dataDirectory)
     }
 
-    /// Reads the non-secret auth summary. A dictionary entry needs both a non-empty `type` and a known
-    /// credential field to count as a provider login; schema objects and incomplete entries are ignored.
-    /// A present file that can't be read or parsed throws `credentialsUnreadable` so broken storage is
-    /// never mistaken for logout.
-    func loadState() throws -> OpenCodeAuthState {
+    /// The non-empty `opencode-go` API key from `auth.json`, or `nil` when the user has not logged into
+    /// OpenCode Go. Reads only that one entry — tolerant of unrelated sibling entries (other providers, or
+    /// a future non-object field like a schema marker) so one odd value can't hide a valid key. A present
+    /// file that can't be read or parsed throws `credentialsUnreadable` so broken storage is never
+    /// mistaken for logout; an absent file is the normal "not logged in" `nil`.
+    func goAPIKey() throws -> String? {
         let text: String?
         do {
             text = try files.readTextIfPresent(authFilePath)
         } catch {
             throw OpenCodeUsageError.credentialsUnreadable(detail: error.localizedDescription)
         }
-        guard let text else { return OpenCodeAuthState(hasAnyProviderLogin: false, goAPIKey: nil) }
+        guard let text else { return nil }
         guard let data = text.data(using: .utf8),
               let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         else {
             throw OpenCodeUsageError.credentialsUnreadable(detail: "auth.json is not valid JSON")
         }
-
-        let credentialFields = ["key", "access", "refresh", "token"]
-        let hasAnyProviderLogin = object.values.contains { value in
-            guard let entry = value as? [String: Any],
-                  let type = (entry["type"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            else { return false }
-            guard !type.isEmpty else { return false }
-            return credentialFields.contains { field in
-                ((entry[field] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty) != nil
-            }
-        }
-        let goKey = ((object["opencode-go"] as? [String: Any])?["key"] as? String)?
-            .trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
-        return OpenCodeAuthState(hasAnyProviderLogin: hasAnyProviderLogin, goAPIKey: goKey)
-    }
-
-    func goAPIKey() throws -> String? {
-        try loadState().goAPIKey
+        guard let entry = object["opencode-go"] as? [String: Any],
+              let key = entry["key"] as? String
+        else { return nil }
+        return key.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
     }
 }

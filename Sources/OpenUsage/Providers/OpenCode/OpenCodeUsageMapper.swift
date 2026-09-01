@@ -1,28 +1,52 @@
 import Foundation
 
-/// Turns the Go plan windows into the three cap meters. The published OpenCode Go caps are dollar-based,
-/// so each is a `.dollars` progress meter of observed-local spend against its cap. Local spend can only
-/// undercount true account usage (this machine only), which is why the card leads with these caps but
-/// also shows honest spend tiles.
+/// Turns `GET /zen/go/v1/usage` into the three Go plan meters. The endpoint reports percent used
+/// (same numbers as the OpenCode dashboard) plus an ISO reset time — not dollar spend — so each row
+/// is a `.percent` progress meter.
 enum OpenCodeUsageMapper {
-    static let sessionCap: Double = 12   // per rolling 5 hours
-    static let weeklyCap: Double = 30    // per UTC week
-    static let monthlyCap: Double = 60   // per anchored month
+    static func meterLines(_ response: HTTPResponse) throws -> [MetricLine] {
+        guard let body = ProviderParse.jsonObject(response.body) else {
+            throw OpenCodeUsageError.invalidResponse
+        }
+        return try meterLines(body: body)
+    }
 
-    static func meterLines(_ windows: OpenCodeGoWindows) -> [MetricLine] {
-        [
-            .progress(
-                label: "Session", used: windows.sessionSpend, limit: sessionCap, format: .dollars,
-                resetsAt: windows.sessionResetsAt, periodDurationMs: MetricPeriod.sessionMs
-            ),
-            .progress(
-                label: "Weekly", used: windows.weeklySpend, limit: weeklyCap, format: .dollars,
-                resetsAt: windows.weeklyResetsAt, periodDurationMs: MetricPeriod.weekMs
-            ),
-            .progress(
-                label: "Monthly", used: windows.monthlySpend, limit: monthlyCap, format: .dollars,
-                resetsAt: windows.monthlyResetsAt, periodDurationMs: windows.monthlyPeriodMs
-            )
+    static func meterLines(body: [String: Any]) throws -> [MetricLine] {
+        guard let usage = body["usage"] as? [String: Any] else {
+            throw OpenCodeUsageError.invalidResponse
+        }
+        return [
+            try window(usage["rolling"], label: "Session", periodMs: MetricPeriod.sessionMs),
+            try window(usage["weekly"], label: "Weekly", periodMs: MetricPeriod.weekMs),
+            try window(usage["monthly"], label: "Monthly", periodMs: MetricPeriod.monthMs)
         ]
+    }
+
+    /// The upstream error discriminator (`AuthError`, `EntitlementError`, …), when the body is the
+    /// documented `{ type, error: { type, message } }` shape. `nil` for HTML/Cloudflare/empty bodies.
+    static func errorType(in response: HTTPResponse) -> String? {
+        guard let body = ProviderParse.jsonObject(response.body),
+              let error = body["error"] as? [String: Any],
+              let type = (error["type"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !type.isEmpty
+        else { return nil }
+        return type
+    }
+
+    private static func window(_ raw: Any?, label: String, periodMs: Int) throws -> MetricLine {
+        guard let object = raw as? [String: Any],
+              let percent = ProviderParse.number(object["percent"])
+        else {
+            throw OpenCodeUsageError.invalidResponse
+        }
+        let resetsAt = (object["resetsAt"] as? String).flatMap(OpenUsageISO8601.date(from:))
+        return .progress(
+            label: label,
+            used: ProviderParse.clampPercent(percent),
+            limit: 100,
+            format: .percent,
+            resetsAt: resetsAt,
+            periodDurationMs: periodMs
+        )
     }
 }

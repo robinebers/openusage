@@ -69,26 +69,16 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
     }
 
     func testRejectsLinesTheCcusageSchemaRejects() {
-        // Missing usage.input_tokens / output_tokens.
-        XCTAssertNil(ClaudeLogUsageScanner.parseLine(Data(
-            #"{"timestamp":"2026-02-20T12:00:00Z","message":{"usage":{"output_tokens":5}}}"#.utf8
-        )))
-        // Unparseable timestamp.
-        XCTAssertNil(ClaudeLogUsageScanner.parseLine(Data(
-            #"{"timestamp":"not-a-date","message":{"usage":{"input_tokens":1,"output_tokens":2}}}"#.utf8
-        )))
-        // Unknown speed value (ccusage's lowercase enum parse fails the line).
-        XCTAssertNil(ClaudeLogUsageScanner.parseLine(Data(
-            #"{"timestamp":"2026-02-20T12:00:00Z","message":{"usage":{"input_tokens":1,"output_tokens":2,"speed":"turbo"}}}"#.utf8
-        )))
-        // Non-semver version marks a foreign log shape.
-        XCTAssertNil(ClaudeLogUsageScanner.parseLine(Data(
-            ClaudeLogFixture.usageLine(timestamp: "2026-02-20T12:00:00Z", version: "unknown").utf8
-        )))
-        // Present-but-empty model.
-        XCTAssertNil(ClaudeLogUsageScanner.parseLine(Data(
-            ClaudeLogFixture.usageLine(timestamp: "2026-02-20T12:00:00Z", model: "").utf8
-        )))
+        let invalidLines = [
+            #"{"timestamp":"2026-02-20T12:00:00Z","message":{"usage":{"output_tokens":5}}}"#,
+            #"{"timestamp":"not-a-date","message":{"usage":{"input_tokens":1,"output_tokens":2}}}"#,
+            #"{"timestamp":"2026-02-20T12:00:00Z","message":{"usage":{"input_tokens":1,"output_tokens":2,"speed":"turbo"}}}"#,
+            ClaudeLogFixture.usageLine(timestamp: "2026-02-20T12:00:00Z", model: "")
+        ]
+
+        for line in invalidLines {
+            XCTAssertNil(ClaudeLogUsageScanner.parseLine(Data(line.utf8)), line)
+        }
     }
 
     func testSyntheticModelKeepsEntryWithoutModel() throws {
@@ -100,29 +90,25 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(entry.tokens.totalTokens, 10)
     }
 
-    func testSemverPrefix() {
-        XCTAssertTrue(ClaudeLogUsageScanner.isSemverPrefix("1.0.24"))
-        XCTAssertTrue(ClaudeLogUsageScanner.isSemverPrefix("1.0.24-beta.1"))
-        XCTAssertFalse(ClaudeLogUsageScanner.isSemverPrefix("unknown"))
-        XCTAssertFalse(ClaudeLogUsageScanner.isSemverPrefix("1.0"))
-        XCTAssertFalse(ClaudeLogUsageScanner.isSemverPrefix("1.0."))
+    func testLogParsingAcceptsSemverPrefixesAndRejectsIncompleteVersions() {
+        for (version, accepted) in [("1.0.24", true), ("1.0.24-beta.1", true),
+                                     ("unknown", false), ("1.0", false), ("1.0.", false)] {
+            let line = ClaudeLogFixture.usageLine(timestamp: "2026-02-20T12:00:00Z", version: version)
+            XCTAssertEqual(ClaudeLogUsageScanner.parseLine(Data(line.utf8)) != nil, accepted, version)
+        }
     }
 
-    // Ported from ccusage `rejects_null_schema_fields_like_typescript_loader`.
-    func testRejectsNullSchemaFields() {
-        XCTAssertTrue(ClaudeLogUsageScanner.hasUnsupportedNullField(Data(
-            #"{"message":{"usage":{"speed":null}}}"#.utf8
-        )))
-        XCTAssertTrue(ClaudeLogUsageScanner.hasUnsupportedNullField(Data(
-            #"{"message":{"model":null,"usage":{"input_tokens":0}}}"#.utf8
-        )))
-        XCTAssertTrue(ClaudeLogUsageScanner.hasUnsupportedNullField(Data(
-            #"{"sessionId":null,"message":{"usage":{"input_tokens":0}}}"#.utf8
-        )))
-        // `content: null` is fine — only the known schema fields reject nulls.
-        XCTAssertFalse(ClaudeLogUsageScanner.hasUnsupportedNullField(Data(
-            #"{"message":{"content":null,"usage":{"input_tokens":0}}}"#.utf8
-        )))
+    func testLogParsingRejectsNullSchemaFieldsButAllowsNullContent() {
+        let cases: [(line: String, accepted: Bool)] = [
+            (#"{"timestamp":"2026-02-20T12:00:00Z","message":{"usage":{"input_tokens":1,"output_tokens":2,"speed":null}}}"#, false),
+            (#"{"timestamp":"2026-02-20T12:00:00Z","message":{"model":null,"usage":{"input_tokens":1,"output_tokens":2}}}"#, false),
+            (#"{"timestamp":"2026-02-20T12:00:00Z","sessionId":null,"message":{"usage":{"input_tokens":1,"output_tokens":2}}}"#, false),
+            (#"{"timestamp":"2026-02-20T12:00:00Z","message":{"content":null,"usage":{"input_tokens":1,"output_tokens":2}}}"#, true)
+        ]
+
+        for entry in cases {
+            XCTAssertEqual(!ClaudeLogUsageScanner.parseFile(Data(entry.line.utf8)).isEmpty, entry.accepted, entry.line)
+        }
     }
 
     func testParseFileSkipsNonUsageAndMalformedLines() {
@@ -156,14 +142,14 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
     }
 
     func testParseFileExpandsOnlyAdvisorIterationsWithoutRecountingMainUsage() {
-        let line = #"{"timestamp":"2026-02-20T12:00:00.000Z","requestId":"req_1","costUSD":1.23,"message":{"id":"msg_1","model":"main-model","usage":{"input_tokens":2,"output_tokens":491,"cache_creation_input_tokens":7853,"cache_read_input_tokens":226584,"iterations":[{"type":"message","input_tokens":1,"output_tokens":200},{"type":"advisor_message","model":"claude-test-model","input_tokens":10,"output_tokens":2,"cache_creation_input_tokens":3,"cache_read_input_tokens":4},{"type":"message","input_tokens":1,"output_tokens":291}]}}}"#
+        let line = #"{"timestamp":"2026-02-20T12:00:00.000Z","requestId":"req_1","costUSD":1.23,"message":{"id":"msg_1","model":"main-model","usage":{"input_tokens":2,"output_tokens":5,"cache_creation_input_tokens":8,"cache_read_input_tokens":20,"iterations":[{"type":"message","input_tokens":1,"output_tokens":3},{"type":"advisor_message","model":"claude-test-model","input_tokens":10,"output_tokens":2,"cache_creation_input_tokens":3,"cache_read_input_tokens":4}]}}}"#
 
         let entries = ClaudeLogUsageScanner.parseFile(Data(line.utf8))
 
         XCTAssertEqual(entries.count, 2)
         XCTAssertEqual(entries[0].model, "main-model")
         XCTAssertEqual(entries[0].tokens, TokenBreakdown(
-            input: 2, cacheWrite5m: 7853, cacheRead: 226584, output: 491
+            input: 2, cacheWrite5m: 8, cacheRead: 20, output: 5
         ))
         XCTAssertEqual(entries[0].costUSD, 1.23)
         XCTAssertEqual(entries[1].model, "claude-test-model")
@@ -218,11 +204,8 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
             entry(messageID: "msg-parent", requestID: "req-sidechain-replay", isSidechain: true, cacheRead: 50_000, output: 10),
             entry(messageID: "msg-sidechain-answer", requestID: "req-sidechain-answer", isSidechain: true, cacheRead: 700, output: 30)
         ])
-        XCTAssertEqual(deduped.count, 2)
-        XCTAssertEqual(deduped[0].requestID, "req-parent")
-        XCTAssertEqual(deduped[0].tokens.cacheRead, 20)
-        XCTAssertEqual(deduped[1].messageID, "msg-sidechain-answer")
-        XCTAssertEqual(deduped[1].tokens.cacheRead, 700)
+        XCTAssertEqual(deduped.map(\.requestID), ["req-parent", "req-sidechain-answer"])
+        XCTAssertEqual(deduped.map(\.tokens.cacheRead), [20, 700])
     }
 
     // Ported from `refreshes_dedupe_indexes_when_parent_replaces_sidechain_replay`.
@@ -232,9 +215,8 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
             entry(messageID: "msg-parent", requestID: "req-parent", isSidechain: false, cacheRead: 20, output: 10),
             entry(messageID: "msg-parent", requestID: "req-parent", isSidechain: false, cacheRead: 5, output: 5)
         ])
-        XCTAssertEqual(deduped.count, 1)
-        XCTAssertEqual(deduped[0].requestID, "req-parent")
-        XCTAssertEqual(deduped[0].tokens.cacheRead, 20)
+        XCTAssertEqual(deduped.map(\.requestID), ["req-parent"])
+        XCTAssertEqual(deduped.first?.tokens.cacheRead, 20)
     }
 
     func testDistinctRequestIDsWithoutSidechainAreBothKept() {
@@ -327,33 +309,20 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
         ])
     }
 
-    func testAggregateUnknownModelOnlyLeavesDayUnbacked() {
+    func testUnpriceableModelsStayUnbackedAndOnlyNamedModelsWarn() {
         let day = localDay("2026-02-20T12:00:00.000Z")
-        var unknown = entry(messageID: "m1", requestID: "r1", isSidechain: false, cacheRead: 0, output: 0)
-        unknown.model = "mystery-model"
-        unknown.tokens = TokenBreakdown(input: 10, output: 5)
 
-        let scan = ClaudeLogUsageScanner.aggregate(entries: [unknown], since: .distantPast, pricing: pricing)
+        for model in ["mystery-model", nil] as [String?] {
+            var unpriced = entry(messageID: "m1", requestID: "r1", isSidechain: false, cacheRead: 0, output: 0)
+            unpriced.model = model
+            unpriced.tokens = TokenBreakdown(input: 10, output: 5)
 
-        // A day with nothing priceable produces no series entry at all (→ "No data"), but the
-        // unknown-model warning still names what was excluded.
-        XCTAssertTrue(scan.series.daily.isEmpty)
-        XCTAssertEqual(scan.unknownModelsByDay[day], ["mystery-model"])
-        XCTAssertEqual(scan.modelUsage?.daily ?? [], [])
-    }
+            let scan = ClaudeLogUsageScanner.aggregate(entries: [unpriced], since: .distantPast, pricing: pricing)
 
-    func testAggregateSyntheticModelIsExcludedWithoutWarning() {
-        var synthetic = entry(messageID: "m1", requestID: "r1", isSidechain: false, cacheRead: 0, output: 0)
-        synthetic.model = nil
-        synthetic.tokens = TokenBreakdown(input: 10, output: 5)
-
-        let scan = ClaudeLogUsageScanner.aggregate(entries: [synthetic], since: .distantPast, pricing: pricing)
-
-        // No model and no carried cost: unpriceable, so excluded from totals — and with no name to
-        // warn about, no unknown-model entry either.
-        XCTAssertTrue(scan.series.daily.isEmpty)
-        XCTAssertTrue(scan.unknownModelsByDay.isEmpty)
-        XCTAssertEqual(scan.modelUsage?.daily ?? [], [])
+            XCTAssertTrue(scan.series.daily.isEmpty)
+            XCTAssertEqual(scan.unknownModelsByDay[day], model.map { [$0] })
+            XCTAssertEqual(scan.modelUsage?.daily ?? [], [])
+        }
     }
 
     func testAggregateSyntheticModelWithCarriedCostStillCounts() {
@@ -465,6 +434,233 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
         XCTAssertNil(scan)
     }
 
+    func testOrganizationScanSeparatesTerminalSessionsAndTheirSubagents() async throws {
+        let now = Date()
+        let timestamp = OpenUsageISO8601.string(from: now)
+        let home = try ClaudeLogFixture.makeUserHome(claudeFiles: [
+            "workspace/session-a.jsonl": #"{"type":"bridge-session","ownerOrganizationUuid":"ORG-A","ownerAccountUuid":"USER-A"}"# + "\n" +
+                ClaudeLogFixture.usageLine(timestamp: timestamp, input: 100, output: 50, costUSD: 0.25,
+                                           messageID: "main-a", requestID: "main-a"),
+            "workspace/session-a/subagents/agent-a.jsonl": ClaudeLogFixture.usageLine(
+                timestamp: timestamp, input: 10, output: 5, costUSD: 0.05,
+                messageID: "agent-a", requestID: "agent-a"
+            ),
+            "workspace/session-b.jsonl": #"{"type":"bridge-session","ownerOrganizationUuid":"org-b","ownerAccountUuid":"user-a"}"# + "\n" +
+                ClaudeLogFixture.usageLine(timestamp: timestamp, input: 200, output: 20, costUSD: 0.40,
+                                           messageID: "main-b", requestID: "main-b"),
+            "workspace/session-b/subagents/agent-b.jsonl": ClaudeLogFixture.usageLine(
+                timestamp: timestamp, input: 20, output: 2, costUSD: 0.06,
+                messageID: "agent-b", requestID: "agent-b"
+            ),
+            "workspace/unowned.jsonl": ClaudeLogFixture.usageLine(
+                timestamp: timestamp, input: 1000, output: 500, costUSD: 9,
+                messageID: "unowned", requestID: "unowned"
+            ),
+            "workspace/unowned/subagents/agent-unowned.jsonl": ClaudeLogFixture.usageLine(
+                timestamp: timestamp, input: 10, output: 5, costUSD: 0.05,
+                messageID: "agent-unowned", requestID: "agent-unowned"
+            ),
+            "workspace/foreign-user.jsonl": #"{"ownerOrganizationUuid":"org-a","ownerAccountUuid":"user-b"}"# +
+                "\n" + ClaudeLogFixture.usageLine(
+                    timestamp: timestamp, input: 3000, output: 500, costUSD: 11,
+                    messageID: "foreign-user", requestID: "foreign-user"
+                ),
+            "workspace/ambiguous.jsonl": #"{"ownerOrganizationUuid":"org-a"}"# + "\n" +
+                #"{"ownerOrganizationUuid":"org-b"}"# + "\n" + ClaudeLogFixture.usageLine(
+                    timestamp: timestamp, input: 2000, output: 500, costUSD: 10,
+                    messageID: "ambiguous", requestID: "ambiguous"
+            )
+        ])
+        let sharedCache = IncrementalJSONLScanner<Entry>()
+
+        for (organizationID, expectedTokens, expectedCost) in [("org-a", 165, 0.30), ("ORG-B", 242, 0.46)] {
+            let scanner = ClaudeLogUsageScanner(
+                environment: FakeEnvironment([:]), homeDirectory: { home },
+                incrementalScanner: sharedCache, accountUUID: "user-a", organizationUUID: organizationID
+            )
+            let result = await scanner.scan(now: now, pricing: pricing)
+            let scan = try XCTUnwrap(result)
+            XCTAssertEqual(scan.series.daily.first?.totalTokens, expectedTokens, organizationID)
+            XCTAssertEqual(scan.series.daily.first?.costUSD ?? 0, expectedCost, accuracy: 1e-9, organizationID)
+        }
+
+        let singleAccountScanner = ClaudeLogUsageScanner(
+            environment: FakeEnvironment([:]), homeDirectory: { home }, incrementalScanner: sharedCache,
+            accountUUID: "user-a", organizationUUID: "org-a", allowsUnattributedSessions: true
+        )
+        let singleAccountResult = await singleAccountScanner.scan(now: now, pricing: pricing)
+        let singleAccountScan = try XCTUnwrap(singleAccountResult)
+        XCTAssertEqual(singleAccountScan.series.daily.first?.totalTokens, 1680)
+        XCTAssertEqual(singleAccountScan.series.daily.first?.costUSD ?? 0, 9.35, accuracy: 1e-9)
+    }
+
+    func testOrganizationScanRefreshesChangedSessionOwnership() async throws {
+        let now = Date()
+        let timestamp = OpenUsageISO8601.string(from: now)
+        let line = ClaudeLogFixture.usageLine(
+            timestamp: timestamp, input: 100, output: 50, costUSD: 0.25
+        )
+        let home = try ClaudeLogFixture.makeUserHome(claudeFiles: [
+            "workspace/session.jsonl": #"{"ownerOrganizationUuid":"org-a","ownerAccountUuid":"user-a"}"# +
+                "\n" + line
+        ])
+        let scanner = ClaudeLogUsageScanner(
+            environment: FakeEnvironment([:]), homeDirectory: { home },
+            incrementalScanner: IncrementalJSONLScanner<Entry>(), accountUUID: "user-a", organizationUUID: "org-a"
+        )
+
+        let firstResult = await scanner.scan(now: now, pricing: pricing)
+        let first = try XCTUnwrap(firstResult)
+        XCTAssertEqual(first.series.daily.first?.totalTokens, 150)
+
+        let session = home.appendingPathComponent(".claude/projects/workspace/session.jsonl")
+        try (#"{"ownerOrganizationUuid":"organization-b","ownerAccountUuid":"user-a"}"# + "\n" + line)
+            .write(to: session, atomically: true, encoding: .utf8)
+
+        let second = await scanner.scan(now: now, pricing: pricing)
+        XCTAssertNil(second)
+    }
+
+    func testOrganizationScanRecoversOnlyMatchingIndexedDesktopSessionsAndSubagents() async throws {
+        let now = Date()
+        let timestamp = OpenUsageISO8601.string(from: now)
+        let owned = "11111111-1111-4111-8111-111111111111"
+        let foreignOrganization = "22222222-2222-4222-8222-222222222222"
+        let foreignAccount = "33333333-3333-4333-8333-333333333333"
+        let conflictingOrganization = "44444444-4444-4444-8444-444444444444"
+        let conflictingAccount = "55555555-5555-4555-8555-555555555555"
+        let ambiguous = "66666666-6666-4666-8666-666666666666"
+        let unindexed = "77777777-7777-4777-8777-777777777777"
+
+        func line(_ id: String, input: Int, output: Int, cost: Double) -> String {
+            ClaudeLogFixture.usageLine(
+                timestamp: timestamp, input: input, output: output, costUSD: cost,
+                messageID: id, requestID: id
+            )
+        }
+
+        let home = try ClaudeLogFixture.makeUserHome(claudeFiles: [
+            "workspace/\(owned).jsonl": line(owned, input: 100, output: 50, cost: 0.25),
+            "workspace/\(owned)/subagents/agent.jsonl": line("agent", input: 10, output: 5, cost: 0.05),
+            "workspace/\(foreignOrganization).jsonl": line(foreignOrganization, input: 1000, output: 500, cost: 9),
+            "workspace/\(foreignAccount).jsonl": line(foreignAccount, input: 2000, output: 500, cost: 10),
+            "workspace/\(conflictingOrganization).jsonl":
+                #"{"ownerOrganizationUuid":"org-b","ownerAccountUuid":"user-a"}"# + "\n" +
+                line(conflictingOrganization, input: 3000, output: 500, cost: 11),
+            "workspace/\(conflictingAccount).jsonl":
+                #"{"ownerOrganizationUuid":"org-a","ownerAccountUuid":"user-b"}"# + "\n" +
+                line(conflictingAccount, input: 4000, output: 500, cost: 12),
+            "workspace/\(ambiguous).jsonl":
+                #"{"ownerOrganizationUuid":"org-a"}"# + "\n" +
+                #"{"ownerOrganizationUuid":"org-b"}"# + "\n" +
+                line(ambiguous, input: 5000, output: 500, cost: 13),
+            "workspace/\(unindexed).jsonl": line(unindexed, input: 6000, output: 500, cost: 14),
+            "workspace/not-a-uuid.jsonl": line("not-a-uuid", input: 7000, output: 500, cost: 15)
+        ])
+        let desktopRoot = home.appendingPathComponent("Library/Application Support/Claude/claude-code-sessions")
+
+        func index(_ sessionID: String, account: String, organization: String) throws -> URL {
+            let directory = desktopRoot.appendingPathComponent(account).appendingPathComponent(organization)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let file = directory.appendingPathComponent("local_\(sessionID).json")
+            try #"{"sessionId":"local_session", "cliSessionId" : "\#(sessionID)"}"#
+                .write(to: file, atomically: true, encoding: .utf8)
+            return file
+        }
+
+        for sessionID in [owned, conflictingOrganization, conflictingAccount, ambiguous, "not-a-uuid"] {
+            _ = try index(sessionID, account: "user-a", organization: "org-a")
+        }
+        _ = try index(foreignOrganization, account: "user-a", organization: "org-b")
+        let foreignFile = try index(foreignAccount, account: "user-b", organization: "org-a")
+        try FileManager.default.createSymbolicLink(
+            at: desktopRoot.appendingPathComponent("user-a/org-a/local_foreign-link.json"),
+            withDestinationURL: foreignFile
+        )
+
+        let scanner = ClaudeLogUsageScanner(
+            environment: FakeEnvironment([:]), homeDirectory: { home },
+            incrementalScanner: IncrementalJSONLScanner<Entry>(), accountUUID: "user-a", organizationUUID: "org-a"
+        )
+        let result = await scanner.scan(now: now, pricing: pricing)
+        let scan = try XCTUnwrap(result)
+
+        XCTAssertEqual(scan.series.daily.first?.totalTokens, 165)
+        XCTAssertEqual(scan.series.daily.first?.costUSD ?? 0, 0.30, accuracy: 1e-9)
+    }
+
+    func testOrganizationScanDoesNotRecoverIndexedDesktopSessionsWithoutAccount() async throws {
+        let now = Date()
+        let sessionID = "11111111-1111-4111-8111-111111111111"
+        let home = try ClaudeLogFixture.makeUserHome(claudeFiles: [
+            "workspace/\(sessionID).jsonl": ClaudeLogFixture.usageLine(
+                timestamp: OpenUsageISO8601.string(from: now), input: 100, output: 50
+            )
+        ])
+        let directory = home.appendingPathComponent(
+            "Library/Application Support/Claude/claude-code-sessions/user-a/org-a"
+        )
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try #"{"cliSessionId":"\#(sessionID)"}"#
+            .write(to: directory.appendingPathComponent("local_session.json"), atomically: true, encoding: .utf8)
+
+        let scanner = ClaudeLogUsageScanner(
+            environment: FakeEnvironment([:]), homeDirectory: { home },
+            incrementalScanner: IncrementalJSONLScanner<Entry>(), organizationUUID: "org-a"
+        )
+        let result = await scanner.scan(now: now, pricing: pricing)
+
+        XCTAssertNil(result)
+    }
+
+    func testOrganizationScanCombinesOwnedDesktopAndTerminalLogsWithoutForeignSpending() async throws {
+        let now = Date()
+        let timestamp = OpenUsageISO8601.string(from: now)
+        let home = try ClaudeLogFixture.makeUserHome(
+            claudeFiles: [
+                "workspace/session.jsonl": #"{"ownerOrganizationUuid":"org-a","ownerAccountUuid":"user-a"}"# +
+                    "\n" +
+                    ClaudeLogFixture.usageLine(
+                        timestamp: timestamp, input: 100, output: 50, costUSD: 0.25,
+                        messageID: "shared", requestID: "terminal"
+                    )
+            ],
+            coworkSessions: [
+                "user-a/ORG-A/local_owned": [
+                    "workspace/replay.jsonl": ClaudeLogFixture.usageLine(
+                        timestamp: timestamp, input: 90_000, output: 10, costUSD: 9.99,
+                        messageID: "shared", requestID: "desktop", isSidechain: true
+                    ),
+                    "workspace/unique.jsonl": ClaudeLogFixture.usageLine(
+                        timestamp: timestamp, input: 10, output: 5, costUSD: 0.05,
+                        messageID: "desktop-owned", requestID: "desktop-owned"
+                    )
+                ],
+                "user-a/org-b/local_foreign": [
+                    "workspace/session.jsonl": ClaudeLogFixture.usageLine(
+                        timestamp: timestamp, input: 5000, output: 500, costUSD: 20,
+                        messageID: "desktop-foreign", requestID: "desktop-foreign"
+                    )
+                ],
+                "user-b/org-a/local_foreign_user": [
+                    "workspace/session.jsonl": ClaudeLogFixture.usageLine(
+                        timestamp: timestamp, input: 6000, output: 500, costUSD: 30,
+                        messageID: "desktop-foreign-user", requestID: "desktop-foreign-user"
+                    )
+                ]
+            ]
+        )
+        let scanner = ClaudeLogUsageScanner(
+            environment: FakeEnvironment([:]), homeDirectory: { home },
+            incrementalScanner: IncrementalJSONLScanner<Entry>(), accountUUID: "user-a", organizationUUID: "org-a"
+        )
+
+        let result = await scanner.scan(now: now, pricing: pricing)
+        let scan = try XCTUnwrap(result)
+        XCTAssertEqual(scan.series.daily.first?.totalTokens, 165)
+        XCTAssertEqual(scan.series.daily.first?.costUSD ?? 0, 0.30, accuracy: 1e-9)
+    }
+
     /// Manual parity harness against the real logs on this machine: prints per-day totals to compare
     /// with `ccusage daily --json --offline`. Gated like the other live tests.
     func testParityAgainstRealLocalLogs() async throws {
@@ -571,7 +767,8 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
         // ccusage accepts `CLAUDE_CONFIG_DIR` pointing at the `projects/` dir itself.
         let scanner = ClaudeLogUsageScanner(
             environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": home.appendingPathComponent("projects").path]),
-            homeDirectory: { FileManager.default.temporaryDirectory.appendingPathComponent("openusage-no-claude-home") }
+            homeDirectory: { FileManager.default.temporaryDirectory.appendingPathComponent("openusage-no-claude-home") },
+            incrementalScanner: IncrementalJSONLScanner<Entry>()
         )
 
         let result = await scanner.scan(now: now, pricing: pricing)

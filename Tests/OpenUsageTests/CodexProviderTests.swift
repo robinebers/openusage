@@ -11,55 +11,21 @@ final class CodexAuthStoreTests: XCTestCase {
         XCTAssertEqual(auth?.tokens?.accessToken, "token")
     }
 
-    // MARK: needsRefresh (issue #516 — refresh by JWT exp, not a hardcoded 8-day age)
-
-    func testValidFutureExpAccessTokenDoesNotNeedRefresh() {
-        // A JWT whose `exp` is comfortably in the future must NOT trigger a proactive refresh, even
-        // when `last_refresh` is old/missing — the old 8-day rule refreshed a still-valid token and
-        // tripped refresh_token_reused.
-        let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let store = CodexAuthStore(now: { now })
-        let auth = CodexAuth(
-            tokens: CodexTokens(accessToken: jwt(exp: now.addingTimeInterval(60 * 60))),
-            lastRefresh: nil
-        )
-
-        XCTAssertFalse(store.needsRefresh(auth))
-    }
-
-    func testNearExpiryAccessTokenNeedsRefresh() {
-        // Within the 5-minute window of `exp` ⇒ refresh now.
-        let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let store = CodexAuthStore(now: { now })
-        let auth = CodexAuth(
-            tokens: CodexTokens(accessToken: jwt(exp: now.addingTimeInterval(60))),
-            lastRefresh: nil
-        )
-
-        XCTAssertTrue(store.needsRefresh(auth))
-    }
-
-    func testNoExpClaimFallsBackToStaleLastRefresh() {
-        // No decodable `exp` ⇒ fall back to the 8-day `last_refresh` rule; 9 days old ⇒ refresh.
+    func testRefreshDecisionUsesTokenExpiryThenLastRefresh() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let store = CodexAuthStore(now: { now })
         let nineDaysAgo = OpenUsageISO8601.string(from: now.addingTimeInterval(-9 * 24 * 60 * 60))
-        let auth = CodexAuth(
-            tokens: CodexTokens(accessToken: "token"),
-            lastRefresh: nineDaysAgo
-        )
+        let cases: [(name: String, token: String, lastRefresh: String?, expected: Bool)] = [
+            ("valid JWT", jwt(exp: now.addingTimeInterval(3600)), nil, false),
+            ("JWT near expiry", jwt(exp: now.addingTimeInterval(60)), nil, true),
+            ("stale refresh without JWT expiry", "token", nineDaysAgo, true),
+            ("new login without expiry or refresh", "token", nil, false)
+        ]
 
-        XCTAssertTrue(store.needsRefresh(auth))
-    }
-
-    func testNoExpClaimAndNoLastRefreshDoesNotForceRefresh() {
-        // A brand-new login (no readable `exp`, no `last_refresh`) must NOT be forced to refresh — the
-        // old code returned true here and refreshed immediately on first launch.
-        let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let store = CodexAuthStore(now: { now })
-        let auth = CodexAuth(tokens: CodexTokens(accessToken: "token"), lastRefresh: nil)
-
-        XCTAssertFalse(store.needsRefresh(auth))
+        for entry in cases {
+            let auth = CodexAuth(tokens: CodexTokens(accessToken: entry.token), lastRefresh: entry.lastRefresh)
+            XCTAssertEqual(store.needsRefresh(auth), entry.expected, entry.name)
+        }
     }
 
     /// Builds a real JWT-shaped token: `base64url(header).base64url({"exp":<epoch>}).sig`.
@@ -93,26 +59,7 @@ final class CodexAuthStoreTests: XCTestCase {
 }
 
 final class CodexUsageMapperTests: XCTestCase {
-    func testFreshSessionWindowPreservesReportedOnePercent() throws {
-        let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let body = Data("""
-        {
-          "rate_limit": {
-            "primary_window": {
-              "used_percent": 1,
-              "limit_window_seconds": 18000,
-              "reset_after_seconds": 18000,
-              "reset_at": \(Int(now.timeIntervalSince1970) + 18000)
-            }
-          }
-        }
-        """.utf8)
-        let response = HTTPResponse(statusCode: 200, headers: [:], body: body)
-        let mapped = try CodexUsageMapper.mapUsageResponse(response, now: now)
-        XCTAssertEqual(progress(mapped.lines, "Session")?.used, 1)
-    }
-
-    func testFreshSessionWindowUsesDefaultPeriodWhenLimitWindowIsMissing() throws {
+    func testFreshSessionWindowPreservesOnePercentAndDefaultsMissingPeriod() throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let resetAfterSeconds = CodexUsageMapper.sessionPeriodMs / 1000
         let body = Data("""
@@ -400,57 +347,6 @@ final class CodexUsageMapperTests: XCTestCase {
         XCTAssertNil(progress(mapped.lines, "Some Other Model"))
     }
 
-    func testAppendsTokenUsageLines() {
-        var lines: [MetricLine] = []
-        let usage = DailyUsageSeries(daily: [
-            DailyUsageEntry(date: "2026-02-20", totalTokens: 150, costUSD: 0.75),
-            DailyUsageEntry(date: "2026-02-01", totalTokens: 300, costUSD: 1.0)
-        ])
-
-        SpendTileMapper.appendTokenUsage(
-            usage,
-            to: &lines,
-            now: makeDate("2026-02-20T16:00:00.000Z")
-        )
-
-        XCTAssertEqual(values(lines, "Today"),
-                       [MetricValue(number: 0.75, kind: .dollars, estimated: true),
-                        MetricValue(number: 150, kind: .count, label: "tokens")])
-        // No usage yesterday → "No data" (no backing line), not a fabricated "$0.00 · 0 tokens".
-        XCTAssertNil(values(lines, "Yesterday"))
-        XCTAssertEqual(values(lines, "Last 30 Days"),
-                       [MetricValue(number: 1.75, kind: .dollars, estimated: true),
-                        MetricValue(number: 450, kind: .count, label: "tokens")])
-    }
-
-    func testZeroUsageLeavesTilesUnbacked() {
-        // A period with no usage is "No data" — no tile is appended, never a fabricated "$0.00 · 0 tokens".
-        // Fixed once in SpendTileMapper, so it holds for every provider that funnels through it. Here the
-        // only reported day is a zero-token Yesterday; Today is absent, Yesterday is idle, and the 30-day
-        // total is zero, so nothing is appended.
-        var lines: [MetricLine] = []
-        SpendTileMapper.appendTokenUsage(
-            DailyUsageSeries(daily: [DailyUsageEntry(date: "2026-02-19", totalTokens: 0, costUSD: nil)]),
-            to: &lines,
-            now: makeDate("2026-02-20T16:00:00.000Z")
-        )
-
-        XCTAssertTrue(lines.isEmpty, "an all-zero window appends no spend tiles")
-    }
-
-    func testUnpricedTokensShowTokensWithoutAFabricatedZeroDollar() {
-        // A day with real tokens the runner couldn't price omits the dollar — its cost is unknown, not
-        // zero — so the row shows just the labeled token count rather than a misleading "$0.00 ·".
-        var lines: [MetricLine] = []
-        SpendTileMapper.appendTokenUsage(
-            DailyUsageSeries(daily: [DailyUsageEntry(date: "2026-02-20", totalTokens: 1_200_000, costUSD: nil)]),
-            to: &lines,
-            now: makeDate("2026-02-20T16:00:00.000Z")
-        )
-
-        XCTAssertEqual(values(lines, "Today"), [MetricValue(number: 1_200_000, kind: .count, label: "tokens")])
-    }
-
     // Regression: dollar amounts must group thousands (e.g. "$1,200.00") consistently with the
     // headline, which formats through `Formatters.currency`. Credit lines previously used a bare
     // `$%.2f` that dropped the separator.
@@ -479,13 +375,7 @@ final class CodexUsageMapperTests: XCTestCase {
         XCTAssertEqual(values(mapped.lines, "Rate Limit Resets"),
                        [MetricValue(number: 1, kind: .count, label: "available")])
 
-        let resetIndex = mapped.lines.firstIndex { $0.label == "Rate Limit Resets" }
-        let creditsIndex = mapped.lines.firstIndex { $0.label == "Credits" }
-        XCTAssertNotNil(resetIndex)
-        XCTAssertNotNil(creditsIndex)
-        if let resetIndex, let creditsIndex {
-            XCTAssertLessThan(resetIndex, creditsIndex)
-        }
+        XCTAssertEqual(mapped.lines.map(\.label), ["Rate Limit Resets", "Credits"])
     }
 
     func testShowsZeroRateLimitResets() throws {
@@ -501,124 +391,55 @@ final class CodexUsageMapperTests: XCTestCase {
                        [MetricValue(number: 0, kind: .count, label: "available")])
     }
 
-    func testDedicatedEndpointSuppliesCountAndSortedExpiries() throws {
-        // The dedicated endpoint carries the per-credit expiry list the usage body lacks, so the count
-        // comes from it and `expiriesAt` holds every still-available credit's expiry, sorted soonest
-        // first. A non-"available" credit (the "consumed" one here) is excluded entirely.
+    func testDedicatedEndpointSortsAvailableExpiriesWithExplicitOrMissingStatus() throws {
         let usage = HTTPResponse(statusCode: 200, headers: [:], body: Data("{}".utf8))
-        let resetCredits = HTTPResponse(statusCode: 200, headers: [:], body: Data("""
-        {
-          "available_count": 2,
-          "credits": [
-            { "status": "available", "expires_at": "2026-02-20T19:00:00.000Z" },
-            { "status": "available", "expires_at": "2026-02-20T17:30:00.000Z" },
-            { "status": "consumed", "expires_at": "2026-02-20T16:10:00.000Z" }
-          ]
-        }
-        """.utf8))
-
-        let mapped = try CodexUsageMapper.mapUsageResponse(
-            usage,
-            resetCredits: resetCredits,
-            now: OpenUsageISO8601.date(from: "2026-02-20T16:00:00.000Z")!
-        )
-
-        guard case .values(_, let vals, _, let expiriesAt, _, _) = mapped.lines.first(where: { $0.label == "Rate Limit Resets" }) else {
-            return XCTFail("expected a Rate Limit Resets values line")
-        }
-        XCTAssertEqual(vals, [MetricValue(number: 2, kind: .count, label: "available")])
-        XCTAssertEqual(expiriesAt, [
+        let expectedExpiries = [
             OpenUsageISO8601.date(from: "2026-02-20T17:30:00.000Z")!,
             OpenUsageISO8601.date(from: "2026-02-20T19:00:00.000Z")!
-        ])
+        ]
+
+        for status in ["available", nil] as [String?] {
+            let statusField = status.map { "\"status\":\"\($0)\"," } ?? ""
+            let resetCredits = HTTPResponse(statusCode: 200, headers: [:], body: Data("""
+            {"available_count":2,"credits":[
+              {\(statusField)"expires_at":"2026-02-20T19:00:00.000Z"},
+              {\(statusField)"expires_at":"2026-02-20T17:30:00.000Z"},
+              {"status":"consumed","expires_at":"2026-02-20T16:10:00.000Z"}
+            ]}
+            """.utf8))
+            let mapped = try CodexUsageMapper.mapUsageResponse(
+                usage,
+                resetCredits: resetCredits,
+                now: OpenUsageISO8601.date(from: "2026-02-20T16:00:00.000Z")!
+            )
+
+            guard case .values(_, let values, _, let expiriesAt, _, _) = mapped.lines.first else {
+                return XCTFail("expected reset credits for status \(status ?? "omitted")")
+            }
+            XCTAssertEqual(values, [MetricValue(number: 2, kind: .count, label: "available")])
+            XCTAssertEqual(expiriesAt, expectedExpiries, status ?? "omitted")
+        }
     }
 
-    func testExpiriesPreservedWhenStatusOmitted() throws {
-        // `status` is optional upstream — a credit with `expires_at` but no `status` must still count
-        // toward the expiry list (otherwise the tooltip and the 24h warning vanish for that response
-        // shape). An explicitly non-available credit is still dropped. (Regression for the Codex-flagged
-        // "preserve expiries when status is omitted".)
-        let usage = HTTPResponse(statusCode: 200, headers: [:], body: Data("{}".utf8))
-        let resetCredits = HTTPResponse(statusCode: 200, headers: [:], body: Data("""
-        {
-          "available_count": 2,
-          "credits": [
-            { "expires_at": "2026-02-20T19:00:00.000Z" },
-            { "expires_at": "2026-02-20T17:30:00.000Z" },
-            { "status": "consumed", "expires_at": "2026-02-20T16:10:00.000Z" }
-          ]
-        }
-        """.utf8))
-
-        let mapped = try CodexUsageMapper.mapUsageResponse(
-            usage,
-            resetCredits: resetCredits,
-            now: OpenUsageISO8601.date(from: "2026-02-20T16:00:00.000Z")!
-        )
-
-        guard case .values(_, _, _, let expiriesAt, _, _) = mapped.lines.first(where: { $0.label == "Rate Limit Resets" }) else {
-            return XCTFail("expected a Rate Limit Resets values line")
-        }
-        // The two status-less credits are kept (sorted); the "consumed" one is dropped.
-        XCTAssertEqual(expiriesAt, [
-            OpenUsageISO8601.date(from: "2026-02-20T17:30:00.000Z")!,
-            OpenUsageISO8601.date(from: "2026-02-20T19:00:00.000Z")!
-        ])
-    }
-
-    func testFallsBackToUsageBodyCountWhenDedicatedFetchUnavailable() throws {
-        // No dedicated response (the fetch failed): the count falls back to the usage body's embedded
-        // object, and with no expiry list `expiriesAt` is empty.
+    func testInvalidDedicatedResponsesFallBackToUsageBodyCount() throws {
         let usage = HTTPResponse(statusCode: 200, headers: [:],
                                  body: Data(#"{ "rate_limit_reset_credits": { "available_count": 3 } }"#.utf8))
+        let cases: [(name: String, response: HTTPResponse?)] = [
+            ("missing", nil),
+            ("null count", HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"available_count":null}"#.utf8))),
+            ("server failure", HTTPResponse(statusCode: 500, headers: [:], body: Data("<html>oops</html>".utf8)))
+        ]
 
-        let mapped = try CodexUsageMapper.mapUsageResponse(
-            usage,
-            resetCredits: nil,
-            now: Date(timeIntervalSince1970: 1_800_000_000)
-        )
-
-        guard case .values(_, let vals, _, let expiriesAt, _, _) = mapped.lines.first(where: { $0.label == "Rate Limit Resets" }) else {
-            return XCTFail("expected a Rate Limit Resets values line")
+        for entry in cases {
+            let mapped = try CodexUsageMapper.mapUsageResponse(
+                usage, resetCredits: entry.response, now: Date(timeIntervalSince1970: 1_800_000_000)
+            )
+            guard case .values(_, let values, _, let expiriesAt, _, _) = mapped.lines.first else {
+                return XCTFail("expected reset credits when dedicated response is \(entry.name)")
+            }
+            XCTAssertEqual(values, [MetricValue(number: 3, kind: .count, label: "available")], entry.name)
+            XCTAssertTrue(expiriesAt.isEmpty, entry.name)
         }
-        XCTAssertEqual(vals, [MetricValue(number: 3, kind: .count, label: "available")])
-        XCTAssertTrue(expiriesAt.isEmpty)
-    }
-
-    func testDedicatedNullCountFallsBackToUsageBodyCount() throws {
-        // A 2xx dedicated payload whose `available_count` is JSON null (NSNull, which is non-nil) must NOT
-        // be selected as the source — doing so would drop the whole row. It falls back to the usage body's
-        // valid embedded count instead. (Regression for the bot-flagged NSNull nil-check.)
-        let usage = HTTPResponse(statusCode: 200, headers: [:],
-                                 body: Data(#"{ "rate_limit_reset_credits": { "available_count": 2 } }"#.utf8))
-        let resetCredits = HTTPResponse(statusCode: 200, headers: [:],
-                                        body: Data(#"{ "available_count": null }"#.utf8))
-
-        let mapped = try CodexUsageMapper.mapUsageResponse(
-            usage,
-            resetCredits: resetCredits,
-            now: Date(timeIntervalSince1970: 1_800_000_000)
-        )
-
-        XCTAssertEqual(values(mapped.lines, "Rate Limit Resets"),
-                       [MetricValue(number: 2, kind: .count, label: "available")])
-    }
-
-    func testDedicatedNon2xxFallsBackToUsageBodyCount() throws {
-        // A non-2xx dedicated response is ignored (treated as unavailable), so the count falls back to
-        // the usage body — never a dropped row just because the extra endpoint erred.
-        let usage = HTTPResponse(statusCode: 200, headers: [:],
-                                 body: Data(#"{ "rate_limit_reset_credits": { "available_count": 1 } }"#.utf8))
-        let resetCredits = HTTPResponse(statusCode: 500, headers: [:], body: Data("<html>oops</html>".utf8))
-
-        let mapped = try CodexUsageMapper.mapUsageResponse(
-            usage,
-            resetCredits: resetCredits,
-            now: Date(timeIntervalSince1970: 1_800_000_000)
-        )
-
-        XCTAssertEqual(values(mapped.lines, "Rate Limit Resets"),
-                       [MetricValue(number: 1, kind: .count, label: "available")])
     }
 
     func testOmitsRateLimitResetsWhenCountMalformed() throws {
@@ -647,9 +468,6 @@ final class CodexUsageMapperTests: XCTestCase {
         return values
     }
 
-    private func makeDate(_ value: String) -> Date {
-        OpenUsageISO8601.date(from: value)!
-    }
 }
 
 @MainActor
@@ -732,31 +550,17 @@ final class CodexUsageClientRefreshTests: XCTestCase {
         )
     }
 
-    func testRefreshReportsRequestFailureForUnrecognizedErrorBody() async {
-        // A 400 carrying a non-OAuth body (an HTML proxy/WAF page) must surface as a request failure,
-        // not "Token expired. Run `codex` to log in again." — re-login can't fix a transport/infra error.
-        let http = FakeHTTPClient(response: HTTPResponse(statusCode: 400, headers: [:], body: Data("<html>Bad Gateway</html>".utf8)))
-        let client = CodexUsageClient(http: http)
-        do {
-            _ = try await client.refreshToken("refresh")
-            XCTFail("expected refreshToken to throw")
-        } catch let error as CodexUsageError {
-            XCTAssertEqual(error, .requestFailed(400))
-        } catch {
-            XCTFail("expected CodexUsageError.requestFailed, got \(error)")
-        }
-    }
-
-    func testRefreshReportsRequestFailureForNon4xxStatus() async {
-        let http = FakeHTTPClient(response: HTTPResponse(statusCode: 503, headers: [:], body: Data()))
-        let client = CodexUsageClient(http: http)
-        do {
-            _ = try await client.refreshToken("refresh")
-            XCTFail("expected refreshToken to throw")
-        } catch let error as CodexUsageError {
-            XCTAssertEqual(error, .requestFailed(503))
-        } catch {
-            XCTFail("expected CodexUsageError.requestFailed, got \(error)")
+    func testRefreshReportsRequestFailuresForUnrecognizedAndServerErrors() async {
+        for (status, body) in [(400, "<html>Bad Gateway</html>"), (503, "")] {
+            let http = FakeHTTPClient(response: HTTPResponse(statusCode: status, headers: [:], body: Data(body.utf8)))
+            do {
+                _ = try await CodexUsageClient(http: http).refreshToken("refresh")
+                XCTFail("expected status \(status) to throw")
+            } catch let error as CodexUsageError {
+                XCTAssertEqual(error, .requestFailed(status))
+            } catch {
+                XCTFail("expected CodexUsageError.requestFailed, got \(error)")
+            }
         }
     }
 

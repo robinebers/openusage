@@ -8,9 +8,13 @@ struct PricingSupplement: Sendable {
     /// Models priced directly by the supplement (highest-precedence source).
     let pricing: [String: ModelRates]
     /// Base-model -> fast-variant multiplier, for `-fast` slugs whose catalogs carry no `fast` field.
+    /// Also applied to the base model's own rates, so requests flagged fast by the scanner (rather
+    /// than by a `-fast` slug) bill at the fast rate.
     let fastMultipliers: [String: Double]
     let aliasRules: [AliasRule]
     let updatedAt: String?
+    /// Public model IDs offered as optional estimation references, grouped by usage provider.
+    let fallbackModels: [String: [String]]
 
     /// Regex slug -> canonical pricing key. Rules apply in order; first match wins.
     struct AliasRule: @unchecked Sendable {
@@ -22,12 +26,24 @@ struct PricingSupplement: Sendable {
         pricing: [String: ModelRates] = [:],
         fastMultipliers: [String: Double] = [:],
         aliasRules: [AliasRule] = [],
-        updatedAt: String? = nil
+        updatedAt: String? = nil,
+        fallbackModels: [String: [String]] = [:]
     ) {
         self.pricing = pricing
         self.fastMultipliers = fastMultipliers
         self.aliasRules = aliasRules
         self.updatedAt = updatedAt
+        self.fallbackModels = fallbackModels
+    }
+
+    /// Older feeds have no picker metadata. Keep bundled choices until the feed supplies them;
+    /// an explicit empty list remains authoritative.
+    func fillingMissingFallbackModels(from other: PricingSupplement) -> PricingSupplement {
+        PricingSupplement(
+            pricing: pricing, fastMultipliers: fastMultipliers, aliasRules: aliasRules,
+            updatedAt: updatedAt,
+            fallbackModels: other.fallbackModels.merging(fallbackModels) { _, preferred in preferred }
+        )
     }
 
     /// The canonical pricing key for `model` per the alias rules, or nil when no rule matches.
@@ -54,22 +70,6 @@ struct PricingSupplement: Sendable {
         return nil
     }
 
-    /// Returns the newest complete supplement snapshot. Missing keys are intentional removals, so
-    /// snapshots must never be union-merged. Equal revisions prefer `candidate`, which is the
-    /// fetched cache; when neither legacy snapshot has a revision, that preserves prior behavior.
-    func preferringNewer(_ candidate: PricingSupplement) -> PricingSupplement {
-        switch (updatedAt, candidate.updatedAt) {
-        case let (current?, candidateRevision?):
-            return candidateRevision >= current ? candidate : self
-        case (nil, .some):
-            return candidate
-        case (.some, nil):
-            return self
-        case (nil, nil):
-            return candidate
-        }
-    }
-
     /// `base` occurs in `part` with nothing after it, or followed by a `-` separator.
     private static func matchesModelSuffix(part: String, base: String) -> Bool {
         guard let range = part.range(of: base, options: .backwards) else { return false }
@@ -87,20 +87,15 @@ extension PricingSupplement {
         let file = try JSONDecoder().decode(SupplementFile.self, from: data)
         var pricing: [String: ModelRates] = [:]
         for (model, entry) in file.pricing {
-            if let threshold = entry.longContextThresholdTokens, threshold <= 0 {
-                throw PricingSupplementError.invalidLongContextThreshold(model: model, threshold: threshold)
-            }
             pricing[model] = ModelRates(
                 inputPerMillion: entry.inputPerMillion,
                 outputPerMillion: entry.outputPerMillion,
                 cacheWritePerMillion: entry.cacheWritePerMillion ?? entry.inputPerMillion,
                 cacheReadPerMillion: entry.cacheReadPerMillion ?? entry.inputPerMillion * 0.1,
-                longContextThresholdTokens: entry.longContextThresholdTokens ?? 200_000,
-                inputAbove200kPerMillion: entry.inputLongContextPerMillion,
-                outputAbove200kPerMillion: entry.outputLongContextPerMillion,
-                cacheWriteAbove200kPerMillion: entry.cacheWriteLongContextPerMillion,
-                cacheReadAbove200kPerMillion: entry.cacheReadLongContextPerMillion,
-                cacheReadIsExplicit: entry.cacheReadPerMillion != nil
+                cacheReadIsExplicit: entry.cacheReadPerMillion != nil,
+                // Carry the declared multiplier onto the entry itself: scanners that flag fast mode
+                // on the request (Claude's `speed` field) price the base slug, never a `-fast` one.
+                fastMultiplier: file.fastMultipliers?[model] ?? 1
             )
         }
         var rules: [AliasRule] = []
@@ -116,7 +111,8 @@ extension PricingSupplement {
             pricing: pricing,
             fastMultipliers: file.fastMultipliers ?? [:],
             aliasRules: rules,
-            updatedAt: file.updatedAt
+            updatedAt: file.updatedAt,
+            fallbackModels: file.fallbackModels ?? [:]
         )
     }
 
@@ -125,28 +121,19 @@ extension PricingSupplement {
         var pricing: [String: Entry]
         var fastMultipliers: [String: Double]?
         var aliasRules: [Rule]
+        var fallbackModels: [String: [String]]?
 
         struct Entry: Decodable {
             var inputPerMillion: Double
             var outputPerMillion: Double
             var cacheWritePerMillion: Double?
             var cacheReadPerMillion: Double?
-            var longContextThresholdTokens: Int?
-            var inputLongContextPerMillion: Double?
-            var outputLongContextPerMillion: Double?
-            var cacheWriteLongContextPerMillion: Double?
-            var cacheReadLongContextPerMillion: Double?
 
             enum CodingKeys: String, CodingKey {
                 case inputPerMillion = "input_per_million"
                 case outputPerMillion = "output_per_million"
                 case cacheWritePerMillion = "cache_write_per_million"
                 case cacheReadPerMillion = "cache_read_per_million"
-                case longContextThresholdTokens = "long_context_threshold_tokens"
-                case inputLongContextPerMillion = "input_long_context_per_million"
-                case outputLongContextPerMillion = "output_long_context_per_million"
-                case cacheWriteLongContextPerMillion = "cache_write_long_context_per_million"
-                case cacheReadLongContextPerMillion = "cache_read_long_context_per_million"
             }
         }
 
@@ -160,18 +147,7 @@ extension PricingSupplement {
             case pricing
             case fastMultipliers = "fast_multipliers"
             case aliasRules = "alias_rules"
-        }
-    }
-}
-
-
-enum PricingSupplementError: Error, LocalizedError, Equatable {
-    case invalidLongContextThreshold(model: String, threshold: Int)
-
-    var errorDescription: String? {
-        switch self {
-        case let .invalidLongContextThreshold(model, threshold):
-            return "Pricing supplement model '\(model)' has invalid long-context threshold \(threshold)."
+            case fallbackModels = "fallback_models"
         }
     }
 }

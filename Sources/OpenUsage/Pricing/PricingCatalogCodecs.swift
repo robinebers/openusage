@@ -84,15 +84,11 @@ enum PricingCatalogCodecs {
         var entries: [String: ModelRates] = [:]
         entries.reserveCapacity(file.models.count)
         for (key, model) in file.models {
-            if let threshold = model.lct, threshold <= 0 {
-                throw PricingCodecError.invalidLongContextThreshold(model: key, threshold: threshold)
-            }
             entries[key] = ModelRates(
                 inputPerMillion: model.i,
                 outputPerMillion: model.o,
                 cacheWritePerMillion: model.cw,
                 cacheReadPerMillion: model.cr,
-                longContextThresholdTokens: model.lct ?? 200_000,
                 inputAbove200kPerMillion: model.ia,
                 outputAbove200kPerMillion: model.oa,
                 cacheWriteAbove200kPerMillion: model.cwa,
@@ -113,7 +109,6 @@ enum PricingCatalogCodecs {
                 o: rates.outputPerMillion,
                 cw: rates.cacheWritePerMillion,
                 cr: rates.cacheReadPerMillion,
-                lct: rates.longContextThresholdTokens == 200_000 ? nil : rates.longContextThresholdTokens,
                 ia: rates.inputAbove200kPerMillion,
                 oa: rates.outputAbove200kPerMillion,
                 cwa: rates.cacheWriteAbove200kPerMillion,
@@ -128,8 +123,7 @@ enum PricingCatalogCodecs {
     }
 
     /// Per-million rates keyed by short names to keep snapshots small: `i`nput, `o`utput,
-    /// `c`ache`w`rite, `c`ache`r`ead, optional `l`ong-`c`ontext `t`hreshold, long-context rate
-    /// variants, plus the `fast` multiplier.
+    /// `c`ache`w`rite, `c`ache`r`ead, with `a`bove-200k variants, plus the `fast` multiplier.
     private struct CompactCatalog: Codable {
         var retrievedAt: String?
         var models: [String: Model]
@@ -139,7 +133,6 @@ enum PricingCatalogCodecs {
             var o: Double
             var cw: Double
             var cr: Double
-            var lct: Int?
             var ia: Double?
             var oa: Double?
             var cwa: Double?
@@ -160,14 +153,11 @@ enum PricingCatalogCodecs {
 enum PricingCodecError: Error, LocalizedError, Equatable {
     case notAnObject
     case noUsableEntries
-    case invalidLongContextThreshold(model: String, threshold: Int)
 
     var errorDescription: String? {
         switch self {
         case .notAnObject: return "Pricing feed is not a JSON object."
         case .noUsableEntries: return "Pricing feed contained no usable model entries."
-        case let .invalidLongContextThreshold(model, threshold):
-            return "Pricing model '\(model)' has invalid long-context threshold \(threshold)."
         }
     }
 }

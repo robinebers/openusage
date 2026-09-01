@@ -107,20 +107,8 @@ final class MenuBarContentTests: XCTestCase {
         XCTAssertEqual(content.groups[0].metrics.map(\.value), ["67%", "$12K", "412", "$42"])
     }
 
-    func testUnboundedNumbersAreCompacted() {
-        // Standard compact notation for big numbers; values shown in full drop their decimals.
-        let content = MenuBarContentBuilder.build(
-            groups: [group("a",
-                unbounded("a.big", "Big", 12923),         // → $12.9K
-                unbounded("a.small", "Small", 129.81))],  // → $130 (no decimals)
-            data: { $0.sample }
-        )
-
-        let big = content.groups[0].metrics[0].value
-        XCTAssertTrue(big.hasSuffix("K"), "expected compact thousands, got \(big)")
-        XCTAssertFalse(big.contains("923"), "expected the raw number to be compacted away, got \(big)")
-        XCTAssertEqual(content.groups[0].metrics[1].value, "$130")
-    }
+    // Compact-notation rules for tray values (abbreviation, decimal rounding) are pinned exactly in
+    // MetricFormatterTests — the strip only relays MetricFormatter output.
 
     // MARK: - Fixtures
 

@@ -1,19 +1,21 @@
 import Foundation
 
 /// Accumulates priced per-day usage — tokens, cost, and the per-model breakdown — then assembles a
-/// `LogUsageScan`. Shared by the log scanners (Claude, Codex, Grok, OpenCode) so the "accumulate then
-/// assemble" tail lives in one place instead of a byte-identical copy per provider; each scanner keeps
-/// only its format-specific parse/pricing loop.
+/// `LogUsageScan`. Shared by the log scanners (Claude, Codex, Grok) so the "accumulate then assemble"
+/// tail lives in one place instead of a byte-identical copy per provider; each scanner keeps only its
+/// format-specific parse/pricing loop.
 ///
 /// Days are keyed by the shared local-calendar `dayKey`, matching `SpendTileMapper`'s Today / Yesterday
 /// lookup — the day-key contract is one function, not five copies (drift here is the class of bug behind
-/// the ccusage false-zero fix). Only priced rows are added, so every counted day carries a real cost;
-/// unpriceable models are tracked separately for the tile's warning triangle.
+/// the ccusage false-zero fix). Only priced rows are added (every scanner skips unpriceable rows before
+/// counting), so every counted day carries a real cost; unpriceable models are tracked separately for
+/// the tile's warning triangle.
 struct DailyUsageAccumulator {
     private var tokensByDay: [String: Int] = [:]
     private var costByDay: [String: Double] = [:]
     private var unknownModelsByDay: [String: Set<String>] = [:]
     private var modelsByDay: [String: [String: ModelAccumulator]] = [:]
+    private var fallbackPricingModelsByDay: [String: Set<String>] = [:]
 
     /// Local calendar day as `yyyy-MM-dd`. The single day-key contract shared by the accumulator,
     /// `SpendTileMapper`, and the Cursor CSV aggregation. `calendar` is injectable for tests; production
@@ -24,10 +26,11 @@ struct DailyUsageAccumulator {
     }
 
     /// Add a priced row's tokens + cost, attributed to `model` on `day`.
-    mutating func add(day: String, tokens: Int, cost: Double, model: String) {
+    mutating func add(day: String, tokens: Int, cost: Double, model: String, fallbackPricingModel: String? = nil) {
         tokensByDay[day, default: 0] += tokens
         costByDay[day, default: 0] += cost
         modelsByDay[day, default: [:]][model, default: ModelAccumulator()].add(tokens: tokens, costUSD: cost)
+        if let fallbackPricingModel { fallbackPricingModelsByDay[day, default: []].insert(fallbackPricingModel) }
     }
 
     /// Merge already-built scans (a provider's native log scan plus its pi slice) into one, by replaying
@@ -40,6 +43,9 @@ struct DailyUsageAccumulator {
         guard !present.isEmpty else { return nil }
         var accumulator = DailyUsageAccumulator()
         for scan in present {
+            for (day, models) in scan.fallbackPricingModelsByDay ?? [:] {
+                accumulator.fallbackPricingModelsByDay[day, default: []].formUnion(models)
+            }
             for day in scan.modelUsage?.daily ?? [] {
                 for model in day.models {
                     // Skip cost-unknown entries rather than treating nil as $0 — their unknown-model
@@ -57,8 +63,8 @@ struct DailyUsageAccumulator {
         return accumulator.build()
     }
 
-    /// Note a model that couldn't be priced but still carried tokens — surfaced as the tile's warning
-    /// triangle, the only place unpriceable usage appears (it's excluded from every displayed total).
+    /// Note a model with no known price that carried tokens. The warning remains even when an
+    /// explicitly selected reference lets the caller include a fallback estimate in the totals.
     mutating func addUnknownModel(day: String, model: String) {
         unknownModelsByDay[day, default: []].insert(model)
     }
@@ -78,7 +84,8 @@ struct DailyUsageAccumulator {
         return LogUsageScan(
             series: DailyUsageSeries(daily: days),
             modelUsage: modelUsage,
-            unknownModelsByDay: unknownModelsByDay
+            unknownModelsByDay: unknownModelsByDay,
+            fallbackPricingModelsByDay: fallbackPricingModelsByDay.isEmpty ? nil : fallbackPricingModelsByDay
         )
     }
 

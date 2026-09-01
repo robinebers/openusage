@@ -15,9 +15,56 @@ final class UsageHistoryDocumentTests: XCTestCase {
         XCTAssertNoThrow(try decoded.validate())
     }
 
+    func testClaudeIdentitySupportsLegacyAndAccountCardSchemas() throws {
+        var document = makeDocument(deviceID: "mac-a", updatedAt: .now)
+        document.identities = ["claude": "user|personal"]
+
+        XCTAssertEqual(document.schema, "openusage.history.v1")
+        XCTAssertNoThrow(try document.validate())
+        XCTAssertEqual(try JSONDecoder().decode(
+            UsageHistoryDocument.self,
+            from: JSONEncoder().encode(document)
+        ).identities, document.identities)
+
+        document.schema = UsageHistoryDocument.accountSchema
+        document.providers["claude@1234abcd"] = document.providers["claude"]
+        document.identities?["claude@1234abcd"] = "user|work"
+
+        XCTAssertNoThrow(try document.validate())
+
+        document.schema = UsageHistoryDocument.currentSchema
+        XCTAssertThrowsError(try document.validate()) { error in
+            XCTAssertEqual(error as? UsageHistoryDocumentError, .invalidProvider("claude@1234abcd"))
+        }
+    }
+
+    func testAccountSchemaRejectsMissingMismatchedAndDuplicateClaudeIdentities() {
+        var document = makeDocument(deviceID: "mac-a", updatedAt: .now)
+        document.schema = UsageHistoryDocument.accountSchema
+
+        XCTAssertThrowsError(try document.validate()) { error in
+            XCTAssertEqual(error as? UsageHistoryDocumentError, .invalidIdentity("claude"))
+        }
+
+        document.identities = ["claude": "user|personal", "missing": "user|missing"]
+        XCTAssertThrowsError(try document.validate()) { error in
+            XCTAssertEqual(error as? UsageHistoryDocumentError, .invalidIdentity("missing"))
+        }
+
+        document.providers["claude@1234abcd"] = document.providers["claude"]
+        document.identities = ["claude": "User|Personal", "claude@1234abcd": "user|personal"]
+        XCTAssertThrowsError(try document.validate()) { error in
+            let identityError = error as? UsageHistoryDocumentError
+            XCTAssertTrue(
+                identityError == .duplicateIdentity("claude")
+                    || identityError == .duplicateIdentity("claude@1234abcd")
+            )
+        }
+    }
+
     func testRejectsUnsupportedSchemaInvalidValuesAndImpossibleDates() {
         var document = makeDocument(deviceID: "mac-a", updatedAt: .now)
-        document.schema = "openusage.history.v2"
+        document.schema = "openusage.history.v3"
         XCTAssertThrowsError(try document.validate()) { error in
             XCTAssertEqual(error as? UsageHistoryDocumentError, .unsupportedSchema)
         }

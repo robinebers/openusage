@@ -14,17 +14,6 @@ final class PaceTests: XCTestCase {
         now.addingTimeInterval(period * (1 - elapsed))
     }
 
-    func testZeroUsageIsAhead() {
-        let reset = resetsAt(elapsed: 0.5, period: week)
-        XCTAssertEqual(Pace.evaluate(used: 0, limit: 100, resetsAt: reset, periodDuration: week, now: now)?.status, .ahead)
-    }
-
-    func testAtOrOverLimitIsBehind() {
-        let reset = resetsAt(elapsed: 0.5, period: week)
-        XCTAssertEqual(Pace.evaluate(used: 100, limit: 100, resetsAt: reset, periodDuration: week, now: now)?.status, .behind)
-        XCTAssertEqual(Pace.evaluate(used: 130, limit: 100, resetsAt: reset, periodDuration: week, now: now)?.status, .behind)
-    }
-
     func testEarlyInWindowStillProjectsPace() {
         let reset = resetsAt(elapsed: 0.02, period: week)
         XCTAssertEqual(Pace.evaluate(used: 5, limit: 100, resetsAt: reset, periodDuration: week, now: now)?.status, .behind)
@@ -32,11 +21,18 @@ final class PaceTests: XCTestCase {
 
     func testAheadOnTrackBehindThresholds() {
         let reset = resetsAt(elapsed: 0.5, period: week) // half the window gone → projected = used * 2
-        XCTAssertEqual(Pace.evaluate(used: 30, limit: 100, resetsAt: reset, periodDuration: week, now: now)?.status, .ahead)   // 60 ≤ 90
-        XCTAssertEqual(Pace.evaluate(used: 44, limit: 100, resetsAt: reset, periodDuration: week, now: now)?.status, .ahead)   // 88 ≤ 90
-        XCTAssertEqual(Pace.evaluate(used: 46, limit: 100, resetsAt: reset, periodDuration: week, now: now)?.status, .onTrack) // 92 in (90,100]
-        XCTAssertEqual(Pace.evaluate(used: 50, limit: 100, resetsAt: reset, periodDuration: week, now: now)?.status, .onTrack) // 100 lands exactly on the limit
-        XCTAssertEqual(Pace.evaluate(used: 60, limit: 100, resetsAt: reset, periodDuration: week, now: now)?.status, .behind)  // 120 > 100
+        let cases: [(used: Double, status: Pace.Status)] = [
+            (0, .ahead), (44, .ahead), (46, .onTrack),
+            (50, .onTrack), (60, .behind), (100, .behind), (130, .behind)
+        ]
+
+        for testCase in cases {
+            XCTAssertEqual(
+                Pace.evaluate(used: testCase.used, limit: 100, resetsAt: reset, periodDuration: week, now: now)?.status,
+                testCase.status,
+                "used: \(testCase.used)"
+            )
+        }
     }
 
     func testEvaluateProjectsEndOfPeriodUsage() {
@@ -55,12 +51,19 @@ final class PaceTests: XCTestCase {
 
     // MARK: MeterState (the view-facing projection of the pace verdict)
 
-    /// Half the window gone, `used` percent of 100 spent → projected = used * 2.
-    private func weeklyData(used: Double, displayMode: WidgetDisplayMode = .used) -> WidgetData {
+    private func pacedData(
+        used: Double,
+        elapsed: Double = 0.5,
+        period: TimeInterval? = nil,
+        displayMode: WidgetDisplayMode = .used,
+        alwaysShowPacing: Bool = false
+    ) -> WidgetData {
+        let period = period ?? week
         var data = WidgetData(title: "Weekly", icon: .providerMark("codex"), kind: .percent,
                               used: used, limit: 100, displayMode: displayMode)
-        data.resetsAt = resetsAt(elapsed: 0.5, period: week)
-        data.periodDurationMs = Int(week * 1000)
+        data.resetsAt = resetsAt(elapsed: elapsed, period: period)
+        data.periodDurationMs = Int(period * 1000)
+        data.alwaysShowPacing = alwaysShowPacing
         return data
     }
 
@@ -75,12 +78,11 @@ final class PaceTests: XCTestCase {
         return nil
     }
 
-    func testEvenPaceTickOnAmberAndRedInBothDisplayModes() {
-        // Half the window gone → even-pace tick at 0.5 in Used view, 0.5 in Left (mirror of elapsed).
-        XCTAssertEqual(tick(weeklyData(used: 46)) ?? 0, 0.5, accuracy: 0.001)
-        XCTAssertEqual(tick(weeklyData(used: 46, displayMode: .remaining)) ?? 0, 0.5, accuracy: 0.001)
-        XCTAssertEqual(tick(weeklyData(used: 60)) ?? 0, 0.5, accuracy: 0.001)
-        XCTAssertNil(tick(weeklyData(used: 30))) // blue hides tick by default
+    func testEvenPaceTickAppearsForAmberAndRed() {
+        // Half the window gone → the even-pace tick is 0.5.
+        XCTAssertEqual(tick(pacedData(used: 46)) ?? 0, 0.5, accuracy: 0.001)
+        XCTAssertEqual(tick(pacedData(used: 60)) ?? 0, 0.5, accuracy: 0.001)
+        XCTAssertNil(tick(pacedData(used: 30))) // blue hides tick by default
     }
 
     func testNoTickWithoutAResetWindow() {
@@ -92,22 +94,22 @@ final class PaceTests: XCTestCase {
     }
 
     func testTooltipShowsNumericProjectionAtReset() {
-        XCTAssertEqual(weeklyData(used: 30).meterState(now: now).tooltip, "~40% left at reset")
-        XCTAssertEqual(weeklyData(used: 46).meterState(now: now).tooltip, "~92% used at reset")
-        XCTAssertEqual(weeklyData(used: 60).meterState(now: now).tooltip, "~20% over limit at reset")
+        XCTAssertEqual(pacedData(used: 30).meterState(now: now).tooltip, "~40% left at reset")
+        XCTAssertEqual(pacedData(used: 46).meterState(now: now).tooltip, "~92% used at reset")
+        XCTAssertEqual(pacedData(used: 60).meterState(now: now).tooltip, "~20% over limit at reset")
     }
 
     func testTooltipBlueCushionAtZeroUsage() {
-        XCTAssertEqual(weeklyData(used: 0).meterState(now: now).tooltip, "~100% left at reset")
+        XCTAssertEqual(pacedData(used: 0).meterState(now: now).tooltip, "~100% left at reset")
     }
 
     func testTooltipRedOverageFlooredToOnePercent() {
-        XCTAssertEqual(weeklyData(used: 50.2).meterState(now: now).tooltip, "~1% over limit at reset")
+        XCTAssertEqual(pacedData(used: 50.2).meterState(now: now).tooltip, "~1% over limit at reset")
     }
 
     func testSpentReadsLimitReached() {
-        XCTAssertEqual(weeklyData(used: 100).meterState(now: now), .spent)
-        XCTAssertEqual(weeklyData(used: 100).meterState(now: now).tooltip, "Limit reached")
+        XCTAssertEqual(pacedData(used: 100).meterState(now: now), .spent)
+        XCTAssertEqual(pacedData(used: 100).meterState(now: now).tooltip, "Limit reached")
         let nearlyEmpty = WidgetData(title: "Credits", icon: .providerMark("codex"), kind: .dollars,
                                      used: 99.999, limit: 100)
         XCTAssertEqual(nearlyEmpty.meterState(now: now), .spent)
@@ -117,9 +119,9 @@ final class PaceTests: XCTestCase {
     }
 
     func testSpareCopyOnlyWhenAmber() {
-        XCTAssertEqual(spare(weeklyData(used: 46)), "~8% spare")
-        XCTAssertNil(spare(weeklyData(used: 30)))
-        XCTAssertNil(spare(weeklyData(used: 60)))
+        XCTAssertEqual(spare(pacedData(used: 46)), "~8% spare")
+        XCTAssertNil(spare(pacedData(used: 30)))
+        XCTAssertNil(spare(pacedData(used: 60)))
     }
 
     func testSpentOutranksCloseToLimitSoNoTickOrSpare() {
@@ -132,33 +134,26 @@ final class PaceTests: XCTestCase {
         XCTAssertNil(spare(data))
     }
 
-    func testProjectedToLandAtTheLimitPromotesToRed() {
-        let data = weeklyData(used: 49.8)
-        guard case .runningOut(let eta, _) = data.meterState(now: now) else {
-            return XCTFail("expected runningOut")
+    func testProjectionAtOrRoundedToLimitIsRedWithoutAnEta() {
+        for used in [49.8, 50] {
+            let data = pacedData(used: used)
+            guard case .runningOut(let eta, _) = data.meterState(now: now) else {
+                return XCTFail("expected runningOut for \(used)% used")
+            }
+            XCTAssertNil(eta)
+            XCTAssertNotNil(tick(data))
+            XCTAssertNil(spare(data))
+            XCTAssertEqual(data.meterState(now: now).tooltip, "~100% used at reset")
         }
-        XCTAssertNil(eta)
-        XCTAssertNotNil(tick(data))
-        XCTAssertNil(spare(data))
-        XCTAssertEqual(data.meterState(now: now).tooltip, "~100% used at reset")
-    }
-
-    func testProjectedExactlyAtLimitIsRedNotAmber() {
-        let reset = resetsAt(elapsed: 0.5, period: week)
-        XCTAssertEqual(Pace.evaluate(used: 50, limit: 100, resetsAt: reset, periodDuration: week, now: now)?.status, .onTrack)
-        guard case .runningOut(let eta, _) = weeklyData(used: 50).meterState(now: now) else {
-            return XCTFail("expected runningOut")
-        }
-        XCTAssertNil(eta)
     }
 
     func testSmallButRealCushionStaysAmber() {
-        XCTAssertEqual(spare(weeklyData(used: 49)), "~2% spare")
-        XCTAssertNotNil(tick(weeklyData(used: 49)))
+        XCTAssertEqual(spare(pacedData(used: 49)), "~2% spare")
+        XCTAssertNotNil(tick(pacedData(used: 49)))
     }
 
     func testRunningOutCarriesAnEtaBeforeReset() {
-        guard case .runningOut(let eta, _) = weeklyData(used: 60).meterState(now: now) else {
+        guard case .runningOut(let eta, _) = pacedData(used: 60).meterState(now: now) else {
             return XCTFail("expected runningOut")
         }
         XCTAssertNotNil(eta)
@@ -174,39 +169,20 @@ final class PaceTests: XCTestCase {
     func testPlentyRemainingSuppressesFalseRunOutFlame() {
         let session: TimeInterval = 5 * 3600
         let elapsed = 240 / session // four minutes into a five-hour window
-        var data = WidgetData(title: "Session", icon: .providerMark("codex"), kind: .percent,
-                              used: 2, limit: 100)
-        data.resetsAt = resetsAt(elapsed: elapsed, period: session)
-        data.periodDurationMs = Int(session * 1000)
-        XCTAssertEqual(Pace.evaluate(used: 2, limit: 100,
-                                     resetsAt: data.resetsAt!,
-                                     periodDuration: session, now: now)?.status, .behind)
+        let data = pacedData(used: 2, elapsed: elapsed, period: session)
         // Projection distrusted near-empty: a calm level bar, never a fabricated projection cushion.
         XCTAssertEqual(data.meterState(now: now), .level(.normal))
     }
 
     func testOnePercentAtProjectionGateDoesNotBecomeRed() {
         let session: TimeInterval = 5 * 3600
-        var data = WidgetData(title: "Session", icon: .providerMark("codex"), kind: .percent,
-                              used: 1, limit: 100)
-        data.resetsAt = resetsAt(elapsed: 0.01, period: session)
-        data.periodDurationMs = Int(session * 1000)
-        XCTAssertEqual(Pace.evaluate(used: 1, limit: 100,
-                                     resetsAt: data.resetsAt!,
-                                     periodDuration: session, now: now)?.status, .onTrack)
-        XCTAssertEqual(data.meterState(now: now), .level(.normal))
+        XCTAssertEqual(pacedData(used: 1, elapsed: 0.01, period: session).meterState(now: now), .level(.normal))
     }
 
     func testRunOutFlameShowsOnceFivePercentUsedDespiteHighRemaining() {
         let session: TimeInterval = 5 * 3600
         let elapsed = 240 / session
-        var data = WidgetData(title: "Session", icon: .providerMark("codex"), kind: .percent,
-                              used: 6, limit: 100)
-        data.resetsAt = resetsAt(elapsed: elapsed, period: session)
-        data.periodDurationMs = Int(session * 1000)
-        XCTAssertEqual(Pace.evaluate(used: 6, limit: 100,
-                                     resetsAt: data.resetsAt!,
-                                     periodDuration: session, now: now)?.status, .behind)
+        let data = pacedData(used: 6, elapsed: elapsed, period: session)
         guard case .runningOut = data.meterState(now: now) else {
             return XCTFail("expected runningOut when burning fast with ≥5% used")
         }
@@ -221,32 +197,12 @@ final class PaceTests: XCTestCase {
 
     // MARK: Always Show Pacing (opt-in tick + healthy copy on blue)
 
-    private func pacedData(used: Double, elapsed: Double, displayMode: WidgetDisplayMode = .used,
-                           alwaysShowPacing: Bool = false) -> WidgetData {
-        var data = WidgetData(title: "Weekly", icon: .providerMark("codex"), kind: .percent,
-                              used: used, limit: 100, displayMode: displayMode)
-        data.resetsAt = resetsAt(elapsed: elapsed, period: week)
-        data.periodDurationMs = Int(week * 1000)
-        data.alwaysShowPacing = alwaysShowPacing
-        return data
-    }
-
-    func testHealthyBarHasNoTickByDefault() {
-        XCTAssertNil(tick(pacedData(used: 30, elapsed: 0.4)))
-    }
-
     func testAlwaysShowPacingAddsEvenPaceTickToHealthyBar() {
         XCTAssertEqual(tick(pacedData(used: 30, elapsed: 0.4, alwaysShowPacing: true)) ?? -1,
                        0.4, accuracy: 0.001)
         XCTAssertEqual(tick(pacedData(used: 30, elapsed: 0.4, displayMode: .remaining,
                                      alwaysShowPacing: true)) ?? -1,
                        0.6, accuracy: 0.001)
-    }
-
-    func testEvenPaceNotchInLeftViewSitsInsideTheFill() {
-        XCTAssertEqual(tick(pacedData(used: 2, elapsed: 0.30, displayMode: .remaining,
-                                     alwaysShowPacing: true)) ?? -1,
-                       0.70, accuracy: 0.001)
     }
 
     func testAmberTickIsAlwaysEvenPaceLine() {

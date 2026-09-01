@@ -25,7 +25,6 @@ final class ModelPricing: Sendable {
     /// Resolution walks every catalog entry on a fuzzy miss, so memoize per model name. Shared
     /// across threads; a pricing snapshot is immutable so entries never invalidate.
     private let memo = OSAllocatedUnfairLock<[String: ModelRates?]>(initialState: [:])
-    private let exactMemo = OSAllocatedUnfairLock<[String: ModelRates?]>(initialState: [:])
 
     init(supplement: PricingSupplement, primary: PricingCatalog, secondary: PricingCatalog) {
         self.supplement = supplement
@@ -57,43 +56,11 @@ final class ModelPricing: Sendable {
         return rates.costDollars(for: tokens, applyLongContextRates: applyLongContextRates)
     }
 
-    /// Dollar cost only when `model` resolves by alias or exact catalog key. Callers that have both a
-    /// provider-qualified slug and a bare model use this first so a fuzzy reseller key cannot shadow the
-    /// bare model's exact rate.
-    func estimatedCostDollarsExact(
-        model: String,
-        tokens: TokenBreakdown,
-        applyLongContextRates: Bool = true
-    ) -> Double? {
-        guard let rates = resolveExact(model: model) else { return nil }
-        return rates.costDollars(for: tokens, applyLongContextRates: applyLongContextRates)
-    }
-
     private func resolveUncached(model: String) -> ModelRates? {
         if let canonical = supplement.canonicalName(for: model), canonical != model {
             return lookup(canonical) ?? lookup(model)
         }
         return lookup(model)
-    }
-
-    private func resolveExact(model: String) -> ModelRates? {
-        if let cached = exactMemo.withLock({ $0[model] }) {
-            return cached
-        }
-        let resolved: ModelRates?
-        if let canonical = supplement.canonicalName(for: model), canonical != model {
-            resolved = lookupExact(canonical) ?? lookupExact(model)
-        } else {
-            resolved = lookupExact(model)
-        }
-        exactMemo.withLock { $0[model] = resolved }
-        return resolved
-    }
-
-    private func lookupExact(_ name: String) -> ModelRates? {
-        supplement.pricing[name]
-            ?? primary.findExact(name)?.rates
-            ?? secondary.findExact(name)?.rates
     }
 
     /// The secondary catalog is consulted only after the whole primary lookup misses, like ccusage —

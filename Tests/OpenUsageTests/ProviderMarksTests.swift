@@ -3,23 +3,10 @@ import XCTest
 
 @MainActor
 final class ProviderMarksTests: XCTestCase {
-    func testGrokResolvesToVectorMarkNotBoltFallback() {
-        let mark = ProviderMarks.mark(for: "grok")
-        XCTAssertNotNil(mark, "Grok must load a real vector mark instead of the bolt.fill fallback")
-        XCTAssertFalse(mark?.path.isEmpty ?? true, "Grok mark must carry SVG path data")
-    }
-
-    func testDevinResolvesToVectorMark() {
-        let mark = ProviderMarks.mark(for: "devin")
-        XCTAssertNotNil(mark)
-        XCTAssertFalse(mark?.path.isEmpty ?? true, "Devin mark must carry SVG path data")
-    }
-
-    func testStandardProviderMarksLoad() {
-        for id in ["claude", "codex", "cursor"] {
-            let mark = ProviderMarks.mark(for: id)
-            XCTAssertNotNil(mark, "\(id) should load")
-            XCTAssertFalse(mark?.path.isEmpty ?? true, "\(id) mark must carry SVG path data")
+    func testProviderVectorMarksLoadWithoutFallbacks() throws {
+        for id in ["claude", "codex", "cursor", "devin", "grok"] {
+            let mark = try XCTUnwrap(ProviderMarks.mark(for: id), "\(id) should load a vector mark")
+            XCTAssertFalse(mark.path.isEmpty, "\(id) mark must carry SVG path data")
         }
     }
 }

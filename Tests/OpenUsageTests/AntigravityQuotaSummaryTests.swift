@@ -146,7 +146,11 @@ final class AntigravityQuotaSummaryTests: XCTestCase {
 
     @MainActor
     func testDescriptorLabelsMatchMapperEmittedLabels() {
-        let descriptorLabels = Set(AntigravityProvider().widgetDescriptors.map(\.metricLabel))
+        let descriptorLabels = Set(
+            AntigravityProvider().widgetDescriptors
+                .filter { !$0.limitResources.isEmpty }
+                .map(\.metricLabel)
+        )
         XCTAssertEqual(Set(AntigravityUsageMapper.summaryBuckets.map(\.label)), descriptorLabels)
 
         let summaryLines = AntigravityUsageMapper.parseQuotaSummary(Data("{\(fullGroupsJSON)}".utf8)) ?? []
@@ -170,7 +174,8 @@ final class AntigravityQuotaSummaryTests: XCTestCase {
         return AntigravityProvider(
             authStore: AntigravityAuthStore(keychain: FakeKeychain(wrapped), files: FakeFiles()),
             usageClient: AntigravityUsageClient(lsHTTP: routing, http: routing),
-            discovery: LanguageServerDiscovery(processRunner: NoProcessRunner())
+            discovery: LanguageServerDiscovery(processRunner: NoProcessRunner()),
+            dbUsageScanner: AntigravityDbUsageScanner(conversationsDirectory: { "/nonexistent-antigravity-tests" })
         )
     }
 
@@ -227,7 +232,8 @@ final class AntigravityQuotaSummaryTests: XCTestCase {
         AntigravityProvider(
             authStore: AntigravityAuthStore(keychain: FakeKeychain(nil), files: FakeFiles()),
             usageClient: AntigravityUsageClient(lsHTTP: routing, http: routing),
-            discovery: LanguageServerDiscovery(processRunner: FakeLSProcessRunner())
+            discovery: LanguageServerDiscovery(processRunner: FakeLSProcessRunner()),
+            dbUsageScanner: AntigravityDbUsageScanner(conversationsDirectory: { "/nonexistent-antigravity-tests" })
         )
     }
 

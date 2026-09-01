@@ -8,14 +8,15 @@ import Foundation
 enum DefaultLayout {
     static let metricIDs: [String] = [
         "antigravity.geminiPro", "antigravity.geminiWeekly", "antigravity.claude", "antigravity.claudeWeekly",
+        "antigravity.trend", "antigravity.today", "antigravity.yesterday", "antigravity.last30",
 
-        "claude.session", "claude.weekly", "claude.trend",
+        "claude.session", "claude.weekly", "claude.fable", "claude.trend",
         "claude.extra", "claude.today", "claude.yesterday", "claude.last30",
 
         "codex.session", "codex.weekly", "codex.spark", "codex.sparkWeekly", "codex.trend",
         "codex.credits", "codex.rateLimitResets", "codex.today", "codex.yesterday", "codex.last30",
 
-        "cursor.usage", "cursor.auto", "cursor.api", "cursor.trend",
+        "cursor.usage", "cursor.auto", "cursor.api", "cursor.grokBot", "cursor.trend",
         "cursor.onDemand", "cursor.today", "cursor.yesterday", "cursor.last30",
 
         "copilot.premium", "copilot.extra", "copilot.orgCredits", "copilot.orgSpend",
@@ -56,8 +57,8 @@ enum DefaultLayout {
 
     /// Metrics pinned to the menu bar on first launch, so the app shows real numbers out of the box
     /// instead of a lone icon. Two per provider for Antigravity, Claude, Codex, and Cursor — the
-    /// per-provider cap (`LayoutStore.maxPinsPerProvider`). Filtered to the active
-    /// registry by `LayoutStore`, like `metricIDs`.
+    /// per-provider cap (`LayoutStore.maxPinsPerProvider`). Filtered to the active registry by
+    /// `LayoutStore`, like `metricIDs`.
     static let pinnedMetricIDs: [String] = [
         "antigravity.geminiPro", "antigravity.geminiWeekly",
         "claude.session", "claude.weekly",
@@ -74,17 +75,18 @@ enum DefaultLayout {
     /// Filtered to the active registry by `LayoutStore`, and only seeded on a genuinely fresh launch
     /// (existing layouts keep everything always-shown unless they reset customization).
     static let expandedMetricIDs: [String] = [
-        // Antigravity: the Gemini pool pair (5h + weekly) stays above the fold; the non-Gemini
-        // (Claude) pool pair sits below the caret.
+        // Antigravity: the Gemini pool pair and usage trend stay above the fold; the non-Gemini
+        // pool pair and spend-history rows sit below the caret, matching the other local scanners.
         "antigravity.claude", "antigravity.claudeWeekly",
-        // Claude's core meters (Session, Weekly, Extra, Usage Trend) stay above the fold; spend-history
-        // rows sit below the caret. Matches every other provider's "core above, history below" shape.
-        "claude.sonnet", "claude.fable", "claude.today", "claude.yesterday", "claude.last30",
+        "antigravity.today", "antigravity.yesterday", "antigravity.last30",
+        // Claude's core meters (Session, Weekly, Fable, Extra, Usage Trend) stay above the fold;
+        // optional Sonnet and spend-history rows sit below the caret.
+        "claude.sonnet", "claude.today", "claude.yesterday", "claude.last30",
         // Codex's core Session/Weekly meters and Usage Trend stay above the fold; Spark (the optional
         // model-specific limits), credits, reset details, and spend rows sit below the caret.
         "codex.spark", "codex.sparkWeekly",
         "codex.credits", "codex.rateLimitResets", "codex.today", "codex.yesterday", "codex.last30",
-        "cursor.onDemand", "cursor.requests", "cursor.credits",
+        "cursor.grokBot", "cursor.onDemand", "cursor.requests", "cursor.credits",
         "cursor.today", "cursor.yesterday", "cursor.last30",
         // Copilot: Credits (the metered premium pool) + Extra Usage stay above the fold; the org
         // billing pair (org-managed Business/Enterprise seats) and Chat + Completions sit below the

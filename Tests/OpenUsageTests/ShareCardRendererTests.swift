@@ -48,30 +48,19 @@ final class ShareCardRendererTests: XCTestCase {
         XCTAssertGreaterThan(rep.pixelsHigh, 0)
     }
 
-    func testCondensedTextRowIndicesFollowsNeighborRule() {
-        let rows = MockData.descriptors(for: MockData.claude.id).map { $0.sample }
-        XCTAssertGreaterThan(rows.count, 1, "sample fixture should have multiple rows")
-        let condensed = ShareCardView.condensedTextRowIndices(rows)
-        XCTAssertFalse(condensed.contains(0), "the first row is never condensed")
-        for i in 1..<rows.count {
-            let expected = !rows[i - 1].isBounded && !rows[i].isBounded
-            XCTAssertEqual(condensed.contains(i), expected,
-                           "row \(i) condensing should match the neighbor-aware text-only rule")
+    /// The neighbor-aware condensing rule on a fixed fixture: a text-only row condenses only under
+    /// another text-only row, and the expand caret is a hard boundary a run never bridges.
+    func testCondensedTextRowIndicesFollowNeighborRuleAndRespectExpandBoundary() {
+        func row(bounded: Bool) -> WidgetData {
+            WidgetData(title: "Row", icon: .providerMark("claude"), kind: .percent, used: 0, limit: bounded ? 100 : nil)
         }
-    }
+        // Meter, then a run of three text-only rows.
+        let rows = [row(bounded: true), row(bounded: false), row(bounded: false), row(bounded: false)]
 
-    func testCondensedTextRowIndicesRespectExpandBoundary() {
-        let rows = MockData.descriptors(for: MockData.claude.id).map { $0.sample }
-        XCTAssertGreaterThan(rows.count, 1, "sample fixture should have multiple rows")
-        let boundary = rows.count / 2
-        let condensed = ShareCardView.condensedTextRowIndices(rows, boundary: boundary)
-        XCTAssertFalse(condensed.contains(boundary), "the first expanded row (at the boundary) is never condensed")
-        for i in 1..<rows.count {
-            let sameSide = (i < boundary) == (i - 1 < boundary)
-            let expected = sameSide && !rows[i - 1].isBounded && !rows[i].isBounded
-            XCTAssertEqual(condensed.contains(i), expected,
-                           "row \(i) condensing should not bridge the expand caret boundary")
-        }
+        XCTAssertEqual(ShareCardView.condensedTextRowIndices(rows), [2, 3])
+        // With the caret between rows 1 and 2, row 2 starts the expanded segment (never condensed);
+        // only row 3 still condenses.
+        XCTAssertEqual(ShareCardView.condensedTextRowIndices(rows, boundary: 2), [3])
     }
 
     // MARK: - Clipboard write result

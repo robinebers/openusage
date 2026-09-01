@@ -1,0 +1,177 @@
+name: Pull Request Policy
+
+on:
+  pull_request_target:
+    types: [opened, reopened, edited, synchronize, labeled]
+
+permissions:
+  issues: read
+  pull-requests: write
+
+concurrency:
+  group: pr-policy-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  enforce:
+    name: Enforce Approved Issue
+    runs-on: ubuntu-latest
+    steps:
+      # This privileged workflow only inspects GitHub API data. Never check out
+      # the pull request or run contributor-controlled code here.
+      - uses: actions/github-script@v9
+        with:
+          script: |
+            const pullRequest = context.payload.pull_request;
+            const { owner, repo } = context.repo;
+            const author = pullRequest.user.login;
+            const labels = pullRequest.labels ?? [];
+
+            if (
+              ["OWNER", "MEMBER", "COLLABORATOR"].includes(pullRequest.author_association) ||
+              author === "dependabot[bot]" ||
+              labels.some(label => label.name.toLowerCase() === "keep-open")
+            ) {
+              core.info(`Trusted or explicitly exempt pull request from @${author}.`);
+              return;
+            }
+
+            const references = [
+              ...new Set(
+                [...(pullRequest.body ?? "").matchAll(
+                  /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\s+#(\d+)\b/gi
+                )].map(match => Number(match[1]))
+              )
+            ];
+
+            let approvedIssue;
+
+            for (const issueNumber of references) {
+              let issue;
+
+              try {
+                ({ data: issue } = await github.rest.issues.get({
+                  owner,
+                  repo,
+                  issue_number: issueNumber
+                }));
+              } catch (error) {
+                if (error.status === 404) {
+                  core.info(`Referenced issue #${issueNumber} does not exist.`);
+                  continue;
+                }
+
+                throw error;
+              }
+
+              const isApproved = (issue.labels ?? []).some(label => {
+                const name = typeof label === "string" ? label : label.name;
+                return name.toLowerCase() === "approved";
+              });
+              const authorIsAssigned = (issue.assignees ?? []).some(
+                assignee => assignee.login.toLowerCase() === author.toLowerCase()
+              );
+
+              if (!issue.pull_request && issue.state === "open" && isApproved && authorIsAssigned) {
+                approvedIssue = issue;
+                break;
+              }
+
+              core.info(
+                `Issue #${issueNumber} is not an open, approved issue assigned to @${author}.`
+              );
+            }
+
+            const findBotComment = async marker => {
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner,
+                repo,
+                issue_number: pullRequest.number,
+                per_page: 100
+              });
+
+              return comments.find(
+                comment => comment.user?.login === "github-actions[bot]" &&
+                  comment.body?.includes(marker)
+              );
+            };
+
+            if (!approvedIssue) {
+              const marker = "<!-- openusage:approved-issue-required -->";
+              const body = [
+                marker,
+                "Thanks for your interest in contributing to OpenUsage!",
+                "",
+                "External pull requests must reference an **open issue** that:",
+                "",
+                "1. Has been approved by a maintainer with the `approved` label.",
+                `2. Is assigned to the pull request author (@${author}).`,
+                "",
+                "Please discuss the change on an issue first, wait for a maintainer to approve " +
+                  "and assign it to you, then reopen this pull request with `Fixes #123` in " +
+                  "its description.",
+                "",
+                `[Read the contribution guidelines](https://github.com/${owner}/${repo}/blob/main/CONTRIBUTING.md).`
+              ].join("\n");
+              const existingComment = await findBotComment(marker);
+
+              if (existingComment) {
+                if (existingComment.body !== body) {
+                  await github.rest.issues.updateComment({
+                    owner,
+                    repo,
+                    comment_id: existingComment.id,
+                    body
+                  });
+                }
+              } else {
+                await github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number: pullRequest.number,
+                  body
+                });
+              }
+
+              await github.rest.pulls.update({
+                owner,
+                repo,
+                pull_number: pullRequest.number,
+                state: "closed"
+              });
+
+              core.info(`Closed pull request #${pullRequest.number}: no eligible approved issue.`);
+              return;
+            }
+
+            core.info(`Pull request #${pullRequest.number} is approved by issue #${approvedIssue.number}.`);
+
+            const { data: currentPullRequest } = await github.rest.pulls.get({
+              owner,
+              repo,
+              pull_number: pullRequest.number
+            });
+
+            if (currentPullRequest.additions <= 1000) {
+              return;
+            }
+
+            const marker = "<!-- openusage:large-pr-warning -->";
+
+            if (await findBotComment(marker)) {
+              return;
+            }
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: pullRequest.number,
+              body: [
+                marker,
+                `This pull request adds **${currentPullRequest.additions.toLocaleString()} lines**.`,
+                "",
+                "Pull requests with more than 1,000 added lines are rarely merged because " +
+                  "they are difficult to review and often extend beyond the approved issue. " +
+                  "Please consider breaking this into a smaller, more surgical contribution."
+              ].join("\n")
+            });

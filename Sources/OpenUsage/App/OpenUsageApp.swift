@@ -68,6 +68,21 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         // preferredColorScheme, so the override is applied at the AppKit level once at launch;
         // the Theme picker on the Settings screen re-applies it on change.
         AppearanceSetting.applyCurrent()
+
+        if ShellEnvironmentSnapshotStore.launchSnapshot == nil,
+           !LoginShellEnvironment.shared.capturedSuccessfully {
+            Task { [weak self] in
+                await Task.detached(priority: .userInitiated) {
+                    _ = LoginShellEnvironment.shared.ensureCaptured()
+                }.value
+                self?.finishLaunching(isFreshInstall: isFreshInstall)
+            }
+            return
+        }
+        finishLaunching(isFreshInstall: isFreshInstall)
+    }
+
+    private func finishLaunching(isFreshInstall: Bool) {
         let container = AppContainer(isFreshInstall: isFreshInstall)
         self.container = container
         statusItemController = StatusItemController(container: container, updater: updater)

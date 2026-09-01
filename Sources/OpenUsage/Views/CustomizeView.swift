@@ -15,7 +15,7 @@ struct CustomizeView: View {
     let reorderSpaceName: String
     @Binding var reorderLift: ReorderLift?
 
-    @State private var rowFrames: [String: CGRect] = [:]
+    @State private var frameStore = ReorderFrameStore()
 
     var body: some View {
         PopoverScrollView {
@@ -24,7 +24,7 @@ struct CustomizeView: View {
                 .padding(.vertical, 12)
                 .frame(maxWidth: .infinity)
         }
-        .onPreferenceChange(ReorderFramePreferenceKey.self) { rowFrames = $0 }
+        .onPreferenceChange(ReorderFramePreferenceKey.self) { frameStore.frames = $0 }
         // The transient star/denial pill floats above the Customize content — the same capsule style
         // as the dashboard's "Copied to clipboard" share pill. Green for a successful star/unstar,
         // orange for the per-provider cap denial.
@@ -56,14 +56,14 @@ struct CustomizeView: View {
                 providerID: id,
                 reorderSpaceName: reorderSpaceName,
                 reorderLift: $reorderLift,
-                rowFrames: rowFrames
+                frameStore: frameStore
             )
             .transition(.move(edge: .trailing))
         } else {
             CustomizeProviderListView(
                 reorderSpaceName: reorderSpaceName,
                 reorderLift: $reorderLift,
-                rowFrames: rowFrames
+                frameStore: frameStore
             )
             .transition(.move(edge: .leading))
         }

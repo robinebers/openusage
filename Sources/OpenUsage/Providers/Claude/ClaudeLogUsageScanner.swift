@@ -16,24 +16,26 @@ import Foundation
 ///   types stay represented only by the parent usage totals, avoiding double-counting.
 /// - Cost mode "auto": a line's `costUSD` when present, else tokens priced through `ModelPricing`.
 ///
-/// An actor so the whole scan runs off the main actor, and so the per-file parse cache (keyed by
-/// path + size + mtime) can persist across refreshes: the ~5-minute provider refresh re-parses only
-/// files that changed, then re-runs the cheap dedup + day aggregation over cached entries.
+/// An actor so the whole scan runs off the main actor. Parsed files are cached by path + size + mtime
+/// in memory and Application Support: refreshes and relaunches parse only changed files, then re-run
+/// the cheap dedup + day aggregation over cached entries before local model-rate estimates.
 actor ClaudeLogUsageScanner {
     private let environment: EnvironmentReading
     private let homeDirectory: @Sendable () -> URL
-
-    init(
-        environment: EnvironmentReading = ProcessEnvironmentReader(),
-        homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser }
-    ) {
-        self.environment = environment
-        self.homeDirectory = homeDirectory
-    }
+    private let scanner: IncrementalJSONLScanner<Entry>
+    /// Scoped provider instances pass their stable parse-source identity here. Account or time filters
+    /// over the same physical roots deliberately pass the same value and share whole-file records.
+    private let cacheIdentityOverride: String?
+    private let organizationID: String?
+    private let accountID: String?
+    private let allowsUnattributedSessions: Bool
+    private var sessionOwnership: [String: (
+        size: Int, mtime: Date, organizationID: String?, accountID: String?
+    )] = [:]
 
     /// One parsed usage line. Token buckets are pre-normalized into `TokenBreakdown`; dedup fields
     /// ride along so the global dedup pass can run over cached entries.
-    struct Entry: Sendable, Equatable {
+    struct Entry: Codable, Sendable, Equatable {
         var timestamp: Date
         var tokens: TokenBreakdown
         var messageID: String?
@@ -46,23 +48,104 @@ actor ClaudeLogUsageScanner {
         var model: String?
     }
 
-    /// Off-main-actor incremental parse cache (keyed path + size + mtime), owned by the shared scanner.
-    private let scanner = IncrementalJSONLScanner<Entry>(logTag: LogTag.plugin("claude"))
+    /// Cards that read the same Claude home share one actor, so the first scan populates both the
+    /// in-memory and disk caches and the rest reuse it. Tests inject an isolated memory-only scanner.
+    private static let sharedScanner = IncrementalJSONLScanner<Entry>(
+        logTag: LogTag.plugin("claude"),
+        persistence: JSONLScanCachePersistence(namespace: "claude", schemaVersion: 1)
+    )
+
+    static func flushPersistentCacheWrites() async {
+        await sharedScanner.flushPendingWrites()
+    }
+
+    init(
+        environment: EnvironmentReading = ProcessEnvironmentReader(),
+        homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser },
+        incrementalScanner: IncrementalJSONLScanner<Entry>? = nil,
+        cacheIdentityOverride: String? = nil,
+        accountUUID: String? = nil,
+        organizationUUID: String? = nil,
+        allowsUnattributedSessions: Bool = false
+    ) {
+        precondition(cacheIdentityOverride?.isEmpty != true)
+        self.environment = environment
+        self.homeDirectory = homeDirectory
+        self.scanner = incrementalScanner ?? Self.sharedScanner
+        self.cacheIdentityOverride = cacheIdentityOverride
+        self.organizationID = organizationUUID?.lowercased()
+        self.accountID = accountUUID?.lowercased()
+        self.allowsUnattributedSessions = allowsUnattributedSessions
+    }
 
     /// Scan the last `daysBack` days of Claude logs. Returns `nil` when no Claude data directory or
     /// no log files exist (the spend tiles then render "No data"); returns an empty series when logs
     /// exist but have no usage in the window.
     func scan(daysBack: Int = 30, now: Date = Date(), pricing: ModelPricing) async -> LogUsageScan? {
-        let roots = claudeRoots()
-        guard !roots.isEmpty else { return nil }
-
-        let files = Self.usageFiles(under: roots)
-        guard !files.isEmpty else { return nil }
-
         let since = JSONLScanning.sinceDate(daysBack: daysBack, now: now)
+        let cacheIdentity = parseCacheIdentity()
+        let roots = claudeRoots()
+        guard !roots.isEmpty else {
+            _ = await scanner.items(
+                from: [], since: since, cacheIdentity: cacheIdentity, parse: Self.parseFile
+            )
+            return nil
+        }
+
+        var files = Self.usageFiles(under: roots)
+        if let organizationID {
+            files = ownedUsageFiles(files, organizationID: organizationID)
+        }
+        guard !Task.isCancelled else { return nil }
+        guard !files.isEmpty else {
+            _ = await scanner.items(
+                from: [], since: since, cacheIdentity: cacheIdentity, parse: Self.parseFile
+            )
+            return nil
+        }
+
         // Entries come back concatenated in path-sorted file order, so dedup's keep-first is deterministic.
-        let entries = await scanner.items(from: files, since: since, parse: Self.parseFile)
+        guard let entries = await scanner.items(
+            from: files,
+            since: since,
+            cacheIdentity: cacheIdentity,
+            parse: Self.parseFile
+        ), !Task.isCancelled else { return nil }
         return Self.aggregate(entries: Self.dedup(entries), since: since, pricing: pricing)
+    }
+
+    /// Stable source configuration identity rather than the discovered root list: Cowork adds session
+    /// roots over time, and a new session must extend the same cache instead of cold-parsing every old
+    /// file. Scoped root overrides pass an explicit identity so distinct homes stay partitioned.
+    private func parseCacheIdentity() -> String {
+        if let cacheIdentityOverride { return cacheIdentityOverride }
+        let home = homeDirectory().resolvingSymlinksInPath().path
+        let configuredRoots: [URL]
+        if let raw = environment.value(for: "CLAUDE_CONFIG_DIR")?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !raw.isEmpty
+        {
+            configuredRoots = raw.split(separator: ",").compactMap { part in
+                let value = part.trimmingCharacters(in: .whitespaces)
+                guard !value.isEmpty else { return nil }
+                var url = URL(fileURLWithPath: expandHome(value))
+                if url.lastPathComponent == "projects" { url.deleteLastPathComponent() }
+                return url
+            }
+        } else {
+            let homeURL = homeDirectory()
+            let xdg = environment.value(for: "XDG_CONFIG_HOME")?.nilIfEmpty
+                .map { URL(fileURLWithPath: expandHome($0)) }
+                ?? homeURL.appendingPathComponent(".config")
+            configuredRoots = [
+                xdg.appendingPathComponent("claude"),
+                homeURL.appendingPathComponent(".claude"),
+            ]
+        }
+        let roots = Set(configuredRoots.map { $0.resolvingSymlinksInPath().standardizedFileURL.path })
+            .sorted()
+            .joined(separator: "\n")
+        return "home=\(home)\nroots=\(roots)"
     }
 
     // MARK: - Root and file discovery
@@ -104,7 +187,9 @@ actor ClaudeLogUsageScanner {
             addIfValid(home.appendingPathComponent(".claude"))
         }
 
-        for sandbox in Self.coworkClaudeDirs(home: homeDirectory()) {
+        for sandbox in Self.coworkClaudeDirs(
+            home: homeDirectory(), organizationID: organizationID, accountID: accountID
+        ) {
             addIfValid(sandbox)
         }
         return roots
@@ -115,7 +200,7 @@ actor ClaudeLogUsageScanner {
     /// (plus an `agent/local_*` variant one level deeper). Each holds the same `projects/**/*.jsonl`
     /// session logs as `~/.claude`, so they scan as additional roots. The walk is bounded to those
     /// known levels — session dirs contain full sandbox homes we must not recurse into.
-    private static func coworkClaudeDirs(home: URL) -> [URL] {
+    private static func coworkClaudeDirs(home: URL, organizationID: String?, accountID: String?) -> [URL] {
         let base = home
             .appendingPathComponent("Library/Application Support/Claude/local-agent-mode-sessions")
 
@@ -130,7 +215,12 @@ actor ClaudeLogUsageScanner {
 
         var dirs: [URL] = []
         for group in subdirectories(of: base) {
+            guard organizationID == nil || accountID == nil || group.lastPathComponent.lowercased() == accountID
+            else { continue }
             for sub in subdirectories(of: group) {
+                guard organizationID == nil || sub.lastPathComponent.lowercased() == organizationID else {
+                    continue
+                }
                 var sessions = subdirectories(of: sub)
                 for holder in sessions where holder.lastPathComponent == "agent" {
                     sessions.append(contentsOf: subdirectories(of: holder))
@@ -149,6 +239,131 @@ actor ClaudeLogUsageScanner {
         roots
             .flatMap { JSONLScanning.jsonlFiles(under: $0.appendingPathComponent("projects")) }
             .sorted { $0.path < $1.path }
+    }
+
+    /// Cowork roots carry their organization in the directory layout. Other sessions identify theirs
+    /// in a bridge event or Desktop's account-and-organization-scoped session index; subagent files
+    /// inherit their parent session's ownership. Keep this outside the shared parsed-entry cache.
+    private func ownedUsageFiles(
+        _ files: [JSONLScanning.DiscoveredFile],
+        organizationID: String
+    ) -> [JSONLScanning.DiscoveredFile] {
+        let coworkPrefix = homeDirectory()
+            .appendingPathComponent("Library/Application Support/Claude/local-agent-mode-sessions")
+            .resolvingSymlinksInPath().path + "/"
+        let filesByPath = Dictionary(files.map { ($0.path, $0) }, uniquingKeysWith: { first, _ in first })
+        var seenPaths: Set<String> = []
+        var ownedFiles: [JSONLScanning.DiscoveredFile] = []
+        var desktopSessionIDs: Set<String>?
+
+        for file in files {
+            guard !Task.isCancelled else { return [] }
+            guard seenPaths.insert(file.path).inserted else { continue }
+            let canonicalPath = URL(fileURLWithPath: file.path).resolvingSymlinksInPath().path
+            if canonicalPath.hasPrefix(coworkPrefix) {
+                let components = canonicalPath.dropFirst(coworkPrefix.count).split(separator: "/")
+                if components.count > 1,
+                   components[1].lowercased() == organizationID,
+                   accountID == nil || components[0].lowercased() == accountID
+                {
+                    ownedFiles.append(file)
+                }
+                continue
+            }
+
+            let directory = URL(fileURLWithPath: file.path).deletingLastPathComponent()
+            let sessionFile: JSONLScanning.DiscoveredFile?
+            if directory.lastPathComponent == "subagents" {
+                let parentPath = directory.deletingLastPathComponent().appendingPathExtension("jsonl").path
+                sessionFile = filesByPath[parentPath]
+            } else {
+                sessionFile = file
+            }
+            guard let sessionFile, let ownership = sessionIdentity(sessionFile) else { continue }
+            if let owner = ownership.organizationID {
+                if owner == organizationID, accountID == nil || ownership.accountID == accountID {
+                    ownedFiles.append(file)
+                }
+            } else if allowsUnattributedSessions {
+                ownedFiles.append(file)
+            } else if let accountID {
+                if desktopSessionIDs == nil {
+                    desktopSessionIDs = indexedDesktopSessionIDs(accountID: accountID, organizationID: organizationID)
+                }
+                let sessionID = URL(fileURLWithPath: sessionFile.path)
+                    .deletingPathExtension().lastPathComponent.lowercased()
+                if desktopSessionIDs?.contains(sessionID) == true {
+                    ownedFiles.append(file)
+                }
+            }
+        }
+        return ownedFiles
+    }
+
+    private func indexedDesktopSessionIDs(accountID: String, organizationID: String) -> Set<String> {
+        let directory = homeDirectory()
+            .appendingPathComponent("Library/Application Support/Claude/claude-code-sessions")
+            .appendingPathComponent(accountID)
+            .appendingPathComponent(organizationID)
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
+            options: [.skipsHiddenFiles]
+        )) ?? []
+
+        return Set(files.compactMap { file in
+            guard file.lastPathComponent.hasPrefix("local_"), file.pathExtension == "json",
+                  let values = try? file.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey]),
+                  values.isRegularFile == true, values.isSymbolicLink != true,
+                  let handle = try? FileHandle(forReadingFrom: file)
+            else { return nil }
+            defer { try? handle.close() }
+            guard let prefix = try? handle.read(upToCount: 512),
+                  let header = String(data: prefix, encoding: .utf8),
+                  let field = header.range(of: #""cliSessionId"\s*:\s*""#, options: .regularExpression),
+                  let end = header[field.upperBound...].firstIndex(of: "\""),
+                  let sessionID = UUID(uuidString: String(header[field.upperBound..<end]))
+            else { return nil }
+            return sessionID.uuidString.lowercased()
+        })
+    }
+
+    private func sessionIdentity(
+        _ file: JSONLScanning.DiscoveredFile
+    ) -> (organizationID: String?, accountID: String?)? {
+        if let cached = sessionOwnership[file.path],
+           cached.size == file.size, cached.mtime == file.mtime
+        {
+            return (cached.organizationID, cached.accountID)
+        }
+
+        let data: Data
+        do {
+            data = try Data(contentsOf: URL(fileURLWithPath: file.path), options: .mappedIfSafe)
+        } catch {
+            AppLog.warn(LogTag.plugin("claude"), "Failed to read Claude session ownership from \(file.path): \(error)")
+            return nil
+        }
+
+        let marker = Data(#""ownerOrganizationUuid""#.utf8)
+        var owner: String?
+        var account: String?
+        for line in data.split(separator: UInt8(ascii: "\n")) where line.range(of: marker) != nil {
+            guard let object = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
+                  let value = object["ownerOrganizationUuid"] as? String,
+                  !value.isEmpty
+            else { continue }
+            let candidate = value.lowercased()
+            if let owner, owner != candidate { return nil }
+            owner = candidate
+            if let candidateAccount = object["ownerAccountUuid"] as? String, !candidateAccount.isEmpty {
+                let normalizedAccount = candidateAccount.lowercased()
+                if let account, account != normalizedAccount { return nil }
+                account = normalizedAccount
+            }
+        }
+
+        sessionOwnership[file.path] = (file.size, file.mtime, owner, account)
+        return (owner, account)
     }
 
     // MARK: - Line parsing

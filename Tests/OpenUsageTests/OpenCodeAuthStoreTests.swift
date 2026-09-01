@@ -21,23 +21,10 @@ final class OpenCodeAuthStoreTests: XCTestCase {
         XCTAssertEqual(try store(#"{"opencode-go":{"type":"api","key":"sk-abc"}}"#).goAPIKey(), "sk-abc")
     }
 
-    func testDetectsExternalOAuthWithoutExposingItsSecrets() throws {
-        let state = try store(#"{"openai":{"type":"oauth","access":"top-secret","refresh":"also-secret"}}"#).loadState()
-        XCTAssertTrue(state.hasAnyProviderLogin)
-        XCTAssertNil(state.goAPIKey)
-    }
-
-    func testDetectsExternalAPIKeyWithoutReturningIt() throws {
-        let state = try store(#"{"huggingface":{"type":"api","key":"hf-secret"}}"#).loadState()
-        XCTAssertTrue(state.hasAnyProviderLogin)
-        XCTAssertNil(state.goAPIKey)
-    }
-
     func testToleratesNonObjectSiblingEntries() throws {
         // A future schema marker (string) and an array entry beside opencode-go must not hide the key.
         let json = #"{"$schema":"https://opencode.ai/auth.json","opencode-go":{"type":"api","key":"sk-xyz"},"weird":["a","b"]}"#
         XCTAssertEqual(try store(json).goAPIKey(), "sk-xyz")
-        XCTAssertTrue(try store(json).loadState().hasAnyProviderLogin)
     }
 
     func testCoexistsWithOtherProviderEntries() throws {
@@ -50,13 +37,6 @@ final class OpenCodeAuthStoreTests: XCTestCase {
         XCTAssertNil(try store(#"{"opencode-go":{"type":"api","key":"   "}}"#).goAPIKey())
         XCTAssertNil(try store(#"{"openai":{"type":"oauth"}}"#).goAPIKey())
         XCTAssertNil(try store(files: FakeFiles()).goAPIKey()) // absent file = not logged in
-        XCTAssertFalse(try store(files: FakeFiles()).loadState().hasAnyProviderLogin)
-    }
-
-    func testSchemaObjectsWithoutCredentialTypeAreIgnored() throws {
-        let state = try store(#"{"$schema":{"version":1},"metadata":{"type":"index","created":"today"},"incomplete":{"type":"oauth"}}"#).loadState()
-        XCTAssertFalse(state.hasAnyProviderLogin)
-        XCTAssertNil(state.goAPIKey)
     }
 
     func testMalformedJSONThrowsCredentialsUnreadable() {

@@ -7,10 +7,11 @@ import SwiftUI
 /// outside the `label:` view builder (an `ImageRenderer` inline there throws obscure errors).
 @MainActor
 enum MenuBarStripRenderer {
-    /// Last render, memoized on (content, style). The label view re-evaluates on every snapshot
+    /// Last render, memoized on (content, style). The observation loop re-renders on every snapshot
     /// write — several times per refresh pass — but the strip's visible content rarely changes.
-    /// Returning the same `NSImage` instance lets SwiftUI skip the status-item update, and keeps
-    /// `ImageRenderer` (which retains a little memory per run on macOS) to actual visual changes.
+    /// Returning the same `NSImage` instance lets `StatusItemImageUpdater` skip the status-item set
+    /// (an unconditional set still costs a WindowServer redraw), and keeps `ImageRenderer` (which
+    /// retains a little memory per run on macOS) to actual visual changes.
     private static var lastRender: (content: MenuBarContent, style: MenuBarStyle, image: NSImage?)?
 
     /// The strip image for the given content and style, or `nil` when the content renders nothing
@@ -138,7 +139,7 @@ private struct MenuBarPrivacyLabel: View {
             // The same mark and inset as `MenuBarIcon` (the art carries its own margin), sized to the
             // strip's glyph box so the swap keeps the provider-glyph scale.
             if let mark = ProviderMarks.mark(for: "openusage") {
-                ProviderIconShape(pathData: mark.path, inset: 0.08)
+                ProviderIconShape(mark: mark, inset: 0.08)
                     .fill(Color.black)
                     .frame(width: 16, height: 16)
             }
@@ -198,7 +199,7 @@ private struct MenuBarTextStrip: View {
     @ViewBuilder
     private func glyph(_ icon: IconSource) -> some View {
         if let mark = ProviderMarks.mark(for: icon.providerID) {
-            ProviderIconShape(pathData: mark.path, inset: 0.04)
+            ProviderIconShape(mark: mark, inset: 0.04)
                 .fill(Color.black)
                 .frame(width: Self.glyphSide, height: Self.glyphSide)
         } else {

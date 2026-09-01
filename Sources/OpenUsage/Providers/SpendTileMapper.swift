@@ -24,40 +24,40 @@ enum SpendTileMapper {
         estimated: Bool = true,
         unknownModelsByDay: [String: Set<String>] = [:],
         modelUsage: ModelUsageSeries? = nil,
-        modelSourceNote: String? = nil
+        modelSourceNote: String? = nil,
+        fallbackPricingModelsByDay: [String: Set<String>]? = nil
     ) {
         let today = dayKey(from: now)
         let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: now).map(dayKey(from:))
 
         if let entry = usage.daily.first(where: { dayKey(fromUsageDate: $0.date) == today }), hasUsage(entry) {
-            let unknownModels = sortedModels(unknownModelsByDay[today])
             lines.append(dayUsageLine(label: "Today", entry: entry, estimated: estimated,
-                                      unknownModels: unknownModels,
+                                      unknownModels: sortedModels(unknownModelsByDay[today]),
                                       modelBreakdown: modelBreakdown(
                                         modelUsage,
                                         days: [today],
                                         totalTokens: entry.totalTokens,
                                         totalCostUSD: entry.costUSD,
-                                        sourceNote: modelSourceNote
+                                        sourceNote: modelSourceNote,
+                                        fallbackPricingModelsByDay: fallbackPricingModelsByDay
                                       )))
         }
         if let entry = usage.daily.first(where: { dayKey(fromUsageDate: $0.date) == yesterday }), hasUsage(entry) {
-            let unknownModels = sortedModels(yesterday.flatMap { unknownModelsByDay[$0] })
             lines.append(dayUsageLine(label: "Yesterday", entry: entry, estimated: estimated,
-                                      unknownModels: unknownModels,
+                                      unknownModels: sortedModels(yesterday.flatMap { unknownModelsByDay[$0] }),
                                       modelBreakdown: modelBreakdown(
                                         modelUsage,
                                         days: Set([yesterday].compactMap { $0 }),
                                         totalTokens: entry.totalTokens,
                                         totalCostUSD: entry.costUSD,
-                                        sourceNote: modelSourceNote
+                                        sourceNote: modelSourceNote,
+                                        fallbackPricingModelsByDay: fallbackPricingModelsByDay
                                       )))
         }
 
         let totalTokens = usage.daily.reduce(0) { $0 + $1.totalTokens }
         let costSamples = usage.daily.compactMap(\.costUSD)
-        let hasUnpricedUsage = usage.daily.contains { $0.totalTokens > 0 && $0.costUSD == nil }
-        let totalCost = costSamples.isEmpty || hasUnpricedUsage ? nil : costSamples.reduce(0, +)
+        let totalCost = costSamples.isEmpty ? nil : costSamples.reduce(0, +)
         if totalTokens > 0 || (totalCost ?? 0) > 0 {
             let allUnknown = unknownModelsByDay.values.reduce(into: Set<String>()) { $0.formUnion($1) }
             lines.append(.values(label: "Last 30 Days",
@@ -68,7 +68,8 @@ enum SpendTileMapper {
                                     days: Set(usage.daily.compactMap { dayKey(fromUsageDate: $0.date) }),
                                     totalTokens: totalTokens,
                                     totalCostUSD: totalCost,
-                                    sourceNote: modelSourceNote
+                                    sourceNote: modelSourceNote,
+                                    fallbackPricingModelsByDay: fallbackPricingModelsByDay
                                  )))
         }
     }
@@ -83,10 +84,16 @@ enum SpendTileMapper {
     /// that day. Tokens are always measured (no estimate flag), so the chart needs only the per-day
     /// counts plus a source note. Appends nothing when the whole window is idle, so a source with no
     /// usage leaves "No data" rather than a flat row of zero bars.
-    static func appendUsageTrend(_ usage: DailyUsageSeries, to lines: inout [MetricLine], now: Date = Date(), note: String) {
+    static func appendUsageTrend(
+        _ usage: DailyUsageSeries, to lines: inout [MetricLine], now: Date = Date(), note: String,
+        fallbackPricingModelsByDay: [String: Set<String>]? = nil
+    ) {
         let points = trendPoints(usage, now: now)
         guard !points.isEmpty else { return }
-        lines.append(.chart(label: "Usage Trend", points: points, note: note))
+        let days = Set(usage.daily.compactMap { dayKey(fromUsageDate: $0.date) })
+            .intersection(UsageHistoryWindow.dayKeys(through: now))
+        let sourceNote = PricingFallbackOption.sourceNote(note, modelsByDay: fallbackPricingModelsByDay, days: days)
+        lines.append(.chart(label: "Usage Trend", points: points, note: sourceNote))
     }
 
     /// Per-day token points across the queried window (today + the previous 30 days), oldest first.
@@ -215,10 +222,9 @@ enum SpendTileMapper {
     private struct ModelAccumulator {
         var tokens = 0
         var costUSD: Double?
-        var sawUnpriced = false
         private var nameVote = SpellingVote()
         /// Keyed by the case-folded slug; the vote inside restores a display spelling.
-        private var variants: [String: (tokens: Int, costUSD: Double?, sawUnpriced: Bool, vote: SpellingVote)] = [:]
+        private var variants: [String: (tokens: Int, costUSD: Double?, vote: SpellingVote)] = [:]
 
         /// The display spelling for this model, elected across every casing that merged into it.
         var displayName: String? { nameVote.best }
@@ -239,8 +245,6 @@ enum SpendTileMapper {
             tokens += entry.totalTokens
             if let cost = entry.costUSD {
                 costUSD = (costUSD ?? 0) + cost
-            } else if entry.totalTokens > 0 {
-                sawUnpriced = true
             }
             mergeVariant(entry.model, tokens: entry.totalTokens, costUSD: entry.costUSD)
         }
@@ -249,21 +253,15 @@ enum SpendTileMapper {
             tokens += entry.totalTokens
             if let cost = entry.costUSD {
                 costUSD = (costUSD ?? 0) + cost
-            } else if entry.totalTokens > 0 {
-                sawUnpriced = true
             }
             nameVote.note(name, weight: entry.totalTokens)
         }
 
         private mutating func mergeVariant(_ model: String, tokens: Int, costUSD: Double?) {
             let key = model.lowercased()
-            var existing = variants[key] ?? (0, nil, false, SpellingVote())
+            var existing = variants[key] ?? (0, nil, SpellingVote())
             existing.tokens += tokens
-            if let costUSD {
-                existing.costUSD = (existing.costUSD ?? 0) + costUSD
-            } else if tokens > 0 {
-                existing.sawUnpriced = true
-            }
+            existing.costUSD = costUSD.map { (existing.costUSD ?? 0) + $0 } ?? existing.costUSD
             existing.vote.note(model, weight: tokens)
             variants[key] = existing
         }
@@ -272,14 +270,13 @@ enum SpendTileMapper {
             let list = variants
                 .map { key, value in
                     ModelUsageVariant(model: value.vote.best ?? key, totalTokens: value.tokens,
-                                      costUSD: value.sawUnpriced
-                                        ? nil : value.costUSD.map(SpendTileMapper.roundToCents))
+                                      costUSD: value.costUSD.map(SpendTileMapper.roundToCents))
                 }
                 .sorted(by: variantSortPrecedes)
             // One variant carrying the row's own name is no breakdown — nil keeps the tooltip on plain figures.
             let isTrivial = list.count == 1 && list[0].model.lowercased() == model.lowercased()
             return ModelUsageEntry(model: model, totalTokens: tokens,
-                                   costUSD: sawUnpriced ? nil : costUSD.map(SpendTileMapper.roundToCents),
+                                   costUSD: costUSD.map(SpendTileMapper.roundToCents),
                                    variants: isTrivial ? nil : list)
         }
     }
@@ -297,7 +294,8 @@ enum SpendTileMapper {
         days: Set<String>,
         totalTokens: Int,
         totalCostUSD: Double?,
-        sourceNote: String?
+        sourceNote: String?,
+        fallbackPricingModelsByDay: [String: Set<String>]?
     ) -> ModelUsageBreakdown? {
         guard let usage, let sourceNote, !days.isEmpty else { return nil }
 
@@ -319,7 +317,7 @@ enum SpendTileMapper {
             totalTokens: totalTokens,
             totalCostUSD: totalCostUSD,
             models: folded,
-            sourceNote: sourceNote
+            sourceNote: PricingFallbackOption.sourceNote(sourceNote, modelsByDay: fallbackPricingModelsByDay, days: days)
         )
     }
 

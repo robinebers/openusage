@@ -10,13 +10,9 @@ struct ModelRates: Sendable, Equatable {
     var cacheWritePerMillion: Double
     var cacheReadPerMillion: Double
 
-    /// Prompt-token boundary for the optional whole-request long-context tier. LiteLLM's tiered
-    /// fields use 200k by default; some providers publish a model-specific boundary instead.
-    var longContextThresholdTokens: Int = 200_000
-
-    /// Rates for requests whose prompt exceeds `longContextThresholdTokens`, where the provider
-    /// prices the whole request at the higher long-context tier. The property names retain their
-    /// catalog feeds' common `above_200k` terminology.
+    /// Rates for requests whose prompt exceeds the model's long-context threshold, where the
+    /// provider prices the whole request at the higher tier. Field names retain the catalog's
+    /// common `above_200k` terminology; `longContextThresholdTokens` selects the actual boundary.
     var inputAbove200kPerMillion: Double?
     var outputAbove200kPerMillion: Double?
     var cacheWriteAbove200kPerMillion: Double?
@@ -26,6 +22,9 @@ struct ModelRates: Sendable, Equatable {
     /// a 10%-of-input fallback for general estimates, but Codex must charge full input when no prompt-
     /// caching discount is actually published.
     var cacheReadIsExplicit: Bool = true
+
+    /// Prompt-token threshold above which the optional long-context rates apply.
+    var longContextThresholdTokens: Int = 200_000
 
     /// Rate multiplier for the model's "fast" variant (1 when the model has none).
     var fastMultiplier: Double = 1
@@ -38,19 +37,19 @@ struct ModelRates: Sendable, Equatable {
             outputPerMillion: outputPerMillion * factor,
             cacheWritePerMillion: cacheWritePerMillion * factor,
             cacheReadPerMillion: cacheReadPerMillion * factor,
-            longContextThresholdTokens: longContextThresholdTokens,
             inputAbove200kPerMillion: inputAbove200kPerMillion.map { $0 * factor },
             outputAbove200kPerMillion: outputAbove200kPerMillion.map { $0 * factor },
             cacheWriteAbove200kPerMillion: cacheWriteAbove200kPerMillion.map { $0 * factor },
             cacheReadAbove200kPerMillion: cacheReadAbove200kPerMillion.map { $0 * factor },
             cacheReadIsExplicit: cacheReadIsExplicit,
+            longContextThresholdTokens: longContextThresholdTokens,
             fastMultiplier: 1
         )
     }
 }
 
 /// Token counts split into the buckets that price differently. Every scanner normalizes into this.
-struct TokenBreakdown: Sendable, Equatable {
+struct TokenBreakdown: Codable, Sendable, Equatable {
     /// Input tokens billed at the plain input rate (not written to or read from cache).
     var input: Int = 0
     /// Input tokens written to the 5-minute ephemeral cache.
@@ -73,7 +72,7 @@ extension ModelRates {
     /// explicit `above_1hr` fields where present).
     private static let cacheWrite1hInputMultiplier = 2.0
 
-    /// Dollar cost of one request at these rates, applying its request-wide long-context tier and the
+    /// Dollar cost of one request at these rates, applying the request-wide long-context tier and
     /// fast multiplier. Aggregated sources can opt out when their totals do not preserve request boundaries.
     func costDollars(for tokens: TokenBreakdown, applyLongContextRates: Bool = true) -> Double {
         let multiplier = tokens.isFast ? fastMultiplier : 1

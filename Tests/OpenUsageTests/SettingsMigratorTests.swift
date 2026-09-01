@@ -37,20 +37,19 @@ final class SettingsMigratorTests: XCTestCase {
 
     // MARK: - Cascading
 
-    /// The headline case: a big version jump runs every intermediate step in ascending order and stops
-    /// at current — a v7 install opening a v13 build.
+    /// A version jump runs only the pending intermediate steps in ascending order.
     func testCascadeRunsAllIntermediateStepsInOrder() {
         let (defaults, domain) = makeDefaults("Cascade")
         defer { defaults.removePersistentDomain(forName: domain) }
-        defaults.set(7, forKey: SettingsMigrator.schemaVersionKey)
+        defaults.set(1, forKey: SettingsMigrator.schemaVersionKey)
 
         let result = SettingsMigrator.migrate(
             defaults: defaults, domainName: domain,
-            current: 13, migrations: recording(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13)
+            current: 4, migrations: recording(1, 2, 3, 4)
         )
 
-        XCTAssertEqual(result, 13)
-        XCTAssertEqual(ranVersions(defaults), [8, 9, 10, 11, 12, 13], "only steps above the stored version, in order")
+        XCTAssertEqual(result, 4)
+        XCTAssertEqual(ranVersions(defaults), [2, 3, 4], "only pending steps run, in order")
     }
 
     /// Migrations declared out of order are still applied by ascending version.
@@ -67,34 +66,20 @@ final class SettingsMigratorTests: XCTestCase {
         XCTAssertEqual(ranVersions(defaults), [1, 2, 3])
     }
 
-    /// Already at the current version: nothing runs.
-    func testSameVersionIsNoOp() {
-        let (defaults, domain) = makeDefaults("Same")
-        defer { defaults.removePersistentDomain(forName: domain) }
-        defaults.set(3, forKey: SettingsMigrator.schemaVersionKey)
+    func testCurrentAndNewerVersionsNeverReplayMigrations() {
+        for storedVersion in [3, 5] {
+            let (defaults, domain) = makeDefaults("NoReplay\(storedVersion)")
+            defer { defaults.removePersistentDomain(forName: domain) }
+            defaults.set(storedVersion, forKey: SettingsMigrator.schemaVersionKey)
 
-        let result = SettingsMigrator.migrate(
-            defaults: defaults, domainName: domain, current: 3, migrations: recording(1, 2, 3)
-        )
+            let result = SettingsMigrator.migrate(
+                defaults: defaults, domainName: domain, current: 3, migrations: recording(1, 2, 3)
+            )
 
-        XCTAssertEqual(result, 3)
-        XCTAssertNil(ranVersions(defaults))
-    }
-
-    /// A build older than the stored version (downgrade) leaves the recorded version untouched and runs
-    /// nothing — old migrations are never replayed backward.
-    func testDowngradeLeavesVersionUntouched() {
-        let (defaults, domain) = makeDefaults("Downgrade")
-        defer { defaults.removePersistentDomain(forName: domain) }
-        defaults.set(5, forKey: SettingsMigrator.schemaVersionKey)
-
-        let result = SettingsMigrator.migrate(
-            defaults: defaults, domainName: domain, current: 3, migrations: recording(1, 2, 3)
-        )
-
-        XCTAssertEqual(result, 5)
-        XCTAssertEqual(defaults.integer(forKey: SettingsMigrator.schemaVersionKey), 5)
-        XCTAssertNil(ranVersions(defaults))
+            XCTAssertEqual(result, storedVersion)
+            XCTAssertEqual(defaults.integer(forKey: SettingsMigrator.schemaVersionKey), storedVersion)
+            XCTAssertNil(ranVersions(defaults))
+        }
     }
 
     /// A version bump with no data change for the top step still records reaching `current`, so the

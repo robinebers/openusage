@@ -152,7 +152,7 @@ final class FirstRunSeederTests: XCTestCase {
         // the assertion instead of detecting anything.
         let ids = ["claude", "codex", "cursor", "grok"]
         let gate = ProbeGate(expected: ids.count)
-        let providers = ids.map { GatedCredentialProvider(id: $0, gate: gate) }
+        let providers = ids.map { CredentialStubProvider(id: $0, gate: gate) }
 
         let detected = await FirstRunSeeder.detectLocalProviders(providers)
 
@@ -192,38 +192,23 @@ final class FirstRunSeederTests: XCTestCase {
 private final class CredentialStubProvider: ProviderRuntime {
     let provider: Provider
     let widgetDescriptors: [WidgetDescriptor] = []
-    private let hasCredentials: Bool
+    private let hasCredentials: @MainActor () async -> Bool
 
     init(id: String, hasCredentials: Bool) {
         self.provider = Provider(id: id, displayName: id.capitalized, icon: .providerMark(id))
-        self.hasCredentials = hasCredentials
+        self.hasCredentials = { hasCredentials }
     }
-
-    func refresh() async -> ProviderSnapshot {
-        ProviderSnapshot.make(provider: provider, plan: nil, lines: [], refreshedAt: Date())
-    }
-
-    func hasLocalCredentials() async -> Bool { hasCredentials }
-}
-
-/// A provider whose credential probe suspends on a shared `ProbeGate` until all expected probes have
-/// started — "credentials found" therefore means "my probe overlapped every other probe".
-@MainActor
-private final class GatedCredentialProvider: ProviderRuntime {
-    let provider: Provider
-    let widgetDescriptors: [WidgetDescriptor] = []
-    private let gate: ProbeGate
 
     init(id: String, gate: ProbeGate) {
         self.provider = Provider(id: id, displayName: id.capitalized, icon: .providerMark(id))
-        self.gate = gate
+        self.hasCredentials = { await gate.arrive() }
     }
 
     func refresh() async -> ProviderSnapshot {
         ProviderSnapshot.make(provider: provider, plan: nil, lines: [], refreshedAt: Date())
     }
 
-    func hasLocalCredentials() async -> Bool { await gate.arrive() }
+    func hasLocalCredentials() async -> Bool { await hasCredentials() }
 }
 
 /// Suspends each arriver until `expected` arrivals are in flight, then resumes them all with `true`.

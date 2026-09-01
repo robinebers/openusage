@@ -17,7 +17,7 @@ struct WidgetGroupedListView: View {
     let reorderSpaceName: String
     @Binding var reorderLift: ReorderLift?
 
-    @State private var rowFrames: [String: CGRect] = [:]
+    @State private var frameStore = ReorderFrameStore()
     @State private var activeProviderID: String?
     @State private var activeMetricID: String?
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
@@ -31,7 +31,7 @@ struct WidgetGroupedListView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .onPreferenceChange(ReorderFramePreferenceKey.self) { rowFrames = $0 }
+        .onPreferenceChange(ReorderFramePreferenceKey.self) { frameStore.frames = $0 }
         .animation(Motion.spring, value: layout.displayGroups.map(\.provider.id))
     }
 
@@ -200,7 +200,10 @@ struct WidgetGroupedListView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .reorderFrame(id: expandedDividerID(for: providerID), in: .named(reorderSpaceName))
+        .reorderFrame(
+            id: expandedDividerID(for: providerID),
+            in: .named(reorderSpaceName)
+        )
         .accessibilityLabel(isExpanded ? "Show less" : "Show more")
     }
 
@@ -224,7 +227,6 @@ struct WidgetGroupedListView: View {
 
     private func row(_ descriptor: WidgetDescriptor, data: WidgetData, in providerID: String,
                      condensedTop: Bool) -> some View {
-        let isActive = activeMetricID == descriptor.id
         return WidgetRowView(
             data: data,
             onToggleResetDisplay: { dataStore.resetDisplayMode.toggle() },
@@ -232,7 +234,7 @@ struct WidgetGroupedListView: View {
             condensedTop: condensedTop
         )
             .contentShape(Rectangle())
-            .opacity(isActive ? 0 : 1)
+            .opacity(activeMetricID == descriptor.id ? 0 : 1)
             .highPriorityGesture(metricDragGesture(for: descriptor, providerID: providerID))
             .contextMenu { rowMenu(descriptor, providerID: providerID) }
             .reorderFrame(id: descriptor.id, in: .named(reorderSpaceName))
@@ -280,7 +282,7 @@ struct WidgetGroupedListView: View {
         reorderDragGesture(
             id: group.provider.id,
             coordinateSpaceName: reorderSpaceName,
-            rowFrames: rowFrames,
+            frameStore: frameStore,
             active: $activeProviderID,
             lift: $reorderLift,
             makeLift: { makeProviderLift(for: group, value: $0) },
@@ -293,7 +295,7 @@ struct WidgetGroupedListView: View {
         reorderDragGesture(
             id: descriptor.id,
             coordinateSpaceName: reorderSpaceName,
-            rowFrames: rowFrames,
+            frameStore: frameStore,
             active: $activeMetricID,
             lift: $reorderLift,
             makeLift: { makeMetricLift(for: descriptor, value: $0) },
@@ -346,7 +348,7 @@ struct WidgetGroupedListView: View {
                 rows: rows
             ),
             value: value,
-            frames: rowFrames
+            frames: frameStore.frames
         )
     }
 
@@ -355,7 +357,7 @@ struct WidgetGroupedListView: View {
             id: descriptor.id,
             payload: .dashboardMetric(data: dataStore.data(for: descriptor)),
             value: value,
-            frames: rowFrames
+            frames: frameStore.frames
         )
     }
 }

@@ -1,3 +1,5 @@
+import Observation
+import os
 import XCTest
 @testable import OpenUsage
 
@@ -38,6 +40,54 @@ final class LaunchAtLoginSettingTests: XCTestCase {
 
         XCTAssertTrue(setting.isEnabled)
         XCTAssertNil(setting.errorMessage)
+    }
+
+    func testRefreshStatusReflectsExternalChangesWithoutUpdatingTheLoginItem() {
+        var systemEnabled = false
+        var requestedValues: [Bool] = []
+        let setting = LaunchAtLoginSetting(
+            currentStatus: { systemEnabled },
+            setEnabled: { requestedValues.append($0) }
+        )
+
+        systemEnabled = true
+        setting.refreshStatus()
+
+        XCTAssertTrue(setting.isEnabled)
+        XCTAssertTrue(requestedValues.isEmpty)
+    }
+
+    func testRefreshStatusClearsStaleErrorAfterExternalChange() {
+        var systemEnabled = false
+        let setting = LaunchAtLoginSetting(
+            currentStatus: { systemEnabled },
+            setEnabled: { _ in throw TestError.rejected }
+        )
+        setting.update(to: true)
+        XCTAssertEqual(setting.errorMessage, LaunchAtLoginSetting.failureMessage)
+
+        systemEnabled = true
+        setting.refreshStatus()
+
+        XCTAssertTrue(setting.isEnabled)
+        XCTAssertNil(setting.errorMessage)
+    }
+
+    func testUnchangedRefreshDoesNotInvalidateStatusObservers() {
+        let setting = LaunchAtLoginSetting(
+            currentStatus: { false },
+            setEnabled: { _ in XCTFail("Refreshing must not update the login item") }
+        )
+        let invalidated = OSAllocatedUnfairLock(initialState: false)
+        withObservationTracking {
+            _ = setting.isEnabled
+        } onChange: {
+            invalidated.withLock { $0 = true }
+        }
+
+        setting.refreshStatus()
+
+        XCTAssertFalse(invalidated.withLock { $0 })
     }
 
     private enum TestError: Error {

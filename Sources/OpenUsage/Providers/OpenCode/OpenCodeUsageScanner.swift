@@ -1,154 +1,196 @@
 import Foundation
 
-/// The result of a local OpenCode scan: every provider's daily session usage (for the spend tiles +
-/// trend) and the Go-only plan windows (for the meters). `goWindows` is nil without a current Go signal.
+/// The result of a local OpenCode scan: the combined-hosted daily series for the spend tiles + trend.
 struct OpenCodeUsageScan: Sendable {
     var logScan: LogUsageScan
-    var goWindows: OpenCodeGoWindows?
-    var warning: String?
 }
 
-/// Orchestrates OpenCode usage accounting from normalized database rows. SQLite/schema concerns live
-/// in `OpenCodeUsageDatabaseReader`; recorded-versus-estimated cost decisions and model resolution live
-/// in `OpenCodeCostEstimator`.
+/// Reads OpenCode's local SQLite logs (`~/.local/share/opencode/opencode*.db`, all release channels)
+/// for the spend tiles and usage trend. Cookie-free: the per-message `cost` OpenCode writes for its
+/// own hosted gateways is authoritative (Zen models aren't in our pricing snapshots), so it is summed
+/// directly rather than re-priced. Go plan windows come from the usage API, not this scan.
+///
+/// A `Sendable` struct (like the Grok scanner), `async` and nonisolated, so the SQLite reads run off the
+/// main actor when the `@MainActor` provider `await`s it.
 struct OpenCodeUsageScanner: Sendable {
-    private let databaseReader: OpenCodeUsageDatabaseReader
-    private let costEstimator: any OpenCodeCostEstimating
-    private let invalidCostReporter: UsageLogReadFailureReporter
+    /// The OpenCode-hosted providerIDs we track: the Go subscription and the Zen pay-as-you-go gateway.
+    /// Both write an authoritative `cost`; other (BYO-key) providerIDs log `cost: 0` and are out of scope.
+    static let hostedProviderIDs = ["opencode-go", "opencode"]
+
+    var sqlite: SQLiteAccessing
+    var databasePaths: @Sendable () throws -> [String]
+    private let readFailureReporter: UsageLogReadFailureReporter
 
     init(
         sqlite: SQLiteAccessing = SQLiteCLIAccessor(),
-        databasePaths: @escaping @Sendable () throws -> [String] = OpenCodeUsageDatabaseReader.defaultDatabasePaths,
-        readFailureWarning: UsageLogReadFailureReporter.Warning? = nil,
-        costEstimator: any OpenCodeCostEstimating = OpenCodeCostEstimator()
+        databasePaths: @escaping @Sendable () throws -> [String] = OpenCodeUsageScanner.defaultDatabasePaths,
+        readFailureWarning: UsageLogReadFailureReporter.Warning? = nil
     ) {
-        self.databaseReader = OpenCodeUsageDatabaseReader(
-            sqlite: sqlite,
-            databasePaths: databasePaths,
-            readFailureWarning: readFailureWarning
-        )
-        self.costEstimator = costEstimator
-        self.invalidCostReporter = UsageLogReadFailureReporter(
+        self.sqlite = sqlite
+        self.databasePaths = databasePaths
+        self.readFailureReporter = UsageLogReadFailureReporter(
             logTag: LogTag.plugin("opencode"),
-            warning: { _ in
-                AppLog.warn(
-                    LogTag.plugin("opencode"),
-                    "Found completed OpenCode usage with invalid cost data; excluding affected usage"
-                )
-            }
+            warning: readFailureWarning
         )
     }
 
-    /// Scan the last `daysBack` days. Thirty-three days covers the widest Go meter window plus slack;
-    /// spend tiles and trends are bounded to 31 calendar days below.
-    func scan(
-        now: Date,
-        daysBack: Int = 33,
-        hasGoKey: Bool = false,
-        pricing: ModelPricing = .empty
-    ) async throws -> OpenCodeUsageScan? {
-        try await scan(now: now, daysBack: daysBack, hasGoKey: hasGoKey, pricing: { pricing })
+    static let defaultDatabasePaths: @Sendable () throws -> [String] = {
+        let dir = OpenCodePaths.dataDirectory(
+            environment: ProcessEnvironmentReader(),
+            homeDirectory: FileManager.default.homeDirectoryForCurrentUser
+        )
+        return try OpenCodePaths.databaseFiles(in: dir)
     }
 
-    /// Loads shared pricing only when an external row actually needs estimation. Database discovery,
-    /// hosted-only scans, and recorded external costs remain local and deterministic.
-    func scan(
-        now: Date,
-        daysBack: Int = 33,
-        hasGoKey: Bool = false,
-        pricing: @Sendable () async -> ModelPricing
-    ) async throws -> OpenCodeUsageScan? {
-        guard let database = try await databaseReader.load(now: now, daysBack: daysBack) else {
+    /// Scan the last `daysBack` days. Returns `nil` only when there is no OpenCode database at all;
+    /// a present-but-empty database yields an empty scan (idle tiles collapse to "No data" via
+    /// `SpendTileMapper`). Throws `databaseUnreadable` when databases exist but none could be read.
+    func scan(now: Date, daysBack: Int = 30) async throws -> OpenCodeUsageScan? {
+        let paths: [String]
+        do {
+            paths = try databasePaths()
+        } catch {
+            // The data directory exists but couldn't be enumerated — same failure class as unreadable
+            // databases, edge-logged through the reporter so a persistent failure doesn't spam.
+            let marker = "<data directory>"
+            let newlyFailing = await readFailureReporter.update(checkedPaths: [marker], failingPaths: [marker])
+            if !newlyFailing.isEmpty {
+                AppLog.warn(LogTag.plugin("opencode"), "data directory unreadable: \(error.localizedDescription)")
+            }
+            throw OpenCodeUsageError.databaseUnreadable
+        }
+        guard !paths.isEmpty else {
+            await readFailureReporter.update(checkedPaths: [], failingPaths: [])
             return nil
         }
-        let rows = database.rows
-        let tileSince = JSONLScanning.sinceDate(daysBack: 30, now: now)
-        let invalidCostRows = rows.filter(Self.hasInvalidCost)
-        let needsPricing = rows.contains { row in
-            Date(timeIntervalSince1970: row.ms / 1000) >= tileSince
-                && !OpenCodeProviderIDs.hosted.contains(row.providerID)
-                && !row.hasInvalidRecordedCost
-                && (row.recordedCost ?? 0) <= 0
-                && row.bucketTokens > 0
-                && row.tokens > 0
-        }
-        let resolvedPricing = needsPricing ? await pricing() : .empty
 
-        // A malformed recorded cost is not legitimate free usage. Exclude the affected row, surface a
-        // soft warning, and suppress Go meters only when the malformed accounting belongs to an active
-        // Go window. Older malformed rows cannot make otherwise valid current meters disappear.
-        let invalidVisibleCost = invalidCostRows.contains {
-            Date(timeIntervalSince1970: $0.ms / 1000) >= tileSince
+        // Same calendar bound the tiles/trend use. A wall-clock `now - daysBack×86400` cutoff sits
+        // later the same day, so morning rows on the oldest day never leave SQLite.
+        let tileSince = JSONLScanning.sinceDate(daysBack: daysBack, now: now)
+        let cutoffMs = Int(tileSince.timeIntervalSince1970 * 1000)
+        var rows: [Row] = []
+        var checked: Set<String> = []
+        var failures: [String: String] = [:]
+
+        for path in paths {
+            checked.insert(path)
+            do {
+                if let json = try sqlite.queryValue(path: path, sql: Self.dataSQL(cutoffMs: cutoffMs)) {
+                    rows.append(contentsOf: Self.parseRows(json))
+                }
+            } catch {
+                failures[path] = error.localizedDescription
+                continue
+            }
         }
-        let invalidGoWindowCost = invalidCostRows.contains {
-            $0.providerID == OpenCodeProviderIDs.go
-                && OpenCodeGoWindowMath.containsActiveWindow(
-                    timestampMs: $0.ms,
-                    anchorMs: database.goAnchorMs,
-                    now: now
-                )
+        // Per-path detail is logged only for newly failing paths (the reporter edge-triggers), so a
+        // persistently locked database warns once, not on every 5-minute refresh.
+        let newlyFailing = await readFailureReporter.update(checkedPaths: checked, failingPaths: Set(failures.keys))
+        for path in newlyFailing.sorted() {
+            AppLog.warn(LogTag.plugin("opencode"), "usage query failed for \(path): \(failures[path] ?? "unknown error")")
         }
-        let invalidCostMarker = "<invalid cost>"
-        await invalidCostReporter.update(
-            checkedPaths: [invalidCostMarker],
-            failingPaths: invalidCostRows.isEmpty ? [] : [invalidCostMarker]
-        )
+        if failures.count == checked.count {
+            throw OpenCodeUsageError.databaseUnreadable
+        }
 
         var accumulator = DailyUsageAccumulator()
-        var unpriceableModels: Set<String> = []
         for row in rows {
             let date = Date(timeIntervalSince1970: row.ms / 1000)
             guard date >= tileSince else { continue }
-            let day = DailyUsageAccumulator.dayKey(from: date)
+            accumulator.add(
+                day: DailyUsageAccumulator.dayKey(from: date),
+                tokens: row.tokens, cost: row.cost, model: row.model
+            )
+        }
+        return OpenCodeUsageScan(logScan: accumulator.build())
+    }
 
-            switch costEstimator.resolve(row: row, pricing: resolvedPricing) {
-            case .priced(let tokens, let cost, let model):
-                accumulator.add(day: day, tokens: tokens, cost: cost, model: model)
-            case .unpriced(let model):
-                accumulator.addUnknownModel(day: day, model: model)
-                if !Self.hasInvalidCost(row) {
-                    unpriceableModels.insert(model)
+    /// Cheap local probe for `hasLocalCredentials()`: does any tracked database hold at least one hosted
+    /// assistant row with a numeric cost? Read-only, no network. Failures are logged (this runs only
+    /// during first-run / new-provider detection, so there's no refresh spam to throttle); an unreadable
+    /// data directory counts as an OpenCode footprint so `refresh()` gets to surface the real error.
+    func hasHostedUsage() -> Bool {
+        let paths: [String]
+        do {
+            paths = try databasePaths()
+        } catch {
+            AppLog.warn(LogTag.plugin("opencode"), "usage probe: data directory unreadable: \(error.localizedDescription)")
+            return true
+        }
+        for path in paths {
+            do {
+                if let value = try sqlite.queryValue(path: path, sql: Self.probeSQL), !value.isEmpty {
+                    return true
                 }
-            case .ignored:
-                break
+            } catch {
+                AppLog.warn(LogTag.plugin("opencode"), "usage probe failed for \(path): \(error.localizedDescription)")
             }
         }
-        let logScan = accumulator.build()
-        var warnings: [String] = []
-        if invalidGoWindowCost {
-            warnings.append("Some completed OpenCode messages have invalid cost data. Affected usage and Go meters are unavailable.")
-        } else if invalidVisibleCost {
-            warnings.append("Some completed OpenCode messages have invalid cost data. Affected usage is excluded from totals.")
-        }
-        if logScan.series.daily.isEmpty, !unpriceableModels.isEmpty {
-            warnings.append("OpenCode couldn't price usage for: \(unpriceableModels.sorted().joined(separator: ", ")).")
-        }
-        let warning = warnings.isEmpty ? nil : warnings.joined(separator: " ")
-
-        // Go caps use only recorded opencode-go accounting. A stale historical anchor cannot resurrect
-        // the plan; a current key or recent Go cost is required before the anchor defines the cycle.
-        let goCosts = rows.compactMap { row -> (ms: Double, cost: Double)? in
-            guard row.providerID == OpenCodeProviderIDs.go,
-                  let cost = row.recordedCost
-            else { return nil }
-            return (ms: row.ms, cost: cost)
-        }
-        let goWindows: OpenCodeGoWindows? = !invalidGoWindowCost && (hasGoKey || !goCosts.isEmpty)
-            ? OpenCodeGoWindowMath.compute(costs: goCosts, anchorMs: database.goAnchorMs, now: now)
-            : nil
-
-        return OpenCodeUsageScan(logScan: logScan, goWindows: goWindows, warning: warning)
+        return false
     }
 
-    /// Local-only first-run/new-provider probe. Database failures are handled by the reader so a real
-    /// OpenCode footprint can still enable the provider and surface the error during refresh.
-    func hasUsage() -> Bool {
-        databaseReader.hasUsage()
+    // MARK: - Parsing
+
+    private struct Row {
+        var ms: Double
+        var cost: Double
+        var tokens: Int
+        var model: String
     }
 
-    private static func hasInvalidCost(_ row: OpenCodeUsageRow) -> Bool {
-        guard row.tokens > 0 else { return false }
-        return row.hasInvalidRecordedCost
-            || (OpenCodeProviderIDs.hosted.contains(row.providerID) && row.recordedCost == nil)
+    /// Parse the `json_group_array(json_array(...))` payload: an array of
+    /// `[time_created, cost, tokensTotal, modelID, providerID]`. Rows with a missing timestamp/cost or a
+    /// non-string providerID are skipped at this boundary.
+    private static func parseRows(_ json: String) -> [Row] {
+        guard let data = json.data(using: .utf8),
+              let parsed = (try? JSONSerialization.jsonObject(with: data)) as? [Any]
+        else { return [] }
+
+        var rows: [Row] = []
+        rows.reserveCapacity(parsed.count)
+        for element in parsed {
+            guard let entry = element as? [Any], entry.count >= 5,
+                  let ms = ProviderParse.number(entry[0]),
+                  let cost = ProviderParse.number(entry[1]), cost >= 0,
+                  entry[4] is String
+            else { continue }
+            // Clamp before the Int conversion so a corrupt, absurdly large token count can't trap
+            // (Int(Double) crashes above Int.max). 1e15 is far above any real token total.
+            let tokens = Int(min(max(ProviderParse.number(entry[2]) ?? 0, 0), 1e15))
+            let model = (entry[3] as? String) ?? ""
+            rows.append(Row(ms: ms, cost: cost, tokens: tokens, model: model))
+        }
+        return rows
     }
+
+    // MARK: - SQL
+
+    /// SQL literal built from `hostedProviderIDs`, so the tracked list has one source of truth.
+    private static let providerFilter = "(" + hostedProviderIDs.map { "'\($0)'" }.joined(separator: ",") + ")"
+
+    static func dataSQL(cutoffMs: Int) -> String {
+        """
+        SELECT json_group_array(json_array(
+                 time_created,
+                 json_extract(data,'$.cost'),
+                 COALESCE(json_extract(data,'$.tokens.total'),0),
+                 json_extract(data,'$.modelID'),
+                 json_extract(data,'$.providerID')))
+        FROM message
+        WHERE time_created >= \(cutoffMs)
+          AND json_valid(data)
+          AND json_extract(data,'$.role') = 'assistant'
+          AND json_extract(data,'$.providerID') IN \(providerFilter)
+          AND json_type(data,'$.cost') IN ('integer','real');
+        """
+    }
+
+    static let probeSQL = """
+        SELECT 1 FROM message
+        WHERE json_valid(data)
+          AND json_extract(data,'$.role') = 'assistant'
+          AND json_extract(data,'$.providerID') IN \(providerFilter)
+          AND json_type(data,'$.cost') IN ('integer','real')
+        LIMIT 1;
+        """
 }

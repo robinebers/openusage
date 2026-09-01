@@ -4,17 +4,16 @@ import XCTest
 /// Covers the daily-rollup/dedup contract of `TelemetryRecorder`: the 5-minute refresh timer produces
 /// ~1,440 outcomes/user/day, so the recorder must collapse them into at most one event per provider
 /// per day (and one `app_daily_active` per day), drop cache/skip/backoff noise, classify errors, and
-/// stop entirely when the user opts out.
+/// keep the daily ping when optional analytics are off.
 @MainActor
 final class TelemetryRecorderTests: XCTestCase {
     /// Records captured events without touching PostHog.
     private final class FakeSink: TelemetrySink {
         var events: [(name: String, properties: [String: Any])] = []
         var enabledCalls: [Bool] = []
-        var flushCount = 0
         func capture(_ event: String, _ properties: [String: Any]) { events.append((event, properties)) }
-        func setEnabled(_ enabled: Bool) { enabledCalls.append(enabled) }
-        func flush() { flushCount += 1 }
+        func setOptionalAnalyticsEnabled(_ enabled: Bool) { enabledCalls.append(enabled) }
+        func flush() {}
         func events(named name: String) -> [[String: Any]] {
             events.filter { $0.name == name }.map(\.properties)
         }
@@ -70,26 +69,34 @@ final class TelemetryRecorderTests: XCTestCase {
         XCTAssertEqual(props["unexpected_failure_count"] as? Int, 1)
     }
 
-    func testTickEmitsDailyActiveOncePerDayWithConfigSnapshot() {
-        let sink = FakeSink()
-        let store = makeStore("daily-active")
-        var clock = day(25)
-        let recorder = TelemetryRecorder(sink: sink, store: store, snapshot: { self.snapshot }, now: { clock })
+    func testDailyActiveEmitsOncePerDayRegardlessOfAnalyticsOptOut() {
+        for analyticsEnabled in [true, false] {
+            let sink = FakeSink()
+            let store = makeStore("daily-active-\(analyticsEnabled)")
+            var clock = day(25)
+            let recorder = TelemetryRecorder(sink: sink, store: store, snapshot: { self.snapshot }, now: { clock })
 
-        recorder.tick()
-        recorder.tick() // same day → must not emit twice
+            if !analyticsEnabled {
+                recorder.setEnabled(false)
+                XCTAssertEqual(sink.enabledCalls, [false])
+                XCTAssertFalse(store.enabled, "optional-analytics opt-out must persist")
+            }
 
-        let active = sink.events(named: "app_daily_active")
-        XCTAssertEqual(active.count, 1)
-        XCTAssertEqual(active[0]["install_id"] as? String, store.installID)
-        XCTAssertEqual(active[0]["enabled_providers"] as? [String], ["claude", "codex"])
-        XCTAssertEqual(active[0]["pinned_metric_ids"] as? [String], ["claude.session"])
-        XCTAssertEqual(active[0]["expanded_metric_ids"] as? [String], ["codex.weekly"])
-        XCTAssertEqual(active[0]["menu_bar_style"] as? String, "text")
+            recorder.tick()
+            recorder.tick()
 
-        clock = day(26)
-        recorder.tick() // new day → emit again
-        XCTAssertEqual(sink.events(named: "app_daily_active").count, 2)
+            let active = sink.events(named: "app_daily_active")
+            XCTAssertEqual(active.count, 1)
+            XCTAssertEqual(active[0]["install_id"] as? String, store.installID)
+            XCTAssertEqual(active[0]["enabled_providers"] as? [String], ["claude", "codex"])
+            XCTAssertEqual(active[0]["pinned_metric_ids"] as? [String], ["claude.session"])
+            XCTAssertEqual(active[0]["expanded_metric_ids"] as? [String], ["codex.weekly"])
+            XCTAssertEqual(active[0]["menu_bar_style"] as? String, "text")
+
+            clock = day(26)
+            recorder.tick()
+            XCTAssertEqual(sink.events(named: "app_daily_active").count, 2)
+        }
     }
 
     func testTickFlushesStalePriorDayCounterEvenWithoutNewOutcomes() {
@@ -110,23 +117,45 @@ final class TelemetryRecorderTests: XCTestCase {
         XCTAssertEqual(rollups[0]["success_count"] as? Int, 1)
     }
 
-    func testOptingOutStopsAllEmissionAndPersists() {
+    func testAnalyticsOffDoesNotEmitProviderRefreshEvents() {
         let sink = FakeSink()
-        let store = makeStore("opt-out")
+        let store = makeStore("analytics-off-optional")
         var clock = day(25)
         let recorder = TelemetryRecorder(sink: sink, store: store, snapshot: { self.snapshot }, now: { clock })
 
         recorder.setEnabled(false)
-        XCTAssertEqual(sink.enabledCalls, [false])
-
         recorder.tick()
         recorder.record(providerID: "claude", outcome: .refreshed, category: nil, manual: false)
+        recorder.record(providerID: "claude", outcome: .failed, category: .network, manual: false)
         clock = day(26)
         recorder.record(providerID: "claude", outcome: .failed, category: .network, manual: false)
         recorder.tick()
 
-        XCTAssertTrue(sink.events.isEmpty, "no events should be captured while opted out")
-        XCTAssertFalse(store.enabled, "opt-out must persist")
+        XCTAssertTrue(
+            sink.events(named: "provider_refresh_daily").isEmpty,
+            "provider rollups must not emit while analytics are off"
+        )
+        XCTAssertEqual(
+            sink.events.map(\.name).filter { $0 != "app_daily_active" },
+            [],
+            "the recorder must not emit optional analytics while disabled"
+        )
+        XCTAssertFalse(store.enabled, "optional-analytics opt-out must persist")
+    }
+
+    func testExistingAnalyticsOptOutIsNotFlippedOn() {
+        let defaults = makeDefaults("preserved-opt-out")
+        defaults.set(false, forKey: "enabled")
+        let store = TelemetryStore(defaults: defaults)
+        XCTAssertFalse(store.enabled, "stored analytics-off must survive a new store instance")
+
+        let sink = FakeSink()
+        let recorder = TelemetryRecorder(sink: sink, store: store, snapshot: { self.snapshot }, now: { self.day(25) })
+        XCTAssertFalse(recorder.isEnabled)
+        recorder.tick()
+        XCTAssertEqual(sink.events(named: "app_daily_active").count, 1)
+        XCTAssertTrue(sink.events(named: "provider_refresh_daily").isEmpty)
+        XCTAssertFalse(store.enabled)
     }
 
     func testInstallIDIsStableAcrossStoreInstances() {
