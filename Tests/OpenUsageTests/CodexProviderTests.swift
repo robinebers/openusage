@@ -101,9 +101,10 @@ final class CodexUsageMapperTests: XCTestCase {
         XCTAssertEqual(progress(mapped.lines, "Session")?.periodDurationMs, 18_000_000)
     }
 
-    func testMapsWeeklyOnlyPrimaryWindowByDuration() throws {
+    func testMapsBusinessPremiumWeeklyOnlyPrimaryWindowByDuration() throws {
         let body = Data("""
         {
+          "plan_type": "self_serve_business_prolite",
           "rate_limit": {
             "primary_window": {
               "used_percent": 5,
@@ -119,9 +120,26 @@ final class CodexUsageMapperTests: XCTestCase {
             now: Date(timeIntervalSince1970: 1_800_000_000)
         )
 
+        XCTAssertEqual(mapped.plan, "ChatGPT Business Premium")
+        XCTAssertEqual(mapped.lines.map(\.label), ["Weekly"])
         XCTAssertNil(progress(mapped.lines, "Session"))
         XCTAssertEqual(progress(mapped.lines, "Weekly")?.used, 5)
         XCTAssertEqual(progress(mapped.lines, "Weekly")?.periodDurationMs, CodexUsageMapper.weeklyPeriodMs)
+    }
+
+    func testPlanNamesPreserveOtherPlansAndUnknownEntitlements() {
+        let cases = [
+            ("prolite", "Pro 5x"),
+            ("pro", "Pro 20x"),
+            ("team", "Team"),
+            ("business", "Business"),
+            ("self_serve_business", "Self Serve Business"),
+            ("self_serve_business_prolite_future", "Self Serve Business Prolite Future"),
+            ("future_plan", "Future Plan")
+        ]
+        for (raw, expected) in cases {
+            XCTAssertEqual(CodexUsageMapper.formatCodexPlan(raw), expected, raw)
+        }
     }
 
     func testUnknownWindowDurationKeepsPositionalFallback() throws {

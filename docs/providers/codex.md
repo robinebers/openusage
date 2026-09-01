@@ -14,6 +14,9 @@ Tracks your ChatGPT/Codex subscription limits using the login from the Codex CLI
 | Today / Yesterday / Last 30 Days | Local spend, as cost, tokens, or both (see below) |
 
 When Codex reports your plan name, OpenUsage shows it beside the provider name.
+The usage entitlement `self_serve_business_prolite` displays as **ChatGPT Business Premium**.
+This is a compatibility mapping for an observed entitlement; other Business/team plans keep their existing names.
+If Codex reports only a 7-day window, it maps to Weekly without inventing a 5-hour Session meter.
 
 ## Where credentials come from
 
