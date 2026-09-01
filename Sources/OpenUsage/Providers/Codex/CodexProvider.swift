@@ -15,6 +15,7 @@ final class CodexProvider: ProviderRuntime {
     let authStore: CodexAuthStore
     let usageClient: CodexUsageClient
     let logUsageScanner: CodexLogUsageScanner
+    let openCodeUsageScanner: OpenCodeCodexUsageScanner
     let now: @Sendable () -> Date
     let pricing: @Sendable () async -> ModelPricing
     let fallbackModel: @MainActor () -> String?
@@ -23,6 +24,7 @@ final class CodexProvider: ProviderRuntime {
         authStore: CodexAuthStore = CodexAuthStore(),
         usageClient: CodexUsageClient = CodexUsageClient(),
         logUsageScanner: CodexLogUsageScanner = CodexLogUsageScanner(),
+        openCodeUsageScanner: OpenCodeCodexUsageScanner = OpenCodeCodexUsageScanner(),
         now: @escaping @Sendable () -> Date = Date.init,
         pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() },
         fallbackModel: @escaping @MainActor () -> String? = { CodexFallbackModelSetting.current() }
@@ -30,6 +32,7 @@ final class CodexProvider: ProviderRuntime {
         self.authStore = authStore
         self.usageClient = usageClient
         self.logUsageScanner = logUsageScanner
+        self.openCodeUsageScanner = openCodeUsageScanner
         self.now = now
         self.pricing = pricing
         self.fallbackModel = fallbackModel
@@ -140,18 +143,17 @@ final class CodexProvider: ProviderRuntime {
         var mapped = try CodexUsageMapper.mapUsageResponse(response, resetCredits: resetCredits, now: now())
 
         // Local spend tiles, scanned natively from the Codex CLI's session rollouts and priced through
-        // the shared pricing store, merged with Codex usage that happened inside pi (attributed back
-        // here). Both scans run on their scanner actors, off the main actor.
+        // the shared pricing store, merged with Codex usage that happened inside pi or OpenCode. Those
+        // agents attribute their underlying Codex OAuth traffic back to this card.
         let pricing = await pricing()
         let nativeScan = await logUsageScanner.scan(now: now(), pricing: pricing, fallbackModel: fallbackModel())
         let piScan = await PiUsageScanner.shared.scan(cardID: provider.id, now: now(), pricing: pricing)
+        let openCodeScan = await openCodeUsageScanner.scan(now: now(), pricing: pricing)
         var usageHistory: ProviderUsageHistory?
-        // Cancellation can land between the native and pi scans. Treat the pair as one unit so a
+        // Cancellation can land between the local scans. Treat them as one unit so a
         // partial result cannot replace the last-good combined history in WidgetDataStore.
-        if !Task.isCancelled, let scan = DailyUsageAccumulator.merged([nativeScan, piScan]) {
-            let baseNote = piScan == nil
-                ? "From your Codex logs (estimated)"
-                : "From your Codex logs and pi (estimated)"
+        if !Task.isCancelled, let scan = DailyUsageAccumulator.merged([nativeScan, piScan, openCodeScan]) {
+            let baseNote = Self.localUsageSourceNote(hasPi: piScan != nil, hasOpenCode: openCodeScan != nil)
             usageHistory = ProviderUsageHistory(
                 series: scan.series,
                 modelUsage: scan.modelUsage,
@@ -179,6 +181,22 @@ final class CodexProvider: ProviderRuntime {
             refreshedAt: now(),
             usageHistory: usageHistory
         )
+    }
+
+    private static func localUsageSourceNote(hasPi: Bool, hasOpenCode: Bool) -> String {
+        var sources = ["Codex logs"]
+        if hasPi { sources.append("pi") }
+        if hasOpenCode { sources.append("OpenCode") }
+        let joined: String
+        switch sources.count {
+        case 1:
+            joined = sources[0]
+        case 2:
+            joined = sources.joined(separator: " and ")
+        default:
+            joined = sources.dropLast().joined(separator: ", ") + ", and " + sources.last!
+        }
+        return "From your \(joined) (estimated)"
     }
 
     /// Fetches the on-demand reset-credit balance (and per-credit expiry) without ever failing the

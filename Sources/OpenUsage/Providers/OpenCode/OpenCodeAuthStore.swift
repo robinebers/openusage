@@ -32,6 +32,28 @@ struct OpenCodeAuthStore: Sendable {
     /// file that can't be read or parsed throws `credentialsUnreadable` so broken storage is never
     /// mistaken for logout; an absent file is the normal "not logged in" `nil`.
     func goAPIKey() throws -> String? {
+        guard let object = try authObject() else { return nil }
+        guard let entry = object["opencode-go"] as? [String: Any],
+              let key = entry["key"] as? String
+        else { return nil }
+        return key.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+    }
+
+    /// Whether OpenCode's `openai` provider is currently authenticated through the built-in ChatGPT /
+    /// Codex OAuth flow. OpenCode stores API-key and OAuth credentials under the same provider key, so
+    /// checking the auth type is required before attributing its `providerID = openai` database rows to
+    /// the Codex card. Secrets stay inside the auth boundary and are never returned or logged.
+    func hasCodexOAuth() throws -> Bool {
+        guard let object = try authObject(),
+              let entry = object["openai"] as? [String: Any],
+              entry["type"] as? String == "oauth"
+        else { return false }
+        return ["access", "refresh"].contains { field in
+            ((entry[field] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty) != nil
+        }
+    }
+
+    private func authObject() throws -> [String: Any]? {
         let text: String?
         do {
             text = try files.readTextIfPresent(authFilePath)
@@ -44,9 +66,6 @@ struct OpenCodeAuthStore: Sendable {
         else {
             throw OpenCodeUsageError.credentialsUnreadable(detail: "auth.json is not valid JSON")
         }
-        guard let entry = object["opencode-go"] as? [String: Any],
-              let key = entry["key"] as? String
-        else { return nil }
-        return key.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        return object
     }
 }

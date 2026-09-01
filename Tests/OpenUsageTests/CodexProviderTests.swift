@@ -521,6 +521,64 @@ final class CodexProviderTests: XCTestCase {
         })
     }
 
+    func testOpenCodeCodexOAuthUsageIsMergedIntoCodexHistory() async throws {
+        // A far-future fixture keeps PiUsageScanner.shared from folding the developer's real local pi
+        // history into this integration test.
+        let now = OpenUsageISO8601.date(from: "2099-02-20T16:00:00.000Z")!
+        let milliseconds = Int(OpenUsageISO8601.date(
+            from: "2099-02-20T14:00:00.000Z"
+        )!.timeIntervalSince1970 * 1000)
+        let openCodeRows = "[[\(milliseconds),0,150,\"gpt-test\",100,0,0,50,0,\"open-code-message\"]]"
+        let openCodeScanner = OpenCodeCodexUsageScanner(
+            authStore: OpenCodeAuthStore(
+                files: FakeFiles(["/oc/auth.json": #"{"openai":{"type":"oauth","access":"token"}}"#]),
+                environment: FakeEnvironment(["OPENCODE_DATA_DIR": "/oc"]),
+                homeDirectory: { URL(fileURLWithPath: "/unused") }
+            ),
+            sqlite: OpenCodeFakeSQLite(data: ["/oc/opencode.db": openCodeRows]),
+            databasePaths: { ["/oc/opencode.db"] }
+        )
+        let provider = CodexProvider(
+            authStore: CodexAuthStore(
+                environment: FakeEnvironment(["CODEX_HOME": "/tmp/codex-home"]),
+                files: FakeFiles(["/tmp/codex-home/auth.json": #"{"tokens":{"access_token":"token"}}"#]),
+                keychain: FakeKeychain()
+            ),
+            usageClient: CodexUsageClient(http: FakeHTTPClient(response: HTTPResponse(
+                statusCode: 200, headers: [:], body: Data("{}".utf8)
+            ))),
+            logUsageScanner: CodexLogFixture.scanner(home: nil),
+            openCodeUsageScanner: openCodeScanner,
+            now: { now },
+            pricing: {
+                ModelPricing(
+                    supplement: PricingSupplement(),
+                    primary: PricingCatalog(entries: ["gpt-test": ModelRates(
+                        inputPerMillion: 1000, outputPerMillion: 3000,
+                        cacheWritePerMillion: 1000, cacheReadPerMillion: 100
+                    )]),
+                    secondary: PricingCatalog(entries: [:])
+                )
+            }
+        )
+
+        let snapshot = await provider.refresh()
+
+        let fixtureModels = try XCTUnwrap(
+            snapshot.usageHistory?.modelUsage?.daily.first { $0.date == "2099-02-20" }?.models
+        )
+        let openCodeModel = try XCTUnwrap(fixtureModels.first { $0.model == "gpt-test" })
+        XCTAssertEqual(openCodeModel.totalTokens, 150)
+        XCTAssertEqual(openCodeModel.costUSD ?? -1, 0.25, accuracy: 0.0001)
+        XCTAssertEqual(
+            values(snapshot.lines, "Today"),
+            [
+                MetricValue(number: 0.25, kind: .dollars, estimated: true),
+                MetricValue(number: 150, kind: .count, label: "tokens")
+            ]
+        )
+    }
+
     private func values(_ lines: [MetricLine], _ label: String) -> [MetricValue]? {
         guard case .values(_, let values, _, _, _, _) = lines.first(where: { $0.label == label }) else {
             return nil

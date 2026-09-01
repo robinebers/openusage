@@ -32,6 +32,17 @@ final class OpenCodeAuthStoreTests: XCTestCase {
         XCTAssertEqual(try store(json).goAPIKey(), "sk-1")
     }
 
+    func testDetectsCodexOAuthWithoutExposingTokens() throws {
+        XCTAssertTrue(try store(#"{"openai":{"type":"oauth","access":"access-token","refresh":"refresh-token"}}"#).hasCodexOAuth())
+        XCTAssertTrue(try store(#"{"openai":{"type":"oauth","access":"access-token"}}"#).hasCodexOAuth())
+    }
+
+    func testDoesNotTreatOpenAIAPIKeyAsCodexOAuth() throws {
+        XCTAssertFalse(try store(#"{"openai":{"type":"api","key":"sk-openai"}}"#).hasCodexOAuth())
+        XCTAssertFalse(try store(#"{"openai":{"type":"oauth","access":" ","refresh":" "}}"#).hasCodexOAuth())
+        XCTAssertFalse(try store(#"{"anthropic":{"type":"oauth","access":"token"}}"#).hasCodexOAuth())
+    }
+
     func testMissingEmptyOrAbsentKeyIsNil() throws {
         XCTAssertNil(try store(#"{"opencode-go":{"type":"api"}}"#).goAPIKey())
         XCTAssertNil(try store(#"{"opencode-go":{"type":"api","key":"   "}}"#).goAPIKey())
