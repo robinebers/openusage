@@ -120,7 +120,7 @@ final class CodexUsageMapperTests: XCTestCase {
             now: Date(timeIntervalSince1970: 1_800_000_000)
         )
 
-        XCTAssertEqual(mapped.plan, "ChatGPT Business Premium")
+        XCTAssertEqual(mapped.plan, "Business Premium")
         XCTAssertEqual(mapped.lines.map(\.label), ["Weekly"])
         XCTAssertNil(progress(mapped.lines, "Session"))
         XCTAssertEqual(progress(mapped.lines, "Weekly")?.used, 5)

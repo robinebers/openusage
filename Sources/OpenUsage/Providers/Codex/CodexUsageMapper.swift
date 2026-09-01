@@ -326,7 +326,7 @@ enum CodexUsageMapper {
         case "pro":
             return "Pro 20x"
         case "self_serve_business_prolite":
-            return "ChatGPT Business Premium"
+            return "Business Premium"
         default:
             return raw.titleCased(separator: { $0 == "_" })
         }
