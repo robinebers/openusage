@@ -38,6 +38,31 @@ final class UsageHistoryDocumentTests: XCTestCase {
         }
     }
 
+    func testAccountSchemaAcceptsLegacyCodexIdentityWithoutRelaxingValidation() throws {
+        var document = makeDocument(deviceID: "mac-a", updatedAt: .now)
+        document.schema = UsageHistoryDocument.accountSchema
+        document.providers["codex"] = document.providers["claude"]
+        // Earlier v2 writers included Codex ownership too. Identity namespaces are per provider.
+        document.identities = ["claude": "shared-account-id", "codex": "shared-account-id"]
+        let decoded = try JSONDecoder().decode(
+            UsageHistoryDocument.self, from: JSONEncoder().encode(document)
+        )
+        XCTAssertNoThrow(try decoded.validate())
+
+        for invalidIdentity in ["", "has space", "has\nnewline", "has/slash", "has\\backslash"] {
+            document.identities?["codex"] = invalidIdentity
+            XCTAssertThrowsError(try document.validate()) { error in
+                XCTAssertEqual(error as? UsageHistoryDocumentError, .invalidIdentity("codex"))
+            }
+        }
+
+        document.identities?["codex"] = "codex-account"
+        document.providers.removeValue(forKey: "codex")
+        XCTAssertThrowsError(try document.validate()) { error in
+            XCTAssertEqual(error as? UsageHistoryDocumentError, .invalidIdentity("codex"))
+        }
+    }
+
     func testAccountSchemaRejectsMissingMismatchedAndDuplicateClaudeIdentities() {
         var document = makeDocument(deviceID: "mac-a", updatedAt: .now)
         document.schema = UsageHistoryDocument.accountSchema
