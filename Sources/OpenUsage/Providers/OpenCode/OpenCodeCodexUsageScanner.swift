@@ -8,15 +8,21 @@ struct OpenCodeCodexUsageScanner: Sendable {
     private let authStore: OpenCodeAuthStore
     private let sqlite: SQLiteAccessing
     private let databasePaths: @Sendable () throws -> [String]
+    private let readFailureReporter: UsageLogReadFailureReporter
 
     init(
         authStore: OpenCodeAuthStore = OpenCodeAuthStore(),
         sqlite: SQLiteAccessing = SQLiteCLIAccessor(),
-        databasePaths: @escaping @Sendable () throws -> [String] = OpenCodeUsageScanner.defaultDatabasePaths
+        databasePaths: @escaping @Sendable () throws -> [String] = OpenCodeUsageScanner.defaultDatabasePaths,
+        readFailureWarning: UsageLogReadFailureReporter.Warning? = nil
     ) {
         self.authStore = authStore
         self.sqlite = sqlite
         self.databasePaths = databasePaths
+        self.readFailureReporter = UsageLogReadFailureReporter(
+            logTag: LogTag.plugin("opencode"),
+            warning: readFailureWarning
+        )
     }
 
     /// Best-effort supplementary scan: failures are logged loudly but never hide Codex's live quota
@@ -41,34 +47,55 @@ struct OpenCodeCodexUsageScanner: Sendable {
         let since = JSONLScanning.sinceDate(daysBack: daysBack, now: now)
         let cutoffMs = Int(since.timeIntervalSince1970 * 1000)
         var rows: [Row] = []
-        var failures: [String] = []
+        var failures: [String: String] = [:]
         for path in paths {
             do {
                 if let json = try sqlite.queryValue(path: path, sql: Self.dataSQL(cutoffMs: cutoffMs)) {
                     rows.append(contentsOf: Self.parseRows(json))
                 }
             } catch {
-                failures.append(path)
-                AppLog.warn(
-                    LogTag.plugin("opencode"),
-                    "Codex usage query failed for \(path): \(error.localizedDescription)"
-                )
+                failures[path] = error.localizedDescription
             }
+        }
+        // Edge-triggered like the OpenCode card's own scanner: a persistently locked database warns
+        // once per new failure, not on every refresh.
+        let newlyFailing = await readFailureReporter.update(
+            checkedPaths: Set(paths), failingPaths: Set(failures.keys)
+        )
+        for path in newlyFailing.sorted() {
+            AppLog.warn(
+                LogTag.plugin("opencode"),
+                "Codex usage query failed for \(path): \(failures[path] ?? "unknown error")"
+            )
         }
         guard failures.count < paths.count else { return nil }
 
         var accumulator = DailyUsageAccumulator()
+        // Codex pricing depends only on the model slug, and resolving one walks every supplement alias
+        // rule. Real histories run to thousands of rows across a handful of models, so resolve once each.
+        var preparedByModel: [String: CodexUsagePricing.Prepared?] = [:]
         for row in Self.deduplicated(rows) where row.timestamp >= since {
             let day = DailyUsageAccumulator.dayKey(from: row.timestamp)
-            let model = row.model.nilIfEmpty
-            let displayModel = model ?? ModelUsageEntry.unattributedModelName
-            guard let model, let cost = pricing.estimatedCostDollars(model: model, tokens: row.tokens) else {
-                if let model, row.reportedTotalTokens > 0 {
+            guard let model = row.model.nilIfEmpty else { continue }
+            let prepared: CodexUsagePricing.Prepared?
+            if let cached = preparedByModel[model] {
+                prepared = cached
+            } else {
+                prepared = CodexUsagePricing.prepare(pricing: pricing, model: model)
+                preparedByModel[model] = prepared
+            }
+            guard let prepared else {
+                if row.reportedTotalTokens > 0 {
                     accumulator.addUnknownModel(day: day, model: model)
                 }
                 continue
             }
-            accumulator.add(day: day, tokens: row.reportedTotalTokens, cost: cost, model: displayModel)
+            accumulator.add(
+                day: day,
+                tokens: row.reportedTotalTokens,
+                cost: CodexUsagePricing.cost(prepared: prepared, tokens: row.tokens),
+                model: model
+            )
         }
         return accumulator.build()
     }
@@ -100,19 +127,19 @@ struct OpenCodeCodexUsageScanner: Sendable {
             let cacheWrite = clampedTokens(values[6])
             let output = clampedTokens(values[7])
             let reasoning = clampedTokens(values[8])
-            let bucketTotal = clampedSum([input, cacheRead, cacheWrite, output, reasoning])
-            let storedTotal = clampedTokens(values[2])
+            let tokens = TokenBreakdown(
+                input: input,
+                cacheWrite5m: cacheWrite,
+                cacheRead: cacheRead,
+                output: output + reasoning
+            )
             return Row(
                 id: (values[9] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
                 timestamp: Date(timeIntervalSince1970: milliseconds / 1000),
                 model: ((values[3] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
-                tokens: TokenBreakdown(
-                    input: input,
-                    cacheWrite5m: cacheWrite,
-                    cacheRead: cacheRead,
-                    output: clampedSum([output, reasoning])
-                ),
-                reportedTotalTokens: bucketTotal > 0 ? bucketTotal : storedTotal
+                tokens: tokens,
+                // OpenCode's own total is only a fallback: the parsed buckets are what gets priced.
+                reportedTotalTokens: tokens.totalTokens > 0 ? tokens.totalTokens : clampedTokens(values[2])
             )
         }
     }
@@ -141,10 +168,6 @@ struct OpenCodeCodexUsageScanner: Sendable {
 
     private static func clampedTokens(_ value: Any) -> Int {
         Int(min(max(ProviderParse.number(value) ?? 0, 0), 1_000_000_000_000_000))
-    }
-
-    private static func clampedSum(_ values: [Int]) -> Int {
-        values.reduce(0) { min($0 + $1, 1_000_000_000_000_000) }
     }
 
     static func dataSQL(cutoffMs: Int) -> String {

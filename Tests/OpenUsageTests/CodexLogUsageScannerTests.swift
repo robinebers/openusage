@@ -523,7 +523,7 @@ final class CodexLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(
             CodexLogUsageScanner.cost(
                 rates: legacyRates, event: event, model: event.model,
-                fastTier: false, fastMultiplier: 1
+                fastTier: false
             ),
             0.03,
             accuracy: 0.000_001
@@ -554,7 +554,7 @@ final class CodexLogUsageScannerTests: XCTestCase {
             XCTAssertEqual(
                 CodexLogUsageScanner.cost(
                     rates: rates, event: event, model: model,
-                    fastTier: false, fastMultiplier: 1
+                    fastTier: false
                 ),
                 expected,
                 accuracy: 0.000_001,
@@ -578,7 +578,7 @@ final class CodexLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(
             CodexLogUsageScanner.cost(
                 rates: rates, event: event, model: "gpt-5.5",
-                fastTier: false, fastMultiplier: 1
+                fastTier: false
             ),
             1.066,
             accuracy: 0.000_001
@@ -880,5 +880,44 @@ final class CodexLogUsageScannerTests: XCTestCase {
         // gpt-5.3-codex must resolve in the bundled LiteLLM snapshot and price > $0.
         XCTAssertTrue(scan?.unknownModelsByDay.isEmpty ?? false)
         XCTAssertGreaterThan(today?.costUSD ?? 0, 0)
+    }
+
+    // MARK: - Dated model normalization
+
+    func testDatedBaseModelStripsOnlyWellFormedSnapshotSuffixes() {
+        let cases: [(String, String)] = [
+            ("gpt-5.5-2026-01-15", "gpt-5.5"),
+            ("gpt-5.5-20260115", "gpt-5.5"),
+            ("gpt-5.6-sol-2026-01-15", "gpt-5.6-sol"),
+            ("gpt-5.5", "gpt-5.5"),
+            ("gpt-5.6-sol", "gpt-5.6-sol"),
+            // Wrong shape: a partial date must not be mistaken for a snapshot suffix.
+            ("gpt-5.5-2026-1-15", "gpt-5.5-2026-1-15"),
+            ("gpt-5.5-2026011", "gpt-5.5-2026011"),
+            ("2026-01-15", "2026-01-15")
+        ]
+        for (input, expected) in cases {
+            XCTAssertEqual(CodexUsagePricing.datedBaseModel(input), expected, "input: \(input)")
+        }
+    }
+
+    func testDatedCodexModelStillGetsLongContextRates() {
+        let pricing = ModelPricing(
+            supplement: PricingSupplement(pricing: [
+                "gpt-5.6-sol-2026-01-15": ModelRates(
+                    inputPerMillion: 5, outputPerMillion: 30,
+                    cacheWritePerMillion: 6.25, cacheReadPerMillion: 0.5
+                )
+            ]),
+            primary: PricingCatalog(entries: [:]),
+            secondary: PricingCatalog(entries: [:])
+        )
+        // 300K prompt crosses Codex's 272K threshold, so Sol's long-context rates apply even though
+        // the slug carries a snapshot date: $2.00 input + $0.10 cache read + $0.45 output.
+        let cost = CodexUsagePricing.estimatedCost(
+            pricing: pricing, model: "gpt-5.6-sol-2026-01-15",
+            tokens: TokenBreakdown(input: 200_000, cacheRead: 100_000, output: 10_000)
+        )
+        XCTAssertEqual(cost ?? -1, 2.55, accuracy: 0.000_001)
     }
 }

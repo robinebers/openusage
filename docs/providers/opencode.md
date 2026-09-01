@@ -29,7 +29,9 @@ still read the local SQLite logs in that same directory.
 
 When OpenCode uses its built-in ChatGPT Pro/Plus OAuth login, that usage belongs to the Codex
 subscription and appears in OpenUsage's **Codex** spend tiles and trend. It is not mixed into the
-OpenCode-hosted Go + Zen totals. Ordinary OpenAI API-key traffic is not attributed to Codex.
+OpenCode-hosted Go + Zen totals. Its separate per-request token buckets are estimated with the same
+cache, long-context, and fast/priority rules as native Codex usage. Ordinary OpenAI API-key traffic is
+not attributed to Codex.
 
 ## The meters and spend tiles
 

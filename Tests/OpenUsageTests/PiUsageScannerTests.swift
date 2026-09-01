@@ -19,6 +19,19 @@ final class PiUsageScannerTests: XCTestCase {
         secondary: PricingCatalog(entries: [:])
     )
 
+    private let codexPricing = ModelPricing(
+        supplement: PricingSupplement(pricing: [
+            "gpt-5.6-sol": ModelRates(
+                inputPerMillion: 5,
+                outputPerMillion: 30,
+                cacheWritePerMillion: 6.25,
+                cacheReadPerMillion: 0.5
+            )
+        ]),
+        primary: PricingCatalog(entries: [:]),
+        secondary: PricingCatalog(entries: [:])
+    )
+
     private func line(
         id: String = "m1", ts: String = "2026-07-12T10:00:00.000Z", provider: String = "anthropic",
         model: String = "claude-opus-4-8", input: Int = 100, output: Int = 50,
@@ -73,6 +86,32 @@ final class PiUsageScannerTests: XCTestCase {
         let entry = PiUsageScanner.parseLine(line(provider: "cursor", model: "composer-2.5", cost: "0"))!
         let scan = PiUsageScanner.aggregate(entries: [entry], cardID: "cursor", since: .distantPast, pricing: pricing)
         XCTAssertEqual(scan.series.daily.first?.costUSD ?? 0, 0.002, accuracy: 0.00001)
+    }
+
+    func testZeroCostCodexFallbackUsesCodexLongContextRates() throws {
+        let pricing = codexPricing
+        let entry = try XCTUnwrap(PiUsageScanner.parseLine(line(
+            provider: "openai-codex", model: "gpt-5.6-sol",
+            input: 200_000, output: 10_000, cacheRead: 100_000, total: 310_000, cost: "0"
+        )))
+        let scan = PiUsageScanner.aggregate(
+            entries: [entry], cardID: "codex", since: .distantPast, pricing: pricing,
+            estimateCost: { CodexUsagePricing.estimatedCost(pricing: pricing, model: $0, tokens: $1) }
+        )
+
+        XCTAssertEqual(scan.series.daily.first?.costUSD ?? 0, 2.55, accuracy: 0.000_001)
+    }
+
+    func testPositiveCarriedCodexCostWinsOverSharedEstimator() throws {
+        let entry = try XCTUnwrap(PiUsageScanner.parseLine(line(
+            provider: "openai-codex", model: "gpt-5.6-sol",
+            input: 200_000, output: 10_000, cacheRead: 100_000, total: 310_000, cost: "0.25"
+        )))
+        let scan = PiUsageScanner.aggregate(
+            entries: [entry], cardID: "codex", since: .distantPast, pricing: codexPricing
+        )
+
+        XCTAssertEqual(scan.series.daily.first?.costUSD ?? 0, 0.25, accuracy: 0.000_001)
     }
 
     func testUnpriceableZeroCostBecomesUnknownModel() {

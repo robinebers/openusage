@@ -146,9 +146,18 @@ final class CodexProvider: ProviderRuntime {
         // the shared pricing store, merged with Codex usage that happened inside pi or OpenCode. Those
         // agents attribute their underlying Codex OAuth traffic back to this card.
         let pricing = await pricing()
-        let nativeScan = await logUsageScanner.scan(now: now(), pricing: pricing, fallbackModel: fallbackModel())
-        let piScan = await PiUsageScanner.shared.scan(cardID: provider.id, now: now(), pricing: pricing)
-        let openCodeScan = await openCodeUsageScanner.scan(now: now(), pricing: pricing)
+        // Three independent local sources: reading rollout files, pi's JSONL, and OpenCode's SQLite
+        // concurrently keeps the slowest one — not their sum — on the refresh's critical path.
+        let selectedFallbackModel = fallbackModel()
+        async let native = logUsageScanner.scan(
+            now: now(), pricing: pricing, fallbackModel: selectedFallbackModel
+        )
+        async let pi = PiUsageScanner.shared.scan(
+            cardID: provider.id, now: now(), pricing: pricing,
+            estimateCost: { CodexUsagePricing.estimatedCost(pricing: pricing, model: $0, tokens: $1) }
+        )
+        async let openCode = openCodeUsageScanner.scan(now: now(), pricing: pricing)
+        let (nativeScan, piScan, openCodeScan) = await (native, pi, openCode)
         var usageHistory: ProviderUsageHistory?
         // Cancellation can land between the local scans. Treat them as one unit so a
         // partial result cannot replace the last-good combined history in WidgetDataStore.
@@ -187,15 +196,9 @@ final class CodexProvider: ProviderRuntime {
         var sources = ["Codex logs"]
         if hasPi { sources.append("pi") }
         if hasOpenCode { sources.append("OpenCode") }
-        let joined: String
-        switch sources.count {
-        case 1:
-            joined = sources[0]
-        case 2:
-            joined = sources.joined(separator: " and ")
-        default:
-            joined = sources.dropLast().joined(separator: ", ") + ", and " + sources.last!
-        }
+        let joined = sources.count > 2
+            ? sources.dropLast().joined(separator: ", ") + ", and " + sources[sources.count - 1]
+            : sources.joined(separator: " and ")
         return "From your \(joined) (estimated)"
     }
 

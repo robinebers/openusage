@@ -19,6 +19,22 @@ final class OpenCodeCodexUsageScannerTests: XCTestCase {
         secondary: PricingCatalog(entries: [:])
     )
 
+    private let codexPricing = ModelPricing(
+        supplement: PricingSupplement(
+            pricing: [
+                "gpt-5.6-sol": ModelRates(
+                    inputPerMillion: 5,
+                    outputPerMillion: 30,
+                    cacheWritePerMillion: 6.25,
+                    cacheReadPerMillion: 0.5
+                )
+            ],
+            fastMultipliers: ["gpt-5.6-sol": 2.5]
+        ),
+        primary: PricingCatalog(entries: [:]),
+        secondary: PricingCatalog(entries: [:])
+    )
+
     private func scanner(auth: String, rows: String, sqlite: OpenCodeFakeSQLite? = nil) -> OpenCodeCodexUsageScanner {
         let database = sqlite ?? OpenCodeFakeSQLite(data: ["/oc/opencode.db": rows])
         return OpenCodeCodexUsageScanner(
@@ -78,6 +94,80 @@ final class OpenCodeCodexUsageScannerTests: XCTestCase {
         ).scan(now: now, pricing: pricing)
 
         XCTAssertEqual(try XCTUnwrap(scan).series.daily.first?.totalTokens, 60)
+    }
+
+    func testOAuthUsageUsesCodexLongContextRatesPerRequest() async throws {
+        let rows = "[" + row(
+            "2026-07-12T10:00:00.000Z", cost: "0", total: 310_000, model: "gpt-5.6-sol",
+            input: 200_000, cacheRead: 100_000, output: 10_000
+        ) + "]"
+        let scan = await scanner(
+            auth: #"{"openai":{"type":"oauth","access":"token"}}"#,
+            rows: rows
+        ).scan(now: now, pricing: codexPricing)
+
+        // Prompt = 300K, above Codex's 272K threshold. The request uses $10/M input,
+        // $1/M cache read, and $45/M output: $2 + $0.10 + $0.45 = $2.55.
+        XCTAssertEqual(try XCTUnwrap(scan?.series.daily.first?.costUSD), 2.55, accuracy: 0.000_001)
+    }
+
+    func testOAuthUsageAtCodexLongContextBoundaryKeepsBaseRates() async throws {
+        let rows = "[" + row(
+            "2026-07-12T10:00:00.000Z", cost: "0", total: 282_000, model: "gpt-5.6-sol",
+            input: 172_000, cacheRead: 100_000, output: 10_000
+        ) + "]"
+        let scan = await scanner(
+            auth: #"{"openai":{"type":"oauth","access":"token"}}"#,
+            rows: rows
+        ).scan(now: now, pricing: codexPricing)
+
+        // Exactly 272K prompt tokens does not cross the threshold.
+        XCTAssertEqual(try XCTUnwrap(scan?.series.daily.first?.costUSD), 1.21, accuracy: 0.000_001)
+    }
+
+    func testOAuthFastAliasAppliesCodexPriorityMultiplierOnce() async throws {
+        let rows = "[" + row(
+            "2026-07-12T10:00:00.000Z", cost: "0", total: 110_000, model: "gpt-5.6-sol-fast",
+            input: 100_000, output: 10_000
+        ) + "]"
+        let scan = await scanner(
+            auth: #"{"openai":{"type":"oauth","access":"token"}}"#,
+            rows: rows
+        ).scan(now: now, pricing: codexPricing)
+
+        // Base cost is $0.80. Codex priority is 2x for Sol, even though the supplement's
+        // Cursor-oriented fast multiplier is deliberately 2.5x.
+        XCTAssertEqual(try XCTUnwrap(scan?.series.daily.first?.costUSD), 1.6, accuracy: 0.000_001)
+    }
+
+    func testSeparateInputAndCacheReadBucketsAreEachPricedOnce() async throws {
+        let rows = "[" + row(
+            "2026-07-12T10:00:00.000Z", cost: "0", total: 160_000, model: "gpt-5.6-sol",
+            input: 100_000, cacheRead: 50_000, output: 10_000
+        ) + "]"
+        let scan = await scanner(
+            auth: #"{"openai":{"type":"oauth","access":"token"}}"#,
+            rows: rows
+        ).scan(now: now, pricing: codexPricing)
+
+        // OpenCode already stores disjoint buckets, so the native Codex rule of subtracting cached
+        // tokens from input must not be applied here: 100K * $5/M + 50K * $0.50/M + 10K * $30/M.
+        // Treating the buckets as native's inclusive input would price only 50K at the input rate.
+        XCTAssertEqual(try XCTUnwrap(scan?.series.daily.first?.costUSD), 0.825, accuracy: 0.000_001)
+    }
+
+    func testUnknownOAuthModelIsExcludedAndWarned() async throws {
+        let rows = "[" + row(
+            "2026-07-12T10:00:00.000Z", cost: "0", total: 150, model: "gpt-mystery",
+            input: 100, output: 50
+        ) + "]"
+        let scan = await scanner(
+            auth: #"{"openai":{"type":"oauth","access":"token"}}"#,
+            rows: rows
+        ).scan(now: now, pricing: .empty)
+
+        XCTAssertTrue(try XCTUnwrap(scan).series.daily.isEmpty)
+        XCTAssertEqual(scan?.unknownModelsByDay["2026-07-12"], ["gpt-mystery"])
     }
 
     func testCopiedRowsAcrossChannelDatabasesAreDeduplicatedByMessageID() async throws {
