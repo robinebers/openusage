@@ -27,6 +27,12 @@ Use OpenCode as usual. OpenUsage reads the `opencode-go` API key from OpenCode's
 sends it as a Bearer token to the usage API. There's no login prompt and no token to paste. Spend tiles
 still read the local SQLite logs in that same directory.
 
+When OpenCode uses its built-in ChatGPT Pro/Plus OAuth login, that usage belongs to the Codex
+subscription and appears in OpenUsage's **Codex** spend tiles and trend. It is not mixed into the
+OpenCode-hosted Go + Zen totals. Its separate per-request token buckets are estimated with the same
+cache, long-context, and fast/priority rules as native Codex usage. Ordinary OpenAI API-key traffic is
+not attributed to Codex.
+
 ## The meters and spend tiles
 
 Go meters are percents from `GET https://opencode.ai/zen/go/v1/usage` — OpenCode's own accounting, not

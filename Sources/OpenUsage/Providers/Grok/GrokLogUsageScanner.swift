@@ -45,8 +45,10 @@ actor GrokLogUsageScanner {
         let directory = grokHome().appendingPathComponent("sessions", isDirectory: true)
         let identity = directory.resolvingSymlinksInPath().standardizedFileURL.path
         let since = JSONLScanning.sinceDate(daysBack: daysBack, now: now)
+        // Child sessions can contain usage absent from their coordinator. Include every ledger;
+        // dedup below removes replayed events by event ID and model, not by session kind or totals.
         let files = JSONLScanning.jsonlFiles(under: directory)
-            .filter(Self.isCoordinatorSession)
+            .filter { URL(fileURLWithPath: $0.path).lastPathComponent == "updates.jsonl" }
 
         guard !files.isEmpty else {
             _ = await scanner.items(from: [], since: since, cacheIdentity: identity, parse: Self.parseFile)
@@ -68,29 +70,6 @@ actor GrokLogUsageScanner {
             return URL(fileURLWithPath: expandHome(raw))
         }
         return homeDirectory().appendingPathComponent(".grok", isDirectory: true)
-    }
-
-    /// Coordinator turns already include their subagents, so reading both ledgers would charge every
-    /// child task twice. Older sessions without a summary remain eligible because their kind is unknown.
-    private static func isCoordinatorSession(_ file: JSONLScanning.DiscoveredFile) -> Bool {
-        let fileURL = URL(fileURLWithPath: file.path)
-        guard fileURL.lastPathComponent == "updates.jsonl" else { return false }
-
-        let summaryURL = fileURL.deletingLastPathComponent().appendingPathComponent("summary.json")
-        guard FileManager.default.fileExists(atPath: summaryURL.path) else { return true }
-
-        do {
-            let data = try Data(contentsOf: summaryURL)
-            guard let summary = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                AppLog.warn(LogTag.plugin("grok"), "Session summary is not a JSON object; skipped session")
-                return false
-            }
-            guard let kind = summary["session_kind"] as? String else { return true }
-            return !kind.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().hasPrefix("subagent")
-        } catch {
-            AppLog.warn(LogTag.plugin("grok"), "Could not read session summary; skipped session: \(error.localizedDescription)")
-            return false
-        }
     }
 
     // MARK: - Session parsing

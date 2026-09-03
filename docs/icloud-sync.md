@@ -15,8 +15,9 @@ this Mac's next iCloud write, while its local cached snapshot remains.
 
 Claude history that identifies its account and organization is combined only with matching accounts on
 other Macs. Older single-account history without account information remains compatible when only one
-Claude card is visible, and is ignored when multiple cards are visible. Codex syncing works the same way
-it did before.
+Claude card is visible, and is ignored when multiple cards are visible. Files from earlier builds that
+also include a Codex account ID remain readable; that extra ID does not change how Codex usage is
+combined. Codex syncing works the same way it did before.
 
 OpenUsage combines the valid files in memory and rebuilds Today, Yesterday, Last 30 Days, Usage Trend,
 unknown-model warnings, and model breakdowns. The same combined spend rows feed the dashboard, Total

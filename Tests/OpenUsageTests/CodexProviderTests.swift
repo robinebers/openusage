@@ -101,9 +101,10 @@ final class CodexUsageMapperTests: XCTestCase {
         XCTAssertEqual(progress(mapped.lines, "Session")?.periodDurationMs, 18_000_000)
     }
 
-    func testMapsWeeklyOnlyPrimaryWindowByDuration() throws {
+    func testMapsBusinessPremiumWeeklyOnlyPrimaryWindowByDuration() throws {
         let body = Data("""
         {
+          "plan_type": "self_serve_business_prolite",
           "rate_limit": {
             "primary_window": {
               "used_percent": 5,
@@ -119,9 +120,26 @@ final class CodexUsageMapperTests: XCTestCase {
             now: Date(timeIntervalSince1970: 1_800_000_000)
         )
 
+        XCTAssertEqual(mapped.plan, "Business Premium")
+        XCTAssertEqual(mapped.lines.map(\.label), ["Weekly"])
         XCTAssertNil(progress(mapped.lines, "Session"))
         XCTAssertEqual(progress(mapped.lines, "Weekly")?.used, 5)
         XCTAssertEqual(progress(mapped.lines, "Weekly")?.periodDurationMs, CodexUsageMapper.weeklyPeriodMs)
+    }
+
+    func testPlanNamesPreserveOtherPlansAndUnknownEntitlements() {
+        let cases = [
+            ("prolite", "Pro 5x"),
+            ("pro", "Pro 20x"),
+            ("team", "Team"),
+            ("business", "Business"),
+            ("self_serve_business", "Self Serve Business"),
+            ("self_serve_business_prolite_future", "Self Serve Business Prolite Future"),
+            ("future_plan", "Future Plan")
+        ]
+        for (raw, expected) in cases {
+            XCTAssertEqual(CodexUsageMapper.formatCodexPlan(raw), expected, raw)
+        }
     }
 
     func testUnknownWindowDurationKeepsPositionalFallback() throws {
@@ -473,7 +491,7 @@ final class CodexUsageMapperTests: XCTestCase {
 @MainActor
 final class CodexProviderTests: XCTestCase {
     func testNoUsageDataBadgeIsDroppedWhenLocalLogsHaveSpend() async throws {
-        let now = OpenUsageISO8601.date(from: "2026-02-20T16:00:00.000Z")!
+        let now = OpenUsageISO8601.date(from: "2026-02-20T14:30:00.000Z")!
         // The live usage API returns nothing mappable (empty body -> no metric lines)...
         let httpClient = FakeHTTPClient(response: HTTPResponse(statusCode: 200, headers: [:], body: Data("{}".utf8)))
         let home = try CodexLogFixture.makeHome(files: [
@@ -519,6 +537,64 @@ final class CodexProviderTests: XCTestCase {
             if case .badge(_, let value, _, _) = line { return value == "No usage data" }
             return false
         })
+    }
+
+    func testOpenCodeCodexOAuthUsageIsMergedIntoCodexHistory() async throws {
+        // A far-future fixture keeps PiUsageScanner.shared from folding the developer's real local pi
+        // history into this integration test.
+        let now = OpenUsageISO8601.date(from: "2099-02-20T16:00:00.000Z")!
+        let milliseconds = Int(OpenUsageISO8601.date(
+            from: "2099-02-20T14:00:00.000Z"
+        )!.timeIntervalSince1970 * 1000)
+        let openCodeRows = "[[\(milliseconds),0,150,\"gpt-test\",100,0,0,50,0,\"open-code-message\"]]"
+        let openCodeScanner = OpenCodeCodexUsageScanner(
+            authStore: OpenCodeAuthStore(
+                files: FakeFiles(["/oc/auth.json": #"{"openai":{"type":"oauth","access":"token"}}"#]),
+                environment: FakeEnvironment(["OPENCODE_DATA_DIR": "/oc"]),
+                homeDirectory: { URL(fileURLWithPath: "/unused") }
+            ),
+            sqlite: OpenCodeFakeSQLite(data: ["/oc/opencode.db": openCodeRows]),
+            databasePaths: { ["/oc/opencode.db"] }
+        )
+        let provider = CodexProvider(
+            authStore: CodexAuthStore(
+                environment: FakeEnvironment(["CODEX_HOME": "/tmp/codex-home"]),
+                files: FakeFiles(["/tmp/codex-home/auth.json": #"{"tokens":{"access_token":"token"}}"#]),
+                keychain: FakeKeychain()
+            ),
+            usageClient: CodexUsageClient(http: FakeHTTPClient(response: HTTPResponse(
+                statusCode: 200, headers: [:], body: Data("{}".utf8)
+            ))),
+            logUsageScanner: CodexLogFixture.scanner(home: nil),
+            openCodeUsageScanner: openCodeScanner,
+            now: { now },
+            pricing: {
+                ModelPricing(
+                    supplement: PricingSupplement(),
+                    primary: PricingCatalog(entries: ["gpt-test": ModelRates(
+                        inputPerMillion: 1000, outputPerMillion: 3000,
+                        cacheWritePerMillion: 1000, cacheReadPerMillion: 100
+                    )]),
+                    secondary: PricingCatalog(entries: [:])
+                )
+            }
+        )
+
+        let snapshot = await provider.refresh()
+
+        let fixtureModels = try XCTUnwrap(
+            snapshot.usageHistory?.modelUsage?.daily.first { $0.date == "2099-02-20" }?.models
+        )
+        let openCodeModel = try XCTUnwrap(fixtureModels.first { $0.model == "gpt-test" })
+        XCTAssertEqual(openCodeModel.totalTokens, 150)
+        XCTAssertEqual(openCodeModel.costUSD ?? -1, 0.25, accuracy: 0.0001)
+        XCTAssertEqual(
+            values(snapshot.lines, "Today"),
+            [
+                MetricValue(number: 0.25, kind: .dollars, estimated: true),
+                MetricValue(number: 150, kind: .count, label: "tokens")
+            ]
+        )
     }
 
     private func values(_ lines: [MetricLine], _ label: String) -> [MetricValue]? {

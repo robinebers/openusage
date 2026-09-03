@@ -18,7 +18,7 @@ struct SettingsMigration: Sendable {
 enum SettingsSchema {
     /// Current schema version. Keep equal to the highest migration `version` below (or the baseline when
     /// there are none). This is NOT the app version — bump it only alongside a migration you add.
-    static let current = 2
+    static let current = 3
 
     /// The provider IDs that existed when the v2 migration shipped, frozen forever. A migration is a
     /// point-in-time transform: any future build with more providers also contains this migration, so a
@@ -26,6 +26,15 @@ enum SettingsSchema {
     /// `NewProviderSeeder` then picks up everything added afterwards as new. Never edit this list.
     static let v2ProviderIDs = [
         "antigravity", "claude", "codex", "copilot", "cursor", "devin", "grok", "openrouter", "zai"
+    ]
+
+    /// Dead menu-bar / layout metric IDs rewritten by v3. Frozen forever — append a new migration if
+    /// more IDs need renaming later. Labels drifted (Session/Weekly/Credits) while registry IDs stayed
+    /// `geminiPro` / `geminiWeekly` / `premium`; some installs saved the label-shaped IDs instead.
+    static let v3MetricIDRemaps: [String: String] = [
+        "antigravity.session": "antigravity.geminiPro",
+        "antigravity.weekly": "antigravity.geminiWeekly",
+        "copilot.credits": "copilot.premium",
     ]
 
     /// Ordered migrations, each taking the domain one version higher. v1 is the baseline — the settings
@@ -49,8 +58,82 @@ enum SettingsSchema {
             if defaults.stringArray(forKey: "openusage.knownProviders.v1") == nil {
                 defaults.set(v2ProviderIDs, forKey: "openusage.knownProviders.v1")
             }
+        },
+        // v3 heals dead metric IDs in saved layout state so upgrades stop retaining invisible pin
+        // tombstones for IDs that never existed in the registry (label-shaped aliases). Remaps known
+        // dead → live IDs across every layout key that stores metric IDs; preserves order, dedupes
+        // after remap, leaves unknown IDs alone (still valid tombstones for temporarily absent cards).
+        SettingsMigration(version: 3) { defaults in
+            remapStringArrayMetricIDs(defaults, key: "openusage.layout.v1.menuBarPins")
+            remapStringArrayMetricIDs(defaults, key: "openusage.layout.v1.expandedMetrics")
+            remapStringArrayMetricIDs(defaults, key: "openusage.layout.v1.expandOnEnable")
+            remapJSONMetricIDArray(defaults, key: "openusage.layout.v1.seededDefaults")
+            remapJSONMetricOrder(defaults, key: "openusage.layout.v1.metricOrderByProvider")
+            remapJSONPlacedWidgets(defaults, key: "openusage.layout.v1")
         }
     ]
+
+    /// Remap + order-preserving dedupe for a `[String]` of metric IDs. Unknown IDs pass through.
+    static func remapMetricIDs(_ ids: [String]) -> [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+        for id in ids {
+            let mapped = v3MetricIDRemaps[id] ?? id
+            if seen.insert(mapped).inserted {
+                result.append(mapped)
+            }
+        }
+        return result
+    }
+
+    /// `UserDefaults` string-array keys (`menuBarPins`, `expandedMetrics`, `expandOnEnable`).
+    private static func remapStringArrayMetricIDs(_ defaults: UserDefaults, key: String) {
+        guard let saved = defaults.stringArray(forKey: key) else { return }
+        let remapped = remapMetricIDs(saved)
+        if remapped != saved {
+            defaults.set(remapped, forKey: key)
+        }
+    }
+
+    /// JSON-encoded `[String]` (`seededDefaults`).
+    private static func remapJSONMetricIDArray(_ defaults: UserDefaults, key: String) {
+        guard let data = defaults.data(forKey: key),
+              let saved = try? JSONDecoder().decode([String].self, from: data)
+        else { return }
+        let remapped = remapMetricIDs(saved)
+        guard remapped != saved, let encoded = try? JSONEncoder().encode(remapped) else { return }
+        defaults.set(encoded, forKey: key)
+    }
+
+    /// JSON-encoded `[String: [String]]` (`metricOrderByProvider`).
+    private static func remapJSONMetricOrder(_ defaults: UserDefaults, key: String) {
+        guard let data = defaults.data(forKey: key),
+              let saved = try? JSONDecoder().decode([String: [String]].self, from: data)
+        else { return }
+        let remapped = saved.mapValues(remapMetricIDs)
+        guard remapped != saved, let encoded = try? JSONEncoder().encode(remapped) else { return }
+        defaults.set(encoded, forKey: key)
+    }
+
+    /// JSON-encoded `[PlacedWidget]` (root layout key). Remaps `descriptorID`, dedupes by it.
+    private static func remapJSONPlacedWidgets(_ defaults: UserDefaults, key: String) {
+        guard let data = defaults.data(forKey: key),
+              let saved = try? JSONDecoder().decode([PlacedWidget].self, from: data)
+        else { return }
+        var seen = Set<String>()
+        var remapped: [PlacedWidget] = []
+        for widget in saved {
+            let descriptorID = v3MetricIDRemaps[widget.descriptorID] ?? widget.descriptorID
+            guard seen.insert(descriptorID).inserted else { continue }
+            remapped.append(
+                descriptorID == widget.descriptorID
+                    ? widget
+                    : PlacedWidget(id: widget.id, descriptorID: descriptorID)
+            )
+        }
+        guard remapped != saved, let encoded = try? JSONEncoder().encode(remapped) else { return }
+        defaults.set(encoded, forKey: key)
+    }
 }
 
 /// Versioned, cascading settings migration — the replacement for the beta-era domain wipe. Runs once at

@@ -36,13 +36,17 @@ struct UsageHistoryDocument: Hashable, Sendable, Codable, Identifiable {
 
         var seenIdentities = Set<String>()
         for (providerID, identity) in identities ?? [:] {
+            let family = ProviderAccountID.family(of: providerID)
+            // Earlier v2 writers also included the bare Codex account identity. It is valid
+            // metadata, though only Claude identities participate in account-aware merging.
+            let isLegacyCodexIdentity = schema == Self.accountSchema && providerID == "codex"
             guard providers[providerID] != nil,
-                  ProviderAccountID.family(of: providerID) == "claude",
+                  family == "claude" || isLegacyCodexIdentity,
                   !identity.isEmpty,
                   identity.rangeOfCharacter(from: .whitespacesAndNewlines.union(.controlCharacters)) == nil,
                   !identity.contains("/"), !identity.contains("\\")
             else { throw UsageHistoryDocumentError.invalidIdentity(providerID) }
-            guard seenIdentities.insert(identity.lowercased()).inserted else {
+            guard seenIdentities.insert("\(family):\(identity.lowercased())").inserted else {
                 throw UsageHistoryDocumentError.duplicateIdentity(providerID)
             }
         }

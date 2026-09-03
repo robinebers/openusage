@@ -169,7 +169,10 @@ final class UsageHistoryAggregatorTests: XCTestCase {
             ]
         )
         peer.schema = UsageHistoryDocument.accountSchema
-        peer.identities = ["claude": "USER|WORK", "claude@abcdef12": "user|personal"]
+        peer.identities = [
+            "claude": "USER|WORK", "claude@abcdef12": "user|personal",
+            "codex": "legacy-codex-account",
+        ]
         XCTAssertNoThrow(try peer.validate())
 
         let descriptor = UsageHistoryDescriptor(scope: .machineLocal, estimatedCost: true, sourceNote: "logs")
