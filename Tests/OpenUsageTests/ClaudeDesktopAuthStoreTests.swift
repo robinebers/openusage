@@ -181,6 +181,62 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
         XCTAssertEqual(legacy.identityKeysByCard["claude"], accountUUID)
     }
 
+    /// The account the user names owns markerless sessions — the transcripts written before Claude
+    /// Code stamped `ownerAccountUuid`, which no account can claim on evidence. Exactly one card
+    /// claims them, so a second account neither hides that history nor double-counts it.
+    @MainActor
+    func testNamedUnattributedOwnerKeepsMarkerlessSessionsOnExactlyOneCard() throws {
+        let fixture = try makeFixture(
+            activeOrganization: organization,
+            v2: [
+                cacheKey(organization: organization): tokenEntry("personal-token", expiresIn: 3_600),
+                cacheKey(organization: otherOrganization): tokenEntry("work-token", expiresIn: 3_600),
+            ],
+            accountUUID: accountUUID
+        )
+        let personalIdentity = "\(accountUUID)|\(organization)"
+        let workIdentity = "\(accountUUID)|\(otherOrganization)"
+        let suite = "OpenUsageTests.UnattributedOwner.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let existing = ProviderAccountRecord(
+            id: "claude", family: "claude", identityKey: personalIdentity,
+            label: "Personal",
+            sources: [.init(kind: .defaultHome, anchor: "\(home.path)/.claude", holdsDefaultSource: true)]
+        )
+        defaults.set(try JSONEncoder().encode([existing]), forKey: ProviderAccountsStore.storageKey)
+        fixture.files.files["\(home.path)/.claude.json"] =
+            #"{"oauthAccount":{"accountUuid":"\#(accountUUID)","organizationUuid":"\#(otherOrganization)","emailAddress":"work@example.com","organizationName":"SUNSTORY"}}"#
+        let fixtureHome = home
+        let observer = DefaultAccountObserver(
+            environment: FakeEnvironment(), files: fixture.files, keychain: FakeKeychain(),
+            homeDirectory: { fixtureHome }
+        )
+        let organizations = [organization, otherOrganization]
+        func cards(owner: String?) -> [ClaudeAccountCard] {
+            ProviderAccountAssembly.make(
+                observer: observer, accountsStore: ProviderAccountsStore(defaults: defaults),
+                families: ["claude"], unattributedOwnerIdentityKey: owner,
+                desktop: fixture.store, listDesktopOrganizationDirectories: { _ in organizations }
+            ).claudeCards
+        }
+
+        // No owner named: two accounts, so nobody claims the markerless sessions.
+        XCTAssertFalse(cards(owner: nil).contains { $0.allowsUnattributedPiUsage })
+        XCTAssertFalse(cards(owner: "").contains { $0.allowsUnattributedPiUsage })
+
+        // Named owner: that card claims them, every sibling still doesn't. Case is irrelevant —
+        // identity keys are compared the same way everywhere else in the pass.
+        let named = cards(owner: personalIdentity.uppercased())
+        XCTAssertEqual(
+            named.filter(\.allowsUnattributedPiUsage).map(\.identityKey), [personalIdentity]
+        )
+        XCTAssertEqual(
+            cards(owner: workIdentity).filter(\.allowsUnattributedPiUsage).map(\.identityKey),
+            [workIdentity]
+        )
+    }
+
     func testV1FallbackDoesNotOverrideTombstonedV2Key() throws {
         let key = cacheKey(organization: organization)
         let selection = ClaudeDesktopAuthStore.selectCredential(

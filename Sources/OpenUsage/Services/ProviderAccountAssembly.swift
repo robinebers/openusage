@@ -49,13 +49,20 @@ struct ProviderAccountAssembly {
         return make(
             observer: DefaultAccountObserver(),
             accountsStore: ProviderAccountsStore(defaults: defaults),
-            families: families
+            families: families,
+            unattributedOwnerIdentityKey: defaults.string(forKey: Self.unattributedOwnerKey)
         )
     }
 
     /// The environment variable that relocates each family's default home — the fact whose
     /// invisibility (shell layers unreadable AND not in the process environment) makes that family's
     /// identity read unsafe on a first launch.
+    /// The account the user named as the owner of markerless sessions — transcripts written before
+    /// Claude Code stamped `ownerAccountUuid`, which no account can claim on evidence. Empty or
+    /// unset (the default) keeps the strict rule: markerless sessions count only while a single
+    /// Claude account has ever been known.
+    static let unattributedOwnerKey = "openusage.unattributedOwner.v1"
+
     private static let homeOverrideKeys: [String: String] = [
         "claude": "CLAUDE_CONFIG_DIR",
         "codex": "CODEX_HOME",
@@ -69,6 +76,7 @@ struct ProviderAccountAssembly {
         observer: DefaultAccountObserver,
         accountsStore: ProviderAccountsStore,
         families: Set<String> = ProviderAccountID.families,
+        unattributedOwnerIdentityKey: String? = nil,
         desktop: ClaudeDesktopAuthStore? = nil,
         listDesktopOrganizationDirectories: @escaping @Sendable (URL) -> [String] = { root in
             let urls = (try? FileManager.default.contentsOfDirectory(
@@ -149,7 +157,14 @@ struct ProviderAccountAssembly {
 
         let defaultClaudeIdentity = identityKeys["claude"]
         let records = accountsStore.reconcile(with: observations)
-        let allowsUnattributedPiUsage = records.count { $0.family == "claude" } == 1
+        // Markerless sessions belong to whoever the user named, or — while only one Claude account
+        // has ever been known — to that account. Never to a guess: at most one card can claim them,
+        // so a second account can neither hide the history nor double-count it.
+        let legacySingleAccount = records.count { $0.family == "claude" } == 1
+        let namedOwner = unattributedOwnerIdentityKey?.nilIfEmpty?.lowercased()
+        func allowsUnattributedPiUsage(_ identityKey: String) -> Bool {
+            legacySingleAccount || identityKey.lowercased() == namedOwner
+        }
         var cards: [ClaudeAccountCard] = []
         if let defaultIdentity = defaultClaudeIdentity,
            let organization = defaultIdentity.split(separator: "|").last,
@@ -165,7 +180,7 @@ struct ProviderAccountAssembly {
             cards.append(ClaudeAccountCard(
                 id: record.id, identityKey: defaultIdentity, organizationID: String(organization),
                 displayName: "Claude — \(label)", usesDesktopCredentials: false,
-                allowsUnattributedPiUsage: allowsUnattributedPiUsage
+                allowsUnattributedPiUsage: allowsUnattributedPiUsage(defaultIdentity)
             ))
             identityKeys.removeValue(forKey: "claude")
             identityKeys[record.id] = defaultIdentity
@@ -179,7 +194,8 @@ struct ProviderAccountAssembly {
             cards.append(ClaudeAccountCard(
                 id: cardID, identityKey: organization.identityKey, organizationID: organization.id,
                 displayName: "Claude — \(organizationLabel(record.label) ?? organization.label)",
-                usesDesktopCredentials: true, allowsUnattributedPiUsage: allowsUnattributedPiUsage
+                usesDesktopCredentials: true,
+                allowsUnattributedPiUsage: allowsUnattributedPiUsage(organization.identityKey)
             ))
             identityKeys[cardID] = organization.identityKey
         }
