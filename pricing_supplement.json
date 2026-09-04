@@ -1,6 +1,6 @@
 {
   "$comment": "OpenUsage pricing supplement. Prices Cursor-native models that no public catalog carries, supplies fast-variant multipliers the catalogs omit, and maps provider log/CSV model slugs to canonical pricing keys (LiteLLM keys, models.dev ids, or entries in this file). Cursor Router rows name the routed model in prose instead of a slug ('Opus 5 (Auto Balanced)'), so those labels get alias rules too. Published to gh-pages by .github/workflows/pricing-supplement.yml on every change, so installed apps pick edits up within about an hour - no release needed. Rates are USD per million tokens. Sources: https://cursor.com/docs/models-and-pricing.md for Cursor-native entries; https://platform.claude.com/docs/en/about-claude/pricing for Claude Fable 5.1; https://developers.openai.com/api/docs/models/daybreak-blue-latest and https://developers.openai.com/api/docs/pricing for Daybreak aliases and rates; https://docs.z.ai/guides/overview/pricing for GLM 5.3.",
-  "updated_at": "2026-09-01T20:30:00Z",
+  "updated_at": "2026-09-03T21:20:00Z",
   "pricing": {
     "auto": {
       "input_per_million": 1.25,
@@ -146,6 +146,13 @@
       "cache_read_per_million": 0.5,
       "output_per_million": 30.0
     },
+    "gpt-6-astra": {
+      "$comment": "OpenAI GPT-6 Astra official rates (developers.openai.com/api/docs/models/gpt-6-astra). Cache write is 1.25x input; cache read is 0.1x. Fast mode is 2x. Public catalogs have not added it yet.",
+      "input_per_million": 10.0,
+      "cache_write_per_million": 12.5,
+      "cache_read_per_million": 1.0,
+      "output_per_million": 50.0
+    },
     "gpt-5.6-terra": {
       "input_per_million": 2.0,
       "cache_write_per_million": 2.5,
@@ -184,6 +191,7 @@
     "gpt-5.4": 2.0,
     "gpt-5.5": 2.5,
     "gpt-5.6-sol": 2.0,
+    "gpt-6-astra": 2.0,
     "gpt-5.6-terra": 2.0,
     "gpt-5.6-luna": 2.0
   },
@@ -268,6 +276,8 @@
     { "pattern": "^gpt-5\\.5(?:-(?:low|medium|high|xhigh|extra-high))?$", "canonical": "gpt-5.5" },
     { "pattern": "^gpt-5\\.6-sol(?:-(?:none|low|medium|high|xhigh|max|ultra))?-fast$", "canonical": "gpt-5.6-sol-fast" },
     { "pattern": "^gpt-5\\.6-sol(?:-(?:none|low|medium|high|xhigh|max|ultra))?$", "canonical": "gpt-5.6-sol" },
+    { "pattern": "^gpt-6-astra(?:-(?:none|low|medium|high|xhigh|max|ultra))?-fast$", "canonical": "gpt-6-astra-fast" },
+    { "pattern": "^gpt-6-astra(?:-(?:none|low|medium|high|xhigh|max|ultra))?$", "canonical": "gpt-6-astra" },
     { "pattern": "^gpt-5\\.6-terra(?:-(?:none|low|medium|high|xhigh|max))?-fast$", "canonical": "gpt-5.6-terra-fast" },
     { "pattern": "^gpt-5\\.6-terra(?:-(?:none|low|medium|high|xhigh|max))?$", "canonical": "gpt-5.6-terra" },
     { "pattern": "^gpt-5\\.6-luna(?:-(?:none|low|medium|high|xhigh|max))?-fast$", "canonical": "gpt-5.6-luna-fast" },
@@ -294,6 +304,7 @@
     { "pattern": "(?i)^(?:Claude )?Fable 5 \\(Auto[^)]*\\)$", "canonical": "claude-fable-5" },
     { "pattern": "(?i)^GPT-5\\.5 \\(Auto[^)]*\\)$", "canonical": "gpt-5.5" },
     { "pattern": "(?i)^GPT-5\\.6 Sol \\(Auto[^)]*\\)$", "canonical": "gpt-5.6-sol" },
+    { "pattern": "(?i)^GPT-6 Astra \\(Auto[^)]*\\)$", "canonical": "gpt-6-astra" },
     { "pattern": "(?i)^GPT-5\\.6 Terra \\(Auto[^)]*\\)$", "canonical": "gpt-5.6-terra" },
     { "pattern": "(?i)^GPT-5\\.6 Luna \\(Auto[^)]*\\)$", "canonical": "gpt-5.6-luna" },
     { "pattern": "(?i)^Gemini 3\\.1 Pro \\(Auto[^)]*\\)$", "canonical": "gemini-3.1-pro-preview" },
@@ -305,6 +316,7 @@
   ],
   "fallback_models": {
     "codex": [
+      "gpt-6-astra",
       "gpt-5.6-sol",
       "gpt-5.6-terra",
       "gpt-5.6-luna",
