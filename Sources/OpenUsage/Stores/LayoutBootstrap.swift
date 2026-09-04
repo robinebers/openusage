@@ -86,6 +86,15 @@ enum LayoutBootstrap {
             shouldPersistExpanded = true
         }
 
+        // A formerly optional On Demand metric can later become an always-visible default. Its old
+        // saved section was seeded before the user enabled it, so honor the new placement when the
+        // metric is first auto-added without disturbing metrics the user already arranged.
+        let newlyAlwaysShown = Set(seededResult.newlyPlaced).subtracting(defaults.expandedMetricIDs)
+        if !expandedMetricIDs.isDisjoint(with: newlyAlwaysShown) {
+            expandedMetricIDs.subtract(newlyAlwaysShown)
+            shouldPersistExpanded = true
+        }
+
         // Optional default-expanded metrics enter below the caret the first time they are enabled. The
         // saved queue wins so an explicit user move is not recreated on the next launch.
         let placedIDs = Set(seededResult.placed.map(\.descriptorID))
@@ -97,6 +106,7 @@ enum LayoutBootstrap {
         let defaultExpandedOnEnableIDs = Set(
             (savedOnEnable ?? defaults.expandedMetricIDs).filter(isExpandOnEnableCandidate)
         )
+        let promotedQueuedIDs = Set(savedOnEnable ?? []).intersection(newlyAlwaysShown)
 
         return LayoutInitialState(
             placed: seededResult.placed,
@@ -109,7 +119,7 @@ enum LayoutBootstrap {
             menuBarStyle: persistence.loadMenuBarStyle(),
             shouldPersistPlaced: seededResult.shouldPersistPlaced,
             shouldPersistExpanded: shouldPersistExpanded,
-            shouldPersistExpandOnEnable: savedOnEnable == nil,
+            shouldPersistExpandOnEnable: savedOnEnable == nil || !promotedQueuedIDs.isEmpty,
             seededDefaultsToPersist: seededResult.shouldPersistSeededDefaults
                 ? seededResult.seededDefaults
                 : nil

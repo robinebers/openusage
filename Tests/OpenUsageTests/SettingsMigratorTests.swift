@@ -37,20 +37,19 @@ final class SettingsMigratorTests: XCTestCase {
 
     // MARK: - Cascading
 
-    /// The headline case: a big version jump runs every intermediate step in ascending order and stops
-    /// at current — a v7 install opening a v13 build.
+    /// A version jump runs only the pending intermediate steps in ascending order.
     func testCascadeRunsAllIntermediateStepsInOrder() {
         let (defaults, domain) = makeDefaults("Cascade")
         defer { defaults.removePersistentDomain(forName: domain) }
-        defaults.set(7, forKey: SettingsMigrator.schemaVersionKey)
+        defaults.set(1, forKey: SettingsMigrator.schemaVersionKey)
 
         let result = SettingsMigrator.migrate(
             defaults: defaults, domainName: domain,
-            current: 13, migrations: recording(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13)
+            current: 4, migrations: recording(1, 2, 3, 4)
         )
 
-        XCTAssertEqual(result, 13)
-        XCTAssertEqual(ranVersions(defaults), [8, 9, 10, 11, 12, 13], "only steps above the stored version, in order")
+        XCTAssertEqual(result, 4)
+        XCTAssertEqual(ranVersions(defaults), [2, 3, 4], "only pending steps run, in order")
     }
 
     /// Migrations declared out of order are still applied by ascending version.
@@ -67,34 +66,20 @@ final class SettingsMigratorTests: XCTestCase {
         XCTAssertEqual(ranVersions(defaults), [1, 2, 3])
     }
 
-    /// Already at the current version: nothing runs.
-    func testSameVersionIsNoOp() {
-        let (defaults, domain) = makeDefaults("Same")
-        defer { defaults.removePersistentDomain(forName: domain) }
-        defaults.set(3, forKey: SettingsMigrator.schemaVersionKey)
+    func testCurrentAndNewerVersionsNeverReplayMigrations() {
+        for storedVersion in [3, 5] {
+            let (defaults, domain) = makeDefaults("NoReplay\(storedVersion)")
+            defer { defaults.removePersistentDomain(forName: domain) }
+            defaults.set(storedVersion, forKey: SettingsMigrator.schemaVersionKey)
 
-        let result = SettingsMigrator.migrate(
-            defaults: defaults, domainName: domain, current: 3, migrations: recording(1, 2, 3)
-        )
+            let result = SettingsMigrator.migrate(
+                defaults: defaults, domainName: domain, current: 3, migrations: recording(1, 2, 3)
+            )
 
-        XCTAssertEqual(result, 3)
-        XCTAssertNil(ranVersions(defaults))
-    }
-
-    /// A build older than the stored version (downgrade) leaves the recorded version untouched and runs
-    /// nothing — old migrations are never replayed backward.
-    func testDowngradeLeavesVersionUntouched() {
-        let (defaults, domain) = makeDefaults("Downgrade")
-        defer { defaults.removePersistentDomain(forName: domain) }
-        defaults.set(5, forKey: SettingsMigrator.schemaVersionKey)
-
-        let result = SettingsMigrator.migrate(
-            defaults: defaults, domainName: domain, current: 3, migrations: recording(1, 2, 3)
-        )
-
-        XCTAssertEqual(result, 5)
-        XCTAssertEqual(defaults.integer(forKey: SettingsMigrator.schemaVersionKey), 5)
-        XCTAssertNil(ranVersions(defaults))
+            XCTAssertEqual(result, storedVersion)
+            XCTAssertEqual(defaults.integer(forKey: SettingsMigrator.schemaVersionKey), storedVersion)
+            XCTAssertNil(ranVersions(defaults))
+        }
     }
 
     /// A version bump with no data change for the top step still records reaching `current`, so the
@@ -251,6 +236,130 @@ final class SettingsMigratorTests: XCTestCase {
         SettingsMigrator.migrate(defaults: defaults, domainName: domain)
 
         XCTAssertEqual(defaults.stringArray(forKey: "openusage.enabledProviders.v1"), enabledAfterFirst)
+    }
+
+    // MARK: - v3: dead metric-ID remaps
+
+    /// Dead label-shaped pin IDs rewrite to the live registry IDs, preserving order and dropping a
+    /// duplicate that appears only after remap (e.g. both `session` and `geminiPro` → one pin).
+    func testV3RemapsDeadMenuBarPins() {
+        let (defaults, domain) = makeDefaults("V3DeadPins")
+        defer { defaults.removePersistentDomain(forName: domain) }
+        defaults.set(2, forKey: SettingsMigrator.schemaVersionKey)
+        defaults.set(
+            ["antigravity.session", "claude.session", "antigravity.weekly", "copilot.credits", "antigravity.geminiPro"],
+            forKey: "openusage.layout.v1.menuBarPins"
+        )
+
+        let result = SettingsMigrator.migrate(defaults: defaults, domainName: domain)
+
+        XCTAssertEqual(result, SettingsSchema.current)
+        XCTAssertEqual(
+            defaults.stringArray(forKey: "openusage.layout.v1.menuBarPins"),
+            ["antigravity.geminiPro", "claude.session", "antigravity.geminiWeekly", "copilot.premium"]
+        )
+    }
+
+    /// Pins already on live registry IDs are left alone.
+    func testV3LeavesAlreadyCorrectPinsUnchanged() {
+        let (defaults, domain) = makeDefaults("V3CorrectPins")
+        defer { defaults.removePersistentDomain(forName: domain) }
+        defaults.set(2, forKey: SettingsMigrator.schemaVersionKey)
+        let pins = ["antigravity.geminiPro", "antigravity.geminiWeekly", "copilot.premium"]
+        defaults.set(pins, forKey: "openusage.layout.v1.menuBarPins")
+
+        SettingsMigrator.migrate(defaults: defaults, domainName: domain)
+
+        XCTAssertEqual(defaults.stringArray(forKey: "openusage.layout.v1.menuBarPins"), pins)
+    }
+
+    /// Unknown / tombstone IDs (e.g. retired `geminiFlash`) are kept — only the known-dead aliases remap.
+    func testV3KeepsUnknownPinIDs() {
+        let (defaults, domain) = makeDefaults("V3UnknownPins")
+        defer { defaults.removePersistentDomain(forName: domain) }
+        defaults.set(2, forKey: SettingsMigrator.schemaVersionKey)
+        defaults.set(
+            ["antigravity.session", "antigravity.geminiFlash", "ghost.metric"],
+            forKey: "openusage.layout.v1.menuBarPins"
+        )
+
+        SettingsMigrator.migrate(defaults: defaults, domainName: domain)
+
+        XCTAssertEqual(
+            defaults.stringArray(forKey: "openusage.layout.v1.menuBarPins"),
+            ["antigravity.geminiPro", "antigravity.geminiFlash", "ghost.metric"]
+        )
+    }
+
+    /// Same remaps apply to the other layout keys that store metric IDs as strings.
+    func testV3RemapsMetricIDsAcrossLayoutKeys() throws {
+        let (defaults, domain) = makeDefaults("V3LayoutKeys")
+        defer { defaults.removePersistentDomain(forName: domain) }
+        defaults.set(2, forKey: SettingsMigrator.schemaVersionKey)
+        defaults.set(["antigravity.session", "copilot.credits"], forKey: "openusage.layout.v1.expandedMetrics")
+        defaults.set(["antigravity.weekly"], forKey: "openusage.layout.v1.expandOnEnable")
+        defaults.set(
+            try JSONEncoder().encode(["antigravity.session", "claude.session"]),
+            forKey: "openusage.layout.v1.seededDefaults"
+        )
+        defaults.set(
+            try JSONEncoder().encode([
+                "antigravity": ["antigravity.session", "antigravity.weekly", "antigravity.claude"],
+                "copilot": ["copilot.credits", "copilot.extra"],
+            ] as [String: [String]]),
+            forKey: "openusage.layout.v1.metricOrderByProvider"
+        )
+        let placed = [
+            PlacedWidget(descriptorID: "antigravity.session"),
+            PlacedWidget(descriptorID: "antigravity.geminiPro"),
+            PlacedWidget(descriptorID: "copilot.credits"),
+        ]
+        defaults.set(try JSONEncoder().encode(placed), forKey: "openusage.layout.v1")
+
+        SettingsMigrator.migrate(defaults: defaults, domainName: domain)
+
+        XCTAssertEqual(
+            defaults.stringArray(forKey: "openusage.layout.v1.expandedMetrics"),
+            ["antigravity.geminiPro", "copilot.premium"]
+        )
+        XCTAssertEqual(
+            defaults.stringArray(forKey: "openusage.layout.v1.expandOnEnable"),
+            ["antigravity.geminiWeekly"]
+        )
+        XCTAssertEqual(
+            try JSONDecoder().decode([String].self, from: try XCTUnwrap(defaults.data(forKey: "openusage.layout.v1.seededDefaults"))),
+            ["antigravity.geminiPro", "claude.session"]
+        )
+        XCTAssertEqual(
+            try JSONDecoder().decode([String: [String]].self, from: try XCTUnwrap(defaults.data(forKey: "openusage.layout.v1.metricOrderByProvider"))),
+            [
+                "antigravity": ["antigravity.geminiPro", "antigravity.geminiWeekly", "antigravity.claude"],
+                "copilot": ["copilot.premium", "copilot.extra"],
+            ]
+        )
+        let remappedPlaced = try JSONDecoder().decode(
+            [PlacedWidget].self, from: try XCTUnwrap(defaults.data(forKey: "openusage.layout.v1"))
+        )
+        XCTAssertEqual(remappedPlaced.map(\.descriptorID), ["antigravity.geminiPro", "copilot.premium"])
+    }
+
+    /// Re-running v3 (interrupted upgrade) is a no-op once IDs are already remapped.
+    func testV3IsIdempotent() {
+        let (defaults, domain) = makeDefaults("V3Idempotent")
+        defer { defaults.removePersistentDomain(forName: domain) }
+        defaults.set(2, forKey: SettingsMigrator.schemaVersionKey)
+        defaults.set(
+            ["antigravity.session", "copilot.credits", "ghost.metric"],
+            forKey: "openusage.layout.v1.menuBarPins"
+        )
+
+        SettingsMigrator.migrate(defaults: defaults, domainName: domain)
+        let pinsAfterFirst = defaults.stringArray(forKey: "openusage.layout.v1.menuBarPins")
+        defaults.set(2, forKey: SettingsMigrator.schemaVersionKey)
+        SettingsMigrator.migrate(defaults: defaults, domainName: domain)
+
+        XCTAssertEqual(defaults.stringArray(forKey: "openusage.layout.v1.menuBarPins"), pinsAfterFirst)
+        XCTAssertEqual(pinsAfterFirst, ["antigravity.geminiPro", "copilot.premium", "ghost.metric"])
     }
 
     // MARK: - Schema integrity

@@ -80,6 +80,29 @@ final class CursorCSVParserTests: XCTestCase {
 // MARK: - Range aggregation
 
 final class CursorSpendRangeTests: XCTestCase {
+    func testGemini38FlashHighCSVUsageCountsTowardSpendWithoutUnknownWarning() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let csv = """
+        Date,Model,Max Mode,Input (w/ Cache Write),Input (w/o Cache Write),Cache Read,Output Tokens,Cost
+        \(ISO8601DateFormatter().string(from: now)),gemini-3.8-flash-high,No,1000000,1000000,1000000,1000000,Included
+        """
+        let parsed = try CursorUsageCSV.parse(csv: csv, pricing: TestPricing.bundled)
+        let row = try XCTUnwrap(parsed.rows.first)
+        // $0.75 input + $0.75 cache writes + $0.075 cache reads + $3.75 output.
+        XCTAssertEqual(try XCTUnwrap(row.imputedCostDollars), 5.325, accuracy: 1e-9)
+
+        var lines: [MetricLine] = []
+        _ = CursorUsageMapper.appendSpendLines(rows: parsed.rows, now: now, pricing: TestPricing.bundled, to: &lines)
+
+        for label in ["Today", "Last 30 Days"] {
+            XCTAssertEqual(values(lines, label), [
+                MetricValue(number: 5.33, kind: .dollars, estimated: true),
+                MetricValue(number: 4_000_000, kind: .count, label: "tokens")
+            ])
+            XCTAssertEqual(unknown(lines, label), [])
+        }
+    }
+
     func testAppendSpendLinesBucketsRowsByLocalDay() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let cal = Calendar.current
@@ -101,30 +124,6 @@ final class CursorSpendRangeTests: XCTestCase {
         XCTAssertEqual(values(lines, "Yesterday"), [MetricValue(number: 2.00, kind: .dollars, estimated: true), MetricValue(number: 200, kind: .count, label: "tokens")])
         // Last 30 Days sums every fetched day (the provider scopes the CSV to a 30-day window).
         XCTAssertEqual(values(lines, "Last 30 Days"), [MetricValue(number: 8.50, kind: .dollars, estimated: true), MetricValue(number: 1349, kind: .count, label: "tokens")])
-    }
-
-    func testZeroActivityLeavesTilesUnbacked() {
-        var lines: [MetricLine] = []
-        CursorUsageMapper.appendSpendLines(rows: [], now: Date(), pricing: TestPricing.bundled, to: &lines)
-
-        // The export fetched but had no rows: every period is idle, so no spend tile is appended and the
-        // tiles fall back to "No data" — not a fabricated "$0.00 · 0 tokens" ("No data" is also what a
-        // failed export produces; see the provider test).
-        XCTAssertNil(values(lines, "Today"))
-        XCTAssertNil(values(lines, "Yesterday"))
-        XCTAssertNil(values(lines, "Last 30 Days"))
-    }
-
-    func testAppendSpendLinesAlsoAppendsUsageTrend() {
-        let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let cal = Calendar.current
-        let rows = [
-            makeRow(date: now, cost: 1.00, tokens: 100),                                           // today
-            makeRow(date: cal.date(byAdding: .day, value: -1, to: now)!, cost: 2.00, tokens: 200)  // yesterday
-        ]
-
-        var lines: [MetricLine] = []
-        CursorUsageMapper.appendSpendLines(rows: rows, now: now, pricing: TestPricing.bundled, to: &lines)
 
         guard case .chart(let label, let points, let note) = lines.first(where: { $0.label == "Usage Trend" }) else {
             return XCTFail("expected a Usage Trend chart line")
@@ -137,12 +136,10 @@ final class CursorSpendRangeTests: XCTestCase {
         XCTAssertEqual(points[29].value, 200, "yesterday's tokens land on the second-to-last bar")
     }
 
-    func testNoRowsLeavesNoUsageTrend() {
-        // A fetched-but-empty export leaves the spend tiles unbacked and gives the trend nothing to draw,
-        // so no chart line is appended (the row falls back to "No data").
+    func testEmptyExportLeavesSpendTilesAndUsageTrendUnbacked() {
         var lines: [MetricLine] = []
         CursorUsageMapper.appendSpendLines(rows: [], now: Date(), pricing: TestPricing.bundled, to: &lines)
-        XCTAssertNil(lines.first(where: { $0.label == "Usage Trend" }))
+        XCTAssertTrue(lines.isEmpty)
     }
 
     func testUnknownModelsAttachToTheRightPeriods() {
@@ -325,7 +322,7 @@ final class CursorSpendProviderTests: XCTestCase {
         }
         let provider = CursorProvider(
             authStore: CursorAuthStore(
-                sqlite: FakeSQLite(values: [CursorAuthStore.accessTokenKey: accessToken]),
+                sqlite: KeyValueSQLite(values: [CursorAuthStore.accessTokenKey: accessToken]),
                 keychain: FakeKeychain()
             ),
             usageClient: CursorUsageClient(http: http),
@@ -454,25 +451,4 @@ final class CursorUsageClientRequestTests: XCTestCase {
     }
 }
 
-// MARK: - Shared test helpers (file-private; mirror CursorProviderTests)
-
-private func makeCursorJWT(sub: String = "google-oauth2|user", exp: Double = 9_999_999_999) -> String {
-    let payload = #"{"sub":"\#(sub)","exp":\#(exp)}"#
-    let encoded = Data(payload.utf8).base64EncodedString()
-        .replacingOccurrences(of: "=", with: "")
-        .replacingOccurrences(of: "+", with: "-")
-        .replacingOccurrences(of: "/", with: "_")
-    return "a.\(encoded).c"
-}
-
-private final class FakeSQLite: SQLiteAccessing, @unchecked Sendable {
-    var values: [String: String]
-    init(values: [String: String] = [:]) { self.values = values }
-    func queryValue(path: String, sql: String) throws -> String? {
-        for (key, value) in values where sql.contains(key) { return value }
-        return nil
-    }
-    func execute(path: String, sql: String) throws {}
-}
-
-// RoutingHTTPClient lives in TestSupport.swift (shared, records requests).
+// makeCursorJWT, KeyValueSQLite, and RoutingHTTPClient live in TestSupport.swift.

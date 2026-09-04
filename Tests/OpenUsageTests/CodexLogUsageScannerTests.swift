@@ -49,13 +49,9 @@ final class CodexLogUsageScannerTests: XCTestCase {
 
         let events = CodexLogUsageScanner.parseFile(Data(lines.utf8))
 
-        XCTAssertEqual(events.count, 2)
-        XCTAssertEqual(events[0].input, 1000)
-        XCTAssertEqual(events[0].cached, 100)
-        XCTAssertEqual(events[0].output, 200)
-        XCTAssertEqual(events[0].model, "gpt-5.2")
-        XCTAssertEqual(events[1].input, 500)
-        XCTAssertEqual(events[1].total, 600)
+        XCTAssertEqual(events.map { [$0.input, $0.cached, $0.output, $0.total] },
+                       [[1000, 100, 200, 1200], [500, 50, 100, 600]])
+        XCTAssertEqual(events.map(\.model), ["gpt-5.2", "gpt-5.2"])
     }
 
     func testTotalsOnlyLinesEmitDeltas() {
@@ -73,12 +69,8 @@ final class CodexLogUsageScannerTests: XCTestCase {
 
         let events = CodexLogUsageScanner.parseFile(Data(lines.utf8))
 
-        XCTAssertEqual(events.count, 2)
-        XCTAssertEqual(events[0].input, 1000)
-        XCTAssertEqual(events[1].input, 500)
-        XCTAssertEqual(events[1].cached, 50)
-        XCTAssertEqual(events[1].output, 100)
-        XCTAssertEqual(events[1].total, 600)
+        XCTAssertEqual(events.map { [$0.input, $0.cached, $0.output, $0.total] },
+                       [[1000, 100, 200, 1200], [500, 50, 100, 600]])
     }
 
     func testZeroUsageLinesAreSkipped() {
@@ -156,40 +148,17 @@ final class CodexLogUsageScannerTests: XCTestCase {
             CodexLogFixture.tokenCount(
                 timestamp: "2026-07-12T08:05:00.000Z",
                 last: CodexLogFixture.usage(input: 30, output: 15)
+            ),
+            CodexLogFixture.threadSettingsApplied(timestamp: "2026-07-12T08:06:00.000Z", serviceTier: "fast"),
+            CodexLogFixture.tokenCount(
+                timestamp: "2026-07-12T08:07:00.000Z",
+                last: CodexLogFixture.usage(input: 40, output: 20)
             )
         ].joined(separator: "\n")
 
         let events = CodexLogUsageScanner.parseFile(Data(lines.utf8))
 
-        XCTAssertEqual(events.map(\.isFast), [false, true, false])
-    }
-
-    func testSessionWithoutServiceTierMetadataIsStandard() {
-        // Rollouts written before Codex recorded the tier (or by older CLIs) carry no
-        // thread_settings_applied line — they must price at standard rates, never at whatever
-        // the current config.toml happens to say.
-        let lines = [
-            CodexLogFixture.turnContext(timestamp: "2026-05-12T08:00:00.000Z", model: "gpt-5.2"),
-            CodexLogFixture.tokenCount(
-                timestamp: "2026-05-12T08:01:00.000Z",
-                last: CodexLogFixture.usage(input: 10, output: 5)
-            )
-        ].joined(separator: "\n")
-
-        XCTAssertEqual(CodexLogUsageScanner.parseFile(Data(lines.utf8)).map(\.isFast), [false])
-    }
-
-    func testFastServiceTierAlsoMarksEventsFast() {
-        let lines = [
-            CodexLogFixture.threadSettingsApplied(timestamp: "2026-07-12T08:00:00.000Z", serviceTier: "fast"),
-            CodexLogFixture.tokenCount(
-                timestamp: "2026-07-12T08:01:00.000Z",
-                last: CodexLogFixture.usage(input: 10, output: 5),
-                model: "gpt-5.2"
-            )
-        ].joined(separator: "\n")
-
-        XCTAssertEqual(CodexLogUsageScanner.parseFile(Data(lines.utf8)).map(\.isFast), [true])
+        XCTAssertEqual(events.map(\.isFast), [false, true, false, true])
     }
 
     func testCachedTokensCapAtInputTokens() {
@@ -203,6 +172,9 @@ final class CodexLogUsageScannerTests: XCTestCase {
     // MARK: - Auto-review fallbacks
 
     func testAutoReviewSlugMapsToDatedCodexModel() {
+        XCTAssertEqual(CodexLogUsageScanner.autoReviewFallback(at: "2026-08-20T00:00:00Z"), "gpt-5.6-luna")
+        XCTAssertEqual(CodexLogUsageScanner.autoReviewFallback(at: "2026-07-09T00:00:00Z"), "gpt-5.6-luna")
+        XCTAssertEqual(CodexLogUsageScanner.autoReviewFallback(at: "2026-07-08T23:59:59Z"), "gpt-5.5")
         XCTAssertEqual(CodexLogUsageScanner.autoReviewFallback(at: "2026-05-01T00:00:00Z"), "gpt-5.5")
         XCTAssertEqual(CodexLogUsageScanner.autoReviewFallback(at: "2026-03-10T00:00:00Z"), "gpt-5.4")
         XCTAssertEqual(CodexLogUsageScanner.autoReviewFallback(at: "2025-12-25T00:00:00Z"), "gpt-5.2-codex")
@@ -210,16 +182,20 @@ final class CodexLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(CodexLogUsageScanner.autoReviewFallback(at: "garbage"), "gpt-5")
     }
 
-    func testAutoReviewLinesResolveByLineDate() {
-        let lines = [
-            CodexLogFixture.turnContext(timestamp: "2026-03-10T08:00:00.000Z", model: "codex-auto-review"),
-            CodexLogFixture.tokenCount(
-                timestamp: "2026-03-10T08:01:00.000Z",
-                last: CodexLogFixture.usage(input: 10, output: 5)
-            )
-        ].joined(separator: "\n")
+    func testAutoReviewLinesPreserveSlugAndUseDateSpecificPricing() {
+        for (date, expectedModel) in [("2026-03-10", "gpt-5.4"), ("2026-08-20", "gpt-5.6-luna")] {
+            let lines = [
+                CodexLogFixture.turnContext(timestamp: "\(date)T08:00:00.000Z", model: "codex-auto-review"),
+                CodexLogFixture.tokenCount(
+                    timestamp: "\(date)T08:01:00.000Z",
+                    last: CodexLogFixture.usage(input: 10, output: 5)
+                )
+            ].joined(separator: "\n")
 
-        XCTAssertEqual(CodexLogUsageScanner.parseFile(Data(lines.utf8)).first?.model, "gpt-5.4")
+            let event = CodexLogUsageScanner.parseFile(Data(lines.utf8)).first
+            XCTAssertEqual(event?.model, "codex-auto-review", date)
+            XCTAssertEqual(event?.pricingModel, expectedModel, date)
+        }
     }
 
     // MARK: - Child-session replay (subagents and forks)
@@ -240,11 +216,6 @@ final class CodexLogUsageScannerTests: XCTestCase {
                 last: CodexLogFixture.usage(input: 1000, cached: 100, output: 200),
                 totals: CodexLogFixture.usage(input: 1000, cached: 100, output: 200)
             ),
-            CodexLogFixture.tokenCount(
-                timestamp: "2026-05-12T08:03:00.200Z",
-                last: CodexLogFixture.usage(input: 500, cached: 50, output: 100),
-                totals: CodexLogFixture.usage(input: 1500, cached: 150, output: 300)
-            ),
             CodexLogFixture.taskStarted(timestamp: "2026-05-12T08:03:01.000Z", startedAt: childCreationEpoch + 1),
             CodexLogFixture.tokenCount(
                 timestamp: "2026-05-12T08:04:00.000Z",
@@ -259,11 +230,7 @@ final class CodexLogUsageScannerTests: XCTestCase {
 
         let events = CodexLogUsageScanner.parseFile(Data(lines.utf8))
 
-        XCTAssertEqual(events.count, 2)
-        XCTAssertEqual(events[0].input, 100)
-        XCTAssertEqual(events[0].output, 20)
-        XCTAssertEqual(events[1].input, 50)
-        XCTAssertEqual(events[1].output, 10)
+        XCTAssertEqual(events.map { [$0.input, $0.output] }, [[100, 20], [50, 10]])
     }
 
     func testMultiSecondReplayIsFullySkipped() {
@@ -279,11 +246,6 @@ final class CodexLogUsageScannerTests: XCTestCase {
                 totals: CodexLogFixture.usage(input: 1000, output: 200)
             ),
             CodexLogFixture.tokenCount(
-                timestamp: "2026-05-12T08:03:01.400Z",
-                last: CodexLogFixture.usage(input: 2000, output: 400),
-                totals: CodexLogFixture.usage(input: 3000, output: 600)
-            ),
-            CodexLogFixture.tokenCount(
                 timestamp: "2026-05-12T08:03:02.800Z",
                 last: CodexLogFixture.usage(input: 4000, output: 800),
                 totals: CodexLogFixture.usage(input: 7000, output: 1400)
@@ -297,9 +259,7 @@ final class CodexLogUsageScannerTests: XCTestCase {
 
         let events = CodexLogUsageScanner.parseFile(Data(lines.utf8))
 
-        XCTAssertEqual(events.count, 1)
-        XCTAssertEqual(events[0].input, 100)
-        XCTAssertEqual(events[0].output, 20)
+        XCTAssertEqual(events.map { [$0.input, $0.output] }, [[100, 20]])
     }
 
     func testForkSessionReplayIsSkippedToo() {
@@ -365,48 +325,30 @@ final class CodexLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(events[0].output, 20)
     }
 
-    func testRootFileKeepsAllLines() {
-        // A root session (no parent in its session_meta) skips nothing, even when lines share a
-        // second and unrelated content mentions "thread_spawn".
-        let lines = [
-            CodexLogFixture.rootSessionMeta(timestamp: "2026-05-12T08:03:00.000Z"),
-            #"{"timestamp":"2026-05-12T08:03:00.000Z","type":"event_msg","payload":{"type":"agent_message","message":"about thread_spawn"}}"#,
-            CodexLogFixture.tokenCount(
-                timestamp: "2026-05-12T08:03:00.000Z",
-                last: CodexLogFixture.usage(input: 100, output: 20)
-            ),
-            CodexLogFixture.tokenCount(
-                timestamp: "2026-05-12T08:03:00.500Z",
-                last: CodexLogFixture.usage(input: 50, output: 10)
-            )
-        ].joined(separator: "\n")
+    func testRootSessionsKeepUsageWithMissingOrNullParentMetadata() {
+        let cases: [(name: String, prefix: [String])] = [
+            ("root metadata and unrelated spawn mention", [
+                CodexLogFixture.rootSessionMeta(timestamp: "2026-05-12T08:03:00.000Z"),
+                #"{"timestamp":"2026-05-12T08:03:00.000Z","type":"event_msg","payload":{"type":"agent_message","message":"about thread_spawn"}}"#
+            ]),
+            ("null parent fields", [
+                #"{"timestamp":"2026-05-12T08:03:00.000Z","type":"session_meta","payload":{"id":"root-abc","forked_from_id":null,"parent_thread_id":null,"source":{"subagent":null}}}"#
+            ]),
+            ("missing session metadata", [])
+        ]
 
-        XCTAssertEqual(CodexLogUsageScanner.parseFile(Data(lines.utf8)).count, 2)
-    }
+        for entry in cases {
+            let lines = (entry.prefix + [
+                CodexLogFixture.tokenCount(
+                    timestamp: "2026-05-12T08:03:00.100Z", last: CodexLogFixture.usage(input: 100, output: 20)
+                ),
+                CodexLogFixture.tokenCount(
+                    timestamp: "2026-05-12T08:03:00.500Z", last: CodexLogFixture.usage(input: 50, output: 10)
+                )
+            ]).joined(separator: "\n")
 
-    func testRootSessionMetaWithNullParentFieldsIsNotTreatedAsChild() {
-        // JSONSerialization represents JSON null as NSNull (not Swift nil). A root session that
-        // declares forked_from_id / parent_thread_id / source.subagent as null must keep all lines.
-        let sessionMeta = #"{"timestamp":"2026-05-12T08:03:00.000Z","type":"session_meta","payload":{"id":"root-abc","forked_from_id":null,"parent_thread_id":null,"source":{"subagent":null}}}"#
-        let lines = [
-            sessionMeta,
-            CodexLogFixture.tokenCount(
-                timestamp: "2026-05-12T08:03:00.100Z",
-                last: CodexLogFixture.usage(input: 100, output: 20)
-            ),
-            CodexLogFixture.tokenCount(
-                timestamp: "2026-05-12T08:03:00.500Z",
-                last: CodexLogFixture.usage(input: 50, output: 10)
-            )
-        ].joined(separator: "\n")
-
-        XCTAssertEqual(CodexLogUsageScanner.parseFile(Data(lines.utf8)).map(\.input), [100, 50])
-        XCTAssertFalse(CodexLogUsageScanner.isChildSessionMeta([
-            "id": "root-abc",
-            "forked_from_id": NSNull(),
-            "parent_thread_id": NSNull(),
-            "source": ["subagent": NSNull()]
-        ]))
+            XCTAssertEqual(CodexLogUsageScanner.parseFile(Data(lines.utf8)).map(\.input), [100, 50], entry.name)
+        }
     }
 
     func testChildSessionMetaWithoutTimestampStillSkipsReplay() {
@@ -429,22 +371,6 @@ final class CodexLogUsageScannerTests: XCTestCase {
         ].joined(separator: "\n")
 
         XCTAssertEqual(CodexLogUsageScanner.parseFile(Data(lines.utf8)).map(\.input), [50])
-    }
-
-    func testFileWithoutSessionMetaKeepsAllLines() {
-        // Older fixtures / truncated files with no session_meta at all: treat as a root session.
-        let lines = [
-            CodexLogFixture.tokenCount(
-                timestamp: "2026-05-12T08:03:00.000Z",
-                last: CodexLogFixture.usage(input: 100, output: 20)
-            ),
-            CodexLogFixture.tokenCount(
-                timestamp: "2026-05-12T08:03:00.500Z",
-                last: CodexLogFixture.usage(input: 50, output: 10)
-            )
-        ].joined(separator: "\n")
-
-        XCTAssertEqual(CodexLogUsageScanner.parseFile(Data(lines.utf8)).count, 2)
     }
 
     func testUnchangedTotalsSnapshotIsSkippedEvenWithLastUsage() {
@@ -479,11 +405,11 @@ final class CodexLogUsageScannerTests: XCTestCase {
 
     private func makeEvent(
         _ timestamp: String, model: String = "gpt-5.2", input: Int = 100, cached: Int = 0,
-        output: Int = 50, reasoning: Int = 0, isFast: Bool = false
+        output: Int = 50, reasoning: Int = 0, isFast: Bool = false, pricingModel: String? = nil
     ) -> CodexLogUsageScanner.Event {
         CodexLogUsageScanner.Event(
             timestamp: OpenUsageISO8601.date(from: timestamp)!,
-            model: model, input: input, cached: cached, output: output, reasoning: reasoning,
+            model: model, pricingModel: pricingModel, input: input, cached: cached, output: output, reasoning: reasoning,
             total: input + output, isFast: isFast
         )
     }
@@ -508,36 +434,37 @@ final class CodexLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(may12Models, [ModelUsageEntry(model: "gpt-5.2", totalTokens: 300, costUSD: 0.5)])
     }
 
-    func testAggregateFeedsSingleModelTodayBreakdown() throws {
-        let now = Date()
-        let event = CodexLogUsageScanner.Event(
-            timestamp: now,
-            model: "gpt-5.2",
-            input: 100,
-            cached: 0,
-            output: 50,
-            reasoning: 0,
-            total: 150
-        )
+    func testAggregateAttributesAutoReviewUsageToSlugWhileUsingFallbackPrice() {
         let scan = CodexLogUsageScanner.aggregate(
-            events: [event], since: .distantPast, pricing: fixedRates()
+            events: [makeEvent(
+                "2026-05-12T08:00:00.000Z", model: "codex-auto-review",
+                pricingModel: "gpt-5.2"
+            )],
+            since: .distantPast, pricing: fixedRates()
         )
 
+        XCTAssertEqual(scan.series.daily.first?.costUSD ?? 0, 0.25, accuracy: 0.0001)
+        XCTAssertEqual(
+            scan.modelUsage?.daily.first?.models,
+            [ModelUsageEntry(model: "codex-auto-review", totalTokens: 150, costUSD: 0.25)]
+        )
+    }
+
+    func testAggregatedModelUsageReachesTodaySpendBreakdown() throws {
+        let now = Date()
+        let scan = CodexLogUsageScanner.aggregate(
+            events: [makeEvent(OpenUsageISO8601.string(from: now))], since: .distantPast, pricing: fixedRates()
+        )
         var lines: [MetricLine] = []
         SpendTileMapper.appendTokenUsage(
-            scan.series,
-            to: &lines,
-            now: now,
-            unknownModelsByDay: scan.unknownModelsByDay,
-            modelUsage: scan.modelUsage,
-            modelSourceNote: "From Codex test logs"
+            scan.series, to: &lines, now: now, modelUsage: scan.modelUsage, modelSourceNote: "From Codex test logs"
         )
 
         guard case .values(_, _, _, _, _, let breakdown) = lines.first(where: { $0.label == "Today" }) else {
             return XCTFail("Expected a Today spend row")
         }
-        let today = try XCTUnwrap(breakdown)
-        XCTAssertEqual(today.models, [ModelUsageEntry(model: "gpt-5.2", totalTokens: 150, costUSD: 0.25)])
+        XCTAssertEqual(try XCTUnwrap(breakdown).models,
+                       [ModelUsageEntry(model: "gpt-5.2", totalTokens: 150, costUSD: 0.25)])
     }
 
     func testAggregateDropsIdenticalEventsAcrossFiles() {
@@ -596,7 +523,7 @@ final class CodexLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(
             CodexLogUsageScanner.cost(
                 rates: legacyRates, event: event, model: event.model,
-                fastTier: false, fastMultiplier: 1
+                fastTier: false
             ),
             0.03,
             accuracy: 0.000_001
@@ -619,15 +546,16 @@ final class CodexLogUsageScannerTests: XCTestCase {
             ("gpt-5.5", 2.55),
             ("gpt-5.5-pro-20260423", 20.7),
             ("gpt-5.6-sol", 2.55),
-            ("gpt-5.6-terra", 1.275),
-            ("gpt-5.6-luna", 0.51)
+            ("gpt-5.6-terra", 1.02),
+            ("gpt-5.6-luna", 0.102),
+            ("gpt-6-astra", 4.95)
         ]
 
         for (model, expected) in expectedCosts {
             XCTAssertEqual(
                 CodexLogUsageScanner.cost(
                     rates: rates, event: event, model: model,
-                    fastTier: false, fastMultiplier: 1
+                    fastTier: false
                 ),
                 expected,
                 accuracy: 0.000_001,
@@ -651,7 +579,7 @@ final class CodexLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(
             CodexLogUsageScanner.cost(
                 rates: rates, event: event, model: "gpt-5.5",
-                fastTier: false, fastMultiplier: 1
+                fastTier: false
             ),
             1.066,
             accuracy: 0.000_001
@@ -690,7 +618,8 @@ final class CodexLogUsageScannerTests: XCTestCase {
         let cases: [(model: String, supplementMultiplier: Double, expected: Double)] = [
             ("gpt-5.5", 2.5, 2.5),
             // Cursor's supplement currently says 2.5 for this model; Codex priority is 2x.
-            ("gpt-5.6-sol", 2.5, 2)
+            ("gpt-5.6-sol", 2.5, 2),
+            ("gpt-6-astra", 2, 2)
         ]
 
         for entry in cases {
@@ -953,5 +882,44 @@ final class CodexLogUsageScannerTests: XCTestCase {
         // gpt-5.3-codex must resolve in the bundled LiteLLM snapshot and price > $0.
         XCTAssertTrue(scan?.unknownModelsByDay.isEmpty ?? false)
         XCTAssertGreaterThan(today?.costUSD ?? 0, 0)
+    }
+
+    // MARK: - Dated model normalization
+
+    func testDatedBaseModelStripsOnlyWellFormedSnapshotSuffixes() {
+        let cases: [(String, String)] = [
+            ("gpt-5.5-2026-01-15", "gpt-5.5"),
+            ("gpt-5.5-20260115", "gpt-5.5"),
+            ("gpt-5.6-sol-2026-01-15", "gpt-5.6-sol"),
+            ("gpt-5.5", "gpt-5.5"),
+            ("gpt-5.6-sol", "gpt-5.6-sol"),
+            // Wrong shape: a partial date must not be mistaken for a snapshot suffix.
+            ("gpt-5.5-2026-1-15", "gpt-5.5-2026-1-15"),
+            ("gpt-5.5-2026011", "gpt-5.5-2026011"),
+            ("2026-01-15", "2026-01-15")
+        ]
+        for (input, expected) in cases {
+            XCTAssertEqual(CodexUsagePricing.datedBaseModel(input), expected, "input: \(input)")
+        }
+    }
+
+    func testDatedCodexModelStillGetsLongContextRates() {
+        let pricing = ModelPricing(
+            supplement: PricingSupplement(pricing: [
+                "gpt-5.6-sol-2026-01-15": ModelRates(
+                    inputPerMillion: 5, outputPerMillion: 30,
+                    cacheWritePerMillion: 6.25, cacheReadPerMillion: 0.5
+                )
+            ]),
+            primary: PricingCatalog(entries: [:]),
+            secondary: PricingCatalog(entries: [:])
+        )
+        // 300K prompt crosses Codex's 272K threshold, so Sol's long-context rates apply even though
+        // the slug carries a snapshot date: $2.00 input + $0.10 cache read + $0.45 output.
+        let cost = CodexUsagePricing.estimatedCost(
+            pricing: pricing, model: "gpt-5.6-sol-2026-01-15",
+            tokens: TokenBreakdown(input: 200_000, cacheRead: 100_000, output: 10_000)
+        )
+        XCTAssertEqual(cost ?? -1, 2.55, accuracy: 0.000_001)
     }
 }

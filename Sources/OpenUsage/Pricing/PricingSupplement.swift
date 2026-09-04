@@ -8,9 +8,13 @@ struct PricingSupplement: Sendable {
     /// Models priced directly by the supplement (highest-precedence source).
     let pricing: [String: ModelRates]
     /// Base-model -> fast-variant multiplier, for `-fast` slugs whose catalogs carry no `fast` field.
+    /// Also applied to the base model's own rates, so requests flagged fast by the scanner (rather
+    /// than by a `-fast` slug) bill at the fast rate.
     let fastMultipliers: [String: Double]
     let aliasRules: [AliasRule]
     let updatedAt: String?
+    /// Public model IDs offered as optional estimation references, grouped by usage provider.
+    let fallbackModels: [String: [String]]
 
     /// Regex slug -> canonical pricing key. Rules apply in order; first match wins.
     struct AliasRule: @unchecked Sendable {
@@ -22,12 +26,24 @@ struct PricingSupplement: Sendable {
         pricing: [String: ModelRates] = [:],
         fastMultipliers: [String: Double] = [:],
         aliasRules: [AliasRule] = [],
-        updatedAt: String? = nil
+        updatedAt: String? = nil,
+        fallbackModels: [String: [String]] = [:]
     ) {
         self.pricing = pricing
         self.fastMultipliers = fastMultipliers
         self.aliasRules = aliasRules
         self.updatedAt = updatedAt
+        self.fallbackModels = fallbackModels
+    }
+
+    /// Older feeds have no picker metadata. Keep bundled choices until the feed supplies them;
+    /// an explicit empty list remains authoritative.
+    func fillingMissingFallbackModels(from other: PricingSupplement) -> PricingSupplement {
+        PricingSupplement(
+            pricing: pricing, fastMultipliers: fastMultipliers, aliasRules: aliasRules,
+            updatedAt: updatedAt,
+            fallbackModels: other.fallbackModels.merging(fallbackModels) { _, preferred in preferred }
+        )
     }
 
     /// The canonical pricing key for `model` per the alias rules, or nil when no rule matches.
@@ -76,7 +92,10 @@ extension PricingSupplement {
                 outputPerMillion: entry.outputPerMillion,
                 cacheWritePerMillion: entry.cacheWritePerMillion ?? entry.inputPerMillion,
                 cacheReadPerMillion: entry.cacheReadPerMillion ?? entry.inputPerMillion * 0.1,
-                cacheReadIsExplicit: entry.cacheReadPerMillion != nil
+                cacheReadIsExplicit: entry.cacheReadPerMillion != nil,
+                // Carry the declared multiplier onto the entry itself: scanners that flag fast mode
+                // on the request (Claude's `speed` field) price the base slug, never a `-fast` one.
+                fastMultiplier: file.fastMultipliers?[model] ?? 1
             )
         }
         var rules: [AliasRule] = []
@@ -92,7 +111,8 @@ extension PricingSupplement {
             pricing: pricing,
             fastMultipliers: file.fastMultipliers ?? [:],
             aliasRules: rules,
-            updatedAt: file.updatedAt
+            updatedAt: file.updatedAt,
+            fallbackModels: file.fallbackModels ?? [:]
         )
     }
 
@@ -101,6 +121,7 @@ extension PricingSupplement {
         var pricing: [String: Entry]
         var fastMultipliers: [String: Double]?
         var aliasRules: [Rule]
+        var fallbackModels: [String: [String]]?
 
         struct Entry: Decodable {
             var inputPerMillion: Double
@@ -126,6 +147,7 @@ extension PricingSupplement {
             case pricing
             case fastMultipliers = "fast_multipliers"
             case aliasRules = "alias_rules"
+            case fallbackModels = "fallback_models"
         }
     }
 }

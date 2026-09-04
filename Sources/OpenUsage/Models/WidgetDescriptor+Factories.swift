@@ -5,18 +5,18 @@ import Foundation
 /// builders. Template numbers are structural only (a row without real data renders the no-data marker,
 /// never the template), so every factory seeds `used: 0`.
 extension WidgetDescriptor {
-    /// Bounded 0–100% meter (session/weekly-style quotas). `isSessionWindow` opts the tile into the
-    /// "Not started" fresh-window treatment (rolling 5-hour session pools), replacing a hardcoded
-    /// widget-ID list in the model.
+    /// Bounded 0–100% meter (session/weekly-style quotas). `sessionStartSignal` opts the tile into the
+    /// "Not started" fresh-window treatment (rolling 5-hour session pools) and names how that state is
+    /// detected for this provider — see `WidgetData.SessionStartSignal`.
     static func percent(
         id: String,
         provider: Provider,
         title: String,
         metricLabel: String? = nil,
-        isSessionWindow: Bool = false
+        sessionStartSignal: WidgetData.SessionStartSignal? = nil
     ) -> WidgetDescriptor {
         var sample = WidgetData(title: title, icon: provider.icon, kind: .percent, used: 0, limit: 100)
-        sample.isSessionWindow = isSessionWindow
+        sample.sessionStartSignal = sessionStartSignal
         return make(id: id, provider: provider, metricLabel: metricLabel ?? title, sample: sample)
     }
 

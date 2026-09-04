@@ -5,6 +5,7 @@ import XCTest
 final class UsageHistoryClassificationTests: XCTestCase {
     func testEverySpendProviderHasOneExplicitHistoryClassification() {
         let descriptorSets = [
+            AntigravityProvider().widgetDescriptors,
             ClaudeProvider().widgetDescriptors,
             CodexProvider().widgetDescriptors,
             CursorProvider().widgetDescriptors,
@@ -21,6 +22,7 @@ final class UsageHistoryClassificationTests: XCTestCase {
             descriptors.compactMap(\.historyResource).first.map { (descriptors[0].providerID, $0.scope) }
         })
         XCTAssertEqual(classifications, [
+            "antigravity": .machineLocal,
             "claude": .machineLocal,
             "codex": .machineLocal,
             "cursor": .accountWide,

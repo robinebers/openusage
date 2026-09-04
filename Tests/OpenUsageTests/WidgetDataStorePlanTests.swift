@@ -5,68 +5,31 @@ import XCTest
 /// snapshot, then mirrors that snapshot's `plan`.
 @MainActor
 final class WidgetDataStorePlanTests: XCTestCase {
-    func testPlanIsNilBeforeRefreshThenMirrorsSnapshot() async {
+    func testPlanMirrorsSnapshotAndHandlesMissingValues() async {
         let provider = Provider(id: "claude", displayName: "Claude", icon: .providerMark("claude"))
-        let descriptor = WidgetDescriptor(
-            id: "claude.session",
-            providerID: "claude",
-            metricLabel: "Session",
-            sample: WidgetData(title: "Session", icon: provider.icon, kind: .percent, used: 10, limit: 100)
-        )
-        let runtime = TestProviderRuntime(
-            provider: provider,
-            descriptors: [descriptor],
-            snapshot: ProviderSnapshot(
-                providerID: "claude",
-                displayName: "Claude",
-                plan: "Max 20x",
-                lines: [.progress(label: "Session", used: 10, limit: 100, format: .percent)]
+        let cases: [(name: String, plan: String?)] = [("plan", "Max 20x"), ("no-plan", nil)]
+
+        for item in cases {
+            let runtime = TestProviderRuntime(
+                provider: provider,
+                descriptors: [],
+                snapshot: ProviderSnapshot(
+                    providerID: provider.id, displayName: provider.displayName, plan: item.plan, lines: []
+                )
             )
-        )
-        let defaults = makeDefaults("plan")
-        let store = WidgetDataStore(
-            registry: WidgetRegistry(providers: [provider], descriptors: [descriptor]),
-            providers: [runtime],
-            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() }),
-            defaults: defaults
-        )
-
-        XCTAssertNil(store.plan(for: "claude"))
-
-        await store.refreshAll()
-
-        XCTAssertEqual(store.plan(for: "claude"), "Max 20x")
-        XCTAssertNil(store.plan(for: "unknown"))
-    }
-
-    func testPlanIsNilWhenSnapshotHasNoPlan() async {
-        let provider = Provider(id: "codex", displayName: "Codex", icon: .providerMark("codex"))
-        let descriptor = WidgetDescriptor(
-            id: "codex.session",
-            providerID: "codex",
-            metricLabel: "Session",
-            sample: WidgetData(title: "Session", icon: provider.icon, kind: .percent, used: 50, limit: 100)
-        )
-        let runtime = TestProviderRuntime(
-            provider: provider,
-            descriptors: [descriptor],
-            snapshot: ProviderSnapshot(
-                providerID: "codex",
-                displayName: "Codex",
-                lines: [.progress(label: "Session", used: 50, limit: 100, format: .percent)]
+            let defaults = makeDefaults(item.name)
+            let store = WidgetDataStore(
+                registry: WidgetRegistry(providers: [provider], descriptors: []),
+                providers: [runtime],
+                cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() }),
+                defaults: defaults
             )
-        )
-        let defaults = makeDefaults("no-plan")
-        let store = WidgetDataStore(
-            registry: WidgetRegistry(providers: [provider], descriptors: [descriptor]),
-            providers: [runtime],
-            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() }),
-            defaults: defaults
-        )
 
-        await store.refreshAll()
-
-        XCTAssertNil(store.plan(for: "codex"))
+            XCTAssertNil(store.plan(for: provider.id))
+            await store.refreshAll()
+            XCTAssertEqual(store.plan(for: provider.id), item.plan)
+            XCTAssertNil(store.plan(for: "unknown"))
+        }
     }
 
     private func makeDefaults(_ name: String) -> UserDefaults {

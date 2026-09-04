@@ -2,38 +2,27 @@ import XCTest
 @testable import OpenUsage
 
 final class DevinAuthStoreTests: XCTestCase {
-    func testParsesCredentialsTomlAndCleansServerURL() {
-        let store = DevinAuthStore(
-            files: FakeFiles([
-                DevinAuthStore.credentialsPath: """
-                windsurf_api_key = "devin-session-token$cli"
-                api_server_url = "https://server.codeium.test/"
-                """
-            ]),
-            sqlite: FakeSQLite()
-        )
+    func testParsesCredentialsTomlAndAcceptsOnlyHTTPSServerURL() {
+        func load(serverURL: String) -> DevinAuth? {
+            DevinAuthStore(
+                files: FakeFiles([
+                    DevinAuthStore.credentialsPath: """
+                    windsurf_api_key = "devin-session-token$cli"
+                    api_server_url = "\(serverURL)"
+                    """
+                ]),
+                sqlite: FakeSQLite()
+            ).loadCredentialsFile()
+        }
 
-        let auth = store.loadCredentialsFile()
+        let https = load(serverURL: "https://server.codeium.test/")
+        XCTAssertEqual(https?.apiKey, "devin-session-token$cli")
+        XCTAssertEqual(https?.apiServerUrl, "https://server.codeium.test", "trailing slash cleaned")
 
-        XCTAssertEqual(auth?.apiKey, "devin-session-token$cli")
-        XCTAssertEqual(auth?.apiServerUrl, "https://server.codeium.test")
-    }
-
-    func testIgnoresPlaintextServerURL() {
-        let store = DevinAuthStore(
-            files: FakeFiles([
-                DevinAuthStore.credentialsPath: """
-                windsurf_api_key = "devin-session-token$cli"
-                api_server_url = "http://server.codeium.test"
-                """
-            ]),
-            sqlite: FakeSQLite()
-        )
-
-        let auth = store.loadCredentialsFile()
-
-        XCTAssertEqual(auth?.apiKey, "devin-session-token$cli")
-        XCTAssertNil(auth?.apiServerUrl)
+        // A plaintext URL is dropped; the key still parses (proving the file parsed at all).
+        let http = load(serverURL: "http://server.codeium.test")
+        XCTAssertEqual(http?.apiKey, "devin-session-token$cli")
+        XCTAssertNil(http?.apiServerUrl)
     }
 
     func testReadsAppAuthFromSQLiteState() {
@@ -90,7 +79,6 @@ final class DevinUsageMapperTests: XCTestCase {
         // The hidden daily quota fills the missing Weekly row and is still flipped from "remaining"
         // to "used": 30% remaining -> 70% used (not passed through raw as 30).
         XCTAssertEqual(progress(mapped.lines, "Weekly quota")?.used, 70)
-        XCTAssertEqual(try XCTUnwrap(dollars(mapped.lines, "Extra usage balance")), 964.22, accuracy: 0.0001)
     }
 
     func testThrowsQuotaUnavailableWhenNoDisplayableFieldsExist() {

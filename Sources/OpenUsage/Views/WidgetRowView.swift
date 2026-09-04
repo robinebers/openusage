@@ -25,6 +25,7 @@ struct WidgetRowView: View {
     var condensedTop: Bool = false
 
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
+    @Environment(\.reduceAnimations) private var reduceAnimations
     @State private var modelHover = HoverPopoverState()
     /// Backs the resets popover's claim flow; `nil` outside the live dashboard (previews, share
     /// renders), which renders the timeline read-only.
@@ -355,14 +356,14 @@ struct WidgetRowView: View {
                     modelHover.inlineHover(false)
                 }
             }
-            .popover(
+            .motionAwareHoverPopover(
                 isPresented: Binding(
                     get: { hasHoverPopover && modelHover.isPresented },
                     // A click-outside dismiss removes the detail view without an `.ended` hover event,
                     // so a plain assignment would strand `overDetail == true` and block future hides.
                     set: { if !$0 { modelHover.dismiss() } }
                 ),
-                arrowEdge: .top
+                reduceAnimations: reduceAnimations
             ) {
                 if let breakdown = data.modelBreakdown {
                     ModelUsageDetail(title: data.title, breakdown: breakdown) { inside in

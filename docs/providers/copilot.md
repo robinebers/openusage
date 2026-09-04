@@ -6,22 +6,22 @@ Tracks your GitHub Copilot quota using a GitHub token that Copilot tooling alrea
 
 | Metric | Meaning |
 |---|---|
-| Credits | Share of your monthly AI-credit allotment used (the headline meter) |
+| Credits | Share of your monthly AI-credit allotment used (the headline meter). On org-managed seats with no allotment, a plain count of your own credits used this cycle |
 | Extra Usage | Premium interactions used beyond your included credits, once extra spend is enabled |
 | Org Credits | AI credits your whole organization used this month (org-managed Business/Enterprise seats) |
 | Org Spend | Dollars your organization was billed for AI credits beyond the included pool |
 | Chat | Chat-message quota used |
 | Completions | Code-completion quota used |
 
-Credits and Extra Usage are Always Visible by default; Org Credits, Org Spend, Chat, and Completions start in On Demand behind the card's caret. Each meter shows percent used and, when the response includes one, a countdown to the next reset. The plan name (Pro, Business, Free, …) shows next to the provider.
+Credits and Extra Usage are Always Visible by default; Org Credits, Org Spend, Chat, and Completions start in On Demand behind the card's caret. Percent meters show percent used and, when the response includes one, a countdown to the next reset. The plan name (Pro, Business, Free, …) shows next to the provider.
 
 Since June 2026 GitHub Copilot bills all plans by **AI credits**, so what each account shows differs by plan:
 
 - **Paid plans** meter the credit pool — so you see Credits (and Extra Usage if you've turned on additional spend). Chat and completions are unlimited on paid plans, so those rows read "No data".
 - **Free plans** have no credits, so Credits reads "No data"; instead you see your fixed Chat and Completions counts under the caret.
-- **Org-managed seats (Copilot Business / Enterprise assigned by an organization)** return no per-seat quota, so the personal meters have nothing to show. OpenUsage then looks the usage up in the organization's billing instead: it lists your organizations, finds the one whose billing reports Copilot AI-credit usage, and shows **Org Credits** (credits the whole org used this month) and **Org Spend** (dollars billed beyond the included pool). Two caveats:
-  - The numbers are **organization-wide**, not your personal share — GitHub doesn't expose per-seat usage.
-  - Reading an org's billing requires you to be an **org owner or billing manager**. Regular members keep the previous behavior: the plan shows, the meters read "No data".
+- **Org-managed seats (Copilot Business / Enterprise assigned by an organization)** return no per-seat percent quota. If the response's `premium_interactions` bucket carries a real `credits_used` count, OpenUsage shows it as **Credits** — a plain count, not a percentage, since this bucket's `entitlement` is 0 (no allotment to divide by). This is your *own* consumption and needs no special access. OpenUsage also looks the usage up in the organization's billing: it lists your organizations, finds the one whose billing reports Copilot AI-credit usage, and shows **Org Credits** (credits the whole org used this month) and **Org Spend** (dollars billed beyond the included pool). Two caveats there:
+  - The Org Credits/Org Spend numbers are **organization-wide**, not your personal share — GitHub doesn't expose per-seat usage through that API.
+  - Reading an org's billing requires you to be an **org owner or billing manager**. Regular members don't get Org Credits/Org Spend, but still see their own Credits count when the response carries one; if it doesn't, the meters read "No data".
 - Org Credits is shown as a plain count, not a percentage: the billing API reports usage only, never the org's credit allotment, and OpenUsage doesn't fabricate a denominator.
 
 A dollar credit figure (e.g. "$12 of $15 used") isn't shown: GitHub only exposes that through its logged-in web billing page, which would require reading browser cookies — OpenUsage does not do that. Editors like VS Code show the same credit *percentage* from this endpoint, not a dollar amount.
@@ -49,7 +49,7 @@ Using Copilot in a supported editor is enough on its own — the editor writes t
 
 - **"Sign in to GitHub Copilot…"** — no token was found. Sign in to Copilot in your editor, or run `gh auth login`.
 - **"GitHub token invalid or expired"** — the token was rejected (401/403). Re-authenticate with `gh auth login`.
-- **Meters show "No data" but the plan is shown** — expected on an org-managed Copilot Business/Enterprise seat when you aren't an owner or billing manager of the org (GitHub doesn't expose per-seat quota, and org billing is admin-only). If you *are* an org admin and still see no Org Credits, make sure your token can list your orgs — the GitHub CLI token from `gh auth login` can; some editor-plugin tokens can't.
+- **Meters show "No data" but the plan is shown** — expected on an org-managed Copilot Business/Enterprise seat whose response carries no personal `credits_used` and, if you aren't an org owner or billing manager, no org billing access either (GitHub doesn't expose per-seat quota otherwise, and org billing is admin-only). If you *are* an org admin and still see no Org Credits, make sure your token can list your orgs — the GitHub CLI token from `gh auth login` can; some editor-plugin tokens can't.
 
 ## Under the hood
 

@@ -10,27 +10,43 @@ import Foundation
 /// Codex log scanners use. Pi's usage shape differs from Claude Code's (`usage.input`/`output`,
 /// nested `usage.cost.total`), so it has its own parser rather than routing through those scanners.
 ///
-/// An actor holding the incremental parse cache (keyed path + size + mtime) so the ~5-minute refreshes
-/// re-parse only changed session files. A single shared instance is used by every consuming provider,
-/// so pi's logs are parsed once per refresh rather than once per card.
+/// An actor holding the versioned incremental parse cache (keyed path + size + mtime) in memory and
+/// Application Support, so refreshes and relaunches parse only changed session files. A single shared
+/// instance is used by every consuming provider, so pi's logs are parsed once rather than once per card.
 actor PiUsageScanner {
+    /// How a card prices a pi request that carries no cost of its own. Providers with their own
+    /// request rules (Codex's long-context and priority tiers) supply their estimator; the rest use
+    /// the shared pricing engine.
+    typealias CostEstimator = @Sendable (String, TokenBreakdown) -> Double?
+
     static let shared = PiUsageScanner()
 
     private let environment: EnvironmentReading
     private let homeDirectory: @Sendable () -> URL
-    private let scanner = IncrementalJSONLScanner<Entry>(logTag: LogTag.plugin("pi"))
+    private let scanner: IncrementalJSONLScanner<Entry>
+
+    private static let sharedScanner = IncrementalJSONLScanner<Entry>(
+        logTag: LogTag.plugin("pi"),
+        persistence: JSONLScanCachePersistence(namespace: "pi", schemaVersion: 1)
+    )
+
+    static func flushPersistentCacheWrites() async {
+        await sharedScanner.flushPendingWrites()
+    }
 
     init(
         environment: EnvironmentReading = ProcessEnvironmentReader(),
-        homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser }
+        homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser },
+        incrementalScanner: IncrementalJSONLScanner<Entry>? = nil
     ) {
         self.environment = environment
         self.homeDirectory = homeDirectory
+        self.scanner = incrementalScanner ?? Self.sharedScanner
     }
 
     /// One parsed assistant-message usage line. Raw timestamp is kept so a cached parse stays valid as
     /// the window slides; `cardID` is resolved at parse time so aggregation is a cheap filter.
-    struct Entry: Sendable, Equatable {
+    struct Entry: Codable, Sendable, Equatable {
         var id: String?
         var timestamp: Date
         var cardID: String
@@ -45,14 +61,31 @@ actor PiUsageScanner {
 
     /// Scan the last `daysBack` days of pi logs for one card. Returns nil when pi's sessions directory
     /// has no log files at all, so a provider with no pi usage folds in nothing.
-    func scan(cardID: String, daysBack: Int = 30, now: Date = Date(), pricing: ModelPricing) async -> LogUsageScan? {
+    func scan(
+        cardID: String, daysBack: Int = 30, now: Date = Date(), pricing: ModelPricing,
+        estimateCost: CostEstimator? = nil
+    ) async -> LogUsageScan? {
         let directory = PiPaths.sessionsDirectory(environment: environment, homeDirectory: homeDirectory())
-        let files = JSONLScanning.jsonlFiles(under: directory)
-        guard !files.isEmpty else { return nil }
-
         let since = JSONLScanning.sinceDate(daysBack: daysBack, now: now)
-        let entries = await scanner.items(from: files, since: since, parse: Self.parseFile)
-        return Self.aggregate(entries: Self.dedup(entries), cardID: cardID, since: since, pricing: pricing)
+        let cacheIdentity = directory.resolvingSymlinksInPath().path
+        let files = JSONLScanning.jsonlFiles(under: directory)
+        guard !files.isEmpty else {
+            _ = await scanner.items(
+                from: [], since: since, cacheIdentity: cacheIdentity, parse: Self.parseFile
+            )
+            return nil
+        }
+
+        guard let entries = await scanner.items(
+            from: files,
+            since: since,
+            cacheIdentity: cacheIdentity,
+            parse: Self.parseFile
+        ), !Task.isCancelled else { return nil }
+        return Self.aggregate(
+            entries: Self.dedup(entries), cardID: cardID, since: since, pricing: pricing,
+            estimateCost: estimateCost
+        )
     }
 
     // MARK: - Parsing
@@ -122,7 +155,11 @@ actor PiUsageScanner {
     /// one, else the tokens priced through `pricing`; a model that can't be priced and carries no cost
     /// is excluded from the totals and surfaced as the tile's unknown-model warning, matching the log
     /// scanners.
-    static func aggregate(entries: [Entry], cardID: String, since: Date, pricing: ModelPricing) -> LogUsageScan {
+    static func aggregate(
+        entries: [Entry], cardID: String, since: Date, pricing: ModelPricing,
+        estimateCost: CostEstimator? = nil
+    ) -> LogUsageScan {
+        let estimate = estimateCost ?? { pricing.estimatedCostDollars(model: $0, tokens: $1) }
         var accumulator = DailyUsageAccumulator()
         for entry in entries where entry.cardID == cardID && entry.timestamp >= since {
             let day = DailyUsageAccumulator.dayKey(from: entry.timestamp)
@@ -132,7 +169,7 @@ actor PiUsageScanner {
             let cost: Double
             if let carried = entry.carriedCost, carried > 0 {
                 cost = carried
-            } else if let model = trimmedModel, let estimated = pricing.estimatedCostDollars(model: model, tokens: entry.tokens) {
+            } else if let model = trimmedModel, let estimated = estimate(model, entry.tokens) {
                 cost = estimated
             } else {
                 if let model = trimmedModel, entry.reportedTotalTokens > 0 {

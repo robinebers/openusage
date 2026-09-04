@@ -6,34 +6,20 @@ import XCTest
 /// and never leak its placeholder sample numbers into the menu bar.
 @MainActor
 final class WidgetNoDataTests: XCTestCase {
-    func testDataForFlagsMissingLineAsNoData() async {
-        let (store, present, missing) = await makeRefreshedStore(suite: "missing-line")
-
-        XCTAssertTrue(store.data(for: present).hasData)
-        XCTAssertFalse(store.data(for: missing).hasData)
-    }
-
-    func testNoDataHeadlineAndTrailingCopy() async {
-        let (store, present, missing) = await makeRefreshedStore(suite: "copy")
+    func testMissingLineShowsNoDataAcrossDashboardAndMenuBar() async {
+        let (store, present, missing) = await makeRefreshedStore()
 
         let blank = store.data(for: missing)
         XCTAssertFalse(blank.hasData)
         XCTAssertEqual(blank.headline, "—")
         XCTAssertEqual(blank.boundedTrailingText(), "No data")
+        XCTAssertEqual(blank.valueText, WidgetData.noDataHeadline)
 
         let real = store.data(for: present)
         XCTAssertTrue(real.hasData)
         XCTAssertNotEqual(real.headline, "—")
         XCTAssertNotEqual(real.boundedTrailingText(), "No data")
-    }
-
-    func testValueTextHidesPlaceholderWhenNoData() async {
-        // The menu bar reads `valueText`; a missing line must never leak the descriptor's placeholder
-        // template numbers there, so `valueText` reports the no-data marker just like the dashboard row.
-        let (store, present, missing) = await makeRefreshedStore(suite: "valuetext")
-
-        XCTAssertEqual(store.data(for: missing).valueText, WidgetData.noDataHeadline)
-        XCTAssertNotEqual(store.data(for: present).valueText, WidgetData.noDataHeadline)
+        XCTAssertNotEqual(real.valueText, WidgetData.noDataHeadline)
     }
 
     // Menu-bar ordering / no-data-skip / fallback are exercised on the real tray path
@@ -41,9 +27,7 @@ final class WidgetNoDataTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func makeRefreshedStore(
-        suite: String
-    ) async -> (WidgetDataStore, WidgetDescriptor, WidgetDescriptor) {
+    private func makeRefreshedStore() async -> (WidgetDataStore, WidgetDescriptor, WidgetDescriptor) {
         let provider = Provider(id: "test", displayName: "Test", icon: .providerMark("cursor"))
         let present = boundedPercent(provider, id: "test.present", metric: "Present", sampleUsed: 40)
         // Deliberately fake sample numbers we must never show once the account lacks this metric.
@@ -57,11 +41,11 @@ final class WidgetNoDataTests: XCTestCase {
                 lines: [.progress(label: "Present", used: 40, limit: 100, format: .percent)]
             )
         )
-        let defaults = makeUserDefaults(suite)
+        let defaults = makeUserDefaults("missing-line")
         let store = WidgetDataStore(
             registry: WidgetRegistry(providers: [provider], descriptors: [present, missing]),
             providers: [runtime],
-            cache: makeCache(defaults),
+            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() }),
             defaults: defaults
         )
         await store.refreshAll()
@@ -86,10 +70,6 @@ final class WidgetNoDataTests: XCTestCase {
                 limit: 100
             )
         )
-    }
-
-    private func makeCache(_ defaults: UserDefaults) -> ProviderSnapshotCache {
-        ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() })
     }
 
     private func makeUserDefaults(_ name: String) -> UserDefaults {

@@ -7,6 +7,7 @@ struct CursorSession: Equatable, Sendable {
 
 struct CursorUsageClient: Sendable {
     static let usageURL = URL(string: "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage")!
+    static let grokBotUsageURL = URL(string: "https://api2.cursor.sh/aiserver.v1.DashboardService/GetSandUsageStatus")!
     static let planURL = URL(string: "https://api2.cursor.sh/aiserver.v1.DashboardService/GetPlanInfo")!
     static let refreshURL = URL(string: "https://api2.cursor.sh/oauth/token")!
     static let creditsURL = URL(string: "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCreditGrantsBalance")!
@@ -39,6 +40,10 @@ struct CursorUsageClient: Sendable {
 
     func fetchUsage(accessToken: String) async throws -> HTTPResponse {
         try await connectPost(Self.usageURL, accessToken: accessToken)
+    }
+
+    func fetchGrokBotUsage(accessToken: String) async throws -> HTTPResponse {
+        try await connectPost(Self.grokBotUsageURL, accessToken: accessToken)
     }
 
     func fetchPlan(accessToken: String) async throws -> HTTPResponse {

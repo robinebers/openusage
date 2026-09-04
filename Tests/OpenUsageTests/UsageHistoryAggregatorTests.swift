@@ -2,6 +2,36 @@ import XCTest
 @testable import OpenUsage
 
 final class UsageHistoryAggregatorTests: XCTestCase {
+    func testFallbackProvenanceSurvivesHistoryCodingMergingAndRendering() throws {
+        var localHistory = history(tokens: 100, cost: 1, model: "unlisted-model-a", unknown: ["unlisted-model-a"])
+        localHistory.fallbackPricingModelsByDay = ["2026-07-13": ["gpt-5.6-sol"]]
+        var peerHistory = history(tokens: 200, cost: 2, model: "unlisted-model-b", unknown: ["unlisted-model-b"])
+        peerHistory.fallbackPricingModelsByDay = ["2026-07-13": ["gpt-5.5"]]
+        let local = ProviderSnapshot(
+            providerID: "codex", displayName: "Codex", lines: [],
+            usageHistory: try JSONDecoder().decode(ProviderUsageHistory.self, from: JSONEncoder().encode(localHistory))
+        )
+        let descriptor = UsageHistoryDescriptor(scope: .machineLocal, estimatedCost: true, sourceNote: "logs")
+        let merged = try XCTUnwrap(UsageHistoryAggregator.merged(
+            localSnapshots: ["codex": local],
+            peerDocuments: [document(deviceID: "peer", updatedAt: 100, providers: ["codex": peerHistory])],
+            descriptors: ["codex": descriptor], now: localDay(2026, 7, 13)
+        )["codex"])
+
+        XCTAssertEqual(merged.fallbackPricingModelsByDay, ["2026-07-13": ["gpt-5.6-sol", "gpt-5.5"]])
+        let rendered = UsageHistorySnapshotRenderer.render(
+            local: local, history: merged, descriptor: descriptor, now: localDay(2026, 7, 13)
+        )
+        guard case .values(_, _, _, _, let unknownModels, let breakdown) = rendered.lines.first(where: { $0.label == "Today" }) else {
+            return XCTFail("missing spend row")
+        }
+        XCTAssertEqual(unknownModels, ["unlisted-model-a", "unlisted-model-b"])
+        XCTAssertEqual(breakdown?.sourceNote, "Across your Macs · logs · Fallback estimates: GPT 5.5, GPT 5.6 Sol")
+
+        let legacy = Data(#"{"series":{"daily":[]},"unknownModelsByDay":{}}"#.utf8)
+        XCTAssertNil(try JSONDecoder().decode(ProviderUsageHistory.self, from: legacy).fallbackPricingModelsByDay)
+    }
+
     func testAggregationAddsMachineLocalHistoryAndIgnoresAccountWideHistory() throws {
         let local = ProviderSnapshot(
             providerID: "claude",
@@ -72,7 +102,8 @@ final class UsageHistoryAggregatorTests: XCTestCase {
             unknownModelsByDay: [
                 "2026-07-13": ["current-unknown"],
                 "2026-06-12": ["stale-unknown"]
-            ]
+            ],
+            fallbackPricingModelsByDay: ["2026-06-12": ["gpt-5.6-sol"]]
         )
 
         let merged = UsageHistoryAggregator.merged(
@@ -89,6 +120,206 @@ final class UsageHistoryAggregatorTests: XCTestCase {
         XCTAssertEqual(claude.series.daily.reduce(0) { $0 + $1.totalTokens }, 30)
         XCTAssertEqual(claude.modelUsage?.daily.flatMap(\.models).map(\.model), ["Current"])
         XCTAssertEqual(claude.unknownModelsByDay, ["2026-07-13": ["current-unknown"]])
+        XCTAssertNil(claude.fallbackPricingModelsByDay, "expired estimates must not affect in-window source notes")
+        let rendered = UsageHistorySnapshotRenderer.render(
+            local: ProviderSnapshot(providerID: "claude", displayName: "Claude", lines: []),
+            history: claude,
+            descriptor: UsageHistoryDescriptor(scope: .machineLocal, estimatedCost: true, sourceNote: "logs"),
+            now: localDay(2026, 7, 13)
+        )
+        for line in rendered.lines {
+            switch line {
+            case .values(_, _, _, _, _, let breakdown):
+                XCTAssertEqual(breakdown?.sourceNote, "Across your Macs · logs")
+            case .chart(_, _, let note):
+                XCTAssertEqual(note, "Across your Macs · logs")
+            default: break
+            }
+        }
+    }
+
+    func testClaudeOrganizationsMatchByIdentityInsteadOfCardID() throws {
+        let personalID = "claude"
+        let workID = "claude@1234abcd"
+        let personal = ProviderSnapshot(
+            providerID: personalID,
+            displayName: "Claude Personal",
+            lines: [],
+            usageHistory: history(tokens: 100, cost: 1, model: "Opus")
+        )
+        let work = ProviderSnapshot(
+            providerID: workID,
+            displayName: "Claude Work",
+            lines: [],
+            usageHistory: history(tokens: 200, cost: 2, model: "Sonnet")
+        )
+        let codex = ProviderSnapshot(
+            providerID: "codex",
+            displayName: "Codex",
+            lines: [],
+            usageHistory: history(tokens: 300, cost: 3, model: "GPT")
+        )
+        var peer = document(
+            deviceID: "peer",
+            updatedAt: 200,
+            providers: [
+                "claude": history(tokens: 40, cost: 4, model: "Sonnet"),
+                "claude@abcdef12": history(tokens: 30, cost: 3, model: "Opus"),
+                "codex": history(tokens: 50, cost: 5, model: "GPT"),
+            ]
+        )
+        peer.schema = UsageHistoryDocument.accountSchema
+        peer.identities = [
+            "claude": "USER|WORK", "claude@abcdef12": "user|personal",
+            "codex": "legacy-codex-account",
+        ]
+        XCTAssertNoThrow(try peer.validate())
+
+        let descriptor = UsageHistoryDescriptor(scope: .machineLocal, estimatedCost: true, sourceNote: "logs")
+        let merged = UsageHistoryAggregator.merged(
+            localSnapshots: [personalID: personal, workID: work, "codex": codex],
+            peerDocuments: [peer],
+            descriptors: [personalID: descriptor, workID: descriptor, "codex": descriptor],
+            providerIdentityKeys: [personalID: "user|personal", workID: "user|work", "codex": "different-codex"],
+            now: localDay(2026, 7, 13)
+        )
+
+        XCTAssertEqual(try XCTUnwrap(merged[personalID]).series.daily.first?.totalTokens, 130)
+        XCTAssertEqual(try XCTUnwrap(merged[workID]).series.daily.first?.totalTokens, 240)
+        XCTAssertEqual(try XCTUnwrap(merged["codex"]).series.daily.first?.totalTokens, 350)
+    }
+
+    func testMismatchedClaudeIdentityNeverFallsBackToMatchingCardID() throws {
+        let local = ProviderSnapshot(
+            providerID: "claude",
+            displayName: "Claude",
+            lines: [],
+            usageHistory: history(tokens: 100, cost: 1, model: "Opus")
+        )
+        var peer = document(
+            deviceID: "peer",
+            updatedAt: 200,
+            providers: ["claude": history(tokens: 900, cost: 9, model: "Opus")]
+        )
+        peer.identities = ["claude": "user|different"]
+
+        let merged = UsageHistoryAggregator.merged(
+            localSnapshots: ["claude": local],
+            peerDocuments: [peer],
+            descriptors: [
+                "claude": UsageHistoryDescriptor(scope: .machineLocal, estimatedCost: true, sourceNote: "logs")
+            ],
+            providerIdentityKeys: ["claude": "user|personal"],
+            now: localDay(2026, 7, 13)
+        )
+
+        XCTAssertEqual(try XCTUnwrap(merged["claude"]).series.daily.first?.totalTokens, 100)
+    }
+
+    func testLegacyClaudeHistoryMergesOnlyWhenOneOrganizationExists() throws {
+        let peer = document(
+            deviceID: "peer",
+            updatedAt: 200,
+            providers: [
+                "claude": history(tokens: 90, cost: 9, model: "Opus"),
+                "codex": history(tokens: 50, cost: 5, model: "GPT"),
+            ]
+        )
+        let descriptor = UsageHistoryDescriptor(scope: .machineLocal, estimatedCost: true, sourceNote: "logs")
+
+        let single = UsageHistoryAggregator.merged(
+            localSnapshots: [:],
+            peerDocuments: [peer],
+            descriptors: ["claude": descriptor, "codex": descriptor],
+            providerIdentityKeys: ["claude": "user|personal"],
+            now: localDay(2026, 7, 13)
+        )
+        XCTAssertEqual(try XCTUnwrap(single["claude"]).series.daily.first?.totalTokens, 90)
+
+        let switched = UsageHistoryAggregator.merged(
+            localSnapshots: [:],
+            peerDocuments: [peer],
+            descriptors: ["claude@1234abcd": descriptor],
+            providerIdentityKeys: ["claude@1234abcd": "user|personal"],
+            now: localDay(2026, 7, 13)
+        )
+        XCTAssertEqual(try XCTUnwrap(switched["claude@1234abcd"]).series.daily.first?.totalTokens, 90)
+
+        let multiple = UsageHistoryAggregator.merged(
+            localSnapshots: [:],
+            peerDocuments: [peer],
+            descriptors: ["claude": descriptor, "claude@1234abcd": descriptor, "codex": descriptor],
+            providerIdentityKeys: ["claude": "user|personal", "claude@1234abcd": "user|work"],
+            now: localDay(2026, 7, 13)
+        )
+        XCTAssertNil(multiple["claude"])
+        XCTAssertNil(multiple["claude@1234abcd"])
+        XCTAssertEqual(try XCTUnwrap(multiple["codex"]).series.daily.first?.totalTokens, 50)
+    }
+
+    @MainActor
+    func testCloudExportUsesLegacySchemaUntilAnOwnedClaudeAccountCardExists() throws {
+        let suiteName = "UsageHistoryAggregatorTests.Export.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let personal = Provider(id: "claude", displayName: "Claude", icon: .providerMark("claude"))
+        let work = Provider(id: "claude@1234abcd", displayName: "Claude Work", icon: .providerMark("claude"))
+        let codex = Provider(id: "codex", displayName: "Codex", icon: .providerMark("codex"))
+        let providers = [personal, work, codex]
+        let descriptors = providers.map {
+            WidgetDescriptor.usageTrend(provider: $0)
+                .exportingHistory(scope: .machineLocal, estimatedCost: true, sourceNote: "logs")
+        }
+        let cache = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots")
+        let identities = ["claude": "User|Personal", "claude@1234abcd": "user|work", "codex": "codex-account"]
+        for provider in providers {
+            cache.store(
+                ProviderSnapshot(
+                    providerID: provider.id,
+                    displayName: provider.displayName,
+                    lines: [],
+                    usageHistory: history(tokens: 10, cost: 1, model: "model")
+                ),
+                producedByIdentityKey: identities[provider.id]
+            )
+        }
+
+        let single = WidgetDataStore(
+            registry: WidgetRegistry(providers: [personal, codex], descriptors: descriptors.filter {
+                $0.providerID != work.id
+            }),
+            providers: [], cache: cache, defaults: defaults,
+            providerIdentityKeys: identities
+        ).localHistoryDocument(deviceID: "this-mac", deviceName: "This Mac")
+
+        XCTAssertEqual(single.schema, UsageHistoryDocument.currentSchema)
+        XCTAssertEqual(single.identities, ["claude": "user|personal"])
+        XCTAssertNotNil(single.providers["codex"])
+        XCTAssertNoThrow(try single.validate())
+
+        let switched = WidgetDataStore(
+            registry: WidgetRegistry(providers: [work, codex], descriptors: descriptors.filter {
+                $0.providerID != personal.id
+            }),
+            providers: [], cache: cache, defaults: defaults,
+            providerIdentityKeys: identities
+        ).localHistoryDocument(deviceID: "this-mac", deviceName: "This Mac")
+
+        XCTAssertEqual(switched.schema, UsageHistoryDocument.currentSchema)
+        XCTAssertEqual(switched.identities, ["claude": "user|work"])
+        XCTAssertEqual(Set(switched.providers.keys), ["claude", "codex"])
+        XCTAssertNoThrow(try switched.validate())
+
+        let multiple = WidgetDataStore(
+            registry: WidgetRegistry(providers: providers, descriptors: descriptors),
+            providers: [], cache: cache, defaults: defaults,
+            providerIdentityKeys: identities
+        ).localHistoryDocument(deviceID: "this-mac", deviceName: "This Mac")
+
+        XCTAssertEqual(multiple.schema, UsageHistoryDocument.accountSchema)
+        XCTAssertEqual(multiple.identities, ["claude": "user|personal", "claude@1234abcd": "user|work"])
+        XCTAssertEqual(Set(multiple.providers.keys), ["claude", "claude@1234abcd", "codex"])
+        XCTAssertNoThrow(try multiple.validate())
     }
 
     func testRendererReplacesOnlySpendRowsAndKeepsLocalState() throws {

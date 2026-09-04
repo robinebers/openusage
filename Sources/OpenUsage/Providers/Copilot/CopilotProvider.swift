@@ -39,7 +39,7 @@ final class CopilotProvider: ProviderRuntime {
     var widgetDescriptors: [WidgetDescriptor] {
         [
             .percent(id: "copilot.premium", provider: provider, title: "Credits")
-                .exportingLimit("premiumCredits", unit: "percent"),
+                .exportingLimit("premiumCredits", unit: "credits", source: .progressOrValue(kind: .count)),
             .values(id: "copilot.extra", provider: provider, title: "Extra Usage", selection: .kind(.count))
                 .exportingLimit("extraUsage", unit: "count", source: .value(kind: .count)),
             .values(id: "copilot.orgCredits", provider: provider, title: "Org Credits", selection: .kind(.count))
@@ -76,13 +76,15 @@ final class CopilotProvider: ProviderRuntime {
 
             let mapped = try CopilotUsageMapper.map(response)
 
-            // An org-managed (token-based-billing) seat has no per-seat quota, so the real usage lives
-            // in the org's billing. Look it up there — best-effort: an org admin sees Org Credits /
-            // Org Spend, everyone else keeps the plan-only card as before. Gated on the mapper's
-            // explicit flag, never on `lines` being empty (issue #839).
+            // An org-managed (token-based-billing) seat has no per-seat percent meter, so the real
+            // usage lives in the org's billing. Look it up there — best-effort: an org admin sees
+            // Org Credits / Org Spend, everyone else keeps the plan-only card as before. Gated on
+            // the mapper's explicit flag, never on `lines` being empty (issue #839). Appended rather
+            // than replacing: `mapped.lines` can already carry the user's own personal Credits count
+            // (issue #1094), which must survive alongside whatever the org lookup adds.
             var lines = mapped.lines
             if mapped.isOrgManagedSeat {
-                lines = await orgBillingLines(token: token.value)
+                lines += await orgBillingLines(token: token.value)
             }
 
             return ProviderSnapshot.make(provider: provider, plan: mapped.plan, lines: lines, refreshedAt: now())

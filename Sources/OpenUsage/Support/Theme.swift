@@ -113,15 +113,10 @@ private struct CardSurfaceModifier: ViewModifier {
                     .fill(Theme.traySurface)
                     .overlay { Theme.cardShape.fill(Theme.cardFill) }
             case .translucent:
-                // Increase Transparency, party, and drunk: the card carries its own frosted
-                // `.regularMaterial` so metric text stays legible over whatever shows through the
-                // behind-window backdrop (the desktop, or the party tint over it), with `.fill.quaternary`
-                // on top preserving the grouped-card hierarchy. HIG: back content-layer surfaces with a
-                // standard material — a bare low-opacity fill over the desktop is the "washed out"
-                // anti-pattern. This is a standard material, not `glassEffect`: Liquid Glass stays in the
-                // chrome layer, not the content cards.
+                // The AppKit backdrop already applies the system blur. A stable translucent surface here
+                // keeps text legible without stacking another live material pass under every card.
                 Theme.cardShape
-                    .fill(.regularMaterial)
+                    .fill(Theme.traySurface.opacity(0.55))
                     .overlay { Theme.cardShape.fill(Theme.cardFill) }
             }
         }

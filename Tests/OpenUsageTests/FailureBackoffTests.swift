@@ -145,24 +145,4 @@ final class FailureBackoffTests: XCTestCase {
     }
 }
 
-/// Returns a different snapshot per call (then repeats the last), so a test can model a provider that
-/// fails and later recovers — which `CountingProviderRuntime` (one fixed snapshot) can't express.
-@MainActor
-final class SequenceProviderRuntime: ProviderRuntime {
-    let provider: Provider
-    let widgetDescriptors: [WidgetDescriptor]
-    private let snapshots: [ProviderSnapshot]
-    private(set) var refreshCount = 0
-
-    init(provider: Provider, descriptors: [WidgetDescriptor], snapshots: [ProviderSnapshot]) {
-        self.provider = provider
-        self.widgetDescriptors = descriptors
-        self.snapshots = snapshots
-    }
-
-    func refresh() async -> ProviderSnapshot {
-        let snapshot = snapshots[min(refreshCount, snapshots.count - 1)]
-        refreshCount += 1
-        return snapshot
-    }
-}
+// SequenceProviderRuntime lives in TestSupport.swift.

@@ -49,7 +49,7 @@ struct ModelRates: Sendable, Equatable {
 }
 
 /// Token counts split into the buckets that price differently. Every scanner normalizes into this.
-struct TokenBreakdown: Sendable, Equatable {
+struct TokenBreakdown: Codable, Sendable, Equatable {
     /// Input tokens billed at the plain input rate (not written to or read from cache).
     var input: Int = 0
     /// Input tokens written to the 5-minute ephemeral cache.

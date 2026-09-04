@@ -11,11 +11,7 @@ import XCTest
 final class SpendTileMapperTests: XCTestCase {
     func testIdleRecentDaysLeftUnbacked() {
         // The source's last reported day is 3 days before today: today and yesterday are idle.
-        var lines: [MetricLine] = []
-        SpendTileMapper.appendTokenUsage(
-            series([("2026-06-22", 5_000), ("2026-06-23", 7_000)]),
-            to: &lines, now: day(2026, 6, 26), estimated: false
-        )
+        let lines = mappedLines(series([("2026-06-22", 5_000), ("2026-06-23", 7_000)]))
 
         XCTAssertNil(line(lines, "Today"), "an idle today is left unbacked → tile reads No data")
         XCTAssertNil(line(lines, "Yesterday"), "ditto yesterday — not a fabricated $0.00")
@@ -26,11 +22,7 @@ final class SpendTileMapperTests: XCTestCase {
         // Used today and two days ago but not yesterday: a zero-token yesterday is "No data" too, not a
         // measured $0.00 — the branch between "absent" and "in-range zero" is gone. (Tokens-only rows
         // carry no cost — these series have costUSD nil — so a used day shows just its token count.)
-        var lines: [MetricLine] = []
-        SpendTileMapper.appendTokenUsage(
-            series([("2026-06-24", 9_000), ("2026-06-26", 3_000)]),
-            to: &lines, now: day(2026, 6, 26), estimated: false
-        )
+        let lines = mappedLines(series([("2026-06-24", 9_000), ("2026-06-26", 3_000)]))
 
         XCTAssertEqual(values(lines, "Today"), [MetricValue(number: 3_000, kind: .count, label: "tokens")])
         XCTAssertNil(line(lines, "Yesterday"), "an idle in-range day is No data, not $0.00 · 0 tokens")
@@ -39,21 +31,21 @@ final class SpendTileMapperTests: XCTestCase {
     func testEmptySeriesLeavesAllTilesUnbacked() {
         // The source ran but found nothing in the whole window (e.g. a brand-new user): every period is
         // idle, so nothing is appended and all three tiles read "No data".
-        var lines: [MetricLine] = []
-        SpendTileMapper.appendTokenUsage(
-            DailyUsageSeries(daily: []), to: &lines, now: day(2026, 6, 26), estimated: false
-        )
+        let cases: [[DailyUsageEntry]] = [
+            [],
+            [DailyUsageEntry(date: "2026-06-25", totalTokens: 0, costUSD: nil)]
+        ]
 
-        XCTAssertTrue(lines.isEmpty, "an all-zero window appends no spend tiles")
+        for daily in cases {
+            XCTAssertTrue(mappedLines(daily).isEmpty, "an all-zero window appends no spend tiles")
+        }
     }
 
     func testUsedDayRendersItsValues() {
         // A day with real usage renders its token count (and cost, when the source prices it).
-        var lines: [MetricLine] = []
-        SpendTileMapper.appendTokenUsage(
-            DailyUsageSeries(daily: [DailyUsageEntry(date: "2026-06-26", totalTokens: 12_000, costUSD: 1.50)]),
-            to: &lines, now: day(2026, 6, 26), estimated: true
-        )
+        let lines = mappedLines([
+            DailyUsageEntry(date: "2026-06-26", totalTokens: 12_000, costUSD: 1.50)
+        ])
 
         XCTAssertEqual(values(lines, "Today"),
                        [MetricValue(number: 1.50, kind: .dollars, estimated: true),
@@ -61,48 +53,28 @@ final class SpendTileMapperTests: XCTestCase {
     }
 
     func testSingleModelPeriodStillGetsModelBreakdown() throws {
-        var lines: [MetricLine] = []
-        SpendTileMapper.appendTokenUsage(
-            DailyUsageSeries(daily: [
-                DailyUsageEntry(date: "2026-06-26", totalTokens: 300, costUSD: 3)
-            ]),
-            to: &lines,
-            now: day(2026, 6, 26),
-            estimated: true,
-            modelUsage: ModelUsageSeries(daily: [
-                DailyModelUsageEntry(date: "2026-06-26", models: [
-                    ModelUsageEntry(model: "gpt-5.5", totalTokens: 300, costUSD: 3)
-                ])
-            ]),
-            modelSourceNote: "From test logs"
+        let model = ModelUsageEntry(model: "gpt-5.5", totalTokens: 300, costUSD: 3)
+        let lines = mappedLines(
+            [DailyUsageEntry(date: "2026-06-26", totalTokens: 300, costUSD: 3)],
+            models: [DailyModelUsageEntry(date: "2026-06-26", models: [model])]
         )
 
         let breakdown = try XCTUnwrap(modelBreakdown(lines, "Today"))
         XCTAssertEqual(breakdown.totalTokens, 300)
         XCTAssertEqual(breakdown.totalCostUSD, 3)
-        XCTAssertEqual(breakdown.models, [
-            ModelUsageEntry(model: "gpt-5.5", totalTokens: 300, costUSD: 3)
-        ])
+        XCTAssertEqual(breakdown.models, [model])
     }
 
     func testModelBreakdownISODateMatchesLocalPeriodDay() throws {
         let now = day(2026, 6, 26)
         let localStart = Calendar.current.startOfDay(for: now)
 
-        var lines: [MetricLine] = []
-        SpendTileMapper.appendTokenUsage(
-            DailyUsageSeries(daily: [
-                DailyUsageEntry(date: dayKey(now), totalTokens: 300, costUSD: 3)
-            ]),
-            to: &lines,
-            now: now,
-            estimated: true,
-            modelUsage: ModelUsageSeries(daily: [
-                DailyModelUsageEntry(date: isoString(localStart), models: [
-                    ModelUsageEntry(model: "gpt-5.5", totalTokens: 300, costUSD: 3)
-                ])
-            ]),
-            modelSourceNote: "From test logs"
+        let lines = mappedLines(
+            [DailyUsageEntry(date: dayKey(now), totalTokens: 300, costUSD: 3)],
+            models: [DailyModelUsageEntry(date: isoString(localStart), models: [
+                ModelUsageEntry(model: "gpt-5.5", totalTokens: 300, costUSD: 3)
+            ])],
+            now: now
         )
 
         let breakdown = try XCTUnwrap(modelBreakdown(lines, "Today"))
@@ -110,16 +82,12 @@ final class SpendTileMapperTests: XCTestCase {
     }
 
     func testModelBreakdownScopesTodayYesterdayAndLast30() throws {
-        var lines: [MetricLine] = []
-        SpendTileMapper.appendTokenUsage(
-            DailyUsageSeries(daily: [
+        let lines = mappedLines(
+            [
                 DailyUsageEntry(date: "2026-06-26", totalTokens: 300, costUSD: 3),
                 DailyUsageEntry(date: "2026-06-25", totalTokens: 700, costUSD: 7)
-            ]),
-            to: &lines,
-            now: day(2026, 6, 26),
-            estimated: true,
-            modelUsage: ModelUsageSeries(daily: [
+            ],
+            models: [
                 DailyModelUsageEntry(date: "2026-06-26", models: [
                     ModelUsageEntry(model: "alpha", totalTokens: 100, costUSD: 1),
                     ModelUsageEntry(model: "beta", totalTokens: 200, costUSD: 2)
@@ -128,8 +96,7 @@ final class SpendTileMapperTests: XCTestCase {
                     ModelUsageEntry(model: "alpha", totalTokens: 300, costUSD: 3),
                     ModelUsageEntry(model: "gamma", totalTokens: 400, costUSD: 4)
                 ])
-            ]),
-            modelSourceNote: "From test logs"
+            ]
         )
 
         let today = try XCTUnwrap(modelBreakdown(lines, "Today"))
@@ -145,30 +112,25 @@ final class SpendTileMapperTests: XCTestCase {
         XCTAssertEqual(last30.totalCostUSD, 10)
         XCTAssertEqual(last30.models.map(\.model), ["alpha", "gamma", "beta"])
         XCTAssertEqual(last30.sourceNote, "From test logs")
+        XCTAssertEqual(values(lines, "Last 30 Days"), [
+            MetricValue(number: 10, kind: .dollars, estimated: true),
+            MetricValue(number: 1000, kind: .count, label: "tokens")
+        ])
     }
 
     func testModelBreakdownSortsFoldsOtherAndKeepsUnpricedNamed() throws {
-        var lines: [MetricLine] = []
-        SpendTileMapper.appendTokenUsage(
-            DailyUsageSeries(daily: [
-                DailyUsageEntry(date: "2026-06-26", totalTokens: 3_700, costUSD: 49)
-            ]),
-            to: &lines,
-            now: day(2026, 6, 26),
-            estimated: true,
-            modelUsage: ModelUsageSeries(daily: [
-                DailyModelUsageEntry(date: "2026-06-26", models: [
-                    ModelUsageEntry(model: "alpha", totalTokens: 100, costUSD: 10),
-                    ModelUsageEntry(model: "beta", totalTokens: 200, costUSD: 9),
-                    ModelUsageEntry(model: "aardvark", totalTokens: 300, costUSD: 9),
-                    ModelUsageEntry(model: "delta", totalTokens: 400, costUSD: 7),
-                    ModelUsageEntry(model: "epsilon", totalTokens: 500, costUSD: 6),
-                    ModelUsageEntry(model: "zeta", totalTokens: 600, costUSD: 5),
-                    ModelUsageEntry(model: "eta", totalTokens: 700, costUSD: 3),
-                    ModelUsageEntry(model: "mystery", totalTokens: 900, costUSD: nil)
-                ])
-            ]),
-            modelSourceNote: "From test logs"
+        let lines = mappedLines(
+            [DailyUsageEntry(date: "2026-06-26", totalTokens: 3_700, costUSD: 49)],
+            models: [DailyModelUsageEntry(date: "2026-06-26", models: [
+                ModelUsageEntry(model: "alpha", totalTokens: 100, costUSD: 10),
+                ModelUsageEntry(model: "beta", totalTokens: 200, costUSD: 9),
+                ModelUsageEntry(model: "aardvark", totalTokens: 300, costUSD: 9),
+                ModelUsageEntry(model: "delta", totalTokens: 400, costUSD: 7),
+                ModelUsageEntry(model: "epsilon", totalTokens: 500, costUSD: 6),
+                ModelUsageEntry(model: "zeta", totalTokens: 600, costUSD: 5),
+                ModelUsageEntry(model: "eta", totalTokens: 700, costUSD: 3),
+                ModelUsageEntry(model: "mystery", totalTokens: 900, costUSD: nil)
+            ])]
         )
 
         // The unpriced "mystery" puts the whole list on token shares (the basis the panel's percent
@@ -188,22 +150,13 @@ final class SpendTileMapperTests: XCTestCase {
     }
 
     func testModelBreakdownFoldsSubFivePercentModelsIntoOther() throws {
-        var lines: [MetricLine] = []
-        SpendTileMapper.appendTokenUsage(
-            DailyUsageSeries(daily: [
-                DailyUsageEntry(date: "2026-06-26", totalTokens: 1_000, costUSD: 100)
-            ]),
-            to: &lines,
-            now: day(2026, 6, 26),
-            estimated: true,
-            modelUsage: ModelUsageSeries(daily: [
-                DailyModelUsageEntry(date: "2026-06-26", models: [
-                    ModelUsageEntry(model: "big", totalTokens: 700, costUSD: 90),
-                    ModelUsageEntry(model: "mid", totalTokens: 200, costUSD: 6),
-                    ModelUsageEntry(model: "tiny", totalTokens: 100, costUSD: 4)
-                ])
-            ]),
-            modelSourceNote: "From test logs"
+        let lines = mappedLines(
+            [DailyUsageEntry(date: "2026-06-26", totalTokens: 1_000, costUSD: 100)],
+            models: [DailyModelUsageEntry(date: "2026-06-26", models: [
+                ModelUsageEntry(model: "big", totalTokens: 700, costUSD: 90),
+                ModelUsageEntry(model: "mid", totalTokens: 200, costUSD: 6),
+                ModelUsageEntry(model: "tiny", totalTokens: 100, costUSD: 4)
+            ])]
         )
 
         // All priced → cost shares: 90% / 6% / 4%. "tiny" is under the 5% floor and folds into Other
@@ -216,22 +169,13 @@ final class SpendTileMapperTests: XCTestCase {
     }
 
     func testModelBreakdownFoldsUnattributedIntoOtherRegardlessOfSize() throws {
-        var lines: [MetricLine] = []
-        SpendTileMapper.appendTokenUsage(
-            DailyUsageSeries(daily: [
-                DailyUsageEntry(date: "2026-06-26", totalTokens: 1_000, costUSD: 6)
-            ]),
-            to: &lines,
-            now: day(2026, 6, 26),
-            estimated: true,
-            modelUsage: ModelUsageSeries(daily: [
-                DailyModelUsageEntry(date: "2026-06-26", models: [
-                    ModelUsageEntry(model: "grok-build", totalTokens: 600, costUSD: 6),
-                    // 40% of tokens — well above the 5% floor, still folds.
-                    ModelUsageEntry(model: ModelUsageEntry.unattributedModelName, totalTokens: 400, costUSD: nil)
-                ])
-            ]),
-            modelSourceNote: "From test logs"
+        let lines = mappedLines(
+            [DailyUsageEntry(date: "2026-06-26", totalTokens: 1_000, costUSD: 6)],
+            models: [DailyModelUsageEntry(date: "2026-06-26", models: [
+                ModelUsageEntry(model: "grok-build", totalTokens: 600, costUSD: 6),
+                // 40% of tokens — well above the 5% floor, still folds.
+                ModelUsageEntry(model: ModelUsageEntry.unattributedModelName, totalTokens: 400, costUSD: nil)
+            ])]
         )
 
         let breakdown = try XCTUnwrap(modelBreakdown(lines, "Today"))
@@ -243,21 +187,12 @@ final class SpendTileMapperTests: XCTestCase {
     }
 
     func testModelBreakdownGroupsCaseInsensitivelyAndKeepsDominantSpelling() throws {
-        var lines: [MetricLine] = []
-        SpendTileMapper.appendTokenUsage(
-            DailyUsageSeries(daily: [
-                DailyUsageEntry(date: "2026-06-26", totalTokens: 400, costUSD: 4)
-            ]),
-            to: &lines,
-            now: day(2026, 6, 26),
-            estimated: true,
-            modelUsage: ModelUsageSeries(daily: [
-                DailyModelUsageEntry(date: "2026-06-26", models: [
-                    ModelUsageEntry(model: "GLM-5.2", totalTokens: 100, costUSD: 1),
-                    ModelUsageEntry(model: "glm-5.2", totalTokens: 300, costUSD: 3)
-                ])
-            ]),
-            modelSourceNote: "From test logs"
+        let lines = mappedLines(
+            [DailyUsageEntry(date: "2026-06-26", totalTokens: 400, costUSD: 4)],
+            models: [DailyModelUsageEntry(date: "2026-06-26", models: [
+                ModelUsageEntry(model: "GLM-5.2", totalTokens: 100, costUSD: 1),
+                ModelUsageEntry(model: "glm-5.2", totalTokens: 300, costUSD: 3)
+            ])]
         )
 
         let breakdown = try XCTUnwrap(modelBreakdown(lines, "Today"))
@@ -270,16 +205,12 @@ final class SpendTileMapperTests: XCTestCase {
     }
 
     func testModelBreakdownMergesVariantsAcrossDays() throws {
-        var lines: [MetricLine] = []
-        SpendTileMapper.appendTokenUsage(
-            DailyUsageSeries(daily: [
+        let lines = mappedLines(
+            [
                 DailyUsageEntry(date: "2026-06-26", totalTokens: 300, costUSD: 3),
                 DailyUsageEntry(date: "2026-06-25", totalTokens: 400, costUSD: 4)
-            ]),
-            to: &lines,
-            now: day(2026, 6, 26),
-            estimated: true,
-            modelUsage: ModelUsageSeries(daily: [
+            ],
+            models: [
                 DailyModelUsageEntry(date: "2026-06-26", models: [
                     ModelUsageEntry(model: "opus", totalTokens: 300, costUSD: 3, variants: [
                         ModelUsageVariant(model: "opus-thinking-max", totalTokens: 300, costUSD: 3)
@@ -291,8 +222,7 @@ final class SpendTileMapperTests: XCTestCase {
                         ModelUsageVariant(model: "opus-thinking-high", totalTokens: 300, costUSD: 3)
                     ])
                 ])
-            ]),
-            modelSourceNote: "From test logs"
+            ]
         )
 
         let last30 = try XCTUnwrap(modelBreakdown(lines, "Last 30 Days"))
@@ -307,8 +237,24 @@ final class SpendTileMapperTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func series(_ days: [(String, Int)]) -> DailyUsageSeries {
-        DailyUsageSeries(daily: days.map { DailyUsageEntry(date: $0.0, totalTokens: $0.1, costUSD: nil) })
+    private func series(_ days: [(String, Int)]) -> [DailyUsageEntry] {
+        days.map { DailyUsageEntry(date: $0.0, totalTokens: $0.1, costUSD: nil) }
+    }
+
+    private func mappedLines(
+        _ daily: [DailyUsageEntry],
+        models: [DailyModelUsageEntry] = [],
+        now: Date? = nil
+    ) -> [MetricLine] {
+        var lines: [MetricLine] = []
+        SpendTileMapper.appendTokenUsage(
+            DailyUsageSeries(daily: daily),
+            to: &lines,
+            now: now ?? day(2026, 6, 26),
+            modelUsage: models.isEmpty ? nil : ModelUsageSeries(daily: models),
+            modelSourceNote: "From test logs"
+        )
+        return lines
     }
 
     /// A fixed instant at midday in the current calendar, so `dayKey(from:)` and the hyphenated input

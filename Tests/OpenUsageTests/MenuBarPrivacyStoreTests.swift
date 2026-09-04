@@ -35,16 +35,13 @@ final class MenuBarPrivacyStoreTests: XCTestCase {
         XCTAssertFalse(store.concealUsage)
     }
 
-    func testCaptureAloneDoesNotConceal() {
-        let store = makeStore("captureOnly", captured: { true })
-        store.refreshCaptureState()
-        XCTAssertFalse(store.concealUsage, "A capture with the setting off must not conceal")
-    }
-
-    func testSettingAloneDoesNotConceal() {
-        let store = makeStore("settingOnly", captured: { false })
-        store.hideUsageWhileScreenSharing = true
-        XCTAssertFalse(store.concealUsage, "The setting without an active capture must not conceal")
+    func testCaptureAndSettingAloneNeverConceal() {
+        for (captured, enabled) in [(true, false), (false, true)] {
+            let store = makeStore("capture\(captured)-enabled\(enabled)", captured: { captured })
+            store.hideUsageWhileScreenSharing = enabled
+            store.refreshCaptureState()
+            XCTAssertFalse(store.concealUsage)
+        }
     }
 
     func testEnablingDuringCaptureConcealsImmediately() {
@@ -72,7 +69,7 @@ final class MenuBarPrivacyStoreTests: XCTestCase {
         XCTAssertFalse(store.concealUsage)
     }
 
-    func testDisablingClearsCaptureStateImmediately() {
+    func testDisablingClearsCaptureStateAndRejectsStaleNotifications() {
         let store = makeStore("disableClears", captured: { true })
         store.hideUsageWhileScreenSharing = true
         XCTAssertTrue(store.concealUsage)
@@ -80,6 +77,9 @@ final class MenuBarPrivacyStoreTests: XCTestCase {
         store.hideUsageWhileScreenSharing = false
         XCTAssertFalse(store.screenIsCaptured, "Opting out must drop the wordmark without waiting for a poll")
         XCTAssertFalse(store.concealUsage)
+
+        store.refreshCaptureState()
+        XCTAssertFalse(store.concealUsage, "A stale capture notification cannot reconceal after opt-out")
     }
 
     func testSettingPersistsAcrossStores() {
@@ -93,13 +93,4 @@ final class MenuBarPrivacyStoreTests: XCTestCase {
         XCTAssertTrue(relaunched.concealUsage)
     }
 
-    func testStaleNotificationAfterDisableCannotReconceal() {
-        let store = makeStore("staleEvent", captured: { true })
-        store.hideUsageWhileScreenSharing = true
-        store.hideUsageWhileScreenSharing = false
-        // A window-server notification landing after opt-out re-runs the check; the setting gate
-        // must keep it from re-concealing.
-        store.refreshCaptureState()
-        XCTAssertFalse(store.concealUsage)
-    }
 }

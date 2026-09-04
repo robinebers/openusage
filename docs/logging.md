@@ -33,6 +33,12 @@ If a local usage log exists but cannot be read, OpenUsage writes one warning and
 refresh. It does not repeat the warning every five minutes; it warns again only if the file recovers
 and later becomes unreadable again.
 
+Any provider refresh that takes 10 seconds or longer writes a Warning-level `[refresh]` line with the
+provider ID, elapsed milliseconds, and threshold. This is visible at the default Info setting, so a
+slow local-log scan or network call can be identified from a normal support log without reproducing it
+with Debug enabled. The warning is diagnostic only: other provider cards still update independently,
+and the slow provider is allowed to finish.
+
 ## Subsystem tags
 
 Every line is prefixed with a bracketed tag so the log is easy to grep:

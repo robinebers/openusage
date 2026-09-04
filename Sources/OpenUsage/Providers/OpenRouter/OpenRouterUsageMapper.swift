@@ -40,11 +40,14 @@ enum OpenRouterUsageMapper {
         appendSpend(data["usage_weekly"], label: "This Week", into: &lines)
         appendSpend(data["usage_monthly"], label: "This Month", into: &lines)
 
-        // Per-key spend cap, when this key is configured with one.
+        // Per-key spend cap, when this key is configured with one. `usage` is lifetime spend on
+        // the key; `limit_remaining` is what's left in the current window (daily/weekly/monthly
+        // or lifetime), so used = limit - remaining.
         if let limit = ProviderParse.number(data["limit"]), limit > 0 {
+            let remaining = max(0, ProviderParse.number(data["limit_remaining"]) ?? 0)
             lines.append(.progress(
                 label: "Key Limit",
-                used: max(0, ProviderParse.number(data["usage"]) ?? 0),
+                used: max(0, limit - remaining),
                 limit: limit,
                 format: .dollars
             ))

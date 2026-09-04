@@ -182,31 +182,19 @@ final class AntigravityCredentialCacheIntegrityTests: XCTestCase {
         XCTAssertEqual(Set(authorizations), ["Bearer cached-access"])
     }
 
-    func testMalformedStructuredKeychainValueIsNotSentAsBearerToken() async {
-        let http = RoutingHTTPClient { _ in
-            XCTFail("malformed structured credentials must not be sent")
-            return HTTPResponse(statusCode: 500, headers: [:], body: Data())
+    func testMalformedStructuredKeychainValuesAreNeverSentAsBearerTokens() async {
+        for malformed in ["{broken-json", "\u{FEFF} \n\t{broken-json"] {
+            let http = RoutingHTTPClient { _ in
+                XCTFail("malformed structured credentials must not be sent")
+                return HTTPResponse(statusCode: 500, headers: [:], body: Data())
+            }
+            let provider = makeProvider(keychain: FakeKeychain(malformed), files: FakeFiles(), http: http)
+
+            let snapshot = await provider.refresh()
+
+            XCTAssertEqual(snapshot.errorCategory, .authInvalid, malformed)
+            XCTAssertTrue(http.requests.isEmpty, malformed)
         }
-        let provider = makeProvider(keychain: FakeKeychain("{broken-json"), files: FakeFiles(), http: http)
-
-        let snapshot = await provider.refresh()
-
-        XCTAssertEqual(snapshot.errorCategory, .authInvalid)
-        XCTAssertTrue(http.requests.isEmpty)
-    }
-
-    func testBOMPrefixedMalformedStructuredKeychainValueIsNotSentAsBearerToken() async {
-        let http = RoutingHTTPClient { _ in
-            XCTFail("BOM-prefixed malformed structured credentials must not be sent")
-            return HTTPResponse(statusCode: 500, headers: [:], body: Data())
-        }
-        let malformed = "\u{FEFF} \n\t{broken-json"
-        let provider = makeProvider(keychain: FakeKeychain(malformed), files: FakeFiles(), http: http)
-
-        let snapshot = await provider.refresh()
-
-        XCTAssertEqual(snapshot.errorCategory, .authInvalid)
-        XCTAssertTrue(http.requests.isEmpty)
     }
 
     private func makeStore(files: TextFileAccessing) -> AntigravityAuthStore {
@@ -224,6 +212,7 @@ final class AntigravityCredentialCacheIntegrityTests: XCTestCase {
             authStore: AntigravityAuthStore(keychain: keychain, files: files, now: { fixedNow }),
             usageClient: AntigravityUsageClient(lsHTTP: http, http: http),
             discovery: LanguageServerDiscovery(processRunner: CredentialEmptyProcessRunner()),
+            dbUsageScanner: AntigravityDbUsageScanner(conversationsDirectory: { "/nonexistent-antigravity-tests" }),
             now: { fixedNow }
         )
     }

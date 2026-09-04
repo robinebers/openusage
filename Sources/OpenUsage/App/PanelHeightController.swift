@@ -91,7 +91,6 @@ final class PanelHeightController {
             PanelGeometry.frame(topLeft: anchorTopLeft, width: Self.panelWidth, height: height),
             display: false
         )
-        panel.invalidateShadow()
         isMorphing = true
         scheduleMorphSettle()
     }
@@ -102,6 +101,9 @@ final class PanelHeightController {
             try? await Task.sleep(for: .milliseconds(120))
             guard !Task.isCancelled, let self, self.panel.isVisible else { return }
             self.isMorphing = false
+            // Rebuilding the shadow for every interpolated frame competes with the page animation.
+            // Refresh it once after the window reaches its final shape instead.
+            self.panel.invalidateShadow()
             self.saveHeight(self.panel.frame.height, for: self.currentScreen())
         }
     }

@@ -13,6 +13,9 @@ import SwiftUI
 /// KeyboardShortcuts library (`setShortcut` persists and re-registers automatically).
 struct ShortcutRecorderField: View {
     let name: KeyboardShortcuts.Name
+    /// Settings can remain mounted offscreen, so visibility changes must end an active recording even
+    /// when SwiftUI doesn't remove this field from the view hierarchy.
+    var isVisible = true
 
     /// Read by `EscapeToCloseReader`: while recording, Esc belongs to the recorder (cancel), not
     /// to popover navigation. The recorder's own monitor consumes the press; this flag keeps the
@@ -64,7 +67,10 @@ struct ShortcutRecorderField: View {
             currentShortcut = KeyboardShortcuts.getShortcut(for: name)
         }
         .background(HostWindowReader(window: $hostWindow))
-        // Covers the popover closing (or the screen switching away) mid-recording.
+        .onChange(of: isVisible) { _, isVisible in
+            if !isVisible { stopRecording() }
+        }
+        // Covers this field actually unmounting, including resets and host teardown.
         .onDisappear {
             stopRecording()
         }

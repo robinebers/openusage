@@ -28,7 +28,7 @@ final class MenuBarPinTests: XCTestCase {
         XCTAssertFalse(reloadedAgain.isPinned("a.m1"))
     }
 
-    func testPerProviderCapBlocksThirdPin() {
+    func testPerProviderCapBlocksThirdPinUntilSlotIsFreed() {
         let store = makeStore("perProvider")
         store.setPinned(true, for: "a.m1")
         store.setPinned(true, for: "a.m2")
@@ -40,16 +40,19 @@ final class MenuBarPinTests: XCTestCase {
 
         // An already-pinned id stays pinnable so its toggle can still unpin it.
         XCTAssertTrue(store.canPin("a.m1"))
+
+        store.setPinned(false, for: "a.m1")
+        XCTAssertTrue(store.canPin("a.m3"))
     }
 
     func testEachProviderCanPinUpToTwo() {
         let store = makeStore("manyProviders")
-        for provider in ["a", "b", "c", "d"] {
+        for provider in ["a", "b"] {
             store.setPinned(true, for: "\(provider).m1")
             store.setPinned(true, for: "\(provider).m2")
             XCTAssertFalse(store.canPin("\(provider).m3"))
         }
-        XCTAssertEqual(store.pinnedMetricIDs.count, 8)
+        XCTAssertEqual(store.pinnedMetricIDs.count, 4)
     }
 
     func testPinDenialReasonsAndFooterNotice() {
@@ -61,8 +64,6 @@ final class MenuBarPinTests: XCTestCase {
         XCTAssertEqual(store.pinDenialReason("a.m3"), "Up to 2 stars per provider")
         XCTAssertNil(store.pinDenialReason("b.m1"))
 
-        XCTAssertNil(store.pinDenialReason("b.m1"))
-
         // A denied click surfaces the reason as the transient footer notice and bumps the shake
         // trigger every time, so repeat clicks re-shake even while the text is unchanged.
         XCTAssertNil(store.pinLimitNotice)
@@ -72,16 +73,6 @@ final class MenuBarPinTests: XCTestCase {
         XCTAssertEqual(store.pinNoticeShakeTrigger, 1)
         store.notePinDenied("a.m3")
         XCTAssertEqual(store.pinNoticeShakeTrigger, 2)
-    }
-
-    func testUnpinFreesAProviderSlot() {
-        let store = makeStore("freeSlot")
-        store.setPinned(true, for: "a.m1")
-        store.setPinned(true, for: "a.m2")
-        XCTAssertFalse(store.canPin("a.m3"))
-
-        store.setPinned(false, for: "a.m1")
-        XCTAssertTrue(store.canPin("a.m3"))
     }
 
     func testPinnedGroupsFollowCustomizeOrder() {
@@ -140,9 +131,9 @@ final class MenuBarPinTests: XCTestCase {
         LayoutStore(registry: makeRegistry(), defaults: makeDefaults(name), storageKey: "layout")
     }
 
-    /// Four providers (a, b, c, d), each with three percent metrics m1/m2/m3, in registry order.
+    /// Two providers, each with three percent metrics, are sufficient to exercise provider-local caps.
     private func makeRegistry() -> WidgetRegistry {
-        let providers = ["a", "b", "c", "d"].map { id in
+        let providers = ["a", "b"].map { id in
             Provider(id: id, displayName: id.uppercased(), icon: .providerMark("cursor"))
         }
         let descriptors = providers.flatMap { provider in

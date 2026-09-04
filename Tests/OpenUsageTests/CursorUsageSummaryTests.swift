@@ -42,8 +42,8 @@ final class CursorUsageSummaryMapperTests: XCTestCase {
         let requests = try XCTUnwrap(progress(mapped.lines, "Requests"))
         XCTAssertEqual(requests.used, 37)
         XCTAssertEqual(requests.limit, 750)
-        XCTAssertEqual(progress(mapped.lines, "Auto usage")?.used, 0)
-        XCTAssertEqual(progress(mapped.lines, "API usage")?.used, 6.25)
+        XCTAssertEqual(progress(mapped.lines, "Cursor Models")?.used, 0)
+        XCTAssertEqual(progress(mapped.lines, "Other Models")?.used, 6.25)
 
         let onDemand = try XCTUnwrap(progress(mapped.lines, "On-demand"))
         XCTAssertEqual(onDemand.used, 0)
@@ -158,7 +158,7 @@ final class CursorUsageSummaryMapperTests: XCTestCase {
 final class CursorEnterpriseProviderTests: XCTestCase {
     func testRefreshCombinesEnterpriseMetersAndStillAppendsUsageHistory() async throws {
         let now = try XCTUnwrap(OpenUsageISO8601.date(from: "2026-07-13T12:00:00.000Z"))
-        let accessToken = makeSummaryCursorJWT(sub: "google-oauth2|enterprise-user")
+        let accessToken = makeCursorJWT(sub: "google-oauth2|enterprise-user")
         let csv = """
         Date,Model,Max Mode,Input (w/ Cache Write),Input (w/o Cache Write),Cache Read,Output Tokens,Cost
         2026-07-13T10:00:00Z,composer-1,No,0,1000,0,100,Included
@@ -199,6 +199,13 @@ final class CursorEnterpriseProviderTests: XCTestCase {
                 }
                 """.utf8))
             }
+            if request.url == CursorUsageClient.grokBotUsageURL {
+                return HTTPResponse(
+                    statusCode: 200,
+                    headers: [:],
+                    body: Data(#"{"usagePercent":18,"hasNonZeroIncludedLimit":true}"#.utf8)
+                )
+            }
             if request.url.absoluteString.hasPrefix(CursorUsageClient.restUsageURL.absoluteString) {
                 return HTTPResponse(statusCode: 200, headers: [:], body: Data("""
                 {
@@ -214,7 +221,7 @@ final class CursorEnterpriseProviderTests: XCTestCase {
         }
         let provider = CursorProvider(
             authStore: CursorAuthStore(
-                sqlite: SummaryCursorSQLite(values: [CursorAuthStore.accessTokenKey: accessToken]),
+                sqlite: KeyValueSQLite(values: [CursorAuthStore.accessTokenKey: accessToken]),
                 keychain: FakeKeychain()
             ),
             usageClient: CursorUsageClient(http: http),
@@ -228,6 +235,7 @@ final class CursorEnterpriseProviderTests: XCTestCase {
         XCTAssertEqual(snapshot.plan, "Enterprise")
         XCTAssertEqual(progress(snapshot.lines, "Total usage")?.used, 37)
         XCTAssertEqual(progress(snapshot.lines, "Total usage")?.limit, 750)
+        XCTAssertEqual(progress(snapshot.lines, "Grok Bot usage")?.used, 18)
         XCTAssertEqual(progress(snapshot.lines, "On-demand")?.limit, 250)
         XCTAssertNotNil(snapshot.lines.first { $0.label == "Usage Trend" })
         XCTAssertNotNil(snapshot.lines.first { $0.label == "Today" })
@@ -298,28 +306,4 @@ final class CursorEnterpriseProviderTests: XCTestCase {
     }
 }
 
-private func makeSummaryCursorJWT(sub: String, exp: Double = 9_999_999_999) -> String {
-    let payload = #"{"sub":"\#(sub)","exp":\#(exp)}"#
-    let encoded = Data(payload.utf8).base64EncodedString()
-        .replacingOccurrences(of: "=", with: "")
-        .replacingOccurrences(of: "+", with: "-")
-        .replacingOccurrences(of: "/", with: "_")
-    return "a.\(encoded).c"
-}
-
-private final class SummaryCursorSQLite: SQLiteAccessing, @unchecked Sendable {
-    private let values: [String: String]
-
-    init(values: [String: String]) {
-        self.values = values
-    }
-
-    func queryValue(path: String, sql: String) throws -> String? {
-        for (key, value) in values where sql.contains(key) {
-            return value
-        }
-        return nil
-    }
-
-    func execute(path: String, sql: String) throws {}
-}
+// makeCursorJWT and KeyValueSQLite live in TestSupport.swift.

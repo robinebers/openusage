@@ -14,37 +14,30 @@ final class GrokCreditsConfigDecoderTests: XCTestCase {
         XCTAssertEqual(config.periodDurationMs, 7 * 24 * 60 * 60 * 1000)
     }
 
-    func testAbsentPercentDecodesAsZero() throws {
+    func testAbsentZeroValuedFieldsDecodeAsZero() throws {
         // proto-JSON drops zero-valued fields: a fresh weekly period omits `creditUsagePercent`
-        // entirely. That's a genuine 0%, never a schema-change error.
-        let config = try GrokCreditsConfigDecoder.decode(
+        // and a disabled cap omits `onDemandCap`. Those are genuine zeros, never schema errors.
+        let noPercent = try GrokCreditsConfigDecoder.decode(
             responseBody: GrokCreditsFixtures.responseBody(percent: nil)
         )
-        XCTAssertEqual(config.usedPercent, 0)
-    }
+        XCTAssertEqual(noPercent.usedPercent, 0)
 
-    func testAbsentOnDemandCapDecodesAsZero() throws {
-        let config = try GrokCreditsConfigDecoder.decode(
+        let noCap = try GrokCreditsConfigDecoder.decode(
             responseBody: GrokCreditsFixtures.responseBody(onDemandCap: nil)
         )
-        XCTAssertEqual(config.onDemandCap, 0)
+        XCTAssertEqual(noCap.onDemandCap, 0)
     }
 
-    func testRejectsNonNumericOnDemandCap() {
-        XCTAssertThrowsError(
-            try GrokCreditsConfigDecoder.decode(responseBody: GrokCreditsFixtures.responseBody(onDemandCap: "lots"))
-        ) { error in
-            XCTAssertEqual(error as? GrokUsageError, .invalidResponse)
-        }
-    }
-
-    func testRejectsNonNumericPercent() {
-        // A present but non-numeric percent is a schema change, not a 0 — clamping it to a
-        // believable "0% used" would hide the drift.
-        XCTAssertThrowsError(
-            try GrokCreditsConfigDecoder.decode(responseBody: GrokCreditsFixtures.responseBody(percent: "high"))
-        ) { error in
-            XCTAssertEqual(error as? GrokUsageError, .invalidResponse)
+    func testRejectsNonNumericFields() {
+        // A present but non-numeric value is a schema change, not a 0 — clamping it to a
+        // believable "0" would hide the drift.
+        for body in [
+            GrokCreditsFixtures.responseBody(percent: "high"),
+            GrokCreditsFixtures.responseBody(onDemandCap: "lots")
+        ] {
+            XCTAssertThrowsError(try GrokCreditsConfigDecoder.decode(responseBody: body)) { error in
+                XCTAssertEqual(error as? GrokUsageError, .invalidResponse)
+            }
         }
     }
 
@@ -109,16 +102,8 @@ final class GrokCreditsConfigMapperTests: XCTestCase {
         XCTAssertEqual(colorHex, "#22c55e")
     }
 
-    func testNonWeeklyPeriodMapsToNoWeeklyLine() throws {
-        // An account still on monthly-only billing has no weekly pool; the tile must read "No data"
-        // rather than mislabel a monthly percent as weekly. The badge still renders.
-        let mapped = try GrokUsageMapper.mapCreditsConfig(HTTPResponse(
-            statusCode: 200, headers: [:],
-            body: GrokCreditsFixtures.responseBody(periodType: "USAGE_PERIOD_TYPE_MONTHLY")
-        ))
-        XCTAssertNil(mapped.lines.first(where: { $0.label == "Weekly limit" }))
-        XCTAssertNotNil(mapped.lines.first(where: { $0.label == "Pay as you go" }))
-    }
+    // The non-weekly (monthly) period shape is covered end-to-end by
+    // GrokProviderTests.testNonWeeklyPeriodShowsNoWeeklyLineAndNoWarning.
 
     func testClampsOutOfRangePercent() throws {
         let mapped = try GrokUsageMapper.mapCreditsConfig(HTTPResponse(

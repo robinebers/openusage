@@ -325,6 +325,8 @@ enum CodexUsageMapper {
             return "Pro 5x"
         case "pro":
             return "Pro 20x"
+        case "self_serve_business_prolite":
+            return "Business Premium"
         default:
             return raw.titleCased(separator: { $0 == "_" })
         }

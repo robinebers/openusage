@@ -12,31 +12,14 @@ final class SecretCodeMatcherTests: XCTestCase {
         XCTAssertTrue(matcher.accept(code.last!), "the final token completes the sequence")
     }
 
-    func testExtraLeadingKeysStillMatch() {
-        var matcher = SecretCodeMatcher()
-        // Two stray ups before a clean entry: the sliding window keeps only the last N, so it matches.
-        let stream: [SecretCodeKey] = [.up, .up] + code
-        var matched = false
-        for token in stream { matched = matcher.accept(token) }
-        XCTAssertTrue(matched)
-    }
-
-    func testWrongKeyMidSequenceThenCleanEntryMatches() {
-        var matcher = SecretCodeMatcher()
-        _ = matcher.accept(.up)
-        _ = matcher.accept(.up)
-        _ = matcher.accept(.down)
-        _ = matcher.accept(.left) // wrong (expected .down) — run broken
-        var matched = false
-        for token in code { matched = matcher.accept(token) }
-        XCTAssertTrue(matched, "a clean entry after a fumble still matches")
-    }
-
-    func testNoMatchForIncompleteSequence() {
-        var matcher = SecretCodeMatcher()
-        var matched = false
-        for token in code.dropLast() { matched = matcher.accept(token) || matched }
-        XCTAssertFalse(matched)
+    func testCleanEntryMatchesAfterStrayOrIncorrectPrefix() {
+        let prefixes: [[SecretCodeKey]] = [[.up, .up], [.up, .up, .down, .left]]
+        for prefix in prefixes {
+            var matcher = SecretCodeMatcher()
+            var matched = false
+            for token in prefix + code { matched = matcher.accept(token) }
+            XCTAssertTrue(matched)
+        }
     }
 
     func testResetClearsPartialProgress() {

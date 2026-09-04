@@ -88,6 +88,14 @@ final class PopoverTransparencyStore {
         AppLog.info(.statusItem, "Too-much-transparency egg \(active ? "enabled" : "disabled")")
     }
 
+    /// Restores the transparency preference to its default (off) and exits the easter egg — the
+    /// Settings "Reset All Settings" path. Without the egg exit, a reset during Party/Drunk Mode
+    /// would keep overriding the freshly-reset preference with the party look.
+    func resetToDefaults() {
+        setSecretCode(false)
+        increaseTransparency = false
+    }
+
     /// Flips the on-screen flag from `StatusItemController`'s show/hide chokepoints. Guards on change so a
     /// redundant set doesn't churn observers. Orthogonal to `effectiveStyle` (it never enters `resolve`),
     /// so toggling it re-renders only the SwiftUI egg's mount gate, never the AppKit backdrop crossfade.

@@ -92,8 +92,8 @@ enum MetricLine: Hashable, Sendable, Codable {
     /// tick and honor the global relative/absolute reset mode, like a bounded row's reset countdown.
     ///
     /// `unknownModels` carries the names of models this period's spend used that the pricing sources
-    /// don't know. Their usage is left out of the displayed total, so the row shows a warning triangle
-    /// listing them on hover. `modelBreakdown` carries the period-scoped ranked model
+    /// don't know. The row keeps a warning triangle listing them on hover, including when their
+    /// usage is estimated with a fallback. `modelBreakdown` carries the period-scoped ranked model
     /// list for spend rows; it is internal UI data, not part of the local HTTP API wire shape.
     case values(
         label: String,

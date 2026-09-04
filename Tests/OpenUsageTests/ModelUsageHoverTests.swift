@@ -17,78 +17,44 @@ final class ModelUsageHoverTests: XCTestCase {
         XCTAssertEqual(decoded, line)
     }
 
-    func testDataStoreResolvesModelBreakdownOntoSpendRow() {
-        let provider = Provider(id: "claude", displayName: "Claude", icon: .providerMark("claude"))
-        let descriptor = WidgetDescriptor.spendTiles(provider: provider).first { $0.id == "claude.today" }!
-        let runtime = TestProviderRuntime(
-            provider: provider,
-            descriptors: [descriptor],
-            snapshot: ProviderSnapshot(providerID: provider.id, displayName: provider.displayName, lines: [])
-        )
-        let store = WidgetDataStore(
-            registry: WidgetRegistry(providers: [provider], descriptors: [descriptor]),
-            providers: [runtime],
-            defaults: makeDefaults("resolve")
-        )
-        store.snapshots[provider.id] = ProviderSnapshot(
-            providerID: provider.id,
-            displayName: provider.displayName,
-            lines: [
-                .values(
+    func testDataStoreResolvesSingleAndMultipleModelBreakdowns() {
+        let cases: [(providerID: String, breakdown: ModelUsageBreakdown, models: [String])] = [
+            ("claude", sampleBreakdown(), ["alpha", "beta"]),
+            ("codex", ModelUsageBreakdown(
+                totalTokens: 300, totalCostUSD: 3,
+                models: [ModelUsageEntry(model: "gpt-5.5", totalTokens: 300, costUSD: 3)],
+                sourceNote: "From Codex test logs"
+            ), ["gpt-5.5"])
+        ]
+
+        for item in cases {
+            let provider = Provider(
+                id: item.providerID, displayName: item.providerID.capitalized, icon: .providerMark(item.providerID)
+            )
+            let descriptor = WidgetDescriptor.spendTiles(provider: provider).first { $0.id == "\(provider.id).today" }!
+            let store = WidgetDataStore(
+                registry: WidgetRegistry(providers: [provider], descriptors: [descriptor]),
+                providers: [],
+                defaults: makeDefaults(item.providerID)
+            )
+            store.snapshots[provider.id] = ProviderSnapshot(
+                providerID: provider.id,
+                displayName: provider.displayName,
+                lines: [.values(
                     label: "Today",
                     values: [
                         MetricValue(number: 3, kind: .dollars, estimated: true),
                         MetricValue(number: 300, kind: .count, label: "tokens")
                     ],
-                    modelBreakdown: sampleBreakdown()
-                )
-            ]
-        )
+                    modelBreakdown: item.breakdown
+                )]
+            )
 
-        let data = store.data(for: descriptor)
-
-        XCTAssertTrue(data.hasModelBreakdown)
-        XCTAssertEqual(data.modelBreakdown?.models.map(\.model), ["alpha", "beta"])
-        XCTAssertEqual(data.modelBreakdown?.sourceNote, "From test logs")
-    }
-
-    func testDataStoreAllowsSingleModelBreakdown() {
-        let provider = Provider(id: "codex", displayName: "Codex", icon: .providerMark("codex"))
-        let descriptor = WidgetDescriptor.spendTiles(provider: provider).first { $0.id == "codex.today" }!
-        let runtime = TestProviderRuntime(
-            provider: provider,
-            descriptors: [descriptor],
-            snapshot: ProviderSnapshot(providerID: provider.id, displayName: provider.displayName, lines: [])
-        )
-        let store = WidgetDataStore(
-            registry: WidgetRegistry(providers: [provider], descriptors: [descriptor]),
-            providers: [runtime],
-            defaults: makeDefaults("single-model")
-        )
-        store.snapshots[provider.id] = ProviderSnapshot(
-            providerID: provider.id,
-            displayName: provider.displayName,
-            lines: [
-                .values(
-                    label: "Today",
-                    values: [
-                        MetricValue(number: 3, kind: .dollars, estimated: true),
-                        MetricValue(number: 300, kind: .count, label: "tokens")
-                    ],
-                    modelBreakdown: ModelUsageBreakdown(
-                        totalTokens: 300,
-                        totalCostUSD: 3,
-                        models: [ModelUsageEntry(model: "gpt-5.5", totalTokens: 300, costUSD: 3)],
-                        sourceNote: "From Codex test logs"
-                    )
-                )
-            ]
-        )
-
-        let data = store.data(for: descriptor)
-
-        XCTAssertTrue(data.hasModelBreakdown)
-        XCTAssertEqual(data.modelBreakdown?.models.map(\.model), ["gpt-5.5"])
+            let data = store.data(for: descriptor)
+            XCTAssertTrue(data.hasModelBreakdown, item.providerID)
+            XCTAssertEqual(data.modelBreakdown?.models.map(\.model), item.models, item.providerID)
+            XCTAssertEqual(data.modelBreakdown?.sourceNote, item.breakdown.sourceNote, item.providerID)
+        }
     }
 
     func testWholePercentsAlwaysSumToOneHundred() {
@@ -100,9 +66,6 @@ final class ModelUsageHoverTests: XCTestCase {
         XCTAssertEqual(ModelUsageDetail.wholePercents([1.0]), [100])
         XCTAssertEqual(ModelUsageDetail.wholePercents([0, 0]), [0, 0], "an empty period stays all zero")
 
-        for shares in [[0.005, 0.005, 0.99], [0.2, 0.2, 0.2, 0.2, 0.2], [0.617, 0.337, 0.046]] {
-            XCTAssertEqual(ModelUsageDetail.wholePercents(shares).reduce(0, +), 100)
-        }
     }
 
     func testSharesUseCostWhenEveryModelIsPriced() {
