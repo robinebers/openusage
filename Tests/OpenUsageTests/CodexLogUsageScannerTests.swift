@@ -547,7 +547,8 @@ final class CodexLogUsageScannerTests: XCTestCase {
             ("gpt-5.5-pro-20260423", 20.7),
             ("gpt-5.6-sol", 2.55),
             ("gpt-5.6-terra", 1.02),
-            ("gpt-5.6-luna", 0.102)
+            ("gpt-5.6-luna", 0.102),
+            ("gpt-6-astra", 4.95)
         ]
 
         for (model, expected) in expectedCosts {
@@ -617,7 +618,8 @@ final class CodexLogUsageScannerTests: XCTestCase {
         let cases: [(model: String, supplementMultiplier: Double, expected: Double)] = [
             ("gpt-5.5", 2.5, 2.5),
             // Cursor's supplement currently says 2.5 for this model; Codex priority is 2x.
-            ("gpt-5.6-sol", 2.5, 2)
+            ("gpt-5.6-sol", 2.5, 2),
+            ("gpt-6-astra", 2, 2)
         ]
 
         for entry in cases {
