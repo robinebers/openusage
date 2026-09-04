@@ -22,6 +22,7 @@ struct SettingsScreen: View {
     @AppStorage(TimeFormatSetting.key) private var timeFormat = TimeFormatSetting.auto
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
     @AppStorage(ReduceAnimationsSetting.key) private var reduceAnimations = ReduceAnimationsSetting.fallback
+    @AppStorage(ClaudeAccountsSetting.key) private var claudeAccounts = ClaudeAccountsSetting.separate
     @AppStorage(LogLevelSetting.key) private var logLevel = LogLevelSetting.fallback
     /// Surfaced under the Advanced rows when copying the path or revealing the file fails.
     @State private var logActionError: String?
@@ -197,6 +198,14 @@ struct SettingsScreen: View {
                 Toggle("", isOn: $store.alwaysShowPacing)
                     .settingsSwitchStyle()
                     .hoverTooltip("Show how you're pacing on every metric, not just ones near their limit")
+            }
+            // One card per Claude account (default), or a single card that follows whichever login
+            // Claude Code holds right now. Cards are built at launch, so a change needs a restart.
+            row("Claude Cards") {
+                picker($claudeAccounts, options: ClaudeAccountsSetting.allCases, label: \.label)
+            }
+            if claudeAccounts != container.claudeAccountsAtLaunch {
+                inlineNotice("Applies the next time OpenUsage starts")
             }
         }
     }

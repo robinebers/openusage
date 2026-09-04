@@ -77,4 +77,39 @@ final class ProviderAccountAssemblyTests: XCTestCase {
         XCTAssertTrue(store.records.isEmpty)
         XCTAssertNil(defaults.data(forKey: ProviderAccountsStore.storageKey), "no observations, no write")
     }
+
+    /// Active Login leaves Claude out of the pass entirely: no identity key, no cards, so the
+    /// catalog builds the single unpinned Claude provider. Codex is unaffected either way.
+    func testActiveLoginOnlyLeavesClaudeOutOfThePass() {
+        XCTAssertEqual(
+            ProviderAccountAssembly.observedFamilies(shellFactsReadable: true, environment: [:], claudeAccounts: .activeLogin),
+            ["codex"]
+        )
+        XCTAssertEqual(
+            ProviderAccountAssembly.observedFamilies(shellFactsReadable: true, environment: [:], claudeAccounts: .separate),
+            ProviderAccountID.families
+        )
+        // A cold login shell still admits a family whose home override is in the process environment.
+        XCTAssertEqual(
+            ProviderAccountAssembly.observedFamilies(
+                shellFactsReadable: false, environment: ["CLAUDE_CONFIG_DIR": "/x"], claudeAccounts: .separate
+            ),
+            ["claude"]
+        )
+        XCTAssertEqual(
+            ProviderAccountAssembly.observedFamilies(
+                shellFactsReadable: false, environment: ["CLAUDE_CONFIG_DIR": "/x"], claudeAccounts: .activeLogin
+            ),
+            []
+        )
+    }
+
+    func testClaudeAccountsSettingDefaultsToOnePerAccount() {
+        let defaults = makeScratchDefaults()
+        XCTAssertEqual(ClaudeAccountsSetting.current(defaults: defaults), .separate)
+        defaults.set(ClaudeAccountsSetting.activeLogin.rawValue, forKey: ClaudeAccountsSetting.key)
+        XCTAssertEqual(ClaudeAccountsSetting.current(defaults: defaults), .activeLogin)
+        defaults.set("garbage", forKey: ClaudeAccountsSetting.key)
+        XCTAssertEqual(ClaudeAccountsSetting.current(defaults: defaults), .separate)
+    }
 }

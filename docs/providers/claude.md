@@ -5,6 +5,12 @@ Tracks your Claude subscription limits using the login you already have from Cla
 Each account and organization gets its own Claude card with separate limits and spending. Signing in to
 the same account and organization through both Claude Code and Claude Desktop still creates only one card.
 
+If you switch Claude Code between accounts in place (running `claude login` again, or a switcher tool),
+set **Claude Cards** to **Active Login** in Settings → Usage Display. OpenUsage then keeps one
+Claude card that reads whichever login is current on every refresh, instead of a card per account pinned
+to the login it saw at launch. In this mode the spend tiles count every Claude Code session log on this
+Mac, and Claude Desktop logins add no extra card. The change applies the next time OpenUsage starts.
+
 ## What it tracks
 
 | Metric | Meaning |

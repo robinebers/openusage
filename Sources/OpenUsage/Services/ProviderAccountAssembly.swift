@@ -37,14 +37,15 @@ struct ProviderAccountAssembly {
         let shellFactsReadable = !waitsForLoginShell
             || LoginShellEnvironment.shared.capturedSuccessfully
             || ShellEnvironmentSnapshotStore.launchSnapshot != nil
-        let families = shellFactsReadable
-            ? ProviderAccountID.families
-            : ProviderAccountID.families.filter { family in
-                guard let key = Self.homeOverrideKeys[family] else { return false }
-                return ProcessInfo.processInfo.environment[key]?.nilIfEmpty != nil
-            }
-        if families.count < ProviderAccountID.families.count {
-            AppLog.info(.config, "account identity read skipped for \(ProviderAccountID.families.subtracting(families).sorted().joined(separator: ", ")): login shell cold and no shell-environment snapshot exists yet")
+        let claudeAccounts = ClaudeAccountsSetting.current(defaults: defaults)
+        let families = observedFamilies(shellFactsReadable: shellFactsReadable, claudeAccounts: claudeAccounts)
+        var skippedForColdShell = ProviderAccountID.families.subtracting(families)
+        if claudeAccounts == .activeLogin {
+            skippedForColdShell.remove("claude")
+            AppLog.info(.config, "accounts: claude follows the active login (one card); account pass skipped for claude")
+        }
+        if !skippedForColdShell.isEmpty {
+            AppLog.info(.config, "account identity read skipped for \(skippedForColdShell.sorted().joined(separator: ", ")): login shell cold and no shell-environment snapshot exists yet")
         }
         return make(
             observer: DefaultAccountObserver(),
@@ -60,6 +61,26 @@ struct ProviderAccountAssembly {
         "claude": "CLAUDE_CONFIG_DIR",
         "codex": "CODEX_HOME",
     ]
+
+    /// The families this launch's account pass observes: every family while the shell facts are
+    /// readable, otherwise only those whose home override is already in the process environment —
+    /// minus Claude when the user chose one Claude card that follows the active login. Leaving Claude
+    /// out of the pass yields no Claude cards and no identity key, so `ProviderCatalog` builds the
+    /// single unpinned provider that reads whichever login is current on every refresh.
+    static func observedFamilies(
+        shellFactsReadable: Bool,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        claudeAccounts: ClaudeAccountsSetting
+    ) -> Set<String> {
+        var families = shellFactsReadable
+            ? ProviderAccountID.families
+            : ProviderAccountID.families.filter { family in
+                guard let key = Self.homeOverrideKeys[family] else { return false }
+                return environment[key]?.nilIfEmpty != nil
+            }
+        if claudeAccounts == .activeLogin { families.remove("claude") }
+        return families
+    }
 
     /// The environment-independent core, separated so tests inject a fixed observer and scratch
     /// store. `families` limits the pass to the families whose home facts are readable this launch

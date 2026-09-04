@@ -33,6 +33,9 @@ final class AppContainer {
     /// plus the live capture signal. Read by `StatusItemImageUpdater` to swap the strip for the
     /// wordmark while the screen is shared or recorded.
     let privacy: MenuBarPrivacyStore
+    /// The Claude Cards choice the provider set was built from. Settings compares the live value
+    /// against it to say a change waits for the next launch.
+    let claudeAccountsAtLaunch: ClaudeAccountsSetting
     /// One-time onboarding state (the first-run Customize hint card). Only ever marked pending by
     /// `FirstRunSeeder` on a fresh install, so existing installs never see the card.
     let onboarding: OnboardingStore
@@ -69,6 +72,7 @@ final class AppContainer {
         self.shellEnvironmentSnapshotTask = ShellEnvironmentSnapshotStore(defaults: .standard).startRefreshTask()
         // The launch account pass: which account is signed in at each family's default home. Feeds
         // the snapshot cache's account stamp and reconciles the account registry.
+        self.claudeAccountsAtLaunch = ClaudeAccountsSetting.current()
         let accountAssembly = ProviderAccountAssembly.make(waitsForLoginShell: true)
 
         let providers = ProviderCatalog.make(
@@ -269,7 +273,7 @@ final class AppContainer {
         for key in [
             AppearanceSetting.key, TimeFormatSetting.key, DensitySetting.key,
             ReduceAnimationsSetting.key, LogLevelSetting.key, TotalSpendSetting.key,
-            TotalSpendSetting.periodKey, TotalSpendSetting.metricKey,
+            TotalSpendSetting.periodKey, TotalSpendSetting.metricKey, ClaudeAccountsSetting.key,
         ] {
             UserDefaults.standard.removeObject(forKey: key)
         }
