@@ -5,14 +5,14 @@ import XCTest
 @testable import OpenUsage
 
 final class ClaudeDesktopAuthStoreTests: XCTestCase {
-    private let home = URL(fileURLWithPath: "/fixture-home", isDirectory: true)
-    private let organization = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
-    private let otherOrganization = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
-    private let accountUUID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
-    private let clientID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
-    private let otherClientID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
-    private let password = "fixture-safe-storage-password"
-    private let now = Date(timeIntervalSince1970: 1_800_000_000)
+    let home = URL(fileURLWithPath: "/fixture-home", isDirectory: true)
+    let organization = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    let otherOrganization = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+    let accountUUID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+    let clientID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+    let otherClientID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+    let password = "fixture-safe-storage-password"
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
 
     func testDecryptsElectronSafeStorageValue() throws {
         let key = try ClaudeDesktopAuthStore.deriveKey(password: password)
@@ -41,6 +41,31 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
         XCTAssertEqual(result.oauth?.accessToken, "desktop-token")
         XCTAssertNil(result.oauth?.refreshToken)
         XCTAssertEqual(result.oauth?.scopes, ["user:profile", "user:inference"])
+    }
+
+    @MainActor
+    func testDesktopOnlyRefreshAcceptsAccountPrefixedCache() async throws {
+        let fixture = try makeFixture(
+            activeOrganization: organization,
+            v2: ["acct:\(accountUUID)|\(cacheKey(organization: organization))":
+                tokenEntry("desktop-token", expiresIn: 3_600)],
+            accountUUID: accountUUID
+        )
+        let httpClient = RoutingHTTPClient { request in
+            XCTAssertEqual(request.headers["Authorization"], "Bearer desktop-token")
+            XCTAssertTrue(request.url.absoluteString.hasSuffix("/api/oauth/usage"))
+            return HTTPResponse(statusCode: 200, headers: [:], body: Data(
+                #"{"five_hour":{"utilization":25,"resets_at":"2099-01-01T00:00:00.000Z"}}"#.utf8
+            ))
+        }
+        let provider = makeProvider(fixture, keychainJSON: nil, httpClient: httpClient)
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertNil(badge(snapshot.lines, "Error"))
+        XCTAssertNil(snapshot.warning)
+        XCTAssertEqual(httpClient.requests.count, 1)
+        XCTAssertEqual(fixture.keyReader.calls, [false])
     }
 
     func testPinnedInactiveOrganizationRequiresTheCurrentDesktopAccount() throws {
@@ -438,183 +463,4 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
         XCTAssertEqual(httpClient.requests.count, 1)
     }
 
-    /// The stock CLI keychain payload: one far-future OAuth token with the given scope.
-    private func cliCredentials(token: String, scope: String = "user:profile") -> String {
-        #"{"claudeAiOauth":{"accessToken":"\#(token)","expiresAt":4102444800000,"scopes":["\#(scope)"]}}"#
-    }
-
-    private func makeAuthStore(
-        _ fixture: DesktopFixture,
-        environment: [String: String] = ["CLAUDE_CONFIG_DIR": "/tmp/claude"],
-        keychainJSON: String? = nil,
-        files: FakeFiles? = nil,
-        keychain: (any KeychainAccessing)? = nil
-    ) -> ClaudeAuthStore {
-        let now = now
-        return ClaudeAuthStore(
-            environment: FakeEnvironment(environment),
-            files: files ?? fixture.files,
-            keychain: keychain ?? FakeKeychain(keychainJSON),
-            desktop: fixture.store,
-            now: { now }
-        )
-    }
-
-    @MainActor
-    private func makeProvider(
-        _ fixture: DesktopFixture,
-        environment: [String: String] = ["CLAUDE_CONFIG_DIR": "/tmp/claude"],
-        keychainJSON: String?,
-        httpClient: any HTTPClient
-    ) -> ClaudeProvider {
-        let now = now
-        return ClaudeProvider(
-            authStore: makeAuthStore(fixture, environment: environment, keychainJSON: keychainJSON),
-            usageClient: ClaudeUsageClient(httpClient: httpClient),
-            logUsageScanner: ClaudeLogFixture.scanner(home: nil),
-            now: { now },
-            pricing: { TestPricing.bundled }
-        )
-    }
-
-    private func makeFixture(
-        activeOrganization: String,
-        v2: [String: Any],
-        v1: [String: Any]? = nil,
-        requiresInteraction: Bool = false,
-        accountUUID: String? = nil
-    ) throws -> DesktopFixture {
-        let key = try ClaudeDesktopAuthStore.deriveKey(password: password)
-        let cookieHost = ".claude.ai"
-        let cookiePlaintext = Data(SHA256.hash(data: Data(cookieHost.utf8))) + Data(activeOrganization.utf8)
-        let encryptedCookie = try encrypt(cookiePlaintext, key: key)
-        let v2Data = try JSONSerialization.data(withJSONObject: v2)
-        let encryptedV2 = try encrypt(v2Data, key: key)
-        var config: [String: Any] = ["oauth:tokenCacheV2": encryptedV2.base64EncodedString()]
-        if let accountUUID { config["lastKnownAccountUuid"] = accountUUID }
-        if let v1 {
-            let v1Data = try JSONSerialization.data(withJSONObject: v1)
-            config["oauth:tokenCache"] = try encrypt(v1Data, key: key).base64EncodedString()
-        }
-        let configText = String(decoding: try JSONSerialization.data(withJSONObject: config), as: UTF8.self)
-        let configPath = home.appendingPathComponent("Library/Application Support/Claude/config.json").path
-        let cookiesPath = home.appendingPathComponent("Library/Application Support/Claude/Cookies").path
-        let files = FakeFiles([configPath: configText, cookiesPath: "sqlite-fixture"])
-        let sqlite = FakeClaudeDesktopSQLite(value: "encrypted:\(hex(encryptedCookie))")
-        let keyReader = FakeClaudeDesktopKeyReader(password: password, requiresInteraction: requiresInteraction)
-        let fixtureHome = home
-        let fixtureNow = now
-        let store = ClaudeDesktopAuthStore(
-            files: files,
-            sqlite: sqlite,
-            keyReader: keyReader,
-            homeDirectory: { fixtureHome },
-            now: { fixtureNow }
-        )
-        return DesktopFixture(store: store, files: files, keyReader: keyReader)
-    }
-
-    private func cacheKey(
-        organization: String,
-        clientID: String? = nil,
-        scopes: String = "user:profile user:inference"
-    ) -> String {
-        "\(clientID ?? self.clientID):\(organization):https://api.anthropic.com:\(scopes)"
-    }
-
-    private func tokenEntry(
-        _ token: String,
-        expiresIn seconds: TimeInterval,
-        rateLimitTier: String = "default"
-    ) -> [String: Any] {
-        [
-            "token": token,
-            "expiresAt": (now.timeIntervalSince1970 + seconds) * 1000,
-            "subscriptionType": "max",
-            "rateLimitTier": rateLimitTier
-        ]
-    }
-
-    private func encrypt(_ plaintext: Data, key: Data) throws -> Data {
-        let iv = Data(repeating: 0x20, count: kCCBlockSizeAES128)
-        var output = Data(count: plaintext.count + kCCBlockSizeAES128)
-        var outputLength = 0
-        let capacity = output.count
-        let status = output.withUnsafeMutableBytes { outputBytes in
-            plaintext.withUnsafeBytes { plaintextBytes in
-                key.withUnsafeBytes { keyBytes in
-                    iv.withUnsafeBytes { ivBytes in
-                        CCCrypt(
-                            CCOperation(kCCEncrypt),
-                            CCAlgorithm(kCCAlgorithmAES),
-                            CCOptions(kCCOptionPKCS7Padding),
-                            keyBytes.baseAddress,
-                            key.count,
-                            ivBytes.baseAddress,
-                            plaintextBytes.baseAddress,
-                            plaintext.count,
-                            outputBytes.baseAddress,
-                            capacity,
-                            &outputLength
-                        )
-                    }
-                }
-            }
-        }
-        guard status == kCCSuccess else {
-            throw ClaudeDesktopCredentialError.decryptionFailed(status)
-        }
-        output.count = outputLength
-        return Data("v10".utf8) + output
-    }
-
-    private func hex(_ data: Data) -> String {
-        data.map { String(format: "%02X", $0) }.joined()
-    }
-
-    private func badge(_ lines: [MetricLine], _ label: String) -> String? {
-        guard case .badge(_, let text, _, _) = lines.first(where: { $0.label == label }) else {
-            return nil
-        }
-        return text
-    }
-}
-
-private struct DesktopFixture {
-    var store: ClaudeDesktopAuthStore
-    var files: FakeFiles
-    var keyReader: FakeClaudeDesktopKeyReader
-}
-
-private final class FakeClaudeDesktopKeyReader: ClaudeDesktopSafeStorageKeyReading, @unchecked Sendable {
-    let password: String
-    let requiresInteraction: Bool
-    var calls: [Bool] = []
-
-    init(password: String, requiresInteraction: Bool) {
-        self.password = password
-        self.requiresInteraction = requiresInteraction
-    }
-
-    func readPassword(allowInteraction: Bool) throws -> String? {
-        calls.append(allowInteraction)
-        if requiresInteraction, !allowInteraction {
-            throw ClaudeDesktopCredentialError.permissionRequired
-        }
-        return password
-    }
-}
-
-private final class FakeClaudeDesktopSQLite: SQLiteAccessing, @unchecked Sendable {
-    let value: String?
-
-    init(value: String?) {
-        self.value = value
-    }
-
-    func queryValue(path: String, sql: String) throws -> String? {
-        value
-    }
-
-    func execute(path: String, sql: String) throws {}
 }

@@ -36,6 +36,10 @@ Claude Desktop support is read-only. OpenUsage decrypts its currently valid acce
 never changes Desktop's config, cookies, or Keychain entry. This prevents OpenUsage from invalidating
 Claude Desktop's session.
 
+Both older Desktop login caches and newer account-specific caches are supported. Account-specific
+tokens must match the account currently signed in to Desktop and the card's organization. A newer
+cache entry or deletion marker takes precedence over an older copy of the same login.
+
 macOS asks once before OpenUsage can access that Keychain item. Background refreshes never open the
 password dialog: OpenUsage first asks you to refresh manually, and choosing **Always Allow** makes later
 refreshes silent. If Desktop's short-lived token expires, open Claude Desktop so it can renew the login,
