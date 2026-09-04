@@ -80,6 +80,29 @@ final class CursorCSVParserTests: XCTestCase {
 // MARK: - Range aggregation
 
 final class CursorSpendRangeTests: XCTestCase {
+    func testGemini38FlashHighCSVUsageCountsTowardSpendWithoutUnknownWarning() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let csv = """
+        Date,Model,Max Mode,Input (w/ Cache Write),Input (w/o Cache Write),Cache Read,Output Tokens,Cost
+        \(ISO8601DateFormatter().string(from: now)),gemini-3.8-flash-high,No,1000000,1000000,1000000,1000000,Included
+        """
+        let parsed = try CursorUsageCSV.parse(csv: csv, pricing: TestPricing.bundled)
+        let row = try XCTUnwrap(parsed.rows.first)
+        // $0.75 input + $0.75 cache writes + $0.075 cache reads + $3.75 output.
+        XCTAssertEqual(try XCTUnwrap(row.imputedCostDollars), 5.325, accuracy: 1e-9)
+
+        var lines: [MetricLine] = []
+        _ = CursorUsageMapper.appendSpendLines(rows: parsed.rows, now: now, pricing: TestPricing.bundled, to: &lines)
+
+        for label in ["Today", "Last 30 Days"] {
+            XCTAssertEqual(values(lines, label), [
+                MetricValue(number: 5.33, kind: .dollars, estimated: true),
+                MetricValue(number: 4_000_000, kind: .count, label: "tokens")
+            ])
+            XCTAssertEqual(unknown(lines, label), [])
+        }
+    }
+
     func testAppendSpendLinesBucketsRowsByLocalDay() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let cal = Calendar.current

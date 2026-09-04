@@ -36,6 +36,35 @@ final class ModelPricingTests: XCTestCase {
 
     // MARK: - Resolution
 
+    func testGemini38FlashEffortAndRouterAliasesUseBundledAPIRates() throws {
+        let pricing = TestPricing.bundled
+        let expected = rates(0.75, 3.75, cacheWrite: 0.75, cacheRead: 0.075)
+        let canonical = "gemini-3.8-flash"
+        let variants = [
+            canonical, "gemini-3.8-flash-preview",
+            "gemini-3.8-flash-none", "gemini-3.8-flash-low", "gemini-3.8-flash-medium",
+            "gemini-3.8-flash-high", "gemini-3.8-flash-xhigh",
+            "gemini-3.8-flash-preview-high", "gemini-3.8-flash-xhigh-preview",
+            "Gemini 3.8 Flash (Auto)", "Gemini 3.8 Flash (Auto Balanced)",
+            "Gemini 3.8 Flash (Auto Cost)", "Gemini 3.8 Flash (Auto Intelligence)"
+        ]
+
+        for model in variants {
+            XCTAssertEqual(pricing.supplement.canonicalName(for: model), canonical, model)
+            XCTAssertEqual(pricing.resolve(model: model), expected, model)
+        }
+
+        // The supplement must work on first launch, without a live catalog refresh.
+        let offline = ModelPricing(
+            supplement: pricing.supplement, primary: PricingCatalog(), secondary: PricingCatalog()
+        )
+        XCTAssertEqual(offline.resolve(model: "gemini-3.8-flash-high"), expected)
+        for model in ["gemini-3.8-flash-bogus", "gemini-3.8-flash-high-fast", "gemini-3.8-pro-high"] {
+            XCTAssertNil(pricing.supplement.canonicalName(for: model), model)
+            XCTAssertNil(offline.resolve(model: model), model)
+        }
+    }
+
     func testModelResolutionNormalizesDatesProviderPrefixesAndSeparators() throws {
         let scenarios: [(catalogKey: String, model: String, expected: Double)] = [
             ("gpt-5.5", "gpt-5.5", 5),
