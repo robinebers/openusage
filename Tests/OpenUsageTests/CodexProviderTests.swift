@@ -490,6 +490,37 @@ final class CodexUsageMapperTests: XCTestCase {
 
 @MainActor
 final class CodexProviderTests: XCTestCase {
+    func testLiveQuotaReturnsWhileLocalHistoryIsStillRunning() async throws {
+        let home = try CodexLogFixture.makeHome(files: [:])
+        let provider = CodexProvider(
+            localHistoryWait: .zero,
+            authStore: CodexAuthStore(
+                environment: FakeEnvironment(["CODEX_HOME": "/tmp/codex-fixture"]),
+                files: FakeFiles(["/tmp/codex-fixture/auth.json": #"{"tokens":{"access_token":"fixture"}}"#]),
+                keychain: FakeKeychain()
+            ),
+            usageClient: CodexUsageClient(http: FakeHTTPClient(response: HTTPResponse(
+                statusCode: 200, headers: [:],
+                body: Data(#"{"rate_limit":{"secondary_window":{"used_percent":58,"limit_window_seconds":604800,"reset_after_seconds":3600}}}"#.utf8)
+            ))),
+            logUsageScanner: CodexLogFixture.scanner(home: home),
+            now: { Date(timeIntervalSince1970: 4_075_747_200) },
+            pricing: {
+                try? await Task.sleep(for: .milliseconds(100))
+                return ModelPricing(supplement: PricingSupplement(), primary: PricingCatalog(entries: [:]), secondary: PricingCatalog(entries: [:]))
+            }
+        )
+        let snapshot = await provider.refresh()
+        XCTAssertNil(snapshot.errorCategory)
+        XCTAssertNotNil(snapshot.warning)
+        XCTAssertNil(snapshot.usageHistory)
+        guard case .progress(_, let used, let limit, _, _, _, _) = snapshot.line(label: "Weekly") else {
+            return XCTFail("Live weekly quota was lost while local history was pending")
+        }
+        XCTAssertEqual(used, 58)
+        XCTAssertEqual(limit, 100)
+    }
+
     func testNoUsageDataBadgeIsDroppedWhenLocalLogsHaveSpend() async throws {
         let now = OpenUsageISO8601.date(from: "2026-02-20T14:30:00.000Z")!
         // The live usage API returns nothing mappable (empty body -> no metric lines)...

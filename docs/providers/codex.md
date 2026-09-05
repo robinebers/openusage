@@ -60,3 +60,12 @@ Safeguards, because a claim is irreversible:
 - Claiming is always a deliberate two-click flow behind the hover popover — nothing is ever claimed automatically.
 - Each claim targets one explicit credit (re-matched against a fresh credit list at claim time) and carries an idempotency key, so a retry after a network error can never spend a second credit.
 - If the credit was meanwhile used elsewhere (CLI or web) the popover says it's no longer available and refreshes; if your usage doesn't need a reset, Codex refuses without spending the credit and the popover says so. After a claim resets usage, the remaining Use buttons disable ("nothing to reset") until the popover is reopened.
+
+### Slow Local History
+
+Live quota refreshes wait at most two seconds for local token-history processing. If a large local
+archive takes longer, quota still updates and the card shows a history-updating notice. The scan
+continues in the background; its result is collected by a later refresh. Only one scan runs at a
+time. Previously loaded history is retained while waiting. A fresh launch may therefore show quota
+before spend/history appears. Network or authentication failures still use the normal stale-data
+handling.
