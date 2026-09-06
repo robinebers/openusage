@@ -29,5 +29,5 @@ jobs:
           days-before-close: 3
           stale-issue-label: stale
           stale-pr-label: stale
-          exempt-issue-labels: "pinned,security,approved,help wanted"
+          exempt-issue-labels: "pinned,security,approved,help wanted,keep-open"
           exempt-pr-labels: "pinned,security,keep-open,approved,gate-passed"
