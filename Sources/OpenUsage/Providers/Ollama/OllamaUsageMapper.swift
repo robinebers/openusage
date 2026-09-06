@@ -1,5 +1,23 @@
 import Foundation
 
+/// What an account response said about the plan. Distinct from a plain `String?` because "no badge" has
+/// two very different causes: an account that has no plan (ordinary) and a response OpenUsage could not
+/// read (worth a warning, since the badge otherwise just disappears).
+enum OllamaPlan: Equatable, Sendable {
+    /// A usable plan name for the header badge.
+    case named(String)
+    /// The response was readable and carries no plan.
+    case absent
+    /// The response could not be read as an account: not a JSON object, or no usable plan field.
+    case unreadable
+
+    /// The name to show, or `nil` when there is nothing to show.
+    var name: String? {
+        if case .named(let name) = self { return name }
+        return nil
+    }
+}
+
 /// Builds metric lines from the ollama.com `/api/usage` payload and the plan name from `/api/me`.
 ///
 /// The usage payload looks like:
@@ -23,9 +41,11 @@ import Foundation
 enum OllamaUsageMapper {
     /// `(plan, lines)` from the usage payload plus the optional account payload. `accountBody` may be
     /// `nil` — the plan request is best-effort and must never blank out the meters.
-    static func map(usageBody: Data, accountBody: Data?) throws -> (plan: String?, lines: [MetricLine]) {
-        let plan = accountBody.flatMap { planName(from: $0) }
-        return (plan, try usageLines(usageBody))
+    static func map(usageBody: Data, accountBody: Data?) throws -> (plan: OllamaPlan, lines: [MetricLine]) {
+        // A `nil` body means the account request itself failed, which the provider has already reported;
+        // classifying it as unreadable here would warn about the same thing twice.
+        let outcome = accountBody.map { plan(from: $0) } ?? .absent
+        return (outcome, try usageLines(usageBody))
     }
 
     /// Session, weekly, and monthly meters plus the recent-activity spend row.
@@ -58,11 +78,19 @@ enum OllamaUsageMapper {
     /// The account's plan, title-cased for the header badge ("pro" → "Pro"). Called directly, ollama.com
     /// capitalizes its JSON keys (`Plan`); the local Ollama server lowercases them when it proxies the
     /// same response, so both spellings are accepted.
-    static func planName(from body: Data) -> String? {
-        guard let root = ProviderParse.jsonObject(body) else { return nil }
-        let raw = (root["Plan"] as? String) ?? (root["plan"] as? String)
-        guard let name = raw?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty else { return nil }
-        return name.capitalized
+    ///
+    /// The three outcomes are kept apart on purpose. A body that isn't an account, or one whose plan
+    /// field has vanished or changed type, means OpenUsage can no longer read something it expects —
+    /// worth telling the user about. A plan field that is explicitly empty is just an account with no
+    /// plan, which is ordinary and must stay quiet.
+    static func plan(from body: Data) -> OllamaPlan {
+        guard let root = ProviderParse.jsonObject(body) else { return .unreadable }
+        guard let raw = root["Plan"] ?? root["plan"] else { return .unreadable }
+        guard let text = raw as? String else { return .unreadable }
+        guard let name = text.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty else {
+            return .absent
+        }
+        return .named(name.capitalized)
     }
 
     // MARK: - Private

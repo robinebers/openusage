@@ -12,6 +12,10 @@ final class OllamaProvider: ProviderRuntime {
         ]
     )
 
+    /// One notice for every way the plan can go missing, so a failed request and an unreadable response
+    /// read the same to the user — the badge is gone for a reason, and the meters are still current.
+    private static let planWarning = "Couldn't read your Ollama plan. Usage below is still up to date."
+
     let authStore: OllamaAuthStore
     let usageClient: OllamaUsageClient
     let now: @Sendable () -> Date
@@ -89,14 +93,21 @@ final class OllamaProvider: ProviderRuntime {
             // looks like an account that has no plan. Log it and carry an amber notice so the missing
             // badge is explained, while the meters below still refresh normally.
             AppLog.warn(.refresh, "ollama plan lookup failed (\(error.errorCategory.rawValue)); meters unaffected")
-            warning = "Couldn't read your Ollama plan. Usage below is still up to date."
+            warning = Self.planWarning
         }
 
         switch usage {
         case .success(let body):
             do {
                 let mapped = try OllamaUsageMapper.map(usageBody: body, accountBody: accountBody)
-                return ProviderSnapshot.make(provider: provider, plan: mapped.plan, lines: mapped.lines,
+                // A 200 carrying a body OpenUsage can't read drops the badge exactly as silently as a
+                // failed request did, so it earns the same notice. An account that simply has no plan
+                // (`.absent`) stays quiet — that is ordinary, not a fault.
+                if warning == nil, mapped.plan == .unreadable {
+                    AppLog.warn(.refresh, "ollama plan response unreadable; meters unaffected")
+                    warning = Self.planWarning
+                }
+                return ProviderSnapshot.make(provider: provider, plan: mapped.plan.name, lines: mapped.lines,
                                              refreshedAt: now(), warning: warning)
             } catch {
                 return ProviderSnapshot.error(provider: provider, error: error)
