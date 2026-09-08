@@ -198,6 +198,20 @@ final class CodexLogUsageScannerTests: XCTestCase {
         }
     }
 
+    func testReserveLinesPreserveSlugAndUseLunaPricing() {
+        let lines = [
+            CodexLogFixture.turnContext(timestamp: "2026-09-07T08:00:00.000Z", model: "gpt-reserve"),
+            CodexLogFixture.tokenCount(
+                timestamp: "2026-09-07T08:01:00.000Z",
+                last: CodexLogFixture.usage(input: 10, output: 5)
+            )
+        ].joined(separator: "\n")
+
+        let event = CodexLogUsageScanner.parseFile(Data(lines.utf8)).first
+        XCTAssertEqual(event?.model, "gpt-reserve")
+        XCTAssertEqual(event?.pricingModel, "gpt-5.6-luna")
+    }
+
     // MARK: - Child-session replay (subagents and forks)
 
     /// Epoch seconds of the child sessions' creation instant used across the replay tests.
@@ -447,6 +461,23 @@ final class CodexLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(
             scan.modelUsage?.daily.first?.models,
             [ModelUsageEntry(model: "codex-auto-review", totalTokens: 150, costUSD: 0.25)]
+        )
+    }
+
+    func testAggregateAttributesReserveUsageToSlugWhileUsingLunaPrice() {
+        let scan = CodexLogUsageScanner.aggregate(
+            events: [makeEvent(
+                "2026-05-12T08:00:00.000Z", model: "gpt-reserve",
+                pricingModel: "gpt-5.2"
+            )],
+            since: .distantPast, pricing: fixedRates()
+        )
+
+        XCTAssertEqual(scan.series.daily.first?.costUSD ?? 0, 0.25, accuracy: 0.0001)
+        XCTAssertTrue(scan.unknownModelsByDay.isEmpty)
+        XCTAssertEqual(
+            scan.modelUsage?.daily.first?.models,
+            [ModelUsageEntry(model: "gpt-reserve", totalTokens: 150, costUSD: 0.25)]
         )
     }
 
