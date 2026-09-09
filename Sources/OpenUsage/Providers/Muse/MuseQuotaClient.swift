@@ -387,22 +387,17 @@ struct MuseQuotaClient: Sendable {
 
     /// Single blocked-state indicator for the 429 quota-exhausted signal.
     /// The error supplies only a reset instant, not per-window percentages, so
-    /// we surface the subscription as blocked with the reset (P1-1) rather than
-    /// two fabricated 100% bars. The weekly period is used for the countdown
-    /// when the error's reset is present.
+    /// we surface the weekly window as blocked with the reset (P1-1) rather
+    /// than two fabricated 100% bars. The weekly window is the one whose reset
+    /// is typically ~6 days out (observed Sep 14), matching the error's date.
     static func blockedQuotaLine(resetsAt: Date?) -> MetricLine {
-        if let resetsAt {
-            let formatter = DateFormatter()
-            formatter.dateStyle = .medium
-            formatter.timeStyle = .short
-            formatter.timeZone = TimeZone.current
-            let dateStr = formatter.string(from: resetsAt)
-            return .badge(
-                label: "Quota",
-                text: "Exhausted, resets \(dateStr)",
-                colorHex: "#FF5555"
-            )
-        }
-        return .badge(label: "Quota", text: "Exhausted", colorHex: "#FF5555")
+        return .progress(
+            label: "Weekly",
+            used: 100,
+            limit: 100,
+            format: .percent,
+            resetsAt: resetsAt,
+            periodDurationMs: 7 * 24 * 3_600 * 1_000
+        )
     }
 }

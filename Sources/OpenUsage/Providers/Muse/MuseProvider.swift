@@ -49,6 +49,8 @@ final class MuseProvider: ProviderRuntime {
                 .exportingLimit("session", unit: "percent"),
             .percent(id: "muse.weekly", provider: provider, title: "Weekly")
                 .exportingLimit("weekly", unit: "percent"),
+            .percent(id: "muse.quota", provider: provider, title: "Quota")
+                .exportingLimit("quota", unit: "percent"),
             .usageTrend(provider: provider)
                 .exportingHistory(
                     scope: .machineLocal,
