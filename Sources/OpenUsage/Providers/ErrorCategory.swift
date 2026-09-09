@@ -195,8 +195,8 @@ extension OllamaUsageError: CategorizedError {
 extension MuseUsageError: CategorizedError {
     var errorCategory: ErrorCategory {
         switch self {
-        case .notLoggedIn: .notLoggedIn
-        case .credentialsUnreadable: .credentialAccess
+        case .notLoggedIn, .apiKeyMissing: .notLoggedIn
+        case .credentialsUnreadable, .apiKeySaveFailed, .apiKeyDeleteFailed: .credentialAccess
         }
     }
 }

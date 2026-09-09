@@ -50,6 +50,12 @@ if ! otool -l "$APP_BINARY" | grep -q "@executable_path/../Frameworks"; then
   install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP_BINARY"
 fi
 
+# ditto preserves whatever extended attributes the downloaded artifact carries
+# (notably com.apple.FinderInfo), which codesign rejects as detritus — strip
+# them before signing. Plain `xattr -cr` silently skips some of these, so
+# delete by name and ignore per-file errors.
+find "$FRAMEWORKS/Sparkle.framework" -exec xattr -d com.apple.FinderInfo {} + 2>/dev/null || true
+
 # Sign the framework (and its remaining nested helpers: Autoupdate + Updater.app) with our identity so
 # the whole bundle is single-team-signed for notarization. --deep is safe here precisely because the
 # XPC services (the components that must never be deep-signed) have been removed above.

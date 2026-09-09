@@ -1,9 +1,10 @@
 import Foundation
 
 /// Tracks Muse Code usage from the CLI's session logs already on this Mac: per-day spend tiles
-/// and a usage trend. Muse Code publishes no quota or spend API, so there is deliberately no
-/// usage client — the local scan is the whole provider — and no quota meters, only the
-/// trend and the Today / Yesterday / Last 30 Days tiles every local-scanner provider ships.
+/// and a usage trend, plus live Session / Weekly quota meters from the same
+/// `response.subscription_usage` event the `muse` TUI's `/usage` view renders
+/// (see `MuseQuotaClient`). Quota is best-effort and never fails the refresh:
+/// without an API key the local scan stands alone.
 ///
 /// No quick links: the provider ships none rather than guessing at Status / Dashboard URLs.
 @MainActor
@@ -16,6 +17,7 @@ final class MuseProvider: ProviderRuntime {
 
     let authStore: MuseAuthStore
     let usageScanner: MuseUsageScanner
+    let quotaClient: MuseQuotaClient
     let now: @Sendable () -> Date
     let pricing: @Sendable () async -> ModelPricing
 
@@ -30,17 +32,23 @@ final class MuseProvider: ProviderRuntime {
     init(
         authStore: MuseAuthStore = MuseAuthStore(),
         usageScanner: MuseUsageScanner = MuseUsageScanner(),
+        quotaClient: MuseQuotaClient = MuseQuotaClient(),
         now: @escaping @Sendable () -> Date = Date.init,
         pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() }
     ) {
         self.authStore = authStore
         self.usageScanner = usageScanner
+        self.quotaClient = quotaClient
         self.now = now
         self.pricing = pricing
     }
 
     var widgetDescriptors: [WidgetDescriptor] {
         [
+            .percent(id: "muse.session", provider: provider, title: "Session")
+                .exportingLimit("session", unit: "percent"),
+            .percent(id: "muse.weekly", provider: provider, title: "Weekly")
+                .exportingLimit("weekly", unit: "percent"),
             .usageTrend(provider: provider)
                 .exportingHistory(
                     scope: .machineLocal,
@@ -87,6 +95,14 @@ final class MuseProvider: ProviderRuntime {
         let scan = await usageScanner.scan(now: refreshedAt, pricing: await pricing())
 
         var lines: [MetricLine] = []
+        // Live quota first (when an API key exists), local spend after — same
+        // order as the Codex card. Best-effort: a quota failure only logs and
+        // the local scan stands alone.
+        let quota = await fetchQuotaBestEffort()
+        // User-attested label wins over the tier-derived name (which is an opaque
+        // numeric ID on the primary probe path). Off the main actor: file read.
+        let planOverride = await loadOffMainActor { [quotaClient] in quotaClient.planNameOverride() }
+        lines += quota.lines
         if let scan {
             SpendTileMapper.appendTokenUsage(
                 scan.series, to: &lines, now: refreshedAt,
@@ -111,7 +127,7 @@ final class MuseProvider: ProviderRuntime {
 
         return ProviderSnapshot.make(
             provider: provider,
-            plan: nil,
+            plan: planOverride ?? quota.planName,
             lines: lines,
             refreshedAt: refreshedAt,
             usageHistory: scan.map {
@@ -123,4 +139,34 @@ final class MuseProvider: ProviderRuntime {
             }
         )
     }
+
+    /// Session / Weekly quota meters plus the plan display name, or empty/nil
+    /// when no API key exists or the probe fails. Logged, not thrown — quota
+    /// supplements the local scan and must never fail the refresh. Secrets
+    /// stay out of the log: only the error description is recorded.
+    private func fetchQuotaBestEffort() async -> (lines: [MetricLine], planName: String?) {
+        do {
+            guard let apiKey = try quotaClient.apiKey() else { return ([], nil) }
+            let usage = try await quotaClient.fetchQuota(apiKey: apiKey)
+            return (
+                MuseQuotaClient.quotaLines(usage: usage),
+                MuseQuotaClient.planName(tier: usage.tier)
+            )
+        } catch {
+            AppLog.warn(LogTag.plugin("muse"), "quota probe failed; showing local spend only: \(error.localizedDescription)")
+            return ([], nil)
+        }
+    }
+}
+
+// MARK: - APIKeyManaging
+//
+// The Settings card manages the *explicit* key only (saved file / env); the
+// auto-detected CLI keychain entry stays a silent fallback, so the status dot
+// reflects the managed key, not effective quota availability.
+extension MuseProvider: APIKeyManaging {
+    var apiKeyStatus: APIKeyStatus { quotaClient.userStore.keyStatus() }
+    func currentAPIKey() -> String? { quotaClient.userStore.loadKey() }
+    func saveAPIKey(_ key: String) throws { try quotaClient.userStore.saveKey(key) }
+    func deleteAPIKey() throws { try quotaClient.userStore.deleteKey() }
 }

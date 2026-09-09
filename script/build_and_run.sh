@@ -196,19 +196,38 @@ fi
 # SUFeedURL in the Info.plist above; see UpdaterController).
 "$ROOT_DIR/script/embed_sparkle.sh" "$APP_BUNDLE" "$APP_BINARY" "$CODESIGN_IDENTITY" "--options runtime"
 
+# Sealing must happen outside a FileProvider-synced tree (e.g. iCloud
+# Documents): the sync daemon re-applies FinderInfo to new files, which
+# codesign rejects as detritus, so in-place stripping can never win the race.
+# Seal a scratch copy instead, then return it over the staged bundle.
+# Post-seal xattrs don't invalidate the seal — the verify below proves it.
+SIGN_STAGE="$(mktemp -d "${TMPDIR:-/tmp}/openusage-sign.XXXXXX")"
+trap 'rm -rf "$SIGN_STAGE"' EXIT
+rm -rf "$SIGN_STAGE/$APP_DISPLAY.app"
+ditto "$APP_BUNDLE" "$SIGN_STAGE/$APP_DISPLAY.app"
+SIGNED_BUNDLE="$SIGN_STAGE/$APP_DISPLAY.app"
+# Delete by name and ignore per-file errors: plain `xattr -cr` silently
+# skips some entries.
+find "$SIGNED_BUNDLE" -exec xattr -d com.apple.FinderInfo {} + 2>/dev/null || true
+
+STAGED_CLI="$SIGNED_BUNDLE/Contents/Helpers/openusage"
 if [ -n "$CODESIGN_IDENTITY" ]; then
-  /usr/bin/codesign --force --options runtime --sign "$CODESIGN_IDENTITY" "$CLI_BINARY" >/dev/null
+  /usr/bin/codesign --force --options runtime --sign "$CODESIGN_IDENTITY" "$STAGED_CLI" >/dev/null
   # Not --deep: the Sparkle framework is already signed above and must keep that signature.
   /usr/bin/codesign --force --options runtime \
     --sign "$CODESIGN_IDENTITY" \
     --entitlements "$SIGN_ENTITLEMENTS" \
-    "$APP_BUNDLE" >/dev/null
+    "$SIGNED_BUNDLE" >/dev/null
   echo "==> signed with: $CODESIGN_IDENTITY"
 else
-  /usr/bin/codesign --force --sign - "$CLI_BINARY" >/dev/null
-  /usr/bin/codesign --force --sign - --entitlements "$SIGN_ENTITLEMENTS" "$APP_BUNDLE" >/dev/null
+  /usr/bin/codesign --force --sign - "$STAGED_CLI" >/dev/null
+  /usr/bin/codesign --force --sign - --entitlements "$SIGN_ENTITLEMENTS" "$SIGNED_BUNDLE" >/dev/null
   echo "WARNING: no Apple Development identity found; ad-hoc signed." >&2
 fi
+rm -rf "$APP_BUNDLE"
+ditto "$SIGNED_BUNDLE" "$APP_BUNDLE"
+/usr/bin/codesign --verify --deep "$APP_BUNDLE"
+echo "==> sealed $APP_BUNDLE (verified after return)"
 
 launch_app() {
   /usr/bin/open -n "$APP_BUNDLE"

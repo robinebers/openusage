@@ -7,6 +7,17 @@ enum MuseUsageError: Error, LocalizedError, Equatable {
     /// `auth.json` exists but could not be read — broken storage, not logout. `detail` carries
     /// the underlying cause for the log file; the user-facing description stays friendly.
     case credentialsUnreadable(detail: String)
+    case apiKeyMissing
+    case apiKeySaveFailed
+    case apiKeyDeleteFailed
+
+    init(_ failure: UserAPIKeyStore.Failure) {
+        switch failure {
+        case .missingKey: self = .apiKeyMissing
+        case .saveFailed: self = .apiKeySaveFailed
+        case .deleteFailed: self = .apiKeyDeleteFailed
+        }
+    }
 
     var errorDescription: String? {
         switch self {
@@ -14,6 +25,12 @@ enum MuseUsageError: Error, LocalizedError, Equatable {
             return "Muse Code not detected. Log in with `muse login` or use Muse Code first."
         case .credentialsUnreadable:
             return "Couldn't read Muse Code's auth.json. Check its file permissions or run `muse login` again."
+        case .apiKeyMissing:
+            return "No Muse API key. Paste one in Settings or log in with `muse login`."
+        case .apiKeySaveFailed:
+            return "Couldn't save the Muse API key to ~/.config/openusage/muse.json."
+        case .apiKeyDeleteFailed:
+            return "Couldn't remove the saved Muse API key."
         }
     }
 }
@@ -21,7 +38,8 @@ enum MuseUsageError: Error, LocalizedError, Equatable {
 /// Reads the Muse Code credential already on the machine. Local-only — never the network.
 /// `META_API_KEY` always wins (muse CLI behavior); otherwise the `auth.json` written by
 /// `muse login` or `muse auth set --api-key-stdin`. Presence only: secrets are never returned
-/// or logged, and there is no usage API to spend them on — the provider is logs-only.
+/// or logged. (The quota probe's bearer lives in `MuseQuotaClient`, which adds an explicit
+/// saved-key override on top of the same env var plus the CLI keychain entry.)
 struct MuseAuthStore: Sendable {
     var files: TextFileAccessing
     var environment: EnvironmentReading

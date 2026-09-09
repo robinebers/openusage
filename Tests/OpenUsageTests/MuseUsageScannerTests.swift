@@ -276,6 +276,13 @@ final class MuseProviderRefreshTests: XCTestCase {
             usageScanner: MuseUsageScanner(
                 environment: environment, homeDirectory: { home },
                 incrementalScanner: IncrementalJSONLScanner()),
+            quotaClient: MuseQuotaClient(
+                http: RoutingHTTPClient { _ in
+                    XCTFail("quota probe must not run without a key in scanner tests")
+                    return HTTPResponse(statusCode: 500, headers: [:], body: Data())
+                },
+                keychain: FakeKeychain(nil),
+                environment: FakeEnvironment([:])),
             now: { now },
             pricing: { pricing }
         )
@@ -350,7 +357,14 @@ final class MuseProviderRefreshTests: XCTestCase {
             usageScanner: MuseUsageScanner(
                 environment: FakeEnvironment([:]),
                 homeDirectory: { URL(fileURLWithPath: "/nonexistent") },
-                incrementalScanner: IncrementalJSONLScanner())
+                incrementalScanner: IncrementalJSONLScanner()),
+            quotaClient: MuseQuotaClient(
+                http: RoutingHTTPClient { _ in
+                    XCTFail("quota probe must not run without a key in scanner tests")
+                    return HTTPResponse(statusCode: 500, headers: [:], body: Data())
+                },
+                keychain: FakeKeychain(nil),
+                environment: FakeEnvironment([:]))
         )
         let hasCredentials = await provider.hasLocalCredentials()
         XCTAssertFalse(hasCredentials)
