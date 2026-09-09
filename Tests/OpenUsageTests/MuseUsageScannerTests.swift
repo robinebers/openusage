@@ -269,6 +269,17 @@ final class MuseProviderRefreshTests: XCTestCase {
     private func makeProvider(home: URL, files: [String: String], now: Date) -> MuseProvider {
         let environment = FakeEnvironment([:])
         let pricing = pricing()
+        // Inject a fake UserAPIKeyStore so the test does not read the real
+        // ~/.config/openusage/muse.json. Without this, a developer with a
+        // saved key would trigger the quota probe and fail the
+        // "must not run without a key" assertion (P1-7).
+        let fakeUserStore = UserAPIKeyStore(
+            configPaths: MuseQuotaClient.userConfigPaths,
+            environmentNames: MuseQuotaClient.userEnvironmentNames,
+            files: FakeFiles(),
+            environment: FakeEnvironment([:]),
+            makeError: { MuseUsageError($0) }
+        )
         return MuseProvider(
             authStore: MuseAuthStore(
                 files: FakeFiles(files), environment: environment,
@@ -282,7 +293,8 @@ final class MuseProviderRefreshTests: XCTestCase {
                     return HTTPResponse(statusCode: 500, headers: [:], body: Data())
                 },
                 keychain: FakeKeychain(nil),
-                environment: FakeEnvironment([:])),
+                environment: FakeEnvironment([:]),
+                userStore: fakeUserStore),
             now: { now },
             pricing: { pricing }
         )
@@ -364,7 +376,14 @@ final class MuseProviderRefreshTests: XCTestCase {
                     return HTTPResponse(statusCode: 500, headers: [:], body: Data())
                 },
                 keychain: FakeKeychain(nil),
-                environment: FakeEnvironment([:]))
+                environment: FakeEnvironment([:]),
+                userStore: UserAPIKeyStore(
+                    configPaths: MuseQuotaClient.userConfigPaths,
+                    environmentNames: MuseQuotaClient.userEnvironmentNames,
+                    files: FakeFiles(),
+                    environment: FakeEnvironment([:]),
+                    makeError: { MuseUsageError($0) }
+                ))
         )
         let hasCredentials = await provider.hasLocalCredentials()
         XCTAssertFalse(hasCredentials)

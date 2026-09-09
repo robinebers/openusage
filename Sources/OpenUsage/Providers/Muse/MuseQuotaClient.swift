@@ -7,11 +7,19 @@ import Foundation
 /// page-load tokens, authenticated by the CLI's own keychain `api_key`.
 struct MuseQuotaUsage: Sendable, Equatable {
     var tier: String?
-    var weeklyUsedPercent: Double
-    var windowUsedPercent: Double
+    // Percentages are optional: nil means unknown/unavailable, not 0%.
+    // This preserves the distinction between a genuine 0% reading and a
+    // missing field in an undocumented response (P2-6).
+    var weeklyUsedPercent: Double?
+    var windowUsedPercent: Double?
     var weeklyResetsAt: Date?
     var windowResetsAt: Date?
     var windowDurationMinutes: Int?
+    /// Set when the probe returns 429 quota-exhausted with a reset time but
+    /// without per-window percentages. The dashboard should surface the blocked
+    /// state with the reset, not two fabricated 100% bars (P1-1).
+    var isQuotaBlocked: Bool = false
+    var blockedResetsAt: Date?
 }
 
 enum MuseQuotaError: Error, LocalizedError, Equatable {
@@ -19,6 +27,7 @@ enum MuseQuotaError: Error, LocalizedError, Equatable {
     case requestFailed(Int)
     case missingUsageEvent
     case invalidResponse
+    case quotaExhausted(resetsAt: Date?)
 
     var errorDescription: String? {
         switch self {
@@ -30,6 +39,14 @@ enum MuseQuotaError: Error, LocalizedError, Equatable {
             return "Muse quota response carried no usage event."
         case .invalidResponse:
             return "Muse quota response was not usable."
+        case .quotaExhausted(let resetsAt):
+            if let resetsAt {
+                let fmt = DateFormatter()
+                fmt.dateStyle = .medium
+                fmt.timeStyle = .short
+                return "Muse quota exhausted, resets \(fmt.string(from: resetsAt))."
+            }
+            return "Muse quota exhausted."
         }
     }
 }
@@ -40,6 +57,7 @@ extension MuseQuotaError: CategorizedError {
         case .unauthorized: .authExpired
         case .requestFailed(let status): ErrorCategory.http(status)
         case .missingUsageEvent, .invalidResponse: .decoding
+        case .quotaExhausted: .rateLimited
         }
     }
 }
@@ -182,9 +200,9 @@ struct MuseQuotaClient: Sendable {
             // exhausted-quota signal, not a transient probe rate limit.
             // The API returns JSON `{"error":{"code":"rate_limit_exceeded",
             // "message":"Subscription quota exhausted…","resets_at":…}}`
-            // instead of the SSE stream. Surface it as 100% used with the
-            // reset instant so the dashboard shows "Session 100% / Weekly
-            // 100% (resets Sep 14)" rather than "no data" / missing resources.
+            // instead of the SSE stream. Do not fabricate 100% for both
+            // windows from a single reset (P1-1): surface the blocked state
+            // with the reset so the provider can render it accurately.
             if response.statusCode == 429,
                let text = String(data: response.body, encoding: .utf8),
                let data = text.data(using: .utf8),
@@ -193,20 +211,9 @@ struct MuseQuotaClient: Sendable {
                let code = error["code"] as? String, code == "rate_limit_exceeded",
                let message = error["message"] as? String,
                message.lowercased().contains("quota") {
-                let resetsAtSeconds = ProviderParse.number(error["resets_at"])
-                let resetsAt = resetsAtSeconds.map { Date(timeIntervalSince1970: $0) }
-                // Both windows are exhausted when the subscription is out;
-                // weekly reset is the authoritative date from the error,
-                // window reset reuses it (period is still the 5h default in
-                // quotaLines). Tier is opaque/unknown here.
-                return MuseQuotaUsage(
-                    tier: nil,
-                    weeklyUsedPercent: 100,
-                    windowUsedPercent: 100,
-                    weeklyResetsAt: resetsAt,
-                    windowResetsAt: resetsAt,
-                    windowDurationMinutes: 300
-                )
+                 let resetsAtSeconds = ProviderParse.number(error["resets_at"])
+                 let resetsAt = resetsAtSeconds.map { Date(timeIntervalSince1970: $0) }
+                 throw MuseQuotaError.quotaExhausted(resetsAt: resetsAt)
             }
             if response.statusCode == 401 || response.statusCode == 403 {
                 throw MuseQuotaError.unauthorized
@@ -219,9 +226,12 @@ struct MuseQuotaClient: Sendable {
         return try Self.parseUsageEvent(from: text)
     }
 
-    /// First `response.subscription_usage` SSE event in a stream. Stops at the
-    /// event instead of reading to `[DONE]` — provider polls run under tight
-    /// timeouts.
+    /// First `response.subscription_usage` SSE event in a stream.
+    /// NOTE: The current `HTTPClient` (`URLSession.data(for:)`) buffers the
+    /// entire response before `parseUsageEvent` sees it (P1-2). The early-exit
+    /// here saves parsing but not network time; a true streaming transport
+    /// would be needed to cancel after the first usage event. The provider
+    /// timeout (15s) still bounds it.
     static func parseUsageEvent(from sse: String) throws -> MuseQuotaUsage {
         var event = ""
         for rawLine in sse.components(separatedBy: "\n") {
@@ -252,16 +262,37 @@ struct MuseQuotaClient: Sendable {
         else {
             throw MuseQuotaError.invalidResponse
         }
-        let weekly = subscription["weekly"] as? [String: Any] ?? [:]
-        let window = subscription["window"] as? [String: Any] ?? [:]
+        // Require at least one window's used_percent to be present and finite.
+        // An empty subscription `{}` must not become two 0% meters (P2-6).
+        // We treat each window independently: a valid window emits a meter,
+        // a missing/invalid window stays nil and is not rendered.
+        let weeklyDict = subscription["weekly"] as? [String: Any]
+        let windowDict = subscription["window"] as? [String: Any]
+        let weeklyUsedRaw = weeklyDict?["used_percent"].flatMap(ProviderParse.number)
+        let windowUsedRaw = windowDict?["used_percent"].flatMap(ProviderParse.number)
+        // At least one must be present and finite.
+        let hasWeekly = weeklyUsedRaw?.isFinite == true
+        let hasWindow = windowUsedRaw?.isFinite == true
+        guard hasWeekly || hasWindow else {
+            throw MuseQuotaError.invalidResponse
+        }
+        let weeklyUsed: Double? = hasWeekly ? weeklyUsedRaw : nil
+        let windowUsed: Double? = hasWindow ? windowUsedRaw : nil
+        let weeklyResets = weeklyDict?["resets_at"].flatMap(epochDate)
+        let windowResets = windowDict?["resets_at"].flatMap(epochDate)
+        // window_duration_mins: keep nil if missing/zero so the 300 fallback works (P2-6).
+        let windowDuration: Int? = {
+            if let v = windowDict?["window_duration_mins"] as? Int, v > 0 { return v }
+            if let n = windowDict?["window_duration_mins"].flatMap(ProviderParse.number), n > 0 { return Int(n) }
+            return nil
+        }()
         return MuseQuotaUsage(
             tier: subscription["tier"] as? String,
-            weeklyUsedPercent: ProviderParse.number(weekly["used_percent"]) ?? 0,
-            windowUsedPercent: ProviderParse.number(window["used_percent"]) ?? 0,
-            weeklyResetsAt: epochDate(weekly["resets_at"]),
-            windowResetsAt: epochDate(window["resets_at"]),
-            windowDurationMinutes: (window["window_duration_mins"] as? Int)
-                ?? Int(ProviderParse.number(window["window_duration_mins"]) ?? 0)
+            weeklyUsedPercent: weeklyUsed,
+            windowUsedPercent: windowUsed,
+            weeklyResetsAt: weeklyResets,
+            windowResetsAt: windowResets,
+            windowDurationMinutes: windowDuration
         )
     }
 
@@ -321,25 +352,57 @@ struct MuseQuotaClient: Sendable {
 
     /// Session + Weekly percent meters for the snapshot. Periods mirror the
     /// event: the event's own window duration, else the 5-hour rolling default.
+    /// Only emits a meter when its percentage is present (nil = unknown, not 0).
     static func quotaLines(usage: MuseQuotaUsage) -> [MetricLine] {
-        let sessionPeriodMs = (usage.windowDurationMinutes ?? 300) * 60 * 1_000
-        return [
-            .progress(
+        // Blocked state is handled via MuseQuotaError.quotaExhausted, not via
+        // fabricated 100% values here. This keeps the two-window percentages
+        // honest (P1-1).
+        if usage.isQuotaBlocked {
+            return []
+        }
+        var lines: [MetricLine] = []
+        if let windowUsed = usage.windowUsedPercent {
+            let sessionPeriodMs = (usage.windowDurationMinutes ?? 300) * 60 * 1_000
+            lines.append(.progress(
                 label: "Session",
-                used: usage.windowUsedPercent,
+                used: windowUsed,
                 limit: 100,
                 format: .percent,
                 resetsAt: usage.windowResetsAt,
                 periodDurationMs: sessionPeriodMs
-            ),
-            .progress(
+            ))
+        }
+        if let weeklyUsed = usage.weeklyUsedPercent {
+            lines.append(.progress(
                 label: "Weekly",
-                used: usage.weeklyUsedPercent,
+                used: weeklyUsed,
                 limit: 100,
                 format: .percent,
                 resetsAt: usage.weeklyResetsAt,
                 periodDurationMs: 7 * 24 * 3_600 * 1_000
-            ),
-        ]
+            ))
+        }
+        return lines
+    }
+
+    /// Single blocked-state indicator for the 429 quota-exhausted signal.
+    /// The error supplies only a reset instant, not per-window percentages, so
+    /// we surface the subscription as blocked with the reset (P1-1) rather than
+    /// two fabricated 100% bars. The weekly period is used for the countdown
+    /// when the error's reset is present.
+    static func blockedQuotaLine(resetsAt: Date?) -> MetricLine {
+        if let resetsAt {
+            let formatter = DateFormatter()
+            formatter.dateStyle = .medium
+            formatter.timeStyle = .short
+            formatter.timeZone = TimeZone.current
+            let dateStr = formatter.string(from: resetsAt)
+            return .badge(
+                label: "Quota",
+                text: "Exhausted, resets \(dateStr)",
+                colorHex: "#FF5555"
+            )
+        }
+        return .badge(label: "Quota", text: "Exhausted", colorHex: "#FF5555")
     }
 }

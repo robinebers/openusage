@@ -144,14 +144,31 @@ final class MuseProvider: ProviderRuntime {
     /// when no API key exists or the probe fails. Logged, not thrown — quota
     /// supplements the local scan and must never fail the refresh. Secrets
     /// stay out of the log: only the error description is recorded.
+    /// The first keychain read is off the main actor so a locked keychain
+    /// (up to 5s `security` wait) does not freeze the UI (P1-3).
     private func fetchQuotaBestEffort() async -> (lines: [MetricLine], planName: String?) {
         do {
-            guard let apiKey = try quotaClient.apiKey() else { return ([], nil) }
+            // Move the blocking keychain/file read off the main actor.
+            let apiKey: String? = try await loadOffMainActor { [quotaClient] in
+                try quotaClient.apiKey()
+            }
+            guard let apiKey else { return ([], nil) }
             let usage = try await quotaClient.fetchQuota(apiKey: apiKey)
             return (
                 MuseQuotaClient.quotaLines(usage: usage),
                 MuseQuotaClient.planName(tier: usage.tier)
             )
+        } catch let error as MuseQuotaError {
+            // Quota exhausted is a known blocked state, not a transient error.
+            // Surface it as a single 100% Quota meter with the reset so the
+            // dashboard shows the blocked state without fabricating two 100%
+            // windows (P1-1).
+            if case .quotaExhausted(let resetsAt) = error {
+                AppLog.info(LogTag.plugin("muse"), "quota exhausted, resets at \(String(describing: resetsAt))")
+                return ([MuseQuotaClient.blockedQuotaLine(resetsAt: resetsAt)], nil)
+            }
+            AppLog.warn(LogTag.plugin("muse"), "quota probe failed; showing local spend only: \(error.localizedDescription)")
+            return ([], nil)
         } catch {
             AppLog.warn(LogTag.plugin("muse"), "quota probe failed; showing local spend only: \(error.localizedDescription)")
             return ([], nil)
