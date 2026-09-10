@@ -61,14 +61,22 @@ final class MuseProvider: ProviderRuntime {
     }
 
     func hasLocalCredentials() async -> Bool {
-        // Same sources as `refresh()`: an exported `META_API_KEY`, the local `auth.json`, or any
-        // Muse session log already on disk. Local-only, off the main actor. Unreadable storage is
-        // itself a Muse footprint — enable the provider so `refresh()` can surface the error.
+        // Same sources as `refresh()`: an exported `META_API_KEY`, the local `auth.json`,
+        // the saved `muse.json` quota key file, or any Muse session log already on disk.
+        // Local-only, off the main actor. Unreadable storage is itself a Muse footprint
+        // — enable the provider so `refresh()` can surface the error. P2-5: previously
+        // omitted the saved quota file, so file-only quota setups didn't satisfy detection.
         do {
             if try await loadOffMainActor({ [authStore] in try authStore.credential() }) != nil {
                 return true
             }
         } catch {
+            return true
+        }
+        // Saved quota key file (shared with Go) — file-only quota without auth.json
+        // should still count as a credential for detection, and `refresh()` can use
+        // it via `quotaClient.apiKey()` even when `authStore` is nil.
+        if await loadOffMainActor({ [quotaClient] in quotaClient.userStore.loadKey() != nil }) {
             return true
         }
         return await usageScanner.hasLocalUsage()
