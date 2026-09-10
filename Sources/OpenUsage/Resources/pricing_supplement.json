@@ -1,6 +1,6 @@
 {
   "$comment": "OpenUsage pricing supplement. Prices Cursor-native models that no public catalog carries, supplies fast-variant multipliers the catalogs omit, and maps provider log/CSV model slugs to canonical pricing keys (LiteLLM keys, models.dev ids, or entries in this file). Cursor Router rows name the routed model in prose instead of a slug ('Opus 5 (Auto Balanced)'), so those labels get alias rules too. Published to gh-pages by .github/workflows/pricing-supplement.yml on every change, so installed apps pick edits up within about an hour - no release needed. Rates are USD per million tokens. Sources: https://cursor.com/docs/models-and-pricing.md for Cursor-native entries; https://platform.claude.com/docs/en/about-claude/pricing for Claude Fable 5.1; https://developers.openai.com/api/docs/models/daybreak-blue-latest and https://developers.openai.com/api/docs/pricing for Daybreak aliases and rates; https://docs.z.ai/guides/overview/pricing for GLM 5.3.",
-  "updated_at": "2026-09-04T11:08:53Z",
+  "updated_at": "2026-09-10T18:58:32Z",
   "pricing": {
     "auto": {
       "input_per_million": 1.25,
@@ -96,6 +96,13 @@
       "cache_write_per_million": 3.0,
       "cache_read_per_million": 0.3,
       "output_per_million": 15.0
+    },
+    "muse-spark-1.3": {
+      "$comment": "Cursor's published Muse Spark 1.3 rates, also confirmed by live LiteLLM and models.dev. Bundled catalogs do not carry it yet. All effort levels share these rates, with no long-context surcharge. There is no separate cache-write charge, so cache writes bill at the input rate. Contributor variants have separate pricing and must not alias here.",
+      "input_per_million": 1.25,
+      "cache_write_per_million": 1.25,
+      "cache_read_per_million": 0.15,
+      "output_per_million": 4.25
     },
     "claude-opus-4-7-fast": {
       "$comment": "Cursor bills Opus 4.7 fast mode at these rates; the models.dev entry carries higher (stale) numbers, so this override wins.",
@@ -224,6 +231,7 @@
     { "pattern": "^kimi-k2\\.7(?:-code)?$", "canonical": "kimi-k2.7-code" },
     { "pattern": "^kimi-k2p7(?:-code)?$", "canonical": "kimi-k2.7-code" },
     { "pattern": "^kimi-k3(?:-code)?(?:-(?:low|medium|high|xhigh|max))?$", "canonical": "kimi-k3" },
+    { "pattern": "^muse-spark-1\\.3(?:-(?:minimal|low|medium|high|xhigh|extra-high|max))?$", "canonical": "muse-spark-1.3" },
     { "pattern": "^claude-4\\.5-haiku(?:-thinking)?$", "canonical": "claude-haiku-4-5" },
     { "pattern": "^claude-4\\.5-opus-(?:low|medium|high)(?:-thinking)?$", "canonical": "claude-opus-4-5" },
     { "pattern": "^claude-4-sonnet-1m(?:-thinking)?$", "canonical": "claude-4-sonnet-1m" },

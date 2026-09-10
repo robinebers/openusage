@@ -36,6 +36,35 @@ final class ModelPricingTests: XCTestCase {
 
     // MARK: - Resolution
 
+    func testMuseSpark13EffortsShareBundledRates() {
+        let pricing = TestPricing.bundled
+        let expected = rates(1.25, 4.25, cacheWrite: 1.25, cacheRead: 0.15)
+        let canonical = "muse-spark-1.3"
+        let variants = [
+            canonical, "muse-spark-1.3-minimal", "muse-spark-1.3-low",
+            "muse-spark-1.3-medium", "muse-spark-1.3-high", "muse-spark-1.3-xhigh",
+            "muse-spark-1.3-extra-high", "muse-spark-1.3-max"
+        ]
+        let offline = ModelPricing(
+            supplement: pricing.supplement, primary: PricingCatalog(), secondary: PricingCatalog()
+        )
+
+        for model in variants {
+            XCTAssertEqual(pricing.supplement.canonicalName(for: model), canonical, model)
+            XCTAssertEqual(pricing.resolve(model: model), expected, model)
+            XCTAssertEqual(offline.resolve(model: model), expected, model)
+        }
+
+        // Contributor models have separate rates; unknown versions and speed tiers must not alias.
+        for model in [
+            "muse-spark-1.3-contributor", "muse-spark-1.3-contributor-high",
+            "muse-spark-1.4-high", "muse-spark-1x3-high", "muse-spark-1.3-high-fast"
+        ] {
+            XCTAssertNil(pricing.supplement.canonicalName(for: model), model)
+            XCTAssertNil(offline.resolve(model: model), model)
+        }
+    }
+
     func testAntigravityDisplayLabelsAndPlaceholderIDsResolveToCatalogModels() {
         let pricing = TestPricing.bundled
         let expectations = [
