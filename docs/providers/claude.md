@@ -57,6 +57,10 @@ Sessions that do not identify their account, including usage from pi and third-p
 Conductor, count as long as OpenUsage has never seen more than one Claude account. Once multiple
 accounts are discovered, unattributed usage is left out instead of being assigned to the wrong card.
 
+Claude subagents, including agents nested inside workflows, inherit their parent session's account.
+Their usage appears while they run and is included in the same spend tiles. Existing workflow logs
+are picked up on the next refresh; there is no need to rerun the workflow or clear the usage cache.
+
 Local spend does not require a Claude OAuth login. If Claude Code uses an API-key gateway instead, the spend tiles and usage trend still load from its session logs; the Claude header shows **Not logged in** because the live Session and Weekly meters still require a Claude subscription login.
 
 ## Troubleshooting
