@@ -1,9 +1,12 @@
 import SwiftUI
 
-/// Fixed popover navigation chrome. It always reads the destination screen, so both pages mounted
-/// during a slide draw the same bar and only the scrolling content moves.
+/// A screen's navigation chrome. It reads the screen it belongs to, not the destination, so during a
+/// slide each mounted page carries its own bar and the bar travels with its content.
 struct PopoverTopBar: View {
     let layout: LayoutStore
+    /// The screen this bar belongs to — the page that hosts it, so a switch can't put the incoming
+    /// screen's bar over the outgoing one.
+    let screen: PopoverScreen
     let height: CGFloat
     let horizontalPadding: CGFloat
     let onResetAll: () -> Void
@@ -12,7 +15,7 @@ struct PopoverTopBar: View {
 
     @ViewBuilder
     var body: some View {
-        switch layout.screen {
+        switch screen {
         case .dashboard:
             EmptyView()
         case .customize:

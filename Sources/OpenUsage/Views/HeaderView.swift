@@ -28,8 +28,8 @@ struct HeaderView: View {
     @Environment(UpdaterController.self) private var updater
     @Environment(PopoverTransparencyStore.self) private var transparency
     @Environment(\.colorScheme) private var colorScheme
-    /// The current screen. The footer is fixed chrome keyed off `layout.screen` (it no longer slides
-    /// per-page), so this control shows only when that's `.dashboard` and swaps in place on a switch.
+    /// The screen this footer belongs to — each page carries its own — so the control shows on the
+    /// dashboard and slides away with it.
     let screen: PopoverScreen
 
     /// Control height, so the capsule matches the footer's other chrome.

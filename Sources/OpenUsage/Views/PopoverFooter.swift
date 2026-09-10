@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Fixed popover footer chrome: app identity, refresh status, dashboard actions, and copy confirmation.
-/// It uses the destination screen so both pages mounted during a slide draw the same footer.
+/// A screen's footer chrome: app identity, refresh status, dashboard actions, and copy confirmation.
+/// It uses the screen it belongs to, so during a slide each mounted page draws its own footer.
 struct PopoverFooter: View {
     let screen: PopoverScreen
     let layout: LayoutStore
