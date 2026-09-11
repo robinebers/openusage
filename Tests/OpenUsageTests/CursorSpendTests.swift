@@ -80,6 +80,39 @@ final class CursorCSVParserTests: XCTestCase {
 // MARK: - Range aggregation
 
 final class CursorSpendRangeTests: XCTestCase {
+    func testMuseSpark13EffortsCountTowardSpendAndShareOneBreakdownWithoutWarnings() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let date = ISO8601DateFormatter().string(from: now)
+        let models = [
+            "muse-spark-1.3", "muse-spark-1.3-minimal", "muse-spark-1.3-low",
+            "muse-spark-1.3-medium", "muse-spark-1.3-high", "muse-spark-1.3-xhigh",
+            "muse-spark-1.3-extra-high", "muse-spark-1.3-max"
+        ]
+        let csv = "Date,Model,Max Mode,Input (w/ Cache Write),Input (w/o Cache Write),Cache Read,Output Tokens,Cost\n"
+            + models.map { "\(date),\($0),No,1000000,1000000,1000000,1000000,Included" }.joined(separator: "\n")
+        let parsed = try CursorUsageCSV.parse(csv: csv, pricing: TestPricing.bundled)
+        XCTAssertEqual(parsed.rows.count, models.count)
+        for row in parsed.rows {
+            // $1.25 input + $1.25 cache writes + $0.15 cache reads + $4.25 output.
+            XCTAssertEqual(try XCTUnwrap(row.imputedCostDollars), 6.9, accuracy: 1e-9, row.model)
+        }
+
+        var lines: [MetricLine] = []
+        _ = CursorUsageMapper.appendSpendLines(rows: parsed.rows, now: now, pricing: TestPricing.bundled, to: &lines)
+        for label in ["Today", "Last 30 Days"] {
+            XCTAssertEqual(values(lines, label), [
+                MetricValue(number: 55.2, kind: .dollars, estimated: true),
+                MetricValue(number: 32_000_000, kind: .count, label: "tokens")
+            ])
+            XCTAssertEqual(unknown(lines, label), [])
+            let breakdown = try XCTUnwrap(modelBreakdown(lines, label))
+            XCTAssertEqual(breakdown.models.map(\.model), ["muse-spark-1.3"])
+            XCTAssertEqual(breakdown.models.first?.totalTokens, 32_000_000)
+            XCTAssertEqual(breakdown.models.first?.costUSD, 55.2)
+            XCTAssertEqual(Set(breakdown.models.first?.variants?.map(\.model) ?? []), Set(models))
+        }
+    }
+
     func testGemini38FlashHighCSVUsageCountsTowardSpendWithoutUnknownWarning() throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let csv = """
