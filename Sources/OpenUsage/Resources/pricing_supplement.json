@@ -1,6 +1,6 @@
 {
   "$comment": "OpenUsage pricing supplement. Prices Cursor-native models that no public catalog carries, supplies fast-variant multipliers the catalogs omit, and maps provider log/CSV model slugs to canonical pricing keys (LiteLLM keys, models.dev ids, or entries in this file). Cursor Router rows name the routed model in prose instead of a slug ('Opus 5 (Auto Balanced)'), so those labels get alias rules too. Published to gh-pages by .github/workflows/pricing-supplement.yml on every change, so installed apps pick edits up within about an hour - no release needed. Rates are USD per million tokens. Sources: https://cursor.com/docs/models-and-pricing.md for Cursor-native entries; https://platform.claude.com/docs/en/about-claude/pricing for Claude Fable 5.1; https://developers.openai.com/api/docs/models/daybreak-blue-latest and https://developers.openai.com/api/docs/pricing for Daybreak aliases and rates; https://docs.z.ai/guides/overview/pricing for GLM 5.3.",
-  "updated_at": "2026-09-04T11:08:53Z",
+  "updated_at": "2026-09-11T17:54:01Z",
   "pricing": {
     "auto": {
       "input_per_million": 1.25,
@@ -217,7 +217,8 @@
     { "pattern": "^(?:cursor-)?grok-4[.-]6-fast(?:-(?:low|medium|high|xhigh))?$", "canonical": "grok-4.6-fast" },
     { "pattern": "^(?:cursor-)?grok-4[.-]6(?:-(?:low|medium|high|xhigh))?-fast$", "canonical": "grok-4.6-fast" },
     { "pattern": "^(?:cursor-)?grok-4[.-]6(?:-(?:build|low|medium|high|xhigh))?$", "canonical": "grok-4.6" },
-    { "pattern": "^grok-bot-(?:automation|cua|default)$", "canonical": "grok-4.6" },
+    { "$comment": "Cursor event list prices reported in #1229 track Grok 4.6 Fast for default and base for automation. grok-bot-cua stays unaliased until its own rates are confirmed.", "pattern": "^grok-bot-default$", "canonical": "grok-4.6-fast" },
+    { "pattern": "^grok-bot-automation$", "canonical": "grok-4.6" },
     { "pattern": "^(?:cursor-)?grok-4[.-]5-fast(?:-(?:low|medium|high|xhigh))?$", "canonical": "grok-4.5-fast" },
     { "pattern": "^(?:cursor-)?grok-4[.-]5(?:-(?:low|medium|high|xhigh))?-fast$", "canonical": "grok-4.5-fast" },
     { "pattern": "^(?:cursor-)?grok-4[.-]5(?:-(?:build|low|medium|high|xhigh))?$", "canonical": "grok-4.5" },
