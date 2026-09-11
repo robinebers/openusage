@@ -63,6 +63,10 @@ checks each parent once per refresh and reuses unchanged ownership results, incl
 across refreshes. Failed reads are retried on the next refresh, and large ownership scans stop
 when the refresh is cancelled.
 
+Claude subagents, including agents nested inside workflows, inherit their parent session's account.
+Their usage appears while they run and is included in the same spend tiles. Existing workflow logs
+are picked up on the next refresh; there is no need to rerun the workflow or clear the usage cache.
+
 Local spend does not require a Claude OAuth login. If Claude Code uses an API-key gateway instead, the spend tiles and usage trend still load from its session logs; the Claude header shows **Not logged in** because the live Session and Weekly meters still require a Claude subscription login.
 
 ## Troubleshooting

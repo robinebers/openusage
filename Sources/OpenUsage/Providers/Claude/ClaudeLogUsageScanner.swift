@@ -279,14 +279,7 @@ actor ClaudeLogUsageScanner {
                 continue
             }
 
-            let directory = URL(fileURLWithPath: file.path).deletingLastPathComponent()
-            let sessionFile: JSONLScanning.DiscoveredFile?
-            if directory.lastPathComponent == "subagents" {
-                let parentPath = directory.deletingLastPathComponent().appendingPathExtension("jsonl").path
-                sessionFile = filesByPath[parentPath]
-            } else {
-                sessionFile = file
-            }
+            let sessionFile = Self.owningSessionFile(for: file, filesByPath: filesByPath)
             guard let sessionFile else { continue }
             if identities[sessionFile.path] == nil {
                 identities[sessionFile.path] = .some(sessionIdentity(sessionFile))
