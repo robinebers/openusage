@@ -57,6 +57,12 @@ Sessions that do not identify their account, including usage from pi and third-p
 Conductor, count as long as OpenUsage has never seen more than one Claude account. Once multiple
 accounts are discovered, unattributed usage is left out instead of being assigned to the wrong card.
 
+Subagent logs inherit their parent session's ownership, even when that parent is older than the
+spend window. Sessions with conflicting account or organization records are excluded. OpenUsage
+checks each parent once per refresh and reuses unchanged ownership results, including conflicts,
+across refreshes. Failed reads are retried on the next refresh, and large ownership scans stop
+when the refresh is cancelled.
+
 Claude subagents, including agents nested inside workflows, inherit their parent session's account.
 Their usage appears while they run and is included in the same spend tiles. Existing workflow logs
 are picked up on the next refresh; there is no need to rerun the workflow or clear the usage cache.

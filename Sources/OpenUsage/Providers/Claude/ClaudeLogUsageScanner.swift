@@ -30,8 +30,10 @@ actor ClaudeLogUsageScanner {
     private let accountID: String?
     private let allowsUnattributedSessions: Bool
     private var sessionOwnership: [String: (
-        size: Int, mtime: Date, organizationID: String?, accountID: String?
+        size: Int, mtime: Date, identity: ClaudeSessionIdentity
     )] = [:]
+
+    private let readOwnershipData: @Sendable (URL) throws -> Data
 
     /// One parsed usage line. Token buckets are pre-normalized into `TokenBreakdown`; dedup fields
     /// ride along so the global dedup pass can run over cached entries.
@@ -66,7 +68,10 @@ actor ClaudeLogUsageScanner {
         cacheIdentityOverride: String? = nil,
         accountUUID: String? = nil,
         organizationUUID: String? = nil,
-        allowsUnattributedSessions: Bool = false
+        allowsUnattributedSessions: Bool = false,
+        readOwnershipData: @escaping @Sendable (URL) throws -> Data = {
+            try Data(contentsOf: $0, options: .mappedIfSafe)
+        }
     ) {
         precondition(cacheIdentityOverride?.isEmpty != true)
         self.environment = environment
@@ -76,6 +81,7 @@ actor ClaudeLogUsageScanner {
         self.organizationID = organizationUUID?.lowercased()
         self.accountID = accountUUID?.lowercased()
         self.allowsUnattributedSessions = allowsUnattributedSessions
+        self.readOwnershipData = readOwnershipData
     }
 
     /// Scan the last `daysBack` days of Claude logs. Returns `nil` when no Claude data directory or
@@ -255,6 +261,8 @@ actor ClaudeLogUsageScanner {
         var seenPaths: Set<String> = []
         var ownedFiles: [JSONLScanning.DiscoveredFile] = []
         var desktopSessionIDs: Set<String>?
+        // Optional values retain read failures for this pass without persisting them.
+        var identities: [String: ClaudeSessionIdentity?] = [:]
 
         for file in files {
             guard !Task.isCancelled else { return [] }
@@ -272,9 +280,14 @@ actor ClaudeLogUsageScanner {
             }
 
             let sessionFile = Self.owningSessionFile(for: file, filesByPath: filesByPath)
-            guard let sessionFile, let ownership = sessionIdentity(sessionFile) else { continue }
-            if let owner = ownership.organizationID {
-                if owner == organizationID, accountID == nil || ownership.accountID == accountID {
+            guard let sessionFile else { continue }
+            if identities[sessionFile.path] == nil {
+                identities[sessionFile.path] = .some(sessionIdentity(sessionFile))
+            }
+            guard let result = identities[sessionFile.path], let ownership = result else { continue }
+            if case .conflicted = ownership { continue }
+            if case let .owned(owner, ownerAccount) = ownership {
+                if owner == organizationID, accountID == nil || ownerAccount == accountID {
                     ownedFiles.append(file)
                 }
             } else if allowsUnattributedSessions {
@@ -322,41 +335,22 @@ actor ClaudeLogUsageScanner {
 
     private func sessionIdentity(
         _ file: JSONLScanning.DiscoveredFile
-    ) -> (organizationID: String?, accountID: String?)? {
+    ) -> ClaudeSessionIdentity? {
         if let cached = sessionOwnership[file.path],
            cached.size == file.size, cached.mtime == file.mtime
         {
-            return (cached.organizationID, cached.accountID)
+            return cached.identity
         }
 
-        let data: Data
         do {
-            data = try Data(contentsOf: URL(fileURLWithPath: file.path), options: .mappedIfSafe)
+            let data = try readOwnershipData(URL(fileURLWithPath: file.path))
+            guard let identity = ClaudeSessionIdentity.parse(data), !Task.isCancelled else { return nil }
+            sessionOwnership[file.path] = (file.size, file.mtime, identity)
+            return identity
         } catch {
             AppLog.warn(LogTag.plugin("claude"), "Failed to read Claude session ownership from \(file.path): \(error)")
             return nil
         }
-
-        let marker = Data(#""ownerOrganizationUuid""#.utf8)
-        var owner: String?
-        var account: String?
-        for line in data.split(separator: UInt8(ascii: "\n")) where line.range(of: marker) != nil {
-            guard let object = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
-                  let value = object["ownerOrganizationUuid"] as? String,
-                  !value.isEmpty
-            else { continue }
-            let candidate = value.lowercased()
-            if let owner, owner != candidate { return nil }
-            owner = candidate
-            if let candidateAccount = object["ownerAccountUuid"] as? String, !candidateAccount.isEmpty {
-                let normalizedAccount = candidateAccount.lowercased()
-                if let account, account != normalizedAccount { return nil }
-                account = normalizedAccount
-            }
-        }
-
-        sessionOwnership[file.path] = (file.size, file.mtime, owner, account)
-        return (owner, account)
     }
 
     // MARK: - Line parsing
