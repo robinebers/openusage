@@ -26,6 +26,8 @@ import Foundation
 ///   `last_token_usage`.
 /// - Early sessions without model metadata fall back to `gpt-5`. The `codex-auto-review` slug stays
 ///   visible in usage breakdowns and carries a dated fallback model only for cost estimation.
+///   The `gpt-reserve` slug (Luna Reserve fallback after regular usage is exhausted) stays visible
+///   the same way and prices at `gpt-5.6-luna` rates.
 /// - Identical events (same timestamp + model + token counts) appearing in multiple files (copied
 ///   session logs) count once.
 /// - Cost per event: `(input - cached) x input rate + cached x cache-read rate + output x output
@@ -62,7 +64,7 @@ actor CodexLogUsageScanner {
     /// once. The version is the parser schema version; bump it when `Event` semantics change.
     private static let sharedScanner = IncrementalJSONLScanner<Event>(
         logTag: LogTag.plugin("codex"),
-        persistence: JSONLScanCachePersistence(namespace: "codex", schemaVersion: 3)
+        persistence: JSONLScanCachePersistence(namespace: "codex", schemaVersion: 4)
     )
 
     static func flushPersistentCacheWrites() async {
@@ -290,5 +292,8 @@ actor CodexLogUsageScanner {
         }
         return autoReviewFallbacks.first(where: { date >= $0.releasedOn })?.model ?? "gpt-5"
     }
+
+    /// Luna Reserve keeps its `gpt-reserve` slug in breakdowns while using Luna's cost estimates.
+    static let reservePricingModel = "gpt-5.6-luna"
 
 }
