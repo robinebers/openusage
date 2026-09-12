@@ -71,6 +71,7 @@ final class DevinUsageMapperTests: XCTestCase {
         planStatus["planInfo"] = planInfo
         planStatus["dailyQuotaRemainingPercent"] = 30
         planStatus.removeValue(forKey: "weeklyQuotaRemainingPercent")
+        planStatus.removeValue(forKey: "weeklyQuotaResetAtUnix")
         userStatus["planStatus"] = planStatus
 
         let mapped = try DevinUsageMapper.mapUserStatus(userStatus)
@@ -79,6 +80,28 @@ final class DevinUsageMapperTests: XCTestCase {
         // The hidden daily quota fills the missing Weekly row and is still flipped from "remaining"
         // to "used": 30% remaining -> 70% used (not passed through raw as 30).
         XCTAssertEqual(progress(mapped.lines, "Weekly quota")?.used, 70)
+    }
+
+    func testOmittedWeeklyRemainingWithResetMeansExhausted() throws {
+        for hideDailyQuota in [true, false] {
+            let body = Data("""
+            {"userStatus":{"planStatus":{
+                "planInfo":{"planName":"Max","hideDailyQuota":\(hideDailyQuota)},
+                "dailyQuotaRemainingPercent":100,
+                "dailyQuotaResetAtUnix":"1788940800",
+                "weeklyQuotaResetAtUnix":"1789286400",
+                "overageBalanceMicros":"-44347"
+            }}}
+            """.utf8)
+            let mapped = try DevinUsageMapper.mapUserStatusResponse(
+                HTTPResponse(statusCode: 200, headers: [:], body: body)
+            )
+            let weekly = try XCTUnwrap(progress(mapped.lines, "Weekly quota"))
+            XCTAssertEqual(weekly.used, 100)
+            XCTAssertEqual(weekly.limit, 100)
+            XCTAssertEqual(weekly.resetsAt, Date(timeIntervalSince1970: 1_789_286_400))
+            XCTAssertEqual(weekly.periodDurationMs, DevinUsageMapper.weekPeriodMs)
+        }
     }
 
     func testThrowsQuotaUnavailableWhenNoDisplayableFieldsExist() {
