@@ -24,11 +24,14 @@ enum ClaudeUsageMapper {
         }
 
         var lines: [MetricLine] = []
-        appendUsageWindow(body["five_hour"], label: "Session", periodDurationMs: sessionPeriodMs, to: &lines)
-        appendUsageWindow(body["seven_day"], label: "Weekly", periodDurationMs: weeklyPeriodMs, to: &lines)
-        appendUsageWindow(body["seven_day_sonnet"], label: "Sonnet", periodDurationMs: weeklyPeriodMs, to: &lines)
-        appendScopedWeeklyLimit(body["limits"], modelName: "Fable", label: "Fable", to: &lines)
-        appendExtraUsage(body["extra_usage"], to: &lines)
+        let isEnterprise = credentials.subscriptionType?.lowercased() == "enterprise"
+        if !isEnterprise {
+            appendUsageWindow(body["five_hour"], label: "Session", periodDurationMs: sessionPeriodMs, to: &lines)
+            appendUsageWindow(body["seven_day"], label: "Weekly", periodDurationMs: weeklyPeriodMs, to: &lines)
+            appendUsageWindow(body["seven_day_sonnet"], label: "Sonnet", periodDurationMs: weeklyPeriodMs, to: &lines)
+            appendScopedWeeklyLimit(body["limits"], modelName: "Fable", label: "Fable", to: &lines)
+        }
+        appendExtraUsage(body["extra_usage"], isEnterprise: isEnterprise, to: &lines)
 
         return ClaudeMappedUsage(
             plan: formatPlan(subscriptionType: credentials.subscriptionType, rateLimitTier: credentials.rateLimitTier),
@@ -149,7 +152,7 @@ enum ClaudeUsageMapper {
         }
     }
 
-    private static func appendExtraUsage(_ value: Any?, to lines: inout [MetricLine]) {
+    private static func appendExtraUsage(_ value: Any?, isEnterprise: Bool = false, to lines: inout [MetricLine]) {
         guard let object = value as? [String: Any],
               object["is_enabled"] as? Bool == true,
               let usedCents = ProviderParse.number(object["used_credits"])
@@ -159,11 +162,15 @@ enum ClaudeUsageMapper {
 
         let used = ProviderParse.centsToDollars(usedCents)
         if let limitCents = ProviderParse.number(object["monthly_limit"]), limitCents > 0 {
+            // Enterprise accounts have no token-window limits; extra_usage tracks their entire monthly
+            // spend. Override the descriptor's static "Extra Usage" title with "Spend" so enterprise
+            // users see an accurate label rather than a consumer add-on name.
             lines.append(.progress(
                 label: "Extra usage spent",
                 used: used,
                 limit: ProviderParse.centsToDollars(limitCents),
-                format: .dollars
+                format: .dollars,
+                titleOverride: isEnterprise ? "Spend" : nil
             ))
         } else if used > 0 {
             // No monthly cap: an unbounded spend, carried raw so it formats through `MetricFormatter`

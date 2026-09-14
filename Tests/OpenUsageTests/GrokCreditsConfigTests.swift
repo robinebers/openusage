@@ -70,7 +70,7 @@ final class GrokCreditsConfigMapperTests: XCTestCase {
             statusCode: 200, headers: [:], body: GrokCreditsFixtures.capturedResponseBody
         ))
 
-        guard case .progress(let label, let used, let limit, let format, let resetsAt, let periodDurationMs, _)? =
+        guard case .progress(let label, let used, let limit, let format, let resetsAt, let periodDurationMs, _, _)? =
                 mapped.lines.first(where: { $0.label == "Weekly limit" }) else {
             return XCTFail("expected a Weekly limit progress line, got \(mapped.lines)")
         }
@@ -109,7 +109,7 @@ final class GrokCreditsConfigMapperTests: XCTestCase {
         let mapped = try GrokUsageMapper.mapCreditsConfig(HTTPResponse(
             statusCode: 200, headers: [:], body: GrokCreditsFixtures.responseBody(percent: 150)
         ))
-        guard case .progress(_, let used, _, _, _, _, _)? =
+        guard case .progress(_, let used, _, _, _, _, _, _)? =
                 mapped.lines.first(where: { $0.label == "Weekly limit" }) else {
             return XCTFail("expected a progress line")
         }

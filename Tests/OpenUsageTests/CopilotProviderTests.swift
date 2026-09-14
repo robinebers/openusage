@@ -591,7 +591,7 @@ private func ok(_ body: [String: Any]) -> HTTPResponse {
 }
 
 private func progress(_ lines: [MetricLine], _ label: String) -> (used: Double, limit: Double, resetsAt: Date?, periodDurationMs: Int?)? {
-    guard case .progress(_, let used, let limit, _, let resetsAt, let periodDurationMs, _) = lines.first(where: { $0.label == label }) else {
+    guard case .progress(_, let used, let limit, _, let resetsAt, let periodDurationMs, _, _) = lines.first(where: { $0.label == label }) else {
         return nil
     }
     return (used, limit, resetsAt, periodDurationMs)

@@ -351,7 +351,7 @@ private final class RecordingHTTPClient: HTTPClient, @unchecked Sendable {
 }
 
 private func progress(_ lines: [MetricLine], _ label: String) -> (used: Double, limit: Double, resetsAt: Date?)? {
-    guard case .progress(_, let used, let limit, _, let resetsAt, _, _) = lines.first(where: { $0.label == label }) else {
+    guard case .progress(_, let used, let limit, _, let resetsAt, _, _, _) = lines.first(where: { $0.label == label }) else {
         return nil
     }
     return (used, limit, resetsAt)

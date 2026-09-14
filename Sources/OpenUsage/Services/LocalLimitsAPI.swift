@@ -98,14 +98,14 @@ enum LocalLimitsAPI {
             unit = Self.progressUnit(line) ?? resource.unit
 
             switch (resource.source, line) {
-            case (.progress, .progress(_, let rawUsed, let rawLimit, _, let reset, let periodMs, _)):
+            case (.progress, .progress(_, let rawUsed, let rawLimit, _, let reset, let periodMs, _, _)):
                 applyProgress(
                     used: rawUsed, limit: rawLimit, reset: reset, periodMs: periodMs,
                     resource: resource
                 )
 
             case (.progressOrValue(_, _),
-                  .progress(_, let rawUsed, let rawLimit, _, let reset, let periodMs, _)):
+                  .progress(_, let rawUsed, let rawLimit, _, let reset, let periodMs, _, _)):
                 applyProgress(
                     used: rawUsed, limit: rawLimit, reset: reset, periodMs: periodMs,
                     resource: resource
@@ -135,7 +135,7 @@ enum LocalLimitsAPI {
         /// rows carry their actual runtime unit, which can vary by plan (for example Cursor Total Usage
         /// is percent on individual plans and requests on request-based Enterprise plans).
         private static func progressUnit(_ line: MetricLine) -> String? {
-            guard case .progress(_, _, _, let format, _, _, _) = line else { return nil }
+            guard case .progress(_, _, _, let format, _, _, _, _) = line else { return nil }
             switch format {
             case .percent:
                 return "percent"

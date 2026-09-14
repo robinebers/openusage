@@ -203,6 +203,79 @@ final class ClaudeUsageMapperTests: XCTestCase {
         XCTAssertEqual(progress(mapped.lines, "Extra usage spent")?.limit, 10)
     }
 
+    func testEnterpriseExtraUsageCarriesSpendTitleOverride() throws {
+        // Enterprise accounts have no token-window limits; extra_usage tracks their entire monthly
+        // spend. The progress line must carry titleOverride: "Spend" so the dashboard shows "Spend"
+        // instead of the consumer add-on label "Extra Usage".
+        let response = HTTPResponse(
+            statusCode: 200,
+            headers: [:],
+            body: Data(#"{"extra_usage":{"is_enabled":true,"used_credits":38089,"monthly_limit":120000}}"#.utf8)
+        )
+
+        let mapped = try ClaudeUsageMapper.mapUsageResponse(
+            response,
+            credentials: ClaudeOAuth(subscriptionType: "enterprise")
+        )
+
+        guard case .progress(_, _, _, _, _, _, _, let titleOverride)? =
+                mapped.lines.first(where: { $0.label == "Extra usage spent" })
+        else { return XCTFail("Expected a progress line with label 'Extra usage spent'") }
+        XCTAssertEqual(titleOverride, "Spend")
+    }
+
+    func testEnterpriseOmitsTokenWindowRows() throws {
+        // Enterprise accounts have no per-session or per-week token caps, so Session, Weekly, Sonnet,
+        // and Fable rows must not appear — they would always show "No data" and mislead the user.
+        let response = HTTPResponse(
+            statusCode: 200,
+            headers: [:],
+            body: Data("""
+            {
+              "five_hour": {"utilization": 50, "resets_at": null},
+              "seven_day": {"utilization": 30, "resets_at": null},
+              "seven_day_sonnet": {"utilization": 20, "resets_at": null},
+              "limits": [
+                { "kind": "weekly_scoped", "percent": 10, "resets_at": null,
+                  "scope": { "model": { "display_name": "Fable", "id": null }, "surface": null } }
+              ],
+              "extra_usage": {"is_enabled": true, "used_credits": 38089, "monthly_limit": 120000}
+            }
+            """.utf8)
+        )
+
+        let mapped = try ClaudeUsageMapper.mapUsageResponse(
+            response,
+            credentials: ClaudeOAuth(subscriptionType: "enterprise")
+        )
+
+        let labels = mapped.lines.map(\.label)
+        XCTAssertFalse(labels.contains("Session"))
+        XCTAssertFalse(labels.contains("Weekly"))
+        XCTAssertFalse(labels.contains("Sonnet"))
+        XCTAssertFalse(labels.contains("Fable"))
+        XCTAssertTrue(labels.contains("Extra usage spent"))
+    }
+
+    func testNonEnterpriseExtraUsageHasNoTitleOverride() throws {
+        // Non-enterprise accounts must not get the override — their "Extra Usage" label is correct.
+        let response = HTTPResponse(
+            statusCode: 200,
+            headers: [:],
+            body: Data(#"{"extra_usage":{"is_enabled":true,"used_credits":500,"monthly_limit":1000}}"#.utf8)
+        )
+
+        let mapped = try ClaudeUsageMapper.mapUsageResponse(
+            response,
+            credentials: ClaudeOAuth(subscriptionType: "max")
+        )
+
+        guard case .progress(_, _, _, _, _, _, _, let titleOverride)? =
+                mapped.lines.first(where: { $0.label == "Extra usage spent" })
+        else { return XCTFail("Expected a progress line with label 'Extra usage spent'") }
+        XCTAssertNil(titleOverride)
+    }
+
     func testMapsFableScopedWeeklyLimitFromLimitsArray() throws {
         // Anthropic moved per-model weekly windows into `limits[]` as `weekly_scoped` rows keyed by
         // `scope.model.display_name`; the legacy `seven_day_<model>` top-level keys now come back null.
@@ -282,7 +355,7 @@ final class ClaudeUsageMapperTests: XCTestCase {
     }
 
     private func progress(_ lines: [MetricLine], _ label: String) -> (used: Double, limit: Double, resetsAt: Date?, periodDurationMs: Int?)? {
-        guard case .progress(_, let used, let limit, _, let resetsAt, let periodDurationMs, _) = lines.first(where: { $0.label == label }) else {
+        guard case .progress(_, let used, let limit, _, let resetsAt, let periodDurationMs, _, _) = lines.first(where: { $0.label == label }) else {
             return nil
         }
         return (used, limit, resetsAt, periodDurationMs)
@@ -827,7 +900,7 @@ final class ClaudeProviderTests: XCTestCase {
     }
 
     private static func progress(_ lines: [MetricLine], _ label: String) -> (used: Double, limit: Double, resetsAt: Date?, periodDurationMs: Int?)? {
-        guard case .progress(_, let used, let limit, _, let resetsAt, let periodDurationMs, _) = lines.first(where: { $0.label == label }) else {
+        guard case .progress(_, let used, let limit, _, let resetsAt, let periodDurationMs, _, _) = lines.first(where: { $0.label == label }) else {
             return nil
         }
         return (used, limit, resetsAt, periodDurationMs)

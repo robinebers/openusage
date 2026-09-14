@@ -61,6 +61,9 @@ struct WidgetData: Hashable {
     /// False when no real provider metric backs this tile. The view then shows a "No data" state
     /// instead of the descriptor's placeholder template numbers. True for real data and direct fixtures.
     var hasData: Bool = true
+    /// When true the tile should be omitted from the dashboard entirely rather than rendered as "No data".
+    /// Set by `WidgetDataStore` for descriptors marked `hideWhenNoData` that have no backing metric line.
+    var isHidden: Bool = false
     /// Raw numbers for an unbounded `.values` row (empty for meters). The view
     /// formats these at render time instead of reading a baked string — see `unboundedDetail`.
     var values: [MetricValue] = []
